@@ -1,0 +1,175 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 97%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 97%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 24.6 95% 53.1%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 24.6 95% 53.1%;
+    --radius: 0.75rem;
+
+    --sidebar-background: 0 0% 97%;
+    --sidebar-foreground: 240 3.8% 46.1%;
+    --sidebar-primary: 24.6 95% 53.1%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 240 5.9% 90%;
+    --sidebar-ring: 24.6 95% 53.1%;
+
+    /* DTS Custom tokens */
+    --surface: 0 0% 97%;
+    --elevated: 240 4.8% 95.9%;
+    --success: 142.1 76.2% 36.3%;
+    --warning: 47.9 95.8% 47.3%;
+    --info: 217.2 91.2% 59.8%;
+    --accent-glow: 24.6 95% 53.1%;
+
+    /* Role Colors */
+    --role-main-admin: 270 91% 65%;
+    --role-tech-admin: 217 91% 60%;
+    --role-sales-admin: 25 95% 53%;
+    --role-accounts: 142 71% 45%;
+    --role-tech-member: 187 96% 42%;
+    --role-sales-member: 38 92% 50%;
+
+    /* Chart text */
+    --chart-text: 240 10% 3.9%;
+    --chart-grid: 240 5.9% 90%;
+    --chart-tooltip-bg: 0 0% 100%;
+    --chart-tooltip-border: 240 5.9% 90%;
+
+    /* Fonts */
+    --font-display: 'Syne', sans-serif;
+    --font-body: 'DM Sans', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+
+  .dark {
+    --background: 240 5.9% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 5.3% 7.1%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 5.3% 7.1%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 24.6 95% 53.1%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5.9% 10%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 5.3% 7.1%;
+    --muted-foreground: 240 3.7% 65.9%;
+    --accent: 240 5.9% 10%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.8% 16.1%;
+    --input: 240 3.8% 16.1%;
+    --ring: 24.6 95% 53.1%;
+
+    --sidebar-background: 240 5.3% 7.1%;
+    --sidebar-foreground: 240 3.7% 65.9%;
+    --sidebar-primary: 24.6 95% 53.1%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 5.9% 10%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 240 3.8% 16.1%;
+    --sidebar-ring: 24.6 95% 53.1%;
+
+    /* DTS Custom tokens */
+    --surface: 240 5.3% 7.1%;
+    --elevated: 240 5.9% 10%;
+    --success: 142.1 70.6% 45.3%;
+    --warning: 47.9 95.8% 47.3%;
+    --info: 217.2 91.2% 59.8%;
+    --accent-glow: 24.6 95% 53.1%;
+
+    /* Role Colors */
+    --role-main-admin: 270 91% 65%;
+    --role-tech-admin: 217 91% 60%;
+    --role-sales-admin: 25 95% 53%;
+    --role-accounts: 142 71% 45%;
+    --role-tech-member: 187 96% 42%;
+    --role-sales-member: 38 92% 50%;
+
+    /* Chart text */
+    --chart-text: 0 0% 85%;
+    --chart-grid: 240 3.8% 16.1%;
+    --chart-tooltip-bg: 240 5.3% 7.1%;
+    --chart-tooltip-border: 240 3.8% 16.1%;
+
+    /* Fonts */
+    --font-display: 'Syne', sans-serif;
+    --font-body: 'DM Sans', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-body);
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+  }
+}
+
+/* Animations */
+@keyframes float-particle {
+  0%, 100% { transform: translateY(0) translateX(0); opacity: 0.2; }
+  25% { transform: translateY(-30px) translateX(10px); opacity: 0.5; }
+  50% { transform: translateY(-15px) translateX(-10px); opacity: 0.3; }
+  75% { transform: translateY(-40px) translateX(15px); opacity: 0.4; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0); }
+  50% { box-shadow: 0 0 20px 4px hsl(var(--primary) / 0.15); }
+}
+
+@keyframes counter-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.5); }
+}
+
+.animate-float { animation: float-particle 6s ease-in-out infinite; }
+.animate-pulse-glow { animation: pulse-glow 3s ease-in-out infinite; }
+.animate-counter { animation: counter-up 0.5s ease-out forwards; }
+.animate-slide-in { animation: slide-in-right 0.3s ease-out forwards; }
+.animate-live-dot { animation: live-pulse 2s ease-in-out infinite; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: hsl(var(--background)); }
+::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground)); }
