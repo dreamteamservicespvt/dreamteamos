@@ -84,7 +84,7 @@ export default function MyLeads() {
     const q = query(collection(db, "leads"), where("assignedTo", "==", user.uid));
     const unsub = onSnapshot(q, (snap) => {
       const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Lead));
-      list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+      list.sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
       setLeads(list);
       setLoading(false);
     });
@@ -323,26 +323,38 @@ function LeadCard({ lead, updateLead, expandedNotes, setExpandedNotes, expandedS
 
         {/* Show sales: always show if 0-1 items, collapsible if 2+ */}
         {(allSaleItems.length < 2 || showSalesList) && allSaleItems.map((item, idx) => (
-          <div key={idx} className={`text-xs rounded-lg p-2 flex items-center justify-between ${item.verificationStatus === "verified" ? "bg-success/10 border border-success/20" : "bg-warning/10 border border-warning/20"}`}>
-            <div>
-              <span className="font-medium text-foreground capitalize">{item.category?.replace(/_/g, " ")}</span>
-              {item.packageKey && item.packageKey !== "custom" && <span className="text-muted-foreground"> • {item.packageKey}</span>}
+          <div key={idx} className={`text-xs rounded-lg p-2 space-y-1.5 ${item.verificationStatus === "verified" ? "bg-success/10 border border-success/20" : "bg-warning/10 border border-warning/20"}`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="font-medium text-foreground capitalize">{item.category?.replace(/_/g, " ")}</span>
+                {item.packageKey && item.packageKey !== "custom" && <span className="text-muted-foreground"> • {item.packageKey}</span>}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-mono font-medium text-foreground">{formatCurrency(item.amount)}</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${item.verificationStatus === "verified" ? "bg-success/15 text-success" : "bg-warning/15 text-warning"}`}>
+                  {item.verificationStatus === "verified" ? "✓" : "⏳"}
+                </span>
+                {item.verificationStatus === "pending" && (
+                  <button
+                    onClick={() => handleDeleteSaleItem(idx)}
+                    className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                    title="Delete sale"
+                  >
+                    <Trash2 size={11} />
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="font-mono font-medium text-foreground">{formatCurrency(item.amount)}</span>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${item.verificationStatus === "verified" ? "bg-success/15 text-success" : "bg-warning/15 text-warning"}`}>
-                {item.verificationStatus === "verified" ? "✓" : "⏳"}
-              </span>
-              {item.verificationStatus === "pending" && (
-                <button
-                  onClick={() => handleDeleteSaleItem(idx)}
-                  className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                  title="Delete sale"
-                >
-                  <Trash2 size={11} />
-                </button>
-              )}
-            </div>
+            {item.paymentScreenshotUrl && (
+              <a
+                href={item.paymentScreenshotUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline"
+              >
+                <ExternalLink size={10} /> View Payment Screenshot
+              </a>
+            )}
           </div>
         ))}
 

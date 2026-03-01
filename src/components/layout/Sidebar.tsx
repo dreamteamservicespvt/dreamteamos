@@ -81,7 +81,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               animate={{ x: 0 }}
               exit={{ x: -280 }}
               transition={{ duration: 0.2, ease: "easeInOut" }}
-              className="fixed left-0 top-0 h-screen w-[280px] bg-card border-r border-border flex flex-col z-50 overflow-hidden"
+              className="fixed left-0 top-0 h-[100dvh] w-[280px] bg-card border-r border-border flex flex-col z-50 overflow-hidden"
             >
               <div className="h-14 flex items-center px-4 border-b border-border justify-between shrink-0">
                 <span className="font-display font-bold text-xl bg-gradient-to-r from-primary to-warning bg-clip-text text-transparent">DTS</span>

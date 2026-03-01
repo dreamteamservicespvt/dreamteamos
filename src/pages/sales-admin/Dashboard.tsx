@@ -122,10 +122,10 @@ export default function SalesAdminDashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
         <div>
-          <h1 className="font-display text-2xl font-bold text-foreground">Sales Dashboard</h1>
-          <p className="text-muted-foreground text-sm mt-1">
+          <h1 className="font-display text-xl md:text-2xl font-bold text-foreground">Sales Dashboard</h1>
+          <p className="text-muted-foreground text-xs md:text-sm mt-1">
             {selectedDate ? `Activity on ${format(selectedDate, "dd/MM/yyyy")}` : "Overview of your team's performance"}
           </p>
         </div>
@@ -157,18 +157,22 @@ export default function SalesAdminDashboard() {
       )}
 
       {chartData.length > 0 && (
-        <div className="bg-card border border-border rounded-xl p-5">
+        <div className="bg-card border border-border rounded-xl p-3 md:p-5">
           <h3 className="font-display font-semibold text-foreground mb-4">Team Performance</h3>
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--chart-grid))" />
-              <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={11} />
-              <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} />
-              <Tooltip contentStyle={{ backgroundColor: "hsl(var(--chart-tooltip-bg))", border: "1px solid hsl(var(--chart-tooltip-border))", borderRadius: "8px", fontSize: "12px", color: "hsl(var(--foreground))" }} />
-              <Bar dataKey="leads" name="Leads" fill="hsl(217.2 91.2% 59.8%)" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="sales" name="Sales" fill="hsl(142.1 70.6% 45.3%)" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="overflow-x-auto -mx-3 px-3 md:mx-0 md:px-0">
+            <div className="min-w-[400px]">
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--chart-grid))" />
+                  <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={11} />
+                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} />
+                  <Tooltip contentStyle={{ backgroundColor: "hsl(var(--chart-tooltip-bg))", border: "1px solid hsl(var(--chart-tooltip-border))", borderRadius: "8px", fontSize: "12px", color: "hsl(var(--foreground))" }} />
+                  <Bar dataKey="leads" name="Leads" fill="hsl(217.2 91.2% 59.8%)" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="sales" name="Sales" fill="hsl(142.1 70.6% 45.3%)" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
         </div>
       )}
 
@@ -259,10 +263,11 @@ export default function SalesAdminDashboard() {
 
       {/* Summary Table */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-border">
+        <div className="px-4 md:px-5 py-4 border-b border-border">
           <h3 className="font-display font-semibold text-foreground">Member Summary</h3>
         </div>
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[600px]">
           <thead>
             <tr className="border-b border-border bg-elevated/50">
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Member</th>
@@ -313,6 +318,7 @@ export default function SalesAdminDashboard() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );
