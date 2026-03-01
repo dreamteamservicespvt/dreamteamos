@@ -70,27 +70,28 @@ export default function TechAdminSessionHistory() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl font-bold text-foreground">Session History</h1>
-          <p className="text-muted-foreground text-sm mt-1">Track your team's login activity</p>
+          <h1 className="font-display text-lg md:text-2xl font-bold text-foreground">Session History</h1>
+          <p className="text-muted-foreground text-xs md:text-sm mt-1">Track your team's login activity</p>
         </div>
         <button onClick={exportCSV}
-          className="h-9 px-4 rounded-lg bg-accent text-foreground text-sm font-medium flex items-center gap-2 border border-border hover:bg-accent/80 transition-colors">
+          className="h-8 md:h-9 px-3 md:px-4 rounded-lg bg-accent text-foreground text-xs md:text-sm font-medium flex items-center gap-2 border border-border hover:bg-accent/80 transition-colors w-fit">
           <Download size={14} /> Export CSV
         </button>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 md:gap-3">
         <select value={memberFilter} onChange={(e) => setMemberFilter(e.target.value)}
-          className="h-9 px-3 rounded-lg bg-card border border-border text-foreground text-sm outline-none focus:border-primary">
+          className="h-9 px-3 rounded-lg bg-card border border-border text-foreground text-xs md:text-sm outline-none focus:border-primary">
           <option value="all">All Members</option>
           {members.map((m) => <option key={m.uid} value={m.uid}>{m.name}</option>)}
         </select>
-        <span className="ml-auto text-xs text-muted-foreground font-mono">{filtered.length} sessions</span>
+        <span className="ml-auto text-[10px] md:text-xs text-muted-foreground font-mono">{filtered.length} sessions</span>
       </div>
 
-      <div className="bg-card border border-border rounded-xl overflow-hidden">
+      {/* Desktop table */}
+      <div className="hidden md:block bg-card border border-border rounded-xl overflow-hidden">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-elevated/50">
@@ -146,6 +147,55 @@ export default function TechAdminSessionHistory() {
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile cards */}
+      <div className="md:hidden space-y-2">
+        {loading ? (
+          Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="bg-card border border-border rounded-xl p-3 h-20 animate-pulse" />
+          ))
+        ) : filtered.length === 0 ? (
+          <div className="bg-card border border-border rounded-xl p-8 text-center">
+            <Clock size={28} className="mx-auto text-muted-foreground/30 mb-2" />
+            <p className="text-muted-foreground text-sm">No sessions found</p>
+          </div>
+        ) : (
+          filtered.map((s) => {
+            const member = getMember(s.userId);
+            const login = s.loginAt?.toDate?.();
+            const logout = s.logoutAt?.toDate?.();
+            return (
+              <div key={s.id} className="bg-card border border-border rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-md bg-role-tech-admin/15 flex items-center justify-center font-display font-bold text-role-tech-admin text-[10px]">
+                      {member?.name?.charAt(0) || "?"}
+                    </div>
+                    <span className="font-medium text-foreground text-sm">{member?.name || "Unknown"}</span>
+                  </div>
+                  <span className="font-mono text-xs text-foreground">
+                    {s.duration ? `${Math.floor(s.duration / 60)}h ${s.duration % 60}m` : "—"}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[10px]">
+                  <div>
+                    <span className="text-muted-foreground">Login: </span>
+                    <span className="font-mono text-foreground">{login ? `${formatDate(login)} ${formatTime(login)}` : "—"}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-muted-foreground">Logout: </span>
+                    {logout ? (
+                      <span className="font-mono text-foreground">{formatDate(logout)} {formatTime(logout)}</span>
+                    ) : (
+                      <span className="text-success font-medium">Active</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );

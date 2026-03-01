@@ -67,20 +67,20 @@ export default function TechAdminSettings() {
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div>
-        <h1 className="font-display text-2xl font-bold text-foreground">Settings</h1>
-        <p className="text-muted-foreground text-sm mt-1">Manage your profile and security</p>
+        <h1 className="font-display text-lg md:text-2xl font-bold text-foreground">Settings</h1>
+        <p className="text-muted-foreground text-xs md:text-sm mt-1">Manage your profile and security</p>
       </div>
 
-      <div className="bg-card border border-border rounded-xl p-6">
-        <div className="flex items-center gap-4 mb-6">
-          <div className="w-14 h-14 rounded-xl bg-role-tech-admin/15 flex items-center justify-center font-display font-bold text-role-tech-admin text-xl">
+      <div className="bg-card border border-border rounded-xl p-4 md:p-6">
+        <div className="flex items-center gap-3 md:gap-4 mb-4 md:mb-6">
+          <div className="w-10 h-10 md:w-14 md:h-14 rounded-xl bg-role-tech-admin/15 flex items-center justify-center font-display font-bold text-role-tech-admin text-base md:text-xl shrink-0">
             {user.name?.charAt(0) || "T"}
           </div>
-          <div>
-            <p className="font-display font-bold text-lg text-foreground">{user.name}</p>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${getRoleColor(user.role)}`}>{getRoleLabel(user.role)}</span>
-              <span className="text-xs text-muted-foreground">{user.email}</span>
+          <div className="min-w-0">
+            <p className="font-display font-bold text-base md:text-lg text-foreground truncate">{user.name}</p>
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              <span className={`text-[10px] md:text-[11px] font-medium px-2 py-0.5 rounded-full ${getRoleColor(user.role)}`}>{getRoleLabel(user.role)}</span>
+              <span className="text-[10px] md:text-xs text-muted-foreground truncate">{user.email}</span>
             </div>
           </div>
         </div>
@@ -114,8 +114,8 @@ export default function TechAdminSettings() {
         </div>
       </button>
 
-      <div className="bg-card border border-border rounded-xl p-6">
-        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-4"><Lock size={14} /> Change Password</div>
+      <div className="bg-card border border-border rounded-xl p-4 md:p-6">
+        <div className="flex items-center gap-2 text-xs md:text-sm font-medium text-muted-foreground mb-4"><Lock size={14} /> Change Password</div>
         <form onSubmit={handleChangePassword} className="space-y-4">
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1 block">Current Password</label>

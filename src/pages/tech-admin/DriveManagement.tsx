@@ -44,8 +44,8 @@ export default function DriveManagement() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display text-2xl font-bold text-foreground">Drive Management</h1>
-        <p className="text-muted-foreground text-sm mt-1">Manage Google Drive folders for each team member</p>
+        <h1 className="font-display text-lg md:text-2xl font-bold text-foreground">Drive Management</h1>
+        <p className="text-muted-foreground text-xs md:text-sm mt-1">Manage Google Drive folders for each team member</p>
       </div>
 
       {loading ? (
@@ -60,48 +60,52 @@ export default function DriveManagement() {
       ) : (
         <div className="space-y-3">
           {members.map((m) => (
-            <div key={m.uid} className="bg-card border border-border rounded-xl p-5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-role-tech-member/15 flex items-center justify-center font-display font-bold text-role-tech-member">
+            <div key={m.uid} className="bg-card border border-border rounded-xl p-3 md:p-5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 md:gap-3 min-w-0">
+                  <div className="w-8 h-8 md:w-10 md:h-10 rounded-lg bg-role-tech-member/15 flex items-center justify-center font-display font-bold text-role-tech-member text-sm md:text-base shrink-0">
                     {m.name?.charAt(0)}
                   </div>
-                  <div>
-                    <p className="font-medium text-foreground">{m.name}</p>
-                    <p className="text-xs text-muted-foreground">{m.email}</p>
+                  <div className="min-w-0">
+                    <p className="font-medium text-foreground text-sm md:text-base truncate">{m.name}</p>
+                    <p className="text-[10px] md:text-xs text-muted-foreground truncate">{m.email}</p>
                   </div>
                 </div>
                 {editingUid !== m.uid && (
                   <button onClick={() => { setEditingUid(m.uid); setEditUrl(m.googleDriveBaseUrl || ""); }}
-                    className="h-8 px-3 rounded-md text-xs font-medium text-muted-foreground border border-border hover:bg-accent hover:text-foreground transition-colors flex items-center gap-1">
-                    <Edit3 size={12} /> Edit URL
+                    className="h-7 md:h-8 px-2 md:px-3 rounded-md text-[10px] md:text-xs font-medium text-muted-foreground border border-border hover:bg-accent hover:text-foreground transition-colors flex items-center gap-1 shrink-0">
+                    <Edit3 size={12} /> <span className="hidden sm:inline">Edit URL</span><span className="sm:hidden">Edit</span>
                   </button>
                 )}
               </div>
 
               {editingUid === m.uid ? (
-                <div className="mt-3 flex gap-2">
+                <div className="mt-3 space-y-2 sm:space-y-0 sm:flex sm:gap-2">
                   <input type="url" value={editUrl} onChange={(e) => setEditUrl(e.target.value)}
                     placeholder="https://drive.google.com/drive/folders/..."
-                    className="flex-1 h-9 px-3 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary placeholder:text-muted-foreground/40 font-mono" />
-                  <button onClick={() => handleSave(m.uid)} disabled={saving}
-                    className="h-9 px-3 rounded-lg bg-success/15 text-success hover:bg-success/25 transition-colors flex items-center gap-1 text-xs font-medium">
-                    {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} Save
-                  </button>
-                  <button onClick={() => setEditingUid(null)}
-                    className="h-9 px-3 rounded-lg bg-accent text-foreground hover:bg-accent/80 transition-colors flex items-center gap-1 text-xs font-medium border border-border">
-                    <X size={12} /> Cancel
-                  </button>
+                    className="w-full sm:flex-1 h-9 px-3 rounded-lg bg-background border border-border text-foreground text-xs md:text-sm outline-none focus:border-primary placeholder:text-muted-foreground/40 font-mono" />
+                  <div className="flex gap-2">
+                    <button onClick={() => handleSave(m.uid)} disabled={saving}
+                      className="flex-1 sm:flex-none h-9 px-3 rounded-lg bg-success/15 text-success hover:bg-success/25 transition-colors flex items-center justify-center gap-1 text-xs font-medium">
+                      {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} Save
+                    </button>
+                    <button onClick={() => setEditingUid(null)}
+                      className="flex-1 sm:flex-none h-9 px-3 rounded-lg bg-accent text-foreground hover:bg-accent/80 transition-colors flex items-center justify-center gap-1 text-xs font-medium border border-border">
+                      <X size={12} /> Cancel
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="mt-2">
                   {m.googleDriveBaseUrl ? (
                     <a href={m.googleDriveBaseUrl} target="_blank" rel="noopener noreferrer"
-                      className="text-xs text-info flex items-center gap-1 hover:underline font-mono truncate">
-                      <ExternalLink size={12} /> {m.googleDriveBaseUrl}
+                      className="inline-flex items-center gap-1.5 h-7 md:h-8 px-2.5 md:px-3 rounded-lg bg-info/10 text-info hover:bg-info/20 transition-colors text-[10px] md:text-xs font-medium">
+                      <FolderOpen size={12} className="shrink-0" />
+                      Open Drive
+                      <ExternalLink size={10} className="shrink-0" />
                     </a>
                   ) : (
-                    <p className="text-xs text-muted-foreground">No Drive URL configured</p>
+                    <p className="text-[10px] md:text-xs text-muted-foreground">No Drive URL configured</p>
                   )}
                 </div>
               )}

@@ -7,6 +7,8 @@ import { formatTime } from "@/utils/formatters";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useNotifications } from "@/hooks/useNotifications";
 import { AnimatePresence, motion } from "framer-motion";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/services/firebase";
 
 interface TopbarProps {
   onMenuClick?: () => void;
@@ -35,10 +37,29 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  // Resolve Firebase UIDs in URL to user names
+  const [resolvedNames, setResolvedNames] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const pathSegments = location.pathname.split("/").filter(Boolean);
+    pathSegments.forEach(async (s) => {
+      if (/^[a-zA-Z0-9]{20,}$/.test(s) && !resolvedNames[s]) {
+        try {
+          const userDoc = await getDoc(doc(db, "users", s));
+          if (userDoc.exists()) {
+            const name = userDoc.data().name;
+            if (name) setResolvedNames((prev) => ({ ...prev, [s]: name }));
+          }
+        } catch { /* ignore */ }
+      }
+    });
+  }, [location.pathname]);
+
   const segments = location.pathname.split("/").filter(Boolean);
-  const breadcrumb = segments.map((s) =>
-    s.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
-  );
+  const breadcrumb = segments.map((s) => {
+    if (resolvedNames[s]) return resolvedNames[s];
+    return s.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  });
 
   const getNotifColor = (type: string) => {
     if (type.includes("approved") || type.includes("verified")) return "bg-success/15 text-success";

@@ -150,21 +150,21 @@ export default function TrainingModules() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <div>
-          <h1 className="font-display text-2xl font-bold text-foreground">Training Modules</h1>
-          <p className="text-muted-foreground text-sm mt-1">Create and manage training resources for your team</p>
+          <h1 className="font-display text-lg md:text-2xl font-bold text-foreground">Training Modules</h1>
+          <p className="text-muted-foreground text-xs md:text-sm mt-1">Create and manage training resources for your team</p>
         </div>
         <button onClick={() => setShowAdd(!showAdd)}
-          className="h-9 px-4 rounded-lg bg-primary text-primary-foreground font-display font-semibold text-sm flex items-center gap-2 hover:bg-primary/90 transition-colors">
-          <Plus size={14} /> Add Module
+          className="h-8 md:h-9 px-3 md:px-4 rounded-lg bg-primary text-primary-foreground font-display font-semibold text-xs md:text-sm flex items-center gap-2 hover:bg-primary/90 transition-colors shrink-0">
+          <Plus size={14} /> <span className="hidden sm:inline">Add Module</span><span className="sm:hidden">Add</span>
         </button>
       </div>
 
       {/* Add Form */}
       {showAdd && (
-        <form onSubmit={handleAdd} className="bg-card border border-border rounded-xl p-5 space-y-4">
-          <h3 className="font-display font-semibold text-foreground">New Training Module</h3>
+        <form onSubmit={handleAdd} className="bg-card border border-border rounded-xl p-3 md:p-5 space-y-3 md:space-y-4">
+          <h3 className="font-display font-semibold text-foreground text-sm md:text-base">New Training Module</h3>
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1 block">Title *</label>
             <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Module title" required
@@ -180,10 +180,11 @@ export default function TrainingModules() {
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1 block">Files (text, image, video, audio, pdf) *</label>
             <label className="block cursor-pointer">
-              <div className="border-2 border-dashed border-border rounded-lg p-6 text-center hover:border-primary/50 transition-colors">
-                <Upload size={24} className="mx-auto text-muted-foreground/50 mb-2" />
-                <p className="text-sm text-muted-foreground">Click to add files</p>
-                <p className="text-xs text-muted-foreground/60 mt-1">Supports images, videos, audio, PDFs, and text files</p>
+              <div className="border-2 border-dashed border-border rounded-lg p-4 md:p-6 text-center hover:border-primary/50 transition-colors">
+                <Upload size={20} className="mx-auto text-muted-foreground/50 mb-2 md:hidden" />
+                <Upload size={24} className="mx-auto text-muted-foreground/50 mb-2 hidden md:block" />
+                <p className="text-xs md:text-sm text-muted-foreground">Click to add files</p>
+                <p className="text-[10px] md:text-xs text-muted-foreground/60 mt-1">Supports images, videos, audio, PDFs, and text files</p>
               </div>
               <input type="file" multiple accept="image/*,video/*,audio/*,.pdf,.txt,.doc,.docx" className="hidden" onChange={handleFileSelect} />
             </label>

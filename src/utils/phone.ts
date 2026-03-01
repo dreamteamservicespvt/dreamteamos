@@ -39,10 +39,14 @@ export function formatPhoneDisplay(phone: string): string {
 /**
  * Get WhatsApp URL for a phone number
  */
-export function getWhatsAppUrl(phone: string): string {
+export function getWhatsAppUrl(phone: string, text?: string): string {
   const normalized = normalizePhone(phone);
   // Remove + for WhatsApp URL
-  return `https://wa.me/${normalized.replace("+", "")}`;
+  const baseUrl = `https://wa.me/${normalized.replace("+", "")}`;
+  if (text) {
+    return `${baseUrl}?text=${encodeURIComponent(text)}`;
+  }
+  return baseUrl;
 }
 
 /**

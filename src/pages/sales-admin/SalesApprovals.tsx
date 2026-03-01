@@ -186,10 +186,10 @@ export default function SalesApprovals() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl font-bold text-foreground">Sales Approvals</h1>
-          <p className="text-muted-foreground text-sm mt-1">
+          <h1 className="font-display text-lg md:text-2xl font-bold text-foreground">Sales Approvals</h1>
+          <p className="text-muted-foreground text-xs md:text-sm mt-1">
             {selectedDate ? `Filtered: ${format(selectedDate, "dd/MM/yyyy")}` : "Verify sales reported by your team"}
           </p>
         </div>
@@ -201,17 +201,17 @@ export default function SalesApprovals() {
         </div>
       </div>
 
-      <div className="flex gap-1.5">
+      <div className="flex gap-1.5 overflow-x-auto">
         <button onClick={() => setTab("pending")}
-          className={`h-9 px-4 rounded-lg text-sm font-medium transition-colors ${tab === "pending" ? "bg-warning/15 text-warning border border-warning/30" : "bg-card border border-border text-muted-foreground hover:bg-accent"}`}>
+          className={`h-8 md:h-9 px-3 md:px-4 rounded-lg text-xs md:text-sm font-medium transition-colors whitespace-nowrap ${tab === "pending" ? "bg-warning/15 text-warning border border-warning/30" : "bg-card border border-border text-muted-foreground hover:bg-accent"}`}>
           Pending ({pending.length})
         </button>
         <button onClick={() => setTab("verified")}
-          className={`h-9 px-4 rounded-lg text-sm font-medium transition-colors ${tab === "verified" ? "bg-success/15 text-success border border-success/30" : "bg-card border border-border text-muted-foreground hover:bg-accent"}`}>
+          className={`h-8 md:h-9 px-3 md:px-4 rounded-lg text-xs md:text-sm font-medium transition-colors whitespace-nowrap ${tab === "verified" ? "bg-success/15 text-success border border-success/30" : "bg-card border border-border text-muted-foreground hover:bg-accent"}`}>
           Verified ({verified.length})
         </button>
         <button onClick={() => setTab("rejected")}
-          className={`h-9 px-4 rounded-lg text-sm font-medium transition-colors ${tab === "rejected" ? "bg-destructive/15 text-destructive border border-destructive/30" : "bg-card border border-border text-muted-foreground hover:bg-accent"}`}>
+          className={`h-8 md:h-9 px-3 md:px-4 rounded-lg text-xs md:text-sm font-medium transition-colors whitespace-nowrap ${tab === "rejected" ? "bg-destructive/15 text-destructive border border-destructive/30" : "bg-card border border-border text-muted-foreground hover:bg-accent"}`}>
           Rejected ({rejected.length})
         </button>
       </div>
@@ -224,13 +224,13 @@ export default function SalesApprovals() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {displayItems.map((li, key) => (
-            <div key={`${li.lead.id}-${li.itemIndex}-${key}`} className="bg-card border border-border rounded-xl p-5 space-y-3">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="font-medium text-foreground">{li.lead.displayName || li.lead.phone}</p>
-                  <p className="text-xs text-muted-foreground font-mono">{li.lead.phone}</p>
+            <div key={`${li.lead.id}-${li.itemIndex}-${key}`} className="bg-card border border-border rounded-xl p-3 md:p-5 space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-medium text-foreground text-sm md:text-base">{li.lead.displayName || li.lead.phone}</p>
+                  <p className="text-[10px] md:text-xs text-muted-foreground font-mono truncate">{li.lead.phone}</p>
                 </div>
-                <p className="font-display font-bold text-primary text-lg">{formatCurrency(li.item.amount || 0)}</p>
+                <p className="font-display font-bold text-primary text-base md:text-lg shrink-0">{formatCurrency(li.item.amount || 0)}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-2 text-xs">
@@ -262,51 +262,51 @@ export default function SalesApprovals() {
               )}
 
               {tab === "pending" && (
-                <div className="flex gap-2 pt-1">
+                <div className="flex gap-1.5 md:gap-2 pt-1">
                   <button onClick={() => handleVerifyItem(li.lead.id, li.itemIndex)}
-                    className="flex-1 h-9 rounded-lg bg-success/15 text-success font-medium text-sm hover:bg-success/25 transition-colors flex items-center justify-center gap-1">
+                    className="flex-1 h-8 md:h-9 rounded-lg bg-success/15 text-success font-medium text-xs md:text-sm hover:bg-success/25 transition-colors flex items-center justify-center gap-1">
                     <CheckCircle size={14} /> Verify
                   </button>
                   <button onClick={() => handleRejectItem(li.lead.id, li.itemIndex)}
-                    className="flex-1 h-9 rounded-lg bg-destructive/15 text-destructive font-medium text-sm hover:bg-destructive/25 transition-colors flex items-center justify-center gap-1">
+                    className="flex-1 h-8 md:h-9 rounded-lg bg-destructive/15 text-destructive font-medium text-xs md:text-sm hover:bg-destructive/25 transition-colors flex items-center justify-center gap-1">
                     <XCircle size={14} /> Reject
                   </button>
                   <button onClick={() => handleDeleteItem(li.lead.id, li.itemIndex)}
-                    className="w-9 h-9 rounded-lg bg-muted text-muted-foreground hover:text-destructive hover:bg-destructive/15 transition-colors flex items-center justify-center shrink-0">
+                    className="w-8 md:w-9 h-8 md:h-9 rounded-lg bg-muted text-muted-foreground hover:text-destructive hover:bg-destructive/15 transition-colors flex items-center justify-center shrink-0">
                     <Trash2 size={14} />
                   </button>
                 </div>
               )}
 
               {tab === "verified" && (
-                <div className="flex gap-2 pt-1">
+                <div className="flex gap-1.5 md:gap-2 pt-1">
                   <button onClick={() => handleRevokeItem(li.lead.id, li.itemIndex)}
-                    className="flex-1 h-9 rounded-lg bg-warning/15 text-warning font-medium text-sm hover:bg-warning/25 transition-colors flex items-center justify-center gap-1">
+                    className="flex-1 h-8 md:h-9 rounded-lg bg-warning/15 text-warning font-medium text-xs md:text-sm hover:bg-warning/25 transition-colors flex items-center justify-center gap-1">
                     <RotateCcw size={14} /> Revoke
                   </button>
                   <button onClick={() => handleRejectItem(li.lead.id, li.itemIndex)}
-                    className="flex-1 h-9 rounded-lg bg-destructive/15 text-destructive font-medium text-sm hover:bg-destructive/25 transition-colors flex items-center justify-center gap-1">
+                    className="flex-1 h-8 md:h-9 rounded-lg bg-destructive/15 text-destructive font-medium text-xs md:text-sm hover:bg-destructive/25 transition-colors flex items-center justify-center gap-1">
                     <XCircle size={14} /> Reject
                   </button>
                   <button onClick={() => handleDeleteItem(li.lead.id, li.itemIndex)}
-                    className="w-9 h-9 rounded-lg bg-muted text-muted-foreground hover:text-destructive hover:bg-destructive/15 transition-colors flex items-center justify-center shrink-0">
+                    className="w-8 md:w-9 h-8 md:h-9 rounded-lg bg-muted text-muted-foreground hover:text-destructive hover:bg-destructive/15 transition-colors flex items-center justify-center shrink-0">
                     <Trash2 size={14} />
                   </button>
                 </div>
               )}
 
               {tab === "rejected" && (
-                <div className="flex gap-2 pt-1">
+                <div className="flex gap-1.5 md:gap-2 pt-1">
                   <button onClick={() => handleRevokeItem(li.lead.id, li.itemIndex)}
-                    className="flex-1 h-9 rounded-lg bg-warning/15 text-warning font-medium text-sm hover:bg-warning/25 transition-colors flex items-center justify-center gap-1">
+                    className="flex-1 h-8 md:h-9 rounded-lg bg-warning/15 text-warning font-medium text-xs md:text-sm hover:bg-warning/25 transition-colors flex items-center justify-center gap-1">
                     <RotateCcw size={14} /> To Pending
                   </button>
                   <button onClick={() => handleVerifyItem(li.lead.id, li.itemIndex)}
-                    className="flex-1 h-9 rounded-lg bg-success/15 text-success font-medium text-sm hover:bg-success/25 transition-colors flex items-center justify-center gap-1">
+                    className="flex-1 h-8 md:h-9 rounded-lg bg-success/15 text-success font-medium text-xs md:text-sm hover:bg-success/25 transition-colors flex items-center justify-center gap-1">
                     <CheckCircle size={14} /> Approve
                   </button>
                   <button onClick={() => handleDeleteItem(li.lead.id, li.itemIndex)}
-                    className="w-9 h-9 rounded-lg bg-muted text-muted-foreground hover:text-destructive hover:bg-destructive/15 transition-colors flex items-center justify-center shrink-0">
+                    className="w-8 md:w-9 h-8 md:h-9 rounded-lg bg-muted text-muted-foreground hover:text-destructive hover:bg-destructive/15 transition-colors flex items-center justify-center shrink-0">
                     <Trash2 size={14} />
                   </button>
                 </div>

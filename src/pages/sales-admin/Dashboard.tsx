@@ -139,7 +139,7 @@ export default function SalesAdminDashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 md:gap-4">
         <StatBox icon={Users} label="Team Members" value={members.length} color="text-role-sales-member" />
         <StatBox icon={Phone} label={selectedDate ? "Active Leads" : "Total Leads"} value={filteredLeads.length} color="text-info" />
         <StatBox icon={Target} label="Called" value={called} color="text-warning" />
@@ -320,12 +320,13 @@ export default function SalesAdminDashboard() {
 
 function StatBox({ icon: Icon, label, value, color }: { icon: any; label: string; value: string | number; color: string }) {
   return (
-    <div className="bg-card border border-border rounded-xl p-4">
-      <div className="flex items-center gap-2 mb-2">
-        <Icon size={16} className={color} />
-        <span className="text-xs text-muted-foreground font-medium">{label}</span>
+    <div className="bg-card border border-border rounded-xl p-2.5 md:p-4">
+      <div className="flex items-center gap-1.5 md:gap-2 mb-1 md:mb-2">
+        <Icon size={14} className={`${color} md:hidden`} />
+        <Icon size={16} className={`${color} hidden md:block`} />
+        <span className="text-[10px] md:text-xs text-muted-foreground font-medium truncate">{label}</span>
       </div>
-      <p className="font-display text-xl font-bold text-foreground">{value}</p>
+      <p className="font-display text-base md:text-xl font-bold text-foreground truncate">{value}</p>
     </div>
   );
 }

@@ -12,7 +12,7 @@ import { normalizePhone, formatPhoneDisplay, getWhatsAppUrl, getCallUrl } from "
 import type { AppUser, UserRole } from "@/types";
 import {
   Users, Search, Shield, ShieldOff, RotateCcw,
-  Loader2, Check, X, UserPlus, Eye, EyeOff, Trash2, Phone, MessageCircle,
+  Loader2, Check, X, UserPlus, Eye, EyeOff, Trash2, Phone, MessageCircle, Share2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
@@ -109,6 +109,17 @@ export default function TeamManagement() {
     return creator?.name || "Admin";
   };
 
+  const handleShareCredentials = (member: AppUser) => {
+    if (!member.phone) {
+      toast({ title: "Error", description: "Member does not have a phone number.", variant: "destructive" });
+      return;
+    }
+    const loginLink = window.location.origin;
+    const message = `🌐 *Website Login*\n\n📧 *Your Email:* ${member.email}\npassword and email both are same\n🔗 *Login here:* ${loginLink}\n\nIf you forgot your password, please contact your admin.`;
+    const url = getWhatsAppUrl(member.phone, message);
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
   return (
     <div className="space-y-4 md:space-y-6">
       {/* Header */}
@@ -164,6 +175,7 @@ export default function TeamManagement() {
           onResetPassword={handleResetPassword}
           onDelete={(m) => setConfirmDelete(m)}
           deletingId={deletingId}
+          onShare={handleShareCredentials}
         />
       </div>
 
@@ -177,6 +189,7 @@ export default function TeamManagement() {
           onResetPassword={handleResetPassword}
           onDelete={(m) => setConfirmDelete(m)}
           deletingId={deletingId}
+          onShare={handleShareCredentials}
         />
       </div>
 
@@ -240,9 +253,10 @@ interface TableProps {
   onResetPassword: (email: string) => void;
   onDelete: (m: AppUser) => void;
   deletingId: string | null;
+  onShare: (m: AppUser) => void;
 }
 
-function DesktopTable({ members, loading, getCreatorName, onToggleActive, onResetPassword, onDelete }: TableProps) {
+function DesktopTable({ members, loading, getCreatorName, onToggleActive, onResetPassword, onDelete, onShare }: TableProps) {
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden">
       <div className="overflow-x-auto">
@@ -320,6 +334,10 @@ function DesktopTable({ members, loading, getCreatorName, onToggleActive, onRese
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1 justify-end">
+                      <button onClick={() => onShare(m)} title="Share credentials"
+                        className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-success hover:bg-success/10 transition-colors">
+                        <Share2 size={15} />
+                      </button>
                       <button onClick={() => onToggleActive(m)} title={m.isActive ? "Deactivate" : "Activate"}
                         className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
                         {m.isActive ? <ShieldOff size={15} /> : <Shield size={15} />}
@@ -348,7 +366,7 @@ function DesktopTable({ members, loading, getCreatorName, onToggleActive, onRese
 }
 
 /* ─── Mobile Cards ─── */
-function MobileCards({ members, loading, getCreatorName, onToggleActive, onResetPassword, onDelete }: TableProps) {
+function MobileCards({ members, loading, getCreatorName, onToggleActive, onResetPassword, onDelete, onShare }: TableProps) {
   if (loading) {
     return (
       <div className="space-y-3">
@@ -425,6 +443,10 @@ function MobileCards({ members, loading, getCreatorName, onToggleActive, onReset
                 </a>
               </>
             )}
+            <button onClick={() => onShare(m)} title="Share credentials"
+              className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-success hover:bg-success/10 transition-colors border border-border">
+              <Share2 size={14} />
+            </button>
             <button onClick={() => onToggleActive(m)} title={m.isActive ? "Deactivate" : "Activate"}
               className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors border border-border">
               {m.isActive ? <ShieldOff size={14} /> : <Shield size={14} />}

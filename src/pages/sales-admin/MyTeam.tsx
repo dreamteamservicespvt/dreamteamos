@@ -6,7 +6,7 @@ import { createUserWithoutSignOut } from "@/services/secondaryAuth";
 import { useAuthStore } from "@/store/authStore";
 import { normalizePhone, formatPhoneDisplay, getWhatsAppUrl, getCallUrl } from "@/utils/phone";
 import type { AppUser } from "@/types";
-import { Users, Plus, X, Loader2, Eye, EyeOff, UserCheck, UserX, Trash2, Phone, MessageCircle, Pencil } from "lucide-react";
+import { Users, Plus, X, Loader2, Eye, EyeOff, UserCheck, UserX, Trash2, Phone, MessageCircle, Pencil, Share2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import EditMemberModal from "@/components/EditMemberModal";
@@ -115,6 +115,17 @@ export default function MyTeam() {
     setFormSalary(0); setFormTarget(10000); setFormDailyTarget(10000); setFormMonthlyTarget(0); setShowPw(false);
   };
 
+  const handleShareCredentials = (member: AppUser) => {
+    if (!member.phone) {
+      toast({ title: "Error", description: "Member does not have a phone number.", variant: "destructive" });
+      return;
+    }
+    const loginLink = window.location.origin;
+    const message = `🌐 *Website Login*\n\n📧 *Your Email:* ${member.email}\npassword and email both are same\n🔗 *Login here:* ${loginLink}\n\nIf you forgot your password, please contact your admin.`;
+    const url = getWhatsAppUrl(member.phone, message);
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
   return (
     <div className="space-y-4 md:space-y-6">
       <div className="flex items-center justify-between">
@@ -130,7 +141,7 @@ export default function MyTeam() {
 
       {/* Desktop Table / Mobile Cards */}
       {isMobile ? (
-        <MobileTeamCards members={members} loading={loading} onToggle={toggleActive} onDelete={(m) => setConfirmDelete(m)} onEdit={(m) => setEditingMember(m)} deletingId={deletingId} onClickMember={(uid) => navigate(`/sales-admin/team/${uid}`)} />
+        <MobileTeamCards members={members} loading={loading} onToggle={toggleActive} onDelete={(m) => setConfirmDelete(m)} onEdit={(m) => setEditingMember(m)} deletingId={deletingId} onClickMember={(uid) => navigate(`/sales-admin/team/${uid}`)} onShare={handleShareCredentials} />
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
           <table className="w-full text-sm">
@@ -192,6 +203,10 @@ export default function MyTeam() {
                     </td>
                     <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1 justify-center">
+                        <button onClick={() => handleShareCredentials(m)} title="Share Credentials"
+                          className="w-8 h-8 rounded-md inline-flex items-center justify-center text-muted-foreground hover:text-success hover:bg-success/10 transition-colors">
+                          <Share2 size={15} />
+                        </button>
                         <button onClick={() => setEditingMember(m)} title="Edit"
                           className="w-8 h-8 rounded-md inline-flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
                           <Pencil size={15} />
@@ -317,9 +332,10 @@ export default function MyTeam() {
 }
 
 /* ─── Mobile Team Cards ─── */
-function MobileTeamCards({ members, loading, onToggle, onDelete, onEdit, deletingId, onClickMember }: {
+function MobileTeamCards({ members, loading, onToggle, onDelete, onEdit, deletingId, onClickMember, onShare }: {
   members: AppUser[]; loading: boolean; onToggle: (m: AppUser) => void;
   onDelete: (m: AppUser) => void; onEdit: (m: AppUser) => void; deletingId: string | null; onClickMember: (uid: string) => void;
+  onShare: (m: AppUser) => void;
 }) {
   if (loading) {
     return (
@@ -382,6 +398,10 @@ function MobileTeamCards({ members, loading, onToggle, onDelete, onEdit, deletin
                 </a>
               </>
             )}
+            <button onClick={(e) => { e.stopPropagation(); onShare(m); }} title="Share Credentials"
+              className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-success hover:bg-success/10 transition-colors border border-border">
+              <Share2 size={14} />
+            </button>
             <button onClick={(e) => { e.stopPropagation(); onEdit(m); }} title="Edit"
               className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors border border-border">
               <Pencil size={14} />

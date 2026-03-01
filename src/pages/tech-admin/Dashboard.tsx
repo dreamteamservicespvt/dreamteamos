@@ -84,7 +84,7 @@ export default function TechAdminDashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 md:gap-4">
         <StatBox icon={Users} label="Team Members" value={members.length} color="text-role-tech-member" />
         <StatBox icon={Video} label="Total Videos" value={totalVideos} color="text-info" />
         <StatBox icon={Clock} label="Pending" value={pending.length} color="text-warning" />
@@ -102,22 +102,25 @@ export default function TechAdminDashboard() {
       )}
 
       {chartData.length > 0 && (
-        <div className="bg-card border border-border rounded-xl p-5">
-          <h3 className="font-display font-semibold text-foreground mb-4">Team Performance</h3>
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.8% 16.1%)" />
-              <XAxis dataKey="name" stroke="hsl(240 3.7% 65.9%)" fontSize={11} />
-              <YAxis stroke="hsl(240 3.7% 65.9%)" fontSize={11} />
-              <Tooltip contentStyle={{ backgroundColor: "hsl(240 5.3% 7.1%)", border: "1px solid hsl(240 3.8% 16.1%)", borderRadius: "8px", fontSize: "12px" }} />
-              <Bar dataKey="videos" name="Videos" fill="hsl(217.2 91.2% 59.8%)" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="submissions" name="Submissions" fill="hsl(142.1 70.6% 45.3%)" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+        <div className="bg-card border border-border rounded-xl p-3 md:p-5 overflow-hidden">
+          <h3 className="font-display font-semibold text-foreground mb-3 md:mb-4 text-sm md:text-base">Team Performance</h3>
+          <div className="-mx-2 md:mx-0">
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={chartData} margin={{ left: -10, right: 4, top: 4, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.8% 16.1%)" />
+                <XAxis dataKey="name" stroke="hsl(240 3.7% 65.9%)" fontSize={10} tick={{ fontSize: 10 }} />
+                <YAxis stroke="hsl(240 3.7% 65.9%)" fontSize={10} tick={{ fontSize: 10 }} width={35} />
+                <Tooltip contentStyle={{ backgroundColor: "hsl(240 5.3% 7.1%)", border: "1px solid hsl(240 3.8% 16.1%)", borderRadius: "8px", fontSize: "11px" }} />
+                <Bar dataKey="videos" name="Videos" fill="hsl(217.2 91.2% 59.8%)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="submissions" name="Submissions" fill="hsl(142.1 70.6% 45.3%)" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       )}
 
-      <div className="bg-card border border-border rounded-xl overflow-hidden">
+      {/* Desktop Table */}
+      <div className="hidden md:block bg-card border border-border rounded-xl overflow-hidden">
         <div className="px-5 py-4 border-b border-border">
           <h3 className="font-display font-semibold text-foreground">Member Summary</h3>
         </div>
@@ -156,18 +159,55 @@ export default function TechAdminDashboard() {
           </tbody>
         </table>
       </div>
+
+      {/* Mobile Cards */}
+      <div className="md:hidden space-y-3">
+        <h3 className="font-display font-semibold text-foreground text-sm">Member Summary</h3>
+        {members.length === 0 ? (
+          <div className="bg-card border border-border rounded-xl p-6 text-center text-muted-foreground text-sm">No team members yet. Add from "My Team".</div>
+        ) : (
+          members.map((m) => {
+            const d = chartData.find((c) => c.name === m.name?.split(" ")[0]);
+            return (
+              <div key={m.uid} className="bg-card border border-border rounded-xl p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-8 rounded-md bg-role-tech-member/15 flex items-center justify-center font-display font-bold text-role-tech-member text-xs">
+                    {m.name?.charAt(0)}
+                  </div>
+                  <span className="font-medium text-foreground text-sm">{m.name}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="text-center bg-background border border-border rounded-lg p-2">
+                    <p className="text-[10px] text-muted-foreground">Videos</p>
+                    <p className="font-mono font-bold text-sm text-foreground">{d?.videos || 0}</p>
+                  </div>
+                  <div className="text-center bg-background border border-border rounded-lg p-2">
+                    <p className="text-[10px] text-muted-foreground">Subs</p>
+                    <p className="font-mono font-bold text-sm text-foreground">{d?.submissions || 0}</p>
+                  </div>
+                  <div className="text-center bg-background border border-border rounded-lg p-2">
+                    <p className="text-[10px] text-muted-foreground">Revenue</p>
+                    <p className="font-mono font-bold text-sm text-primary">{formatCurrency(d?.revenue || 0)}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 }
 
 function StatBox({ icon: Icon, label, value, color }: { icon: any; label: string; value: string | number; color: string }) {
   return (
-    <div className="bg-card border border-border rounded-xl p-4">
-      <div className="flex items-center gap-2 mb-2">
-        <Icon size={16} className={color} />
-        <span className="text-xs text-muted-foreground font-medium">{label}</span>
+    <div className="bg-card border border-border rounded-xl p-2.5 md:p-4">
+      <div className="flex items-center gap-1.5 md:gap-2 mb-1 md:mb-2">
+        <Icon size={14} className={`${color} md:hidden`} />
+        <Icon size={16} className={`${color} hidden md:block`} />
+        <span className="text-[10px] md:text-xs text-muted-foreground font-medium truncate">{label}</span>
       </div>
-      <p className="font-display text-xl font-bold text-foreground">{value}</p>
+      <p className="font-display text-base md:text-xl font-bold text-foreground truncate">{value}</p>
     </div>
   );
 }

@@ -141,10 +141,10 @@ export default function WorkApprovals() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl font-bold text-foreground">Work Approvals</h1>
-          <p className="text-muted-foreground text-sm mt-1">
+          <h1 className="font-display text-lg md:text-2xl font-bold text-foreground">Work Approvals</h1>
+          <p className="text-muted-foreground text-xs md:text-sm mt-1">
             {selectedDate ? `Filtered to ${format(selectedDate, "dd/MM/yyyy")}` : "Review and approve work submissions from your team"}
           </p>
         </div>
@@ -156,14 +156,14 @@ export default function WorkApprovals() {
         </div>
       </div>
 
-      <div className="flex gap-1.5">
+      <div className="flex gap-1.5 overflow-x-auto">
         {([
           { key: "pending" as const, label: "Pending", count: pending.length, activeClass: "bg-warning/15 text-warning border border-warning/30" },
           { key: "approved" as const, label: "Approved", count: approved.length, activeClass: "bg-success/15 text-success border border-success/30" },
           { key: "rejected" as const, label: "Rejected", count: rejected.length, activeClass: "bg-destructive/15 text-destructive border border-destructive/30" },
         ]).map((t) => (
           <button key={t.key} onClick={() => setTab(t.key)}
-            className={`h-9 px-4 rounded-lg text-sm font-medium transition-colors ${
+            className={`h-8 md:h-9 px-3 md:px-4 rounded-lg text-xs md:text-sm font-medium transition-colors whitespace-nowrap ${
               tab === t.key ? t.activeClass : "bg-card border border-border text-muted-foreground hover:bg-accent"
             }`}>
             {t.label} ({t.count})
@@ -181,14 +181,14 @@ export default function WorkApprovals() {
           {displaySubs.map((sub) => {
             const estimatedRevenue = calculateRevenue(sub.items || []);
             return (
-              <div key={sub.id} className="bg-card border border-border rounded-xl p-5">
+              <div key={sub.id} className="bg-card border border-border rounded-xl p-3 md:p-5">
                 <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-medium text-foreground">{getMemberName(sub.techMemberId)}</span>
-                      <span className="text-xs text-muted-foreground font-mono">{sub.date}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <span className="font-medium text-foreground text-sm md:text-base">{getMemberName(sub.techMemberId)}</span>
+                      <span className="text-[10px] md:text-xs text-muted-foreground font-mono">{sub.date}</span>
                     </div>
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-2 md:gap-3 text-[10px] md:text-xs text-muted-foreground flex-wrap">
                       <span>{sub.totalVideos} videos</span>
                       <span className="text-primary font-mono font-semibold">{formatCurrency(sub.status === "approved" ? sub.calculatedRevenue : estimatedRevenue)}</span>
                       {sub.status !== "approved" && <span className="text-muted-foreground/60">(estimated)</span>}
@@ -201,7 +201,7 @@ export default function WorkApprovals() {
                       </span>
                     </div>
                   </div>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                  <span className={`text-[10px] md:text-xs px-2 py-0.5 rounded-full shrink-0 ml-2 ${
                     sub.status === "pending" ? "bg-warning/15 text-warning" :
                     sub.status === "approved" ? "bg-success/15 text-success" :
                     "bg-destructive/15 text-destructive"
@@ -211,8 +211,9 @@ export default function WorkApprovals() {
                 </div>
 
                 {/* Items breakdown */}
-                <div className="bg-background border border-border rounded-lg p-3 mb-3">
-                  <table className="w-full text-xs">
+                <div className="bg-background border border-border rounded-lg p-2 md:p-3 mb-3">
+                  {/* Desktop table */}
+                  <table className="w-full text-xs hidden md:table">
                     <thead>
                       <tr className="text-muted-foreground">
                         <th className="text-left pb-1">Type</th>
@@ -239,58 +240,75 @@ export default function WorkApprovals() {
                       })}
                     </tbody>
                   </table>
+                  {/* Mobile cards */}
+                  <div className="md:hidden space-y-1.5">
+                    {sub.items?.map((item, idx) => {
+                      const unitPrice = item.pricePerUnit || (
+                        ({ wishes: { "20s": 499, "40s": 999 }, promotional: { "15s": 499, "30s": 999, "45s": 1499, "60s": 1999 }, cinematic: { "15s": 999, "30s": 1999, "45s": 2999, "60s": 3999 } } as any)[item.type]?.[item.duration] || 0
+                      );
+                      return (
+                        <div key={idx} className="flex items-center justify-between text-xs bg-elevated/30 rounded-md px-2 py-1.5">
+                          <div>
+                            <span className="text-foreground capitalize font-medium">{item.type}</span>
+                            <span className="text-muted-foreground ml-1">{item.duration} ×{item.quantity}</span>
+                          </div>
+                          <span className="font-mono text-primary font-semibold">{formatCurrency(unitPrice * item.quantity)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 {/* Links */}
-                <div className="flex items-center gap-4 mb-3">
+                <div className="flex items-center gap-3 md:gap-4 mb-3">
                   {sub.driveFolderUrl && (
                     <a href={sub.driveFolderUrl} target="_blank" rel="noopener noreferrer"
-                      className="text-xs text-info flex items-center gap-1 hover:underline">
+                      className="text-[10px] md:text-xs text-info flex items-center gap-1 hover:underline">
                       <ExternalLink size={12} /> Drive Folder
                     </a>
                   )}
                   {sub.screenshotUrl && (
                     <a href={sub.screenshotUrl} target="_blank" rel="noopener noreferrer"
-                      className="text-xs text-info flex items-center gap-1 hover:underline">
+                      className="text-[10px] md:text-xs text-info flex items-center gap-1 hover:underline">
                       <Image size={12} /> Screenshot
                     </a>
                   )}
                 </div>
 
                 {/* Actions — always show relevant actions */}
-                <div className="flex gap-2">
+                <div className="flex gap-1.5 md:gap-2">
                   {sub.status === "pending" && (
                     <>
                       <button onClick={() => handleApprove(sub.id)}
-                        className="flex-1 h-9 rounded-lg bg-success/15 text-success font-medium text-sm hover:bg-success/25 transition-colors flex items-center justify-center gap-1">
+                        className="flex-1 h-8 md:h-9 rounded-lg bg-success/15 text-success font-medium text-xs md:text-sm hover:bg-success/25 transition-colors flex items-center justify-center gap-1">
                         <CheckCircle size={14} /> Approve
                       </button>
                       <button onClick={() => handleReject(sub.id)}
-                        className="flex-1 h-9 rounded-lg bg-destructive/15 text-destructive font-medium text-sm hover:bg-destructive/25 transition-colors flex items-center justify-center gap-1">
+                        className="flex-1 h-8 md:h-9 rounded-lg bg-destructive/15 text-destructive font-medium text-xs md:text-sm hover:bg-destructive/25 transition-colors flex items-center justify-center gap-1">
                         <XCircle size={14} /> Reject
                       </button>
                     </>
                   )}
                   {sub.status === "approved" && (
                     <button onClick={() => handleReject(sub.id)}
-                      className="flex-1 h-9 rounded-lg bg-destructive/15 text-destructive font-medium text-sm hover:bg-destructive/25 transition-colors flex items-center justify-center gap-1">
-                      <XCircle size={14} /> Reject (Revoke Approval)
+                      className="flex-1 h-8 md:h-9 rounded-lg bg-destructive/15 text-destructive font-medium text-xs md:text-sm hover:bg-destructive/25 transition-colors flex items-center justify-center gap-1">
+                      <XCircle size={14} /> <span className="hidden sm:inline">Reject (Revoke Approval)</span><span className="sm:hidden">Revoke</span>
                     </button>
                   )}
                   {sub.status === "rejected" && (
                     <>
                       <button onClick={() => handleApprove(sub.id)}
-                        className="flex-1 h-9 rounded-lg bg-success/15 text-success font-medium text-sm hover:bg-success/25 transition-colors flex items-center justify-center gap-1">
+                        className="flex-1 h-8 md:h-9 rounded-lg bg-success/15 text-success font-medium text-xs md:text-sm hover:bg-success/25 transition-colors flex items-center justify-center gap-1">
                         <CheckCircle size={14} /> Approve
                       </button>
                       <button onClick={() => handleRevertToPending(sub.id)}
-                        className="flex-1 h-9 rounded-lg bg-warning/15 text-warning font-medium text-sm hover:bg-warning/25 transition-colors flex items-center justify-center gap-1">
-                        <RotateCcw size={14} /> Move to Pending
+                        className="flex-1 h-8 md:h-9 rounded-lg bg-warning/15 text-warning font-medium text-xs md:text-sm hover:bg-warning/25 transition-colors flex items-center justify-center gap-1">
+                        <RotateCcw size={14} /> <span className="hidden sm:inline">Move to Pending</span><span className="sm:hidden">Pending</span>
                       </button>
                     </>
                   )}
                   <button onClick={() => handleDelete(sub.id)}
-                    className="h-9 px-3 rounded-lg bg-destructive/10 text-destructive font-medium text-sm hover:bg-destructive/20 transition-colors flex items-center justify-center gap-1"
+                    className="h-8 md:h-9 px-2 md:px-3 rounded-lg bg-destructive/10 text-destructive font-medium text-xs md:text-sm hover:bg-destructive/20 transition-colors flex items-center justify-center gap-1 shrink-0"
                     title="Delete submission">
                     <Trash2 size={14} />
                   </button>

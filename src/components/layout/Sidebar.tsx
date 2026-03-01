@@ -81,15 +81,15 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               animate={{ x: 0 }}
               exit={{ x: -280 }}
               transition={{ duration: 0.2, ease: "easeInOut" }}
-              className="fixed left-0 top-0 h-screen w-[280px] bg-card border-r border-border flex flex-col z-50"
+              className="fixed left-0 top-0 h-screen w-[280px] bg-card border-r border-border flex flex-col z-50 overflow-hidden"
             >
-              <div className="h-16 flex items-center px-4 border-b border-border justify-between">
+              <div className="h-14 flex items-center px-4 border-b border-border justify-between shrink-0">
                 <span className="font-display font-bold text-xl bg-gradient-to-r from-primary to-warning bg-clip-text text-transparent">DTS</span>
                 <button onClick={onMobileClose} className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
                   <X size={18} />
                 </button>
               </div>
-              <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto">
+              <nav className="flex-1 py-3 px-2 space-y-1 overflow-y-auto min-h-0">
                 {navItems.map((item) => {
                   const active = location.pathname === item.path;
                   return (
@@ -102,7 +102,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
                   );
                 })}
               </nav>
-              <div className="border-t border-border p-3">
+              <div className="border-t border-border p-3 shrink-0">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-lg bg-primary/20 flex items-center justify-center font-display font-bold text-primary text-sm shrink-0">
                     {user.name?.charAt(0) || "U"}
