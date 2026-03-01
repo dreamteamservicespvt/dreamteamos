@@ -40,11 +40,11 @@ export default function AppLayout({ allowedRoles }: AppLayoutProps) {
     <div className="min-h-screen bg-background flex">
       <Sidebar mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
       <div
-        className="flex-1 flex flex-col transition-all duration-200"
+        className="flex-1 flex flex-col min-w-0 transition-all duration-200"
         style={{ marginLeft: isMobile ? 0 : collapsed ? 64 : 240 }}
       >
         <Topbar onMenuClick={() => setMobileOpen(true)} />
-        <main className="flex-1 p-4 md:p-6">
+        <main className="flex-1 p-4 md:p-6 overflow-x-hidden">
           <Outlet />
         </main>
       </div>

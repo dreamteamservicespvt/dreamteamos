@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   collection, query, where, onSnapshot, doc, updateDoc, serverTimestamp,
@@ -7,11 +7,13 @@ import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import { formatCurrency } from "@/utils/formatters";
+import { format, subDays, startOfDay } from "date-fns";
 import type { Lead, LeadStatus, SaleDetail } from "@/types";
 import { useToast } from "@/hooks/use-toast";
+import DashboardDayPicker from "@/components/dashboard/DayPicker";
 import {
   Search, Phone, MessageCircle, StickyNote, ChevronDown, ChevronUp,
-  Loader2, Check, Upload, ExternalLink, Plus, Trash2,
+  Loader2, Check, Upload, ExternalLink, Plus, Trash2, ShoppingBag,
 } from "lucide-react";
 
 const STATUS_OPTIONS: { value: LeadStatus; label: string; color: string }[] = [
@@ -68,6 +70,18 @@ const WA_TEMPLATES: { label: string; text: string }[] = [
   },
 ];
 
+function getDayLabel(date: Date): string {
+  const today = startOfDay(new Date());
+  const target = startOfDay(date);
+  const diffMs = today.getTime() - target.getTime();
+  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  return `${diffDays} days ago`;
+}
+
+type SaleRow = { lead: Lead; item: SaleDetail; itemIndex: number };
+
 export default function MyLeads() {
   const user = useAuthStore((s) => s.user);
   const { toast } = useToast();
@@ -75,6 +89,9 @@ export default function MyLeads() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [dayFilter, setDayFilter] = useState<string>("0");
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const [viewTab, setViewTab] = useState<"leads" | "sales">("leads");
   const [expandedNotes, setExpandedNotes] = useState<string | null>(null);
   const [expandedSale, setExpandedSale] = useState<string | null>(null);
 
@@ -91,14 +108,87 @@ export default function MyLeads() {
     return unsub;
   }, [user]);
 
+  // Filter by search + status
   const filtered = leads.filter((l) => {
     const matchSearch =
+      !search ||
       l.displayName?.toLowerCase().includes(search.toLowerCase()) ||
       l.phone?.includes(search) ||
       l.realName?.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === "all" || l.status === statusFilter || (statusFilter === "sale_done" && l.saleDone);
+    const matchStatus =
+      statusFilter === "all" || l.status === statusFilter || (statusFilter === "sale_done" && l.saleDone);
     return matchSearch && matchStatus;
   });
+
+  // Stats
+  const saleDoneLeads = filtered.filter((l) => l.saleDone).length;
+  const allSaleRows: SaleRow[] = filtered.flatMap((lead) => {
+    const items = lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
+    return items.map((item, idx) => ({ lead, item, itemIndex: idx }));
+  });
+  const verified = allSaleRows.filter((r) => r.item.verificationStatus === "verified");
+  const totalRevenue = verified.reduce((s, r) => s + (r.item.amount || 0), 0);
+
+  // Last 5 days for day filter
+  const recentDays = useMemo(() => {
+    const days: { date: Date; dateStr: string; label: string }[] = [];
+    for (let i = 0; i < 5; i++) {
+      const d = subDays(new Date(), i);
+      days.push({ date: startOfDay(d), dateStr: format(d, "yyyy-MM-dd"), label: getDayLabel(d) });
+    }
+    return days;
+  }, []);
+
+  // Group leads by created date
+  const groupLeadsByDate = (memberLeads: Lead[]) => {
+    const groups: Record<string, Lead[]> = {};
+    memberLeads.forEach((l) => {
+      const ts = l.createdAt?.seconds;
+      if (!ts) return;
+      const dateStr = format(new Date(ts * 1000), "yyyy-MM-dd");
+      if (!groups[dateStr]) groups[dateStr] = [];
+      groups[dateStr].push(l);
+    });
+    return groups;
+  };
+
+  const groupedLeads = groupLeadsByDate(filtered);
+
+  // Get leads for the currently selected day — with special uncalled past leads logic for "Today"
+  const activeDayLeads = useMemo(() => {
+    if (selectedDate) return groupedLeads[format(selectedDate, "yyyy-MM-dd")] || [];
+    if (dayFilter === "all") return filtered;
+
+    const dayIndex = parseInt(dayFilter);
+    const dayDateStr = recentDays[dayIndex]?.dateStr;
+    const dayLeads = groupedLeads[dayDateStr] || [];
+
+    // Special: if viewing Today (index 0), also include uncalled leads from past days
+    if (dayIndex === 0) {
+      const uncalledPast = filtered.filter((l) => {
+        if (l.status !== "not_called") return false;
+        const ts = l.createdAt?.seconds;
+        if (!ts) return false;
+        const leadDateStr = format(new Date(ts * 1000), "yyyy-MM-dd");
+        return leadDateStr !== dayDateStr; // from a different day
+      });
+      return [...dayLeads, ...uncalledPast];
+    }
+
+    return dayLeads;
+  }, [selectedDate, dayFilter, filtered, groupedLeads, recentDays]);
+
+  // Helper: get "From X days ago" label for leads shown in today view from past days
+  const getLeadPastDayLabel = (lead: Lead): string | null => {
+    // Only show label when viewing Today
+    if (selectedDate || dayFilter !== "0") return null;
+    const ts = lead.createdAt?.seconds;
+    if (!ts) return null;
+    const leadDateStr = format(new Date(ts * 1000), "yyyy-MM-dd");
+    const todayStr = recentDays[0]?.dateStr;
+    if (leadDateStr === todayStr) return null; // today's lead, no label
+    return getDayLabel(new Date(ts * 1000));
+  };
 
   const updateLead = async (id: string, data: Record<string, any>) => {
     try {
@@ -108,72 +198,178 @@ export default function MyLeads() {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="h-8 bg-muted rounded animate-pulse w-48" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-20 bg-card border border-border rounded-xl animate-pulse" />
+          ))}
+        </div>
+        <div className="h-64 bg-card border border-border rounded-xl animate-pulse" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-2xl font-bold text-foreground">My Leads</h1>
-        <p className="text-muted-foreground text-sm mt-1">{leads.length} leads assigned to you</p>
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-        <div className="relative flex-1 max-w-xs w-full">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search name or phone..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full h-10 pl-9 pr-4 rounded-lg bg-card border border-border text-foreground placeholder:text-muted-foreground/40 focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all outline-none text-sm font-body"
-          />
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="font-display text-lg md:text-2xl font-bold text-foreground">My Leads</h1>
+          <p className="text-muted-foreground text-xs md:text-sm mt-0.5">
+            {selectedDate ? `Filtered: ${format(selectedDate, "dd/MM/yyyy")}` : `${leads.length} leads assigned to you`}
+          </p>
         </div>
-        <div className="flex gap-1.5 flex-wrap">
-          {[{ value: "all", label: "All" }, ...STATUS_OPTIONS, { value: "sale_done", label: "Sale Done", color: "bg-success/15 text-success" }].map((s) => (
-            <button
-              key={s.value}
-              onClick={() => setStatusFilter(s.value)}
-              className={`h-8 px-3 rounded-md text-xs font-medium transition-colors ${
-                statusFilter === s.value
-                  ? "bg-primary/15 text-primary border border-primary/30"
-                  : "bg-card text-muted-foreground border border-border hover:bg-accent"
-              }`}
-            >
-              {s.label}
+        <div className="flex items-center gap-2">
+          <DashboardDayPicker selectedDate={selectedDate} onSelect={setSelectedDate} />
+          {selectedDate && (
+            <button onClick={() => setSelectedDate(undefined)} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              Clear
             </button>
-          ))}
+          )}
         </div>
       </div>
 
-      {/* Lead Cards */}
-      {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="bg-card border border-border rounded-xl p-5 space-y-3 animate-pulse">
-              <div className="h-5 bg-muted rounded w-20" />
-              <div className="h-4 bg-muted rounded w-32" />
-              <div className="h-8 bg-muted rounded w-full" />
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
+        {[
+          { label: "Total Leads", value: filtered.length, color: "text-primary" },
+          { label: "Sale Done", value: saleDoneLeads, color: "text-success" },
+          { label: "Verified Sales", value: verified.length, color: "text-success" },
+          { label: "Revenue", value: formatCurrency(totalRevenue), color: "text-primary" },
+        ].map((s) => (
+          <div key={s.label} className="bg-card border border-border rounded-xl p-2.5 md:p-4">
+            <p className="text-[10px] md:text-xs text-muted-foreground">{s.label}</p>
+            <p className={`font-display font-bold text-base md:text-xl ${s.color}`}>{s.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* View Toggle */}
+      <div className="flex gap-1.5">
+        <button onClick={() => setViewTab("leads")}
+          className={`h-8 md:h-9 px-3 md:px-4 rounded-lg text-xs md:text-sm font-medium transition-colors ${viewTab === "leads" ? "bg-primary/15 text-primary border border-primary/30" : "bg-card border border-border text-muted-foreground hover:bg-accent"}`}>
+          Leads ({filtered.length})
+        </button>
+        <button onClick={() => setViewTab("sales")}
+          className={`h-8 md:h-9 px-3 md:px-4 rounded-lg text-xs md:text-sm font-medium transition-colors ${viewTab === "sales" ? "bg-success/15 text-success border border-success/30" : "bg-card border border-border text-muted-foreground hover:bg-accent"}`}>
+          Sales ({allSaleRows.length})
+        </button>
+      </div>
+
+      {/* ─── LEADS TAB ─── */}
+      {viewTab === "leads" && (
+        <div className="space-y-4">
+          {/* Search + Status dropdown + Day dropdown */}
+          <div className="flex items-center gap-2 md:gap-3 flex-wrap">
+            <div className="relative flex-1 max-w-xs">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search..."
+                className="w-full h-9 pl-9 pr-3 rounded-lg bg-card border border-border text-foreground text-sm outline-none focus:border-primary" />
             </div>
-          ))}
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
+              className="h-9 px-3 rounded-lg bg-card border border-border text-foreground text-xs md:text-sm outline-none focus:border-primary">
+              <option value="all">All Status</option>
+              {STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+              <option value="sale_done">Sale Done</option>
+            </select>
+            {!selectedDate && (
+              <select value={dayFilter} onChange={(e) => setDayFilter(e.target.value)}
+                className="h-9 px-3 rounded-lg bg-card border border-border text-foreground text-xs md:text-sm outline-none focus:border-primary">
+                {recentDays.map((d, i) => (
+                  <option key={d.dateStr} value={String(i)}>{d.label} ({format(d.date, "dd/MM")})</option>
+                ))}
+                <option value="all">All Days</option>
+              </select>
+            )}
+          </div>
+
+          {/* Day header + lead count */}
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              {selectedDate
+                ? `Showing leads from ${format(selectedDate, "dd/MM/yyyy")}`
+                : dayFilter === "all"
+                  ? "Showing all leads"
+                  : dayFilter === "0"
+                    ? "Today's leads + uncalled past leads"
+                    : `Showing leads from ${recentDays[parseInt(dayFilter)]?.label}`
+              }
+            </p>
+            <span className={`text-xs px-2 py-0.5 rounded-full ${activeDayLeads.length > 0 ? "bg-info/15 text-info" : "bg-muted text-muted-foreground"}`}>
+              {activeDayLeads.length} leads
+            </span>
+          </div>
+
+          {/* Lead Cards */}
+          {activeDayLeads.length === 0 ? (
+            <div className="bg-card border border-border rounded-xl p-12 text-center">
+              <Phone size={32} className="mx-auto text-muted-foreground/30 mb-2" />
+              <p className="text-muted-foreground text-sm">No leads found{search || statusFilter !== "all" ? " for these filters" : selectedDate ? " on this date" : " for this day"}</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {activeDayLeads.map((lead) => (
+                <LeadCard
+                  key={lead.id}
+                  lead={lead}
+                  pastDayLabel={getLeadPastDayLabel(lead)}
+                  updateLead={updateLead}
+                  expandedNotes={expandedNotes}
+                  setExpandedNotes={setExpandedNotes}
+                  expandedSale={expandedSale}
+                  setExpandedSale={setExpandedSale}
+                />
+              ))}
+            </div>
+          )}
         </div>
-      ) : filtered.length === 0 ? (
-        <div className="bg-card border border-border rounded-xl p-12 text-center">
-          <Phone size={32} className="mx-auto text-muted-foreground/30 mb-2" />
-          <p className="text-muted-foreground text-sm">No leads found</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filtered.map((lead) => (
-            <LeadCard
-              key={lead.id}
-              lead={lead}
-              updateLead={updateLead}
-              expandedNotes={expandedNotes}
-              setExpandedNotes={setExpandedNotes}
-              expandedSale={expandedSale}
-              setExpandedSale={setExpandedSale}
-            />
-          ))}
-        </div>
+      )}
+
+      {/* ─── SALES TAB ─── */}
+      {viewTab === "sales" && (
+        allSaleRows.length === 0 ? (
+          <div className="bg-card border border-border rounded-xl p-12 text-center">
+            <ShoppingBag size={32} className="mx-auto text-muted-foreground/30 mb-2" />
+            <p className="text-muted-foreground text-sm">No sales found</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {allSaleRows.map((r, key) => (
+              <div key={`${r.lead.id}-${r.itemIndex}-${key}`} className="bg-card border border-border rounded-xl p-4 md:p-5 space-y-3">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="font-medium text-foreground">{r.lead.displayName || r.lead.phone}</p>
+                    <p className="text-xs font-mono text-muted-foreground mt-0.5">{r.lead.phone}</p>
+                  </div>
+                  <p className="font-display font-bold text-primary text-lg">{formatCurrency(r.item.amount || 0)}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="text-muted-foreground">Category:</span>{" "}
+                    <span className="text-foreground font-medium capitalize">{r.item.category?.replace(/_/g, " ") || "—"}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Package:</span>{" "}
+                    <span className="text-foreground font-medium">{r.item.packageKey || "—"}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Status:</span>{" "}
+                    <span className={`font-medium ${r.item.verificationStatus === "verified" ? "text-success" : r.item.verificationStatus === "rejected" ? "text-destructive" : "text-warning"}`}>
+                      {r.item.verificationStatus === "verified" ? "Verified ✓" : r.item.verificationStatus === "rejected" ? "Rejected ✗" : "Pending ⏳"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Lead Status:</span>{" "}
+                    <span className="text-foreground font-medium capitalize">{r.lead.status?.replace(/_/g, " ")}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
       )}
     </div>
   );
@@ -183,6 +379,7 @@ export default function MyLeads() {
 
 interface LeadCardProps {
   lead: Lead;
+  pastDayLabel: string | null;
   updateLead: (id: string, data: Record<string, any>) => Promise<void>;
   expandedNotes: string | null;
   setExpandedNotes: (id: string | null) => void;
@@ -190,7 +387,7 @@ interface LeadCardProps {
   setExpandedSale: (id: string | null) => void;
 }
 
-function LeadCard({ lead, updateLead, expandedNotes, setExpandedNotes, expandedSale, setExpandedSale }: LeadCardProps) {
+function LeadCard({ lead, pastDayLabel, updateLead, expandedNotes, setExpandedNotes, expandedSale, setExpandedSale }: LeadCardProps) {
   const { toast } = useToast();
   const [notes, setNotes] = useState(lead.notes || "");
   const [saleDone, setSaleDone] = useState(lead.saleDone || false);
@@ -245,6 +442,11 @@ function LeadCard({ lead, updateLead, expandedNotes, setExpandedNotes, expandedS
         </div>
         {lead.saleDone && (
           <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-success/15 text-success">Sale ✓</span>
+        )}
+        {pastDayLabel && (
+          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-warning/15 text-warning">
+            From {pastDayLabel}
+          </span>
         )}
       </div>
 

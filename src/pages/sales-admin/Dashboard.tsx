@@ -113,8 +113,8 @@ export default function SalesAdminDashboard() {
     return (
       <div className="space-y-6">
         <div className="h-8 bg-muted rounded animate-pulse w-48" />
-        <div className="grid grid-cols-4 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-24 bg-card border border-border rounded-xl animate-pulse" />)}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 md:gap-4">
+          {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-20 md:h-24 bg-card border border-border rounded-xl animate-pulse" />)}
         </div>
       </div>
     );
@@ -157,10 +157,10 @@ export default function SalesAdminDashboard() {
       )}
 
       {chartData.length > 0 && (
-        <div className="bg-card border border-border rounded-xl p-3 md:p-5">
+        <div className="bg-card border border-border rounded-xl p-3 md:p-5 overflow-hidden">
           <h3 className="font-display font-semibold text-foreground mb-4">Team Performance</h3>
-          <div className="overflow-x-auto -mx-3 px-3 md:mx-0 md:px-0">
-            <div className="min-w-[400px]">
+          <div className="overflow-x-auto">
+            <div className="min-w-[300px]">
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--chart-grid))" />
