@@ -55,20 +55,29 @@ const PACKAGES: Record<string, { label: string; amount: number }[]> = {
   custom: [],
 };
 
-const WA_TEMPLATES: { label: string; text: string }[] = [
-  {
-    label: "Greeting",
-    text: `Hello! I'm calling from *Dream Team Services* 🎯\n\nWe specialize in:\n• AI Video Ads (starting ₹499)\n• Digital Marketing\n• Website Development\n\nWould you be interested to know more? 😊`,
-  },
-  {
-    label: "Follow Up",
-    text: `Hi! Following up from our previous conversation about DTS services. Do you have 5 minutes to discuss? 🙏`,
-  },
-  {
-    label: "Offer",
-    text: `Great news! We have special packages starting at just ₹499 for AI video ads. Perfect for your business promotion! 🚀`,
-  },
-];
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good Morning";
+  if (hour < 17) return "Good Afternoon";
+  return "Good Evening";
+}
+
+function getWaTemplates(): { label: string; text: string }[] {
+  return [
+    {
+      label: "Greeting",
+      text: `Hello Sir, ${getGreeting()}!\nWe sent you our samples. Did you please check them, sir?\nI'm calling you in a few minutes to discuss our packages. 🙏`,
+    },
+    {
+      label: "Follow Up",
+      text: `Hi! Following up from our previous conversation about DTS services. Do you have 5 minutes to discuss? 🙏`,
+    },
+    {
+      label: "Offer",
+      text: `Great news! We have special packages starting at just ₹499 for AI video ads. Perfect for your business promotion! 🚀`,
+    },
+  ];
+}
 
 function getDayLabel(date: Date): string {
   const today = startOfDay(new Date());
@@ -594,7 +603,16 @@ function WhatsAppButton({ phone, onActivity }: { phone: string; onActivity?: () 
             exit={{ opacity: 0, y: -5 }}
             className="absolute bottom-full left-0 right-0 mb-1 bg-card border border-border rounded-lg shadow-xl z-10 overflow-hidden"
           >
-            {WA_TEMPLATES.map((t) => (
+            <a
+              href={`https://wa.me/${phone}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => { setShowTemplates(false); onActivity?.(); }}
+              className="block px-3 py-2 text-xs text-success font-medium hover:bg-accent transition-colors border-b border-border"
+            >
+              Chat
+            </a>
+            {getWaTemplates().map((t) => (
               <a
                 key={t.label}
                 href={`https://wa.me/${phone}?text=${encodeURIComponent(t.text)}`}
