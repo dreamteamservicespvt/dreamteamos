@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { collection, getDocs, addDoc, updateDoc, doc, serverTimestamp, deleteDoc, onSnapshot } from "firebase/firestore";
 import { db } from "@/services/firebase";
@@ -7,11 +7,44 @@ import { normalizePhone, formatPhoneDisplay, getWhatsAppUrl, getCallUrl } from "
 import { formatCurrency } from "@/utils/formatters";
 import { format, subDays, startOfDay } from "date-fns";
 import type { AppUser, Lead, LeadStatus, SaleDetail } from "@/types";
-import { ArrowLeft, Phone, Plus, Loader2, Search, Trash2, MessageCircle, StickyNote, ShoppingBag } from "lucide-react";
+import { ArrowLeft, Phone, Plus, Loader2, Search, Trash2, MessageCircle, StickyNote, ShoppingBag, X, Hash, List, Type } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { AnimatePresence, motion } from "framer-motion";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
+
+/**
+ * Extract 10-digit Indian phone numbers from raw input.
+ * Handles formats: +91 9876543210, 9876543210, 98765 43210, 98 7654 3210, etc.
+ * Returns cleaned 10-digit numbers (without +91).
+ */
+function extractPhoneDigits(raw: string): string | null {
+  // Strip all whitespace, dashes, parens, dots
+  let cleaned = raw.replace(/[\s\-().]/g, "");
+  if (!cleaned) return null;
+  // Remove +91 or 91 prefix if present
+  if (cleaned.startsWith("+91")) cleaned = cleaned.slice(3);
+  else if (cleaned.startsWith("91") && cleaned.length > 10) cleaned = cleaned.slice(2);
+  // Remove leading 0
+  if (cleaned.startsWith("0") && cleaned.length > 10) cleaned = cleaned.slice(1);
+  // Must be exactly 10 digits
+  if (/^\d{10}$/.test(cleaned)) return cleaned;
+  return null;
+}
+
+/**
+ * Parse pasted text that may contain multiple numbers (multi-line or comma-separated).
+ */
+function parseMultipleNumbers(text: string): string[] {
+  // Split by newlines, commas, tabs, or multiple spaces
+  const parts = text.split(/[\n,\t]+/).map((s) => s.trim()).filter(Boolean);
+  const results: string[] = [];
+  for (const part of parts) {
+    const num = extractPhoneDigits(part);
+    if (num) results.push(num);
+  }
+  return results;
+}
 
 const STATUS_OPTIONS: { value: LeadStatus; label: string; color: string }[] = [
   { value: "not_called", label: "Not Called", color: "bg-muted text-muted-foreground" },
@@ -54,8 +87,79 @@ export default function MemberLeadsDetail() {
 
   // Add leads form
   const [showAdd, setShowAdd] = useState(false);
+  const [bulkMode, setBulkMode] = useState(false);
+  const [numberInput, setNumberInput] = useState("");
   const [bulkText, setBulkText] = useState("");
+  const [numberQueue, setNumberQueue] = useState<string[]>([]);
   const [adding, setAdding] = useState(false);
+  const numberInputRef = useRef<HTMLInputElement>(null);
+  const shouldRefocusRef = useRef(false);
+
+  // Auto-refocus input after queue changes (React re-render safe)
+  useEffect(() => {
+    if (shouldRefocusRef.current && numberInputRef.current && showAdd && !bulkMode) {
+      numberInputRef.current.focus();
+      shouldRefocusRef.current = false;
+    }
+  }, [numberQueue.length, showAdd, bulkMode]);
+
+  // Add a single number to the queue (deduped)
+  const addNumberToQueue = useCallback((digits: string) => {
+    setNumberQueue((prev) => {
+      if (prev.includes(digits)) return prev; // skip duplicates
+      return [...prev, digits];
+    });
+    shouldRefocusRef.current = true;
+  }, []);
+
+  // Handle paste event on the input — detect numbers instantly
+  const handleNumberPaste = useCallback((e: React.ClipboardEvent<HTMLInputElement>) => {
+    const pasted = e.clipboardData.getData("text");
+    if (!pasted.trim()) return;
+    const numbers = parseMultipleNumbers(pasted);
+    if (numbers.length > 0) {
+      e.preventDefault();
+      numbers.forEach((n) => addNumberToQueue(n));
+      setNumberInput("");
+    }
+  }, [addNumberToQueue]);
+
+  // Handle typing + Enter
+  const handleNumberKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const digits = extractPhoneDigits(numberInput);
+      if (digits) {
+        addNumberToQueue(digits);
+        setNumberInput("");
+      }
+    }
+  }, [numberInput, addNumberToQueue]);
+
+  // Also auto-detect when input reaches a valid number length
+  const handleNumberChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setNumberInput(val);
+    // Auto-add if valid 10+ digits detected after typing
+    const digits = extractPhoneDigits(val);
+    if (digits && val.replace(/\D/g, "").length >= 10) {
+      addNumberToQueue(digits);
+      setNumberInput("");
+    }
+  }, [addNumberToQueue]);
+
+  const removeFromQueue = useCallback((index: number) => {
+    setNumberQueue((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  // Parse bulk textarea and add all valid numbers to queue
+  const handleBulkParse = useCallback(() => {
+    const numbers = parseMultipleNumbers(bulkText);
+    if (numbers.length > 0) {
+      numbers.forEach((n) => addNumberToQueue(n));
+      setBulkText("");
+    }
+  }, [bulkText, addNumberToQueue]);
 
   // Fetch all team members + listen to leads for this member
   useEffect(() => {
@@ -136,17 +240,16 @@ export default function MemberLeadsDetail() {
   // Handlers
   const handleBulkAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!bulkText.trim() || !memberId) {
-      toast({ title: "Error", description: "Enter phone numbers.", variant: "destructive" });
+    if (numberQueue.length === 0 || !memberId) {
+      toast({ title: "Error", description: "Add at least one phone number.", variant: "destructive" });
       return;
     }
     setAdding(true);
     try {
-      const lines = bulkText.trim().split("\n").map((l) => l.trim()).filter(Boolean);
       const existingCount = leads.length;
 
-      for (let i = 0; i < lines.length; i++) {
-        const phone = normalizePhone(lines[i].split(",")[0].trim());
+      for (let i = 0; i < numberQueue.length; i++) {
+        const phone = normalizePhone(numberQueue[i]);
         const displayName = `C${existingCount + i + 1}`;
         await addDoc(collection(db, "leads"), {
           assignedTo: memberId,
@@ -170,9 +273,11 @@ export default function MemberLeadsDetail() {
         });
       }
 
+      setNumberQueue([]);
+      setNumberInput("");
       setBulkText("");
       setShowAdd(false);
-      toast({ title: "Leads Added", description: `${lines.length} leads assigned.` });
+      toast({ title: "Leads Added", description: `${numberQueue.length} leads assigned.` });
     } catch {
       toast({ title: "Error", description: "Failed to add leads.", variant: "destructive" });
     } finally {
@@ -232,7 +337,7 @@ export default function MemberLeadsDetail() {
             <button onClick={() => setSelectedDate(undefined)} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Clear</button>
           )}
           <button
-            onClick={() => { setBulkText(""); setShowAdd(!showAdd); }}
+            onClick={() => { setNumberInput(""); setBulkText(""); setNumberQueue([]); setBulkMode(false); setShowAdd(!showAdd); }}
             className="h-8 md:h-9 px-3 md:px-4 rounded-lg bg-primary text-primary-foreground font-display font-semibold text-xs md:text-sm flex items-center gap-1.5 hover:bg-primary/90 transition-colors"
           >
             <Plus size={14} /> Add Leads
@@ -250,16 +355,114 @@ export default function MemberLeadsDetail() {
             className="overflow-hidden"
           >
             <form onSubmit={handleBulkAdd} className="bg-card border border-border rounded-xl p-4 md:p-5 space-y-3">
-              <h3 className="font-display font-semibold text-foreground text-sm">Add Leads for {member?.name}</h3>
-              <p className="text-xs text-muted-foreground">Enter one phone number per line. Names auto-generated (C1, C2…)</p>
-              <textarea value={bulkText} onChange={(e) => setBulkText(e.target.value)} rows={4} placeholder={"9876543210\n9123456789\n8765432109"}
-                className="w-full px-4 py-3 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary font-mono placeholder:text-muted-foreground/40 resize-none" />
+              <div className="flex items-center justify-between">
+                <h3 className="font-display font-semibold text-foreground text-sm">Add Leads for {member?.name}</h3>
+                <div className="flex items-center gap-1 bg-accent/50 rounded-lg p-0.5">
+                  <button type="button" onClick={() => setBulkMode(false)}
+                    className={`h-7 px-2.5 rounded-md text-[10px] font-medium flex items-center gap-1 transition-colors ${!bulkMode ? "bg-card text-foreground shadow-sm border border-border" : "text-muted-foreground hover:text-foreground"}`}>
+                    <Type size={11} /> One-by-One
+                  </button>
+                  <button type="button" onClick={() => setBulkMode(true)}
+                    className={`h-7 px-2.5 rounded-md text-[10px] font-medium flex items-center gap-1 transition-colors ${bulkMode ? "bg-card text-foreground shadow-sm border border-border" : "text-muted-foreground hover:text-foreground"}`}>
+                    <List size={11} /> Bulk
+                  </button>
+                </div>
+              </div>
+
+              {!bulkMode ? (
+                /* ─── One-by-One Mode ─── */
+                <div className="space-y-3">
+                  <p className="text-xs text-muted-foreground">
+                    Paste a number → auto-adds with SNO → paste next. Supports: +91 98765 43210, 9876543210, etc.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <Hash size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      <input
+                        ref={numberInputRef}
+                        type="text"
+                        value={numberInput}
+                        onChange={handleNumberChange}
+                        onPaste={handleNumberPaste}
+                        onKeyDown={handleNumberKeyDown}
+                        placeholder="Paste or type number here..."
+                        autoFocus
+                        className="w-full h-10 pl-9 pr-3 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary font-mono placeholder:text-muted-foreground/40"
+                      />
+                    </div>
+                    <span className="text-xs text-muted-foreground whitespace-nowrap tabular-nums">
+                      {numberQueue.length} added
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                /* ─── Bulk Mode ─── */
+                <div className="space-y-3">
+                  <p className="text-xs text-muted-foreground">
+                    Paste all numbers at once — one per line, comma-separated, or any format. Click "Parse Numbers" to preview.
+                  </p>
+                  <textarea
+                    value={bulkText}
+                    onChange={(e) => setBulkText(e.target.value)}
+                    rows={5}
+                    placeholder={"9876543210\n+91 91234 56789\n8765432109, 7654321098\n98 7654 3210"}
+                    autoFocus
+                    className="w-full px-4 py-3 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary font-mono placeholder:text-muted-foreground/40 resize-none"
+                  />
+                  <button type="button" onClick={handleBulkParse} disabled={!bulkText.trim()}
+                    className="h-8 px-3 rounded-lg bg-info/15 text-info text-xs font-semibold hover:bg-info/25 disabled:opacity-40 flex items-center gap-1.5 transition-colors">
+                    <Plus size={12} /> Parse Numbers
+                  </button>
+                </div>
+              )}
+
+              {/* Preview list with SNO */}
+              {numberQueue.length > 0 && (
+                <div className="border border-border rounded-lg overflow-hidden max-h-52 overflow-y-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-elevated/40 border-b border-border">
+                        <th className="text-left px-3 py-1.5 font-medium text-muted-foreground w-16">SNO</th>
+                        <th className="text-left px-3 py-1.5 font-medium text-muted-foreground">Phone Number</th>
+                        <th className="text-left px-3 py-1.5 font-medium text-muted-foreground">Display Name</th>
+                        <th className="w-8"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {numberQueue.map((num, i) => (
+                        <tr key={`${num}-${i}`} className="border-b border-border/40 hover:bg-accent/20">
+                          <td className="px-3 py-1.5 text-muted-foreground tabular-nums">{i + 1}</td>
+                          <td className="px-3 py-1.5 font-mono text-foreground">
+                            {formatPhoneDisplay(num)}
+                          </td>
+                          <td className="px-3 py-1.5 text-primary font-semibold">
+                            C{leads.length + i + 1}
+                          </td>
+                          <td className="px-1 py-1.5">
+                            <button type="button" onClick={() => removeFromQueue(i)}
+                              className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
+                              <X size={12} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
               <div className="flex items-center gap-2">
-                <button type="submit" disabled={adding}
+                <button type="submit" disabled={adding || numberQueue.length === 0}
                   className="h-9 px-4 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2">
                   {adding ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
-                  {adding ? "Adding..." : "Add Leads"}
+                  {adding ? "Adding..." : `Add ${numberQueue.length} Lead${numberQueue.length !== 1 ? "s" : ""}`}
                 </button>
+                {numberQueue.length > 0 && (
+                  <button type="button" onClick={() => setNumberQueue([])}
+                    className="h-9 px-3 rounded-lg text-xs font-medium text-destructive hover:bg-destructive/10 border border-destructive/20">
+                    Clear All
+                  </button>
+                )}
                 <button type="button" onClick={() => setShowAdd(false)}
                   className="h-9 px-4 rounded-lg bg-accent text-foreground text-xs font-medium border border-border hover:bg-accent/80">
                   Cancel
