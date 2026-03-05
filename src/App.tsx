@@ -22,6 +22,7 @@ import TechMemberDashboard from "@/pages/tech-member/Dashboard";
 import TechMemberHistory from "@/pages/tech-member/MyHistory";
 import TechMemberTraining from "@/pages/tech-member/Training";
 import TechMemberProfile from "@/pages/tech-member/MyProfile";
+import MyWork from "@/pages/tech-member/MyWork";
 import MyLeads from "@/pages/sales-member/MyLeads";
 import SalesMemberDashboard from "@/pages/sales-member/Dashboard";
 import MyPerformance from "@/pages/sales-member/MyPerformance";
@@ -45,6 +46,7 @@ import TechTrainingModules from "@/pages/tech-admin/TrainingModules";
 import TechAdminSessionHistory from "@/pages/tech-admin/SessionHistory";
 import TechAdminSettings from "@/pages/tech-admin/Settings";
 import TechAdminMemberHistory from "@/pages/tech-admin/MemberHistory";
+import WorkAssign from "@/pages/tech-admin/WorkAssign";
 import AccountsDashboard from "@/pages/accounts-admin/Dashboard";
 import RevenueSummary from "@/pages/accounts-admin/RevenueSummary";
 import DailyExpenses from "@/pages/accounts-admin/DailyExpenses";
@@ -107,6 +109,7 @@ const App = () => (
             <Route path="/tech-admin/sessions" element={<TechAdminSessionHistory />} />
             <Route path="/tech-admin/settings" element={<TechAdminSettings />} />
             <Route path="/tech-admin/salary" element={<MySalaryPage />} />
+            <Route path="/tech-admin/work-assign" element={<WorkAssign />} />
           </Route>
 
           {/* Sales Admin */}
@@ -135,6 +138,7 @@ const App = () => (
           {/* Tech Member */}
           <Route element={<AppLayout allowedRoles={["tech_member"]} />}>
             <Route path="/tech/dashboard" element={<TechMemberDashboard />} />
+            <Route path="/tech/my-work" element={<MyWork />} />
             <Route path="/tech/submit" element={<SubmitWork />} />
             <Route path="/tech/history" element={<TechMemberHistory />} />
             <Route path="/tech/training" element={<TechMemberTraining />} />

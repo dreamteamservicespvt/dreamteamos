@@ -47,6 +47,43 @@ export interface WorkSubmission {
   screenshotUrl: string;
   items: WorkItem[];
   calculatedRevenue: number;
+  source?: "manual" | "work_assignment";
+  workAssignmentId?: string;
+}
+
+// Work Assignment System
+export type WorkAssignmentStatus = "assigned" | "in_progress" | "completed" | "verified" | "editing";
+
+export interface WorkAssignmentSession {
+  openedAt: any;
+  closedAt?: any | null;
+  durationSeconds?: number | null;
+}
+
+export interface WorkAssignment {
+  id: string;
+  assignedTo: string;
+  assignedBy: string;
+  assignedAt: any;
+  category: "wishes" | "promotional" | "cinematic";
+  clipCount: number;
+  includesEndCredits: boolean;
+  duration: string;
+  pricePerUnit: number;
+  totalPrice: number;
+  uniqueId: string;
+  accessCode: string;
+  businessName?: string;
+  displayTitle: string;
+  status: WorkAssignmentStatus;
+  sessions: WorkAssignmentSession[];
+  totalDurationSeconds: number;
+  completedAt?: any;
+  verifiedAt?: any;
+  verifiedBy?: string;
+  date: string;
+  completedDate?: string;
+  savedGenerationId?: string;
 }
 
 export type LeadStatus = "not_called" | "answered" | "not_answered" | "call_later" | "not_interested";
