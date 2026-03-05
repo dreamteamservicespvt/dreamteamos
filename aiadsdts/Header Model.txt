@@ -1,0 +1,5332 @@
+﻿understand the below and tell me if you are ready 
+Skip to content
+Chat history
+
+
+
+
+
+
+
+
+
+
+You said:
+Uploaded image
+i want to create footer for other business
+i manily required prompt to generate that footer in that ratio 
+
+
+
+
+i will attach the logo and give the promot that you give me 
+
+
+__________________
+
+
+step 1 i will give you the business information 
+such as brand name , address 
+
+
+you have to generate a prompt to create the footer and you also needed to mention to put the logo that i will attached when generating the image 
+ChatGPT said:
+Perfect — I understand exactly what you need 👍
+You want a ready-to-reuse MASTER PROMPT TEMPLATE to generate a professional footer strip (same ratio/style logic as your sample), and later you’ll just plug in any business info + attach logo.
+
+
+Below is a production-ready, atomic-level prompt you can copy-paste into any image generator (Midjourney / DALL·E / SD / Leonardo / SORA frames).
+
+
+✅ FOOTER GENERATION – MASTER PROMPT (RATIO-SAFE)
+Use this prompt AFTER attaching the business logo image
+
+
+🎯 COPY-PASTE PROMPT (FINAL)
+Create a premium, modern business footer banner for a vertical video.
+
+
+Aspect Ratio & Size:
+– Exact same ratio as the reference footer (vertical 9:16 footer strip)
+– High resolution, ultra-sharp, 8K quality
+– Footer height should occupy the bottom portion only (not full screen)
+
+
+Logo Placement:
+– Place the ATTACHED LOGO on the left side of the footer
+– Logo must be clean, sharp, original colors preserved
+– Proper padding around logo, no cropping, no distortion
+– Logo should feel premium and well-balanced, not oversized
+
+
+Brand Information (Text Layout):
+– Brand Name: [INSERT BRAND NAME]
+– Tagline (optional): [INSERT TAGLINE OR REMOVE IF NONE]
+– Address / Location: [INSERT ADDRESS]
+– Contact Number: [INSERT PHONE NUMBER]
+– Website or Email (if available): [INSERT WEBSITE / EMAIL]
+
+
+Typography:
+– Use modern, clean, professional sans-serif font
+– Brand name slightly bold and prominent
+– Contact details medium weight
+– Excellent spacing, perfect alignment, easy readability
+– No fancy or decorative fonts
+
+
+Color & Style:
+– Premium corporate color palette inspired by the logo colors
+– Background: dark gradient / soft blur / glassmorphism style
+– Subtle glow or separator line on top of footer
+– Clean, luxury, corporate feel (not flashy, not cartoonish)
+
+
+Design Quality:
+– World-class branding look
+– Suitable for corporate videos, ads, festive wishes, reels
+– No clutter, no unnecessary icons
+– Balanced margins and spacing
+
+
+Lighting & Finish:
+– Soft light reflections
+– Slight depth and contrast
+– Professional cinematic footer look
+
+
+Strict Instructions:
+– Do NOT change logo design
+– Do NOT add extra graphics
+– Do NOT crop or stretch the footer
+– Footer must look like it was designed by a top-tier branding agency
+🔁 HOW YOU WILL USE THIS (Your Workflow)
+Attach the logo image
+
+
+Paste the prompt above
+
+
+Replace:
+
+
+[INSERT BRAND NAME]
+
+
+[INSERT ADDRESS]
+
+
+[INSERT PHONE NUMBER]
+
+
+Optional website/tagline
+
+
+Generate → Done ✅
+
+
+This will work for:
+
+
+New Year wishes
+
+
+Corporate ads
+
+
+End credits
+
+
+Festive videos
+
+
+Instagram reels
+
+
+WhatsApp vertical videos
+
+
+🚀 PRO TIP (Optional Upgrade Prompt Line)
+If you want extra luxury, add this line at the end:
+
+
+Design should feel Apple-level clean with Indian corporate elegance.
+When you’re ready 👉 Send Step 1 (business info)
+I’ll auto-fill everything and give you a final copy-paste prompt specific to that business.
+
+
+You said:
+no no you neededd to do that for me i will give you the data you just needed to give me ready to use copy paste prompt 
+ChatGPT said:
+Got it 👍
+You don’t want templates or explanations.
+You want ONLY a ready-to-use, copy-paste prompt, generated after you give the business data.
+
+
+So here is how we’ll do it — clean and fast 👇
+
+
+✅ WHAT YOU NEED TO SEND ME (STEP 1)
+Just send the details in plain text, like this:
+
+
+Brand Name:
+Tagline (optional):
+Address / Location:
+Phone Number:
+Website / Email (optional):
+Footer Style preference (dark / light / luxury / corporate):
+👉 Also attach the LOGO IMAGE in the same message.
+
+
+✅ WHAT I WILL DO (NO QUESTIONS, NO TEMPLATES)
+Once you send the data + logo:
+
+
+I will generate ONE FINAL PROMPT
+
+
+Ready to copy-paste
+
+
+Already includes:
+
+
+Correct 9:16 footer ratio
+
+
+Exact logo placement instruction
+
+
+Premium typography
+
+
+Luxury / corporate styling
+
+
+Video-safe footer height
+
+
+No placeholders
+
+
+No brackets
+
+
+No instructions
+
+
+Just PASTE → GENERATE → USE
+
+
+🔒 CONFIRMATION (IMPORTANT)
+I will NOT explain
+
+
+I will NOT give options
+
+
+I will NOT ask follow-ups
+
+
+You’ll get only the final prompt
+
+
+Send the business data + logo now
+I’ll reply with the ready-to-use footer generation prompt 🔥
+
+
+You said:
+SIRI SPECIALITY AND DIABETIS CENTER 
+KALLUMANDUVA CHOWRASTA 
+GOPALPUR
+HANAMKONDA 
+Dr BINGI SRINIVAS 
+MD General 
+SENIOR PHYSICIAN & DIABETOLOGIST
+ChatGPT said:
+Create a premium, professional medical business footer banner for a vertical video.
+
+
+Aspect Ratio & Size:
+– Exact vertical 9:16 ratio
+– Footer strip only, occupying the bottom portion of the frame
+– Ultra-high resolution, clean 8K quality, sharp edges
+
+
+Logo Placement:
+– Place the ATTACHED LOGO on the left side of the footer
+– Maintain original logo colors, clarity, and proportions
+– Add proper padding around the logo
+– Do not crop, stretch, or modify the logo in any way
+
+
+Text Content (Right Side, Clean Alignment):
+– SIRI SPECIALITY AND DIABETIS CENTER (main heading, bold, prominent)
+– Kallumanduva Chowrasta, Gopalpur, Hanamkonda
+– Dr. Bingi Srinivas
+– MD General
+– Senior Physician & Diabetologist
+
+
+Typography:
+– Modern, clean, professional sans-serif font
+– Medical-grade corporate typography
+– Excellent letter spacing and hierarchy
+– High readability on mobile screens
+– No decorative or fancy fonts
+
+
+Color & Style:
+– Premium medical theme
+– Background in dark blue / deep teal / elegant medical gradient
+– Subtle glassmorphism or soft blur effect
+– Clean white or soft light-colored text for contrast
+– Thin elegant separator line on top of the footer
+
+
+Design Quality:
+– World-class hospital branding look
+– Trustworthy, calm, and professional
+– Suitable for healthcare ads, awareness videos, festive wishes
+– No clutter, no icons, no extra graphics
+
+
+Lighting & Finish:
+– Soft glow highlights
+– Slight depth and shadow
+– Polished, modern, corporate medical footer look
+
+
+Strict Instructions:
+– Footer must look designed by a top-tier medical branding agency
+– Do not add extra text or visuals
+– Keep layout clean, balanced, and premium
+You said:
+Uploaded image
+it was occupying very large amount it should only take very less 
+ChatGPT said:
+Create a premium, minimal-height medical footer banner for a vertical video.
+
+
+Aspect Ratio & Footer Height:
+– Exact vertical 9:16 ratio
+– Footer must occupy ONLY 10–12% of the total frame height
+– Very slim, compact footer strip at the bottom
+– Upper 88–90% of the frame must remain fully clear and untouched
+– Ultra-sharp, clean 8K quality
+
+
+Logo Placement:
+– Place the ATTACHED LOGO on the extreme left inside the footer
+– Logo size must be small and proportional to the slim footer height
+– Maintain original logo colors, clarity, and proportions
+– Adequate padding, no cropping, no stretching
+
+
+Text Content (Compact & Single-Block Layout):
+– SIRI SPECIALITY AND DIABETIS CENTER (primary, medium-bold, compact)
+– Kallumanduva Chowrasta, Gopalpur, Hanamkonda
+– Dr. Bingi Srinivas | MD General | Senior Physician & Diabetologist
+
+
+Typography:
+– Clean, modern medical sans-serif font
+– Tight but readable line spacing
+– Clear hierarchy without increasing height
+– Optimized for mobile viewing
+
+
+Color & Style:
+– Premium medical gradient background (deep blue → teal)
+– Subtle glassmorphism effect
+– White or soft light text for contrast
+– Thin, elegant top separator line (very subtle)
+
+
+Design Quality:
+– Minimal, elegant, non-intrusive footer
+– Professional hospital branding feel
+– No icons, no extra graphics, no bulky spacing
+– Footer should feel lightweight and refined
+
+
+Lighting & Finish:
+– Soft glow and gentle depth
+– Clean, polished, corporate medical look
+
+
+Strict Instructions:
+– Footer height must remain minimal (do NOT expand)
+– Do NOT add extra padding vertically
+– Do NOT add unnecessary elements
+– Footer must look designed by a high-end medical branding agency
+You said:
+see put the footer in the header because after generating im getting ai water mark on the left bottom while removing that footer getting disturb
+ChatGPT said:
+Create a premium, minimal-height medical HEADER banner for a vertical video.
+
+
+Aspect Ratio & Header Height:
+– Exact vertical 9:16 ratio
+– Header must occupy ONLY 10–12% of the total frame height
+– Slim, compact header strip placed at the TOP of the frame
+– Lower 88–90% of the frame must remain fully clear and untouched
+– Ultra-sharp, clean 8K quality
+
+
+Logo Placement:
+– Place the ATTACHED LOGO on the extreme left inside the header
+– Logo size must be small and proportional to the slim header height
+– Maintain original logo colors, clarity, and proportions
+– Proper padding, no cropping, no stretching
+
+
+Text Content (Compact Horizontal Layout):
+– SIRI SPECIALITY AND DIABETIS CENTER (primary, medium-bold)
+– Kallumanduva Chowrasta, Gopalpur, Hanamkonda
+– Dr. Bingi Srinivas | MD General | Senior Physician & Diabetologist
+
+
+Typography:
+– Clean, modern medical-grade sans-serif font
+– Tight but readable line spacing
+– Clear hierarchy without increasing header height
+– Optimized for mobile viewing
+
+
+Color & Style:
+– Premium medical gradient background (deep blue to teal)
+– Subtle glassmorphism / frosted-glass effect
+– White or soft light text for high contrast
+– Thin, elegant bottom separator line
+
+
+Design Quality:
+– Minimal, elegant, non-intrusive header
+– Professional hospital branding look
+– No icons, no extra graphics, no bulky spacing
+
+
+Lighting & Finish:
+– Soft glow highlights
+– Gentle depth and contrast
+– Clean, polished, corporate medical finish
+
+
+Strict Instructions:
+– Header height must remain minimal (do NOT expand)
+– Do NOT add vertical padding or margins
+– Do NOT add extra elements
+– Header must look designed by a top-tier medical branding agency
+You said:
+Revanth Creative Concepts
++91 95026 91498
+ChatGPT said:
+Create a premium, ultra-minimal HEADER banner for a vertical video.
+
+
+Aspect Ratio & Header Height:
+– Exact vertical 9:16 ratio
+– Header must occupy ONLY 8–10% of the total frame height
+– Very slim, clean header strip placed at the TOP of the frame
+– Remaining frame must stay completely clear
+– Ultra-sharp, professional 8K quality
+
+
+Logo Placement:
+– Place the ATTACHED LOGO on the extreme left inside the header
+– Logo must be small, crisp, and perfectly aligned vertically
+– Preserve original logo colors and proportions
+– No cropping, no stretching, no distortion
+
+
+Text Content (Single-Line / Compact Layout):
+– Revanth Creative Concepts (primary text, medium-bold)
+– +91 95026 91498 (secondary text, regular weight)
+
+
+Typography:
+– Modern, clean sans-serif font
+– Creative-agency professional style
+– Tight but readable spacing
+– Optimized for mobile viewing
+
+
+Color & Style:
+– Premium creative-studio theme
+– Dark gradient or elegant neutral background
+– High contrast white or soft-light text
+– Subtle glassmorphism or soft blur effect
+– Thin, refined separator line at the bottom of the header
+
+
+Design Quality:
+– Minimal, non-intrusive, high-end branding
+– Suitable for reels, ads, cinematic videos
+– No icons, no extra graphics, no clutter
+
+
+Lighting & Finish:
+– Soft glow and gentle depth
+– Clean, polished, premium creative-agency look
+
+
+Strict Instructions:
+– Header height must remain very small
+– Do NOT add extra padding or elements
+– Do NOT place anything at the bottom of the frame
+– Header must look designed by a top-tier creative branding studio
+You said:
+Uploaded image
+Uploaded image
+Revanth Creative Concepts
++91 95026 91498
+ChatGPT said:
+Create a premium, ultra-minimal HEADER banner for a vertical video using the ATTACHED LOGO.
+
+
+Aspect Ratio & Header Size:
+– Exact vertical 9:16 ratio
+– Header must occupy ONLY 8–9% of the total frame height
+– Slim, clean header strip placed strictly at the TOP
+– Remaining frame must stay completely untouched and clear
+– Ultra-sharp, professional 8K quality
+
+
+Logo Placement:
+– Place the ATTACHED Revanth Creative Concepts logo on the extreme LEFT inside the header
+– Logo must be small, circular, crisp, and fully visible
+– Preserve original colors (brown/white), proportions, and clarity
+– No cropping, no stretching, no redesign
+
+
+Text Content (Compact Horizontal Layout):
+– Revanth Creative Concepts (primary text, medium-bold)
+– +91 95026 91498 (secondary text, regular weight)
+– Text aligned horizontally to the right of the logo
+
+
+Typography:
+– Modern, clean sans-serif font
+– Creative-agency professional look
+– Tight but readable spacing
+– Optimized for mobile and reel viewing
+
+
+Color & Style:
+– Premium creative-studio theme
+– Dark brown / charcoal / subtle gradient background matching logo tone
+– High-contrast white or off-white text
+– Very subtle glassmorphism or soft blur effect
+– Thin, elegant bottom separator line
+
+
+Design Quality:
+– Minimal, non-intrusive, high-end branding
+– Suitable for reels, ads, posters, cinematic videos
+– No icons, no extra graphics, no clutter
+
+
+Lighting & Finish:
+– Soft glow highlights
+– Gentle depth and contrast
+– Clean, polished, premium creative-agency finish
+
+
+Strict Instructions:
+– Header height must remain very small (do NOT increase)
+– Do NOT add extra padding or elements
+– Do NOT place anything at the bottom of the frame
+– Header must look designed by a top-tier creative branding studio
+You said:
+ also include some of his servies mainly for elections on'e
+ChatGPT said:
+Create a premium, ultra-minimal HEADER banner for a vertical video using the ATTACHED LOGO.
+
+
+Aspect Ratio & Header Size:
+– Exact vertical 9:16 ratio
+– Header must occupy ONLY 9–10% of the total frame height
+– Slim, clean header strip placed strictly at the TOP
+– Remaining frame must stay completely untouched and clear
+– Ultra-sharp, professional 8K quality
+
+
+Logo Placement:
+– Place the ATTACHED Revanth Creative Concepts logo on the extreme LEFT inside the header
+– Logo must be small, circular, crisp, and fully visible
+– Preserve original colors (brown/white), proportions, and clarity
+– No cropping, no stretching, no redesign
+
+
+Text Content (Compact Multi-Line Horizontal Layout):
+Primary Line:
+– Revanth Creative Concepts | +91 95026 91498
+
+
+Secondary Line (Services – compact, separated by dots or vertical bars):
+– Election Campaign Management • Political Promotions • Social Media Campaigns • Posters & Digital Ads
+
+
+Typography:
+– Modern, clean sans-serif font
+– Creative-agency professional look
+– Medium-bold for brand name
+– Regular weight for services line
+– Tight but readable spacing
+– Optimized for mobile and reel viewing
+
+
+Color & Style:
+– Premium creative-studio theme
+– Dark brown / charcoal gradient background matching logo tone
+– High-contrast white or soft off-white text
+– Very subtle glassmorphism or soft blur effect
+– Thin, elegant bottom separator line
+
+
+Design Quality:
+– Minimal, non-intrusive, high-end branding
+– Strong political & election-campaign professional feel
+– Suitable for reels, ads, posters, campaign videos
+– No icons, no extra graphics, no clutter
+
+
+Lighting & Finish:
+– Soft glow highlights
+– Gentle depth and contrast
+– Clean, polished, premium creative-agency finish
+
+
+Strict Instructions:
+– Header height must remain very small (do NOT increase)
+– Do NOT add extra padding or elements
+– Do NOT place anything at the bottom of the frame
+– Header must look designed by a top-tier political & creative branding studio
+You said:
+Uploaded image
+Uploaded image
+now im want for this 
+ChatGPT said:
+Create a premium, ultra-minimal HEADER banner for a vertical video using the ATTACHED Sleepway logo.
+
+
+Aspect Ratio & Header Size:
+– Exact vertical 9:16 ratio
+– Header must occupy ONLY 9–10% of the total frame height
+– Slim, clean header strip placed strictly at the TOP
+– Remaining 90% of the frame must remain completely clear
+– Ultra-sharp, professional 8K quality
+
+
+Logo Placement:
+– Place the ATTACHED Sleepway logo on the extreme LEFT inside the header
+– Logo must be clean, crisp, and fully visible
+– Maintain original Sleepway brand colors (blue, pink, white)
+– Proper padding, no cropping, no stretching, no redesign
+
+
+Text Content (Compact Horizontal Layout):
+Primary Line:
+– SLEEPWAY MATTRESSES (medium-bold, brand dominant)
+
+
+Secondary Line (smaller, compact):
+– Mattress Manufacturer | Premium Sleep Solutions
+
+
+Optional Contact (very small, right-aligned):
+– 99486 77770 | sleepwaymattresses.com
+
+
+Typography:
+– Modern, bold sans-serif font suitable for FMCG / mattress brand
+– Strong brand readability
+– Tight but readable spacing
+– Optimized for reels and mobile viewing
+
+
+Color & Style:
+– Premium brand-aligned background (Sleepway blue gradient)
+– High-contrast white text
+– Subtle glassmorphism or soft blur effect
+– Thin, elegant bottom separator line
+
+
+Design Quality:
+– Minimal, non-intrusive, high-end commercial branding
+– Suitable for ads, reels, festive wishes, promotional videos
+– No icons, no product images, no clutter
+
+
+Lighting & Finish:
+– Soft glow highlights
+– Gentle depth and contrast
+– Clean, polished, premium mattress-brand finish
+
+
+Strict Instructions:
+– Header height must remain very small (do NOT increase)
+– Do NOT add extra padding or elements
+– Do NOT place anything at the bottom of the frame
+– Header must look designed by a top-tier FMCG / mattress branding agency
+You said:
+don't mention video because ai is trying to create video instead of the header also extract the usefulll infromation from the provided image or provided text previously i provided you both logo and their poster so you can extract the information from the poster and add in the header 
+ChatGPT said:
+Create a premium, ultra-minimal HEADER banner for a vertical 9:16 IMAGE using the ATTACHED Sleepway logo.
+
+
+Aspect Ratio & Header Size:
+– Exact vertical 9:16 ratio (IMAGE ONLY, not video)
+– Header must occupy ONLY 9–10% of the total image height
+– Slim, clean header strip placed strictly at the TOP
+– Remaining image area must stay completely clear
+– Ultra-sharp, professional 8K image quality
+
+
+Logo Placement:
+– Place the ATTACHED Sleepway logo on the extreme LEFT inside the header
+– Logo must be crisp, clean, and fully visible
+– Preserve original brand colors (blue, pink, white)
+– No cropping, no stretching, no redesign
+
+
+Extracted Brand Information (Compact Horizontal Layout):
+Primary Text:
+– SLEEPWAY MATTRESSES
+
+
+Secondary Text (small, clean, single line):
+– Mattress Manufacturer | ISO 9001:2015 Certified
+
+
+Right-Aligned Contact Details (very compact):
+– 99486 77770 | sleepwaymattresses.com
+
+
+Typography:
+– Modern, bold sans-serif font suitable for a mattress / FMCG brand
+– Strong brand readability
+– Tight but readable spacing
+– Optimized for mobile viewing
+
+
+Color & Style:
+– Sleepway brand-aligned blue gradient background
+– High-contrast white text
+– Subtle glassmorphism or soft blur effect
+– Thin, elegant bottom separator line
+
+
+Design Quality:
+– Minimal, non-intrusive, high-end commercial branding
+– Clean and trustworthy manufacturing brand feel
+– No icons, no product photos, no clutter
+
+
+Lighting & Finish:
+– Soft glow highlights
+– Gentle depth and contrast
+– Clean, polished, premium brand finish
+
+
+Strict Instructions:
+– Header height must remain very small (do NOT increase)
+– Do NOT mention video or animation
+– Do NOT add extra padding or elements
+– Do NOT place anything at the bottom
+– Header must look designed by a top-tier FMCG branding agency
+You said:
+Uploaded image
+i want for this
+ChatGPT said:
+Create a premium, ultra-minimal HEADER banner for a vertical 9:16 IMAGE using the ATTACHED shop poster as the information reference.
+
+
+Aspect Ratio & Header Size:
+– Exact vertical 9:16 ratio (IMAGE ONLY)
+– Header must occupy ONLY 9–10% of the total image height
+– Slim, compact header strip placed strictly at the TOP
+– Remaining image area must stay completely clear
+– Ultra-sharp, professional 8K image quality
+
+
+Brand Information (Extracted from Provided Image):
+Primary Text:
+– MANIKANTA ELECTRICALS & PLUMBING
+
+
+Secondary Text (compact, single line):
+– Electrical • Plumbing • Hardware Solutions
+
+
+Owner Name (small, subtle):
+– BK. Ashok Reddy
+
+
+Contact Details (right-aligned, compact):
+– 9966498638 | 9441105268
+
+
+Logo / Icon Handling:
+– If a logo/icon is present in the attached image, extract and place it on the extreme LEFT
+– If no separate logo is detected, use clean typography-based branding
+– No redesign, no distortion
+
+
+Typography:
+– Bold, modern sans-serif font for business name
+– Clean, readable font for services and contact
+– Tight spacing, high readability on mobile
+
+
+Color & Style:
+– Professional electrical & plumbing theme
+– Deep blue gradient background (inspired by original poster)
+– White or light text for strong contrast
+– Subtle glassmorphism or soft blur effect
+– Thin, elegant bottom separator line
+
+
+Design Quality:
+– Minimal, non-intrusive, high-end local business branding
+– Clean and trustworthy service-business look
+– No product images, no icons, no clutter
+
+
+Lighting & Finish:
+– Soft glow highlights
+– Gentle depth and contrast
+– Clean, polished, professional finish
+
+
+Strict Instructions:
+– Header height must remain very small
+– Do NOT mention video or animation
+– Do NOT add extra padding or elements
+– Do NOT place anything at the bottom
+– Header must look designed by a professional branding studio
+You said:
+Uploaded image
+contact number 
++91 95026 91498
++91 9966644359
+mail 
+info@meritguide.in
+
+
+
+
+
+
+give me for this
+ChatGPT said:
+Create a premium, ultra-minimal HEADER banner for a vertical 9:16 IMAGE using the ATTACHED MeritGuide logo.
+
+
+Aspect Ratio & Header Size:
+– Exact vertical 9:16 ratio (IMAGE ONLY)
+– Header must occupy ONLY 9–10% of the total image height
+– Slim, clean header strip placed strictly at the TOP
+– Remaining image area must stay completely clear
+– Ultra-sharp, professional 8K image quality
+
+
+Logo Placement:
+– Place the ATTACHED MeritGuide logo on the extreme LEFT inside the header
+– Logo must be crisp, clean, and fully visible
+– Preserve original brand colors (blue, green, yellow)
+– No cropping, no stretching, no redesign
+
+
+Extracted Brand Information (Compact Horizontal Layout):
+Primary Text:
+– MeritGuide
+
+
+Secondary Text (small, clean, single line):
+– Mentor for Higher Education Abroad
+
+
+Right-Aligned Contact Details (very compact):
+– +91 95026 91498 | +91 9966644359
+– info@meritguide.in
+
+
+Typography:
+– Modern, clean, education-focused sans-serif font
+– Strong readability and trust-building look
+– Tight but readable spacing
+– Optimized for mobile viewing
+
+
+Color & Style:
+– Education-brand aligned background (soft blue or blue-to-white gradient)
+– High-contrast white or dark-blue text
+– Subtle glassmorphism or soft blur effect
+– Thin, elegant bottom separator line
+
+
+Design Quality:
+– Minimal, non-intrusive, high-end education consultancy branding
+– Clean, professional, global-study guidance feel
+– No icons, no illustrations, no clutter
+
+
+Lighting & Finish:
+– Soft glow highlights
+– Gentle depth and contrast
+– Clean, polished, premium education-brand finish
+
+
+Strict Instructions:
+– Header height must remain very small (do NOT increase)
+– Do NOT mention video, animation, or motion
+– Do NOT add extra padding or elements
+– Do NOT place anything at the bottom
+– Header must look designed by a top-tier education branding studio
+You said:
+Uploaded image
+give me for this
+ChatGPT said:
+Create a premium, ultra-minimal HEADER banner for a vertical 9:16 IMAGE using the ATTACHED A1 logo.
+
+
+Aspect Ratio & Header Size:
+– Exact vertical 9:16 ratio (IMAGE ONLY)
+– Header must occupy ONLY 9–10% of the total image height
+– Slim, clean header strip placed strictly at the TOP
+– Remaining image area must stay completely clear and untouched
+– Ultra-sharp, professional 8K image quality
+
+
+Logo Placement:
+– Place the ATTACHED A1 logo on the extreme LEFT inside the header
+– Logo must be crisp, fully visible, and proportionally scaled
+– Preserve original colors (green, red, white)
+– No cropping, no stretching, no redesign
+
+
+Extracted Brand Information (Compact Horizontal Layout):
+Primary Text:
+– A1 Air Conditioner Works & Service Centre
+
+
+Secondary Text (small, clean, single line):
+– AC • Refrigerator • Washing Machine • Home Appliances Service
+
+
+Typography:
+– Modern, bold sans-serif font for the brand name
+– Clean, readable font for services
+– Tight but readable spacing
+– Optimized for mobile viewing
+
+
+Color & Style:
+– Professional appliance-service theme
+– Cool blue / steel grey gradient background
+– High-contrast white text
+– Subtle glassmorphism or soft blur effect
+– Thin, elegant bottom separator line
+
+
+Design Quality:
+– Minimal, non-intrusive, trustworthy service-brand look
+– Clean and professional local service branding
+– No product images, no icons, no clutter
+
+
+Lighting & Finish:
+– Soft glow highlights
+– Gentle depth and contrast
+– Clean, polished, premium service-centre finish
+
+
+Strict Instructions:
+– Header height must remain very small (do NOT increase)
+– Do NOT mention video, animation, or motion
+– Do NOT add extra padding or extra elements
+– Do NOT place anything at the bottom
+– Header must look designed by a professional branding studio
+You said:
+Uploaded image
+
+
+🪡MANUFACTURING
+🥻 CUSTOMISED OUTFITS
+🛒 CLOTHING STORE
+🚚 WORLDWIDE SHIPPING AVAILABLE
+🏤 STORE@ MADHURAWADA VISAKHAPATNAM
+📱 WHATSAPP@7981810482
+
+
+give me the prompt for the footer creation
+ChatGPT said:
+Create a premium, ultra-minimal FOOTER banner for a vertical 9:16 IMAGE using the ATTACHED Sarvarees Couture LLP logo.
+
+
+Aspect Ratio & Footer Size:
+– Exact vertical 9:16 ratio (IMAGE ONLY)
+– Footer must occupy ONLY 9–10% of the total image height
+– Slim, elegant footer strip placed strictly at the BOTTOM
+– Remaining image area must stay completely clear and untouched
+– Ultra-sharp, luxury-grade 8K image quality
+
+
+Logo Placement:
+– Place the ATTACHED Sarvarees Couture LLP logo on the extreme LEFT inside the footer
+– Logo must be crisp, elegant, and proportionally scaled
+– Preserve original luxury gold-on-black colors
+– No cropping, no stretching, no redesign
+
+
+Extracted Brand Information (Compact Horizontal Layout):
+Primary Text:
+– SARVAREES COUTURE LLP
+
+
+Secondary Text (small, refined, single line):
+– Manufacturing • Customised Outfits • Clothing Store • Worldwide Shipping
+
+
+Right-Aligned Location & Contact (very compact):
+– Store: Madhurawada, Visakhapatnam
+– WhatsApp: 7981810482
+
+
+Typography:
+– Elegant, luxury-fashion sans-serif or serif font
+– Refined letter spacing and hierarchy
+– High readability without increasing footer height
+– Optimized for mobile viewing
+
+
+Color & Style:
+– Premium luxury fashion theme
+– Deep black background with subtle gold gradient accents
+– Gold or soft champagne text
+– Subtle glassmorphism or soft glow finish
+– Thin, elegant top separator line
+
+
+Design Quality:
+– Minimal, non-intrusive, high-end couture branding
+– Clean, premium, boutique-style finish
+– No icons, no emojis, no extra graphics
+
+
+Lighting & Finish:
+– Soft golden glow highlights
+– Gentle depth and contrast
+– Clean, polished, luxury couture look
+
+
+Strict Instructions:
+– Footer height must remain very small (do NOT increase)
+– Do NOT mention video, animation, or motion
+– Do NOT add extra padding or extra elements
+– Footer must look designed by a top-tier luxury fashion branding studio
+You said:
+just give me Business Information:  for the above in a single passage 
+ChatGPT said:
+Business Information:
+Sarvarees Couture LLP is a fashion brand specializing in garment manufacturing, customised outfits, and premium clothing retail. The store is located at Madhurawada, Visakhapatnam, with worldwide shipping available. Customers can connect via WhatsApp at 7981810482 for enquiries, orders, and custom designs.
+
+
+You said:
+remove number 
+ChatGPT said:
+Business Information:
+Sarvarees Couture LLP is a fashion brand specializing in garment manufacturing, customised outfits, and premium clothing retail. The store is located at Madhurawada, Visakhapatnam, with worldwide shipping available.
+
+
+You said:
+Uploaded image
+SHANKARA CATERERSPhone No 7702237575, 9885667575
+Website https://www.shankaracaterers.com/శంకర క్యాటరర్స్ అనేది రుచికి, నమ్మకానికి చిరునామాగా నిలిచిన క్యాటరింగ్ సేవలు. కమ్మని అమ్మ చేతి వంట రుచితో, శుద్ధమైన వెజ్ మరియు నాన్ వెజ్ తెలుగు సంప్రదాయ వంటకాలను మీ ప్రత్యేక వేడుకలకు అందిస్తున్నాము. వివాహాలు, రిసెప్షన్స్, బర్త్‌డే పార్టీస్, హౌస్ వార్మింగ్ కార్యక్రమాలు, కార్పొరేట్ ఈవెంట్స్ సహా అన్ని రకాల ఫంక్షన్స్‌కు మా సేవలు అందుబాటులో ఉన్నాయి. 50 మంది నుంచి 5000 మంది వరకు క్యాటరింగ్ నిర్వహించే సామర్థ్యం మాకు ఉంది. ప్లేట్ ధరలు కేవలం ₹200 నుంచే ప్రారంభమవుతాయి మరియు మీ అవసరాలకు, బడ్జెట్‌కు తగ్గట్టుగా కస్టమైజ్డ్ మెనూ సౌకర్యం కూడా అందిస్తున్నాము. పరిశుభ్రత, నాణ్యత, రుచిలో ఎక్కడా రాజీ పడకుండా పూర్తి హైదరాబాద్ అంతటా విశ్వసనీయ సేవలు అందించడమే మా లక్ష్యం.
+మా కార్యాలయ చిరునామా: డీ.నెం. 3-353/LIG, రోడ్ నెం. 42 డి, మయూరి నగర్, గోకరాజు రంగారాజు ఇంజినీరింగ్ ఇన్‌స్టిట్యూట్ సమీపంలో, మియాపూర్, హైదరాబాద్, తెలంగాణ – 500049. మీ వేడుకను మరింత ప్రత్యేకంగా, రుచికరంగా మార్చాలంటే ఈరోజే శంకర క్యాటరర్స్‌ను సంప్రదించండి. 7702237575, 9885667575. 
+
+
+give me the prompt for this  
+
+
+ChatGPT said:
+Create a premium, ultra-minimal FOOTER banner for a vertical 9:16 IMAGE using the ATTACHED Shankara Catering Services logo.
+
+
+Aspect Ratio & Footer Size:
+– Exact vertical 9:16 ratio (IMAGE ONLY)
+– Footer must occupy ONLY 9–10% of the total image height
+– Slim, elegant footer strip placed strictly at the BOTTOM
+– Remaining image area must stay completely clear and untouched
+– Ultra-sharp, professional 8K image quality
+
+
+Logo Placement:
+– Place the ATTACHED Shankara Catering Services logo on the extreme LEFT inside the footer
+– Logo must be crisp, vibrant, and proportionally scaled
+– Preserve original gradient colors (yellow–orange–red on black)
+– No cropping, no stretching, no redesign
+
+
+Extracted Brand Information (Compact Horizontal Layout):
+Primary Text:
+– SHANKARA CATERING SERVICES
+
+
+Secondary Text (small, clean, single line):
+– Veg & Non-Veg Telugu Traditional Catering | Weddings • Events • Corporate Functions
+
+
+Right-Aligned Contact & Web (compact):
+– 7702237575 | 9885667575
+– www.shankaracaterers.com
+
+
+Typography:
+– Clean, modern sans-serif with a premium hospitality feel
+– Medium-bold for brand name
+– Regular weight for services and contact
+– Tight but highly readable spacing
+– Optimized for mobile viewing
+
+
+Color & Style:
+– Premium catering & hospitality theme
+– Deep black background with warm gold/orange gradient accents
+– High-contrast white or soft gold text
+– Subtle glassmorphism or soft glow effect
+– Thin, elegant top separator line
+
+
+Design Quality:
+– Minimal, non-intrusive, high-end catering brand look
+– Trustworthy, festive, and professional appearance
+– No food photos, no icons, no clutter
+
+
+Lighting & Finish:
+– Soft warm glow highlights
+– Gentle depth and contrast
+– Clean, polished, premium catering-brand finish
+
+
+Strict Instructions:
+– Footer height must remain very small (do NOT increase)
+– Do NOT mention video, animation, or motion
+– Do NOT add extra padding or elements
+– Footer must look designed by a top-tier hospitality branding studio
+You said:
+thanks
+ChatGPT said:
+You’re welcome 😊
+Anytime you need clean, ready-to-use prompts or branding support, just send the logo or details.
+
+
+You said:
+Business Information: about the “Shankara Caterers”.
+
+
+give me ina single passage 
+ChatGPT said:
+Business Information:
+Shankara Caterers is a trusted catering service known for delivering authentic Telugu vegetarian and non-vegetarian cuisine with a homely, traditional taste and a strong commitment to quality and hygiene. They cater to a wide range of occasions including weddings, receptions, birthday parties, housewarming ceremonies, and corporate events, with the capacity to serve gatherings from 50 to 5000 guests. Offering affordable pricing starting from ₹200 per plate along with customised menu options to suit different tastes and budgets, Shankara Caterers focuses on making every event memorable through delicious food and reliable service across Hyderabad and surrounding areas.
+
+
+You said:
+Uploaded image
+i want exactly this girl now give me the prompt 
+
+
+with this prompt i will attach the logo only
+ChatGPT said:
+Here is a ready-to-use, copy-paste IMAGE GENERATION PROMPT that locks the exact same girl, pose, look, and vibe from the attached image.
+You only need to attach the LOGO when generating.
+
+
+CRITICAL IDENTITY LOCK – NO FACE CHANGE:
+Use the ATTACHED IMAGE as the STRICT facial and body reference.
+The generated woman MUST look EXACTLY the same as in the reference image.
+No face modification, no beautification, no age change, no hairstyle change.
+
+
+Lock strictly:
+– Same face shape
+– Same eyes, eyebrows, nose, lips
+– Same skin tone
+– Same smile and expression
+– Same body proportions
+– Same hairstyle and hair length
+
+
+Allowed changes:
+– ONLY logo placement
+– Minor lighting polish
+– Minor background depth enhancement (same location)
+
+
+SCENE & SUBJECT:
+A young Indian woman standing confidently inside a premium mattress showroom.
+She is wearing an elegant off-white Kerala-style saree with a gold border,
+traditional and graceful appearance.
+Minimal gold jewelry, neat hairstyle, calm confident smile.
+She is standing straight, facing the camera directly,
+hands gently clasped in front, professional and welcoming posture.
+
+
+ENVIRONMENT:
+Modern mattress showroom interior.
+Mattress beds neatly arranged on both sides.
+Visible branded boards and mattress displays in the background.
+Clean, well-lit commercial showroom ambience.
+Depth of field slightly blurred to keep focus on the subject.
+
+
+LOGO INTEGRATION:
+Place the ATTACHED LOGO subtly in the background or on a wall banner.
+Logo must be visible but NOT overpowering the subject.
+Logo colors and proportions must remain unchanged.
+
+
+CAMERA & FRAMING:
+– Full-body portrait
+– Camera at eye level
+– Straight-on angle
+– Centered composition
+– Vertical 9:16 aspect ratio
+– Ultra-high resolution, 8K clarity
+
+
+LIGHTING & STYLE:
+– Soft professional indoor lighting
+– Natural skin tones
+– No harsh shadows
+– Clean, realistic color grading
+– Photorealistic, premium commercial photography look
+
+
+STRICT DO NOTs:
+– Do NOT change the woman’s face or body
+– Do NOT replace the person
+– Do NOT stylize or cartoonize
+– Do NOT add extra people
+– Do NOT alter saree color or design
+– Do NOT add text
+
+
+FINAL OUTPUT:
+A highly realistic, professional brand image with the SAME woman,
+same look, same posture, suitable for premium business branding.
+If you want:
+
+
+Header/footer added
+
+
+Festive lighting
+
+
+Text placement
+
+
+New Year / ad / reel version
+
+
+tell me and I’ll tune the prompt exactly for that.
+
+
+You said:
+Uploaded image
+Uploaded image
+
+
+
+
+give me for this
+ChatGPT said:
+Here is a ready-to-use, copy-paste IMAGE GENERATION PROMPT for SV Laundry, based strictly on the poster + logo you provided.
+No video mention. Clean, poster-style output.
+
+
+Create a premium, high-quality VERTICAL 9:16 IMAGE poster for a professional laundry brand using the ATTACHED SV Laundry logo.
+
+
+Aspect Ratio & Quality:
+– Exact vertical 9:16 ratio
+– Ultra-sharp 8K resolution
+– Clean, bright, modern commercial poster look
+
+
+Logo Usage:
+– Place the ATTACHED SV Laundry logo prominently at the TOP CENTER
+– Logo must remain unchanged in shape, color, and proportions
+– Clear visibility with subtle glow or soft highlight
+– No distortion, no redesign
+
+
+Brand Text (Extracted & Structured from Provided Poster):
+Primary Heading:
+– SV LAUNDRY
+
+
+Tagline (directly below, clean and elegant):
+– Clean. Care. Convenience.
+
+
+Section Title:
+– OUR SERVICES & PRICING
+
+
+Services & Prices (clean list layout with icons or subtle dividers):
+– Wash & Fold – ₹90 / kg
+– Wash & Iron – ₹130 / kg
+– Saree Rolling – Starts from ₹100
+– Saree Dry Wash – Starts from ₹250
+– Ironing – ₹15 per piece
+
+
+Location & Contact (bottom section, compact):
+– Location: Nellore
+– Contact: 90322 21239
+
+
+Visual Elements & Background:
+– Fresh, hygienic laundry theme
+– Soft blue, white, and light grey color palette
+– Floating soap bubbles, water splashes, soft steam effects
+– Washing machine, iron box, folded clothes, hanging shirts, neatly folded sarees
+– Premium, clean, trustworthy ambience
+
+
+Typography:
+– Modern sans-serif font
+– Bold for headings, regular for pricing
+– Excellent spacing and readability
+– Mobile-friendly text clarity
+
+
+Lighting & Style:
+– Bright, clean lighting
+– Soft reflections and highlights
+– Realistic yet premium illustration style
+– Professional commercial branding finish
+
+
+Strict Instructions:
+– IMAGE ONLY (no video, no animation)
+– Do NOT alter prices or text
+– Do NOT add extra offers
+– Do NOT overcrowd the layout
+– Final output must look like a high-end laundry service poster
+If you want:
+• Header-only version
+• Footer-only version
+• Minimal price card
+• Festival / New Year variant
+
+
+tell me which one — I’ll adjust the prompt perfectly.
+
+
+You said:
+Uploaded image
+Uploaded image
+
+
+
+
+give me the prompt to crate header
+ChatGPT said:
+Create a premium, ultra-minimal HEADER for a vertical 9:16 IMAGE using the ATTACHED SV Laundry logo and reference poster style.
+
+
+Aspect Ratio & Header Size:
+– Exact vertical 9:16 ratio (IMAGE ONLY)
+– Header must occupy ONLY 8–10% of the total image height
+– Slim, clean header strip placed strictly at the TOP
+– Remaining image area must stay completely clear
+– Ultra-sharp, professional 8K quality
+
+
+Logo Placement:
+– Place the ATTACHED SV Laundry logo at the LEFT or CENTER of the header
+– Logo must remain exactly the same (no color, shape, or proportion changes)
+– Add a subtle soft glow or glass-ring effect around the logo for premium feel
+– No cropping, no stretching, no redesign
+
+
+Header Text (Clean & Compact Layout):
+Primary Text:
+– SV LAUNDRY
+
+
+Secondary Text (small, elegant, single line):
+– Clean. Care. Convenience.
+
+
+Optional Micro Text (right-aligned, very small):
+– Nellore
+
+
+Typography:
+– Modern, clean sans-serif font
+– Bold for brand name
+– Light or regular weight for tagline
+– Tight but readable spacing
+– Optimized for mobile viewing
+
+
+Color & Style:
+– Clean laundry-themed palette (soft blue, white, light grey)
+– Subtle gradient or frosted-glass background
+– High contrast, fresh and hygienic look
+– Thin, elegant bottom separator line
+
+
+Design Quality:
+– Minimal, non-intrusive, premium commercial branding
+– Professional laundry & fabric-care brand look
+– No icons, no pricing, no extra text
+
+
+Strict Instructions:
+– IMAGE ONLY (do NOT mention video or animation)
+– Header height must remain very small
+– Do NOT add extra elements or padding
+– Header must look designed by a top-tier branding studio
+You said:
+add contact number also, highlight the contact numb er  in the header only
+iw ant in the 9:16 ratio and location also
+
+
+give me the prommtp
+ChatGPT said:
+Create a premium, ultra-minimal HEADER for a vertical 9:16 IMAGE using the ATTACHED SV Laundry logo.
+
+
+Aspect Ratio & Header Size:
+– Exact vertical 9:16 ratio (IMAGE ONLY)
+– Header must occupy ONLY 8–10% of the total image height
+– Slim, clean header strip placed strictly at the TOP
+– Remaining image area must stay completely clear
+– Ultra-sharp, professional 8K quality
+
+
+Logo Placement:
+– Place the ATTACHED SV Laundry logo on the LEFT side of the header
+– Logo must remain unchanged in color, shape, and proportions
+– Subtle glow or glass-ring effect allowed for premium feel
+– No cropping, no stretching, no redesign
+
+
+Header Content (Compact Horizontal Layout):
+Primary Text (center-left):
+– SV LAUNDRY
+
+
+Secondary Text (small, directly below or beside):
+– Clean. Care. Convenience.
+
+
+Highlighted Contact (RIGHT side, most prominent after brand):
+– 📞 90322 21239
+– Contact number must be BOLD, high-contrast, and clearly visible
+
+
+Location (small, near contact):
+– 📍 Nellore
+
+
+Typography:
+– Modern, clean sans-serif font
+– Bold weight for contact number
+– Medium-bold for brand name
+– Regular/light weight for tagline and location
+– Excellent spacing for readability on mobile
+
+
+Color & Style:
+– Fresh laundry-themed palette (soft blue, white, light grey)
+– Subtle gradient or frosted-glass background
+– High-contrast text for the contact number
+– Thin, elegant bottom separator line
+
+
+Design Quality:
+– Minimal, professional, high-end laundry branding
+– Clean and hygienic visual feel
+– No icons except minimal phone/location symbols
+– No pricing, no service list
+
+
+Strict Instructions:
+– IMAGE ONLY (do NOT mention video or animation)
+– Header height must remain very small (do NOT increase)
+– Contact number must be visually highlighted
+– Do NOT add extra elements or padding
+– Header must look designed by a top-tier branding studio
+You said:
+Uploaded image
+Uploaded image
+
+
+
+
+give me the prompt to crate header
+add contact number also, highlight the contact numb er  in the header only 
+iw ant in the 9:16 ratio and location also
+
+
+give me the prommtp
+
+
+give me the prompt
+ChatGPT said:
+Create a premium, ultra-minimal HEADER for a vertical 9:16 IMAGE using the ATTACHED SV Laundry logo.
+
+
+Aspect Ratio & Header Size:
+– Exact vertical 9:16 ratio (IMAGE ONLY)
+– Header must occupy ONLY 8–10% of the total image height
+– Slim, clean header strip placed strictly at the TOP
+– Remaining image area must stay completely clear
+– Ultra-sharp, professional 8K quality
+
+
+Logo Placement:
+– Place the ATTACHED SV Laundry logo on the LEFT side of the header
+– Logo must remain exactly the same (no color, shape, or proportion changes)
+– Subtle soft glow or glass-ring effect allowed
+– No cropping, no stretching, no redesign
+
+
+Header Content (Clean Horizontal Layout):
+Primary Text:
+– SV LAUNDRY
+
+
+Secondary Text (small, elegant):
+– Clean. Care. Convenience.
+
+
+Highlighted Contact Number (MOST PROMINENT):
+– 📞 90322 21239
+– Contact number must be bold, larger than other text, and high-contrast
+
+
+Location (small, near contact):
+– 📍 Nellore
+
+
+Typography:
+– Modern, clean sans-serif font
+– Bold for contact number
+– Medium-bold for brand name
+– Regular/light weight for tagline and location
+– Excellent spacing for mobile readability
+
+
+Color & Style:
+– Fresh laundry-themed palette (soft blue, white, light grey)
+– Subtle gradient or frosted-glass background
+– Contact number highlighted using a pill/label or glow effect
+– Thin, elegant bottom separator line
+
+
+Design Quality:
+– Minimal, professional, high-end laundry branding
+– Clean, hygienic, trustworthy look
+– No pricing, no service list, no extra graphics
+
+
+Strict Instructions:
+– IMAGE ONLY (do NOT mention video or animation)
+– Header height must remain very small
+– Contact number must be visually highlighted
+– Do NOT add extra elements or padding
+– Header must look designed by a top-tier branding studio
+You said:
+Uploaded image
+i want for this
+ChatGPT said:
+Here is a ready-to-use, copy-paste IMAGE GENERATION PROMPT for S.S. Water Solutions, extracted cleanly from the card you shared.
+This is HEADER ONLY, minimal height, 9:16 ratio, with contact highlighted.
+
+
+Create a premium, ultra-minimal HEADER for a vertical 9:16 IMAGE using the ATTACHED S.S. Water Solutions logo or branding reference.
+
+
+Aspect Ratio & Header Size:
+– Exact vertical 9:16 ratio (IMAGE ONLY)
+– Header must occupy ONLY 8–10% of the total image height
+– Slim, clean header strip placed strictly at the TOP
+– Remaining image area must stay completely clear and untouched
+– Ultra-sharp, professional 8K quality
+
+
+Logo Placement:
+– Place the S.S. Water Solutions logo or initials on the LEFT side of the header
+– Logo must be crisp, clean, and proportionally scaled
+– Preserve original green/blue water-themed colors
+– No cropping, no stretching, no redesign
+
+
+Header Content (Clean Horizontal Layout):
+Primary Text:
+– S.S. WATER SOLUTIONS
+
+
+Secondary Text (small, professional):
+– Domestic & Commercial
+
+
+Highlighted Contact (MOST PROMINENT):
+– 📞 +91 73964 32003
+– Contact number must be bold, high-contrast, and visually dominant
+
+
+Location & Address (small, subtle):
+– 📍 ECIL, Hyderabad
+– Plot No: 20, South Kamalanagar Colony
+
+
+Optional Micro Text (very small, right-aligned):
+– Email: sarvashuddhiwatersolutions@gmail.com
+
+
+Typography:
+– Modern, clean sans-serif font
+– Bold for contact number
+– Medium-bold for brand name
+– Regular/light for services and address
+– Excellent readability on mobile screens
+
+
+Color & Style:
+– Clean water-purification theme
+– White, soft blue, and green color palette
+– Subtle gradient or frosted-glass background
+– Contact number highlighted using a pill/glow/outline effect
+– Thin, elegant bottom separator line
+
+
+Design Quality:
+– Minimal, professional, trustworthy service-brand look
+– Clean and hygienic visual feel
+– No product photos, no clutter, no extra graphics
+
+
+Strict Instructions:
+– IMAGE ONLY (do NOT mention video or animation)
+– Header height must remain very small
+– Contact number must be visually highlighted
+– Do NOT add extra padding or unnecessary elements
+– Header must look designed by a top-tier branding studio
+If you want:
+• Footer version
+• WhatsApp-only contact highlight
+• Visiting-card style header
+• New Year / festive variant
+
+
+tell me — I’ll tune it exactly.
+
+
+You said:
+Uploaded image
+give me prompt to create header from this image
+ChatGPT said:
+Create a premium, ultra-minimal HEADER for a vertical 9:16 IMAGE using the ATTACHED silver shop poster as the exact reference.
+
+
+Aspect Ratio & Header Size:
+– Exact vertical 9:16 ratio (IMAGE ONLY)
+– Header must occupy ONLY 8–10% of the total image height
+– Slim, elegant header strip placed strictly at the TOP
+– Remaining image area must stay completely clear and untouched
+– Ultra-sharp, high-quality finish
+
+
+Brand Extraction (from provided image):
+Primary Brand Name:
+– Raja’s Naga Silver Ware
+
+
+Secondary Line (small, refined):
+– Orbit for Silver
+
+
+Header Text Layout:
+– Brand name centered or center-left, most prominent
+– Tagline smaller and placed directly below or beside the brand name
+– No long descriptions in header
+
+
+Optional Owner Credit (very small, subtle – optional):
+– Prop. Raja
+
+
+Typography:
+– Elegant serif or premium traditional font
+– Silver-jewellery luxury feel
+– Medium-bold for brand name
+– Regular/light for tagline
+– Excellent readability on mobile
+
+
+Color & Style:
+– Royal maroon / deep red background inspired by original poster
+– Gold and silver accents
+– Subtle embossed or metallic text effect
+– Thin elegant bottom separator line in gold
+
+
+Design Quality:
+– Minimal, non-intrusive, luxury jewellery branding
+– Traditional yet premium South Indian aesthetic
+– No product images, no photos, no clutter
+
+
+Strict Instructions:
+– IMAGE ONLY (do NOT mention video or animation)
+– Header height must remain very small
+– Do NOT include address or phone number in header
+– Do NOT add extra graphics or padding
+– Header must look designed by a high-end jewellery branding studio
+You said:
+thank you
+ChatGPT said:
+You’re welcome 😊
+Anytime you need prompts or help with headers, footers, or branding, just send the image or details.
+
+
+You said:
+Uploaded image
+give me for this
+ChatGPT said:
+Here is a ready-to-use, copy-paste IMAGE GENERATION PROMPT for creating a HEADER from the image you shared.
+It follows the same rules you’ve been using: 9:16, minimal height, contact highlighted, no video mention.
+
+
+Create a premium, eye-catching HEADER for a vertical 9:16 IMAGE using the ATTACHED food business poster as the reference.
+
+
+Aspect Ratio & Header Size:
+– Exact vertical 9:16 ratio (IMAGE ONLY)
+– Header must occupy ONLY 8–10% of the total image height
+– Slim, bold header strip placed strictly at the TOP
+– Remaining image area must stay completely clear
+– High-resolution, sharp, clean output
+
+
+Brand Extraction (from the provided image):
+Primary Brand Name (Telugu):
+– కర్రి బావి
+
+
+Secondary Line (small, Telugu):
+– టేస్టీ ఫుడ్ సెంటర్
+
+
+Header Layout:
+– Brand name large and bold, centered or center-left
+– Secondary line smaller and placed just below the brand name
+– Right side reserved for contact number
+
+
+Highlighted Contact Number (MOST PROMINENT):
+– 📞 63018 34791
+– Contact number must be bold, high-contrast, and clearly visible
+– Use a solid color pill / outline / glow effect to highlight the number
+
+
+Typography:
+– Bold Telugu display font for brand name
+– Clean, readable Telugu font for secondary text
+– Contact number in strong sans-serif font
+– Optimized for mobile readability
+
+
+Color & Style:
+– Bright food-friendly theme inspired by the poster
+– Yellow / red background with strong contrast
+– White or dark blue text for clarity
+– Thin bottom separator line to define the header
+
+
+Design Quality:
+– Minimal but bold local food-brand style
+– Friendly, inviting, street-food / fast-food vibe
+– No food images, no characters, no clutter in header
+
+
+Strict Instructions:
+– IMAGE ONLY (do NOT mention video or animation)
+– Header height must remain very small
+– Contact number must be visually highlighted
+– Do NOT add address or extra text
+– Do NOT add padding or unnecessary elements
+– Header must look clean, bold, and professionally designed
+If you want:
+
+
+English transliteration
+
+
+Different color theme
+
+
+Only text-based header (no graphics)
+
+
+Festival / offer variant
+
+
+tell me — I’ll adjust it perfectly.
+
+
+You said:
+Uploaded image
+prompt wrongly given check the attached image very carefully
+
+
+
+
+now giveme the prompt very carefully 
+
+
+in that image we have logo , name , tagline, number
+ChatGPT said:
+Got it 👍
+I carefully re-checked the attached image.
+You are right — the previous prompt was wrong.
+
+
+This image already contains ONLY these 4 elements:
+
+
+Logo / Mascot (chef character)
+
+
+Brand Name (Telugu): కర్రి బావి
+
+
+Tagline (Telugu): టేస్టీ ఫుడ్ సెంటర్
+
+
+Contact Number: 63018 34791
+
+
+👉 NO location, NO extra text, NO English name, NO services list
+So the header must be created using ONLY these elements.
+
+
+Below is the corrected, precise, clean prompt 👇
+
+
+✅ FINAL CORRECT HEADER PROMPT (COPY–PASTE)
+Create a bold, clean HEADER for a vertical 9:16 IMAGE using the ATTACHED image as the EXACT reference.
+
+
+Aspect Ratio & Header Size:
+– Exact vertical 9:16 ratio (IMAGE ONLY)
+– Header must occupy ONLY 8–10% of the total image height
+– Header placed strictly at the TOP
+– Remaining image area must stay completely empty and untouched
+– High-resolution, sharp output
+
+
+STRICT CONTENT EXTRACTION (DO NOT ADD ANYTHING EXTRA):
+Use ONLY the following elements exactly as seen in the attached image:
+1) Brand Name (Telugu): కర్రి బావి
+2) Tagline (Telugu): టేస్టీ ఫుడ్ సెంటర్
+3) Logo/Mascot: Chef character (same style, same expression)
+4) Contact Number: 63018 34791
+
+
+Header Layout:
+– Brand name (కర్రి బావి) must be the MOST prominent text
+– Tagline placed directly below the brand name, smaller size
+– Chef mascot/logo positioned to the right or near the brand name
+– Contact number placed clearly and visibly below or beside the name
+
+
+Contact Number Styling:
+– 63018 34791 must be bold, high-contrast, and clearly readable
+– Use a solid color highlight, outline, or subtle glow
+– Do NOT change the number format
+
+
+Typography:
+– Bold Telugu display font for brand name
+– Clean Telugu font for tagline
+– Strong sans-serif font for contact number
+– Optimized for mobile viewing
+
+
+Color & Style:
+– Bright yellow background inspired by the original image
+– Red text for brand name
+– Blue text for tagline and contact number
+– Clean, food-stall / fast-food style
+– Thin bottom separator line only
+
+
+STRICT DO NOTs:
+– Do NOT add location
+– Do NOT add English text
+– Do NOT add services or offers
+– Do NOT add extra graphics
+– Do NOT change wording or spelling
+– Do NOT mention video or animation
+
+
+Final Output Goal:
+A clean, bold, professional food business HEADER that looks exactly
+like a refined version of the original image, using only the existing
+logo, name, tagline, and contact number.
+If you want next:
+
+
+Same header but without mascot
+
+
+Dark background version
+
+
+Festival version
+
+
+Only text header
+
+
+tell me and I’ll adjust it precisely.
+
+
+You said:
+brand name:- kovvuri brothers
+tagline :- fast food center 
+contact :- 6301834791
+and logo
+
+
+this is the only details in the given ,
+
+
+
+
+now give me the prompt according to this information only
+ChatGPT said:
+Perfect 👍
+Here is the CORRECT, CLEAN, READY-TO-USE HEADER PROMPT, using ONLY the details you provided — nothing extra, nothing assumed.
+
+
+✅ FINAL HEADER IMAGE GENERATION PROMPT (COPY–PASTE)
+Create a bold, clean HEADER for a vertical 9:16 IMAGE using the ATTACHED LOGO.
+
+
+Aspect Ratio & Header Size:
+– Exact vertical 9:16 ratio (IMAGE ONLY)
+– Header must occupy ONLY 8–10% of the total image height
+– Header placed strictly at the TOP
+– Remaining image area must stay completely clear and untouched
+– High-resolution, sharp output
+
+
+STRICT CONTENT (USE ONLY THIS INFORMATION):
+Brand Name: Kovvuri Brothers
+Tagline: Fast Food Center
+Contact Number: 6301834791
+Logo: Use the ATTACHED LOGO only
+
+
+Header Layout:
+– Brand name “Kovvuri Brothers” must be the MOST prominent text
+– Tagline “Fast Food Center” placed directly below the brand name
+– Logo placed neatly to the left or right of the brand name
+– Contact number placed clearly within the header
+
+
+Contact Number Styling:
+– 6301834791 must be bold, high-contrast, and clearly readable
+– Highlight the contact number using a solid color box, outline, or glow
+– Do NOT change the number format
+
+
+Typography:
+– Bold, clean display font for the brand name
+– Simple, readable font for the tagline
+– Strong sans-serif font for the contact number
+– Optimized for mobile viewing
+
+
+Color & Style:
+– Bright, food-friendly color theme
+– Clean background (yellow / red / white tones allowed)
+– High contrast between text and background
+– Thin bottom separator line to define the header
+
+
+STRICT DO NOTs:
+– Do NOT add location
+– Do NOT add services list
+– Do NOT add extra text
+– Do NOT add offers or emojis
+– Do NOT mention video or animation
+– Do NOT modify brand name, tagline, or number
+
+
+Final Output Goal:
+A clean, professional fast-food business HEADER using ONLY
+the brand name, tagline, contact number, and logo provided.
+If you want next:
+• Same header with dark theme
+• Minimal black & white version
+• Festival / offer version
+• Header + footer combo
+
+
+Just tell me.
+
+
+You said:
+Uploaded image
+give me for this
+ChatGPT said:
+Got it. Below is a precise, corrected, ready-to-use HEADER CREATION PROMPT, extracted only from the attached image and structured cleanly for AI image generation.
+
+
+✅ HEADER IMAGE GENERATION PROMPT (COPY–PASTE)
+Create a clean, premium HEADER for a vertical 9:16 IMAGE using the ATTACHED IMAGE as the exact reference.
+
+
+Aspect Ratio & Header Size:
+– Exact vertical 9:16 ratio (IMAGE ONLY)
+– Header must occupy ONLY 8–10% of the total image height
+– Header placed strictly at the TOP
+– Remaining image area must stay completely clear
+– Sharp, high-resolution output
+
+
+Extracted & Allowed Content (USE ONLY THIS):
+Brand Name:
+– Society Kanchi Saree House
+
+
+Business Type Line:
+– Wholesaler & Retailer
+
+
+Product Focus (small text line):
+– Kanchi, Dharmavaram, Gadwal, Kuppudam, Pochampally
+
+
+Logo / Symbol:
+– Temple-style emblem with “SKHS” lettering (use the ATTACHED logo/visual only)
+
+
+Contact Numbers (HEADER ONLY):
+– 9849039178
+– 8074793968
+– 9110566076
+
+
+Header Layout:
+– Logo or temple emblem centered or left-aligned
+– Brand name “Society Kanchi Saree House” as the most prominent text
+– Business type and product focus below the brand name in smaller size
+– Contact numbers grouped neatly on one side of the header
+
+
+Contact Number Highlighting:
+– Numbers must be bold and clearly visible
+– Use a contrasting color band or rounded box to highlight them
+– Keep numbers clean, readable, and unmodified
+
+
+Typography:
+– Traditional yet premium serif-style font for brand name
+– Simple, readable font for supporting text
+– Optimized for mobile viewing
+
+
+Color & Style:
+– Bright yellow background inspired by the original image
+– Red and white accents for text
+– Clean, festive South Indian textile branding feel
+– Thin bottom separator line to define header area
+
+
+STRICT DO NOTs:
+– Do NOT add address
+– Do NOT add QR codes
+– Do NOT add Instagram handles
+– Do NOT add extra text or offers
+– Do NOT mention video or animation
+– Do NOT change brand name or numbers
+
+
+Final Output Goal:
+A professional, compact, high-visibility HEADER using only
+the brand name, logo, business type, product focus, and contact numbers
+exactly as provided in the reference image.
+If you want:
+• Minimal modern version
+• Festival banner header
+• Luxury silk saree version
+• Header + footer combo
+
+
+Tell me what style you want next 👍
+
+
+You said:
+Uploaded image
+Uploaded image
+Uploaded image
+give me for this
+ChatGPT said:
+Understood. Below is a VERY CAREFULLY EXTRACTED, CLEAN, READY-TO-USE HEADER CREATION PROMPT, based ONLY on the attached images and nothing extra.
+
+
+✅ HEADER IMAGE GENERATION PROMPT (COPY–PASTE)
+Create a professional, bold HEADER for a vertical 9:16 IMAGE using the ATTACHED IMAGES as exact reference.
+
+
+Aspect Ratio & Header Size:
+– Exact vertical 9:16 ratio (IMAGE ONLY)
+– Header must occupy ONLY 8–10% of the total image height
+– Header placed strictly at the TOP
+– Remaining image area must stay completely clear
+– High-resolution, sharp output
+
+
+Allowed & Extracted Content (USE ONLY THIS):
+
+
+Brand Name:
+– Narayana Building Material Suppliers
+(Use Telugu brand styling as shown in the reference image)
+
+
+English Line (Secondary):
+– BUILDING MATERIAL SUPPLIERS
+
+
+Logo:
+– Building / construction icon logo from the attached images
+
+
+Contact Numbers (HEADER ONLY):
+– 8886497799
+– 7799332079
+
+
+Optional Owner Name (small, subtle):
+– G. Mahesh Babu
+
+
+Header Layout:
+– Brand name as the MOST prominent element
+– Logo placed beside or near the brand name
+– “BUILDING MATERIAL SUPPLIERS” placed directly below the brand name
+– Contact numbers grouped neatly on the right or below the brand name
+
+
+Contact Number Highlighting:
+– Contact numbers must be bold and clearly readable
+– Place numbers inside a contrasting color strip or rounded box
+– High contrast for instant visibility on mobile
+
+
+Typography:
+– Bold traditional Telugu-style font for brand name
+– Clean sans-serif font for English text
+– Strong, readable font for contact numbers
+– Optimized for mobile screens
+
+
+Color & Style:
+– Red and yellow color theme inspired by the reference images
+– White or gold accents for text
+– Construction / hardware business feel
+– Strong, trustworthy, high-visibility design
+– Thin bottom separator line to define header area
+
+
+STRICT DO NOTs:
+– Do NOT add product images
+– Do NOT add dealer lists
+– Do NOT add address or location
+– Do NOT add gods or religious images
+– Do NOT add extra services text
+– Do NOT mention video or animation
+– Do NOT change brand name or numbers
+
+
+Final Output Goal:
+A clean, powerful, compact HEADER for a building materials business,
+showing ONLY the brand name, logo, business type, and contact numbers,
+designed for high visibility in a vertical 9:16 layout.
+If you want next:
+• Ultra-minimal modern header
+• Dark red premium version
+• Round-board / flex banner header
+• Header + footer matching set
+
+
+Just say the word 👍
+
+
+You said:
+Uploaded image
+Uploaded image
+i need for this 
+ChatGPT said:
+Below is a ready-to-use, copy-paste IMAGE GENERATION PROMPT created strictly from the attached tea brand images only.
+No extra assumptions. No added info.
+
+
+Create a clean, premium HEADER DESIGN for a vertical IMAGE in 9:16 aspect ratio.
+
+
+HEADER PLACEMENT & SIZE:
+– Header must occupy ONLY the top 10–12% of the image
+– Slim, horizontal header strip
+– Do NOT disturb the remaining image area
+– Designed for posters, banners, and social creatives
+
+
+BRAND DETAILS (USE ONLY THESE):
+Brand Name: KTC Bharat
+Product: Dust Tea / Premium Gold Tea
+Tagline: Strong ’n’ Tasty Tea
+Secondary Line (optional, small): Refresh you Everyday..!
+Distributor Line (small, optional): Sri Pushpa Agencies
+
+
+HEADER CONTENT STRUCTURE:
+– Center: Brand logo (LOGO WILL BE ATTACHED SEPARATELY)
+– Brand name “KTC Bharat” placed prominently next to or below logo
+– Tagline “Strong ’n’ Tasty Tea” in smaller text below brand name
+– Clean, readable typography
+
+
+DESIGN STYLE:
+– Bright tea-inspired color palette (green, yellow, warm orange)
+– Soft gradient background inspired by tea gardens and sunrise tones
+– Premium FMCG packaging look
+– Modern, clean, non-cluttered
+– No excessive graphics in header
+
+
+TYPOGRAPHY:
+– Bold, rounded, FMCG-style font for brand name
+– Simple sans-serif or handwritten-style font for tagline
+– High contrast for mobile visibility
+
+
+STRICT RULES:
+– IMAGE ONLY (do NOT mention video or animation)
+– Do NOT add prices
+– Do NOT add new text or claims
+– Do NOT invent phone numbers or locations
+– Use ONLY provided brand info
+– Header must look professional and retail-ready
+
+
+QUALITY:
+– Ultra-clean edges
+– Print and digital friendly
+– Realistic, high-quality branding output
+If you want next:
+
+
+Same header in darker / premium version
+
+
+Distributor-focused header
+
+
+Minimal WhatsApp poster header
+
+
+Festival version (Diwali / New Year)
+
+
+Just tell me 👍
+
+
+You said:
+Uploaded image
+extract the information from the attached image and i need for this
+ChatGPT said:
+Here is the information extracted strictly from the attached image, with no additions or assumptions:
+
+
+Extracted Information:
+Brand name: KTC Bharat. Product variants shown include Dust Tea and Premium Gold Tea. The brand is seeking distributors in Andhra Pradesh and Telangana. Product highlights mentioned are Premium Tea, Elachi Tea, and all sizes available. The distributor shown is Sri Pushpa Agencies. Contact numbers provided are 98661 44985 and 79815 30158.
+
+
+You said:
+now give me for this 
+Brand name: KTC Bharat. Product variants shown include Dust Tea and Premium Gold Tea. The brand is seeking distributors in Andhra Pradesh and Telangana. Product highlights mentioned are Premium Tea, Elachi Tea, and all sizes available. The distributor shown is Sri Pushpa Agencies. Contact numbers provided are 98661 44985 and 79815 30158.
+ChatGPT said:
+Below is a ready-to-use, copy-paste IMAGE GENERATION PROMPT, created only from the information you provided and aligned with your previous header-style requests.
+
+
+Create a clean, professional PROMOTIONAL HEADER for a vertical IMAGE in 9:16 aspect ratio.
+
+
+HEADER PLACEMENT & SIZE:
+– Exact 9:16 ratio (IMAGE ONLY)
+– Header must occupy only the TOP 12–15% of the image
+– Slim, horizontal header bar
+– Clear separation from the main content below
+– Designed for posters, distributor ads, and social media creatives
+
+
+BRAND INFORMATION (USE ONLY THIS):
+Brand Name: KTC Bharat
+Product Variants: Dust Tea, Premium Gold Tea
+Distribution Focus: Seeking Distributors
+Regions: Andhra Pradesh & Telangana
+Product Highlights:
+– Premium Tea
+– Elachi Tea
+– All sizes available
+Distributor Name: Sri Pushpa Agencies
+Contact Numbers: 98661 44985, 79815 30158
+
+
+HEADER CONTENT STRUCTURE:
+– Left or center: Brand logo (LOGO WILL BE ATTACHED SEPARATELY)
+– Brand name “KTC Bharat” prominently displayed
+– Small line below brand name: “Dust Tea | Premium Gold Tea”
+– Right side or center-bottom of header:
+  “Wanted Distributors – Andhra Pradesh & Telangana”
+– Contact numbers clearly visible and highlighted:
+  98661 44985 | 79815 30158
+– Distributor credit in smaller text:
+  Sri Pushpa Agencies
+
+
+DESIGN STYLE:
+– FMCG / Tea brand aesthetic
+– Fresh green, yellow, and warm tea-toned color palette
+– Clean gradients inspired by tea gardens and freshness
+– Professional, retail-ready look
+– No clutter, no excessive graphics
+
+
+TYPOGRAPHY:
+– Bold, rounded font for brand name
+– Clean sans-serif for supporting text
+– High contrast for mobile readability
+– Contact numbers must stand out clearly
+
+
+STRICT RULES:
+– IMAGE ONLY (do NOT mention video or animation)
+– Do NOT add prices
+– Do NOT add locations beyond Andhra Pradesh & Telangana
+– Do NOT invent extra claims or text
+– Use only the provided information
+– Header must look suitable for print and digital use
+
+
+OUTPUT QUALITY:
+– Sharp, high-resolution
+– Professional distributor-ad look
+– Ready for WhatsApp, posters, and banners
+If you want next:
+
+
+Minimal version
+
+
+Distributor-heavy version
+
+
+Festival-themed header
+
+
+Square / landscape version
+
+
+Just tell me 👍
+
+
+You said:
+Uploaded image
+extract the information from the attached image and i need for this
+ChatGPT said:
+Here is the clean, structured information extracted strictly from the attached image, without adding or assuming anything extra:
+
+
+Brand / Company Name
+S Cube Energy and Infra Pvt. Ltd.
+
+
+Core Message (Telugu – Meaning)
+Reduce your electricity bills with solar power.
+Convert your home into a solar-powered house and enjoy long-term savings with government support.
+
+
+Services Offered
+Residential Solar Power Systems
+
+
+Grid-connected rooftop solar installations
+
+
+Complete solar solution from installation to support
+
+
+Government & Approval Details
+MNRE Approved Channel Partner
+
+
+Andhra Pradesh & Telangana DISCOMs Approved Vendor
+
+
+Supported under PM Surya Ghar Muft Bijli Yojana
+
+
+Subsidy / Pricing Information
+Government subsidy available
+
+
+Subsidy amount: ₹78,000
+
+
+Applicable for systems above 3 kW
+
+
+Financial Support
+Loan facilities available through:
+
+
+SBI
+
+
+Indian Bank
+
+
+Bank of India
+
+
+Bank of Baroda
+
+
+Union Bank
+
+
+Canara Bank
+
+
+Service Location
+AS Rao Nagar, ECIL, Hyderabad
+
+
+Contact Numbers
+9515116642
+
+
+9515116647
+
+
+9515116648
+
+
+If you want next, I can give you:
+
+
+✅ Business Information (single passage)
+
+
+✅ Image / poster generation prompt
+
+
+✅ Header-only prompt
+
+
+✅ Short ad copy (Telugu / English)
+
+
+✅ WhatsApp poster text
+
+
+Just tell me what you need 👍
+
+
+You said:
+i need  IMAGE GENERATION PROMPT, created only from the information provided and aligned with your previous header-style requests.
+ChatGPT said:
+Here is a clean, precise IMAGE GENERATION PROMPT, created strictly from the extracted information only, aligned to your previous header-style requirements (no extra claims, no assumptions, no video wording):
+
+
+IMAGE GENERATION PROMPT (HEADER DESIGN | 9:16)
+Create a professional vertical header image (9:16 aspect ratio) for a solar energy company.
+
+
+Brand Name (Top Center):
+S CUBE
+ENERGY AND INFRA PVT. LTD.
+
+
+Visual Style:
+Clean, modern, trustworthy, government-approved solar brand look.
+Bright daylight, premium corporate design, high clarity.
+
+
+Main Visual:
+A modern residential house with rooftop solar panels installed neatly, clearly visible panels reflecting sunlight, symbolizing clean and renewable energy.
+
+
+Core Message (Telugu – exactly as concept, not rewritten creatively):
+Focus on reducing electricity bills using solar power and converting homes into solar-powered houses with government support.
+
+
+Approval & Trust Elements (Badges / Labels):
+
+
+MNRE Approved Channel Partner
+
+
+Andhra Pradesh & Telangana DISCOMs Approved Vendor
+
+
+PM Surya Ghar Muft Bijli Yojana
+
+
+Subsidy Highlight (Bold Box):
+₹78,000 Subsidy
+Applicable for systems Above 3 kW
+
+
+Finance Support Section (Icons / Text):
+Loan facility available through:
+SBI, Indian Bank, Bank of India, Bank of Baroda, Union Bank, Canara Bank
+
+
+Location (Bottom Center):
+AS Rao Nagar, ECIL, Hyderabad
+
+
+Contact Numbers (Highlighted, Large & Clear):
+9515116642 | 9515116647 | 9515116648
+
+
+Design Rules:
+
+
+No animation
+
+
+No video wording
+
+
+No extra offers or claims
+
+
+No additional text beyond provided information
+
+
+Clean typography, bold headings, high contrast
+
+
+Professional, realistic, print-ready quality
+
+
+Output Quality:
+Ultra-clear, high-resolution, realistic lighting, premium corporate poster finish.
+
+
+If you want, I can now:
+
+
+Convert this into a Lovable AI–ready atomic prompt
+
+
+Simplify it for any image AI
+
+
+Create a universal reusable header prompt template
+
+
+Just tell me 👍
+
+
+You said:
+i needed to get like this 
+Create a clean, professional PROMOTIONAL HEADER for a vertical IMAGE in 9:16 aspect ratio.
+
+
+HEADER PLACEMENT & SIZE:
+– Exact 9:16 ratio (IMAGE ONLY)
+– Header must occupy only the TOP 12–15% of the image
+– Slim, horizontal header bar
+– Clear separation from the main content below
+– Designed for posters, distributor ads, and social media creatives
+
+
+BRAND INFORMATION (USE ONLY THIS):
+Brand Name: KTC Bharat
+Product Variants: Dust Tea, Premium Gold Tea
+Distribution Focus: Seeking Distributors
+Regions: Andhra Pradesh & Telangana
+Product Highlights:
+– Premium Tea
+– Elachi Tea
+– All sizes available
+Distributor Name: Sri Pushpa Agencies
+Contact Numbers: 98661 44985, 79815 30158
+
+
+HEADER CONTENT STRUCTURE:
+– Left or center: Brand logo (LOGO WILL BE ATTACHED SEPARATELY)
+– Brand name “KTC Bharat” prominently displayed
+– Small line below brand name: “Dust Tea | Premium Gold Tea”
+– Right side or center-bottom of header:
+  “Wanted Distributors – Andhra Pradesh & Telangana”
+– Contact numbers clearly visible and highlighted:
+  98661 44985 | 79815 30158
+– Distributor credit in smaller text:
+  Sri Pushpa Agencies
+
+
+DESIGN STYLE:
+– FMCG / Tea brand aesthetic
+– Fresh green, yellow, and warm tea-toned color palette
+– Clean gradients inspired by tea gardens and freshness
+– Professional, retail-ready look
+– No clutter, no excessive graphics
+
+
+TYPOGRAPHY:
+– Bold, rounded font for brand name
+– Clean sans-serif for supporting text
+– High contrast for mobile readability
+– Contact numbers must stand out clearly
+
+
+STRICT RULES:
+– IMAGE ONLY (do NOT mention video or animation)
+– Do NOT add prices
+– Do NOT add locations beyond Andhra Pradesh & Telangana
+– Do NOT invent extra claims or text
+– Use only the provided information
+– Header must look suitable for print and digital use
+
+
+OUTPUT QUALITY:
+– Sharp, high-resolution
+– Professional distributor-ad look
+– Ready for WhatsApp, posters, and banners
+ChatGPT said:
+Perfect — below is the refined IMAGE GENERATION PROMPT, written exactly in the same structure, tone, and precision you asked for, using ONLY the provided information and aligned to your header-only requirement.
+
+
+IMAGE GENERATION PROMPT – PROMOTIONAL HEADER (9:16)
+Create a clean, professional PROMOTIONAL HEADER for a vertical IMAGE in 9:16 aspect ratio.
+
+
+HEADER PLACEMENT & SIZE
+Exact 9:16 ratio (IMAGE ONLY)
+
+
+Header must occupy only the TOP 12–15% of the image
+
+
+Slim, horizontal header bar
+
+
+Clear visual separation from the main content below
+
+
+Suitable for posters, distributor ads, WhatsApp creatives, and banners
+
+
+BRAND INFORMATION (USE ONLY THIS)
+Brand Name: KTC Bharat
+
+
+Product Variants: Dust Tea, Premium Gold Tea
+
+
+Distribution Focus: Seeking Distributors
+
+
+Regions: Andhra Pradesh & Telangana
+
+
+Product Highlights:
+
+
+Premium Tea
+
+
+Elachi Tea
+
+
+All sizes available
+
+
+Distributor Name: Sri Pushpa Agencies
+
+
+Contact Numbers: 98661 44985, 79815 30158
+
+
+Logo: Logo will be attached separately
+
+
+HEADER CONTENT STRUCTURE
+Left or Center: Brand logo (use attached logo only)
+
+
+Primary Text:
+KTC Bharat (bold and prominent)
+
+
+Secondary Line (below brand name):
+Dust Tea | Premium Gold Tea
+
+
+Right side or center-bottom of header:
+Wanted Distributors – Andhra Pradesh & Telangana
+
+
+Contact Numbers (clearly highlighted):
+98661 44985 | 79815 30158
+
+
+Distributor Credit (smaller text):
+Sri Pushpa Agencies
+
+
+DESIGN STYLE
+FMCG / Tea brand aesthetic
+
+
+Fresh green, yellow, and warm tea-toned color palette
+
+
+Clean gradients inspired by tea gardens and freshness
+
+
+Professional, retail-ready appearance
+
+
+Minimal, uncluttered layout
+
+
+No unnecessary decorative elements
+
+
+TYPOGRAPHY
+Bold, rounded font for brand name
+
+
+Clean sans-serif font for all supporting text
+
+
+High contrast for mobile and print readability
+
+
+Contact numbers must be visually dominant and easy to read
+
+
+STRICT RULES
+IMAGE ONLY (no video or animation references)
+
+
+Do NOT add prices
+
+
+Do NOT add locations beyond Andhra Pradesh & Telangana
+
+
+Do NOT invent additional claims or marketing text
+
+
+Use ONLY the information provided above
+
+
+Header must be suitable for both print and digital use
+
+
+OUTPUT QUALITY
+High-resolution, sharp, and clean
+
+
+Professional distributor-ad finish
+
+
+Ready for WhatsApp sharing, posters, banners, and hoardings
+
+
+If you want next, I can:
+
+
+Convert this into a Lovable AI atomic prompt
+
+
+Create a universal reusable header template
+
+
+Adapt the same structure for other brands instantly
+
+
+Just say the word.
+
+
+You said:
+see your task in this whole chat is to give me the prompt for header creation 
+
+
+if i provide information then create based on that if i provide image then extract from the image and give me the business information and then provide the prompt 
+
+
+make sure to provide the prompt in artifact 
+(onces ready the previous chatting betting us in this chat you helped me for many header prompts )
+ChatGPT said:
+Got it 👍
+I fully understand the task and workflow now. I’ll stick to this exactly going forward.
+
+
+✅ My Role in This Chat (Confirmed)
+For every request in this chat:
+
+
+If you provide TEXT information
+→ I will ONLY use that information
+→ I will create a HEADER IMAGE GENERATION PROMPT
+
+
+If you provide an IMAGE
+→ I will carefully extract ONLY the visible business information
+→ First, I will summarize the extracted business information
+→ Then, I will create a HEADER IMAGE GENERATION PROMPT based strictly on that data
+
+
+I will NOT:
+
+
+Invent extra details
+
+
+Add prices unless visible
+
+
+Add locations unless visible
+
+
+Mention video/animation
+
+
+Mix header + poster (header only unless you ask otherwise)
+
+
+I will ALWAYS provide the final prompt in an ARTIFACT-style block (clean, copy-paste ready), just like you want.
+
+
+🔒 STANDARD HEADER PROMPT FORMAT I WILL FOLLOW EVERY TIME
+Below is the fixed master structure I’ll use (content will change based on your info/image):
+
+
+IMAGE GENERATION PROMPT – PROMOTIONAL HEADER (9:16)
+
+
+Create a clean, professional PROMOTIONAL HEADER for a vertical IMAGE in 9:16 aspect ratio.
+
+
+HEADER PLACEMENT & SIZE:
+– Exact 9:16 ratio (IMAGE ONLY)
+– Header must occupy only the TOP 12–15% of the image
+– Slim, horizontal header bar
+– Clear separation from the main content below
+– Designed for posters, banners, and social media creatives
+
+
+BRAND INFORMATION (USE ONLY THIS):
+Brand Name: <extracted or provided>
+Tagline / Business Type: <if available>
+Products / Services: <only what is visible or provided>
+Focus / Offer: <if visible or provided>
+Region / Location: <only if visible or provided>
+Contact Number(s): <only visible or provided>
+Logo: Logo will be attached separately
+
+
+HEADER CONTENT STRUCTURE:
+– Left or center: Brand logo (LOGO WILL BE ATTACHED SEPARATELY)
+– Brand name prominently displayed
+– Small supporting line below brand name (if applicable)
+– Right side or center-bottom:
+  Key message (example: Wanted Distributors / Service Type)
+– Contact number(s) clearly visible and highlighted
+– Any owner / distributor credit ONLY if visible
+
+
+DESIGN STYLE:
+– Industry-appropriate color palette (derived from brand/image)
+– Clean gradients
+– Professional, retail-ready look
+– No clutter, no unnecessary graphics
+
+
+TYPOGRAPHY:
+– Bold font for brand name
+– Clean sans-serif for supporting text
+– High contrast for mobile readability
+– Contact numbers must stand out clearly
+
+
+STRICT RULES:
+– IMAGE ONLY (no video or animation)
+– Do NOT invent text
+– Do NOT add prices unless shown
+– Do NOT add extra locations
+– Use ONLY provided or extracted information
+– Header must be suitable for print and digital use
+
+
+OUTPUT QUALITY:
+– High-resolution
+– Sharp and clean
+– Ready for WhatsApp, posters, banners
+✅ You can now just do ONE of these
+Send business details ➝ I’ll generate the header prompt
+
+
+Send an image ➝ I’ll extract info + generate the header prompt
+
+
+No need to explain again.
+I’m locked into HEADER PROMPT MODE for this chat.
+
+
+You said:
+Uploaded image
+now i need for this 
+ChatGPT said:
+Perfect. I’ll follow exactly the agreed workflow.
+
+
+✅ STEP 1: Extracted Business Information (ONLY from the image)
+Brand Name:
+CUBE Energy and Infra Pvt. Ltd.
+
+
+Business Type / Service:
+Solar Power Installation (Residential Rooftop Solar)
+
+
+Key Message (Telugu – meaning inferred from visible text):
+Reduce electricity bills by installing solar power
+Get government subsidy benefits
+
+
+Approvals / Credentials:
+– MNRE Approved
+– Channel Partner
+– Andhra & Telangana DISCOMs Approved Vendor
+
+
+Scheme Mentioned:
+PM Surya Ghar Muft Bijli Yojana
+
+
+Pricing Information (Visible):
+₹78,000/- for Above 3kW (Subsidy mentioned)
+
+
+Location:
+AS Rao Nagar, ECIL, Hyderabad
+
+
+Contact Numbers:
+9515116642
+9515116647
+9515116648
+
+
+Logo:
+CUBE Energy and Infra Pvt. Ltd. (logo visible in header)
+
+
+✅ STEP 2: IMAGE GENERATION PROMPT (HEADER ONLY)
+(As requested — provided in artifact, clean and copy-paste ready)
+
+
+IMAGE GENERATION PROMPT – PROMOTIONAL HEADER (9:16)
+
+
+Create a clean, professional PROMOTIONAL HEADER for a vertical IMAGE in 9:16 aspect ratio.
+
+
+HEADER PLACEMENT & SIZE:
+– Exact 9:16 ratio (IMAGE ONLY)
+– Header must occupy only the TOP 12–15% of the image
+– Slim, horizontal header bar
+– Clear visual separation from the main content below
+– Designed for posters, solar ads, and social media creatives
+
+
+BRAND INFORMATION (USE ONLY THIS):
+Brand Name: CUBE Energy and Infra Pvt. Ltd.
+Business Type: Solar Power Installation
+Certifications:
+– MNRE Approved
+– Channel Partner
+– Andhra & Telangana DISCOMs Approved Vendor
+Government Scheme: PM Surya Ghar Muft Bijli Yojana
+Location: AS Rao Nagar, ECIL, Hyderabad
+Contact Numbers:
+9515116642 | 9515116647 | 9515116648
+Logo: Brand logo will be attached separately
+
+
+HEADER CONTENT STRUCTURE:
+– Left or center: Brand logo (LOGO WILL BE ATTACHED SEPARATELY)
+– Brand name “CUBE Energy and Infra Pvt. Ltd.” prominently displayed
+– Supporting line below brand name:
+  “MNRE Approved | Solar Power Solutions”
+– Right side or center-bottom of header:
+  “Government Subsidy Available”
+– Contact numbers clearly visible and highlighted:
+  9515116642 | 9515116647 | 9515116648
+– Location in smaller text:
+  AS Rao Nagar, ECIL, Hyderabad
+
+
+DESIGN STYLE:
+– Clean renewable-energy aesthetic
+– Blue, green, and white color palette
+– Subtle solar/energy-inspired gradients
+– Professional, trustworthy, infrastructure-grade look
+– No clutter, no heavy graphics
+
+
+TYPOGRAPHY:
+– Bold, modern font for brand name
+– Clean sans-serif for supporting text
+– High contrast for mobile readability
+– Contact numbers must stand out clearly
+
+
+STRICT RULES:
+– IMAGE ONLY (no video or animation)
+– Do NOT invent additional offers
+– Do NOT add prices outside the header
+– Use ONLY the extracted information
+– Header must be suitable for print and digital use
+
+
+OUTPUT QUALITY:
+– High-resolution
+– Sharp and professional
+– Ready for WhatsApp, posters, banners, and hoardings
+Whenever you’re ready, send next image or business info — I’ll continue in the same exact header-prompt format without deviation.
+
+
+You said:
+nice but make sure the header card will look like preimum professional based on the business 
+
+
+also always 10% only not 12-15%
+ChatGPT said:
+Perfect 👍 noted and locked.
+
+
+Below is the UPDATED, FINAL HEADER PROMPT, refined to look premium + highly professional, and with HEADER HEIGHT FIXED to exactly 10% (not 12–15%).
+This is copy-paste ready and aligned with everything you clarified.
+
+
+IMAGE GENERATION PROMPT – PREMIUM PROFESSIONAL HEADER (9:16)
+
+
+Create a HIGH-END, PREMIUM PROMOTIONAL HEADER for a vertical IMAGE in 9:16 aspect ratio.
+
+
+HEADER PLACEMENT & SIZE (STRICT):
+– Exact 9:16 ratio (IMAGE ONLY)
+– Header must occupy ONLY the TOP 10% of the image (not more, not less)
+– Slim, elegant horizontal header bar
+– Strong visual separation from main content below
+– Designed for premium posters, solar branding creatives, and professional ads
+
+
+BRAND INFORMATION (USE ONLY THIS):
+Brand Name: CUBE Energy and Infra Pvt. Ltd.
+Business Type: Solar Power Installation (Residential & Rooftop)
+Certifications & Trust Marks:
+– MNRE Approved
+– Channel Partner
+– Andhra & Telangana DISCOMs Approved Vendor
+Government Scheme:
+– PM Surya Ghar Muft Bijli Yojana
+Location:
+– AS Rao Nagar, ECIL, Hyderabad
+Contact Numbers (HIGHLIGHT CLEARLY):
+– 9515116642 | 9515116647 | 9515116648
+Logo:
+– Official brand logo (LOGO WILL BE ATTACHED SEPARATELY)
+
+
+HEADER CONTENT STRUCTURE:
+– Left or center-left: Brand logo (attached separately)
+– Center: Brand name “CUBE Energy and Infra Pvt. Ltd.” in bold premium typography
+– Small supporting line below brand name:
+  “MNRE Approved | Solar Power Solutions”
+– Right side of header:
+  “Government Subsidy Available”
+– Contact numbers placed prominently and clearly:
+  9515116642 | 9515116647 | 9515116648
+– Location in small, subtle text:
+  AS Rao Nagar, ECIL, Hyderabad
+
+
+DESIGN STYLE (PREMIUM ONLY):
+– Corporate renewable-energy branding style
+– Deep blue, clean white, and subtle green accents
+– Minimal gradients inspired by solar panels and clean energy
+– Flat, modern, infrastructure-grade finish
+– No cartoon elements, no stock icons, no clutter
+
+
+TYPOGRAPHY:
+– Bold, corporate sans-serif font for brand name
+– Clean modern sans-serif for supporting text
+– Excellent spacing and alignment
+– Contact numbers must be visually dominant and readable on mobile
+
+
+STRICT RULES:
+– IMAGE ONLY (NO video, NO animation)
+– Header height strictly limited to 10%
+– Do NOT add prices
+– Do NOT invent new claims or text
+– Do NOT add extra locations
+– Use ONLY the provided information
+– Header must look suitable for premium print & digital use
+
+
+OUTPUT QUALITY:
+– Ultra-sharp, high-resolution
+– Professional, trust-building appearance
+– Ready for WhatsApp, banners, posters, hoardings, and ads
+✅ From now on:
+
+
+Header height = fixed at 10%
+
+
+Premium / professional styling matched to business type
+
+
+Only extracted or provided data
+
+
+Always delivered as clean copy-paste prompt
+
+
+Send the next image or business info whenever ready.
+
+
+You said:
+Uploaded image
+i need  IMAGE GENERATION PROMPT, created only from the information provided and aligned with your previous header-style requests.
+
+
+
+
+give me for this 
+
+
+Ganesh gifts vijayawada 
+Mobile no -8185980010
+Add this no also -8121270127
+You said:
+Uploaded image
+give me for this Ganesh gifts vijayawada Mobile no -8185980010 Add this no also -8121270127
+ChatGPT said:
+Below is the FINAL, CLEAN IMAGE GENERATION PROMPT exactly in the format you want, aligned with all previous rules, 10% header only, premium professional look, and STRICTLY using only the provided information.
+
+
+You can copy-paste this directly into your image generation tool.
+
+
+🎨 IMAGE GENERATION PROMPT (HEADER CREATION – PREMIUM)
+Create a clean, premium PROFESSIONAL HEADER for a vertical IMAGE in 9:16 aspect ratio.
+
+
+📐 HEADER PLACEMENT & SIZE (STRICT)
+Exact 9:16 vertical image
+
+
+Header occupies ONLY the TOP 10% of the image
+
+
+Slim, horizontal premium header bar
+
+
+Clear visual separation from the main content below
+
+
+Designed for posters, banners, and social media creatives
+
+
+IMAGE ONLY (no video, no animation)
+
+
+🏷️ BUSINESS INFORMATION (USE ONLY THIS)
+Brand Name: Ganesh Gifts
+
+
+Location: Vijayawada
+
+
+Contact Numbers:
+
+
+8185980010
+
+
+8121270127
+
+
+🧱 HEADER CONTENT STRUCTURE
+Left or center: Brand logo placeholder (logo will be added separately)
+
+
+Primary text (bold, premium):
+GANESH GIFTS
+
+
+Secondary line (smaller text below):
+Vijayawada
+
+
+Right side or center-right:
+📞 8185980010 | 8121270127
+(Contact numbers must be clearly visible and highlighted)
+
+
+🎨 DESIGN STYLE (PREMIUM ONLY)
+Luxury gift-store aesthetic
+
+
+Deep navy / charcoal / dark teal background
+
+
+Elegant gold accents and subtle metallic gradients
+
+
+Clean, minimal, high-end finish
+
+
+No clutter, no product images inside header
+
+
+Professional retail-brand look
+
+
+🔤 TYPOGRAPHY
+Brand name: Bold, elegant serif or premium sans-serif
+
+
+Supporting text: Clean, modern sans-serif
+
+
+High contrast for mobile readability
+
+
+Contact numbers slightly emphasized with icons or soft highlight
+
+
+🚫 STRICT RULES
+IMAGE ONLY (do not mention video or motion)
+
+
+Do NOT add taglines, offers, or extra text
+
+
+Do NOT add products, prices, or claims
+
+
+Do NOT add any address details
+
+
+Use ONLY the information provided
+
+
+Header must look suitable for print + digital
+
+
+✅ OUTPUT QUALITY
+Ultra-sharp, high-resolution
+
+
+Premium, professional branding
+
+
+Ready for WhatsApp creatives, posters, and banners
+
+
+If you want, next I can:
+
+
+Lock this as your MASTER HEADER PROMPT TEMPLATE
+
+
+Or instantly generate the next header if you share a new image or business info
+
+
+You said:
+give me in single artifact block where i can copy and paste easily
+ChatGPT said:
+IMAGE GENERATION PROMPT (PREMIUM HEADER – 10% HEIGHT)
+
+
+Create a clean, premium PROFESSIONAL HEADER for a vertical IMAGE in 9:16 aspect ratio.
+
+
+HEADER PLACEMENT & SIZE (STRICT):
+– Exact 9:16 vertical image
+– Header occupies ONLY the TOP 10% of the image (not more, not less)
+– Slim, horizontal header bar
+– Clear visual separation from the main content below
+– Designed for posters, banners, and social media creatives
+– IMAGE ONLY (no video, no animation)
+
+
+BUSINESS INFORMATION (USE ONLY THIS):
+Brand Name: Ganesh Gifts
+Location: Vijayawada
+Contact Numbers:
+– 8185980010
+– 8121270127
+
+
+HEADER CONTENT STRUCTURE:
+– Left or center: Brand logo placeholder (logo will be added separately)
+– Primary text (bold, premium): GANESH GIFTS
+– Secondary line (smaller text below brand name): Vijayawada
+– Right side or center-right:
+  Contact numbers clearly visible and highlighted:
+  8185980010 | 8121270127
+
+
+DESIGN STYLE (PREMIUM PROFESSIONAL):
+– Luxury gift-store aesthetic
+– Deep navy / charcoal / dark teal background
+– Elegant gold accents with subtle metallic gradients
+– Clean, minimal, high-end finish
+– No clutter, no product images inside header
+– Professional retail-brand look
+
+
+TYPOGRAPHY:
+– Brand name: Bold, elegant serif or premium sans-serif
+– Supporting text: Clean modern sans-serif
+– High contrast for mobile readability
+– Contact numbers slightly emphasized using icons or soft highlight
+
+
+STRICT RULES:
+– IMAGE ONLY (do NOT mention video or motion)
+– Do NOT add taglines, offers, prices, or claims
+– Do NOT add address or extra text
+– Use ONLY the information provided
+– Header must be suitable for print and digital use
+
+
+OUTPUT QUALITY:
+– Ultra-sharp, high-resolution
+– Premium, professional branding
+– Ready for WhatsApp creatives, posters, and banners
+You said:
+Uploaded image
+ 
+
+
+
+
+give me for this 
+
+
+
+
+Mobile 1-8185980010 
+MOBILE 2 -8121270127
+ADD FULL ADDRESS 
+ChatGPT said:
+IMAGE GENERATION PROMPT (PREMIUM HEADER – STRICT 10%)
+
+
+Create a clean, PREMIUM PROFESSIONAL HEADER for a vertical IMAGE in 9:16 aspect ratio.
+
+
+────────────────────────────
+HEADER PLACEMENT & SIZE (STRICT)
+────────────────────────────
+– Exact 9:16 vertical image
+– Header must occupy ONLY the TOP 10% of the image
+– Slim, horizontal header bar
+– Clear visual separation from the main content below
+– Designed for posters, banners, and social media creatives
+– IMAGE ONLY (no video, no animation)
+
+
+────────────────────────────
+BUSINESS INFORMATION (USE ONLY THIS)
+────────────────────────────
+Brand Name: Ganesh Gifts  
+Location: Vijayawada  
+
+
+Contact Numbers:
+– 8185980010  
+– 8121270127  
+
+
+Full Address:
+#11-40-2/5A, Pulipativari Street,  
+Vijayawada – 520001, Andhra Pradesh
+
+
+────────────────────────────
+HEADER CONTENT STRUCTURE
+────────────────────────────
+– Left or center-left: Brand logo placeholder (logo will be added separately)
+– Center: Brand name displayed prominently:
+  GANESH GIFTS
+– Small supporting text below brand name:
+  Vijayawada
+– Right side:
+  Contact numbers clearly visible and highlighted:
+  8185980010 | 8121270127
+– Bottom line within header (smaller, clean text):
+  #11-40-2/5A, Pulipativari Street, Vijayawada – 520001 (AP)
+
+
+────────────────────────────
+DESIGN STYLE (PREMIUM & PROFESSIONAL)
+────────────────────────────
+– Luxury gift-store branding aesthetic
+– Deep navy / charcoal / dark teal background
+– Elegant gold accents and subtle metallic gradients
+– Minimal, high-end, clutter-free layout
+– No product images inside header
+– Sophisticated retail-brand look
+
+
+────────────────────────────
+TYPOGRAPHY
+────────────────────────────
+– Brand name: Bold, elegant serif or premium sans-serif
+– Supporting text: Clean modern sans-serif
+– High contrast for mobile readability
+– Contact numbers slightly emphasized using icons or soft highlight
+
+
+────────────────────────────
+STRICT RULES
+────────────────────────────
+– IMAGE ONLY (do NOT mention video or animation)
+– Do NOT add offers, prices, slogans, or extra claims
+– Do NOT invent any new text
+– Use ONLY the information provided
+– Header must look suitable for print and digital use
+
+
+────────────────────────────
+OUTPUT QUALITY
+────────────────────────────
+– Ultra-sharp, high-resolution
+– Premium, professional branding finish
+– Ready for WhatsApp creatives, posters, and banners
+You said:
+Uploaded image
+Uploaded image
+it's for app i need for this 
+ChatGPT said:
+Perfect 👍
+Below is a SINGLE, CLEAN, COPY-PASTE IMAGE GENERATION PROMPT for a PREMIUM APP HEADER, strictly aligned with your rules, extracted only from the attached image information, and following your 10% header height rule.
+
+
+Create a PREMIUM, PROFESSIONAL APP HEADER for a vertical IMAGE in 9:16 aspect ratio.
+
+
+HEADER SIZE & PLACEMENT:
+– Exact 9:16 ratio (IMAGE ONLY)
+– Header must occupy ONLY the TOP 10% of the image
+– Slim, elegant horizontal header bar
+– Clear separation from the app content below
+– Designed specifically for a mobile application header
+
+
+BRAND INFORMATION (USE ONLY THIS):
+Brand Name: my party
+Company Name: MYPARTYHYD ENTERPRISES LLP
+Tagline: Discover & Celebrate
+
+
+CONTACT & BUSINESS DETAILS:
+Location: Hyderabad, India
+Phone Number: +91 98498 68829
+Email: mypartyhyd@gmail.com
+Website: www.mypartyhyd.com
+Certification: ISO 9001:2015
+
+
+LOGO USAGE:
+– Use the provided “my party” app logo (logo will be attached separately)
+– Logo must be placed on the LEFT or CENTER of the header
+– Logo must be clean, flat, and app-store style (no distortion)
+
+
+HEADER CONTENT STRUCTURE:
+– Left or center: App logo
+– Right or center-aligned text:
+  “my party”
+  (smaller text below) “Discover & Celebrate”
+– Optional small supporting text (very subtle):
+  “MYPARTYHYD ENTERPRISES LLP”
+
+
+DESIGN STYLE:
+– Premium mobile-app UI design
+– Modern, clean, and minimal
+– Elegant purple gradient background inspired by the app branding
+– Soft light streaks or abstract waves (very subtle)
+– No clutter, no excessive graphics
+– Professional SaaS / event-tech look
+
+
+TYPOGRAPHY:
+– Rounded, friendly font for “my party”
+– Clean sans-serif for supporting text
+– High contrast white or light text on purple background
+– Perfect readability on small mobile screens
+
+
+STRICT RULES:
+– IMAGE ONLY (no video, no animation)
+– Header height strictly limited to 10%
+– Do NOT add extra services, features, or claims
+– Do NOT invent any new text
+– Use ONLY the information provided above
+– Suitable for Play Store screenshots, app onboarding, and in-app headers
+
+
+OUTPUT QUALITY:
+– Ultra-clean, sharp, high-resolution
+– Premium app-branding finish
+– Professional, modern, and scalable
+If you want, next I can:
+
+
+Lock this as your MASTER APP HEADER PROMPT
+
+
+Create a variant for website header
+
+
+Create a dark/light mode version
+
+
+Create a Play Store feature graphic prompt
+
+
+Just tell me 👍
+
+
+You said:
+Uploaded image
+now i need for this 
+TIREO WASH (Experience the new level of laundry)
+Company Number is 829 74 77 888 and 829 75 77 888
+Places of service - Pithapuram & Kakinada
+ChatGPT said:
+Perfect 👍
+Below is a SINGLE COPY-PASTE IMAGE GENERATION PROMPT, written exactly in the same premium header style you’ve been following, with 10% header height, and using ONLY the information you provided for TRIEO WASH.
+
+
+Create a PREMIUM, PROFESSIONAL PROMOTIONAL HEADER for a vertical IMAGE in 9:16 aspect ratio.
+
+
+HEADER SIZE & PLACEMENT:
+– Exact 9:16 ratio (IMAGE ONLY)
+– Header must occupy ONLY the TOP 10% of the image
+– Slim, horizontal header bar
+– Clean separation from the main content below
+– Suitable for posters, laundry ads, WhatsApp creatives, and storefront visuals
+
+
+BRAND INFORMATION (USE ONLY THIS):
+Brand Name: TRIEO WASH
+Tagline: Experience the new level of laundry
+
+
+SERVICE LOCATIONS:
+– Pithapuram
+– Kakinada
+
+
+CONTACT NUMBERS:
+– 829 74 77 888
+– 829 75 77 888
+
+
+LOGO USAGE:
+– Use the provided TRIEO WASH logo (logo will be attached separately)
+– Logo must be placed on the LEFT or CENTER of the header
+– Maintain original logo colors and proportions
+– Do not redesign or distort the logo
+
+
+HEADER CONTENT STRUCTURE:
+– Left or center: Brand logo
+– Brand name “TRIEO WASH” displayed prominently
+– Small line below brand name: “Experience the new level of laundry”
+– Right side or center-bottom of header:
+  “Pithapuram | Kakinada”
+– Contact numbers clearly visible and highlighted:
+  829 74 77 888 | 829 75 77 888
+
+
+DESIGN STYLE:
+– Premium, modern laundry brand look
+– Clean, professional, service-oriented design
+– Soft gradients inspired by cleanliness, freshness, and fabric care
+– Neutral tones with subtle blue/white highlights for hygiene feel
+– No clutter, no unnecessary graphics
+
+
+TYPOGRAPHY:
+– Bold, modern sans-serif font for brand name
+– Clean sans-serif for tagline and locations
+– Contact numbers must stand out clearly
+– High contrast for mobile readability
+
+
+STRICT RULES:
+– IMAGE ONLY (no video, no animation)
+– Header height strictly limited to 10%
+– Do NOT add prices, offers, or services
+– Do NOT invent extra text or claims
+– Use ONLY the information provided above
+– Header must look premium, trustworthy, and professional
+
+
+OUTPUT QUALITY:
+– High-resolution, sharp, print-ready
+– Professional service-brand finish
+– Suitable for digital ads, banners, and posters
+If you want next, I can:
+
+
+Lock this as your MASTER LAUNDRY HEADER PROMPT
+
+
+Create a dark/light color variant
+
+
+Create a storefront banner version
+
+
+Create a WhatsApp DP / square header prompt
+
+
+Just tell me 👍
+
+
+You said:
+Uploaded image
+now i need for this 
+TIREO WASH (Experience the new level of laundry)
+Company Number is 829 74 77 888 and 829 75 77 888
+Places of service - Pithapuram & Kakinada
+ChatGPT said:
+Create a PREMIUM, PROFESSIONAL PROMOTIONAL HEADER for a vertical IMAGE in 9:16 aspect ratio.
+
+
+HEADER SIZE & PLACEMENT:
+– Exact 9:16 ratio (IMAGE ONLY)
+– Header must occupy ONLY the TOP 10% of the image (STRICT)
+– Slim, clean horizontal header card
+– Clear visual separation from the main content below
+– Designed for posters, service ads, WhatsApp creatives, and storefront branding
+
+
+BRAND INFORMATION (USE ONLY THIS):
+Brand Name: TIREO WASH
+Tagline: Experience the new level of laundry
+
+
+SERVICE LOCATIONS:
+– Pithapuram
+– Kakinada
+
+
+CONTACT NUMBERS:
+– 829 74 77 888
+– 829 75 77 888
+
+
+LOGO USAGE:
+– Use the provided TIREO WASH logo (logo will be attached separately)
+– Logo placed on the LEFT or CENTER of the header
+– Maintain original logo colors, proportions, and clarity
+– Do NOT redesign, recolor, or distort the logo
+
+
+HEADER CONTENT STRUCTURE:
+– Left or center: Brand logo
+– Brand name “TIREO WASH” prominently displayed
+– Small refined line below brand name:
+  “Experience the new level of laundry”
+– Right side or center-bottom of header:
+  “Pithapuram | Kakinada”
+– Contact numbers clearly highlighted:
+  829 74 77 888 | 829 75 77 888
+
+
+DESIGN STYLE:
+– Premium, modern laundry-service branding
+– Clean, hygienic, professional look
+– Soft neutral background with subtle blue/white freshness accents
+– Minimal gradients suggesting cleanliness and fabric care
+– No clutter, no stock graphics, no unnecessary icons
+
+
+TYPOGRAPHY:
+– Bold modern sans-serif for brand name
+– Clean sans-serif for tagline, locations, and numbers
+– High contrast for mobile and print readability
+– Contact numbers must stand out clearly
+
+
+STRICT RULES:
+– IMAGE ONLY (no video, no animation)
+– Header height strictly limited to 10%
+– Do NOT add prices, offers, or extra services
+– Do NOT invent claims or extra text
+– Use ONLY the information provided above
+– Header must look premium, trustworthy, and business-class
+
+
+OUTPUT QUALITY:
+– High-resolution, sharp, print-ready
+– Professional service-brand finish
+– Suitable for digital ads, posters, banners, and storefront displays
+You said:
+Uploaded image
+Uploaded image
+now i need for this 
+ChatGPT said:
+Below is a SINGLE COPY-PASTE READY ARTIFACT exactly in the format you’ve been using.
+This is a PREMIUM, PROFESSIONAL HEADER-ONLY IMAGE GENERATION PROMPT, created strictly from the information visible in the provided images, aligned with your fixed rules (10% header height).
+
+
+Create a clean, ultra-premium BUSINESS HEADER for a vertical IMAGE in 9:16 aspect ratio.
+
+
+HEADER PLACEMENT & SIZE:
+– Exact 9:16 ratio (IMAGE ONLY)
+– Header must occupy ONLY the TOP 10% of the image
+– Slim, elegant horizontal header bar
+– Clear visual separation from the main content below
+– Designed for premium branding, visiting cards, posters, and social media creatives
+
+
+BRAND INFORMATION (USE ONLY THIS):
+Brand Name: SRR GROUP
+Tagline: Your Dreams Comes True With Us
+Authorized Person: S. Raghavendra Raju
+Designation: CEO
+Contact Number: 9491103142
+
+
+HEADER CONTENT STRUCTURE:
+– Left or center-left: Brand logo (LOGO WILL BE ATTACHED SEPARATELY)
+– Center or center-right: Brand name “SRR GROUP” in bold premium lettering
+– Small refined line below brand name: “Your Dreams Comes True With Us”
+– Right side or subtle bottom alignment:
+  “S. Raghavendra Raju – CEO”
+– Contact number clearly visible and highlighted:
+  9491103142
+
+
+DESIGN STYLE:
+– Ultra-premium real estate / infrastructure brand aesthetic
+– Deep navy blue, dark teal, and rich gold color palette
+– Elegant gold accents and fine-line detailing
+– Minimal, luxury, corporate look
+– No clutter, no excessive icons
+
+
+TYPOGRAPHY:
+– Bold serif or luxury sans-serif font for brand name
+– Clean professional font for designation and contact
+– High contrast for clear readability
+– Contact number must stand out subtly but clearly
+
+
+STRICT RULES:
+– IMAGE ONLY (do NOT mention video or animation)
+– Do NOT add services, locations, or extra claims
+– Do NOT invent additional text
+– Use ONLY the information provided
+– Header must look suitable for high-end print and digital use
+
+
+OUTPUT QUALITY:
+– Sharp, high-resolution
+– Premium corporate branding finish
+– Ready for WhatsApp, banners, posters, and visiting card headers
+If you want, next I can:
+
+
+Lock this as your SRR GROUP master header template
+
+
+Convert it into a universal reusable header prompt
+
+
+Tune it further for real estate ads, brochures, or hoardings
+
+
+Just tell me 👍
+
+
+You said:
+Uploaded image
+Uploaded image
+i need for this 
+
+
+Business Name :- Moonlight Entertainments
+Business information :- 
+
+
+ఆరినోవా లైఫ్‌స్టైల్ ఎక్స్‌పో (AURENOVA Life Style Expo)  Exhibition in Sri Sri Banquet Halls, KPHB * జనవరి 2, 3, 4 తేదీలలో ✨
+
+
+హైదరాబాద్‌లో అత్యంత ఉత్సాహభరితమైన షాపింగ్ మరియు లైఫ్‌స్టైల్ అనుభవం !
+
+
+🛍️ 3 రోజుల పాటు సాగే ఫ్యాషన్ • లైఫ్‌స్టైల్ • హస్తకళా ఉత్పత్తులు • ఆహారం • హోమ్ డెకర్ & మరెన్నో!
+
+
+తేదీలు: 2, 3 మరియు 4 జనవరి 2026.
+
+
+⏰ సమయం: ఉదయం 10 గంటల నుండి రాత్రి 10 గంటల వరకు
+
+
+📍 వేదిక: Sri Sri Banquet Halls, PNR Empire, KPHB Near Metro Pillar A 737, కూకట్‌పల్లి, హైదరాబాద్.
+
+
+👨‍👩‍👧 కుటుంబాలు, వ్యాపారవేత్తలు మరియు షాపింగ్ తో కలిపి వేల మంది సందర్శకులు వచ్చే అవకాశం ఉంది.
+
+
+🎉 సందర్శకులందరికీ ప్రవేశం ఉచితం!
+
+
+📞 స్టాల్ బుకింగ్స్ కోసం సంప్రదించండి: 9030650630
+
+
+నిర్వహణ: మూన్‌లైట్ ఎంటర్‌టైన్‌మెంట్స్ (Moonlight Entertainments)
+
+
+ChatGPT said:
+Below is a SINGLE COPY-PASTE IMAGE GENERATION PROMPT (one artifact block), strictly following your header-only task, 10% height rule, premium professional style, and using ONLY the information you provided.
+
+
+Create a premium, professional PROMOTIONAL HEADER for a vertical IMAGE in 9:16 aspect ratio.
+
+
+HEADER PLACEMENT & SIZE (STRICT):
+– Exact 9:16 vertical image
+– Header must occupy ONLY the TOP 10% of the image (no more, no less)
+– Slim, elegant horizontal header strip
+– Clear visual separation from the main poster content below
+– Designed for event posters, social media creatives, and print banners
+
+
+BUSINESS INFORMATION (USE ONLY THIS):
+Business Name: Moonlight Entertainments
+Event Name: AURENOVA Life Style Expo
+Event Type: Lifestyle & Shopping Exhibition
+Dates: 2, 3 & 4 January 2026
+Time: 10:00 AM – 10:00 PM
+Venue: Sri Sri Banquet Halls, PNR Empire, KPHB Near Metro Pillar A 737, Kukatpally, Hyderabad
+Entry: Free Entry for All Visitors
+Stall Booking Contact: 9030650630
+Organizer: Moonlight Entertainments
+
+
+HEADER CONTENT STRUCTURE:
+– Left or center: Event logo / brand mark (LOGO WILL BE ATTACHED SEPARATELY)
+– Primary text (bold, premium):
+  “AURENOVA Life Style Expo”
+– Supporting line (smaller, clean font):
+  “Lifestyle • Fashion • Handicrafts • Food • Home Decor”
+– Right side or center-bottom of header:
+  “2, 3 & 4 Jan 2026 | 10 AM – 10 PM”
+– Small highlight badge or text:
+  “Free Entry”
+– Footer line within header (small text):
+  “Organised by Moonlight Entertainments”
+– Contact number subtly but clearly visible:
+  “Stall Bookings: 9030650630”
+
+
+DESIGN STYLE:
+– Premium event & lifestyle expo aesthetic
+– Rich festive colors (royal purple, gold accents, elegant white)
+– Smooth gradients with soft glow
+– Minimal decorative elements inspired by celebration & luxury
+– No clutter, balanced spacing, refined composition
+
+
+TYPOGRAPHY:
+– Bold, elegant serif or premium sans-serif for event name
+– Clean sans-serif for dates, venue, and contact
+– High contrast for perfect mobile readability
+– Clear hierarchy: Event name > Date > Entry info > Organizer
+
+
+STRICT RULES:
+– IMAGE ONLY (no video, no animation terms)
+– Header only (do NOT design the full poster)
+– Do NOT add sponsors, media partners, prizes, or extra claims
+– Do NOT add QR codes
+– Do NOT change dates, venue, or wording
+– Use ONLY the information provided above
+– Header must look suitable for high-end print and digital use
+
+
+OUTPUT QUALITY:
+– Ultra-sharp, high resolution
+– Professional expo-grade design
+– Ready for WhatsApp, Instagram, posters, and banners
+If you want, next I can:
+
+
+Lock this as your MASTER HEADER PROMPT TEMPLATE
+
+
+Create a minimal / luxury / festive variant
+
+
+Convert this into a universal reusable format where you just change business info
+
+
+You said:
+Uploaded image
+Uploaded image
+now i need for this 
+BN :- R1 Mobiles
+location :- Narasaraopet
+phone :- +91 72075 01012
+ChatGPT said:
+IMAGE GENERATION PROMPT – PREMIUM HEADER ONLY (COPY & PASTE)
+
+
+Create a clean, premium, professional PROMOTIONAL HEADER for a vertical IMAGE in 9:16 aspect ratio.
+
+
+HEADER SIZE & PLACEMENT:
+– Exact 9:16 ratio (IMAGE ONLY)
+– Header must occupy ONLY the TOP 10% of the image
+– Slim, elegant horizontal header bar
+– Clear visual separation from the main content below
+– Designed for posters, store creatives, WhatsApp promotions, and social media
+
+
+BUSINESS INFORMATION (USE ONLY THIS):
+Brand Name: R1 Mobiles  
+Location: Narasaraopet  
+Contact Number: +91 72075 01012  
+
+
+HEADER CONTENT STRUCTURE:
+– Left side: Brand logo or brand name text (logo will be attached separately if needed)
+– Center or left-center:  
+  **R1 Mobiles** (bold, prominent)
+– Small supporting text below brand name:  
+  “Mobile Store”
+– Right side:
+  📍 Narasaraopet  
+  📞 +91 72075 01012 (highlighted and clearly visible)
+
+
+DESIGN STYLE:
+– Premium mobile retail aesthetic
+– Dark modern background (charcoal / deep black / graphite tones)
+– Subtle metallic accents (silver or soft orange highlights)
+– Clean lighting effect, glossy finish
+– Professional showroom-brand look
+– No clutter, minimal icons, high clarity
+
+
+TYPOGRAPHY:
+– Bold modern sans-serif for brand name
+– Clean sans-serif for location and contact
+– High contrast for easy mobile readability
+– Contact number must stand out clearly
+
+
+STRICT RULES:
+– IMAGE ONLY (do NOT mention video or animation)
+– Header only (no body content, no offers)
+– Do NOT add prices or discounts
+– Do NOT invent extra services or claims
+– Use ONLY the provided information
+– Keep header premium, clean, and business-focused
+
+
+OUTPUT QUALITY:
+– Ultra-sharp, high-resolution
+– Print and digital ready
+– Professional storefront branding look
+– Suitable for WhatsApp, posters, reels thumbnails, and banners
+You said:
+Uploaded image
+i need for this 
+ChatGPT said:
+IMAGE GENERATION PROMPT – PREMIUM HEADER ONLY (COPY & PASTE)
+
+
+Create a clean, premium, professional PROMOTIONAL HEADER for a vertical IMAGE in 9:16 aspect ratio.
+
+
+HEADER SIZE & PLACEMENT:
+– Exact 9:16 ratio (IMAGE ONLY)
+– Header must occupy ONLY the TOP 10% of the image
+– Slim, elegant horizontal header bar
+– Clear separation from the main content below
+– Designed for posters, service ads, WhatsApp creatives, and social media
+
+
+BUSINESS INFORMATION (USE ONLY THIS – EXTRACTED FROM IMAGE):
+Brand Name: Sri Amrutha Water Purifiers  
+Associated Brand: Aquaguard  
+Role: Franchise Development Operator  
+Contact Number: 9059598489  
+Location: Bhimavaram, West Godavari, Andhra Pradesh  
+
+
+HEADER CONTENT STRUCTURE:
+– Left side: Brand logo or brand name text  
+  “Sri Amrutha Water Purifiers”  
+– Small tagline below brand name:  
+  “Good For Health”
+– Center or right-center:  
+  **Aquaguard – Franchise Development Operator**
+– Right side (clearly highlighted):
+  📞 9059598489
+– Bottom line (small, clean text within header):
+  📍 Bhimavaram, W.G. Dt., A.P.
+
+
+DESIGN STYLE:
+– Premium healthcare & water-purification brand aesthetic
+– Clean white and deep blue color palette
+– Subtle water-drop or wave-inspired accents
+– Minimal gradients, crisp edges
+– Trustworthy, hygienic, professional look
+– No clutter, no product images in header
+
+
+TYPOGRAPHY:
+– Bold sans-serif for brand name
+– Clean sans-serif for supporting text
+– High contrast for easy mobile readability
+– Contact number must stand out clearly
+
+
+STRICT RULES:
+– IMAGE ONLY (do NOT mention video or animation)
+– Header only (no body content)
+– Do NOT add prices, offers, or extra claims
+– Do NOT invent services or brands
+– Use ONLY the extracted information above
+– Keep header premium and business-focused
+
+
+OUTPUT QUALITY:
+– High-resolution, ultra-sharp
+– Print and digital ready
+– Suitable for WhatsApp, banners, posters, and service creatives
+– Professional, trust-building header design
+You said:
+Uploaded image
+Uploaded image
+Uploaded image
+i need for this 
+ChatGPT said:
+Got it 👍
+Below is a SINGLE, COPY-PASTE-READY IMAGE GENERATION PROMPT in one artifact block, strictly following your header system, premium professional look, 10% header height only, and using ONLY information visible from the provided images.
+
+
+📌 EXTRACTED BUSINESS INFORMATION (FROM IMAGES ONLY)
+Brand / Business Name:
+SKC Cable Networks
+
+
+Services Shown:
+– Cable TV Services
+– Internet / Broadband Services
+
+
+Tagline / Telugu Line (from image):
+వేగపాడు కి కొక్కెరపాడు
+
+
+Contact Number:
+9963495277
+
+
+Business Nature:
+Local Cable Operator & Internet Service Provider
+
+
+🧩 IMAGE GENERATION PROMPT (HEADER ONLY)
+Create a clean, premium PROFESSIONAL HEADER for a vertical IMAGE in 9:16 aspect ratio.
+
+
+HEADER PLACEMENT & SIZE:
+– Exact 9:16 ratio (IMAGE ONLY)
+– Header must occupy EXACTLY the TOP 10% of the image height (not more, not less)
+– Slim, horizontal header bar
+– Clear visual separation from the main content below
+– Designed for posters, service ads, banners, and WhatsApp creatives
+
+
+BRAND INFORMATION (USE ONLY THIS):
+Brand Name: SKC Cable Networks
+Services: Cable TV Services, Internet / Broadband Services
+Tagline (Telugu): వేగపాడు కి కొక్కెరపాడు
+Contact Number: 9963495277
+
+
+HEADER CONTENT STRUCTURE:
+– Left side: Brand logo placement (LOGO WILL BE ATTACHED SEPARATELY)
+– Center: Brand name “SKC Cable Networks” in bold, premium typography
+– Small supporting line below brand name:
+  “Cable TV & Internet Services”
+– Right side or center-right:
+  Contact Number displayed clearly:
+  9963495277
+– Optional small Telugu tagline placed subtly:
+  వేగపాడు కి కొక్కెరపాడు
+
+
+DESIGN STYLE:
+– Premium telecom & network service branding
+– Dark charcoal / black / deep blue background
+– Metallic silver or soft white text accents
+– Minimal glow or subtle gradient for a high-end finish
+– No clutter, no excessive icons
+
+
+TYPOGRAPHY:
+– Bold modern sans-serif font for brand name
+– Clean readable font for services and contact
+– High contrast for mobile visibility
+– Contact number must stand out clearly
+
+
+STRICT RULES:
+– IMAGE ONLY (no video, no animation)
+– Do NOT add prices or offers
+– Do NOT add extra services
+– Do NOT add locations not shown in the image
+– Do NOT invent any claims
+– Use ONLY the provided information
+– Header must look premium, professional, and service-industry appropriate
+
+
+OUTPUT QUALITY:
+– Ultra-sharp, high-resolution
+– Professional ISP / cable operator branding
+– Suitable for posters, banners, hoardings, and WhatsApp promotions
+If you want, next I can:
+
+
+Lock this as your MASTER TELECOM HEADER TEMPLATE
+
+
+Convert it into a universal reusable prompt
+
+
+Optimize colors based on logo palette
+
+
+Prepare Telugu-only or English-only variants
+
+
+Just tell me 👍
+
+
+You said:
+Uploaded image
+i need for this 
+Tirupati Aandal Foods 
+ChatGPT said:
+Perfect 👍
+Below is a SINGLE, COPY-PASTE-READY IMAGE GENERATION PROMPT in one artifact block, strictly following:
+
+
+✅ Your HEADER-ONLY task
+
+
+✅ Exact 10% header height
+
+
+✅ Premium professional food-brand look
+
+
+✅ ONLY information provided
+
+
+✅ Logo will be attached separately
+
+
+Create a clean, PREMIUM PROFESSIONAL HEADER for a vertical IMAGE in 9:16 aspect ratio.
+
+
+HEADER PLACEMENT & SIZE:
+– Exact 9:16 ratio (IMAGE ONLY)
+– Header must occupy EXACTLY the TOP 10% of the image height (not more, not less)
+– Slim, horizontal header strip
+– Clear visual separation from the main content below
+– Suitable for posters, food ads, packaging creatives, and social media
+
+
+BRAND INFORMATION (USE ONLY THIS):
+Brand Name: Tirupati Aandal Foods
+
+
+HEADER CONTENT STRUCTURE:
+– Left side: Brand logo placement (LOGO WILL BE ATTACHED SEPARATELY)
+– Center: Brand name displayed clearly as:
+  “Tirupati Aandal Foods”
+– Brand name must be the hero element of the header
+– No extra text, no taglines, no claims
+
+
+DESIGN STYLE:
+– Premium South Indian food brand aesthetic
+– Clean white or soft cream background OR subtle food-inspired gradient
+– Accent colors inspired by logo:
+  pink, green, and warm saffron/orange tones
+– Elegant, minimal, hygienic, trustworthy appearance
+– No clutter, no unnecessary icons
+
+
+TYPOGRAPHY:
+– Bold, modern rounded font for “Aandal”
+– Clean sans-serif for “Tirupati” and “Foods”
+– Excellent contrast for mobile readability
+– Professional FMCG-ready typography
+
+
+STRICT RULES:
+– IMAGE ONLY (no video, no animation)
+– Do NOT add food items or dish images
+– Do NOT add contact numbers
+– Do NOT add location text
+– Do NOT invent taglines or claims
+– Use ONLY the provided brand name
+– Header must remain exactly within 10% height
+
+
+OUTPUT QUALITY:
+– High-resolution, sharp edges
+– Premium FMCG / food-brand finish
+– Suitable for packaging headers, banners, posters, and WhatsApp creatives
+If you want next:
+
+
+🔒 Lock this as MASTER FOOD BRAND HEADER TEMPLATE
+
+
+🌸 Add festival color variants
+
+
+📦 Optimize for food packaging / label headers
+
+
+🇮🇳 Telugu + English hybrid header style
+
+
+Just say the word 👍
+
+
+You said:
+“Yeah, brah.”
+00:01
+ChatGPT said:
+Got it! I’ll keep that in mind. If you need any tweaks or more variations, just let me know and I'll be happy to help.
+
+
+You said:
+Transcript Unavailable
+00:03
+ChatGPT said:
+Absolutely, that's the plan! If you have any more details to add or anything else you want to fine-tune, just let me know. I'm here to make it all work smoothly for you.
+
+
+You said:
+Transcript Unavailable
+00:51
+ChatGPT said:
+సరే, అర్ధం అయింది! మీకు ఇంకాస్త కన్ఫిగర్ చేయాలి అంటే, పై భాగం 30% మాత్రమే తీసుకోవాలి అన్నమాట. మిగతా డిజైన్ మీ అవసరానికీ, ఆ లొకేషన్‌కి తగ్గట్టు చూసుకుని సెటప్ చేస్కోవచ్చు. ఏదైనా ట్రై చేసేటప్పుడు డౌన్లోడ్ చేసుకుని జూమ్ చేసి, బాగుందో లేదో చూసుకుని అడ్జస్ట్ చేసేయండి. మీమీద నమ్మకం ఉంది!
+
+
+You said:
+“Thank you.”
+00:10
+ChatGPT said:
+అదే కదా!
+
+
+You said:
+Transcript Unavailable
+00:21
+ChatGPT said:
+అవును, ఇదంతా మనం ఆ విధంగానే చేయవచ్చు. ఇప్పుడు మీరు చెప్పినట్లుగా Tirup
+
+
+You said:
+“Yes.”
+00:00
+ChatGPT said:
+అవును, సరే. మరి ఏవైనా ఇంకొన్ని మార్పులు లేదా చేర్పులు కావాలంటే చెప్పండి. మీ ఆలోచనల ప్రకారం ఇంకా ఏమైనా ఫైన్ట్యూన్ చేయాలి అంటే సహాయిస్తాను.
+
+
+You said:
+Transcript Unavailable
+00:02
+ChatGPT said:
+అవును, ఖచ
+
+
+You said:
+Transcript Unavailable
+00:08
+ChatGPT said:
+సరే, పూర్తిగా అర్థమైంది. ఏదైనా సర్దుబాట్లు కావాలి లేదా ఇంకోన్ని సూచనలు ఉన్నాయంటే చెప్పేయండి. మిదటి చెప్పిన దాని ప్రకారం నేను సహాయం చేస్తాను.
+
+
+You said:
+Transcript Unavailable
+00:14
+ChatGPT said:
+సరే, పూర్తిగా అర్థమైంది. మీ చెప్పినట్టు ఆ బ్రౌన్ కలర్ కూడా చేర్చి, ఏం అనుకుంటున్నారో అలాగే ప్రాంప్ లో అడ్జస్ట్ చేసి చూస్తాను. ఇక మీ సూచనల ప్రకారం అలా చేస్తూ ఉంటాను.
+
+
+You said:
+“ರಿಯಲಸಟಿಟರನಾ ರಿಯಲಸಟಿಟರನಾ”
+00:05
+ChatGPT said:
+Absolutely, I'll make sure it looks as realistic as possible. We'll keep everything natural and fine-tuned to match that real-life feel you're going for.
+
+
+You said:
+Transcript Unavailable
+00:01
+ChatGPT said:
+You got it! We'll keep it looking as authentic and lifelike as possible. If there's anything else you need, just let me know!
+
+
+You said:
+Transcript Unavailable
+00:21
+ChatGPT said:
+అవును, సరే. మొత్తం అర్ధం చేసుకున్నాను. ఇక జాగ్రత్తగా ఆ వివరాలు చే
+
+
+You said:
+Transcript Unavailable
+00:03
+ChatGPT said:
+అవును, బాగా అర్థమైంది. అన్నీ క్లియర్‌గా, మీరు చెప్పినట్టు మంచి విధంగా చేసి అందిస్తాను. ఇంకేమైనా సూచనలు ఉన్నా చెప్పండి.
+
+
+You said:
+Transcript Unavailable
+00:05
+ChatGPT said:
+అద్భుతం!
+
+
+You said:
+Transcript Unavailable
+00:04
+ChatGPT said:
+సరే, ఏ సైన్‌బోర్డ్ వేయాలో కూడా చెప్పండి, దాన్ని కూడా జోడించేద్దాం. మీ సూచనల ప్రకారం అలా చేస్తాను.
+
+
+You said:
+Transcript Unavailable
+00:00
+ChatGPT said:
+బాగుంది, చక్కగా అలా చేస్తాను. ఇంకేమైనా చేర్పులు ఉన్నా చెప్పండి, అన్నీ మీ సూచనల ప్రకారమే సెట్ చేస్తాం.
+
+
+You said:
+“I'll forward it to you, right? I put it back to the guy who put it. I think he's pinging. He did, he did. This is the original face, right? You didn't do it yet? No. You're crazy. Check if my final name is there at the end. I'll ping and see if my final name is there. Duh! Duh! Duh! That's enough. I'm tired. My hands, legs, everything hurts.”
+00:39
+ChatGPT said:
+సరే, అంతా అర్ధం చేసుకున్నా. చివరిగా మీరు చెప్పినదాన్ని పరిగణలోక
+
+
+You said:
+Transcript Unavailable
+00:57
+ChatGPT said:
+సరే, పూర్తిగా అర్థమైంది. మీరు చెప్పిన వివరాల ప్రకారం నేను అలా చూసుకుంటాను. ఏవైనా వివరాలు సరిచేయాల్సి వచ్చినా, లేదా కొత్తగా ఏమైనా జోడించాలసివచ్చినా, మీరు చెప్పండి. అన్నీ మీ స
+
+
+You said:
+Transcript Unavailable
+00:01
+ChatGPT said:
+అలాగే! మరి ఏదైనా సాహాయం కావాలంటే చెప్పండి, నేను ఇక్కడే ఉన్నాను.
+
+
+You said:
+Transcript Unavailable
+00:05
+ChatGPT said:
+అవును, పూర్తిగా అర్థమైంది. మీరు చెప్పినట్లుగా దానిని సరిగ్గా చేయడానికి చూస్తాను. ఏదైనా టైప్ లో తప్పు ఉంటే
+
+
+You said:
+Transcript Unavailable
+00:04
+ChatGPT said:
+చాలా మంచిది! సరే, ఆయతే అలా చేస్తాను. ఈ ఇమేజీని బాగా ఎనాలైజ్ చేసి, పూర్తి క్లారిటీతో మీకు అందిస్తాను.
+
+
+You said:
+Transcript Unavailable
+00:05
+hi
+ChatGPT said:
+Hi 🙂
+Tell me what you need next — image, business info, or header prompt.
+
+
+You said:
+Uploaded image
+i need for this 
+contact: 7799234563
+ChatGPT said:
+Perfect 👍
+Here is a single, copy-paste-ready IMAGE GENERATION PROMPT, strictly aligned with your premium header system, 10% header height, and only the provided information.
+
+
+Create a clean, premium PROMOTIONAL HEADER for a vertical IMAGE in 9:16 aspect ratio.
+
+
+HEADER PLACEMENT & SIZE:
+– Exact 9:16 ratio (IMAGE ONLY)
+– Header must occupy ONLY the TOP 10% of the image
+– Slim, elegant horizontal header strip
+– Clear visual separation from the main content below
+– Designed for casting posters, talent announcements, social media creatives, and banners
+
+
+BRAND INFORMATION (USE ONLY THIS):
+Brand Name: India Casting Club
+Tagline/Subtext: Auditions • Talent • Opportunities
+Contact Number: 7799234563
+Logo: WILL BE ATTACHED SEPARATELY
+
+
+HEADER CONTENT STRUCTURE:
+– Left or center: Brand logo (use attached logo only)
+– Brand name “India Casting Club” displayed prominently
+– Small refined line below brand name:
+  “Auditions • Talent • Opportunities”
+– Right side or center-bottom of header:
+  Contact: 7799234563
+
+
+DESIGN STYLE:
+– Premium entertainment / casting industry aesthetic
+– Modern cinematic feel
+– Dark navy, charcoal, or deep gradient background with subtle studio-light highlights
+– Clean, professional, high-end look suitable for film & media industry
+– No clutter, no unnecessary graphics
+
+
+TYPOGRAPHY:
+– Bold, modern sans-serif or elegant rounded font for brand name
+– Clean minimal font for tagline
+– High contrast white or light text for readability
+– Contact number must be clearly visible and readable on mobile
+
+
+STRICT RULES:
+– IMAGE ONLY (no video, no animation)
+– Header height must be EXACTLY 10% of total image
+– Do NOT add locations
+– Do NOT add extra text or claims
+– Do NOT invent services
+– Use ONLY the provided information
+– Logo must not be altered or redesigned
+
+
+OUTPUT QUALITY:
+– Sharp, high-resolution
+– Premium, industry-ready finish
+– Suitable for WhatsApp posters, Instagram, banners, and casting announcements
+If you want next:
+
+
+Full poster layout
+
+
+Audition announcement header
+
+
+Casting call variant
+
+
+Dark / light theme alternate
+
+
+Just tell me.
+
+
+You said:
+Uploaded image
+give me for this
+ChatGPT said:
+Got it 👍
+Below is a single, clean, copy-paste-ready IMAGE GENERATION PROMPT, created only from the information visible in the provided image and aligned with your premium 10% header system.
+
+
+Create a clean, professional PROMOTIONAL HEADER for a vertical IMAGE in 9:16 aspect ratio.
+
+
+HEADER PLACEMENT & SIZE:
+– Exact 9:16 ratio (IMAGE ONLY)
+– Header must occupy ONLY the TOP 10% of the image
+– Slim, horizontal premium header strip
+– Clear visual separation from the content below
+– Suitable for quotation headers, shop posters, visiting cards, and WhatsApp creatives
+
+
+BUSINESS INFORMATION (EXTRACTED FROM IMAGE – USE ONLY THIS):
+Business Name (Telugu):
+సోమేశ్వర వరుణ్ & సిమెంట్ ట్రేడర్స్  
+Plumbing & Sanitary
+
+
+Dealer Brands:
+Asian Paints  
+Sudhakar Pipes
+
+
+Contact Numbers:
+9848007922  
+7013036403
+
+
+Location:
+గుండాల, జి. యాదాద్రి భువనగిరి – 508277
+
+
+HEADER CONTENT STRUCTURE:
+– Left or center: Business name in Telugu (primary focus)
+– Below business name (smaller text):
+  Plumbing & Sanitary
+– Dealer line in compact text:
+  Dealer: Asian Paints | Sudhakar Pipes
+– Right side or center-bottom of header:
+  📞 9848007922 | 7013036403
+
+
+DESIGN STYLE:
+– Professional hardware / building materials business look
+– Clean white or light neutral background with green accent tones
+– Subtle border or line divider for clarity
+– Traditional yet modern Indian trade-business aesthetic
+– No decorative clutter
+
+
+TYPOGRAPHY:
+– Bold Telugu font for business name
+– Clean sans-serif for English text
+– High contrast for print and mobile readability
+– Phone numbers must be clearly readable
+
+
+STRICT RULES:
+– IMAGE ONLY (no video, no animation)
+– Header height must be EXACTLY 10%
+– Do NOT add extra services or products
+– Do NOT change wording or invent claims
+– Use ONLY extracted information
+– Keep it print-ready and professional
+
+
+OUTPUT QUALITY:
+– High-resolution, sharp text
+– Suitable for quotations, banners, posters, and digital sharing
+– Clean commercial finish
+If you want:
+
+
+Full quotation sheet redesign
+
+
+Shop banner header
+
+
+WhatsApp poster version
+
+
+English-only or Telugu-only variant
+
+
+Just tell me 👍
+
+
+Create a clean, professional PROMOTIONAL HEADER for a vertical IMAGE in 9:16 aspect ratio.
+
+
+HEADER PLACEMENT & SIZE:
+– Exact 9:16 ratio (IMAGE ONLY)
+– Header must occupy ONLY the TOP 10% of the image
+– Slim, premium horizontal header strip
+– Clear separation from the main content below
+– Suitable for quotation pads, shop boards, posters, and WhatsApp creatives
+
+
+BUSINESS INFORMATION (USE ONLY THIS – FROM PROVIDED IMAGE):
+Business Name (Telugu):
+సోమేశ్వర వరుణ్ & సిమెంట్ ట్రేడర్స్
+
+
+Category:
+ప్లంబింగ్ & సానిటరీ
+
+
+Dealer:
+Asian Paints  
+Sudhakar Pipes
+
+
+Contact Numbers:
+9848007922  
+7013036403
+
+
+Location:
+గుండాల, జి. యాదాద్రి భువనగిరి – 508277
+
+
+HEADER CONTENT STRUCTURE:
+– Left or center: Business name in Telugu (primary, bold)
+– Below business name (smaller text):
+  ప్లంబింగ్ & సానిటరీ
+– Dealer line in compact text:
+  Dealer: Asian Paints | Sudhakar Pipes
+– Right side or center-bottom of header:
+  📞 9848007922 | 7013036403
+
+
+DESIGN STYLE:
+– Premium hardware / cement / sanitary business aesthetic
+– Clean white or very light background
+– Green accent tones inspired by the original print
+– Subtle border or divider line
+– Traditional Indian trade-business look with modern polish
+– No decorative clutter
+
+
+TYPOGRAPHY:
+– Bold Telugu font for business name
+– Clean sans-serif for English text
+– High contrast for print clarity
+– Phone numbers must be clearly readable
+
+
+STRICT RULES:
+– IMAGE ONLY (no video, no animation)
+– Header height must be EXACTLY 10%
+– Do NOT add prices, offers, or extra services
+– Do NOT invent text or claims
+– Use ONLY the provided information
+– Must be suitable for printing and digital use
+
+
+OUTPUT QUALITY:
+– High-resolution
+– Sharp, professional text rendering
+– Ready for quotations, banners, posters, and WhatsApp sharing
+You said:
+Now i need for this 
+Business Name
+శ్రీ రాజరాజేశ్వరి ఫర్టిలైజర్, సీడ్స్ & పెస్టిసైడ్స్
+
+
+Contact Details
+Proprietors/Owners: K. Shyam (and one other name partially obscured)
+
+
+Phone Numbers: * 8790305765
+
+
+(The first number is partially obscured)
+
+
+Address
+H.No: 2-68/1A
+
+
+Village: Kokkerakunta
+
+
+Mandal: Ramadugu
+
+
+District: Karimnagar
+
+
+Services & Products
+The shop offers high-quality varieties of:
+విత్తనాలు
+ఎరువులు
+పురుగుల మందులు
+ChatGPT said:
+Create a clean, premium PROMOTIONAL HEADER for a vertical IMAGE in 9:16 aspect ratio.
+
+
+HEADER PLACEMENT & SIZE:
+– Exact 9:16 ratio (IMAGE ONLY)
+– Header must occupy ONLY the TOP 10% of the image
+– Slim, horizontal, professional header strip
+– Clear separation from the main content below
+– Suitable for shop posters, banners, visiting cards, and WhatsApp creatives
+
+
+BUSINESS INFORMATION (USE ONLY THIS):
+Business Name (Telugu):
+శ్రీ రాజరాజేశ్వరి ఫర్టిలైజర్, సీడ్స్ & పెస్టిసైడ్స్
+
+
+Owner / Proprietor:
+K. Shyam
+
+
+Contact Number:
+📞 8790305765
+
+
+Address:
+H.No: 2-68/1A  
+Village: Kokkerakుంట  
+Mandal: Ramadugu  
+District: Karimnagar
+
+
+Services & Products:
+విత్తనాలు  
+ఎరువులు  
+పురుగుల మందులు
+
+
+HEADER CONTENT STRUCTURE:
+– Left or center: Business name in Telugu (primary, bold)
+– Below business name (smaller text):
+  ఫర్టిలైజర్ | సీడ్స్ | పెస్టిసైడ్స్
+– Right side or center-bottom of header:
+  📞 8790305765
+– Optional small text line:
+  Proprietor: K. Shyam
+
+
+DESIGN STYLE:
+– Premium agricultural / fertilizer shop aesthetic
+– Clean white or light cream background
+– Green and earthy accent tones (farm & agriculture inspired)
+– Subtle divider line or thin border
+– Traditional rural-business feel with modern clarity
+– No clutter, no heavy graphics
+
+
+TYPOGRAPHY:
+– Bold Telugu font for business name
+– Clean sans-serif for supporting text
+– High contrast for easy readability on print and mobile
+– Phone number must stand out clearly
+
+
+STRICT RULES:
+– IMAGE ONLY (no video, no animation)
+– Header height must be EXACTLY 10%
+– Do NOT add offers, prices, or extra claims
+– Do NOT invent missing phone numbers or names
+– Use ONLY the provided information
+– Must be print-ready and digital-friendly
+
+
+OUTPUT QUALITY:
+– High-resolution, sharp text
+– Professional commercial finish
+– Suitable for posters, banners, quotation headers, and WhatsApp sharing
+You said:
+it was not good enough
+ChatGPT said:
+Understood 👍
+Let’s fix it properly and make it clear, premium, rural-professional, and header-focused — exactly the style you’ve been asking for throughout this chat.
+
+
+Below is a REFINED, STRONGER, COPY-PASTE-READY PROMPT
+(single artifact, no extra explanation).
+
+
+Create a HIGHLY PROFESSIONAL, PREMIUM HEADER DESIGN for a vertical IMAGE in 9:16 aspect ratio.
+
+
+HEADER PLACEMENT & SIZE (STRICT):
+– Exact 9:16 ratio
+– HEADER MUST OCCUPY ONLY THE TOP 10% OF THE IMAGE (NOT MORE)
+– Clean, straight horizontal header bar
+– Clear visual separation from content below
+– Designed for shop banners, flex boards, quotations, bills, posters & WhatsApp creatives
+
+
+BUSINESS INFORMATION (USE ONLY THIS – NO EXTRA TEXT):
+Business Name (PRIMARY – TELUGU):
+శ్రీ రాజరాజేశ్వరి ఫర్టిలైజర్, సీడ్స్ & పెస్టిసైడ్స్
+
+
+Owner / Proprietor:
+K. Shyam
+
+
+Contact Number:
+8790305765
+
+
+Address (SMALL, OPTIONAL LINE):
+Kokkerakunta, Ramadugu Mandal, Karimnagar District
+
+
+Products / Services:
+విత్తనాలు • ఎరువులు • పురుగుల మందులు
+
+
+HEADER CONTENT STRUCTURE (VERY IMPORTANT):
+– Center-aligned or Left-aligned layout (balanced & premium)
+– TOP LINE (MOST PROMINENT):
+  శ్రీ రాజరాజేశ్వరి ఫర్టిలైజర్, సీడ్స్ & పెస్టిసైడ్స్
+– BELOW IT (SMALLER, CLEAN TEXT):
+  విత్తనాలు | ఎరువులు | పురుగుల మందులు
+– RIGHT SIDE or BOTTOM EDGE OF HEADER:
+  📞 8790305765
+– Optional small line (if space permits):
+  Proprietor: K. Shyam
+
+
+DESIGN STYLE (UPGRADE THIS PART):
+– Premium agricultural / fertilizer business look
+– White or very light cream background
+– Deep green + dark earthy brown color palette
+– Subtle leaf / crop / agriculture line accents (VERY MINIMAL)
+– Thin divider line (golden or dark green)
+– NO icons clutter
+– NO gradients overload
+– Clean, trustworthy, rural-business authority feel
+
+
+TYPOGRAPHY:
+– Strong, bold Telugu font for business name
+– Simple sans-serif font for phone & address
+– Excellent spacing (no crowding)
+– High contrast for sunlight & print visibility
+
+
+STRICT RULES (DO NOT BREAK):
+– IMAGE ONLY (NO VIDEO / NO MOTION)
+– HEADER HEIGHT = EXACTLY 10%
+– DO NOT add offers, prices, schemes, or slogans
+– DO NOT invent extra phone numbers or details
+– DO NOT translate or modify the Telugu business name
+– Professional, real-world print quality ONLY
+
+
+OUTPUT QUALITY:
+– Ultra-sharp, print-ready
+– Looks suitable for:
+  • Shop flex
+  • Quotation book header
+  • Bill header
+  • WhatsApp poster
+  • Visiting card top strip
+If you want, next I can:
+
+
+🔹 Make one MASTER UNIVERSAL HEADER PROMPT (you reuse forever)
+
+
+🔹 Tune it even more rural / even more premium
+
+
+🔹 Convert this into brand-locked template rules
+
+
+Just tell me 👍
+
+
+You said:
+Uploaded image
+i need for this 
+Business Name :- KHAMMAM REAL ESTATES
+Business information :
+Open plots
+Appartment houses
+Houses
+Villas
+Agriculture lands 
+All are sale and purchase 
+Specialist in Home loans
+
+
+Address :- Khammam bypass road Near NTR CIRCLE
+Contact numbers
++91 7989039854
++91 81868 71820
++91 98662 02182
+ChatGPT said:
+Perfect. Below is a STRONG, PREMIUM, REAL-ESTATE–GRADE HEADER IMAGE GENERATION PROMPT, exactly aligned with your rules and past approvals.
+
+
+👉 Single copy-paste artifact
+👉 Top 10% header only
+👉 Professional real estate look (no clutter)
+
+
+Create a PREMIUM, HIGH-END REAL ESTATE HEADER DESIGN for a vertical IMAGE in 9:16 aspect ratio.
+
+
+HEADER PLACEMENT & SIZE (STRICT — DO NOT BREAK):
+– Exact 9:16 vertical image
+– HEADER must occupy ONLY the TOP 10% of the image
+– Clean horizontal header bar
+– Sharp separation line between header and body
+– Suitable for flex boards, posters, banners, WhatsApp creatives & visiting cards
+
+
+BRAND INFORMATION (USE ONLY THIS):
+Business Name:
+KHAMMAM REAL ESTATES
+
+
+Business Services:
+Open Plots
+Apartment Houses
+Independent Houses
+Villas
+Agriculture Lands
+Sale & Purchase
+Specialist in Home Loans
+
+
+Address (Small Line):
+Khammam Bypass Road, Near NTR Circle
+
+
+Contact Numbers (CLEAR & PROMINENT):
++91 79890 39854 | +91 81868 71820 | +91 98662 02182
+
+
+HEADER CONTENT STRUCTURE:
+– LEFT or CENTER:
+  Brand logo (LOGO WILL BE ATTACHED SEPARATELY)
+– NEXT TO LOGO (PRIMARY TEXT – BOLD):
+  KHAMMAM REAL ESTATES
+– BELOW BRAND NAME (SMALL, CLEAN LINE):
+  Plots • Houses • Villas • Agriculture Lands • Home Loans
+– RIGHT SIDE or BOTTOM EDGE OF HEADER:
+  📞 +91 79890 39854 | 81868 71820 | 98662 02182
+
+
+DESIGN STYLE (REAL ESTATE PREMIUM):
+– Luxury real estate aesthetic
+– Black, deep charcoal, or dark slate background
+– Gold / champagne / beige accents (subtle, premium)
+– Clean geometric dividers
+– Minimal building silhouette or skyline line-art (VERY SUBTLE)
+– No flashy colors
+– No unnecessary icons
+
+
+TYPOGRAPHY:
+– Bold, modern sans-serif font for brand name
+– Clean professional font for services & contact
+– High contrast for outdoor readability
+– Proper spacing, no crowding
+
+
+STRICT RULES:
+– IMAGE ONLY (no animation, no video)
+– HEADER HEIGHT = EXACTLY 10%
+– Do NOT add offers, prices, years, slogans, or fake claims
+– Do NOT add locations beyond Khammam
+– Do NOT invent extra services
+– Must look suitable for premium real estate branding
+
+
+OUTPUT QUALITY:
+– Ultra-sharp, print-ready
+– Professional developer-grade look
+– Works for flex banners, hoardings, posters & digital ads
+If you want next:
+
+
+🔹 Ultra-luxury version (builder-grade, elite look)
+
+
+🔹 Rural-friendly real estate version
+
+
+🔹 Reusable MASTER HEADER TEMPLATE (all businesses)
+
+
+Just tell me 👍
+
+
+You said:
+thank you
+ChatGPT said:
+You’re welcome 🙂
+Anytime you need another header prompt, business extraction, or premium design, just send it.
+
+
+You said:
+Uploaded image
+
+
+Druthi Sarees
+🌸 Druthi Sarees | Nagole, Hyderabad
+✨ Pure Silk • Handloom • Bridal Sarees
+🛍️ Exclusive Saree Collections
+📍 Bandlaguda, Nagole – Hyd
+📞 7093319171
+
+
+give me the prompt to create the world class header
+
+
+You said:
+Uploaded image
+Number:9505939260
+Website: www.plotbsk.com
+Business Name: plot bsk
+
+
+
+
+give me the prompt for this 
+ChatGPT said:
+Perfect 👍
+Below is a single, clean, copy-paste-ready IMAGE GENERATION PROMPT exactly in the premium header format you’ve been using, with 10% header height, strictly based on the details you provided.
+
+
+📌 COPY-PASTE PROMPT (SINGLE ARTIFACT)
+Create a PREMIUM, WORLD-CLASS PROMOTIONAL HEADER for a vertical IMAGE in 9:16 aspect ratio.
+
+
+HEADER PLACEMENT & SIZE:
+– Exact 9:16 ratio (IMAGE ONLY)
+– Header must occupy ONLY the TOP 10% of the image (STRICT)
+– Slim, elegant horizontal header bar
+– Clear visual separation from the main content below
+– Designed for real estate ads, posters, WhatsApp creatives, and digital banners
+
+
+BRAND INFORMATION (USE ONLY THIS):
+Business Name: Plot BSK
+Tagline / Service Line: Real Estate Services
+Website: www.plotbsk.com
+Contact Number: 9505939260
+
+
+HEADER CONTENT STRUCTURE:
+– Left or center: Brand logo (LOGO WILL BE ATTACHED SEPARATELY)
+– Brand name “PLOT BSK” in bold, premium typography
+– Small line below brand name: “Real Estate Services”
+– Right side of header:
+  • Website: www.plotbsk.com
+  • Phone: 9505939260
+– Clean spacing with perfect alignment and balance
+
+
+DESIGN STYLE:
+– Ultra-premium real estate branding
+– Luxury black background with gold accents
+– Subtle metallic gold gradients inspired by high-end property branding
+– Professional, corporate, trustworthy look
+– No clutter, no extra icons, no unnecessary decorations
+
+
+TYPOGRAPHY:
+– Elegant serif or premium modern font for “PLOT BSK”
+– Clean sans-serif font for website and contact details
+– High contrast gold-on-black for maximum readability
+– Contact number must be clearly visible but not overpowering
+
+
+STRICT RULES:
+– IMAGE ONLY (NO video, NO animation)
+– Header height MUST be exactly 10%
+– Do NOT add location text
+– Do NOT add extra services or claims
+– Do NOT invent slogans or offers
+– Use ONLY the provided information
+– Logo must look naturally placed and premium
+
+
+OUTPUT QUALITY:
+– Ultra-sharp, high-resolution
+– Luxury real estate header aesthetic
+– Suitable for print, WhatsApp, Instagram, hoardings, and digital ads
+– Clean, timeless, professional finish
+If you want next:
+
+
+🔹 Gold → White luxury variant
+
+
+🔹 Dark blue corporate variant
+
+
+🔹 Minimal flat modern variant
+
+
+🔹 Same header adapted for app / website top bar
+
+
+Just tell me 👍
+
+
+Got it 👍
+Anytime you’re ready, just send the next logo / image or business details, and I’ll generate the same premium 10% header prompt, clean, professional, and copy-paste ready — exactly in this format.
+
+
+I’m aligned with your workflow now.
+
+
+You said:
+Uploaded image
+Uploaded image
+Uploaded image
+BUSINESS NAME :- Lekda Design Studio
+ADDRESS:- Boduppal & Habsiguda, Uppal, Andhra Pradesh
+CONTACT NUMBER:- 9848222296
+
+
+
+
+i have acched logo for the frame creation .
+i have shared the poster for the context and knowledge 
+i have shared the real store image just for context.
+
+
+
+
+now give me the prompt 
+
+
+i will upload the logo and the poster  to the image generator with your prompt 
+ChatGPT said:
+Create a WORLD-CLASS, PREMIUM BUSINESS HEADER for a vertical IMAGE in 9:16 aspect ratio.
+
+
+HEADER SPECIFICATIONS (STRICT):
+– Exact 9:16 vertical image
+– Header must occupy ONLY the TOP 10% of the image height
+– Slim, elegant horizontal header strip
+– Clean separation from the main visual content below
+– Designed for luxury fashion branding, posters, reels, and social media
+
+
+BRAND INFORMATION (USE ONLY THIS):
+Business Name: Lekda Design Studio
+Locations: Boduppal & Habsiguda, Uppal, Andhra Pradesh
+Contact Number: 9848222296
+
+
+LOGO USAGE:
+– Logo will be uploaded separately by the user
+– Place logo on the LEFT side of the header or CENTER-LEFT
+– Logo must look embossed or softly illuminated
+– Do not distort, crop, or redesign the logo
+
+
+HEADER CONTENT STRUCTURE:
+– Primary text (bold, elegant):
+  “Lekda Design Studio”
+– Secondary text (smaller, refined font below or beside):
+  “Designer Boutique | Bridal & Couture Wear”
+– Right side of header:
+  📍 Boduppal • Habsiguda, Uppal  
+  📞 9848222296
+
+
+DESIGN STYLE & MOOD:
+– Ultra-luxury fashion studio aesthetic
+– Color palette inspired by the logo & brand:
+  deep plum / wine / mauve background with gold accents
+– Soft gold gradients, subtle glow, and premium lighting
+– Feminine, elegant, bridal couture feel
+– No clutter, no heavy patterns
+
+
+TYPOGRAPHY:
+– Brand name in elegant serif or high-fashion display font
+– Supporting text in clean, modern sans-serif
+– High contrast for mobile readability
+– Contact number must be clearly visible and readable
+
+
+GRAPHIC DETAILS:
+– Very subtle gold lines or thin separators
+– Soft vignette edges
+– No mannequins or models inside the HEADER area
+– Main store visuals should start BELOW the header only
+
+
+STRICT RULES:
+– IMAGE ONLY (no video, no animation)
+– Do NOT add prices
+– Do NOT add extra services or claims
+– Do NOT add social media handles
+– Use only the provided information
+– Header must look premium, elegant, and luxury-brand ready
+
+
+OUTPUT QUALITY:
+– Ultra-sharp, high-resolution
+– Print-ready and social-media-ready
+– Looks like a high-end designer boutique brand header
+– Professional, timeless, world-class finish
+Create a WORLD-CLASS, PREMIUM BUSINESS HEADER for a vertical IMAGE in 9:16 aspect ratio.
+
+
+HEADER SPECIFICATIONS (STRICT):
+– Exact 9:16 vertical image
+– Header must occupy ONLY the TOP 10% of the image height
+– Slim, elegant horizontal header strip
+– Clean and clear separation from the main content below
+– Designed for luxury fashion branding, posters, reels, and social media
+
+
+BRAND INFORMATION (USE ONLY THIS):
+Business Name: Lekda Design Studio
+Locations: Boduppal & Habsiguda, Uppal, Andhra Pradesh
+Contact Number: 9848222296
+
+
+LOGO USAGE (IMPORTANT):
+– Logo will be uploaded separately by the user
+– Place logo on the LEFT side or CENTER-LEFT of the header
+– Logo should appear premium: embossed, gold-foil or softly illuminated
+– Do NOT redesign, stretch, crop, or alter the logo in any way
+
+
+HEADER CONTENT STRUCTURE:
+– Main brand text (most prominent):
+  “Lekda Design Studio”
+– Supporting line (smaller, refined text):
+  “Designer Boutique | Bridal • Couture • Occasion Wear”
+– Right side of the header:
+  📍 Boduppal • Habsiguda, Uppal  
+  📞 9848222296
+
+
+DESIGN STYLE & MOOD:
+– Ultra-luxury designer boutique aesthetic
+– Feminine, elegant, bridal couture mood
+– Color palette inspired by brand:
+  deep plum / wine / mauve base with rich gold accents
+– Soft gold gradients, subtle glow highlights, premium lighting
+– Clean, minimal, and sophisticated (no clutter)
+
+
+TYPOGRAPHY:
+– Brand name in an elegant serif or high-fashion display font
+– Supporting text in a clean modern sans-serif
+– High contrast for perfect mobile readability
+– Contact number must stand out clearly but tastefully
+
+
+GRAPHIC DETAILS:
+– Thin gold divider lines or subtle curves
+– Soft vignette edges for depth
+– No mannequins, no models, no products inside the HEADER area
+– Store visuals and mannequins must appear only BELOW the header
+
+
+STRICT RULES:
+– IMAGE ONLY (no video, no animation)
+– Do NOT add prices
+– Do NOT add extra services or claims
+– Do NOT add social media handles
+– Use ONLY the information provided above
+– Header must look premium, elegant, and luxury-brand ready
+
+
+OUTPUT QUALITY:
+– Ultra-sharp, high-resolution
+– Print-ready and social-media-ready
+– World-class designer boutique header
+– Professional, timeless, and premium finish
+You said:
+hi
+ChatGPT said:
+Hi 😊
+How can I help you now?
+
+
+You said:
+Uploaded image
+SVR DEVELOOERS sales max. Open plots and Independent houses at ongole corporation.
+
+
+now i want for this 
+
+
+ChatGPT said:
+Something went wrong while generating the response. If this issue persists please contact us through our help center at help.openai.com.
+
+
+
+
+Retry
+
+
+
+
+
+
+No file chosenNo file chosen
+ChatGPT can make mistakes. Check important info. See Cookie Preferences.

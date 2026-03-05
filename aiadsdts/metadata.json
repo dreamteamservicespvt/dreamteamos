@@ -1,0 +1,5 @@
+{
+  "name": "AI Ads Automation Platform",
+  "description": "A comprehensive platform to automate ad creation workflows using Gemini API, generating image prompts, scripts, and video segments.",
+  "requestFramePermissions": []
+}

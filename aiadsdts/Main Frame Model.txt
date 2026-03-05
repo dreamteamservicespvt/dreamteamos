@@ -1,0 +1,2082 @@
+﻿understand the below and tell me if you are ready 
+Skip to content
+Chat history
+
+
+
+
+
+
+
+
+
+
+You said:
+You are an AI assistant specialized in generating START-FRAME IMAGE PROMPTS for business New Year wishes and brand intro creatives.
+
+
+FIRST RESPONSE RULE:
+When this meta prompt is pasted, your FIRST response must be exactly:
+
+
+"Yes, I’m ready. Please provide the business details and I will generate the start frame prompt instantly."
+
+
+--------------------------------------------
+
+
+WORKFLOW RULES (MANDATORY):
+
+
+When business details are provided, generate ONE final output:
+• A SINGLE ultra-detailed, copy-paste-ready IMAGE GENERATION PROMPT
+• The output MUST be inside an ARTIFACT / CODE BLOCK
+• Do NOT include explanations unless asked
+• Do NOT mention video, clip, cinematic, motion, or frame
+
+
+--------------------------------------------
+
+
+FIXED IMAGE RULES (NON-NEGOTIABLE):
+
+
+1. Output must be ONE IMAGE
+2. Aspect ratio: 9:16 vertical
+3. Ultra-realistic DSLR photography look
+4. No AI-art or stock-photo appearance
+5. Natural indoor lighting
+6. Slight real-world imperfections allowed
+
+
+--------------------------------------------
+
+
+SUBJECT (ALWAYS REQUIRED):
+
+
+• One stunning young Indian woman (early-20s)
+• Naturally elegant, MK-style beauty
+• Soft blushing cheeks
+• Expressive deep eyes
+• Well-defined eyebrows
+• Gentle warm smile
+• Small sharp nose
+• Defined jawline
+• Real skin texture (no plastic look)
+
+
+--------------------------------------------
+
+
+POSE & FRAMING (LOCKED):
+
+
+• MID SHOT only (head to just below waist)
+• Subject EXACTLY centered
+• Camera at chest level
+• Equal space on left and right
+
+
+HAND POSITION (FIXED):
+• Hands gently folded at waist / lower abdomen
+• One hand resting over the other
+• Fingers relaxed
+• Same posture every time
+
+
+--------------------------------------------
+
+
+HAIR:
+
+
+• Silky smooth black hair
+• Neatly styled
+• Soft light waves
+• Youthful, clean, professional
+
+
+--------------------------------------------
+
+
+ATTIRE & JEWELLERY:
+
+
+• Traditional Indian attire (default)
+• Saree color adjusted to business theme
+• Premium fabric look
+• Clean pleats and natural folds
+
+
+JEWELLERY (MANDATORY):
+• One minimal premium necklace (thin elegant chain)
+• Small stud earrings or tiny jhumkas
+• NO heavy jewellery
+• NO bangles
+• NO layered chains
+
+
+--------------------------------------------
+
+
+ENVIRONMENT RULE:
+
+
+IF store / office image is PROVIDED:
+• Use it as base
+• Improve lighting, cleanliness, organization
+• Do NOT change identity
+
+
+IF store image is NOT provided:
+• Create environment from scratch
+• Based on business type and brand tone
+• Must look real, operational, and premium
+
+
+--------------------------------------------
+
+
+LOGO RULE (MANDATORY):
+
+
+• Assume the logo will be uploaded separately
+• Use the provided logo
+• Place it as REAL signage:
+  – Wall board / reception panel / shop signage
+• Logo must be sharp, readable, proper size
+• NOT floating
+• NOT glowing
+• NOT oversized
+
+
+--------------------------------------------
+
+
+STRICTLY AVOID:
+
+
+• Full-body or long shots
+• Off-center framing
+• Aged or mature face
+• Plain or average appearance
+• Glamour makeup
+• Heavy jewellery
+• Studio lighting
+• Over-smooth skin
+• AI-render look
+• Stock-photo vibe
+• Any text other than the logo
+
+
+--------------------------------------------
+
+
+FINAL OUTPUT RULE:
+
+
+• Always output the FINAL IMAGE GENERATION PROMPT
+• The prompt MUST be inside an ARTIFACT / CODE BLOCK
+• No explanations unless explicitly requested
+ChatGPT said:
+Yes, I’m ready. Please provide the business details and I will generate the start frame prompt instantly.
+
+
+You said:
+Uploaded image
+Uploaded image
+they provided this 
+ChatGPT said:
+Ultra-realistic DSLR photograph, single image, 9:16 vertical.
+
+
+A stunning young Indian woman (early-20s), naturally elegant MK-style beauty, soft blushing cheeks, expressive deep eyes, well-defined eyebrows, gentle warm smile, small sharp nose, defined jawline, real natural skin texture with slight real-world imperfections, no plastic or AI-render look.
+
+
+MID SHOT only (head to just below waist), subject exactly centered, camera at chest level, equal space on left and right. Hands gently folded at the lower abdomen, one hand resting over the other, fingers relaxed, identical posture.
+
+
+Hair: silky smooth black hair, neatly styled, soft light waves, youthful, clean, professional finish.
+
+
+Attire: premium traditional Indian saree inspired by tea-brand tones — rich leaf-green with warm golden accents, high-quality fabric, clean pleats, natural folds, elegant and professional.  
+Jewellery (mandatory but minimal): one thin elegant premium necklace, small stud earrings or tiny jhumkas only, no bangles, no layered chains.
+
+
+Environment: real, operational premium tea distribution office / agency interior. Clean reception-style space with subtle tea-industry cues — organized shelves displaying neatly stacked packaged tea products in green and gold tones, polished counter, tidy workspace, warm natural indoor lighting from windows, realistic shadows, no studio lighting.
+
+
+Logo placement: use the provided brand logo as real signage on the wall behind the subject, mounted on a clean reception panel or wall board, sharp, readable, realistic size, non-glowing, non-floating, not oversized.
+
+
+Overall look: professional New Year business greeting and brand-intro feel, calm, trustworthy, premium, authentic Indian commercial photography, no text anywhere except the logo, no stock-photo vibe, no glamour makeup, no over-smooth skin.
+You said:
+Uploaded image
+this is the output i get after giving the prompt see 
+
+
+the girl should be very very beautiful 
+she needed to look like very high celebrity who comes to advertise their business 
+and also you missed main things she needed to be in center and her 
+Hands gently folded at the waist, one hand resting naturally over the other, matching the reference posture exactly 
+
+
+now tell me what you understand
+ChatGPT said:
+This is what I clearly understand from your correction — I’m restating it to confirm alignment before regenerating the final prompt:
+
+
+🔑 CORE ISSUE YOU’RE POINTING OUT
+The output did not feel like a celebrity-brand ambassador.
+It looked like a normal, pleasant store executive, not a top-tier advertising face.
+
+
+✅ WHAT YOU WANT (VERY CLEARLY)
+Beauty Level (MOST IMPORTANT)
+
+
+Not “cute” or “nice-looking”
+
+
+Very, very beautiful
+
+
+High-celebrity advertisement standard
+
+
+Face should feel:
+
+
+Premium
+
+
+Magnetic
+
+
+Aspirational
+
+
+Like a top actress/model hired for a national brand
+
+
+The kind of woman people instantly trust and admire when they see a brand ad
+
+
+Celebrity Presence
+
+
+Looks like:
+
+
+A well-known actress
+
+
+Or a luxury brand ambassador
+
+
+Strong screen presence, confidence, grace
+
+
+Subtle elegance, not glamour or heavy makeup
+
+
+Center Alignment (STRICT)
+
+
+She must be EXACTLY CENTERED
+
+
+Symmetrical framing
+
+
+Equal space left and right
+
+
+No visual imbalance
+
+
+Hand Position (MATCH EXACTLY)
+
+
+Hands gently folded at the waist
+
+
+One hand resting naturally over the other
+
+
+Relaxed fingers
+
+
+This posture is non-negotiable
+
+
+Must look intentional, graceful, and identical every time
+
+
+Overall Feel
+
+
+Not a shop staff photo
+
+
+Not documentary
+
+
+Not casual
+
+
+Premium brand advertisement look
+
+
+“This brand is serious, successful, and trustworthy”
+
+
+❌ WHAT YOU DID NOT WANT (AND NOTED CLEARLY)
+Average-looking woman
+
+
+Simple store-employee vibe
+
+
+Off-center composition
+
+
+Hands not matching the exact folded-waist posture
+
+
+Soft “normal life” realism instead of aspirational realism
+
+
+🧠 MY CORRECT UNDERSTANDING (ONE LINE)
+You want a hyper-premium, celebrity-level Indian woman, perfectly centered, with precise folded-hand posture, who looks like she was specifically hired to represent a big national tea brand, not someone who works there.
+
+
+If you say “Yes, correct”,
+I will regenerate ONE corrected ultra-strong start-frame image prompt that forces the model to deliver exactly this level — no compromise.
+
+
+You said:
+no it's opposite
+ChatGPT said:
+Got it — thank you for correcting me.
+Here is what I now correctly understand, clearly and precisely:
+
+
+✅ YOUR ACTUAL INTENT (OPPOSITE OF WHAT I SAID BEFORE)
+1. Beauty ≠ Celebrity
+You do NOT want a celebrity / actress / ambassador look
+
+
+You do NOT want an unreal, model-like, ad-shoot face
+
+
+You want:
+
+
+Real Indian beauty
+
+
+Very beautiful but believable
+
+
+Someone who looks like a real person, not hired from cinema or fashion industry
+
+
+👉 “Very beautiful” in a natural, relatable, Indian way — not star-level glamour
+
+
+2. Real Business Representative Look
+She should feel like:
+
+
+A real woman associated with the business
+
+
+Owner’s daughter / manager / front-face of the agency
+
+
+Someone customers can trust immediately
+
+
+Premium, clean, graceful — but still real
+
+
+3. Main Technical Mistakes You’re Pointing Out
+These are the actual problems, not the face alone:
+
+
+❌ Centering was wrong
+She was not perfectly centered
+
+
+Framing symmetry was off
+
+
+❌ Hand posture was wrong
+Hands were not matching your fixed rule
+
+
+You want exactly:
+
+
+Hands gently folded at the waist
+
+
+One hand resting over the other
+
+
+Calm, composed, graceful
+
+
+Same posture every time (like a template)
+
+
+4. What You Want Overall
+A start-frame business image
+
+
+Looks:
+
+
+Real
+
+
+Professional
+
+
+Premium
+
+
+Trustworthy
+
+
+Not cinematic
+
+
+Not glamorous
+
+
+Not stock-photo
+
+
+Not celebrity
+
+
+👉 “Best possible version of a real Indian woman in a real business setting.”
+
+
+🧠 ONE-LINE CORRECT UNDERSTANDING
+You want a naturally very beautiful but realistic Indian woman, perfectly centered, with strict hand posture, who looks like an authentic front-face of the business — **not a celebrity, not an actress,
+
+
+You said:
+i need the girl should be very very beautiful 
+she needed to look like very high celebrity who comes to advertise their business 
+and also you missed main things she needed to be in center and her 
+Hands gently folded at the waist, one hand resting naturally over the other, matching the reference posture exactly 
+
+
+now tell me what you understand
+ChatGPT said:
+Understood. This is exactly what you want — I’ll state it clearly and precisely:
+
+
+✅ WHAT I UNDERSTAND NOW (FINAL & CORRECT)
+Beauty Level (TOP PRIORITY)
+
+
+The girl must be very, very beautiful
+
+
+High-celebrity level beauty
+
+
+Looks like a top actress / national brand ambassador
+
+
+Instantly eye-catching, aspirational, premium
+
+
+Not average, not normal, not “store staff” vibe
+
+
+Celebrity Advertising Presence
+
+
+She should look like she was specially hired to advertise the business
+
+
+Strong presence, confidence, grace
+
+
+Elegant, premium, luxury-brand feel
+
+
+Subtle makeup, but clearly celebrity-standard
+
+
+Center Alignment (NON-NEGOTIABLE)
+
+
+She must be EXACTLY in the center
+
+
+Perfect symmetry
+
+
+Equal space on left and right
+
+
+Camera aligned precisely
+
+
+Hand Position (CRITICAL & EXACT)
+
+
+Hands gently folded at the waist
+
+
+One hand resting naturally over the other
+
+
+Fingers relaxed
+
+
+Must match the reference posture exactly
+
+
+Same posture every time, no variation
+
+
+Overall Result You Expect
+
+
+A start-frame business image
+
+
+Looks like a high-end advertisement
+
+
+Premium, powerful, trustworthy
+
+
+No casual feel
+
+
+No realism that reduces aspirational value
+
+
+🧠 ONE-LINE SUMMARY
+You want a perfectly centered, celebrity-level beautiful Indian woman, with exact folded-hand posture, who clearly looks like a top brand ambassador advertising the business, not a normal person.
+
+
+If you say “Yes, this is correct”, I will regenerate the final corrected ultra-strong image generation prompt that enforces all of this with zero compromise.
+
+
+You said:
+Uploaded image
+Uploaded image
+now give me for this 
+ChatGPT said:
+Ultra-realistic DSLR photograph, single image, 9:16 vertical.
+
+
+A very, very beautiful young Indian woman (early-20s), high-celebrity advertising standard, looks like a top national brand ambassador hired to promote a premium tea brand. Naturally elegant MK-style beauty with flawless balance — soft blushing cheeks, expressive deep eyes with strong screen presence, perfectly shaped eyebrows, gentle confident warm smile, small sharp nose, refined defined jawline, luminous real skin texture with natural pores and subtle imperfections (no plastic or AI-render look).
+
+
+POSE & FRAMING (STRICT):
+MID SHOT only (head to just below waist). Subject EXACTLY CENTERED in the frame with perfect symmetry, equal space on left and right. Camera at chest level.  
+Hands gently folded at the waist / lower abdomen, one hand resting naturally over the other, fingers relaxed — posture must match the reference exactly, no variation.
+
+
+Hair: silky smooth jet-black hair, neatly styled, soft light waves, glossy yet natural, youthful and premium celebrity grooming.
+
+
+Attire: premium traditional Indian saree inspired by the tea brand palette — rich green with warm gold/yellow accents reflecting tea leaves and sunrise tones. High-quality fabric, clean pleats, natural realistic folds, elegant and luxurious advertising look.
+
+
+Jewellery (mandatory, minimal, premium): one thin elegant necklace chain only, small stud earrings or tiny jhumkas, no heavy jewellery, no bangles, no layered chains.
+
+
+Environment: real, operational, premium tea distribution office / agency interior inspired by the provided brand visuals. Warm natural indoor lighting. Clean wooden reception counter. Shelves behind displaying neatly arranged green and gold tea packets similar to the provided KTC Bharat tea packaging. Space must feel authentic, professional, successful, and well-maintained — not studio, not staged.
+
+
+Logo rule: assume the brand logo is provided separately. Place the logo as real physical signage on the reception panel or wall behind her. Logo must be sharp, readable, realistic size, properly mounted, not floating, not glowing, not oversized.
+
+
+Overall look & mood: high-end business advertisement start image, powerful and aspirational. Celebrity presence with trust and authority. Ultra-realistic photography, no stock-photo vibe, no glamour makeup, no cinematic effects, no text anywhere except the logo.
+You said:
+Uploaded image
+Uploaded image
+now give me for this 
+ChatGPT said:
+Ultra-realistic DSLR photograph, single image, 9:16 vertical.
+
+
+A very, very beautiful young Indian woman (early-20s), **high-celebrity advertising standard**, looks like a top national brand ambassador hired to represent a premium solar-energy company. Strong screen presence and elegance. Naturally flawless MK-style beauty: soft blushing cheeks, expressive deep eyes with confident gaze, perfectly shaped eyebrows, gentle premium smile, small sharp nose, refined defined jawline, realistic luminous skin texture with visible pores and subtle natural imperfections (no plastic skin, no AI-render look).
+
+
+POSE & FRAMING (STRICT — NON-NEGOTIABLE):
+MID SHOT only (head to just below waist). Subject **EXACTLY CENTERED** in the frame with perfect symmetry and equal space on left and right. Camera at chest level.  
+**Hands gently folded at the waist / lower abdomen, one hand resting naturally over the other, fingers relaxed — posture must match the reference exactly, no variation allowed.**
+
+
+Hair: silky smooth jet-black hair, neatly styled with soft light waves, glossy but natural, high-end celebrity grooming.
+
+
+Attire: premium traditional Indian saree with a powerful corporate-energy palette — deep green, solar-blue, and subtle gold accents symbolizing clean energy and trust. High-quality fabric, crisp pleats, natural folds, elite brand-advertisement look.
+
+
+Jewellery (mandatory, minimal, premium only): one thin elegant necklace chain, small stud earrings or tiny jhumkas, no heavy jewellery, no bangles, no layered chains.
+
+
+Environment: real, operational, premium solar-energy office / experience center. Clean modern reception area with wooden and white interiors, subtle tech finish. Behind her, organized displays suggesting solar panels, energy systems, or rooftop-solar visuals. Natural indoor daylight, realistic shadows, professional but not studio lighting.
+
+
+Logo rule: use the provided **CUBE Energy and Infra Pvt. Ltd.** logo as real physical signage on the wall or reception panel behind her. Logo must be sharp, readable, realistic size, properly mounted, not glowing, not floating, not oversized.
+
+
+Overall look & mood: powerful **New-Year business start image**, aspirational and authoritative. Feels like a national-level solar brand advertisement. Ultra-realistic photography, premium corporate confidence, no stock-photo vibe, no glamour makeup, no cinematic effects, **no text anywhere except the logo**.
+You said:
+Uploaded image
+MYPARTY = VISITING CARD Final.pdf
+PDF
+WhatsApp Video 2025-12-30 at 5.39.36 PM.mp4
+File
+i need for this it was an app my party launching on next month
+ App going to launch on 26 jan(republic day)
+
+
+now i need for this 
+ChatGPT said:
+Ultra-realistic DSLR photograph, single image, 9:16 vertical.
+
+
+A very, very beautiful young Indian woman (early-20s), **high-celebrity advertising standard**, looks like a top national brand ambassador chosen to launch a premium lifestyle & events app. Strong screen presence, aspirational and confident. Naturally elegant MK-style beauty: soft blushing cheeks, expressive deep eyes with charm and authority, perfectly defined eyebrows, gentle confident warm smile, small sharp nose, refined jawline, real luminous skin texture with subtle natural imperfections (no plastic skin, no AI-art look).
+
+
+POSE & FRAMING (STRICT – NON-NEGOTIABLE):
+MID SHOT only (head to just below waist). Subject **EXACTLY CENTERED** with perfect symmetry and equal space on both sides. Camera at chest level.  
+**Hands gently folded at the waist / lower abdomen, one hand resting naturally over the other, fingers relaxed — posture must match the reference exactly, no variation.**
+
+
+Hair: silky smooth black hair, neatly styled with soft light waves, youthful, clean, premium celebrity grooming.
+
+
+Attire: premium traditional Indian saree designed for a modern festive-tech brand launch — rich purple base inspired by the app branding, with subtle saffron, white, and green accents symbolizing Republic Day. High-quality fabric, clean pleats, natural folds, elegant yet powerful.
+
+
+Jewellery (mandatory, minimal): one thin elegant necklace chain, small stud earrings or tiny jhumkas only, no heavy jewellery, no bangles, no layered chains.
+
+
+Environment: real, premium modern tech-office / startup launch environment. Clean reception or presentation space with soft curves and minimal décor. Subtle purple gradient elements matching the app theme. Natural indoor lighting, realistic shadows, professional and aspirational — not studio, not staged.
+
+
+Logo rule: assume the **“my party”** app logo is provided separately. Place it as real physical branding — wall signage or reception panel behind her. Logo must be sharp, readable, realistic size, properly mounted, not glowing, not floating, not oversized.
+
+
+Overall look & mood: **Republic Day app-launch start image (26 January)** — powerful, celebratory, trustworthy, premium. Feels like a national-level app launch advertisement. Ultra-realistic photography, no stock-photo vibe, no glamour makeup, no cinematic effects, **no text anywhere except the logo**.
+You said:
+good but it was not including the attached logo correctly
+ChatGPT said:
+Ultra-realistic DSLR photograph, single image, 9:16 vertical.
+
+
+A very, very beautiful young Indian woman (early-20s), **high-celebrity advertising standard**, looks like a top national brand ambassador officially launching a premium lifestyle & events app. Strong screen presence, aspirational confidence, and elite polish. Naturally elegant MK-style beauty: soft blushing cheeks, expressive deep eyes, perfectly shaped eyebrows, gentle confident warm smile, small sharp nose, refined jawline, real luminous skin texture with subtle natural imperfections (no plastic skin, no AI-render look).
+
+
+POSE & FRAMING (STRICT — NON-NEGOTIABLE):
+MID SHOT only (head to just below waist). Subject **EXACTLY CENTERED** with perfect symmetry and equal space on left and right. Camera at chest level.  
+**Hands gently folded at the waist / lower abdomen, one hand resting naturally over the other, fingers relaxed — posture must match the reference exactly, no variation.**
+
+
+Hair: silky smooth jet-black hair, neatly styled with soft light waves, youthful, clean, premium celebrity grooming.
+
+
+Attire: premium traditional Indian saree aligned with the brand identity — rich royal purple as the primary tone, subtle festive elegance. High-quality fabric, crisp pleats, natural folds, elite brand-launch appearance.
+
+
+Jewellery (mandatory, minimal, premium): one thin elegant necklace chain, small stud earrings or tiny jhumkas only, no bangles, no layered chains.
+
+
+Environment: real, modern, premium startup / app-launch office interior. Clean reception-style setup with soft curves and contemporary design. Subtle purple gradients and lighting accents that match the brand palette. Natural indoor lighting, realistic shadows, authentic and operational — not studio, not staged.
+
+
+LOGO PLACEMENT (CRITICAL — USE ATTACHED LOGO EXACTLY):
+Use the **attached “my party” app logo** exactly as provided, without redesign or color change.  
+Place it as **real physical signage**:
+• Mounted on a vertical wall panel or reception backdrop directly behind the subject  
+• Logo orientation upright and centered horizontally  
+• Sharp edges, correct proportions, brand-accurate purple background  
+• Realistic signage material (acrylic / matte board / back-panel), not floating  
+• Proper business-signage size — clearly readable but not oversized  
+• No glow, no shadow effects, no stylization
+
+
+Overall look & mood: **Republic Day app launch (26 January)** start image — premium, celebratory, trustworthy, aspirational. Feels like a national-level tech app advertisement. Ultra-realistic DSLR photography, no stock-photo vibe, no glamour makeup, no cinematic effects, **no text anywhere except the logo**.
+You said:
+Uploaded image
+now i need for this 
+TIREO WASH (Experience the new level of laundry)
+Company Number is 829 74 77 888 and 829 75 77 888
+Places of service - Pithapuram & Kakinada
+ChatGPT said:
+Ultra-realistic DSLR photograph, single image, 9:16 vertical.
+
+
+A very, very beautiful young Indian woman (early-20s), **high-celebrity advertising standard**, looks like a premium national brand ambassador representing a high-end laundry and fabric-care brand. Strong screen presence, elegance, and trust. Naturally flawless MK-style beauty: soft blushing cheeks, expressive deep eyes with confident clarity, perfectly defined eyebrows, gentle assured warm smile, small sharp nose, refined jawline, real luminous skin texture with visible pores and subtle natural imperfections (no plastic skin, no AI-render look).
+
+
+POSE & FRAMING (STRICT — NON-NEGOTIABLE):
+MID SHOT only (head to just below waist). Subject **EXACTLY CENTERED** with perfect symmetry and equal space on left and right. Camera at chest level.  
+**Hands gently folded at the waist / lower abdomen, one hand resting naturally over the other, fingers relaxed — posture must match the reference exactly, no variation.**
+
+
+Hair: silky smooth jet-black hair, neatly styled with soft light waves, youthful, clean, premium celebrity grooming.
+
+
+Attire: premium traditional Indian saree styled for a luxury service brand — elegant neutral-beige or soft ivory base with subtle blue and warm orange accents inspired by cleanliness, water, and freshness. High-quality fabric, crisp pleats, natural folds, refined professional elegance.
+
+
+Jewellery (mandatory, minimal, premium): one thin elegant necklace chain, small stud earrings or tiny jhumkas only, no heavy jewellery, no bangles, no layered chains.
+
+
+Environment: real, operational, premium laundry service reception / experience center. Clean, modern interior with spotless counters, soft warm-toned walls, subtle blue highlights suggesting water and freshness. Behind her, organized shelves or panels hinting at professional laundry equipment, folded linens, or fabric-care visuals. Natural indoor lighting, realistic shadows, hygienic and premium — not studio, not staged.
+
+
+LOGO PLACEMENT (CRITICAL — USE ATTACHED LOGO EXACTLY):
+Use the **attached “TRIEO WASH” logo** exactly as provided, without redesign, recoloring, or distortion.  
+Place it as **real physical signage**:
+• Mounted on the wall or reception panel directly behind the subject  
+• Correct proportions, brand-accurate colors, sharp and readable  
+• Realistic signage material (acrylic / matte board)  
+• Proper business-signage size — clear but not oversized  
+• Not floating, not glowing, no visual effects
+
+
+Overall look & mood: premium **business brand-intro start image** for a modern laundry service. Clean, trustworthy, aspirational, and high-end. Ultra-realistic DSLR photography, no stock-photo vibe, no glamour makeup, no cinematic effects, **no text anywhere except the logo**.
+You said:
+the background store should be look like it was perfectly taken in the correct place of the store so the background also convey the message
+ChatGPT said:
+Ultra-realistic DSLR photograph, single image, 9:16 vertical.
+
+
+A very, very beautiful young Indian woman (early-20s), **high-celebrity advertising standard**, looks like a premium national brand ambassador representing a luxury laundry & fabric-care brand. Strong screen presence, confidence, and trust. Naturally elegant MK-style beauty with soft blushing cheeks, expressive deep eyes, perfectly shaped eyebrows, gentle confident warm smile, small sharp nose, refined jawline, and real luminous skin texture with natural pores and subtle imperfections (no plastic skin, no AI-art look).
+
+
+POSE & FRAMING (STRICT — NON-NEGOTIABLE):
+MID SHOT only (head to just below waist). Subject **EXACTLY CENTERED** with perfect symmetry and equal space on left and right. Camera at chest level.  
+**Hands gently folded at the waist / lower abdomen, one hand resting naturally over the other, fingers relaxed — posture must match the reference exactly, no variation.**
+
+
+Hair: silky smooth jet-black hair, neatly styled with soft light waves, youthful, clean, premium celebrity grooming.
+
+
+Attire: premium traditional Indian saree suitable for a luxury service brand — soft ivory / beige base with subtle blue and warm orange accents symbolizing cleanliness, water, and freshness. High-quality fabric, crisp pleats, natural folds, elegant and professional.
+
+
+Jewellery (mandatory, minimal, premium): one thin elegant necklace chain, small stud earrings or tiny jhumkas only, no heavy jewellery, no bangles, no layered chains.
+
+
+ENVIRONMENT (VERY IMPORTANT — STORE MUST CONVEY THE MESSAGE):
+The background must look like it was **photographed inside the real TRIEO WASH store at the perfect angle**.
+• Clean, premium laundry service reception area  
+• Spotless counter in the foreground, polished and hygienic  
+• Behind her: clearly visible professional laundry setup — neatly arranged washing machines or dryers, folded white linens, organized racks of freshly cleaned clothes, fabric-care signage elements  
+• Colors aligned with the brand — warm neutrals with subtle blue highlights for water and freshness  
+• Space should instantly communicate **laundry, cleanliness, professionalism, and premium service** even without reading anything  
+• Natural indoor lighting from the actual store space (windows / ceiling lights), realistic shadows, no studio lighting, no artificial backdrop  
+• The store must feel authentic, operational, and location-correct — not staged, not generic, not showroom-like
+
+
+LOGO PLACEMENT (CRITICAL — USE ATTACHED LOGO EXACTLY):
+Use the **attached “TRIEO WASH” logo** exactly as provided.
+• Mounted as real physical signage on the store wall or reception panel behind her  
+• Correct proportions, brand-accurate colors, sharp and readable  
+• Realistic signage material (acrylic / matte board)  
+• Proper business-signage size — clear but not oversized  
+• Not floating, not glowing, no visual effects
+
+
+Overall look & mood: a **premium brand-intro start image** where both the woman and the store environment together clearly communicate a high-end laundry service. Clean, trustworthy, aspirational, and professional. Ultra-realistic DSLR photography, no stock-photo vibe, no glamour makeup, no cinematic effects, **no text anywhere except the logo**.
+You said:
+Uploaded image
+Uploaded image
+S RR Group
+(Real Estate)
+now i need for this 
+ChatGPT said:
+Ultra-realistic DSLR photograph, single image, 9:16 vertical.
+
+
+A very, very beautiful young Indian woman (early-20s), **high-celebrity advertising standard**, looks like a top national real-estate brand ambassador representing a premium real-estate group. Powerful, aspirational presence with elegance and authority. Naturally flawless MK-style beauty: soft blushing cheeks, expressive deep eyes with confidence and trust, perfectly defined eyebrows, gentle assured warm smile, small sharp nose, refined jawline, real luminous skin texture with natural pores and subtle imperfections (no plastic skin, no AI-render look).
+
+
+POSE & FRAMING (STRICT — NON-NEGOTIABLE):
+MID SHOT only (head to just below waist). Subject **EXACTLY CENTERED** in the frame with perfect symmetry and equal space on left and right. Camera at chest level.  
+**Hands gently folded at the waist / lower abdomen, one hand resting naturally over the other, fingers relaxed — posture must match the reference exactly, no variation.**
+
+
+Hair: silky smooth jet-black hair, neatly styled with soft light waves, youthful, clean, premium celebrity grooming.
+
+
+Attire: premium traditional Indian saree designed for a luxury real-estate brand — deep royal blue or rich emerald green with subtle gold accents reflecting trust, stability, and prosperity. High-quality fabric, crisp pleats, natural folds, elite corporate elegance.
+
+
+Jewellery (mandatory, minimal, premium): one thin elegant necklace chain, small stud earrings or tiny jhumkas only, no heavy jewellery, no bangles, no layered chains.
+
+
+ENVIRONMENT (STORE / OFFICE MUST CONVEY REAL ESTATE CLEARLY):
+Background must look like it was **photographed inside the actual SRR Group real-estate office at the perfect angle**.
+• Premium real-estate office or experience center  
+• Elegant reception desk in the foreground, polished and professional  
+• Behind her: architectural elements such as wall-mounted project visuals, building elevations, floor-plan displays, miniature building models, or framed luxury property renders  
+• Sophisticated color palette — deep blues, muted greens, warm neutrals, subtle gold highlights  
+• Natural indoor lighting from real office windows or ceiling lights, realistic shadows  
+• The space should instantly communicate **real estate, trust, growth, and success** even without reading anything  
+• Must feel authentic, operational, and location-correct — not staged, not generic, not studio-like
+
+
+LOGO PLACEMENT (CRITICAL — USE ATTACHED LOGO EXACTLY):
+Use the **attached “SRR GROUP” logo** exactly as provided, without redesign, recoloring, or distortion.
+• Mounted as real physical signage on the office wall or reception panel behind her  
+• Correct proportions, brand-accurate colors (blue and gold)  
+• Sharp, readable, realistic business-signage size  
+• Real signage material (acrylic / metal / matte board)  
+• Not floating, not glowing, no effects
+
+
+Overall look & mood: **premium real-estate brand-intro start image**. Aspirational, authoritative, trustworthy, and elite. Ultra-realistic DSLR photography, no stock-photo vibe, no glamour makeup, no cinematic effects, **no text anywhere except the logo**.
+You said:
+it was generating like ai i want real type images
+ChatGPT said:
+Ultra-realistic DSLR photograph, single image, 9:16 vertical — **indistinguishable from a real professional photograph**, absolutely no AI-art or rendered look.
+
+
+A **very, very beautiful young Indian woman (early-20s)** with **natural celebrity-level elegance**, the kind of beauty seen in real brand endorsements — **not stylized, not exaggerated, not artificial**. Her beauty must feel *real and photographic*, like a high-end real-estate ad shot with a real person. Soft natural blush on cheeks, expressive deep eyes, well-shaped eyebrows, gentle confident smile, small sharp nose, defined jawline. **Visible real skin texture**: pores, subtle unevenness, natural highlights — **no airbrushed or overly perfect skin**.
+
+
+POSE & FRAMING (LOCKED — EXACT):
+MID SHOT only (head to just below waist).  
+Subject **EXACTLY CENTERED**, perfect symmetry, equal space left and right.  
+Camera at chest level, straight-on.  
+**Hands gently folded at the waist / lower abdomen, one hand resting naturally over the other, fingers relaxed — identical posture every time, no variation.**
+
+
+Hair: real silky black hair, neatly groomed with soft natural waves, slight flyaways allowed, realistic shine — **not stylized, not glossy-rendered**.
+
+
+Attire: premium traditional Indian saree suitable for a luxury real-estate brand — deep royal blue or emerald green with subtle gold border. Fabric must look real and heavy, with natural creases, folds, and gravity — **no perfect drape**.
+
+
+Jewellery (minimal & realistic): one thin gold chain necklace, small stud earrings or tiny jhumkas. No heavy jewellery, no bangles, no layered chains.
+
+
+ENVIRONMENT (MOST IMPORTANT — MUST LOOK 100% REAL):
+Photographed **inside a real SRR Group real-estate office**, as if taken by a professional photographer during business hours.
+• Authentic reception area with real materials (wood, stone, glass)
+• Slight natural imperfections: minor reflections, depth-of-field blur, realistic shadows
+• Behind her: real estate cues — framed project photos, architectural drawings, floor plans, property models, or a clean branded wall
+• Natural indoor lighting from windows and ceiling lights — **no studio lighting**
+• Depth of field like a real DSLR (subject sharp, background softly blurred)
+• The space must instantly communicate **real estate, trust, growth, success** without looking staged or showroom-like
+
+
+LOGO PLACEMENT (REAL-WORLD ONLY):
+Use the **attached SRR GROUP logo exactly as provided**.
+• Physically mounted signage on the wall or reception panel behind her
+• Correct proportions, accurate colors (blue & gold)
+• Matte acrylic / metal signage look
+• Proper real-business size — not oversized
+• Absolutely **not floating, not glowing, not digitally overlaid**
+
+
+CAMERA & PHOTO REALISM DETAILS:
+• Shot on a professional DSLR (85mm or 50mm lens look)
+• Natural color grading
+• Slight lens softness, real dynamic range
+• No HDR exaggeration
+• No cinematic effects
+• No artificial sharpness
+• Looks like it was taken by a real photographer, not generated
+
+
+Overall mood: **premium, trustworthy, aspirational real-estate brand image** that feels completely real.  
+If someone sees it, they should think: *“This is a real photo from a real company,”* not AI.
+
+
+No text anywhere except the logo.
+You said:
+nice save the corrections next time onwards give correctly , just like this
+ChatGPT said:
+Updated saved memory
+Saved 👍
+I’ve noted these corrections and will follow this exact standard by default going forward:
+
+
+Strictly real-photo look (DSLR, natural light, depth, imperfections)
+
+
+No AI / rendered / plastic appearance
+
+
+Physically real environments that clearly convey the business
+
+
+Exact centering + exact hand posture
+
+
+Logos only as real-world signage
+
+
+Aspirational but believable, photographic beauty
+
+
+From next time onward, I’ll deliver prompts just like this one, without needing reminders.
+
+
+You said:
+Uploaded image
+Uploaded image
+i need for this
+
+
+Business Name :- Moonlight Entertainments
+Business information :- 
+
+
+ఆరినోవా లైఫ్‌స్టైల్ ఎక్స్‌పో (AURENOVA Life Style Expo)  Exhibition in Sri Sri Banquet Halls, KPHB * జనవరి 2, 3, 4 తేదీలలో ✨
+
+
+హైదరాబాద్‌లో అత్యంత ఉత్సాహభరితమైన షాపింగ్ మరియు లైఫ్‌స్టైల్ అనుభవం !
+
+
+🛍️ 3 రోజుల పాటు సాగే ఫ్యాషన్ • లైఫ్‌స్టైల్ • హస్తకళా ఉత్పత్తులు • ఆహారం • హోమ్ డెకర్ & మరెన్నో!
+
+
+తేదీలు: 2, 3 మరియు 4 జనవరి 2026.
+
+
+⏰ సమయం: ఉదయం 10 గంటల నుండి రాత్రి 10 గంటల వరకు
+
+
+📍 వేదిక: Sri Sri Banquet Halls, PNR Empire, KPHB Near Metro Pillar A 737, కూకట్‌పల్లి, హైదరాబాద్.
+
+
+👨‍👩‍👧 కుటుంబాలు, వ్యాపారవేత్తలు మరియు షాపింగ్ తో కలిపి వేల మంది సందర్శకులు వచ్చే అవకాశం ఉంది.
+
+
+🎉 సందర్శకులందరికీ ప్రవేశం ఉచితం!
+
+
+📞 స్టాల్ బుకింగ్స్ కోసం సంప్రదించండి: 9030650630
+
+
+నిర్వహణ: మూన్‌లైట్ ఎంటర్‌టైన్‌మెంట్స్ (Moonlight Entertainments)
+
+
+ChatGPT said:
+Ultra-realistic DSLR photograph, single image, 9:16 vertical — completely natural, real-event photography look (no AI-art, no rendered feel).
+
+
+SUBJECT:
+One **very, very beautiful young Indian woman (early-20s)** with **real celebrity-level presence**, like a well-known brand face attending a premium lifestyle expo. Beauty must feel **natural and photographic**, not stylized or artificial. Soft blushing cheeks, expressive deep eyes, well-defined eyebrows, gentle confident smile, small sharp nose, defined jawline, **real skin texture with pores and slight imperfections** (no airbrushing, no plastic look).
+
+
+POSE & FRAMING (STRICT — EXACT):
+MID SHOT only (head to just below waist).  
+Subject **EXACTLY CENTERED**, perfectly symmetrical, equal space left and right.  
+Camera at chest level, straight-on.  
+**Hands gently folded at the waist / lower abdomen, one hand resting naturally over the other, fingers relaxed — posture must match reference exactly, no variation.**
+
+
+HAIR:
+Silky smooth black hair, neatly styled with soft natural waves, slight flyaways allowed, realistic shine — looks like real event grooming, not studio styling.
+
+
+ATTIRE:
+Premium traditional Indian saree suitable for a **grand lifestyle expo** — rich festive tone inspired by the event branding (deep purple / elegant maroon / ivory with subtle gold). Fabric must look real and heavy with natural creases, folds, and gravity. Elegant, classy, event-appropriate.
+
+
+JEWELLERY (MINIMAL & REAL):
+One thin elegant necklace chain, small stud earrings or tiny jhumkas only. No heavy jewellery, no bangles, no layered chains.
+
+
+ENVIRONMENT (CRITICAL — MUST CONVEY THE EXPO CLEARLY):
+Photographed **inside the actual AURENOVA Lifestyle Expo venue** at Sri Sri Banquet Halls.
+• Real exhibition hall interior with visible stalls, banners, decor elements, shoppers softly blurred in background  
+• Festive Sankranthi / lifestyle-expo ambiance — warm lights, fabric drapes, subtle decor  
+• Depth-of-field like a real DSLR: subject sharp, background naturally blurred  
+• Natural indoor lighting from hall lights and ambient sources (no studio lighting)  
+• The background alone should clearly communicate **lifestyle expo, shopping festival, grand public event**
+
+
+LOGO PLACEMENT (REAL-WORLD ONLY):
+Use the **attached “AURENOVA Life Style Expo / Moonlight Entertainments” logo exactly as provided**.
+• Logo must appear as **real physical branding** — printed on a banner, standee, backdrop, or exhibition wall behind her  
+• Correct proportions, original colors, sharp and readable  
+• Looks like real event signage (flex / banner / backdrop), not digitally overlaid  
+• Not floating, not glowing, not oversized
+
+
+CAMERA & PHOTO REALISM:
+• DSLR look (50mm or 85mm lens feel)  
+• Natural color grading  
+• Real shadows and highlights  
+• Slight lens softness, natural dynamic range  
+• No HDR, no cinematic effects, no artificial sharpness  
+
+
+OVERALL FEEL:
+A **real photograph taken during a grand lifestyle expo**, premium, festive, trustworthy, aspirational.  
+Anyone seeing it should instantly believe this is a **real image from the AURENOVA Lifestyle Expo**, not AI.
+
+
+STRICTLY NO TEXT anywhere except real-world logos and signage.
+You said:
+Uploaded image
+Uploaded image
+now i need the girl in the store 
+ChatGPT said:
+Ultra-realistic DSLR photograph, single image, 9:16 vertical — looks like a real photo taken inside the actual store (no AI-art, no rendered feel).
+
+
+SUBJECT:
+One **very, very beautiful young Indian woman (early-20s)** with **real celebrity-level presence**, like a premium brand ambassador visiting a popular mobile store. Beauty must feel **natural, photographic, and believable**, not stylized. Soft blushing cheeks, expressive deep eyes, well-defined eyebrows, gentle confident smile, small sharp nose, defined jawline. **Real skin texture visible** with pores and slight imperfections (no airbrushing, no plastic skin).
+
+
+POSE & FRAMING (STRICT — EXACT):
+MID SHOT only (head to just below waist).  
+Subject **EXACTLY CENTERED** in the frame, perfect symmetry, equal space left and right.  
+Camera at chest level, straight-on.  
+**Hands gently folded at the waist / lower abdomen, one hand resting naturally over the other, fingers relaxed — posture must match reference exactly, no variation.**
+
+
+HAIR:
+Silky smooth black hair, neatly styled with soft natural waves, slight flyaways allowed, realistic shine — looks like real grooming, not studio styling.
+
+
+ATTIRE:
+Premium traditional Indian saree styled for a modern retail brand appearance — elegant neutral or soft pastel tone with subtle richness. Fabric must look real with natural creases, folds, and weight. Clean, classy, customer-facing elegance.
+
+
+JEWELLERY (MINIMAL & REAL):
+One thin elegant necklace chain, small stud earrings or tiny jhumkas only. No heavy jewellery, no bangles, no layered chains.
+
+
+ENVIRONMENT (USE PROVIDED STORE IMAGES AS BASE — VERY IMPORTANT):
+Use the **actual R1 Mobiles store interior and exterior provided** as the real background.
+• Same shop layout, shelves, glass counters, lighting, ceiling design, and accessories  
+• Improve cleanliness, lighting balance, and organization slightly — but **do not change the store identity**  
+• Mobile phones, accessories, brand boxes visible naturally on shelves and inside glass counters  
+• Real working-store feel — slightly busy, realistic reflections, depth, and perspective  
+• Natural indoor lighting from the store lights (no studio lighting)  
+• Depth of field like a real DSLR: subject sharp, background softly blurred  
+• The background alone should clearly communicate **mobile store / electronics retail** instantly
+
+
+LOGO & SIGNAGE (REAL-WORLD ONLY):
+Use the **existing “R1 mobiles” signage exactly as shown in the provided store images**.
+• Keep signage in its original position and style  
+• Logo must remain real, mounted, readable, and unchanged  
+• No floating logos, no digital overlays, no glow effects
+
+
+CAMERA & PHOTO REALISM:
+• DSLR look (50mm or 35mm lens feel for indoor retail)  
+• Natural color grading  
+• Real shadows, reflections on glass counters  
+• Slight lens softness, natural dynamic range  
+• No HDR, no cinematic effects, no artificial sharpness  
+
+
+OVERALL FEEL:
+A **real photograph of a celebrity-level beautiful woman standing inside an actual mobile store**, premium, trustworthy, aspirational, and believable.  
+Anyone seeing it should think: *“This is a real photo taken inside the store,”* not AI-generated.
+
+
+STRICTLY NO TEXT anywhere except existing real-world signage.
+You said:
+Uploaded image
+i need for this 
+ChatGPT said:
+Ultra-realistic DSLR photograph, single image, 9:16 vertical — completely real, non-AI photographic look.
+
+
+SUBJECT:
+One **very, very beautiful young Indian woman (early-20s)** with **real celebrity-level elegance**, like a trusted brand ambassador for a premium health & home-appliance company. Beauty must feel **natural, believable, and photographic**, not stylized or artificial. Soft blushing cheeks, expressive deep eyes, well-defined eyebrows, gentle confident smile, small sharp nose, defined jawline, **real skin texture with visible pores and slight imperfections** (no airbrushing, no plastic look).
+
+
+POSE & FRAMING (STRICT — EXACT):
+MID SHOT only (head to just below waist).  
+Subject **EXACTLY CENTERED**, perfect symmetry, equal space on both sides.  
+Camera at chest level, straight-on.  
+**Hands gently folded at the waist / lower abdomen, one hand resting naturally over the other, fingers relaxed — posture must match reference exactly, no variation.**
+
+
+HAIR:
+Silky smooth black hair, neatly styled with soft natural waves, slight flyaways allowed, realistic shine — looks like real professional grooming, not studio styling.
+
+
+ATTIRE:
+Premium traditional Indian saree suitable for a **health & water-purification brand** — clean white, soft aqua blue, or light ivory with subtle blue accents symbolizing purity and health. Fabric must look real and slightly heavy with natural folds and gravity.
+
+
+JEWELLERY (MINIMAL & REAL):
+One thin elegant necklace chain, small stud earrings or tiny jhumkas only. No heavy jewellery, no bangles, no layered chains.
+
+
+ENVIRONMENT (USE REAL STORE CONTEXT — VERY IMPORTANT):
+Photographed **inside the actual Sri Amrutha Water Purifiers store / showroom**.
+• Clean, hygienic retail environment  
+• Visible water purifiers (Aquaguard and other models) mounted on walls or displayed on counters  
+• Neatly arranged product boxes, brochures, and service desk  
+• Bright, clean indoor lighting typical of appliance stores (no studio lighting)  
+• Real reflections on purifier surfaces and glass  
+• Depth of field like a real DSLR: subject sharp, background softly blurred  
+• The background alone should clearly communicate **water purification, health, and trust**
+
+
+LOGO & SIGNAGE (REAL-WORLD ONLY — CRITICAL):
+Use the **existing “Sri Amrutha Water Purifiers / Aquaguard” branding exactly as provided**.
+• Logo and brand name must appear as **real physical signage** on the store wall or display panel behind her  
+• Correct proportions, original colors, sharp and readable  
+• Mounted signage (acrylic / printed board), not floating  
+• No glow, no digital overlay, no redesign
+
+
+CAMERA & PHOTO REALISM:
+• DSLR look (50mm lens feel for indoor retail)  
+• Natural color grading  
+• Real shadows and highlights  
+• Slight lens softness and depth  
+• No HDR, no cinematic effects, no artificial sharpness  
+
+
+OVERALL FEEL:
+A **real photograph taken inside a genuine water-purifier showroom**, premium, clean, trustworthy, and aspirational.  
+Anyone seeing it should believe this is a **real brand photo**, not AI-generated.
+
+
+STRICTLY NO TEXT anywhere except existing real-world signage.
+You said:
+girl was not looking like celebrity
+ChatGPT said:
+Got it 👍
+This time the correction is very clear. I’ll give you a strongly corrected FINAL prompt that forces celebrity-level presence while still staying 100% real-photo (not AI-looking).
+
+
+Below is the UPDATED IMAGE GENERATION PROMPT — copy-paste directly.
+
+
+Ultra-realistic DSLR photograph, single image, 9:16 vertical — indistinguishable from a real high-budget brand photoshoot, absolutely no AI-art or rendered look.
+
+
+SUBJECT (CELEBRITY LEVEL — NON-NEGOTIABLE):
+One **exceptionally beautiful young Indian woman (early-20s)** with **true celebrity-advertisement presence**, like a well-known national brand ambassador (A-list level).  
+Her beauty must feel **striking, premium, and instantly attention-grabbing**, yet still real and photographic — the kind of woman brands pay heavily to front their campaigns.
+
+
+Facial details:
+• Perfect facial symmetry  
+• Sharp, expressive eyes with confident gaze  
+• Sculpted yet natural eyebrows  
+• Soft but powerful smile (confidence, trust, authority)  
+• Elegant small sharp nose  
+• Clean, defined jawline  
+• **High-end real skin texture** — visible pores, micro highlights, natural unevenness  
+• No beautification filters, no airbrushing, no plastic perfection
+
+
+POSE & FRAMING (LOCKED — EXACT):
+MID SHOT only (head to just below waist).  
+Subject **EXACTLY CENTERED**, perfectly symmetrical composition.  
+Camera at chest level, straight-on (no tilt).  
+**Hands gently folded at the waist / lower abdomen, one hand resting naturally over the other, fingers relaxed — EXACT posture, zero variation.**
+
+
+HAIR (REAL CELEBRITY GROOMING):
+Silky black hair with natural volume, professionally styled but realistic.  
+Soft waves, slight flyaways allowed.  
+Looks like it was done by a celebrity stylist, not a studio render.
+
+
+ATTIRE:
+Premium traditional Indian saree designed for **health & lifestyle luxury brands**.  
+Color palette: clean ivory / pearl white / soft aqua with elegant blue accents (purity, water, trust).  
+Fabric must look expensive and heavy with **natural gravity, folds, and micro-creases** — no perfect drape.
+
+
+JEWELLERY (MINIMAL, LUXURY):
+• One thin premium gold chain  
+• Small diamond-style studs or tiny jhumkas  
+• Absolutely no heavy jewellery, bangles, or layers
+
+
+ENVIRONMENT (REAL STORE — BUT UPGRADED PRESENTATION):
+Photographed **inside the actual Sri Amrutha Water Purifiers / Aquaguard showroom**, but captured from the **best possible real angle**, like a brand shoot done after store preparation.
+
+
+• Clean, bright, hygienic appliance store  
+• Aquaguard and water purifier units visible on walls and counters  
+• Organized boxes, brochures, service desk  
+• Balanced practical lighting from store lights (no studio light rigs)  
+• Subtle depth-of-field — subject razor sharp, background softly blurred  
+• Real reflections on purifier surfaces and glass  
+• The background must clearly communicate **water purification, health, trust, and professionalism**
+
+
+LOGO & SIGNAGE (REAL-WORLD ONLY — STRICT):
+Use the **Sri Amrutha Water Purifiers / Aquaguard branding exactly as provided**.
+• Logo appears as **physically mounted signage** on the wall behind her  
+• Correct colors, proportions, and placement  
+• Matte acrylic / printed board look  
+• NOT floating, NOT glowing, NOT digitally overlaid
+
+
+CAMERA & PHOTOGRAPHY RULES:
+• Professional DSLR (85mm or 50mm portrait lens look)  
+• Natural color science (no HDR, no cinematic grading)  
+• Real shadows, realistic highlights  
+• Slight lens softness and depth  
+• Looks like a ₹2–5 lakh real photoshoot, not AI
+
+
+OVERALL RESULT:
+A **real, high-end celebrity brand photograph** taken inside an actual water-purifier showroom.  
+Viewer reaction should be:  
+“This looks like a real celebrity endorsement photo — not AI.”
+
+
+STRICTLY NO TEXT anywhere except existing real-world signage.
+From now on, when you say “celebrity”, I will assume:
+👉 National-ad level face + presence, not normal beauty.
+
+
+If you want next time:
+• even stronger luxury
+• or South-Indian film-actress type
+• or soft vs powerful celebrity tone
+
+
+Just tell me — I’ll tune it instantly.
+
+
+You said:
+Uploaded image
+i need for this 
+ChatGPT said:
+Ultra-realistic DSLR photograph, single image, 9:16 vertical — **must look like a real high-budget brand photoshoot**, not AI-generated, not rendered.
+
+
+SUBJECT (CELEBRITY STANDARD — VERY IMPORTANT):
+One **exceptionally beautiful young Indian woman (early-20s)** with **true celebrity-level presence**, like a nationally known brand ambassador for a telecom / cable network company.  
+Her beauty should feel **powerful, premium, and commanding**, not soft or average. She should instantly look like “the face of the brand.”
+
+
+Facial characteristics:
+• Strong facial symmetry  
+• Sharp, expressive eyes with confident gaze  
+• Well-sculpted eyebrows  
+• Calm but authoritative smile  
+• Small sharp nose  
+• Clean, defined jawline  
+• **Real skin texture visible** — pores, micro highlights, natural imperfections  
+• Absolutely no over-smoothing, no plastic or AI-art skin
+
+
+POSE & FRAMING (LOCKED — EXACT):
+MID SHOT only (head to just below waist).  
+Subject **EXACTLY CENTERED**, perfectly symmetrical composition.  
+Camera at chest level, straight-on.  
+**Hands gently folded at the waist / lower abdomen, one hand resting naturally over the other, fingers relaxed — exact posture, no variation.**
+
+
+HAIR (REAL CELEBRITY GROOMING):
+Silky black hair with natural volume, professionally styled but realistic.  
+Soft controlled waves, slight flyaways allowed.  
+Looks like real celebrity grooming, not studio perfection.
+
+
+ATTIRE:
+Premium traditional Indian saree styled for a **telecom / network brand**.  
+Color palette: deep navy blue, charcoal grey, or elegant black with subtle silver accents (technology, reliability, strength).  
+Fabric must look heavy and premium with natural folds, creases, and gravity.
+
+
+JEWELLERY (MINIMAL, PREMIUM):
+• One thin elegant chain  
+• Small stud earrings or tiny jhumkas  
+• No heavy jewellery, no bangles, no layered chains
+
+
+ENVIRONMENT (REAL LOCATION — MUST CONVEY CABLE NETWORK CLEARLY):
+Photographed **inside the actual SKC Cable Networks office / service center**.
+• Professional telecom-style interior  
+• Routers, cables, networking equipment subtly visible  
+• Service desk, monitors, neatly arranged technical setup  
+• Real working-office feel — not staged  
+• Practical indoor lighting from ceiling fixtures (no studio lighting)  
+• Depth of field like a real DSLR — subject sharp, background softly blurred  
+• Background alone should communicate **network, connectivity, reliability**
+
+
+LOGO & SIGNAGE (REAL-WORLD ONLY — STRICT):
+Use the **attached “SKC Cable Networks” logo exactly as provided**.
+• Logo appears as **physically mounted signage** on the wall behind the subject  
+• Correct proportions, original colors  
+• Matte acrylic / metal signage look  
+• Not floating, not glowing, not digitally overlaid
+
+
+CAMERA & PHOTO REALISM:
+• Professional DSLR (85mm or 50mm lens look)  
+• Natural color grading  
+• Real shadows and highlights  
+• Slight lens softness and depth  
+• No HDR, no cinematic effects, no artificial sharpness  
+
+
+OVERALL RESULT:
+A **real, powerful celebrity endorsement photograph** for a cable network company.  
+Viewer reaction should be:  
+“This looks like a real brand ambassador photo taken inside the company office.”
+
+
+STRICTLY NO TEXT anywhere except existing real-world signage.
+You said:
+Uploaded image
+i need for this 
+ChatGPT said:
+Ultra-realistic DSLR photograph, single image, 9:16 vertical — must look like a real high-end food brand photoshoot, absolutely no AI-art, no rendered or synthetic feel.
+
+
+SUBJECT (CELEBRITY STANDARD — VERY IMPORTANT):
+One **exceptionally beautiful young Indian woman (early-20s)** with **true celebrity-level presence**, like a nationally recognized brand ambassador for a premium South Indian food brand.  
+Her beauty must feel **striking, warm, and authoritative**, instantly trustworthy — the kind of face used for large food brands.
+
+
+Facial characteristics:
+• Perfect natural facial symmetry  
+• Expressive deep eyes with warmth and confidence  
+• Well-defined eyebrows  
+• Gentle, inviting smile (food-brand friendly, not glamour)  
+• Small sharp nose  
+• Clean, defined jawline  
+• **Real skin texture visible** — pores, soft highlights, natural imperfections  
+• No over-smoothing, no plastic or AI look
+
+
+POSE & FRAMING (LOCKED — EXACT):
+MID SHOT only (head to just below waist).  
+Subject **EXACTLY CENTERED**, perfectly symmetrical composition.  
+Camera at chest level, straight-on.  
+**Hands gently folded at the waist / lower abdomen, one hand resting naturally over the other, fingers relaxed — exact posture, no variation.**
+
+
+HAIR (REAL CELEBRITY GROOMING):
+Silky black hair, neatly styled with soft natural waves or smooth traditional styling.  
+Looks professionally groomed but real, slight flyaways allowed.
+
+
+ATTIRE:
+Premium traditional Indian saree suitable for a **pure-veg South Indian food brand**.  
+Color palette inspired by the logo — elegant green, saffron/orange, ivory, or soft pink with subtle gold border.  
+Fabric must look rich and real with natural folds, creases, and weight.
+
+
+JEWELLERY (MINIMAL & PREMIUM):
+• One thin elegant gold chain  
+• Small stud earrings or tiny jhumkas  
+• No heavy jewellery, no bangles, no layered chains
+
+
+ENVIRONMENT (REAL LOCATION — MUST CONVEY FOOD BRAND CLEARLY):
+Photographed **inside the actual Tirupati Aandal Foods kitchen / outlet / food preparation or serving area**.
+• Clean, hygienic, premium food environment  
+• Stainless steel counters, banana leaves, traditional serving vessels, neatly arranged food trays or packaged food boxes  
+• Warm indoor lighting typical of real food outlets (no studio lights)  
+• Real textures, steam or freshness cues subtly visible  
+• Depth of field like a real DSLR — subject sharp, background softly blurred  
+• Background alone should communicate **authentic South Indian food, purity, hygiene, and tradition**
+
+
+LOGO & SIGNAGE (REAL-WORLD ONLY — STRICT):
+Use the **attached “Tirupati Aandal Foods” logo exactly as provided**.
+• Logo must appear as **real physical signage** — wall board, name panel, or counter signage behind her  
+• Correct proportions and original colors (pink, green, orange)  
+• Matte board / acrylic signage look  
+• Not floating, not glowing, not digitally overlaid
+
+
+CAMERA & PHOTO REALISM:
+• Professional DSLR (50mm or 85mm lens look)  
+• Natural color science  
+• Real shadows and highlights  
+• Slight lens softness and depth  
+• No HDR, no cinematic grading, no artificial sharpness  
+
+
+OVERALL RESULT:
+A **real, premium celebrity-endorsed food brand photograph** taken inside an authentic food outlet.  
+Viewer reaction should be:  
+“This looks like a real national food brand advertisement photo.”
+
+
+STRICTLY NO TEXT anywhere except existing real-world signage.
+You said:
+Uploaded image
+they provide this so 
+ChatGPT said:
+Ultra-realistic DSLR photograph, single image, 9:16 vertical — must look like a real premium food-brand photoshoot taken for Instagram, absolutely no AI-art, no rendered or synthetic look.
+
+
+SUBJECT (CELEBRITY FOOD-BRAND STANDARD — NON-NEGOTIABLE):
+One **exceptionally beautiful young Indian woman (early-20s)** with **true national-level brand ambassador presence**, the kind of face used by leading FMCG / food brands on Instagram and hoardings.  
+Her beauty must feel **striking yet warm**, instantly trustworthy and aspirational — not average, not influencer-level, not staff-like.
+
+
+Facial details:
+• Balanced facial symmetry  
+• Bright, expressive eyes with warmth and confidence  
+• Clean, well-defined eyebrows  
+• Soft, inviting smile (food-brand friendly, homely + premium)  
+• Small sharp nose  
+• Defined jawline  
+• **Real skin texture visible** — pores, natural highlights, slight imperfections  
+• No airbrushing, no plastic skin, no AI smoothness
+
+
+POSE & FRAMING (LOCKED — EXACT):
+MID SHOT only (head to just below waist).  
+Subject **EXACTLY CENTERED**, perfect symmetry, equal space on both sides.  
+Camera at chest level, straight-on.  
+**Hands gently folded at the waist / lower abdomen, one hand resting naturally over the other, fingers relaxed — exact posture, no variation.**
+
+
+HAIR (REAL CELEBRITY GROOMING):
+Silky black hair, neatly styled with soft natural waves or clean traditional styling.  
+Professional grooming look, slight flyaways allowed — realistic, not studio-perfect.
+
+
+ATTIRE:
+Premium traditional Indian saree suitable for a **pure-veg South Indian packaged-food brand**.  
+Color palette inspired by the brand Instagram feed — elegant ivory, soft green, warm saffron/orange, or gentle pink with subtle gold border.  
+Fabric must look rich and real with natural folds, creases, and weight.
+
+
+JEWELLERY (MINIMAL & PREMIUM):
+• One thin elegant gold chain  
+• Small stud earrings or tiny jhumkas  
+• No heavy jewellery, no bangles, no layered chains
+
+
+ENVIRONMENT (USE BRAND STYLE — VERY IMPORTANT):
+Photographed **inside a real Aandal Foods / Tirupati Aandal Foods environment**, styled exactly like the provided Instagram posts.
+• Clean, premium food-brand backdrop  
+• Shelves or tables displaying neatly arranged packaged products (masalas, rice bags, oils, essentials) similar to the Instagram grid  
+• Warm, inviting, lifestyle-food aesthetic — homely yet premium  
+• Natural indoor lighting like a real food shoot (soft shadows, realistic highlights)  
+• DSLR depth of field — subject sharp, background softly blurred  
+• Background alone should communicate **trusted South Indian food brand, purity, tradition, and quality**
+
+
+LOGO & BRANDING (REAL-WORLD ONLY — STRICT):
+Use the **attached “Tirupati Aandal Foods / Aandal Foods” logo exactly as provided**.
+• Logo appears as **real physical branding** — backdrop board, wall signage, or printed brand panel behind her  
+• Correct proportions and original brand colors  
+• Matte printed board / acrylic signage look  
+• Not floating, not glowing, not digitally overlaid
+
+
+CAMERA & PHOTO REALISM:
+• Professional DSLR (50mm or 85mm portrait lens feel)  
+• Natural food-brand color grading  
+• Real shadows and highlights  
+• Slight lens softness and depth  
+• No HDR, no cinematic grading, no artificial sharpness  
+
+
+OVERALL RESULT:
+A **real, Instagram-ready celebrity food-brand photograph** that fits perfectly into the existing Aandal Foods feed.  
+Viewer reaction should be:  
+“This looks like a real national food brand campaign photo.”
+
+
+STRICTLY NO TEXT anywhere except existing real-world branding and signage.
+You said:
+Uploaded image
+i need for this
+sf soneeya fasionsc
+Maadi imitation jewellery, jillala vaari gaa, mandalaala vaari gaa stock points ivvabadunu.
+Celebrations models labhinchunu.
+Savings mariyu non-working plans kalavu.
+Konnaa, konipinchina spot, mariyu daily, weekly, monthly commissions vachunu.
+Parvathipuram lo 05-01-2026 roju branch office opening cheyabadutondi.
+
+
+Vivaraalaku contact:
+9515045679, 7121552225
+ChatGPT said:
+Ultra-realistic DSLR photograph, single image, 9:16 vertical — must look like a **real premium jewellery brand advertisement photo**, absolutely no AI-art, no rendered or synthetic feel.
+
+
+SUBJECT (CELEBRITY JEWELLERY BRAND STANDARD — NON-NEGOTIABLE):
+One **exceptionally beautiful young Indian woman (early-20s)** with **true celebrity-level presence**, like a nationally known jewellery brand ambassador.  
+Her beauty must feel **luxurious, elegant, and commanding**, instantly aspirational — the kind of face used for gold & imitation jewellery campaigns.
+
+
+Facial characteristics:
+• Naturally perfect facial symmetry  
+• Sharp, expressive eyes with confidence and grace  
+• Well-sculpted eyebrows  
+• Soft yet powerful smile (luxury jewellery tone)  
+• Small sharp nose  
+• Defined jawline  
+• **Real skin texture visible** — pores, natural highlights, slight imperfections  
+• No airbrushing, no plastic skin, no AI smoothness
+
+
+POSE & FRAMING (LOCKED — EXACT):
+MID SHOT only (head to just below waist).  
+Subject **EXACTLY CENTERED**, perfectly symmetrical composition.  
+Camera at chest level, straight-on.  
+**Hands gently folded at the waist / lower abdomen, one hand resting naturally over the other, fingers relaxed — exact posture, no variation.**
+
+
+HAIR (REAL CELEBRITY GROOMING):
+Silky black hair, professionally styled with soft waves or traditional sleek styling.  
+Looks like real bridal / jewellery shoot grooming, not studio-rendered.
+
+
+ATTIRE:
+Premium traditional Indian saree suitable for a **luxury imitation jewellery brand**.  
+Color palette: rich black, deep maroon, royal red, emerald green, or gold-toned silk with elegant sheen.  
+Fabric must look heavy and premium with **natural folds, creases, and gravity**.
+
+
+JEWELLERY (MANDATORY — BRAND FOCUS):
+• Elegant **imitation gold jewellery set** (necklace + earrings) in traditional South Indian style  
+• Jewellery must look premium, realistic, and wearable — not oversized, not artificial-looking  
+• No bangles unless subtle and minimal  
+• Jewellery should be the visual highlight
+
+
+ENVIRONMENT (REAL STORE / BRAND SPACE — VERY IMPORTANT):
+Photographed **inside the actual SF Soneeya Fashionsc jewellery showroom / branch interior**.
+• Elegant jewellery store environment  
+• Glass display counters with neatly arranged imitation jewellery  
+• Soft warm lighting typical of real jewellery shops (no studio lighting)  
+• Subtle reflections on glass counters  
+• Background softly blurred with DSLR depth-of-field  
+• Space must clearly communicate **jewellery business, trust, and celebration-ready collections**
+
+
+LOGO & SIGNAGE (REAL-WORLD ONLY — STRICT):
+Use the **attached “SF Soneeya Fashionsc” logo exactly as provided**.
+• Logo appears as **physically mounted signage** on the wall or above the display counter behind her  
+• Correct gold color, proportions, and typography  
+• Matte gold / acrylic / metal signage look  
+• Not floating, not glowing, not digitally overlaid
+
+
+CAMERA & PHOTO REALISM:
+• Professional DSLR (85mm portrait lens look preferred)  
+• Natural luxury-brand color grading  
+• Real shadows and highlights  
+• Slight lens softness and depth  
+• No HDR, no cinematic grading, no artificial sharpness  
+
+
+OVERALL RESULT:
+A **real, high-end celebrity jewellery brand photograph** suitable for:
+• Branch opening promotions  
+• Distributor & stock-point announcements  
+• Instagram, posters, hoardings  
+
+
+Viewer reaction should be:
+“This looks like a real national jewellery brand campaign photo.”
+
+
+STRICTLY NO TEXT anywhere except existing real-world signage.
+You said:
+Uploaded image
+Uploaded image
+i need for this 
+Sri Rajarajeshwari Fertilizers
+ChatGPT said:
+Ultra-realistic DSLR photograph, single image, 9:16 vertical — must look like a **real photograph taken at the actual fertilizer store**, absolutely no AI-art, no rendered or synthetic look.
+
+
+SUBJECT (CELEBRITY-LEVEL BUT TRUSTED — AGRI BRAND):
+One **very, very beautiful young Indian woman (early-20s)** with **celebrity-level presence**, but styled as a **trusted agricultural brand ambassador**.  
+Her beauty should feel **strong, confident, and authentic**, not glamour-model — someone farmers and customers instantly trust.
+
+
+Facial characteristics:
+• Natural facial symmetry  
+• Expressive confident eyes  
+• Well-defined eyebrows  
+• Calm, reassuring smile  
+• Small sharp nose  
+• Defined jawline  
+• **Real skin texture visible** — pores, slight unevenness, natural highlights  
+• No airbrushing, no plastic skin, no AI smoothness
+
+
+POSE & FRAMING (STRICT — EXACT):
+MID SHOT only (head to just below waist).  
+Subject **EXACTLY CENTERED**, perfect symmetry, equal space left and right.  
+Camera at chest level, straight-on.  
+**Hands gently folded at the waist / lower abdomen, one hand resting naturally over the other, fingers relaxed — exact posture, no variation.**
+
+
+HAIR:
+Silky black hair, neatly styled in a simple professional manner (soft waves or low traditional styling).  
+Looks real and practical, slight flyaways allowed.
+
+
+ATTIRE:
+Premium traditional Indian saree suitable for an **agriculture & fertilizer business**.  
+Color palette: leaf green, earthy mustard, soft cream, or green-gold tones symbolizing crops, soil, and growth.  
+Fabric must look real and slightly heavy with natural folds and creases.
+
+
+JEWELLERY (MINIMAL & REAL):
+• One thin elegant chain  
+• Small stud earrings or tiny jhumkas  
+• No heavy jewellery, no bangles, no layered chains
+
+
+ENVIRONMENT (USE PROVIDED STORE IMAGE AS BASE — VERY IMPORTANT):
+Use the **actual Sri Rajarajeshwari Fertilizers store exterior/interior provided** as the base environment.
+• Same shop structure, yellow signage, Telugu text boards, and layout  
+• Fertilizer bags, seed packets, bottles, and agricultural products visible naturally  
+• Improve lighting, cleanliness, and organization slightly — **do not change store identity**  
+• Real working agri-store feel — practical, rural/semi-urban authenticity  
+• Natural daylight or shop lighting only (no studio lighting)  
+• DSLR depth-of-field — subject sharp, background softly blurred  
+• Background alone should clearly communicate **fertilizers, seeds, pesticides, farming support**
+
+
+LOGO & SIGNAGE (REAL-WORLD ONLY — STRICT):
+Use the **existing “Sri Rajarajeshwari Fertilizers” signage exactly as shown**.
+• Keep logo and Telugu text in original position  
+• No redesign, no recolor  
+• Must look physically painted / printed on shop board  
+• Not floating, not glowing, not digitally overlaid
+
+
+CAMERA & PHOTO REALISM:
+• Professional DSLR (35mm or 50mm lens look)  
+• Natural color grading  
+• Real shadows and textures  
+• Slight lens softness and depth  
+• No HDR, no cinematic effects, no artificial sharpness  
+
+
+OVERALL RESULT:
+A **real, powerful brand photograph** of a celebrity-level woman standing at an authentic fertilizer store.  
+Viewer reaction should be:
+“This looks like a real photo taken at a genuine agriculture shop — not AI.”
+
+
+STRICTLY NO TEXT anywhere except existing real-world signage.
+You said:
+Uploaded image
+i want for this 
+ChatGPT said:
+Ultra-realistic DSLR photograph, single image, 9:16 vertical — must look like a **real, high-end casting agency promotional photograph**, not AI-generated, not rendered, not stock.
+
+
+SUBJECT (TOP-TIER CELEBRITY CASTING STANDARD — NON-NEGOTIABLE):
+One **extremely beautiful young Indian woman (early-20s)** with **elite celebrity / film-industry presence**, the kind of face used by **national casting agencies and OTT platforms**.
+
+
+Her beauty must feel:
+• Premium, confident, camera-ready  
+• Aspirational yet believable  
+• Strong screen presence (heroine / OTT lead potential)
+
+
+Facial characteristics:
+• Excellent facial symmetry  
+• Sharp, expressive eyes with confidence  
+• Well-defined eyebrows  
+• Soft, assured smile (casting-friendly, not glamour model)  
+• Small sharp nose  
+• Clean, defined jawline  
+• **Natural real skin texture visible** (pores, slight imperfections)  
+• No plastic skin, no over-smoothing, no AI glow
+
+
+POSE & FRAMING (LOCKED — EXACT):
+MID SHOT only (head to just below waist).  
+Subject **EXACTLY CENTERED**, perfect symmetry.  
+Camera at chest level, straight-on.  
+**Hands gently folded at the waist / lower abdomen, one hand resting naturally over the other, fingers relaxed — exact posture, no variation.**
+
+
+HAIR (CASTING-READY):
+Silky black hair, neatly styled with soft natural waves or clean straight styling.  
+Looks like real professional grooming for auditions — minimal, polished, natural.
+
+
+ATTIRE:
+Elegant modern-traditional outfit suitable for auditions & casting promotion.  
+Options:
+• Solid-color premium saree with minimal styling  
+OR  
+• Elegant ethnic-modern kurta set  
+Color palette: deep navy, ivory, charcoal, muted maroon, soft teal.  
+Fabric must look real with natural folds.
+
+
+JEWELLERY (VERY MINIMAL — CASTING STYLE):
+• Tiny stud earrings only  
+• No necklace or only an ultra-thin chain  
+• No bangles, no heavy jewellery
+
+
+ENVIRONMENT (REAL CASTING OFFICE / STUDIO — VERY IMPORTANT):
+A **realistic casting studio / talent agency office** interior:
+• Neutral professional walls  
+• Soft indoor daylight + practical ceiling lights  
+• Subtle casting-studio elements (camera tripod in background, notice board, audition room door, talent posters blurred)  
+• Clean, minimal, professional atmosphere  
+• DSLR depth-of-field — subject sharp, background softly blurred  
+• Must feel like a real place where auditions happen daily
+
+
+LOGO & SIGNAGE (MANDATORY — REAL WORLD ONLY):
+Use the **attached “India Casting Club” logo exactly as provided**.
+• Logo placed as **physical wall signage or reception panel branding**  
+• Matte acrylic / printed board look  
+• Correct colors and proportions  
+• Not floating, not glowing, not oversized
+
+
+CAMERA & PHOTO REALISM:
+• Professional DSLR (50mm or 85mm portrait lens look)  
+• Natural color grading  
+• Real shadows and highlights  
+• Slight lens softness and depth  
+• No HDR, no cinematic grading, no artificial sharpness
+
+
+OVERALL RESULT:
+A **real, premium casting-agency promotional photograph** that looks suitable for:
+• Instagram launch posts  
+• Website hero section  
+• Audition announcements  
+
+
+Viewer reaction should be:
+“This looks like a real casting agency photo with a future star.”
+
+
+STRICTLY NO TEXT anywhere except existing real-world signage.
+You said:
+attire should be tradisitional costly saree with minimal jewellery now give me 
+shee needed to look like top class actress celebrity
+ChatGPT said:
+Ultra-realistic DSLR photograph, single image, 9:16 vertical — must look like a **real premium casting-agency brand photo**, absolutely no AI-art, no rendered or stock look.
+
+
+SUBJECT (TOP-CLASS ACTRESS CELEBRITY — STRICT):
+One **exceptionally beautiful young Indian woman (early-20s)** who looks like a **top-tier film actress / OTT lead**, the kind of celebrity chosen by national casting agencies.
+
+
+Her presence must be:
+• Elite, luxurious, confident  
+• Strong screen presence  
+• Effortlessly graceful — not model-like, not influencer-style  
+
+
+Facial characteristics:
+• Perfect facial harmony and symmetry  
+• Deep, expressive eyes with commanding confidence  
+• Precisely shaped eyebrows  
+• Calm, powerful celebrity smile  
+• Small sharp nose  
+• Sculpted jawline  
+• **Natural real skin texture visible** — pores, soft highlights, slight imperfections  
+• No plastic skin, no AI smoothness, no glamour overdo
+
+
+POSE & FRAMING (LOCKED — EXACT, NO DEVIATION):
+MID SHOT only (head to just below waist).  
+Subject **EXACTLY CENTERED** in the frame, perfect symmetry, equal left and right spacing.  
+Camera at chest level, straight-on.  
+**Hands gently folded at the waist / lower abdomen, one hand resting naturally over the other, fingers relaxed — exact posture only.**
+
+
+HAIR (ACTRESS-LEVEL GROOMING):
+Silky jet-black hair, professionally styled like a leading actress.  
+Soft elegant waves or sleek traditional styling.  
+Looks expensive, natural, and real — slight flyaways allowed.
+
+
+ATTIRE (MANDATORY — COSTLY TRADITIONAL SAREE):
+High-end **luxury traditional Indian saree**, clearly expensive and premium.
+• Fabric options: pure silk, Kanchipuram silk, Banarasi silk, soft tissue silk  
+• Color palette: ivory-gold, deep maroon, emerald green, royal red, black-gold, or champagne gold  
+• Saree must have natural heavy drape, visible weight, realistic folds and gravity  
+• Styling must feel **film-industry level**, not wedding shoot, not catalog
+
+
+JEWELLERY (MINIMAL & ELITE — STRICT):
+• One ultra-thin elegant gold chain or no necklace  
+• Small premium stud earrings or tiny jhumkas  
+• NO heavy jewellery  
+• NO bangles  
+• NO layered chains  
+Jewellery must feel understated, expensive, actress-style.
+
+
+ENVIRONMENT (REAL CASTING OFFICE / TALENT STUDIO):
+A **realistic professional casting agency interior**:
+• Clean neutral walls  
+• Soft natural indoor lighting  
+• Practical ceiling lights (no studio lights)  
+• Subtle casting elements in background (blurred audition room door, camera tripod, talent posters)  
+• DSLR depth-of-field — subject sharp, background softly blurred  
+• Must look like a real place where actors audition
+
+
+LOGO & SIGNAGE (MANDATORY — REAL WORLD ONLY):
+Use the **attached “India Casting Club” logo exactly as provided**.
+• Logo shown as **physically mounted wall signage or reception branding**  
+• Matte acrylic / printed board appearance  
+• Correct colors and proportions  
+• Not floating, not glowing, not oversized
+
+
+CAMERA & PHOTO REALISM:
+• Professional DSLR (85mm portrait lens look)  
+• Natural luxury color grading  
+• Real shadows and skin tones  
+• Slight lens softness and depth  
+• No HDR, no cinematic grading, no artificial sharpness
+
+
+OVERALL RESULT:
+A **real, high-end casting agency photograph** featuring a woman who clearly looks like a **top-class actress celebrity**, suitable for:
+• Casting agency promotions  
+• OTT / film audition branding  
+• Premium Instagram & website hero images  
+
+
+Viewer reaction must be:
+“She looks like a real film actress, not an AI model.”
+
+
+STRICTLY NO TEXT anywhere except existing real-world signage.
+You said:
+Uploaded image
+i need for this 
+ChatGPT said:
+Ultra-realistic DSLR photograph, single image, 9:16 vertical — must look like a **real high-end real-estate brand campaign photo**, absolutely no AI-art, no rendering, no stock-photo feel.
+
+
+SUBJECT (TOP-CLASS CELEBRITY PRESENCE — REAL ESTATE BRAND):
+One **exceptionally beautiful young Indian woman (early-20s)** who looks like a **top-tier actress / luxury real-estate brand ambassador**.  
+Her presence must feel **elite, trustworthy, aspirational**, like a celebrity endorsing premium housing projects.
+
+
+Facial characteristics:
+• Perfect facial symmetry  
+• Deep, expressive eyes with confidence and warmth  
+• Well-defined eyebrows  
+• Calm, reassuring smile (home & trust emotion)  
+• Small sharp nose  
+• Sculpted jawline  
+• **Real skin texture visible** — natural highlights, slight imperfections  
+• No plastic skin, no AI glow, no glamour excess  
+
+
+POSE & FRAMING (STRICT — EXACT):
+MID SHOT only (head to just below waist).  
+Subject **EXACTLY CENTERED**, perfect symmetry, equal space on both sides.  
+Camera at chest level, straight-on.  
+**Hands gently folded at the waist / lower abdomen, one hand resting naturally over the other, fingers relaxed — exact posture only.**
+
+
+HAIR (CELEBRITY-LEVEL GROOMING):
+Silky jet-black hair, professionally styled.  
+Soft elegant waves or sleek traditional styling.  
+Looks expensive, natural, and real — slight flyaways allowed.
+
+
+ATTIRE (MANDATORY — COSTLY TRADITIONAL SAREE):
+Luxury **high-end traditional Indian saree**.
+• Fabric: pure silk / Kanchipuram silk / Banarasi silk  
+• Colors: ivory-gold, royal blue, emerald green, soft beige-gold, or maroon-gold  
+• Saree must look heavy, premium, with natural folds and gravity  
+• Styling should feel **film-industry level**, not wedding or catalog
+
+
+JEWELLERY (MINIMAL & ELITE):
+• One ultra-thin elegant gold chain or no necklace  
+• Small premium stud earrings or tiny jhumkas  
+• NO heavy jewellery  
+• NO bangles  
+• NO layered chains  
+
+
+ENVIRONMENT (REAL ESTATE CONTEXT — VERY IMPORTANT):
+A **real, premium residential or developer office environment**:
+Option A: Inside **STR Developers office / site office**
+• Modern reception area  
+• Architectural plans or model photos subtly visible  
+• Clean walls, premium interiors  
+• Natural indoor lighting  
+
+
+Option B: Premium **residential project background**
+• Modern apartment / villa exterior visible through glass  
+• Clean pathways, greenery, real construction aesthetics  
+
+
+• DSLR depth-of-field — subject sharp, background softly blurred  
+• Must clearly convey **trust, home, stability, premium living**
+
+
+LOGO & SIGNAGE (MANDATORY — REAL-WORLD ONLY):
+Use the **attached “STR Developers” logo exactly as provided**.
+• Logo displayed as **physical wall signage / reception panel branding**  
+• Matte acrylic / printed board look  
+• Correct colors and proportions  
+• Not floating, not glowing, not oversized  
+
+
+CAMERA & PHOTO REALISM:
+• Professional DSLR (50mm or 85mm portrait lens look)  
+• Natural luxury color grading  
+• Real shadows and highlights  
+• Slight lens softness and depth  
+• No HDR, no cinematic effects, no artificial sharpness  
+
+
+OVERALL RESULT:
+A **real, premium real-estate brand photograph** with a woman who clearly looks like a **top-class actress endorsing a trusted developer**.
+
+
+Viewer reaction must be:
+“This looks like a real celebrity-led real estate campaign photo.”
+
+
+STRICTLY NO TEXT anywhere except existing real-world signage.
+You said:
+Uploaded image
+SVR DEVELOOERS sales max. Open plots and Independent houses at ongole corporation.
+
+
+
+
+now i want for this  
+ChatGPT said:
+Ultra-realistic DSLR photograph, single image, 9:16 vertical — must look like a **real, premium real-estate sales campaign photo**, absolutely no AI-art, no rendered or stock-photo appearance.
+
+
+SUBJECT (TOP-CLASS ACTRESS–LEVEL CELEBRITY — REAL ESTATE SALES):
+One **exceptionally beautiful young Indian woman (early-20s)** with **elite actress-level presence**, the kind of celebrity used in high-trust real-estate advertisements.
+
+
+Her presence must feel:
+• Highly aspirational  
+• Trustworthy and confident  
+• Elegant, premium, and powerful  
+• Like a celebrity sales ambassador for open plots & independent houses  
+
+
+Facial characteristics:
+• Excellent facial symmetry  
+• Deep, expressive confident eyes  
+• Well-defined eyebrows  
+• Calm, reassuring smile (trust & family emotion)  
+• Small sharp nose  
+• Sculpted jawline  
+• **Natural real skin texture visible** — pores, highlights, slight imperfections  
+• No plastic skin, no AI glow, no glamour exaggeration
+
+
+POSE & FRAMING (STRICT — EXACT, NON-NEGOTIABLE):
+MID SHOT only (head to just below waist).  
+Subject **EXACTLY CENTERED**, perfect symmetry, equal space on both sides.  
+Camera at chest level, straight-on.  
+**Hands gently folded at the waist / lower abdomen, one hand resting naturally over the other, fingers relaxed — exact posture only.**
+
+
+HAIR (CELEBRITY-LEVEL GROOMING):
+Silky jet-black hair, professionally styled.  
+Soft elegant waves or sleek traditional style.  
+Looks expensive, natural, and real.
+
+
+ATTIRE (MANDATORY — COSTLY TRADITIONAL SAREE):
+Luxury **high-end traditional Indian saree** clearly expensive and premium.
+• Fabric: pure silk / Kanchipuram silk / Banarasi silk  
+• Colors: royal blue, ivory-gold, emerald green, maroon-gold, beige-gold  
+• Saree must have visible weight, natural folds, real drape  
+• Styling must feel **film-industry level**, not catalog or wedding shoot
+
+
+JEWELLERY (MINIMAL & ELITE — STRICT):
+• One ultra-thin elegant gold chain or no necklace  
+• Small premium stud earrings or tiny jhumkas  
+• NO heavy jewellery  
+• NO bangles  
+• NO layered chains  
+
+
+ENVIRONMENT (REAL ESTATE SALES CONTEXT — VERY IMPORTANT):
+A **real SVR Developers sales office / site office in Ongole Corporation**:
+• Clean, modern real-estate office interior  
+• Architectural layouts, site plans, or project photos subtly visible  
+• Glass partitions, reception desk, brochures  
+• OR background showing **open plots / independent houses** with roads, greenery, compound walls  
+• Natural indoor daylight + practical ceiling lights  
+• DSLR depth-of-field — subject sharp, background softly blurred  
+• Environment must clearly communicate **open plots, independent houses, property sales**
+
+
+LOGO & SIGNAGE (MANDATORY — REAL WORLD ONLY):
+Use the **attached “SVR Developers” logo exactly as provided**.
+• Logo displayed as **physical wall signage / reception panel / site-office branding**  
+• Matte acrylic / printed board appearance  
+• Correct blue and orange colors  
+• Not floating, not glowing, not oversized  
+
+
+CAMERA & PHOTO REALISM:
+• Professional DSLR (50mm or 85mm portrait lens look)  
+• Natural premium color grading  
+• Real shadows and highlights  
+• Slight lens softness and depth  
+• No HDR, no cinematic effects, no artificial sharpness  
+
+
+OVERALL RESULT:
+A **real, high-end real-estate sales photograph** featuring a woman who clearly looks like a **top-class actress endorsing SVR Developers’ open plots and independent houses in Ongole**.
+
+
+Viewer reaction must be:
+“This looks like a real celebrity-led real estate campaign photo.”
+
+
+STRICTLY NO TEXT anywhere except existing real-world signage.
+
+
+
+
+Shopping research
+Spend a few minutes for better results
+
+
+
+
+No file chosenNo file chosen
+ChatGPT can make mistakes. Check important info. See Cookie Preferences.
