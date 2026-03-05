@@ -13,35 +13,43 @@ import {
 import { fileToBase64, readFileAsText } from "@/utils/fileHelpers";
 
 // Multi-API Key Fallback System
-// Keys are stored in environment variables (Vite requires VITE_ prefix)
+// Checks both VITE_API_KEY_* and API_KEY_* (for Vercel deployments)
 const API_KEYS: string[] = [
-  import.meta.env.VITE_API_KEY_1 || '',
-  import.meta.env.VITE_API_KEY_2 || '',
-  import.meta.env.VITE_API_KEY_3 || '',
-  import.meta.env.VITE_API_KEY_4 || '',
-  import.meta.env.VITE_API_KEY_5 || '',
-  import.meta.env.VITE_API_KEY_6 || '',
-  import.meta.env.VITE_API_KEY_7 || '',
-  import.meta.env.VITE_API_KEY_8 || '',
-  import.meta.env.VITE_API_KEY_9 || '',
-  import.meta.env.VITE_API_KEY_10 || '',
-  import.meta.env.VITE_API_KEY_11 || '',
-  import.meta.env.VITE_API_KEY_12 || '',
-  import.meta.env.VITE_API_KEY_13 || '',
-  import.meta.env.VITE_API_KEY_14 || '',
-  import.meta.env.VITE_API_KEY_15 || '',
-  import.meta.env.VITE_API_KEY_16 || '',
-  import.meta.env.VITE_API_KEY_17 || '',
-  import.meta.env.VITE_API_KEY_18 || '',
-  import.meta.env.VITE_API_KEY_19 || '',
-  import.meta.env.VITE_API_KEY_20 || '',
-  import.meta.env.VITE_API_KEY_21 || '',
-  import.meta.env.VITE_API_KEY_22 || '',
+  import.meta.env.VITE_API_KEY_1 || import.meta.env.API_KEY_1 || '',
+  import.meta.env.VITE_API_KEY_2 || import.meta.env.API_KEY_2 || '',
+  import.meta.env.VITE_API_KEY_3 || import.meta.env.API_KEY_3 || '',
+  import.meta.env.VITE_API_KEY_4 || import.meta.env.API_KEY_4 || '',
+  import.meta.env.VITE_API_KEY_5 || import.meta.env.API_KEY_5 || '',
+  import.meta.env.VITE_API_KEY_6 || import.meta.env.API_KEY_6 || '',
+  import.meta.env.VITE_API_KEY_7 || import.meta.env.API_KEY_7 || '',
+  import.meta.env.VITE_API_KEY_8 || import.meta.env.API_KEY_8 || '',
+  import.meta.env.VITE_API_KEY_9 || import.meta.env.API_KEY_9 || '',
+  import.meta.env.VITE_API_KEY_10 || import.meta.env.API_KEY_10 || '',
+  import.meta.env.VITE_API_KEY_11 || import.meta.env.API_KEY_11 || '',
+  import.meta.env.VITE_API_KEY_12 || import.meta.env.API_KEY_12 || '',
+  import.meta.env.VITE_API_KEY_13 || import.meta.env.API_KEY_13 || '',
+  import.meta.env.VITE_API_KEY_14 || import.meta.env.API_KEY_14 || '',
+  import.meta.env.VITE_API_KEY_15 || import.meta.env.API_KEY_15 || '',
+  import.meta.env.VITE_API_KEY_16 || import.meta.env.API_KEY_16 || '',
+  import.meta.env.VITE_API_KEY_17 || import.meta.env.API_KEY_17 || '',
+  import.meta.env.VITE_API_KEY_18 || import.meta.env.API_KEY_18 || '',
+  import.meta.env.VITE_API_KEY_19 || import.meta.env.API_KEY_19 || '',
+  import.meta.env.VITE_API_KEY_20 || import.meta.env.API_KEY_20 || '',
+  import.meta.env.VITE_API_KEY_21 || import.meta.env.API_KEY_21 || '',
+  import.meta.env.VITE_API_KEY_22 || import.meta.env.API_KEY_22 || '',
+  import.meta.env.VITE_API_KEY_23 || import.meta.env.API_KEY_23 || '',
+  import.meta.env.VITE_API_KEY_24 || import.meta.env.API_KEY_24 || '',
+  import.meta.env.VITE_API_KEY_25 || import.meta.env.API_KEY_25 || '',
+  import.meta.env.VITE_API_KEY_26 || import.meta.env.API_KEY_26 || '',
+  import.meta.env.VITE_API_KEY_27 || import.meta.env.API_KEY_27 || '',
+  import.meta.env.VITE_API_KEY_28 || import.meta.env.API_KEY_28 || '',
+  import.meta.env.VITE_API_KEY_29 || import.meta.env.API_KEY_29 || '',
+  import.meta.env.VITE_API_KEY_30 || import.meta.env.API_KEY_30 || '',
 ].filter(key => key.length > 0); // Remove empty keys
 
 // Fallback to single API_KEY if no numbered keys are set
-if (API_KEYS.length === 0 && import.meta.env.VITE_API_KEY) {
-  API_KEYS.push(import.meta.env.VITE_API_KEY);
+if (API_KEYS.length === 0 && (import.meta.env.VITE_API_KEY || import.meta.env.API_KEY || import.meta.env.GEMINI_API_KEY)) {
+  API_KEYS.push(import.meta.env.VITE_API_KEY || import.meta.env.API_KEY || import.meta.env.GEMINI_API_KEY);
 }
 
 // Track which API key is currently active
