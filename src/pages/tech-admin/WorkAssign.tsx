@@ -564,16 +564,16 @@ export default function WorkAssign() {
               </div>
               <div className="flex items-center space-x-2 ml-4">
                 {a.status === 'completed' && (
-                  <>
-                    <button onClick={() => handleVerify(a)}
-                      className="flex items-center space-x-1 px-3 py-1.5 text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 rounded-lg transition-colors">
-                      <CheckCircle2 className="w-3.5 h-3.5" /><span>Verify</span>
-                    </button>
-                    <button onClick={() => setConfirmAction({ type: 'sendback', id: a.id, assignedTo: a.assignedTo, title: a.businessName || a.displayTitle })}
-                      className="flex items-center space-x-1 px-3 py-1.5 text-xs font-medium bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:hover:bg-orange-900/50 rounded-lg transition-colors">
-                      <Edit3 className="w-3.5 h-3.5" /><span>Send Back</span>
-                    </button>
-                  </>
+                  <button onClick={() => handleVerify(a)}
+                    className="flex items-center space-x-1 px-3 py-1.5 text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 rounded-lg transition-colors">
+                    <CheckCircle2 className="w-3.5 h-3.5" /><span>Verify</span>
+                  </button>
+                )}
+                {(a.status === 'completed' || a.status === 'verified') && (
+                  <button onClick={() => setConfirmAction({ type: 'sendback', id: a.id, assignedTo: a.assignedTo, title: a.businessName || a.displayTitle })}
+                    className="flex items-center space-x-1 px-3 py-1.5 text-xs font-medium bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:hover:bg-orange-900/50 rounded-lg transition-colors">
+                    <Edit3 className="w-3.5 h-3.5" /><span>Send Back</span>
+                  </button>
                 )}
                 {a.status === 'editing' && (
                   <button onClick={() => handleUndoEditing(a.id)}
