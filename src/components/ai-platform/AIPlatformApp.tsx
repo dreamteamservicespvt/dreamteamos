@@ -73,6 +73,10 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   };
   const [copiedSection, setCopiedSection] = useState<string | null>(null);
   const [creationMode, setCreationMode] = useState<'video' | 'poster'>('video');
+  const [selectedFestivalOption, setSelectedFestivalOption] = useState<string>('');
+  const [customFestivalName, setCustomFestivalName] = useState<string>('');
+
+  const CUSTOM_FESTIVAL_OPTION = '__custom_festival__';
 
   const upcomingFestivals = [
     'Ugadi','Holi','Ram Navami','Akshaya Tritiya','Eid ul-Fitr','Raksha Bandhan',
@@ -161,6 +165,14 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   };
 
   const handleSelectSavedItem = (item: SavedGeneration) => {
+    const savedFestivalName = item.festivalName || '';
+    const isKnownFestival = savedFestivalName ? upcomingFestivals.includes(savedFestivalName) : false;
+
+    setSelectedFestivalOption(
+      savedFestivalName ? (isKnownFestival ? savedFestivalName : CUSTOM_FESTIVAL_OPTION) : ''
+    );
+    setCustomFestivalName(savedFestivalName && !isKnownFestival ? savedFestivalName : '');
+
     setViewingSavedItem(item);
     setOutputs({
       businessInfo: item.businessInfo,
@@ -435,10 +447,40 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       <label className={cn("block text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>Festival Name</label>
                       <select className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
                           isDark ? "bg-slate-700 border-slate-600 text-slate-200 focus:ring-purple-800" : "bg-white border-slate-300 text-slate-700 focus:ring-purple-200"
-                        )} value={formData.festivalName} onChange={(e) => setFormData(prev => ({ ...prev, festivalName: e.target.value }))}>
+                        )} value={selectedFestivalOption} onChange={(e) => {
+                          const selectedFestival = e.target.value;
+                          setSelectedFestivalOption(selectedFestival);
+
+                          if (selectedFestival === CUSTOM_FESTIVAL_OPTION) {
+                            setFormData(prev => ({ ...prev, festivalName: customFestivalName.trim() }));
+                            return;
+                          }
+
+                          setCustomFestivalName('');
+                          setFormData(prev => ({ ...prev, festivalName: selectedFestival }));
+                        }}>
                         <option value="">-- Select Festival --</option>
                         {upcomingFestivals.map(f => <option key={f} value={f}>{f}</option>)}
+                        <option value={CUSTOM_FESTIVAL_OPTION}>Other (Enter Custom Festival)</option>
                       </select>
+                      {selectedFestivalOption === CUSTOM_FESTIVAL_OPTION && (
+                        <input
+                          type="text"
+                          value={customFestivalName}
+                          onChange={(e) => {
+                            const customValue = e.target.value;
+                            setCustomFestivalName(customValue);
+                            setFormData(prev => ({ ...prev, festivalName: customValue.trim() }));
+                          }}
+                          placeholder="Enter festival name"
+                          className={cn(
+                            "mt-2 w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
+                            isDark
+                              ? "bg-slate-700 border-slate-600 text-slate-200 placeholder-slate-500 focus:ring-purple-800"
+                              : "bg-white border-slate-300 text-slate-700 placeholder-slate-400 focus:ring-purple-200"
+                          )}
+                        />
+                      )}
                     </div>
                   )}
 
