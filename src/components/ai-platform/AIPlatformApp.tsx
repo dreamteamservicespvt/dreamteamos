@@ -79,9 +79,11 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   const CUSTOM_FESTIVAL_OPTION = '__custom_festival__';
 
   const upcomingFestivals = [
-    'Ugadi','Holi','Ram Navami','Akshaya Tritiya','Eid ul-Fitr','Raksha Bandhan',
-    'Krishna Janmashtami','Ganesh Chaturthi','Navaratri','Dasara','Diwali','Kartika Purnima',
-    'Christmas','New Year','Sankranthi','Republic Day','Independence Day','Maha Shivaratri','Bathukamma','Onam'
+    'Ugadi', 'Sankranthi', 'Maha Shivaratri', 'Holi', 'Ram Navami', 'Hanuman Jayanti',
+    'Good Friday', 'Easter', 'Akshaya Tritiya', 'Buddha Purnima', 'Eid ul-Fitr', 'Bakrid',
+    'Muharram', 'Raksha Bandhan', 'Krishna Janmashtami', 'Ganesh Chaturthi', 'Onam',
+    'Bathukamma', 'Navaratri', 'Dasara', 'Dussehra', 'Diwali', 'Karthika Pournami',
+    'Christmas', 'New Year', 'Republic Day', 'Independence Day', 'Gandhi Jayanti'
   ];
 
   const cleanCodeBlocks = (text: string): string => {
@@ -240,6 +242,10 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
 
   const handleGenerate = async () => {
     if (!files.logo) { alert("Please upload a logo image to proceed."); return; }
+    if (formData.adType === AdType.FESTIVAL && !formData.festivalName.trim()) {
+      alert("Please select a festival or enter a custom festival name.");
+      return;
+    }
     abortControllerRef.current = new AbortController();
     setStatus({ step: 'Initializing...', isProcessing: true, error: null, progress: 0 });
     setOutputs(null);
@@ -461,25 +467,30 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                         }}>
                         <option value="">-- Select Festival --</option>
                         {upcomingFestivals.map(f => <option key={f} value={f}>{f}</option>)}
-                        <option value={CUSTOM_FESTIVAL_OPTION}>Other (Enter Custom Festival)</option>
+                        <option value={CUSTOM_FESTIVAL_OPTION}>Custom Festival</option>
                       </select>
                       {selectedFestivalOption === CUSTOM_FESTIVAL_OPTION && (
-                        <input
-                          type="text"
-                          value={customFestivalName}
-                          onChange={(e) => {
-                            const customValue = e.target.value;
-                            setCustomFestivalName(customValue);
-                            setFormData(prev => ({ ...prev, festivalName: customValue.trim() }));
-                          }}
-                          placeholder="Enter festival name"
-                          className={cn(
-                            "mt-2 w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
-                            isDark
-                              ? "bg-slate-700 border-slate-600 text-slate-200 placeholder-slate-500 focus:ring-purple-800"
-                              : "bg-white border-slate-300 text-slate-700 placeholder-slate-400 focus:ring-purple-200"
-                          )}
-                        />
+                        <div className="mt-2">
+                          <label className={cn("block text-xs font-medium mb-1", isDark ? "text-slate-400" : "text-slate-600")}>
+                            Custom Festival Name
+                          </label>
+                          <input
+                            type="text"
+                            value={customFestivalName}
+                            onChange={(e) => {
+                              const customValue = e.target.value;
+                              setCustomFestivalName(customValue);
+                              setFormData(prev => ({ ...prev, festivalName: customValue.trim() }));
+                            }}
+                            placeholder="Enter festival name"
+                            className={cn(
+                              "w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
+                              isDark
+                                ? "bg-slate-700 border-slate-600 text-slate-200 placeholder-slate-500 focus:ring-purple-800"
+                                : "bg-white border-slate-300 text-slate-700 placeholder-slate-400 focus:ring-purple-200"
+                            )}
+                          />
+                        </div>
                       )}
                     </div>
                   )}
