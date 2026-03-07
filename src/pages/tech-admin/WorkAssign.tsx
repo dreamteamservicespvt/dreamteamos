@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   ClipboardList, Plus, Trash2, Eye, CheckCircle2, Edit3, Loader2, AlertCircle,
   Search, Filter, ChevronDown, Pencil, X, Save, Undo2
@@ -58,6 +59,7 @@ function getDayLabel(date: Date): string {
 
 export default function WorkAssign() {
   const user = useAuthStore((s) => s.user);
+  const [searchParams, setSearchParams] = useSearchParams();
   const { data: allUsers, loading: usersLoading } = useFirestoreCollection<AppUser>('users');
   const { data: assignments, loading: assignmentsLoading } = useFirestoreCollection<WorkAssignment>('work_assignments');
   const techMembers = useMemo(() => allUsers.filter(u => u.role === 'tech_member' && u.isActive), [allUsers]);
@@ -80,6 +82,20 @@ export default function WorkAssign() {
     duration: '20s',
     pricePerUnit: 499,
   });
+
+  // Auto-open form with pre-selected member from query param
+  useEffect(() => {
+    const memberUid = searchParams.get('member');
+    if (memberUid && techMembers.length > 0) {
+      const member = techMembers.find(m => m.uid === memberUid);
+      if (member) {
+        setForm(prev => ({ ...prev, assignedTo: memberUid }));
+        setMemberSearch(member.name);
+        setShowForm(true);
+        setSearchParams({}, { replace: true });
+      }
+    }
+  }, [searchParams, techMembers]);
 
   // Get clip count from lookup table
   const getClipCount = (duration: string) => {
@@ -174,16 +190,13 @@ export default function WorkAssign() {
         verifiedBy: user.uid,
       });
 
-      // Auto-create work_submission
-      const items = [];
-      for (let i = 0; i < assignment.clipCount; i++) {
-        items.push({
-          type: assignment.category,
-          duration: assignment.duration,
-          quantity: 1,
-          pricePerUnit: assignment.pricePerUnit,
-        });
-      }
+      // Auto-create work_submission (1 assignment = 1 video)
+      const items = [{
+        type: assignment.category,
+        duration: assignment.duration,
+        quantity: 1,
+        pricePerUnit: assignment.pricePerUnit,
+      }];
 
       await addDoc(collection(db, 'work_submissions'), {
         techMemberId: assignment.assignedTo,
@@ -192,7 +205,7 @@ export default function WorkAssign() {
         status: 'approved',
         approvedBy: user.uid,
         approvedAt: serverTimestamp(),
-        totalVideos: assignment.clipCount,
+        totalVideos: 1,
         aiVerificationResult: 'pass',
         driveFolderUrl: '',
         screenshotUrl: '',
@@ -375,13 +388,13 @@ export default function WorkAssign() {
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Work Assignments</h1>
-          <p className="text-sm text-muted-foreground mt-1">Assign, track and verify AI ad generation work</p>
+          <h1 className="text-xl md:text-2xl font-bold text-foreground">Work Assignments</h1>
+          <p className="text-xs md:text-sm text-muted-foreground mt-1">Assign, track and verify AI ad generation work</p>
         </div>
         <button onClick={() => setShowForm(!showForm)}
-          className="flex items-center space-x-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium">
+          className="flex items-center justify-center space-x-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium w-full sm:w-auto">
           <Plus className="w-4 h-4" /><span>{showForm ? 'Cancel' : 'New Assignment'}</span>
         </button>
       </div>
@@ -460,35 +473,37 @@ export default function WorkAssign() {
       )}
 
       {/* Filters */}
-      <div className="flex items-center space-x-3 flex-wrap gap-y-2">
-        <div className="relative flex-1 max-w-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 flex-wrap">
+        <div className="relative flex-1 min-w-0">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <input type="text" placeholder="Search by name, title, ID..."
+          <input type="text" placeholder="Search..."
             value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none" />
         </div>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
-          className="border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none">
-          <option value="all">All Status</option>
-          <option value="assigned">Assigned</option>
-          <option value="in_progress">In Progress</option>
-          <option value="completed">Completed</option>
-          <option value="verified">Verified</option>
-          <option value="editing">Editing</option>
-        </select>
-        {!selectedDate && (
-          <select value={dayFilter} onChange={(e) => setDayFilter(e.target.value)}
-            className="border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none">
-            {recentDays.map((d, i) => (
-              <option key={d.dateStr} value={String(i)}>{d.label} ({format(d.date, "dd/MM")})</option>
-            ))}
-            <option value="all">All Days</option>
+        <div className="flex items-center gap-2 flex-wrap">
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
+            className="border rounded-lg px-2 md:px-3 py-2 text-xs md:text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none flex-1 sm:flex-none">
+            <option value="all">All Status</option>
+            <option value="assigned">Assigned</option>
+            <option value="in_progress">In Progress</option>
+            <option value="completed">Completed</option>
+            <option value="verified">Verified</option>
+            <option value="editing">Editing</option>
           </select>
-        )}
-        <DashboardDayPicker selectedDate={selectedDate} onSelect={(d) => { setSelectedDate(d); if (d) setDayFilter('0'); }} />
-        {selectedDate && (
-          <button onClick={() => setSelectedDate(undefined)} className="text-xs text-muted-foreground hover:text-foreground">Clear date</button>
-        )}
+          {!selectedDate && (
+            <select value={dayFilter} onChange={(e) => setDayFilter(e.target.value)}
+              className="border rounded-lg px-2 md:px-3 py-2 text-xs md:text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none flex-1 sm:flex-none">
+              {recentDays.map((d, i) => (
+                <option key={d.dateStr} value={String(i)}>{d.label} ({format(d.date, "dd/MM")})</option>
+              ))}
+              <option value="all">All Days</option>
+            </select>
+          )}
+          <DashboardDayPicker selectedDate={selectedDate} onSelect={(d) => { setSelectedDate(d); if (d) setDayFilter('0'); }} />
+          {selectedDate && (
+            <button onClick={() => setSelectedDate(undefined)} className="text-xs text-muted-foreground hover:text-foreground">Clear</button>
+          )}
+        </div>
       </div>
 
       {/* Day info */}
@@ -504,13 +519,13 @@ export default function WorkAssign() {
       </p>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 md:gap-3">
         {['assigned', 'in_progress', 'completed', 'verified', 'editing'].map(status => {
           const count = filteredAssignments.filter(a => a.status === status).length;
           return (
-            <div key={status} className="bg-card border rounded-lg p-3 text-center">
-              <p className="text-2xl font-bold text-card-foreground">{count}</p>
-              <p className="text-xs text-muted-foreground capitalize">{status.replace('_', ' ')}</p>
+            <div key={status} className="bg-card border rounded-lg p-2 md:p-3 text-center">
+              <p className="text-xl md:text-2xl font-bold text-card-foreground">{count}</p>
+              <p className="text-[10px] md:text-xs text-muted-foreground capitalize">{status.replace('_', ' ')}</p>
             </div>
           );
         })}
@@ -524,15 +539,15 @@ export default function WorkAssign() {
             <p className="text-lg font-medium">No assignments found</p>
           </div>
         ) : filteredAssignments.map(a => (
-          <div key={a.id} className="bg-card border rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <div className="flex items-center space-x-3 mb-2">
-                  <h3 className="font-semibold text-card-foreground">{a.businessName || a.displayTitle}</h3>
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusColors[a.status]}`}>
+          <div key={a.id} className="bg-card border rounded-xl p-3 md:p-4 shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  <h3 className="font-semibold text-card-foreground text-sm md:text-base">{a.businessName || a.displayTitle}</h3>
+                  <span className={`text-[10px] md:text-xs font-medium px-2 py-0.5 rounded-full ${statusColors[a.status]}`}>
                     {a.status.replace('_', ' ')}
                   </span>
-                  <span className="text-xs font-mono text-muted-foreground">{a.uniqueId}</span>
+                  <span className="text-[10px] md:text-xs font-mono text-muted-foreground">{a.uniqueId}</span>
                 </div>
 
                 {/* Inline edit mode */}
@@ -565,44 +580,44 @@ export default function WorkAssign() {
                     </button>
                   </div>
                 ) : (
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                  <div className="flex flex-wrap gap-x-3 md:gap-x-4 gap-y-1 text-xs md:text-sm text-muted-foreground">
                     <span>Assigned to: <strong className="text-foreground">{getMemberName(a.assignedTo)}</strong></span>
                     <span>Category: <strong className="capitalize text-foreground">{a.category}</strong></span>
                     <span>{a.clipCount} clips + EC · {a.duration}</span>
                     <span>Price: <strong className="text-foreground">{formatCurrency(a.totalPrice)}</strong></span>
                     {a.totalDurationSeconds > 0 && <span>Time: {formatDuration(a.totalDurationSeconds)}</span>}
-                    <span className="font-mono text-xs">Code: {a.accessCode}</span>
+                    <span className="font-mono text-[10px] md:text-xs">Code: {a.accessCode}</span>
                   </div>
                 )}
               </div>
-              <div className="flex items-center space-x-2 ml-4">
+              <div className="flex items-center flex-wrap gap-1.5 md:gap-2">
                 {a.status === 'completed' && (
                   <button onClick={() => handleVerify(a)}
-                    className="flex items-center space-x-1 px-3 py-1.5 text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 rounded-lg transition-colors">
-                    <CheckCircle2 className="w-3.5 h-3.5" /><span>Verify</span>
+                    className="flex items-center space-x-1 px-2 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 rounded-lg transition-colors">
+                    <CheckCircle2 className="w-3 h-3 md:w-3.5 md:h-3.5" /><span>Verify</span>
                   </button>
                 )}
                 {(a.status === 'completed' || a.status === 'verified') && (
                   <button onClick={() => setConfirmAction({ type: 'sendback', id: a.id, assignedTo: a.assignedTo, title: a.businessName || a.displayTitle })}
-                    className="flex items-center space-x-1 px-3 py-1.5 text-xs font-medium bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:hover:bg-orange-900/50 rounded-lg transition-colors">
-                    <Edit3 className="w-3.5 h-3.5" /><span>Send Back</span>
+                    className="flex items-center space-x-1 px-2 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-medium bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:hover:bg-orange-900/50 rounded-lg transition-colors">
+                    <Edit3 className="w-3 h-3 md:w-3.5 md:h-3.5" /><span>Send Back</span>
                   </button>
                 )}
                 {a.status === 'editing' && (
                   <button onClick={() => handleUndoEditing(a.id)}
-                    className="flex items-center space-x-1 px-3 py-1.5 text-xs font-medium bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:hover:bg-purple-900/50 rounded-lg transition-colors">
-                    <Undo2 className="w-3.5 h-3.5" /><span>Undo Send Back</span>
+                    className="flex items-center space-x-1 px-2 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-medium bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:hover:bg-purple-900/50 rounded-lg transition-colors">
+                    <Undo2 className="w-3 h-3 md:w-3.5 md:h-3.5" /><span>Undo</span>
                   </button>
                 )}
                 {a.status !== 'verified' && editingId !== a.id && (
                   <button onClick={() => handleStartEdit(a)}
-                    className="flex items-center space-x-1 px-3 py-1.5 text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 rounded-lg transition-colors">
-                    <Pencil className="w-3.5 h-3.5" /><span>Edit</span>
+                    className="flex items-center space-x-1 px-2 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 rounded-lg transition-colors">
+                    <Pencil className="w-3 h-3 md:w-3.5 md:h-3.5" /><span>Edit</span>
                   </button>
                 )}
                 <button onClick={() => setConfirmAction({ type: 'delete', id: a.id, title: a.businessName || a.displayTitle })}
-                  className="flex items-center space-x-1 px-3 py-1.5 text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 rounded-lg transition-colors">
-                  <Trash2 className="w-3.5 h-3.5" /><span>Delete</span>
+                  className="flex items-center space-x-1 px-2 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 rounded-lg transition-colors">
+                  <Trash2 className="w-3 h-3 md:w-3.5 md:h-3.5" /><span>Delete</span>
                 </button>
               </div>
             </div>

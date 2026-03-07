@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { formatCurrency } from "@/utils/formatters";
 import { format, subDays, startOfDay } from "date-fns";
-import type { AppUser, WorkSubmission } from "@/types";
-import { Users, Video, CheckCircle, Clock, TrendingUp, ArrowDownUp } from "lucide-react";
+import type { AppUser, WorkSubmission, WorkAssignment } from "@/types";
+import { Users, Video, CheckCircle, Clock, TrendingUp, ArrowDownUp, ClipboardList } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
@@ -13,12 +14,18 @@ import DashboardDayPicker from "@/components/dashboard/DayPicker";
 
 export default function TechAdminDashboard() {
   const currentUser = useAuthStore((s) => s.user);
+  const navigate = useNavigate();
   const [members, setMembers] = useState<AppUser[]>([]);
   const [submissions, setSubmissions] = useState<WorkSubmission[]>([]);
+  const [assignments, setAssignments] = useState<WorkAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [dayFilter, setDayFilter] = useState<string>('all');
-  const [sortOrder, setSortOrder] = useState<'high' | 'low'>('high');
+  const [sortOrder, setSortOrder] = useState<'high' | 'low'>(() => (localStorage.getItem('dash_sortOrder') as 'high' | 'low') || 'high');
+  const [sortBy, setSortBy] = useState<'videos' | 'assigned'>(() => (localStorage.getItem('dash_sortBy') as 'videos' | 'assigned') || 'videos');
+
+  useEffect(() => { localStorage.setItem('dash_sortOrder', sortOrder); }, [sortOrder]);
+  useEffect(() => { localStorage.setItem('dash_sortBy', sortBy); }, [sortBy]);
 
   // Generate recent 5 days for dropdown
   const recentDays = (() => {
@@ -44,6 +51,9 @@ export default function TechAdminDashboard() {
     unsubs.push(onSnapshot(collection(db, "work_submissions"), (snap) => {
       setSubmissions(snap.docs.map((d) => ({ id: d.id, ...d.data() } as WorkSubmission)));
       setLoading(false);
+    }));
+    unsubs.push(onSnapshot(collection(db, "work_assignments"), (snap) => {
+      setAssignments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as WorkAssignment)));
     }));
     return () => unsubs.forEach((u) => u());
   }, [currentUser?.uid]);
@@ -74,9 +84,24 @@ export default function TechAdminDashboard() {
   const totalVideos = approved.reduce((s, sub) => s + (sub.totalVideos || 0), 0);
   const totalRevenue = approved.reduce((s, sub) => s + (sub.calculatedRevenue || 0), 0);
 
+  // Assignments filtered to current user's team
+  const teamAssignments = assignments.filter((a) => memberIds.includes(a.assignedTo) && a.assignedBy === currentUser?.uid);
+
   const chartData = members.map((m) => {
     const mSubs = filteredSubs.filter((s) => s.techMemberId === m.uid);
     const mApproved = mSubs.filter((s) => s.status === "approved");
+    const mAssigned = teamAssignments.filter((a) => a.assignedTo === m.uid && (a.status === 'assigned' || a.status === 'in_progress'));
+
+    // Category breakdown from approved submission items
+    const categoryBreakdown = { wishes: 0, promotional: 0, cinematic: 0 };
+    mApproved.forEach((sub) => {
+      sub.items?.forEach((item) => {
+        if (item.type in categoryBreakdown) {
+          categoryBreakdown[item.type as keyof typeof categoryBreakdown] += item.quantity;
+        }
+      });
+    });
+
     return {
       uid: m.uid,
       name: m.name?.split(" ")[0] || "?",
@@ -85,13 +110,16 @@ export default function TechAdminDashboard() {
       videos: mApproved.reduce((s, sub) => s + (sub.totalVideos || 0), 0),
       submissions: mSubs.length,
       revenue: mApproved.reduce((s, sub) => s + (sub.calculatedRevenue || 0), 0),
+      assigned: mAssigned.length,
+      categoryBreakdown,
     };
   });
 
   // Sorted data for table and mobile cards
-  const sortedChartData = [...chartData].sort((a, b) =>
-    sortOrder === 'high' ? b.videos - a.videos : a.videos - b.videos
-  );
+  const sortedChartData = [...chartData].sort((a, b) => {
+    const field = sortBy === 'assigned' ? 'assigned' : 'videos';
+    return sortOrder === 'high' ? b[field] - a[field] : a[field] - b[field];
+  });
 
   if (loading) {
     return (
@@ -106,17 +134,17 @@ export default function TechAdminDashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl font-bold text-foreground">Tech Dashboard</h1>
-          <p className="text-muted-foreground text-sm mt-1">
+          <h1 className="font-display text-xl md:text-2xl font-bold text-foreground">Tech Dashboard</h1>
+          <p className="text-muted-foreground text-xs md:text-sm mt-1">
             {selectedDate ? `Showing data for ${format(selectedDate, "dd/MM/yyyy")}` : dayFilter !== 'all' ? `Showing data for ${recentDays[parseInt(dayFilter)]?.label}` : "Overview of your team's work"}
           </p>
         </div>
         <div className="flex items-center gap-2">
           {!selectedDate && (
             <select value={dayFilter} onChange={(e) => setDayFilter(e.target.value)}
-              className="border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none">
+              className="border rounded-lg px-2 md:px-3 py-1.5 md:py-2 text-xs md:text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none">
               <option value="all">All Days</option>
               {recentDays.map((d, i) => (
                 <option key={d.dateStr} value={String(i)}>{d.label} ({format(d.date, "dd/MM")})</option>
@@ -173,39 +201,66 @@ export default function TechAdminDashboard() {
           <h3 className="font-display font-semibold text-foreground">Member Summary</h3>
           <div className="flex items-center gap-3">
             <span className="text-xs text-muted-foreground">{filterLabel}</span>
-            <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value as 'high' | 'low')}
-              className="border rounded-lg px-2 py-1 text-xs bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none">
-              <option value="high">High → Low</option>
-              <option value="low">Low → High</option>
-            </select>
+            <button onClick={() => { setSortBy('videos'); setSortOrder(prev => sortBy === 'videos' ? (prev === 'high' ? 'low' : 'high') : 'high'); }}
+              className={`flex items-center gap-1 border rounded-lg px-2 py-1 text-xs transition-colors ${sortBy === 'videos' ? 'bg-primary/10 text-primary border-primary/30' : 'bg-background text-foreground border-border hover:bg-accent/50'}`}>
+              <ArrowDownUp size={12} />
+              Videos {sortBy === 'videos' ? (sortOrder === 'high' ? '↓' : '↑') : ''}
+            </button>
+            <button onClick={() => { setSortBy('assigned'); setSortOrder(prev => sortBy === 'assigned' ? (prev === 'high' ? 'low' : 'high') : 'high'); }}
+              className={`flex items-center gap-1 border rounded-lg px-2 py-1 text-xs transition-colors ${sortBy === 'assigned' ? 'bg-primary/10 text-primary border-primary/30' : 'bg-background text-foreground border-border hover:bg-accent/50'}`}>
+              <ArrowDownUp size={12} />
+              Assigned {sortBy === 'assigned' ? (sortOrder === 'high' ? '↓' : '↑') : ''}
+            </button>
           </div>
         </div>
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-elevated/50">
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Member</th>
+              <th className="text-center px-4 py-3 font-medium text-muted-foreground">Assigned</th>
               <th className="text-right px-4 py-3 font-medium text-muted-foreground">Videos</th>
-              <th className="text-right px-4 py-3 font-medium text-muted-foreground">Submissions</th>
+              <th className="text-center px-3 py-3 font-medium text-muted-foreground text-[11px]">W / P / C</th>
               <th className="text-right px-4 py-3 font-medium text-muted-foreground">Revenue</th>
+              <th className="text-center px-3 py-3 font-medium text-muted-foreground">Action</th>
             </tr>
           </thead>
           <tbody>
             {sortedChartData.length === 0 ? (
-              <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">No team members yet. Add from "My Team".</td></tr>
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No team members yet. Add from "My Team".</td></tr>
             ) : (
               sortedChartData.map((d, i) => (
                   <tr key={d.uid} className={`border-b border-border/50 hover:bg-accent/30 transition-colors ${i % 2 === 1 ? "bg-elevated/20" : ""}`}>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate(`/tech-admin/team/${d.uid}`)}>
                         <div className="w-7 h-7 rounded-md bg-role-tech-member/15 flex items-center justify-center font-display font-bold text-role-tech-member text-[10px]">
                           {d.initial}
                         </div>
-                        <span className="font-medium text-foreground">{d.fullName}</span>
+                        <span className="font-medium text-foreground hover:text-primary transition-colors">{d.fullName}</span>
                       </div>
                     </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`inline-flex items-center justify-center min-w-[24px] px-1.5 py-0.5 rounded-full text-xs font-bold ${d.assigned > 0 ? 'bg-warning/15 text-warning' : 'text-muted-foreground'}`}>
+                        {d.assigned}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 text-right font-mono">{d.videos}</td>
-                    <td className="px-4 py-3 text-right font-mono">{d.submissions}</td>
+                    <td className="px-3 py-3 text-center">
+                      <div className="flex items-center justify-center gap-1 text-[11px] font-mono">
+                        <span className="text-pink-400">{d.categoryBreakdown.wishes}</span>
+                        <span className="text-muted-foreground">/</span>
+                        <span className="text-blue-400">{d.categoryBreakdown.promotional}</span>
+                        <span className="text-muted-foreground">/</span>
+                        <span className="text-amber-400">{d.categoryBreakdown.cinematic}</span>
+                      </div>
+                    </td>
                     <td className="px-4 py-3 text-right font-mono text-primary">{formatCurrency(d.revenue)}</td>
+                    <td className="px-3 py-3 text-center">
+                      <button onClick={() => navigate(`/tech-admin/work-assign?member=${d.uid}`)}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
+                        <ClipboardList size={12} />
+                        Assign
+                      </button>
+                    </td>
                   </tr>
               ))
             )}
@@ -217,31 +272,58 @@ export default function TechAdminDashboard() {
       <div className="md:hidden space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="font-display font-semibold text-foreground text-sm">Member Summary</h3>
-          <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value as 'high' | 'low')}
-            className="border rounded-lg px-2 py-1 text-xs bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none">
-            <option value="high">High → Low</option>
-            <option value="low">Low → High</option>
-          </select>
+          <div className="flex items-center gap-1">
+            <button onClick={() => { setSortBy('videos'); setSortOrder(prev => sortBy === 'videos' ? (prev === 'high' ? 'low' : 'high') : 'high'); }}
+              className={`flex items-center gap-1 border rounded-lg px-1.5 py-1 text-[10px] transition-colors ${sortBy === 'videos' ? 'bg-primary/10 text-primary border-primary/30' : 'bg-background text-foreground border-border'}`}>
+              <ArrowDownUp size={10} />
+              Videos {sortBy === 'videos' ? (sortOrder === 'high' ? '↓' : '↑') : ''}
+            </button>
+            <button onClick={() => { setSortBy('assigned'); setSortOrder(prev => sortBy === 'assigned' ? (prev === 'high' ? 'low' : 'high') : 'high'); }}
+              className={`flex items-center gap-1 border rounded-lg px-1.5 py-1 text-[10px] transition-colors ${sortBy === 'assigned' ? 'bg-primary/10 text-primary border-primary/30' : 'bg-background text-foreground border-border'}`}>
+              <ArrowDownUp size={10} />
+              Assigned {sortBy === 'assigned' ? (sortOrder === 'high' ? '↓' : '↑') : ''}
+            </button>
+          </div>
         </div>
         {sortedChartData.length === 0 ? (
           <div className="bg-card border border-border rounded-xl p-6 text-center text-muted-foreground text-sm">No team members yet. Add from "My Team".</div>
         ) : (
           sortedChartData.map((d) => (
               <div key={d.uid} className="bg-card border border-border rounded-xl p-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-8 h-8 rounded-md bg-role-tech-member/15 flex items-center justify-center font-display font-bold text-role-tech-member text-xs">
-                    {d.initial}
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate(`/tech-admin/team/${d.uid}`)}>
+                    <div className="w-8 h-8 rounded-md bg-role-tech-member/15 flex items-center justify-center font-display font-bold text-role-tech-member text-xs">
+                      {d.initial}
+                    </div>
+                    <div>
+                      <span className="font-medium text-foreground text-sm hover:text-primary transition-colors">{d.fullName}</span>
+                      {d.assigned > 0 && (
+                        <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-warning/15 text-warning">
+                          {d.assigned} assigned
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <span className="font-medium text-foreground text-sm">{d.fullName}</span>
+                  <button onClick={() => navigate(`/tech-admin/work-assign?member=${d.uid}`)}
+                    className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
+                    <ClipboardList size={11} />
+                    Assign
+                  </button>
                 </div>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-3 gap-2 mb-2">
                   <div className="text-center bg-background border border-border rounded-lg p-2">
                     <p className="text-[10px] text-muted-foreground">Videos</p>
                     <p className="font-mono font-bold text-sm text-foreground">{d.videos}</p>
                   </div>
                   <div className="text-center bg-background border border-border rounded-lg p-2">
-                    <p className="text-[10px] text-muted-foreground">Subs</p>
-                    <p className="font-mono font-bold text-sm text-foreground">{d.submissions}</p>
+                    <p className="text-[10px] text-muted-foreground">W / P / C</p>
+                    <p className="font-mono font-bold text-[11px] text-foreground">
+                      <span className="text-pink-400">{d.categoryBreakdown.wishes}</span>
+                      {' / '}
+                      <span className="text-blue-400">{d.categoryBreakdown.promotional}</span>
+                      {' / '}
+                      <span className="text-amber-400">{d.categoryBreakdown.cinematic}</span>
+                    </p>
                   </div>
                   <div className="text-center bg-background border border-border rounded-lg p-2">
                     <p className="text-[10px] text-muted-foreground">Revenue</p>

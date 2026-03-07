@@ -367,15 +367,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                   {[
                     { key: 'storeOffice' as const, label: 'Store/Office Images', content: <FileUpload label="" accept="image/*" multiple value={files.storeImage} onChange={(f) => setFiles(prev => ({ ...prev, storeImage: f as File[] }))} helperText="Upload one or more store/office images" /> },
                     { key: 'productImages' as const, label: 'Product Images', content: (
-                      <>
-                        <FileUpload label="" accept="image/*" multiple value={files.productImages} onChange={(f) => setFiles(prev => ({ ...prev, productImages: f as File[] }))} helperText="Will appear in main frame & footer" />
-                        {files.productImages.length > 0 && (
-                          <label className={cn("flex items-center gap-2 mt-2 text-xs cursor-pointer", isDark ? "text-slate-400" : "text-slate-600")}>
-                            <input type="checkbox" checked={includeProductsInHeader} onChange={(e) => setIncludeProductsInHeader(e.target.checked)} className="rounded border-slate-300" />
-                            Include products in header design
-                          </label>
-                        )}
-                      </>
+                      <FileUpload label="" accept="image/*" multiple value={files.productImages} onChange={(f) => setFiles(prev => ({ ...prev, productImages: f as File[] }))} helperText="Will appear in main frame & footer" />
                     )},
                     { key: 'flyersPosters' as const, label: 'Flyers / Offer Posters', content: <FileUpload label="" accept="image/*,application/pdf" multiple value={files.flyersPosters} onChange={(f) => setFiles(prev => ({ ...prev, flyersPosters: f as File[] }))} helperText="Upload existing promotional materials" /> },
                     { key: 'voiceInstructions' as const, label: 'Voice Instructions', content: <FileUpload label="" accept="audio/*" value={files.voiceRecording} onChange={(f) => setFiles(prev => ({ ...prev, voiceRecording: f as File }))} helperText="Record your requirements" /> },
@@ -391,6 +383,14 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       {!collapsedSections[key] && <div className="p-3 pt-0">{sectionContent}</div>}
                     </div>
                   ))}
+
+                  {/* Product images header checkbox - always visible */}
+                  {files.productImages.length > 0 && (
+                    <label className={cn("flex items-center gap-2 text-xs cursor-pointer", isDark ? "text-slate-400" : "text-slate-600")}>
+                      <input type="checkbox" checked={includeProductsInHeader} onChange={(e) => setIncludeProductsInHeader(e.target.checked)} className="rounded border-slate-300" />
+                      Include products in header design
+                    </label>
+                  )}
 
                   {/* Text Instructions */}
                   <div>
