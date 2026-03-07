@@ -6,7 +6,7 @@ import { createUserWithoutSignOut } from "@/services/secondaryAuth";
 import { useAuthStore } from "@/store/authStore";
 import { normalizePhone, formatPhoneDisplay, getWhatsAppUrl, getCallUrl } from "@/utils/phone";
 import type { AppUser } from "@/types";
-import { Users, Plus, X, Loader2, Eye, EyeOff, UserCheck, UserX, Trash2, Phone, MessageCircle, Pencil, Share2 } from "lucide-react";
+import { Users, Plus, X, Loader2, Eye, EyeOff, UserCheck, UserX, Trash2, Phone, MessageCircle, Pencil, Share2, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import EditMemberModal from "@/components/EditMemberModal";
@@ -21,6 +21,7 @@ export default function TechAdminMyTeam() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<AppUser | null>(null);
   const [editingMember, setEditingMember] = useState<AppUser | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const isMobile = useIsMobile();
 
   const [formName, setFormName] = useState("");
@@ -123,6 +124,12 @@ export default function TechAdminMyTeam() {
     window.open(url, "_blank", "noopener,noreferrer");
   };
 
+  const filteredMembers = members.filter((m) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return m.name?.toLowerCase().includes(q) || m.phone?.includes(q) || formatPhoneDisplay(m.phone || '').includes(q);
+  });
+
   return (
     <div className="space-y-4 md:space-y-6">
       <div className="flex items-center justify-between">
@@ -136,8 +143,15 @@ export default function TechAdminMyTeam() {
         </button>
       </div>
 
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <input type="text" placeholder="Search by name or phone..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none" />
+      </div>
+
       {isMobile ? (
-        <MobileTechCards members={members} loading={loading} onToggle={toggleActive} onDelete={(m) => setConfirmDelete(m)} onEdit={(m) => setEditingMember(m)} onClickMember={(m) => navigate(`/tech-admin/team/${m.uid}`)} onShare={handleShareCredentials} />
+        <MobileTechCards members={filteredMembers} loading={loading} onToggle={toggleActive} onDelete={(m) => setConfirmDelete(m)} onEdit={(m) => setEditingMember(m)} onClickMember={(m) => navigate(`/tech-admin/team/${m.uid}`)} onShare={handleShareCredentials} />
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
           <table className="w-full text-sm">
@@ -158,13 +172,13 @@ export default function TechAdminMyTeam() {
                     {Array.from({ length: 6 }).map((__, j) => <td key={j} className="px-4 py-3"><div className="h-4 bg-muted rounded animate-pulse w-20" /></td>)}
                   </tr>
                 ))
-              ) : members.length === 0 ? (
+              ) : filteredMembers.length === 0 ? (
                 <tr><td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
                   <Users size={32} className="mx-auto mb-2 opacity-30" />
-                  <p>No members yet. Click "Add Member" to get started.</p>
+                  <p>{searchQuery ? 'No members match your search.' : 'No members yet. Click "Add Member" to get started.'}</p>
                 </td></tr>
               ) : (
-                members.map((m, i) => (
+                filteredMembers.map((m, i) => (
                   <tr key={m.uid} onClick={() => navigate(`/tech-admin/team/${m.uid}`)} className={`border-b border-border/50 hover:bg-accent/30 transition-colors cursor-pointer ${i % 2 === 1 ? "bg-elevated/20" : ""}`}>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">

@@ -83,6 +83,7 @@ export interface WorkAssignment {
   verifiedBy?: string;
   date: string;
   completedDate?: string;
+  clientName?: string;
   savedGenerationId?: string;
 }
 

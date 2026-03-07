@@ -6,7 +6,7 @@ import { useAuthStore } from "@/store/authStore";
 import { formatCurrency } from "@/utils/formatters";
 import { format, subDays, startOfDay } from "date-fns";
 import type { AppUser, WorkSubmission, WorkAssignment } from "@/types";
-import { Users, Video, CheckCircle, Clock, TrendingUp, ArrowDownUp, ClipboardList } from "lucide-react";
+import { Users, Video, CheckCircle, Clock, TrendingUp, ArrowDownUp, ClipboardList, Search } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
@@ -23,6 +23,7 @@ export default function TechAdminDashboard() {
   const [dayFilter, setDayFilter] = useState<string>('all');
   const [sortOrder, setSortOrder] = useState<'high' | 'low'>(() => (localStorage.getItem('dash_sortOrder') as 'high' | 'low') || 'high');
   const [sortBy, setSortBy] = useState<'videos' | 'assigned'>(() => (localStorage.getItem('dash_sortBy') as 'videos' | 'assigned') || 'videos');
+  const [memberSearch, setMemberSearch] = useState('');
 
   useEffect(() => { localStorage.setItem('dash_sortOrder', sortOrder); }, [sortOrder]);
   useEffect(() => { localStorage.setItem('dash_sortBy', sortBy); }, [sortBy]);
@@ -121,6 +122,10 @@ export default function TechAdminDashboard() {
     return sortOrder === 'high' ? b[field] - a[field] : a[field] - b[field];
   });
 
+  const filteredChartData = memberSearch.trim()
+    ? sortedChartData.filter(d => d.fullName.toLowerCase().includes(memberSearch.toLowerCase()))
+    : sortedChartData;
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -197,9 +202,19 @@ export default function TechAdminDashboard() {
 
       {/* Desktop Table */}
       <div className="hidden md:block bg-card border border-border rounded-xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-          <h3 className="font-display font-semibold text-foreground">Member Summary</h3>
+        <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-3">
+          <h3 className="font-display font-semibold text-foreground shrink-0">Member Summary</h3>
           <div className="flex items-center gap-3">
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search member..."
+                value={memberSearch}
+                onChange={e => setMemberSearch(e.target.value)}
+                className="w-36 pl-7 pr-2 py-1 text-xs bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+              />
+            </div>
             <span className="text-xs text-muted-foreground">{filterLabel}</span>
             <button onClick={() => { setSortBy('videos'); setSortOrder(prev => sortBy === 'videos' ? (prev === 'high' ? 'low' : 'high') : 'high'); }}
               className={`flex items-center gap-1 border rounded-lg px-2 py-1 text-xs transition-colors ${sortBy === 'videos' ? 'bg-primary/10 text-primary border-primary/30' : 'bg-background text-foreground border-border hover:bg-accent/50'}`}>
@@ -225,10 +240,10 @@ export default function TechAdminDashboard() {
             </tr>
           </thead>
           <tbody>
-            {sortedChartData.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No team members yet. Add from "My Team".</td></tr>
+            {filteredChartData.length === 0 ? (
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">{memberSearch.trim() ? 'No members match your search.' : 'No team members yet. Add from "My Team".'}</td></tr>
             ) : (
-              sortedChartData.map((d, i) => (
+              filteredChartData.map((d, i) => (
                   <tr key={d.uid} className={`border-b border-border/50 hover:bg-accent/30 transition-colors ${i % 2 === 1 ? "bg-elevated/20" : ""}`}>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate(`/tech-admin/team/${d.uid}`)}>
@@ -270,9 +285,10 @@ export default function TechAdminDashboard() {
 
       {/* Mobile Cards */}
       <div className="md:hidden space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="font-display font-semibold text-foreground text-sm">Member Summary</h3>
-          <div className="flex items-center gap-1">
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h3 className="font-display font-semibold text-foreground text-sm">Member Summary</h3>
+            <div className="flex items-center gap-1">
             <button onClick={() => { setSortBy('videos'); setSortOrder(prev => sortBy === 'videos' ? (prev === 'high' ? 'low' : 'high') : 'high'); }}
               className={`flex items-center gap-1 border rounded-lg px-1.5 py-1 text-[10px] transition-colors ${sortBy === 'videos' ? 'bg-primary/10 text-primary border-primary/30' : 'bg-background text-foreground border-border'}`}>
               <ArrowDownUp size={10} />
@@ -283,12 +299,23 @@ export default function TechAdminDashboard() {
               <ArrowDownUp size={10} />
               Assigned {sortBy === 'assigned' ? (sortOrder === 'high' ? '↓' : '↑') : ''}
             </button>
+            </div>
+          </div>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search member..."
+              value={memberSearch}
+              onChange={e => setMemberSearch(e.target.value)}
+              className="w-full pl-8 pr-3 py-1.5 text-xs bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+            />
           </div>
         </div>
-        {sortedChartData.length === 0 ? (
-          <div className="bg-card border border-border rounded-xl p-6 text-center text-muted-foreground text-sm">No team members yet. Add from "My Team".</div>
+        {filteredChartData.length === 0 ? (
+          <div className="bg-card border border-border rounded-xl p-6 text-center text-muted-foreground text-sm">{memberSearch.trim() ? 'No members match your search.' : 'No team members yet. Add from "My Team".'}</div>
         ) : (
-          sortedChartData.map((d) => (
+          filteredChartData.map((d) => (
               <div key={d.uid} className="bg-card border border-border rounded-xl p-3">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate(`/tech-admin/team/${d.uid}`)}>

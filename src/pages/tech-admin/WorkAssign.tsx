@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   ClipboardList, Plus, Trash2, Eye, CheckCircle2, Edit3, Loader2, AlertCircle,
-  Search, Filter, ChevronDown, Pencil, X, Save, Undo2
+  Search, Filter, ChevronDown, ChevronRight, Pencil, X, Save, Undo2, Users, UserCircle, History
 } from 'lucide-react';
 import { collection, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/services/firebase';
@@ -59,6 +59,7 @@ function getDayLabel(date: Date): string {
 
 export default function WorkAssign() {
   const user = useAuthStore((s) => s.user);
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: allUsers, loading: usersLoading } = useFirestoreCollection<AppUser>('users');
   const { data: assignments, loading: assignmentsLoading } = useFirestoreCollection<WorkAssignment>('work_assignments');
@@ -71,9 +72,11 @@ export default function WorkAssign() {
   const [dayFilter, setDayFilter] = useState<string>('all');
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<{ category: string; duration: string; pricePerUnit: number } | null>(null);
+  const [editForm, setEditForm] = useState<{ category: string; duration: string; pricePerUnit: number; clientName: string } | null>(null);
   const [memberSearch, setMemberSearch] = useState('');
   const [confirmAction, setConfirmAction] = useState<{ type: 'delete' | 'sendback'; id: string; assignedTo?: string; title: string } | null>(null);
+  const [workloadSearch, setWorkloadSearch] = useState('');
+  const [showHistory, setShowHistory] = useState(false);
 
   // Form state — no more end credits or manual clip count
   const [form, setForm] = useState({
@@ -81,6 +84,7 @@ export default function WorkAssign() {
     category: 'wishes' as 'wishes' | 'promotional' | 'cinematic',
     duration: '20s',
     pricePerUnit: 499,
+    clientName: '',
   });
 
   // Auto-open form with pre-selected member from query param
@@ -153,6 +157,7 @@ export default function WorkAssign() {
         uniqueId,
         accessCode,
         businessName: '',
+        clientName: form.clientName.trim(),
         displayTitle: `${form.category.charAt(0).toUpperCase() + form.category.slice(1)} - ${uniqueId}`,
         status: 'assigned',
         sessions: [],
@@ -171,7 +176,7 @@ export default function WorkAssign() {
       });
 
       setShowForm(false);
-      setForm({ assignedTo: '', category: 'wishes', duration: '20s', pricePerUnit: 499 });
+      setForm({ assignedTo: '', category: 'wishes', duration: '20s', pricePerUnit: 499, clientName: '' });
       setMemberSearch('');
     } catch (error) {
       console.error('Failed to create assignment:', error);
@@ -265,7 +270,7 @@ export default function WorkAssign() {
 
   const handleStartEdit = (a: WorkAssignment) => {
     setEditingId(a.id);
-    setEditForm({ category: a.category, duration: a.duration, pricePerUnit: a.pricePerUnit });
+    setEditForm({ category: a.category, duration: a.duration, pricePerUnit: a.pricePerUnit, clientName: a.clientName || '' });
   };
 
   const handleSaveEdit = async () => {
@@ -278,6 +283,7 @@ export default function WorkAssign() {
         pricePerUnit: editForm.pricePerUnit,
         clipCount: clips,
         totalPrice: editForm.pricePerUnit,
+        clientName: editForm.clientName.trim(),
       });
       setEditingId(null);
       setEditForm(null);
@@ -304,6 +310,7 @@ export default function WorkAssign() {
       result = result.filter(a =>
         a.displayTitle?.toLowerCase().includes(q) ||
         a.businessName?.toLowerCase().includes(q) ||
+        a.clientName?.toLowerCase().includes(q) ||
         a.uniqueId?.toLowerCase().includes(q) ||
         techMembers.find(m => m.uid === a.assignedTo)?.name.toLowerCase().includes(q)
       );
@@ -330,6 +337,27 @@ export default function WorkAssign() {
   }, [assignments, statusFilter, searchQuery, techMembers, selectedDate, dayFilter, recentDays]);
 
   const getMemberName = (uid: string) => allUsers.find(u => u.uid === uid)?.name || 'Unknown';
+
+  // Group filtered assignments by member for workload overview (respects day/status/date filters)
+  const memberWorkload = useMemo(() => {
+    const grouped: Record<string, { member: AppUser; assignments: WorkAssignment[] }> = {};
+    for (const m of techMembers) {
+      const mAssignments = filteredAssignments.filter(a => a.assignedTo === m.uid);
+      if (mAssignments.length > 0) {
+        grouped[m.uid] = { member: m, assignments: mAssignments };
+      }
+    }
+    return Object.values(grouped).sort((a, b) => b.assignments.length - a.assignments.length);
+  }, [filteredAssignments, techMembers]);
+
+  // Filter workload by client name search
+  const filteredWorkload = useMemo(() => {
+    if (!workloadSearch.trim()) return memberWorkload;
+    const q = workloadSearch.toLowerCase();
+    return memberWorkload.filter(({ assignments: mAsgn }) =>
+      mAsgn.some(a => a.clientName?.toLowerCase().includes(q) || a.displayTitle?.toLowerCase().includes(q))
+    );
+  }, [memberWorkload, workloadSearch]);
 
   const statusColors: Record<string, string> = {
     assigned: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
@@ -455,6 +483,14 @@ export default function WorkAssign() {
                 onChange={(e) => updateField('pricePerUnit', parseInt(e.target.value) || 0)}
                 className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none" />
             </div>
+
+            {/* Client Name */}
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">Client Name <span className="text-[10px] text-muted-foreground/60">(optional)</span></label>
+              <input type="text" placeholder="e.g. Sharma Electronics" value={form.clientName}
+                onChange={(e) => setForm(prev => ({ ...prev, clientName: e.target.value }))}
+                className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none" />
+            </div>
           </div>
 
           {/* Total */}
@@ -531,6 +567,86 @@ export default function WorkAssign() {
         })}
       </div>
 
+      {/* Team Workload Overview */}
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="px-3 md:px-4 py-2.5 md:py-3 border-b border-border">
+          <div className="flex items-center gap-2 mb-2">
+            <Users className="w-4 h-4 text-muted-foreground" />
+            <h3 className="font-semibold text-foreground text-sm">Team Workload</h3>
+            <span className="text-[10px] text-muted-foreground">{memberWorkload.reduce((s, m) => s + m.assignments.length, 0)} active across {memberWorkload.length} members</span>
+            <button onClick={() => setShowHistory(!showHistory)}
+              className={`ml-auto flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg border transition-colors ${showHistory ? 'bg-primary/10 text-primary border-primary/30' : 'bg-background text-muted-foreground border-border hover:text-foreground hover:bg-accent/50'}`}>
+              <History className="w-3.5 h-3.5" />
+              <span>History</span>
+            </button>
+          </div>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <input type="text" placeholder="Search by client name..." value={workloadSearch}
+              onChange={e => setWorkloadSearch(e.target.value)}
+              className="w-full pl-8 pr-3 py-1.5 text-xs bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50" />
+          </div>
+        </div>
+        {filteredWorkload.length === 0 ? (
+          <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+            {workloadSearch.trim() ? 'No members match this client name.' : 'No active assignments today.'}
+          </div>
+        ) : (
+          <div className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {filteredWorkload.map(({ member, assignments: mAsgn }) => {
+              const clientNames = [...new Set(mAsgn.map(a => a.clientName).filter(Boolean))];
+              const totalMemberPrice = mAsgn.reduce((s, a) => s + a.totalPrice, 0);
+              return (
+                <button key={member.uid}
+                  onClick={() => navigate(`/tech-admin/work-assign/${member.uid}`)}
+                  className="bg-background border border-border rounded-xl p-3 hover:border-primary/40 hover:shadow-md transition-all text-left group"
+                >
+                  <div className="flex items-center gap-2.5 mb-2.5">
+                    <div className="w-9 h-9 rounded-lg bg-role-tech-member/15 flex items-center justify-center font-display font-bold text-role-tech-member text-sm shrink-0">
+                      {member.name?.charAt(0)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm font-semibold text-foreground truncate block group-hover:text-primary transition-colors">{member.name}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-muted-foreground">
+                          {mAsgn.length} video{mAsgn.length !== 1 ? 's' : ''}
+                        </span>
+                        <span className="text-[10px] text-primary font-mono font-medium">{formatCurrency(totalMemberPrice)}</span>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0" />
+                  </div>
+                  {clientNames.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {clientNames.slice(0, 3).map(name => (
+                        <span key={name} className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] bg-primary/10 text-primary font-medium truncate max-w-[140px]">
+                          {name}
+                        </span>
+                      ))}
+                      {clientNames.length > 3 && (
+                        <span className="text-[10px] text-muted-foreground">+{clientNames.length - 3} more</span>
+                      )}
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-1">
+                    {mAsgn.slice(0, 5).map(a => (
+                      <span key={a.id} className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${statusColors[a.status]}`}>
+                        {a.uniqueId}
+                      </span>
+                    ))}
+                    {mAsgn.length > 5 && (
+                      <span className="text-[9px] text-muted-foreground">+{mAsgn.length - 5}</span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {showHistory && (
+        <>
       {/* Assignments List */}
       <div className="space-y-3">
         {filteredAssignments.length === 0 ? (
@@ -556,7 +672,7 @@ export default function WorkAssign() {
                     <select value={editForm.category} onChange={(e) => {
                       const cat = e.target.value;
                       const dur = DURATIONS[cat][0];
-                      setEditForm({ category: cat, duration: dur, pricePerUnit: PRICING[cat]?.[dur] ?? 0 });
+                      setEditForm(prev => prev ? { ...prev, category: cat, duration: dur, pricePerUnit: PRICING[cat]?.[dur] ?? 0 } : prev);
                     }} className="border rounded px-2 py-1 text-xs bg-background text-foreground border-border">
                       <option value="wishes">Wishes</option>
                       <option value="promotional">Promotional</option>
@@ -571,6 +687,9 @@ export default function WorkAssign() {
                       <input type="number" value={editForm.pricePerUnit} onChange={(e) => setEditForm(prev => prev ? { ...prev, pricePerUnit: parseInt(e.target.value) || 0 } : prev)}
                         className="w-20 border rounded px-2 py-1 text-xs bg-background text-foreground border-border" />
                     </div>
+                    <input type="text" placeholder="Client name" value={editForm.clientName}
+                      onChange={(e) => setEditForm(prev => prev ? { ...prev, clientName: e.target.value } : prev)}
+                      className="w-32 border rounded px-2 py-1 text-xs bg-background text-foreground border-border placeholder:text-muted-foreground" />
                     <span className="text-xs text-muted-foreground">= {formatCurrency(editForm.pricePerUnit)}</span>
                     <button onClick={handleSaveEdit} className="flex items-center space-x-1 px-2 py-1 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded transition-colors">
                       <Save className="w-3 h-3" /><span>Save</span>
@@ -582,6 +701,7 @@ export default function WorkAssign() {
                 ) : (
                   <div className="flex flex-wrap gap-x-3 md:gap-x-4 gap-y-1 text-xs md:text-sm text-muted-foreground">
                     <span>Assigned to: <strong className="text-foreground">{getMemberName(a.assignedTo)}</strong></span>
+                    {a.clientName && <span>Client: <strong className="text-foreground">{a.clientName}</strong></span>}
                     <span>Category: <strong className="capitalize text-foreground">{a.category}</strong></span>
                     <span>{a.clipCount} clips + EC · {a.duration}</span>
                     <span>Price: <strong className="text-foreground">{formatCurrency(a.totalPrice)}</strong></span>
@@ -624,6 +744,8 @@ export default function WorkAssign() {
           </div>
         ))}
       </div>
+        </>
+      )}
     </div>
   );
 }

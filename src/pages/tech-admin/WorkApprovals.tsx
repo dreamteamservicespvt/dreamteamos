@@ -6,7 +6,7 @@ import { formatCurrency, formatDate } from "@/utils/formatters";
 import { calculateRevenue } from "@/utils/pricing";
 import { format } from "date-fns";
 import type { AppUser, WorkSubmission } from "@/types";
-import { CheckCircle, XCircle, Clock, Video, ExternalLink, Image, RotateCcw, Trash2 } from "lucide-react";
+import { CheckCircle, XCircle, Clock, Video, ExternalLink, Image, RotateCcw, Trash2, CheckSquare, Square } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
 
@@ -18,6 +18,8 @@ export default function WorkApprovals() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"pending" | "approved" | "rejected">("pending");
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   useEffect(() => {
     const unsubs: (() => void)[] = [];
@@ -113,9 +115,34 @@ export default function WorkApprovals() {
     try {
       await deleteDoc(doc(db, "work_submissions", subId));
       setSubmissions((prev) => prev.filter((s) => s.id !== subId));
+      setSelectedIds((prev) => { const next = new Set(prev); next.delete(subId); return next; });
       toast({ title: "Deleted", description: "Submission deleted." });
     } catch {
       toast({ title: "Error", description: "Failed to delete.", variant: "destructive" });
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Delete ${selectedIds.size} submission(s) permanently?`)) return;
+    setBulkDeleting(true);
+    try {
+      await Promise.all([...selectedIds].map((id) => deleteDoc(doc(db, "work_submissions", id))));
+      setSubmissions((prev) => prev.filter((s) => !selectedIds.has(s.id)));
+      toast({ title: "Deleted", description: `${selectedIds.size} submission(s) deleted.` });
+      setSelectedIds(new Set());
+    } catch {
+      toast({ title: "Error", description: "Failed to delete some submissions.", variant: "destructive" });
+    } finally {
+      setBulkDeleting(false);
     }
   };
 
@@ -162,7 +189,7 @@ export default function WorkApprovals() {
           { key: "approved" as const, label: "Approved", count: approved.length, activeClass: "bg-success/15 text-success border border-success/30" },
           { key: "rejected" as const, label: "Rejected", count: rejected.length, activeClass: "bg-destructive/15 text-destructive border border-destructive/30" },
         ]).map((t) => (
-          <button key={t.key} onClick={() => setTab(t.key)}
+          <button key={t.key} onClick={() => { setTab(t.key); setSelectedIds(new Set()); }}
             className={`h-8 md:h-9 px-3 md:px-4 rounded-lg text-xs md:text-sm font-medium transition-colors whitespace-nowrap ${
               tab === t.key ? t.activeClass : "bg-card border border-border text-muted-foreground hover:bg-accent"
             }`}>
@@ -177,146 +204,153 @@ export default function WorkApprovals() {
           <p className="text-muted-foreground text-sm">No {tab} submissions</p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {displaySubs.map((sub) => {
-            const estimatedRevenue = calculateRevenue(sub.items || []);
-            return (
-              <div key={sub.id} className="bg-card border border-border rounded-xl p-3 md:p-5">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <span className="font-medium text-foreground text-sm md:text-base">{getMemberName(sub.techMemberId)}</span>
-                      <span className="text-[10px] md:text-xs text-muted-foreground font-mono">{sub.date}</span>
-                    </div>
-                    <div className="flex items-center gap-2 md:gap-3 text-[10px] md:text-xs text-muted-foreground flex-wrap">
-                      <span>{sub.totalVideos} videos</span>
-                      <span className="text-primary font-mono font-semibold">{formatCurrency(sub.status === "approved" ? sub.calculatedRevenue : estimatedRevenue)}</span>
-                      {sub.status !== "approved" && <span className="text-muted-foreground/60">(estimated)</span>}
-                      <span className={`px-1.5 py-0.5 rounded-full ${
-                        sub.aiVerificationResult === "pass" ? "bg-success/15 text-success" :
-                        sub.aiVerificationResult === "fail" ? "bg-destructive/15 text-destructive" :
-                        "bg-muted text-muted-foreground"
-                      }`}>
-                        AI: {sub.aiVerificationResult}
-                      </span>
+        <>
+          {/* Select All / Bulk Delete bar */}
+          <div className="flex items-center justify-between">
+            <button onClick={() => {
+              if (selectedIds.size === displaySubs.length) {
+                setSelectedIds(new Set());
+              } else {
+                setSelectedIds(new Set(displaySubs.map((s) => s.id)));
+              }
+            }}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+              {selectedIds.size === displaySubs.length && displaySubs.length > 0
+                ? <CheckSquare size={14} className="text-primary" />
+                : <Square size={14} />}
+              {selectedIds.size === displaySubs.length && displaySubs.length > 0 ? 'Deselect All' : 'Select All'}
+              {selectedIds.size > 0 && <span className="text-primary font-medium">({selectedIds.size})</span>}
+            </button>
+            {selectedIds.size > 0 && (
+              <button onClick={handleBulkDelete} disabled={bulkDeleting}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-destructive/15 text-destructive hover:bg-destructive/25 transition-colors disabled:opacity-50">
+                <Trash2 size={12} />
+                {bulkDeleting ? 'Deleting...' : `Delete ${selectedIds.size}`}
+              </button>
+            )}
+          </div>
+
+          {/* 2-column grid on desktop, 1-column on mobile */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {displaySubs.map((sub) => {
+              const estimatedRevenue = calculateRevenue(sub.items || []);
+              const isSelected = selectedIds.has(sub.id);
+              return (
+                <div key={sub.id} className={`bg-card border rounded-xl p-3 md:p-4 transition-colors ${isSelected ? 'border-primary/50 bg-primary/5' : 'border-border'}`}>
+                  {/* Header row with checkbox */}
+                  <div className="flex items-start gap-2 mb-2">
+                    <button onClick={() => toggleSelect(sub.id)} className="mt-0.5 shrink-0 text-muted-foreground hover:text-primary transition-colors">
+                      {isSelected ? <CheckSquare size={16} className="text-primary" /> : <Square size={16} />}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 flex-wrap min-w-0">
+                          <span className="font-semibold text-foreground text-sm truncate">{getMemberName(sub.techMemberId)}</span>
+                          <span className="text-[10px] text-muted-foreground font-mono shrink-0">{sub.date}</span>
+                        </div>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${
+                          sub.status === "pending" ? "bg-warning/15 text-warning" :
+                          sub.status === "approved" ? "bg-success/15 text-success" :
+                          "bg-destructive/15 text-destructive"
+                        }`}>
+                          {sub.status.charAt(0).toUpperCase() + sub.status.slice(1)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5 flex-wrap">
+                        <span>{sub.totalVideos} video{sub.totalVideos !== 1 ? 's' : ''}</span>
+                        <span className="text-primary font-mono font-semibold text-xs">{formatCurrency(sub.status === "approved" ? sub.calculatedRevenue : estimatedRevenue)}</span>
+                        <span className={`px-1 py-0.5 rounded-full ${
+                          sub.aiVerificationResult === "pass" ? "bg-success/15 text-success" :
+                          sub.aiVerificationResult === "fail" ? "bg-destructive/15 text-destructive" :
+                          "bg-muted text-muted-foreground"
+                        }`}>
+                          AI: {sub.aiVerificationResult}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                  <span className={`text-[10px] md:text-xs px-2 py-0.5 rounded-full shrink-0 ml-2 ${
-                    sub.status === "pending" ? "bg-warning/15 text-warning" :
-                    sub.status === "approved" ? "bg-success/15 text-success" :
-                    "bg-destructive/15 text-destructive"
-                  }`}>
-                    {sub.status.charAt(0).toUpperCase() + sub.status.slice(1)}
-                  </span>
-                </div>
 
-                {/* Items breakdown */}
-                <div className="bg-background border border-border rounded-lg p-2 md:p-3 mb-3">
-                  {/* Desktop table */}
-                  <table className="w-full text-xs hidden md:table">
-                    <thead>
-                      <tr className="text-muted-foreground">
-                        <th className="text-left pb-1">Type</th>
-                        <th className="text-left pb-1">Duration</th>
-                        <th className="text-right pb-1">Qty</th>
-                        <th className="text-right pb-1">Unit Price</th>
-                        <th className="text-right pb-1">Subtotal</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                  {/* Items breakdown - compact */}
+                  <div className="bg-background border border-border rounded-lg p-2 mb-2">
+                    <div className="space-y-1">
                       {sub.items?.map((item, idx) => {
                         const unitPrice = item.pricePerUnit || (
-                          ({ wishes: { "20s": 499, "40s": 999 }, promotional: { "15s": 499, "30s": 999, "45s": 1499, "60s": 1999 }, cinematic: { "15s": 999, "30s": 1999, "45s": 2999, "60s": 3999 } } as any)[item.type]?.[item.duration] || 0
+                          ({ wishes: { "20s": 499, "40s": 999 }, promotional: { "16s": 999, "32s": 1499, "45s": 1999, "64s": 2999 }, cinematic: { "16s": 1499, "32s": 2499, "45s": 3499, "64s": 4999 } } as any)[item.type]?.[item.duration] || 0
                         );
                         return (
-                          <tr key={idx} className="text-foreground">
-                            <td className="py-0.5 capitalize">{item.type}</td>
-                            <td className="py-0.5">{item.duration}</td>
-                            <td className="py-0.5 text-right font-mono">{item.quantity}</td>
-                            <td className="py-0.5 text-right font-mono">{formatCurrency(unitPrice)}</td>
-                            <td className="py-0.5 text-right font-mono text-primary">{formatCurrency(unitPrice * item.quantity)}</td>
-                          </tr>
+                          <div key={idx} className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-1.5">
+                              <span className="capitalize text-foreground font-medium">{item.type}</span>
+                              <span className="text-muted-foreground">{item.duration} ×{item.quantity}</span>
+                            </div>
+                            <span className="font-mono text-primary">{formatCurrency(unitPrice * item.quantity)}</span>
+                          </div>
                         );
                       })}
-                    </tbody>
-                  </table>
-                  {/* Mobile cards */}
-                  <div className="md:hidden space-y-1.5">
-                    {sub.items?.map((item, idx) => {
-                      const unitPrice = item.pricePerUnit || (
-                        ({ wishes: { "20s": 499, "40s": 999 }, promotional: { "15s": 499, "30s": 999, "45s": 1499, "60s": 1999 }, cinematic: { "15s": 999, "30s": 1999, "45s": 2999, "60s": 3999 } } as any)[item.type]?.[item.duration] || 0
-                      );
-                      return (
-                        <div key={idx} className="flex items-center justify-between text-xs bg-elevated/30 rounded-md px-2 py-1.5">
-                          <div>
-                            <span className="text-foreground capitalize font-medium">{item.type}</span>
-                            <span className="text-muted-foreground ml-1">{item.duration} ×{item.quantity}</span>
-                          </div>
-                          <span className="font-mono text-primary font-semibold">{formatCurrency(unitPrice * item.quantity)}</span>
-                        </div>
-                      );
-                    })}
+                    </div>
+                  </div>
+
+                  {/* Links */}
+                  {(sub.driveFolderUrl || sub.screenshotUrl) && (
+                    <div className="flex items-center gap-3 mb-2">
+                      {sub.driveFolderUrl && (
+                        <a href={sub.driveFolderUrl} target="_blank" rel="noopener noreferrer"
+                          className="text-[10px] text-info flex items-center gap-1 hover:underline">
+                          <ExternalLink size={10} /> Drive
+                        </a>
+                      )}
+                      {sub.screenshotUrl && (
+                        <a href={sub.screenshotUrl} target="_blank" rel="noopener noreferrer"
+                          className="text-[10px] text-info flex items-center gap-1 hover:underline">
+                          <Image size={10} /> Screenshot
+                        </a>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  <div className="flex gap-1.5">
+                    {sub.status === "pending" && (
+                      <>
+                        <button onClick={() => handleApprove(sub.id)}
+                          className="flex-1 h-7 md:h-8 rounded-lg bg-success/15 text-success font-medium text-[10px] md:text-xs hover:bg-success/25 transition-colors flex items-center justify-center gap-1">
+                          <CheckCircle size={12} /> Approve
+                        </button>
+                        <button onClick={() => handleReject(sub.id)}
+                          className="flex-1 h-7 md:h-8 rounded-lg bg-destructive/15 text-destructive font-medium text-[10px] md:text-xs hover:bg-destructive/25 transition-colors flex items-center justify-center gap-1">
+                          <XCircle size={12} /> Reject
+                        </button>
+                      </>
+                    )}
+                    {sub.status === "approved" && (
+                      <button onClick={() => handleReject(sub.id)}
+                        className="flex-1 h-7 md:h-8 rounded-lg bg-destructive/15 text-destructive font-medium text-[10px] md:text-xs hover:bg-destructive/25 transition-colors flex items-center justify-center gap-1">
+                        <XCircle size={12} /> Revoke
+                      </button>
+                    )}
+                    {sub.status === "rejected" && (
+                      <>
+                        <button onClick={() => handleApprove(sub.id)}
+                          className="flex-1 h-7 md:h-8 rounded-lg bg-success/15 text-success font-medium text-[10px] md:text-xs hover:bg-success/25 transition-colors flex items-center justify-center gap-1">
+                          <CheckCircle size={12} /> Approve
+                        </button>
+                        <button onClick={() => handleRevertToPending(sub.id)}
+                          className="flex-1 h-7 md:h-8 rounded-lg bg-warning/15 text-warning font-medium text-[10px] md:text-xs hover:bg-warning/25 transition-colors flex items-center justify-center gap-1">
+                          <RotateCcw size={12} /> Pending
+                        </button>
+                      </>
+                    )}
+                    <button onClick={() => handleDelete(sub.id)}
+                      className="h-7 md:h-8 px-2 rounded-lg bg-destructive/10 text-destructive text-[10px] md:text-xs hover:bg-destructive/20 transition-colors flex items-center justify-center shrink-0"
+                      title="Delete">
+                      <Trash2 size={12} />
+                    </button>
                   </div>
                 </div>
-
-                {/* Links */}
-                <div className="flex items-center gap-3 md:gap-4 mb-3">
-                  {sub.driveFolderUrl && (
-                    <a href={sub.driveFolderUrl} target="_blank" rel="noopener noreferrer"
-                      className="text-[10px] md:text-xs text-info flex items-center gap-1 hover:underline">
-                      <ExternalLink size={12} /> Drive Folder
-                    </a>
-                  )}
-                  {sub.screenshotUrl && (
-                    <a href={sub.screenshotUrl} target="_blank" rel="noopener noreferrer"
-                      className="text-[10px] md:text-xs text-info flex items-center gap-1 hover:underline">
-                      <Image size={12} /> Screenshot
-                    </a>
-                  )}
-                </div>
-
-                {/* Actions — always show relevant actions */}
-                <div className="flex gap-1.5 md:gap-2">
-                  {sub.status === "pending" && (
-                    <>
-                      <button onClick={() => handleApprove(sub.id)}
-                        className="flex-1 h-8 md:h-9 rounded-lg bg-success/15 text-success font-medium text-xs md:text-sm hover:bg-success/25 transition-colors flex items-center justify-center gap-1">
-                        <CheckCircle size={14} /> Approve
-                      </button>
-                      <button onClick={() => handleReject(sub.id)}
-                        className="flex-1 h-8 md:h-9 rounded-lg bg-destructive/15 text-destructive font-medium text-xs md:text-sm hover:bg-destructive/25 transition-colors flex items-center justify-center gap-1">
-                        <XCircle size={14} /> Reject
-                      </button>
-                    </>
-                  )}
-                  {sub.status === "approved" && (
-                    <button onClick={() => handleReject(sub.id)}
-                      className="flex-1 h-8 md:h-9 rounded-lg bg-destructive/15 text-destructive font-medium text-xs md:text-sm hover:bg-destructive/25 transition-colors flex items-center justify-center gap-1">
-                      <XCircle size={14} /> <span className="hidden sm:inline">Reject (Revoke Approval)</span><span className="sm:hidden">Revoke</span>
-                    </button>
-                  )}
-                  {sub.status === "rejected" && (
-                    <>
-                      <button onClick={() => handleApprove(sub.id)}
-                        className="flex-1 h-8 md:h-9 rounded-lg bg-success/15 text-success font-medium text-xs md:text-sm hover:bg-success/25 transition-colors flex items-center justify-center gap-1">
-                        <CheckCircle size={14} /> Approve
-                      </button>
-                      <button onClick={() => handleRevertToPending(sub.id)}
-                        className="flex-1 h-8 md:h-9 rounded-lg bg-warning/15 text-warning font-medium text-xs md:text-sm hover:bg-warning/25 transition-colors flex items-center justify-center gap-1">
-                        <RotateCcw size={14} /> <span className="hidden sm:inline">Move to Pending</span><span className="sm:hidden">Pending</span>
-                      </button>
-                    </>
-                  )}
-                  <button onClick={() => handleDelete(sub.id)}
-                    className="h-8 md:h-9 px-2 md:px-3 rounded-lg bg-destructive/10 text-destructive font-medium text-xs md:text-sm hover:bg-destructive/20 transition-colors flex items-center justify-center gap-1 shrink-0"
-                    title="Delete submission">
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        </>
       )}
     </div>
   );

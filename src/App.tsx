@@ -47,6 +47,7 @@ import TechAdminSessionHistory from "@/pages/tech-admin/SessionHistory";
 import TechAdminSettings from "@/pages/tech-admin/Settings";
 import TechAdminMemberHistory from "@/pages/tech-admin/MemberHistory";
 import WorkAssign from "@/pages/tech-admin/WorkAssign";
+import MemberAssignments from "@/pages/tech-admin/MemberAssignments";
 import AccountsDashboard from "@/pages/accounts-admin/Dashboard";
 import RevenueSummary from "@/pages/accounts-admin/RevenueSummary";
 import DailyExpenses from "@/pages/accounts-admin/DailyExpenses";
@@ -110,6 +111,7 @@ const App = () => (
             <Route path="/tech-admin/settings" element={<TechAdminSettings />} />
             <Route path="/tech-admin/salary" element={<MySalaryPage />} />
             <Route path="/tech-admin/work-assign" element={<WorkAssign />} />
+            <Route path="/tech-admin/work-assign/:memberId" element={<MemberAssignments />} />
           </Route>
 
           {/* Sales Admin */}
