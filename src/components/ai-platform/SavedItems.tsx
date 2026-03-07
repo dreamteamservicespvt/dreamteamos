@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Bookmark, Trash2, ChevronRight, Calendar, Building2, PartyPopper, Loader2, X } from 'lucide-react';
+import { Bookmark, Trash2, ChevronRight, Calendar, Building2, PartyPopper, Loader2, X, User } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
 import { deleteDoc, doc } from 'firebase/firestore';
@@ -8,6 +8,7 @@ import { db } from '@/services/firebase';
 export interface SavedGeneration {
   id?: string;
   userId: string;
+  userName?: string;
   businessName: string;
   businessType: string;
   businessInfo: any;
@@ -21,6 +22,7 @@ export interface SavedGeneration {
   festivalName?: string;
   attireType: string;
   duration: number;
+  creationMode?: string;
   createdAt: any;
   workAssignmentId?: string;
 }
@@ -101,7 +103,12 @@ export const SavedItems: React.FC<SavedItemsProps> = ({ items, onSelect, onDelet
                     )}>
                     {deletingId === item.id ? <Loader2 className="w-4 h-4 text-slate-400 animate-spin" /> : <Trash2 className="w-4 h-4 text-red-500" />}
                   </button>
-                  <h3 className={cn("font-semibold mb-2 pr-8 truncate", isDark ? "text-white" : "text-slate-800")}>{item.businessName || 'Untitled'}</h3>
+                  <h3 className={cn("font-semibold mb-1 pr-8 truncate", isDark ? "text-white" : "text-slate-800")}>{item.businessName || 'Untitled'}</h3>
+                  {item.userName && (
+                    <p className={cn("text-xs mb-2 flex items-center gap-1", isDark ? "text-slate-400" : "text-slate-500")}>
+                      <User className="w-3 h-3" />{item.userName}
+                    </p>
+                  )}
                   <div className="flex flex-wrap gap-2 mb-3">
                     <span className={cn("inline-flex items-center space-x-1 text-xs px-2 py-1 rounded-full", isDark ? "bg-blue-900/30 text-blue-300" : "bg-blue-100 text-blue-700")}>
                       <Building2 className="w-3 h-3" /><span>{item.businessType || 'Business'}</span>

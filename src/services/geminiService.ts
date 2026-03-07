@@ -353,7 +353,23 @@ export const extractBusinessOnly = async (
 
 export interface GenerationOptions {
   includeProductsInHeader?: boolean;
+  customScript?: string;
 }
+
+// Clean script text: remove emojis, special decorative characters, normalize whitespace
+const cleanScriptText = (text: string): string => {
+  return text
+    // Remove emoji sequences (Unicode emoji ranges)
+    .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{200D}\u{20E3}\u{E0020}-\u{E007F}]/gu, '')
+    // Remove decorative special characters (★, •, ═, ║, ●, ◆, ▶, ◀, ♦, etc.)
+    .replace(/[★☆●◆◇■□▪▫▶◀►◄♦♣♠♥♡✦✧✪✫✬✭✮✯✰✱✲✳✴✵✶✷✸✹✺✻✼✽✾✿❀❁❂❃❄❅❆❇❈❉❊❋═║╔╗╚╝╠╣╩╦╬─│┌┐└┘├┤┬┴┼━┃┏┓┗┛┣┫┻┳╋▬▭▮▯△▽◁▷※¤§†‡‖‗‾⁂⁎⁑⁕⁖⁘⁙⁚⁛⁜⁝⁞]/g, '')
+    // Remove multiple consecutive special punctuation (but keep basic . , ! ? : ;)
+    .replace(/[~`@#$^&{}|<>\\]+/g, ' ')
+    // Normalize multiple spaces/newlines
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
 
 export const generateAdAssets = async (
   formData: AdFormData,
@@ -362,7 +378,7 @@ export const generateAdAssets = async (
   options: GenerationOptions = {}
 ): Promise<GeneratedOutputs> => {
   
-  const { includeProductsInHeader = false } = options;
+  const { includeProductsInHeader = false, customScript } = options;
   
   if (API_KEYS.length === 0) {
     throw new Error("No API keys configured. Please set API_KEY_1, API_KEY_2, etc. in your environment.");
@@ -510,49 +526,97 @@ export const generateAdAssets = async (
     businessInfo = { raw: businessInfoText };
   }
 
-  // --- Step 2: Voice Over Script (MOVED EARLIER — needed for per-clip Main Frame prompts) ---
-  onProgress("Writing Voice Over script...", 20);
+  // --- Step 2: Voice Over Script ---
+  onProgress(customScript ? "Processing custom script..." : "Writing Voice Over script...", 20);
 
   const hasProductImages = files.productImages && files.productImages.length > 0;
   const productImageCount = hasProductImages ? files.productImages.length : 0;
 
   const segmentCount = formData.duration / 8;
-  const scriptSystemPrompt = VOICEOVER_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName);
-  const scriptUserPrompt = `Generate a ${formData.duration}-second Telugu voice-over script for:
+  let voiceOverScript: string;
+  let parsedSegments: string[];
+
+  if (customScript && customScript.trim()) {
+    // Clean the script: remove emojis, special characters, normalize
+    const cleanedScript = cleanScriptText(customScript.trim());
+    
+    // Use Gemini to intelligently segment the custom script into equal clips
+    const segmentSystemPrompt = `You are an expert script editor. Split the given script into EXACTLY ${segmentCount} roughly equal segments for a ${formData.duration}-second video (each segment ~8 seconds of speaking time).
+
+RULES:
+- Split at natural sentence/phrase boundaries
+- Each segment should be roughly equal in word count
+- Maintain the original language and wording — do NOT rewrite or translate
+- Remove any remaining emojis, hashtags, or decorative symbols
+- Make the text clean and suitable for professional voice-over
+- Format output as:
+Segment 1: <text>
+Segment 2: <text>
+... etc.
+- Output ONLY the numbered segments, nothing else`;
+
+    const segmentResponse = await callWithFallback(async (ai) => {
+      return await ai.models.generateContent({
+        model: MODEL_NAME,
+        contents: [{ role: 'user', parts: [{ text: `Split this script into ${segmentCount} segments:\n\n${cleanedScript}` }] }],
+        config: { systemInstruction: segmentSystemPrompt }
+      });
+    });
+
+    voiceOverScript = segmentResponse.text || cleanedScript;
+    // Parse segments
+    const segments: string[] = [];
+    const lines = voiceOverScript.split('\n');
+    let currentSegmentText = "";
+    for (const line of lines) {
+      if (line.trim().toLowerCase().startsWith("segment")) {
+        if (currentSegmentText) segments.push(currentSegmentText.trim());
+        currentSegmentText = line.split(':').slice(1).join(':') || "";
+      } else {
+        currentSegmentText += " " + line;
+      }
+    }
+    if (currentSegmentText) segments.push(currentSegmentText.trim());
+    // Clean each segment individually
+    parsedSegments = (segments.length > 0 ? segments : [cleanedScript]).map(s => cleanScriptText(s));
+    // Pad if needed
+    while (parsedSegments.length < segmentCount) {
+      parsedSegments.push(parsedSegments[parsedSegments.length - 1]);
+    }
+  } else {
+    // Auto-generate voice-over script
+    const scriptSystemPrompt = VOICEOVER_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName);
+    const scriptUserPrompt = `Generate a ${formData.duration}-second Telugu voice-over script for:
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
   AD TYPE: ${formData.adType}
   ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName}` : ''}
   DURATION: ${formData.duration} seconds (${segmentCount} segments)`;
 
-  const scriptResponse = await callWithFallback(async (ai) => {
-    return await ai.models.generateContent({
-      model: MODEL_NAME,
-      contents: [
-          { role: 'user', parts: [{ text: scriptUserPrompt }] }
-      ],
-      config: {
-          systemInstruction: scriptSystemPrompt,
-      }
+    const scriptResponse = await callWithFallback(async (ai) => {
+      return await ai.models.generateContent({
+        model: MODEL_NAME,
+        contents: [{ role: 'user', parts: [{ text: scriptUserPrompt }] }],
+        config: { systemInstruction: scriptSystemPrompt }
+      });
     });
-  });
 
-  const voiceOverScript = scriptResponse.text || "Failed to generate Script.";
+    voiceOverScript = scriptResponse.text || "Failed to generate Script.";
 
-  // Parse voice-over segments for use in multi-frame and Veo generation
-  const segments: string[] = [];
-  const lines = voiceOverScript.split('\n');
-  let currentSegmentText = "";
-  for (const line of lines) {
-    if (line.trim().toLowerCase().startsWith("segment")) {
-      if (currentSegmentText) segments.push(currentSegmentText.trim());
-      currentSegmentText = line.split(':')[1] || "";
-    } else {
-      currentSegmentText += " " + line;
+    // Parse voice-over segments
+    const segments: string[] = [];
+    const lines = voiceOverScript.split('\n');
+    let currentSegmentText = "";
+    for (const line of lines) {
+      if (line.trim().toLowerCase().startsWith("segment")) {
+        if (currentSegmentText) segments.push(currentSegmentText.trim());
+        currentSegmentText = line.split(':')[1] || "";
+      } else {
+        currentSegmentText += " " + line;
+      }
     }
+    if (currentSegmentText) segments.push(currentSegmentText.trim());
+    parsedSegments = segments.length > 0 ? segments : Array(segmentCount).fill("Script content placeholder");
   }
-  if (currentSegmentText) segments.push(currentSegmentText.trim());
-  // Fallback if parsing fails
-  const parsedSegments = segments.length > 0 ? segments : Array(segmentCount).fill("Script content placeholder");
 
   // --- Step 3: Multi-Frame Main Frame Prompts (Per-Clip) ---
   onProgress("Generating per-clip Main Frame prompts...", 35);
@@ -997,4 +1061,76 @@ ${teluguText}`
   });
 
   return response.text || teluguText;
+};
+
+// Extract text/script from an image using Gemini vision
+export const extractScriptFromImage = async (imageFile: File): Promise<string> => {
+  const base64 = await fileToBase64(imageFile);
+  
+  const response = await callWithFallback(async (ai) => {
+    return await ai.models.generateContent({
+      model: MODEL_NAME,
+      contents: [{
+        role: 'user',
+        parts: [
+          { inlineData: { mimeType: imageFile.type, data: base64 } },
+          { text: 'Extract ALL text/script content from this image. Output ONLY the extracted text exactly as written, preserving the original language, line breaks, and formatting. Do not add any commentary or explanation.' }
+        ]
+      }],
+      config: {
+        systemInstruction: 'You are an expert OCR system. Extract all visible text from images accurately. Preserve original language (Telugu, Hindi, English, etc). Output only the extracted text.'
+      }
+    });
+  });
+
+  return response.text || '';
+};
+
+// Analyze script duration — split into 8-second clips
+export interface ScriptAnalysis {
+  totalDuration: number;
+  clipCount: number;
+  clips: { index: number; text: string; estimatedSeconds: number }[];
+  originalText: string;
+}
+
+export const analyzeScriptDuration = async (scriptText: string): Promise<ScriptAnalysis> => {
+  const systemPrompt = `You are an expert voice-over timing analyst. Given a script, you must:
+1. Estimate the total speaking duration at a natural, professional Indian voice-over pace (~2.5 words/second for English, ~2 words/second for Telugu/Hindi)
+2. Split the script into 8-second clips at natural sentence/phrase boundaries
+3. Each clip should be approximately 8 seconds of speaking time
+
+Output STRICT JSON with no markdown wrapping:
+{
+  "totalDuration": <number in seconds>,
+  "clipCount": <number>,
+  "clips": [
+    { "index": 1, "text": "<clip text>", "estimatedSeconds": <number> },
+    ...
+  ]
+}`;
+
+  const response = await callWithFallback(async (ai) => {
+    return await ai.models.generateContent({
+      model: MODEL_NAME,
+      contents: [{ role: 'user', parts: [{ text: `Analyze this script for duration and split into 8-second clips:\n\n${scriptText}` }] }],
+      config: {
+        systemInstruction: systemPrompt,
+        responseMimeType: "application/json"
+      }
+    });
+  });
+
+  const text = response.text || '{}';
+  try {
+    const parsed = JSON.parse(text);
+    return {
+      totalDuration: parsed.totalDuration || 0,
+      clipCount: parsed.clipCount || parsed.clips?.length || 0,
+      clips: parsed.clips || [],
+      originalText: scriptText
+    };
+  } catch {
+    return { totalDuration: 0, clipCount: 0, clips: [], originalText: scriptText };
+  }
 };

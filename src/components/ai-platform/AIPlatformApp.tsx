@@ -17,11 +17,11 @@ import { useAuthStore } from '@/store/authStore';
 import type { WorkAssignment } from '@/types';
 
 interface AIPlatformAppProps {
-  assignment: WorkAssignment;
-  assignmentId: string;
-  onBusinessNameExtracted: (name: string) => void;
+  assignment?: WorkAssignment;
+  assignmentId?: string;
+  onBusinessNameExtracted?: (name: string) => void;
   onClose: () => void;
-  onComplete: () => void;
+  onComplete?: () => void;
 }
 
 const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
@@ -75,6 +75,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   const [creationMode, setCreationMode] = useState<'video' | 'poster'>('video');
   const [selectedFestivalOption, setSelectedFestivalOption] = useState<string>('');
   const [customFestivalName, setCustomFestivalName] = useState<string>('');
+  const [customScript, setCustomScript] = useState<string>('');
+  const [useCustomScript, setUseCustomScript] = useState(false);
 
   const CUSTOM_FESTIVAL_OPTION = '__custom_festival__';
 
@@ -107,7 +109,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
 
   // Extract business name whenever outputs change
   useEffect(() => {
-    if (outputs?.businessInfo) {
+    if (outputs?.businessInfo && onBusinessNameExtracted) {
       const name = outputs.businessInfo?.businessName || outputs.businessInfo?.name;
       if (name && typeof name === 'string' && name.trim()) {
         onBusinessNameExtracted(name.trim());
@@ -139,7 +141,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       const businessType = outputs.businessInfo?.businessType || outputs.businessInfo?.type || 'Business';
       const docRef = await addDoc(collection(db, 'ai_generations'), {
         userId: user.uid,
-        workAssignmentId: assignmentId,
+        userName: user.name || user.email,
+        ...(assignmentId ? { workAssignmentId: assignmentId } : {}),
         businessName, businessType,
         businessInfo: outputs.businessInfo,
         mainFramePrompts: outputs.mainFramePrompts,
@@ -152,10 +155,13 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
         festivalName: formData.festivalName,
         attireType: formData.attireType,
         duration: formData.duration,
+        creationMode: creationMode,
         createdAt: serverTimestamp()
       });
-      // Link to assignment
-      await updateDoc(doc(db, 'work_assignments', assignmentId), { savedGenerationId: docRef.id });
+      // Link to assignment if exists
+      if (assignmentId) {
+        await updateDoc(doc(db, 'work_assignments', assignmentId), { savedGenerationId: docRef.id });
+      }
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
       loadSavedItems();
@@ -251,20 +257,55 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     setOutputs(null);
     setTimeout(() => outputPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
     try {
+      let generatedResult: GeneratedOutputs;
       if (creationMode === 'poster') {
-        const result = await extractBusinessOnly(formData, files, (step, progress) => {
+        generatedResult = await extractBusinessOnly(formData, files, (step, progress) => {
           if (abortControllerRef.current?.signal.aborted) throw new Error('Generation stopped by user');
           setStatus(prev => ({ ...prev, step, progress }));
         });
-        setOutputs(result);
       } else {
-        const result = await generateAdAssets(formData, files, (step, progress) => {
+        generatedResult = await generateAdAssets(formData, files, (step, progress) => {
           if (abortControllerRef.current?.signal.aborted) throw new Error('Generation stopped by user');
           setStatus(prev => ({ ...prev, step, progress }));
-        }, { includeProductsInHeader });
-        setOutputs(result);
+        }, { includeProductsInHeader, customScript: useCustomScript ? customScript : undefined });
       }
+      setOutputs(generatedResult);
       setStatus(prev => ({ ...prev, isProcessing: false, step: 'Completed', progress: 100 }));
+
+      // Auto-save to history
+      if (user) {
+        try {
+          const bName = generatedResult.businessInfo?.businessName || generatedResult.businessInfo?.name || 'Untitled';
+          const bType = generatedResult.businessInfo?.businessType || generatedResult.businessInfo?.type || 'Business';
+          const autoSaveRef = await addDoc(collection(db, 'ai_generations'), {
+            userId: user.uid,
+            userName: user.name || user.email,
+            ...(assignmentId ? { workAssignmentId: assignmentId } : {}),
+            businessName: bName, businessType: bType,
+            businessInfo: generatedResult.businessInfo,
+            mainFramePrompts: generatedResult.mainFramePrompts,
+            headerPrompt: generatedResult.headerPrompt,
+            posterPrompt: generatedResult.posterPrompt,
+            voiceOverScript: generatedResult.voiceOverScript,
+            veoPrompts: generatedResult.veoPrompts,
+            stockImagePrompts: generatedResult.stockImagePrompts,
+            adType: formData.adType,
+            festivalName: formData.festivalName,
+            attireType: formData.attireType,
+            duration: formData.duration,
+            creationMode: creationMode,
+            createdAt: serverTimestamp()
+          });
+          if (assignmentId) {
+            await updateDoc(doc(db, 'work_assignments', assignmentId), { savedGenerationId: autoSaveRef.id });
+          }
+          setSaveSuccess(true);
+          setTimeout(() => setSaveSuccess(false), 3000);
+          loadSavedItems();
+        } catch (e) {
+          console.error('Auto-save failed:', e);
+        }
+      }
     } catch (error: any) {
       const isStopped = error.message?.includes('stopped by user');
       setStatus(prev => ({ ...prev, isProcessing: false, error: isStopped ? 'Generation stopped.' : (error.message || "An unexpected error occurred.") }));
@@ -318,16 +359,18 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
         </div>
 
         {/* Assignment Info Banner */}
-        <div className={cn("flex items-center space-x-3 px-3 py-1.5 rounded-lg text-sm",
-          isDark ? "bg-slate-700/50 text-slate-300" : "bg-slate-100 text-slate-600"
-        )}>
-          <span className="font-medium">{assignment.businessName || assignment.displayTitle}</span>
-          <span className="text-xs opacity-70">•</span>
-          <span className="capitalize">{assignment.category}</span>
-          <span className="text-xs opacity-70">•</span>
-          <span>{assignment.clipCount} clips + EC</span>
-          <span className="font-mono text-[10px] opacity-50">{assignment.uniqueId}</span>
-        </div>
+        {assignment && (
+          <div className={cn("flex items-center space-x-3 px-3 py-1.5 rounded-lg text-sm",
+            isDark ? "bg-slate-700/50 text-slate-300" : "bg-slate-100 text-slate-600"
+          )}>
+            <span className="font-medium">{assignment.businessName || assignment.displayTitle}</span>
+            <span className="text-xs opacity-70">•</span>
+            <span className="capitalize">{assignment.category}</span>
+            <span className="text-xs opacity-70">•</span>
+            <span>{assignment.clipCount} clips + EC</span>
+            <span className="font-mono text-[10px] opacity-50">{assignment.uniqueId}</span>
+          </div>
+        )}
 
         <div className="flex items-center space-x-2">
           <button onClick={() => setShowSavedItems(true)}
@@ -339,10 +382,12 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
               <span className="absolute -top-1 -right-1 w-4 h-4 bg-blue-500 text-white text-xs rounded-full flex items-center justify-center">{savedItems.length > 9 ? '9+' : savedItems.length}</span>
             )}
           </button>
-          <button onClick={onComplete}
-            className="flex items-center space-x-1.5 text-sm font-medium px-4 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white transition-colors">
-            <CheckCircle2 className="w-4 h-4" /><span>Mark Complete</span>
-          </button>
+          {onComplete && (
+            <button onClick={onComplete}
+              className="flex items-center space-x-1.5 text-sm font-medium px-4 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white transition-colors">
+              <CheckCircle2 className="w-4 h-4" /><span>Mark Complete</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -539,6 +584,61 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                               setFormData(prev => ({ ...prev, duration: Math.max(8, Math.min(120, val)) }));
                             }} />
                           <span className={cn("text-sm whitespace-nowrap", isDark ? "text-slate-400" : "text-slate-500")}>sec</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Custom Script Option — Video only */}
+                  {creationMode === 'video' && (
+                    <div>
+                      <label className={cn("flex items-center gap-2 text-sm font-semibold cursor-pointer", isDark ? "text-slate-300" : "text-slate-700")}>
+                        <input type="checkbox" checked={useCustomScript} onChange={(e) => setUseCustomScript(e.target.checked)} className="rounded border-slate-300" />
+                        Use Custom Script (Client-Provided)
+                      </label>
+                      {useCustomScript && (
+                        <div className="mt-2">
+                          <textarea
+                            className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
+                              isDark ? "bg-slate-700 border-slate-600 text-slate-200 placeholder-slate-500 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200"
+                            )} rows={6} placeholder="Paste the client's raw script here... It will be split into 8-second clips automatically and used for VEO prompts generation."
+                            value={customScript} onChange={(e) => setCustomScript(e.target.value)} />
+                          {(() => {
+                            const wordCount = customScript.trim().split(/\s+/).filter(Boolean).length;
+                            const estSeconds = wordCount > 0 ? Math.round(wordCount / 2.3) : 0;
+                            const estClips = wordCount > 0 ? Math.max(1, Math.ceil(estSeconds / 8)) : 0;
+                            return (
+                              <div className={cn("mt-2 p-2.5 rounded-lg border text-xs space-y-1", isDark ? "bg-slate-600/50 border-slate-500" : "bg-blue-50 border-blue-200")}>
+                                {wordCount > 0 ? (
+                                  <>
+                                    <div className="flex items-center justify-between">
+                                      <span className={isDark ? "text-slate-300" : "text-slate-600"}>Estimated Duration:</span>
+                                      <span className="font-bold text-primary">{estSeconds}s ({estClips} clips × 8s)</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                      <span className={isDark ? "text-slate-300" : "text-slate-600"}>Word Count:</span>
+                                      <span className="font-medium">{wordCount} words</span>
+                                    </div>
+                                    {[16, 32, 45, 64].some(p => estSeconds <= p) && (
+                                      <div className="flex gap-1.5 mt-1">
+                                        {[16, 32, 45, 64].map(p => (
+                                          <span key={p} className={cn("px-1.5 py-0.5 rounded text-[10px] font-medium",
+                                            estSeconds <= p
+                                              ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                                              : "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
+                                          )}>
+                                            {p}s {estSeconds <= p ? '✓' : '✗'}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <span className={isDark ? "text-slate-400" : "text-slate-500"}>Paste a script to see duration estimate</span>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
                       )}
                     </div>
