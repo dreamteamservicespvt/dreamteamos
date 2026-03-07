@@ -15,6 +15,7 @@ import { collection, addDoc, getDocs, query, where, serverTimestamp, doc, update
 import { db } from '@/services/firebase';
 import { useAuthStore } from '@/store/authStore';
 import type { WorkAssignment } from '@/types';
+import { useConfirm } from '@/hooks/useConfirm';
 
 interface AIPlatformAppProps {
   assignment?: WorkAssignment;
@@ -30,6 +31,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
   const user = useAuthStore((s) => s.user);
+  const { confirm: showAlert, ConfirmDialog } = useConfirm();
 
   const [formData, setFormData] = useState<AdFormData>({
     adType: AdType.COMMERCIAL,
@@ -247,9 +249,9 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   };
 
   const handleGenerate = async () => {
-    if (!files.logo) { alert("Please upload a logo image to proceed."); return; }
+    if (!files.logo) { await showAlert({ title: "Missing Logo", description: "Please upload a logo image to proceed.", confirmText: "OK" }); return; }
     if (formData.adType === AdType.FESTIVAL && !formData.festivalName.trim()) {
-      alert("Please select a festival or enter a custom festival name.");
+      await showAlert({ title: "Missing Festival", description: "Please select a festival or enter a custom festival name.", confirmText: "OK" });
       return;
     }
     abortControllerRef.current = new AbortController();
@@ -337,6 +339,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background overflow-hidden">
+      {ConfirmDialog}
       {showSavedItems && (
         <SavedItems items={savedItems} onSelect={handleSelectSavedItem} onDelete={handleDeleteSavedItem}
           onClose={() => setShowSavedItems(false)} isLoading={loadingSaved} />

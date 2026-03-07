@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
-  Briefcase, Clock, Play, CheckCircle2, Loader2, AlertCircle, Sparkles, Edit3, Copy, Check
+  Briefcase, Clock, Play, CheckCircle2, Loader2, AlertCircle, Sparkles, Edit3, Copy, Check, Undo2
 } from 'lucide-react';
-import { collection, query, where, doc, updateDoc, serverTimestamp, addDoc } from 'firebase/firestore';
+import { collection, query, where, doc, updateDoc, deleteField, serverTimestamp, addDoc } from 'firebase/firestore';
 import { db } from '@/services/firebase';
 import { useAuthStore } from '@/store/authStore';
 import { useFirestoreQuery } from '@/hooks/useFirestore';
@@ -11,6 +11,7 @@ import DashboardDayPicker from '@/components/dashboard/DayPicker';
 import type { WorkAssignment } from '@/types';
 import CodeVerificationModal from '@/components/ai-platform/CodeVerificationModal';
 import AIPlatformApp from '@/components/ai-platform/AIPlatformApp';
+import { useConfirm } from '@/hooks/useConfirm';
 
 function getDayLabel(date: Date): string {
   const today = startOfDay(new Date());
@@ -33,6 +34,7 @@ export default function MyWork() {
   const [dayFilter, setDayFilter] = useState<string>('all');
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const { confirm, ConfirmDialog } = useConfirm();
 
   // Track session duration
   useEffect(() => {
@@ -116,6 +118,20 @@ export default function MyWork() {
       setOpenAssignment(null);
     } catch (error) {
       console.error('Failed to mark complete:', error);
+    }
+  };
+
+  const handleUndoComplete = async (assignment: WorkAssignment) => {
+    const { confirmed } = await confirm({ title: "Undo Completion", description: "Revert this to In Progress? This will undo the completion.", confirmText: "Undo", variant: "destructive" });
+    if (!confirmed) return;
+    try {
+      await updateDoc(doc(db, 'work_assignments', assignment.id), {
+        status: 'in_progress',
+        completedAt: deleteField(),
+        completedDate: deleteField(),
+      });
+    } catch (error) {
+      console.error('Failed to undo complete:', error);
     }
   };
 
@@ -221,6 +237,7 @@ export default function MyWork() {
 
   return (
     <div className="space-y-6">
+      {ConfirmDialog}
       {/* Code Verification Modal */}
       {verifyingAssignment && (
         <CodeVerificationModal
@@ -339,8 +356,18 @@ export default function MyWork() {
                       <span className="ml-3 text-xs text-muted-foreground capitalize">{a.category} · {a.clipCount} clips · {a.duration}</span>
                     </div>
                   </div>
-                  <div className="text-xs text-muted-foreground flex items-center space-x-1">
-                    <Clock className="w-3 h-3" /><span>{formatDuration(a.totalDurationSeconds)}</span>
+                  <div className="flex items-center gap-2">
+                    {a.status === 'completed' && (
+                      <button
+                        onClick={() => handleUndoComplete(a)}
+                        className="h-7 px-2.5 rounded-lg border border-destructive/30 text-destructive text-[10px] font-medium hover:bg-destructive/10 transition-colors inline-flex items-center gap-1"
+                      >
+                        <Undo2 className="w-3 h-3" /> Undo
+                      </button>
+                    )}
+                    <div className="text-xs text-muted-foreground flex items-center space-x-1">
+                      <Clock className="w-3 h-3" /><span>{formatDuration(a.totalDurationSeconds)}</span>
+                    </div>
                   </div>
                 </div>
               );

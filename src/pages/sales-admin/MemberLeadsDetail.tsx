@@ -10,6 +10,7 @@ import type { AppUser, Lead, LeadStatus, SaleDetail } from "@/types";
 import { ArrowLeft, Phone, Plus, Loader2, Search, Trash2, MessageCircle, StickyNote, ShoppingBag, X, Hash, List, Type } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useConfirm } from "@/hooks/useConfirm";
 import { AnimatePresence, motion } from "framer-motion";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
 
@@ -71,6 +72,7 @@ export default function MemberLeadsDetail() {
   const navigate = useNavigate();
   const currentUser = useAuthStore((s) => s.user);
   const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const isMobile = useIsMobile();
 
   const [member, setMember] = useState<AppUser | null>(null);
@@ -286,7 +288,8 @@ export default function MemberLeadsDetail() {
   };
 
   const handleDelete = async (leadId: string) => {
-    if (!confirm("Delete this lead?")) return;
+    const { confirmed } = await confirm({ title: "Delete Lead", description: "Delete this lead?", confirmText: "Delete", variant: "destructive" });
+    if (!confirmed) return;
     try {
       await deleteDoc(doc(db, "leads", leadId));
       toast({ title: "Deleted", description: "Lead removed." });
@@ -317,6 +320,7 @@ export default function MemberLeadsDetail() {
 
   return (
     <div className="space-y-6">
+      {ConfirmDialog}
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2 md:gap-3">

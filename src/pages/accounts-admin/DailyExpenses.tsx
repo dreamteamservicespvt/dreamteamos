@@ -6,6 +6,7 @@ import { formatCurrency } from "@/utils/formatters";
 import { Wallet, Plus, Trash2, Loader2, Download, Pencil, X, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useConfirm } from "@/hooks/useConfirm";
 
 interface Expense {
   id: string;
@@ -24,6 +25,7 @@ const PRESET_CATEGORIES = [
 export default function DailyExpenses() {
   const currentUser = useAuthStore((s) => s.user);
   const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const isMobile = useIsMobile();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,7 +132,8 @@ export default function DailyExpenses() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this expense?")) return;
+    const { confirmed } = await confirm({ title: "Delete Expense", description: "Delete this expense?", confirmText: "Delete", variant: "destructive" });
+    if (!confirmed) return;
     try {
       await deleteDoc(doc(db, "expenses", id));
       setExpenses((prev) => prev.filter((e) => e.id !== id));
@@ -174,6 +177,7 @@ export default function DailyExpenses() {
 
   return (
     <div className="space-y-6">
+      {ConfirmDialog}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-xl md:text-2xl font-bold text-foreground">Daily Expenses</h1>

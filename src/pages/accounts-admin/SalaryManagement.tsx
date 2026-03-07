@@ -10,10 +10,12 @@ import { Users, Download, Edit3, Check, X, Loader2, Send, Receipt, Upload, FileT
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useConfirm } from "@/hooks/useConfirm";
 
 export default function SalaryManagement() {
   const currentUser = useAuthStore((s) => s.user);
   const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const isMobile = useIsMobile();
   const [members, setMembers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -135,7 +137,8 @@ export default function SalaryManagement() {
   };
 
   const handleDeleteReceipt = async (receiptId: string) => {
-    if (!confirm("Undo this salary receipt? This will permanently delete it.")) return;
+    const { confirmed } = await confirm({ title: "Undo Receipt", description: "Undo this salary receipt? This will permanently delete it.", confirmText: "Undo", variant: "destructive" });
+    if (!confirmed) return;
     setDeletingReceiptId(receiptId);
     try {
       await deleteDoc(doc(db, "salary_receipts", receiptId));
@@ -161,6 +164,7 @@ export default function SalaryManagement() {
 
   return (
     <div className="space-y-6">
+      {ConfirmDialog}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-xl md:text-2xl font-bold text-foreground">Salary Management</h1>

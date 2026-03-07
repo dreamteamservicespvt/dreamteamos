@@ -5,6 +5,7 @@ import { uploadToCloudinary } from "@/services/cloudinary";
 import { useAuthStore } from "@/store/authStore";
 import { BookOpen, Plus, Trash2, Loader2, ExternalLink, Upload, File, Image, Video, Music, FileText, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/hooks/useConfirm";
 
 interface ModuleFile {
   name: string;
@@ -44,6 +45,7 @@ function getFileIcon(type: string) {
 export default function TrainingModules() {
   const currentUser = useAuthStore((s) => s.user);
   const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [modules, setModules] = useState<TrainingModule[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
@@ -138,7 +140,8 @@ export default function TrainingModules() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this training module?")) return;
+    const { confirmed } = await confirm({ title: "Delete Module", description: "Delete this training module?", confirmText: "Delete", variant: "destructive" });
+    if (!confirmed) return;
     try {
       await deleteDoc(doc(db, "training_modules", id));
       setModules((prev) => prev.filter((m) => m.id !== id));
@@ -150,6 +153,7 @@ export default function TrainingModules() {
 
   return (
     <div className="space-y-6">
+      {ConfirmDialog}
       <div className="flex items-center justify-between gap-2">
         <div>
           <h1 className="font-display text-lg md:text-2xl font-bold text-foreground">Training Modules</h1>

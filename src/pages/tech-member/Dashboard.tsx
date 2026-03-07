@@ -11,6 +11,7 @@ import { getWhatsAppUrl } from "@/utils/phone";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import { verifyScreenshot } from "@/services/gemini";
 import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/hooks/useConfirm";
 
 const ADMIN_WHATSAPP = "9959935203";
 
@@ -18,6 +19,7 @@ export default function TechMemberDashboard() {
   const user = useAuthStore((s) => s.user);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [assignments, setAssignments] = useState<WorkAssignment[]>([]);
   const [todayCheckin, setTodayCheckin] = useState<DailyCheckin | null>(null);
   const [loading, setLoading] = useState(true);
@@ -94,7 +96,8 @@ export default function TechMemberDashboard() {
 
   const handleUndoCheckIn = async () => {
     if (!todayCheckin || todayCheckin.checkedOutAt) return;
-    if (!window.confirm("Are you sure you want to undo your check-in?")) return;
+    const { confirmed } = await confirm({ title: "Undo Check-In", description: "Are you sure you want to undo your check-in?", confirmText: "Undo", variant: "destructive" });
+    if (!confirmed) return;
     try {
       await deleteDoc(doc(db, "daily_checkins", todayCheckin.id));
       toast({ title: "Check-in undone", description: "Your check-in has been removed." });
@@ -105,7 +108,8 @@ export default function TechMemberDashboard() {
 
   const handleRevertCheckout = async () => {
     if (!todayCheckin || !todayCheckin.checkedOutAt || todayCheckin.status === "approved") return;
-    if (!window.confirm("Revert your checkout? This will bring you back to checked-in state.")) return;
+    const { confirmed } = await confirm({ title: "Revert Checkout", description: "Revert your checkout? This will bring you back to checked-in state.", confirmText: "Revert", variant: "destructive" });
+    if (!confirmed) return;
     try {
       await updateDoc(doc(db, "daily_checkins", todayCheckin.id), {
         checkedOutAt: null,
@@ -191,7 +195,7 @@ export default function TechMemberDashboard() {
 
   const verified = assignments.filter(a => a.status === "verified");
   const completed = assignments.filter(a => a.status === "completed");
-  const totalVideos = verified.reduce((s, a) => s + (a.clipCount || 0), 0);
+  const totalVideos = verified.length;
   const stats = [
     { label: "Total Assigned", value: assignments.length, icon: Briefcase, color: "text-info" },
     { label: "Videos Done", value: totalVideos, icon: Video, color: "text-primary" },
@@ -220,6 +224,7 @@ export default function TechMemberDashboard() {
 
   return (
     <div className="space-y-6">
+      {ConfirmDialog}
       <div>
         <h1 className="font-display text-2xl font-bold text-foreground">Dashboard</h1>
         <p className="text-muted-foreground text-sm mt-1">Welcome back, {user?.name}</p>

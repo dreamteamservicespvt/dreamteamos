@@ -5,7 +5,8 @@ import { db } from "@/services/firebase";
 import { createUserWithoutSignOut } from "@/services/secondaryAuth";
 import { useAuthStore } from "@/store/authStore";
 import { normalizePhone, formatPhoneDisplay, getWhatsAppUrl, getCallUrl } from "@/utils/phone";
-import type { AppUser, DailyCheckin } from "@/types";
+import type { AppUser, DailyCheckin, WorkAssignment } from "@/types";
+import { formatCurrency } from "@/utils/formatters";
 import { Users, Plus, X, Loader2, Eye, EyeOff, UserCheck, UserX, Trash2, Phone, MessageCircle, Pencil, Share2, Search, LogIn, LogOut } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -25,6 +26,7 @@ export default function TechAdminMyTeam() {
   const [searchQuery, setSearchQuery] = useState('');
   const isMobile = useIsMobile();
   const [todayCheckins, setTodayCheckins] = useState<Map<string, DailyCheckin>>(new Map());
+  const [memberRevenue, setMemberRevenue] = useState<Map<string, number>>(new Map());
 
   const todayStr = format(new Date(), "yyyy-MM-dd");
 
@@ -53,6 +55,17 @@ export default function TechAdminMyTeam() {
           map.set(ci.memberId, ci);
         });
         setTodayCheckins(map);
+      }
+    ));
+    unsubs.push(onSnapshot(
+      query(collection(db, "work_assignments"), where("status", "==", "verified")),
+      (snap) => {
+        const revMap = new Map<string, number>();
+        snap.docs.forEach((d) => {
+          const a = d.data() as WorkAssignment;
+          revMap.set(a.assignedTo, (revMap.get(a.assignedTo) || 0) + (a.totalPrice || 0));
+        });
+        setMemberRevenue(revMap);
       }
     ));
     return () => unsubs.forEach((u) => u());
@@ -167,7 +180,7 @@ export default function TechAdminMyTeam() {
       </div>
 
       {isMobile ? (
-        <MobileTechCards members={filteredMembers} loading={loading} onToggle={toggleActive} onDelete={(m) => setConfirmDelete(m)} onEdit={(m) => setEditingMember(m)} onClickMember={(m) => navigate(`/tech-admin/team/${m.uid}`)} onShare={handleShareCredentials} todayCheckins={todayCheckins} />
+        <MobileTechCards members={filteredMembers} loading={loading} onToggle={toggleActive} onDelete={(m) => setConfirmDelete(m)} onEdit={(m) => setEditingMember(m)} onClickMember={(m) => navigate(`/tech-admin/team/${m.uid}`)} onShare={handleShareCredentials} todayCheckins={todayCheckins} memberRevenue={memberRevenue} />
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
           <table className="w-full text-sm">
@@ -176,7 +189,7 @@ export default function TechAdminMyTeam() {
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Member</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Phone</th>
                 <th className="text-right px-4 py-3 font-medium text-muted-foreground">Salary</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Drive URL</th>
+                <th className="text-right px-4 py-3 font-medium text-muted-foreground">Revenue</th>
                 <th className="text-center px-4 py-3 font-medium text-muted-foreground">Check-In</th>
                 <th className="text-center px-4 py-3 font-medium text-muted-foreground">Status</th>
                 <th className="text-center px-4 py-3 font-medium text-muted-foreground">Actions</th>
@@ -220,7 +233,7 @@ export default function TechAdminMyTeam() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-foreground">₹{m.salary?.toLocaleString() || 0}</td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground max-w-[180px] truncate">{m.googleDriveBaseUrl || "—"}</td>
+                    <td className="px-4 py-3 text-right font-mono text-primary">{formatCurrency(memberRevenue.get(m.uid) || 0)}</td>
                     <td className="px-4 py-3 text-center">
                       {(() => {
                         const ci = todayCheckins.get(m.uid);
@@ -354,8 +367,8 @@ export default function TechAdminMyTeam() {
 }
 
 /* ─── Mobile Cards ─── */
-function MobileTechCards({ members, loading, onToggle, onDelete, onEdit, onClickMember, onShare, todayCheckins }: {
-  members: AppUser[]; loading: boolean; onToggle: (m: AppUser) => void; onDelete: (m: AppUser) => void; onEdit: (m: AppUser) => void; onClickMember: (m: AppUser) => void; onShare: (m: AppUser) => void; todayCheckins: Map<string, DailyCheckin>;
+function MobileTechCards({ members, loading, onToggle, onDelete, onEdit, onClickMember, onShare, todayCheckins, memberRevenue }: {
+  members: AppUser[]; loading: boolean; onToggle: (m: AppUser) => void; onDelete: (m: AppUser) => void; onEdit: (m: AppUser) => void; onClickMember: (m: AppUser) => void; onShare: (m: AppUser) => void; todayCheckins: Map<string, DailyCheckin>; memberRevenue: Map<string, number>;
 }) {
   if (loading) {
     return (
@@ -409,9 +422,7 @@ function MobileTechCards({ members, loading, onToggle, onDelete, onEdit, onClick
 
           <div className="grid grid-cols-2 gap-2 text-xs mb-3">
             <div><span className="text-muted-foreground">Salary</span><span className="ml-2 font-mono text-foreground">₹{m.salary?.toLocaleString() || 0}</span></div>
-            {m.googleDriveBaseUrl && (
-              <div className="col-span-2"><span className="text-muted-foreground">Drive</span><a href={m.googleDriveBaseUrl} target="_blank" rel="noopener noreferrer" className="ml-2 text-primary truncate">Open Drive</a></div>
-            )}
+            <div><span className="text-muted-foreground">Revenue</span><span className="ml-2 font-mono text-primary">{formatCurrency(memberRevenue.get(m.uid) || 0)}</span></div>
             {m.phone && (
               <div className="col-span-2"><span className="text-muted-foreground">Phone</span><span className="ml-2 font-mono text-foreground">{formatPhoneDisplay(m.phone)}</span></div>
             )}

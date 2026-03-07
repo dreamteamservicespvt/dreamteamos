@@ -9,12 +9,14 @@ import { ArrowLeft, FileText, Loader2, TrendingUp, IndianRupee, Video, CheckCirc
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
 import { formatCurrency } from "@/utils/formatters";
 import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/hooks/useConfirm";
 
 export default function TechAdminMemberHistory() {
   const { memberId } = useParams<{ memberId: string }>();
   const navigate = useNavigate();
   const currentUser = useAuthStore((s) => s.user);
   const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [member, setMember] = useState<AppUser | null>(null);
   const [assignments, setAssignments] = useState<WorkAssignment[]>([]);
   const [checkins, setCheckins] = useState<DailyCheckin[]>([]);
@@ -145,13 +147,13 @@ export default function TechAdminMemberHistory() {
   };
 
   const handleReject = async (ci: DailyCheckin) => {
-    const note = window.prompt("Reason for rejection (optional):");
-    if (note === null) return;
+    const { confirmed, inputValue: note } = await confirm({ title: "Reject Check-In", description: "Provide a reason for rejection (optional).", confirmText: "Reject", variant: "destructive", withInput: true, inputPlaceholder: "Reason for rejection..." });
+    if (!confirmed) return;
     setRejectingId(ci.id);
     try {
       await updateDoc(doc(db, "daily_checkins", ci.id), {
         status: "rejected",
-        rejectionNote: note || "",
+        rejectionNote: note ?? "",
       });
       await addDoc(collection(db, "notifications"), {
         userId: ci.memberId,
@@ -172,7 +174,7 @@ export default function TechAdminMemberHistory() {
   const revenueStats = useMemo(() => {
     const verified = filteredAssignments.filter((a) => a.status === "verified");
     const totalRevenue = verified.reduce((sum, a) => sum + (a.totalPrice || 0), 0);
-    const totalVideos = verified.reduce((sum, a) => sum + (a.clipCount || 0), 0);
+    const totalVideos = verified.length;
     const salary = member?.salary || 0;
     const revenueVsSalary = salary > 0 ? ((totalRevenue / salary) * 100) : 0;
     return { totalRevenue, totalVideos, salary, revenueVsSalary, verifiedCount: verified.length };
@@ -198,6 +200,7 @@ export default function TechAdminMemberHistory() {
 
   return (
     <div className="space-y-6">
+      {ConfirmDialog}
       <div className="flex items-center gap-3">
         <button onClick={() => navigate(-1)} className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0">
           <ArrowLeft size={16} />

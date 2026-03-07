@@ -3,7 +3,9 @@ import { Bookmark, Trash2, ChevronRight, Calendar, Building2, PartyPopper, Loade
 import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
 import { deleteDoc, doc } from 'firebase/firestore';
+import { db } from '@/services/firebase';
 import { extractBusinessNameFromInfo } from '@/services/geminiService';
+import { useConfirm } from '@/hooks/useConfirm';
 
 const getBusinessName = (item: SavedGeneration) => {
   if (item.businessName && item.businessName !== 'Untitled') return item.businessName;
@@ -45,10 +47,12 @@ export const SavedItems: React.FC<SavedItemsProps> = ({ items, onSelect, onDelet
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (!confirm('Are you sure you want to delete this saved generation?')) return;
+    const { confirmed } = await confirm({ title: "Delete Generation", description: "Are you sure you want to delete this saved generation?", confirmText: "Delete", variant: "destructive" });
+    if (!confirmed) return;
     setDeletingId(id);
     try {
       await deleteDoc(doc(db, 'ai_generations', id));
@@ -68,6 +72,7 @@ export const SavedItems: React.FC<SavedItemsProps> = ({ items, onSelect, onDelet
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      {ConfirmDialog}
       <div className={cn("rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col", isDark ? "bg-slate-800" : "bg-white")}>
         <div className={cn("px-6 py-4 border-b flex items-center justify-between", isDark ? "border-slate-700" : "border-slate-200")}>
           <div className="flex items-center space-x-3">
