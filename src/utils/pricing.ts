@@ -1,7 +1,7 @@
 export const PRICING: Record<string, Record<string, number>> = {
   wishes: { "20s": 499, "40s": 999 },
-  promotional: { "15s": 499, "30s": 999, "45s": 1499, "60s": 1999 },
-  cinematic: { "15s": 999, "30s": 1999, "45s": 2999, "60s": 3999 },
+  promotional: { "16s": 999, "32s": 1499, "45s": 1999, "64s": 2999 },
+  cinematic: { "16s": 1499, "32s": 2499, "45s": 3499, "64s": 4999 },
 };
 
 export function calculateRevenue(items: { type: string; duration: string; quantity: number; adminApprovedPrice?: number | null }[]) {

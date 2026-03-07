@@ -10,6 +10,7 @@ interface FileUploadProps {
   onChange: (file: File | File[] | null) => void;
   required?: boolean;
   helperText?: string;
+  value?: File | File[] | null;
 }
 
 export const FileUpload: React.FC<FileUploadProps> = ({ 
@@ -18,24 +19,33 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   multiple = false, 
   onChange, 
   required,
-  helperText
+  helperText,
+  value
 }) => {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
-  const [files, setFiles] = useState<File[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Derive files from value prop if provided, otherwise use internal state
+  const getFilesFromValue = (): File[] => {
+    if (value === undefined || value === null) return [];
+    if (Array.isArray(value)) return value;
+    return [value];
+  };
+  const [internalFiles, setInternalFiles] = useState<File[]>(getFilesFromValue);
+  const files = value !== undefined ? getFilesFromValue() : internalFiles;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const newFiles = Array.from(e.target.files);
-      setFiles(newFiles);
+      setInternalFiles(newFiles);
       onChange(multiple ? newFiles : newFiles[0]);
     }
   };
 
   const removeFile = (index: number) => {
     const updatedFiles = files.filter((_, i) => i !== index);
-    setFiles(updatedFiles);
+    setInternalFiles(updatedFiles);
     onChange(multiple ? updatedFiles : (updatedFiles[0] || null));
     if (inputRef.current) inputRef.current.value = '';
   };

@@ -300,9 +300,11 @@ export const extractBusinessOnly = async (
     parts.push({ inlineData: { mimeType: files.visitingCard.type, data: await fileToBase64(files.visitingCard) } });
     parts.push({ text: "This is the Visiting Card." });
   }
-  if (files.storeImage) {
-    parts.push({ inlineData: { mimeType: files.storeImage.type, data: await fileToBase64(files.storeImage) } });
-    parts.push({ text: "This is the Store/Office Image." });
+  if (files.storeImage && files.storeImage.length > 0) {
+    for (let i = 0; i < files.storeImage.length; i++) {
+      parts.push({ inlineData: { mimeType: files.storeImage[i].type, data: await fileToBase64(files.storeImage[i]) } });
+      parts.push({ text: `This is a Store/Office Image (${i + 1} of ${files.storeImage.length}).` });
+    }
   }
   if (files.voiceRecording) {
     parts.push({ inlineData: { mimeType: files.voiceRecording.type, data: await fileToBase64(files.voiceRecording) } });
@@ -403,15 +405,17 @@ export const generateAdAssets = async (
       parts.push({ text: "This is the Visiting Card." });
     }
 
-    // Process Store Image
-    if (files.storeImage) {
-      parts.push({
-        inlineData: {
-          mimeType: files.storeImage.type,
-          data: await fileToBase64(files.storeImage)
-        }
-      });
-      parts.push({ text: "This is the Store/Office Image." });
+    // Process Store Images
+    if (files.storeImage && files.storeImage.length > 0) {
+      for (let i = 0; i < files.storeImage.length; i++) {
+        parts.push({
+          inlineData: {
+            mimeType: files.storeImage[i].type,
+            data: await fileToBase64(files.storeImage[i])
+          }
+        });
+        parts.push({ text: `This is a Store/Office Image (${i + 1} of ${files.storeImage.length}).` });
+      }
     }
 
     // Process Voice Recording

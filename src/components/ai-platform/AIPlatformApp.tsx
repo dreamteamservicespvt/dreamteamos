@@ -41,7 +41,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   });
 
   const [files, setFiles] = useState<FileStore>({
-    logo: null, visitingCard: null, storeImage: null,
+    logo: null, visitingCard: null, storeImage: [],
     productImages: [], flyersPosters: [], voiceRecording: null, textInstructionsFile: null
   });
 
@@ -365,10 +365,10 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                   
                   {/* Collapsible sections */}
                   {[
-                    { key: 'storeOffice' as const, label: 'Store/Office Image', content: <FileUpload label="" accept="image/*" onChange={(f) => setFiles(prev => ({ ...prev, storeImage: f as File }))} helperText="Optional" /> },
+                    { key: 'storeOffice' as const, label: 'Store/Office Images', content: <FileUpload label="" accept="image/*" multiple value={files.storeImage} onChange={(f) => setFiles(prev => ({ ...prev, storeImage: f as File[] }))} helperText="Upload one or more store/office images" /> },
                     { key: 'productImages' as const, label: 'Product Images', content: (
                       <>
-                        <FileUpload label="" accept="image/*" multiple onChange={(f) => setFiles(prev => ({ ...prev, productImages: f as File[] }))} helperText="Will appear in main frame & footer" />
+                        <FileUpload label="" accept="image/*" multiple value={files.productImages} onChange={(f) => setFiles(prev => ({ ...prev, productImages: f as File[] }))} helperText="Will appear in main frame & footer" />
                         {files.productImages.length > 0 && (
                           <label className={cn("flex items-center gap-2 mt-2 text-xs cursor-pointer", isDark ? "text-slate-400" : "text-slate-600")}>
                             <input type="checkbox" checked={includeProductsInHeader} onChange={(e) => setIncludeProductsInHeader(e.target.checked)} className="rounded border-slate-300" />
@@ -377,8 +377,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                         )}
                       </>
                     )},
-                    { key: 'flyersPosters' as const, label: 'Flyers / Offer Posters', content: <FileUpload label="" accept="image/*,application/pdf" multiple onChange={(f) => setFiles(prev => ({ ...prev, flyersPosters: f as File[] }))} helperText="Upload existing promotional materials" /> },
-                    { key: 'voiceInstructions' as const, label: 'Voice Instructions', content: <FileUpload label="" accept="audio/*" onChange={(f) => setFiles(prev => ({ ...prev, voiceRecording: f as File }))} helperText="Record your requirements" /> },
+                    { key: 'flyersPosters' as const, label: 'Flyers / Offer Posters', content: <FileUpload label="" accept="image/*,application/pdf" multiple value={files.flyersPosters} onChange={(f) => setFiles(prev => ({ ...prev, flyersPosters: f as File[] }))} helperText="Upload existing promotional materials" /> },
+                    { key: 'voiceInstructions' as const, label: 'Voice Instructions', content: <FileUpload label="" accept="audio/*" value={files.voiceRecording} onChange={(f) => setFiles(prev => ({ ...prev, voiceRecording: f as File }))} helperText="Record your requirements" /> },
                   ].map(({ key, label, content: sectionContent }) => (
                     <div key={key} className={cn("border rounded-lg overflow-hidden", isDark ? "border-slate-600" : "border-slate-200")}>
                       <button onClick={() => toggleSection(key)}
@@ -456,42 +456,37 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                         )} value={selectedFestivalOption} onChange={(e) => {
                           const selectedFestival = e.target.value;
                           setSelectedFestivalOption(selectedFestival);
-
-                          if (selectedFestival === CUSTOM_FESTIVAL_OPTION) {
-                            setFormData(prev => ({ ...prev, festivalName: customFestivalName.trim() }));
-                            return;
-                          }
-
                           setCustomFestivalName('');
                           setFormData(prev => ({ ...prev, festivalName: selectedFestival }));
                         }}>
                         <option value="">-- Select Festival --</option>
                         {upcomingFestivals.map(f => <option key={f} value={f}>{f}</option>)}
-                        <option value={CUSTOM_FESTIVAL_OPTION}>Custom Festival</option>
                       </select>
-                      {selectedFestivalOption === CUSTOM_FESTIVAL_OPTION && (
-                        <div className="mt-2">
-                          <label className={cn("block text-xs font-medium mb-1", isDark ? "text-slate-400" : "text-slate-600")}>
-                            Custom Festival Name
-                          </label>
-                          <input
-                            type="text"
-                            value={customFestivalName}
-                            onChange={(e) => {
-                              const customValue = e.target.value;
-                              setCustomFestivalName(customValue);
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className={cn("text-xs font-medium whitespace-nowrap", isDark ? "text-slate-400" : "text-slate-500")}>Or type custom:</span>
+                        <input
+                          type="text"
+                          value={customFestivalName}
+                          onChange={(e) => {
+                            const customValue = e.target.value;
+                            setCustomFestivalName(customValue);
+                            if (customValue.trim()) {
+                              setSelectedFestivalOption(CUSTOM_FESTIVAL_OPTION);
                               setFormData(prev => ({ ...prev, festivalName: customValue.trim() }));
-                            }}
-                            placeholder="Enter festival name"
-                            className={cn(
-                              "w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
-                              isDark
-                                ? "bg-slate-700 border-slate-600 text-slate-200 placeholder-slate-500 focus:ring-purple-800"
-                                : "bg-white border-slate-300 text-slate-700 placeholder-slate-400 focus:ring-purple-200"
-                            )}
-                          />
-                        </div>
-                      )}
+                            } else {
+                              setSelectedFestivalOption('');
+                              setFormData(prev => ({ ...prev, festivalName: '' }));
+                            }
+                          }}
+                          placeholder="Custom festival"
+                          className={cn(
+                            "flex-1 border rounded-lg px-3 py-1.5 text-sm focus:ring-2 outline-none",
+                            isDark
+                              ? "bg-slate-700 border-slate-600 text-slate-200 placeholder-slate-500 focus:ring-purple-800"
+                              : "bg-white border-slate-300 text-slate-700 placeholder-slate-400 focus:ring-purple-200"
+                          )}
+                        />
+                      </div>
                     </div>
                   )}
 
@@ -530,6 +525,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                           )} value={formData.duration} onChange={(e) => setFormData(prev => ({ ...prev, duration: parseInt(e.target.value) }))}>
                           <option value={16}>16 Seconds (2 Clips)</option>
                           <option value={32}>32 Seconds (4 Clips)</option>
+                          <option value={45}>45 Seconds (6 Clips)</option>
                           <option value={64}>64 Seconds (8 Clips)</option>
                         </select>
                       ) : (

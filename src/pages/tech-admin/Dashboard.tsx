@@ -3,9 +3,9 @@ import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { formatCurrency } from "@/utils/formatters";
-import { format } from "date-fns";
+import { format, subDays, startOfDay } from "date-fns";
 import type { AppUser, WorkSubmission } from "@/types";
-import { Users, Video, CheckCircle, Clock, TrendingUp } from "lucide-react";
+import { Users, Video, CheckCircle, Clock, TrendingUp, ArrowDownUp } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
@@ -17,6 +17,23 @@ export default function TechAdminDashboard() {
   const [submissions, setSubmissions] = useState<WorkSubmission[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const [dayFilter, setDayFilter] = useState<string>('all');
+  const [sortOrder, setSortOrder] = useState<'high' | 'low'>('high');
+
+  // Generate recent 5 days for dropdown
+  const recentDays = (() => {
+    const days: { date: Date; dateStr: string; label: string }[] = [];
+    for (let i = 0; i < 5; i++) {
+      const d = subDays(new Date(), i);
+      const today = startOfDay(new Date());
+      const target = startOfDay(d);
+      const diffMs = today.getTime() - target.getTime();
+      const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+      const label = diffDays === 0 ? 'Today' : diffDays === 1 ? 'Yesterday' : `${diffDays} days ago`;
+      days.push({ date: startOfDay(d), dateStr: format(d, 'yyyy-MM-dd'), label });
+    }
+    return days;
+  })();
 
   useEffect(() => {
     const unsubs: (() => void)[] = [];
@@ -34,9 +51,23 @@ export default function TechAdminDashboard() {
   const memberIds = members.map((m) => m.uid);
   const teamSubs = submissions.filter((s) => memberIds.includes(s.techMemberId));
 
-  // Filter by selected date
+  // Filter by selected date or day filter
   const dateStr = selectedDate ? format(selectedDate, "yyyy-MM-dd") : null;
-  const filteredSubs = dateStr ? teamSubs.filter((s) => s.date === dateStr) : teamSubs;
+  const filteredSubs = (() => {
+    if (dateStr) return teamSubs.filter((s) => s.date === dateStr);
+    if (dayFilter !== 'all') {
+      const dayIndex = parseInt(dayFilter);
+      const dayDateStr = recentDays[dayIndex]?.dateStr;
+      if (dayDateStr) return teamSubs.filter((s) => s.date === dayDateStr);
+    }
+    return teamSubs;
+  })();
+
+  const filterLabel = selectedDate
+    ? format(selectedDate, "dd/MM/yyyy")
+    : dayFilter === 'all'
+      ? 'All Days'
+      : recentDays[parseInt(dayFilter)]?.label || 'All Days';
 
   const approved = filteredSubs.filter((s) => s.status === "approved");
   const pending = filteredSubs.filter((s) => s.status === "pending");
@@ -47,12 +78,20 @@ export default function TechAdminDashboard() {
     const mSubs = filteredSubs.filter((s) => s.techMemberId === m.uid);
     const mApproved = mSubs.filter((s) => s.status === "approved");
     return {
+      uid: m.uid,
       name: m.name?.split(" ")[0] || "?",
+      fullName: m.name || "?",
+      initial: m.name?.charAt(0) || "?",
       videos: mApproved.reduce((s, sub) => s + (sub.totalVideos || 0), 0),
       submissions: mSubs.length,
       revenue: mApproved.reduce((s, sub) => s + (sub.calculatedRevenue || 0), 0),
     };
   });
+
+  // Sorted data for table and mobile cards
+  const sortedChartData = [...chartData].sort((a, b) =>
+    sortOrder === 'high' ? b.videos - a.videos : a.videos - b.videos
+  );
 
   if (loading) {
     return (
@@ -71,13 +110,22 @@ export default function TechAdminDashboard() {
         <div>
           <h1 className="font-display text-2xl font-bold text-foreground">Tech Dashboard</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            {selectedDate ? `Showing data for ${format(selectedDate, "dd/MM/yyyy")}` : "Overview of your team's work"}
+            {selectedDate ? `Showing data for ${format(selectedDate, "dd/MM/yyyy")}` : dayFilter !== 'all' ? `Showing data for ${recentDays[parseInt(dayFilter)]?.label}` : "Overview of your team's work"}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <DashboardDayPicker selectedDate={selectedDate} onSelect={setSelectedDate} />
-          {selectedDate && (
-            <button onClick={() => setSelectedDate(undefined)} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+          {!selectedDate && (
+            <select value={dayFilter} onChange={(e) => setDayFilter(e.target.value)}
+              className="border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none">
+              <option value="all">All Days</option>
+              {recentDays.map((d, i) => (
+                <option key={d.dateStr} value={String(i)}>{d.label} ({format(d.date, "dd/MM")})</option>
+              ))}
+            </select>
+          )}
+          <DashboardDayPicker selectedDate={selectedDate} onSelect={(d) => { setSelectedDate(d); if (d) setDayFilter('all'); }} />
+          {(selectedDate || dayFilter !== 'all') && (
+            <button onClick={() => { setSelectedDate(undefined); setDayFilter('all'); }} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
               Clear
             </button>
           )}
@@ -121,8 +169,16 @@ export default function TechAdminDashboard() {
 
       {/* Desktop Table */}
       <div className="hidden md:block bg-card border border-border rounded-xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-border">
+        <div className="px-5 py-4 border-b border-border flex items-center justify-between">
           <h3 className="font-display font-semibold text-foreground">Member Summary</h3>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground">{filterLabel}</span>
+            <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value as 'high' | 'low')}
+              className="border rounded-lg px-2 py-1 text-xs bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none">
+              <option value="high">High → Low</option>
+              <option value="low">Low → High</option>
+            </select>
+          </div>
         </div>
         <table className="w-full text-sm">
           <thead>
@@ -134,27 +190,24 @@ export default function TechAdminDashboard() {
             </tr>
           </thead>
           <tbody>
-            {members.length === 0 ? (
+            {sortedChartData.length === 0 ? (
               <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">No team members yet. Add from "My Team".</td></tr>
             ) : (
-              members.map((m, i) => {
-                const d = chartData.find((c) => c.name === m.name?.split(" ")[0]);
-                return (
-                  <tr key={m.uid} className={`border-b border-border/50 hover:bg-accent/30 transition-colors ${i % 2 === 1 ? "bg-elevated/20" : ""}`}>
+              sortedChartData.map((d, i) => (
+                  <tr key={d.uid} className={`border-b border-border/50 hover:bg-accent/30 transition-colors ${i % 2 === 1 ? "bg-elevated/20" : ""}`}>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-md bg-role-tech-member/15 flex items-center justify-center font-display font-bold text-role-tech-member text-[10px]">
-                          {m.name?.charAt(0)}
+                          {d.initial}
                         </div>
-                        <span className="font-medium text-foreground">{m.name}</span>
+                        <span className="font-medium text-foreground">{d.fullName}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-right font-mono">{d?.videos || 0}</td>
-                    <td className="px-4 py-3 text-right font-mono">{d?.submissions || 0}</td>
-                    <td className="px-4 py-3 text-right font-mono text-primary">{formatCurrency(d?.revenue || 0)}</td>
+                    <td className="px-4 py-3 text-right font-mono">{d.videos}</td>
+                    <td className="px-4 py-3 text-right font-mono">{d.submissions}</td>
+                    <td className="px-4 py-3 text-right font-mono text-primary">{formatCurrency(d.revenue)}</td>
                   </tr>
-                );
-              })
+              ))
             )}
           </tbody>
         </table>
@@ -162,37 +215,41 @@ export default function TechAdminDashboard() {
 
       {/* Mobile Cards */}
       <div className="md:hidden space-y-3">
-        <h3 className="font-display font-semibold text-foreground text-sm">Member Summary</h3>
-        {members.length === 0 ? (
+        <div className="flex items-center justify-between">
+          <h3 className="font-display font-semibold text-foreground text-sm">Member Summary</h3>
+          <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value as 'high' | 'low')}
+            className="border rounded-lg px-2 py-1 text-xs bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none">
+            <option value="high">High → Low</option>
+            <option value="low">Low → High</option>
+          </select>
+        </div>
+        {sortedChartData.length === 0 ? (
           <div className="bg-card border border-border rounded-xl p-6 text-center text-muted-foreground text-sm">No team members yet. Add from "My Team".</div>
         ) : (
-          members.map((m) => {
-            const d = chartData.find((c) => c.name === m.name?.split(" ")[0]);
-            return (
-              <div key={m.uid} className="bg-card border border-border rounded-xl p-3">
+          sortedChartData.map((d) => (
+              <div key={d.uid} className="bg-card border border-border rounded-xl p-3">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="w-8 h-8 rounded-md bg-role-tech-member/15 flex items-center justify-center font-display font-bold text-role-tech-member text-xs">
-                    {m.name?.charAt(0)}
+                    {d.initial}
                   </div>
-                  <span className="font-medium text-foreground text-sm">{m.name}</span>
+                  <span className="font-medium text-foreground text-sm">{d.fullName}</span>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div className="text-center bg-background border border-border rounded-lg p-2">
                     <p className="text-[10px] text-muted-foreground">Videos</p>
-                    <p className="font-mono font-bold text-sm text-foreground">{d?.videos || 0}</p>
+                    <p className="font-mono font-bold text-sm text-foreground">{d.videos}</p>
                   </div>
                   <div className="text-center bg-background border border-border rounded-lg p-2">
                     <p className="text-[10px] text-muted-foreground">Subs</p>
-                    <p className="font-mono font-bold text-sm text-foreground">{d?.submissions || 0}</p>
+                    <p className="font-mono font-bold text-sm text-foreground">{d.submissions}</p>
                   </div>
                   <div className="text-center bg-background border border-border rounded-lg p-2">
                     <p className="text-[10px] text-muted-foreground">Revenue</p>
-                    <p className="font-mono font-bold text-sm text-primary">{formatCurrency(d?.revenue || 0)}</p>
+                    <p className="font-mono font-bold text-sm text-primary">{formatCurrency(d.revenue)}</p>
                   </div>
                 </div>
               </div>
-            );
-          })
+          ))
         )}
       </div>
     </div>

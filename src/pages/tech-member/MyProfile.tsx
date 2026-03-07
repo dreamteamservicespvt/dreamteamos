@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/utils/formatters";
 import { User, Mail, Phone, Shield, Loader2, Check, Lock, ExternalLink, Receipt } from "lucide-react";
 import SalaryTimeline from "@/components/SalaryTimeline";
+import ThemeSelector from "@/components/ThemeSelector";
 
 export default function TechMemberProfile() {
   const user = useAuthStore((s) => s.user);
@@ -148,6 +149,8 @@ export default function TechMemberProfile() {
           {changingPw ? "Changing..." : "Update Password"}
         </button>
       </div>
+
+      <ThemeSelector />
     </div>
   );
 }

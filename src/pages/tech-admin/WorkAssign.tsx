@@ -15,8 +15,20 @@ import type { WorkAssignment, AppUser, WorkSubmission } from '@/types';
 
 const DURATIONS: Record<string, string[]> = {
   wishes: ['20s', '40s'],
-  promotional: ['15s', '30s', '45s', '60s'],
-  cinematic: ['15s', '30s', '45s', '60s'],
+  promotional: ['16s', '32s', '45s', '64s'],
+  cinematic: ['16s', '32s', '45s', '64s'],
+};
+
+// Clip count lookup for promotional/cinematic durations
+const CLIP_COUNTS: Record<string, number> = {
+  '16s': 2, '32s': 4, '45s': 6, '64s': 8,
+  '20s': 2, '40s': 4,
+};
+
+// Whether duration includes a poster (32s+)
+const HAS_POSTER: Record<string, boolean> = {
+  '16s': false, '32s': true, '45s': true, '64s': true,
+  '20s': false, '40s': false,
 };
 
 function generateAccessCode(): string {
@@ -69,14 +81,15 @@ export default function WorkAssign() {
     pricePerUnit: 499,
   });
 
-  // Auto-calculate clips: each clip = 8 seconds, remainder is end credits (no charge)
+  // Get clip count from lookup table
   const getClipCount = (duration: string) => {
-    const seconds = parseInt(duration);
-    return Math.floor(seconds / 10);
+    return CLIP_COUNTS[duration] || Math.floor(parseInt(duration) / 8);
   };
   const getEndCredits = (duration: string) => {
-    const seconds = parseInt(duration);
-    return seconds - getClipCount(duration) * 8;
+    return 5; // Always 5s end credits
+  };
+  const hasPoster = (duration: string) => {
+    return HAS_POSTER[duration] || false;
   };
 
   // Auto-update price when category/duration changes
@@ -418,7 +431,7 @@ export default function WorkAssign() {
               <label className="block text-sm font-medium text-muted-foreground mb-1">Duration</label>
               <select value={form.duration} onChange={(e) => updateField('duration', e.target.value)}
                 className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none">
-                {DURATIONS[form.category].map(d => <option key={d} value={d}>{d} ({getClipCount(d)} clips + {getEndCredits(d)}s EC)</option>)}
+                {DURATIONS[form.category].map(d => <option key={d} value={d}>{d} ({getClipCount(d)} clips + {hasPoster(d) ? 'Poster ' : ''}{getEndCredits(d)}s EC)</option>)}
               </select>
             </div>
 
@@ -435,7 +448,7 @@ export default function WorkAssign() {
           <div className="mt-4 flex items-center justify-between pt-4 border-t border-border">
             <div className="text-sm text-muted-foreground">
               Total: <span className="font-bold text-foreground text-lg">{formatCurrency(totalPrice)}</span>
-              <span className="ml-2">({clipCount} clips + EC)</span>
+              <span className="ml-2">({clipCount} clips + {hasPoster(form.duration) ? 'Poster ' : ''}5s EC)</span>
             </div>
             <button onClick={handleCreate} disabled={submitting || !form.assignedTo}
               className="flex items-center space-x-2 px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed">
@@ -493,7 +506,7 @@ export default function WorkAssign() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {['assigned', 'in_progress', 'completed', 'verified', 'editing'].map(status => {
-          const count = assignments.filter(a => a.status === status).length;
+          const count = filteredAssignments.filter(a => a.status === status).length;
           return (
             <div key={status} className="bg-card border rounded-lg p-3 text-center">
               <p className="text-2xl font-bold text-card-foreground">{count}</p>
@@ -536,7 +549,7 @@ export default function WorkAssign() {
                     </select>
                     <select value={editForm.duration} onChange={(e) => setEditForm(prev => prev ? { ...prev, duration: e.target.value, pricePerUnit: PRICING[prev.category]?.[e.target.value] ?? 0 } : prev)}
                       className="border rounded px-2 py-1 text-xs bg-background text-foreground border-border">
-                      {DURATIONS[editForm.category].map(d => <option key={d} value={d}>{d} ({getClipCount(d)} clips)</option>)}
+                      {DURATIONS[editForm.category].map(d => <option key={d} value={d}>{d} ({getClipCount(d)} clips + {hasPoster(d) ? 'Poster ' : ''}{getEndCredits(d)}s EC)</option>)}
                     </select>
                     <div className="flex items-center gap-1">
                       <span className="text-xs text-muted-foreground">₹</span>

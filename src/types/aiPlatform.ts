@@ -11,6 +11,7 @@ export enum AttireType {
 export enum DurationPackage {
   SHORT = 16,
   MEDIUM = 32,
+  MEDIUM_LONG = 45,
   LONG = 64,
   CUSTOM = 0
 }
@@ -27,7 +28,7 @@ export interface AdFormData {
 export interface FileStore {
   logo: File | null;
   visitingCard: File | null;
-  storeImage: File | null;
+  storeImage: File[];
   productImages: File[];
   flyersPosters: File[];
   voiceRecording: File | null;

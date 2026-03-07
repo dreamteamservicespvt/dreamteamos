@@ -1345,9 +1345,15 @@ YOUR TASK: Generate a ${duration}-second voice-over script for a business advert
    • Brand names should be transliterated to Telugu script
 
 2. ALL NUMBERS MUST BE WRITTEN AS TELUGU WORDS (CRITICAL — NO DIGITS ALLOWED):
-   • PHONE NUMBERS: ${segmentCount === 2 ? `DO NOT write the contact number in the script. Instead, use this phrase: "స్క్రీన్ పై వున్న నంబర్ ని ఇప్పుడే సంప్రదించండి" (meaning: contact the number shown on screen now)` : `Spell out as Telugu words for EACH DIGIT:
+   • PHONE NUMBERS: ${segmentCount === 2 ? `DO NOT write the contact number in the script. Instead, use this phrase: "స్క్రీన్ పై వున్న నంబర్ ని ఇప్పుడే సంప్రదించండి" (meaning: contact the number shown on screen now)` : `Group phone digits in PAIRS or TRIPLETS for natural speaking rhythm — NEVER read individual digits one by one.
      0 → జీరో, 1 → వన్, 2 → టూ, 3 → త్రీ, 4 → ఫోర్, 5 → ఫైవ్, 6 → సిక్స్, 7 → సెవెన్, 8 → ఎయిట్, 9 → నైన్
-     Group phone digits in natural speaking rhythm: "నైన్, ఎయిట్, ఫోర్, నైన్, ఎయిట్... త్రీ, ఫోర్, వన్, జీరో, ఫైవ్."`}
+     
+     CRITICAL GROUPING RULE: Read digits in groups of 2-3 for easy memorization, NOT one at a time.
+     Example: For 9876543210 → read as "నైన్ ఎయిట్, సెవెన్ సిక్స్ ఫైవ్, ఫోర్ త్రీ టూ వన్ జీరో" (98, 765, 43210)
+     Example: For 7893456120 → read as "సెవెన్ ఎయిట్, నైన్ త్రీ ఫోర్, ఫైవ్ సిక్స్ వన్, టూ జీరో" (78, 934, 561, 20)
+     
+     PAUSE between each group (marked by comma). This makes the number EASY TO LISTEN and REMEMBER.
+     NEVER say digits one by one like "నైన్... ఎయిట్... సెవెన్... సిక్స్..." — always group them.`}
    • YEARS in Telugu words: 2025 → రెండు వేల ఇరవై ఐదు, 10 years → పది సంవత్సరాలు
    • COUNTS/QUANTITIES in Telugu words: 50 → యాభై, 100 → వంద, 1000 → వెయ్యి, 5000 → ఐదు వేలు
    • PRICES in Telugu words: ₹999 → తొమ్మిది వందల తొంభై తొమ్మిది రూపాయలు, ₹50 → యాభై రూపాయలు
@@ -1510,7 +1516,7 @@ Before outputting, verify:
 ✓ ZERO English alphabet anywhere — everything in Telugu script
 ✓ ZERO special characters (no hyphens, ampersands, slashes, brackets, etc.)
 ✓ ALL numbers written as Telugu WORDS not digits
-✓ ${segmentCount === 2 ? 'Contact number replaced with "స్క్రీన్ పై వున్న నంబర్ ని ఇప్పుడే సంప్రదించండి"' : 'Phone numbers spelled as Telugu word-digits (నైన్, ఎయిట్, ఫోర్...)'}
+✓ ${segmentCount === 2 ? 'Contact number replaced with "స్క్రీన్ పై వున్న నంబర్ ని ఇప్పుడే సంప్రదించండి"' : 'Phone numbers read in GROUPS of 2-3 digits (e.g., "నైన్ ఎయిట్, సెవెన్ సిక్స్ ఫైవ్, ఫోర్ త్రీ టూ వన్ జీరో") — NEVER individual digits'}
 ✓ Each clip is 12-18 words max (speakable in 6-7 seconds leaving visual time)
 ✓ Modern conversational Telugu — no archaic words
 ✓ Brand name mentioned 2-3 times naturally
