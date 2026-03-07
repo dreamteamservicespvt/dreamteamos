@@ -16,17 +16,17 @@ import type { WorkAssignment, AppUser } from '@/types';
 
 const DURATIONS: Record<string, string[]> = {
   wishes: ['20s', '40s'],
-  promotional: ['16s', '32s', '45s', '64s'],
-  cinematic: ['16s', '32s', '45s', '64s'],
+  promotional: ['16s', '32s', '48s', '64s'],
+  cinematic: ['16s', '32s', '48s', '64s'],
 };
 
 const CLIP_COUNTS: Record<string, number> = {
-  '16s': 2, '32s': 4, '45s': 6, '64s': 8,
+  '16s': 2, '32s': 4, '48s': 6, '64s': 8,
   '20s': 2, '40s': 4,
 };
 
 const HAS_POSTER: Record<string, boolean> = {
-  '16s': false, '32s': true, '45s': true, '64s': true,
+  '16s': false, '32s': true, '48s': true, '64s': true,
   '20s': false, '40s': false,
 };
 

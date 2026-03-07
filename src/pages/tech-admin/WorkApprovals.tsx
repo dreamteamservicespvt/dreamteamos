@@ -275,7 +275,7 @@ export default function WorkApprovals() {
                     <div className="space-y-1">
                       {sub.items?.map((item, idx) => {
                         const unitPrice = item.pricePerUnit || (
-                          ({ wishes: { "20s": 499, "40s": 999 }, promotional: { "16s": 999, "32s": 1499, "45s": 1999, "64s": 2999 }, cinematic: { "16s": 1499, "32s": 2499, "45s": 3499, "64s": 4999 } } as any)[item.type]?.[item.duration] || 0
+                          ({ wishes: { "20s": 499, "40s": 999 }, promotional: { "16s": 499, "32s": 999, "48s": 1499, "64s": 1999 }, cinematic: { "16s": 998, "32s": 1998, "48s": 2998, "64s": 3998 } } as any)[item.type]?.[item.duration] || 0
                         );
                         return (
                           <div key={idx} className="flex items-center justify-between text-xs">

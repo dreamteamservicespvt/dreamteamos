@@ -19,8 +19,8 @@ const WORK_TYPES = ["wishes", "promotional", "cinematic"] as const;
 
 const DURATIONS: Record<string, string[]> = {
   wishes: ["20s", "40s"],
-  promotional: ["15s", "30s", "45s", "60s", "custom"],
-  cinematic: ["15s", "30s", "45s", "60s", "custom"],
+  promotional: ["15s", "30s", "48s", "60s", "custom"],
+  cinematic: ["15s", "30s", "48s", "60s", "custom"],
 };
 
 interface WorkRow {
