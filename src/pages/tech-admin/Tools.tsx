@@ -1,16 +1,21 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import {
   Wrench, Sparkles, Timer, Upload, FileText, Image as ImageIcon,
   Loader2, Copy, Check, ArrowRight, ClipboardList, X, History, User,
   Building2, Calendar, ChevronDown, ChevronRight, Video, PenTool, Search
 } from 'lucide-react';
 import AIPlatformApp from '@/components/ai-platform/AIPlatformApp';
-import { extractScriptFromImage, analyzeScriptDuration, type ScriptAnalysis } from '@/services/geminiService';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { extractScriptFromImage, analyzeScriptDuration, extractBusinessNameFromInfo, type ScriptAnalysis } from '@/services/geminiService';
 import { db } from '@/services/firebase';
 import type { SavedGeneration } from '@/components/ai-platform/SavedItems';
+import { useFirestoreCollection } from '@/hooks/useFirestore';
+import { useAuthStore } from '@/store/authStore';
+import type { AppUser } from '@/types';
+import { format, subDays, startOfDay } from 'date-fns';
+import DashboardDayPicker from '@/components/dashboard/DayPicker';
 
 export default function Tools() {
+  const user = useAuthStore(s => s.user);
   const [activeTab, setActiveTab] = useState<'home' | 'ai-platform' | 'script-checker' | 'history'>('home');
   const [scriptInput, setScriptInput] = useState('');
   const [scriptImage, setScriptImage] = useState<File | null>(null);
@@ -22,49 +27,103 @@ export default function Tools() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // History state
-  const [historyItems, setHistoryItems] = useState<SavedGeneration[]>([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
+  const { data: allGenerations, loading: loadingHistory } = useFirestoreCollection<SavedGeneration>('ai_generations');
+  const { data: allUsers } = useFirestoreCollection<AppUser>('users');
   const [historySearch, setHistorySearch] = useState('');
   const [viewingItem, setViewingItem] = useState<SavedGeneration | null>(null);
   const [copiedHistorySection, setCopiedHistorySection] = useState<string | null>(null);
   const [expandedHistorySections, setExpandedHistorySections] = useState<Record<string, boolean>>({});
+  const [dayFilter, setDayFilter] = useState<string>('0'); // default to Today
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
 
-  const loadHistory = async () => {
-    setLoadingHistory(true);
-    try {
-      const snap = await getDocs(collection(db, 'ai_generations'));
-      const items: SavedGeneration[] = snap.docs.map(d => ({ id: d.id, ...d.data() } as SavedGeneration));
-      items.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-      setHistoryItems(items);
-    } catch (e) {
-      console.error('Failed to load history:', e);
-    } finally {
-      setLoadingHistory(false);
+  // 5-day labels
+  const recentDays = useMemo(() => {
+    const days: { date: Date; dateStr: string; label: string }[] = [];
+    for (let i = 0; i < 5; i++) {
+      const d = subDays(new Date(), i);
+      const today = startOfDay(new Date());
+      const target = startOfDay(d);
+      const diffMs = today.getTime() - target.getTime();
+      const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+      const label = diffDays === 0 ? 'Today' : diffDays === 1 ? 'Yesterday' : `${diffDays} days ago`;
+      days.push({ date: startOfDay(d), dateStr: format(d, 'yyyy-MM-dd'), label });
     }
+    return days;
+  }, []);
+
+  // Members who are tech_member or admin
+  const historyMembers = useMemo(() => {
+    return allUsers.filter(u => u.role === 'tech_member' || u.role === 'tech_admin');
+  }, [allUsers]);
+
+  // Filter generations by date
+  const dateFilteredGenerations = useMemo(() => {
+    let items = [...allGenerations].sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+
+    // Date filtering
+    if (selectedDate) {
+      const dateStr = format(selectedDate, 'yyyy-MM-dd');
+      items = items.filter(item => {
+        if (!item.createdAt) return false;
+        const d = item.createdAt.toDate ? item.createdAt.toDate() : new Date(item.createdAt);
+        return format(d, 'yyyy-MM-dd') === dateStr;
+      });
+    } else if (dayFilter !== 'all') {
+      const dayIndex = parseInt(dayFilter);
+      const dayDateStr = recentDays[dayIndex]?.dateStr;
+      if (dayDateStr) {
+        items = items.filter(item => {
+          if (!item.createdAt) return false;
+          const d = item.createdAt.toDate ? item.createdAt.toDate() : new Date(item.createdAt);
+          return format(d, 'yyyy-MM-dd') === dayDateStr;
+        });
+      }
+    }
+
+    return items;
+  }, [allGenerations, selectedDate, dayFilter, recentDays]);
+
+  // Group by userId for member cards
+  const memberGenerationCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    dateFilteredGenerations.forEach(item => {
+      counts[item.userId] = (counts[item.userId] || 0) + 1;
+    });
+    return counts;
+  }, [dateFilteredGenerations]);
+
+  // Filtered items for selected member + search
+  const filteredHistory = useMemo(() => {
+    let items = selectedMemberId
+      ? dateFilteredGenerations.filter(item => item.userId === selectedMemberId)
+      : dateFilteredGenerations;
+
+    if (historySearch.trim()) {
+      const s = historySearch.toLowerCase();
+      items = items.filter(item =>
+        (item.businessName || '').toLowerCase().includes(s) ||
+        (item.userName || '').toLowerCase().includes(s) ||
+        (item.businessType || '').toLowerCase().includes(s) ||
+        (item.festivalName || '').toLowerCase().includes(s)
+      );
+    }
+
+    return items;
+  }, [dateFilteredGenerations, selectedMemberId, historySearch]);
+
+  // Resolve business name: prefer stored field, then re-extract from businessInfo for old records
+  const getBusinessName = (item: SavedGeneration) => {
+    if (item.businessName && item.businessName !== 'Untitled') return item.businessName;
+    if (item.businessInfo) return extractBusinessNameFromInfo(item.businessInfo) || 'Untitled';
+    return item.businessName || 'Untitled';
   };
-
-  useEffect(() => {
-    if (activeTab === 'history' && historyItems.length === 0) {
-      loadHistory();
-    }
-  }, [activeTab]);
 
   const formatDate = (timestamp: any) => {
     if (!timestamp) return 'Unknown';
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
-
-  const filteredHistory = historyItems.filter(item => {
-    if (!historySearch.trim()) return true;
-    const s = historySearch.toLowerCase();
-    return (
-      (item.businessName || '').toLowerCase().includes(s) ||
-      (item.userName || '').toLowerCase().includes(s) ||
-      (item.businessType || '').toLowerCase().includes(s) ||
-      (item.festivalName || '').toLowerCase().includes(s)
-    );
-  });
 
   const handleCopyHistorySection = (key: string, content: string | string[]) => {
     const text = Array.isArray(content) ? content.join('\n\n---\n\n') : content;
@@ -355,72 +414,138 @@ export default function Tools() {
 
       {activeTab === 'history' && !viewingItem && (
         <div className="space-y-4">
-          <button onClick={() => setActiveTab('home')}
+          <button onClick={() => { if (selectedMemberId) { setSelectedMemberId(null); } else { setActiveTab('home'); } }}
             className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
             <ArrowRight className="w-4 h-4 rotate-180" />
-            <span>Back to Tools</span>
+            <span>{selectedMemberId ? 'Back to Members' : 'Back to Tools'}</span>
           </button>
 
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <History className="w-5 h-5 text-amber-600" />
-              <h2 className="font-semibold text-foreground">Ad Generation History</h2>
-              <span className="text-xs text-muted-foreground">({filteredHistory.length} records)</span>
-            </div>
-            <div className="relative w-full sm:w-64">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input
-                type="text" placeholder="Search by name, member..."
-                value={historySearch} onChange={(e) => setHistorySearch(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 outline-none" />
+          {/* Header + Filters */}
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <History className="w-5 h-5 text-amber-600" />
+                <h2 className="font-semibold text-foreground">Ad Generation History</h2>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {!selectedDate && (
+                  <select value={dayFilter} onChange={(e) => setDayFilter(e.target.value)}
+                    className="border rounded-lg px-2 py-1.5 text-xs bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none">
+                    {recentDays.map((d, i) => (
+                      <option key={d.dateStr} value={String(i)}>{d.label} ({format(d.date, 'dd/MM')})</option>
+                    ))}
+                    <option value="all">All Days</option>
+                  </select>
+                )}
+                <DashboardDayPicker selectedDate={selectedDate} onSelect={(d) => { setSelectedDate(d); if (d) setDayFilter('0'); }} />
+                {selectedDate && (
+                  <button onClick={() => setSelectedDate(undefined)} className="text-xs text-muted-foreground hover:text-foreground">Clear</button>
+                )}
+              </div>
             </div>
           </div>
 
-          {loadingHistory ? (
-            <div className="bg-card border border-border rounded-xl p-12 text-center">
-              <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground">Loading generation history...</p>
-            </div>
-          ) : filteredHistory.length === 0 ? (
-            <div className="bg-card border border-border rounded-xl p-12 text-center">
-              <History className="w-12 h-12 mx-auto mb-3 text-muted-foreground opacity-20" />
-              <h3 className="text-sm font-medium text-muted-foreground mb-1">No History Found</h3>
-              <p className="text-xs text-muted-foreground">
-                {historySearch ? 'No results match your search.' : 'Ad generations will appear here once team members start creating ads.'}
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {filteredHistory.map(item => (
-                <button key={item.id} onClick={() => { setViewingItem(item); setExpandedHistorySections({}); }}
-                  className="w-full bg-card border border-border rounded-xl p-4 text-left hover:border-primary/40 hover:shadow transition-all group">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-semibold text-foreground truncate">{item.businessName || 'Untitled'}</h3>
-                        {item.creationMode && (
-                          <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
-                            {item.creationMode === 'video' ? 'Video' : 'Poster'}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                        {item.userName && (
-                          <span className="flex items-center gap-1"><User className="w-3 h-3" />{item.userName}</span>
-                        )}
-                        <span className="flex items-center gap-1"><Building2 className="w-3 h-3" />{item.businessType || 'Business'}</span>
-                        {item.festivalName && (
-                          <span className="text-purple-600 dark:text-purple-400">{item.festivalName}</span>
-                        )}
-                        <span>{item.duration}s</span>
-                        <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{formatDate(item.createdAt)}</span>
-                      </div>
+          {/* Member Cards or Member's History */}
+          {!selectedMemberId ? (
+            <>
+              {loadingHistory ? (
+                <div className="bg-card border border-border rounded-xl p-12 text-center">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-3" />
+                  <p className="text-sm text-muted-foreground">Loading history...</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {historyMembers.filter(m => memberGenerationCounts[m.uid] > 0).length === 0 ? (
+                    <div className="col-span-full bg-card border border-border rounded-xl p-12 text-center">
+                      <History className="w-12 h-12 mx-auto mb-3 text-muted-foreground opacity-20" />
+                      <h3 className="text-sm font-medium text-muted-foreground mb-1">No Generations Found</h3>
+                      <p className="text-xs text-muted-foreground">No ad generations for this period.</p>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0 group-hover:translate-x-0.5 transition-transform" />
-                  </div>
-                </button>
-              ))}
-            </div>
+                  ) : (
+                    historyMembers
+                      .filter(m => memberGenerationCounts[m.uid] > 0)
+                      .sort((a, b) => (memberGenerationCounts[b.uid] || 0) - (memberGenerationCounts[a.uid] || 0))
+                      .map(member => (
+                        <button key={member.uid} onClick={() => setSelectedMemberId(member.uid)}
+                          className="bg-card border border-border rounded-xl p-4 text-left hover:border-primary/40 hover:shadow-md transition-all group">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center font-display font-bold text-amber-700 dark:text-amber-400 text-sm shrink-0">
+                              {member.name?.charAt(0)?.toUpperCase() || '?'}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <span className="text-sm font-semibold text-foreground truncate block group-hover:text-primary transition-colors">{member.name}</span>
+                              <span className="text-xs text-muted-foreground capitalize">{member.role?.replace('_', ' ')}</span>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-lg font-bold text-primary">{memberGenerationCounts[member.uid] || 0}</span>
+                              <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
+                            </div>
+                          </div>
+                        </button>
+                      ))
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              {/* Selected member header */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setSelectedMemberId(null)} className="text-xs text-primary hover:underline">← All Members</button>
+                  <span className="text-sm font-semibold text-foreground">
+                    {historyMembers.find(m => m.uid === selectedMemberId)?.name || 'Member'}
+                  </span>
+                  <span className="text-xs text-muted-foreground">({filteredHistory.length} records)</span>
+                </div>
+                <div className="relative w-full sm:w-64">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    type="text" placeholder="Search by name, type..."
+                    value={historySearch} onChange={(e) => setHistorySearch(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 outline-none" />
+                </div>
+              </div>
+
+              {filteredHistory.length === 0 ? (
+                <div className="bg-card border border-border rounded-xl p-12 text-center">
+                  <History className="w-12 h-12 mx-auto mb-3 text-muted-foreground opacity-20" />
+                  <h3 className="text-sm font-medium text-muted-foreground mb-1">No History Found</h3>
+                  <p className="text-xs text-muted-foreground">
+                    {historySearch ? 'No results match your search.' : 'No generations for this member in this period.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {filteredHistory.map(item => (
+                    <button key={item.id} onClick={() => { setViewingItem(item); setExpandedHistorySections({}); }}
+                      className="w-full bg-card border border-border rounded-xl p-4 text-left hover:border-primary/40 hover:shadow transition-all group">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className="font-semibold text-foreground truncate">{getBusinessName(item)}</h3>
+                            {item.creationMode && (
+                              <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
+                                {item.creationMode === 'video' ? 'Video' : 'Poster'}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1"><Building2 className="w-3 h-3" />{item.businessType || 'Business'}</span>
+                            {item.festivalName && (
+                              <span className="text-purple-600 dark:text-purple-400">{item.festivalName}</span>
+                            )}
+                            <span>{item.duration}s</span>
+                            <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{formatDate(item.createdAt)}</span>
+                          </div>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0 group-hover:translate-x-0.5 transition-transform" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -430,12 +555,12 @@ export default function Tools() {
           <button onClick={() => setViewingItem(null)}
             className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
             <ArrowRight className="w-4 h-4 rotate-180" />
-            <span>Back to History</span>
+            <span>Back to {historyMembers.find(m => m.uid === selectedMemberId)?.name || 'History'}</span>
           </button>
 
           {/* Header */}
           <div className="bg-card border border-border rounded-xl p-5">
-            <h2 className="text-lg font-bold text-foreground mb-1">{viewingItem.businessName || 'Untitled'}</h2>
+            <h2 className="text-lg font-bold text-foreground mb-1">{getBusinessName(viewingItem)}</h2>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
               {viewingItem.userName && (
                 <span className="flex items-center gap-1"><User className="w-3.5 h-3.5" />{viewingItem.userName}</span>

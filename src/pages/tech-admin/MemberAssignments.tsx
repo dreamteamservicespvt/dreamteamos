@@ -50,7 +50,7 @@ export default function MemberAssignments() {
   const [dayFilter, setDayFilter] = useState<string>('0');
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<{ category: string; duration: string; pricePerUnit: number; clientName: string } | null>(null);
+  const [editForm, setEditForm] = useState<{ category: string; duration: string; pricePerUnit: number; businessName: string } | null>(null);
   const [confirmAction, setConfirmAction] = useState<{ type: 'delete' | 'sendback'; id: string; assignedTo?: string; title: string } | null>(null);
 
   const member = useMemo(() => allUsers.find(u => u.uid === memberId), [allUsers, memberId]);
@@ -103,7 +103,7 @@ export default function MemberAssignments() {
     if (!searchQuery.trim()) return memberAssignments;
     const q = searchQuery.toLowerCase();
     return memberAssignments.filter(a =>
-      a.clientName?.toLowerCase().includes(q) ||
+      (a.businessName || a.clientName)?.toLowerCase().includes(q) ||
       a.displayTitle?.toLowerCase().includes(q) ||
       a.uniqueId?.toLowerCase().includes(q) ||
       a.category?.toLowerCase().includes(q)
@@ -193,7 +193,7 @@ export default function MemberAssignments() {
 
   const handleStartEdit = (a: WorkAssignment) => {
     setEditingId(a.id);
-    setEditForm({ category: a.category, duration: a.duration, pricePerUnit: a.pricePerUnit, clientName: a.clientName || '' });
+    setEditForm({ category: a.category, duration: a.duration, pricePerUnit: a.pricePerUnit, businessName: a.businessName || a.clientName || '' });
   };
 
   const handleSaveEdit = async () => {
@@ -206,7 +206,7 @@ export default function MemberAssignments() {
         pricePerUnit: editForm.pricePerUnit,
         clipCount: clips,
         totalPrice: editForm.pricePerUnit,
-        clientName: editForm.clientName.trim(),
+        businessName: editForm.businessName.trim(),
       });
       setEditingId(null);
       setEditForm(null);
@@ -288,7 +288,7 @@ export default function MemberAssignments() {
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 flex-wrap">
         <div className="relative flex-1 min-w-0">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <input type="text" placeholder="Search by client name, ID, category..."
+          <input type="text" placeholder="Search by business name, ID, category..."
             value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none" />
         </div>
@@ -346,9 +346,9 @@ export default function MemberAssignments() {
                 {a.status.replace('_', ' ')}
               </span>
               <span className="font-mono text-xs text-muted-foreground">{a.uniqueId}</span>
-              {a.clientName && (
+              {(a.businessName || a.clientName) && (
                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-primary/10 text-primary font-medium">
-                  {a.clientName}
+                  {a.businessName || a.clientName}
                 </span>
               )}
               <span className="text-[10px] text-muted-foreground ml-auto">{a.date}</span>
@@ -376,8 +376,8 @@ export default function MemberAssignments() {
                     <input type="number" value={editForm.pricePerUnit} onChange={(e) => setEditForm(prev => prev ? { ...prev, pricePerUnit: parseInt(e.target.value) || 0 } : prev)}
                       className="w-20 border rounded px-2 py-1 text-xs bg-background text-foreground border-border" />
                   </div>
-                  <input type="text" placeholder="Client name" value={editForm.clientName}
-                    onChange={(e) => setEditForm(prev => prev ? { ...prev, clientName: e.target.value } : prev)}
+                  <input type="text" placeholder="Business name" value={editForm.businessName}
+                    onChange={(e) => setEditForm(prev => prev ? { ...prev, businessName: e.target.value } : prev)}
                     className="w-32 border rounded px-2 py-1 text-xs bg-background text-foreground border-border placeholder:text-muted-foreground" />
                   <span className="text-xs text-muted-foreground">= {formatCurrency(editForm.pricePerUnit)}</span>
                   <button onClick={handleSaveEdit} className="flex items-center space-x-1 px-2 py-1 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded transition-colors">
@@ -425,7 +425,7 @@ export default function MemberAssignments() {
                   </button>
                 )}
                 {(a.status === 'completed' || a.status === 'verified') && (
-                  <button onClick={() => setConfirmAction({ type: 'sendback', id: a.id, assignedTo: a.assignedTo, title: a.clientName || a.displayTitle })}
+                    <button onClick={() => setConfirmAction({ type: 'sendback', id: a.id, assignedTo: a.assignedTo, title: a.businessName || a.clientName || a.displayTitle })}
                     className="flex items-center space-x-1 px-2.5 py-1 text-[10px] md:text-xs font-medium bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:hover:bg-orange-900/50 rounded-lg transition-colors">
                     <Edit3 className="w-3 h-3 md:w-3.5 md:h-3.5" /><span>Send Back</span>
                   </button>
@@ -442,7 +442,7 @@ export default function MemberAssignments() {
                     <Pencil className="w-3 h-3 md:w-3.5 md:h-3.5" /><span>Edit</span>
                   </button>
                 )}
-                <button onClick={() => setConfirmAction({ type: 'delete', id: a.id, title: a.clientName || a.displayTitle })}
+                <button onClick={() => setConfirmAction({ type: 'delete', id: a.id, title: a.businessName || a.clientName || a.displayTitle })}
                   className="flex items-center space-x-1 px-2.5 py-1 text-[10px] md:text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 rounded-lg transition-colors">
                   <Trash2 className="w-3 h-3 md:w-3.5 md:h-3.5" /><span>Delete</span>
                 </button>

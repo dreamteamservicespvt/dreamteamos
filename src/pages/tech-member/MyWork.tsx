@@ -121,6 +121,8 @@ export default function MyWork() {
 
   const handleBusinessNameExtracted = async (name: string) => {
     if (!openAssignment) return;
+    // Don't overwrite admin-provided business name
+    if (openAssignment.businessName || openAssignment.clientName) return;
     try {
       await updateDoc(doc(db, 'work_assignments', openAssignment.id), {
         businessName: name,

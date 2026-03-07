@@ -72,7 +72,7 @@ export default function WorkAssign() {
   const [dayFilter, setDayFilter] = useState<string>('all');
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<{ category: string; duration: string; pricePerUnit: number; clientName: string } | null>(null);
+  const [editForm, setEditForm] = useState<{ category: string; duration: string; pricePerUnit: number; businessName: string } | null>(null);
   const [memberSearch, setMemberSearch] = useState('');
   const [confirmAction, setConfirmAction] = useState<{ type: 'delete' | 'sendback'; id: string; assignedTo?: string; title: string } | null>(null);
   const [workloadSearch, setWorkloadSearch] = useState('');
@@ -85,6 +85,7 @@ export default function WorkAssign() {
     duration: '20s',
     pricePerUnit: 499,
     clientName: '',
+    businessName: '',
   });
 
   // Auto-open form with pre-selected member from query param
@@ -156,8 +157,8 @@ export default function WorkAssign() {
         totalPrice: form.pricePerUnit,
         uniqueId,
         accessCode,
-        businessName: '',
-        clientName: form.clientName.trim(),
+        businessName: form.businessName.trim(),
+        clientName: form.businessName.trim(),
         displayTitle: `${form.category.charAt(0).toUpperCase() + form.category.slice(1)} - ${uniqueId}`,
         status: 'assigned',
         sessions: [],
@@ -176,7 +177,7 @@ export default function WorkAssign() {
       });
 
       setShowForm(false);
-      setForm({ assignedTo: '', category: 'wishes', duration: '20s', pricePerUnit: 499, clientName: '' });
+      setForm({ assignedTo: '', category: 'wishes', duration: '20s', pricePerUnit: 499, clientName: '', businessName: '' });
       setMemberSearch('');
     } catch (error) {
       console.error('Failed to create assignment:', error);
@@ -270,7 +271,7 @@ export default function WorkAssign() {
 
   const handleStartEdit = (a: WorkAssignment) => {
     setEditingId(a.id);
-    setEditForm({ category: a.category, duration: a.duration, pricePerUnit: a.pricePerUnit, clientName: a.clientName || '' });
+    setEditForm({ category: a.category, duration: a.duration, pricePerUnit: a.pricePerUnit, businessName: a.businessName || a.clientName || '' });
   };
 
   const handleSaveEdit = async () => {
@@ -283,7 +284,7 @@ export default function WorkAssign() {
         pricePerUnit: editForm.pricePerUnit,
         clipCount: clips,
         totalPrice: editForm.pricePerUnit,
-        clientName: editForm.clientName.trim(),
+        businessName: editForm.businessName.trim(),
       });
       setEditingId(null);
       setEditForm(null);
@@ -309,6 +310,7 @@ export default function WorkAssign() {
       const q = searchQuery.toLowerCase();
       result = result.filter(a =>
         a.displayTitle?.toLowerCase().includes(q) ||
+        a.businessName?.toLowerCase().includes(q) ||
         a.businessName?.toLowerCase().includes(q) ||
         a.clientName?.toLowerCase().includes(q) ||
         a.uniqueId?.toLowerCase().includes(q) ||
@@ -347,7 +349,11 @@ export default function WorkAssign() {
         grouped[m.uid] = { member: m, assignments: mAssignments };
       }
     }
-    return Object.values(grouped).sort((a, b) => b.assignments.length - a.assignments.length);
+    return Object.values(grouped).sort((a, b) => {
+      const latestA = Math.max(...a.assignments.map(x => x.assignedAt?.seconds || 0));
+      const latestB = Math.max(...b.assignments.map(x => x.assignedAt?.seconds || 0));
+      return latestB - latestA;
+    });
   }, [filteredAssignments, techMembers]);
 
   // Filter workload by client name search
@@ -355,7 +361,7 @@ export default function WorkAssign() {
     if (!workloadSearch.trim()) return memberWorkload;
     const q = workloadSearch.toLowerCase();
     return memberWorkload.filter(({ assignments: mAsgn }) =>
-      mAsgn.some(a => a.clientName?.toLowerCase().includes(q) || a.displayTitle?.toLowerCase().includes(q))
+      mAsgn.some(a => (a.businessName || a.clientName)?.toLowerCase().includes(q) || a.displayTitle?.toLowerCase().includes(q))
     );
   }, [memberWorkload, workloadSearch]);
 
@@ -484,11 +490,11 @@ export default function WorkAssign() {
                 className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none" />
             </div>
 
-            {/* Client Name */}
+            {/* Business Name */}
             <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">Client Name <span className="text-[10px] text-muted-foreground/60">(optional)</span></label>
-              <input type="text" placeholder="e.g. Sharma Electronics" value={form.clientName}
-                onChange={(e) => setForm(prev => ({ ...prev, clientName: e.target.value }))}
+              <label className="block text-sm font-medium text-muted-foreground mb-1">Business Name <span className="text-[10px] text-muted-foreground/60">(optional)</span></label>
+              <input type="text" placeholder="e.g. Sharma Electronics" value={form.businessName}
+                onChange={(e) => setForm(prev => ({ ...prev, businessName: e.target.value }))}
                 className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none" />
             </div>
           </div>
@@ -582,19 +588,19 @@ export default function WorkAssign() {
           </div>
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-            <input type="text" placeholder="Search by client name..." value={workloadSearch}
+            <input type="text" placeholder="Search by business name..." value={workloadSearch}
               onChange={e => setWorkloadSearch(e.target.value)}
               className="w-full pl-8 pr-3 py-1.5 text-xs bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50" />
           </div>
         </div>
         {filteredWorkload.length === 0 ? (
           <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-            {workloadSearch.trim() ? 'No members match this client name.' : 'No active assignments today.'}
+            {workloadSearch.trim() ? 'No members match this business name.' : 'No active assignments today.'}
           </div>
         ) : (
           <div className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {filteredWorkload.map(({ member, assignments: mAsgn }) => {
-              const clientNames = [...new Set(mAsgn.map(a => a.clientName).filter(Boolean))];
+              const businessNames = [...new Set(mAsgn.map(a => a.businessName || a.clientName).filter(Boolean))];
               const totalMemberPrice = mAsgn.reduce((s, a) => s + a.totalPrice, 0);
               return (
                 <button key={member.uid}
@@ -616,15 +622,15 @@ export default function WorkAssign() {
                     </div>
                     <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0" />
                   </div>
-                  {clientNames.length > 0 && (
+                  {businessNames.length > 0 && (
                     <div className="flex flex-wrap gap-1 mb-2">
-                      {clientNames.slice(0, 3).map(name => (
+                      {businessNames.slice(0, 3).map(name => (
                         <span key={name} className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] bg-primary/10 text-primary font-medium truncate max-w-[140px]">
                           {name}
                         </span>
                       ))}
-                      {clientNames.length > 3 && (
-                        <span className="text-[10px] text-muted-foreground">+{clientNames.length - 3} more</span>
+                      {businessNames.length > 3 && (
+                        <span className="text-[10px] text-muted-foreground">+{businessNames.length - 3} more</span>
                       )}
                     </div>
                   )}
@@ -687,8 +693,8 @@ export default function WorkAssign() {
                       <input type="number" value={editForm.pricePerUnit} onChange={(e) => setEditForm(prev => prev ? { ...prev, pricePerUnit: parseInt(e.target.value) || 0 } : prev)}
                         className="w-20 border rounded px-2 py-1 text-xs bg-background text-foreground border-border" />
                     </div>
-                    <input type="text" placeholder="Client name" value={editForm.clientName}
-                      onChange={(e) => setEditForm(prev => prev ? { ...prev, clientName: e.target.value } : prev)}
+                    <input type="text" placeholder="Business name" value={editForm.businessName}
+                      onChange={(e) => setEditForm(prev => prev ? { ...prev, businessName: e.target.value } : prev)}
                       className="w-32 border rounded px-2 py-1 text-xs bg-background text-foreground border-border placeholder:text-muted-foreground" />
                     <span className="text-xs text-muted-foreground">= {formatCurrency(editForm.pricePerUnit)}</span>
                     <button onClick={handleSaveEdit} className="flex items-center space-x-1 px-2 py-1 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded transition-colors">
@@ -701,7 +707,7 @@ export default function WorkAssign() {
                 ) : (
                   <div className="flex flex-wrap gap-x-3 md:gap-x-4 gap-y-1 text-xs md:text-sm text-muted-foreground">
                     <span>Assigned to: <strong className="text-foreground">{getMemberName(a.assignedTo)}</strong></span>
-                    {a.clientName && <span>Client: <strong className="text-foreground">{a.clientName}</strong></span>}
+                    {(a.businessName || a.clientName) && <span>Business: <strong className="text-foreground">{a.businessName || a.clientName}</strong></span>}
                     <span>Category: <strong className="capitalize text-foreground">{a.category}</strong></span>
                     <span>{a.clipCount} clips + EC · {a.duration}</span>
                     <span>Price: <strong className="text-foreground">{formatCurrency(a.totalPrice)}</strong></span>

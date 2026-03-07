@@ -3,7 +3,13 @@ import { Bookmark, Trash2, ChevronRight, Calendar, Building2, PartyPopper, Loade
 import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
 import { deleteDoc, doc } from 'firebase/firestore';
-import { db } from '@/services/firebase';
+import { extractBusinessNameFromInfo } from '@/services/geminiService';
+
+const getBusinessName = (item: SavedGeneration) => {
+  if (item.businessName && item.businessName !== 'Untitled') return item.businessName;
+  if (item.businessInfo) return extractBusinessNameFromInfo(item.businessInfo) || 'Untitled';
+  return item.businessName || 'Untitled';
+};
 
 export interface SavedGeneration {
   id?: string;
@@ -103,7 +109,7 @@ export const SavedItems: React.FC<SavedItemsProps> = ({ items, onSelect, onDelet
                     )}>
                     {deletingId === item.id ? <Loader2 className="w-4 h-4 text-slate-400 animate-spin" /> : <Trash2 className="w-4 h-4 text-red-500" />}
                   </button>
-                  <h3 className={cn("font-semibold mb-1 pr-8 truncate", isDark ? "text-white" : "text-slate-800")}>{item.businessName || 'Untitled'}</h3>
+                  <h3 className={cn("font-semibold mb-1 pr-8 truncate", isDark ? "text-white" : "text-slate-800")}>{getBusinessName(item)}</h3>
                   {item.userName && (
                     <p className={cn("text-xs mb-2 flex items-center gap-1", isDark ? "text-slate-400" : "text-slate-500")}>
                       <User className="w-3 h-3" />{item.userName}

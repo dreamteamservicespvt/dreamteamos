@@ -10,7 +10,7 @@ import { FileUpload } from './FileUpload';
 import { GeneratedCard } from './GeneratedCard';
 import { SavedItems, SavedGeneration } from './SavedItems';
 import { AdFormData, AdType, AttireType, FileStore, GeneratedOutputs, GenerationStatus } from '@/types/aiPlatform';
-import { generateAdAssets, extractBusinessOnly, generateStockImagePrompts, refineSection, SectionType } from '@/services/geminiService';
+import { generateAdAssets, extractBusinessOnly, generateStockImagePrompts, refineSection, SectionType, extractBusinessNameFromInfo } from '@/services/geminiService';
 import { collection, addDoc, getDocs, query, where, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/services/firebase';
 import { useAuthStore } from '@/store/authStore';
@@ -110,9 +110,9 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   // Extract business name whenever outputs change
   useEffect(() => {
     if (outputs?.businessInfo && onBusinessNameExtracted) {
-      const name = outputs.businessInfo?.businessName || outputs.businessInfo?.name;
-      if (name && typeof name === 'string' && name.trim()) {
-        onBusinessNameExtracted(name.trim());
+      const name = extractBusinessNameFromInfo(outputs.businessInfo);
+      if (name) {
+        onBusinessNameExtracted(name);
       }
     }
   }, [outputs?.businessInfo]);
@@ -137,7 +137,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     if (!user || !outputs) return;
     setIsSaving(true);
     try {
-      const businessName = outputs.businessInfo?.businessName || outputs.businessInfo?.name || 'Untitled';
+      const businessName = extractBusinessNameFromInfo(outputs.businessInfo) || 'Untitled';
       const businessType = outputs.businessInfo?.businessType || outputs.businessInfo?.type || 'Business';
       const docRef = await addDoc(collection(db, 'ai_generations'), {
         userId: user.uid,
@@ -275,7 +275,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       // Auto-save to history
       if (user) {
         try {
-          const bName = generatedResult.businessInfo?.businessName || generatedResult.businessInfo?.name || 'Untitled';
+          const bName = extractBusinessNameFromInfo(generatedResult.businessInfo) || 'Untitled';
           const bType = generatedResult.businessInfo?.businessType || generatedResult.businessInfo?.type || 'Business';
           const autoSaveRef = await addDoc(collection(db, 'ai_generations'), {
             userId: user.uid,
@@ -439,10 +439,10 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
 
                   {/* Text Instructions */}
                   <div>
-                    <label className={cn("block text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>Client Messages / Text Instructions</label>
+                    <label className={cn("block text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>Business Messages / Text Instructions</label>
                     <textarea className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none mb-2",
                         isDark ? "bg-slate-700 border-slate-600 text-slate-200 placeholder-slate-500 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200"
-                      )} rows={4} placeholder="Paste client's messages, requirements, offers..."
+                      )} rows={4} placeholder="Paste business messages, requirements, offers..."
                       value={formData.textInstructions} onChange={(e) => setFormData(prev => ({ ...prev, textInstructions: e.target.value }))} />
                     <FileUpload label="" accept=".txt,.pdf,.doc,.docx" onChange={(f) => setFiles(prev => ({ ...prev, textInstructionsFile: f as File }))} helperText="Or upload a text/PDF file" />
                   </div>
@@ -594,14 +594,14 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     <div>
                       <label className={cn("flex items-center gap-2 text-sm font-semibold cursor-pointer", isDark ? "text-slate-300" : "text-slate-700")}>
                         <input type="checkbox" checked={useCustomScript} onChange={(e) => setUseCustomScript(e.target.checked)} className="rounded border-slate-300" />
-                        Use Custom Script (Client-Provided)
+                        Use Custom Script (Business-Provided)
                       </label>
                       {useCustomScript && (
                         <div className="mt-2">
                           <textarea
                             className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
                               isDark ? "bg-slate-700 border-slate-600 text-slate-200 placeholder-slate-500 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200"
-                            )} rows={6} placeholder="Paste the client's raw script here... It will be split into 8-second clips automatically and used for VEO prompts generation."
+                            )} rows={6} placeholder="Paste the business's raw script here... It will be split into 8-second clips automatically and used for VEO prompts generation."
                             value={customScript} onChange={(e) => setCustomScript(e.target.value)} />
                           {(() => {
                             const wordCount = customScript.trim().split(/\s+/).filter(Boolean).length;

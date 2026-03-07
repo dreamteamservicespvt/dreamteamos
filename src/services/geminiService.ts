@@ -1134,3 +1134,46 @@ Output STRICT JSON with no markdown wrapping:
     return { totalDuration: 0, clipCount: 0, clips: [], originalText: scriptText };
   }
 };
+
+// Robustly extract business name from AI-generated businessInfo object
+// Gemini returns inconsistent JSON key names depending on prompt phrasing
+export function extractBusinessNameFromInfo(info: any): string {
+  if (!info || typeof info !== 'object') return '';
+  const invalid = (v: any) => !v || typeof v !== 'string' || v.trim() === '' || /^not\s*provided$/i.test(v.trim());
+
+  // Direct top-level keys
+  for (const key of ['businessName', 'name', 'Business Name', 'business_name', 'BusinessName']) {
+    if (!invalid(info[key])) return info[key].trim();
+  }
+
+  // Nested under identity/business sections
+  for (const section of ['businessIdentity', 'business_identity', 'BUSINESS IDENTITY', 'identity']) {
+    const sub = info[section];
+    if (sub && typeof sub === 'object') {
+      for (const key of ['businessName', 'name', 'Business Name', 'business_name', 'BusinessName']) {
+        if (!invalid(sub[key])) return sub[key].trim();
+      }
+    }
+  }
+
+  // Recursive deep search: any key containing 'business' and 'name' at any depth
+  const deepSearch = (obj: any, depth: number): string => {
+    if (!obj || typeof obj !== 'object' || depth > 6) return '';
+    for (const [key, val] of Object.entries(obj)) {
+      const lk = key.toLowerCase();
+      if (lk.includes('business') && lk.includes('name') && !invalid(val)) return String(val).trim();
+      // Also check for just 'name' at deeper levels within business sections
+      if (depth > 0 && (lk === 'name' || lk === 'businessname') && !invalid(val)) return String(val).trim();
+    }
+    // Recurse into nested objects
+    for (const val of Object.values(obj)) {
+      if (val && typeof val === 'object' && !Array.isArray(val)) {
+        const found = deepSearch(val, depth + 1);
+        if (found) return found;
+      }
+    }
+    return '';
+  };
+
+  return deepSearch(info, 0);
+}
