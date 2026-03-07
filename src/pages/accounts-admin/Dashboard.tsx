@@ -13,7 +13,7 @@ export default function AccountsDashboard() {
   const [members, setMembers] = useState<AppUser[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
   const [leads, setLeads] = useState<any[]>([]);
-  const [submissions, setSubmissions] = useState<any[]>([]);
+  const [assignments, setAssignments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -23,16 +23,16 @@ export default function AccountsDashboard() {
     unsubs.push(onSnapshot(collection(db, "users"), (snap) => { setMembers(snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser))); checkDone(); }));
     unsubs.push(onSnapshot(collection(db, "expenses"), (snap) => { setExpenses(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); checkDone(); }));
     unsubs.push(onSnapshot(collection(db, "leads"), (snap) => { setLeads(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); checkDone(); }));
-    unsubs.push(onSnapshot(collection(db, "work_submissions"), (snap) => { setSubmissions(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); checkDone(); }));
+    unsubs.push(onSnapshot(collection(db, "work_assignments"), (snap) => { setAssignments(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); checkDone(); }));
     return () => unsubs.forEach((u) => u());
   }, []);
 
   const totalSalesRevenue = leads
     .filter((l: any) => l.saleDone && l.saleDetails)
     .reduce((s, l: any) => s + (l.saleDetails?.amount || 0), 0);
-  const totalTechRevenue = submissions
-    .filter((s) => s.status === "approved")
-    .reduce((s, sub) => s + (sub.calculatedRevenue || 0), 0);
+  const totalTechRevenue = assignments
+    .filter((a) => a.status === "verified")
+    .reduce((s, a) => s + (a.totalPrice || 0), 0);
   const totalRevenue = totalSalesRevenue + totalTechRevenue;
   const totalExpenses = expenses.reduce((s, e) => s + (e.amount || 0), 0);
   const totalSalaries = members.reduce((s, m) => s + (m.salary || 0), 0);
@@ -52,10 +52,10 @@ export default function AccountsDashboard() {
 
   // Revenue by date for bar chart (last 7 days)
   const revenueByDate: Record<string, { date: string; sales: number; tech: number }> = {};
-  submissions.filter((s) => s.status === "approved").forEach((s) => {
-    const d = s.date || "unknown";
+  assignments.filter((a) => a.status === "verified").forEach((a) => {
+    const d = a.date || "unknown";
     if (!revenueByDate[d]) revenueByDate[d] = { date: d, sales: 0, tech: 0 };
-    revenueByDate[d].tech += s.calculatedRevenue || 0;
+    revenueByDate[d].tech += a.totalPrice || 0;
   });
   leads.filter((l: any) => l.saleDone && l.saleDetails).forEach((l: any) => {
     const d = l.lastUpdated?.toDate?.() ? l.lastUpdated.toDate().toISOString().slice(0, 10) : "unknown";

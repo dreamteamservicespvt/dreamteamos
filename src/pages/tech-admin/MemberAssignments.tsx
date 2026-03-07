@@ -122,28 +122,6 @@ export default function MemberAssignments() {
         verifiedAt: serverTimestamp(),
         verifiedBy: currentUser.uid,
       });
-      const items = [{
-        type: assignment.category,
-        duration: assignment.duration,
-        quantity: 1,
-        pricePerUnit: assignment.pricePerUnit,
-      }];
-      await addDoc(collection(db, 'work_submissions'), {
-        techMemberId: assignment.assignedTo,
-        submittedAt: serverTimestamp(),
-        date: assignment.completedDate || format(new Date(), 'yyyy-MM-dd'),
-        status: 'approved',
-        approvedBy: currentUser.uid,
-        approvedAt: serverTimestamp(),
-        totalVideos: 1,
-        aiVerificationResult: 'pass',
-        driveFolderUrl: '',
-        screenshotUrl: '',
-        items,
-        calculatedRevenue: assignment.totalPrice,
-        source: 'work_assignment',
-        workAssignmentId: assignment.id,
-      });
       await addDoc(collection(db, 'notifications'), {
         userId: assignment.assignedTo,
         type: 'work_verified',

@@ -24,33 +24,6 @@ export interface AppUser {
   updatedAt: any;
 }
 
-export interface WorkItem {
-  type: "wishes" | "promotional" | "cinematic";
-  duration: string;
-  customDuration?: number | null;
-  quantity: number;
-  pricePerUnit: number;
-  adminApprovedPrice?: number | null;
-}
-
-export interface WorkSubmission {
-  id: string;
-  techMemberId: string;
-  submittedAt: any;
-  date: string;
-  status: "pending" | "approved" | "rejected";
-  approvedBy?: string;
-  approvedAt?: any;
-  totalVideos: number;
-  aiVerificationResult: "pass" | "fail" | "pending";
-  driveFolderUrl: string;
-  screenshotUrl: string;
-  items: WorkItem[];
-  calculatedRevenue: number;
-  source?: "manual" | "work_assignment";
-  workAssignmentId?: string;
-}
-
 // Work Assignment System
 export type WorkAssignmentStatus = "assigned" | "in_progress" | "completed" | "verified" | "editing";
 
@@ -112,4 +85,27 @@ export interface SaleDetail {
   amount: number;
   verificationStatus: "pending" | "verified" | "rejected";
   paymentScreenshotUrl?: string | null;
+}
+
+// Daily Check-in / Check-out System
+export type CheckinStatus = "checked_in" | "pending_approval" | "approved" | "rejected";
+
+export interface DailyCheckin {
+  id: string;
+  memberId: string;
+  date: string;
+  checkedInAt: any;
+  checkedOutAt?: any;
+  status: CheckinStatus;
+  summary?: string;
+  totalVideos?: number;
+  driveFolderUrl?: string;
+  screenshotUrl?: string;
+  aiVideoCount?: number;
+  aiConfidence?: "high" | "medium" | "low";
+  aiNotes?: string;
+  aiVerificationResult?: "pass" | "fail" | "pending";
+  approvedBy?: string;
+  approvedAt?: any;
+  rejectionNote?: string;
 }

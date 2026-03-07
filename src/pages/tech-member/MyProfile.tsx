@@ -1,13 +1,15 @@
-import { useState } from "react";
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { useState, useEffect } from "react";
+import { doc, updateDoc, serverTimestamp, collection, query, where, onSnapshot } from "firebase/firestore";
 import { updatePassword, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth";
 import { auth, db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/utils/formatters";
-import { User, Mail, Phone, Shield, Loader2, Check, Lock, ExternalLink, Receipt } from "lucide-react";
+import { User, Mail, Phone, Shield, Loader2, Check, Lock, ExternalLink, Receipt, Calendar, Video } from "lucide-react";
 import SalaryTimeline from "@/components/SalaryTimeline";
 import ThemeSelector from "@/components/ThemeSelector";
+import type { DailyCheckin } from "@/types";
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, getDay } from "date-fns";
 
 export default function TechMemberProfile() {
   const user = useAuthStore((s) => s.user);
@@ -18,6 +20,18 @@ export default function TechMemberProfile() {
   const [currentPw, setCurrentPw] = useState("");
   const [newPw, setNewPw] = useState("");
   const [changingPw, setChangingPw] = useState(false);
+  const [checkins, setCheckins] = useState<DailyCheckin[]>([]);
+  const [calMonth, setCalMonth] = useState(new Date());
+  const [selectedCheckin, setSelectedCheckin] = useState<DailyCheckin | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, "daily_checkins"), where("memberId", "==", user.uid));
+    const unsub = onSnapshot(q, (snap) => {
+      setCheckins(snap.docs.map((d) => ({ id: d.id, ...d.data() } as DailyCheckin)));
+    });
+    return unsub;
+  }, [user]);
 
   const handleSave = async () => {
     if (!user) return;
@@ -148,6 +162,121 @@ export default function TechMemberProfile() {
           {changingPw ? <Loader2 size={14} className="animate-spin" /> : <Lock size={14} />}
           {changingPw ? "Changing..." : "Update Password"}
         </button>
+      </div>
+
+      {/* Check-In History Calendar */}
+      <div className="bg-card border border-border rounded-xl p-5">
+        <h2 className="font-display font-semibold text-foreground mb-4 flex items-center gap-2">
+          <Calendar size={16} /> Check-In History
+        </h2>
+
+        <div className="flex items-center justify-between mb-3">
+          <button onClick={() => setCalMonth(new Date(calMonth.getFullYear(), calMonth.getMonth() - 1))}
+            className="text-xs px-2 py-1 rounded bg-accent text-muted-foreground border border-border hover:text-foreground">&lt;</button>
+          <span className="text-sm font-medium text-foreground">{format(calMonth, "MMMM yyyy")}</span>
+          <button onClick={() => setCalMonth(new Date(calMonth.getFullYear(), calMonth.getMonth() + 1))}
+            className="text-xs px-2 py-1 rounded bg-accent text-muted-foreground border border-border hover:text-foreground">&gt;</button>
+        </div>
+
+        <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-muted-foreground mb-1">
+          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => <span key={d}>{d}</span>)}
+        </div>
+
+        {(() => {
+          const monthStart = startOfMonth(calMonth);
+          const monthEnd = endOfMonth(calMonth);
+          const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
+          const startPad = getDay(monthStart);
+          const checkinMap = new Map(checkins.map((c) => [c.date, c]));
+
+          return (
+            <div className="grid grid-cols-7 gap-1">
+              {Array.from({ length: startPad }).map((_, i) => <div key={`pad-${i}`} />)}
+              {days.map((day) => {
+                const dateStr = format(day, "yyyy-MM-dd");
+                const ci = checkinMap.get(dateStr);
+                const hasCheckout = ci?.checkedOutAt;
+                const today = isToday(day);
+
+                return (
+                  <button
+                    key={dateStr}
+                    onClick={() => ci && setSelectedCheckin(ci)}
+                    className={`aspect-square rounded-md flex items-center justify-center text-xs font-mono transition-colors relative ${
+                      ci
+                        ? ci.status === "approved"
+                          ? "bg-success/20 text-success hover:bg-success/30 cursor-pointer"
+                          : ci.status === "rejected"
+                          ? "bg-destructive/20 text-destructive hover:bg-destructive/30 cursor-pointer"
+                          : ci.status === "pending_approval"
+                          ? "bg-warning/20 text-warning hover:bg-warning/30 cursor-pointer"
+                          : hasCheckout
+                          ? "bg-info/20 text-info hover:bg-info/30 cursor-pointer"
+                          : "bg-primary/20 text-primary hover:bg-primary/30 cursor-pointer"
+                        : today
+                          ? "bg-primary/10 text-primary"
+                          : "text-muted-foreground hover:bg-accent"
+                    }`}
+                  >
+                    {day.getDate()}
+                    {ci && <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-current" />}
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })()}
+
+        <div className="flex items-center gap-4 mt-3 text-[10px] text-muted-foreground flex-wrap">
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-success/30" /> Approved</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-warning/30" /> Pending</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-destructive/30" /> Rejected</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-info/30" /> Checked out</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-primary/30" /> Checked in</span>
+        </div>
+
+        {/* Selected day detail */}
+        {selectedCheckin && (
+          <div className="mt-4 p-3 bg-background border border-border rounded-lg space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-sm text-foreground font-medium">{selectedCheckin.date}</span>
+                {selectedCheckin.status && (
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium capitalize ${
+                    selectedCheckin.status === "approved" ? "bg-success/15 text-success"
+                    : selectedCheckin.status === "rejected" ? "bg-destructive/15 text-destructive"
+                    : selectedCheckin.status === "pending_approval" ? "bg-warning/15 text-warning"
+                    : "bg-info/15 text-info"
+                  }`}>{selectedCheckin.status === "pending_approval" ? "Pending" : selectedCheckin.status}</span>
+                )}
+              </div>
+              <button onClick={() => setSelectedCheckin(null)} className="text-xs text-muted-foreground hover:text-foreground">×</button>
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+              <span>In: {selectedCheckin.checkedInAt?.toDate?.() ? format(selectedCheckin.checkedInAt.toDate(), "hh:mm a") : "—"}</span>
+              {selectedCheckin.checkedOutAt && (
+                <span>Out: {selectedCheckin.checkedOutAt?.toDate?.() ? format(selectedCheckin.checkedOutAt.toDate(), "hh:mm a") : "—"}</span>
+              )}
+              {selectedCheckin.totalVideos != null && (
+                <span className="flex items-center gap-1"><Video size={10} /> {selectedCheckin.totalVideos} videos</span>
+              )}
+              {selectedCheckin.aiVerificationResult && (
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                  selectedCheckin.aiVerificationResult === "pass" ? "bg-success/15 text-success" : "bg-warning/15 text-warning"
+                }`}>AI: {selectedCheckin.aiVerificationResult}</span>
+              )}
+            </div>
+            {selectedCheckin.summary && (
+              <p className="text-xs text-foreground">{selectedCheckin.summary}</p>
+            )}
+            {selectedCheckin.driveFolderUrl && (
+              <a href={selectedCheckin.driveFolderUrl} target="_blank" rel="noopener noreferrer"
+                className="text-xs text-primary hover:underline flex items-center gap-1">
+                <ExternalLink size={10} /> Drive Folder
+              </a>
+            )}
+          </div>
+        )}
       </div>
 
       <ThemeSelector />

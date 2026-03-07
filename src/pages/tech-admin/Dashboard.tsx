@@ -5,7 +5,7 @@ import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { formatCurrency } from "@/utils/formatters";
 import { format, subDays, startOfDay } from "date-fns";
-import type { AppUser, WorkSubmission, WorkAssignment } from "@/types";
+import type { AppUser, WorkAssignment } from "@/types";
 import { Users, Video, CheckCircle, Clock, TrendingUp, ArrowDownUp, ClipboardList, Search } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -16,7 +16,6 @@ export default function TechAdminDashboard() {
   const currentUser = useAuthStore((s) => s.user);
   const navigate = useNavigate();
   const [members, setMembers] = useState<AppUser[]>([]);
-  const [submissions, setSubmissions] = useState<WorkSubmission[]>([]);
   const [assignments, setAssignments] = useState<WorkAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
@@ -49,29 +48,28 @@ export default function TechAdminDashboard() {
       const allUsers = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser));
       setMembers(allUsers.filter((u) => u.role === "tech_member" && u.createdBy === currentUser?.uid));
     }));
-    unsubs.push(onSnapshot(collection(db, "work_submissions"), (snap) => {
-      setSubmissions(snap.docs.map((d) => ({ id: d.id, ...d.data() } as WorkSubmission)));
-      setLoading(false);
-    }));
     unsubs.push(onSnapshot(collection(db, "work_assignments"), (snap) => {
       setAssignments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as WorkAssignment)));
+      setLoading(false);
     }));
     return () => unsubs.forEach((u) => u());
   }, [currentUser?.uid]);
 
   const memberIds = members.map((m) => m.uid);
-  const teamSubs = submissions.filter((s) => memberIds.includes(s.techMemberId));
+
+  // Filter assignments by team
+  const teamAssignments = assignments.filter((a) => memberIds.includes(a.assignedTo) && a.assignedBy === currentUser?.uid);
 
   // Filter by selected date or day filter
   const dateStr = selectedDate ? format(selectedDate, "yyyy-MM-dd") : null;
-  const filteredSubs = (() => {
-    if (dateStr) return teamSubs.filter((s) => s.date === dateStr);
+  const filteredAssignments = (() => {
+    if (dateStr) return teamAssignments.filter((a) => a.date === dateStr);
     if (dayFilter !== 'all') {
       const dayIndex = parseInt(dayFilter);
       const dayDateStr = recentDays[dayIndex]?.dateStr;
-      if (dayDateStr) return teamSubs.filter((s) => s.date === dayDateStr);
+      if (dayDateStr) return teamAssignments.filter((a) => a.date === dayDateStr);
     }
-    return teamSubs;
+    return teamAssignments;
   })();
 
   const filterLabel = selectedDate
@@ -80,27 +78,22 @@ export default function TechAdminDashboard() {
       ? 'All Days'
       : recentDays[parseInt(dayFilter)]?.label || 'All Days';
 
-  const approved = filteredSubs.filter((s) => s.status === "approved");
-  const pending = filteredSubs.filter((s) => s.status === "pending");
-  const totalVideos = approved.reduce((s, sub) => s + (sub.totalVideos || 0), 0);
-  const totalRevenue = approved.reduce((s, sub) => s + (sub.calculatedRevenue || 0), 0);
-
-  // Assignments filtered to current user's team
-  const teamAssignments = assignments.filter((a) => memberIds.includes(a.assignedTo) && a.assignedBy === currentUser?.uid);
+  const verified = filteredAssignments.filter((a) => a.status === "verified");
+  const pending = filteredAssignments.filter((a) => a.status === "assigned" || a.status === "in_progress");
+  const totalVideos = verified.reduce((s, a) => s + (a.clipCount || 0), 0);
+  const totalRevenue = verified.reduce((s, a) => s + (a.totalPrice || 0), 0);
 
   const chartData = members.map((m) => {
-    const mSubs = filteredSubs.filter((s) => s.techMemberId === m.uid);
-    const mApproved = mSubs.filter((s) => s.status === "approved");
-    const mAssigned = teamAssignments.filter((a) => a.assignedTo === m.uid && (a.status === 'assigned' || a.status === 'in_progress'));
+    const mAssignments = filteredAssignments.filter((a) => a.assignedTo === m.uid);
+    const mVerified = mAssignments.filter((a) => a.status === "verified");
+    const mActive = mAssignments.filter((a) => a.status === 'assigned' || a.status === 'in_progress');
 
-    // Category breakdown from approved submission items
+    // Category breakdown from verified assignments
     const categoryBreakdown = { wishes: 0, promotional: 0, cinematic: 0 };
-    mApproved.forEach((sub) => {
-      sub.items?.forEach((item) => {
-        if (item.type in categoryBreakdown) {
-          categoryBreakdown[item.type as keyof typeof categoryBreakdown] += item.quantity;
-        }
-      });
+    mVerified.forEach((a) => {
+      if (a.category in categoryBreakdown) {
+        categoryBreakdown[a.category as keyof typeof categoryBreakdown] += a.clipCount || 1;
+      }
     });
 
     return {
@@ -108,10 +101,10 @@ export default function TechAdminDashboard() {
       name: m.name?.split(" ")[0] || "?",
       fullName: m.name || "?",
       initial: m.name?.charAt(0) || "?",
-      videos: mApproved.reduce((s, sub) => s + (sub.totalVideos || 0), 0),
-      submissions: mSubs.length,
-      revenue: mApproved.reduce((s, sub) => s + (sub.calculatedRevenue || 0), 0),
-      assigned: mAssigned.length,
+      videos: mVerified.reduce((s, a) => s + (a.clipCount || 0), 0),
+      submissions: mAssignments.length,
+      revenue: mVerified.reduce((s, a) => s + (a.totalPrice || 0), 0),
+      assigned: mActive.length,
       categoryBreakdown,
     };
   });
@@ -168,19 +161,11 @@ export default function TechAdminDashboard() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 md:gap-4">
         <StatBox icon={Users} label="Team Members" value={members.length} color="text-role-tech-member" />
         <StatBox icon={Video} label="Total Videos" value={totalVideos} color="text-info" />
-        <StatBox icon={Clock} label="Pending" value={pending.length} color="text-warning" />
-        <StatBox icon={CheckCircle} label="Submissions" value={filteredSubs.length} color="text-success" />
+        <StatBox icon={Clock} label="In Progress" value={pending.length} color="text-warning" />
+        <StatBox icon={CheckCircle} label="Verified" value={verified.length} color="text-success" />
         <StatBox icon={TrendingUp} label="Revenue" value={formatCurrency(totalRevenue)} color="text-primary" />
       </div>
 
-      {pending.length > 0 && (
-        <div className="bg-warning/10 border border-warning/30 rounded-xl p-4 flex items-center gap-3">
-          <Clock size={18} className="text-warning" />
-          <p className="text-sm text-warning font-medium">
-            {pending.length} submission{pending.length > 1 ? "s" : ""} awaiting your approval
-          </p>
-        </div>
-      )}
 
       {chartData.length > 0 && (
         <div className="bg-card border border-border rounded-xl p-3 md:p-5 overflow-hidden">

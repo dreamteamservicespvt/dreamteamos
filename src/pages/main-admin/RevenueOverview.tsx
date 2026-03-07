@@ -12,7 +12,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function RevenueOverview() {
   const [members, setMembers] = useState<AppUser[]>([]);
-  const [submissions, setSubmissions] = useState<any[]>([]);
+  const [assignments, setAssignments] = useState<any[]>([]);
   const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState<"7" | "30" | "all">("7");
@@ -23,24 +23,24 @@ export default function RevenueOverview() {
     const checkDone = () => { loaded++; if (loaded >= 3) setLoading(false); };
     const unsubs: (() => void)[] = [];
     unsubs.push(onSnapshot(collection(db, "users"), (snap) => { setMembers(snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser))); checkDone(); }));
-    unsubs.push(onSnapshot(collection(db, "work_submissions"), (snap) => { setSubmissions(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); checkDone(); }));
+    unsubs.push(onSnapshot(collection(db, "work_assignments"), (snap) => { setAssignments(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); checkDone(); }));
     unsubs.push(onSnapshot(collection(db, "leads"), (snap) => { setLeads(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); checkDone(); }));
     return () => unsubs.forEach((u) => u());
   }, []);
 
-  const approvedSubs = submissions.filter((s) => s.status === "approved");
+  const verifiedAssignments = assignments.filter((a) => a.status === "verified");
   const salesWithDone = leads.filter((l: any) => l.saleDone && l.saleDetails);
 
-  const totalTechRevenue = approvedSubs.reduce((s, sub) => s + (sub.calculatedRevenue || 0), 0);
+  const totalTechRevenue = verifiedAssignments.reduce((s, a) => s + (a.totalPrice || 0), 0);
   const totalSalesRevenue = salesWithDone.reduce((s, l: any) => s + (l.saleDetails?.amount || 0), 0);
   const totalRevenue = totalTechRevenue + totalSalesRevenue;
 
   const revenueByDate: Record<string, { date: string; tech: number; sales: number }> = {};
 
-  approvedSubs.forEach((s) => {
-    const d = s.date || "unknown";
+  verifiedAssignments.forEach((a) => {
+    const d = a.date || "unknown";
     if (!revenueByDate[d]) revenueByDate[d] = { date: d, tech: 0, sales: 0 };
-    revenueByDate[d].tech += s.calculatedRevenue || 0;
+    revenueByDate[d].tech += a.totalPrice || 0;
   });
 
   salesWithDone.forEach((l: any) => {
@@ -58,9 +58,9 @@ export default function RevenueOverview() {
   const memberRevenue = members
     .filter((m) => ["tech_member", "sales_member", "tech_admin", "sales_admin"].includes(m.role))
     .map((m) => {
-      const techRev = approvedSubs
-        .filter((s) => s.techMemberId === m.uid)
-        .reduce((s, sub) => s + (sub.calculatedRevenue || 0), 0);
+      const techRev = verifiedAssignments
+        .filter((a) => a.assignedTo === m.uid)
+        .reduce((s, a) => s + (a.totalPrice || 0), 0);
       const salesRev = salesWithDone
         .filter((l: any) => l.assignedTo === m.uid)
         .reduce((s, l: any) => s + (l.saleDetails?.amount || 0), 0);

@@ -12,7 +12,7 @@ import { PRICING } from '@/utils/pricing';
 import { formatCurrency, formatDate } from '@/utils/formatters';
 import { format, subDays, startOfDay } from 'date-fns';
 import DashboardDayPicker from '@/components/dashboard/DayPicker';
-import type { WorkAssignment, AppUser, WorkSubmission } from '@/types';
+import type { WorkAssignment, AppUser, DailyCheckin } from '@/types';
 
 const DURATIONS: Record<string, string[]> = {
   wishes: ['20s', '40s'],
@@ -77,6 +77,24 @@ export default function WorkAssign() {
   const [confirmAction, setConfirmAction] = useState<{ type: 'delete' | 'sendback'; id: string; assignedTo?: string; title: string } | null>(null);
   const [workloadSearch, setWorkloadSearch] = useState('');
   const [showHistory, setShowHistory] = useState(false);
+  const [todayCheckins, setTodayCheckins] = useState<Map<string, DailyCheckin>>(new Map());
+
+  // Listen for today's check-ins
+  useEffect(() => {
+    const todayStr = format(new Date(), "yyyy-MM-dd");
+    const unsub = onSnapshot(
+      query(collection(db, "daily_checkins"), where("date", "==", todayStr)),
+      (snap) => {
+        const map = new Map<string, DailyCheckin>();
+        snap.docs.forEach((d) => {
+          const ci = { id: d.id, ...d.data() } as DailyCheckin;
+          map.set(ci.memberId, ci);
+        });
+        setTodayCheckins(map);
+      }
+    );
+    return unsub;
+  }, []);
 
   // Form state — no more end credits or manual clip count
   const [form, setForm] = useState({
@@ -194,31 +212,6 @@ export default function WorkAssign() {
         status: 'verified',
         verifiedAt: serverTimestamp(),
         verifiedBy: user.uid,
-      });
-
-      // Auto-create work_submission (1 assignment = 1 video)
-      const items = [{
-        type: assignment.category,
-        duration: assignment.duration,
-        quantity: 1,
-        pricePerUnit: assignment.pricePerUnit,
-      }];
-
-      await addDoc(collection(db, 'work_submissions'), {
-        techMemberId: assignment.assignedTo,
-        submittedAt: serverTimestamp(),
-        date: assignment.completedDate || format(new Date(), 'yyyy-MM-dd'),
-        status: 'approved',
-        approvedBy: user.uid,
-        approvedAt: serverTimestamp(),
-        totalVideos: 1,
-        aiVerificationResult: 'pass',
-        driveFolderUrl: '',
-        screenshotUrl: '',
-        items,
-        calculatedRevenue: assignment.totalPrice,
-        source: 'work_assignment',
-        workAssignmentId: assignment.id,
       });
 
       // Notify member
@@ -612,7 +605,18 @@ export default function WorkAssign() {
                       {member.name?.charAt(0)}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <span className="text-sm font-semibold text-foreground truncate block group-hover:text-primary transition-colors">{member.name}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors">{member.name}</span>
+                        {(() => {
+                          const ci = todayCheckins.get(member.uid);
+                          if (!ci) return <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 shrink-0" title="Not checked in" />;
+                          if (ci.status === "pending_approval") return <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse shrink-0" title="Pending approval" />;
+                          if (ci.status === "approved") return <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" title="Approved" />;
+                          if (ci.status === "rejected") return <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" title="Rejected" />;
+                          if (ci.checkedOutAt) return <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" title="Checked out" />;
+                          return <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse shrink-0" title="Checked in" />;
+                        })()}
+                      </div>
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] text-muted-foreground">
                           {mAsgn.length} video{mAsgn.length !== 1 ? 's' : ''}

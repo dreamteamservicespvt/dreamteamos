@@ -1,15 +1,16 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
+import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, serverTimestamp, query, where } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { createUserWithoutSignOut } from "@/services/secondaryAuth";
 import { useAuthStore } from "@/store/authStore";
 import { normalizePhone, formatPhoneDisplay, getWhatsAppUrl, getCallUrl } from "@/utils/phone";
-import type { AppUser } from "@/types";
-import { Users, Plus, X, Loader2, Eye, EyeOff, UserCheck, UserX, Trash2, Phone, MessageCircle, Pencil, Share2, Search } from "lucide-react";
+import type { AppUser, DailyCheckin } from "@/types";
+import { Users, Plus, X, Loader2, Eye, EyeOff, UserCheck, UserX, Trash2, Phone, MessageCircle, Pencil, Share2, Search, LogIn, LogOut } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import EditMemberModal from "@/components/EditMemberModal";
+import { format } from "date-fns";
 
 export default function TechAdminMyTeam() {
   const currentUser = useAuthStore((s) => s.user);
@@ -23,6 +24,9 @@ export default function TechAdminMyTeam() {
   const [editingMember, setEditingMember] = useState<AppUser | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const isMobile = useIsMobile();
+  const [todayCheckins, setTodayCheckins] = useState<Map<string, DailyCheckin>>(new Map());
+
+  const todayStr = format(new Date(), "yyyy-MM-dd");
 
   const [formName, setFormName] = useState("");
   const [formEmail, setFormEmail] = useState("");
@@ -34,13 +38,25 @@ export default function TechAdminMyTeam() {
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "users"), (snap) => {
+    const unsubs: (() => void)[] = [];
+    unsubs.push(onSnapshot(collection(db, "users"), (snap) => {
       const all = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser));
       setMembers(all.filter((u) => u.role === "tech_member" && u.createdBy === currentUser?.uid));
       setLoading(false);
-    });
-    return unsub;
-  }, [currentUser?.uid]);
+    }));
+    unsubs.push(onSnapshot(
+      query(collection(db, "daily_checkins"), where("date", "==", todayStr)),
+      (snap) => {
+        const map = new Map<string, DailyCheckin>();
+        snap.docs.forEach((d) => {
+          const ci = { id: d.id, ...d.data() } as DailyCheckin;
+          map.set(ci.memberId, ci);
+        });
+        setTodayCheckins(map);
+      }
+    ));
+    return () => unsubs.forEach((u) => u());
+  }, [currentUser?.uid, todayStr]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -151,7 +167,7 @@ export default function TechAdminMyTeam() {
       </div>
 
       {isMobile ? (
-        <MobileTechCards members={filteredMembers} loading={loading} onToggle={toggleActive} onDelete={(m) => setConfirmDelete(m)} onEdit={(m) => setEditingMember(m)} onClickMember={(m) => navigate(`/tech-admin/team/${m.uid}`)} onShare={handleShareCredentials} />
+        <MobileTechCards members={filteredMembers} loading={loading} onToggle={toggleActive} onDelete={(m) => setConfirmDelete(m)} onEdit={(m) => setEditingMember(m)} onClickMember={(m) => navigate(`/tech-admin/team/${m.uid}`)} onShare={handleShareCredentials} todayCheckins={todayCheckins} />
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
           <table className="w-full text-sm">
@@ -161,6 +177,7 @@ export default function TechAdminMyTeam() {
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Phone</th>
                 <th className="text-right px-4 py-3 font-medium text-muted-foreground">Salary</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Drive URL</th>
+                <th className="text-center px-4 py-3 font-medium text-muted-foreground">Check-In</th>
                 <th className="text-center px-4 py-3 font-medium text-muted-foreground">Status</th>
                 <th className="text-center px-4 py-3 font-medium text-muted-foreground">Actions</th>
               </tr>
@@ -169,11 +186,11 @@ export default function TechAdminMyTeam() {
               {loading ? (
                 Array.from({ length: 3 }).map((_, i) => (
                   <tr key={i} className="border-b border-border/50">
-                    {Array.from({ length: 6 }).map((__, j) => <td key={j} className="px-4 py-3"><div className="h-4 bg-muted rounded animate-pulse w-20" /></td>)}
+                    {Array.from({ length: 7 }).map((__, j) => <td key={j} className="px-4 py-3"><div className="h-4 bg-muted rounded animate-pulse w-20" /></td>)}
                   </tr>
                 ))
               ) : filteredMembers.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
+                <tr><td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
                   <Users size={32} className="mx-auto mb-2 opacity-30" />
                   <p>{searchQuery ? 'No members match your search.' : 'No members yet. Click "Add Member" to get started.'}</p>
                 </td></tr>
@@ -204,6 +221,17 @@ export default function TechAdminMyTeam() {
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-foreground">₹{m.salary?.toLocaleString() || 0}</td>
                     <td className="px-4 py-3 text-xs text-muted-foreground max-w-[180px] truncate">{m.googleDriveBaseUrl || "—"}</td>
+                    <td className="px-4 py-3 text-center">
+                      {(() => {
+                        const ci = todayCheckins.get(m.uid);
+                        if (!ci) return <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Not In</span>;
+                        if (ci.status === "approved") return <span className="text-[10px] px-2 py-0.5 rounded-full bg-success/15 text-success">Approved</span>;
+                        if (ci.status === "rejected") return <span className="text-[10px] px-2 py-0.5 rounded-full bg-destructive/15 text-destructive">Rejected</span>;
+                        if (ci.status === "pending_approval") return <span className="text-[10px] px-2 py-0.5 rounded-full bg-warning/15 text-warning">Pending</span>;
+                        if (ci.checkedOutAt) return <span className="text-[10px] px-2 py-0.5 rounded-full bg-info/15 text-info flex items-center gap-1 justify-center"><LogOut size={10} /> Out</span>;
+                        return <span className="text-[10px] px-2 py-0.5 rounded-full bg-success/15 text-success flex items-center gap-1 justify-center"><LogIn size={10} /> In</span>;
+                      })()}
+                    </td>
                     <td className="px-4 py-3 text-center">
                       <span className={`text-xs px-2 py-0.5 rounded-full ${m.isActive ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive"}`}>
                         {m.isActive ? "Active" : "Inactive"}
@@ -326,8 +354,8 @@ export default function TechAdminMyTeam() {
 }
 
 /* ─── Mobile Cards ─── */
-function MobileTechCards({ members, loading, onToggle, onDelete, onEdit, onClickMember, onShare }: {
-  members: AppUser[]; loading: boolean; onToggle: (m: AppUser) => void; onDelete: (m: AppUser) => void; onEdit: (m: AppUser) => void; onClickMember: (m: AppUser) => void; onShare: (m: AppUser) => void;
+function MobileTechCards({ members, loading, onToggle, onDelete, onEdit, onClickMember, onShare, todayCheckins }: {
+  members: AppUser[]; loading: boolean; onToggle: (m: AppUser) => void; onDelete: (m: AppUser) => void; onEdit: (m: AppUser) => void; onClickMember: (m: AppUser) => void; onShare: (m: AppUser) => void; todayCheckins: Map<string, DailyCheckin>;
 }) {
   if (loading) {
     return (
@@ -368,6 +396,15 @@ function MobileTechCards({ members, loading, onToggle, onDelete, onEdit, onClick
             <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${m.isActive ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive"}`}>
               {m.isActive ? "Active" : "Inactive"}
             </span>
+            {(() => {
+              const ci = todayCheckins.get(m.uid);
+              if (!ci) return <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Not In</span>;
+              if (ci.status === "approved") return <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-success/15 text-success">Approved</span>;
+              if (ci.status === "rejected") return <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-destructive/15 text-destructive">Rejected</span>;
+              if (ci.status === "pending_approval") return <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-warning/15 text-warning">Pending</span>;
+              if (ci.checkedOutAt) return <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-info/15 text-info">Out</span>;
+              return <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-success/15 text-success">Checked In</span>;
+            })()}
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-xs mb-3">

@@ -9,7 +9,7 @@ import { Code, Users, Video, CheckCircle, Clock, AlertCircle } from "lucide-reac
 export default function TechDepartment() {
   const [techAdmins, setTechAdmins] = useState<AppUser[]>([]);
   const [techMembers, setTechMembers] = useState<AppUser[]>([]);
-  const [submissions, setSubmissions] = useState<any[]>([]);
+  const [assignments, setAssignments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const today = new Date().toISOString().slice(0, 10);
@@ -24,23 +24,23 @@ export default function TechDepartment() {
       setTechMembers(allUsers.filter((u) => u.role === "tech_member"));
       checkDone();
     }));
-    unsubs.push(onSnapshot(collection(db, "work_submissions"), (snap) => { setSubmissions(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); checkDone(); }));
+    unsubs.push(onSnapshot(collection(db, "work_assignments"), (snap) => { setAssignments(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); checkDone(); }));
     return () => unsubs.forEach((u) => u());
   }, []);
 
-  const todaySubs = submissions.filter((s) => s.date === today);
-  const approvedToday = todaySubs.filter((s) => s.status === "approved");
-  const pendingToday = todaySubs.filter((s) => s.status === "pending");
-  const totalVideosToday = approvedToday.reduce((s, sub) => s + (sub.totalVideos || 0), 0);
-  const totalRevToday = approvedToday.reduce((s, sub) => s + (sub.calculatedRevenue || 0), 0);
+  const todayAssignments = assignments.filter((a) => a.date === today);
+  const verifiedToday = todayAssignments.filter((a) => a.status === "verified");
+  const inProgressToday = todayAssignments.filter((a) => ["assigned", "in_progress"].includes(a.status));
+  const totalVideosToday = verifiedToday.reduce((s, a) => s + (a.clipCount || 0), 0);
+  const totalRevToday = verifiedToday.reduce((s, a) => s + (a.totalPrice || 0), 0);
 
   const memberData = techMembers.map((m) => {
-    const memberSubs = submissions.filter((s) => s.techMemberId === m.uid);
-    const todayMemberSubs = memberSubs.filter((s) => s.date === today);
-    const todayVideos = todayMemberSubs.reduce((s, sub) => s + (sub.totalVideos || 0), 0);
-    const totalVideos = memberSubs.reduce((s, sub) => s + (sub.totalVideos || 0), 0);
-    const todayStatus = todayMemberSubs.length > 0 ? todayMemberSubs[0].status : "not_submitted";
-    return { ...m, todayVideos, totalVideos, todayStatus, totalSubs: memberSubs.length };
+    const memberAssignments = assignments.filter((a) => a.assignedTo === m.uid);
+    const todayMemberAssignments = memberAssignments.filter((a) => a.date === today);
+    const todayVideos = todayMemberAssignments.filter((a) => a.status === "verified").reduce((s, a) => s + (a.clipCount || 0), 0);
+    const totalVideos = memberAssignments.filter((a) => a.status === "verified").reduce((s, a) => s + (a.clipCount || 0), 0);
+    const todayStatus = todayMemberAssignments.length > 0 ? todayMemberAssignments[0].status : "no_work";
+    return { ...m, todayVideos, totalVideos, todayStatus, totalAssignments: memberAssignments.length };
   });
 
   if (loading) {
@@ -65,7 +65,7 @@ export default function TechDepartment() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         <StatBox icon={Users} label="Tech Members" value={techMembers.length} color="text-info" />
         <StatBox icon={Video} label="Videos Today" value={totalVideosToday} color="text-success" />
-        <StatBox icon={Clock} label="Pending" value={pendingToday.length} color="text-warning" />
+        <StatBox icon={Clock} label="In Progress" value={inProgressToday.length} color="text-warning" />
         <StatBox icon={Code} label="Revenue Today" value={formatCurrency(totalRevToday)} color="text-primary" />
       </div>
 
@@ -106,7 +106,7 @@ export default function TechDepartment() {
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Member</th>
                 <th className="text-right px-4 py-3 font-medium text-muted-foreground">Today's Videos</th>
                 <th className="text-right px-4 py-3 font-medium text-muted-foreground">Total Videos</th>
-                <th className="text-right px-4 py-3 font-medium text-muted-foreground">Submissions</th>
+                <th className="text-right px-4 py-3 font-medium text-muted-foreground">Assignments</th>
                 <th className="text-center px-4 py-3 font-medium text-muted-foreground">Today's Status</th>
                 <th className="text-center px-4 py-3 font-medium text-muted-foreground">Account</th>
               </tr>
@@ -130,7 +130,7 @@ export default function TechDepartment() {
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-foreground">{m.todayVideos}</td>
                     <td className="px-4 py-3 text-right font-mono text-muted-foreground">{m.totalVideos}</td>
-                    <td className="px-4 py-3 text-right font-mono text-muted-foreground">{m.totalSubs}</td>
+                    <td className="px-4 py-3 text-right font-mono text-muted-foreground">{m.totalAssignments}</td>
                     <td className="px-4 py-3 text-center">
                       <StatusBadge status={m.todayStatus} />
                     </td>
@@ -169,7 +169,7 @@ export default function TechDepartment() {
                 <div className="grid grid-cols-3 gap-2 text-xs">
                   <div><p className="text-muted-foreground text-[10px]">Today</p><p className="font-mono text-foreground">{m.todayVideos} videos</p></div>
                   <div><p className="text-muted-foreground text-[10px]">Total</p><p className="font-mono text-foreground">{m.totalVideos} videos</p></div>
-                  <div className="text-right"><p className="text-muted-foreground text-[10px]">Submissions</p><p className="font-mono text-foreground">{m.totalSubs}</p></div>
+                  <div className="text-right"><p className="text-muted-foreground text-[10px]">Assignments</p><p className="font-mono text-foreground">{m.totalAssignments}</p></div>
                 </div>
               </div>
             ))
@@ -183,12 +183,13 @@ export default function TechDepartment() {
 function StatusBadge({ status }: { status: string }) {
   return (
     <span className={`text-[10px] md:text-xs px-2 py-0.5 rounded-full ${
-      status === "approved" ? "bg-success/15 text-success" :
-      status === "pending" ? "bg-warning/15 text-warning" :
-      status === "rejected" ? "bg-destructive/15 text-destructive" :
+      status === "verified" ? "bg-success/15 text-success" :
+      status === "completed" ? "bg-info/15 text-info" :
+      status === "in_progress" || status === "assigned" ? "bg-warning/15 text-warning" :
+      status === "editing" ? "bg-orange-500/15 text-orange-500" :
       "bg-muted text-muted-foreground"
     }`}>
-      {status === "not_submitted" ? "N/A" : status.charAt(0).toUpperCase() + status.slice(1)}
+      {status === "no_work" ? "N/A" : status.replace("_", " ").replace(/\b\w/g, c => c.toUpperCase())}
     </span>
   );
 }

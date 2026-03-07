@@ -27,7 +27,7 @@ export default function Accounts() {
   const [members, setMembers] = useState<AppUser[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [leads, setLeads] = useState<any[]>([]);
-  const [submissions, setSubmissions] = useState<any[]>([]);
+  const [assignments, setAssignments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [showAdd, setShowAdd] = useState(false);
@@ -47,16 +47,16 @@ export default function Accounts() {
       checkDone();
     }));
     unsubs.push(onSnapshot(collection(db, "leads"), (snap) => { setLeads(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); checkDone(); }));
-    unsubs.push(onSnapshot(collection(db, "work_submissions"), (snap) => { setSubmissions(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); checkDone(); }));
+    unsubs.push(onSnapshot(collection(db, "work_assignments"), (snap) => { setAssignments(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); checkDone(); }));
     return () => unsubs.forEach((u) => u());
   }, []);
 
   const totalSalesRevenue = leads
     .filter((l: any) => l.saleDone && l.saleDetails)
     .reduce((s, l: any) => s + (l.saleDetails?.amount || 0), 0);
-  const totalTechRevenue = submissions
-    .filter((s) => s.status === "approved")
-    .reduce((s, sub) => s + (sub.calculatedRevenue || 0), 0);
+  const totalTechRevenue = assignments
+    .filter((a) => a.status === "verified")
+    .reduce((s, a) => s + (a.totalPrice || 0), 0);
   const totalRevenue = totalSalesRevenue + totalTechRevenue;
   const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0);
   const totalSalaries = members.reduce((s, m) => s + (m.salary || 0), 0);

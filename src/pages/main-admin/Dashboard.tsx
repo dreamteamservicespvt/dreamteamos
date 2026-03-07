@@ -15,7 +15,7 @@ export default function MainAdminDashboard() {
   const [members, setMembers] = useState<AppUser[]>([]);
   const [techMembers, setTechMembers] = useState<AppUser[]>([]);
   const [salesMembers, setSalesMembers] = useState<AppUser[]>([]);
-  const [todaySubmissions, setTodaySubmissions] = useState<any[]>([]);
+  const [todayAssignments, setTodayAssignments] = useState<any[]>([]);
   const [todayLeads, setTodayLeads] = useState<any[]>([]);
   const [recentActivity, setRecentActivity] = useState<{ text: string; time: string; type: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -33,18 +33,18 @@ export default function MainAdminDashboard() {
       setSalesMembers(allUsers.filter((u) => u.role === "sales_member" && u.isActive));
     }));
 
-    unsubs.push(onSnapshot(collection(db, "work_submissions"), (snap) => {
-      const allSubs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setTodaySubmissions(allSubs.filter((s: any) => s.date === today));
+    unsubs.push(onSnapshot(collection(db, "work_assignments"), (snap) => {
+      const allAssignments = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setTodayAssignments(allAssignments.filter((a: any) => a.date === today));
 
       // Build tech activities
       const activities: { text: string; time: string; type: string }[] = [];
-      allSubs.filter((s: any) => s.date === today).forEach((data: any) => {
-        const member = allUsers.find((u) => u.uid === data.techMemberId);
+      allAssignments.filter((a: any) => a.date === today && a.status === "verified").forEach((data: any) => {
+        const member = allUsers.find((u) => u.uid === data.assignedTo);
         activities.push({
-          text: `${member?.name || "Tech Member"} submitted ${data.totalVideos} video${data.totalVideos !== 1 ? "s" : ""}`,
-          time: data.submittedAt?.toDate?.() ? timeAgo(data.submittedAt.toDate()) : "recently",
-          type: data.status === "approved" ? "approved" : "tech",
+          text: `${member?.name || "Tech Member"} completed ${data.clipCount || 0} clip${(data.clipCount || 0) !== 1 ? "s" : ""}`,
+          time: data.verifiedAt?.toDate?.() ? timeAgo(data.verifiedAt.toDate()) : "recently",
+          type: "approved",
         });
       });
       setRecentActivity((prev) => {
@@ -78,27 +78,27 @@ export default function MainAdminDashboard() {
 
   // Compute stats
   const totalMembers = members.length;
-  const totalVideosToday = todaySubmissions
-    .filter((s) => s.status === "approved")
-    .reduce((sum, s) => sum + (s.totalVideos || 0), 0);
+  const totalVideosToday = todayAssignments
+    .filter((a) => a.status === "verified")
+    .reduce((sum, a) => sum + (a.clipCount || 0), 0);
   const totalSalesRevenue = todayLeads.reduce(
     (sum, l: any) => sum + (l.saleDetails?.amount || 0), 0
   );
-  const totalTechRevenue = todaySubmissions
-    .filter((s) => s.status === "approved")
-    .reduce((sum, s) => sum + (s.calculatedRevenue || 0), 0);
+  const totalTechRevenue = todayAssignments
+    .filter((a) => a.status === "verified")
+    .reduce((sum, a) => sum + (a.totalPrice || 0), 0);
   const totalRevenueToday = totalSalesRevenue + totalTechRevenue;
   const salesToday = todayLeads.length;
 
   // Build tech team table data
   const techTableData = techMembers.map((m) => {
-    const memberSubs = todaySubmissions.filter((s) => s.techMemberId === m.uid);
-    const videos = memberSubs.reduce((s, sub) => s + (sub.totalVideos || 0), 0);
-    const revenue = memberSubs
-      .filter((s) => s.status === "approved")
-      .reduce((s, sub) => s + (sub.calculatedRevenue || 0), 0);
-    const hasSub = memberSubs.length > 0;
-    return { name: m.name, videos, revenue, status: hasSub ? "active" : "idle" };
+    const memberAssignments = todayAssignments.filter((a) => a.assignedTo === m.uid);
+    const videos = memberAssignments.filter((a) => a.status === "verified").reduce((s, a) => s + (a.clipCount || 0), 0);
+    const revenue = memberAssignments
+      .filter((a) => a.status === "verified")
+      .reduce((s, a) => s + (a.totalPrice || 0), 0);
+    const hasWork = memberAssignments.length > 0;
+    return { name: m.name, videos, revenue, status: hasWork ? "active" : "idle" };
   });
 
   // Build sales team table data

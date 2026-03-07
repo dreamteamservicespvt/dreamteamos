@@ -17,9 +17,7 @@ import SalesDepartment from "@/pages/main-admin/SalesDepartment";
 import SessionHistory from "@/pages/main-admin/SessionHistory";
 import Accounts from "@/pages/main-admin/Accounts";
 import MainAdminSettings from "@/pages/main-admin/Settings";
-import SubmitWork from "@/pages/tech-member/SubmitWork";
 import TechMemberDashboard from "@/pages/tech-member/Dashboard";
-import TechMemberHistory from "@/pages/tech-member/MyHistory";
 import TechMemberTraining from "@/pages/tech-member/Training";
 import TechMemberProfile from "@/pages/tech-member/MyProfile";
 import MyWork from "@/pages/tech-member/MyWork";
@@ -40,7 +38,6 @@ import SalesAdminSettings from "@/pages/sales-admin/Settings";
 import SalesAnalytics from "@/pages/sales-admin/Analytics";
 import TechAdminDashboard from "@/pages/tech-admin/Dashboard";
 import TechAdminMyTeam from "@/pages/tech-admin/MyTeam";
-import WorkApprovals from "@/pages/tech-admin/WorkApprovals";
 import DriveManagement from "@/pages/tech-admin/DriveManagement";
 import TechTrainingModules from "@/pages/tech-admin/TrainingModules";
 import TechAdminSessionHistory from "@/pages/tech-admin/SessionHistory";
@@ -105,7 +102,6 @@ const App = () => (
             <Route path="/tech-admin/dashboard" element={<TechAdminDashboard />} />
             <Route path="/tech-admin/team" element={<TechAdminMyTeam />} />
             <Route path="/tech-admin/team/:memberId" element={<TechAdminMemberHistory />} />
-            <Route path="/tech-admin/approvals" element={<WorkApprovals />} />
             <Route path="/tech-admin/drive" element={<DriveManagement />} />
             <Route path="/tech-admin/training" element={<TechTrainingModules />} />
             <Route path="/tech-admin/sessions" element={<TechAdminSessionHistory />} />
@@ -143,8 +139,6 @@ const App = () => (
           <Route element={<AppLayout allowedRoles={["tech_member"]} />}>
             <Route path="/tech/dashboard" element={<TechMemberDashboard />} />
             <Route path="/tech/my-work" element={<MyWork />} />
-            <Route path="/tech/submit" element={<SubmitWork />} />
-            <Route path="/tech/history" element={<TechMemberHistory />} />
             <Route path="/tech/training" element={<TechMemberTraining />} />
             <Route path="/tech/profile" element={<TechMemberProfile />} />
             <Route path="/tech/salary" element={<MySalaryPage />} />

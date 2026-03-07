@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
 import { getRoleLabel, getRoleColor } from "@/utils/roleHelpers";
 import { Bell, Menu, Check, Trash2 } from "lucide-react";
@@ -17,6 +17,7 @@ interface TopbarProps {
 export default function Topbar({ onMenuClick }: TopbarProps) {
   const user = useAuthStore((s) => s.user);
   const location = useLocation();
+  const navigate = useNavigate();
   const [time, setTime] = useState(new Date());
   const isMobile = useIsMobile();
   const { notifications, unreadCount, markAsRead, markAllAsRead, clearAll } = useNotifications();
@@ -141,7 +142,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
                     notifications.slice(0, 20).map((n) => (
                       <button
                         key={n.id}
-                        onClick={() => { markAsRead(n.id); }}
+                        onClick={() => { markAsRead(n.id); if (n.link) { navigate(n.link); setShowNotifs(false); } }}
                         className={`w-full text-left px-4 py-3 border-b border-border/50 hover:bg-accent/30 transition-colors ${!n.read ? "bg-primary/5" : ""}`}
                       >
                         <div className="flex items-start gap-2">
