@@ -57,7 +57,7 @@ export default function TechAdminMyTeam() {
       const cred = await createUserWithoutSignOut(formEmail.trim(), formPassword);
       const uid = cred.user.uid;
       const normalizedPhone = formPhone.trim() ? normalizePhone(formPhone.trim()) : "";
-      const newUser: AppUser = {
+      const newUser: Record<string, any> = {
         uid,
         email: formEmail.trim().toLowerCase(),
         name: formName.trim(),
@@ -66,13 +66,13 @@ export default function TechAdminMyTeam() {
         isActive: true,
         salary: formSalary,
         target: 0,
-        googleDriveBaseUrl: formDriveUrl.trim() || undefined,
         phone: normalizedPhone,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
+      if (formDriveUrl.trim()) newUser.googleDriveBaseUrl = formDriveUrl.trim();
       await setDoc(doc(db, "users", uid), newUser);
-      setMembers((prev) => [...prev, { ...newUser, createdAt: new Date(), updatedAt: new Date() }]);
+      setMembers((prev) => [...prev, { ...newUser, createdAt: new Date(), updatedAt: new Date() } as AppUser]);
       setShowModal(false);
       resetForm();
       toast({ title: "Member Created", description: `${formName.trim()} added to your team.` });
