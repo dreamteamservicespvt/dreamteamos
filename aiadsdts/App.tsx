@@ -323,7 +323,10 @@ const App: React.FC = () => {
         const result = await generateAdAssets(formData, files, (step, progress) => {
           if (abortControllerRef.current?.signal.aborted) throw new Error('Generation stopped by user');
           setStatus(prev => ({ ...prev, step, progress }));
-        }, { includeProductsInHeader });
+        }, {
+          includeProductsInHeader,
+          onPartialResult: (partial) => setOutputs(partial)
+        });
         setOutputs(result);
         setStatus(prev => ({ ...prev, isProcessing: false, step: 'Completed', progress: 100 }));
       }
@@ -1052,9 +1055,8 @@ const App: React.FC = () => {
                 </div>
                 
                 {/* Video Ad outputs — only in video mode */}
+                {/* Collapsible: Main Frame */}
                 {creationMode === 'video' && outputs.mainFramePrompts && outputs.mainFramePrompts.length > 0 && (
-                  <>
-                    {/* Collapsible: Main Frame */}
                     <div className={clsx(
                       "rounded-xl border overflow-hidden transition-colors",
                       resolvedTheme === 'dark' ? "border-slate-700" : "border-slate-200"
@@ -1097,8 +1099,10 @@ const App: React.FC = () => {
                         </>
                       )}
                     </div>
+                )}
 
-                    {/* Collapsible: Header */}
+                {/* Collapsible: Header */}
+                {creationMode === 'video' && outputs.headerPrompt && (
                     <div className={clsx(
                       "rounded-xl border overflow-hidden transition-colors",
                       resolvedTheme === 'dark' ? "border-slate-700" : "border-slate-200"
@@ -1140,8 +1144,10 @@ const App: React.FC = () => {
                         </>
                       )}
                     </div>
+                )}
 
-                    {/* Collapsible: Poster */}
+                {/* Collapsible: Poster */}
+                {creationMode === 'video' && outputs.posterPrompt && (
                     <div className={clsx(
                       "rounded-xl border overflow-hidden transition-colors",
                       resolvedTheme === 'dark' ? "border-slate-700" : "border-slate-200"
@@ -1171,8 +1177,10 @@ const App: React.FC = () => {
                         />
                       )}
                     </div>
+                )}
 
-                    {/* Collapsible: Voice Over */}
+                {/* Collapsible: Voice Over */}
+                {creationMode === 'video' && outputs.voiceOverScript && (
                     <div className={clsx(
                       "rounded-xl border overflow-hidden transition-colors",
                       resolvedTheme === 'dark' ? "border-slate-700" : "border-slate-200"
@@ -1202,8 +1210,10 @@ const App: React.FC = () => {
                         />
                       )}
                     </div>
+                )}
 
-                    {/* Collapsible: Veo */}
+                {/* Collapsible: Veo */}
+                {creationMode === 'video' && outputs.veoPrompts && outputs.veoPrompts.length > 0 && (
                     <div className={clsx(
                       "rounded-xl border overflow-hidden transition-colors",
                       resolvedTheme === 'dark' ? "border-slate-700" : "border-slate-200"
@@ -1233,8 +1243,10 @@ const App: React.FC = () => {
                         />
                       )}
                     </div>
+                )}
 
-                    {/* Video Generation Platform Button */}
+                {/* Video Generation Platform Button */}
+                {creationMode === 'video' && outputs.mainFramePrompts && outputs.mainFramePrompts.length > 0 && (
                     <a
                       href="https://labs.google/fx/tools/flow"
                       target="_blank"
@@ -1250,7 +1262,6 @@ const App: React.FC = () => {
                       <span>Open Video Generation Platform</span>
                       <ExternalLink className="w-4 h-4 opacity-70" />
                     </a>
-                  </>
                 )}
 
                 {/* Stock Image Prompts — User-Triggered Section (Video mode only) */}

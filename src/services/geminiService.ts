@@ -360,6 +360,7 @@ export const extractBusinessOnly = async (
 export interface GenerationOptions {
   includeProductsInHeader?: boolean;
   customScript?: string;
+  onPartialResult?: (partial: GeneratedOutputs) => void;
 }
 
 // Clean script text: remove emojis, special decorative characters, normalize whitespace
@@ -384,7 +385,7 @@ export const generateAdAssets = async (
   options: GenerationOptions = {}
 ): Promise<GeneratedOutputs> => {
   
-  const { includeProductsInHeader = false, customScript } = options;
+  const { includeProductsInHeader = false, customScript, onPartialResult } = options;
   
   if (API_KEYS.length === 0) {
     throw new Error("No API keys configured. Please set API_KEY_1, API_KEY_2, etc. in your environment.");
@@ -538,6 +539,21 @@ export const generateAdAssets = async (
     businessInfo = { raw: businessInfoText };
   }
 
+  // Emit partial result: businessInfo extracted
+  if (onPartialResult) {
+    onPartialResult({
+      businessInfo,
+      mainFramePrompts: [],
+      headerPrompt: '',
+      posterPrompt: '',
+      voiceOverScript: '',
+      veoPrompts: [],
+      hasProductImages: files.productImages && files.productImages.length > 0,
+      productImageCount: files.productImages ? files.productImages.length : 0,
+      stockImagePrompts: null
+    });
+  }
+
   // --- Step 2: Voice Over Script ---
   onProgress(customScript ? "Processing custom script..." : "Writing Voice Over script...", 20);
 
@@ -628,6 +644,21 @@ Segment 2: <text>
     }
     if (currentSegmentText) segments.push(currentSegmentText.trim());
     parsedSegments = segments.length > 0 ? segments : Array(segmentCount).fill("Script content placeholder");
+  }
+
+  // Emit partial result: voiceOver ready
+  if (onPartialResult) {
+    onPartialResult({
+      businessInfo,
+      mainFramePrompts: [],
+      headerPrompt: '',
+      posterPrompt: '',
+      voiceOverScript,
+      veoPrompts: [],
+      hasProductImages,
+      productImageCount,
+      stockImagePrompts: null
+    });
   }
 
   // --- Step 3: Multi-Frame Main Frame Prompts (Per-Clip) ---
@@ -779,6 +810,21 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
     }
   }
 
+  // Emit partial result: mainFrame ready
+  if (onPartialResult) {
+    onPartialResult({
+      businessInfo,
+      mainFramePrompts,
+      headerPrompt: '',
+      posterPrompt: '',
+      voiceOverScript,
+      veoPrompts: [],
+      hasProductImages,
+      productImageCount,
+      stockImagePrompts: null
+    });
+  }
+
   // --- Step 4: Header Prompt ---
   onProgress("Generating Header prompt...", 55);
 
@@ -864,6 +910,21 @@ Keep it MINIMAL — the header is a thin contact strip (5-8% height), NOT a visi
     'Header'
   );
 
+  // Emit partial result: header ready
+  if (onPartialResult) {
+    onPartialResult({
+      businessInfo,
+      mainFramePrompts,
+      headerPrompt,
+      posterPrompt: '',
+      voiceOverScript,
+      veoPrompts: [],
+      hasProductImages,
+      productImageCount,
+      stockImagePrompts: null
+    });
+  }
+
   // --- Step 5: Poster Design Prompt (JSON) ---
   onProgress("Designing Poster prompt...", 65);
 
@@ -894,6 +955,21 @@ Keep it MINIMAL — the header is a thin contact strip (5-8% height), NOT a visi
     posterPrompt = JSON.stringify(parsed, null, 2);
   } catch {
     posterPrompt = posterPromptRaw;
+  }
+
+  // Emit partial result: poster ready
+  if (onPartialResult) {
+    onPartialResult({
+      businessInfo,
+      mainFramePrompts,
+      headerPrompt,
+      posterPrompt,
+      voiceOverScript,
+      veoPrompts: [],
+      hasProductImages,
+      productImageCount,
+      stockImagePrompts: null
+    });
   }
 
   // --- Step 6: Veo 3 Segment Prompts ---

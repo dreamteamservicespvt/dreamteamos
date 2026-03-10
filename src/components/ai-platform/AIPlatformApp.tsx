@@ -253,7 +253,11 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
         generatedResult = await generateAdAssets(formData, files, (step, progress) => {
           if (abortControllerRef.current?.signal.aborted) throw new Error('Generation stopped by user');
           setStatus(prev => ({ ...prev, step, progress }));
-        }, { includeProductsInHeader, customScript: useCustomScript ? customScript : undefined });
+        }, {
+          includeProductsInHeader,
+          customScript: useCustomScript ? customScript : undefined,
+          onPartialResult: (partial) => setOutputs(partial)
+        });
       }
       setOutputs(generatedResult);
       setStatus(prev => ({ ...prev, isProcessing: false, step: 'Completed', progress: 100 }));
@@ -704,28 +708,33 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
 
                   {/* Video outputs */}
                   {creationMode === 'video' && outputs.mainFramePrompts?.length > 0 && (
-                    <>
                       <OutputSection title={`1. Main Frame Prompts (${outputs.mainFramePrompts.length} Clips)`} sectionKey="mainFrame"
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                         isDark={isDark}>
                         <GeneratedCard title="Main Frame" content={outputs.mainFramePrompts} variant="dropdown" sectionType="mainFrame"
                           showRefinement={!viewingSavedItem} onRefine={(i) => handleRefineSection('mainFrame', i)} isRefining={refiningSection === 'mainFrame'} hideTitle />
                       </OutputSection>
+                  )}
 
+                  {creationMode === 'video' && outputs.headerPrompt && (
                       <OutputSection title="2. Header Prompt" sectionKey="header"
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                         isDark={isDark}>
                         <GeneratedCard title="Header" content={outputs.headerPrompt} sectionType="header"
                           showRefinement={!viewingSavedItem} onRefine={(i) => handleRefineSection('header', i)} isRefining={refiningSection === 'header'} hideTitle />
                       </OutputSection>
+                  )}
 
+                  {creationMode === 'video' && outputs.posterPrompt && (
                       <OutputSection title="3. Poster Design (JSON)" sectionKey="poster"
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                         isDark={isDark}>
                         <GeneratedCard title="Poster" content={outputs.posterPrompt} isJson sectionType="poster"
                           showRefinement={!viewingSavedItem} onRefine={(i) => handleRefineSection('poster', i)} isRefining={refiningSection === 'poster'} hideTitle />
                       </OutputSection>
+                  )}
 
+                  {creationMode === 'video' && outputs.voiceOverScript && (
                       <OutputSection title="4. Voice Over Script (Telugu)" sectionKey="voiceOver"
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                         isDark={isDark}>
@@ -733,16 +742,19 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                           showTransliteration showRefinement={!viewingSavedItem}
                           onRefine={(i) => handleRefineSection('voiceOver', i)} isRefining={refiningSection === 'voiceOver'} hideTitle />
                       </OutputSection>
+                  )}
 
+                  {creationMode === 'video' && outputs.veoPrompts?.length > 0 && (
                       <OutputSection title="5. Veo 3 Video Prompts" sectionKey="veo"
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                         isDark={isDark}>
                         <GeneratedCard title="Veo" content={outputs.veoPrompts} variant="dropdown" sectionType="veo"
                           showRefinement={!viewingSavedItem} onRefine={(i) => handleRefineSection('veo', i)} isRefining={refiningSection === 'veo'} hideTitle />
                       </OutputSection>
+                  )}
 
-                      {/* Stock Image Prompts */}
-                      {outputs.voiceOverScript && (
+                  {/* Stock Image Prompts */}
+                  {creationMode === 'video' && outputs.voiceOverScript && (
                         <div className={cn("rounded-xl shadow-sm border overflow-hidden", isDark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200")}>
                           <div className={cn("px-4 py-3 border-b flex justify-between items-center", isDark ? "bg-slate-900/50 border-slate-700" : "bg-slate-50 border-slate-200")}>
                             <div className="flex items-center space-x-2">
@@ -806,8 +818,6 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                             ))}
                           </div>
                         </div>
-                      )}
-                    </>
                   )}
                 </div>
               )}
