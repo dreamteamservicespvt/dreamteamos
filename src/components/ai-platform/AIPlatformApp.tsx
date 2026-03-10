@@ -43,8 +43,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   });
 
   const [files, setFiles] = useState<FileStore>({
-    logo: null, visitingCard: null, storeImage: [],
-    productImages: [], flyersPosters: [], voiceRecording: null, textInstructionsFile: null
+    logo: null, visitingCard: [], storeImage: [],
+    productImages: [], flyersPosters: [], voiceRecording: [], textInstructionsFile: []
   });
 
   const [status, setStatus] = useState<GenerationStatus>({ step: '', isProcessing: false, error: null, progress: 0 });
@@ -73,7 +73,6 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   const toggleOutputSection = (section: string) => {
     setCollapsedOutputs(prev => ({ ...prev, [section]: !prev[section] }));
   };
-  const [copiedSection, setCopiedSection] = useState<string | null>(null);
   const [creationMode, setCreationMode] = useState<'video' | 'poster'>('video');
   const [selectedFestivalOption, setSelectedFestivalOption] = useState<string>('');
   const [customFestivalName, setCustomFestivalName] = useState<string>('');
@@ -89,21 +88,6 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     'Bathukamma', 'Navaratri', 'Dasara', 'Dussehra', 'Diwali', 'Karthika Pournami',
     'Christmas', 'New Year', 'Republic Day', 'Independence Day', 'Gandhi Jayanti'
   ];
-
-  const cleanCodeBlocks = (text: string): string => {
-    return text.replace(/^```(?:markdown|json|text|plaintext)?\s*\n?/gim, '').replace(/\n?```\s*$/gim, '').replace(/^```\s*\n?/gim, '').replace(/\n?```$/gim, '').trim();
-  };
-
-  const handleSectionCopy = (e: React.MouseEvent, sectionKey: string, content: string | string[]) => {
-    e.stopPropagation();
-    let text = Array.isArray(content)
-      ? content.map((c, i) => `${sectionKey === 'mainFrame' ? `Clip ${i + 1} – Main Frame Prompt` : `Segment ${i + 1}`}\n${c}`).join('\n\n---\n\n')
-      : content;
-    if (sectionKey === 'mainFrame' || sectionKey === 'header') text = cleanCodeBlocks(text);
-    navigator.clipboard.writeText(text);
-    setCopiedSection(sectionKey);
-    setTimeout(() => setCopiedSection(null), 2000);
-  };
 
   useEffect(() => {
     if (user) loadSavedItems();
@@ -409,7 +393,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                 </div>
                 <div className="space-y-4">
                   <FileUpload label="Business Logo" accept="image/png, image/jpeg" required onChange={(f) => setFiles(prev => ({ ...prev, logo: f as File }))} helperText="High resolution PNG/JPG" />
-                  <FileUpload label="Visiting Card" accept="image/*" onChange={(f) => setFiles(prev => ({ ...prev, visitingCard: f as File }))} helperText="Optional" />
+                  <FileUpload label="Visiting Card" accept="image/*" multiple maxFiles={2} value={files.visitingCard} onChange={(f) => setFiles(prev => ({ ...prev, visitingCard: (f ? (Array.isArray(f) ? f : [f]) : []) as File[] }))} helperText="Front & back (max 2)" />
                   
                   {/* Collapsible sections */}
                   {[
@@ -418,7 +402,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       <FileUpload label="" accept="image/*" multiple value={files.productImages} onChange={(f) => setFiles(prev => ({ ...prev, productImages: f as File[] }))} helperText="Will appear in main frame & footer" />
                     )},
                     { key: 'flyersPosters' as const, label: 'Flyers / Offer Posters', content: <FileUpload label="" accept="image/*,application/pdf" multiple value={files.flyersPosters} onChange={(f) => setFiles(prev => ({ ...prev, flyersPosters: f as File[] }))} helperText="Upload existing promotional materials" /> },
-                    { key: 'voiceInstructions' as const, label: 'Voice Instructions', content: <FileUpload label="" accept="audio/*" value={files.voiceRecording} onChange={(f) => setFiles(prev => ({ ...prev, voiceRecording: f as File }))} helperText="Record your requirements" /> },
+                    { key: 'voiceInstructions' as const, label: 'Voice Instructions', content: <FileUpload label="" accept="audio/*" multiple value={files.voiceRecording} onChange={(f) => setFiles(prev => ({ ...prev, voiceRecording: (f ? (Array.isArray(f) ? f : [f]) : []) as File[] }))} helperText="Record your requirements" /> },
                   ].map(({ key, label, content: sectionContent }) => (
                     <div key={key} className={cn("border rounded-lg overflow-hidden", isDark ? "border-slate-600" : "border-slate-200")}>
                       <button onClick={() => toggleSection(key)}
@@ -447,7 +431,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                         isDark ? "bg-slate-700 border-slate-600 text-slate-200 placeholder-slate-500 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200"
                       )} rows={4} placeholder="Paste business messages, requirements, offers..."
                       value={formData.textInstructions} onChange={(e) => setFormData(prev => ({ ...prev, textInstructions: e.target.value }))} />
-                    <FileUpload label="" accept=".txt,.pdf,.doc,.docx" onChange={(f) => setFiles(prev => ({ ...prev, textInstructionsFile: f as File }))} helperText="Or upload a text/PDF file" />
+                    <FileUpload label="" accept=".txt,.pdf,.doc,.docx" multiple value={files.textInstructionsFile} onChange={(f) => setFiles(prev => ({ ...prev, textInstructionsFile: (f ? (Array.isArray(f) ? f : [f]) : []) as File[] }))} helperText="Or upload a text/PDF file" />
                   </div>
                 </div>
               </div>
@@ -723,32 +707,28 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     <>
                       <OutputSection title={`1. Main Frame Prompts (${outputs.mainFramePrompts.length} Clips)`} sectionKey="mainFrame"
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
-                        copiedSection={copiedSection} isDark={isDark}
-                        onCopy={(e) => handleSectionCopy(e, 'mainFrame', outputs.mainFramePrompts)}>
+                        isDark={isDark}>
                         <GeneratedCard title="Main Frame" content={outputs.mainFramePrompts} variant="dropdown" sectionType="mainFrame"
                           showRefinement={!viewingSavedItem} onRefine={(i) => handleRefineSection('mainFrame', i)} isRefining={refiningSection === 'mainFrame'} hideTitle />
                       </OutputSection>
 
                       <OutputSection title="2. Header Prompt" sectionKey="header"
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
-                        copiedSection={copiedSection} isDark={isDark}
-                        onCopy={(e) => handleSectionCopy(e, 'header', outputs.headerPrompt)}>
+                        isDark={isDark}>
                         <GeneratedCard title="Header" content={outputs.headerPrompt} sectionType="header"
                           showRefinement={!viewingSavedItem} onRefine={(i) => handleRefineSection('header', i)} isRefining={refiningSection === 'header'} hideTitle />
                       </OutputSection>
 
                       <OutputSection title="3. Poster Design (JSON)" sectionKey="poster"
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
-                        copiedSection={copiedSection} isDark={isDark}
-                        onCopy={(e) => handleSectionCopy(e, 'poster', outputs.posterPrompt)}>
+                        isDark={isDark}>
                         <GeneratedCard title="Poster" content={outputs.posterPrompt} isJson sectionType="poster"
                           showRefinement={!viewingSavedItem} onRefine={(i) => handleRefineSection('poster', i)} isRefining={refiningSection === 'poster'} hideTitle />
                       </OutputSection>
 
                       <OutputSection title="4. Voice Over Script (Telugu)" sectionKey="voiceOver"
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
-                        copiedSection={copiedSection} isDark={isDark}
-                        onCopy={(e) => handleSectionCopy(e, 'voiceOver', outputs.voiceOverScript)}>
+                        isDark={isDark}>
                         <GeneratedCard title="Voice Over" content={outputs.voiceOverScript} sectionType="voiceOver"
                           showTransliteration showRefinement={!viewingSavedItem}
                           onRefine={(i) => handleRefineSection('voiceOver', i)} isRefining={refiningSection === 'voiceOver'} hideTitle />
@@ -756,8 +736,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
 
                       <OutputSection title="5. Veo 3 Video Prompts" sectionKey="veo"
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
-                        copiedSection={copiedSection} isDark={isDark}
-                        onCopy={(e) => handleSectionCopy(e, 'veo', outputs.veoPrompts)}>
+                        isDark={isDark}>
                         <GeneratedCard title="Veo" content={outputs.veoPrompts} variant="dropdown" sectionType="veo"
                           showRefinement={!viewingSavedItem} onRefine={(i) => handleRefineSection('veo', i)} isRefining={refiningSection === 'veo'} hideTitle />
                       </OutputSection>
@@ -852,27 +831,15 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
 const OutputSection: React.FC<{
   title: string; sectionKey: string; children: React.ReactNode;
   collapsedOutputs: Record<string, boolean>; toggleOutputSection: (s: string) => void;
-  copiedSection: string | null; isDark: boolean;
-  onCopy: (e: React.MouseEvent) => void;
-}> = ({ title, sectionKey, children, collapsedOutputs, toggleOutputSection, copiedSection, isDark, onCopy }) => (
+  isDark: boolean;
+}> = ({ title, sectionKey, children, collapsedOutputs, toggleOutputSection, isDark }) => (
   <div className={cn("rounded-xl border overflow-hidden", isDark ? "border-slate-700" : "border-slate-200")}>
-    <div className={cn("w-full flex items-center justify-between px-4 py-3 cursor-pointer",
+    <button onClick={() => toggleOutputSection(sectionKey)} className={cn("w-full flex items-center justify-between px-4 py-3 cursor-pointer",
       isDark ? "bg-slate-800 hover:bg-slate-750 text-slate-200" : "bg-slate-50 hover:bg-slate-100 text-slate-800"
     )}>
-      <button onClick={() => toggleOutputSection(sectionKey)} className="flex-1 text-left">
-        <span className="font-semibold text-sm uppercase tracking-wide">{title}</span>
-      </button>
-      <div className="flex items-center space-x-2">
-        <button onClick={onCopy} className={cn("p-1.5 rounded transition-colors",
-          copiedSection === sectionKey ? (isDark ? "text-green-400" : "text-green-600") : (isDark ? "text-slate-400 hover:text-blue-400" : "text-slate-500 hover:text-blue-600")
-        )}>
-          {copiedSection === sectionKey ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-        </button>
-        <button onClick={() => toggleOutputSection(sectionKey)} className="p-1">
-          <ChevronDown className={cn("w-4 h-4 transition-transform", collapsedOutputs[sectionKey] && "rotate-180")} />
-        </button>
-      </div>
-    </div>
+      <span className="font-semibold text-sm uppercase tracking-wide text-left">{title}</span>
+      <ChevronDown className={cn("w-4 h-4 transition-transform", collapsedOutputs[sectionKey] && "rotate-180")} />
+    </button>
     {collapsedOutputs[sectionKey] && children}
   </div>
 );

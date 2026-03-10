@@ -288,17 +288,21 @@ export const extractBusinessOnly = async (
   if (formData.textInstructions) {
     parts.push({ text: `Client Text Instructions: ${formData.textInstructions}` });
   }
-  if (files.textInstructionsFile) {
-    const textContent = await readFileAsText(files.textInstructionsFile);
-    parts.push({ text: `Client Text File Content: ${textContent}` });
+  if (files.textInstructionsFile && files.textInstructionsFile.length > 0) {
+    for (const textFile of files.textInstructionsFile) {
+      const textContent = await readFileAsText(textFile);
+      parts.push({ text: `Client Text File Content: ${textContent}` });
+    }
   }
   if (files.logo) {
     parts.push({ inlineData: { mimeType: files.logo.type, data: await fileToBase64(files.logo) } });
-    parts.push({ text: "This is the Business Logo." });
+    parts.push({ text: "This is the Business Logo. CRITICAL: Place this EXACT logo image as-is in the scene. Do NOT recreate, redesign, redraw, recolor, simplify, or modify this logo in ANY way. Use the attached image pixel-for-pixel." });
   }
-  if (files.visitingCard) {
-    parts.push({ inlineData: { mimeType: files.visitingCard.type, data: await fileToBase64(files.visitingCard) } });
-    parts.push({ text: "This is the Visiting Card." });
+  if (files.visitingCard && files.visitingCard.length > 0) {
+    for (let i = 0; i < files.visitingCard.length; i++) {
+      parts.push({ inlineData: { mimeType: files.visitingCard[i].type, data: await fileToBase64(files.visitingCard[i]) } });
+      parts.push({ text: `This is the Visiting Card (${i === 0 ? 'Front' : 'Back'}).` });
+    }
   }
   if (files.storeImage && files.storeImage.length > 0) {
     for (let i = 0; i < files.storeImage.length; i++) {
@@ -306,9 +310,11 @@ export const extractBusinessOnly = async (
       parts.push({ text: `This is a Store/Office Image (${i + 1} of ${files.storeImage.length}).` });
     }
   }
-  if (files.voiceRecording) {
-    parts.push({ inlineData: { mimeType: files.voiceRecording.type, data: await fileToBase64(files.voiceRecording) } });
-    parts.push({ text: "This is the Client's Voice Instructions. Listen carefully." });
+  if (files.voiceRecording && files.voiceRecording.length > 0) {
+    for (let i = 0; i < files.voiceRecording.length; i++) {
+      parts.push({ inlineData: { mimeType: files.voiceRecording[i].type, data: await fileToBase64(files.voiceRecording[i]) } });
+      parts.push({ text: `This is the Client's Voice Instructions (${i + 1} of ${files.voiceRecording.length}). Listen carefully.` });
+    }
   }
   if (files.flyersPosters && files.flyersPosters.length > 0) {
     for (let i = 0; i < files.flyersPosters.length; i++) {
@@ -394,9 +400,11 @@ export const generateAdAssets = async (
     }
 
     // Add text file content
-    if (files.textInstructionsFile) {
-      const textContent = await readFileAsText(files.textInstructionsFile);
-      parts.push({ text: `Client Text File Content: ${textContent}` });
+    if (files.textInstructionsFile && files.textInstructionsFile.length > 0) {
+      for (const textFile of files.textInstructionsFile) {
+        const textContent = await readFileAsText(textFile);
+        parts.push({ text: `Client Text File Content: ${textContent}` });
+      }
     }
 
     // Process Logo
@@ -407,18 +415,20 @@ export const generateAdAssets = async (
           data: await fileToBase64(files.logo)
         }
       });
-      parts.push({ text: "This is the Business Logo." });
+      parts.push({ text: "This is the Business Logo. CRITICAL: Place this EXACT logo image as-is in the scene. Do NOT recreate, redesign, redraw, recolor, simplify, or modify this logo in ANY way. Use the attached image pixel-for-pixel." });
     }
 
     // Process Visiting Card
-    if (files.visitingCard) {
-      parts.push({
-        inlineData: {
-          mimeType: files.visitingCard.type,
-          data: await fileToBase64(files.visitingCard)
-        }
-      });
-      parts.push({ text: "This is the Visiting Card." });
+    if (files.visitingCard && files.visitingCard.length > 0) {
+      for (let i = 0; i < files.visitingCard.length; i++) {
+        parts.push({
+          inlineData: {
+            mimeType: files.visitingCard[i].type,
+            data: await fileToBase64(files.visitingCard[i])
+          }
+        });
+        parts.push({ text: `This is the Visiting Card (${i === 0 ? 'Front' : 'Back'}).` });
+      }
     }
 
     // Process Store Images
@@ -435,14 +445,16 @@ export const generateAdAssets = async (
     }
 
     // Process Voice Recording
-    if (files.voiceRecording) {
-      parts.push({
-        inlineData: {
-          mimeType: files.voiceRecording.type,
-          data: await fileToBase64(files.voiceRecording)
-        }
-      });
-      parts.push({ text: "This is the Client's Voice Instructions. Listen carefully." });
+    if (files.voiceRecording && files.voiceRecording.length > 0) {
+      for (let i = 0; i < files.voiceRecording.length; i++) {
+        parts.push({
+          inlineData: {
+            mimeType: files.voiceRecording[i].type,
+            data: await fileToBase64(files.voiceRecording[i])
+          }
+        });
+        parts.push({ text: `This is the Client's Voice Instructions (${i + 1} of ${files.voiceRecording.length}). Listen carefully.` });
+      }
     }
 
     // Process Flyers / Offer Posters / Brochures
@@ -796,14 +808,15 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR HEADER:
   const headerParts: any[] = [{ text: headerUserPrompt }];
   
   // Attach visiting card directly to header generation — extract only essential info
-  if (files.visitingCard) {
-    headerParts.push({
-      inlineData: {
-        mimeType: files.visitingCard.type,
-        data: await fileToBase64(files.visitingCard)
-      }
-    });
-    headerParts.push({ text: `This is the VISITING CARD — extract ONLY ESSENTIAL contact information for a SLIM header:
+  if (files.visitingCard && files.visitingCard.length > 0) {
+    for (let i = 0; i < files.visitingCard.length; i++) {
+      headerParts.push({
+        inlineData: {
+          mimeType: files.visitingCard[i].type,
+          data: await fileToBase64(files.visitingCard[i])
+        }
+      });
+      headerParts.push({ text: `This is the VISITING CARD (${i === 0 ? 'Front' : 'Back'}) — extract ONLY ESSENTIAL contact information for a SLIM header:
 - Business Name (EXACT as printed) — MOST PROMINENT
 - 1-2 PRIMARY Phone Numbers (choose mobile/WhatsApp, skip landlines if too many)
 - Email Address (single, primary one)
@@ -818,6 +831,7 @@ DO NOT EXTRACT for the header:
 - Social media handles
 
 Keep it MINIMAL — the header is a thin contact strip (5-8% height), NOT a visiting card replica.` });
+    }
   }
   
   // Attach logo directly to header generation

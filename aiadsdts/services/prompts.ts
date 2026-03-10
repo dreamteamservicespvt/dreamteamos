@@ -758,6 +758,9 @@ ${festivalTheme.backgroundElements}
 • The logo must appear as real physical signage — naturally part of the office/store
 • Festival decorations (garlands, flowers) may surround or frame the logo — this is expected and natural
 • Do NOT generate, recreate, or design a new logo — use ONLY the attached logo image file
+• ⚠️ CRITICAL: The logo must be a PIXEL-PERFECT copy of the attached image — same colors, same shapes, same text, same proportions
+• Do NOT simplify, stylize, redraw, reinterpret, add text to, remove text from, or alter the logo in ANY way
+• If the logo has specific text/font/colors, those MUST appear EXACTLY as in the attached file
 
 **THE GOLDEN RULE — REAL OFFICE + FESTIVAL DECORATION:**
 The final image should look like a photographer walked into THIS SPECIFIC BUSINESS and took a photo of their ${festivalName}-decorated premises.
@@ -795,7 +798,7 @@ Environment Requirements:
 • The background alone should clearly communicate "[BUSINESS TYPE]" even without the logo
 • The background must look like the REAL business premises — as if the photo was taken at the ACTUAL location
 
-LOGO PLACEMENT (CRITICAL):
+LOGO PLACEMENT (CRITICAL — DO NOT MODIFY THE LOGO):
 Take the ATTACHED LOGO image and place it exactly as-is in the scene.
 
 Placement Rules:
@@ -804,6 +807,9 @@ Placement Rules:
 • Do NOT generate, recreate, or design a new logo — use ONLY the attached logo image file
 • Do NOT describe or interpret what the logo looks like — just place the attached image directly
 • Do NOT change, modify, redesign, or recolor the logo in any way
+• Do NOT simplify, stylize, redraw, add text to, remove text from, or reinterpret the logo
+• ⚠️ The logo must be a PIXEL-PERFECT reproduction of the attached image — same colors, fonts, shapes, proportions, and layout
+• If the attached logo contains specific text, that EXACT text must appear — do NOT substitute, translate, or rephrase it
 • Logo should be properly sized — visible and recognizable but not oversized
 • Natural office lighting falling on it realistically`}
 

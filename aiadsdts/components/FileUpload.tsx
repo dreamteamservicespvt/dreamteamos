@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Upload, X, FileAudio, FileText, Image as ImageIcon } from 'lucide-react';
+import { Upload, X, FileAudio, FileText, Image as ImageIcon, Plus } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -7,38 +7,83 @@ interface FileUploadProps {
   label: string;
   accept: string;
   multiple?: boolean;
+  maxFiles?: number;
   onChange: (file: File | File[] | null) => void;
   required?: boolean;
   helperText?: string;
+  value?: File | File[] | null;
 }
 
 export const FileUpload: React.FC<FileUploadProps> = ({ 
   label, 
   accept, 
   multiple = false, 
+  maxFiles,
   onChange, 
   required,
-  helperText
+  helperText,
+  value
 }) => {
   const { resolvedTheme } = useTheme();
-  const [files, setFiles] = useState<File[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const appendModeRef = useRef(false);
+
+  const canAddMore = multiple || (maxFiles !== undefined && maxFiles > 1);
+
+  // Derive files from value prop if provided, otherwise use internal state
+  const getFilesFromValue = (): File[] => {
+    if (value === undefined || value === null) return [];
+    if (Array.isArray(value)) return value;
+    return [value];
+  };
+  const [internalFiles, setInternalFiles] = useState<File[]>(getFilesFromValue);
+  const files = value !== undefined ? getFilesFromValue() : internalFiles;
+
+  const hasReachedMax = maxFiles !== undefined && files.length >= maxFiles;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      const newFiles = Array.from(e.target.files);
-      setFiles(newFiles);
-      onChange(multiple ? newFiles : newFiles[0]);
+      const incoming = Array.from(e.target.files);
+      
+      if (appendModeRef.current && canAddMore) {
+        let merged = [...files, ...incoming];
+        if (maxFiles !== undefined) merged = merged.slice(0, maxFiles);
+        setInternalFiles(merged);
+        onChange(merged);
+      } else if (canAddMore) {
+        let newFiles = incoming;
+        if (maxFiles !== undefined) newFiles = newFiles.slice(0, maxFiles);
+        setInternalFiles(newFiles);
+        onChange(newFiles);
+      } else {
+        setInternalFiles([incoming[0]]);
+        onChange(incoming[0]);
+      }
+      appendModeRef.current = false;
     }
   };
 
   const removeFile = (index: number) => {
     const updatedFiles = files.filter((_, i) => i !== index);
-    setFiles(updatedFiles);
-    onChange(multiple ? updatedFiles : (updatedFiles[0] || null));
+    setInternalFiles(updatedFiles);
+    if (canAddMore) {
+      onChange(updatedFiles.length > 0 ? updatedFiles : null);
+    } else {
+      onChange(updatedFiles[0] || null);
+    }
     if (inputRef.current) {
       inputRef.current.value = '';
     }
+  };
+
+  const triggerAddAnother = () => {
+    appendModeRef.current = true;
+    inputRef.current?.click();
+  };
+
+  const triggerChangeFile = () => {
+    appendModeRef.current = false;
+    inputRef.current?.click();
   };
 
   const getIcon = () => {
@@ -49,13 +94,24 @@ export const FileUpload: React.FC<FileUploadProps> = ({
 
   return (
     <div className="mb-4">
-      <label className={clsx(
-        "block text-sm font-semibold mb-2",
-        resolvedTheme === 'dark' ? "text-slate-300" : "text-slate-700"
-      )}>
-        {label} {required && <span className="text-red-500">*</span>}
-      </label>
+      {label && (
+        <label className={clsx(
+          "block text-sm font-semibold mb-2",
+          resolvedTheme === 'dark' ? "text-slate-300" : "text-slate-700"
+        )}>
+          {label} {required && <span className="text-red-500">*</span>}
+        </label>
+      )}
       
+      <input
+        ref={inputRef}
+        type="file"
+        accept={accept}
+        multiple={canAddMore && !maxFiles}
+        onChange={handleFileChange}
+        className="hidden"
+      />
+
       {files.length === 0 ? (
         <div 
           onClick={() => inputRef.current?.click()}
@@ -111,17 +167,27 @@ export const FileUpload: React.FC<FileUploadProps> = ({
               </button>
             </div>
           ))}
+          {canAddMore && !hasReachedMax ? (
+            <button
+              onClick={triggerAddAnother}
+              className={clsx("w-full text-xs text-center py-2 rounded-lg border border-dashed transition-colors flex items-center justify-center gap-1",
+                resolvedTheme === 'dark' ? "border-blue-500/50 text-blue-400 hover:border-blue-400 hover:bg-blue-900/20" : "border-blue-300 text-blue-500 hover:border-blue-400 hover:bg-blue-50"
+              )}
+            >
+              <Plus className="w-3 h-3" /> Add another
+            </button>
+          ) : (
+            <button
+              onClick={triggerChangeFile}
+              className={clsx("w-full text-xs text-center py-2 rounded-lg border border-dashed transition-colors",
+                resolvedTheme === 'dark' ? "border-slate-600 text-slate-400 hover:border-blue-500" : "border-slate-300 text-slate-500 hover:border-blue-400"
+              )}
+            >
+              Change file
+            </button>
+          )}
         </div>
       )}
-
-      <input
-        ref={inputRef}
-        type="file"
-        accept={accept}
-        multiple={multiple}
-        onChange={handleFileChange}
-        className="hidden"
-      />
     </div>
   );
 };

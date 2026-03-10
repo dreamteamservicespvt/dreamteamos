@@ -27,12 +27,12 @@ export interface AdFormData {
 
 export interface FileStore {
   logo: File | null;
-  visitingCard: File | null;
+  visitingCard: File[];
   storeImage: File[];
   productImages: File[];
   flyersPosters: File[];
-  voiceRecording: File | null;
-  textInstructionsFile: File | null;
+  voiceRecording: File[];
+  textInstructionsFile: File[];
 }
 
 export interface GeneratedOutputs {

@@ -48,12 +48,12 @@ const App: React.FC = () => {
 
   const [files, setFiles] = useState<FileStore>({
     logo: null,
-    visitingCard: null,
-    storeImage: null,
+    visitingCard: [],
+    storeImage: [],
     productImages: [],
     flyersPosters: [],
-    voiceRecording: null,
-    textInstructionsFile: null
+    voiceRecording: [],
+    textInstructionsFile: []
   });
 
   const [status, setStatus] = useState<GenerationStatus>({
@@ -130,34 +130,6 @@ const App: React.FC = () => {
   const [collapsedOutputs, setCollapsedOutputs] = useState<Record<string, boolean>>({});
   const toggleOutputSection = (section: string) => {
     setCollapsedOutputs(prev => ({ ...prev, [section]: !prev[section] }));
-  };
-
-  // Copy state for section header copy buttons
-  const [copiedSection, setCopiedSection] = useState<string | null>(null);
-
-  // Helper to clean markdown code blocks
-  const cleanCodeBlocks = (text: string): string => {
-    let cleaned = text
-      .replace(/^```(?:markdown|json|text|plaintext)?\s*\n?/gim, '')
-      .replace(/\n?```\s*$/gim, '')
-      .replace(/^```\s*\n?/gim, '')
-      .replace(/\n?```$/gim, '');
-    return cleaned.trim();
-  };
-
-  // Copy section content from header without opening
-  const handleSectionCopy = (e: React.MouseEvent, sectionKey: string, content: string | string[]) => {
-    e.stopPropagation(); // Prevent toggle
-    let text = Array.isArray(content) 
-      ? content.map((c, i) => `${sectionKey === 'mainFrame' ? `Clip ${i + 1} – Main Frame Prompt` : `Segment ${i + 1}`}\n${c}`).join('\n\n---\n\n') 
-      : content;
-    // Clean code blocks for mainFrame and header
-    if (sectionKey === 'mainFrame' || sectionKey === 'header') {
-      text = cleanCodeBlocks(text);
-    }
-    navigator.clipboard.writeText(text);
-    setCopiedSection(sectionKey);
-    setTimeout(() => setCopiedSection(null), 2000);
   };
 
   // Creation mode: 'video' = full pipeline, 'poster' = extract + poster only
@@ -529,8 +501,11 @@ const App: React.FC = () => {
                 <FileUpload 
                   label="Visiting Card" 
                   accept="image/*"
-                  onChange={(f) => setFiles(prev => ({ ...prev, visitingCard: f as File }))}
-                  helperText="Optional"
+                  multiple
+                  maxFiles={2}
+                  value={files.visitingCard}
+                  onChange={(f) => setFiles(prev => ({ ...prev, visitingCard: (f ? (Array.isArray(f) ? f : [f]) : []) as File[] }))}
+                  helperText="Front & back (max 2)"
                 />
 
                 {/* Collapsible: Store/Office */}
@@ -550,8 +525,10 @@ const App: React.FC = () => {
                       <FileUpload 
                         label="" 
                         accept="image/*"
-                        onChange={(f) => setFiles(prev => ({ ...prev, storeImage: f as File }))}
-                        helperText="Optional"
+                        multiple
+                        value={files.storeImage}
+                        onChange={(f) => setFiles(prev => ({ ...prev, storeImage: (f ? (Array.isArray(f) ? f : [f]) : []) as File[] }))}
+                        helperText="Upload one or more store/office images"
                       />
                     </div>
                   )}
@@ -575,6 +552,7 @@ const App: React.FC = () => {
                         label="" 
                         accept="image/*" 
                         multiple
+                        value={files.productImages}
                         onChange={(f) => setFiles(prev => ({ ...prev, productImages: f as File[] }))}
                         helperText="Will appear in main frame & footer"
                       />
@@ -614,6 +592,7 @@ const App: React.FC = () => {
                         label="" 
                         accept="image/*,application/pdf" 
                         multiple
+                        value={files.flyersPosters}
                         onChange={(f) => setFiles(prev => ({ ...prev, flyersPosters: f as File[] }))}
                         helperText="Upload existing flyers, offer posters, or promotional materials"
                       />
@@ -638,7 +617,9 @@ const App: React.FC = () => {
                       <FileUpload 
                         label="" 
                         accept="audio/*"
-                        onChange={(f) => setFiles(prev => ({ ...prev, voiceRecording: f as File }))}
+                        multiple
+                        value={files.voiceRecording}
+                        onChange={(f) => setFiles(prev => ({ ...prev, voiceRecording: (f ? (Array.isArray(f) ? f : [f]) : []) as File[] }))}
                         helperText="Record your requirements"
                       />
                     </div>
@@ -665,7 +646,9 @@ const App: React.FC = () => {
                   <FileUpload 
                     label="" 
                     accept=".txt,.pdf,.doc,.docx"
-                    onChange={(f) => setFiles(prev => ({ ...prev, textInstructionsFile: f as File }))}
+                    multiple
+                    value={files.textInstructionsFile}
+                    onChange={(f) => setFiles(prev => ({ ...prev, textInstructionsFile: (f ? (Array.isArray(f) ? f : [f]) : []) as File[] }))}
                     helperText="Or upload a text/PDF file with instructions"
                   />
                 </div>
@@ -1046,7 +1029,8 @@ const App: React.FC = () => {
                   "rounded-xl border overflow-hidden transition-colors",
                   resolvedTheme === 'dark' ? "border-slate-700" : "border-slate-200"
                 )}>
-                  <div
+                  <button
+                    onClick={() => toggleOutputSection('businessInfo')}
                     className={clsx(
                       "w-full flex items-center justify-between px-4 py-3 text-left transition-colors cursor-pointer",
                       resolvedTheme === 'dark'
@@ -1054,27 +1038,9 @@ const App: React.FC = () => {
                         : "bg-slate-50 hover:bg-slate-100 text-slate-800"
                     )}
                   >
-                    <button onClick={() => toggleOutputSection('businessInfo')} className="flex-1 flex items-center text-left">
-                      <span className="font-semibold text-sm uppercase tracking-wide">Business Intelligence (Extracted)</span>
-                    </button>
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={(e) => handleSectionCopy(e, 'businessInfo', typeof outputs.businessInfo === 'object' ? JSON.stringify(outputs.businessInfo, null, 2) : outputs.businessInfo)}
-                        className={clsx(
-                          "p-1.5 rounded transition-colors",
-                          copiedSection === 'businessInfo'
-                            ? resolvedTheme === 'dark' ? "text-green-400" : "text-green-600"
-                            : resolvedTheme === 'dark' ? "text-slate-400 hover:text-blue-400" : "text-slate-500 hover:text-blue-600"
-                        )}
-                        title={copiedSection === 'businessInfo' ? 'Copied!' : 'Copy'}
-                      >
-                        {copiedSection === 'businessInfo' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                      </button>
-                      <button onClick={() => toggleOutputSection('businessInfo')} className="p-1">
-                        <ChevronDown className={clsx("w-4 h-4 transition-transform", collapsedOutputs['businessInfo'] && "rotate-180")} />
-                      </button>
-                    </div>
-                  </div>
+                    <span className="font-semibold text-sm uppercase tracking-wide">Business Intelligence (Extracted)</span>
+                    <ChevronDown className={clsx("w-4 h-4 transition-transform", collapsedOutputs['businessInfo'] && "rotate-180")} />
+                  </button>
                   {collapsedOutputs['businessInfo'] && (
                     <GeneratedCard 
                         title="Business Intelligence (Extracted)" 
@@ -1093,7 +1059,8 @@ const App: React.FC = () => {
                       "rounded-xl border overflow-hidden transition-colors",
                       resolvedTheme === 'dark' ? "border-slate-700" : "border-slate-200"
                     )}>
-                      <div
+                      <button
+                        onClick={() => toggleOutputSection('mainFrame')}
                         className={clsx(
                           "w-full flex items-center justify-between px-4 py-3 text-left transition-colors cursor-pointer",
                           resolvedTheme === 'dark'
@@ -1101,27 +1068,9 @@ const App: React.FC = () => {
                             : "bg-slate-50 hover:bg-slate-100 text-slate-800"
                         )}
                       >
-                        <button onClick={() => toggleOutputSection('mainFrame')} className="flex-1 flex items-center text-left">
-                          <span className="font-semibold text-sm uppercase tracking-wide">1. Main Frame Prompts ({outputs.mainFramePrompts.length} Clips)</span>
-                        </button>
-                        <div className="flex items-center space-x-2">
-                          <button
-                            onClick={(e) => handleSectionCopy(e, 'mainFrame', outputs.mainFramePrompts)}
-                            className={clsx(
-                              "p-1.5 rounded transition-colors",
-                              copiedSection === 'mainFrame'
-                                ? resolvedTheme === 'dark' ? "text-green-400" : "text-green-600"
-                                : resolvedTheme === 'dark' ? "text-slate-400 hover:text-blue-400" : "text-slate-500 hover:text-blue-600"
-                            )}
-                            title={copiedSection === 'mainFrame' ? 'Copied!' : 'Copy All Clips'}
-                          >
-                            {copiedSection === 'mainFrame' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                          </button>
-                          <button onClick={() => toggleOutputSection('mainFrame')} className="p-1">
-                            <ChevronDown className={clsx("w-4 h-4 transition-transform", collapsedOutputs['mainFrame'] && "rotate-180")} />
-                          </button>
-                        </div>
-                      </div>
+                        <span className="font-semibold text-sm uppercase tracking-wide">1. Main Frame Prompts ({outputs.mainFramePrompts.length} Clips)</span>
+                        <ChevronDown className={clsx("w-4 h-4 transition-transform", collapsedOutputs['mainFrame'] && "rotate-180")} />
+                      </button>
                       {collapsedOutputs['mainFrame'] && (
                         <>
                           <GeneratedCard 
@@ -1154,7 +1103,8 @@ const App: React.FC = () => {
                       "rounded-xl border overflow-hidden transition-colors",
                       resolvedTheme === 'dark' ? "border-slate-700" : "border-slate-200"
                     )}>
-                      <div
+                      <button
+                        onClick={() => toggleOutputSection('header')}
                         className={clsx(
                           "w-full flex items-center justify-between px-4 py-3 text-left transition-colors cursor-pointer",
                           resolvedTheme === 'dark'
@@ -1162,27 +1112,9 @@ const App: React.FC = () => {
                             : "bg-slate-50 hover:bg-slate-100 text-slate-800"
                         )}
                       >
-                        <button onClick={() => toggleOutputSection('header')} className="flex-1 flex items-center text-left">
-                          <span className="font-semibold text-sm uppercase tracking-wide">2. Header Prompt</span>
-                        </button>
-                        <div className="flex items-center space-x-2">
-                          <button
-                            onClick={(e) => handleSectionCopy(e, 'header', outputs.headerPrompt)}
-                            className={clsx(
-                              "p-1.5 rounded transition-colors",
-                              copiedSection === 'header'
-                                ? resolvedTheme === 'dark' ? "text-green-400" : "text-green-600"
-                                : resolvedTheme === 'dark' ? "text-slate-400 hover:text-blue-400" : "text-slate-500 hover:text-blue-600"
-                            )}
-                            title={copiedSection === 'header' ? 'Copied!' : 'Copy'}
-                          >
-                            {copiedSection === 'header' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                          </button>
-                          <button onClick={() => toggleOutputSection('header')} className="p-1">
-                            <ChevronDown className={clsx("w-4 h-4 transition-transform", collapsedOutputs['header'] && "rotate-180")} />
-                          </button>
-                        </div>
-                      </div>
+                        <span className="font-semibold text-sm uppercase tracking-wide">2. Header Prompt</span>
+                        <ChevronDown className={clsx("w-4 h-4 transition-transform", collapsedOutputs['header'] && "rotate-180")} />
+                      </button>
                       {collapsedOutputs['header'] && (
                         <>
                           <GeneratedCard 
@@ -1214,7 +1146,8 @@ const App: React.FC = () => {
                       "rounded-xl border overflow-hidden transition-colors",
                       resolvedTheme === 'dark' ? "border-slate-700" : "border-slate-200"
                     )}>
-                      <div
+                      <button
+                        onClick={() => toggleOutputSection('poster')}
                         className={clsx(
                           "w-full flex items-center justify-between px-4 py-3 text-left transition-colors cursor-pointer",
                           resolvedTheme === 'dark'
@@ -1222,27 +1155,9 @@ const App: React.FC = () => {
                             : "bg-slate-50 hover:bg-slate-100 text-slate-800"
                         )}
                       >
-                        <button onClick={() => toggleOutputSection('poster')} className="flex-1 flex items-center text-left">
-                          <span className="font-semibold text-sm uppercase tracking-wide">3. Poster Design Prompt (JSON)</span>
-                        </button>
-                        <div className="flex items-center space-x-2">
-                          <button
-                            onClick={(e) => handleSectionCopy(e, 'poster', outputs.posterPrompt)}
-                            className={clsx(
-                              "p-1.5 rounded transition-colors",
-                              copiedSection === 'poster'
-                                ? resolvedTheme === 'dark' ? "text-green-400" : "text-green-600"
-                                : resolvedTheme === 'dark' ? "text-slate-400 hover:text-blue-400" : "text-slate-500 hover:text-blue-600"
-                            )}
-                            title={copiedSection === 'poster' ? 'Copied!' : 'Copy'}
-                          >
-                            {copiedSection === 'poster' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                          </button>
-                          <button onClick={() => toggleOutputSection('poster')} className="p-1">
-                            <ChevronDown className={clsx("w-4 h-4 transition-transform", collapsedOutputs['poster'] && "rotate-180")} />
-                          </button>
-                        </div>
-                      </div>
+                        <span className="font-semibold text-sm uppercase tracking-wide">3. Poster Design Prompt (JSON)</span>
+                        <ChevronDown className={clsx("w-4 h-4 transition-transform", collapsedOutputs['poster'] && "rotate-180")} />
+                      </button>
                       {collapsedOutputs['poster'] && (
                         <GeneratedCard 
                             title="3. Poster Design Prompt (JSON)" 
@@ -1262,7 +1177,8 @@ const App: React.FC = () => {
                       "rounded-xl border overflow-hidden transition-colors",
                       resolvedTheme === 'dark' ? "border-slate-700" : "border-slate-200"
                     )}>
-                      <div
+                      <button
+                        onClick={() => toggleOutputSection('voiceOver')}
                         className={clsx(
                           "w-full flex items-center justify-between px-4 py-3 text-left transition-colors cursor-pointer",
                           resolvedTheme === 'dark'
@@ -1270,27 +1186,9 @@ const App: React.FC = () => {
                             : "bg-slate-50 hover:bg-slate-100 text-slate-800"
                         )}
                       >
-                        <button onClick={() => toggleOutputSection('voiceOver')} className="flex-1 flex items-center text-left">
-                          <span className="font-semibold text-sm uppercase tracking-wide">4. Voice Over Script (Telugu)</span>
-                        </button>
-                        <div className="flex items-center space-x-2">
-                          <button
-                            onClick={(e) => handleSectionCopy(e, 'voiceOver', outputs.voiceOverScript)}
-                            className={clsx(
-                              "p-1.5 rounded transition-colors",
-                              copiedSection === 'voiceOver'
-                                ? resolvedTheme === 'dark' ? "text-green-400" : "text-green-600"
-                                : resolvedTheme === 'dark' ? "text-slate-400 hover:text-blue-400" : "text-slate-500 hover:text-blue-600"
-                            )}
-                            title={copiedSection === 'voiceOver' ? 'Copied!' : 'Copy'}
-                          >
-                            {copiedSection === 'voiceOver' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                          </button>
-                          <button onClick={() => toggleOutputSection('voiceOver')} className="p-1">
-                            <ChevronDown className={clsx("w-4 h-4 transition-transform", collapsedOutputs['voiceOver'] && "rotate-180")} />
-                          </button>
-                        </div>
-                      </div>
+                        <span className="font-semibold text-sm uppercase tracking-wide">4. Voice Over Script (Telugu)</span>
+                        <ChevronDown className={clsx("w-4 h-4 transition-transform", collapsedOutputs['voiceOver'] && "rotate-180")} />
+                      </button>
                       {collapsedOutputs['voiceOver'] && (
                         <GeneratedCard 
                             title="4. Voice Over Script (Telugu)" 
@@ -1310,7 +1208,8 @@ const App: React.FC = () => {
                       "rounded-xl border overflow-hidden transition-colors",
                       resolvedTheme === 'dark' ? "border-slate-700" : "border-slate-200"
                     )}>
-                      <div
+                      <button
+                        onClick={() => toggleOutputSection('veo')}
                         className={clsx(
                           "w-full flex items-center justify-between px-4 py-3 text-left transition-colors cursor-pointer",
                           resolvedTheme === 'dark'
@@ -1318,27 +1217,9 @@ const App: React.FC = () => {
                             : "bg-slate-50 hover:bg-slate-100 text-slate-800"
                         )}
                       >
-                        <button onClick={() => toggleOutputSection('veo')} className="flex-1 flex items-center text-left">
-                          <span className="font-semibold text-sm uppercase tracking-wide">5. Veo 3 Video Prompts</span>
-                        </button>
-                        <div className="flex items-center space-x-2">
-                          <button
-                            onClick={(e) => handleSectionCopy(e, 'veo', outputs.veoPrompts)}
-                            className={clsx(
-                              "p-1.5 rounded transition-colors",
-                              copiedSection === 'veo'
-                                ? resolvedTheme === 'dark' ? "text-green-400" : "text-green-600"
-                                : resolvedTheme === 'dark' ? "text-slate-400 hover:text-blue-400" : "text-slate-500 hover:text-blue-600"
-                            )}
-                            title={copiedSection === 'veo' ? 'Copied!' : 'Copy'}
-                          >
-                            {copiedSection === 'veo' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                          </button>
-                          <button onClick={() => toggleOutputSection('veo')} className="p-1">
-                            <ChevronDown className={clsx("w-4 h-4 transition-transform", collapsedOutputs['veo'] && "rotate-180")} />
-                          </button>
-                        </div>
-                      </div>
+                        <span className="font-semibold text-sm uppercase tracking-wide">5. Veo 3 Video Prompts</span>
+                        <ChevronDown className={clsx("w-4 h-4 transition-transform", collapsedOutputs['veo'] && "rotate-180")} />
+                      </button>
                       {collapsedOutputs['veo'] && (
                         <GeneratedCard 
                             title="5. Veo 3 Video Prompts" 
