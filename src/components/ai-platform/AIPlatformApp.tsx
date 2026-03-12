@@ -719,7 +719,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                   {creationMode === 'video' && outputs.headerPrompt && (
                       <OutputSection title="2. Header Prompt" sectionKey="header"
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
-                        isDark={isDark}>
+                        isDark={isDark} copyContent={outputs.headerPrompt}>
                         <GeneratedCard title="Header" content={outputs.headerPrompt} sectionType="header"
                           showRefinement={!viewingSavedItem} onRefine={(i) => handleRefineSection('header', i)} isRefining={refiningSection === 'header'} hideTitle />
                       </OutputSection>
@@ -842,16 +842,49 @@ const OutputSection: React.FC<{
   title: string; sectionKey: string; children: React.ReactNode;
   collapsedOutputs: Record<string, boolean>; toggleOutputSection: (s: string) => void;
   isDark: boolean;
-}> = ({ title, sectionKey, children, collapsedOutputs, toggleOutputSection, isDark }) => (
-  <div className={cn("rounded-xl border overflow-hidden", isDark ? "border-slate-700" : "border-slate-200")}>
-    <button onClick={() => toggleOutputSection(sectionKey)} className={cn("w-full flex items-center justify-between px-4 py-3 cursor-pointer",
-      isDark ? "bg-slate-800 hover:bg-slate-750 text-slate-200" : "bg-slate-50 hover:bg-slate-100 text-slate-800"
-    )}>
-      <span className="font-semibold text-sm uppercase tracking-wide text-left">{title}</span>
-      <ChevronDown className={cn("w-4 h-4 transition-transform", collapsedOutputs[sectionKey] && "rotate-180")} />
-    </button>
-    {collapsedOutputs[sectionKey] && children}
-  </div>
-);
+  copyContent?: string;
+}> = ({ title, sectionKey, children, collapsedOutputs, toggleOutputSection, isDark, copyContent }) => {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!copyContent) return;
+    const cleaned = copyContent
+      .replace(/^```(?:markdown|json|text|plaintext)?\s*\n?/gim, '')
+      .replace(/\n?```\s*$/gim, '')
+      .replace(/^```\s*\n?/gim, '')
+      .replace(/\n?```$/gim, '')
+      .trim();
+    navigator.clipboard.writeText(cleaned);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <div className={cn("rounded-xl border overflow-hidden", isDark ? "border-slate-700" : "border-slate-200")}>
+      <button onClick={() => toggleOutputSection(sectionKey)} className={cn("w-full flex items-center justify-between px-4 py-3 cursor-pointer",
+        isDark ? "bg-slate-800 hover:bg-slate-750 text-slate-200" : "bg-slate-50 hover:bg-slate-100 text-slate-800"
+      )}>
+        <span className="font-semibold text-sm uppercase tracking-wide text-left">{title}</span>
+        <div className="flex items-center space-x-2">
+          {copyContent && (
+            <span
+              onClick={handleCopy}
+              className={cn(
+                "flex items-center space-x-1 text-xs font-medium px-2 py-1 rounded transition-colors",
+                copied
+                  ? isDark ? "text-green-400 bg-green-900/30" : "text-green-600 bg-green-50"
+                  : isDark ? "text-slate-400 hover:text-blue-400 hover:bg-blue-900/30" : "text-slate-500 hover:text-blue-600 hover:bg-blue-50"
+              )}
+            >
+              {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+              <span>{copied ? 'Copied' : 'Copy'}</span>
+            </span>
+          )}
+          <ChevronDown className={cn("w-4 h-4 transition-transform", collapsedOutputs[sectionKey] && "rotate-180")} />
+        </div>
+      </button>
+      {collapsedOutputs[sectionKey] && children}
+    </div>
+  );
+};
 
 export default AIPlatformApp;

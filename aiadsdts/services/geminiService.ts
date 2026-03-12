@@ -770,12 +770,19 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR HEADER:
 - This creates a "product showcase strip" that reinforces what the business sells`
     : '';
   
-  const headerUserPrompt = `Generate a Header image prompt for:
+  const headerUserPrompt = `Generate a WORLD-CLASS Header image prompt for:
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
   AD TYPE: ${formData.adType}
   ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName}` : ''}
   
-  CRITICAL INSTRUCTION: Extract ONLY essential contact details from the visiting card: Business Name, 1-2 Primary Phone Numbers, Email, Website, and Address (city/area only). Do NOT include: taglines, services list, proprietor names, or multiple addresses. Keep the header ULTRA-SLIM (5-8% max height).
+  CRITICAL INSTRUCTIONS:
+  1. Extract ONLY essential contact details from the visiting card: Business Name, 1-2 Primary Phone Numbers, Email, Website, and Address (city/area only)
+  2. Do NOT include: taglines, services list, proprietor names, or multiple addresses
+  3. Keep the header ULTRA-SLIM (5-8% max height) — do NOT increase the header height
+  4. ALL TEXT must be rendered at 8K ULTRA-SHARP quality — every single character (phone digits, email symbols, website URL) must be CRYSTAL CLEAR and perfectly readable
+  5. The header must look like it was designed by a world-class graphic designer with 30 years of experience
+  6. Use business-type specific color grading — the header color must match the industry
+  ${formData.adType === 'festival' ? `7. Blend ${formData.festivalName} festival theme with the business type colors — create a unique festive yet professional header` : ''}
   ${(hasProductImages && includeProductsInHeader) ? `\nPRODUCT IMAGES: ${productImageCount} product image(s) are being attached. Include a product banner strip in the header design.` : ''}${productImageHeaderNote}`;
 
   // Build header parts — include visiting card (primary source for header info), logo, and product images
@@ -791,10 +798,10 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR HEADER:
         }
       });
       headerParts.push({ text: `This is the VISITING CARD (${i === 0 ? 'Front' : 'Back'}) — extract ONLY ESSENTIAL contact information for a SLIM header:
-- Business Name (EXACT as printed) — MOST PROMINENT
-- 1-2 PRIMARY Phone Numbers (choose mobile/WhatsApp, skip landlines if too many)
-- Email Address (single, primary one)
-- Website URL
+- Business Name (EXACT as printed — preserve every character, capitalization, and spacing) — MOST PROMINENT element
+- 1-2 PRIMARY Phone Numbers (choose mobile/WhatsApp, skip landlines if too many) — EVERY DIGIT must be crystal-clear
+- Email Address (single, primary one) — every character including @ symbol must be razor-sharp
+- Website URL (full URL) — must be perfectly legible
 - Address (SHORT — city/locality ONLY, not full address)
 
 DO NOT EXTRACT for the header:
@@ -804,6 +811,7 @@ DO NOT EXTRACT for the header:
 - Multiple addresses
 - Social media handles
 
+QUALITY NOTE: All extracted text will be rendered at 8K resolution — ensure EXACT spelling and formatting so every character renders PERFECTLY.
 Keep it MINIMAL — the header is a thin contact strip (5-8% height), NOT a visiting card replica.` });
     }
   }

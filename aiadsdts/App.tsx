@@ -1117,7 +1117,10 @@ const App: React.FC = () => {
                         )}
                       >
                         <span className="font-semibold text-sm uppercase tracking-wide">2. Header Prompt</span>
-                        <ChevronDown className={clsx("w-4 h-4 transition-transform", collapsedOutputs['header'] && "rotate-180")} />
+                        <div className="flex items-center space-x-2">
+                          <HeaderCopyButton content={outputs.headerPrompt} resolvedTheme={resolvedTheme} />
+                          <ChevronDown className={clsx("w-4 h-4 transition-transform", collapsedOutputs['header'] && "rotate-180")} />
+                        </div>
                       </button>
                       {collapsedOutputs['header'] && (
                         <>
@@ -1476,6 +1479,37 @@ const App: React.FC = () => {
         </div>
       </main>
     </div>
+  );
+};
+
+const HeaderCopyButton: React.FC<{ content: string; resolvedTheme: string | undefined }> = ({ content, resolvedTheme }) => {
+  const [copied, setCopied] = useState(false);
+  const isDark = resolvedTheme === 'dark';
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const cleaned = content
+      .replace(/^```(?:markdown|json|text|plaintext)?\s*\n?/gim, '')
+      .replace(/\n?```\s*$/gim, '')
+      .replace(/^```\s*\n?/gim, '')
+      .replace(/\n?```$/gim, '')
+      .trim();
+    navigator.clipboard.writeText(cleaned);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <span
+      onClick={handleCopy}
+      className={clsx(
+        "flex items-center space-x-1 text-xs font-medium px-2 py-1 rounded transition-colors",
+        copied
+          ? isDark ? "text-green-400 bg-green-900/30" : "text-green-600 bg-green-50"
+          : isDark ? "text-slate-400 hover:text-blue-400 hover:bg-blue-900/30" : "text-slate-500 hover:text-blue-600 hover:bg-blue-50"
+      )}
+    >
+      {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+      <span>{copied ? 'Copied' : 'Copy'}</span>
+    </span>
   );
 };
 

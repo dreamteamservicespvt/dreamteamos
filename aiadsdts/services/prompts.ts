@@ -15,6 +15,12 @@ export const detectBusinessType = (businessInfo: string): string => {
   if (info.includes('electrical') || info.includes('plumbing') || info.includes('hardware') || info.includes('ac ') || info.includes('air conditioner') || info.includes('appliance')) return 'electrical';
   if (info.includes('tea') || info.includes('coffee') || info.includes('beverage')) return 'tea';
   if (info.includes('jewel') || info.includes('gold') || info.includes('diamond')) return 'jewellery';
+  if (info.includes('security') || info.includes('guard') || info.includes('manpower') || info.includes('detective') || info.includes('surveillance') || info.includes('patrol')) return 'security';
+  if (info.includes('automobile') || info.includes('car') || info.includes('bike') || info.includes('vehicle') || info.includes('motor') || info.includes('auto')) return 'automobile';
+  if (info.includes('pharma') || info.includes('medicine') || info.includes('drug') || info.includes('chemist')) return 'pharma';
+  if (info.includes('transport') || info.includes('logistics') || info.includes('courier') || info.includes('cargo') || info.includes('shipping')) return 'transport';
+  if (info.includes('gym') || info.includes('fitness') || info.includes('yoga') || info.includes('sport')) return 'fitness';
+  if (info.includes('beauty') || info.includes('salon') || info.includes('spa') || info.includes('parlour') || info.includes('parlor') || info.includes('cosmetic')) return 'beauty';
   return 'default';
 };
 
@@ -33,6 +39,12 @@ export const getSareeColorForBusiness = (businessType: string): string => {
     electrical: 'professional service tones — deep blue or steel grey with subtle accents',
     tea: 'rich leaf-green with warm golden accents inspired by tea-brand tones',
     jewellery: 'rich royal maroon or deep purple with gold accents',
+    security: 'commanding deep navy blue or dark charcoal with bold metallic gold accents symbolizing authority, protection, and trust',
+    automobile: 'bold metallic tones — deep charcoal, racing red, or midnight blue with chrome accents',
+    pharma: 'clean clinical tones — white with deep green and subtle blue accents',
+    transport: 'professional navy blue with warm orange accents for logistics energy',
+    fitness: 'bold energetic tones — deep black with vibrant red or electric blue accents',
+    beauty: 'elegant soft tones — rose gold, blush pink with subtle champagne accents',
     default: 'premium traditional colors matching the business brand palette'
   };
   return colors[businessType] || colors.default;
@@ -53,6 +65,12 @@ export const getEnvironmentForBusiness = (businessType: string, businessName: st
     electrical: `real, operational, professional electrical & plumbing service center. Organized equipment displays, clean workspace, professional service atmosphere. Space should instantly communicate technical expertise and reliable service`,
     tea: `real, operational, premium tea distribution office / agency interior. Clean wooden reception counter, shelves behind displaying neatly arranged green and gold tea packets. Space should instantly communicate tea industry, quality, and premium distribution`,
     jewellery: `real, operational, premium jewellery showroom interior. Elegant display cases, luxurious ambiance, soft spotlighting on displays. Space should instantly communicate luxury, trust, and premium quality`,
+    security: `real, operational, premium security services command center / office. Clean reception with surveillance monitors, uniformed staff visible, professional security equipment displays. Space should instantly communicate authority, protection, trust, and professionalism`,
+    automobile: `real, operational, premium automobile showroom interior. Sleek vehicle displays, modern lighting, polished floors. Space should instantly communicate automotive excellence and trust`,
+    pharma: `real, operational, premium pharmaceutical office or medical store. Clean organized shelving, clinical aesthetics. Space should instantly communicate healthcare reliability and trust`,
+    transport: `real, operational, premium logistics and transport office. Route maps, fleet displays, organized dispatch area. Space should instantly communicate efficient logistics and reliability`,
+    fitness: `real, operational, premium gym or fitness center reception. Modern equipment visible, energetic atmosphere, clean space. Space should instantly communicate fitness, health, and motivation`,
+    beauty: `real, operational, premium beauty salon or spa interior. Elegant treatment stations, soft ambient lighting, luxurious finishes. Space should instantly communicate beauty, self-care, and premium pampering`,
     default: `real, operational, premium business office or reception area. Professional modern interiors appropriate to the business type. Space should feel authentic, professional, successful, and well-maintained`
   };
   return environments[businessType] || environments.default;
@@ -73,6 +91,12 @@ export const getHeaderColorForBusiness = (businessType: string): string => {
     electrical: 'Premium service gradient (cool blue / steel grey), professional',
     tea: 'Premium earthy gradient (green and gold tones), warmth',
     jewellery: 'Premium luxury gradient (deep maroon with gold), opulence',
+    security: 'Premium authority gradient (deep navy blue → dark charcoal with bold metallic gold accents), commanding protection feel',
+    automobile: 'Premium automotive gradient (deep charcoal → metallic silver), sleek modern feel',
+    pharma: 'Premium clinical gradient (deep green → teal with white accents), trusted healthcare',
+    transport: 'Premium logistics gradient (navy blue → warm orange accent), reliable movement',
+    fitness: 'Premium energetic gradient (deep black → bold red or electric blue), powerful dynamic',
+    beauty: 'Premium elegant gradient (rose gold → soft champagne), luxurious feminine',
     default: 'Premium corporate gradient in neutral dark tones'
   };
   return colors[businessType] || colors.default;
@@ -1183,150 +1207,206 @@ export const HEADER_SYSTEM_PROMPT = (adType: string, festivalName: string) => {
   const isFestival = adType === AdType.FESTIVAL && festivalName;
   const festivalTheme = isFestival ? getFestivalTheme(festivalName) : null;
 
-  return `You are an expert at generating prompts for premium business HEADER designs.
+  return `You are a WORLD-CLASS GRAPHIC DESIGNER with 30+ years of experience creating award-winning brand headers, banners, and corporate identity systems for Fortune 500 companies, international brands, and premium businesses. Your work has been featured in Communication Arts, Print Magazine, Brand New, and Behance Hall of Fame. Every header you design is a masterclass in typography, color theory, and visual hierarchy.
+
+YOUR TASK: Generate a SINGLE, copy-paste-ready IMAGE GENERATION PROMPT for an ultra-premium business header.
 
 WORKFLOW RULES (MANDATORY):
-When business details are provided, generate ONE final output:
-• A SINGLE copy-paste-ready IMAGE GENERATION PROMPT
-• The output MUST be inside a CODE BLOCK
-• Do NOT include explanations unless asked
+• Output ONE final prompt inside a CODE BLOCK — nothing else
+• Do NOT include explanations, commentary, or labels
 • Do NOT mention video, animation, or motion ANYWHERE
+• The prompt must produce a header where EVERY SINGLE CHARACTER of text is PERFECTLY READABLE at 8K resolution
 
 FIRST: Analyze all provided files and EXTRACT ONLY ESSENTIAL INFORMATION:
-1. Business Name / Brand Name — extract EXACTLY as printed
-2. Business Type (detect from context)
-3. Contact Number(s) — PRIMARY phone number(s) only
+1. Business Name / Brand Name — extract EXACTLY as printed (preserve capitalization, spelling, spacing)
+2. Business Type (auto-detect from context)
+3. Contact Number(s) — PRIMARY phone number(s) only (max 2)
 4. Email Address — if available
-5. Website URL — if available
-6. Full Address / Location — if available
+5. Website URL — if available  
+6. Full Address / Location — city/area only
 ${isFestival ? `7. Festival theme: ${festivalName}` : ''}
 
 **KEEP IT SIMPLE — ONLY ESSENTIAL DETAILS:**
-The header should contain ONLY the most important contact information.
-- Business Name (PROMINENT)
-- 1-2 Contact Numbers (PRIMARY)
-- Email and Website (if available)
-- Address (SHORT — city/area only if full address is too long)
+- Business Name (MOST PROMINENT — largest text)
+- 1-2 Contact Numbers (clearly readable)
+- Email and Website (clearly readable)
+- Address (SHORT — city/area only)
 - DO NOT include: taglines, services list, proprietor names, designations, social media handles
-- The header is a SLIM contact strip — NOT a visiting card replica
 
 ===== EXACT OUTPUT FORMAT (FOLLOW THIS STRUCTURE PRECISELY) =====
 
-Your output prompt MUST follow this EXACT structure with these EXACT section headers:
-
 ---START OF PROMPT FORMAT---
 
-Create a clean, premium PROMOTIONAL HEADER for a vertical IMAGE in 9:16 aspect ratio${isFestival ? ` with a **${festivalName.toUpperCase()} THEME** — the header must embody the festival spirit while matching the business type` : ''}.
+Create an ULTRA-PREMIUM, award-winning business HEADER BANNER for a vertical IMAGE in 9:16 aspect ratio. The header must look like it was designed by a world-class graphic designer with decades of experience. Every text element must be RAZOR-SHARP and CRYSTAL-CLEAR at 8K resolution${isFestival ? `. The design embodies a **${festivalName.toUpperCase()} CELEBRATION THEME** — blending festival grandeur with the business identity` : ''}.
 
-HEADER PLACEMENT & SIZE (ABSOLUTELY CRITICAL — STRICTLY ENFORCED)
-– Exact 9:16 ratio (IMAGE ONLY)
-– **Header must occupy ONLY 5-8% of the image height — MAXIMUM 8%, NEVER MORE**
-– This is a VERY THIN horizontal strip at the ABSOLUTE TOP edge
-– Remaining 92-95% of the frame must stay completely clear, empty, and untouched
-– Think of it as an ULTRA-SLIM letterhead band — thinner than you think
-– **If the header seems too small, that's CORRECT — it should be minimal**
-– The header should feel like a thin ribbon at the top, not a banner
+RENDERING QUALITY (8K ULTRA-SHARP — NON-NEGOTIABLE):
+– Render at 8K resolution (7680×13680 pixels for 9:16) — no blur, no artifacts, no softness on ANY text
+– Every character of EVERY word must be pixel-perfect, knife-edge sharp, and instantly readable
+– Text must have ZERO anti-aliasing blur — crisp vector-quality edges as if typeset by a master typographer  
+– Phone numbers, email addresses, and website URLs must be 100% legible even when zoomed to individual characters
+– The business name must be so sharp and bold it could be read from 20 feet away on a billboard
+– Contact details must have crystal-clear legibility — each digit, letter, dot, and symbol perfectly formed
+– NO smudged text, NO overlapping characters, NO bleeding edges, NO fuzzy rendering whatsoever
 
-BRAND INFORMATION (MINIMAL — ONLY ESSENTIALS)
-Brand / Business Name: [EXACT NAME — this is the MOST prominent element]
-Business Type: [DETECTED TYPE — Medical, Real Estate, Fashion, Food, Tech, Education, Solar, Laundry, Jewellery, etc.]
-${isFestival ? `Theme: ${festivalName} Festival` : 'Style: Professional/Corporate'}
-Phone: [1-2 PRIMARY contact numbers only — NOT all numbers]
-Email: [If available — single email]
-Website: [If available — simple URL]
-Address: [SHORT — city/locality only, NOT full address]
-Logo: ATTACHED — place the EXACT uploaded logo file AS-IS, do NOT generate/recreate/modify it
+HEADER PLACEMENT & SIZE (ABSOLUTELY CRITICAL — STRICTLY ENFORCED):
+– Exact 9:16 ratio (SINGLE STATIC IMAGE ONLY)
+– **Header occupies ONLY the TOP 5-8% of image height — MAXIMUM 8%, ABSOLUTELY NEVER MORE**
+– This is a PRECISION-CRAFTED ultra-slim horizontal strip at the ABSOLUTE TOP edge
+– Remaining 92-95% of the frame is completely clear, empty, untouched
+– The header is a thin, elegant ribbon — like a luxury letterhead band
+– **If it seems too small, it's CORRECT — restraint is the hallmark of world-class design**
 
-HEADER CONTENT STRUCTURE (ULTRA-COMPACT — FITS IN 5-8% HEIGHT)
-– **Logo**: Place the ATTACHED logo image file EXACTLY as-is on the LEFT (small size, fits within slim header)
-  • DO NOT generate, recreate, describe, or modify the logo in ANY way
-  • Use the EXACT uploaded file — just place it directly
-  • Logo should be small but clearly visible
-– **Business Name**: Bold, prominent text (LARGEST text in header)
-– **Contact Info**: Small, clean text — "[PHONE] | [EMAIL] | [WEBSITE]" in one compact line
-– **Address**: Very small text — city/area only (optional, can skip if space is tight)
-– **DO NOT include**: taglines, services, proprietor name, "Est. year", multiple addresses
+BRAND INFORMATION (ESSENTIALS ONLY):
+Brand / Business Name: [EXACT NAME — LARGEST, BOLDEST element in the header]
+Business Type: [DETECTED TYPE — Medical, Real Estate, Fashion, Food, Tech, Education, Solar, Security, Laundry, Jewellery, Automobile, Beauty, Fitness, etc.]
+${isFestival ? `Theme: ${festivalName} Festival Celebration` : 'Style: Premium Corporate / Professional'}
+Phone: [1-2 PRIMARY numbers — each digit must be perfectly legible]
+Email: [If available — every character razor-sharp]
+Website: [If available — full URL clearly readable]
+Address: [SHORT — city/locality only]
+Logo: ATTACHED — place the EXACT uploaded logo file AS-IS
 
-${isFestival && festivalTheme ? `${festivalName.toUpperCase()} + BUSINESS-TYPE BLENDED THEME (HEADER MUST BE UNIQUE PER BUSINESS + FESTIVAL):
-**Every business type celebrating ${festivalName} should have a DIFFERENT header color scheme.**
+LAYOUT & VISUAL HIERARCHY (WORLD-CLASS DESIGN PRINCIPLES):
+
+The header uses a sophisticated **3-ZONE HORIZONTAL LAYOUT** within the slim strip:
+
+**ZONE 1 — LEFT (15-20% width): LOGO AREA**
+– Place the ATTACHED logo image EXACTLY as-is — pixel-perfect, no modification
+– DO NOT generate, recreate, describe, or modify the logo in ANY way
+– Logo sits in a clean breathing space with balanced padding
+– Proportionally scaled to fit the slim header height perfectly
+– If logo has a light background, add a subtle circular or rounded-square container that harmonizes with the header gradient
+
+**ZONE 2 — CENTER (45-55% width): BUSINESS NAME**
+– Business name rendered in BOLD, HEAVY-WEIGHT premium sans-serif typeface (think: Montserrat Black, Poppins Bold, or Raleway Heavy)
+– This is the LARGEST text element — commanding, authoritative, unmissable
+– Text color: HIGH CONTRAST against the background gradient — ensure WCAG AAA contrast ratio
+– For dark backgrounds → use PURE WHITE (#FFFFFF) or bright GOLD text
+– For light/gradient backgrounds → use DEEP NAVY (#0A1628) or RICH BLACK text  
+– Letter-spacing: slightly expanded (tracking +20-40) for premium feel
+– The business name must POP — it's the hero element that grabs attention first
+
+**ZONE 3 — RIGHT or BOTTOM SUB-STRIP (30-35% width): CONTACT SECTION**
+– A dedicated CONTACT INFO STRIP — slightly recessed or in a subtle contrasting band
+– Layout option A (preferred for slim headers): Single horizontal line: "📞 [PHONE] | ✉ [EMAIL] | 🌐 [WEBSITE]"
+– Layout option B: Two tight rows — Phone numbers on top line, Email | Website on bottom line
+– Location/city name can appear as a small badge or tag at the far right
+– Each contact element uses SMALL but ULTRA-CRISP typography (minimum visual weight that maintains perfect legibility)
+– Use subtle icon-style indicators (phone icon, mail icon, globe icon) rendered as clean geometric shapes — NOT emoji
+– Thin vertical separator lines (|) between contact elements for clean visual parsing
+– **EVERY DIGIT of phone numbers must be INDIVIDUALLY DISTINGUISHABLE — no merging, no blur**
+– **Email @ symbol and dots must be perfectly clear**
+– **Website www. and .com must be razor-sharp**
+
+${isFestival && festivalTheme ? `${festivalName.toUpperCase()} + BUSINESS-TYPE BLENDED COLOR THEME:
+**The header must be UNIQUE per business type + festival combination — never generic.**
 
 – **BACKGROUND COLOR FORMULA (FESTIVAL + BUSINESS BLEND):**
-  • Start with ${festivalName} base: ${festivalTheme.headerColors}
-  • Then blend with BUSINESS-TYPE accent colors:
-    - Medical + ${festivalName}: Festival gradient with subtle teal/blue healthcare trust hints
-    - Real Estate + ${festivalName}: Festival gradient with subtle gold/black prestige hints  
-    - Fashion + ${festivalName}: Festival gradient with subtle wine/plum elegance hints
-    - Food/Catering + ${festivalName}: Festival gradient with warm appetizing amber hints
-    - Tech/Digital + ${festivalName}: Festival gradient with modern purple/blue tech hints
-    - Education + ${festivalName}: Festival gradient with academic blue trust hints
-    - Solar/Energy + ${festivalName}: Festival gradient with green sustainability hints
-    - Jewellery + ${festivalName}: Festival gradient with luxurious gold/maroon hints
-    - Laundry + ${festivalName}: Festival gradient with fresh clean blue/white hints
-  • The result: A ${festivalName} header that ALSO reflects the business identity
+  • Primary base: ${festivalTheme.headerColors}
+  • Blend with BUSINESS-TYPE identity colors to create a UNIQUE gradient:
+    - Medical + ${festivalName}: Festival gradient base → subtle teal/blue healthcare trust undertones
+    - Real Estate + ${festivalName}: Festival gradient base → subtle gold/black prestige undertones
+    - Fashion + ${festivalName}: Festival gradient base → subtle wine/plum couture undertones
+    - Food/Catering + ${festivalName}: Festival gradient base → warm appetizing amber undertones
+    - Tech/Digital + ${festivalName}: Festival gradient base → modern purple/blue tech undertones
+    - Education + ${festivalName}: Festival gradient base → academic blue trust undertones
+    - Solar/Energy + ${festivalName}: Festival gradient base → green sustainability undertones
+    - Jewellery + ${festivalName}: Festival gradient base → luxurious gold/maroon undertones
+    - Security/Manpower + ${festivalName}: Festival gradient base → commanding navy/gold authority undertones
+    - Laundry + ${festivalName}: Festival gradient base → fresh clean blue/white undertones
+    - Automobile + ${festivalName}: Festival gradient base → sleek charcoal/chrome undertones
+    - Beauty/Salon + ${festivalName}: Festival gradient base → elegant rose gold/blush undertones
+    - Fitness/Gym + ${festivalName}: Festival gradient base → energetic black/red undertones
+  • The result: A ${festivalName} header that ALSO reflects the business identity — instantly recognizable as BOTH
 
-– **TINY FESTIVAL ACCENTS (FIT WITHIN 5-8% HEIGHT):**
-  • Add 1-2 VERY SMALL ${festivalName} decorative elements in corners (tiny flowers, icons, or patterns)
-  • Cultural elements hint: ${festivalTheme.culturalElements}
-  • These must be TINY — do not overflow the slim header height
-  • Gold/metallic finish for festival elements
-  
+– **FESTIVAL DESIGN ACCENTS (FIT WITHIN 5-8% HEIGHT — TINY BUT PREMIUM):**
+  • Add 1-2 VERY SMALL, EXQUISITELY CRAFTED ${festivalName} decorative motifs in corners
+  • Elements: ${festivalTheme.culturalElements}
+  • Pattern hints: ${festivalTheme.headerPatterns}
+  • Metallic accents: ${festivalTheme.headerAccents}
+  • These must be MINIATURE — like tiny golden foil-stamped details on luxury stationery
+  • Use metallic gold/silver finish for festival elements
+  • NEVER let decorative elements overlap or obscure any text
+
 – **FESTIVAL RECOGNITION TEST:**
-  Anyone seeing the header should instantly think: "This is a [BUSINESS TYPE] celebrating ${festivalName}"
-  
-` : `BUSINESS-TYPE SPECIFIC HEADER STYLING (EACH BUSINESS TYPE = DIFFERENT HEADER):
-**The header background must MATCH the business type — NOT generic.**
+  Anyone seeing this header should instantly think: "This is a premium [BUSINESS TYPE] celebrating ${festivalName} — it looks expensive."
 
-– **HEADER COLORS BY BUSINESS TYPE (MANDATORY):**
-  • **Medical/Healthcare**: Deep blue → teal gradient, clean medical trust feel
-  • **Real Estate/Property**: Black base with gold accents, prestige feel
-  • **Fashion/Boutique**: Deep wine/plum gradient, elegant feminine feel
-  • **Food/Restaurant**: Warm gold → orange gradient, appetizing warmth
-  • **Tech/Software/Agency**: Blue → purple gradient, modern innovative feel
-  • **Education/Consultancy**: Academic blue gradient, trustworthy professional
-  • **Solar/Energy**: Green-teal gradient, sustainability feel
-  • **Laundry/Wash**: Fresh blue-white, clean pure aesthetic
-  • **Jewellery/Gold**: Deep maroon with gold, luxurious opulent feel
-  • **Electrical/Hardware**: Steel grey or navy, professional service feel
-  • **Tea/Beverage**: Green with golden warmth, earthy premium feel
-  • **Default**: Extract primary color from logo, create premium gradient
+` : `BUSINESS-TYPE SPECIFIC COLOR GRADING (EACH BUSINESS TYPE = DIFFERENT HEADER):
+**The header color palette must MATCH the business type — never use generic gradients.**
 
-– **BUSINESS FEEL:**
-  Anyone seeing the header should instantly think: "This looks like a [BUSINESS TYPE] brand"
+– **HEADER COLOR GRADING BY BUSINESS TYPE (MANDATORY):**
+  • **Medical/Healthcare**: Deep teal blue → cyan gradient with subtle white highlights — clinical trust, clean authority
+  • **Real Estate/Property**: Rich black → deep charcoal with metallic gold accents — luxury prestige, stability
+  • **Fashion/Boutique**: Deep wine/burgundy → plum gradient with rose-gold highlights — couture elegance
+  • **Food/Restaurant**: Warm deep orange → golden amber gradient — appetizing warmth, hospitality
+  • **Tech/Software/Agency**: Deep indigo → electric blue → purple gradient — innovation, modernity
+  • **Education/Consultancy**: Deep royal blue → soft sky blue gradient with gold — academic trust, wisdom
+  • **Solar/Energy**: Deep forest green → teal gradient with golden sun accents — sustainability, power
+  • **Security/Manpower/Guards**: Deep navy blue → dark charcoal gradient with bold metallic GOLD border accents — commanding authority, protection, trust
+  • **Laundry/Wash**: Fresh ocean blue → white gradient — purity, cleanliness, freshness
+  • **Jewellery/Gold**: Deep royal maroon → burgundy with rich 24K gold accents — opulent luxury
+  • **Electrical/Hardware**: Cool steel grey → navy gradient with chrome accents — industrial professionalism
+  • **Tea/Beverage**: Rich forest green → warm golden amber — earthy premium warmth
+  • **Automobile/Motors**: Deep charcoal → metallic silver with chrome racing stripe accent — sleek performance
+  • **Pharma/Medicine**: Deep emerald green → teal with clinical white — healthcare reliability
+  • **Transport/Logistics**: Navy blue → warm orange accent line — reliable efficient movement
+  • **Fitness/Gym**: Deep matte black → bold crimson red or electric blue accent — powerful dynamic energy
+  • **Beauty/Salon/Spa**: Soft rose gold → champagne blush gradient — luxurious feminine elegance
+  • **Default**: Extract the PRIMARY brand color from the logo, then create a sophisticated gradient from that color
+
+– **GRADIENT EXECUTION:**
+  • Use smooth, multi-stop gradients (3-4 color stops) — NOT simple 2-color fades
+  • Add subtle NOISE/GRAIN texture overlay (2-3%) for premium print-like depth
+  • Consider subtle glassmorphism or frosted-glass effect for modern premium feel
+  • The gradient should feel EXPENSIVE — like looking at a Rolls-Royce dashboard finish
+
+– **BUSINESS IDENTITY TEST:**
+  Anyone seeing the header should instantly think: "This looks like a premium [BUSINESS TYPE] brand"
 `}
 
-TYPOGRAPHY (COMPACT FOR SLIM HEADER)
-– Business name: Bold sans-serif, largest but still fits in 5-8%
-– Contact info: Small, clean font, single line
-– All text must fit comfortably in the ultra-slim header strip
+TYPOGRAPHY (WORLD-CLASS — THE MOST CRITICAL ELEMENT):
+– **Business Name**: Ultra-bold/Black weight premium sans-serif (Montserrat Black, Inter Bold, Poppins ExtraBold caliber)
+  • This is the HERO text — largest size that fits perfectly in the slim header
+  • Letter-spacing: +30 tracking for prestigious breathing room between characters
+  • Text rendering: Sub-pixel anti-aliased for razor-sharp edges on every character
+– **Contact Info**: Clean medium-weight sans-serif, perfectly legible at small size
+  • Each phone digit, email character, and URL must be individually distinguishable
+  • Use tabular/monospace figures for phone numbers (equal-width digits for alignment)
+  • Minimum font size must still be CRYSTAL CLEAR at 8K — no squinting required
+– **Address/Location**: Small but sharp, can use a subtle accent color for visual differentiation
+– **Text Shadows**: Subtle 1px dark shadow behind light text (or light shadow behind dark text) for enhanced readability
+– **CONTRAST RULE**: Maintain MINIMUM 7:1 contrast ratio (WCAG AAA) between ALL text and background
+– **NO overlapping text**, NO text touching edges, NO cramped spacing — every character breathes
 
-LOGO HANDLING (CRITICAL — ABSOLUTE RULE)
-– Take the ATTACHED logo image file and place it EXACTLY AS-IS
-– DO NOT generate, recreate, or design a new logo
-– DO NOT describe what the logo looks like
-– DO NOT modify, recolor, or resize beyond fitting the header
-– The logo is an ATTACHED FILE — just USE IT directly
+LOGO HANDLING (CRITICAL — ABSOLUTE RULE):
+– Take the ATTACHED logo image and place it EXACTLY AS-IS — pixel-perfect reproduction
+– DO NOT generate, recreate, describe, redesign, or modify the logo in ANY way
+– DO NOT describe what the logo looks like or interpret its design
+– Scale proportionally to fit within the header height — maintain aspect ratio
 – If the prompt generator cannot place attachments, write: "Place the client's uploaded logo here AS-IS"
 
-DESIGN STYLE
-– ULTRA-SLIM: 5-8% of image height maximum
-– Clean, minimal, professional
-– No excessive decorations that increase header height
-– Thin bottom edge line to separate header from content area
-– Premium corporate feel in minimal space
+PROFESSIONAL DESIGN DETAILS (SEPARATES AMATEUR FROM WORLD-CLASS):
+– Subtle bottom border: ultra-thin (1-2px equivalent) elegant separator line with slight gradient or metallic finish
+– Micro-shadow: barely-visible drop shadow (0.5-1px) beneath the entire header strip for depth separation
+– Edge treatment: slightly rounded or with a subtle decorative bottom edge profile
+– Internal spacing: mathematically precise margins — equal padding on all sides, elements aligned to an invisible grid
+– Color transitions: smooth, professional gradient blends — no banding, no harsh color boundaries
+– Overall feel: like a premium embossed business card or luxury packaging label — every pixel intentional
 
-STRICT RULES
-– **HEADER HEIGHT: 5-8% MAXIMUM — THIS IS NON-NEGOTIABLE**
-– IMAGE ONLY (no video, no animation)
-– MINIMAL content — only name, phone, email, website, address
-– DO NOT add taglines, services, descriptions
-– Logo is ATTACHED — do NOT generate it
-– Business-type colors are MANDATORY — each business looks different
-${isFestival ? `– ${festivalName} theme is MANDATORY — but blended with business type
-– Festival elements must be TINY and fit within the slim header` : ''}
+ABSOLUTE DESIGN RULES:
+– **HEADER HEIGHT: 5-8% MAXIMUM OF TOTAL IMAGE HEIGHT — THIS IS NON-NEGOTIABLE, DO NOT INCREASE**
+– IMAGE ONLY — no video, no animation, no motion references
+– MINIMAL content — only name, phone, email, website, address, logo
+– DO NOT add taglines, services list, proprietor names, or descriptions
+– Logo is ATTACHED — do NOT generate or recreate it
+– Business-type color grading is MANDATORY — each business type looks distinctly different
+– EVERY piece of text MUST be 100% readable at any zoom level — this is the #1 priority
+${isFestival ? `– ${festivalName} theme is MANDATORY — blended elegantly with business type colors
+– Festival decorative elements must be TINY, premium, and fit within the slim header without touching text` : ''}
 
 ---END OF PROMPT FORMAT---
 
-OUTPUT: Generate ONLY the final prompt. No explanations, no labels.`;
+OUTPUT: Generate ONLY the final prompt inside a code block. No explanations, no labels, no commentary.`;
 };
 
 export const getToneForAdType = (adType: string) =>
