@@ -8,6 +8,7 @@ import { format, subDays, startOfDay } from "date-fns";
 import { ArrowLeft, FileText, Loader2, TrendingUp, IndianRupee, Video, CheckCircle2, XCircle, ExternalLink, Image, Clock, Calendar, ChevronDown } from "lucide-react";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
 import { formatCurrency } from "@/utils/formatters";
+import { formatCurrency, formatDate, formatTime } from "@/utils/formatters";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirm } from "@/hooks/useConfirm";
 
@@ -172,6 +173,16 @@ export default function TechAdminMemberHistory() {
   };
 
   const revenueStats = useMemo(() => {
+
+      const getAssignedStamp = (assignment: WorkAssignment) => {
+        const ts = assignment.assignedAt as any;
+        const assignedDate = ts?.toDate?.()
+          || (typeof ts?.seconds === "number" ? new Date(ts.seconds * 1000) : undefined)
+          || (assignment.assignedAtIso ? new Date(assignment.assignedAtIso) : undefined)
+          || (assignment.date ? new Date(`${assignment.date}T00:00:00`) : undefined);
+        if (!assignedDate || Number.isNaN(assignedDate.getTime())) return assignment.date || "—";
+        return `${formatDate(assignedDate)} ${formatTime(assignedDate)}`;
+      };
     const verified = filteredAssignments.filter((a) => a.status === "verified");
     const totalRevenue = verified.reduce((sum, a) => sum + (a.totalPrice || 0), 0);
     const totalVideos = verified.length;
@@ -459,6 +470,7 @@ export default function TechAdminMemberHistory() {
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2 md:gap-3 flex-wrap">
                     <span className="font-mono text-sm text-foreground font-medium">{a.date}</span>
+                    <span className="font-mono text-sm text-foreground font-medium">Assigned: {getAssignedStamp(a)}</span>
                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${statusColor(a.status)}`}>{a.status}</span>
                     <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-accent text-muted-foreground capitalize">{a.category}</span>
                   </div>

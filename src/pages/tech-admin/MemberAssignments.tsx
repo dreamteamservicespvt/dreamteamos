@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useMemo, useEffect } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, ClipboardList, Trash2, CheckCircle2, Edit3, Loader2,
   Pencil, X, Save, Undo2, Search, Filter
@@ -9,8 +9,8 @@ import { db } from '@/services/firebase';
 import { useAuthStore } from '@/store/authStore';
 import { useFirestoreCollection } from '@/hooks/useFirestore';
 import { PRICING } from '@/utils/pricing';
-import { formatCurrency } from '@/utils/formatters';
-import { format, subDays, startOfDay } from 'date-fns';
+import { formatCurrency, formatDate, formatTime } from '@/utils/formatters';
+import { format, subDays, startOfDay, parseISO, isValid } from 'date-fns';
 import DashboardDayPicker from '@/components/dashboard/DayPicker';
 import type { WorkAssignment, AppUser } from '@/types';
 
@@ -38,9 +38,22 @@ const statusColors: Record<string, string> = {
   editing: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
 };
 
+const VALID_STATUS_FILTERS = ['all', 'assigned', 'in_progress', 'completed', 'verified', 'editing'] as const;
+
+function parseQueryDate(value: string | null): Date | undefined {
+  if (!value) return undefined;
+  const parsed = parseISO(value);
+  return isValid(parsed) ? parsed : undefined;
+}
+
+function isValidDayFilter(value: string | null): value is string {
+  return value === 'all' || (typeof value === 'string' && /^[0-4]$/.test(value));
+}
+
 export default function MemberAssignments() {
   const { memberId } = useParams<{ memberId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const currentUser = useAuthStore((s) => s.user);
   const { data: allUsers, loading: usersLoading } = useFirestoreCollection<AppUser>('users');
   const { data: allAssignments, loading: assignmentsLoading } = useFirestoreCollection<WorkAssignment>('work_assignments');
@@ -56,8 +69,27 @@ export default function MemberAssignments() {
   const member = useMemo(() => allUsers.find(u => u.uid === memberId), [allUsers, memberId]);
 
   // Show today's assignments + still-active from any date
-  const todayStr = format(new Date(), 'yyyy-MM-dd');
   const activeStatuses = ['assigned', 'in_progress', 'editing'];
+
+  useEffect(() => {
+    const statusParam = searchParams.get('status');
+    if (statusParam && VALID_STATUS_FILTERS.includes(statusParam as typeof VALID_STATUS_FILTERS[number])) {
+      setStatusFilter(statusParam);
+    } else {
+      setStatusFilter('all');
+    }
+
+    const parsedDate = parseQueryDate(searchParams.get('date'));
+    if (parsedDate) {
+      setSelectedDate(parsedDate);
+      setDayFilter('0');
+      return;
+    }
+
+    setSelectedDate(undefined);
+    const dayParam = searchParams.get('day');
+    setDayFilter(isValidDayFilter(dayParam) ? dayParam : '0');
+  }, [searchParams, memberId]);
 
   const recentDays = useMemo(() => {
     const days: { date: Date; dateStr: string; label: string }[] = [];
@@ -74,8 +106,7 @@ export default function MemberAssignments() {
   }, []);
 
   const memberAssignments = useMemo(() => {
-    let result = allAssignments
-      .filter(a => a.assignedTo === memberId && (a.date === todayStr || activeStatuses.includes(a.status)));
+    let result = allAssignments.filter(a => a.assignedTo === memberId);
 
     // Status filter
     if (statusFilter !== 'all') result = result.filter(a => a.status === statusFilter);
@@ -97,7 +128,7 @@ export default function MemberAssignments() {
     }
 
     return result.sort((a, b) => (b.assignedAt?.seconds || 0) - (a.assignedAt?.seconds || 0));
-  }, [allAssignments, memberId, todayStr, statusFilter, selectedDate, dayFilter, recentDays]);
+  }, [allAssignments, memberId, statusFilter, selectedDate, dayFilter, recentDays]);
 
   const filteredAssignments = useMemo(() => {
     if (!searchQuery.trim()) return memberAssignments;
@@ -200,6 +231,16 @@ export default function MemberAssignments() {
     return s > 0 ? `${m}m ${s}s` : `${m}m`;
   };
 
+  const getAssignedStamp = (assignment: WorkAssignment) => {
+    const ts = assignment.assignedAt as any;
+    const assignedDate = ts?.toDate?.()
+      || (typeof ts?.seconds === 'number' ? new Date(ts.seconds * 1000) : undefined)
+      || (assignment.assignedAtIso ? new Date(assignment.assignedAtIso) : undefined)
+      || (assignment.date ? new Date(`${assignment.date}T00:00:00`) : undefined);
+    if (!assignedDate || Number.isNaN(assignedDate.getTime())) return assignment.date || '—';
+    return `${formatDate(assignedDate)} ${formatTime(assignedDate)}`;
+  };
+
   if (assignmentsLoading || usersLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -245,7 +286,7 @@ export default function MemberAssignments() {
 
       {/* Header */}
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/tech-admin/work-assign')}
+        <button onClick={() => navigate(-1)}
           className="p-2 rounded-lg hover:bg-accent transition-colors text-muted-foreground hover:text-foreground">
           <ArrowLeft className="w-5 h-5" />
         </button>
@@ -329,7 +370,7 @@ export default function MemberAssignments() {
                   {a.businessName || a.clientName}
                 </span>
               )}
-              <span className="text-[10px] text-muted-foreground ml-auto">{a.date}</span>
+              <span className="text-[10px] text-muted-foreground ml-auto">Assigned: {getAssignedStamp(a)}</span>
             </div>
 
             {/* Card Body */}

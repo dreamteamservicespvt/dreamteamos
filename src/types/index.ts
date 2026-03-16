@@ -38,6 +38,7 @@ export interface WorkAssignment {
   assignedTo: string;
   assignedBy: string;
   assignedAt: any;
+  assignedAtIso?: string;
   category: "wishes" | "promotional" | "cinematic";
   clipCount: number;
   includesEndCredits: boolean;

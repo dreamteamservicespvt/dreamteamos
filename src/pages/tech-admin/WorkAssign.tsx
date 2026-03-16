@@ -9,8 +9,8 @@ import { db } from '@/services/firebase';
 import { useAuthStore } from '@/store/authStore';
 import { useFirestoreCollection } from '@/hooks/useFirestore';
 import { PRICING } from '@/utils/pricing';
-import { formatCurrency, formatDate } from '@/utils/formatters';
-import { format, subDays, startOfDay } from 'date-fns';
+import { formatCurrency, formatDate, formatTime } from '@/utils/formatters';
+import { format, subDays, startOfDay, parseISO, isValid } from 'date-fns';
 import DashboardDayPicker from '@/components/dashboard/DayPicker';
 import type { WorkAssignment, AppUser, DailyCheckin } from '@/types';
 
@@ -31,6 +31,18 @@ const HAS_POSTER: Record<string, boolean> = {
   '16s': false, '32s': true, '48s': true, '64s': true,
   '20s': false, '40s': false,
 };
+
+const VALID_STATUS_FILTERS = ['all', 'assigned', 'in_progress', 'completed', 'verified', 'editing'] as const;
+
+function parseQueryDate(value: string | null): Date | undefined {
+  if (!value) return undefined;
+  const parsed = parseISO(value);
+  return isValid(parsed) ? parsed : undefined;
+}
+
+function isValidDayFilter(value: string | null): value is string {
+  return value === 'all' || (typeof value === 'string' && /^[0-4]$/.test(value));
+}
 
 function generateAccessCode(): string {
   return String(Math.floor(1000 + Math.random() * 9000));
@@ -78,6 +90,25 @@ export default function WorkAssign() {
   const [workloadSearch, setWorkloadSearch] = useState('');
   const [showHistory, setShowHistory] = useState(false);
   const [todayCheckins, setTodayCheckins] = useState<Map<string, DailyCheckin>>(new Map());
+  const [verifyingAll, setVerifyingAll] = useState(false);
+
+  useEffect(() => {
+    const statusParam = searchParams.get('status');
+    if (statusParam && VALID_STATUS_FILTERS.includes(statusParam as typeof VALID_STATUS_FILTERS[number])) {
+      setStatusFilter(statusParam);
+    }
+
+    const parsedDate = parseQueryDate(searchParams.get('date'));
+    if (parsedDate) {
+      setSelectedDate(parsedDate);
+      setDayFilter('0');
+      return;
+    }
+
+    setSelectedDate(undefined);
+    const dayParam = searchParams.get('day');
+    setDayFilter(isValidDayFilter(dayParam) ? dayParam : 'all');
+  }, [searchParams]);
 
   // Listen for today's check-ins
   useEffect(() => {
@@ -115,7 +146,9 @@ export default function WorkAssign() {
         setForm(prev => ({ ...prev, assignedTo: memberUid }));
         setMemberSearch(member.name);
         setShowForm(true);
-        setSearchParams({}, { replace: true });
+        const nextParams = new URLSearchParams(searchParams);
+        nextParams.delete('member');
+        setSearchParams(nextParams, { replace: true });
       }
     }
   }, [searchParams, techMembers]);
@@ -167,6 +200,7 @@ export default function WorkAssign() {
         assignedTo: form.assignedTo,
         assignedBy: user.uid,
         assignedAt: serverTimestamp(),
+        assignedAtIso: new Date().toISOString(),
         category: form.category,
         clipCount: clips,
         includesEndCredits: false,
@@ -225,6 +259,37 @@ export default function WorkAssign() {
       });
     } catch (error) {
       console.error('Failed to verify assignment:', error);
+    }
+  };
+
+  const handleVerifyAll = async (items: WorkAssignment[]) => {
+    if (!user || items.length === 0) return;
+
+    const confirm = window.confirm(`Verify all ${items.length} completed assignment(s) in current filter?`);
+    if (!confirm) return;
+
+    setVerifyingAll(true);
+    try {
+      for (const assignment of items) {
+        await updateDoc(doc(db, 'work_assignments', assignment.id), {
+          status: 'verified',
+          verifiedAt: serverTimestamp(),
+          verifiedBy: user.uid,
+        });
+
+        await addDoc(collection(db, 'notifications'), {
+          userId: assignment.assignedTo,
+          type: 'work_verified',
+          title: 'Work Verified!',
+          message: `Your ${assignment.category} work (${assignment.displayTitle}) has been verified and approved.`,
+          read: false,
+          createdAt: serverTimestamp(),
+        });
+      }
+    } catch (error) {
+      console.error('Failed to verify all assignments:', error);
+    } finally {
+      setVerifyingAll(false);
     }
   };
 
@@ -358,6 +423,22 @@ export default function WorkAssign() {
     );
   }, [memberWorkload, workloadSearch]);
 
+  const memberViewQuery = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set('status', statusFilter);
+    if (selectedDate) {
+      params.set('date', format(selectedDate, 'yyyy-MM-dd'));
+    } else {
+      params.set('day', dayFilter);
+    }
+    return params.toString();
+  }, [statusFilter, selectedDate, dayFilter]);
+
+  const completedVisibleAssignments = useMemo(
+    () => filteredAssignments.filter((a) => a.status === 'completed'),
+    [filteredAssignments]
+  );
+
   const statusColors: Record<string, string> = {
     assigned: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
     in_progress: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
@@ -371,6 +452,16 @@ export default function WorkAssign() {
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
     return s > 0 ? `${m}m ${s}s` : `${m}m`;
+  };
+
+  const getAssignedStamp = (assignment: WorkAssignment) => {
+    const ts = assignment.assignedAt as any;
+    const assignedDate = ts?.toDate?.()
+      || (typeof ts?.seconds === 'number' ? new Date(ts.seconds * 1000) : undefined)
+      || (assignment.assignedAtIso ? new Date(assignment.assignedAtIso) : undefined)
+      || (assignment.date ? new Date(`${assignment.date}T00:00:00`) : undefined);
+    if (!assignedDate || Number.isNaN(assignedDate.getTime())) return assignment.date || '—';
+    return `${formatDate(assignedDate)} ${formatTime(assignedDate)}`;
   };
 
   if (assignmentsLoading || usersLoading) {
@@ -538,6 +629,15 @@ export default function WorkAssign() {
           {selectedDate && (
             <button onClick={() => setSelectedDate(undefined)} className="text-xs text-muted-foreground hover:text-foreground">Clear</button>
           )}
+          <button
+            onClick={() => handleVerifyAll(completedVisibleAssignments)}
+            disabled={verifyingAll || completedVisibleAssignments.length === 0}
+            className="flex items-center gap-1.5 px-2 md:px-3 py-2 text-xs md:text-sm font-medium rounded-lg bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Verify all completed assignments in current filter"
+          >
+            {verifyingAll ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+            <span>{verifyingAll ? 'Verifying...' : `Verify All (${completedVisibleAssignments.length})`}</span>
+          </button>
         </div>
       </div>
 
@@ -597,7 +697,7 @@ export default function WorkAssign() {
               const totalMemberPrice = mAsgn.reduce((s, a) => s + a.totalPrice, 0);
               return (
                 <button key={member.uid}
-                  onClick={() => navigate(`/tech-admin/work-assign/${member.uid}`)}
+                  onClick={() => navigate(`/tech-admin/work-assign/${member.uid}?${memberViewQuery}`)}
                   className="bg-background border border-border rounded-xl p-3 hover:border-primary/40 hover:shadow-md transition-all text-left group"
                 >
                   <div className="flex items-center gap-2.5 mb-2.5">
@@ -711,6 +811,7 @@ export default function WorkAssign() {
                 ) : (
                   <div className="flex flex-wrap gap-x-3 md:gap-x-4 gap-y-1 text-xs md:text-sm text-muted-foreground">
                     <span>Assigned to: <strong className="text-foreground">{getMemberName(a.assignedTo)}</strong></span>
+                    <span>Assigned: <strong className="text-foreground">{getAssignedStamp(a)}</strong></span>
                     {(a.businessName || a.clientName) && <span>Business: <strong className="text-foreground">{a.businessName || a.clientName}</strong></span>}
                     <span>Category: <strong className="capitalize text-foreground">{a.category}</strong></span>
                     <span>{a.clipCount} clips + EC · {a.duration}</span>

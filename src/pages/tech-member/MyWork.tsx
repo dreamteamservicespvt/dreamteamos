@@ -7,6 +7,7 @@ import { db } from '@/services/firebase';
 import { useAuthStore } from '@/store/authStore';
 import { useFirestoreQuery } from '@/hooks/useFirestore';
 import { format, subDays, startOfDay } from 'date-fns';
+import { formatDate, formatTime } from '@/utils/formatters';
 import DashboardDayPicker from '@/components/dashboard/DayPicker';
 import type { WorkAssignment } from '@/types';
 import CodeVerificationModal from '@/components/ai-platform/CodeVerificationModal';
@@ -157,6 +158,16 @@ export default function MyWork() {
     if (h > 0) return `${h}h ${m}m`;
     if (m > 0) return `${m}m ${s}s`;
     return `${s}s`;
+  };
+
+  const getAssignedStamp = (assignment: WorkAssignment) => {
+    const ts = assignment.assignedAt as any;
+    const assignedDate = ts?.toDate?.()
+      || (typeof ts?.seconds === 'number' ? new Date(ts.seconds * 1000) : undefined)
+      || (assignment.assignedAtIso ? new Date(assignment.assignedAtIso) : undefined)
+      || (assignment.date ? new Date(`${assignment.date}T00:00:00`) : undefined);
+    if (!assignedDate || Number.isNaN(assignedDate.getTime())) return assignment.date || '—';
+    return `${formatDate(assignedDate)} ${formatTime(assignedDate)}`;
   };
 
   const statusConfig: Record<string, { icon: React.ReactNode; color: string; label: string }> = {
@@ -313,6 +324,7 @@ export default function MyWork() {
                     <span className="capitalize">{a.category}</span>
                     <span>{a.clipCount} clips + EC</span>
                     <span>{a.duration}</span>
+                    <span>Assigned: {getAssignedStamp(a)}</span>
                     {a.totalDurationSeconds > 0 && (
                       <span className="flex items-center space-x-1"><Clock className="w-3 h-3" /><span>{formatDuration(a.totalDurationSeconds)}</span></span>
                     )}
@@ -353,7 +365,7 @@ export default function MyWork() {
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${cfg.color}`}>{cfg.label}</span>
                     <div>
                       <span className="font-medium text-card-foreground text-sm">{a.businessName || a.displayTitle}</span>
-                      <span className="ml-3 text-xs text-muted-foreground capitalize">{a.category} · {a.clipCount} clips · {a.duration}</span>
+                      <span className="ml-3 text-xs text-muted-foreground capitalize">{a.category} · {a.clipCount} clips · {a.duration} · Assigned: {getAssignedStamp(a)}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">

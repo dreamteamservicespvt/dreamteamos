@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, serverTimestamp, query, where } from "firebase/firestore";
 import { db } from "@/services/firebase";
@@ -11,7 +11,8 @@ import { Users, Plus, X, Loader2, Eye, EyeOff, UserCheck, UserX, Trash2, Phone, 
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import EditMemberModal from "@/components/EditMemberModal";
-import { format } from "date-fns";
+import DashboardDayPicker from "@/components/dashboard/DayPicker";
+import { format, subDays, startOfDay } from "date-fns";
 
 export default function TechAdminMyTeam() {
   const currentUser = useAuthStore((s) => s.user);
@@ -26,7 +27,12 @@ export default function TechAdminMyTeam() {
   const [searchQuery, setSearchQuery] = useState('');
   const isMobile = useIsMobile();
   const [todayCheckins, setTodayCheckins] = useState<Map<string, DailyCheckin>>(new Map());
+  const [assignments, setAssignments] = useState<WorkAssignment[]>([]);
   const [memberRevenue, setMemberRevenue] = useState<Map<string, number>>(new Map());
+  const [revenueStatusFilter, setRevenueStatusFilter] = useState<"verified" | "completed_verified" | "all">("verified");
+  const [revenueDayFilter, setRevenueDayFilter] = useState<string>("all");
+  const [revenueSelectedDate, setRevenueSelectedDate] = useState<Date | undefined>(undefined);
+  const [revenueSortOrder, setRevenueSortOrder] = useState<"none" | "high_to_low" | "low_to_high">("none");
 
   const todayStr = format(new Date(), "yyyy-MM-dd");
 
@@ -38,6 +44,20 @@ export default function TechAdminMyTeam() {
   const [formDriveUrl, setFormDriveUrl] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [creating, setCreating] = useState(false);
+
+  const recentDays = useMemo(() => {
+    const days: { date: Date; dateStr: string; label: string }[] = [];
+    for (let i = 0; i < 5; i++) {
+      const d = subDays(new Date(), i);
+      const today = startOfDay(new Date());
+      const target = startOfDay(d);
+      const diffMs = today.getTime() - target.getTime();
+      const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+      const label = diffDays === 0 ? "Today" : diffDays === 1 ? "Yesterday" : `${diffDays} days ago`;
+      days.push({ date: startOfDay(d), dateStr: format(d, "yyyy-MM-dd"), label });
+    }
+    return days;
+  }, []);
 
   useEffect(() => {
     const unsubs: (() => void)[] = [];
@@ -58,18 +78,45 @@ export default function TechAdminMyTeam() {
       }
     ));
     unsubs.push(onSnapshot(
-      query(collection(db, "work_assignments"), where("status", "==", "verified")),
+      collection(db, "work_assignments"),
       (snap) => {
-        const revMap = new Map<string, number>();
-        snap.docs.forEach((d) => {
-          const a = d.data() as WorkAssignment;
-          revMap.set(a.assignedTo, (revMap.get(a.assignedTo) || 0) + (a.totalPrice || 0));
-        });
-        setMemberRevenue(revMap);
+        setAssignments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as WorkAssignment)));
       }
     ));
     return () => unsubs.forEach((u) => u());
   }, [currentUser?.uid, todayStr]);
+
+  useEffect(() => {
+    const memberIds = new Set(members.map((m) => m.uid));
+    const dateStr = revenueSelectedDate ? format(revenueSelectedDate, "yyyy-MM-dd") : null;
+
+    let filtered = assignments.filter((a) => memberIds.has(a.assignedTo) && a.assignedBy === currentUser?.uid);
+
+    if (revenueStatusFilter === "verified") {
+      filtered = filtered.filter((a) => a.status === "verified");
+    } else if (revenueStatusFilter === "completed_verified") {
+      filtered = filtered.filter((a) => a.status === "completed" || a.status === "verified");
+    }
+
+    if (dateStr) {
+      filtered = filtered.filter((a) => a.date === dateStr);
+    } else if (revenueDayFilter !== "all") {
+      const dayIndex = parseInt(revenueDayFilter);
+      const dayDateStr = recentDays[dayIndex]?.dateStr;
+      if (dayDateStr) filtered = filtered.filter((a) => a.date === dayDateStr);
+    }
+
+    const revMap = new Map<string, number>();
+    filtered.forEach((a) => {
+      revMap.set(a.assignedTo, (revMap.get(a.assignedTo) || 0) + (a.totalPrice || 0));
+    });
+    setMemberRevenue(revMap);
+  }, [assignments, members, currentUser?.uid, revenueStatusFilter, revenueDayFilter, revenueSelectedDate, recentDays]);
+
+  const grandTotalRevenue = useMemo(
+    () => Array.from(memberRevenue.values()).reduce((sum, revenue) => sum + revenue, 0),
+    [memberRevenue]
+  );
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -153,11 +200,22 @@ export default function TechAdminMyTeam() {
     window.open(url, "_blank", "noopener,noreferrer");
   };
 
-  const filteredMembers = members.filter((m) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return m.name?.toLowerCase().includes(q) || m.phone?.includes(q) || formatPhoneDisplay(m.phone || '').includes(q);
-  });
+  const filteredMembers = useMemo(() => {
+    const base = members.filter((m) => {
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase();
+      return m.name?.toLowerCase().includes(q) || m.phone?.includes(q) || formatPhoneDisplay(m.phone || '').includes(q);
+    });
+
+    if (revenueSortOrder === "none") return base;
+
+    return [...base].sort((a, b) => {
+      const revA = memberRevenue.get(a.uid) || 0;
+      const revB = memberRevenue.get(b.uid) || 0;
+      if (revA === revB) return (a.name || "").localeCompare(b.name || "");
+      return revenueSortOrder === "high_to_low" ? revB - revA : revA - revB;
+    });
+  }, [members, searchQuery, memberRevenue, revenueSortOrder]);
 
   return (
     <div className="space-y-4 md:space-y-6">
@@ -179,6 +237,70 @@ export default function TechAdminMyTeam() {
           className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none" />
       </div>
 
+      {/* Revenue Filters + Grand Total */}
+      <div className="bg-card border border-border rounded-xl p-3 md:p-4 space-y-3">
+        <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-3">
+          <span className="text-xs md:text-sm font-medium text-foreground">Revenue Filters</span>
+          <select
+            value={revenueStatusFilter}
+            onChange={(e) => setRevenueStatusFilter(e.target.value as "verified" | "completed_verified" | "all")}
+            className="border rounded-lg px-2 md:px-3 py-2 text-xs md:text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none"
+          >
+            <option value="verified">Verified Only</option>
+            <option value="completed_verified">Completed + Verified</option>
+            <option value="all">All Status</option>
+          </select>
+          <select
+            value={revenueSortOrder}
+            onChange={(e) => setRevenueSortOrder(e.target.value as "none" | "high_to_low" | "low_to_high")}
+            className="border rounded-lg px-2 md:px-3 py-2 text-xs md:text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none"
+          >
+            <option value="none">Revenue Sort: Default</option>
+            <option value="high_to_low">Revenue: High to Low</option>
+            <option value="low_to_high">Revenue: Low to High</option>
+          </select>
+          {!revenueSelectedDate && (
+            <select
+              value={revenueDayFilter}
+              onChange={(e) => setRevenueDayFilter(e.target.value)}
+              className="border rounded-lg px-2 md:px-3 py-2 text-xs md:text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none"
+            >
+              <option value="all">All Days</option>
+              {recentDays.map((d, i) => (
+                <option key={d.dateStr} value={String(i)}>{d.label} ({format(d.date, "dd/MM")})</option>
+              ))}
+            </select>
+          )}
+          <DashboardDayPicker selectedDate={revenueSelectedDate} onSelect={(d) => { setRevenueSelectedDate(d); if (d) setRevenueDayFilter("all"); }} />
+          {(revenueSelectedDate || revenueDayFilter !== "all") && (
+            <button onClick={() => { setRevenueSelectedDate(undefined); setRevenueDayFilter("all"); }} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              Clear
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div className="rounded-lg border border-border bg-background px-3 py-2">
+            <p className="text-[11px] text-muted-foreground">Grand Total Revenue</p>
+            <p className="font-display font-bold text-primary text-base md:text-lg">{formatCurrency(grandTotalRevenue)}</p>
+          </div>
+          <div className="rounded-lg border border-border bg-background px-3 py-2">
+            <p className="text-[11px] text-muted-foreground">Members with Revenue</p>
+            <p className="font-display font-bold text-foreground text-base md:text-lg">{Array.from(memberRevenue.values()).filter((v) => v > 0).length}</p>
+          </div>
+          <div className="rounded-lg border border-border bg-background px-3 py-2">
+            <p className="text-[11px] text-muted-foreground">Current Scope</p>
+            <p className="font-medium text-foreground text-xs md:text-sm">
+              {revenueSelectedDate
+                ? format(revenueSelectedDate, "dd/MM/yyyy")
+                : revenueDayFilter === "all"
+                  ? "All Days"
+                  : (recentDays[parseInt(revenueDayFilter)]?.label || "All Days")}
+            </p>
+          </div>
+        </div>
+      </div>
+
       {isMobile ? (
         <MobileTechCards members={filteredMembers} loading={loading} onToggle={toggleActive} onDelete={(m) => setConfirmDelete(m)} onEdit={(m) => setEditingMember(m)} onClickMember={(m) => navigate(`/tech-admin/team/${m.uid}`)} onShare={handleShareCredentials} todayCheckins={todayCheckins} memberRevenue={memberRevenue} />
       ) : (
@@ -189,7 +311,7 @@ export default function TechAdminMyTeam() {
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Member</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Phone</th>
                 <th className="text-right px-4 py-3 font-medium text-muted-foreground">Salary</th>
-                <th className="text-right px-4 py-3 font-medium text-muted-foreground">Revenue</th>
+                <th className="text-right px-4 py-3 font-medium text-muted-foreground">Revenue (Filtered)</th>
                 <th className="text-center px-4 py-3 font-medium text-muted-foreground">Check-In</th>
                 <th className="text-center px-4 py-3 font-medium text-muted-foreground">Status</th>
                 <th className="text-center px-4 py-3 font-medium text-muted-foreground">Actions</th>
