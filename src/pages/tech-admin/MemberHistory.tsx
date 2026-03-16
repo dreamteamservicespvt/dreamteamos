@@ -171,17 +171,17 @@ export default function TechAdminMemberHistory() {
     }
   };
 
-  const revenueStats = useMemo(() => {
+  const getAssignedStamp = (assignment: WorkAssignment) => {
+    const ts = assignment.assignedAt as any;
+    const assignedDate = ts?.toDate?.()
+      || (typeof ts?.seconds === "number" ? new Date(ts.seconds * 1000) : undefined)
+      || (assignment.assignedAtIso ? new Date(assignment.assignedAtIso) : undefined)
+      || (assignment.date ? new Date(`${assignment.date}T00:00:00`) : undefined);
+    if (!assignedDate || Number.isNaN(assignedDate.getTime())) return assignment.date || "—";
+    return `${formatDate(assignedDate)} ${formatTime(assignedDate)}`;
+  };
 
-      const getAssignedStamp = (assignment: WorkAssignment) => {
-        const ts = assignment.assignedAt as any;
-        const assignedDate = ts?.toDate?.()
-          || (typeof ts?.seconds === "number" ? new Date(ts.seconds * 1000) : undefined)
-          || (assignment.assignedAtIso ? new Date(assignment.assignedAtIso) : undefined)
-          || (assignment.date ? new Date(`${assignment.date}T00:00:00`) : undefined);
-        if (!assignedDate || Number.isNaN(assignedDate.getTime())) return assignment.date || "—";
-        return `${formatDate(assignedDate)} ${formatTime(assignedDate)}`;
-      };
+  const revenueStats = useMemo(() => {
     const verified = filteredAssignments.filter((a) => a.status === "verified");
     const totalRevenue = verified.reduce((sum, a) => sum + (a.totalPrice || 0), 0);
     const totalVideos = verified.length;
