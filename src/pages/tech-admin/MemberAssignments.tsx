@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, ClipboardList, Trash2, CheckCircle2, Edit3, Loader2,
-  Pencil, X, Save, Undo2, Search, Filter
+  Pencil, X, Save, Undo2, Search
 } from 'lucide-react';
 import { doc, updateDoc, deleteDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/services/firebase';
@@ -65,6 +65,8 @@ export default function MemberAssignments() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<{ category: string; duration: string; pricePerUnit: number; businessName: string } | null>(null);
   const [confirmAction, setConfirmAction] = useState<{ type: 'delete' | 'sendback'; id: string; assignedTo?: string; title: string } | null>(null);
+  const [verifyingAll, setVerifyingAll] = useState(false);
+  const [verifyDialog, setVerifyDialog] = useState<{ mode: 'single' | 'all'; items: WorkAssignment[] } | null>(null);
 
   const member = useMemo(() => allUsers.find(u => u.uid === memberId), [allUsers, memberId]);
 
@@ -145,24 +147,46 @@ export default function MemberAssignments() {
   const getEndCredits = () => 5;
   const hasPoster = (duration: string) => HAS_POSTER[duration] || false;
 
-  const handleVerify = async (assignment: WorkAssignment) => {
+  const verifyAssignments = async (items: WorkAssignment[]) => {
     if (!currentUser) return;
     try {
-      await updateDoc(doc(db, 'work_assignments', assignment.id), {
-        status: 'verified',
-        verifiedAt: serverTimestamp(),
-        verifiedBy: currentUser.uid,
-      });
-      await addDoc(collection(db, 'notifications'), {
-        userId: assignment.assignedTo,
-        type: 'work_verified',
-        title: 'Work Verified!',
-        message: `Your ${assignment.category} work (${assignment.displayTitle}) has been verified and approved.`,
-        read: false,
-        createdAt: serverTimestamp(),
-      });
+      for (const assignment of items) {
+        await updateDoc(doc(db, 'work_assignments', assignment.id), {
+          status: 'verified',
+          verifiedAt: serverTimestamp(),
+          verifiedBy: currentUser.uid,
+        });
+        await addDoc(collection(db, 'notifications'), {
+          userId: assignment.assignedTo,
+          type: 'work_verified',
+          title: 'Work Verified!',
+          message: `Your ${assignment.category} work (${assignment.displayTitle}) has been verified and approved.`,
+          read: false,
+          createdAt: serverTimestamp(),
+        });
+      }
     } catch (error) {
-      console.error('Failed to verify assignment:', error);
+      console.error('Failed to verify assignment(s):', error);
+    }
+  };
+
+  const handleVerify = (assignment: WorkAssignment) => {
+    setVerifyDialog({ mode: 'single', items: [assignment] });
+  };
+
+  const handleVerifyAll = (items: WorkAssignment[]) => {
+    if (!items.length) return;
+    setVerifyDialog({ mode: 'all', items });
+  };
+
+  const handleConfirmVerify = async () => {
+    if (!verifyDialog || verifyDialog.items.length === 0) return;
+    setVerifyingAll(true);
+    try {
+      await verifyAssignments(verifyDialog.items);
+      setVerifyDialog(null);
+    } finally {
+      setVerifyingAll(false);
     }
   };
 
@@ -241,6 +265,15 @@ export default function MemberAssignments() {
     return `${formatDate(assignedDate)} ${formatTime(assignedDate)}`;
   };
 
+  const getAdName = (assignment: WorkAssignment) => {
+    return assignment.businessName || assignment.clientName || assignment.displayTitle;
+  };
+
+  const completedVisibleAssignments = useMemo(
+    () => filteredAssignments.filter((a) => a.status === 'completed'),
+    [filteredAssignments]
+  );
+
   if (assignmentsLoading || usersLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -279,6 +312,74 @@ export default function MemberAssignments() {
                 className={`flex-1 px-4 py-2.5 text-sm font-medium rounded-lg text-white transition-colors ${confirmAction.type === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-orange-600 hover:bg-orange-700'}`}>
                 {confirmAction.type === 'delete' ? 'Delete' : 'Send Back'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Verify Dialog */}
+      {verifyDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => !verifyingAll && setVerifyDialog(null)}>
+          <div className="bg-card border border-border rounded-xl p-4 md:p-6 shadow-2xl w-full max-w-3xl mx-4 max-h-[85vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">
+                  {verifyDialog.mode === 'all' ? `Verify All (${verifyDialog.items.length})` : 'Verify Assignment'}
+                </h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Review member, ad name, price, and date/time before confirming verification.
+                </p>
+              </div>
+              <button
+                onClick={() => setVerifyDialog(null)}
+                disabled={verifyingAll}
+                className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-50"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="border border-border rounded-lg overflow-hidden">
+              <div className="grid grid-cols-12 gap-2 px-3 py-2 bg-muted/50 text-[11px] md:text-xs font-medium text-muted-foreground">
+                <span className="col-span-3">Member Name</span>
+                <span className="col-span-4">Ad Name</span>
+                <span className="col-span-2">Price</span>
+                <span className="col-span-3">Time & Date</span>
+              </div>
+              <div className="max-h-[45vh] overflow-y-auto divide-y divide-border">
+                {verifyDialog.items.map(item => (
+                  <div key={item.id} className="grid grid-cols-12 gap-2 px-3 py-2.5 text-xs md:text-sm text-foreground">
+                    <span className="col-span-3 truncate" title={member?.name || 'Unknown'}>{member?.name || 'Unknown'}</span>
+                    <span className="col-span-4 truncate" title={getAdName(item)}>{getAdName(item)}</span>
+                    <span className="col-span-2 font-medium text-primary">{formatCurrency(item.totalPrice)}</span>
+                    <span className="col-span-3 text-muted-foreground">{getAssignedStamp(item)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between mt-4">
+              <p className="text-xs md:text-sm text-muted-foreground">
+                Total items: <span className="font-semibold text-foreground">{verifyDialog.items.length}</span>
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setVerifyDialog(null)}
+                  disabled={verifyingAll}
+                  className="px-4 py-2 text-sm font-medium rounded-lg border border-border text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmVerify}
+                  disabled={verifyingAll}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors disabled:opacity-50"
+                >
+                  {verifyingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                  <span>{verifyingAll ? 'Verifying...' : 'Confirm Verify'}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -334,6 +435,15 @@ export default function MemberAssignments() {
           {selectedDate && (
             <button onClick={() => setSelectedDate(undefined)} className="text-xs text-muted-foreground hover:text-foreground">Clear</button>
           )}
+          <button
+            onClick={() => handleVerifyAll(completedVisibleAssignments)}
+            disabled={verifyingAll || completedVisibleAssignments.length === 0}
+            className="flex items-center gap-1.5 px-2 md:px-3 py-2 text-xs md:text-sm font-medium rounded-lg bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Verify all completed assignments in current filter"
+          >
+            {verifyingAll ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+            <span>{verifyingAll ? 'Verifying...' : `Verify All (${completedVisibleAssignments.length})`}</span>
+          </button>
         </div>
       </div>
 

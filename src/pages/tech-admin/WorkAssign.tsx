@@ -91,6 +91,7 @@ export default function WorkAssign() {
   const [showHistory, setShowHistory] = useState(false);
   const [todayCheckins, setTodayCheckins] = useState<Map<string, DailyCheckin>>(new Map());
   const [verifyingAll, setVerifyingAll] = useState(false);
+  const [verifyDialog, setVerifyDialog] = useState<{ mode: 'single' | 'all'; items: WorkAssignment[] } | null>(null);
 
   useEffect(() => {
     const statusParam = searchParams.get('status');
@@ -238,37 +239,8 @@ export default function WorkAssign() {
     }
   };
 
-  const handleVerify = async (assignment: WorkAssignment) => {
+  const verifyAssignments = async (items: WorkAssignment[]) => {
     if (!user) return;
-    try {
-      // Update assignment to verified
-      await updateDoc(doc(db, 'work_assignments', assignment.id), {
-        status: 'verified',
-        verifiedAt: serverTimestamp(),
-        verifiedBy: user.uid,
-      });
-
-      // Notify member
-      await addDoc(collection(db, 'notifications'), {
-        userId: assignment.assignedTo,
-        type: 'work_verified',
-        title: 'Work Verified!',
-        message: `Your ${assignment.category} work (${assignment.displayTitle}) has been verified and approved.`,
-        read: false,
-        createdAt: serverTimestamp(),
-      });
-    } catch (error) {
-      console.error('Failed to verify assignment:', error);
-    }
-  };
-
-  const handleVerifyAll = async (items: WorkAssignment[]) => {
-    if (!user || items.length === 0) return;
-
-    const confirm = window.confirm(`Verify all ${items.length} completed assignment(s) in current filter?`);
-    if (!confirm) return;
-
-    setVerifyingAll(true);
     try {
       for (const assignment of items) {
         await updateDoc(doc(db, 'work_assignments', assignment.id), {
@@ -287,10 +259,28 @@ export default function WorkAssign() {
         });
       }
     } catch (error) {
-      console.error('Failed to verify all assignments:', error);
+      console.error('Failed to verify assignment(s):', error);
+    }
+  };
+
+  const handleVerify = (assignment: WorkAssignment) => {
+    setVerifyDialog({ mode: 'single', items: [assignment] });
+  };
+
+  const handleConfirmVerify = async () => {
+    if (!verifyDialog || verifyDialog.items.length === 0) return;
+    setVerifyingAll(true);
+    try {
+      await verifyAssignments(verifyDialog.items);
+      setVerifyDialog(null);
     } finally {
       setVerifyingAll(false);
     }
+  };
+
+  const handleVerifyAll = async (items: WorkAssignment[]) => {
+    if (!items.length) return;
+    setVerifyDialog({ mode: 'all', items });
   };
 
   const handleSetEditing = async (assignmentId: string, assignedTo: string) => {
@@ -464,6 +454,10 @@ export default function WorkAssign() {
     return `${formatDate(assignedDate)} ${formatTime(assignedDate)}`;
   };
 
+  const getAdName = (assignment: WorkAssignment) => {
+    return assignment.businessName || assignment.clientName || assignment.displayTitle;
+  };
+
   if (assignmentsLoading || usersLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -500,6 +494,74 @@ export default function WorkAssign() {
                 className={`flex-1 px-4 py-2.5 text-sm font-medium rounded-lg text-white transition-colors ${confirmAction.type === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-orange-600 hover:bg-orange-700'}`}>
                 {confirmAction.type === 'delete' ? 'Delete' : 'Send Back'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Verify Dialog */}
+      {verifyDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => !verifyingAll && setVerifyDialog(null)}>
+          <div className="bg-card border border-border rounded-xl p-4 md:p-6 shadow-2xl w-full max-w-3xl mx-4 max-h-[85vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">
+                  {verifyDialog.mode === 'all' ? `Verify All (${verifyDialog.items.length})` : 'Verify Assignment'}
+                </h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Review member, ad name, price, and date/time before confirming verification.
+                </p>
+              </div>
+              <button
+                onClick={() => setVerifyDialog(null)}
+                disabled={verifyingAll}
+                className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-50"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="border border-border rounded-lg overflow-hidden">
+              <div className="grid grid-cols-12 gap-2 px-3 py-2 bg-muted/50 text-[11px] md:text-xs font-medium text-muted-foreground">
+                <span className="col-span-3">Member Name</span>
+                <span className="col-span-4">Ad Name</span>
+                <span className="col-span-2">Price</span>
+                <span className="col-span-3">Time & Date</span>
+              </div>
+              <div className="max-h-[45vh] overflow-y-auto divide-y divide-border">
+                {verifyDialog.items.map(item => (
+                  <div key={item.id} className="grid grid-cols-12 gap-2 px-3 py-2.5 text-xs md:text-sm text-foreground">
+                    <span className="col-span-3 truncate" title={getMemberName(item.assignedTo)}>{getMemberName(item.assignedTo)}</span>
+                    <span className="col-span-4 truncate" title={getAdName(item)}>{getAdName(item)}</span>
+                    <span className="col-span-2 font-medium text-primary">{formatCurrency(item.totalPrice)}</span>
+                    <span className="col-span-3 text-muted-foreground">{getAssignedStamp(item)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between mt-4">
+              <p className="text-xs md:text-sm text-muted-foreground">
+                Total items: <span className="font-semibold text-foreground">{verifyDialog.items.length}</span>
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setVerifyDialog(null)}
+                  disabled={verifyingAll}
+                  className="px-4 py-2 text-sm font-medium rounded-lg border border-border text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmVerify}
+                  disabled={verifyingAll}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors disabled:opacity-50"
+                >
+                  {verifyingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                  <span>{verifyingAll ? 'Verifying...' : 'Confirm Verify'}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

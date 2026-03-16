@@ -7,7 +7,6 @@ import type { WorkAssignment, AppUser, DailyCheckin } from "@/types";
 import { format, subDays, startOfDay } from "date-fns";
 import { ArrowLeft, FileText, Loader2, TrendingUp, IndianRupee, Video, CheckCircle2, XCircle, ExternalLink, Image, Clock, Calendar, ChevronDown } from "lucide-react";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
-import { formatCurrency } from "@/utils/formatters";
 import { formatCurrency, formatDate, formatTime } from "@/utils/formatters";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirm } from "@/hooks/useConfirm";

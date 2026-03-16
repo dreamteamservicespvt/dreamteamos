@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Copy, Check, ChevronDown, Languages, RefreshCw, Send, X, Loader2 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
@@ -26,6 +26,48 @@ const cleanCodeBlocks = (text: string): string => {
     .trim();
 };
 
+type VoiceClip = { label: string; text: string };
+
+const parseVoiceOverClips = (text: string): VoiceClip[] => {
+  const lines = text.split(/\r?\n/);
+  const headerPattern = /^\s*(\d+\s*-\s*\d+)\s*:\s*(.*)$/;
+  const fullScriptPattern = /^\s*FULL\s*SCRIPT\s*:/i;
+  const clips: VoiceClip[] = [];
+  let current: VoiceClip | null = null;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+
+    // Stop collecting once we hit the "FULL SCRIPT:" section
+    if (fullScriptPattern.test(line)) {
+      break;
+    }
+
+    const match = line.match(headerPattern);
+
+    if (match) {
+      if (current && current.text.trim()) clips.push(current);
+      current = {
+        label: match[1].replace(/\s+/g, ''),
+        text: match[2].trim(),
+      };
+      continue;
+    }
+
+    if (!line) continue;
+    if (current) {
+      current.text = current.text ? `${current.text}\n${line}` : line;
+    }
+  }
+
+  if (current && current.text.trim()) clips.push(current);
+  if (clips.length > 0) return clips;
+
+  // Fallback: use text before FULL SCRIPT section
+  const beforeFullScript = text.split(/FULL\s*SCRIPT\s*:/i)[0].trim();
+  return beforeFullScript ? [{ label: 'Clip 1', text: beforeFullScript }] : [];
+};
+
 export const GeneratedCard: React.FC<GeneratedCardProps> = ({ 
   title, content, isJson, variant = 'default', showTransliteration = false,
   showRefinement = false, onRefine, isRefining = false, sectionType, hideTitle = false
@@ -40,6 +82,7 @@ export const GeneratedCard: React.FC<GeneratedCardProps> = ({
   const [transliteratedText, setTransliteratedText] = useState('');
   const [isTransliterating, setIsTransliterating] = useState(false);
   const [transliterationCache, setTransliterationCache] = useState<Record<string, string>>({});
+  const [copiedClipLabel, setCopiedClipLabel] = useState<string | null>(null);
 
   const items = Array.isArray(content) ? content : [content];
   const currentContent = items[selectedIndex];
@@ -53,6 +96,11 @@ export const GeneratedCard: React.FC<GeneratedCardProps> = ({
   let textToDisplay = variant === 'dropdown' ? currentContent : getText();
   if (sectionType === 'mainFrame' || sectionType === 'header') textToDisplay = cleanCodeBlocks(textToDisplay);
   if (showEnglish && showTransliteration && transliteratedText) textToDisplay = transliteratedText;
+
+  const voiceOverClips = useMemo(() => {
+    if (sectionType !== 'voiceOver' || isJson) return [];
+    return parseVoiceOverClips(textToDisplay);
+  }, [sectionType, isJson, textToDisplay]);
 
   const handleTransliterationToggle = async () => {
     if (showEnglish) { setShowEnglish(false); return; }
@@ -81,6 +129,12 @@ export const GeneratedCard: React.FC<GeneratedCardProps> = ({
     navigator.clipboard.writeText(copyText);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleClipCopy = (label: string, clipText: string) => {
+    navigator.clipboard.writeText(`${label}: ${clipText}`);
+    setCopiedClipLabel(label);
+    setTimeout(() => setCopiedClipLabel(null), 2000);
   };
 
   const handleRefineSubmit = () => {
@@ -175,6 +229,34 @@ export const GeneratedCard: React.FC<GeneratedCardProps> = ({
           <pre className={cn("text-xs font-mono whitespace-pre-wrap break-all", isDark ? "text-slate-300" : "text-slate-700")}>
             {typeof textToDisplay === 'object' ? JSON.stringify(textToDisplay, null, 2) : textToDisplay}
           </pre>
+        ) : sectionType === 'voiceOver' && voiceOverClips.length > 0 ? (
+          <div className="space-y-3">
+            {voiceOverClips.map((clip) => {
+              const isClipCopied = copiedClipLabel === clip.label;
+              return (
+                <div key={clip.label} className={cn("rounded-lg border overflow-hidden", isDark ? "border-slate-700" : "border-slate-200")}>
+                  <div className={cn("flex items-center justify-between px-3 py-1.5 border-b", isDark ? "bg-slate-700/50 border-slate-600" : "bg-slate-50 border-slate-200")}>
+                    <span className={cn("text-xs font-semibold tracking-wide", isDark ? "text-slate-300" : "text-slate-600")}>{clip.label}</span>
+                    <button
+                      onClick={() => handleClipCopy(clip.label, clip.text)}
+                      className={cn(
+                        "flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded transition-colors",
+                        isClipCopied
+                          ? (isDark ? "text-green-400 bg-green-900/30" : "text-green-600 bg-green-50")
+                          : (isDark ? "text-slate-400 hover:text-blue-400 hover:bg-blue-900/30" : "text-slate-500 hover:text-blue-600 hover:bg-blue-50")
+                      )}
+                    >
+                      {isClipCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                      <span>{isClipCopied ? 'Copied' : 'Copy'}</span>
+                    </button>
+                  </div>
+                  <p className={cn("px-3 py-2.5 text-sm leading-relaxed", isDark ? "text-slate-300" : "text-slate-700")}>
+                    {clip.text}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
         ) : (
           <div className={cn("text-sm whitespace-pre-wrap leading-relaxed", isDark ? "text-slate-300" : "text-slate-700")}>
             {textToDisplay}

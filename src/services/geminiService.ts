@@ -378,6 +378,137 @@ const cleanScriptText = (text: string): string => {
     .trim();
 };
 
+const tokenizeWords = (text: string): string[] => {
+  return text
+    .replace(/[\[\]{}()<>:;,.!?"'`~@#$%^&*+=_|\\/\-]+/g, ' ')
+    .split(/\s+/)
+    .map(w => w.trim())
+    .filter(Boolean);
+};
+
+const isLongWordClip = (words: string[]): boolean => {
+  if (words.length === 0) return false;
+  const longWords = words.filter(w => w.length >= 9).length;
+  const avgLength = words.reduce((sum, w) => sum + w.length, 0) / words.length;
+  return longWords >= 4 || avgLength >= 7;
+};
+
+const splitWordsEvenly = (words: string[], segmentCount: number): string[] => {
+  if (segmentCount <= 0) return [];
+  if (words.length === 0) return Array(segmentCount).fill('');
+
+  const chunks: string[] = [];
+  let cursor = 0;
+
+  for (let i = 0; i < segmentCount; i++) {
+    const remainingWords = words.length - cursor;
+    const remainingSegments = segmentCount - i;
+    const take = Math.max(1, Math.ceil(remainingWords / remainingSegments));
+    chunks.push(words.slice(cursor, cursor + take).join(' ').trim());
+    cursor += take;
+  }
+
+  return chunks;
+};
+
+const parseVoiceOverSegments = (script: string, segmentCount: number): string[] => {
+  const normalized = cleanScriptText(script || '');
+  if (!normalized) return Array(segmentCount).fill('');
+
+  const lines = normalized.split('\n').map(l => l.trim()).filter(Boolean);
+  const timestampHeader = /^(\d+\s*-\s*\d+)\s*:\s*(.*)$/i;
+  const segmentHeader = /^segment\s*\d+\s*:\s*(.*)$/i;
+  const parsed: string[] = [];
+  let current = '';
+  let detectedStructuredLines = false;
+
+  for (const line of lines) {
+    const timeMatch = line.match(timestampHeader);
+    const segmentMatch = line.match(segmentHeader);
+
+    if (timeMatch || segmentMatch) {
+      detectedStructuredLines = true;
+      if (current.trim()) parsed.push(current.trim());
+      current = (timeMatch ? timeMatch[2] : segmentMatch?.[1])?.trim() || '';
+      continue;
+    }
+
+    if (/^full\s*script\s*:?$/i.test(line)) {
+      continue;
+    }
+
+    if (detectedStructuredLines) {
+      current = current ? `${current} ${line}` : line;
+    }
+  }
+
+  if (current.trim()) parsed.push(current.trim());
+
+  if (parsed.length > 0) {
+    return parsed.slice(0, segmentCount);
+  }
+
+  const paragraphs = normalized
+    .split(/\n\s*\n+/)
+    .map(p => p.trim())
+    .filter(Boolean);
+
+  if (paragraphs.length >= segmentCount) {
+    return paragraphs.slice(0, segmentCount);
+  }
+
+  const words = tokenizeWords(normalized);
+  return splitWordsEvenly(words, segmentCount);
+};
+
+const enforceClipWordCount = (clipText: string): string => {
+  const words = tokenizeWords(cleanScriptText(clipText));
+  const target = isLongWordClip(words) ? 18 : 20;
+  if (words.length === 0) return '';
+
+  const fillerWords = ['ఇప్పుడే', 'నమ్మకంతో', 'ఎంచుకోండి', 'ఇవాళే', 'సంప్రదించండి', 'అందుకోండి'];
+  const adjusted = [...words];
+
+  if (adjusted.length > target) {
+    return adjusted.slice(0, target).join(' ');
+  }
+
+  let fillerIndex = 0;
+  while (adjusted.length < target) {
+    adjusted.push(fillerWords[fillerIndex % fillerWords.length]);
+    fillerIndex += 1;
+  }
+
+  return adjusted.join(' ');
+};
+
+const normalizeVoiceOverSegments = (segments: string[], segmentCount: number): string[] => {
+  const normalized = segments
+    .map(s => cleanScriptText(s))
+    .filter(Boolean)
+    .slice(0, segmentCount);
+
+  if (normalized.length === 0) {
+    return Array(segmentCount).fill('');
+  }
+
+  while (normalized.length < segmentCount) {
+    normalized.push(normalized[normalized.length - 1]);
+  }
+
+  return normalized.map(enforceClipWordCount);
+};
+
+const formatVoiceOverScript = (segments: string[]): string => {
+  const clipLines = segments.map((segment, idx) => {
+    const start = idx * 8;
+    const end = start + 8;
+    return `${start}-${end}: ${segment}`;
+  });
+
+  return clipLines.join('\n').trim();
+};
+
 export const generateAdAssets = async (
   formData: AdFormData,
   files: FileStore,
@@ -592,25 +723,9 @@ Segment 2: <text>
     });
 
     voiceOverScript = segmentResponse.text || cleanedScript;
-    // Parse segments
-    const segments: string[] = [];
-    const lines = voiceOverScript.split('\n');
-    let currentSegmentText = "";
-    for (const line of lines) {
-      if (line.trim().toLowerCase().startsWith("segment")) {
-        if (currentSegmentText) segments.push(currentSegmentText.trim());
-        currentSegmentText = line.split(':').slice(1).join(':') || "";
-      } else {
-        currentSegmentText += " " + line;
-      }
-    }
-    if (currentSegmentText) segments.push(currentSegmentText.trim());
-    // Clean each segment individually
-    parsedSegments = (segments.length > 0 ? segments : [cleanedScript]).map(s => cleanScriptText(s));
-    // Pad if needed
-    while (parsedSegments.length < segmentCount) {
-      parsedSegments.push(parsedSegments[parsedSegments.length - 1]);
-    }
+    const parsed = parseVoiceOverSegments(voiceOverScript, segmentCount);
+    parsedSegments = normalizeVoiceOverSegments(parsed, segmentCount);
+    voiceOverScript = formatVoiceOverScript(parsedSegments);
   } else {
     // Auto-generate voice-over script
     const scriptSystemPrompt = VOICEOVER_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName);
@@ -629,21 +744,9 @@ Segment 2: <text>
     });
 
     voiceOverScript = scriptResponse.text || "Failed to generate Script.";
-
-    // Parse voice-over segments
-    const segments: string[] = [];
-    const lines = voiceOverScript.split('\n');
-    let currentSegmentText = "";
-    for (const line of lines) {
-      if (line.trim().toLowerCase().startsWith("segment")) {
-        if (currentSegmentText) segments.push(currentSegmentText.trim());
-        currentSegmentText = line.split(':')[1] || "";
-      } else {
-        currentSegmentText += " " + line;
-      }
-    }
-    if (currentSegmentText) segments.push(currentSegmentText.trim());
-    parsedSegments = segments.length > 0 ? segments : Array(segmentCount).fill("Script content placeholder");
+    const parsed = parseVoiceOverSegments(voiceOverScript, segmentCount);
+    parsedSegments = normalizeVoiceOverSegments(parsed, segmentCount);
+    voiceOverScript = formatVoiceOverScript(parsedSegments);
   }
 
   // Emit partial result: voiceOver ready

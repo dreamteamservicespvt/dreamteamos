@@ -1466,18 +1466,17 @@ YOUR TASK: Generate a ${duration}-second voice-over script for a business advert
 
 • Total Duration: ${duration} seconds
 • Total Clips: ${segmentCount} clips of 8 seconds each
-• EXACTLY 18 Telugu words per 8-second clip — NO MORE, NO LESS
+• EXACTLY 20 Telugu words per 8-second clip — NO MORE, NO LESS
+• If a clip naturally uses very long words, use EXACTLY 18 words for that clip
 • The video clips will be extended visually, so script must be CONCISE
 • Average Telugu speaking pace: 2-2.5 words per second
 • READ EACH SEGMENT ALOUD mentally — if it takes more than 6-7 seconds, CUT words
 • Keep sentences EXTREMELY SHORT, PUNCHY, and IMPACTFUL
 • Every word must EARN its place — no filler, no fluff, no repetition
 
-   Word count guide (STRICT — 18 words per clip):
-   - Festival wishes clip: 18 words
-   - Business intro clip: 18 words
-   - Features/benefits clip: 18 words
-   - Call-to-action clip: 18 words
+  Word count guide (STRICT):
+  - Default for every clip: exactly 20 words
+  - Long-word clip fallback: exactly 18 words
 
 ===== CONTENT & TONE (WORLD-CLASS QUALITY) =====
 
@@ -1541,7 +1540,7 @@ ${adType === 'festival' ? `Clip 1 / 0-8: [FESTIVAL WISHES ONLY — 100% PURE GRE
   "{Business Name in Telugu} తరపున మీకు మరియు మీ కుటుంబ సభ్యులకు {${festivalName}} శుభాకాంక్షలు"
 • This line is LOCKED — do NOT rephrase, reorder, or skip it
 • This clip is 100% FESTIVAL WISHES — ZERO business promotion
-• 12-15 words max
+• EXACTLY 20 words (or EXACTLY 18 if words are long)
 • Example: "డ్రీమ్ టీమ్ సర్వీసెస్ తరపున మీకు మీ ఫ్యామిలీకి ${festivalName} శుభాకాంక్షలు"
 
 Clip 2 / 8-16: [100% PURE BUSINESS — Brand + CTA]
@@ -1549,7 +1548,7 @@ Clip 2 / 8-16: [100% PURE BUSINESS — Brand + CTA]
 • Introduce business name with AUTHORITY
 • Present core service BRIEFLY
 • ${segmentCount === 2 ? 'End with: "స్క్రీన్ పై వున్న నంబర్ ని ఇప్పుడే సంప్రదించండి"' : 'Include contact if more clips available'}
-• 15-18 words max` : `Clip 1 / 0-8: [POWER HOOK — Grab Attention Instantly]
+• EXACTLY 20 words (or EXACTLY 18 if words are long)` : `Clip 1 / 0-8: [POWER HOOK — Grab Attention Instantly]
 • Start with a BOLD statement or compelling question
 • Create INSTANT curiosity or emotional punch
 • Sound like a PREMIUM TV commercial opening — not casual talk
@@ -1559,26 +1558,26 @@ ${adType !== 'festival' ? `Clip 2 / 8-16: [BRAND AUTHORITY + CTA]
 • Introduce business name with PRIDE and AUTHORITY
 • Present core services BRIEFLY with CONFIDENT premium language
 • ${segmentCount === 2 ? 'End with: "స్క్రీన్ పై వున్న నంబర్ ని ఇప్పుడే సంప్రదించండి"' : 'Include contact number in Telugu words'}
-• 15-18 words max` : ''}
+• EXACTLY 20 words (or EXACTLY 18 if words are long)` : ''}
 
 ${duration >= 24 ? `Clip ${adType === 'festival' ? '3' : '3'} / ${adType === 'festival' ? '16-24' : '16-24'}: [VALUE & BENEFITS]
 • Highlight UNIQUE benefits with IMPACTFUL language
 • Social proof: years of trust, families served, expertise
 • Keep it SHORT and PUNCHY
-• 12-18 words max` : ''}
+• EXACTLY 20 words (or EXACTLY 18 if words are long)` : ''}
 
 ${duration >= 32 ? `Clip ${adType === 'festival' ? '4' : '4'} / 24-32: [CALL TO ACTION — Strong Close]
 • Strong CTA — not begging but INVITING
 • Include contact number IN TELUGU WORDS (spell each digit)
 • End with a MEMORABLE tagline
 • If address provided, include naturally
-• 12-15 words max` : ''}
+• EXACTLY 20 words (or EXACTLY 18 if words are long)` : ''}
 
 ${duration >= 40 ? `Clip 5-${segmentCount} / 32-${duration}: [EXTENDED STORY]
 • Detailed service highlights with engaging language
 • Build to a POWERFUL MEMORABLE closing
 • Final tagline should be ICONIC
-• 12-18 words per clip max` : ''}
+• EXACTLY 20 words per clip (or EXACTLY 18 if words are long)` : ''}
 
 ${adType === 'festival' ? `
 FESTIVAL RULE (ABSOLUTE):
@@ -1603,7 +1602,7 @@ Before outputting, verify:
 ✓ ZERO special characters (no hyphens, ampersands, slashes, brackets, etc.)
 ✓ ALL numbers written as Telugu WORDS not digits
 ✓ ${segmentCount === 2 ? 'Contact number replaced with "స్క్రీన్ పై వున్న నంబర్ ని ఇప్పుడే సంప్రదించండి"' : 'Phone numbers read in GROUPS of 2-3 digits (e.g., "నైన్ ఎయిట్, సెవెన్ సిక్స్ ఫైవ్, ఫోర్ త్రీ టూ వన్ జీరో") — NEVER individual digits'}
-✓ Each clip is 12-18 words max (speakable in 6-7 seconds leaving visual time)
+✓ Each clip is exactly 20 words, or exactly 18 words when clip uses long words
 ✓ Modern conversational Telugu — no archaic words
 ✓ Brand name mentioned 2-3 times naturally
 ✓ At least one MEMORABLE punchline

@@ -728,7 +728,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                   {creationMode === 'video' && outputs.posterPrompt && (
                       <OutputSection title="3. Poster Design (JSON)" sectionKey="poster"
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
-                        isDark={isDark}>
+                        isDark={isDark} copyContent={outputs.posterPrompt}>
                         <GeneratedCard title="Poster" content={outputs.posterPrompt} isJson sectionType="poster"
                           showRefinement={!viewingSavedItem} onRefine={(i) => handleRefineSection('poster', i)} isRefining={refiningSection === 'poster'} hideTitle />
                       </OutputSection>
