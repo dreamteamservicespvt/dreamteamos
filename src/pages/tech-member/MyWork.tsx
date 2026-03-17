@@ -112,6 +112,7 @@ export default function MyWork() {
           title: 'Work Completed',
           message: `${user?.name || 'A member'} has completed work: ${openAssignment.businessName || openAssignment.displayTitle}`,
           read: false,
+          link: `/tech-admin/work-assign/${user.uid}?verify=${openAssignment.id}`,
           createdAt: serverTimestamp(),
         });
       }

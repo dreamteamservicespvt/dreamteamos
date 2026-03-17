@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, orderBy, limit, writeBatch } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
+import { playNotificationSound } from "@/utils/audio";
 
 export interface AppNotification {
   id: string;
@@ -18,6 +19,8 @@ export function useNotifications() {
   const user = useAuthStore((s) => s.user);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const previousUnreadCount = useRef(0);
+  const initialLoad = useRef(true);
 
   useEffect(() => {
     if (!user) return;
@@ -30,7 +33,16 @@ export function useNotifications() {
     const unsub = onSnapshot(q, (snap) => {
       const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as AppNotification));
       setNotifications(list);
-      setUnreadCount(list.filter((n) => !n.read).length);
+      
+      const currentUnreadCount = list.filter((n) => !n.read).length;
+      setUnreadCount(currentUnreadCount);
+
+      if (!initialLoad.current && currentUnreadCount > previousUnreadCount.current) {
+        playNotificationSound();
+      }
+      
+      previousUnreadCount.current = currentUnreadCount;
+      initialLoad.current = false;
     }, (err) => {
       console.warn("Notification query error, using fallback:", err);
       const fallbackQ = query(
@@ -41,7 +53,16 @@ export function useNotifications() {
         const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as AppNotification));
         list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
         setNotifications(list.slice(0, 50));
-        setUnreadCount(list.filter((n) => !n.read).length);
+        
+        const currentUnreadCount = list.filter((n) => !n.read).length;
+        setUnreadCount(currentUnreadCount);
+
+        if (!initialLoad.current && currentUnreadCount > previousUnreadCount.current) {
+          playNotificationSound();
+        }
+        
+        previousUnreadCount.current = currentUnreadCount;
+        initialLoad.current = false;
       });
       return fallbackUnsub;
     });

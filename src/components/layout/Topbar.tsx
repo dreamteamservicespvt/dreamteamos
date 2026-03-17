@@ -9,6 +9,7 @@ import { useNotifications } from "@/hooks/useNotifications";
 import { AnimatePresence, motion } from "framer-motion";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/services/firebase";
+import { playClickSound } from "@/utils/audio";
 
 interface TopbarProps {
   onMenuClick?: () => void;
@@ -63,10 +64,37 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
   });
 
   const getNotifColor = (type: string) => {
-    if (type.includes("approved") || type.includes("verified")) return "bg-success/15 text-success";
+    if (type.includes("approved") || type.includes("verified") || type.includes("completed")) return "bg-success/15 text-success";
     if (type.includes("rejected")) return "bg-destructive/15 text-destructive";
     if (type.includes("assigned")) return "bg-info/15 text-info";
     return "bg-primary/15 text-primary";
+  };
+
+  const getDefaultLink = (type: string) => {
+    if (!user) return "/";
+    const r = user.role;
+    if (type === "salary_receipt") {
+      if (r === "tech_member") return "/tech/salary";
+      if (r === "tech_admin") return "/tech-admin/salary";
+      if (r === "sales_admin") return "/sales-admin/salary";
+      if (r === "accounts_admin") return "/accounts/salary";
+      return "/salary"; 
+    }
+    if (type.includes("approved") || type.includes("rejected") || type === "check_out") {
+      if (r === "tech_member") return "/tech/dashboard";
+      if (r === "sales_member") return "/sales/dashboard";
+      if (r === "tech_admin") return "/tech-admin/dashboard";
+      if (r === "sales_admin") return "/sales-admin/dashboard";
+    }
+    if (type.includes("sale") || type === "lead_assigned") {
+      if (r === "sales_member") return "/sales/leads";
+      if (r === "sales_admin") return "/sales-admin/approvals";
+    }
+    if (type === "work_completed" || type === "work_verified" || type === "work_editing") {
+      if (r === "tech_admin" || r === "main_admin") return "/tech-admin/work-assign";
+      if (r === "tech_member") return "/tech/my-work";
+    }
+    return "/";
   };
 
   return (
@@ -142,7 +170,12 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
                     notifications.slice(0, 20).map((n) => (
                       <button
                         key={n.id}
-                        onClick={() => { markAsRead(n.id); if (n.link) { navigate(n.link); setShowNotifs(false); } }}
+                        onClick={() => { 
+                          playClickSound();
+                          markAsRead(n.id); 
+                          navigate(n.link || getDefaultLink(n.type)); 
+                          setShowNotifs(false); 
+                        }}
                         className={`w-full text-left px-4 py-3 border-b border-border/50 hover:bg-accent/30 transition-colors ${!n.read ? "bg-primary/5" : ""}`}
                       >
                         <div className="flex items-start gap-2">

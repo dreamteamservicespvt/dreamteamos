@@ -4,7 +4,7 @@ import {
   ArrowLeft, ClipboardList, Trash2, CheckCircle2, Edit3, Loader2,
   Pencil, X, Save, Undo2, Search
 } from 'lucide-react';
-import { doc, updateDoc, deleteDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc, deleteDoc, addDoc, collection, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/services/firebase';
 import { useAuthStore } from '@/store/authStore';
 import { useFirestoreCollection } from '@/hooks/useFirestore';
@@ -50,10 +50,59 @@ function isValidDayFilter(value: string | null): value is string {
   return value === 'all' || (typeof value === 'string' && /^[0-4]$/.test(value));
 }
 
+function WorkPreview({ assignmentId }: { assignmentId: string }) {
+  const [generation, setGeneration] = useState<any | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchWork() {
+      try {
+        const q = query(collection(db, 'ai_generations'), where('workAssignmentId', '==', assignmentId));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          // just taking the most recent one if multiple exist, usually it's one.
+          const data = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a: any, b: any) => 
+            (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)
+          );
+          setGeneration(data[0]);
+        }
+      } catch (err) {
+        console.error('Failed to fetch ai generations', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchWork();
+  }, [assignmentId]);
+
+  if (loading) return <div className="p-4 text-center text-xs text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin mx-auto" /></div>;
+  if (!generation) return <div className="p-4 text-center text-xs text-muted-foreground border-t border-border mt-2">No AI platform work found for this assignment.</div>;
+
+  return (
+    <div className="mt-4 pt-4 border-t border-border space-y-3">
+      <h4 className="text-sm font-semibold text-foreground">AI Platform Output Preview</h4>
+      <div className="p-3 bg-muted/30 rounded-lg border border-border text-xs text-muted-foreground space-y-2 max-h-48 overflow-y-auto">
+        <p><strong className="text-foreground">Header:</strong> {generation.headerPrompt}</p>
+        <p><strong className="text-foreground">Voice Over:</strong> {generation.voiceOverScript}</p>
+        {generation.veoPrompts && generation.veoPrompts.length > 0 && (
+          <div>
+            <strong className="text-foreground">Clips ({generation.veoPrompts.length}):</strong>
+            <ul className="list-disc pl-4 mt-1 space-y-1">
+              {generation.veoPrompts.map((p: string, i: number) => (
+                <li key={i}>{p}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function MemberAssignments() {
   const { memberId } = useParams<{ memberId: string }>();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const currentUser = useAuthStore((s) => s.user);
   const { data: allUsers, loading: usersLoading } = useFirestoreCollection<AppUser>('users');
   const { data: allAssignments, loading: assignmentsLoading } = useFirestoreCollection<WorkAssignment>('work_assignments');
@@ -106,6 +155,22 @@ export default function MemberAssignments() {
     }
     return days;
   }, []);
+
+  // Open verify dialog automatically if "verify" param exists in URL
+  useEffect(() => {
+    const verifyId = searchParams.get('verify');
+    if (verifyId && allAssignments.length > 0) {
+      const assignmentToVerify = allAssignments.find(a => a.id === verifyId);
+      if (assignmentToVerify) {
+        setVerifyDialog({ mode: 'single', items: [assignmentToVerify] });
+      }
+      
+      // Safe remove verify from URL to prevent loop
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('verify');
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [searchParams, allAssignments, setSearchParams]);
 
   const memberAssignments = useMemo(() => {
     let result = allAssignments.filter(a => a.assignedTo === memberId);
@@ -358,7 +423,9 @@ export default function MemberAssignments() {
                 ))}
               </div>
             </div>
-
+              {verifyDialog.items.length === 1 && (
+                <WorkPreview assignmentId={verifyDialog.items[0].id} />
+              )}
             <div className="flex items-center justify-between mt-4">
               <p className="text-xs md:text-sm text-muted-foreground">
                 Total items: <span className="font-semibold text-foreground">{verifyDialog.items.length}</span>
