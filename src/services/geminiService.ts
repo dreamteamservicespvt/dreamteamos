@@ -218,7 +218,7 @@ IMPORTANT:
 
     case 'voiceOver':
       const segmentCount = formData.duration / 8;
-      systemPrompt = VOICEOVER_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName);
+      systemPrompt = VOICEOVER_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName, formData.scriptLanguage);
       userPrompt = `You previously generated this Voice Over script:
 
 ---CURRENT SCRIPT---
@@ -728,9 +728,9 @@ Segment 2: <text>
     voiceOverScript = formatVoiceOverScript(parsedSegments);
   } else {
     // Auto-generate voice-over script
-    const scriptSystemPrompt = VOICEOVER_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName);
-    const scriptUserPrompt = `Generate a ${formData.duration}-second Telugu voice-over script for:
-  BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
+    const scriptSystemPrompt = VOICEOVER_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName, formData.scriptLanguage);
+    const scriptLang = formData.scriptLanguage || 'Telugu';
+    const scriptUserPrompt = `Generate a ${formData.duration}-second ${scriptLang} voice-over script for:
   AD TYPE: ${formData.adType}
   ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName}` : ''}
   DURATION: ${formData.duration} seconds (${segmentCount} segments)`;
@@ -790,11 +790,16 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
 - The scene should look like a REAL photo taken at the ACTUAL business with their products on display`
     : '';
   
+  const aspectRatioNote = formData.aspectRatio && formData.aspectRatio !== '1:1' 
+    ? `\n\nCRITICAL ASPECT RATIO RULE: Ensure the prompt explicitly instructs the image generator to use an aspect ratio of ${formData.aspectRatio} (e.g., --ar ${formData.aspectRatio}). The composition and framing must precisely fit a ${formData.aspectRatio} view.`
+    : '';
+
   const mainFrameUserPrompt = `Generate ${segmentCount} unique Main Frame image prompts (one per 8-second clip) for:
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
   AD TYPE: ${formData.adType}
   ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName}` : ''}
   ATTIRE: ${formData.attireType}
+  ASPECT RATIO: ${formData.aspectRatio || '1:1'}${aspectRatioNote}
   TOTAL DURATION: ${formData.duration} seconds (${segmentCount} clips of 8 seconds each)
   SPECIAL CLIENT INSTRUCTIONS: ${businessInfo.specialRequirements?.customInstructions || 'None'}
   ${hasProductImages ? `\nPRODUCT IMAGES: ${productImageCount} product image(s) are being attached. You MUST include product placement instructions in the prompt. Products should appear IN THE STORE BACKGROUND (on shelves, display racks, tables) — NOT at the bottom of the frame. Products must remain EXACTLY as provided — no modifications.` : ''}
@@ -945,10 +950,15 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR HEADER:
 - This creates a "product showcase strip" that reinforces what the business sells`
     : '';
   
+  const headerAspectRatioNote = formData.aspectRatio && formData.aspectRatio !== '1:1' 
+    ? `\n\nCRITICAL ASPECT RATIO RULE for HEADER: Because the final delivery is ${formData.aspectRatio}, generate this header keeping in mind it will be placed over a ${formData.aspectRatio} canvas. Explicitly instruct the AI image generator to use --ar ${formData.aspectRatio}. The header should just occupy the top strip of the ${formData.aspectRatio} canvas.`
+    : '';
+
   const headerUserPrompt = `Generate a WORLD-CLASS Header image prompt for:
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
   AD TYPE: ${formData.adType}
   ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName}` : ''}
+  ASPECT RATIO: ${formData.aspectRatio || '1:1'}${headerAspectRatioNote}
   
   CRITICAL INSTRUCTIONS:
   1. Extract ONLY essential contact details from the visiting card: Business Name, 1-2 Primary Phone Numbers, Email, Website, and Address (city/area only)

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Wand2, Sparkles, Layout, Type, Mic, Image as ImageIcon, Rocket, AlertCircle,
   Loader2, Bookmark, Save, Check, Camera, Video, PenTool, ChevronDown, Copy,
-  ExternalLink, StopCircle, ArrowLeft, CheckCircle2
+  ExternalLink, StopCircle, ArrowLeft, CheckCircle2, Star
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
@@ -39,7 +39,9 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     attireType: AttireType.TRADITIONAL,
     duration: 16,
     durationMode: 'preset',
-    textInstructions: ''
+    textInstructions: '',
+    scriptLanguage: 'English',
+    aspectRatio: '1:1'
   });
 
   const [files, setFiles] = useState<FileStore>({
@@ -634,6 +636,43 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       )}
                     </div>
                   )}
+
+                  {/* Special Features */}
+                  <div className={cn("p-4 rounded-lg border", isDark ? "bg-slate-800/50 border-slate-700" : "bg-slate-50 border-slate-200")}>
+                    <label className={cn("flex items-center gap-2 text-sm font-semibold cursor-pointer mb-3", isDark ? "text-slate-300" : "text-slate-700")}>
+                      <Star className="w-4 h-4 text-amber-500" />
+                      Special Features (Optional)
+                    </label>
+                    <div className="space-y-4">
+                      <div>
+                        <label className={cn("block text-xs font-medium mb-1.5", isDark ? "text-slate-400" : "text-slate-600")}>Script Language</label>
+                        <select className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none", isDark ? "bg-slate-700 border-slate-600 text-slate-200" : "bg-white border-slate-300 text-slate-700")}
+                          value={formData.scriptLanguage || 'English'} 
+                          onChange={(e) => setFormData(prev => ({ ...prev, scriptLanguage: e.target.value }))}>
+                          <option value="English">English</option>
+                          <option value="Hindi">Hindi</option>
+                          <option value="Telugu">Telugu</option>
+                          <option value="Tamil">Tamil</option>
+                          <option value="Kannada">Kannada</option>
+                          <option value="Malayalam">Malayalam</option>
+                          <option value="Marathi">Malayalam</option>
+                          <option value="Bengali">Bengali</option>
+                          <option value="Gujarati">Gujarati</option>
+                          <option value="Punjabi">Punjabi</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className={cn("block text-xs font-medium mb-1.5", isDark ? "text-slate-400" : "text-slate-600")}>Aspect Ratio</label>
+                        <select className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none", isDark ? "bg-slate-700 border-slate-600 text-slate-200" : "bg-white border-slate-300 text-slate-700")}
+                          value={formData.aspectRatio || '1:1'} 
+                          onChange={(e) => setFormData(prev => ({ ...prev, aspectRatio: e.target.value as any }))}>
+                          <option value="1:1">Square (1:1)</option>
+                          <option value="16:9">Landscape (16:9)</option>
+                          <option value="9:16">Portrait (9:16)</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
 
                   {/* Generate Button */}
                   <div className="flex space-x-2">
