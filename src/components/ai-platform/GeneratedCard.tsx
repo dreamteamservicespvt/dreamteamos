@@ -128,9 +128,6 @@ export const GeneratedCard: React.FC<GeneratedCardProps> = ({
     if (sectionType === 'mainFrame' || sectionType === 'header') copyText = cleanCodeBlocks(copyText);
     navigator.clipboard.writeText(copyText);
     setCopied(true);
-    if (copyText.includes('16:9')) {
-      alert("IMPORTANT: When pasting the prompt in the image generator, change the ratio to landscape 16:9 for both frame and header!");
-    }
     setTimeout(() => setCopied(false), 2000);
   };
 

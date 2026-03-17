@@ -23,8 +23,6 @@ export interface AdFormData {
   duration: number;
   durationMode: 'preset' | 'custom';
   textInstructions: string;
-  scriptLanguage?: string;
-  aspectRatio?: '1:1' | '16:9' | '9:16';
 }
 
 export interface FileStore {
