@@ -1,6 +1,18 @@
+// Use a shared AudioContext so it can resume after first interaction
+let sharedAudioCtx: AudioContext | null = null;
+const getAudioContext = () => {
+  if (!sharedAudioCtx) {
+    sharedAudioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+  }
+  if (sharedAudioCtx.state === 'suspended') {
+    sharedAudioCtx.resume();
+  }
+  return sharedAudioCtx;
+};
+
 export const playNotificationSound = () => {
   try {
-    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const audioCtx = getAudioContext();
     
     // Quick energetic, upbeat major arpeggio
     const notes = [
@@ -35,7 +47,7 @@ export const playNotificationSound = () => {
 
 export const playClickSound = () => {
   try {
-    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const audioCtx = getAudioContext();
     const oscillator = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
     
