@@ -1557,17 +1557,17 @@ YOUR TASK: Generate a ${duration}-second voice-over script for a business advert
 
 • Total Duration: ${duration} seconds
 • Total Clips: ${segmentCount} clips of 8 seconds each
-• EXACTLY 20  words per 8-second clip — NO MORE, NO LESS
-• If a clip naturally uses very long words, use EXACTLY 18 words for that clip
+• Each 8-second clip should have 16-22 words (Telugu speaking pace: ~2-2.5 words/sec)
+• If a clip uses many long words (9+ characters), aim for 16-18 words for that clip
 • The video clips will be extended visually, so script must be CONCISE
-• Average  speaking pace: 2-2.5 words per second
-• READ EACH SEGMENT ALOUD mentally — if it takes more than 6-7 seconds, CUT words
-• Keep sentences EXTREMELY SHORT, PUNCHY, and IMPACTFUL
+• Average Telugu speaking pace: 2-2.5 words per second
+• READ EACH SEGMENT ALOUD mentally — if it takes more than 7 seconds, shorten it
+• Keep sentences SHORT, PUNCHY, and IMPACTFUL
 • Every word must EARN its place — no filler, no fluff, no repetition
 
-  Word count guide (STRICT):
-  - Default for every clip: exactly 20 words
-  - Long-word clip fallback: exactly 18 words
+  Word count guide:
+  - Target range for every clip: 16-22 words
+  - Long-word clip range: 16-18 words
 
 ===== CONTENT & TONE (WORLD-CLASS QUALITY) =====
 
@@ -1600,6 +1600,18 @@ TONE: ${getToneForAdType(adType)}
    • Filler words that add no value
    • Casual chatty friend-talk
    • Long sentences — keep everything SHORT
+   • Sentences that are cut off mid-thought or incomplete — EVERY clip must END with a proper conclusion
+
+===== EACH CLIP MUST BE INDIVIDUALLY COMPLETE (CRITICAL) =====
+⚠️ THIS IS THE MOST IMPORTANT STRUCTURAL RULE:
+   • Each clip MUST be a COMPLETE, SELF-CONTAINED thought — it must make FULL SENSE on its own
+   • Each clip MUST have a proper BEGINNING, MIDDLE, and CONCLUSION
+   • Do NOT split a single sentence across two clips — each clip must END with a concluded thought
+   • Do NOT leave any clip hanging or incomplete — no "..." feeling at the end
+   • Each clip should feel like a MINI-SCRIPT that works BY ITSELF even without the other clips
+   • If a thought is too long for one clip, RESTRUCTURE it into two independent complete sentences
+   • The viewer should be able to hear ANY single clip and get a complete, meaningful message
+   • NEVER cut a sentence mid-way to fit the word count — instead, REWRITE it shorter
 
 ===== ADDRESS/LOCATION RULE =====
    • ONLY include address/location if explicitly provided in the business information
@@ -1631,7 +1643,7 @@ ${adType === 'festival' ? `Clip 1 / 0-8: [FESTIVAL WISHES ONLY — 100% PURE GRE
   "{Business Name in } తరపున మీకు మరియు మీ కుటుంబ సభ్యులకు {${festivalName}} శుభాకాంక్షలు"
 • This line is LOCKED — do NOT rephrase, reorder, or skip it
 • This clip is 100% FESTIVAL WISHES — ZERO business promotion
-• EXACTLY 20 words (or EXACTLY 18 if words are long)
+• 16-22 words — must be a COMPLETE thought with a proper conclusion
 • Example: "డ్రీమ్ టీమ్ సర్వీసెస్ తరపున మీకు మీ ఫ్యామిలీకి ${festivalName} శుభాకాంక్షలు"
 
 Clip 2 / 8-16: [100% PURE BUSINESS — Brand + CTA]
@@ -1639,36 +1651,36 @@ Clip 2 / 8-16: [100% PURE BUSINESS — Brand + CTA]
 • Introduce business name with AUTHORITY
 • Present core service BRIEFLY
 • ${segmentCount === 2 ? 'End with: "స్క్రీన్ పై వున్న నంబర్ ని ఇప్పుడే సంప్రదించండి"' : 'Include contact if more clips available'}
-• EXACTLY 20 words (or EXACTLY 18 if words are long)` : `Clip 1 / 0-8: [POWER HOOK — Grab Attention Instantly]
+• 16-22 words — must be a COMPLETE thought with a proper conclusion` : `Clip 1 / 0-8: [POWER HOOK — Grab Attention Instantly]
 • Start with a BOLD statement or compelling question
 • Create INSTANT curiosity or emotional punch
 • Sound like a PREMIUM TV commercial opening — not casual talk
-• 15-18 words max`}
+• 16-22 words — must be a COMPLETE thought with a proper conclusion`}
 
 ${adType !== 'festival' ? `Clip 2 / 8-16: [BRAND AUTHORITY + CTA]
 • Introduce business name with PRIDE and AUTHORITY
 • Present core services BRIEFLY with CONFIDENT premium language
 • ${segmentCount === 2 ? 'End with: "స్క్రీన్ పై వున్న నంబర్ ని ఇప్పుడే సంప్రదించండి"' : 'Include contact number in  words'}
-• EXACTLY 20 words (or EXACTLY 18 if words are long)` : ''}
+• 16-22 words — must be a COMPLETE thought with a proper conclusion` : ''}
 
 ${duration >= 24 ? `Clip ${adType === 'festival' ? '3' : '3'} / ${adType === 'festival' ? '16-24' : '16-24'}: [VALUE & BENEFITS]
 • Highlight UNIQUE benefits with IMPACTFUL language
 • Social proof: years of trust, families served, expertise
 • Keep it SHORT and PUNCHY
-• EXACTLY 20 words (or EXACTLY 18 if words are long)` : ''}
+• 16-22 words — must be a COMPLETE thought with a proper conclusion` : ''}
 
 ${duration >= 32 ? `Clip ${adType === 'festival' ? '4' : '4'} / 24-32: [CALL TO ACTION — Strong Close]
 • Strong CTA — not begging but INVITING
 • Include contact number IN  WORDS (spell each digit)
 • End with a MEMORABLE tagline
 • If address provided, include naturally
-• EXACTLY 20 words (or EXACTLY 18 if words are long)` : ''}
+• 16-22 words — must be a COMPLETE thought with a proper conclusion` : ''}
 
 ${duration >= 40 ? `Clip 5-${segmentCount} / 32-${duration}: [EXTENDED STORY]
 • Detailed service highlights with engaging language
 • Build to a POWERFUL MEMORABLE closing
 • Final tagline should be ICONIC
-• EXACTLY 20 words per clip (or EXACTLY 18 if words are long)` : ''}
+• 16-22 words per clip — each must be a COMPLETE thought with a proper conclusion` : ''}
 
 ${adType === 'festival' ? `
 FESTIVAL RULE (ABSOLUTE):
@@ -1693,7 +1705,7 @@ Before outputting, verify:
 ✓ ZERO special characters (no hyphens, ampersands, slashes, brackets, etc.)
 ✓ ALL numbers written as  WORDS not digits
 ✓ ${segmentCount === 2 ? 'Contact number replaced with "స్క్రీన్ పై వున్న నంబర్ ని ఇప్పుడే సంప్రదించండి"' : 'Phone numbers read in GROUPS of 2-3 digits (e.g., "నైన్ ఎయిట్, సెవెన్ సిక్స్ ఫైవ్, ఫోర్ త్రీ టూ వన్ జీరో") — NEVER individual digits'}
-✓ Each clip is exactly 20 words, or exactly 18 words when clip uses long words
+✓ Each clip is 16-22 words and is a COMPLETE meaningful sentence with a proper conclusion
 ✓ Modern conversational  — no archaic words
 ✓ Brand name mentioned 2-3 times naturally
 ✓ At least one MEMORABLE punchline

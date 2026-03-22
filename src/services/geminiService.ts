@@ -463,23 +463,19 @@ const parseVoiceOverSegments = (script: string, segmentCount: number): string[] 
 
 const enforceClipWordCount = (clipText: string): string => {
   const words = tokenizeWords(cleanScriptText(clipText));
-  const target = isLongWordClip(words) ? 18 : 20;
   if (words.length === 0) return '';
 
-  const fillerWords = ['ఇప్పుడే', 'నమ్మకంతో', 'ఎంచుకోండి', 'ఇవాళే', 'సంప్రదించండి', 'అందుకోండి'];
-  const adjusted = [...words];
+  // Soft range: allow 14-26 words so complete sentences are preserved.
+  // Only trim if significantly over the upper limit, and never pad with
+  // random filler — the AI-generated script is already meaningful.
+  const MAX_WORDS = 26;
 
-  if (adjusted.length > target) {
-    return adjusted.slice(0, target).join(' ');
+  if (words.length > MAX_WORDS) {
+    return words.slice(0, MAX_WORDS).join(' ');
   }
 
-  let fillerIndex = 0;
-  while (adjusted.length < target) {
-    adjusted.push(fillerWords[fillerIndex % fillerWords.length]);
-    fillerIndex += 1;
-  }
-
-  return adjusted.join(' ');
+  // Return the clip as-is — preserving the complete sentence/thought
+  return words.join(' ');
 };
 
 const normalizeVoiceOverSegments = (segments: string[], segmentCount: number): string[] => {
@@ -703,8 +699,11 @@ export const generateAdAssets = async (
     const segmentSystemPrompt = `You are an expert script editor. Split the given script into EXACTLY ${segmentCount} roughly equal segments for a ${formData.duration}-second video (each segment ~8 seconds of speaking time).
 
 RULES:
-- Split at natural sentence/phrase boundaries
-- Each segment should be roughly equal in word count
+- Split at natural sentence/phrase boundaries — NEVER split mid-sentence
+- Each segment MUST be a COMPLETE, SELF-CONTAINED thought with a proper conclusion
+- Each segment should make FULL SENSE on its own — no hanging or incomplete thoughts
+- Each segment should be roughly equal in word count (16-22 words each)
+- If a sentence is too long for one segment, REWRITE it as two shorter complete sentences
 - Maintain the original language and wording — do NOT rewrite or translate
 - Remove any remaining emojis, hashtags, or decorative symbols
 - Make the text clean and suitable for professional voice-over
