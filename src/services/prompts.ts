@@ -146,7 +146,7 @@ export const getFestivalTheme = (festivalName: string): FestivalTheme => {
       culturalElements: 'Trishul, Damru, Om symbol, crescent moon, Nandi, bilva leaves, rudraksha beads',
       lightingStyle: 'Warm golden lamp light mixed with soft cool blue tones creating a divine, sacred temple-like atmosphere. Multiple oil lamp flames providing warm glow points',
       floorDecor: 'Beautiful traditional rangoli or kolam designs on the floor with flower petals, especially using white and blue flowers',
-      backgroundElements: 'The company logo/signage should be visible BUT the Shivaratri decorations should be the DOMINANT visual theme — garlands, lamps, flowers, and religious elements should transform the space into a Shivaratri celebration venue'
+      backgroundElements: 'The company logo/signage MUST remain 100% CLEARLY VISIBLE, UNOBSTRUCTED, and PIXEL-PERFECT UNMODIFIED — it is SACRED and must NOT be changed, recolored, or redrawn. Shivaratri decorations (garlands, lamps, flowers, religious elements) should fill the surrounding space to create a celebration venue, but NEVER overlap, cover, touch, or alter the logo in ANY way'
     };
   }
 
@@ -176,7 +176,7 @@ export const getFestivalTheme = (festivalName: string): FestivalTheme => {
       culturalElements: 'Sugarcane, Pongal pot, kites, marigold garlands, rangoli, harvest elements, mango leaf thoranam',
       lightingStyle: 'Bright warm golden sunlight-inspired indoor lighting — cheerful, abundant, festive warmth with multiple lamp glows',
       floorDecor: 'Large elaborate colorful rangoli (muggu) design on the floor with rice flour patterns, flower petals in vibrant colors',
-      backgroundElements: 'The company logo/signage should be visible BUT fully surrounded by Sankranthi decorations — marigold garlands should frame everything, the space must look like a traditional Sankranthi celebration venue'
+      backgroundElements: 'The company logo/signage MUST remain 100% CLEARLY VISIBLE, UNOBSTRUCTED, and PIXEL-PERFECT UNMODIFIED — it is SACRED and must NOT be changed, recolored, or redrawn. Sankranthi decorations (marigold garlands, festival elements) should fill the surrounding space, but NEVER overlap, cover, touch, or alter the logo in ANY way'
     };
   }
 
@@ -206,7 +206,7 @@ export const getFestivalTheme = (festivalName: string): FestivalTheme => {
       culturalElements: 'Diyas, lanterns, rangoli, lotus, Lakshmi imagery, sparkle, festive lights, toran',
       lightingStyle: 'Rich warm golden glow from hundreds of diyas and lamps — the entire scene should feel illuminated by real flame light, creating a magical warm Diwali atmosphere',
       floorDecor: 'Grand elaborate rangoli with flower petals and lit diyas placed within the design, creating a stunning floor display',
-      backgroundElements: 'The company logo/signage should be visible BUT the Diwali decorations (diyas, lights, garlands) must be the DOMINANT visual — the space must feel like it is literally glowing with Diwali celebration'
+      backgroundElements: 'The company logo/signage MUST remain 100% CLEARLY VISIBLE, UNOBSTRUCTED, and PIXEL-PERFECT UNMODIFIED — it is SACRED and must NOT be changed, recolored, or redrawn. Diwali decorations (diyas, lights, garlands) should fill the surrounding space creating a glowing celebration atmosphere, but NEVER overlap, cover, touch, or alter the logo in ANY way'
     };
   }
 
@@ -233,7 +233,7 @@ export const getFestivalTheme = (festivalName: string): FestivalTheme => {
       culturalElements: 'Indian flag, Ashoka Chakra, tricolor elements, patriotic symbols with dignity',
       lightingStyle: 'Clean bright professional lighting with subtle warm gold tones — celebratory yet dignified',
       floorDecor: 'Clean professional floor, possibly with a tricolor flower rangoli or small patriotic floor arrangement',
-      backgroundElements: 'The company logo/signage should be visible with tricolor balloons and patriotic decorations framing it — the space must look like an office celebrating Republic Day with pride'
+      backgroundElements: 'The company logo/signage MUST remain 100% CLEARLY VISIBLE, UNOBSTRUCTED, and PIXEL-PERFECT UNMODIFIED — it is SACRED and must NOT be changed, recolored, or redrawn. Tricolor balloons and patriotic decorations should fill the surrounding space, but NEVER overlap, cover, touch, or alter the logo in ANY way'
     };
   }
 
@@ -259,7 +259,7 @@ export const getFestivalTheme = (festivalName: string): FestivalTheme => {
       culturalElements: 'Indian flag, tricolor theme, Ashoka Chakra, freedom symbols, patriotic dignity',
       lightingStyle: 'Clean bright professional lighting with warm golden tones — celebratory yet dignified atmosphere',
       floorDecor: 'Clean professional floor with optional tricolor flower rangoli or patriotic floor arrangement',
-      backgroundElements: 'The company logo/signage should be visible with tricolor balloons and decorations framing it — the space must look like an office proudly celebrating Independence Day'
+      backgroundElements: 'The company logo/signage MUST remain 100% CLEARLY VISIBLE, UNOBSTRUCTED, and PIXEL-PERFECT UNMODIFIED — it is SACRED and must NOT be changed, recolored, or redrawn. Tricolor balloons and Independence Day decorations should fill the surrounding space, but NEVER overlap, cover, touch, or alter the logo in ANY way'
     };
   }
 
@@ -288,7 +288,7 @@ export const getFestivalTheme = (festivalName: string): FestivalTheme => {
       culturalElements: 'Mango leaves, neem flowers, thoranam, spring blossoms, Ugadi Pachadi, traditional kolam',
       lightingStyle: 'Bright cheerful spring-like natural indoor lighting with warm golden tones — fresh and vibrant',
       floorDecor: 'Traditional rangoli with spring flower petals and mango leaf designs — colorful and fresh',
-      backgroundElements: 'The company logo/signage should be visible with Ugadi decorations (mango leaf thoranam, flowers, garlands) transforming the space into a festive Ugadi celebration'
+      backgroundElements: 'The company logo/signage MUST remain 100% CLEARLY VISIBLE, UNOBSTRUCTED, and PIXEL-PERFECT UNMODIFIED — it is SACRED and must NOT be changed, recolored, or redrawn. Ugadi decorations (mango leaf thoranam, flowers, garlands) should fill the surrounding space, but NEVER overlap, cover, touch, or alter the logo in ANY way'
     };
   }
 
@@ -317,7 +317,7 @@ export const getFestivalTheme = (festivalName: string): FestivalTheme => {
       culturalElements: 'Lord Ganesha, modak, marigolds, incense, traditional lamps, coconut, durva grass',
       lightingStyle: 'Warm golden devotional lighting from brass lamps and diyas — rich, warm, temple-like sacred glow',
       floorDecor: 'Traditional rangoli with flower petals in vibrant red, yellow, and orange — leading to the Ganesha idol',
-      backgroundElements: 'The Lord Ganesha decorated setup should be the DOMINANT background element, with the company logo/signage visible but secondary to the festive devotional scene'
+      backgroundElements: 'The company logo/signage MUST remain 100% CLEARLY VISIBLE, UNOBSTRUCTED, and PIXEL-PERFECT UNMODIFIED — it is SACRED and must NOT be changed, recolored, or redrawn. The Lord Ganesha decorated setup should fill the background alongside the clearly readable logo, but NEVER overlap, cover, touch, or alter the logo in ANY way'
     };
   }
 
@@ -346,7 +346,7 @@ export const getFestivalTheme = (festivalName: string): FestivalTheme => {
       culturalElements: 'Golu display, goddess imagery, marigolds, victory symbols, traditional lamps, silk drapes',
       lightingStyle: 'Rich warm golden and amber lighting — powerful, festive, with lamp glows creating a victorious celebratory atmosphere',
       floorDecor: 'Elaborate colorful rangoli/kolam with festival motifs — vibrant reds, yellows, and oranges with flower petals',
-      backgroundElements: 'Festival decorations should DOMINATE the background — Golu display, flower garlands, lamps should transform the space into a Navaratri celebration venue, with company logo visible but secondary'
+      backgroundElements: 'The company logo/signage MUST remain 100% CLEARLY VISIBLE, UNOBSTRUCTED, and PIXEL-PERFECT UNMODIFIED — it is SACRED and must NOT be changed, recolored, or redrawn. Navaratri decorations (Golu display, flower garlands, lamps) should fill the surrounding space, but NEVER overlap, cover, touch, or alter the logo in ANY way'
     };
   }
 
@@ -374,7 +374,7 @@ export const getFestivalTheme = (festivalName: string): FestivalTheme => {
       culturalElements: 'Gulal powders, pichkaris, color splashes, vibrant flowers, thandai, festive joy',
       lightingStyle: 'Bright, cheerful, vibrant natural light with colorful reflections — the scene should feel alive with color and joy',
       floorDecor: 'Colorful rangoli made with vibrant gulal powders — abstract colorful patterns celebrating the spirit of Holi',
-      backgroundElements: 'Holi color splashes and decorations should DOMINATE the background, creating a vibrant, colorful celebration atmosphere with the company logo visible through the colorful festive setup'
+      backgroundElements: 'The company logo/signage MUST remain 100% CLEARLY VISIBLE, UNOBSTRUCTED, and PIXEL-PERFECT UNMODIFIED — it is SACRED and must NOT be changed, recolored, or redrawn. Holi color splashes and decorations should fill the background creating a vibrant atmosphere, but NEVER overlap, splash on, cover, touch, or alter the logo in ANY way'
     };
   }
 
@@ -401,7 +401,7 @@ export const getFestivalTheme = (festivalName: string): FestivalTheme => {
       culturalElements: 'Rakhis, ceremonial thali, kumkum, sweets, flowers, sibling bond symbols',
       lightingStyle: 'Soft warm golden lighting — intimate, loving, celebratory warmth',
       floorDecor: 'Simple elegant rangoli with flower petals in pink, yellow, and gold tones',
-      backgroundElements: 'Raksha Bandhan themed decorations should create a warm, celebratory atmosphere with the company logo visible as part of the festive setup'
+      backgroundElements: 'The company logo/signage MUST remain 100% CLEARLY VISIBLE, UNOBSTRUCTED, and PIXEL-PERFECT UNMODIFIED — it is SACRED and must NOT be changed, recolored, or redrawn. Raksha Bandhan decorations should create a warm celebratory atmosphere in the surrounding space, but NEVER overlap, cover, touch, or alter the logo in ANY way'
     };
   }
 
@@ -430,7 +430,7 @@ export const getFestivalTheme = (festivalName: string): FestivalTheme => {
       culturalElements: 'Christmas tree, gifts, stars, snowflakes, wreaths, bells, candy canes, fairy lights',
       lightingStyle: 'Warm magical fairy light glow mixed with soft Christmas morning light — cozy, inviting, festive warmth',
       floorDecor: 'Christmas-themed floor arrangement with gift boxes, pine cones, and small decorative elements',
-      backgroundElements: 'Christmas decorations should DOMINATE the background — tree, lights, garlands, gifts should transform the space into a festive Christmas celebration, with company logo visible among the decorations'
+      backgroundElements: 'The company logo/signage MUST remain 100% CLEARLY VISIBLE, UNOBSTRUCTED, and PIXEL-PERFECT UNMODIFIED — it is SACRED and must NOT be changed, recolored, or redrawn. Christmas decorations (tree, lights, garlands, gifts) should fill the surrounding space, but NEVER overlap, cover, touch, or alter the logo in ANY way'
     };
   }
 
@@ -458,7 +458,7 @@ export const getFestivalTheme = (festivalName: string): FestivalTheme => {
       culturalElements: 'Balloons, confetti, sparkle, stars, clock, midnight theme, celebration elements',
       lightingStyle: 'Dramatic warm golden spotlight-style lighting with sparkle and bokeh — glamorous New Year party atmosphere',
       floorDecor: 'Scattered gold confetti and flower petals on the floor creating a celebration aftermath feel',
-      backgroundElements: 'New Year celebration decorations should DOMINATE the background — year balloons, streamers, and sparkle should transform the space into a premium New Year party, with company logo visible as part of the celebration'
+      backgroundElements: 'The company logo/signage MUST remain 100% CLEARLY VISIBLE, UNOBSTRUCTED, and PIXEL-PERFECT UNMODIFIED — it is SACRED and must NOT be changed, recolored, or redrawn. New Year decorations (year balloons, streamers, sparkle) should fill the surrounding space to create a premium party atmosphere, but NEVER overlap, cover, touch, or alter the logo in ANY way'
     };
   }
 
@@ -485,7 +485,7 @@ export const getFestivalTheme = (festivalName: string): FestivalTheme => {
       culturalElements: 'Pookalam, Nilavilakku, Kathakali, Maveli, Olakkuda, Kerala brass vessels, flowers',
       lightingStyle: 'Warm natural Kerala-style indoor lighting with traditional lamp glow — golden, warm, and inviting',
       floorDecor: 'Spectacular Pookalam — large circular flower arrangement with concentric rings of colorful petals, this should be the MOST STRIKING floor element',
-      backgroundElements: 'Onam decorations should DOMINATE — Pookalam, brass lamps, flowers should transform the space into a traditional Onam celebration venue with company logo visible'
+      backgroundElements: 'The company logo/signage MUST remain 100% CLEARLY VISIBLE, UNOBSTRUCTED, and PIXEL-PERFECT UNMODIFIED — it is SACRED and must NOT be changed, recolored, or redrawn. Onam decorations (Pookalam, brass lamps, flowers) should fill the surrounding space, but NEVER overlap, cover, touch, or alter the logo in ANY way'
     };
   }
 
@@ -513,7 +513,7 @@ export const getFestivalTheme = (festivalName: string): FestivalTheme => {
       culturalElements: 'Crescent moon, stars, lanterns, geometric patterns, dates, flowers, Eid gifts',
       lightingStyle: 'Warm golden lantern-style lighting — soft, inviting, dignified celebration warmth',
       floorDecor: 'Elegant geometric rangoli-style pattern with flower petals in white, green, and gold',
-      backgroundElements: 'Eid decorations should DOMINATE — crescents, lanterns, flowers should transform the space into a beautiful Eid celebration venue with company logo visible'
+      backgroundElements: 'The company logo/signage MUST remain 100% CLEARLY VISIBLE, UNOBSTRUCTED, and PIXEL-PERFECT UNMODIFIED — it is SACRED and must NOT be changed, recolored, or redrawn. Eid decorations (crescents, lanterns, flowers) should fill the surrounding space, but NEVER overlap, cover, touch, or alter the logo in ANY way'
     };
   }
 
@@ -540,7 +540,7 @@ export const getFestivalTheme = (festivalName: string): FestivalTheme => {
       culturalElements: 'Bathukamma floral stacks, seasonal flowers, Gouramma, turmeric, kumkum, feminine power',
       lightingStyle: 'Bright warm golden lighting with vibrant reflections from colorful flowers — energetic, joyful, celebration warmth',
       floorDecor: 'Colorful rangoli with flower petals and Bathukamma-inspired circular patterns in vibrant pinks and yellows',
-      backgroundElements: 'Bathukamma celebrations should DOMINATE — multiple floral stacks, colorful flowers, and traditional elements should transform the space into a Bathukamma festival venue with company logo visible'
+      backgroundElements: 'The company logo/signage MUST remain 100% CLEARLY VISIBLE, UNOBSTRUCTED, and PIXEL-PERFECT UNMODIFIED — it is SACRED and must NOT be changed, recolored, or redrawn. Bathukamma decorations (multiple floral stacks, colorful flowers, traditional elements) should fill the surrounding space, but NEVER overlap, cover, touch, or alter the logo in ANY way'
     };
   }
 
@@ -565,7 +565,7 @@ export const getFestivalTheme = (festivalName: string): FestivalTheme => {
       culturalElements: 'Vishu Kani, konna flowers, harvest produce, brass vessels, traditional mirror, coconut',
       lightingStyle: 'Bright warm golden morning-light style — fresh, prosperous, symbolizing a new dawn and new year',
       floorDecor: 'Traditional kolam/rangoli with flower petals in golden yellow and white — fresh and auspicious',
-      backgroundElements: 'Vishu/harvest celebration decorations should DOMINATE the background with company logo visible as part of the festive setup'
+      backgroundElements: 'The company logo/signage MUST remain 100% CLEARLY VISIBLE, UNOBSTRUCTED, and PIXEL-PERFECT UNMODIFIED — it is SACRED and must NOT be changed, recolored, or redrawn. Vishu/harvest decorations should fill the surrounding space, but NEVER overlap, cover, touch, or alter the logo in ANY way'
     };
   }
 
@@ -591,7 +591,7 @@ export const getFestivalTheme = (festivalName: string): FestivalTheme => {
     culturalElements: `Traditional cultural elements, symbols, and decorations specific to ${festivalName}`,
     lightingStyle: `Warm golden festive lighting with traditional lamp glows — creating an inviting ${festivalName} celebration atmosphere`,
     floorDecor: `Beautiful rangoli/kolam with flower petals in ${festivalName}-appropriate colors and patterns`,
-    backgroundElements: `Festival decorations should DOMINATE the background — cultural elements, flowers, lamps should completely transform the space into a ${festivalName} celebration venue with company logo visible but secondary to the festive setup`
+    backgroundElements: `The company logo/signage MUST remain 100% CLEARLY VISIBLE, UNOBSTRUCTED, and PIXEL-PERFECT UNMODIFIED — it is SACRED and must NOT be changed, recolored, or redrawn. ${festivalName} decorations (cultural elements, flowers, lamps) should fill the surrounding space to create a celebration venue, but NEVER overlap, cover, touch, or alter the logo in ANY way`
   };
 };
 
@@ -643,12 +643,21 @@ Your output prompt MUST follow this EXACT structure with these EXACT section hea
 
 ---START OF PROMPT FORMAT---
 
-Create a Ultra-realistic DSLR photograph, single image, 9:16 vertical — must look like a real, high-budget national [BUSINESS TYPE] ${isFestival ? `**${festivalName} celebration** ` : ''}photoshoot, absolutely no AI-art, no rendering, no stock-photo feel. Indistinguishable from a real professional photograph.${isFestival ? `
+Create a Ultra-realistic DSLR photograph, single image, **9:16 vertical** — **16K resolution, ultra-realistic close-up shot quality** — must look like a real, high-budget national [BUSINESS TYPE] ${isFestival ? `**${festivalName} celebration** ` : ''}photoshoot captured with a **Canon EOS R5 or Sony A7RV with 85mm f/1.4 portrait lens**, absolutely no AI-art, no rendering, no stock-photo feel. Indistinguishable from a real professional photograph. **The model MUST occupy 70% of the total frame — this is a CLOSE-UP MAGAZINE COVER SHOT, not a full-body or wide shot.**${isFestival ? `
 **THIS IS A ${festivalName.toUpperCase()} THEMED IMAGE — the entire frame must BREATHE the festival. Every element — attire, decorations, environment, lighting, colors — must work together to create an IMMERSIVE ${festivalName} celebration feel.**` : ''}
 
-SUBJECT (CELEBRITY STANDARD — NON-NEGOTIABLE — MUST LOOK LIKE A-LIST CELEBRITY):
+SUBJECT (CELEBRITY STANDARD — NON-NEGOTIABLE — MUST LOOK LIKE A-LIST CELEBRITY — MUST BE UNIQUE EVERY TIME):
 One **exceptionally beautiful young Indian woman (early-20s)** with **true celebrity-level presence**, like a top national brand ambassador or A-list South Indian film actress hired to represent a premium [BUSINESS TYPE] brand${isFestival ? ` during their ${festivalName} celebrations` : ''}.
 Her beauty must feel **STUNNING, premium, magnetic, and instantly attention-grabbing** — the kind of face that stops you mid-scroll on Instagram. Think top-tier South Indian film actress level beauty — the kind of woman premium national brands pay crores to front their campaigns. Do NOT name any specific celebrity.
+
+**MODEL DIVERSITY (CRITICAL — EVERY GENERATION MUST BE A DIFFERENT WOMAN):**
+Every single generation MUST produce a COMPLETELY DIFFERENT woman — NEVER repeat or default to the same face archetype. Think of 100 different beautiful Indian women — each prompt describes a UNIQUE one.
+• Vary FACE SHAPE randomly: oval, round, heart-shaped, diamond, oblong — DIFFERENT each time
+• Vary SKIN TONE within natural Indian range: light wheat, warm golden, honey, caramel, warm dusky — DIFFERENT each time
+• Vary HAIRSTYLE: straight silky, soft waves, voluminous curls, elegant braid, modern bun, side-swept — DIFFERENT each time
+• Vary FACIAL FEATURES: different eye shapes (almond, round, doe-shaped), different nose profiles (straight, button, aquiline), different lip shapes (full, bow-shaped, heart), different jawline (sharp, soft, angular) — DIFFERENT each time
+• Vary BUILD subtly: petite, average, slightly athletic — DIFFERENT each time
+• The woman MUST look like a COMPLETELY DIFFERENT individual from any previous generation — if two outputs look like they could be the same person, IT IS WRONG
 
 Facial characteristics (MANDATORY — CELEBRITY BEAUTY LEVEL):
 • Perfect natural facial symmetry — stunning model-like proportions
@@ -665,17 +674,20 @@ Facial characteristics (MANDATORY — CELEBRITY BEAUTY LEVEL):
 • No plastic skin, no airbrushing, no over-smoothing, no AI glow, no beautification filters
 • **STRICTLY AVOID pink/red/rosy coloring on face — use warm golden natural tones only**
 
-POSE & FRAMING (LOCKED — NON-NEGOTIABLE — HIGHEST PRIORITY):
-**THIS IS THE MOST CRITICAL SECTION — CENTERING AND POSTURE MUST BE PERFECT.**
-• MID SHOT only (head to just below waist)
+POSE & FRAMING (LOCKED — NON-NEGOTIABLE — HIGHEST PRIORITY — 70% FRAME RULE IS SACRED):
+**THIS IS THE MOST CRITICAL SECTION — CENTERING, POSTURE, AND 70% FRAME OCCUPANCY MUST BE PERFECT.**
+• **CLOSE-UP MID SHOT** only (head to just below waist) — **16K close-up shot quality**
 • Subject must be **EXACTLY IN THE CENTER** of the frame — **perfect symmetry, EQUAL space on left and right**
 • Camera at chest level, straight-on (no tilt, no angle, no dutch angle)
 • **Hands gently folded at the waist / lower abdomen, one hand resting naturally over the other, fingers relaxed**
 • This EXACT hand posture is MANDATORY — zero variation, every single time
-• The model must occupy approximately 70% of the frame height
-• Her presence must be commanding and dominant — she is the HERO of the image
-• The remaining space shows the business environment and logo behind/around her
+• **THE MODEL MUST OCCUPY EXACTLY 70% OF THE TOTAL FRAME HEIGHT** — measured from top of head to bottom of visible waist area. This is a HARD RULE.
+• **If the model occupies less than 65% or more than 80% of the frame, the ENTIRE IMAGE IS REJECTED**
+• The model is the DOMINANT visual element — she fills the frame like a **close-up magazine cover shot on Vogue India**
+• Think: the model's face and upper body DOMINATE the image — this is NOT a full-body shot, NOT a wide shot — it is a CLOSE-UP PORTRAIT where every pore, skin texture, and hair strand is visible at 16K
+• The remaining 30% of space shows the business environment and logo behind/around her
 • **If the centering is off by even 5%, the entire image is REJECTED**
+• **9:16 VERTICAL ASPECT RATIO IS MANDATORY — the model fills 70% of this vertical frame**
 
 HAIR (ACTRESS-LEVEL GROOMING):
 Silky smooth jet-black hair with natural volume, professionally styled like a leading South Indian film actress.
@@ -776,15 +788,28 @@ These elements make the image INSTANTLY recognizable as a ${festivalName} celebr
 **FESTIVAL LIGHTING:**
 ${festivalTheme.lightingStyle}
 
-**LOGO PLACEMENT (NATURAL ON THE WALL):**
+**LOGO PLACEMENT (SACRED — CLIENT LOGO IS THE #1 BACKGROUND ELEMENT — MUST NEVER BE OBSCURED):**
 ${festivalTheme.backgroundElements}
+
+⚠️⚠️⚠️ ABSOLUTE FESTIVAL LOGO WARNING ⚠️⚠️⚠️:
+When generating festival-themed images, you MUST use the EXACT ATTACHED LOGO FILE pixel-for-pixel.
+Do NOT attempt to recreate, redraw, re-render, stylize, or generate a new version of the logo.
+Do NOT change the logo colors to match the festival theme.
+Do NOT add festival elements (flowers, lamps, etc.) ON TOP OF the logo.
+The logo in the output MUST be an IDENTICAL copy of the input logo file — same colors, same text, same font, same proportions, same everything.
+ANY modification to the logo = IMMEDIATE REJECTION of the entire image.
+
 • Take the ATTACHED LOGO image and place it exactly as-is on the wall — as if it was ALREADY mounted there as the business signage
+• **THE LOGO MUST BE THE MOST VISIBLE AND CLEARLY READABLE ELEMENT IN THE BACKGROUND**
 • The logo must appear as real physical signage — naturally part of the office/store
-• Festival decorations (garlands, flowers) may surround or frame the logo — this is expected and natural
+• **ZERO OBSTRUCTION RULE**: Festival decorations (garlands, flowers) may surround or frame the logo BUT must NEVER overlap, partially cover, or obscure ANY part of the logo
+• **There must be a CLEAR GAP/BUFFER ZONE between the logo and any decorative elements**
 • Do NOT generate, recreate, or design a new logo — use ONLY the attached logo image file
 • ⚠️ CRITICAL: The logo must be a PIXEL-PERFECT copy of the attached image — same colors, same shapes, same text, same proportions
 • Do NOT simplify, stylize, redraw, reinterpret, add text to, remove text from, or alter the logo in ANY way
 • If the logo has specific text/font/colors, those MUST appear EXACTLY as in the attached file
+• **LOGO VISIBILITY TEST**: Remove the model mentally — the logo must be 100% INSTANTLY readable with ZERO obstructions
+• **If the logo is even partially hidden, overlapped, or unclear, the ENTIRE IMAGE IS REJECTED**
 
 **THE GOLDEN RULE — REAL OFFICE + FESTIVAL DECORATION:**
 The final image should look like a photographer walked into THIS SPECIFIC BUSINESS and took a photo of their ${festivalName}-decorated premises.
@@ -822,38 +847,47 @@ Environment Requirements:
 • The background alone should clearly communicate "[BUSINESS TYPE]" even without the logo
 • The background must look like the REAL business premises — as if the photo was taken at the ACTUAL location
 
-LOGO PLACEMENT (CRITICAL — DO NOT MODIFY THE LOGO):
+LOGO PLACEMENT (SACRED — THE CLIENT LOGO IS THE #1 BACKGROUND ELEMENT — MUST NEVER BE OBSCURED):
+**⚠️⚠️⚠️ THE CLIENT LOGO IS SACRED — THIS IS THE MOST IMPORTANT BACKGROUND ELEMENT ⚠️⚠️⚠️**
 Take the ATTACHED LOGO image and place it exactly as-is in the scene.
 
 Placement Rules:
-• Place the attached logo image as **real physical signage** on the wall or reception panel behind the subject
-• Mounted on a clean wall board, acrylic panel, or reception backdrop
+• Place the attached logo image as **real physical signage** on the wall or reception panel behind the subject — **CLEARLY VISIBLE without ANY overlapping**
+• Mounted on a **clean wall board, acrylic panel, or reception backdrop** with AMPLE clear space around it
+• **THE LOGO MUST BE THE FIRST THING NOTICED IN THE BACKGROUND** — it must be clearly readable at a glance
+• **ZERO OBSTRUCTION RULE**: No decorations, garlands, flowers, festival elements, model's hair, model's body parts, or ANY visual element may overlap, partially cover, or come near the logo
+• **VISIBILITY TEST**: If you mentally remove the model from the image, the logo should be 100% INSTANTLY READABLE with zero obstructions
+• The logo MUST be sized LARGE ENOUGH to be clearly visible and recognizable — NOT tiny, NOT pushed to a corner
 • Do NOT generate, recreate, or design a new logo — use ONLY the attached logo image file
 • Do NOT describe or interpret what the logo looks like — just place the attached image directly
 • Do NOT change, modify, redesign, or recolor the logo in any way
 • Do NOT simplify, stylize, redraw, add text to, remove text from, or reinterpret the logo
 • ⚠️ The logo must be a PIXEL-PERFECT reproduction of the attached image — same colors, fonts, shapes, proportions, and layout
 • If the attached logo contains specific text, that EXACT text must appear — do NOT substitute, translate, or rephrase it
-• Logo should be properly sized — visible and recognizable but not oversized
-• Natural office lighting falling on it realistically`}
+• Natural office lighting falling on it realistically — but NO shadows, elements, or effects dimming the logo
+• **LOGO CLARITY IS NON-NEGOTIABLE — if the logo is even partially hidden, the ENTIRE IMAGE IS REJECTED**`}
 
-CAMERA & PHOTO REALISM:
-• Professional DSLR (85mm or 50mm portrait lens look)
+CAMERA & PHOTO REALISM (16K ULTRA-REALISTIC — NON-NEGOTIABLE):
+• **16K resolution ultra-realistic DSLR photography** (Canon EOS R5 / Sony A7RV with 85mm f/1.4 portrait lens)
+• Close-up shot quality — every skin pore, hair strand, fabric thread visible at 16K resolution
 • Natural color science and grading
 • Real indoor shadows, realistic highlights
-• Slight lens softness and beautiful depth-of-field
+• Slight lens softness and beautiful shallow depth-of-field (f/1.4 bokeh)
 • No HDR exaggeration, no cinematic grading, no artificial sharpness
-• Looks like a ₹2–5 lakh real professional photoshoot
+• Looks like a ₹5–10 lakh real professional photoshoot with top-tier equipment
+• **The quality must be so high that zooming into any part of the image reveals perfect detail**
 ${isFestival && festivalTheme ? `• Color temperature should lean warm/golden matching ${festivalName} festive atmosphere
 • Capture the warm glow from festival lamps, diyas, and decorations naturally` : ''}
 
 OVERALL RESULT:
-${isFestival ? `A **real, premium ${festivalName} celebration photograph at a [BUSINESS TYPE] establishment** featuring a **top-class celebrity-level beautiful Indian woman** representing [BUSINESS NAME] celebrating ${festivalName}.
+${isFestival ? `A **real, premium 16K ultra-realistic ${festivalName} celebration close-up photograph at a [BUSINESS TYPE] establishment** featuring a **top-class celebrity-level beautiful Indian woman occupying 70% of the 9:16 frame** representing [BUSINESS NAME] celebrating ${festivalName}.
 The image must look like a **REAL ${festivalName} celebration at a premium office** — with LAVISH festival decorations, culturally authentic elements, and a model who looks like she was hired for a national-level festival campaign.
 The ${festivalName} theme must be OVERWHELMING and UNMISTAKABLE — any viewer should INSTANTLY identify this as a ${festivalName} celebration.
-Viewer reaction should be: **"This company threw an incredible ${festivalName} celebration and hired a celebrity for their festival campaign photo — and it looks absolutely REAL."**` : `A **real, premium [BUSINESS TYPE] campaign photograph** featuring a **top-class celebrity-level beautiful Indian woman** representing [BUSINESS NAME].
-The image must look like it was shot for a **national-level brand campaign** with a real celebrity.
-Viewer reaction should be: **"This looks like a real high-end brand shoot with an actual celebrity, not AI."**`}
+**The client logo in the background MUST be 100% clearly visible and NEVER obscured by any element.**
+Viewer reaction should be: **"This company threw an incredible ${festivalName} celebration and hired a celebrity for their festival campaign photo — and it looks absolutely REAL at 16K quality."**` : `A **real, premium 16K ultra-realistic [BUSINESS TYPE] campaign close-up photograph** featuring a **top-class celebrity-level beautiful Indian woman occupying 70% of the 9:16 frame** representing [BUSINESS NAME].
+The image must look like it was shot for a **national-level brand campaign** with a real celebrity using professional 16K equipment.
+**The client logo in the background MUST be 100% clearly visible and NEVER obscured by any element.**
+Viewer reaction should be: **"This looks like a real high-end brand shoot with an actual celebrity, not AI — the quality is breathtaking."**`}
 
 STRICTLY NO TEXT anywhere except the exact real-world logo signage.
 
@@ -909,7 +943,7 @@ ${isFestival ? `3. For ATTIRE section: The saree must BLEND the ${festivalName} 
 
 5. Always include specific visual elements that make the business type INSTANTLY recognizable from the background alone`}
 
-6. The celebrity beauty, natural warm complexion (NOT pink), mandatory jewellery, 70% screen presence, and natural logo placement are ALL NON-NEGOTIABLE
+6. The celebrity beauty, natural warm complexion (NOT pink), mandatory jewellery, **70% screen presence (HARD RULE)**, natural logo placement with **ZERO OBSTRUCTION**, and **16K ultra-realistic close-up quality** are ALL NON-NEGOTIABLE
 
 OUTPUT: Generate ONLY the final prompt following the exact format above. Fill in all bracketed placeholders with extracted business information. No explanations, no labels.`;
 };
@@ -1207,15 +1241,16 @@ export const HEADER_SYSTEM_PROMPT = (adType: string, festivalName: string) => {
   const isFestival = adType === AdType.FESTIVAL && festivalName;
   const festivalTheme = isFestival ? getFestivalTheme(festivalName) : null;
 
-  return `You are a WORLD-CLASS GRAPHIC DESIGNER with 30+ years of experience creating award-winning brand headers, banners, and corporate identity systems for Fortune 500 companies, international brands, and premium businesses. Your work has been featured in Communication Arts, Print Magazine, Brand New, and Behance Hall of Fame. Every header you design is a masterclass in typography, color theory, and visual hierarchy.
+  return `You are a WORLD-CLASS GRAPHIC DESIGNER with 30+ years of experience creating award-winning brand headers, banners, footers, and corporate identity systems for Fortune 500 companies, international brands like Apple, Louis Vuitton, Tiffany & Co., and premium businesses. Your work has been featured in Communication Arts, Print Magazine, Brand New, and Behance Hall of Fame. Every header and footer you design is a masterclass in typography, color theory, and visual hierarchy. You design at the ABSOLUTE HIGHEST LEVEL of international graphic design.
 
-YOUR TASK: Generate a SINGLE, copy-paste-ready IMAGE GENERATION PROMPT for an ultra-premium business header.
+YOUR TASK: Generate a SINGLE, copy-paste-ready IMAGE GENERATION PROMPT for an ultra-premium business header AND footer.
 
 WORKFLOW RULES (MANDATORY):
 • Output ONE final prompt inside a CODE BLOCK — nothing else
 • Do NOT include explanations, commentary, or labels
 • Do NOT mention video, animation, or motion ANYWHERE
-• The prompt must produce a header where EVERY SINGLE CHARACTER of text is PERFECTLY READABLE at 8K resolution
+• The prompt must produce a header AND footer where EVERY SINGLE CHARACTER of text is PERFECTLY READABLE at 16K resolution
+• 100% TEXT VISIBILITY IS THE #1 ABSOLUTE PRIORITY — every character razor-sharp, crystal-clear
 
 FIRST: Analyze all provided files and EXTRACT ONLY ESSENTIAL INFORMATION:
 1. Business Name / Brand Name — extract EXACTLY as printed (preserve capitalization, spelling, spacing)
@@ -1224,7 +1259,8 @@ FIRST: Analyze all provided files and EXTRACT ONLY ESSENTIAL INFORMATION:
 4. Email Address — if available
 5. Website URL — if available  
 6. Full Address / Location — city/area only
-${isFestival ? `7. Festival theme: ${festivalName}` : ''}
+${isFestival ? `7. Festival theme: ${festivalName}
+8. The festival theme MUST influence BOTH the header AND the footer design` : ''}
 
 **KEEP IT SIMPLE — ONLY ESSENTIAL DETAILS:**
 - Business Name (MOST PROMINENT — largest text)
@@ -1237,24 +1273,26 @@ ${isFestival ? `7. Festival theme: ${festivalName}` : ''}
 
 ---START OF PROMPT FORMAT---
 
-Create an ULTRA-PREMIUM, award-winning business HEADER BANNER for a vertical IMAGE in 9:16 aspect ratio. The header must look like it was designed by a world-class graphic designer with decades of experience. Every text element must be RAZOR-SHARP and CRYSTAL-CLEAR at 8K resolution${isFestival ? `. The design embodies a **${festivalName.toUpperCase()} CELEBRATION THEME** — blending festival grandeur with the business identity` : ''}.
+Create an ULTRA-PREMIUM, award-winning business HEADER BANNER AND FOOTER STRIP for a vertical IMAGE in 9:16 aspect ratio. The header and footer must look like they were designed by a world-class graphic designer with decades of experience — think Apple + Louis Vuitton + Tiffany & Co. level refinement. Every text element must be RAZOR-SHARP and CRYSTAL-CLEAR at 16K resolution${isFestival ? `. The design embodies a **${festivalName.toUpperCase()} CELEBRATION THEME** — blending festival grandeur with the business identity in BOTH the header AND footer` : ''}.
 
-RENDERING QUALITY (8K ULTRA-SHARP — NON-NEGOTIABLE):
-– Render at 8K resolution (7680×13680 pixels for 9:16) — no blur, no artifacts, no softness on ANY text
+RENDERING QUALITY (16K ULTRA-SHARP — NON-NEGOTIABLE):
+– Render at **16K resolution** (15360×27264 pixels for 9:16) — no blur, no artifacts, no softness on ANY text
 – Every character of EVERY word must be pixel-perfect, knife-edge sharp, and instantly readable
 – Text must have ZERO anti-aliasing blur — crisp vector-quality edges as if typeset by a master typographer  
 – Phone numbers, email addresses, and website URLs must be 100% legible even when zoomed to individual characters
 – The business name must be so sharp and bold it could be read from 20 feet away on a billboard
 – Contact details must have crystal-clear legibility — each digit, letter, dot, and symbol perfectly formed
 – NO smudged text, NO overlapping characters, NO bleeding edges, NO fuzzy rendering whatsoever
+– **100% TEXT VISIBILITY IS THE ABSOLUTE #1 PRIORITY — if even ONE character is unclear, the ENTIRE design is REJECTED**
 
 HEADER PLACEMENT & SIZE (ABSOLUTELY CRITICAL — STRICTLY ENFORCED):
 – Exact 9:16 ratio (SINGLE STATIC IMAGE ONLY)
-– **Header occupies ONLY the TOP 5-8% of image height — MAXIMUM 8%, ABSOLUTELY NEVER MORE**
+– **Header occupies ONLY the TOP 5-10% of image height — MAXIMUM 10%, ABSOLUTELY NEVER MORE**
 – This is a PRECISION-CRAFTED ultra-slim horizontal strip at the ABSOLUTE TOP edge
-– Remaining 92-95% of the frame is completely clear, empty, untouched
+– **If the header extends beyond 10% of the image height, the ENTIRE design is REJECTED**
 – The header is a thin, elegant ribbon — like a luxury letterhead band
 – **If it seems too small, it's CORRECT — restraint is the hallmark of world-class design**
+– Remaining space between header and footer is completely clear, empty, untouched
 
 BRAND INFORMATION (ESSENTIALS ONLY):
 Brand / Business Name: [EXACT NAME — LARGEST, BOLDEST element in the header]
@@ -1372,7 +1410,7 @@ TYPOGRAPHY (WORLD-CLASS — THE MOST CRITICAL ELEMENT):
 – **Contact Info**: Clean medium-weight sans-serif, perfectly legible at small size
   • Each phone digit, email character, and URL must be individually distinguishable
   • Use tabular/monospace figures for phone numbers (equal-width digits for alignment)
-  • Minimum font size must still be CRYSTAL CLEAR at 8K — no squinting required
+  • Minimum font size must still be CRYSTAL CLEAR at 16K — no squinting required
 – **Address/Location**: Small but sharp, can use a subtle accent color for visual differentiation
 – **Text Shadows**: Subtle 1px dark shadow behind light text (or light shadow behind dark text) for enhanced readability
 – **CONTRAST RULE**: Maintain MINIMUM 7:1 contrast ratio (WCAG AAA) between ALL text and background
@@ -1386,23 +1424,76 @@ LOGO HANDLING (CRITICAL — ABSOLUTE RULE):
 – If the prompt generator cannot place attachments, write: "Place the client's uploaded logo here AS-IS"
 
 PROFESSIONAL DESIGN DETAILS (SEPARATES AMATEUR FROM WORLD-CLASS):
-– Subtle bottom border: ultra-thin (1-2px equivalent) elegant separator line with slight gradient or metallic finish
-– Micro-shadow: barely-visible drop shadow (0.5-1px) beneath the entire header strip for depth separation
+– Subtle bottom border on header: ultra-thin (1-2px equivalent) elegant separator line with slight gradient or metallic finish
+– Micro-shadow: barely-visible drop shadow (0.5-1px) beneath the header strip for depth separation
 – Edge treatment: slightly rounded or with a subtle decorative bottom edge profile
 – Internal spacing: mathematically precise margins — equal padding on all sides, elements aligned to an invisible grid
 – Color transitions: smooth, professional gradient blends — no banding, no harsh color boundaries
 – Overall feel: like a premium embossed business card or luxury packaging label — every pixel intentional
+– The design quality must rival Apple, Tiffany & Co., and Rolls-Royce — international award-winning standard
+
+===== FOOTER SECTION (BOTTOM OF IMAGE — MUST BE PRESENT) =====
+
+**FOOTER PLACEMENT & SIZE (CRITICAL — STRICTLY ENFORCED):**
+– **Footer occupies the BOTTOM 8-12% of image height — MAXIMUM 12%, ABSOLUTELY NEVER MORE**
+– The footer is a premium, elegant strip at the ABSOLUTE BOTTOM edge of the image
+– Footer must VISUALLY COMPLEMENT the header — both must feel like they belong to the SAME world-class design system
+– The footer exists to provide contact details and business info in a beautiful, premium layout
+
+**FOOTER CONTENT:**
+– Contact Number(s) — large, bold, clearly readable (the PRIMARY information)
+– Email Address — if available, clearly readable
+– Website URL — if available, clearly readable
+– Full Address / Location — concise, city/area only
+– Clean geometric icons (phone, mail, globe, location) — NOT emoji
+– **Every character MUST be 100% readable at 16K resolution**
+
+**FOOTER LAYOUT:**
+– Clean horizontal layout with well-spaced contact elements
+– Thin vertical separators (|) between contact items for visual parsing
+– Icons + text in a single elegant row or two tight rows maximum
+– Premium sans-serif typography matching the header style
+– Mathematically precise margins and alignment
+
+${isFestival && festivalTheme ? `**FOOTER ${festivalName.toUpperCase()} FESTIVAL THEME (MANDATORY):**
+– The footer MUST incorporate the ${festivalName} celebration theme — it should feel like an organic extension of the festival design
+– Footer background gradient: ${festivalTheme.headerColors} — blended with business-type identity colors
+– Add 1-2 VERY SMALL, EXQUISITELY CRAFTED ${festivalName} decorative motifs in footer corners
+– Festival elements: ${festivalTheme.culturalElements}
+– The footer must feel like a PREMIUM INVITATION to a ${festivalName} celebration — warm, festive, and elegant
+– Festival decorative accents must be TINY and PREMIUM — like gold foil-stamped details on luxury stationery
+– **The footer alone should make a viewer think: "This is a premium ${festivalName} celebration"**
+– NEVER let decorative elements overlap or obscure any contact text
+` : `**FOOTER BUSINESS THEME (MANDATORY):**
+– The footer color palette MUST match the business type — same business-type color grading as the header
+– Footer background: complementary gradient to the header (can be slightly darker/lighter variant)
+– The footer design must reflect the BUSINESS IDENTITY — a medical business footer looks different from a real estate footer
+– **Each business type + theme combination must produce a VISUALLY UNIQUE footer**
+– Footer must feel PREMIUM and CORPORATE — suitable for national-level brand campaigns
+`}
+**FOOTER DESIGN QUALITY:**
+– Subtle top border: ultra-thin separator line matching the header's bottom border style
+– Same color palette family as the header — visually cohesive
+– Same typography system as the header — consistent font family and weights
+– Text contrast: MINIMUM 7:1 ratio (WCAG AAA) against footer background
+– **100% text readability is NON-NEGOTIABLE — every phone digit, email dot, and URL character must be crystal-clear**
+– The footer must look like it was designed by a top-tier international branding agency
 
 ABSOLUTE DESIGN RULES:
-– **HEADER HEIGHT: 5-8% MAXIMUM OF TOTAL IMAGE HEIGHT — THIS IS NON-NEGOTIABLE, DO NOT INCREASE**
+– **HEADER HEIGHT: 5-10% MAXIMUM OF TOTAL IMAGE HEIGHT — THIS IS NON-NEGOTIABLE, DO NOT INCREASE**
+– **FOOTER HEIGHT: 8-12% MAXIMUM OF TOTAL IMAGE HEIGHT — THIS IS NON-NEGOTIABLE, DO NOT INCREASE**
+– **16K RESOLUTION — every single character of text must be razor-sharp and crystal-clear**
 – IMAGE ONLY — no video, no animation, no motion references
 – MINIMAL content — only name, phone, email, website, address, logo
 – DO NOT add taglines, services list, proprietor names, or descriptions
 – Logo is ATTACHED — do NOT generate or recreate it
-– Business-type color grading is MANDATORY — each business type looks distinctly different
-– EVERY piece of text MUST be 100% readable at any zoom level — this is the #1 priority
-${isFestival ? `– ${festivalName} theme is MANDATORY — blended elegantly with business type colors
-– Festival decorative elements must be TINY, premium, and fit within the slim header without touching text` : ''}
+– Business-type color grading is MANDATORY — each business type looks distinctly different in BOTH header AND footer
+– **100% TEXT VISIBILITY at any zoom level — this is the ABSOLUTE #1 PRIORITY**
+– **The header + footer must look like they were designed together as ONE cohesive world-class design system**
+– **Each business type + theme combination must produce VISUALLY UNIQUE header AND footer that could NEVER be confused with another business type**
+${isFestival ? `– ${festivalName} theme is MANDATORY in BOTH header AND footer — blended elegantly with business type colors
+– Festival decorative elements must be TINY, premium, and fit within the slim header/footer without touching text
+– The festival theme must be COMPLETE and UNMISTAKABLE — anyone seeing the header AND footer should INSTANTLY recognize the ${festivalName} celebration` : ''}
 
 ---END OF PROMPT FORMAT---
 

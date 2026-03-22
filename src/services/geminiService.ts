@@ -938,7 +938,7 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
     ? `\n\nPRODUCT IMAGES ATTACHED: ${productImageCount} product image(s) are attached with this prompt.
 CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR HEADER:
 - The attached product images MUST be incorporated into the header design
-- Add a slim PRODUCT BANNER / FOOTER STRIP at the bottom of the header (within the top 8% area)
+- Add a slim PRODUCT BANNER / FOOTER STRIP at the bottom of the header (within the top 10% area)
 - Products should appear as small, clean thumbnail-style images in a horizontal row
 - Products must be clearly visible but compact — fitting within the header's slim design
 - Use the EXACT product images provided — do NOT redesign or alter the products
@@ -953,8 +953,8 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR HEADER:
   CRITICAL INSTRUCTIONS:
   1. Extract ONLY essential contact details from the visiting card: Business Name, 1-2 Primary Phone Numbers, Email, Website, and Address (city/area only)
   2. Do NOT include: taglines, services list, proprietor names, or multiple addresses
-  3. Keep the header ULTRA-SLIM (5-8% max height) — do NOT increase the header height
-  4. ALL TEXT must be rendered at 8K ULTRA-SHARP quality — every single character (phone digits, email symbols, website URL) must be CRYSTAL CLEAR and perfectly readable
+  3. Keep the header ULTRA-SLIM (10% max height of the 9:16 frame) — header goes in the TOP ONLY, do NOT place anything at the bottom
+  4. ALL TEXT must be rendered at 16K ULTRA-SHARP quality — every single character (phone digits, email symbols, website URL) must be CRYSTAL CLEAR and perfectly readable
   5. The header must look like it was designed by a world-class graphic designer with 30 years of experience
   6. Use business-type specific color grading — the header color must match the industry
   ${formData.adType === 'festival' ? `7. Blend ${formData.festivalName} festival theme with the business type colors — create a unique festive yet professional header` : ''}
@@ -986,8 +986,8 @@ DO NOT EXTRACT for the header:
 - Multiple addresses
 - Social media handles
 
-QUALITY NOTE: All extracted text will be rendered at 8K resolution — ensure EXACT spelling and formatting so every character renders PERFECTLY.
-Keep it MINIMAL — the header is a thin contact strip (5-8% height), NOT a visiting card replica.` });
+QUALITY NOTE: All extracted text will be rendered at 16K resolution — ensure EXACT spelling and formatting so every character renders PERFECTLY.
+Keep it MINIMAL — the header is a thin contact strip (10% max height, TOP ONLY), NOT a visiting card replica.` });
     }
   }
   
