@@ -470,13 +470,20 @@ const enforceClipWordCount = (clipText: string): string => {
   // random filler — the AI-generated script is already meaningful.
   const MAX_WORDS = 26;
 
+  let result: string;
   if (words.length > MAX_WORDS) {
-    return words.slice(0, MAX_WORDS).join(' ') + '.';
+    result = words.slice(0, MAX_WORDS).join(' ');
+  } else {
+    result = words.join(' ');
   }
 
-  // Return the clip with a trailing period — each clip must end with a period
-  // to mark a complete, meaningful conclusion.
-  return words.join(' ') + '.';
+  // Every clip must end with a period for a meaningful conclusion.
+  // tokenizeWords strips punctuation for counting, so re-append the period.
+  if (result && !result.endsWith('.')) {
+    result += '.';
+  }
+
+  return result;
 };
 
 const normalizeVoiceOverSegments = (segments: string[], segmentCount: number): string[] => {
@@ -806,10 +813,10 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
   You MUST output EXACTLY ${segmentCount} prompts. Each prompt must be separated by ###CLIP### (on its own line, nothing else on that line).
   Do NOT combine multiple clips into one block. Each clip gets its own complete prompt.${productImageMainFrameNote}`;
 
-  // Build main frame parts including product images
+  // Build main frame parts including product images and logo
   const mainFrameParts: any[] = [{ text: mainFrameUserPrompt }];
 
-  // Add logo to main frame generation — critical for pixel-perfect logo placement
+  // Pass the actual logo image so the AI can reproduce it pixel-perfect in the background
   if (files.logo) {
     mainFrameParts.push({
       inlineData: {
@@ -817,7 +824,7 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
         data: await fileToBase64(files.logo)
       }
     });
-    mainFrameParts.push({ text: "This is the Business Logo. CRITICAL: Place this EXACT logo image as-is in the scene — as real signage on a wall, reception board, or shop sign. Do NOT recreate, redesign, redraw, recolor, simplify, or modify this logo in ANY way. The logo must be a PIXEL-PERFECT copy of this attached image. Use the attached image pixel-for-pixel." });
+    mainFrameParts.push({ text: "This is the EXACT BUSINESS LOGO. You MUST describe this logo placement in every clip prompt so it appears as REAL PHYSICAL SIGNAGE in the business environment (wall-mounted board, reception panel, acrylic sign). The logo must be reproduced PIXEL-PERFECT — do NOT redesign, reimagine, or alter it in any way. Describe it as 'the attached logo image placed as [signage type]' in your prompt." });
   }
 
   if (hasProductImages) {

@@ -20,14 +20,13 @@ import { useConfirm } from '@/hooks/useConfirm';
 interface AIPlatformAppProps {
   assignment?: WorkAssignment;
   assignmentId?: string;
-  initialSavedItem?: SavedGeneration;
   onBusinessNameExtracted?: (name: string) => void;
   onClose: () => void;
   onComplete?: () => void;
 }
 
 const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
-  assignment, assignmentId, initialSavedItem, onBusinessNameExtracted, onClose, onComplete
+  assignment, assignmentId, onBusinessNameExtracted, onClose, onComplete
 }) => {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
@@ -93,13 +92,6 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   useEffect(() => {
     if (user) loadSavedItems();
   }, [user]);
-
-  // Auto-load initial saved item when passed from Ads History
-  useEffect(() => {
-    if (initialSavedItem) {
-      handleSelectSavedItem(initialSavedItem);
-    }
-  }, []);
 
   // Extract business name whenever outputs change
   useEffect(() => {

@@ -10,7 +10,7 @@ import { db } from '@/services/firebase';
 import type { SavedGeneration } from '@/components/ai-platform/SavedItems';
 import { useFirestoreCollection } from '@/hooks/useFirestore';
 import { useAuthStore } from '@/store/authStore';
-import type { AppUser } from '@/types';
+import type { AppUser, WorkAssignment } from '@/types';
 import { format, subDays, startOfDay } from 'date-fns';
 import DashboardDayPicker from '@/components/dashboard/DayPicker';
 
@@ -28,6 +28,7 @@ export default function Tools() {
 
   // History state
   const { data: allGenerations, loading: loadingHistory } = useFirestoreCollection<SavedGeneration>('ai_generations');
+  const { data: allAssignments, loading: loadingAssignments } = useFirestoreCollection<WorkAssignment>('work_assignments');
   const { data: allUsers } = useFirestoreCollection<AppUser>('users');
   const [historySearch, setHistorySearch] = useState('');
   const [viewingItem, setViewingItem] = useState<SavedGeneration | null>(null);
@@ -57,37 +58,85 @@ export default function Tools() {
     return allUsers.filter(u => u.role === 'tech_member' || u.role === 'tech_admin');
   }, [allUsers]);
 
-  // Filter generations by date
-  const dateFilteredGenerations = useMemo(() => {
-    let items = [...allGenerations].sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+  // Build unified history from work_assignments + ai_generations
+  const allHistoryEntries = useMemo(() => {
+    const genByAssignmentId = new Map<string, SavedGeneration>();
+    const genById = new Map<string, SavedGeneration>();
+    const standaloneGens: SavedGeneration[] = [];
 
-    // Date filtering
+    for (const gen of allGenerations) {
+      if (gen.id) genById.set(gen.id, gen);
+      if (gen.workAssignmentId) {
+        const existing = genByAssignmentId.get(gen.workAssignmentId);
+        if (!existing || (gen.createdAt?.seconds || 0) > (existing.createdAt?.seconds || 0)) {
+          genByAssignmentId.set(gen.workAssignmentId, gen);
+        }
+      } else {
+        standaloneGens.push(gen);
+      }
+    }
+
+    const entries: any[] = [];
+    const usedGenIds = new Set<string>();
+
+    for (const a of allAssignments) {
+      if (!['completed', 'verified'].includes(a.status)) continue;
+      const gen = genByAssignmentId.get(a.id) || (a.savedGenerationId ? genById.get(a.savedGenerationId) : undefined) || null;
+      if (gen?.id) usedGenIds.add(gen.id);
+
+      if (gen) {
+        entries.push({ ...gen, _hasGeneration: true, _status: a.status });
+      } else {
+        entries.push({
+          id: a.id, userId: a.assignedTo, userName: '',
+          businessName: a.businessName || a.displayTitle || a.clientName || 'Untitled',
+          businessType: a.category || '', businessInfo: null,
+          mainFramePrompts: [], headerPrompt: '', voiceOverScript: '', veoPrompts: [],
+          adType: '', attireType: '', duration: parseInt(a.duration) || 0,
+          createdAt: a.completedAt || a.assignedAt,
+          workAssignmentId: a.id, _hasGeneration: false, _status: a.status,
+        });
+      }
+    }
+
+    for (const gen of standaloneGens) {
+      if (gen.id && usedGenIds.has(gen.id)) continue;
+      entries.push({ ...gen, _hasGeneration: true });
+    }
+
+    return entries.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+  }, [allGenerations, allAssignments]);
+
+  // Filter by date
+  const dateFilteredGenerations = useMemo(() => {
+    let items = allHistoryEntries;
+
     if (selectedDate) {
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
-      items = items.filter(item => {
+      items = items.filter((item: any) => {
         if (!item.createdAt) return false;
         const d = item.createdAt.toDate ? item.createdAt.toDate() : new Date(item.createdAt);
-        return format(d, 'yyyy-MM-dd') === dateStr;
+        return !isNaN(d.getTime()) && format(d, 'yyyy-MM-dd') === dateStr;
       });
     } else if (dayFilter !== 'all') {
       const dayIndex = parseInt(dayFilter);
       const dayDateStr = recentDays[dayIndex]?.dateStr;
       if (dayDateStr) {
-        items = items.filter(item => {
+        items = items.filter((item: any) => {
           if (!item.createdAt) return false;
           const d = item.createdAt.toDate ? item.createdAt.toDate() : new Date(item.createdAt);
-          return format(d, 'yyyy-MM-dd') === dayDateStr;
+          return !isNaN(d.getTime()) && format(d, 'yyyy-MM-dd') === dayDateStr;
         });
       }
     }
 
     return items;
-  }, [allGenerations, selectedDate, dayFilter, recentDays]);
+  }, [allHistoryEntries, selectedDate, dayFilter, recentDays]);
 
   // Group by userId for member cards
   const memberGenerationCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    dateFilteredGenerations.forEach(item => {
+    dateFilteredGenerations.forEach((item: any) => {
       counts[item.userId] = (counts[item.userId] || 0) + 1;
     });
     return counts;
@@ -96,12 +145,12 @@ export default function Tools() {
   // Filtered items for selected member + search
   const filteredHistory = useMemo(() => {
     let items = selectedMemberId
-      ? dateFilteredGenerations.filter(item => item.userId === selectedMemberId)
+      ? dateFilteredGenerations.filter((item: any) => item.userId === selectedMemberId)
       : dateFilteredGenerations;
 
     if (historySearch.trim()) {
       const s = historySearch.toLowerCase();
-      items = items.filter(item =>
+      items = items.filter((item: any) =>
         (item.businessName || '').toLowerCase().includes(s) ||
         (item.userName || '').toLowerCase().includes(s) ||
         (item.businessType || '').toLowerCase().includes(s) ||
@@ -448,7 +497,7 @@ export default function Tools() {
           {/* Member Cards or Member's History */}
           {!selectedMemberId ? (
             <>
-              {loadingHistory ? (
+              {loadingHistory || loadingAssignments ? (
                 <div className="bg-card border border-border rounded-xl p-12 text-center">
                   <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-3" />
                   <p className="text-sm text-muted-foreground">Loading history...</p>
@@ -517,13 +566,18 @@ export default function Tools() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {filteredHistory.map(item => (
-                    <button key={item.id} onClick={() => { setViewingItem(item); setExpandedHistorySections({}); }}
-                      className="w-full bg-card border border-border rounded-xl p-4 text-left hover:border-primary/40 hover:shadow transition-all group">
+                  {filteredHistory.map((item: any) => (
+                    <button key={item.id} onClick={() => { if (item._hasGeneration !== false) { setViewingItem(item); setExpandedHistorySections({}); } }}
+                      className={`w-full bg-card border border-border rounded-xl p-4 text-left transition-all group ${item._hasGeneration !== false ? 'hover:border-primary/40 hover:shadow cursor-pointer' : 'opacity-70 cursor-default'}`}>
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <h3 className="font-semibold text-foreground truncate">{getBusinessName(item)}</h3>
+                            {item._status && (
+                              <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium ${item._status === 'verified' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'}`}>
+                                {item._status === 'verified' ? 'Verified' : 'Completed'}
+                              </span>
+                            )}
                             {item.creationMode && (
                               <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
                                 {item.creationMode === 'video' ? 'Video' : 'Poster'}
@@ -539,7 +593,9 @@ export default function Tools() {
                             <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{formatDate(item.createdAt)}</span>
                           </div>
                         </div>
-                        <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0 group-hover:translate-x-0.5 transition-transform" />
+                        {item._hasGeneration !== false && (
+                          <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0 group-hover:translate-x-0.5 transition-transform" />
+                        )}
                       </div>
                     </button>
                   ))}
