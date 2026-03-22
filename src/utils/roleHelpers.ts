@@ -52,6 +52,7 @@ const NAV: Record<UserRole, NavItem[]> = {
   tech_member: [
     { title: "Dashboard", path: "/tech/dashboard", icon: LayoutDashboard },
     { title: "My Work", path: "/tech/my-work", icon: Briefcase },
+    { title: "Ads History", path: "/tech/ads-history", icon: Clock },
     { title: "Training", path: "/tech/training", icon: BookOpen },
     { title: "My Profile", path: "/tech/profile", icon: User },
   ],

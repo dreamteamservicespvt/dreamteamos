@@ -20,13 +20,14 @@ import { useConfirm } from '@/hooks/useConfirm';
 interface AIPlatformAppProps {
   assignment?: WorkAssignment;
   assignmentId?: string;
+  initialSavedItem?: SavedGeneration;
   onBusinessNameExtracted?: (name: string) => void;
   onClose: () => void;
   onComplete?: () => void;
 }
 
 const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
-  assignment, assignmentId, onBusinessNameExtracted, onClose, onComplete
+  assignment, assignmentId, initialSavedItem, onBusinessNameExtracted, onClose, onComplete
 }) => {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
@@ -92,6 +93,13 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   useEffect(() => {
     if (user) loadSavedItems();
   }, [user]);
+
+  // Auto-load initial saved item when passed from Ads History
+  useEffect(() => {
+    if (initialSavedItem) {
+      handleSelectSavedItem(initialSavedItem);
+    }
+  }, []);
 
   // Extract business name whenever outputs change
   useEffect(() => {
@@ -330,7 +338,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       {ConfirmDialog}
       {showSavedItems && (
         <SavedItems items={savedItems} onSelect={handleSelectSavedItem} onDelete={handleDeleteSavedItem}
-          onClose={() => setShowSavedItems(false)} isLoading={loadingSaved} />
+          onClose={() => setShowSavedItems(false)} isLoading={loadingSaved} userRole={user?.role} />
       )}
 
       {/* Top Bar */}
@@ -712,7 +720,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                         isDark={isDark}>
                         <GeneratedCard title="Main Frame" content={outputs.mainFramePrompts} variant="dropdown" sectionType="mainFrame"
-                          showRefinement={!viewingSavedItem} onRefine={(i) => handleRefineSection('mainFrame', i)} isRefining={refiningSection === 'mainFrame'} hideTitle />
+                          showRefinement={true} onRefine={(i) => handleRefineSection('mainFrame', i)} isRefining={refiningSection === 'mainFrame'} hideTitle />
                       </OutputSection>
                   )}
 
@@ -721,7 +729,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                         isDark={isDark} copyContent={outputs.headerPrompt}>
                         <GeneratedCard title="Header" content={outputs.headerPrompt} sectionType="header"
-                          showRefinement={!viewingSavedItem} onRefine={(i) => handleRefineSection('header', i)} isRefining={refiningSection === 'header'} hideTitle />
+                          showRefinement={true} onRefine={(i) => handleRefineSection('header', i)} isRefining={refiningSection === 'header'} hideTitle />
                       </OutputSection>
                   )}
 
@@ -730,7 +738,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                         isDark={isDark} copyContent={outputs.posterPrompt}>
                         <GeneratedCard title="Poster" content={outputs.posterPrompt} isJson sectionType="poster"
-                          showRefinement={!viewingSavedItem} onRefine={(i) => handleRefineSection('poster', i)} isRefining={refiningSection === 'poster'} hideTitle />
+                          showRefinement={true} onRefine={(i) => handleRefineSection('poster', i)} isRefining={refiningSection === 'poster'} hideTitle />
                       </OutputSection>
                   )}
 
@@ -739,7 +747,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                         isDark={isDark}>
                         <GeneratedCard title="Voice Over" content={outputs.voiceOverScript} sectionType="voiceOver"
-                          showTransliteration showRefinement={!viewingSavedItem}
+                          showTransliteration showRefinement={true}
                           onRefine={(i) => handleRefineSection('voiceOver', i)} isRefining={refiningSection === 'voiceOver'} hideTitle />
                       </OutputSection>
                   )}
@@ -749,7 +757,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                         isDark={isDark}>
                         <GeneratedCard title="Veo" content={outputs.veoPrompts} variant="dropdown" sectionType="veo"
-                          showRefinement={!viewingSavedItem} onRefine={(i) => handleRefineSection('veo', i)} isRefining={refiningSection === 'veo'} hideTitle />
+                          showRefinement={true} onRefine={(i) => handleRefineSection('veo', i)} isRefining={refiningSection === 'veo'} hideTitle />
                       </OutputSection>
                   )}
 

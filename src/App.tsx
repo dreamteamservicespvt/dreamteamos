@@ -21,6 +21,7 @@ import TechMemberDashboard from "@/pages/tech-member/Dashboard";
 import TechMemberTraining from "@/pages/tech-member/Training";
 import TechMemberProfile from "@/pages/tech-member/MyProfile";
 import MyWork from "@/pages/tech-member/MyWork";
+import AdsHistory from "@/pages/tech-member/AdsHistory";
 import MyLeads from "@/pages/sales-member/MyLeads";
 import SalesMemberDashboard from "@/pages/sales-member/Dashboard";
 import MyPerformance from "@/pages/sales-member/MyPerformance";
@@ -139,6 +140,7 @@ const App = () => (
           <Route element={<AppLayout allowedRoles={["tech_member"]} />}>
             <Route path="/tech/dashboard" element={<TechMemberDashboard />} />
             <Route path="/tech/my-work" element={<MyWork />} />
+            <Route path="/tech/ads-history" element={<AdsHistory />} />
             <Route path="/tech/training" element={<TechMemberTraining />} />
             <Route path="/tech/profile" element={<TechMemberProfile />} />
             <Route path="/tech/salary" element={<MySalaryPage />} />

@@ -471,11 +471,12 @@ const enforceClipWordCount = (clipText: string): string => {
   const MAX_WORDS = 26;
 
   if (words.length > MAX_WORDS) {
-    return words.slice(0, MAX_WORDS).join(' ');
+    return words.slice(0, MAX_WORDS).join(' ') + '.';
   }
 
-  // Return the clip as-is — preserving the complete sentence/thought
-  return words.join(' ');
+  // Return the clip with a trailing period — each clip must end with a period
+  // to mark a complete, meaningful conclusion.
+  return words.join(' ') + '.';
 };
 
 const normalizeVoiceOverSegments = (segments: string[], segmentCount: number): string[] => {
@@ -807,6 +808,18 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
 
   // Build main frame parts including product images
   const mainFrameParts: any[] = [{ text: mainFrameUserPrompt }];
+
+  // Add logo to main frame generation — critical for pixel-perfect logo placement
+  if (files.logo) {
+    mainFrameParts.push({
+      inlineData: {
+        mimeType: files.logo.type,
+        data: await fileToBase64(files.logo)
+      }
+    });
+    mainFrameParts.push({ text: "This is the Business Logo. CRITICAL: Place this EXACT logo image as-is in the scene — as real signage on a wall, reception board, or shop sign. Do NOT recreate, redesign, redraw, recolor, simplify, or modify this logo in ANY way. The logo must be a PIXEL-PERFECT copy of this attached image. Use the attached image pixel-for-pixel." });
+  }
+
   if (hasProductImages) {
     for (let i = 0; i < files.productImages.length; i++) {
       mainFrameParts.push({
@@ -944,7 +957,7 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR HEADER:
 - This creates a "product showcase strip" that reinforces what the business sells`
     : '';
   
-  const headerUserPrompt = `Generate a WORLD-CLASS Header image prompt for:
+  const headerUserPrompt = `Generate a WORLD-CLASS HEADER-ONLY image prompt (NO FOOTER — do NOT generate any footer or bottom strip) for:
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
   AD TYPE: ${formData.adType}
   ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName}` : ''}
@@ -954,9 +967,10 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR HEADER:
   2. Do NOT include: taglines, services list, proprietor names, or multiple addresses
   3. Keep the header ULTRA-SLIM (10% max height of the 9:16 frame) — header goes in the TOP ONLY, do NOT place anything at the bottom
   4. ALL TEXT must be rendered at 16K ULTRA-SHARP quality — every single character (phone digits, email symbols, website URL) must be CRYSTAL CLEAR and perfectly readable
-  5. The header must look like it was designed by a world-class graphic designer with 30 years of experience
+  5. The header must look like it was designed by a world-class graphic designer with 30 years of experience — RICHLY DESIGNED with textures, premium gradients, metallic accents — NOT an empty or plain bar
   6. Use business-type specific color grading — the header color must match the industry
-  ${formData.adType === 'festival' ? `7. Blend ${formData.festivalName} festival theme with the business type colors — create a unique festive yet professional header` : ''}
+  7. ABSOLUTELY NO FOOTER — do NOT generate any bottom strip, bottom bar, or footer. Only the header at the top. The rest of the image below the header must be completely clear and empty.
+  ${formData.adType === 'festival' ? `8. Blend ${formData.festivalName} festival theme with the business type colors — create a unique festive yet professional header` : ''}
   ${(hasProductImages && includeProductsInHeader) ? `\nPRODUCT IMAGES: ${productImageCount} product image(s) are being attached. Include a product banner strip in the header design.` : ''}${productImageHeaderNote}`;
 
   // Build header parts — include visiting card (primary source for header info), logo, and product images
