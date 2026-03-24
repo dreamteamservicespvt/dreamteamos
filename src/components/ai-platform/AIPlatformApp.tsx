@@ -82,7 +82,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   const CUSTOM_FESTIVAL_OPTION = '__custom_festival__';
 
   const upcomingFestivals = [
-    'Ugadi', 'Sankranthi', 'Maha Shivaratri', 'Holi', 'Ram Navami', 'Hanuman Jayanti',
+    'Ugadi', 'Sankranthi', 'Maha Shivaratri', 'Holi', 'Sri Rama Navami', 'Hanuman Jayanti',
     'Good Friday', 'Easter', 'Akshaya Tritiya', 'Buddha Purnima', 'Eid ul-Fitr', 'Bakrid',
     'Muharram', 'Raksha Bandhan', 'Krishna Janmashtami', 'Ganesh Chaturthi', 'Onam',
     'Bathukamma', 'Navaratri', 'Dasara', 'Dussehra', 'Diwali', 'Karthika Pournami',

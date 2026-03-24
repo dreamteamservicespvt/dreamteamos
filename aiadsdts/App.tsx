@@ -103,7 +103,7 @@ const App: React.FC = () => {
   const upcomingFestivals = [
     'Ugadi',
     'Holi',
-    'Ram Navami',
+    'Sri Rama Navami',
     'Akshaya Tritiya',
     'Eid ul-Fitr',
     'Raksha Bandhan',
