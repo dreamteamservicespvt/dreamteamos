@@ -2,7 +2,7 @@ import { useState, useRef, useMemo } from 'react';
 import {
   Wrench, Sparkles, Timer, Upload, FileText, Image as ImageIcon,
   Loader2, Copy, Check, ArrowRight, ClipboardList, X, History, User,
-  Building2, Calendar, ChevronDown, ChevronRight, Video, PenTool, Search
+  Building2, Calendar, ChevronDown, ChevronRight, Video, PenTool, Search, AlertCircle
 } from 'lucide-react';
 import AIPlatformApp from '@/components/ai-platform/AIPlatformApp';
 import { extractScriptFromImage, analyzeScriptDuration, extractBusinessNameFromInfo, type ScriptAnalysis } from '@/services/geminiService';
@@ -27,14 +27,14 @@ export default function Tools() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // History state
-  const { data: allGenerations, loading: loadingHistory } = useFirestoreCollection<SavedGeneration>('ai_generations');
+  const { data: allGenerations, loading: loadingHistory, error: generationsError } = useFirestoreCollection<SavedGeneration>('ai_generations');
   const { data: allAssignments, loading: loadingAssignments } = useFirestoreCollection<WorkAssignment>('work_assignments');
   const { data: allUsers } = useFirestoreCollection<AppUser>('users');
   const [historySearch, setHistorySearch] = useState('');
   const [viewingItem, setViewingItem] = useState<SavedGeneration | null>(null);
   const [copiedHistorySection, setCopiedHistorySection] = useState<string | null>(null);
   const [expandedHistorySections, setExpandedHistorySections] = useState<Record<string, boolean>>({});
-  const [dayFilter, setDayFilter] = useState<string>('0'); // default to Today
+  const [dayFilter, setDayFilter] = useState<string>('all'); // default to All Days
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
 
@@ -99,7 +99,7 @@ export default function Tools() {
       }
     }
 
-    for (const gen of standaloneGens) {
+    for (const gen of allGenerations) {
       if (gen.id && usedGenIds.has(gen.id)) continue;
       entries.push({ ...gen, _hasGeneration: true });
     }
@@ -497,7 +497,13 @@ export default function Tools() {
           {/* Member Cards or Member's History */}
           {!selectedMemberId ? (
             <>
-              {loadingHistory || loadingAssignments ? (
+              {generationsError ? (
+                <div className="bg-card border border-red-300 dark:border-red-800 rounded-xl p-12 text-center">
+                  <AlertCircle className="w-8 h-8 text-red-500 mx-auto mb-3" />
+                  <h3 className="text-sm font-medium text-red-600 dark:text-red-400 mb-1">Failed to Load History</h3>
+                  <p className="text-xs text-muted-foreground">{generationsError}</p>
+                </div>
+              ) : loadingHistory || loadingAssignments ? (
                 <div className="bg-card border border-border rounded-xl p-12 text-center">
                   <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-3" />
                   <p className="text-sm text-muted-foreground">Loading history...</p>

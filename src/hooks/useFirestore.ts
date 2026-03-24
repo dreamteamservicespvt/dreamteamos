@@ -12,8 +12,10 @@ export function useFirestoreCollection<T>(
 ) {
   const [data, setData] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    setError(null);
     const unsub = onSnapshot(collection(db, collectionName), (snap) => {
       if (transform) {
         setData(transform(snap.docs as any));
@@ -23,12 +25,13 @@ export function useFirestoreCollection<T>(
       setLoading(false);
     }, (err) => {
       console.error(`Firestore listener error (${collectionName}):`, err);
+      setError(err.message || `Failed to load ${collectionName}`);
       setLoading(false);
     });
     return unsub;
   }, [collectionName]);
 
-  return { data, loading };
+  return { data, loading, error };
 }
 
 export function useFirestoreQuery<T>(
