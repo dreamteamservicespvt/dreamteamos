@@ -14,13 +14,16 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
+const APP_ICON = "https://res.cloudinary.com/dvmrhs2ek/image/upload/v1774554098/i4mc6nrr1rhmt4ifyl2m.png";
+
 messaging.onBackgroundMessage((payload) => {
   // We send data-only messages, so read title/body from payload.data
   const data = payload.data || {};
   const notifTitle = data.title || "DTS Manager";
   const notifOptions = {
     body: data.body || "You have a new notification",
-    icon: "/favicon.ico",
+    icon: data.icon || APP_ICON,
+    badge: APP_ICON,
     data: data,
   };
   self.registration.showNotification(notifTitle, notifOptions);

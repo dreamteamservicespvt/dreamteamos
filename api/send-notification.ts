@@ -35,6 +35,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const tokens = tokensSnap.docs.map((d) => d.data().token as string);
 
+    const APP_ICON = "https://res.cloudinary.com/dvmrhs2ek/image/upload/v1774554098/i4mc6nrr1rhmt4ifyl2m.png";
+
     // Send data-only push — no "notification" key so the browser does NOT
     // auto-display a popup.  The service worker's onBackgroundMessage (or the
     // client's onMessage) is the single place that decides what to show.
@@ -45,6 +47,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         body: message,
         type: type || "general",
         link: link || "/",
+        icon: APP_ICON,
       },
     };
 
