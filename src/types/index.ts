@@ -144,6 +144,7 @@ export interface VideoCallDoc {
   receiverId: string;
   receiverName: string;
   receiverAvatar?: string;
+  callType: "video" | "voice";
   status: CallStatus;
   offer?: { type: string; sdp: string };
   answer?: { type: string; sdp: string };

@@ -5,6 +5,7 @@ import {
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { useCallStore } from "@/store/callStore";
+import type { CallType } from "@/store/callStore";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -47,6 +48,7 @@ export default function VideoCallManager() {
   const { pendingCall, clearPendingCall } = useCallStore();
 
   const [phase, setPhase] = useState<CallPhase>("idle");
+  const [callType, setCallType] = useState<CallType>("video");
   const [peerName, setPeerName] = useState("");
   const [peerAvatar, setPeerAvatar] = useState<string | undefined>();
   const [isMuted, setIsMuted] = useState(false);
@@ -83,6 +85,7 @@ export default function VideoCallManager() {
     callDocIdRef.current = null;
     incomingDocRef.current = null;
     setPhase("idle");
+    setCallType("video");
     setPeerName("");
     setPeerAvatar(undefined);
     setIsMuted(false);
@@ -98,8 +101,9 @@ export default function VideoCallManager() {
   }, []);
 
   // ── Get user media ──
-  const getMedia = useCallback(async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+  const getMedia = useCallback(async (type: CallType = "video") => {
+    const constraints = type === "voice" ? { video: false, audio: true } : { video: true, audio: true };
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
     localStreamRef.current = stream;
     if (localVideoRef.current) localVideoRef.current.srcObject = stream;
     return stream;
@@ -157,15 +161,16 @@ export default function VideoCallManager() {
 
   // ── START OUTGOING CALL ──
   const startOutgoingCall = useCallback(
-    async (peerId: string, name: string, avatar?: string) => {
+    async (peerId: string, name: string, avatar?: string, type: CallType = "video") => {
       if (!user || phase !== "idle") return;
       try {
         setPeerName(name);
         setPeerAvatar(avatar);
+        setCallType(type);
         setPhase("outgoing");
         startRingback();
 
-        const stream = await getMedia();
+        const stream = await getMedia(type);
         const callDocRef = doc(collection(db, "calls"));
         const callId = callDocRef.id;
         callDocIdRef.current = callId;
@@ -182,6 +187,7 @@ export default function VideoCallManager() {
           receiverId: peerId,
           receiverName: name,
           receiverAvatar: avatar ?? "",
+          callType: type,
           status: "ringing",
           offer: { type: offer.type, sdp: offer.sdp },
           createdAt: serverTimestamp(),
@@ -217,7 +223,9 @@ export default function VideoCallManager() {
       stopRingtone();
       setPhase("active");
 
-      const stream = await getMedia();
+      const type = callDoc.callType ?? "video";
+      setCallType(type);
+      const stream = await getMedia(type);
       const callId = callDoc.id;
       callDocIdRef.current = callId;
 
@@ -257,7 +265,7 @@ export default function VideoCallManager() {
     cleanup();
   }, [cleanup]);
 
-  // ── END ACTIVE CALL ──
+  // ── END ACTIVE CALL / CANCEL OUTGOING ──
   const endCall = useCallback(async () => {
     const callId = callDocIdRef.current;
     if (callId) {
@@ -340,6 +348,7 @@ export default function VideoCallManager() {
           incomingDocRef.current = data;
           setPeerName(data.callerName);
           setPeerAvatar(data.callerAvatar);
+          setCallType(data.callType ?? "video");
           setPhase("incoming");
           startRingtone();
         }
@@ -351,7 +360,7 @@ export default function VideoCallManager() {
   // ── React to pendingCall from callStore ──
   useEffect(() => {
     if (pendingCall && phase === "idle") {
-      startOutgoingCall(pendingCall.peerId, pendingCall.peerName, pendingCall.peerAvatar);
+      startOutgoingCall(pendingCall.peerId, pendingCall.peerName, pendingCall.peerAvatar, pendingCall.callType);
       clearPendingCall();
     } else if (pendingCall) {
       clearPendingCall();
@@ -363,10 +372,16 @@ export default function VideoCallManager() {
 
   // ── Auto-decline stale ringing calls after 45s ──
   useEffect(() => {
-    if (phase !== "incoming") return;
-    const t = setTimeout(() => { declineCall(); }, 45000);
-    return () => clearTimeout(t);
-  }, [phase, declineCall]);
+    if (phase === "incoming") {
+      const t = setTimeout(() => { declineCall(); }, 45000);
+      return () => clearTimeout(t);
+    }
+    // Auto-cancel outgoing calls after 45s if not answered
+    if (phase === "outgoing") {
+      const t = setTimeout(() => { endCall(); }, 45000);
+      return () => clearTimeout(t);
+    }
+  }, [phase, declineCall, endCall]);
 
   // ── Render nothing when idle ──
   if (phase === "idle") return null;
@@ -393,7 +408,7 @@ export default function VideoCallManager() {
           </div>
           <div>
             <h2 className="text-lg font-semibold">{peerName}</h2>
-            <p className="text-sm text-muted-foreground mt-1">Incoming video call…</p>
+            <p className="text-sm text-muted-foreground mt-1">Incoming {callType} call…</p>
           </div>
           <div className="flex items-center justify-center gap-8">
             <button
@@ -441,30 +456,57 @@ export default function VideoCallManager() {
   }
 
   // ── ACTIVE CALL SCREEN ──
+  const isVoice = callType === "voice";
+
   return (
     <div className="fixed inset-0 z-[100] bg-black flex flex-col animate-in fade-in duration-200">
-      {/* Videos */}
+      {/* Main area */}
       <div className="flex-1 relative">
-        <video
-          ref={remoteVideoRef}
-          autoPlay
-          playsInline
-          className="w-full h-full object-cover"
-        />
-        {/* Remote name + timer overlay */}
-        <div className="absolute top-4 left-4 text-white bg-black/40 backdrop-blur-sm rounded-lg px-3 py-2">
-          <p className="font-semibold text-sm">{peerName}</p>
-          <p className="text-xs text-white/70">{formatTime(callDuration)}</p>
-        </div>
-        {/* Local video PiP */}
-        <video
-          ref={localVideoRef}
-          autoPlay
-          playsInline
-          muted
-          className="absolute bottom-20 right-4 w-36 h-28 md:w-48 md:h-36 rounded-xl border-2 border-white/20 object-cover shadow-xl bg-black"
-        />
+        {isVoice ? (
+          /* Voice call: show avatar + timer centered */
+          <div className="w-full h-full flex flex-col items-center justify-center text-white gap-6 bg-gradient-to-b from-gray-900 to-black">
+            <Avatar className="w-28 h-28">
+              <AvatarImage src={peerAvatar} />
+              <AvatarFallback className="text-3xl font-bold bg-white/10">{initials}</AvatarFallback>
+            </Avatar>
+            <div className="text-center">
+              <h2 className="text-xl font-semibold">{peerName}</h2>
+              <p className="text-sm text-white/60 mt-1">{formatTime(callDuration)}</p>
+            </div>
+          </div>
+        ) : (
+          /* Video call: remote + local PiP */
+          <>
+            <video
+              ref={remoteVideoRef}
+              autoPlay
+              playsInline
+              className="w-full h-full object-cover"
+            />
+            {/* Remote name + timer overlay */}
+            <div className="absolute top-4 left-4 text-white bg-black/40 backdrop-blur-sm rounded-lg px-3 py-2">
+              <p className="font-semibold text-sm">{peerName}</p>
+              <p className="text-xs text-white/70">{formatTime(callDuration)}</p>
+            </div>
+            {/* Local video PiP */}
+            <video
+              ref={localVideoRef}
+              autoPlay
+              playsInline
+              muted
+              className="absolute bottom-20 right-4 w-36 h-28 md:w-48 md:h-36 rounded-xl border-2 border-white/20 object-cover shadow-xl bg-black"
+            />
+          </>
+        )}
       </div>
+
+      {/* Hidden video elements for voice calls (keep refs working) */}
+      {isVoice && (
+        <>
+          <video ref={remoteVideoRef} autoPlay playsInline className="hidden" />
+          <video ref={localVideoRef} autoPlay playsInline muted className="hidden" />
+        </>
+      )}
 
       {/* Controls */}
       <div className="bg-gray-900/80 backdrop-blur-sm px-4 py-4 flex items-center justify-center gap-4">
@@ -477,24 +519,28 @@ export default function VideoCallManager() {
         >
           {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
         </button>
-        <button
-          onClick={toggleCamera}
-          className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${
-            isCameraOff ? "bg-red-500/80 text-white" : "bg-white/10 text-white hover:bg-white/20"
-          }`}
-          title={isCameraOff ? "Turn camera on" : "Turn camera off"}
-        >
-          {isCameraOff ? <VideoOff className="w-5 h-5" /> : <VideoIcon className="w-5 h-5" />}
-        </button>
-        <button
-          onClick={toggleScreenShare}
-          className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${
-            isScreenSharing ? "bg-blue-500/80 text-white" : "bg-white/10 text-white hover:bg-white/20"
-          }`}
-          title={isScreenSharing ? "Stop sharing" : "Share screen"}
-        >
-          {isScreenSharing ? <MonitorOff className="w-5 h-5" /> : <Monitor className="w-5 h-5" />}
-        </button>
+        {!isVoice && (
+          <>
+            <button
+              onClick={toggleCamera}
+              className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${
+                isCameraOff ? "bg-red-500/80 text-white" : "bg-white/10 text-white hover:bg-white/20"
+              }`}
+              title={isCameraOff ? "Turn camera on" : "Turn camera off"}
+            >
+              {isCameraOff ? <VideoOff className="w-5 h-5" /> : <VideoIcon className="w-5 h-5" />}
+            </button>
+            <button
+              onClick={toggleScreenShare}
+              className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${
+                isScreenSharing ? "bg-blue-500/80 text-white" : "bg-white/10 text-white hover:bg-white/20"
+              }`}
+              title={isScreenSharing ? "Stop sharing" : "Share screen"}
+            >
+              {isScreenSharing ? <MonitorOff className="w-5 h-5" /> : <Monitor className="w-5 h-5" />}
+            </button>
+          </>
+        )}
         <button
           onClick={endCall}
           className="w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center text-white transition-colors shadow-lg"

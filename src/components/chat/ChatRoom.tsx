@@ -2,7 +2,7 @@ import { useRef, useEffect, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
-import { Send, Video, ArrowLeft, Loader2 } from "lucide-react";
+import { Send, Video, Phone, ArrowLeft, Loader2 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useCallStore } from "@/store/callStore";
 import { cn } from "@/lib/utils";
@@ -58,7 +58,7 @@ export default function ChatRoom({ contact, messages, loading, onSend, onBack, s
   return (
     <div className="flex flex-col h-full bg-background">
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 shrink-0 z-10">
         {showBackButton && (
           <Button variant="ghost" size="icon" className="shrink-0 mr-1" onClick={onBack}>
             <ArrowLeft className="w-5 h-5" />
@@ -75,9 +75,18 @@ export default function ChatRoom({ contact, messages, loading, onSend, onBack, s
         <Button
           variant="ghost"
           size="icon"
+          className="text-muted-foreground hover:text-primary hover:bg-primary/10"
+          title="Start voice call"
+          onClick={() => startCall(contact.uid, contact.name, contact.avatar, "voice")}
+        >
+          <Phone className="w-5 h-5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
           className="text-primary hover:bg-primary/10"
           title="Start video call"
-          onClick={() => startCall(contact.uid, contact.name, contact.avatar)}
+          onClick={() => startCall(contact.uid, contact.name, contact.avatar, "video")}
         >
           <Video className="w-5 h-5" />
         </Button>
@@ -143,7 +152,7 @@ export default function ChatRoom({ contact, messages, loading, onSend, onBack, s
       </ScrollArea>
 
       {/* Input */}
-      <div className="border-t border-border p-3">
+      <div className="border-t border-border p-3 shrink-0">
         <div className="flex items-end gap-2">
           <textarea
             value={input}

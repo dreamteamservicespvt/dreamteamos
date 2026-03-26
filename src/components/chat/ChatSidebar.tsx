@@ -41,8 +41,8 @@ export default function ChatSidebar({ contacts, activeContactUid, onSelect, load
   });
 
   return (
-    <div className="flex flex-col h-full border-r border-border bg-background">
-      <div className="p-3 border-b border-border">
+    <div className="flex flex-col flex-1 min-h-0 bg-background">
+      <div className="p-3 border-b border-border shrink-0">
         <div className="relative">
           <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />
           <input

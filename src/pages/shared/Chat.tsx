@@ -61,8 +61,8 @@ export default function Chat() {
   return (
     <div className="h-[calc(100vh-64px)] flex rounded-xl border border-border overflow-hidden bg-background shadow-sm">
       {/* Left — contacts */}
-      <div className="w-80 shrink-0">
-        <div className="border-b border-border px-4 py-3">
+      <div className="w-80 shrink-0 h-full flex flex-col overflow-hidden border-r border-border">
+        <div className="border-b border-border px-4 py-3 shrink-0">
           <h1 className="text-lg font-semibold">Team Chat</h1>
         </div>
         <ChatSidebar
@@ -74,7 +74,7 @@ export default function Chat() {
       </div>
 
       {/* Right — messages */}
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 h-full">
         {activeContact ? (
           <ChatRoom
             contact={activeContact}
