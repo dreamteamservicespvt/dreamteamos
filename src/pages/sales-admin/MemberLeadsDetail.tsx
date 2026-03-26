@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { collection, getDocs, addDoc, updateDoc, doc, serverTimestamp, deleteDoc, onSnapshot } from "firebase/firestore";
 import { db } from "@/services/firebase";
+import { sendNotification } from "@/services/notifications";
 import { useAuthStore } from "@/store/authStore";
 import { normalizePhone, formatPhoneDisplay, getWhatsAppUrl, getCallUrl } from "@/utils/phone";
 import { formatCurrency } from "@/utils/formatters";
@@ -265,13 +266,11 @@ export default function MemberLeadsDetail() {
           createdAt: serverTimestamp(),
         });
 
-        await addDoc(collection(db, "notifications"), {
+        await sendNotification({
           userId: memberId,
           type: "lead_assigned",
           title: "New Lead Assigned",
           message: `You have a new lead: ${displayName}`,
-          read: false,
-          createdAt: serverTimestamp(),
         });
       }
 

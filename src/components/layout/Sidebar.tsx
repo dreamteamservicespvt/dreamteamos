@@ -8,6 +8,7 @@ import { getNavItems, getRoleLabel, getRoleColor } from "@/utils/roleHelpers";
 import { ChevronLeft, ChevronRight, LogOut, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { deleteFCMToken } from "@/services/fcm";
 
 interface SidebarProps {
   mobileOpen: boolean;
@@ -55,6 +56,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
       }
     }
     await signOut(auth);
+    await deleteFCMToken(user.uid).catch(() => {});
     setUser(null);
     navigate("/login");
   };

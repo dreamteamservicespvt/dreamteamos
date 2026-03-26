@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { collection, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/services/firebase';
+import { sendNotification } from '@/services/notifications';
 import { useAuthStore } from '@/store/authStore';
 import { useFirestoreCollection } from '@/hooks/useFirestore';
 import { PRICING } from '@/utils/pricing';
@@ -220,13 +221,11 @@ export default function WorkAssign() {
       });
 
       // Send notification
-      await addDoc(collection(db, 'notifications'), {
+      await sendNotification({
         userId: form.assignedTo,
         type: 'work_assigned',
         title: 'New Work Assigned',
         message: `You have been assigned a new ${form.category} work (${clips} clips, ${form.duration}). Access code: ${accessCode}`,
-        read: false,
-        createdAt: serverTimestamp(),
       });
 
       setShowForm(false);
@@ -249,13 +248,11 @@ export default function WorkAssign() {
           verifiedBy: user.uid,
         });
 
-        await addDoc(collection(db, 'notifications'), {
+        await sendNotification({
           userId: assignment.assignedTo,
           type: 'work_verified',
           title: 'Work Verified!',
           message: `Your ${assignment.category} work (${assignment.displayTitle}) has been verified and approved.`,
-          read: false,
-          createdAt: serverTimestamp(),
         });
       }
     } catch (error) {
@@ -286,13 +283,11 @@ export default function WorkAssign() {
   const handleSetEditing = async (assignmentId: string, assignedTo: string) => {
     try {
       await updateDoc(doc(db, 'work_assignments', assignmentId), { status: 'editing' });
-      await addDoc(collection(db, 'notifications'), {
+      await sendNotification({
         userId: assignedTo,
         type: 'work_editing',
         title: 'Edits Required',
         message: 'Your work has been sent back for edits. Please review and resubmit.',
-        read: false,
-        createdAt: serverTimestamp(),
       });
       setConfirmAction(null);
     } catch (error) {

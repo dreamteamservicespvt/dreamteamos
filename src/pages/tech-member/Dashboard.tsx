@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/services/firebase";
+import { sendNotification } from "@/services/notifications";
 import { useAuthStore } from "@/store/authStore";
 import { format } from "date-fns";
 import type { WorkAssignment, DailyCheckin } from "@/types";
@@ -71,14 +72,12 @@ export default function TechMemberDashboard() {
       });
 
       // Notify tech admin
-      await addDoc(collection(db, "notifications"), {
+      await sendNotification({
         userId: user.createdBy,
         type: "check_in",
         title: "Team Check-In",
         message: `${user.name} has checked in for today.`,
-        read: false,
         link: `/tech-admin/team/${user.uid}`,
-        createdAt: serverTimestamp(),
       });
 
       toast({ title: "Checked In!", description: "Opening WhatsApp..." });
@@ -164,14 +163,12 @@ export default function TechMemberDashboard() {
       });
 
       // Notify tech admin
-      await addDoc(collection(db, "notifications"), {
+      await sendNotification({
         userId: user.createdBy,
         type: "check_out",
         title: "Work Submitted for Approval",
         message: `${user.name} checked out — ${checkoutForm.totalVideos} videos. Tap to review & approve.`,
-        read: false,
         link: `/tech-admin/team/${user.uid}`,
-        createdAt: serverTimestamp(),
       });
 
       setShowCheckout(false);

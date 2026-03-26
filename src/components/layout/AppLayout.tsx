@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Outlet, Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useAuthStore } from "@/store/authStore";
@@ -7,6 +7,7 @@ import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 import { Loader2 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { initFCM, onForegroundMessage } from "@/services/fcm";
 import type { UserRole } from "@/types";
 
 interface AppLayoutProps {
@@ -17,6 +18,16 @@ export default function AppLayout({ allowedRoles }: AppLayoutProps) {
   const { loading } = useAuth();
   const user = useAuthStore((s) => s.user);
   const collapsed = useSidebarStore((s) => s.collapsed);
+  const fcmInitialized = useRef(false);
+
+  useEffect(() => {
+    if (user && !fcmInitialized.current) {
+      fcmInitialized.current = true;
+      initFCM(user.uid);
+      const unsub = onForegroundMessage();
+      return () => unsub();
+    }
+  }, [user?.uid]);
   const isMobile = useIsMobile();
   const [mobileOpen, setMobileOpen] = useState(false);
 
