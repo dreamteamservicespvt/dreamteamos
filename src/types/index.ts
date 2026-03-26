@@ -48,6 +48,7 @@ export interface WorkAssignment {
   uniqueId: string;
   accessCode: string;
   businessName?: string;
+  businessWhatsapp?: string;
   displayTitle: string;
   status: WorkAssignmentStatus;
   sessions: WorkAssignmentSession[];

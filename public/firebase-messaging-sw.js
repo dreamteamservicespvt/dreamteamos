@@ -12,21 +12,32 @@ firebase.initializeApp({
   measurementId: "G-3LWNG8G36G",
 });
 
-const messaging = firebase.messaging();
-
 const APP_ICON = "https://res.cloudinary.com/dvmrhs2ek/image/upload/v1774554466/jdqjbuvcdo40o5gzdlvz.png";
 
-messaging.onBackgroundMessage((payload) => {
-  // We send data-only messages, so read title/body from payload.data
-  const data = payload.data || {};
-  const notifTitle = data.title || "DTS Manager";
-  const notifOptions = {
+// Handle push events directly so Chrome always sees showNotification()
+// inside event.waitUntil — this prevents the
+// "The site has been updated in the background" default notification.
+self.addEventListener("push", (event) => {
+  if (!event.data) return;
+
+  let payload;
+  try {
+    payload = event.data.json();
+  } catch {
+    return;
+  }
+
+  // Firebase data-only messages put everything under payload.data
+  const data = payload.data || payload;
+  const title = data.title || "DTS Manager";
+  const options = {
     body: data.body || "You have a new notification",
     icon: data.icon || APP_ICON,
     badge: APP_ICON,
     data: data,
   };
-  self.registration.showNotification(notifTitle, notifOptions);
+
+  event.waitUntil(self.registration.showNotification(title, options));
 });
 
 self.addEventListener("notificationclick", (event) => {

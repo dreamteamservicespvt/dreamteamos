@@ -329,6 +329,7 @@ export default function MyWork() {
                       <span className="flex items-center space-x-1"><Clock className="w-3 h-3" /><span>{formatDuration(a.totalDurationSeconds)}</span></span>
                     )}
                   </div>
+
                   <div className="flex items-center justify-between mb-4 bg-muted/50 rounded-lg px-3 py-2">
                     <span className="text-xs text-muted-foreground">Access Code:</span>
                     <div className="flex items-center space-x-2">
