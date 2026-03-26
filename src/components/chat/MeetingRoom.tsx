@@ -464,9 +464,9 @@ export default function MeetingRoom({ meetingId, meetingCode, onLeave }: Props) 
       </div>
 
       {/* Main content */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden min-h-0">
         {/* Video grid */}
-        <div className={`flex-1 p-2 grid ${gridCols} gap-2 auto-rows-fr`}>
+        <div className={`flex-1 p-2 grid ${gridCols} gap-2 auto-rows-fr overflow-hidden min-h-0`}>
           {/* Self */}
           <div className="relative bg-gray-800 rounded-xl overflow-hidden min-h-0">
             <video

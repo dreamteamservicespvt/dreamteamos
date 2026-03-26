@@ -2,12 +2,15 @@ import { useState, useCallback } from "react";
 import { collection, doc, setDoc, query, where, getDocs, serverTimestamp } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
+import { sendNotification } from "@/services/notifications";
+import { getChatContactRoles } from "@/utils/chatHelpers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Video, Users, Plus, LogIn, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 import MeetingRoom from "@/components/chat/MeetingRoom";
+import type { AppUser } from "@/types";
 
 function generateCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -42,6 +45,25 @@ export default function Meeting() {
       });
       setActiveMeetingId(meetingRef.id);
       setActiveMeetingCode(code);
+
+      // Notify all team contacts about the new meeting
+      const roles = getChatContactRoles(user.role);
+      if (roles.length > 0) {
+        const contactsSnap = await getDocs(
+          query(collection(db, "users"), where("role", "in", roles), where("isActive", "==", true)),
+        );
+        contactsSnap.docs.forEach((d) => {
+          const contact = d.data() as AppUser;
+          if (contact.uid !== user.uid) {
+            sendNotification({
+              userId: contact.uid ?? d.id,
+              type: "meeting_invite",
+              title: "Meeting Started",
+              message: `${user.name} started a meeting. Code: ${code}`,
+            });
+          }
+        });
+      }
     } catch (err) {
       console.error("Failed to create meeting:", err);
       toast.error("Failed to create meeting");

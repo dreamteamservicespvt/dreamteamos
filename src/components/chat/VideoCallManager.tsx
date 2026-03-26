@@ -12,6 +12,8 @@ import {
   Phone, PhoneOff, Mic, MicOff, VideoIcon, VideoOff, Monitor, MonitorOff, Loader2,
 } from "lucide-react";
 import { startRingtone, stopRingtone, startRingback, stopRingback } from "@/utils/audio";
+import { sendNotification } from "@/services/notifications";
+import { getChatRoute } from "@/utils/chatHelpers";
 import type { VideoCallDoc } from "@/types";
 
 const ICE_SERVERS: RTCConfiguration = {
@@ -65,9 +67,11 @@ export default function VideoCallManager() {
   const unsubsRef = useRef<(() => void)[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const incomingDocRef = useRef<VideoCallDoc | null>(null);
+  const callGenRef = useRef(0); // generation counter — incremented on every cleanup to cancel stale async work
 
   // ── Cleanup helper ──
   const cleanup = useCallback(() => {
+    callGenRef.current += 1; // invalidate any in-progress async call setup
     stopRingtone();
     stopRingback();
     unsubsRef.current.forEach((u) => u());
@@ -170,7 +174,15 @@ export default function VideoCallManager() {
         setPhase("outgoing");
         startRingback();
 
+        const gen = callGenRef.current;
         const stream = await getMedia(type);
+
+        // If user cancelled while we were waiting for camera permission, bail out
+        if (gen !== callGenRef.current) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+
         const callDocRef = doc(collection(db, "calls"));
         const callId = callDocRef.id;
         callDocIdRef.current = callId;
@@ -191,6 +203,15 @@ export default function VideoCallManager() {
           status: "ringing",
           offer: { type: offer.type, sdp: offer.sdp },
           createdAt: serverTimestamp(),
+        });
+
+        // Push notification so receiver sees it even with app in background
+        sendNotification({
+          userId: peerId,
+          type: type === "voice" ? "voice_call" : "video_call",
+          title: `Incoming ${type} call`,
+          message: `${user.name} is calling you`,
+          link: getChatRoute(user.role),
         });
 
         // Listen for answer / status changes
@@ -370,6 +391,22 @@ export default function VideoCallManager() {
   // ── Cleanup on unmount ──
   useEffect(() => () => { cleanup(); }, [cleanup]);
 
+  // ── Watch for caller cancellation when we have an incoming call ──
+  useEffect(() => {
+    if (phase !== "incoming") return;
+    const callDoc = incomingDocRef.current;
+    if (!callDoc) return;
+
+    const unsub = onSnapshot(doc(db, "calls", callDoc.id), (snap) => {
+      if (!snap.exists()) { cleanup(); return; }
+      const data = snap.data();
+      if (data.status === "ended" || data.status === "declined") {
+        cleanup();
+      }
+    });
+    return () => unsub();
+  }, [phase, cleanup]);
+
   // ── Auto-decline stale ringing calls after 45s ──
   useEffect(() => {
     if (phase === "incoming") {
@@ -461,7 +498,7 @@ export default function VideoCallManager() {
   return (
     <div className="fixed inset-0 z-[100] bg-black flex flex-col animate-in fade-in duration-200">
       {/* Main area */}
-      <div className="flex-1 relative">
+      <div className="flex-1 relative overflow-hidden min-h-0">
         {isVoice ? (
           /* Voice call: show avatar + timer centered */
           <div className="w-full h-full flex flex-col items-center justify-center text-white gap-6 bg-gradient-to-b from-gray-900 to-black">
@@ -494,7 +531,7 @@ export default function VideoCallManager() {
               autoPlay
               playsInline
               muted
-              className="absolute bottom-20 right-4 w-36 h-28 md:w-48 md:h-36 rounded-xl border-2 border-white/20 object-cover shadow-xl bg-black"
+              className="absolute bottom-4 right-4 w-36 h-28 md:w-48 md:h-36 rounded-xl border-2 border-white/20 object-cover shadow-xl bg-black z-10"
             />
           </>
         )}
