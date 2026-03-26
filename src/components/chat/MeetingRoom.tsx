@@ -9,7 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   Mic, MicOff, VideoIcon, VideoOff, Monitor, MonitorOff,
-  PhoneOff, Copy, Check, Users,
+  PhoneOff, Copy, Check, Users, Maximize2, Minimize2,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { MeetingParticipant } from "@/types";
@@ -64,6 +64,7 @@ export default function MeetingRoom({ meetingId, meetingCode, onLeave }: Props) 
   const [duration, setDuration] = useState(0);
   const [peers, setPeers] = useState<Record<string, PeerState>>({});
   const [showParticipants, setShowParticipants] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -72,6 +73,9 @@ export default function MeetingRoom({ meetingId, meetingCode, onLeave }: Props) 
   const unsubsRef = useRef<(() => void)[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const joinedRef = useRef(false);
+  const participantsRef = useRef<MeetingParticipant[]>([]);
+  const pendingCandidatesRef = useRef<Record<string, RTCIceCandidateInit[]>>({});
+  participantsRef.current = participants;
 
   // ── Format duration ──
   const formatTime = (s: number) => {
@@ -108,10 +112,7 @@ export default function MeetingRoom({ meetingId, meetingCode, onLeave }: Props) 
     // Remote stream
     const remoteStream = new MediaStream();
     pc.ontrack = (e) => {
-      e.streams[0]?.getTracks().forEach((track) => {
-        remoteStream.addTrack(track);
-      });
-      // Update peers state
+      remoteStream.addTrack(e.track);
       setPeers((prev) => {
         const existing = prev[remoteUid];
         if (existing) return { ...prev, [remoteUid]: { ...existing, stream: remoteStream } };
@@ -184,6 +185,10 @@ export default function MeetingRoom({ meetingId, meetingCode, onLeave }: Props) 
     setPeers((prev) => ({ ...prev, [fromUid]: peerState }));
 
     await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp }));
+    // Flush buffered ICE candidates
+    const buffered = pendingCandidatesRef.current[fromUid] ?? [];
+    delete pendingCandidatesRef.current[fromUid];
+    for (const c of buffered) { try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch {} }
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
 
@@ -202,12 +207,20 @@ export default function MeetingRoom({ meetingId, meetingCode, onLeave }: Props) 
     if (!peer) return;
     if (peer.pc.signalingState === "stable") return;
     await peer.pc.setRemoteDescription(new RTCSessionDescription({ type: "answer", sdp }));
+    // Flush buffered ICE candidates
+    const buffered = pendingCandidatesRef.current[fromUid] ?? [];
+    delete pendingCandidatesRef.current[fromUid];
+    for (const c of buffered) { try { await peer.pc.addIceCandidate(new RTCIceCandidate(c)); } catch {} }
   }, []);
 
   // ── Handle ICE candidate ──
-  const handleCandidate = useCallback(async (fromUid: string, candidate: any) => {
+  const handleCandidate = useCallback(async (fromUid: string, candidate: RTCIceCandidateInit) => {
     const peer = peersRef.current[fromUid];
-    if (!peer) return;
+    if (!peer) {
+      if (!pendingCandidatesRef.current[fromUid]) pendingCandidatesRef.current[fromUid] = [];
+      pendingCandidatesRef.current[fromUid].push(candidate);
+      return;
+    }
     try {
       await peer.pc.addIceCandidate(new RTCIceCandidate(candidate));
     } catch { /* ignore */ }
@@ -257,7 +270,7 @@ export default function MeetingRoom({ meetingId, meetingCode, onLeave }: Props) 
             if (p.uid !== user.uid && !peersRef.current[p.uid]) {
               // Use deterministic rule: lower uid sends offer
               if (user.uid < p.uid) {
-                sendOffer(p.uid, p.name, p.avatar);
+                sendOffer(p.uid, p.name, p.avatar).catch(() => {});
               }
             }
           });
@@ -275,16 +288,16 @@ export default function MeetingRoom({ meetingId, meetingCode, onLeave }: Props) 
             if (sig.to !== user.uid) return;
 
             // Find sender info from participants
-            const senderPart = participants.find((p) => p.uid === sig.from);
+            const senderPart = participantsRef.current.find((p) => p.uid === sig.from);
             const senderName = senderPart?.name ?? "Participant";
             const senderAvatar = senderPart?.avatar;
 
             if (sig.type === "offer") {
-              handleOffer(sig.from, sig.sdp, senderName, senderAvatar);
+              handleOffer(sig.from, sig.sdp, senderName, senderAvatar).catch(() => {});
             } else if (sig.type === "answer") {
-              handleAnswer(sig.from, sig.sdp);
+              handleAnswer(sig.from, sig.sdp).catch(() => {});
             } else if (sig.type === "candidate") {
-              handleCandidate(sig.from, sig.candidate);
+              handleCandidate(sig.from, sig.candidate).catch(() => {});
             }
 
             // Clean up processed signal
@@ -298,10 +311,6 @@ export default function MeetingRoom({ meetingId, meetingCode, onLeave }: Props) 
     init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid]);
-
-  // Update signal handler when participants change (so name lookups work)
-  const participantsRef = useRef<MeetingParticipant[]>([]);
-  participantsRef.current = participants;
 
   // ── Cleanup on leave / unmount ──
   const leave = useCallback(async () => {
@@ -371,6 +380,21 @@ export default function MeetingRoom({ meetingId, meetingCode, onLeave }: Props) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Fullscreen toggle ──
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
+    const h = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", h);
+    return () => document.removeEventListener("fullscreenchange", h);
+  }, []);
+
   // ── Toggle Mute ──
   const toggleMute = useCallback(() => {
     const track = localStreamRef.current?.getAudioTracks()[0];
@@ -432,9 +456,9 @@ export default function MeetingRoom({ meetingId, meetingCode, onLeave }: Props) 
   const totalVideos = 1 + peerEntries.length; // self + peers
   const gridCols =
     totalVideos <= 1 ? "grid-cols-1" :
-    totalVideos <= 4 ? "grid-cols-2" :
-    totalVideos <= 9 ? "grid-cols-3" :
-    "grid-cols-4";
+    totalVideos <= 4 ? "grid-cols-1 md:grid-cols-2" :
+    totalVideos <= 9 ? "grid-cols-1 sm:grid-cols-2 md:grid-cols-3" :
+    "grid-cols-2 md:grid-cols-3 lg:grid-cols-4";
 
   const getInitials = (name: string) =>
     name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
@@ -459,6 +483,13 @@ export default function MeetingRoom({ meetingId, meetingCode, onLeave }: Props) 
           >
             <Users className="w-4 h-4" />
             <span>{participants.length}</span>
+          </button>
+          <button
+            onClick={toggleFullscreen}
+            className="hidden md:flex items-center text-white/60 hover:text-white transition-colors"
+            title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+          >
+            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </button>
         </div>
       </div>

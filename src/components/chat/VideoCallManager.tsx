@@ -518,7 +518,7 @@ export default function VideoCallManager() {
               ref={remoteVideoRef}
               autoPlay
               playsInline
-              className="w-full h-full object-cover"
+              className="w-full h-full object-contain bg-black"
             />
             {/* Remote name + timer overlay */}
             <div className="absolute top-4 left-4 text-white bg-black/40 backdrop-blur-sm rounded-lg px-3 py-2">
