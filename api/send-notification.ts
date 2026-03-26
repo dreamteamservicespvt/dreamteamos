@@ -35,19 +35,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const tokens = tokensSnap.docs.map((d) => d.data().token as string);
 
-    // Send push notification to all user devices
+    // Send data-only push — no "notification" key so the browser does NOT
+    // auto-display a popup.  The service worker's onBackgroundMessage (or the
+    // client's onMessage) is the single place that decides what to show.
     const pushMessage: admin.messaging.MulticastMessage = {
       tokens,
-      notification: {
+      data: {
         title,
         body: message,
-      },
-      webpush: {
-        fcmOptions: {
-          link: link || "/",
-        },
-      },
-      data: {
         type: type || "general",
         link: link || "/",
       },

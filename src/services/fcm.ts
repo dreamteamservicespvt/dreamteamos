@@ -78,15 +78,9 @@ export function onForegroundMessage(callback?: (payload: any) => void): () => vo
     const messaging = getMessagingInstance();
     return onMessage(messaging, (payload) => {
       if (callback) callback(payload);
-      // Show notification even in foreground
-      if (payload.notification) {
-        const { title, body } = payload.notification;
-        if (Notification.permission === "granted") {
-          new Notification(title || "DTS Manager", {
-            body: body || "You have a new notification",
-          });
-        }
-      }
+      // In the foreground the in-app bell + sound already handles
+      // the notification via the Firestore onSnapshot listener,
+      // so we intentionally do NOT show a browser Notification here.
     });
   } catch {
     return () => {};

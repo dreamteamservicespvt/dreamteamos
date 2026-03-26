@@ -15,12 +15,13 @@ firebase.initializeApp({
 const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
-  const { title, body, icon } = payload.notification || {};
-  const notifTitle = title || "DTS Manager";
+  // We send data-only messages, so read title/body from payload.data
+  const data = payload.data || {};
+  const notifTitle = data.title || "DTS Manager";
   const notifOptions = {
-    body: body || "You have a new notification",
-    icon: icon || "/favicon.ico",
-    data: payload.data || {},
+    body: data.body || "You have a new notification",
+    icon: "/favicon.ico",
+    data: data,
   };
   self.registration.showNotification(notifTitle, notifOptions);
 });
