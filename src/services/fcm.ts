@@ -27,6 +27,28 @@ export async function initFCM(userId: string): Promise<void> {
 
     const sw = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
 
+    // Wait for the service worker to be active before requesting an FCM token
+    if (sw.installing) {
+      await new Promise<void>((resolve) => {
+        sw.installing!.addEventListener("statechange", function onStateChange() {
+          if (this.state === "activated") {
+            this.removeEventListener("statechange", onStateChange);
+            resolve();
+          }
+        });
+      });
+    } else if (sw.waiting) {
+      await new Promise<void>((resolve) => {
+        sw.waiting!.addEventListener("statechange", function onStateChange() {
+          if (this.state === "activated") {
+            this.removeEventListener("statechange", onStateChange);
+            resolve();
+          }
+        });
+      });
+    }
+    // sw.active means it's already active — no wait needed
+
     const messaging = getMessagingInstance();
     const token = await getToken(messaging, {
       vapidKey: VAPID_KEY,
