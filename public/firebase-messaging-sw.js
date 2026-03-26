@@ -14,7 +14,7 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-const APP_ICON = "https://res.cloudinary.com/dvmrhs2ek/image/upload/v1774554098/i4mc6nrr1rhmt4ifyl2m.png";
+const APP_ICON = "https://res.cloudinary.com/dvmrhs2ek/image/upload/v1774554466/jdqjbuvcdo40o5gzdlvz.png";
 
 messaging.onBackgroundMessage((payload) => {
   // We send data-only messages, so read title/body from payload.data
