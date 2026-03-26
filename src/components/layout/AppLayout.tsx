@@ -8,6 +8,7 @@ import Topbar from "./Topbar";
 import { Loader2 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { initFCM, onForegroundMessage } from "@/services/fcm";
+import VideoCallManager from "@/components/chat/VideoCallManager";
 import type { UserRole } from "@/types";
 
 interface AppLayoutProps {
@@ -58,6 +59,7 @@ export default function AppLayout({ allowedRoles }: AppLayoutProps) {
         <main className="flex-1 p-4 md:p-6 overflow-x-hidden">
           <Outlet />
         </main>
+        <VideoCallManager />
       </div>
     </div>
   );

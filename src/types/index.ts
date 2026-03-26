@@ -111,3 +111,42 @@ export interface DailyCheckin {
   approvedAt?: any;
   rejectionNote?: string;
 }
+
+// Chat System
+export interface ChatRoom {
+  id: string;
+  participants: string[];
+  participantNames: Record<string, string>;
+  participantAvatars?: Record<string, string>;
+  activeUsers: string[];
+  lastMessage: string;
+  lastMessageAt: any;
+  lastMessageBy: string;
+  unreadCounts: Record<string, number>;
+  createdAt: any;
+}
+
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  text: string;
+  createdAt: any;
+}
+
+// Video Call System
+export type CallStatus = "ringing" | "active" | "ended" | "declined";
+
+export interface VideoCallDoc {
+  id: string;
+  callerId: string;
+  callerName: string;
+  callerAvatar?: string;
+  receiverId: string;
+  receiverName: string;
+  receiverAvatar?: string;
+  status: CallStatus;
+  offer?: { type: string; sdp: string };
+  answer?: { type: string; sdp: string };
+  createdAt: any;
+  endedAt?: any;
+}

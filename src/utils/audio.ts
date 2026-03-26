@@ -66,3 +66,97 @@ export const playClickSound = () => {
     console.error("Audio playback failed", err);
   }
 };
+
+/** Short soft blip for incoming chat messages */
+export const playChatMessageSound = () => {
+  try {
+    const audioCtx = getAudioContext();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(660, audioCtx.currentTime + 0.12);
+    gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.15);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.15);
+  } catch (err) {
+    console.error("Audio playback failed", err);
+  }
+};
+
+/** Repeating ring pattern for incoming video calls */
+let _ringtoneInterval: ReturnType<typeof setInterval> | null = null;
+
+const _playRingOnce = () => {
+  try {
+    const audioCtx = getAudioContext();
+    [0, 0.18].forEach((offset) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(440, audioCtx.currentTime + offset);
+      gain.gain.setValueAtTime(0, audioCtx.currentTime + offset);
+      gain.gain.linearRampToValueAtTime(0.18, audioCtx.currentTime + offset + 0.02);
+      gain.gain.setValueAtTime(0.18, audioCtx.currentTime + offset + 0.1);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + offset + 0.15);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(audioCtx.currentTime + offset);
+      osc.stop(audioCtx.currentTime + offset + 0.15);
+    });
+  } catch (err) {
+    console.error("Ringtone playback failed", err);
+  }
+};
+
+export const startRingtone = () => {
+  stopRingtone();
+  _playRingOnce();
+  _ringtoneInterval = setInterval(_playRingOnce, 2000);
+};
+
+export const stopRingtone = () => {
+  if (_ringtoneInterval !== null) {
+    clearInterval(_ringtoneInterval);
+    _ringtoneInterval = null;
+  }
+};
+
+/** Outgoing call ring-back tone */
+let _ringbackInterval: ReturnType<typeof setInterval> | null = null;
+
+const _playRingbackOnce = () => {
+  try {
+    const audioCtx = getAudioContext();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+    gain.gain.setValueAtTime(0, audioCtx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.1, audioCtx.currentTime + 0.02);
+    gain.gain.setValueAtTime(0.1, audioCtx.currentTime + 0.8);
+    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 1.0);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 1.0);
+  } catch (err) {
+    console.error("Ringback playback failed", err);
+  }
+};
+
+export const startRingback = () => {
+  stopRingback();
+  _playRingbackOnce();
+  _ringbackInterval = setInterval(_playRingbackOnce, 3000);
+};
+
+export const stopRingback = () => {
+  if (_ringbackInterval !== null) {
+    clearInterval(_ringbackInterval);
+    _ringbackInterval = null;
+  }
+};
