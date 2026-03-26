@@ -151,3 +151,33 @@ export interface VideoCallDoc {
   createdAt: any;
   endedAt?: any;
 }
+
+// Meeting System
+export interface MeetingDoc {
+  id: string;
+  code: string;
+  title: string;
+  createdBy: string;
+  createdByName: string;
+  status: "active" | "ended";
+  participantUids: string[];
+  createdAt: any;
+  endedAt?: any;
+}
+
+export interface MeetingParticipant {
+  uid: string;
+  name: string;
+  avatar?: string;
+  joinedAt: any;
+}
+
+export interface MeetingSignal {
+  id: string;
+  from: string;
+  to: string;
+  type: "offer" | "answer" | "candidate";
+  sdp?: string;
+  candidate?: any;
+  createdAt: any;
+}

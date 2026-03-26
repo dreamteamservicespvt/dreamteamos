@@ -54,6 +54,8 @@ import PlaceholderPage from "@/pages/PlaceholderPage";
 import MySalaryPage from "@/pages/shared/MySalary";
 import NotFound from "@/pages/NotFound";
 import Chat from "@/pages/shared/Chat";
+import Meeting from "@/pages/shared/Meeting";
+import AdminChatMonitor from "@/pages/shared/AdminChatMonitor";
 import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
@@ -112,6 +114,8 @@ const App = () => (
             <Route path="/tech-admin/work-assign/:memberId" element={<MemberAssignments />} />
             <Route path="/tech-admin/tools" element={<TechAdminTools />} />
             <Route path="/tech-admin/chat" element={<Chat />} />
+            <Route path="/tech-admin/meeting" element={<Meeting />} />
+            <Route path="/tech-admin/chat-monitor" element={<AdminChatMonitor />} />
           </Route>
 
           {/* Sales Admin */}
@@ -127,6 +131,8 @@ const App = () => (
             <Route path="/sales-admin/sessions" element={<SalesAdminSessionHistory />} />
             <Route path="/sales-admin/settings" element={<SalesAdminSettings />} />
             <Route path="/sales-admin/chat" element={<Chat />} />
+            <Route path="/sales-admin/meeting" element={<Meeting />} />
+            <Route path="/sales-admin/chat-monitor" element={<AdminChatMonitor />} />
             <Route path="/sales-admin/salary" element={<MySalaryPage />} />
           </Route>
 
@@ -145,6 +151,7 @@ const App = () => (
             <Route path="/tech/training" element={<TechMemberTraining />} />
             <Route path="/tech/profile" element={<TechMemberProfile />} />
             <Route path="/tech/chat" element={<Chat />} />
+            <Route path="/tech/meeting" element={<Meeting />} />
             <Route path="/tech/salary" element={<MySalaryPage />} />
           </Route>
 
@@ -156,6 +163,7 @@ const App = () => (
             <Route path="/sales/training" element={<SalesMemberTraining />} />
             <Route path="/sales/profile" element={<SalesMemberProfile />} />
             <Route path="/sales/chat" element={<Chat />} />
+            <Route path="/sales/meeting" element={<Meeting />} />
             <Route path="/sales/salary" element={<MySalaryPage />} />
           </Route>
 

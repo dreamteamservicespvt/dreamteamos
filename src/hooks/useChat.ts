@@ -6,7 +6,7 @@ import {
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { sendNotification } from "@/services/notifications";
-import { getChatRoomId, getChatContactRole, getChatRoute } from "@/utils/chatHelpers";
+import { getChatRoomId, getChatContactRoles, getChatRoute } from "@/utils/chatHelpers";
 import { playChatMessageSound } from "@/utils/audio";
 import type { AppUser, ChatRoom, ChatMessage } from "@/types";
 export type { ChatMessage };
@@ -32,19 +32,22 @@ export function useChat() {
   const prevMsgCount = useRef(0);
   const initialMsgLoad = useRef(true);
 
-  // 1. Load contacts based on role
+  // 1. Load contacts based on role (supports multiple roles)
   useEffect(() => {
     if (!user) return;
-    const contactRole = getChatContactRole(user.role);
-    if (!contactRole) { setLoadingContacts(false); return; }
+    const roles = getChatContactRoles(user.role);
+    if (roles.length === 0) { setLoadingContacts(false); return; }
 
+    // Firestore "in" supports up to 30 values
     const q = query(
       collection(db, "users"),
-      where("role", "==", contactRole),
+      where("role", "in", roles),
       where("isActive", "==", true),
     );
     const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser));
+      const list = snap.docs
+        .map((d) => ({ uid: d.id, ...d.data() } as AppUser))
+        .filter((u) => u.uid !== user.uid); // exclude self
       setContacts(
         list.map((u) => ({
           uid: u.uid,
