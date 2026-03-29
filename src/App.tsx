@@ -46,6 +46,7 @@ import TechAdminMemberHistory from "@/pages/tech-admin/MemberHistory";
 import WorkAssign from "@/pages/tech-admin/WorkAssign";
 import MemberAssignments from "@/pages/tech-admin/MemberAssignments";
 import TechAdminTools from "@/pages/tech-admin/Tools";
+import CinematicAds from "@/pages/tech-admin/CinematicAds";
 import AccountsDashboard from "@/pages/accounts-admin/Dashboard";
 import RevenueSummary from "@/pages/accounts-admin/RevenueSummary";
 import DailyExpenses from "@/pages/accounts-admin/DailyExpenses";
@@ -113,6 +114,7 @@ const App = () => (
             <Route path="/tech-admin/work-assign" element={<WorkAssign />} />
             <Route path="/tech-admin/work-assign/:memberId" element={<MemberAssignments />} />
             <Route path="/tech-admin/tools" element={<TechAdminTools />} />
+            <Route path="/tech-admin/cinematic-ads" element={<CinematicAds />} />
             <Route path="/tech-admin/chat" element={<Chat />} />
             <Route path="/tech-admin/meeting" element={<Meeting />} />
             <Route path="/tech-admin/chat-monitor" element={<AdminChatMonitor />} />
