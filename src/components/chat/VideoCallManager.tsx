@@ -10,11 +10,13 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   Phone, PhoneOff, Mic, MicOff, VideoIcon, VideoOff, Monitor, MonitorOff, Loader2, Volume2, Volume1,
+  SwitchCamera, UserPlus, SmilePlus, X,
 } from "lucide-react";
 import { startRingtone, stopRingtone, startRingback, stopRingback } from "@/utils/audio";
 import { sendNotification } from "@/services/notifications";
 import { getChatRoute } from "@/utils/chatHelpers";
 import type { VideoCallDoc } from "@/types";
+import { motion, AnimatePresence } from "framer-motion";
 
 const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
@@ -45,6 +47,14 @@ const ICE_SERVERS: RTCConfiguration = {
 
 type CallPhase = "idle" | "outgoing" | "incoming" | "active";
 
+const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "🔥", "🎉", "👏", "😢"];
+
+interface FloatingReaction {
+  id: number;
+  emoji: string;
+  x: number; // random horizontal position (%)
+}
+
 export default function VideoCallManager() {
   const user = useAuthStore((s) => s.user);
   const { pendingCall, clearPendingCall } = useCallStore();
@@ -59,6 +69,10 @@ export default function VideoCallManager() {
   const [callDuration, setCallDuration] = useState(0);
 
   const [isSpeaker, setIsSpeaker] = useState(false);
+  const [isFrontCamera, setIsFrontCamera] = useState(true);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [reactions, setReactions] = useState<FloatingReaction[]>([]);
+  const reactionIdRef = useRef(0);
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -75,6 +89,7 @@ export default function VideoCallManager() {
   const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const remoteDescriptionSetRef = useRef(false);
   const isAnsweringRef = useRef(false);
+  const facingModeRef = useRef<"user" | "environment">("user");
 
   // ── Cleanup helper ──
   const cleanup = useCallback(() => {
@@ -100,6 +115,7 @@ export default function VideoCallManager() {
     pendingCandidatesRef.current = [];
     remoteDescriptionSetRef.current = false;
     isAnsweringRef.current = false;
+    facingModeRef.current = "user";
     setPhase("idle");
     setCallType("video");
     setPeerName("");
@@ -109,6 +125,9 @@ export default function VideoCallManager() {
     setIsScreenSharing(false);
     setCallDuration(0);
     setIsSpeaker(false);
+    setIsFrontCamera(true);
+    setShowEmojiPicker(false);
+    setReactions([]);
   }, []);
 
   // ── Start call timer ──
@@ -119,7 +138,9 @@ export default function VideoCallManager() {
 
   // ── Get user media ──
   const getMedia = useCallback(async (type: CallType = "video") => {
-    const constraints = type === "voice" ? { video: false, audio: true } : { video: true, audio: true };
+    const constraints = type === "voice"
+      ? { video: false, audio: true }
+      : { video: { facingMode: facingModeRef.current }, audio: true };
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
     localStreamRef.current = stream;
     if (localVideoRef.current) localVideoRef.current.srcObject = stream;
@@ -394,6 +415,56 @@ export default function VideoCallManager() {
     }
   }, [isScreenSharing]);
 
+  // ── FLIP CAMERA (front / back) ──
+  const flipCamera = useCallback(async () => {
+    const pc = pcRef.current;
+    if (!pc) return;
+    try {
+      const newMode = facingModeRef.current === "user" ? "environment" : "user";
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: newMode },
+        audio: true,
+      });
+      // Replace video track on peer connection
+      const newVideoTrack = newStream.getVideoTracks()[0];
+      const sender = pc.getSenders().find((s) => s.track?.kind === "video");
+      if (sender && newVideoTrack) {
+        await sender.replaceTrack(newVideoTrack);
+      }
+      // Stop old video track, keep new audio track synced
+      const oldStream = localStreamRef.current;
+      oldStream?.getVideoTracks().forEach((t) => t.stop());
+      // Replace old video track in local stream
+      if (oldStream) {
+        oldStream.getVideoTracks().forEach((t) => oldStream.removeTrack(t));
+        oldStream.addTrack(newVideoTrack);
+      }
+      // Also stop the new audio track (we keep the old one)
+      newStream.getAudioTracks().forEach((t) => t.stop());
+
+      if (localVideoRef.current && localStreamRef.current) {
+        localVideoRef.current.srcObject = localStreamRef.current;
+      }
+      facingModeRef.current = newMode;
+      setIsFrontCamera(newMode === "user");
+    } catch (err) {
+      console.error("Failed to flip camera:", err);
+    }
+  }, []);
+
+  // ── SEND EMOJI REACTION ──
+  const sendReaction = useCallback((emoji: string) => {
+    reactionIdRef.current += 1;
+    const id = reactionIdRef.current;
+    const x = 10 + Math.random() * 80; // random horizontal position
+    setReactions((prev) => [...prev, { id, emoji, x }]);
+    setShowEmojiPicker(false);
+    // Remove after animation
+    setTimeout(() => {
+      setReactions((prev) => prev.filter((r) => r.id !== id));
+    }, 2500);
+  }, []);
+
   // ── Listen for incoming calls ──
   useEffect(() => {
     if (!user) return;
@@ -481,16 +552,34 @@ export default function VideoCallManager() {
 
   // ── Speaker / earpiece routing ──
   // On mobile: <video> routes to loudspeaker, <audio> routes to earpiece
+  // We also use setSinkId for browsers that support it (Chrome on Android)
   useEffect(() => {
     if (phase !== "active") return;
     if (isSpeaker) {
       // Speaker: unmute video element audio, mute audio element
-      if (remoteVideoRef.current) remoteVideoRef.current.muted = false;
-      if (remoteAudioRef.current) remoteAudioRef.current.muted = true;
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.muted = false;
+        remoteVideoRef.current.volume = 1;
+      }
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.muted = true;
+        remoteAudioRef.current.volume = 0;
+      }
     } else {
       // Earpiece: mute video element audio, unmute audio element
-      if (remoteVideoRef.current) remoteVideoRef.current.muted = true;
-      if (remoteAudioRef.current) remoteAudioRef.current.muted = false;
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.muted = true;
+        remoteVideoRef.current.volume = 0;
+      }
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.muted = false;
+        remoteAudioRef.current.volume = 1;
+        // Try setSinkId for proper earpiece routing on supported browsers
+        const audioEl = remoteAudioRef.current as any;
+        if (typeof audioEl.setSinkId === "function") {
+          audioEl.setSinkId("default").catch(() => {});
+        }
+      }
     }
   }, [isSpeaker, phase]);
 
@@ -608,14 +697,45 @@ export default function VideoCallManager() {
               <p className="font-semibold text-sm">{peerName}</p>
               <p className="text-xs text-white/70">{formatTime(callDuration)}</p>
             </div>
-            {/* Local video PiP */}
+            {/* Local video PiP — mirrored for front camera (natural mirror view) */}
             <video
               ref={localVideoRef}
               autoPlay
               playsInline
               muted
               className="absolute bottom-4 right-4 w-36 h-28 md:w-48 md:h-36 rounded-xl border-2 border-white/20 object-cover shadow-xl bg-black z-10"
+              style={isFrontCamera ? { transform: "scaleX(-1)" } : undefined}
             />
+            {/* Floating emoji reactions */}
+            <AnimatePresence>
+              {reactions.map((r) => (
+                <motion.div
+                  key={r.id}
+                  initial={{ opacity: 1, y: 0, scale: 1 }}
+                  animate={{ opacity: 0, y: -300, scale: 1.5 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 2.5, ease: "easeOut" }}
+                  className="absolute bottom-28 pointer-events-none text-4xl z-20"
+                  style={{ left: `${r.x}%` }}
+                >
+                  {r.emoji}
+                </motion.div>
+              ))}
+            </AnimatePresence>
+            {/* Emoji picker overlay */}
+            {showEmojiPicker && (
+              <div className="absolute bottom-28 left-1/2 -translate-x-1/2 z-30 bg-gray-900/90 backdrop-blur-sm rounded-2xl p-3 flex gap-2 flex-wrap max-w-[280px] justify-center shadow-2xl border border-white/10">
+                {REACTION_EMOJIS.map((e) => (
+                  <button
+                    key={e}
+                    onClick={() => sendReaction(e)}
+                    className="text-2xl hover:scale-125 transition-transform p-1"
+                  >
+                    {e}
+                  </button>
+                ))}
+              </div>
+            )}
           </>
         )}
       </div>
@@ -629,7 +749,7 @@ export default function VideoCallManager() {
       )}
 
       {/* Controls */}
-      <div className="bg-gray-900/80 backdrop-blur-sm px-4 py-4 flex items-center justify-center gap-4">
+      <div className="bg-gray-900/80 backdrop-blur-sm px-4 py-4 flex items-center justify-center gap-3 flex-wrap">
         <button
           onClick={toggleMute}
           className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${
@@ -660,6 +780,13 @@ export default function VideoCallManager() {
               {isCameraOff ? <VideoOff className="w-5 h-5" /> : <VideoIcon className="w-5 h-5" />}
             </button>
             <button
+              onClick={flipCamera}
+              className="w-12 h-12 rounded-full bg-white/10 text-white hover:bg-white/20 flex items-center justify-center transition-colors"
+              title={isFrontCamera ? "Switch to back camera" : "Switch to front camera"}
+            >
+              <SwitchCamera className="w-5 h-5" />
+            </button>
+            <button
               onClick={toggleScreenShare}
               className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${
                 isScreenSharing ? "bg-blue-500/80 text-white" : "bg-white/10 text-white hover:bg-white/20"
@@ -667,6 +794,15 @@ export default function VideoCallManager() {
               title={isScreenSharing ? "Stop sharing" : "Share screen"}
             >
               {isScreenSharing ? <MonitorOff className="w-5 h-5" /> : <Monitor className="w-5 h-5" />}
+            </button>
+            <button
+              onClick={() => setShowEmojiPicker((p) => !p)}
+              className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${
+                showEmojiPicker ? "bg-yellow-500/80 text-white" : "bg-white/10 text-white hover:bg-white/20"
+              }`}
+              title="Send reaction"
+            >
+              <SmilePlus className="w-5 h-5" />
             </button>
           </>
         )}

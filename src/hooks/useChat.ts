@@ -8,7 +8,7 @@ import { useAuthStore } from "@/store/authStore";
 import { sendNotification } from "@/services/notifications";
 import { getChatRoomId, getChatContactRoles, getChatRoute } from "@/utils/chatHelpers";
 import { playChatMessageSound } from "@/utils/audio";
-import type { AppUser, ChatRoom, ChatMessage } from "@/types";
+import type { AppUser, ChatRoom, ChatMessage, ChatMessageType } from "@/types";
 export type { ChatMessage };
 
 export interface ChatContact {
@@ -246,6 +246,81 @@ export function useChat() {
     [user, activeRoomId, contacts],
   );
 
+  // Send a file / voice / emoji message
+  const sendFileMessage = useCallback(
+    async (opts: {
+      type: ChatMessageType;
+      text?: string;
+      fileUrl?: string;
+      fileName?: string;
+      fileType?: string;
+      duration?: number;
+    }) => {
+      if (!user || !activeRoomId) return;
+
+      const parts = activeRoomId.split("_");
+      const receiverId = parts.find((p) => p !== user.uid) ?? parts[1];
+      const contact = contacts.find((c) => c.uid === receiverId);
+
+      const roomRef = doc(db, "chatRooms", activeRoomId);
+      const roomSnap = await getDoc(roomRef);
+
+      if (!roomSnap.exists()) {
+        await setDoc(roomRef, {
+          participants: [user.uid, receiverId],
+          participantNames: { [user.uid]: user.name, [receiverId]: contact?.name ?? "" },
+          participantAvatars: { [user.uid]: user.avatar ?? "", [receiverId]: contact?.avatar ?? "" },
+          activeUsers: [user.uid],
+          lastMessage: opts.type === "voice" ? "🎤 Voice message" : opts.type === "emoji" ? (opts.text ?? "😀") : (opts.fileName ?? "📎 File"),
+          lastMessageAt: serverTimestamp(),
+          lastMessageBy: user.uid,
+          unreadCounts: { [user.uid]: 0, [receiverId]: 0 },
+          createdAt: serverTimestamp(),
+        });
+      }
+
+      const msgData: Record<string, any> = {
+        senderId: user.uid,
+        text: opts.text ?? "",
+        type: opts.type,
+        createdAt: serverTimestamp(),
+      };
+      if (opts.fileUrl) msgData.fileUrl = opts.fileUrl;
+      if (opts.fileName) msgData.fileName = opts.fileName;
+      if (opts.fileType) msgData.fileType = opts.fileType;
+      if (opts.duration != null) msgData.duration = opts.duration;
+
+      await addDoc(collection(db, "chatRooms", activeRoomId, "messages"), msgData);
+
+      const previewText = opts.type === "voice" ? "🎤 Voice message"
+        : opts.type === "emoji" ? (opts.text ?? "😀")
+        : opts.type === "image" ? "📷 Photo"
+        : opts.type === "video" ? "🎬 Video"
+        : (opts.fileName ?? "📎 File");
+
+      const active: string[] = roomSnap.exists() ? roomSnap.data().activeUsers ?? [] : [user.uid];
+      const receiverIsActive = active.includes(receiverId);
+
+      await updateDoc(roomRef, {
+        lastMessage: previewText,
+        lastMessageAt: serverTimestamp(),
+        lastMessageBy: user.uid,
+        ...(!receiverIsActive ? { [`unreadCounts.${receiverId}`]: increment(1) } : {}),
+      });
+
+      if (!receiverIsActive && contact) {
+        sendNotification({
+          userId: receiverId,
+          type: "chat_message",
+          title: `Message from ${user.name}`,
+          message: previewText,
+          link: getChatRoute(contact.role as any),
+        });
+      }
+    },
+    [user, activeRoomId, contacts],
+  );
+
   const totalUnread = contacts.reduce((s, c) => s + c.unreadCount, 0);
 
   return {
@@ -257,6 +332,7 @@ export function useChat() {
     totalUnread,
     openRoom,
     sendMessage,
+    sendFileMessage,
     closeRoom: () => setActiveRoomId(null),
   };
 }

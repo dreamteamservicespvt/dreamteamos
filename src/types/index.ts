@@ -126,10 +126,17 @@ export interface ChatRoom {
   createdAt: any;
 }
 
+export type ChatMessageType = "text" | "image" | "video" | "file" | "voice" | "emoji";
+
 export interface ChatMessage {
   id: string;
   senderId: string;
   text: string;
+  type?: ChatMessageType;
+  fileUrl?: string;
+  fileName?: string;
+  fileType?: string;
+  duration?: number; // voice message duration in seconds
   createdAt: any;
 }
 
