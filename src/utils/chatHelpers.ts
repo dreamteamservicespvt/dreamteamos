@@ -62,3 +62,19 @@ export function getChatRoute(role: UserRole): string {
       return "/";
   }
 }
+
+/** The meeting page route for a given role */
+export function getMeetingRoute(role: UserRole): string {
+  switch (role) {
+    case "tech_admin":
+      return "/tech-admin/meeting";
+    case "tech_member":
+      return "/tech/meeting";
+    case "sales_admin":
+      return "/sales-admin/meeting";
+    case "sales_member":
+      return "/sales/meeting";
+    default:
+      return "/";
+  }
+}

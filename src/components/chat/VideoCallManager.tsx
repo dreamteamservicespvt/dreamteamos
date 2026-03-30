@@ -10,13 +10,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   Phone, PhoneOff, Mic, MicOff, VideoIcon, VideoOff, Monitor, MonitorOff, Loader2, Volume2, Volume1,
-  SwitchCamera, UserPlus, SmilePlus, X,
+  SwitchCamera, UserPlus, SmilePlus, X, Search,
 } from "lucide-react";
 import { startRingtone, stopRingtone, startRingback, stopRingback } from "@/utils/audio";
 import { sendNotification } from "@/services/notifications";
-import { getChatRoute } from "@/utils/chatHelpers";
-import type { VideoCallDoc } from "@/types";
+import { getChatRoute, getChatContactRoles, getMeetingRoute } from "@/utils/chatHelpers";
+import type { VideoCallDoc, AppUser } from "@/types";
 import { motion, AnimatePresence } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 
 const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
@@ -58,11 +59,14 @@ interface FloatingReaction {
 export default function VideoCallManager() {
   const user = useAuthStore((s) => s.user);
   const { pendingCall, clearPendingCall } = useCallStore();
+  const setPendingMeeting = useCallStore((s) => s.setPendingMeeting);
+  const navigate = useNavigate();
 
   const [phase, setPhase] = useState<CallPhase>("idle");
   const [callType, setCallType] = useState<CallType>("video");
   const [peerName, setPeerName] = useState("");
   const [peerAvatar, setPeerAvatar] = useState<string | undefined>();
+  const [peerIdRef_state, setPeerIdState] = useState<string>("");
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
@@ -73,6 +77,13 @@ export default function VideoCallManager() {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [reactions, setReactions] = useState<FloatingReaction[]>([]);
   const reactionIdRef = useRef(0);
+
+  // Add members state
+  const [showAddPeople, setShowAddPeople] = useState(false);
+  const [addPeopleContacts, setAddPeopleContacts] = useState<AppUser[]>([]);
+  const [addPeopleSearch, setAddPeopleSearch] = useState("");
+  const [addingMember, setAddingMember] = useState(false);
+  const peerIdRef = useRef<string>("");
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -128,6 +139,11 @@ export default function VideoCallManager() {
     setIsFrontCamera(true);
     setShowEmojiPicker(false);
     setReactions([]);
+    setShowAddPeople(false);
+    setAddPeopleSearch("");
+    setAddingMember(false);
+    setPeerIdState("");
+    peerIdRef.current = "";
   }, []);
 
   // ── Start call timer ──
@@ -223,6 +239,8 @@ export default function VideoCallManager() {
         setPeerAvatar(avatar);
         setCallType(type);
         setPhase("outgoing");
+        setPeerIdState(peerId);
+        peerIdRef.current = peerId;
         startRingback();
 
         const gen = callGenRef.current;
@@ -280,6 +298,12 @@ export default function VideoCallManager() {
             setIsSpeaker(type === "video"); // video→speaker, voice→earpiece
             setPhase("active");
             startTimer();
+          } else if (data.status === "upgraded" && data.meetingRedirect) {
+            // Peer escalated to a group meeting — follow them
+            const { meetingId, meetingCode } = data.meetingRedirect;
+            setPendingMeeting(meetingId, meetingCode);
+            cleanup();
+            navigate(getMeetingRoute(user!.role));
           } else if (data.status === "declined" || data.status === "ended") {
             cleanup();
           }
@@ -290,7 +314,7 @@ export default function VideoCallManager() {
         cleanup();
       }
     },
-    [user, phase, getMedia, createPC, cleanup, startTimer, flushPendingCandidates],
+    [user, phase, getMedia, createPC, cleanup, startTimer, flushPendingCandidates, setPendingMeeting, navigate],
   );
 
   // ── ACCEPT INCOMING CALL ──
@@ -301,6 +325,8 @@ export default function VideoCallManager() {
       stopRingtone();
       isAnsweringRef.current = true;
       setPhase("active");
+      setPeerIdState(callDoc.callerId);
+      peerIdRef.current = callDoc.callerId;
 
       const type = callDoc.callType ?? "video";
       setCallType(type);
@@ -328,14 +354,19 @@ export default function VideoCallManager() {
       const unsub = onSnapshot(doc(db, "calls", callId), (snap) => {
         if (!snap.exists()) { cleanup(); return; }
         const data = snap.data();
-        if (data.status === "ended") cleanup();
+        if (data.status === "upgraded" && data.meetingRedirect) {
+          const { meetingId, meetingCode } = data.meetingRedirect;
+          setPendingMeeting(meetingId, meetingCode);
+          cleanup();
+          navigate(getMeetingRoute(user!.role));
+        } else if (data.status === "ended") cleanup();
       });
       unsubsRef.current.push(unsub);
     } catch (err) {
       console.error("Failed to accept call:", err);
       cleanup();
     }
-  }, [user, getMedia, createPC, cleanup, startTimer, flushPendingCandidates]);
+  }, [user, getMedia, createPC, cleanup, startTimer, flushPendingCandidates, setPendingMeeting, navigate]);
 
   // ── DECLINE INCOMING CALL ──
   const declineCall = useCallback(async () => {
@@ -391,26 +422,46 @@ export default function VideoCallManager() {
       const cameraTrack = localStreamRef.current?.getVideoTracks()[0];
       if (cameraTrack) {
         const sender = pc.getSenders().find((s) => s.track?.kind === "video");
-        sender?.replaceTrack(cameraTrack);
+        if (sender) await sender.replaceTrack(cameraTrack);
+      }
+      // Restore local PiP to camera
+      if (localVideoRef.current && localStreamRef.current) {
+        localVideoRef.current.srcObject = localStreamRef.current;
       }
       setIsScreenSharing(false);
     } else {
+      // Check if getDisplayMedia is supported
+      if (!navigator.mediaDevices?.getDisplayMedia) {
+        console.warn("Screen sharing not supported on this device/browser");
+        return;
+      }
       try {
         const screen = await navigator.mediaDevices.getDisplayMedia({ video: true });
         screenStreamRef.current = screen;
         const screenTrack = screen.getVideoTracks()[0];
         const sender = pc.getSenders().find((s) => s.track?.kind === "video");
-        sender?.replaceTrack(screenTrack);
+        if (sender) {
+          await sender.replaceTrack(screenTrack);
+        }
+        // Show screen share in local PiP
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = screen;
+        }
         setIsScreenSharing(true);
 
         screenTrack.onended = () => {
           const cameraTrack = localStreamRef.current?.getVideoTracks()[0];
-          if (cameraTrack) sender?.replaceTrack(cameraTrack);
+          if (cameraTrack && sender) sender.replaceTrack(cameraTrack);
+          // Restore local PiP to camera
+          if (localVideoRef.current && localStreamRef.current) {
+            localVideoRef.current.srcObject = localStreamRef.current;
+          }
           screenStreamRef.current = null;
           setIsScreenSharing(false);
         };
-      } catch {
-        // User cancelled screen share picker
+      } catch (err) {
+        // User cancelled or not supported
+        console.warn("Screen share failed:", err);
       }
     }
   }, [isScreenSharing]);
@@ -464,6 +515,72 @@ export default function VideoCallManager() {
       setReactions((prev) => prev.filter((r) => r.id !== id));
     }, 2500);
   }, []);
+
+  // ── LOAD CONTACTS FOR ADD-PEOPLE PICKER ──
+  useEffect(() => {
+    if (!showAddPeople || !user) return;
+    const roles = getChatContactRoles(user.role);
+    if (roles.length === 0) return;
+    const q = query(
+      collection(db, "users"),
+      where("role", "in", roles),
+      where("isActive", "==", true),
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      const list = snap.docs
+        .map((d) => ({ uid: d.id, ...d.data() } as AppUser))
+        .filter((u) => u.uid !== user.uid && u.uid !== peerIdRef.current);
+      setAddPeopleContacts(list);
+    });
+    return () => unsub();
+  }, [showAddPeople, user?.uid, user?.role]);
+
+  // ── ESCALATE TO GROUP MEETING ──
+  const escalateToMeeting = useCallback(async (extraUserId: string, extraUserName: string) => {
+    if (!user || addingMember) return;
+    setAddingMember(true);
+    try {
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      let code = "";
+      for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+
+      const meetingRef = doc(collection(db, "meetings"));
+      await setDoc(meetingRef, {
+        code,
+        title: `${user.name}'s Meeting`,
+        createdBy: user.uid,
+        createdByName: user.name,
+        status: "active",
+        participantUids: [],
+        createdAt: serverTimestamp(),
+      });
+
+      // Write meetingRedirect to call doc so peer auto-joins too
+      const callId = callDocIdRef.current;
+      if (callId) {
+        await updateDoc(doc(db, "calls", callId), {
+          status: "upgraded",
+          meetingRedirect: { meetingId: meetingRef.id, meetingCode: code },
+        });
+      }
+
+      // Notify the extra user
+      sendNotification({
+        userId: extraUserId,
+        type: "meeting_invite",
+        title: "Meeting Invitation",
+        message: `${user.name} invited you to a meeting. Code: ${code}`,
+      });
+
+      // Set pending meeting & navigate (current user)
+      setPendingMeeting(meetingRef.id, code);
+      cleanup();
+      navigate(getMeetingRoute(user.role));
+    } catch (err) {
+      console.error("Failed to escalate to meeting:", err);
+      setAddingMember(false);
+    }
+  }, [user, addingMember, cleanup, navigate, setPendingMeeting]);
 
   // ── Listen for incoming calls ──
   useEffect(() => {
@@ -807,6 +924,13 @@ export default function VideoCallManager() {
           </>
         )}
         <button
+          onClick={() => setShowAddPeople(true)}
+          className="w-12 h-12 rounded-full bg-white/10 text-white hover:bg-white/20 flex items-center justify-center transition-colors"
+          title="Add people"
+        >
+          <UserPlus className="w-5 h-5" />
+        </button>
+        <button
           onClick={endCall}
           className="w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center text-white transition-colors shadow-lg"
           title="End call"
@@ -814,6 +938,57 @@ export default function VideoCallManager() {
           <PhoneOff className="w-6 h-6" />
         </button>
       </div>
+
+      {/* Add People overlay */}
+      {showAddPeople && (
+        <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col">
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-white/10">
+            <button onClick={() => { setShowAddPeople(false); setAddPeopleSearch(""); }} className="text-white">
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-white font-semibold flex-1">Add People to Meeting</h3>
+          </div>
+          <div className="px-4 py-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/50" />
+              <input
+                value={addPeopleSearch}
+                onChange={(e) => setAddPeopleSearch(e.target.value)}
+                placeholder="Search contacts…"
+                className="w-full bg-white/10 text-white placeholder:text-white/40 rounded-lg pl-9 pr-4 py-2 text-sm outline-none focus:ring-1 focus:ring-white/30"
+              />
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto px-4 py-2 space-y-1">
+            {addPeopleContacts
+              .filter((c) => c.name.toLowerCase().includes(addPeopleSearch.toLowerCase()))
+              .map((c) => {
+                const ci = c.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+                return (
+                  <button
+                    key={c.uid}
+                    disabled={addingMember}
+                    onClick={() => escalateToMeeting(c.uid, c.name)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white/10 text-white transition-colors disabled:opacity-50"
+                  >
+                    <Avatar className="h-9 w-9">
+                      <AvatarImage src={c.avatar} />
+                      <AvatarFallback className="text-xs font-semibold bg-white/10">{ci}</AvatarFallback>
+                    </Avatar>
+                    <div className="text-left flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{c.name}</p>
+                      <p className="text-[11px] text-white/50 capitalize">{c.role.replace("_", " ")}</p>
+                    </div>
+                    {addingMember && <Loader2 className="w-4 h-4 animate-spin text-white/60" />}
+                  </button>
+                );
+              })}
+            {addPeopleContacts.filter((c) => c.name.toLowerCase().includes(addPeopleSearch.toLowerCase())).length === 0 && (
+              <p className="text-white/40 text-sm text-center py-8">No contacts found</p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,7 +1,8 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { collection, doc, setDoc, query, where, getDocs, serverTimestamp } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
+import { useCallStore } from "@/store/callStore";
 import { sendNotification } from "@/services/notifications";
 import { getChatContactRoles } from "@/utils/chatHelpers";
 import { Button } from "@/components/ui/button";
@@ -21,12 +22,22 @@ function generateCode(): string {
 
 export default function Meeting() {
   const user = useAuthStore((s) => s.user);
+  const { pendingMeeting, clearPendingMeeting } = useCallStore();
   const [activeMeetingId, setActiveMeetingId] = useState<string | null>(null);
   const [activeMeetingCode, setActiveMeetingCode] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Auto-join if redirected from a call escalation
+  useEffect(() => {
+    if (pendingMeeting) {
+      setActiveMeetingId(pendingMeeting.meetingId);
+      setActiveMeetingCode(pendingMeeting.meetingCode);
+      clearPendingMeeting();
+    }
+  }, [pendingMeeting, clearPendingMeeting]);
 
   const createMeeting = useCallback(async () => {
     if (!user) return;

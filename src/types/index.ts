@@ -137,6 +137,12 @@ export interface ChatMessage {
   fileName?: string;
   fileType?: string;
   duration?: number; // voice message duration in seconds
+  replyToId?: string;
+  replyToText?: string;
+  replyToSenderId?: string;
+  editedAt?: any;
+  editHistory?: string[];
+  deletedAt?: any;
   createdAt: any;
 }
 

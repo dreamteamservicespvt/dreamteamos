@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   collection, query, where, doc, setDoc, addDoc, updateDoc, onSnapshot,
-  orderBy, serverTimestamp, increment, getDoc,
+  orderBy, serverTimestamp, increment, getDoc, arrayUnion,
 } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
@@ -178,7 +178,7 @@ export function useChat() {
 
   // Send a message
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, replyTo?: { id: string; text: string; senderId: string }) => {
       if (!user || !activeRoomId || !text.trim()) return;
       const trimmed = text.trim();
 
@@ -212,11 +212,18 @@ export function useChat() {
       }
 
       // Write message
-      await addDoc(collection(db, "chatRooms", activeRoomId, "messages"), {
+      const msgData: Record<string, any> = {
         senderId: user.uid,
         text: trimmed,
         createdAt: serverTimestamp(),
-      });
+      };
+      if (replyTo) {
+        msgData.replyToId = replyTo.id;
+        msgData.replyToText = replyTo.text;
+        msgData.replyToSenderId = replyTo.senderId;
+      }
+
+      await addDoc(collection(db, "chatRooms", activeRoomId, "messages"), msgData);
 
       // Update room metadata
       const active: string[] = roomSnap.exists()
@@ -255,6 +262,7 @@ export function useChat() {
       fileName?: string;
       fileType?: string;
       duration?: number;
+      replyTo?: { id: string; text: string; senderId: string };
     }) => {
       if (!user || !activeRoomId) return;
 
@@ -289,6 +297,11 @@ export function useChat() {
       if (opts.fileName) msgData.fileName = opts.fileName;
       if (opts.fileType) msgData.fileType = opts.fileType;
       if (opts.duration != null) msgData.duration = opts.duration;
+      if (opts.replyTo) {
+        msgData.replyToId = opts.replyTo.id;
+        msgData.replyToText = opts.replyTo.text;
+        msgData.replyToSenderId = opts.replyTo.senderId;
+      }
 
       await addDoc(collection(db, "chatRooms", activeRoomId, "messages"), msgData);
 
@@ -321,6 +334,38 @@ export function useChat() {
     [user, activeRoomId, contacts],
   );
 
+  // Delete a message (soft delete — marks as deleted so other user sees "This message was deleted")
+  const deleteMessage = useCallback(
+    async (messageId: string) => {
+      if (!activeRoomId) return;
+      const msgRef = doc(db, "chatRooms", activeRoomId, "messages", messageId);
+      await updateDoc(msgRef, {
+        deletedAt: serverTimestamp(),
+        text: "",
+        fileUrl: null,
+        fileName: null,
+      });
+    },
+    [activeRoomId],
+  );
+
+  // Edit a message (stores old text in editHistory)
+  const editMessage = useCallback(
+    async (messageId: string, newText: string) => {
+      if (!activeRoomId || !newText.trim()) return;
+      const msgRef = doc(db, "chatRooms", activeRoomId, "messages", messageId);
+      const msgSnap = await getDoc(msgRef);
+      if (!msgSnap.exists()) return;
+      const oldText = msgSnap.data().text ?? "";
+      await updateDoc(msgRef, {
+        text: newText.trim(),
+        editedAt: serverTimestamp(),
+        editHistory: arrayUnion(oldText),
+      });
+    },
+    [activeRoomId],
+  );
+
   const totalUnread = contacts.reduce((s, c) => s + c.unreadCount, 0);
 
   return {
@@ -333,6 +378,8 @@ export function useChat() {
     openRoom,
     sendMessage,
     sendFileMessage,
+    deleteMessage,
+    editMessage,
     closeRoom: () => setActiveRoomId(null),
   };
 }

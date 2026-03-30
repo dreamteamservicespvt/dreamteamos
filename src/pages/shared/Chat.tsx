@@ -17,6 +17,8 @@ export default function Chat() {
     openRoom,
     sendMessage,
     sendFileMessage,
+    deleteMessage,
+    editMessage,
     closeRoom,
   } = useChat();
 
@@ -38,6 +40,8 @@ export default function Chat() {
             loading={loadingMessages}
             onSend={sendMessage}
             onSendFile={sendFileMessage}
+            onDelete={deleteMessage}
+            onEdit={editMessage}
             onBack={closeRoom}
             showBackButton
           />
@@ -84,6 +88,8 @@ export default function Chat() {
             loading={loadingMessages}
             onSend={sendMessage}
             onSendFile={sendFileMessage}
+            onDelete={deleteMessage}
+            onEdit={editMessage}
           />
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-3">
