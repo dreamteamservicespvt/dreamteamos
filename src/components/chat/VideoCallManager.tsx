@@ -9,7 +9,7 @@ import type { CallType } from "@/store/callStore";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
-  Phone, PhoneOff, Mic, MicOff, VideoIcon, VideoOff, Monitor, MonitorOff, Loader2,
+  Phone, PhoneOff, Mic, MicOff, VideoIcon, VideoOff, Monitor, MonitorOff, Loader2, Volume2, Volume1,
 } from "lucide-react";
 import { startRingtone, stopRingtone, startRingback, stopRingback } from "@/utils/audio";
 import { sendNotification } from "@/services/notifications";
@@ -58,16 +58,23 @@ export default function VideoCallManager() {
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
 
+  const [isSpeaker, setIsSpeaker] = useState(false);
+
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const callDocIdRef = useRef<string | null>(null);
   const unsubsRef = useRef<(() => void)[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const incomingDocRef = useRef<VideoCallDoc | null>(null);
   const callGenRef = useRef(0); // generation counter — incremented on every cleanup to cancel stale async work
+  const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
+  const remoteDescriptionSetRef = useRef(false);
+  const isAnsweringRef = useRef(false);
 
   // ── Cleanup helper ──
   const cleanup = useCallback(() => {
@@ -80,14 +87,19 @@ export default function VideoCallManager() {
     pcRef.current = null;
     localStreamRef.current?.getTracks().forEach((t) => t.stop());
     localStreamRef.current = null;
+    remoteStreamRef.current = null;
     screenStreamRef.current?.getTracks().forEach((t) => t.stop());
     screenStreamRef.current = null;
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+    if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
     callDocIdRef.current = null;
     incomingDocRef.current = null;
+    pendingCandidatesRef.current = [];
+    remoteDescriptionSetRef.current = false;
+    isAnsweringRef.current = false;
     setPhase("idle");
     setCallType("video");
     setPeerName("");
@@ -96,6 +108,7 @@ export default function VideoCallManager() {
     setIsCameraOff(false);
     setIsScreenSharing(false);
     setCallDuration(0);
+    setIsSpeaker(false);
   }, []);
 
   // ── Start call timer ──
@@ -124,10 +137,12 @@ export default function VideoCallManager() {
         pc.addTrack(t, localStreamRef.current!);
       });
 
-      // Remote tracks
+      // Remote tracks — store stream and assign to both video & audio elements
       pc.ontrack = (e) => {
-        if (remoteVideoRef.current && e.streams[0]) {
-          remoteVideoRef.current.srcObject = e.streams[0];
+        if (e.streams[0]) {
+          remoteStreamRef.current = e.streams[0];
+          if (remoteVideoRef.current) remoteVideoRef.current.srcObject = e.streams[0];
+          if (remoteAudioRef.current) remoteAudioRef.current.srcObject = e.streams[0];
         }
       };
 
@@ -146,13 +161,17 @@ export default function VideoCallManager() {
         }
       };
 
-      // Listen for remote ICE candidates
+      // Listen for remote ICE candidates (buffer until remote description is set)
       const remoteCol = isCaller ? "receiverCandidates" : "callerCandidates";
       const unsub = onSnapshot(collection(db, "calls", callId, remoteCol), (snap) => {
         snap.docChanges().forEach((change) => {
           if (change.type === "added") {
             const data = change.doc.data();
-            pc.addIceCandidate(new RTCIceCandidate(data)).catch(() => {});
+            if (remoteDescriptionSetRef.current) {
+              pc.addIceCandidate(new RTCIceCandidate(data)).catch(() => {});
+            } else {
+              pendingCandidatesRef.current.push(data);
+            }
           }
         });
       });
@@ -162,6 +181,17 @@ export default function VideoCallManager() {
     },
     [],
   );
+
+  // ── Flush buffered ICE candidates after remote description is set ──
+  const flushPendingCandidates = useCallback(() => {
+    const pc = pcRef.current;
+    if (!pc) return;
+    const candidates = pendingCandidatesRef.current;
+    pendingCandidatesRef.current = [];
+    candidates.forEach((c) => {
+      pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
+    });
+  }, []);
 
   // ── START OUTGOING CALL ──
   const startOutgoingCall = useCallback(
@@ -220,7 +250,13 @@ export default function VideoCallManager() {
           const data = snap.data();
           if (data.status === "active" && data.answer) {
             stopRingback();
-            pc.setRemoteDescription(new RTCSessionDescription(data.answer)).catch(() => {});
+            pc.setRemoteDescription(new RTCSessionDescription(data.answer))
+              .then(() => {
+                remoteDescriptionSetRef.current = true;
+                flushPendingCandidates();
+              })
+              .catch(() => {});
+            setIsSpeaker(type === "video"); // video→speaker, voice→earpiece
             setPhase("active");
             startTimer();
           } else if (data.status === "declined" || data.status === "ended") {
@@ -233,7 +269,7 @@ export default function VideoCallManager() {
         cleanup();
       }
     },
-    [user, phase, getMedia, createPC, cleanup, startTimer],
+    [user, phase, getMedia, createPC, cleanup, startTimer, flushPendingCandidates],
   );
 
   // ── ACCEPT INCOMING CALL ──
@@ -242,10 +278,12 @@ export default function VideoCallManager() {
     if (!callDoc || !user) return;
     try {
       stopRingtone();
+      isAnsweringRef.current = true;
       setPhase("active");
 
       const type = callDoc.callType ?? "video";
       setCallType(type);
+      setIsSpeaker(type === "video"); // video→speaker, voice→earpiece
       const stream = await getMedia(type);
       const callId = callDoc.id;
       callDocIdRef.current = callId;
@@ -253,6 +291,8 @@ export default function VideoCallManager() {
       const pc = createPC(callId, false);
 
       await pc.setRemoteDescription(new RTCSessionDescription(callDoc.offer as RTCSessionDescriptionInit));
+      remoteDescriptionSetRef.current = true;
+      flushPendingCandidates();
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 
@@ -274,7 +314,7 @@ export default function VideoCallManager() {
       console.error("Failed to accept call:", err);
       cleanup();
     }
-  }, [user, getMedia, createPC, cleanup, startTimer]);
+  }, [user, getMedia, createPC, cleanup, startTimer, flushPendingCandidates]);
 
   // ── DECLINE INCOMING CALL ──
   const declineCall = useCallback(async () => {
@@ -391,7 +431,7 @@ export default function VideoCallManager() {
   // ── Cleanup on unmount ──
   useEffect(() => () => { cleanup(); }, [cleanup]);
 
-  // ── Watch for caller cancellation when we have an incoming call ──
+  // ── Watch for caller cancellation / answered elsewhere when we have an incoming call ──
   useEffect(() => {
     if (phase !== "incoming") return;
     const callDoc = incomingDocRef.current;
@@ -401,6 +441,10 @@ export default function VideoCallManager() {
       if (!snap.exists()) { cleanup(); return; }
       const data = snap.data();
       if (data.status === "ended" || data.status === "declined") {
+        cleanup();
+      }
+      // If another device answered (status→active) but we didn't answer, dismiss here
+      if (data.status === "active" && !isAnsweringRef.current) {
         cleanup();
       }
     });
@@ -419,6 +463,41 @@ export default function VideoCallManager() {
       return () => clearTimeout(t);
     }
   }, [phase, declineCall, endCall]);
+
+  // ── Sync streams to media elements when phase becomes active ──
+  // Fixes: local video not showing (ref was null when getMedia set srcObject)
+  useEffect(() => {
+    if (phase !== "active") return;
+    // Re-attach local stream (getMedia may have run before the video element existed)
+    if (localStreamRef.current && localVideoRef.current) {
+      localVideoRef.current.srcObject = localStreamRef.current;
+    }
+    // Re-attach remote stream
+    if (remoteStreamRef.current) {
+      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStreamRef.current;
+      if (remoteAudioRef.current) remoteAudioRef.current.srcObject = remoteStreamRef.current;
+    }
+  }, [phase]);
+
+  // ── Speaker / earpiece routing ──
+  // On mobile: <video> routes to loudspeaker, <audio> routes to earpiece
+  useEffect(() => {
+    if (phase !== "active") return;
+    if (isSpeaker) {
+      // Speaker: unmute video element audio, mute audio element
+      if (remoteVideoRef.current) remoteVideoRef.current.muted = false;
+      if (remoteAudioRef.current) remoteAudioRef.current.muted = true;
+    } else {
+      // Earpiece: mute video element audio, unmute audio element
+      if (remoteVideoRef.current) remoteVideoRef.current.muted = true;
+      if (remoteAudioRef.current) remoteAudioRef.current.muted = false;
+    }
+  }, [isSpeaker, phase]);
+
+  // ── Toggle speaker ──
+  const toggleSpeaker = useCallback(() => {
+    setIsSpeaker((prev) => !prev);
+  }, []);
 
   // ── Render nothing when idle ──
   if (phase === "idle") return null;
@@ -497,6 +576,9 @@ export default function VideoCallManager() {
 
   return (
     <div className="fixed inset-0 z-[100] bg-black flex flex-col animate-in fade-in duration-200">
+      {/* Hidden audio element for earpiece routing on mobile */}
+      <audio ref={remoteAudioRef} autoPlay playsInline muted={isSpeaker} className="hidden" />
+
       {/* Main area */}
       <div className="flex-1 relative overflow-hidden min-h-0">
         {isVoice ? (
@@ -518,6 +600,7 @@ export default function VideoCallManager() {
               ref={remoteVideoRef}
               autoPlay
               playsInline
+              muted={!isSpeaker}
               className="w-full h-full object-contain bg-black"
             />
             {/* Remote name + timer overlay */}
@@ -540,7 +623,7 @@ export default function VideoCallManager() {
       {/* Hidden video elements for voice calls (keep refs working) */}
       {isVoice && (
         <>
-          <video ref={remoteVideoRef} autoPlay playsInline className="hidden" />
+          <video ref={remoteVideoRef} autoPlay playsInline muted={!isSpeaker} className="hidden" />
           <video ref={localVideoRef} autoPlay playsInline muted className="hidden" />
         </>
       )}
@@ -555,6 +638,15 @@ export default function VideoCallManager() {
           title={isMuted ? "Unmute" : "Mute"}
         >
           {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+        </button>
+        <button
+          onClick={toggleSpeaker}
+          className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${
+            isSpeaker ? "bg-blue-500/80 text-white" : "bg-white/10 text-white hover:bg-white/20"
+          }`}
+          title={isSpeaker ? "Switch to earpiece" : "Switch to speaker"}
+        >
+          {isSpeaker ? <Volume2 className="w-5 h-5" /> : <Volume1 className="w-5 h-5" />}
         </button>
         {!isVoice && (
           <>
