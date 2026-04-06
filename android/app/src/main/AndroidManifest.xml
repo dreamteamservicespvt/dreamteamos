@@ -25,6 +25,17 @@
 
         </activity>
 
+        <!-- Full-screen incoming call activity (WhatsApp-style) -->
+        <activity
+            android:name=".IncomingCallActivity"
+            android:theme="@style/Theme.AppCompat.NoActionBar"
+            android:launchMode="singleTop"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:showOnLockScreen="true"
+            android:turnScreenOn="true"
+            android:exported="false" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

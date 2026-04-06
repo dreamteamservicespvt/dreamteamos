@@ -30,7 +30,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { userId, title, message, link, type } = req.body;
+    const { userId, title, message, link, type, callDocId } = req.body;
 
     if (!userId || !title || !message) {
       return res.status(400).json({ error: "Missing required fields: userId, title, message" });
@@ -56,6 +56,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       : notifType === "chat_message" ? "messages"
       : "default";
 
+    const isCall = notifType === "voice_call" || notifType === "video_call";
+
     // Android: data-only message (no "notification" key) so the app controls
     // the icon via LocalNotifications / FirebaseMessagingService.
     // If we include "notification", Android shows its own tray notification
@@ -71,10 +73,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         channelId,
         link: link || "/",
         icon: APP_ICON,
+        ...(callDocId ? { callDocId } : {}),
       },
       android: {
         priority: "high",
-        ttl: 86400000, // 24 hours in ms — ensures delivery even if device is dozing
+        // Calls: TTL=0 — expire immediately if not delivered instantly (time-sensitive)
+        // Other: 24 hours — ensures delivery even if device is dozing
+        ttl: isCall ? 0 : 86400000,
       },
       webpush: {
         headers: { Urgency: "high" },

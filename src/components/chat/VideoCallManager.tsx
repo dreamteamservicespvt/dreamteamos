@@ -286,9 +286,10 @@ export default function VideoCallManager() {
         sendNotification({
           userId: peerId,
           type: type === "voice" ? "voice_call" : "video_call",
-          title: `Incoming ${type} call`,
+          title: `Incoming ${type} call from ${user.name}`,
           message: `${user.name} is calling you`,
           link: getChatRoute(user.role),
+          callDocId: callDocRef.id,
         });
 
         // Listen for answer / status changes
@@ -626,6 +627,64 @@ export default function VideoCallManager() {
       clearPendingCall();
     }
   }, [pendingCall, phase, startOutgoingCall, clearPendingCall]);
+
+  // ── Check for native call action (from IncomingCallActivity) ──
+  useEffect(() => {
+    if (!user || !isNative()) return;
+
+    const checkNativeCallAction = async () => {
+      try {
+        const { Capacitor } = await import("@capacitor/core");
+        const CallAction = Capacitor.Plugins["CallAction"];
+        if (!CallAction) return;
+        const result = await CallAction.getPendingAction();
+        if (!result || !result.action) return;
+
+        if (result.action === "accept") {
+          // The Firestore listener should have already detected the incoming call
+          // and set phase=incoming + incomingDocRef. If so, just accept it.
+          if (phase === "incoming" && incomingDocRef.current) {
+            acceptCall();
+          } else {
+            // The Firestore listener may not have fired yet — wait briefly and retry
+            setTimeout(async () => {
+              if (incomingDocRef.current) {
+                acceptCall();
+              }
+            }, 2000);
+          }
+        } else if (result.action === "decline") {
+          if (phase === "incoming" && incomingDocRef.current) {
+            declineCall();
+          } else {
+            // Directly decline via Firestore if we have the doc ID
+            if (result.callDocId) {
+              try {
+                await updateDoc(doc(db, "calls", result.callDocId), { status: "declined" });
+              } catch { /* best effort */ }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("CallAction check failed:", e);
+      }
+    };
+
+    // Check immediately on mount (cold start from notification)
+    checkNativeCallAction();
+
+    // Also check when app resumes from background
+    let appStateUnsub: (() => void) | undefined;
+    import("@capacitor/app").then(({ App }) => {
+      App.addListener("appStateChange", ({ isActive }) => {
+        if (isActive) checkNativeCallAction();
+      }).then((handle) => {
+        appStateUnsub = () => handle.remove();
+      });
+    }).catch(() => {});
+
+    return () => { if (appStateUnsub) appStateUnsub(); };
+  }, [user?.uid, phase, acceptCall, declineCall]);
 
   // ── Cleanup on unmount ──
   useEffect(() => () => { cleanup(); }, [cleanup]);

@@ -22,12 +22,19 @@ public class MainActivity extends BridgeActivity {
             NotificationManager nm = getSystemService(NotificationManager.class);
             nm.createNotificationChannel(new NotificationChannel("default", "General", NotificationManager.IMPORTANCE_HIGH));
             nm.createNotificationChannel(new NotificationChannel("messages", "Messages", NotificationManager.IMPORTANCE_HIGH));
-            NotificationChannel calls = new NotificationChannel("calls", "Calls", NotificationManager.IMPORTANCE_HIGH);
+            NotificationChannel calls = new NotificationChannel("calls", "Calls", NotificationManager.IMPORTANCE_MAX);
             calls.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
+            calls.enableVibration(true);
+            calls.setSound(Settings.System.DEFAULT_RINGTONE_URI,
+                    new AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .build());
             nm.createNotificationChannel(calls);
         }
 
-        // Register this plugin manually
+        // Register plugins manually
         registerPlugin(AudioRoutePlugin.class);
+        registerPlugin(CallActionPlugin.class);
     }
 }

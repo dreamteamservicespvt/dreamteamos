@@ -52,6 +52,55 @@ public class DTSFirebaseMessagingService extends FirebaseMessagingService {
         }
         PendingIntent pendingIntent = PendingIntent.getActivity(this, (int) System.currentTimeMillis(), intent, flags);
 
+        int notificationId = (int) System.currentTimeMillis();
+
+        // For calls: launch the full-screen IncomingCallActivity (WhatsApp-style)
+        boolean isCall = "voice_call".equals(type) || "video_call".equals(type);
+        if (isCall) {
+            Intent callIntent = new Intent(this, IncomingCallActivity.class);
+            callIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            callIntent.putExtra("caller_name", title.replace("Incoming voice call from ", "").replace("Incoming video call from ", ""));
+            callIntent.putExtra("call_type", "video_call".equals(type) ? "video" : "voice");
+            callIntent.putExtra("call_doc_id", data.containsKey("callDocId") ? data.get("callDocId") : "");
+            callIntent.putExtra("notification_id", notificationId);
+
+            PendingIntent fullScreenIntent = PendingIntent.getActivity(
+                    this, notificationId + 1, callIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0));
+
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(this, channelId)
+                    .setSmallIcon(R.drawable.ic_notification)
+                    .setContentTitle(title)
+                    .setContentText(body)
+                    .setAutoCancel(false)
+                    .setOngoing(true)
+                    .setContentIntent(pendingIntent)
+                    .setPriority(NotificationCompat.PRIORITY_MAX)
+                    .setCategory(NotificationCompat.CATEGORY_CALL)
+                    .setFullScreenIntent(fullScreenIntent, true)
+                    .setDefaults(NotificationCompat.DEFAULT_ALL);
+
+            // Try to load a large icon from the network
+            String callIcon = data.get("icon");
+            if (callIcon != null && !callIcon.isEmpty()) {
+                try {
+                    Bitmap largeIcon = getBitmapFromUrl(callIcon);
+                    if (largeIcon != null) {
+                        builder.setLargeIcon(largeIcon);
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "Failed to load large icon", e);
+                }
+            }
+
+            NotificationManager nm = getSystemService(NotificationManager.class);
+            if (nm != null) {
+                nm.notify(notificationId, builder.build());
+            }
+            return;
+        }
+
+        // Non-call notification (messages, general, etc.)
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, channelId)
                 .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle(title)
@@ -74,16 +123,9 @@ public class DTSFirebaseMessagingService extends FirebaseMessagingService {
             }
         }
 
-        // For calls: make it a full-screen intent (shows on lock screen)
-        if ("voice_call".equals(type) || "video_call".equals(type)) {
-            builder.setFullScreenIntent(pendingIntent, true);
-            builder.setCategory(NotificationCompat.CATEGORY_CALL);
-            builder.setOngoing(true);
-        }
-
         NotificationManager nm = getSystemService(NotificationManager.class);
         if (nm != null) {
-            nm.notify((int) System.currentTimeMillis(), builder.build());
+            nm.notify(notificationId, builder.build());
         }
     }
 

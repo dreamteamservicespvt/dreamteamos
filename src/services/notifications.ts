@@ -8,6 +8,7 @@ interface SendNotificationParams {
   title: string;
   message: string;
   link?: string;
+  callDocId?: string;
 }
 
 /**
@@ -20,7 +21,7 @@ const API_BASE = isNative() ? "https://dreamteamos.vercel.app" : "";
  * Creates a Firestore notification document and triggers a web push notification.
  * The push call is fire-and-forget — it never blocks the main action.
  */
-export async function sendNotification({ userId, type, title, message, link }: SendNotificationParams): Promise<void> {
+export async function sendNotification({ userId, type, title, message, link, callDocId }: SendNotificationParams): Promise<void> {
   // 1. Write the in-app notification to Firestore (this powers the existing bell + sound system)
   await addDoc(collection(db, "notifications"), {
     userId,
@@ -37,7 +38,7 @@ export async function sendNotification({ userId, type, title, message, link }: S
     fetch(`${API_BASE}/api/send-notification`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, title, message, link, type }),
+      body: JSON.stringify({ userId, title, message, link, type, callDocId }),
     }).then((res) => {
       if (!res.ok) {
         console.error("[Push] API responded with", res.status, res.statusText);

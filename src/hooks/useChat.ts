@@ -158,11 +158,39 @@ export function useChat() {
       } catch { /* component unmounted — best effort */ }
     };
 
+    // On web: beforeunload fires. On native: it does NOT fire when app is backgrounded.
+    // Use Capacitor App plugin's "pause" event for native cleanup.
     const handleBeforeUnload = () => { leave(); };
     window.addEventListener("beforeunload", handleBeforeUnload);
 
+    // Capacitor: listen for app going to background (appStateChange)
+    let appStateUnsub: (() => void) | undefined;
+    import("@capacitor/app").then(({ App }) => {
+      App.addListener("appStateChange", ({ isActive }) => {
+        if (!isActive) {
+          leave();
+        } else {
+          enter();
+        }
+      }).then((handle) => {
+        appStateUnsub = () => handle.remove();
+      });
+    }).catch(() => {});
+
+    // Also listen for page visibility change (covers both web tab switch and some Capacitor scenarios)
+    const handleVisibility = () => {
+      if (document.hidden) {
+        leave();
+      } else {
+        enter();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      if (appStateUnsub) appStateUnsub();
       leave();
     };
   }, [activeRoomId, user?.uid]);
