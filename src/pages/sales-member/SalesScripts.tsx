@@ -1728,13 +1728,13 @@ export default function SalesScripts() {
           <span className="font-semibold text-foreground">{userName}</span>
         </div>
         <div className="w-px h-4 bg-border" />
-        <div className="flex items-center gap-2 text-xs">
-          <span className="text-muted-foreground">Festival:</span>
+        <div className="flex items-center gap-2 text-xs min-w-0 flex-1 sm:flex-none">
+          <span className="text-muted-foreground shrink-0">Festival:</span>
           {showFestivalSelector ? (
             <select
               value={festivalName}
               onChange={(e) => setFestivalName(e.target.value)}
-              className="h-7 px-2 rounded-md bg-background border border-border text-foreground text-xs font-semibold outline-none focus:border-primary"
+              className="h-7 px-2 rounded-md bg-background border border-border text-foreground text-xs font-semibold outline-none focus:border-primary min-w-0 w-full max-w-[160px] sm:max-w-[280px]"
             >
               {FESTIVALS.map((f) => (
                 <option key={f.name} value={f.name}>
