@@ -8,6 +8,7 @@ import android.media.AudioAttributes;
 import android.provider.Settings;
 import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
+import android.app.Notification;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -17,60 +18,16 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationManager nm = getSystemService(NotificationManager.class);
+            nm.createNotificationChannel(new NotificationChannel("default", "General", NotificationManager.IMPORTANCE_HIGH));
+            nm.createNotificationChannel(new NotificationChannel("messages", "Messages", NotificationManager.IMPORTANCE_HIGH));
+            NotificationChannel calls = new NotificationChannel("calls", "Calls", NotificationManager.IMPORTANCE_HIGH);
+            calls.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
+            nm.createNotificationChannel(calls);
+        }
+
         // Register this plugin manually
         registerPlugin(AudioRoutePlugin.class);
-
-        // Create notification channels (required for Android 8+)
-        createNotificationChannels();
-    }
-
-    private void createNotificationChannels() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationManager manager = getSystemService(NotificationManager.class);
-            if (manager == null) return;
-
-            AudioAttributes soundAttrs = new AudioAttributes.Builder()
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
-                .build();
-
-            // Default channel — general notifications
-            NotificationChannel defaultChannel = new NotificationChannel(
-                "default",
-                "General Notifications",
-                NotificationManager.IMPORTANCE_HIGH
-            );
-            defaultChannel.setDescription("General app notifications");
-            defaultChannel.enableVibration(true);
-            defaultChannel.enableLights(true);
-            defaultChannel.setShowBadge(true);
-            manager.createNotificationChannel(defaultChannel);
-
-            // Messages channel — chat messages (heads-up)
-            NotificationChannel messagesChannel = new NotificationChannel(
-                "messages",
-                "Chat Messages",
-                NotificationManager.IMPORTANCE_HIGH
-            );
-            messagesChannel.setDescription("Chat message notifications");
-            messagesChannel.enableVibration(true);
-            messagesChannel.enableLights(true);
-            messagesChannel.setShowBadge(true);
-            messagesChannel.setSound(Settings.System.DEFAULT_NOTIFICATION_URI, soundAttrs);
-            manager.createNotificationChannel(messagesChannel);
-
-            // Calls channel — incoming calls (full-screen intent)
-            NotificationChannel callsChannel = new NotificationChannel(
-                "calls",
-                "Incoming Calls",
-                NotificationManager.IMPORTANCE_HIGH
-            );
-            callsChannel.setDescription("Incoming voice and video call notifications");
-            callsChannel.enableVibration(true);
-            callsChannel.enableLights(true);
-            callsChannel.setShowBadge(true);
-            callsChannel.setSound(Settings.System.DEFAULT_RINGTONE_URI, soundAttrs);
-            manager.createNotificationChannel(callsChannel);
-        }
     }
 }

@@ -751,35 +751,37 @@ export default function VideoCallManager() {
 
   const initials = peerName.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 
-  // ── INCOMING CALL SCREEN ──
+  // ── INCOMING CALL SCREEN — WhatsApp-style floating popup ──
   if (phase === "incoming") {
     return (
-      <div className="fixed inset-0 z-[100] bg-black/85 flex items-center justify-center animate-in fade-in duration-200">
-        <div className="bg-card rounded-2xl p-8 text-center space-y-6 shadow-2xl max-w-sm w-full mx-4">
-          <div className="relative w-20 h-20 mx-auto">
-            <Avatar className="w-20 h-20">
-              <AvatarImage src={peerAvatar} />
-              <AvatarFallback className="text-xl font-bold bg-primary/10 text-primary">{initials}</AvatarFallback>
-            </Avatar>
-            <div className="absolute inset-0 rounded-full border-2 border-green-500 animate-ping" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold">{peerName}</h2>
-            <p className="text-sm text-muted-foreground mt-1">Incoming {callType} call…</p>
-          </div>
-          <div className="flex items-center justify-center gap-8">
-            <button
-              onClick={declineCall}
-              className="w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center text-white transition-colors shadow-lg"
-            >
-              <PhoneOff className="w-6 h-6" />
-            </button>
-            <button
-              onClick={acceptCall}
-              className="w-14 h-14 rounded-full bg-green-500 hover:bg-green-600 flex items-center justify-center text-white transition-colors shadow-lg"
-            >
-              <Phone className="w-6 h-6" />
-            </button>
+      <div className="fixed top-4 left-4 right-4 z-[100] animate-in slide-in-from-top duration-300">
+        <div className="bg-card border border-border rounded-2xl p-4 shadow-2xl mx-auto max-w-sm">
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Avatar className="w-12 h-12">
+                <AvatarImage src={peerAvatar} />
+                <AvatarFallback className="text-sm font-bold bg-primary/10 text-primary">{initials}</AvatarFallback>
+              </Avatar>
+              <div className="absolute inset-0 rounded-full border-2 border-green-500 animate-ping" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm truncate">{peerName}</p>
+              <p className="text-xs text-muted-foreground">Incoming {callType} call…</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={declineCall}
+                className="w-11 h-11 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center text-white transition-colors shadow-lg"
+              >
+                <PhoneOff className="w-5 h-5" />
+              </button>
+              <button
+                onClick={acceptCall}
+                className="w-11 h-11 rounded-full bg-green-500 hover:bg-green-600 flex items-center justify-center text-white transition-colors shadow-lg"
+              >
+                <Phone className="w-5 h-5" />
+              </button>
+            </div>
           </div>
         </div>
       </div>

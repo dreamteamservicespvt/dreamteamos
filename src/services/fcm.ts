@@ -56,9 +56,10 @@ async function initFCMNative(userId: string): Promise<void> {
         const data = notification.data || {};
         const type = data.type || "general";
         // Pick channel based on type
-        const channelId = (type === "voice_call" || type === "video_call") ? "calls"
-          : type === "chat_message" ? "messages"
-          : "default";
+        const channelId = data.channelId
+          || ((type === "voice_call" || type === "video_call") ? "calls"
+            : type === "chat_message" ? "messages"
+            : "default");
 
         LocalNotifications.schedule({
           notifications: [{
@@ -68,7 +69,6 @@ async function initFCMNative(userId: string): Promise<void> {
             channelId,
             extra: data,
             smallIcon: "ic_notification",
-            largeIcon: "ic_launcher",
           }],
         });
       }).catch(() => {
@@ -79,9 +79,16 @@ async function initFCMNative(userId: string): Promise<void> {
     // User tapped a push notification — navigate to the link
     PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
       const link = action.notification.data?.link;
-      if (link && typeof link === "string") {
-        window.location.hash = "";
-        window.location.pathname = link;
+      if (link && typeof link === "string" && link !== "/") {
+        // Use hash-based navigation instead of full page reload
+        // Full reload destroys React state → Firebase auth re-init → brief null user → logout
+        setTimeout(() => {
+          window.location.hash = "";
+          // Use history.pushState + React Router-compatible navigation
+          const navEvent = new PopStateEvent("popstate");
+          window.history.pushState({}, "", link);
+          window.dispatchEvent(navEvent);
+        }, 500); // Small delay to let the app fully resume from background
       }
     });
 
@@ -89,9 +96,13 @@ async function initFCMNative(userId: string): Promise<void> {
     import("@capacitor/local-notifications").then(({ LocalNotifications }) => {
       LocalNotifications.addListener("localNotificationActionPerformed", (action) => {
         const link = action.notification.extra?.link;
-        if (link && typeof link === "string") {
-          window.location.hash = "";
-          window.location.pathname = link;
+        if (link && typeof link === "string" && link !== "/") {
+          setTimeout(() => {
+            window.location.hash = "";
+            const navEvent = new PopStateEvent("popstate");
+            window.history.pushState({}, "", link);
+            window.dispatchEvent(navEvent);
+          }, 300);
         }
       });
     }).catch(() => {});

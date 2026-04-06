@@ -68,7 +68,7 @@ export default function AppLayout({ allowedRoles }: AppLayoutProps) {
         style={{ marginLeft: isMobile ? 0 : collapsed ? 64 : 240 }}
       >
         <Topbar onMenuClick={() => setMobileOpen(true)} />
-        <main className="flex-1 p-4 md:p-6 overflow-x-hidden">
+        <main className="flex-1 p-4 md:p-6 overflow-x-hidden overflow-y-auto">
           <Outlet />
         </main>
         <VideoCallManager />

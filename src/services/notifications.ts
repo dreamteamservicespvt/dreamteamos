@@ -38,10 +38,14 @@ export async function sendNotification({ userId, type, title, message, link }: S
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId, title, message, link, type }),
-    }).catch(() => {
-      // Silently ignore push failures — in-app notification already saved
+    }).then((res) => {
+      if (!res.ok) {
+        console.error("[Push] API responded with", res.status, res.statusText);
+      }
+    }).catch((err) => {
+      console.error("[Push] fetch failed:", err);
     });
-  } catch {
-    // Silently ignore
+  } catch (err) {
+    console.error("[Push] send error:", err);
   }
 }

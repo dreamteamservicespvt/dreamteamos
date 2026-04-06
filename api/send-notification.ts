@@ -56,34 +56,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       : notifType === "chat_message" ? "messages"
       : "default";
 
-    // Send push with both notification + data keys.
-    // - notification key: lets Android show a system tray notification natively
-    // - data key: carries payload for service worker (web) and tapAction (native)
+    // Android: data-only message (no "notification" key) so the app controls
+    // the icon via LocalNotifications / FirebaseMessagingService.
+    // If we include "notification", Android shows its own tray notification
+    // using the launcher icon (circle adaptive icon) which looks wrong.
+    //
+    // Web: include webpush.notification so the service worker can show it.
     const pushMessage: admin.messaging.MulticastMessage = {
       tokens,
-      notification: {
-        title,
-        body: message,
-      },
       data: {
         title,
         body: message,
         type: notifType,
+        channelId,
         link: link || "/",
         icon: APP_ICON,
       },
       android: {
         priority: "high",
-        notification: {
-          channelId,
-          icon: "ic_notification",
-          defaultSound: true,
-          defaultVibrateTimings: true,
-        },
+        ttl: 86400000, // 24 hours in ms — ensures delivery even if device is dozing
       },
-      // Keep web behavior: data-only so service worker controls display
       webpush: {
         headers: { Urgency: "high" },
+        notification: {
+          title,
+          body: message,
+          icon: APP_ICON,
+        },
       },
     };
 

@@ -32,8 +32,10 @@ export default function Chat() {
   // Mobile: show either sidebar or room
   if (isMobile) {
     if (activeContact) {
+      // Render as a fixed full-screen overlay that covers the Topbar completely.
+      // The ChatRoom has its own header (contact name + call buttons).
       return (
-        <div className="h-[calc(100vh-64px)]">
+        <div className="fixed inset-0 z-30 bg-background" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
           <ChatRoom
             contact={activeContact}
             messages={messages}
@@ -49,23 +51,25 @@ export default function Chat() {
       );
     }
     return (
-      <div className="h-[calc(100vh-64px)]">
-        <div className="border-b border-border px-4 py-3">
+      <div className="h-full flex flex-col">
+        <div className="border-b border-border px-4 py-3 shrink-0">
           <h1 className="text-lg font-semibold">Team Chat</h1>
         </div>
-        <ChatSidebar
-          contacts={contacts}
-          activeContactUid={null}
-          onSelect={openRoom}
-          loading={loadingContacts}
-        />
+        <div className="flex-1 overflow-y-auto">
+          <ChatSidebar
+            contacts={contacts}
+            activeContactUid={null}
+            onSelect={openRoom}
+            loading={loadingContacts}
+          />
+        </div>
       </div>
     );
   }
 
   // Desktop: split view
   return (
-    <div className="h-[calc(100vh-64px)] flex rounded-xl border border-border overflow-hidden bg-background shadow-sm">
+    <div className="h-full flex rounded-xl border border-border overflow-hidden bg-background shadow-sm">
       {/* Left — contacts */}
       <div className="w-80 shrink-0 h-full flex flex-col overflow-hidden border-r border-border">
         <div className="border-b border-border px-4 py-3 shrink-0">
