@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { MeetingParticipant } from "@/types";
+import { isNative } from "@/utils/platform";
+import { KeepAwake } from "@capacitor-community/keep-awake";
 
 const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
@@ -230,6 +232,8 @@ export default function MeetingRoom({ meetingId, meetingCode, onLeave }: Props) 
   useEffect(() => {
     if (!user || joinedRef.current) return;
     joinedRef.current = true;
+    // Keep screen awake during meeting on native
+    if (isNative()) KeepAwake.keepAwake().catch(() => {});
 
     const init = async () => {
       try {
@@ -356,6 +360,10 @@ export default function MeetingRoom({ meetingId, meetingCode, onLeave }: Props) 
     }
 
     joinedRef.current = false;
+    // Release wake lock on native
+    if (isNative()) {
+      KeepAwake.allowSleep().catch(() => {});
+    }
     onLeave();
   }, [user, meetingId, onLeave]);
 
@@ -415,6 +423,9 @@ export default function MeetingRoom({ meetingId, meetingCode, onLeave }: Props) 
 
   // ── Toggle Screen Share ──
   const toggleScreenShare = useCallback(async () => {
+    // Screen sharing is not available in Android WebView
+    if (isNative()) return;
+
     if (isScreenSharing) {
       screenStreamRef.current?.getTracks().forEach((t) => t.stop());
       screenStreamRef.current = null;
@@ -574,15 +585,17 @@ export default function MeetingRoom({ meetingId, meetingCode, onLeave }: Props) 
         >
           {isCameraOff ? <VideoOff className="w-5 h-5" /> : <VideoIcon className="w-5 h-5" />}
         </button>
-        <button
-          onClick={toggleScreenShare}
-          className={`w-11 h-11 rounded-full flex items-center justify-center transition-colors ${
-            isScreenSharing ? "bg-blue-500/80 text-white" : "bg-white/10 text-white hover:bg-white/20"
-          }`}
-          title={isScreenSharing ? "Stop sharing" : "Share screen"}
-        >
-          {isScreenSharing ? <MonitorOff className="w-5 h-5" /> : <Monitor className="w-5 h-5" />}
-        </button>
+        {!isNative() && (
+          <button
+            onClick={toggleScreenShare}
+            className={`w-11 h-11 rounded-full flex items-center justify-center transition-colors ${
+              isScreenSharing ? "bg-blue-500/80 text-white" : "bg-white/10 text-white hover:bg-white/20"
+            }`}
+            title={isScreenSharing ? "Stop sharing" : "Share screen"}
+          >
+            {isScreenSharing ? <MonitorOff className="w-5 h-5" /> : <Monitor className="w-5 h-5" />}
+          </button>
+        )}
         <button
           onClick={leave}
           className="w-12 h-11 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center text-white transition-colors shadow-lg"

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Outlet, Navigate } from "react-router-dom";
+import { Outlet, Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useAuthStore } from "@/store/authStore";
 import { useSidebarStore } from "@/store/sidebarStore";
@@ -9,6 +9,8 @@ import { Loader2 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { initFCM, onForegroundMessage } from "@/services/fcm";
 import VideoCallManager from "@/components/chat/VideoCallManager";
+import { registerBackButton } from "@/services/capacitor-plugins";
+import { isNative } from "@/utils/platform";
 import type { UserRole } from "@/types";
 
 interface AppLayoutProps {
@@ -20,6 +22,7 @@ export default function AppLayout({ allowedRoles }: AppLayoutProps) {
   const user = useAuthStore((s) => s.user);
   const collapsed = useSidebarStore((s) => s.collapsed);
   const fcmInitialized = useRef(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (user && !fcmInitialized.current) {
@@ -29,6 +32,15 @@ export default function AppLayout({ allowedRoles }: AppLayoutProps) {
       return () => unsub();
     }
   }, [user?.uid]);
+
+  // Hardware back button for Android
+  useEffect(() => {
+    if (!isNative()) return;
+    const unsub = registerBackButton(() => {
+      navigate(-1);
+    });
+    return unsub;
+  }, [navigate]);
   const isMobile = useIsMobile();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -49,7 +61,7 @@ export default function AppLayout({ allowedRoles }: AppLayoutProps) {
   }
 
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className="h-full bg-background flex overflow-hidden">
       <Sidebar mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
       <div
         className="flex-1 flex flex-col min-w-0 transition-all duration-200"

@@ -12,6 +12,19 @@ if (!admin.apps.length) {
 const adminDb = admin.firestore();
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // CORS: allow Capacitor native app (https://localhost) and the web origin
+  const origin = req.headers.origin || "";
+  const allowedOrigins = ["https://localhost", "https://dreamteamos.vercel.app"];
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") {
+    return res.status(204).end();
+  }
+
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
@@ -37,17 +50,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const APP_ICON = "https://res.cloudinary.com/dvmrhs2ek/image/upload/v1774554466/jdqjbuvcdo40o5gzdlvz.png";
 
-    // Send data-only push — no "notification" key so the browser does NOT
-    // auto-display a popup.  The service worker's onBackgroundMessage (or the
-    // client's onMessage) is the single place that decides what to show.
+    // Determine the correct Android notification channel based on type
+    const notifType = type || "general";
+    const channelId = (notifType === "voice_call" || notifType === "video_call") ? "calls"
+      : notifType === "chat_message" ? "messages"
+      : "default";
+
+    // Send push with both notification + data keys.
+    // - notification key: lets Android show a system tray notification natively
+    // - data key: carries payload for service worker (web) and tapAction (native)
     const pushMessage: admin.messaging.MulticastMessage = {
       tokens,
+      notification: {
+        title,
+        body: message,
+      },
       data: {
         title,
         body: message,
-        type: type || "general",
+        type: notifType,
         link: link || "/",
         icon: APP_ICON,
+      },
+      android: {
+        priority: "high",
+        notification: {
+          channelId,
+          icon: "ic_notification",
+          defaultSound: true,
+          defaultVibrateTimings: true,
+        },
+      },
+      // Keep web behavior: data-only so service worker controls display
+      webpush: {
+        headers: { Urgency: "high" },
       },
     };
 

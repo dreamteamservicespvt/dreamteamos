@@ -18,6 +18,9 @@ import { getChatRoute, getChatContactRoles, getMeetingRoute } from "@/utils/chat
 import type { VideoCallDoc, AppUser } from "@/types";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
+import { isNative } from "@/utils/platform";
+import AudioRoute from "@/services/audio-route";
+import { KeepAwake } from "@capacitor-community/keep-awake";
 
 const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
@@ -144,6 +147,11 @@ export default function VideoCallManager() {
     setAddingMember(false);
     setPeerIdState("");
     peerIdRef.current = "";
+    // Release wake lock and reset audio route on native
+    if (isNative()) {
+      KeepAwake.allowSleep().catch(() => {});
+      AudioRoute.reset().catch(() => {});
+    }
   }, []);
 
   // ── Start call timer ──
@@ -412,6 +420,9 @@ export default function VideoCallManager() {
 
   // ── TOGGLE SCREEN SHARE ──
   const toggleScreenShare = useCallback(async () => {
+    // Screen sharing is not available in Android WebView
+    if (isNative()) return;
+
     const pc = pcRef.current;
     if (!pc) return;
 
@@ -668,12 +679,28 @@ export default function VideoCallManager() {
   }, [phase]);
 
   // ── Speaker / earpiece routing ──
-  // On mobile: <video> routes to loudspeaker, <audio> routes to earpiece
-  // We also use setSinkId for browsers that support it (Chrome on Android)
+  // On native: use AudioRoute plugin for real hardware earpiece/speaker routing
+  // On web: <video> routes to loudspeaker, <audio> routes to earpiece
   useEffect(() => {
     if (phase !== "active") return;
+
+    if (isNative()) {
+      // Native: use the Android AudioManager via custom plugin
+      AudioRoute.setSpeakerOn({ enabled: isSpeaker }).catch(() => {});
+      // Still need both elements unmuted for audio to flow through WebView
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.muted = false;
+        remoteVideoRef.current.volume = 1;
+      }
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.muted = false;
+        remoteAudioRef.current.volume = 1;
+      }
+      return;
+    }
+
+    // Web fallback
     if (isSpeaker) {
-      // Speaker: unmute video element audio, mute audio element
       if (remoteVideoRef.current) {
         remoteVideoRef.current.muted = false;
         remoteVideoRef.current.volume = 1;
@@ -683,7 +710,6 @@ export default function VideoCallManager() {
         remoteAudioRef.current.volume = 0;
       }
     } else {
-      // Earpiece: mute video element audio, unmute audio element
       if (remoteVideoRef.current) {
         remoteVideoRef.current.muted = true;
         remoteVideoRef.current.volume = 0;
@@ -691,7 +717,6 @@ export default function VideoCallManager() {
       if (remoteAudioRef.current) {
         remoteAudioRef.current.muted = false;
         remoteAudioRef.current.volume = 1;
-        // Try setSinkId for proper earpiece routing on supported browsers
         const audioEl = remoteAudioRef.current as any;
         if (typeof audioEl.setSinkId === "function") {
           audioEl.setSinkId("default").catch(() => {});
@@ -704,6 +729,16 @@ export default function VideoCallManager() {
   const toggleSpeaker = useCallback(() => {
     setIsSpeaker((prev) => !prev);
   }, []);
+
+  // ── Keep screen awake during calls ──
+  useEffect(() => {
+    if (phase === "active" && isNative()) {
+      KeepAwake.keepAwake().catch(() => {});
+    }
+    return () => {
+      if (isNative()) KeepAwake.allowSleep().catch(() => {});
+    };
+  }, [phase]);
 
   // ── Render nothing when idle ──
   if (phase === "idle") return null;
@@ -903,15 +938,17 @@ export default function VideoCallManager() {
             >
               <SwitchCamera className="w-5 h-5" />
             </button>
-            <button
-              onClick={toggleScreenShare}
-              className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${
-                isScreenSharing ? "bg-blue-500/80 text-white" : "bg-white/10 text-white hover:bg-white/20"
-              }`}
-              title={isScreenSharing ? "Stop sharing" : "Share screen"}
-            >
-              {isScreenSharing ? <MonitorOff className="w-5 h-5" /> : <Monitor className="w-5 h-5" />}
-            </button>
+            {!isNative() && (
+              <button
+                onClick={toggleScreenShare}
+                className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${
+                  isScreenSharing ? "bg-blue-500/80 text-white" : "bg-white/10 text-white hover:bg-white/20"
+                }`}
+                title={isScreenSharing ? "Stop sharing" : "Share screen"}
+              >
+                {isScreenSharing ? <MonitorOff className="w-5 h-5" /> : <Monitor className="w-5 h-5" />}
+              </button>
+            )}
             <button
               onClick={() => setShowEmojiPicker((p) => !p)}
               className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${
