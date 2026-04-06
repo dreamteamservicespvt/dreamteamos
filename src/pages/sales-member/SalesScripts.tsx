@@ -1722,19 +1722,19 @@ export default function SalesScripts() {
           <span className="text-muted-foreground">Greeting:</span>
           <span className="font-semibold text-foreground capitalize">Good {greeting}</span>
         </div>
-        <div className="w-px h-4 bg-border" />
+        <div className="hidden sm:block w-px h-4 bg-border" />
         <div className="flex items-center gap-2 text-xs">
           <span className="text-muted-foreground">Your Name:</span>
           <span className="font-semibold text-foreground">{userName}</span>
         </div>
-        <div className="w-px h-4 bg-border" />
-        <div className="flex items-center gap-2 text-xs min-w-0 flex-1 sm:flex-none">
+        <div className="hidden sm:block w-px h-4 bg-border" />
+        <div className="flex items-center gap-2 text-xs w-full sm:w-auto min-w-0">
           <span className="text-muted-foreground shrink-0">Festival:</span>
           {showFestivalSelector ? (
             <select
               value={festivalName}
               onChange={(e) => setFestivalName(e.target.value)}
-              className="h-7 px-2 rounded-md bg-background border border-border text-foreground text-xs font-semibold outline-none focus:border-primary min-w-0 w-full max-w-[160px] sm:max-w-[280px]"
+              className="h-7 px-2 rounded-md bg-background border border-border text-foreground text-xs font-semibold outline-none focus:border-primary min-w-0 w-full sm:w-auto max-w-full"
             >
               {FESTIVALS.map((f) => (
                 <option key={f.name} value={f.name}>
