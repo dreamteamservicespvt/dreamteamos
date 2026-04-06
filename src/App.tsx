@@ -26,6 +26,7 @@ import SalesMemberDashboard from "@/pages/sales-member/Dashboard";
 import MyPerformance from "@/pages/sales-member/MyPerformance";
 import SalesMemberTraining from "@/pages/sales-member/Training";
 import SalesMemberProfile from "@/pages/sales-member/MyProfile";
+import SalesScripts from "@/pages/sales-member/SalesScripts";
 import SalesAdminDashboard from "@/pages/sales-admin/Dashboard";
 import SalesAdminMyTeam from "@/pages/sales-admin/MyTeam";
 import LeadsManagement from "@/pages/sales-admin/LeadsManagement";
@@ -130,6 +131,7 @@ const App = () => (
             <Route path="/sales-admin/approvals" element={<SalesApprovals />} />
             <Route path="/sales-admin/analytics" element={<SalesAnalytics />} />
             <Route path="/sales-admin/training" element={<SalesTrainingModules />} />
+            <Route path="/sales-admin/scripts" element={<SalesScripts />} />
             <Route path="/sales-admin/sessions" element={<SalesAdminSessionHistory />} />
             <Route path="/sales-admin/settings" element={<SalesAdminSettings />} />
             <Route path="/sales-admin/chat" element={<Chat />} />
@@ -163,6 +165,7 @@ const App = () => (
             <Route path="/sales/leads" element={<MyLeads />} />
             <Route path="/sales/performance" element={<MyPerformance />} />
             <Route path="/sales/training" element={<SalesMemberTraining />} />
+            <Route path="/sales/scripts" element={<SalesScripts />} />
             <Route path="/sales/profile" element={<SalesMemberProfile />} />
             <Route path="/sales/chat" element={<Chat />} />
             <Route path="/sales/meeting" element={<Meeting />} />
