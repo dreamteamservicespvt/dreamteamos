@@ -1,13 +1,14 @@
-import { useState } from "react";
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { useState, useEffect } from "react";
+import { doc, updateDoc, serverTimestamp, getDoc, setDoc } from "firebase/firestore";
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 import { auth, db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { getRoleLabel, getRoleColor } from "@/utils/roleHelpers";
-import { User, Lock, Loader2, Check, Eye, EyeOff, Wallet } from "lucide-react";
+import { User, Lock, Loader2, Check, Eye, EyeOff, Wallet, Calendar } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import ThemeSelector from "@/components/ThemeSelector";
+import { FESTIVALS, getUpcomingFestivalName, getFestivalOptionLabel } from "@/utils/festivals";
 
 export default function SalesAdminSettings() {
   const user = useAuthStore((s) => s.user);
@@ -18,6 +19,34 @@ export default function SalesAdminSettings() {
   const [name, setName] = useState(user?.name || "");
   const [phone, setPhone] = useState(user?.phone || "");
   const [savingProfile, setSavingProfile] = useState(false);
+
+  const [activeFestival, setActiveFestival] = useState<string>(getUpcomingFestivalName());
+  const [savingFestival, setSavingFestival] = useState(false);
+  const [festivalSaved, setFestivalSaved] = useState(false);
+
+  useEffect(() => {
+    getDoc(doc(db, "settings", "salesConfig")).then((snap) => {
+      const val: string | undefined = snap.data()?.activeFestival;
+      if (val) setActiveFestival(val);
+    }).catch(() => { /* keep default */ });
+  }, []);
+
+  const handleSaveFestival = async () => {
+    setSavingFestival(true);
+    try {
+      await setDoc(doc(db, "settings", "salesConfig"), {
+        activeFestival,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+      setFestivalSaved(true);
+      toast({ title: "Festival updated", description: `Active festival set to "${activeFestival}" for all sales members.` });
+      setTimeout(() => setFestivalSaved(false), 2000);
+    } catch {
+      toast({ title: "Error", description: "Failed to save festival.", variant: "destructive" });
+    } finally {
+      setSavingFestival(false);
+    }
+  };
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -152,6 +181,46 @@ export default function SalesAdminSettings() {
             {changingPassword ? <Loader2 size={14} className="animate-spin" /> : <Lock size={14} />} {changingPassword ? "Changing..." : "Change Password"}
           </button>
         </form>
+      </div>
+
+      {/* Festival Settings */}
+      <div className="bg-card border border-border rounded-xl p-4 md:p-6">
+        <div className="flex items-center gap-2 text-xs md:text-sm font-medium text-muted-foreground mb-1">
+          <Calendar size={14} /> Active Festival for Sales Scripts
+        </div>
+        <p className="text-xs text-muted-foreground mb-4">
+          Select the current/upcoming festival — all sales members will see this as the default in their call scripts.
+        </p>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Festival</label>
+            <select
+              value={activeFestival}
+              onChange={(e) => setActiveFestival(e.target.value)}
+              className="w-full h-10 px-3 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary"
+            >
+              {FESTIVALS.map((f) => (
+                <option key={f.name} value={f.name}>
+                  {getFestivalOptionLabel(f)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            onClick={handleSaveFestival}
+            disabled={savingFestival}
+            className="h-10 px-6 rounded-lg bg-primary text-primary-foreground font-display font-semibold text-sm hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2"
+          >
+            {savingFestival ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : festivalSaved ? (
+              <Check size={14} />
+            ) : (
+              <Calendar size={14} />
+            )}
+            {savingFestival ? "Saving..." : festivalSaved ? "Saved!" : "Set Active Festival"}
+          </button>
+        </div>
       </div>
 
       <ThemeSelector />

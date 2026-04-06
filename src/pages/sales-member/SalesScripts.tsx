@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { doc, onSnapshot } from "firebase/firestore";
+import { db } from "@/services/firebase";
+import { FESTIVALS, getUpcomingFestivalName, getFestivalOptionLabel, findFestival, formatFestivalDate } from "@/utils/festivals";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronDown,
@@ -30,14 +33,7 @@ function getGreeting(): string {
   return "evening";
 }
 
-const FESTIVAL_OPTIONS = [
-  "Ugadi", "Sankranthi", "Pongal", "Maha Shivaratri", "Holi", "Ram Navami",
-  "Sri Rama Navami", "Ganesh Chaturthi", "Vinayaka Chavithi", "Dasara", "Navaratri",
-  "Diwali", "Deepavali", "Dussehra", "Karva Chauth", "Raksha Bandhan",
-  "Independence Day", "Republic Day", "Christmas", "New Year", "Eid", "Eid ul-Fitr",
-  "Eid ul-Adha", "Onam", "Bathukamma", "Vishu", "Vaisakhi", "Makar Sankranti",
-  "Puthandu",
-];
+
 
 /* ─────────────── types ─────────────── */
 interface ScriptSection {
@@ -1667,7 +1663,20 @@ export default function SalesScripts() {
   const user = useAuthStore((s) => s.user);
   const userName = user?.name || "Your Name";
   const greeting = getGreeting();
-  const [festivalName, setFestivalName] = useState(FESTIVAL_OPTIONS[0]);
+  const [festivalName, setFestivalName] = useState<string>(getUpcomingFestivalName);
+
+  // Real-time listener: admin festival override propagates instantly to all members
+  useEffect(() => {
+    const unsub = onSnapshot(
+      doc(db, "settings", "salesConfig"),
+      (snap) => {
+        const val: string | undefined = snap.data()?.activeFestival;
+        if (val) setFestivalName(val);
+      },
+      () => { /* ignore errors, keep default */ }
+    );
+    return unsub;
+  }, []);
 
   const tabs = buildTabs(greeting, userName, festivalName);
   const [activeTab, setActiveTab] = useState(tabs[0].id);
@@ -1718,23 +1727,32 @@ export default function SalesScripts() {
           <span className="text-muted-foreground">Your Name:</span>
           <span className="font-semibold text-foreground">{userName}</span>
         </div>
-        {showFestivalSelector && (
-          <>
-            <div className="w-px h-4 bg-border" />
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-muted-foreground">Festival:</span>
-              <select
-                value={festivalName}
-                onChange={(e) => setFestivalName(e.target.value)}
-                className="h-7 px-2 rounded-md bg-background border border-border text-foreground text-xs font-semibold outline-none focus:border-primary"
-              >
-                {FESTIVAL_OPTIONS.map((f) => (
-                  <option key={f} value={f}>{f}</option>
-                ))}
-              </select>
-            </div>
-          </>
-        )}
+        <div className="w-px h-4 bg-border" />
+        <div className="flex items-center gap-2 text-xs">
+          <span className="text-muted-foreground">Festival:</span>
+          {showFestivalSelector ? (
+            <select
+              value={festivalName}
+              onChange={(e) => setFestivalName(e.target.value)}
+              className="h-7 px-2 rounded-md bg-background border border-border text-foreground text-xs font-semibold outline-none focus:border-primary"
+            >
+              {FESTIVALS.map((f) => (
+                <option key={f.name} value={f.name}>
+                  {getFestivalOptionLabel(f)}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="font-semibold text-foreground">
+              {festivalName}
+              {findFestival(festivalName) && (
+                <span className="font-normal text-muted-foreground ml-1">
+                  — {formatFestivalDate(findFestival(festivalName)!.date)}
+                </span>
+              )}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Tab bar — horizontal scroll on mobile */}
