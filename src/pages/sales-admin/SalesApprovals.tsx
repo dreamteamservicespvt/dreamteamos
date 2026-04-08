@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { collection, onSnapshot, updateDoc, doc, serverTimestamp, addDoc, deleteDoc } from "firebase/firestore";
+import { collection, onSnapshot, updateDoc, doc, serverTimestamp, deleteDoc } from "firebase/firestore";
 import { db } from "@/services/firebase";
+import { sendNotification } from "@/services/notifications";
 import { useAuthStore } from "@/store/authStore";
 import { formatCurrency } from "@/utils/formatters";
 import { format } from "date-fns";
@@ -52,13 +53,11 @@ export default function SalesApprovals() {
         lastUpdated: serverTimestamp(),
       });
       if (lead) {
-        await addDoc(collection(db, "notifications"), {
+        await sendNotification({
           userId: lead.assignedTo,
           type: "sale_approved",
           title: "Sale Verified",
           message: `Your sale of ₹${items[itemIndex].amount?.toLocaleString()} for ${lead.displayName} has been verified!`,
-          read: false,
-          createdAt: serverTimestamp(),
         });
       }
       setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, saleItems: items } : l));
@@ -79,13 +78,11 @@ export default function SalesApprovals() {
         lastUpdated: serverTimestamp(),
       });
       if (lead) {
-        await addDoc(collection(db, "notifications"), {
+        await sendNotification({
           userId: lead.assignedTo,
           type: "sale_rejected",
           title: "Sale Rejected",
           message: `Your ${items[itemIndex].category} sale of ₹${items[itemIndex].amount?.toLocaleString()} for ${lead.displayName} has been rejected.`,
-          read: false,
-          createdAt: serverTimestamp(),
         });
       }
       setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, saleItems: items } : l));
@@ -106,13 +103,11 @@ export default function SalesApprovals() {
         lastUpdated: serverTimestamp(),
       });
       if (lead) {
-        await addDoc(collection(db, "notifications"), {
+        await sendNotification({
           userId: lead.assignedTo,
           type: "sale_revoked",
           title: "Sale Approval Revoked",
           message: `Your ${items[itemIndex].category} sale for ${lead.displayName} has been moved back to pending.`,
-          read: false,
-          createdAt: serverTimestamp(),
         });
       }
       setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, saleItems: items } : l));

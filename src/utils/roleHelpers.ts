@@ -2,7 +2,7 @@ import type { UserRole } from "@/types";
 import {
   LayoutDashboard, Users, TrendingUp, Code, Phone, Clock, Wallet,
   Settings, BookOpen, FolderOpen, Target, User, BarChart3,
-  ClipboardList, Briefcase, Wrench, FileCheck,
+  ClipboardList, Briefcase, Wrench, FileCheck, MessageSquare, Video, Eye, Film, ScrollText,
 } from "lucide-react";
 
 export interface NavItem {
@@ -30,7 +30,11 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "Drive Management", path: "/tech-admin/drive", icon: FolderOpen },
     { title: "Training Modules", path: "/tech-admin/training", icon: BookOpen },
     { title: "Session History", path: "/tech-admin/sessions", icon: Clock },
+    { title: "Team Chat", path: "/tech-admin/chat", icon: MessageSquare },
+    { title: "Meetings", path: "/tech-admin/meeting", icon: Video },
+    { title: "Chat Monitor", path: "/tech-admin/chat-monitor", icon: Eye },
     { title: "Tools", path: "/tech-admin/tools", icon: Wrench },
+    { title: "Cinematic Ads", path: "/tech-admin/cinematic-ads", icon: Film },
     { title: "Settings", path: "/tech-admin/settings", icon: Settings },
   ],
   sales_admin: [
@@ -39,7 +43,11 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "Leads Management", path: "/sales-admin/leads", icon: Phone },
     { title: "Sales Approvals", path: "/sales-admin/approvals", icon: FileCheck },
     { title: "Analytics", path: "/sales-admin/analytics", icon: BarChart3 },
+    { title: "Team Chat", path: "/sales-admin/chat", icon: MessageSquare },
+    { title: "Meetings", path: "/sales-admin/meeting", icon: Video },
+    { title: "Chat Monitor", path: "/sales-admin/chat-monitor", icon: Eye },
     { title: "Training Modules", path: "/sales-admin/training", icon: BookOpen },
+    { title: "Sales Scripts", path: "/sales-admin/scripts", icon: ScrollText },
     { title: "Session History", path: "/sales-admin/sessions", icon: Clock },
     { title: "Settings", path: "/sales-admin/settings", icon: Settings },
   ],
@@ -52,6 +60,8 @@ const NAV: Record<UserRole, NavItem[]> = {
   tech_member: [
     { title: "Dashboard", path: "/tech/dashboard", icon: LayoutDashboard },
     { title: "My Work", path: "/tech/my-work", icon: Briefcase },
+    { title: "Team Chat", path: "/tech/chat", icon: MessageSquare },
+    { title: "Meetings", path: "/tech/meeting", icon: Video },
     { title: "Training", path: "/tech/training", icon: BookOpen },
     { title: "My Profile", path: "/tech/profile", icon: User },
   ],
@@ -59,7 +69,10 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "Dashboard", path: "/sales/dashboard", icon: LayoutDashboard },
     { title: "My Leads", path: "/sales/leads", icon: Phone },
     { title: "My Performance", path: "/sales/performance", icon: Target },
+    { title: "Team Chat", path: "/sales/chat", icon: MessageSquare },
+    { title: "Meetings", path: "/sales/meeting", icon: Video },
     { title: "Training", path: "/sales/training", icon: BookOpen },
+    { title: "Sales Scripts", path: "/sales/scripts", icon: ScrollText },
     { title: "My Profile", path: "/sales/profile", icon: User },
   ],
 };

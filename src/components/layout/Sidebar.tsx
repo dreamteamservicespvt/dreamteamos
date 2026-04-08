@@ -8,6 +8,7 @@ import { getNavItems, getRoleLabel, getRoleColor } from "@/utils/roleHelpers";
 import { ChevronLeft, ChevronRight, LogOut, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { deleteFCMToken } from "@/services/fcm";
 
 interface SidebarProps {
   mobileOpen: boolean;
@@ -55,6 +56,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
       }
     }
     await signOut(auth);
+    await deleteFCMToken(user.uid).catch(() => {});
     setUser(null);
     navigate("/login");
   };
@@ -82,6 +84,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               exit={{ x: -280 }}
               transition={{ duration: 0.2, ease: "easeInOut" }}
               className="fixed left-0 top-0 h-[100dvh] w-[280px] bg-card border-r border-border flex flex-col z-50 overflow-hidden"
+              style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
             >
               <div className="h-14 flex items-center px-4 border-b border-border justify-between shrink-0">
                 <span className="font-display font-bold text-xl bg-gradient-to-r from-primary to-warning bg-clip-text text-transparent">DTS</span>

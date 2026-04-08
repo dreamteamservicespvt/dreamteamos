@@ -25,7 +25,7 @@ const STATUS_OPTIONS: { value: LeadStatus; label: string; color: string }[] = [
 ];
 
 const SALE_CATEGORIES = [
-  "wishes", "promotional", "cinematic", "digital_marketing", "website", "software", "custom",
+  "wishes", "promotional", "cinematic", "digital_marketing", "website", "logo", "google_listing", "software", "custom",
 ] as const;
 
 const PACKAGES: Record<string, { label: string; amount: number }[]> = {
@@ -51,6 +51,13 @@ const PACKAGES: Record<string, { label: string; amount: number }[]> = {
     { label: "Monthly Package — Custom", amount: 0 },
   ],
   website: [],
+  logo: [
+    { label: "Standard Logo", amount: 499 },
+    { label: "Premium Logo", amount: 999 },
+  ],
+  google_listing: [
+    { label: "Google Business Listing Setup", amount: 999 },
+  ],
   software: [],
   custom: [],
 };

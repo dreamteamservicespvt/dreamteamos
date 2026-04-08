@@ -2,10 +2,12 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   ClipboardList, Plus, Trash2, Eye, CheckCircle2, Edit3, Loader2, AlertCircle,
-  Search, Filter, ChevronDown, ChevronRight, Pencil, X, Save, Undo2, Users, UserCircle, History
+  Search, Filter, ChevronDown, ChevronRight, Pencil, X, Save, Undo2, Users, UserCircle, History, Copy, Check, MessageCircle, Phone
 } from 'lucide-react';
+import { formatPhoneDisplay, getWhatsAppUrl, normalizePhone } from '@/utils/phone';
 import { collection, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/services/firebase';
+import { sendNotification } from '@/services/notifications';
 import { useAuthStore } from '@/store/authStore';
 import { useFirestoreCollection } from '@/hooks/useFirestore';
 import { PRICING } from '@/utils/pricing';
@@ -84,7 +86,7 @@ export default function WorkAssign() {
   const [dayFilter, setDayFilter] = useState<string>('all');
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<{ category: string; duration: string; pricePerUnit: number; businessName: string } | null>(null);
+  const [editForm, setEditForm] = useState<{ category: string; duration: string; pricePerUnit: number; businessName: string; businessWhatsapp: string } | null>(null);
   const [memberSearch, setMemberSearch] = useState('');
   const [confirmAction, setConfirmAction] = useState<{ type: 'delete' | 'sendback'; id: string; assignedTo?: string; title: string } | null>(null);
   const [workloadSearch, setWorkloadSearch] = useState('');
@@ -136,7 +138,9 @@ export default function WorkAssign() {
     pricePerUnit: 499,
     clientName: '',
     businessName: '',
+    businessWhatsapp: '',
   });
+  const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
 
   // Auto-open form with pre-selected member from query param
   useEffect(() => {
@@ -212,6 +216,7 @@ export default function WorkAssign() {
         accessCode,
         businessName: form.businessName.trim(),
         clientName: form.businessName.trim(),
+        ...(form.businessWhatsapp.trim() ? { businessWhatsapp: normalizePhone(form.businessWhatsapp.trim()) } : {}),
         displayTitle: `${form.category.charAt(0).toUpperCase() + form.category.slice(1)} - ${uniqueId}`,
         status: 'assigned',
         sessions: [],
@@ -220,17 +225,15 @@ export default function WorkAssign() {
       });
 
       // Send notification
-      await addDoc(collection(db, 'notifications'), {
+      await sendNotification({
         userId: form.assignedTo,
         type: 'work_assigned',
         title: 'New Work Assigned',
         message: `You have been assigned a new ${form.category} work (${clips} clips, ${form.duration}). Access code: ${accessCode}`,
-        read: false,
-        createdAt: serverTimestamp(),
       });
 
       setShowForm(false);
-      setForm({ assignedTo: '', category: 'wishes', duration: '20s', pricePerUnit: 499, clientName: '', businessName: '' });
+      setForm({ assignedTo: '', category: 'wishes', duration: '20s', pricePerUnit: 499, clientName: '', businessName: '', businessWhatsapp: '' });
       setMemberSearch('');
     } catch (error) {
       console.error('Failed to create assignment:', error);
@@ -249,13 +252,11 @@ export default function WorkAssign() {
           verifiedBy: user.uid,
         });
 
-        await addDoc(collection(db, 'notifications'), {
+        await sendNotification({
           userId: assignment.assignedTo,
           type: 'work_verified',
           title: 'Work Verified!',
           message: `Your ${assignment.category} work (${assignment.displayTitle}) has been verified and approved.`,
-          read: false,
-          createdAt: serverTimestamp(),
         });
       }
     } catch (error) {
@@ -286,13 +287,11 @@ export default function WorkAssign() {
   const handleSetEditing = async (assignmentId: string, assignedTo: string) => {
     try {
       await updateDoc(doc(db, 'work_assignments', assignmentId), { status: 'editing' });
-      await addDoc(collection(db, 'notifications'), {
+      await sendNotification({
         userId: assignedTo,
         type: 'work_editing',
         title: 'Edits Required',
         message: 'Your work has been sent back for edits. Please review and resubmit.',
-        read: false,
-        createdAt: serverTimestamp(),
       });
       setConfirmAction(null);
     } catch (error) {
@@ -319,7 +318,7 @@ export default function WorkAssign() {
 
   const handleStartEdit = (a: WorkAssignment) => {
     setEditingId(a.id);
-    setEditForm({ category: a.category, duration: a.duration, pricePerUnit: a.pricePerUnit, businessName: a.businessName || a.clientName || '' });
+    setEditForm({ category: a.category, duration: a.duration, pricePerUnit: a.pricePerUnit, businessName: a.businessName || a.clientName || '', businessWhatsapp: a.businessWhatsapp || '' });
   };
 
   const handleSaveEdit = async () => {
@@ -333,6 +332,7 @@ export default function WorkAssign() {
         clipCount: clips,
         totalPrice: editForm.pricePerUnit,
         businessName: editForm.businessName.trim(),
+        ...(editForm.businessWhatsapp.trim() ? { businessWhatsapp: normalizePhone(editForm.businessWhatsapp.trim()) } : { businessWhatsapp: '' }),
       });
       setEditingId(null);
       setEditForm(null);
@@ -643,6 +643,14 @@ export default function WorkAssign() {
                 onChange={(e) => setForm(prev => ({ ...prev, businessName: e.target.value }))}
                 className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none" />
             </div>
+
+            {/* Business WhatsApp */}
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">Business WhatsApp <span className="text-[10px] text-muted-foreground/60">(optional)</span></label>
+              <input type="text" placeholder="e.g. 9876543210" value={form.businessWhatsapp}
+                onChange={(e) => setForm(prev => ({ ...prev, businessWhatsapp: e.target.value }))}
+                className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none" />
+            </div>
           </div>
 
           {/* Total */}
@@ -862,6 +870,9 @@ export default function WorkAssign() {
                     <input type="text" placeholder="Business name" value={editForm.businessName}
                       onChange={(e) => setEditForm(prev => prev ? { ...prev, businessName: e.target.value } : prev)}
                       className="w-32 border rounded px-2 py-1 text-xs bg-background text-foreground border-border placeholder:text-muted-foreground" />
+                    <input type="text" placeholder="WhatsApp no." value={editForm.businessWhatsapp}
+                      onChange={(e) => setEditForm(prev => prev ? { ...prev, businessWhatsapp: e.target.value } : prev)}
+                      className="w-28 border rounded px-2 py-1 text-xs bg-background text-foreground border-border placeholder:text-muted-foreground" />
                     <span className="text-xs text-muted-foreground">= {formatCurrency(editForm.pricePerUnit)}</span>
                     <button onClick={handleSaveEdit} className="flex items-center space-x-1 px-2 py-1 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded transition-colors">
                       <Save className="w-3 h-3" /><span>Save</span>
@@ -871,6 +882,7 @@ export default function WorkAssign() {
                     </button>
                   </div>
                 ) : (
+                  <>
                   <div className="flex flex-wrap gap-x-3 md:gap-x-4 gap-y-1 text-xs md:text-sm text-muted-foreground">
                     <span>Assigned to: <strong className="text-foreground">{getMemberName(a.assignedTo)}</strong></span>
                     <span>Assigned: <strong className="text-foreground">{getAssignedStamp(a)}</strong></span>
@@ -881,6 +893,23 @@ export default function WorkAssign() {
                     {a.totalDurationSeconds > 0 && <span>Time: {formatDuration(a.totalDurationSeconds)}</span>}
                     <span className="font-mono text-[10px] md:text-xs">Code: {a.accessCode}</span>
                   </div>
+                  {a.businessWhatsapp && (
+                    <div className="flex items-center gap-2 mt-2">
+                      <a href={getWhatsAppUrl(a.businessWhatsapp)} target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 transition-colors text-xs font-medium">
+                        <MessageCircle className="w-3.5 h-3.5" />
+                        <span>{formatPhoneDisplay(a.businessWhatsapp)}</span>
+                      </a>
+                      <button
+                        onClick={() => { navigator.clipboard.writeText(a.businessWhatsapp!); setCopiedPhone(a.id); setTimeout(() => setCopiedPhone(null), 2000); }}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-accent text-xs transition-colors"
+                        title="Copy number">
+                        {copiedPhone === a.id ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                        <span>{copiedPhone === a.id ? 'Copied' : 'Copy'}</span>
+                      </button>
+                    </div>
+                  )}
+                  </>
                 )}
               </div>
               <div className="flex items-center flex-wrap gap-1.5 md:gap-2">

@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { collection, query, where, onSnapshot, doc, updateDoc, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, query, where, onSnapshot, doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/services/firebase";
+import { sendNotification } from "@/services/notifications";
 import { useAuthStore } from "@/store/authStore";
 import type { WorkAssignment, AppUser, DailyCheckin } from "@/types";
 import { format, subDays, startOfDay } from "date-fns";
@@ -130,13 +131,11 @@ export default function TechAdminMemberHistory() {
         approvedBy: currentUser?.uid,
         approvedAt: serverTimestamp(),
       });
-      await addDoc(collection(db, "notifications"), {
+      await sendNotification({
         userId: ci.memberId,
         type: "approved",
         title: "Day Approved",
         message: `Your check-in for ${ci.date} has been approved.`,
-        read: false,
-        createdAt: serverTimestamp(),
       });
       toast({ title: "Approved", description: `Check-in for ${ci.date} approved.` });
     } catch {
@@ -155,13 +154,11 @@ export default function TechAdminMemberHistory() {
         status: "rejected",
         rejectionNote: note ?? "",
       });
-      await addDoc(collection(db, "notifications"), {
+      await sendNotification({
         userId: ci.memberId,
         type: "rejected",
         title: "Day Rejected",
         message: `Your check-in for ${ci.date} was rejected.${note ? ` Reason: ${note}` : ""}`,
-        read: false,
-        createdAt: serverTimestamp(),
       });
       toast({ title: "Rejected", description: `Check-in for ${ci.date} rejected.` });
     } catch {

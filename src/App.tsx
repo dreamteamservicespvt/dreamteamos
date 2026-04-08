@@ -26,6 +26,7 @@ import SalesMemberDashboard from "@/pages/sales-member/Dashboard";
 import MyPerformance from "@/pages/sales-member/MyPerformance";
 import SalesMemberTraining from "@/pages/sales-member/Training";
 import SalesMemberProfile from "@/pages/sales-member/MyProfile";
+import SalesScripts from "@/pages/sales-member/SalesScripts";
 import SalesAdminDashboard from "@/pages/sales-admin/Dashboard";
 import SalesAdminMyTeam from "@/pages/sales-admin/MyTeam";
 import LeadsManagement from "@/pages/sales-admin/LeadsManagement";
@@ -46,6 +47,7 @@ import TechAdminMemberHistory from "@/pages/tech-admin/MemberHistory";
 import WorkAssign from "@/pages/tech-admin/WorkAssign";
 import MemberAssignments from "@/pages/tech-admin/MemberAssignments";
 import TechAdminTools from "@/pages/tech-admin/Tools";
+import CinematicAds from "@/pages/tech-admin/CinematicAds";
 import AccountsDashboard from "@/pages/accounts-admin/Dashboard";
 import RevenueSummary from "@/pages/accounts-admin/RevenueSummary";
 import DailyExpenses from "@/pages/accounts-admin/DailyExpenses";
@@ -53,6 +55,9 @@ import SalaryManagement from "@/pages/accounts-admin/SalaryManagement";
 import PlaceholderPage from "@/pages/PlaceholderPage";
 import MySalaryPage from "@/pages/shared/MySalary";
 import NotFound from "@/pages/NotFound";
+import Chat from "@/pages/shared/Chat";
+import Meeting from "@/pages/shared/Meeting";
+import AdminChatMonitor from "@/pages/shared/AdminChatMonitor";
 import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
@@ -110,6 +115,10 @@ const App = () => (
             <Route path="/tech-admin/work-assign" element={<WorkAssign />} />
             <Route path="/tech-admin/work-assign/:memberId" element={<MemberAssignments />} />
             <Route path="/tech-admin/tools" element={<TechAdminTools />} />
+            <Route path="/tech-admin/cinematic-ads" element={<CinematicAds />} />
+            <Route path="/tech-admin/chat" element={<Chat />} />
+            <Route path="/tech-admin/meeting" element={<Meeting />} />
+            <Route path="/tech-admin/chat-monitor" element={<AdminChatMonitor />} />
           </Route>
 
           {/* Sales Admin */}
@@ -122,8 +131,12 @@ const App = () => (
             <Route path="/sales-admin/approvals" element={<SalesApprovals />} />
             <Route path="/sales-admin/analytics" element={<SalesAnalytics />} />
             <Route path="/sales-admin/training" element={<SalesTrainingModules />} />
+            <Route path="/sales-admin/scripts" element={<SalesScripts />} />
             <Route path="/sales-admin/sessions" element={<SalesAdminSessionHistory />} />
             <Route path="/sales-admin/settings" element={<SalesAdminSettings />} />
+            <Route path="/sales-admin/chat" element={<Chat />} />
+            <Route path="/sales-admin/meeting" element={<Meeting />} />
+            <Route path="/sales-admin/chat-monitor" element={<AdminChatMonitor />} />
             <Route path="/sales-admin/salary" element={<MySalaryPage />} />
           </Route>
 
@@ -141,6 +154,8 @@ const App = () => (
             <Route path="/tech/my-work" element={<MyWork />} />
             <Route path="/tech/training" element={<TechMemberTraining />} />
             <Route path="/tech/profile" element={<TechMemberProfile />} />
+            <Route path="/tech/chat" element={<Chat />} />
+            <Route path="/tech/meeting" element={<Meeting />} />
             <Route path="/tech/salary" element={<MySalaryPage />} />
           </Route>
 
@@ -150,7 +165,10 @@ const App = () => (
             <Route path="/sales/leads" element={<MyLeads />} />
             <Route path="/sales/performance" element={<MyPerformance />} />
             <Route path="/sales/training" element={<SalesMemberTraining />} />
+            <Route path="/sales/scripts" element={<SalesScripts />} />
             <Route path="/sales/profile" element={<SalesMemberProfile />} />
+            <Route path="/sales/chat" element={<Chat />} />
+            <Route path="/sales/meeting" element={<Meeting />} />
             <Route path="/sales/salary" element={<MySalaryPage />} />
           </Route>
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { collection, onSnapshot, updateDoc, doc, addDoc, deleteDoc, serverTimestamp, query, where } from "firebase/firestore";
 import { db } from "@/services/firebase";
+import { sendNotification } from "@/services/notifications";
 import { useAuthStore } from "@/store/authStore";
 import { formatCurrency } from "@/utils/formatters";
 import { getRoleLabel, getRoleColor } from "@/utils/roleHelpers";
@@ -117,13 +118,11 @@ export default function SalaryManagement() {
       });
 
       // Send notification to the member
-      await addDoc(collection(db, "notifications"), {
+      await sendNotification({
         userId: receiptMember.uid,
         type: "salary_receipt",
         title: "Salary Receipt Received",
         message: `Your salary receipt for ${monthLabel} — ${formatCurrency(receiptAmount)} has been sent. Check your profile.`,
-        read: false,
-        createdAt: serverTimestamp(),
       });
 
       toast({ title: "Receipt Sent", description: `Salary receipt with file sent to ${receiptMember.name}.` });

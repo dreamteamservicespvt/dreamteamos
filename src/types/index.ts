@@ -48,6 +48,7 @@ export interface WorkAssignment {
   uniqueId: string;
   accessCode: string;
   businessName?: string;
+  businessWhatsapp?: string;
   displayTitle: string;
   status: WorkAssignmentStatus;
   sessions: WorkAssignmentSession[];
@@ -109,4 +110,87 @@ export interface DailyCheckin {
   approvedBy?: string;
   approvedAt?: any;
   rejectionNote?: string;
+}
+
+// Chat System
+export interface ChatRoom {
+  id: string;
+  participants: string[];
+  participantNames: Record<string, string>;
+  participantAvatars?: Record<string, string>;
+  activeUsers: string[];
+  lastMessage: string;
+  lastMessageAt: any;
+  lastMessageBy: string;
+  unreadCounts: Record<string, number>;
+  createdAt: any;
+}
+
+export type ChatMessageType = "text" | "image" | "video" | "file" | "voice" | "emoji";
+
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  text: string;
+  type?: ChatMessageType;
+  fileUrl?: string;
+  fileName?: string;
+  fileType?: string;
+  duration?: number; // voice message duration in seconds
+  replyToId?: string;
+  replyToText?: string;
+  replyToSenderId?: string;
+  editedAt?: any;
+  editHistory?: string[];
+  deletedAt?: any;
+  createdAt: any;
+}
+
+// Video Call System
+export type CallStatus = "ringing" | "active" | "ended" | "declined";
+
+export interface VideoCallDoc {
+  id: string;
+  callerId: string;
+  callerName: string;
+  callerAvatar?: string;
+  receiverId: string;
+  receiverName: string;
+  receiverAvatar?: string;
+  callType: "video" | "voice";
+  status: CallStatus;
+  offer?: { type: string; sdp: string };
+  answer?: { type: string; sdp: string };
+  createdAt: any;
+  endedAt?: any;
+}
+
+// Meeting System
+export interface MeetingDoc {
+  id: string;
+  code: string;
+  title: string;
+  createdBy: string;
+  createdByName: string;
+  status: "active" | "ended";
+  participantUids: string[];
+  createdAt: any;
+  endedAt?: any;
+}
+
+export interface MeetingParticipant {
+  uid: string;
+  name: string;
+  avatar?: string;
+  joinedAt: any;
+}
+
+export interface MeetingSignal {
+  id: string;
+  from: string;
+  to: string;
+  type: "offer" | "answer" | "candidate";
+  sdp?: string;
+  candidate?: any;
+  createdAt: any;
 }

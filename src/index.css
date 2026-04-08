@@ -2,6 +2,37 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Capacitor keyboard height CSS variable - set by JS */
+:root {
+  --keyboard-height: 0px;
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* When keyboard is open, shrink the visible area */
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body.keyboard-open #root {
+  height: calc(100% - var(--keyboard-height));
+  transition: height 0.15s ease-out;
+}
+
+/* Native app: push content below status bar using safe-area or fallback */
+html.native-app body {
+  padding-top: env(safe-area-inset-top, 28px);
+  background-color: hsl(0 0% 0%); /* black behind the status bar area */
+}
+
+/* Fallback: if env() isn't supported, use a fixed 28px top pad on native */
+@supports not (padding-top: env(safe-area-inset-top)) {
+  html.native-app body {
+    padding-top: 28px;
+  }
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

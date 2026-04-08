@@ -1,7 +1,9 @@
 export const PRICING: Record<string, Record<string, number>> = {
   wishes: { "20s": 499, "40s": 999 },
   promotional: { "16s": 499, "32s": 999, "48s": 1499, "64s": 1999 },
-  cinematic: { "16s": 998, "32s": 1998, "48s": 2998, "64s": 3998 },
+  cinematic: { "16s": 999, "32s": 1999, "48s": 2999, "64s": 3999 },
+  logo: { standard: 499, premium: 999 },
+  google_listing: { setup: 999 },
 };
 
 export function calculateRevenue(items: { type: string; duration: string; quantity: number; adminApprovedPrice?: number | null }[]) {

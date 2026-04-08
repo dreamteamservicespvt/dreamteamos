@@ -2,8 +2,9 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Briefcase, Clock, Play, CheckCircle2, Loader2, AlertCircle, Sparkles, Edit3, Copy, Check, Undo2
 } from 'lucide-react';
-import { collection, query, where, doc, updateDoc, deleteField, serverTimestamp, addDoc } from 'firebase/firestore';
+import { collection, query, where, doc, updateDoc, deleteField, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/services/firebase';
+import { sendNotification } from '@/services/notifications';
 import { useAuthStore } from '@/store/authStore';
 import { useFirestoreQuery } from '@/hooks/useFirestore';
 import { format, subDays, startOfDay } from 'date-fns';
@@ -106,14 +107,12 @@ export default function MyWork() {
 
       // Notify admin
       if (openAssignment.assignedBy) {
-        await addDoc(collection(db, 'notifications'), {
+        await sendNotification({
           userId: openAssignment.assignedBy,
           type: 'work_completed',
           title: 'Work Completed',
           message: `${user?.name || 'A member'} has completed work: ${openAssignment.businessName || openAssignment.displayTitle}`,
-          read: false,
           link: `/tech-admin/work-assign/${user.uid}?verify=${openAssignment.id}`,
-          createdAt: serverTimestamp(),
         });
       }
 
@@ -330,6 +329,7 @@ export default function MyWork() {
                       <span className="flex items-center space-x-1"><Clock className="w-3 h-3" /><span>{formatDuration(a.totalDurationSeconds)}</span></span>
                     )}
                   </div>
+
                   <div className="flex items-center justify-between mb-4 bg-muted/50 rounded-lg px-3 py-2">
                     <span className="text-xs text-muted-foreground">Access Code:</span>
                     <div className="flex items-center space-x-2">

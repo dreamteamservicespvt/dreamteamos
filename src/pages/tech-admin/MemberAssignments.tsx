@@ -2,14 +2,16 @@ import { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, ClipboardList, Trash2, CheckCircle2, Edit3, Loader2,
-  Pencil, X, Save, Undo2, Search
+  Pencil, X, Save, Undo2, Search, Copy, Check, MessageCircle
 } from 'lucide-react';
 import { doc, updateDoc, deleteDoc, addDoc, collection, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/services/firebase';
+import { sendNotification } from '@/services/notifications';
 import { useAuthStore } from '@/store/authStore';
 import { useFirestoreCollection } from '@/hooks/useFirestore';
 import { PRICING } from '@/utils/pricing';
 import { formatCurrency, formatDate, formatTime } from '@/utils/formatters';
+import { formatPhoneDisplay, getWhatsAppUrl, normalizePhone } from '@/utils/phone';
 import { format, subDays, startOfDay, parseISO, isValid } from 'date-fns';
 import DashboardDayPicker from '@/components/dashboard/DayPicker';
 import type { WorkAssignment, AppUser } from '@/types';
@@ -112,8 +114,9 @@ export default function MemberAssignments() {
   const [dayFilter, setDayFilter] = useState<string>('0');
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<{ category: string; duration: string; pricePerUnit: number; businessName: string } | null>(null);
+  const [editForm, setEditForm] = useState<{ category: string; duration: string; pricePerUnit: number; businessName: string; businessWhatsapp: string } | null>(null);
   const [confirmAction, setConfirmAction] = useState<{ type: 'delete' | 'sendback'; id: string; assignedTo?: string; title: string } | null>(null);
+  const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
   const [verifyingAll, setVerifyingAll] = useState(false);
   const [verifyDialog, setVerifyDialog] = useState<{ mode: 'single' | 'all'; items: WorkAssignment[] } | null>(null);
 
@@ -221,13 +224,11 @@ export default function MemberAssignments() {
           verifiedAt: serverTimestamp(),
           verifiedBy: currentUser.uid,
         });
-        await addDoc(collection(db, 'notifications'), {
+        await sendNotification({
           userId: assignment.assignedTo,
           type: 'work_verified',
           title: 'Work Verified!',
           message: `Your ${assignment.category} work (${assignment.displayTitle}) has been verified and approved.`,
-          read: false,
-          createdAt: serverTimestamp(),
         });
       }
     } catch (error) {
@@ -258,13 +259,11 @@ export default function MemberAssignments() {
   const handleSetEditing = async (assignmentId: string, assignedTo: string) => {
     try {
       await updateDoc(doc(db, 'work_assignments', assignmentId), { status: 'editing' });
-      await addDoc(collection(db, 'notifications'), {
+      await sendNotification({
         userId: assignedTo,
         type: 'work_editing',
         title: 'Edits Required',
         message: 'Your work has been sent back for edits. Please review and resubmit.',
-        read: false,
-        createdAt: serverTimestamp(),
       });
       setConfirmAction(null);
     } catch (error) {
@@ -291,7 +290,7 @@ export default function MemberAssignments() {
 
   const handleStartEdit = (a: WorkAssignment) => {
     setEditingId(a.id);
-    setEditForm({ category: a.category, duration: a.duration, pricePerUnit: a.pricePerUnit, businessName: a.businessName || a.clientName || '' });
+    setEditForm({ category: a.category, duration: a.duration, pricePerUnit: a.pricePerUnit, businessName: a.businessName || a.clientName || '', businessWhatsapp: a.businessWhatsapp || '' });
   };
 
   const handleSaveEdit = async () => {
@@ -305,6 +304,7 @@ export default function MemberAssignments() {
         clipCount: clips,
         totalPrice: editForm.pricePerUnit,
         businessName: editForm.businessName.trim(),
+        ...(editForm.businessWhatsapp.trim() ? { businessWhatsapp: normalizePhone(editForm.businessWhatsapp.trim()) } : { businessWhatsapp: '' }),
       });
       setEditingId(null);
       setEditForm(null);
@@ -575,6 +575,9 @@ export default function MemberAssignments() {
                   <input type="text" placeholder="Business name" value={editForm.businessName}
                     onChange={(e) => setEditForm(prev => prev ? { ...prev, businessName: e.target.value } : prev)}
                     className="w-32 border rounded px-2 py-1 text-xs bg-background text-foreground border-border placeholder:text-muted-foreground" />
+                  <input type="text" placeholder="WhatsApp no." value={editForm.businessWhatsapp}
+                    onChange={(e) => setEditForm(prev => prev ? { ...prev, businessWhatsapp: e.target.value } : prev)}
+                    className="w-28 border rounded px-2 py-1 text-xs bg-background text-foreground border-border placeholder:text-muted-foreground" />
                   <span className="text-xs text-muted-foreground">= {formatCurrency(editForm.pricePerUnit)}</span>
                   <button onClick={handleSaveEdit} className="flex items-center space-x-1 px-2 py-1 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded transition-colors">
                     <Save className="w-3 h-3" /><span>Save</span>
@@ -584,6 +587,7 @@ export default function MemberAssignments() {
                   </button>
                 </div>
               ) : (
+                <>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div>
                     <p className="text-[10px] text-muted-foreground mb-0.5">Category</p>
@@ -608,6 +612,23 @@ export default function MemberAssignments() {
                     </div>
                   )}
                 </div>
+                {a.businessWhatsapp && (
+                  <div className="flex items-center gap-2 mt-3">
+                    <a href={getWhatsAppUrl(a.businessWhatsapp)} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 transition-colors text-xs font-medium">
+                      <MessageCircle className="w-3.5 h-3.5" />
+                      <span>{formatPhoneDisplay(a.businessWhatsapp)}</span>
+                    </a>
+                    <button
+                      onClick={() => { navigator.clipboard.writeText(a.businessWhatsapp!); setCopiedPhone(a.id); setTimeout(() => setCopiedPhone(null), 2000); }}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-accent text-xs transition-colors"
+                      title="Copy number">
+                      {copiedPhone === a.id ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedPhone === a.id ? 'Copied' : 'Copy'}</span>
+                    </button>
+                  </div>
+                )}
+                </>
               )}
             </div>
 
