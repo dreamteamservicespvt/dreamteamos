@@ -89,25 +89,104 @@ const getAiInstance = (): GoogleGenAI => {
   return new GoogleGenAI({ apiKey: getCurrentApiKey() });
 };
 
-// We use the pro model for complex reasoning and extraction
-const MODEL_NAME = 'gemini-2.5-flash';
+// Multi-Model Fallback System
+// Models listed in priority order — if one fails, the next is tried automatically.
+// Models that return 404/not-found are permanently removed from the list for this session.
+const MODEL_LIST: string[] = [
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.0-flash-lite',
+  'gemini-flash-latest',
+  'gemini-flash-lite-latest',
+  'gemini-3.1-flash-lite-preview',
+];
 
-// Helper function to make API calls with automatic key rotation on failure
+// Track permanently dead models (404 / not found) — removed for this session
+const deadModels = new Set<string>();
+
+let currentModelIndex = 0;
+
+const getCurrentModel = (): string => {
+  // Skip dead models
+  while (currentModelIndex < MODEL_LIST.length && deadModels.has(MODEL_LIST[currentModelIndex])) {
+    currentModelIndex++;
+  }
+  if (currentModelIndex >= MODEL_LIST.length) {
+    // Reset index and find first alive model
+    currentModelIndex = 0;
+    while (currentModelIndex < MODEL_LIST.length && deadModels.has(MODEL_LIST[currentModelIndex])) {
+      currentModelIndex++;
+    }
+  }
+  const aliveModels = MODEL_LIST.filter(m => !deadModels.has(m));
+  if (aliveModels.length === 0) {
+    throw new Error("All models are permanently dead (404). No working models available.");
+  }
+  return MODEL_LIST[currentModelIndex];
+};
+
+const rotateToNextModel = (): boolean => {
+  const startIndex = currentModelIndex;
+  currentModelIndex = (currentModelIndex + 1) % MODEL_LIST.length;
+  // Skip dead models
+  let looped = false;
+  while (deadModels.has(MODEL_LIST[currentModelIndex])) {
+    currentModelIndex = (currentModelIndex + 1) % MODEL_LIST.length;
+    if (currentModelIndex === startIndex) {
+      looped = true;
+      break;
+    }
+  }
+  const aliveModels = MODEL_LIST.filter(m => !deadModels.has(m));
+  if (aliveModels.length === 0 || looped) {
+    console.error("All models exhausted.");
+    return false;
+  }
+  console.log(`Rotated to model: ${MODEL_LIST[currentModelIndex]} (${aliveModels.length} alive models remaining)`);
+  return true;
+};
+
+// Helper function to make API calls with automatic key + model rotation on failure
 const callWithFallback = async <T>(
-  apiCall: (ai: GoogleGenAI) => Promise<T>,
-  maxRetries: number = API_KEYS.length
+  apiCall: (ai: GoogleGenAI, model: string) => Promise<T>,
+  maxRetries: number = API_KEYS.length * MODEL_LIST.length
 ): Promise<T> => {
   let lastError: any = null;
   const triedKeys = new Set<number>();
+  const triedModels = new Set<string>();
+  
+  const aliveModelCount = () => MODEL_LIST.filter(m => !deadModels.has(m)).length;
   
   for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const model = getCurrentModel();
     try {
       const ai = getAiInstance();
-      const result = await apiCall(ai);
+      const result = await apiCall(ai, model);
       return result;
     } catch (error: any) {
       lastError = error;
       const errorMessage = error?.message || String(error);
+      const statusCode = error?.status || error?.statusCode;
+      
+      // Check if model is permanently dead (404 Not Found)
+      const isModelNotFound =
+        statusCode === 404 ||
+        errorMessage.includes('404') ||
+        errorMessage.includes('not found') ||
+        errorMessage.includes('is not found') ||
+        errorMessage.includes('models/') && errorMessage.includes('not');
+      
+      if (isModelNotFound) {
+        console.error(`Model "${model}" is permanently dead (404). Removing from rotation.`);
+        deadModels.add(model);
+        if (aliveModelCount() === 0) {
+          throw new Error(`All models are dead. Last error: ${errorMessage}`);
+        }
+        rotateToNextModel();
+        await new Promise(r => setTimeout(r, 300));
+        continue;
+      }
       
       // Check if error is related to API key issues (rate limit, invalid key, quota exceeded)
       const isKeyRelatedError = 
@@ -119,25 +198,45 @@ const callWithFallback = async <T>(
         errorMessage.includes('401') ||
         errorMessage.includes('403') ||
         errorMessage.includes('429') ||
-        error?.status === 401 ||
-        error?.status === 403 ||
-        error?.status === 429;
+        statusCode === 401 ||
+        statusCode === 403 ||
+        statusCode === 429;
+
+      // Check if error is model-related (overloaded, unavailable, etc.)
+      const isModelRelatedError =
+        errorMessage.includes('overloaded') ||
+        errorMessage.includes('unavailable') ||
+        errorMessage.includes('capacity') ||
+        errorMessage.includes('500') ||
+        errorMessage.includes('503') ||
+        statusCode === 500 ||
+        statusCode === 503;
       
       if (isKeyRelatedError && API_KEYS.length > 1) {
-        console.warn(`API key ${currentKeyIndex + 1} failed: ${errorMessage}. Trying next key...`);
+        console.warn(`API key ${currentKeyIndex + 1} failed with model "${model}": ${errorMessage}. Trying next key...`);
         triedKeys.add(currentKeyIndex);
         rotateToNextKey();
         
-        // If we've tried all keys, throw the error
+        // If we've tried all keys with this model, try next model
         if (triedKeys.size >= API_KEYS.length) {
-          console.error("All API keys exhausted.");
-          throw new Error(`All ${API_KEYS.length} API keys failed. Last error: ${errorMessage}`);
+          console.warn(`All API keys exhausted for model "${model}". Trying next model...`);
+          triedKeys.clear();
+          triedModels.add(model);
+          if (!rotateToNextModel() || triedModels.size >= aliveModelCount()) {
+            throw new Error(`All ${API_KEYS.length} API keys and ${aliveModelCount()} models failed. Last error: ${errorMessage}`);
+          }
         }
         
-        // Brief pause before retry with new key
+        await new Promise(r => setTimeout(r, 500));
+      } else if (isModelRelatedError) {
+        console.warn(`Model "${model}" error: ${errorMessage}. Trying next model...`);
+        triedModels.add(model);
+        if (!rotateToNextModel() || triedModels.size >= aliveModelCount()) {
+          throw new Error(`All ${aliveModelCount()} models failed. Last error: ${errorMessage}`);
+        }
         await new Promise(r => setTimeout(r, 500));
       } else {
-        // Non-key-related error, throw immediately
+        // Non-recoverable error, throw immediately
         throw error;
       }
     }
@@ -267,9 +366,9 @@ IMPORTANT:
       throw new Error(`Unknown section type: ${sectionType}`);
   }
 
-  const response = await callWithFallback(async (ai) => {
+  const response = await callWithFallback(async (ai, model) => {
     return await ai.models.generateContent({
-      model: MODEL_NAME,
+      model,
       contents: [
         { role: 'user', parts: [{ text: userPrompt }] }
       ],
@@ -334,9 +433,9 @@ export const extractBusinessOnly = async (
 
   onProgress("Extracting business intelligence...", 30);
 
-  const extractionResponse = await callWithFallback(async (ai) => {
+  const extractionResponse = await callWithFallback(async (ai, model) => {
     return await ai.models.generateContent({
-      model: MODEL_NAME,
+      model,
       contents: [{ role: 'user', parts: [...parts, { text: "Extract business info." }] }],
       config: { systemInstruction: EXTRACTION_SYSTEM_PROMPT, responseMimeType: "application/json" }
     });
@@ -629,9 +728,9 @@ export const generateAdAssets = async (
     let lastError: any = null;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        const response = await callWithFallback(async (ai) => {
+        const response = await callWithFallback(async (ai, model) => {
           return await ai.models.generateContent({
-            model: MODEL_NAME,
+            model,
             contents: [{ role: 'user', parts }],
             config: { systemInstruction: systemPrompt, ...config }
           });
@@ -661,9 +760,9 @@ export const generateAdAssets = async (
   onProgress("Extracting business intelligence...", 10);
   
   // We use generateContent with the system prompt and all files
-  const extractionResponse = await callWithFallback(async (ai) => {
+  const extractionResponse = await callWithFallback(async (ai, model) => {
     return await ai.models.generateContent({
-      model: MODEL_NAME,
+      model,
       contents: [
           { role: 'user', parts: [ ...fileParts, { text: "Extract business info." } ] }
       ],
@@ -730,9 +829,9 @@ Segment 2: <text>
 ... etc.
 - Output ONLY the numbered segments, nothing else`;
 
-    const segmentResponse = await callWithFallback(async (ai) => {
+    const segmentResponse = await callWithFallback(async (ai, model) => {
       return await ai.models.generateContent({
-        model: MODEL_NAME,
+        model,
         contents: [{ role: 'user', parts: [{ text: `Split this script into ${segmentCount} segments:\n\n${cleanedScript}` }] }],
         config: { systemInstruction: segmentSystemPrompt }
       });
@@ -751,9 +850,9 @@ Segment 2: <text>
   ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName}` : ''}
   DURATION: ${formData.duration} seconds (${segmentCount} segments)`;
 
-    const scriptResponse = await callWithFallback(async (ai) => {
+    const scriptResponse = await callWithFallback(async (ai, model) => {
       return await ai.models.generateContent({
-        model: MODEL_NAME,
+        model,
         contents: [{ role: 'user', parts: [{ text: scriptUserPrompt }] }],
         config: { systemInstruction: scriptSystemPrompt }
       });
@@ -1075,9 +1174,9 @@ Keep it MINIMAL — the header is a thin contact strip (10% max height, TOP ONLY
   ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName}` : ''}
   Generate the complete poster design JSON now.`;
 
-  const posterResponse = await callWithFallback(async (ai) => {
+  const posterResponse = await callWithFallback(async (ai, model) => {
     return await ai.models.generateContent({
-      model: MODEL_NAME,
+      model,
       contents: [
           { role: 'user', parts: [{ text: posterUserPrompt }] }
       ],
@@ -1120,9 +1219,9 @@ Keep it MINIMAL — the header is a thin contact strip (10% max height, TOP ONLY
   VOICE-OVER SEGMENTS: ${parsedSegments.map((s, i) => `Segment ${i+1}: ${s}`).join('\n')}
   Generate ${segmentCount} complete Veo 3 prompts now.`;
 
-  const veoResponse = await callWithFallback(async (ai) => {
+  const veoResponse = await callWithFallback(async (ai, model) => {
     return await ai.models.generateContent({
-      model: MODEL_NAME,
+      model,
       contents: [
           { role: 'user', parts: [{ text: veoUserPrompt }] }
       ],
@@ -1176,9 +1275,9 @@ export const generatePosterPrompt = async (
   ${posterInstructions ? `\nUSER POSTER INSTRUCTIONS (IMPORTANT — follow these closely):\n${posterInstructions}` : ''}
   Generate the complete poster design JSON now.`;
 
-  const posterResponse = await callWithFallback(async (ai) => {
+  const posterResponse = await callWithFallback(async (ai, model) => {
     return await ai.models.generateContent({
-      model: MODEL_NAME,
+      model,
       contents: [
         { role: 'user', parts: [{ text: posterUserPrompt }] }
       ],
@@ -1238,9 +1337,9 @@ ALL people, clothing, settings, and cultural elements in every image MUST match 
 
 Generate ONLY the stock image prompts that this specific script needs (1-5 maximum). Do NOT always give 5 — analyze the script and provide only what's genuinely needed for editing.`;
 
-  const response = await callWithFallback(async (ai) => {
+  const response = await callWithFallback(async (ai, model) => {
     return await ai.models.generateContent({
-      model: MODEL_NAME,
+      model,
       contents: [
         { role: 'user', parts: [{ text: userPrompt }] }
       ],
@@ -1262,9 +1361,9 @@ Generate ONLY the stock image prompts that this specific script needs (1-5 maxim
 
 // Transliterate Telugu voice-over script to English using Gemini AI
 export const transliterateToEnglish = async (teluguText: string): Promise<string> => {
-  const response = await callWithFallback(async (ai) => {
+  const response = await callWithFallback(async (ai, model) => {
     return await ai.models.generateContent({
-      model: MODEL_NAME,
+      model,
       contents: [
         {
           role: 'user',
@@ -1297,9 +1396,9 @@ ${teluguText}`
 export const extractScriptFromImage = async (imageFile: File): Promise<string> => {
   const base64 = await fileToBase64(imageFile);
   
-  const response = await callWithFallback(async (ai) => {
+  const response = await callWithFallback(async (ai, model) => {
     return await ai.models.generateContent({
-      model: MODEL_NAME,
+      model,
       contents: [{
         role: 'user',
         parts: [
@@ -1340,9 +1439,9 @@ Output STRICT JSON with no markdown wrapping:
   ]
 }`;
 
-  const response = await callWithFallback(async (ai) => {
+  const response = await callWithFallback(async (ai, model) => {
     return await ai.models.generateContent({
-      model: MODEL_NAME,
+      model,
       contents: [{ role: 'user', parts: [{ text: `Analyze this script for duration and split into 8-second clips:\n\n${scriptText}` }] }],
       config: {
         systemInstruction: systemPrompt,
