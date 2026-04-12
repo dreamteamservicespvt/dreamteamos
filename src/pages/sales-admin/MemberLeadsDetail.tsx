@@ -8,7 +8,7 @@ import { normalizePhone, formatPhoneDisplay, getWhatsAppUrl, getCallUrl } from "
 import { formatCurrency } from "@/utils/formatters";
 import { format, subDays, startOfDay } from "date-fns";
 import type { AppUser, Lead, LeadStatus, SaleDetail } from "@/types";
-import { ArrowLeft, Phone, Plus, Loader2, Search, Trash2, MessageCircle, StickyNote, ShoppingBag, X, Hash, List, Type } from "lucide-react";
+import { ArrowLeft, Phone, Plus, Loader2, Search, Trash2, MessageCircle, StickyNote, ShoppingBag, X, Hash, List, Type, CheckSquare, Square, XCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useConfirm } from "@/hooks/useConfirm";
@@ -97,6 +97,11 @@ export default function MemberLeadsDetail() {
   const [adding, setAdding] = useState(false);
   const numberInputRef = useRef<HTMLInputElement>(null);
   const shouldRefocusRef = useRef(false);
+
+  // Multi-select delete
+  const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
 
   // Auto-refocus input after queue changes (React re-render safe)
   useEffect(() => {
@@ -296,6 +301,52 @@ export default function MemberLeadsDetail() {
       toast({ title: "Error", description: "Failed to delete.", variant: "destructive" });
     }
   };
+
+  const toggleSelectLead = useCallback((leadId: string) => {
+    setSelectedLeads((prev) => {
+      const next = new Set(prev);
+      if (next.has(leadId)) next.delete(leadId);
+      else next.add(leadId);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback((leadsOnScreen: Lead[]) => {
+    setSelectedLeads((prev) => {
+      const allIds = leadsOnScreen.map((l) => l.id);
+      const allSelected = allIds.every((id) => prev.has(id));
+      if (allSelected) return new Set();
+      return new Set(allIds);
+    });
+  }, []);
+
+  const handleBulkDelete = async () => {
+    if (selectedLeads.size === 0) return;
+    const { confirmed } = await confirm({
+      title: "Delete Selected Leads",
+      description: `Are you sure you want to delete ${selectedLeads.size} lead${selectedLeads.size > 1 ? "s" : ""}? This cannot be undone.`,
+      confirmText: `Delete ${selectedLeads.size}`,
+      variant: "destructive",
+    });
+    if (!confirmed) return;
+    setBulkDeleting(true);
+    try {
+      const ids = Array.from(selectedLeads);
+      await Promise.all(ids.map((id) => deleteDoc(doc(db, "leads", id))));
+      toast({ title: "Deleted", description: `${ids.length} lead${ids.length > 1 ? "s" : ""} removed.` });
+      setSelectedLeads(new Set());
+      setSelectMode(false);
+    } catch {
+      toast({ title: "Error", description: "Failed to delete some leads.", variant: "destructive" });
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
+  const exitSelectMode = useCallback(() => {
+    setSelectMode(false);
+    setSelectedLeads(new Set());
+  }, []);
 
   const handleReassign = async (leadId: string, newMemberId: string) => {
     try {
@@ -506,6 +557,49 @@ export default function MemberLeadsDetail() {
       {/* ─── LEADS TAB ─── */}
       {viewTab === "leads" && (
         <div className="space-y-4">
+          {/* Multi-select action bar */}
+          <AnimatePresence>
+            {selectMode && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="flex items-center justify-between gap-2 bg-destructive/10 border border-destructive/30 rounded-xl px-3 py-2 md:px-4 md:py-2.5">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <CheckSquare size={16} className="text-destructive shrink-0" />
+                    <span className="text-xs md:text-sm font-medium text-destructive truncate">
+                      {selectedLeads.size} selected
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      onClick={() => toggleSelectAll(activeDayLeads)}
+                      className="h-7 md:h-8 px-2 md:px-3 rounded-lg text-[10px] md:text-xs font-medium bg-card border border-border text-foreground hover:bg-accent transition-colors"
+                    >
+                      {activeDayLeads.length > 0 && activeDayLeads.every((l) => selectedLeads.has(l.id)) ? "Deselect All" : "Select All"}
+                    </button>
+                    <button
+                      onClick={handleBulkDelete}
+                      disabled={selectedLeads.size === 0 || bulkDeleting}
+                      className="h-7 md:h-8 px-2 md:px-3 rounded-lg text-[10px] md:text-xs font-semibold bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50 flex items-center gap-1 transition-colors"
+                    >
+                      {bulkDeleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                      {bulkDeleting ? "Deleting..." : "Delete"}
+                    </button>
+                    <button
+                      onClick={exitSelectMode}
+                      className="h-7 md:h-8 w-7 md:w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent border border-border transition-colors"
+                    >
+                      <XCircle size={14} />
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Search + Filter */}
           <div className="flex items-center gap-2 md:gap-3 flex-wrap">
             <div className="relative flex-1 max-w-xs">
@@ -513,6 +607,14 @@ export default function MemberLeadsDetail() {
               <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search..."
                 className="w-full h-9 pl-9 pr-3 rounded-lg bg-card border border-border text-foreground text-sm outline-none focus:border-primary" />
             </div>
+            {!selectMode && (
+              <button
+                onClick={() => setSelectMode(true)}
+                className="h-9 px-3 rounded-lg bg-card border border-border text-foreground text-xs md:text-sm font-medium flex items-center gap-1.5 hover:bg-accent transition-colors"
+              >
+                <CheckSquare size={14} /> Select
+              </button>
+            )}
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
               className="h-9 px-3 rounded-lg bg-card border border-border text-foreground text-xs md:text-sm outline-none focus:border-primary">
               <option value="all">All Status</option>
@@ -551,7 +653,7 @@ export default function MemberLeadsDetail() {
             </div>
           ) : (
             <div className="bg-card border border-border rounded-xl overflow-hidden">
-              <LeadsList leads={activeDayLeads} members={members} isMobile={isMobile} expandedNotes={expandedNotes} setExpandedNotes={setExpandedNotes} onDelete={handleDelete} onReassign={handleReassign} />
+              <LeadsList leads={activeDayLeads} members={members} isMobile={isMobile} expandedNotes={expandedNotes} setExpandedNotes={setExpandedNotes} onDelete={handleDelete} onReassign={handleReassign} selectMode={selectMode} selectedLeads={selectedLeads} onToggleSelect={toggleSelectLead} onToggleSelectAll={() => toggleSelectAll(activeDayLeads)} />
             </div>
           )}
         </div>
@@ -609,7 +711,7 @@ export default function MemberLeadsDetail() {
 }
 
 /* ─── Leads List (shared for day sections & calendar view) ─── */
-function LeadsList({ leads, members, isMobile, expandedNotes, setExpandedNotes, onDelete, onReassign }: {
+function LeadsList({ leads, members, isMobile, expandedNotes, setExpandedNotes, onDelete, onReassign, selectMode, selectedLeads, onToggleSelect, onToggleSelectAll }: {
   leads: Lead[];
   members: AppUser[];
   isMobile: boolean;
@@ -617,19 +719,41 @@ function LeadsList({ leads, members, isMobile, expandedNotes, setExpandedNotes, 
   setExpandedNotes: (id: string | null) => void;
   onDelete: (id: string) => void;
   onReassign: (id: string, uid: string) => void;
+  selectMode: boolean;
+  selectedLeads: Set<string>;
+  onToggleSelect: (id: string) => void;
+  onToggleSelectAll: () => void;
 }) {
   if (isMobile) {
     return (
       <div className="p-3 space-y-2">
         {leads.map((l) => {
           const statusInfo = STATUS_OPTIONS.find((s) => s.value === l.status);
+          const isSelected = selectedLeads.has(l.id);
           return (
-            <div key={l.id} className={`bg-background border rounded-xl p-3 space-y-2.5 ${l.saleDone ? "border-success/40" : "border-border"}`}>
+            <div
+              key={l.id}
+              onClick={selectMode ? () => onToggleSelect(l.id) : undefined}
+              className={`bg-background border rounded-xl p-3 space-y-2.5 transition-colors ${l.saleDone ? "border-success/40" : "border-border"} ${selectMode ? "cursor-pointer" : ""} ${isSelected ? "border-primary bg-primary/5" : ""}`}
+            >
               <div className="flex items-start justify-between">
-                <div>
-                  <p className="font-display font-bold text-foreground text-sm">{l.displayName || l.phone}</p>
-                  {l.realName && <p className="text-[10px] text-muted-foreground">{l.realName}</p>}
-                  <p className="text-[10px] font-mono text-muted-foreground mt-0.5">{formatPhoneDisplay(l.phone)}</p>
+                <div className="flex items-start gap-2">
+                  {selectMode && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onToggleSelect(l.id); }}
+                      className="mt-0.5 shrink-0"
+                    >
+                      {isSelected
+                        ? <CheckSquare size={16} className="text-primary" />
+                        : <Square size={16} className="text-muted-foreground" />
+                      }
+                    </button>
+                  )}
+                  <div>
+                    <p className="font-display font-bold text-foreground text-sm">{l.displayName || l.phone}</p>
+                    {l.realName && <p className="text-[10px] text-muted-foreground">{l.realName}</p>}
+                    <p className="text-[10px] font-mono text-muted-foreground mt-0.5">{formatPhoneDisplay(l.phone)}</p>
+                  </div>
                 </div>
                 <div className="flex items-center gap-1">
                   <span className={`text-[10px] px-2 py-0.5 rounded-full ${statusInfo?.color}`}>{statusInfo?.label}</span>
@@ -690,6 +814,16 @@ function LeadsList({ leads, members, isMobile, expandedNotes, setExpandedNotes, 
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border bg-elevated/30">
+            {selectMode && (
+              <th className="text-center px-3 py-2.5 w-10">
+                <button onClick={onToggleSelectAll} className="mx-auto">
+                  {leads.length > 0 && leads.every((l) => selectedLeads.has(l.id))
+                    ? <CheckSquare size={15} className="text-primary" />
+                    : <Square size={15} className="text-muted-foreground" />
+                  }
+                </button>
+              </th>
+            )}
             <th className="text-left px-4 py-2.5 font-medium text-muted-foreground text-xs">Lead</th>
             <th className="text-left px-4 py-2.5 font-medium text-muted-foreground text-xs">Phone</th>
             <th className="text-center px-4 py-2.5 font-medium text-muted-foreground text-xs">Status</th>
@@ -704,7 +838,21 @@ function LeadsList({ leads, members, isMobile, expandedNotes, setExpandedNotes, 
           {leads.map((l, i) => {
             const statusInfo = STATUS_OPTIONS.find((s) => s.value === l.status);
             return (
-              <tr key={l.id} className={`border-b border-border/50 hover:bg-accent/30 transition-colors ${i % 2 === 1 ? "bg-elevated/20" : ""}`}>
+              <tr
+                key={l.id}
+                onClick={selectMode ? () => onToggleSelect(l.id) : undefined}
+                className={`border-b border-border/50 hover:bg-accent/30 transition-colors ${i % 2 === 1 ? "bg-elevated/20" : ""} ${selectMode ? "cursor-pointer" : ""} ${selectedLeads.has(l.id) ? "bg-primary/5" : ""}`}
+              >
+                {selectMode && (
+                  <td className="px-3 py-3 text-center">
+                    <button onClick={(e) => { e.stopPropagation(); onToggleSelect(l.id); }}>
+                      {selectedLeads.has(l.id)
+                        ? <CheckSquare size={15} className="text-primary" />
+                        : <Square size={15} className="text-muted-foreground" />
+                      }
+                    </button>
+                  </td>
+                )}
                 <td className="px-4 py-3">
                   <p className="font-medium text-foreground text-xs">{l.displayName || l.phone}</p>
                   {l.realName && <p className="text-[10px] text-muted-foreground">{l.realName}</p>}

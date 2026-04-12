@@ -62,30 +62,6 @@ const PACKAGES: Record<string, { label: string; amount: number }[]> = {
   custom: [],
 };
 
-function getGreeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) return "Good Morning";
-  if (hour < 17) return "Good Afternoon";
-  return "Good Evening";
-}
-
-function getWaTemplates(): { label: string; text: string }[] {
-  return [
-    {
-      label: "Greeting",
-      text: `Hello Sir, ${getGreeting()}!\nWe sent you our samples. Did you please check them, sir?\nI'm calling you in a few minutes to discuss our packages. 🙏`,
-    },
-    {
-      label: "Follow Up",
-      text: `Hi! Following up from our previous conversation about DTS services. Do you have 5 minutes to discuss? 🙏`,
-    },
-    {
-      label: "Offer",
-      text: `Great news! We have special packages starting at just ₹499 for AI video ads. Perfect for your business promotion! 🚀`,
-    },
-  ];
-}
-
 function getDayLabel(date: Date): string {
   const today = startOfDay(new Date());
   const target = startOfDay(date);
@@ -592,49 +568,16 @@ function LeadCard({ lead, pastDayLabel, updateLead, expandedNotes, setExpandedNo
 /* ─── WhatsApp Button ─── */
 
 function WhatsAppButton({ phone, onActivity }: { phone: string; onActivity?: () => void }) {
-  const [showTemplates, setShowTemplates] = useState(false);
-
   return (
-    <div className="relative flex-1">
-      <button
-        onClick={() => setShowTemplates(!showTemplates)}
-        className="w-full h-9 rounded-lg bg-success/10 text-success text-xs font-medium flex items-center justify-center gap-1.5 hover:bg-success/20 transition-colors"
-      >
-        <MessageCircle size={13} /> WhatsApp
-      </button>
-      <AnimatePresence>
-        {showTemplates && (
-          <motion.div
-            initial={{ opacity: 0, y: -5 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -5 }}
-            className="absolute bottom-full left-0 right-0 mb-1 bg-card border border-border rounded-lg shadow-xl z-10 overflow-hidden"
-          >
-            <a
-              href={`https://wa.me/${phone}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => { setShowTemplates(false); onActivity?.(); }}
-              className="block px-3 py-2 text-xs text-success font-medium hover:bg-accent transition-colors border-b border-border"
-            >
-              Chat
-            </a>
-            {getWaTemplates().map((t) => (
-              <a
-                key={t.label}
-                href={`https://wa.me/${phone}?text=${encodeURIComponent(t.text)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => { setShowTemplates(false); onActivity?.(); }}
-                className="block px-3 py-2 text-xs text-foreground hover:bg-accent transition-colors border-b border-border last:border-0"
-              >
-                {t.label}
-              </a>
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+    <a
+      href={`https://wa.me/${phone}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={() => onActivity?.()}
+      className="flex-1 h-9 rounded-lg bg-success/10 text-success text-xs font-medium flex items-center justify-center gap-1.5 hover:bg-success/20 transition-colors"
+    >
+      <MessageCircle size={13} /> WhatsApp
+    </a>
   );
 }
 
