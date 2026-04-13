@@ -4,7 +4,7 @@ import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { normalizePhone, formatPhoneDisplay } from "@/utils/phone";
 import type { AppUser, SchedulePool } from "@/types";
-import { Plus, Loader2, Trash2, Users, Clock, CalendarClock, ChevronDown, ChevronUp, Pause, Play, Hash } from "lucide-react";
+import { Plus, Loader2, Trash2, Users, Clock, CalendarClock, ChevronDown, ChevronUp, Pause, Play, Hash, Pencil, Save, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirm } from "@/hooks/useConfirm";
 import { format, subDays, startOfDay } from "date-fns";
@@ -53,6 +53,70 @@ export default function ScheduleNumbers() {
 
   // Expanded pool
   const [expandedPool, setExpandedPool] = useState<string | null>(null);
+
+  // Edit pool state
+  const [editingPool, setEditingPool] = useState<string | null>(null);
+  const [editPoolName, setEditPoolName] = useState("");
+  const [editDailyLimit, setEditDailyLimit] = useState(50);
+  const [editMinCompletion, setEditMinCompletion] = useState(75);
+  const [editMember, setEditMember] = useState("");
+  const [editBulkText, setEditBulkText] = useState("");
+  const [editAddedNumbers, setEditAddedNumbers] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  const startEditing = (pool: SchedulePool) => {
+    setEditingPool(pool.id);
+    setEditPoolName(pool.poolName);
+    setEditDailyLimit(pool.dailyLimit);
+    setEditMinCompletion(pool.minCompletionPercent);
+    setEditMember(pool.assignedTo);
+    setEditBulkText("");
+    setEditAddedNumbers([]);
+  };
+
+  const cancelEditing = () => {
+    setEditingPool(null);
+    setEditBulkText("");
+    setEditAddedNumbers([]);
+  };
+
+  const handleEditParseNumbers = () => {
+    const numbers = parseMultipleNumbers(editBulkText);
+    setEditAddedNumbers((prev) => {
+      const combined = [...prev];
+      numbers.forEach((n) => { if (!combined.includes(n)) combined.push(n); });
+      return combined;
+    });
+    setEditBulkText("");
+  };
+
+  const handleSaveEdit = async (pool: SchedulePool) => {
+    if (!editPoolName.trim() || !editMember) {
+      toast({ title: "Error", description: "Pool name and member are required.", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      const updates: Record<string, any> = {
+        poolName: editPoolName.trim(),
+        dailyLimit: editDailyLimit,
+        minCompletionPercent: editMinCompletion,
+        assignedTo: editMember,
+      };
+      // If new numbers were added, append them
+      if (editAddedNumbers.length > 0) {
+        const normalized = editAddedNumbers.map((n) => normalizePhone(n));
+        updates.numbers = [...pool.numbers, ...normalized];
+      }
+      await updateDoc(doc(db, "schedulePools", pool.id), updates);
+      toast({ title: "Saved", description: `Pool "${editPoolName.trim()}" updated.${editAddedNumbers.length > 0 ? ` ${editAddedNumbers.length} numbers appended.` : ""}` });
+      cancelEditing();
+    } catch {
+      toast({ title: "Error", description: "Failed to save changes.", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   // Fetch members & pools
   useEffect(() => {
@@ -447,20 +511,95 @@ export default function ScheduleNumbers() {
                         </div>
 
                         {/* Rules */}
-                        <div className="bg-background border border-border rounded-lg p-3 space-y-1.5">
-                          <p className="text-xs font-medium text-foreground">Rules</p>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-xs text-muted-foreground">
-                            <span>📊 Daily Limit: <strong className="text-foreground">{pool.dailyLimit} numbers/day</strong></span>
-                            <span>✅ Min Completion: <strong className="text-foreground">{pool.minCompletionPercent}%</strong></span>
-                            <span>👤 Assigned to: <strong className="text-foreground">{getMemberName(pool.assignedTo)}</strong></span>
-                            {pool.lastReleasedDate && (
-                              <span>📅 Last Released: <strong className="text-foreground">{pool.lastReleasedDate}</strong></span>
-                            )}
+                        {/* Rules / Edit Mode */}
+                        {editingPool === pool.id ? (
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <div className="space-y-1">
+                                <label className="text-[10px] text-muted-foreground font-medium">Pool Name</label>
+                                <input type="text" value={editPoolName} onChange={(e) => setEditPoolName(e.target.value)}
+                                  className="w-full h-9 px-3 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary" />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[10px] text-muted-foreground font-medium">Assign To Member</label>
+                                <select value={editMember} onChange={(e) => setEditMember(e.target.value)}
+                                  className="w-full h-9 px-3 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary">
+                                  <option value="">Select member...</option>
+                                  {members.map((m) => <option key={m.uid} value={m.uid}>{m.name}</option>)}
+                                </select>
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[10px] text-muted-foreground font-medium">Daily Limit / Member</label>
+                                <input type="number" value={editDailyLimit} onChange={(e) => setEditDailyLimit(Math.max(1, parseInt(e.target.value) || 1))}
+                                  min={1} max={1000}
+                                  className="w-full h-9 px-3 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary" />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[10px] text-muted-foreground font-medium">Min Completion % (yesterday)</label>
+                                <input type="number" value={editMinCompletion} onChange={(e) => setEditMinCompletion(Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
+                                  min={0} max={100}
+                                  className="w-full h-9 px-3 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary" />
+                              </div>
+                            </div>
+
+                            {/* Add more numbers */}
+                            <div className="space-y-2">
+                              <label className="text-[10px] text-muted-foreground font-medium">Add More Numbers (optional)</label>
+                              <textarea
+                                value={editBulkText}
+                                onChange={(e) => setEditBulkText(e.target.value)}
+                                rows={3}
+                                placeholder="Paste additional numbers here..."
+                                className="w-full px-3 py-2 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary font-mono placeholder:text-muted-foreground/40 resize-none"
+                              />
+                              <button type="button" onClick={handleEditParseNumbers} disabled={!editBulkText.trim()}
+                                className="h-7 px-2.5 rounded-lg bg-info/15 text-info text-[10px] font-semibold hover:bg-info/25 disabled:opacity-40 flex items-center gap-1 transition-colors">
+                                <Plus size={10} /> Parse
+                              </button>
+                              {editAddedNumbers.length > 0 && (
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-medium text-foreground">{editAddedNumbers.length} new numbers to append</span>
+                                  <button type="button" onClick={() => setEditAddedNumbers([])} className="text-[10px] text-destructive hover:underline">Clear</button>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Save / Cancel */}
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => handleSaveEdit(pool)} disabled={saving}
+                                className="h-8 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 disabled:opacity-50 flex items-center gap-1.5 transition-colors">
+                                {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                                {saving ? "Saving..." : "Save Changes"}
+                              </button>
+                              <button onClick={cancelEditing}
+                                className="h-8 px-3 rounded-lg text-xs font-medium text-muted-foreground border border-border hover:bg-accent flex items-center gap-1.5 transition-colors">
+                                <X size={12} /> Cancel
+                              </button>
+                            </div>
                           </div>
-                        </div>
+                        ) : (
+                          <div className="bg-background border border-border rounded-lg p-3 space-y-1.5">
+                            <p className="text-xs font-medium text-foreground">Rules</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-xs text-muted-foreground">
+                              <span>📊 Daily Limit: <strong className="text-foreground">{pool.dailyLimit} numbers/day</strong></span>
+                              <span>✅ Min Completion: <strong className="text-foreground">{pool.minCompletionPercent}%</strong></span>
+                              <span>👤 Assigned to: <strong className="text-foreground">{getMemberName(pool.assignedTo)}</strong></span>
+                              {pool.lastReleasedDate && (
+                                <span>📅 Last Released: <strong className="text-foreground">{pool.lastReleasedDate}</strong></span>
+                              )}
+                            </div>
+                          </div>
+                        )}
 
                         {/* Actions */}
+                        {editingPool !== pool.id && (
                         <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            onClick={() => startEditing(pool)}
+                            className="h-8 px-3 rounded-lg text-xs font-medium text-info border border-info/30 hover:bg-info/10 flex items-center gap-1.5 transition-colors"
+                          >
+                            <Pencil size={12} /> Edit
+                          </button>
                           <button
                             onClick={() => handleManualRelease(pool)}
                             disabled={remaining <= 0}
@@ -481,6 +620,7 @@ export default function ScheduleNumbers() {
                             <Trash2 size={12} /> Delete
                           </button>
                         </div>
+                        )}
                       </div>
                     </motion.div>
                   )}
