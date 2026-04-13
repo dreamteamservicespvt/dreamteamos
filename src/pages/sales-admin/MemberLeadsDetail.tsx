@@ -8,7 +8,7 @@ import { normalizePhone, formatPhoneDisplay, getWhatsAppUrl, getCallUrl } from "
 import { formatCurrency } from "@/utils/formatters";
 import { format, subDays, startOfDay } from "date-fns";
 import type { AppUser, Lead, LeadStatus, SaleDetail } from "@/types";
-import { ArrowLeft, Phone, Plus, Loader2, Search, Trash2, MessageCircle, StickyNote, ShoppingBag, X, Hash, List, Type, CheckSquare, Square, XCircle } from "lucide-react";
+import { ArrowLeft, Phone, Plus, Loader2, Search, Trash2, MessageCircle, StickyNote, ShoppingBag, X, Hash, List, Type, CheckSquare, Square, XCircle, CalendarClock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useConfirm } from "@/hooks/useConfirm";
@@ -98,6 +98,15 @@ export default function MemberLeadsDetail() {
   const numberInputRef = useRef<HTMLInputElement>(null);
   const shouldRefocusRef = useRef(false);
 
+  // Schedule mode state
+  const [addMode, setAddMode] = useState<"one" | "bulk" | "schedule">("one");
+  const [schedPoolName, setSchedPoolName] = useState("");
+  const [schedDailyLimit, setSchedDailyLimit] = useState(50);
+  const [schedMinCompletion, setSchedMinCompletion] = useState(75);
+  const [schedBulkText, setSchedBulkText] = useState("");
+  const [schedNumbers, setSchedNumbers] = useState<string[]>([]);
+  const [creatingPool, setCreatingPool] = useState(false);
+
   // Multi-select delete
   const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -169,6 +178,48 @@ export default function MemberLeadsDetail() {
     }
   }, [bulkText, addNumberToQueue]);
 
+  // Schedule mode: parse numbers
+  const handleSchedParse = useCallback(() => {
+    const numbers = parseMultipleNumbers(schedBulkText);
+    setSchedNumbers((prev) => {
+      const combined = [...prev];
+      numbers.forEach((n) => { if (!combined.includes(n)) combined.push(n); });
+      return combined;
+    });
+    setSchedBulkText("");
+  }, [schedBulkText]);
+
+  // Schedule mode: create pool
+  const handleCreateSchedulePool = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!schedPoolName.trim() || schedNumbers.length === 0 || !memberId) {
+      toast({ title: "Error", description: "Fill pool name and add at least one number.", variant: "destructive" });
+      return;
+    }
+    setCreatingPool(true);
+    try {
+      const normalizedNumbers = schedNumbers.map((n) => normalizePhone(n));
+      await addDoc(collection(db, "schedulePools"), {
+        poolName: schedPoolName.trim(),
+        createdBy: currentUser?.uid || "",
+        assignedTo: memberId,
+        numbers: normalizedNumbers,
+        releasedCount: 0,
+        dailyLimit: schedDailyLimit,
+        minCompletionPercent: schedMinCompletion,
+        isActive: true,
+        createdAt: serverTimestamp(),
+      });
+      toast({ title: "Pool Created", description: `${schedNumbers.length} numbers scheduled. Go to Schedule Numbers to manage.` });
+      setSchedPoolName(""); setSchedNumbers([]); setSchedBulkText(""); setSchedDailyLimit(50); setSchedMinCompletion(75);
+      setShowAdd(false);
+    } catch {
+      toast({ title: "Error", description: "Failed to create schedule pool.", variant: "destructive" });
+    } finally {
+      setCreatingPool(false);
+    }
+  };
+
   // Fetch all team members + listen to leads for this member
   useEffect(() => {
     const unsubs: (() => void)[] = [];
@@ -196,7 +247,19 @@ export default function MemberLeadsDetail() {
 
   // Filter leads by search + status
   const filtered = leads.filter((l) => {
-    if (statusFilter !== "all" && l.status !== statusFilter) return false;
+    if (statusFilter !== "all") {
+      if (statusFilter === "sale_done") {
+        if (!l.saleDone) return false;
+      } else if (statusFilter === "verification_pending") {
+        const items = l.saleItems || (l.saleDetails ? [l.saleDetails] : []);
+        if (!items.some((item) => item.verificationStatus === "pending")) return false;
+      } else if (statusFilter === "verified_sales") {
+        const items = l.saleItems || (l.saleDetails ? [l.saleDetails] : []);
+        if (!items.some((item) => item.verificationStatus === "verified")) return false;
+      } else if (l.status !== statusFilter) {
+        return false;
+      }
+    }
     if (search) {
       const q = search.toLowerCase();
       return l.phone.includes(q) || l.displayName?.toLowerCase().includes(q) || l.notes?.toLowerCase().includes(q) || l.realName?.toLowerCase().includes(q);
@@ -204,14 +267,11 @@ export default function MemberLeadsDetail() {
     return true;
   });
 
-  // Stats from filtered leads
-  const saleDoneLeads = filtered.filter((l) => l.saleDone).length;
+  // Sale rows from all filtered (for sales tab)
   const allSaleRows: SaleRow[] = filtered.flatMap((lead) => {
     const items = lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
     return items.map((item, idx) => ({ lead, item, itemIndex: idx }));
   });
-  const verified = allSaleRows.filter((r) => r.item.verificationStatus === "verified");
-  const totalRevenue = verified.reduce((s, r) => s + (r.item.amount || 0), 0);
 
   // Last 5 days
   const recentDays = useMemo(() => {
@@ -238,12 +298,49 @@ export default function MemberLeadsDetail() {
 
   const groupedLeads = groupLeadsByDate(filtered);
 
+  // Calendar date indicators — performance per day
+  const dateIndicators = useMemo(() => {
+    const indicators: Record<string, "good" | "average" | "bad"> = {};
+    const allGrouped = groupLeadsByDate(leads); // raw leads
+    Object.entries(allGrouped).forEach(([dateStr, dayLeads]) => {
+      const total = dayLeads.length;
+      if (total === 0) return;
+      const called = dayLeads.filter((l) => l.status !== "not_called").length;
+      const pct = Math.round((called / total) * 100);
+      if (pct >= 70) indicators[dateStr] = "good";
+      else if (pct >= 40) indicators[dateStr] = "average";
+      else indicators[dateStr] = "bad";
+    });
+    return indicators;
+  }, [leads]);
+
   // Get leads for the currently selected day filter
   const activeDayLeads = selectedDate
     ? (groupedLeads[format(selectedDate, "yyyy-MM-dd")] || [])
     : dayFilter === "all"
       ? filtered
       : (groupedLeads[recentDays[parseInt(dayFilter)]?.dateStr] || []);
+
+  // Stats from currently visible leads (day-based)
+  const calledLeads = activeDayLeads.filter((l) => l.status !== "not_called").length;
+  const saleDoneLeads = activeDayLeads.filter((l) => l.saleDone).length;
+  const activeSaleRows: SaleRow[] = activeDayLeads.flatMap((lead) => {
+    const items = lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
+    return items.map((item, idx) => ({ lead, item, itemIndex: idx }));
+  });
+  const pendingVerification = activeSaleRows.filter((r) => r.item.verificationStatus === "pending");
+  const verified = activeSaleRows.filter((r) => r.item.verificationStatus === "verified");
+  const totalRevenue = verified.reduce((s, r) => s + (r.item.amount || 0), 0);
+
+  // Status counts for dropdown
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: activeDayLeads.length };
+    STATUS_OPTIONS.forEach((s) => { counts[s.value] = activeDayLeads.filter((l) => l.status === s.value).length; });
+    counts["verification_pending"] = activeSaleRows.filter((r) => r.item.verificationStatus === "pending").length;
+    counts["verified_sales"] = activeSaleRows.filter((r) => r.item.verificationStatus === "verified").length;
+    counts["sale_done"] = activeDayLeads.filter((l) => l.saleDone).length;
+    return counts;
+  }, [activeDayLeads, activeSaleRows]);
 
   // Handlers
   const handleBulkAdd = async (e: React.FormEvent) => {
@@ -386,12 +483,12 @@ export default function MemberLeadsDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2 pl-10 sm:pl-0">
-          <DashboardDayPicker selectedDate={selectedDate} onSelect={setSelectedDate} />
+          <DashboardDayPicker selectedDate={selectedDate} onSelect={setSelectedDate} dateIndicators={dateIndicators} />
           {selectedDate && (
             <button onClick={() => setSelectedDate(undefined)} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Clear</button>
           )}
           <button
-            onClick={() => { setNumberInput(""); setBulkText(""); setNumberQueue([]); setBulkMode(false); setShowAdd(!showAdd); }}
+            onClick={() => { setNumberInput(""); setBulkText(""); setNumberQueue([]); setBulkMode(false); setAddMode("one"); setSchedNumbers([]); setSchedBulkText(""); setSchedPoolName(""); setShowAdd(!showAdd); }}
             className="h-8 md:h-9 px-3 md:px-4 rounded-lg bg-primary text-primary-foreground font-display font-semibold text-xs md:text-sm flex items-center gap-1.5 hover:bg-primary/90 transition-colors"
           >
             <Plus size={14} /> Add Leads
@@ -408,22 +505,26 @@ export default function MemberLeadsDetail() {
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden"
           >
-            <form onSubmit={handleBulkAdd} className="bg-card border border-border rounded-xl p-4 md:p-5 space-y-3">
-              <div className="flex items-center justify-between">
+            <form onSubmit={addMode === "schedule" ? handleCreateSchedulePool : handleBulkAdd} className="bg-card border border-border rounded-xl p-4 md:p-5 space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <h3 className="font-display font-semibold text-foreground text-sm">Add Leads for {member?.name}</h3>
                 <div className="flex items-center gap-1 bg-accent/50 rounded-lg p-0.5">
-                  <button type="button" onClick={() => setBulkMode(false)}
-                    className={`h-7 px-2.5 rounded-md text-[10px] font-medium flex items-center gap-1 transition-colors ${!bulkMode ? "bg-card text-foreground shadow-sm border border-border" : "text-muted-foreground hover:text-foreground"}`}>
+                  <button type="button" onClick={() => { setBulkMode(false); setAddMode("one"); }}
+                    className={`h-7 px-2.5 rounded-md text-[10px] font-medium flex items-center gap-1 transition-colors ${addMode === "one" ? "bg-card text-foreground shadow-sm border border-border" : "text-muted-foreground hover:text-foreground"}`}>
                     <Type size={11} /> One-by-One
                   </button>
-                  <button type="button" onClick={() => setBulkMode(true)}
-                    className={`h-7 px-2.5 rounded-md text-[10px] font-medium flex items-center gap-1 transition-colors ${bulkMode ? "bg-card text-foreground shadow-sm border border-border" : "text-muted-foreground hover:text-foreground"}`}>
+                  <button type="button" onClick={() => { setBulkMode(true); setAddMode("bulk"); }}
+                    className={`h-7 px-2.5 rounded-md text-[10px] font-medium flex items-center gap-1 transition-colors ${addMode === "bulk" ? "bg-card text-foreground shadow-sm border border-border" : "text-muted-foreground hover:text-foreground"}`}>
                     <List size={11} /> Bulk
+                  </button>
+                  <button type="button" onClick={() => { setAddMode("schedule"); }}
+                    className={`h-7 px-2.5 rounded-md text-[10px] font-medium flex items-center gap-1 transition-colors ${addMode === "schedule" ? "bg-card text-foreground shadow-sm border border-border" : "text-muted-foreground hover:text-foreground"}`}>
+                    <CalendarClock size={11} /> Schedule
                   </button>
                 </div>
               </div>
 
-              {!bulkMode ? (
+              {addMode === "one" ? (
                 /* ─── One-by-One Mode ─── */
                 <div className="space-y-3">
                   <p className="text-xs text-muted-foreground">
@@ -449,7 +550,7 @@ export default function MemberLeadsDetail() {
                     </span>
                   </div>
                 </div>
-              ) : (
+              ) : addMode === "bulk" ? (
                 /* ─── Bulk Mode ─── */
                 <div className="space-y-3">
                   <p className="text-xs text-muted-foreground">
@@ -468,10 +569,54 @@ export default function MemberLeadsDetail() {
                     <Plus size={12} /> Parse Numbers
                   </button>
                 </div>
+              ) : (
+                /* ─── Schedule Mode ─── */
+                <div className="space-y-3">
+                  <p className="text-xs text-muted-foreground">
+                    Add numbers to a pool. They'll be released daily based on rules — member must complete yesterday's work first.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-muted-foreground font-medium">Pool Name</label>
+                      <input type="text" value={schedPoolName} onChange={(e) => setSchedPoolName(e.target.value)}
+                        placeholder="e.g., Excel Batch 1"
+                        className="w-full h-9 px-3 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-muted-foreground font-medium">Daily Limit / Member</label>
+                      <input type="number" value={schedDailyLimit} onChange={(e) => setSchedDailyLimit(Math.max(1, parseInt(e.target.value) || 1))}
+                        min={1}
+                        className="w-full h-9 px-3 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-muted-foreground font-medium">Min Completion % (yesterday)</label>
+                      <input type="number" value={schedMinCompletion} onChange={(e) => setSchedMinCompletion(Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
+                        min={0} max={100}
+                        className="w-full h-9 px-3 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary" />
+                    </div>
+                  </div>
+                  <textarea
+                    value={schedBulkText}
+                    onChange={(e) => setSchedBulkText(e.target.value)}
+                    rows={4}
+                    placeholder={"Paste phone numbers here (one per line, comma-separated, etc.)"}
+                    className="w-full px-4 py-3 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary font-mono placeholder:text-muted-foreground/40 resize-none"
+                  />
+                  <button type="button" onClick={handleSchedParse} disabled={!schedBulkText.trim()}
+                    className="h-8 px-3 rounded-lg bg-info/15 text-info text-xs font-semibold hover:bg-info/25 disabled:opacity-40 flex items-center gap-1.5 transition-colors">
+                    <Plus size={12} /> Parse Numbers
+                  </button>
+                  {schedNumbers.length > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-foreground">{schedNumbers.length} numbers parsed</span>
+                      <button type="button" onClick={() => setSchedNumbers([])} className="text-[10px] text-destructive hover:underline">Clear All</button>
+                    </div>
+                  )}
+                </div>
               )}
 
-              {/* Preview list with SNO */}
-              {numberQueue.length > 0 && (
+              {/* Preview list with SNO (for one-by-one & bulk modes) */}
+              {addMode !== "schedule" && numberQueue.length > 0 && (
                 <div className="border border-border rounded-lg overflow-hidden max-h-52 overflow-y-auto">
                   <table className="w-full text-xs">
                     <thead>
@@ -506,16 +651,26 @@ export default function MemberLeadsDetail() {
               )}
 
               <div className="flex items-center gap-2">
-                <button type="submit" disabled={adding || numberQueue.length === 0}
-                  className="h-9 px-4 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2">
-                  {adding ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
-                  {adding ? "Adding..." : `Add ${numberQueue.length} Lead${numberQueue.length !== 1 ? "s" : ""}`}
-                </button>
-                {numberQueue.length > 0 && (
-                  <button type="button" onClick={() => setNumberQueue([])}
-                    className="h-9 px-3 rounded-lg text-xs font-medium text-destructive hover:bg-destructive/10 border border-destructive/20">
-                    Clear All
+                {addMode === "schedule" ? (
+                  <button type="submit" disabled={creatingPool || schedNumbers.length === 0 || !schedPoolName.trim()}
+                    className="h-9 px-4 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2">
+                    {creatingPool ? <Loader2 size={13} className="animate-spin" /> : <CalendarClock size={13} />}
+                    {creatingPool ? "Creating..." : `Schedule ${schedNumbers.length} Number${schedNumbers.length !== 1 ? "s" : ""}`}
                   </button>
+                ) : (
+                  <>
+                    <button type="submit" disabled={adding || numberQueue.length === 0}
+                      className="h-9 px-4 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2">
+                      {adding ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+                      {adding ? "Adding..." : `Add ${numberQueue.length} Lead${numberQueue.length !== 1 ? "s" : ""}`}
+                    </button>
+                    {numberQueue.length > 0 && (
+                      <button type="button" onClick={() => setNumberQueue([])}
+                        className="h-9 px-3 rounded-lg text-xs font-medium text-destructive hover:bg-destructive/10 border border-destructive/20">
+                        Clear All
+                      </button>
+                    )}
+                  </>
                 )}
                 <button type="button" onClick={() => setShowAdd(false)}
                   className="h-9 px-4 rounded-lg bg-accent text-foreground text-xs font-medium border border-border hover:bg-accent/80">
@@ -528,11 +683,12 @@ export default function MemberLeadsDetail() {
       </AnimatePresence>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2 md:gap-3">
         {[
-          { label: "Total Leads", value: filtered.length, color: "text-primary" },
+          { label: "Total Leads", value: activeDayLeads.length, color: "text-primary" },
+          { label: "Called", value: calledLeads, color: "text-info" },
+          { label: "Verif. Pending", value: pendingVerification.length, color: "text-warning" },
           { label: "Sale Done", value: saleDoneLeads, color: "text-success" },
-          { label: "Verified Sales", value: verified.length, color: "text-success" },
           { label: "Revenue", value: formatCurrency(totalRevenue), color: "text-primary" },
         ].map((s) => (
           <div key={s.label} className="bg-card border border-border rounded-xl p-2.5 md:p-4">
@@ -617,8 +773,12 @@ export default function MemberLeadsDetail() {
             )}
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
               className="h-9 px-3 rounded-lg bg-card border border-border text-foreground text-xs md:text-sm outline-none focus:border-primary">
-              <option value="all">All Status</option>
-              {STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+              <option value="all">All Status ({statusCounts.all})</option>
+              {STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label} ({statusCounts[s.value] || 0})</option>)}
+              <option disabled className="text-muted-foreground">──────────</option>
+              <option value="verification_pending">Verif. Pending ({statusCounts.verification_pending || 0})</option>
+              <option value="verified_sales">Verified Sales ({statusCounts.verified_sales || 0})</option>
+              <option value="sale_done">Sale Done ({statusCounts.sale_done || 0})</option>
             </select>
             {!selectedDate && (
               <select value={dayFilter} onChange={(e) => setDayFilter(e.target.value)}

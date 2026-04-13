@@ -37,6 +37,7 @@ import SalesTrainingModules from "@/pages/sales-admin/TrainingModules";
 import SalesAdminSessionHistory from "@/pages/sales-admin/SessionHistory";
 import SalesAdminSettings from "@/pages/sales-admin/Settings";
 import SalesAnalytics from "@/pages/sales-admin/Analytics";
+import ScheduleNumbers from "@/pages/sales-admin/ScheduleNumbers";
 import TechAdminDashboard from "@/pages/tech-admin/Dashboard";
 import TechAdminMyTeam from "@/pages/tech-admin/MyTeam";
 import DriveManagement from "@/pages/tech-admin/DriveManagement";
@@ -128,6 +129,7 @@ const App = () => (
             <Route path="/sales-admin/team/:memberId" element={<MemberSalesHistory />} />
             <Route path="/sales-admin/leads" element={<LeadsManagement />} />
             <Route path="/sales-admin/leads/:memberId" element={<MemberLeadsDetail />} />
+            <Route path="/sales-admin/schedule-numbers" element={<ScheduleNumbers />} />
             <Route path="/sales-admin/approvals" element={<SalesApprovals />} />
             <Route path="/sales-admin/analytics" element={<SalesAnalytics />} />
             <Route path="/sales-admin/training" element={<SalesTrainingModules />} />

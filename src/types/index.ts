@@ -89,6 +89,22 @@ export interface SaleDetail {
   paymentScreenshotUrl?: string | null;
 }
 
+// Schedule Numbers Pool System
+export interface SchedulePool {
+  id: string;
+  poolName: string;
+  createdBy: string;           // sales admin uid
+  assignedTo: string;          // sales member uid
+  numbers: string[];           // all phone numbers in the pool (normalized +91...)
+  releasedCount: number;       // how many have been released so far
+  dailyLimit: number;          // how many numbers to release per day
+  minCompletionPercent: number; // min % of yesterday's work to unlock new batch (0-100)
+  isActive: boolean;
+  createdAt: any;
+  lastReleasedAt?: any;        // last time numbers were auto-released
+  lastReleasedDate?: string;   // "yyyy-MM-dd" of last release
+}
+
 // Daily Check-in / Check-out System
 export type CheckinStatus = "checked_in" | "pending_approval" | "approved" | "rejected";
 

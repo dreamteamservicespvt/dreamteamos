@@ -2,7 +2,7 @@ import type { UserRole } from "@/types";
 import {
   LayoutDashboard, Users, TrendingUp, Code, Phone, Clock, Wallet,
   Settings, BookOpen, FolderOpen, Target, User, BarChart3,
-  ClipboardList, Briefcase, Wrench, FileCheck, MessageSquare, Video, Eye, Film, ScrollText,
+  ClipboardList, Briefcase, Wrench, FileCheck, MessageSquare, Video, Eye, Film, ScrollText, CalendarClock,
 } from "lucide-react";
 
 export interface NavItem {
@@ -41,6 +41,7 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "Dashboard", path: "/sales-admin/dashboard", icon: LayoutDashboard },
     { title: "My Team", path: "/sales-admin/team", icon: Users },
     { title: "Leads Management", path: "/sales-admin/leads", icon: Phone },
+    { title: "Schedule Numbers", path: "/sales-admin/schedule-numbers", icon: CalendarClock },
     { title: "Sales Approvals", path: "/sales-admin/approvals", icon: FileCheck },
     { title: "Analytics", path: "/sales-admin/analytics", icon: BarChart3 },
     { title: "Team Chat", path: "/sales-admin/chat", icon: MessageSquare },

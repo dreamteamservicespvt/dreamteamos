@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { FESTIVALS, getUpcomingFestivalName, getFestivalOptionLabel, findFestival, formatFestivalDate } from "@/utils/festivals";
@@ -22,8 +22,13 @@ import {
   ArrowRight,
   Palette,
   MapPin,
+  Download,
+  X,
+  FileDown,
+  Check,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
+import { generateSalesScriptDocx, type TabDownloadData } from "@/utils/salesScriptDocx";
 
 /* ─────────────── helpers ─────────────── */
 function getGreeting(): string {
@@ -1706,6 +1711,77 @@ export default function SalesScripts() {
     setOpenSections((prev) => ({ ...prev, ...next }));
   };
 
+  const contentRef = useRef<HTMLDivElement>(null);
+  const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
+  const [selectedDownloadTabs, setSelectedDownloadTabs] = useState<Set<string>>(new Set());
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const toggleDownloadTab = (tabId: string) => {
+    setSelectedDownloadTabs((prev) => {
+      const next = new Set(prev);
+      if (next.has(tabId)) next.delete(tabId);
+      else next.add(tabId);
+      return next;
+    });
+  };
+
+  const selectAllTabs = () => setSelectedDownloadTabs(new Set(tabs.map((t) => t.id)));
+  const deselectAllTabs = () => setSelectedDownloadTabs(new Set());
+
+  const openDownloadModal = () => {
+    setSelectedDownloadTabs(new Set([activeTab]));
+    setShowDownloadModal(true);
+  };
+
+  const handleDownloadDocx = useCallback(async () => {
+    if (selectedDownloadTabs.size === 0) return;
+    setIsGenerating(true);
+
+    // Save current state
+    const prevActiveTab = activeTab;
+    const prevOpenSections = { ...openSections };
+
+    const selectedTabs = tabs.filter((t) => selectedDownloadTabs.has(t.id));
+    const tabsData: TabDownloadData[] = [];
+
+    // For each selected tab, temporarily switch to it, expand all, wait for render, extract DOM
+    for (const tab of selectedTabs) {
+      setActiveTab(tab.id);
+      const allOpen: Record<string, boolean> = {};
+      tab.sections.forEach((_, i) => {
+        allOpen[`${tab.id}-${i}`] = true;
+      });
+      setOpenSections((prev) => ({ ...prev, ...allOpen }));
+
+      // Wait for render
+      await new Promise((resolve) => {
+        requestAnimationFrame(() => setTimeout(resolve, 300));
+      });
+
+      const sections = tab.sections.map((section, idx) => ({
+        title: section.title,
+        contentEl: sectionRefs.current[`${tab.id}-${idx}`] ?? null,
+      }));
+
+      tabsData.push({ label: tab.label, sections });
+    }
+
+    // Generate and download
+    try {
+      await generateSalesScriptDocx(tabsData, { greeting, userName, festivalName });
+    } catch (err) {
+      console.error("Failed to generate docx:", err);
+    }
+
+    // Restore state
+    setActiveTab(prevActiveTab);
+    setOpenSections(prevOpenSections);
+    setIsGenerating(false);
+    setShowDownloadModal(false);
+  }, [selectedDownloadTabs, tabs, activeTab, openSections, greeting, userName, festivalName]);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -1777,7 +1853,7 @@ export default function SalesScripts() {
         })}
       </div>
 
-      {/* Expand / Collapse controls */}
+      {/* Expand / Collapse / Download controls */}
       <div className="flex gap-2">
         <button
           onClick={expandAll}
@@ -1791,10 +1867,143 @@ export default function SalesScripts() {
         >
           Collapse All
         </button>
+        <button
+          onClick={openDownloadModal}
+          className="text-[11px] text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded border border-border hover:border-primary/30 ml-auto flex items-center gap-1"
+        >
+          <Download size={12} />
+          Download Script
+        </button>
       </div>
+
+      {/* Download Modal */}
+      <AnimatePresence>
+        {showDownloadModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+            onClick={() => !isGenerating && setShowDownloadModal(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-card border border-border rounded-2xl shadow-xl w-full max-w-md overflow-hidden"
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+                <div className="flex items-center gap-2">
+                  <FileDown size={18} className="text-primary" />
+                  <h3 className="font-display font-semibold text-foreground">Download Sales Scripts</h3>
+                </div>
+                <button
+                  onClick={() => setShowDownloadModal(false)}
+                  disabled={isGenerating}
+                  className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-lg hover:bg-accent disabled:opacity-50"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="px-5 py-4 space-y-3">
+                <p className="text-xs text-muted-foreground">Select which scripts to include in the download:</p>
+
+                {/* Select All / None */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={selectAllTabs}
+                    className="text-[11px] text-primary hover:text-primary/80 font-semibold transition-colors"
+                  >
+                    Select All
+                  </button>
+                  <span className="text-muted-foreground text-[11px]">|</span>
+                  <button
+                    onClick={deselectAllTabs}
+                    className="text-[11px] text-muted-foreground hover:text-foreground font-semibold transition-colors"
+                  >
+                    None
+                  </button>
+                </div>
+
+                {/* Tab checkboxes */}
+                <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                  {tabs.map((tab) => {
+                    const Icon = tab.icon;
+                    const isSelected = selectedDownloadTabs.has(tab.id);
+                    return (
+                      <button
+                        key={tab.id}
+                        onClick={() => toggleDownloadTab(tab.id)}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all border ${
+                          isSelected
+                            ? "bg-primary/10 border-primary/30 text-foreground"
+                            : "bg-background border-border text-muted-foreground hover:border-primary/20 hover:text-foreground"
+                        }`}
+                      >
+                        <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${
+                          isSelected ? "bg-primary border-primary" : "border-muted-foreground/30"
+                        }`}>
+                          {isSelected && <Check size={12} className="text-primary-foreground" />}
+                        </div>
+                        <Icon size={14} className={isSelected ? "text-primary" : tab.color} />
+                        <span className="text-sm font-medium">{tab.label}</span>
+                        <span className="text-[10px] text-muted-foreground ml-auto">
+                          {tab.sections.length} sections
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex items-center justify-between px-5 py-4 border-t border-border bg-accent/30">
+                <span className="text-xs text-muted-foreground">
+                  {selectedDownloadTabs.size} of {tabs.length} selected
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowDownloadModal(false)}
+                    disabled={isGenerating}
+                    className="px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground border border-border rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleDownloadDocx}
+                    disabled={selectedDownloadTabs.size === 0 || isGenerating}
+                    className="px-4 py-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    {isGenerating ? (
+                      <>
+                        <motion.div
+                          animate={{ rotate: 360 }}
+                          transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                          className="w-3 h-3 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full"
+                        />
+                        Generating…
+                      </>
+                    ) : (
+                      <>
+                        <FileDown size={12} />
+                        Download .docx
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Sections (accordion) */}
       <motion.div
+        ref={contentRef}
         key={activeTab}
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -1830,7 +2039,12 @@ export default function SalesScripts() {
                     transition={{ duration: 0.2 }}
                     className="overflow-hidden"
                   >
-                    <div className="px-4 pb-4 pt-1">{section.content}</div>
+                    <div
+                      ref={(el) => { sectionRefs.current[key] = el; }}
+                      className="px-4 pb-4 pt-1"
+                    >
+                      {section.content}
+                    </div>
                   </motion.div>
                 )}
               </AnimatePresence>

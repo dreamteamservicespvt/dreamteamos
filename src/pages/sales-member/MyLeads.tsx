@@ -107,19 +107,24 @@ export default function MyLeads() {
       l.displayName?.toLowerCase().includes(search.toLowerCase()) ||
       l.phone?.includes(search) ||
       l.realName?.toLowerCase().includes(search.toLowerCase());
-    const matchStatus =
-      statusFilter === "all" || l.status === statusFilter || (statusFilter === "sale_done" && l.saleDone);
+    let matchStatus = statusFilter === "all" || l.status === statusFilter;
+    if (statusFilter === "sale_done") matchStatus = !!l.saleDone;
+    if (statusFilter === "verification_pending") {
+      const items = l.saleItems || (l.saleDetails ? [l.saleDetails] : []);
+      matchStatus = items.some((i: any) => i.verificationStatus === "pending");
+    }
+    if (statusFilter === "verified_sales") {
+      const items = l.saleItems || (l.saleDetails ? [l.saleDetails] : []);
+      matchStatus = items.some((i: any) => i.verificationStatus === "verified");
+    }
     return matchSearch && matchStatus;
   });
 
-  // Stats
-  const saleDoneLeads = filtered.filter((l) => l.saleDone).length;
+  // Sale rows (for sales tab)
   const allSaleRows: SaleRow[] = filtered.flatMap((lead) => {
     const items = lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
     return items.map((item, idx) => ({ lead, item, itemIndex: idx }));
   });
-  const verified = allSaleRows.filter((r) => r.item.verificationStatus === "verified");
-  const totalRevenue = verified.reduce((s, r) => s + (r.item.amount || 0), 0);
 
   // Last 5 days for day filter
   const recentDays = useMemo(() => {
@@ -170,6 +175,39 @@ export default function MyLeads() {
     return dayLeads;
   }, [selectedDate, dayFilter, filtered, groupedLeads, recentDays]);
 
+  // Status counts for dropdown — based on active day leads, not all filtered
+  const statusCounts = useMemo(() => {
+    const src = activeDayLeads;
+    const counts: Record<string, number> = { all: src.length };
+    STATUS_OPTIONS.forEach((s) => { counts[s.value] = src.filter((l) => l.status === s.value).length; });
+    counts.sale_done = src.filter((l) => l.saleDone).length;
+    counts.verification_pending = src.filter((l) => {
+      const items = l.saleItems || (l.saleDetails ? [l.saleDetails] : []);
+      return items.some((i: any) => i.verificationStatus === "pending");
+    }).length;
+    counts.verified_sales = src.filter((l) => {
+      const items = l.saleItems || (l.saleDetails ? [l.saleDetails] : []);
+      return items.some((i: any) => i.verificationStatus === "verified");
+    }).length;
+    return counts;
+  }, [activeDayLeads]);
+
+  // Calendar date indicators — performance per day
+  const dateIndicators = useMemo(() => {
+    const indicators: Record<string, "good" | "average" | "bad"> = {};
+    const allGrouped = groupLeadsByDate(leads); // use raw leads, not filtered
+    Object.entries(allGrouped).forEach(([dateStr, dayLeads]) => {
+      const total = dayLeads.length;
+      if (total === 0) return;
+      const called = dayLeads.filter((l) => l.status !== "not_called").length;
+      const pct = Math.round((called / total) * 100);
+      if (pct >= 70) indicators[dateStr] = "good";
+      else if (pct >= 40) indicators[dateStr] = "average";
+      else indicators[dateStr] = "bad";
+    });
+    return indicators;
+  }, [leads]);
+
   // Helper: get "From X days ago" label for leads shown in today view from past days
   const getLeadPastDayLabel = (lead: Lead): string | null => {
     // Only show label when viewing Today
@@ -215,7 +253,7 @@ export default function MyLeads() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <DashboardDayPicker selectedDate={selectedDate} onSelect={setSelectedDate} />
+          <DashboardDayPicker selectedDate={selectedDate} onSelect={setSelectedDate} dateIndicators={dateIndicators} />
           {selectedDate && (
             <button onClick={() => setSelectedDate(undefined)} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
               Clear
@@ -224,20 +262,37 @@ export default function MyLeads() {
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
-        {[
-          { label: "Total Leads", value: filtered.length, color: "text-primary" },
-          { label: "Sale Done", value: saleDoneLeads, color: "text-success" },
-          { label: "Verified Sales", value: verified.length, color: "text-success" },
-          { label: "Revenue", value: formatCurrency(totalRevenue), color: "text-primary" },
-        ].map((s) => (
-          <div key={s.label} className="bg-card border border-border rounded-xl p-2.5 md:p-4">
-            <p className="text-[10px] md:text-xs text-muted-foreground">{s.label}</p>
-            <p className={`font-display font-bold text-base md:text-xl ${s.color}`}>{s.value}</p>
+      {/* Stats Cards – based on active day leads */}
+      {(() => {
+        const dayLeads = activeDayLeads;
+        const calledCount = dayLeads.filter((l) => l.status !== "not_called").length;
+        const saleDone = dayLeads.filter((l) => l.saleDone).length;
+        const pendingVerif = dayLeads.filter((l) => {
+          const items = l.saleItems || (l.saleDetails ? [l.saleDetails] : []);
+          return items.some((i: any) => i.verificationStatus === "pending");
+        }).length;
+        const vItems = dayLeads.flatMap((l) => {
+          const items = l.saleItems || (l.saleDetails ? [l.saleDetails] : []);
+          return items.filter((i: any) => i.verificationStatus === "verified");
+        });
+        const rev = vItems.reduce((s: number, i: any) => s + (i.amount || 0), 0);
+        return (
+          <div className="grid grid-cols-3 md:grid-cols-5 gap-2 md:gap-3">
+            {[
+              { label: "Total Leads", value: dayLeads.length, color: "text-primary" },
+              { label: "Called", value: calledCount, color: "text-info" },
+              { label: "Verif. Pending", value: pendingVerif, color: "text-warning" },
+              { label: "Sale Done", value: saleDone, color: "text-success" },
+              { label: "Revenue", value: formatCurrency(rev), color: "text-primary" },
+            ].map((s) => (
+              <div key={s.label} className="bg-card border border-border rounded-xl p-2.5 md:p-4">
+                <p className="text-[10px] md:text-xs text-muted-foreground">{s.label}</p>
+                <p className={`font-display font-bold text-base md:text-xl ${s.color}`}>{s.value}</p>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        );
+      })()}
 
       {/* View Toggle */}
       <div className="flex gap-1.5">
@@ -263,9 +318,12 @@ export default function MyLeads() {
             </div>
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
               className="h-9 px-3 rounded-lg bg-card border border-border text-foreground text-xs md:text-sm outline-none focus:border-primary">
-              <option value="all">All Status</option>
-              {STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-              <option value="sale_done">Sale Done</option>
+              <option value="all">All Status ({statusCounts.all})</option>
+              {STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label} ({statusCounts[s.value] || 0})</option>)}
+              <option disabled>───────────</option>
+              <option value="sale_done">Sale Done ({statusCounts.sale_done || 0})</option>
+              <option value="verification_pending">Verif. Pending ({statusCounts.verification_pending || 0})</option>
+              <option value="verified_sales">Verified Sales ({statusCounts.verified_sales || 0})</option>
             </select>
             {!selectedDate && (
               <select value={dayFilter} onChange={(e) => setDayFilter(e.target.value)}

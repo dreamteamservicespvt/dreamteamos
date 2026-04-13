@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
@@ -11,6 +11,8 @@ import {
 } from "recharts";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
 import { motion } from "framer-motion";
+import { processScheduledPools } from "@/services/scheduleRelease";
+import { useToast } from "@/hooks/use-toast";
 
 export default function SalesAdminDashboard() {
   const currentUser = useAuthStore((s) => s.user);
@@ -18,6 +20,8 @@ export default function SalesAdminDashboard() {
   const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const { toast } = useToast();
+  const autoReleaseRan = useRef(false);
 
   useEffect(() => {
     const unsubs: (() => void)[] = [];
@@ -30,6 +34,17 @@ export default function SalesAdminDashboard() {
       setLoading(false);
     }));
     return () => unsubs.forEach((u) => u());
+  }, [currentUser?.uid]);
+
+  // Auto-release scheduled pools once per dashboard load
+  useEffect(() => {
+    if (!currentUser?.uid || autoReleaseRan.current) return;
+    autoReleaseRan.current = true;
+    processScheduledPools(currentUser.uid).then((result) => {
+      if (result.released > 0) {
+        toast({ title: "Auto-Release", description: `${result.released} scheduled numbers released to members.` });
+      }
+    }).catch(() => { /* silent fail */ });
   }, [currentUser?.uid]);
 
   const memberIds = members.map((m) => m.uid);
