@@ -1064,12 +1064,11 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
   const productImageHeaderNote = (hasProductImages && includeProductsInHeader)
     ? `\n\nPRODUCT IMAGES ATTACHED: ${productImageCount} product image(s) are attached with this prompt.
 CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR HEADER:
-- The attached product images MUST be incorporated into the header design
-- Add a slim PRODUCT BANNER / FOOTER STRIP at the bottom of the header (within the top 10% area)
-- Products should appear as small, clean thumbnail-style images in a horizontal row
-- Products must be clearly visible but compact — fitting within the header's slim design
-- Use the EXACT product images provided — do NOT redesign or alter the products
-- This creates a "product showcase strip" that reinforces what the business sells`
+- Use the attached product images only if they can fit cleanly inside the strict top 7% header strip
+- Keep product imagery ultra-minimal and premium so contact CTA remains dominant
+- Do NOT create any product banner, footer strip, thumbnail row, or any content below the 7% boundary
+- If product images make the header crowded, omit them entirely and prioritize logo, hook, contact CTA, urgency, and address
+- Use the EXACT product images provided — do NOT redesign or alter the products`
     : '';
   
   const headerUserPrompt = `Generate a WORLD-CLASS HEADER-ONLY image prompt (NO FOOTER — do NOT generate any footer or bottom strip) for:
@@ -1078,15 +1077,17 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR HEADER:
   ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName}` : ''}
   
   CRITICAL INSTRUCTIONS:
-  1. Extract ONLY essential contact details from the visiting card: Business Name, 1-2 Primary Phone Numbers, Email, Website, and Address (city/area only)
-  2. Do NOT include: taglines, services list, proprietor names, or multiple addresses
-  3. Keep the header ULTRA-SLIM (10% max height of the 9:16 frame) — header goes in the TOP ONLY, do NOT place anything at the bottom
-  4. ALL TEXT must be rendered at 16K ULTRA-SHARP quality — every single character (phone digits, email symbols, website URL) must be CRYSTAL CLEAR and perfectly readable
-  5. The header must look like it was designed by a world-class graphic designer with 30 years of experience — RICHLY DESIGNED with textures, premium gradients, metallic accents — NOT an empty or plain bar
-  6. Use business-type specific color grading — the header color must match the industry
-  7. ABSOLUTELY NO FOOTER — do NOT generate any bottom strip, bottom bar, or footer. Only the header at the top. The rest of the image below the header must be completely clear and empty.
-  ${formData.adType === 'festival' ? `8. Blend ${formData.festivalName} festival theme with the business type colors — create a unique festive yet professional header` : ''}
-  ${(hasProductImages && includeProductsInHeader) ? `\nPRODUCT IMAGES: ${productImageCount} product image(s) are being attached. Include a product banner strip in the header design.` : ''}${productImageHeaderNote}`;
+  1. Extract only real business information from the provided inputs: exact brand name, business type, core offer/value, key numbers, urgency, contact numbers, and address/location when present
+  2. Follow the strict header formula exactly: treat the poster as a 2160 x 3840 vertical 4K frame where the header reads as EXACTLY the top 7% band, about 269 px tall, and the remaining 93% stays fully empty with a smooth dark gradient background
+  3. Keep ALL elements strictly inside that exact top 7% boundary — do NOT place anything below it and do NOT visually exceed it with glow, shadow, or decorative overflow
+  4. Contact numbers must be the highest-priority CTA in the top-right highlighted container
+  5. Address/location is mandatory when present and must stay inside the bottom strip within the header
+  6. Keep all text sharp and highly readable, with clean spacing and no clutter
+  7. Do NOT add footer, bottom bar, product strip, or any extra content below the header
+  8. The header must show visible premium graphic design layering — not a plain flat strip. Use designed composition, geometric overlays, line accents, light sweeps, subtle industry motifs, and a crafted CTA box while keeping the layout readable.
+  9. The header must be a full-width ribbon attached to the top edge of the poster. Do NOT create a floating card, inset banner, centered panel, rounded rectangle, or poster-within-poster.
+  ${formData.adType === 'festival' ? `10. AD TYPE = Festival Wishes: the hook must feel like a premium ${formData.festivalName} greeting blended with the business identity, but CTA must remain dominant and the header must still stay exactly within 7%` : `10. AD TYPE = Commercial: the hook must stay conversion-focused using business value, offer, benefit, trust, and urgency when available while preserving the same exact 7% layout`}
+  ${(hasProductImages && includeProductsInHeader) ? `\nPRODUCT IMAGES: ${productImageCount} product image(s) are attached. Use them only if they fit inside the same top 7% strip without clutter.` : ''}${productImageHeaderNote}`;
 
   // Build header parts — include visiting card (primary source for header info), logo, and product images
   const headerParts: any[] = [{ text: headerUserPrompt }];
@@ -1100,22 +1101,22 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR HEADER:
           data: await fileToBase64(files.visitingCard[i])
         }
       });
-      headerParts.push({ text: `This is the VISITING CARD (${i === 0 ? 'Front' : 'Back'}) — extract ONLY ESSENTIAL contact information for a SLIM header:
-- Business Name (EXACT as printed — preserve every character, capitalization, and spacing) — MOST PROMINENT element
-- 1-2 PRIMARY Phone Numbers (choose mobile/WhatsApp, skip landlines if too many) — EVERY DIGIT must be crystal-clear
-- Email Address (single, primary one) — every character including @ symbol must be razor-sharp
-- Website URL (full URL) — must be perfectly legible
-- Address (SHORT — city/locality ONLY, not full address)
+      headerParts.push({ text: `This is the VISITING CARD (${i === 0 ? 'Front' : 'Back'}) — extract ONLY the business details needed for the strict top 7% header:
+    - Business Name (EXACT as printed — preserve every character, capitalization, and spacing)
+    - Contact Numbers that should be shown in the CTA
+    - Email Address if present
+    - Website URL if present
+    - Address / location if present (shorten intelligently to area + city when needed)
+    - Core offer, key numbers, and urgency only if clearly useful for the main hook
 
-DO NOT EXTRACT for the header:
-- Owner/Proprietor names or designations
-- Taglines or slogans
-- Services list
-- Multiple addresses
-- Social media handles
+    DO NOT EXTRACT for the header:
+    - Owner/proprietor names or designations unless they are the brand itself
+    - Long services lists or paragraph copy
+    - Multiple repeated addresses
+    - Social media handles unless they are the primary contact
 
-QUALITY NOTE: All extracted text will be rendered at 16K resolution — ensure EXACT spelling and formatting so every character renders PERFECTLY.
-Keep it MINIMAL — the header is a thin contact strip (10% max height, TOP ONLY), NOT a visiting card replica.` });
+    QUALITY NOTE: Every extracted character must remain sharp and readable.
+    Keep it premium and compact — everything must fit strictly inside the exact top 7% header of the full 9:16 poster, and the remaining 93% must stay empty. The result must still feel like a designed premium banner, not a plain information strip. The header must attach to the top edge as a full-width ribbon, never as a floating card.` });
     }
   }
   
@@ -1139,7 +1140,7 @@ Keep it MINIMAL — the header is a thin contact strip (10% max height, TOP ONLY
           data: await fileToBase64(files.productImages[i])
         }
       });
-      headerParts.push({ text: `Product Image ${i + 1} of ${productImageCount} — include this product in the header's product banner strip.` });
+      headerParts.push({ text: `Product Image ${i + 1} of ${productImageCount} — use this product only if it can fit as a tiny premium accent inside the strict top 7% header without reducing readability or adding clutter.` });
     }
   }
 
