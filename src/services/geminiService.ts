@@ -1086,7 +1086,9 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR HEADER:
   7. Do NOT add footer, bottom bar, product strip, or any extra content below the header
   8. The header must show visible premium graphic design layering — not a plain flat strip. Use designed composition, geometric overlays, line accents, light sweeps, subtle industry motifs, and a crafted CTA box while keeping the layout readable.
   9. The header must be a full-width ribbon attached to the top edge of the poster. Do NOT create a floating card, inset banner, centered panel, rounded rectangle, or poster-within-poster.
-  ${formData.adType === 'festival' ? `10. AD TYPE = Festival Wishes: the hook must feel like a premium ${formData.festivalName} greeting blended with the business identity, but CTA must remain dominant and the header must still stay exactly within 7%` : `10. AD TYPE = Commercial: the hook must stay conversion-focused using business value, offer, benefit, trust, and urgency when available while preserving the same exact 7% layout`}
+  10. The generated prompt must explicitly contain this exact line: HEADER HEIGHT: EXACTLY 7% OF TOTAL 9:16 IMAGE HEIGHT
+  11. Never output a height range such as 5-8%, 8-10%, 10-12%, "max height", or similar variable wording
+  ${formData.adType === 'festival' ? `12. AD TYPE = Festival Wishes: the hook must feel like a premium ${formData.festivalName} greeting blended with the business identity, but CTA must remain dominant and the header must still stay exactly within 7%` : `12. AD TYPE = Commercial: the hook must stay conversion-focused using business value, offer, benefit, trust, and urgency when available while preserving the same exact 7% layout`}
   ${(hasProductImages && includeProductsInHeader) ? `\nPRODUCT IMAGES: ${productImageCount} product image(s) are attached. Use them only if they fit inside the same top 7% strip without clutter.` : ''}${productImageHeaderNote}`;
 
   // Build header parts — include visiting card (primary source for header info), logo, and product images

@@ -1246,6 +1246,8 @@ MANDATORY GEOMETRY ENFORCEMENT:
 * Do NOT create a floating banner card, inset panel, rounded rectangle, separate box, centered card, or framed poster-within-poster.
 * Do NOT leave empty top margin above the header and do NOT place the header lower than the top edge.
 * The header background must feel built into the poster itself, not pasted on as a separate card.
+* The final prompt must state the height as: "HEADER HEIGHT: EXACTLY 7% OF TOTAL 9:16 IMAGE HEIGHT".
+* Never write a range such as 5-8%, 8-10%, 10-12%, "max height", or "approximately 7%".
 
 AD TYPE ADAPTATION:
 
@@ -1375,6 +1377,7 @@ Additional mandatory execution rules for the final prompt:
 - Keep every character readable and sharp
 - Do not mention video, motion, footer, bottom banner, product strip, or any content below the top 7%
 - The header height must read as exactly 7% of the full 9:16 canvas in both Commercial and Festival Wishes modes
+- The final prompt must explicitly use the wording: "HEADER HEIGHT: EXACTLY 7% OF TOTAL 9:16 IMAGE HEIGHT"
 - Keep the result ready to paste directly into an image generator`;
 };
 
