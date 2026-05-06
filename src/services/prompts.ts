@@ -1205,56 +1205,14 @@ Clip 3 – Main Frame Prompt (${shotDesigns[2 % shotDesigns.length].name})
 Do NOT wrap individual prompts in code blocks — output them as plain text separated by ###CLIP###.`;
 };
 
-export const HEADER_SYSTEM_PROMPT = (adType: string, festivalName: string) => {
-  const isFestival = adType === AdType.FESTIVAL && festivalName;
-
-  return `You generate a SINGLE copy-paste-ready IMAGE GENERATION PROMPT for an ultra-premium advertisement header. Output ONLY the final prompt inside a code block. Do not add explanations, commentary, labels, or surrounding text.
-
-Before writing the final prompt, analyze all provided inputs and extract ONLY real business details that are visible or explicitly provided:
-- Brand / business name exactly as written
-- Business type
-- Core offer or value
-- Key numbers such as price, reward, discount, or offer value
-- Urgency such as date, limited period, deadline, or closing soon
-- ALL contact numbers that should appear in the header
-- Address / location when present
-- Logo from the uploaded file, used AS-IS
-
-Do not invent or guess missing details. If a field is not present, omit it cleanly. Do not add filler copy, fake offers, extra services, or long descriptions.
-
-The final prompt must use this exact design formula and adapt it using the extracted business data:
-
-CURRENT AD TYPE MODE:
-${isFestival ? `Festival Wishes (${festivalName})` : 'Commercial'}
-
-Create a 9:16 vertical 4K advertisement poster.
+export const HEADER_SYSTEM_PROMPT = (_adType: string, _festivalName: string) => {
+  return `Create a 9:16 vertical 4K advertisement poster.
 
 STRICT CANVAS RULE:
 
-* Design ONLY the top EXACT 7% horizontal strip of the FULL 9:16 canvas as a premium cinematic header.
-* The remaining EXACT 93% must be completely empty with a smooth dark gradient background.
+* Design ONLY the top 7% horizontal strip as a premium cinematic header.
+* The remaining 93% must be completely empty with a smooth dark gradient background.
 * No elements should enter below the 7% boundary.
-* Do NOT visually exceed the 7% height with glow, shadow, ornaments, badges, or decorative accents.
-
-MANDATORY GEOMETRY ENFORCEMENT:
-
-* Treat the poster as a 2160 x 3840 vertical 4K canvas.
-* The header band must read as exactly 269 px tall from the top edge.
-* Imagine a hard invisible guide line at 269 px; logo, hook, CTA, urgency, address strip, glow, and every decorative accent must end above that line.
-* If any element makes the header look taller than 7%, reduce its size, padding, and glow until the band visually reads as a strict 7% strip.
-* The header must be edge-to-edge, flush with the top edge, and span the full poster width.
-* Do NOT create a floating banner card, inset panel, rounded rectangle, separate box, centered card, or framed poster-within-poster.
-* Do NOT leave empty top margin above the header and do NOT place the header lower than the top edge.
-* The header background must feel built into the poster itself, not pasted on as a separate card.
-* The final prompt must state the height as: "HEADER HEIGHT: EXACTLY 7% OF TOTAL 9:16 IMAGE HEIGHT".
-* Never write a range such as 5-8%, 8-10%, 10-12%, "max height", or "approximately 7%".
-
-AD TYPE ADAPTATION:
-
-* Commercial: make the center hook conversion-focused using offer, value, benefit, trust, and urgency when available.
-* Festival Wishes: make the center hook a premium festival greeting blended with the business identity while keeping contact CTA dominant.
-* Festival Wishes must use subtle festive cues only inside the same exact 7% strip and must NOT become a full festive poster header.
-* In both ad types, the layout structure stays the same and the full 9:16 poster must still keep the lower 93% completely empty.
 
 INPUT HANDLING (INTELLIGENT EXTRACTION):
 You may receive:
@@ -1276,24 +1234,14 @@ Analyze and extract:
 VISUAL INTELLIGENCE:
 Based on business type, include subtle premium elements inside header:
 
-* Jewelry -> gold shine, ornaments
-* Real estate -> skyline silhouettes
-* Education -> books, academic icons
-* Medical -> cross, clean soft tones
-* Retail -> tags, shopping visuals
-* Finance -> coins, charts
-* Other business types -> use subtle premium elements that match the industry without clutter
+* Jewelry → gold shine, ornaments
+* Real estate → skyline silhouettes
+* Education → books, academic icons
+* Medical → cross, clean soft tones
+* Retail → tags, shopping visuals
+* Finance → coins, charts
 
 Elements must be minimal, premium, and blended (no clutter, no clipart).
-
-GRAPHIC DESIGN EXECUTION (MANDATORY):
-
-* The header must look like real premium graphic design, not a plain text bar.
-* Use layered composition inside the strip: premium gradient depth, geometric overlays, subtle industry motifs, fine line accents, light sweeps, framing edges, and a designed CTA container.
-* Use at least 3 visible design layers inside the header while keeping text readable.
-* Avoid flat empty rectangles with only logo plus text.
-* The final feel must be like a senior Meta Ads designer crafted the banner manually.
-* Use full-width ribbon design language, not card design language.
 
 HEADER STRUCTURE (CONVERSION-OPTIMIZED):
 
@@ -1305,12 +1253,10 @@ LEFT:
 CENTER (MAIN HOOK):
 
 * Strong, short, high-impact headline
-* Highlight numbers (Rs, %, benefits)
+* Highlight numbers (₹, %, benefits)
 * Maintain strong readability and hierarchy
-* Keep the hook compact enough that the total header still reads as a micro-strip, not a hero section
-* Maximum 2 short lines for the main hook
 
-TOP RIGHT (PRIMARY CTA - HIGHEST PRIORITY):
+TOP RIGHT (PRIMARY CTA – HIGHEST PRIORITY):
 
 * Place ALL contact numbers here
 * Large, bold typography (high visibility)
@@ -1326,16 +1272,16 @@ RIGHT (BELOW CONTACT):
 
 BOTTOM STRIP INSIDE HEADER (MANDATORY FOR ADDRESS):
 
-* If address/location is present -> MUST display here
+* If address/location is present → MUST display here
 * Use short, clean version (area + city preferred)
 * Add location icon
 * Keep font smaller than contact but readable
 * Do NOT overcrowd or wrap excessively
-* If address is long -> intelligently shorten while preserving clarity
+* If address is long → intelligently shorten while preserving clarity
 
 OPTIONAL MICRO TAG:
 
-* Add small trigger like "Limited", "Offer", "2 Chances" if space allows
+* Add small trigger like “Limited”, “Offer”, “2 Chances” if space allows
 
 DESIGN QUALITY (WORLD-CLASS):
 
@@ -1344,17 +1290,15 @@ DESIGN QUALITY (WORLD-CLASS):
 * Strong contrast for mobile ads
 * Clean spacing, no clutter
 * CTA (contact) remains visually dominant
-* Graphic richness must be clearly visible even though the strip remains exact 7% height
 
 COLOR STRATEGY:
 
 * Adapt based on business type
 * Ensure contact CTA has highest contrast
-${isFestival ? `* Blend subtle ${festivalName} festive cues into the same premium business palette without increasing the header height or adding clutter
-` : ''}
+
 TYPOGRAPHY:
 
-* Max 1-2 fonts
+* Max 1–2 fonts
 * Clear hierarchy:
 
   1. Contact (CTA)
@@ -1363,22 +1307,13 @@ TYPOGRAPHY:
 
 LAYOUT RULES:
 
-* Everything strictly inside the exact top 7% of the complete 9:16 poster
+* Everything strictly inside top 7%
 * Perfect alignment and spacing
 * No overlapping elements
 * Maintain clean premium feel
-* The final silhouette must read as a thin top ribbon, not a top card or top block
 
 OUTPUT:
-Ultra-premium, high-conversion Meta Ads header with dominant contact CTA and clearly visible address, strictly confined to top 7%.
-
-Additional mandatory execution rules for the final prompt:
-- Use the exact uploaded logo as-is when a logo is provided
-- Keep every character readable and sharp
-- Do not mention video, motion, footer, bottom banner, product strip, or any content below the top 7%
-- The header height must read as exactly 7% of the full 9:16 canvas in both Commercial and Festival Wishes modes
-- The final prompt must explicitly use the wording: "HEADER HEIGHT: EXACTLY 7% OF TOTAL 9:16 IMAGE HEIGHT"
-- Keep the result ready to paste directly into an image generator`;
+Ultra-premium, high-conversion Meta Ads header with dominant contact CTA and clearly visible address, strictly confined to top 7%.`;
 };
 
 export const getToneForAdType = (adType: string) =>
@@ -1935,6 +1870,13 @@ These are RICH sources of business information. Extract ALL details from them in
 - Contact details, addresses, social media handles
 - Design style and color themes used
 - Any seasonal or campaign-specific messaging
+
+IMPORTANT: You may also receive PRODUCT IMAGES.
+Use them to identify:
+- Exact product categories and hero products
+- Packaging style, materials, colors, and visible variants
+- Which products should be featured or prioritized in the ad
+Map these details into Product Categories, Key Offerings, and Specific products to feature.
 
 EXTRACT THE FOLLOWING (mark as "Not provided" if not available):
 

@@ -302,6 +302,12 @@ export const extractBusinessOnly = async (
       parts.push({ text: `This is a Store/Office Image (${i + 1} of ${files.storeImage.length}).` });
     }
   }
+  if (files.productImages && files.productImages.length > 0) {
+    for (let i = 0; i < files.productImages.length; i++) {
+      parts.push({ inlineData: { mimeType: files.productImages[i].type, data: await fileToBase64(files.productImages[i]) } });
+      parts.push({ text: `This is a Product Image (${i + 1} of ${files.productImages.length}). Extract product categories, hero products, packaging cues, and the exact products that should influence the advertisement.` });
+    }
+  }
   if (files.voiceRecording && files.voiceRecording.length > 0) {
     for (let i = 0; i < files.voiceRecording.length; i++) {
       parts.push({ inlineData: { mimeType: files.voiceRecording[i].type, data: await fileToBase64(files.voiceRecording[i]) } });
@@ -343,8 +349,8 @@ export const extractBusinessOnly = async (
     posterPrompt: '',
     voiceOverScript: '',
     veoPrompts: [],
-    hasProductImages: false,
-    productImageCount: 0,
+    hasProductImages: Boolean(files.productImages && files.productImages.length > 0),
+    productImageCount: files.productImages ? files.productImages.length : 0,
     stockImagePrompts: null
   };
 };
@@ -418,6 +424,19 @@ export const generateAdAssets = async (
           }
         });
         parts.push({ text: `This is a Store/Office Image (${i + 1} of ${files.storeImage.length}).` });
+      }
+    }
+
+    // Process Product Images
+    if (files.productImages && files.productImages.length > 0) {
+      for (let i = 0; i < files.productImages.length; i++) {
+        parts.push({
+          inlineData: {
+            mimeType: files.productImages[i].type,
+            data: await fileToBase64(files.productImages[i])
+          }
+        });
+        parts.push({ text: `This is a Product Image (${i + 1} of ${files.productImages.length}). Extract product categories, hero products, packaging cues, and the exact products that should influence the advertisement.` });
       }
     }
 
@@ -754,101 +773,21 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
   }
 
   // --- Step 4: Header Prompt ---
-  onProgress("Generating Header prompt...", 55);
+  onProgress("Preparing Header prompt...", 55);
 
   const headerSystemPrompt = HEADER_SYSTEM_PROMPT(formData.adType, formData.festivalName);
-  
-  // Only include product note if products should be in header
-  const productImageHeaderNote = (hasProductImages && includeProductsInHeader)
-    ? `\n\nPRODUCT IMAGES ATTACHED: ${productImageCount} product image(s) are attached with this prompt.
-CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR HEADER:
-- Use the attached product images only if they can fit cleanly inside the strict top 7% header strip
-- Keep product imagery ultra-minimal and premium so contact CTA remains dominant
-- Do NOT create any product banner, footer strip, thumbnail row, or any content below the 7% boundary
-- If product images make the header crowded, omit them entirely and prioritize logo, hook, contact CTA, urgency, and address
-- Use the EXACT product images provided — do NOT redesign or alter the products`
-    : '';
-  
-  const headerUserPrompt = `Generate a WORLD-CLASS Header image prompt for:
-  BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
-  AD TYPE: ${formData.adType}
-  ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName}` : ''}
-  
-  CRITICAL INSTRUCTIONS:
-  1. Extract only real business information from the provided inputs: exact brand name, business type, core offer/value, key numbers, urgency, contact numbers, and address/location when present
-  2. Follow the strict header formula exactly: treat the poster as a 2160 x 3840 vertical 4K frame where the header reads as EXACTLY the top 7% band, about 269 px tall, and the remaining 93% stays fully empty with a smooth dark gradient background
-  3. Keep ALL elements strictly inside that exact top 7% boundary — do NOT place anything below it and do NOT visually exceed it with glow, shadow, or decorative overflow
-  4. Contact numbers must be the highest-priority CTA in the top-right highlighted container
-  5. Address/location is mandatory when present and must stay inside the bottom strip within the header
-  6. Keep all text sharp and highly readable, with clean spacing and no clutter
-  7. Do NOT add footer, bottom bar, product strip, or any extra content below the header
-  8. The header must show visible premium graphic design layering — not a plain flat strip. Use designed composition, geometric overlays, line accents, light sweeps, subtle industry motifs, and a crafted CTA box while keeping the layout readable.
-  9. The header must be a full-width ribbon attached to the top edge of the poster. Do NOT create a floating card, inset banner, centered panel, rounded rectangle, or poster-within-poster.
-  10. The generated prompt must explicitly contain this exact line: HEADER HEIGHT: EXACTLY 7% OF TOTAL 9:16 IMAGE HEIGHT
-  11. Never output a height range such as 5-8%, 8-10%, 10-12%, "max height", or similar variable wording
-  ${formData.adType === 'festival' ? `12. AD TYPE = Festival Wishes: the hook must feel like a premium ${formData.festivalName} greeting blended with the business identity, but CTA must remain dominant and the header must still stay exactly within 7%` : `12. AD TYPE = Commercial: the hook must stay conversion-focused using business value, offer, benefit, trust, and urgency when available while preserving the same exact 7% layout`}
-  ${(hasProductImages && includeProductsInHeader) ? `\nPRODUCT IMAGES: ${productImageCount} product image(s) are attached. Use them only if they fit inside the same top 7% strip without clutter.` : ''}${productImageHeaderNote}`;
-
-  // Build header parts — include visiting card (primary source for header info), logo, and product images
-  const headerParts: any[] = [{ text: headerUserPrompt }];
-  
-  // Attach visiting card directly to header generation — extract only essential info
-  if (files.visitingCard && files.visitingCard.length > 0) {
-    for (let i = 0; i < files.visitingCard.length; i++) {
-      headerParts.push({
-        inlineData: {
-          mimeType: files.visitingCard[i].type,
-          data: await fileToBase64(files.visitingCard[i])
-        }
-      });
-      headerParts.push({ text: `This is the VISITING CARD (${i === 0 ? 'Front' : 'Back'}) — extract ONLY the business details needed for the strict top 7% header:
-    - Business Name (EXACT as printed — preserve every character, capitalization, and spacing)
-    - Contact Numbers that should be shown in the CTA
-    - Email Address if present
-    - Website URL if present
-    - Address / location if present (shorten intelligently to area + city when needed)
-    - Core offer, key numbers, and urgency only if clearly useful for the main hook
-
-    DO NOT EXTRACT for the header:
-    - Owner/proprietor names or designations unless they are the brand itself
-    - Long services lists or paragraph copy
-    - Multiple repeated addresses
-    - Social media handles unless they are the primary contact
-
-    QUALITY NOTE: Every extracted character must remain sharp and readable.
-    Keep it premium and compact — everything must fit strictly inside the exact top 7% header of the full 9:16 poster, and the remaining 93% must stay empty. The result must still feel like a designed premium banner, not a plain information strip. The header must attach to the top edge as a full-width ribbon, never as a floating card.` });
-    }
-  }
-  
-  // Attach logo directly to header generation
-  if (files.logo) {
-    headerParts.push({
-      inlineData: {
-        mimeType: files.logo.type,
-        data: await fileToBase64(files.logo)
-      }
-    });
-    headerParts.push({ text: "This is the LOGO — place this exact image as-is in the header. Do NOT recreate or redesign it." });
-  }
-  
-  // Only include product images in header if the option is enabled
-  if (hasProductImages && includeProductsInHeader) {
-    for (let i = 0; i < files.productImages.length; i++) {
-      headerParts.push({
-        inlineData: {
-          mimeType: files.productImages[i].type,
-          data: await fileToBase64(files.productImages[i])
-        }
-      });
-      headerParts.push({ text: `Product Image ${i + 1} of ${productImageCount} — use this product only if it can fit as a tiny premium accent inside the strict top 7% header without reducing readability or adding clutter.` });
-    }
-  }
-
-  const headerPrompt = await generateWithRetry(
-    headerParts,
-    headerSystemPrompt,
-    'Header'
-  );
+  const headerPrompt = [
+    "Use ONLY the following extracted business intelligence to create the header prompt.",
+    "This extraction is based on the provided Visiting Card, Store/Office Images, Product Images, Flyers / Offer Posters, Voice Instructions, and Business Messages / Text Instructions.",
+    "",
+    "EXTRACTED BUSINESS INTELLIGENCE:",
+    JSON.stringify(businessInfo, null, 2),
+    "",
+    `AD TYPE: ${formData.adType === 'festival' ? 'Festival Wishes' : 'Commercial'}`,
+    formData.adType === 'festival' && formData.festivalName ? `FESTIVAL: ${formData.festivalName}` : '',
+    "",
+    headerSystemPrompt
+  ].filter(Boolean).join('\n');
 
   // Emit partial result: header ready
   if (onPartialResult) {
