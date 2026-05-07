@@ -908,10 +908,31 @@ Segment 2: <text>
     segmentCount,
     parsedSegments
   );
+
+  const isCommercialMainFrame = formData.adType !== 'festival';
+  const commercialMainFramePriorityNote = isCommercialMainFrame
+    ? `
+  COMMERCIAL PRIORITY: Beauty tier comes first. The subject/model descriptor must establish an exceptionally beautiful cinema-heroine-tier national luxury brand ambassador before realism, environment, logo, or product detail.
+  COMMERCIAL CASTING DENIAL: Never allow an average-looking woman, plain office worker, generic model, safe face, or stock-photo feel.
+  COMMERCIAL REALISM ANCHORS: visible pores · micro skin texture · soft tonal variation · true photographic realism. warm/honey/wheatish/golden-brown complexion · never pink never grey never artificially pale. no plastic skin · no beauty-filter effect · no over-smoothing · no waxy highlights.
+  COMMERCIAL CONCISION RULE: Keep environment, logo, and product instructions concise and non-redundant after the realism brief.`
+    : '';
+  const mainFrameProductLine = hasProductImages
+    ? isCommercialMainFrame
+      ? `\nPRODUCT IMAGES: ${productImageCount} attached. Mention them briefly, unchanged, on real shelves, display racks, tables, or counters behind the model.`
+      : `\nPRODUCT IMAGES: ${productImageCount} product image(s) are being attached. You MUST include product placement instructions in the prompt. Products should appear IN THE STORE BACKGROUND (on shelves, display racks, tables) — NOT at the bottom of the frame. Products must remain EXACTLY as provided — no modifications.`
+    : '';
   
   // Build product image instruction for the prompt
   const productImageMainFrameNote = hasProductImages 
-    ? `\n\nPRODUCT IMAGES ATTACHED: ${productImageCount} product image(s) are attached with this prompt.
+    ? isCommercialMainFrame
+      ? `\n\nPRODUCT IMAGES ATTACHED: ${productImageCount} product image(s) are attached with this prompt.
+CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
+- Keep product directions concise
+- Place exact uploaded products unchanged on real shelves, display racks, tables, counters, or display cases behind the model
+- Never place products at the bottom of the frame
+- Match the premises lighting so the display feels like actual business inventory`
+      : `\n\nPRODUCT IMAGES ATTACHED: ${productImageCount} product image(s) are attached with this prompt.
 CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
 - The attached product images MUST be incorporated into the generated image
 - **PLACEMENT: Place products IN THE STORE BACKGROUND — on shelves, display racks, tables, or counters BEHIND the model**
@@ -922,16 +943,20 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
 - Products must appear EXACTLY as they look in the uploaded images — same colors, packaging, labels, appearance
 - Products must be clearly visible in the background but secondary to the model's presence
 - The scene should look like a REAL photo taken at the ACTUAL business with their products on display`
+      
     : '';
   
-  const mainFrameUserPrompt = `Generate ${segmentCount} unique Main Frame image prompts (one per 8-second clip) for:
+  const mainFrameUserPrompt = `Generate ${segmentCount} unique Main Frame image prompts (one per 8-second clip) for:${commercialMainFramePriorityNote}
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
   AD TYPE: ${formData.adType}
   ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName}` : ''}
   ATTIRE: ${formData.attireType}
   TOTAL DURATION: ${formData.duration} seconds (${segmentCount} clips of 8 seconds each)
   SPECIAL CLIENT INSTRUCTIONS: ${businessInfo.specialRequirements?.customInstructions || 'None'}
-  ${hasProductImages ? `\nPRODUCT IMAGES: ${productImageCount} product image(s) are being attached. You MUST include product placement instructions in the prompt. Products should appear IN THE STORE BACKGROUND (on shelves, display racks, tables) — NOT at the bottom of the frame. Products must remain EXACTLY as provided — no modifications.` : ''}
+  CAMPAIGN CASTING RULE: Choose one distinct premium female ambassador identity for THIS business and keep her consistent across all clips. Different businesses should not fall back to the same default face.
+  REALISM RULE: The environment must look like the actual business premises using extracted business/store context. In festival mode, keep the real business location dominant and layer festival cues naturally on top.
+  COMMERCIAL QUALITY RULE: For commercial ads, prioritize believable premium Indian brand-shoot realism over artificial glam or plastic beauty.
+  ${mainFrameProductLine}
   
   VOICE-OVER SCRIPT SEGMENTS (use these to guide each frame's mood and action):
   ${parsedSegments.map((s, i) => `Clip ${i+1}: ${s}`).join('\n  ')}

@@ -602,10 +602,10 @@ export const getAttireMode = (attireType: string, businessType: string = 'defaul
     const sareeColor = getSareeColorForBusiness(businessType);
     return `Attire: premium traditional Indian saree — ${sareeColor}. High-quality fabric, crisp pleats, natural realistic folds, elegant and luxurious advertising look.`;
   } else {
-    return `Attire: high-fashion premium corporate suit with "Old Money" aesthetic.
-Preferred Colors: Beige, Cream, Pastel Pink, or Soft Grey.
-Style: Structured blazer, crisp white shirt, minimalist gold chain.
-Look: CEO / Founder / Brand Ambassador vibe.`;
+    return `Attire: premium beige/pastel luxury campaign suit.
+Preferred Colors: beige, cream, taupe, champagne, blush-beige, or soft sand.
+Style: well-tailored feminine blazer, crisp white fitted blouse, slim formal trousers, delicate gold chain, and small premium studs.
+Look: youthful Indian brand ambassador with polished beauty, real corporate-luxury styling, and premium commercial realism.`;
   }
 };
 
@@ -620,6 +620,7 @@ export const getAdTypeMode = (adType: string, festivalName = '') => {
 export const MAIN_FRAME_SYSTEM_PROMPT = (attireType: string, adType: string, festivalName: string, aspectRatio: string = '1:1') => {
   const isFestival = adType === AdType.FESTIVAL && festivalName;
   const festivalTheme = isFestival ? getFestivalTheme(festivalName) : null;
+  const isProfessional = attireType === 'professional';
 
   return `You are an AI assistant specialized in generating START-FRAME IMAGE PROMPTS for business ads and brand intro creatives.
 
@@ -643,46 +644,162 @@ Your output prompt MUST follow this EXACT structure with these EXACT section hea
 
 ---START OF PROMPT FORMAT---
 
-Create a Ultra-realistic DSLR photograph, single image, 9:16 vertical — must look like a real, high-budget national [BUSINESS TYPE] ${isFestival ? `**${festivalName} celebration** ` : ''}photoshoot, absolutely no AI-art, no rendering, no stock-photo feel. Indistinguishable from a real professional photograph.${isFestival ? `
-**THIS IS A ${festivalName.toUpperCase()} THEMED IMAGE — the entire frame must BREATHE the festival. Every element — attire, decorations, environment, lighting, colors — must work together to create an IMMERSIVE ${festivalName} celebration feel.**` : ''}
+${!isFestival ? `CASTING OVERRIDE — THIS IS MANDATORY:
+This is NOT a corporate headshot. This is NOT a stock photo shoot.
+This is a HIGH-BUDGET NATIONAL BRAND CAMPAIGN.
+The model must be in the top 0.1% of female beauty.
+She must have the kind of face that makes a viewer stop scrolling.
+She must look like she was handpicked by a luxury brand's
+creative director after reviewing 500 candidates.
+REJECT any average face. REJECT any plain face.
+REJECT any forgettable face.
+If she does not look like a Bollywood A-list leading actress
+or a face you would see on a Lakme / Tanishq / Malabar Gold
+national TV commercial — REGENERATE.
 
-SUBJECT (CELEBRITY STANDARD — NON-NEGOTIABLE — MUST LOOK LIKE A-LIST CELEBRITY):
-One **exceptionally beautiful young Indian woman (early-20s)** with **true celebrity-level presence**, like a top national brand ambassador or A-list South Indian film actress hired to represent a premium [BUSINESS TYPE] brand${isFestival ? ` during their ${festivalName} celebrations` : ''}.
-Her beauty must feel **STUNNING, premium, magnetic, and instantly attention-grabbing** — the kind of face that stops you mid-scroll on Instagram. Think top-tier South Indian film actress level beauty — the kind of woman premium national brands pay crores to front their campaigns. Do NOT name any specific celebrity.
+` : ''}Create a Ultra-realistic DSLR photograph, single image, 9:16 vertical — must look like a real, high-budget national [BUSINESS TYPE] ${isFestival ? `**${festivalName} celebration** ` : ''}photoshoot, absolutely no AI-art, no rendering, no stock-photo feel. Indistinguishable from a real professional photograph.${isFestival ? `
+**THIS IS A ${festivalName.toUpperCase()} THEMED IMAGE — the business premises must still feel real and operational, while festival cues are layered in naturally and tastefully.**` : ''}
 
-Facial characteristics (MANDATORY — CELEBRITY BEAUTY LEVEL):
-• Perfect natural facial symmetry — stunning model-like proportions
-• DIRECT EYE CONTACT WITH CAMERA — the model must look DIRECTLY into the camera lens, making eye contact with the viewer. Sharp, expressive deep eyes with confident, powerful gaze — eyes that captivate. This is NON-NEGOTIABLE
-• Well-sculpted, perfectly shaped eyebrows — professionally groomed
-• Soft but powerful warm smile showing confidence, trust, and authority — million-dollar smile
-• **NATURAL HEALTHY COMPLEXION — IMPORTANT** — soft subtle warmth on cheekbones, like a healthy natural glow. The blush must be VERY SUBTLE and NATURAL — NOT pink, NOT rosy, NOT flushed. Think natural Indian skin tone with gentle warmth, not makeup blush. Avoid any pink/red tones on the face.
-• **SKIN TONE MUST BE NATURAL INDIAN** — warm golden-brown undertones, NOT pink, NOT pale, NOT overly fair. The face should have natural warm tones, NOT cool pink tones.
-• Small elegant sharp nose — perfectly proportioned
-• Clean, refined defined jawline — sharp and attractive
-• **Flawless luminous skin** — visible pores for realism, micro highlights, natural unevenness, BUT overall glowing and radiant complexion like she just had a facial
-• Subtle natural makeup — defined eyes, soft natural lip color (NOT pink lipstick), healthy glow
-• She must look like she could be on a magazine cover or billboard
-• No plastic skin, no airbrushing, no over-smoothing, no AI glow, no beautification filters
-• **STRICTLY AVOID pink/red/rosy coloring on face — use warm golden natural tones only**
+SUBJECT (PREMIUM BRAND AMBASSADOR — FEMALE ONLY — MUST FEEL DISTINCT TO THIS BUSINESS):
+One exceptionally photogenic Indian woman chosen as the **exclusive brand ambassador for THIS specific business campaign**${isFestival ? ` during ${festivalName}` : ''}.
+She must look premium, aspirational, believable, and naturally striking — the kind of woman a serious brand would cast for a real ad campaign.
+**Do NOT default to the same face used in other ads.** Create ONE unique ambassador identity for this business based on the business type, brand tone, festival/commercial mood, attire style, and environment.
+Choose an age band that fits the brand positioning — typically ${isProfessional ? '21 to 27' : '23 to 32'} — and keep that same woman consistent across all clips in this campaign.
+Do NOT imitate a specific actress, do NOT describe her as a South Indian film actress, and do NOT use one generic celebrity face pattern.
+${!isFestival ? `
+FACE — LUXURY CASTING BRIEF (MANDATORY):
+- Face shape: Perfect oval — the mathematically ideal face
+  shape for screen — soft but defined, no harshness
+- Eyes: LARGE almond-shaped eyes — the dominant feature of
+  her face — deep dark brown iris with natural limbal ring —
+  bright whites with no redness — thick natural lashes with
+  subtle kajal/kohl lining the waterline — the eyes must feel
+  like they are PULLING the viewer in — expressive, deep,
+  luminous — like Deepika Padukone's eye shape and intensity
+  as a REFERENCE TIER only, NOT her face
+- Eyebrows: Thick, perfectly arched, naturally full —
+  groomed but not drawn-on — strong brows that frame
+  the eyes with power
+- Nose: Slender, straight, refined — narrow bridge —
+  delicate tip — the kind of nose a casting director
+  calls "photogenic" — not sharp, not wide, balanced
+- Lips: Full, naturally defined cupid's bow — upper lip
+  has clear arch — lower lip is plump — lips look naturally
+  soft and lush — wearing a warm nude-rose or
+  classic warm red lip color
+- Cheekbones: HIGH and subtly prominent — catching the
+  studio light — creating a natural shadow below —
+  the hallmark of a photogenic face
+- Jawline: Clean V-shaped feminine jaw — no double chin —
+  elegant neck — the jaw frames the face like a portrait
+- Chin: Slightly pointed, delicate — feminine and refined
+- Skin: GOLDEN LUMINOUS — warm honey-brown Indian complexion —
+  dewy healthy glow from within — NOT matte, NOT flat —
+  light catching the high points (cheekbones, brow bone,
+  cupid's bow) naturally — visible micro-texture showing
+  this is a real photograph — no plastic skin, no filter
 
-POSE & FRAMING (LOCKED — NON-NEGOTIABLE — HIGHEST PRIORITY):
-**THIS IS THE MOST CRITICAL SECTION — CENTERING AND POSTURE MUST BE PERFECT.**
-• MID SHOT only (head to just below waist)
-• Subject must be **EXACTLY IN THE CENTER** of the frame — **perfect symmetry, EQUAL space on left and right**
-• Camera at chest level, straight-on (no tilt, no angle, no dutch angle)
-• **Hands gently folded at the waist / lower abdomen, one hand resting naturally over the other, fingers relaxed**
-• This EXACT hand posture is MANDATORY — zero variation, every single time
-• The model must occupy approximately 70% of the frame height
-• Her presence must be commanding and dominant — she is the HERO of the image
-• The remaining space shows the business environment and logo behind/around her
-• **If the centering is off by even 5%, the entire image is REJECTED**
-• **The model's eyes must be looking DIRECTLY AT THE CAMERA — straight into the lens. No looking away, no side glances, no downcast eyes. Eye contact with the viewer is MANDATORY.**
+MAKEUP — HIGH-FASHION EDITORIAL LEVEL:
+- Base: Full-coverage dewy foundation — luminous finish —
+  skin looks perfected but REAL — warm golden undertone
+  matching her skin — subtle highlight on cheekbones,
+  bridge of nose, and brow bone catching the light
+- Eyes: Defined with warm brown eyeshadow — subtle shimmer
+  on the lid — black kajal on waterline — well-separated
+  mascara making lashes look long and full — NOT heavy
+  dramatic smoky eye — refined, editorial, powerful
+- Brows: Filled in, structured, full — architectural
+  feature of her face
+- Lips: Warm nude-rose OR classic red — glossy-satin finish —
+  NOT bare, NOT nude-nude — COLOR must be visible and
+  intentional — this is a CAMPAIGN shoot, not a selfie
+- Blush: Warm peachy-rose — applied to the apples of
+  the cheeks and swept toward temples — giving her a
+  healthy flushed glow
+- Contour: Subtle — defining the cheekbones and jawline
+  without looking overdone
+- Overall: She must look like she just walked out of a
+  2-hour professional makeup session for a magazine cover —
+  polished, intentional, flawless but human
+${isProfessional ? `
+PROFESSIONAL SUIT BEAUTY OVERRIDE (MANDATORY):
+- She must still read as youthful, radiant, camera-ready,
+  and actress-level beautiful inside the professional styling —
+  never plain, severe, matronly, or forgettable
+- Beauty target: premium Indian campaign ambassador with
+  bright expressive eyes, soft rosy warmth in the cheeks,
+  believable skin detail, and polished luxury-brand presence
+- No spectacles, no eyewear, no harsh contour, no loud
+  editorial drama, no frozen expression, and no waxy beauty
+  filter finish` : ''}` : `
+Facial characteristics (MANDATORY — REAL PREMIUM BEAUTY, NOT AI GLAMOUR):
+• Naturally attractive Indian facial structure with refined proportions — premium but believable, not plastic, not doll-like
+• Strong screen presence with expressive eyes and confident warmth
+• Healthy, realistic skin texture with visible pores, micro texture, soft tonal variation, and true photographic realism
+• **NATURAL INDIAN COMPLEXION ONLY** — warm, neutral, honey, wheatish, brown, or golden-brown undertones chosen to suit the brand; never pink, never grey, never artificially pale
+• Defined but natural brows, elegant nose, real lips, clean jawline — avoid over-sculpted AI perfection
+• Makeup must be premium and camera-ready but realistic: softly defined eyes, clean skin finish, subtle lip tone, no loud glamour styling unless the business genuinely demands it
+• Expression must feel emotionally appropriate to the business: welcoming, trustworthy, poised, proud, luxurious, or warm
+• No plastic skin, no beauty-filter effect, no over-smoothing, no waxy highlights, no unrealistic symmetry obsession
+• She should feel like a real premium campaign model photographed by an elite commercial photographer`}
 
-HAIR (ACTRESS-LEVEL GROOMING):
-Silky smooth jet-black hair with natural volume, professionally styled like a leading South Indian film actress.
-Soft elegant waves or sleek traditional styling.
-Glossy but natural shine, slight flyaways allowed for realism.
-Looks like it was done by a celebrity stylist — expensive, natural, and real.
+${!isFestival ? `
+HAIR — LUXURY BLOWOUT / STYLED:
+${attireType === 'professional' ? `SUIT BRANCH:
+Silky dark black hair with a polished luxury finish —
+professionally groomed, healthy shine, soft controlled movement —
+styled as a premium blowout, refined straight finish, or
+elegant soft waves that flatter the face without becoming casual —
+camera-ready, feminine, and expensive-looking —
+NOT flat, NOT frizzy, NOT messy, NOT stiff corporate hair —
+styled by a professional and consistent with a real luxury
+commercial photoshoot` : `SAREE BRANCH:
+Soft voluminous waves tumbling past the shoulder —
+OR a low glamorous side bun with loose face-framing
+tendrils — OR a voluminous half-up with cascading waves —
+must have TEXTURE and MOVEMENT —
+NOT flat pressed hair —
+the kind of hair seen on Kareena Kapoor or Anushka Sharma
+at a film premiere — as a TIER reference only, NOT their face`}
+
+EXPRESSION — STAR QUALITY (MANDATORY):
+- She is SMILING — a real, warm, confident smile —
+  NOT a forced corporate smile — NOT a neutral face —
+  NOT a serious face — a genuine, radiant smile that
+  reaches her eyes and creates subtle laugh lines
+- Her eyes are ALIVE — engaged, direct, magnetic —
+  she is looking directly into the camera as if she
+  owns the shoot
+- Body language: Relaxed confidence — one shoulder
+  slightly forward — weight slightly shifted —
+  NOT standing at attention like a soldier —
+  natural ease of someone who has done 100 photoshoots —
+  the posture of a woman completely comfortable
+  being photographed
+- Overall energy: WARM, ASPIRATIONAL, POWERFUL —
+  the viewer should feel: "I want to be her" or
+  "I trust her" — she is selling a dream
+
+POSE ANCHOR FOR THE HERO MAIN FRAME (MANDATORY):
+- The hero or anchor image must be EXACTLY centered with
+  balanced left-right spacing
+- Hands gently folded at the waist or lower abdomen, one
+  hand resting over the other, fingers relaxed
+- Camera at chest level, mid-shot framing only, with a calm,
+  premium, welcoming posture` : `POSE & FRAMING (PREMIUM COMMERCIAL PHOTOGRAPHY — NATURAL VARIATION ALLOWED):
+• Mid-shot or close mid-shot only (head to waist / upper waist)
+• The hero / anchor shot must be EXACTLY centered with balanced left-right spacing and hands gently folded at the waist, one hand resting over the other
+• Clip 1 may be centered and iconic, but later clips may use balanced off-center compositions that suit the shot purpose
+• Camera should remain premium and intentional — mostly chest-level or eye-level, with modest angle changes only when they improve realism and storytelling
+• Hands and posture must feel graceful and believable — allow variation based on the location and shot purpose instead of forcing the same folded-hands pose every time
+• Body language must feel poised, elegant, and premium — never stiff, never mannequin-like, never awkward
+• The model should occupy roughly 60% to 70% of frame height while still leaving enough space to clearly show the business environment
+• Eye contact should usually feel strong and engaging; for showcase/detail shots, a natural glance toward the business context is allowed if it improves realism
+
+HAIR (LUXURY GROOMING — CONSISTENT WITHIN THE CAMPAIGN):
+Choose one premium hairstyle family that suits the business, attire, and mood — soft waves, polished straight styling, elegant ponytail, refined bun, or neatly draped traditional styling.
+Hair must look healthy, professionally groomed, and camera-ready, with natural movement and slight flyaways allowed for realism.
+Keep the hair identity consistent across the campaign, but allow small natural shifts in fall, volume, and drape between clips.`}
 
 ${isFestival && festivalTheme ? `ATTIRE (ULTRA-LUXURY — BUSINESS SECTOR + ${festivalName.toUpperCase()} FESTIVAL BLEND — MANDATORY):
 The saree MUST be **DYNAMIC and UNIQUE based on the business sector** — NOT the same saree for every business.
@@ -723,13 +840,25 @@ Color guide by business type (each MUST feel like a different designer collectio
 **FABRIC MUST LOOK OUTRAGEOUSLY EXPENSIVE** — pure handwoven Kanchipuram / Banarasi / Kanjeevaram silk with real gold zari work, heavy temple borders or intricate brocade. The saree must look like it costs ₹50,000–₹2,00,000 — the kind worn at film premieres or luxury brand launches.
 Pallu drape must be elegant, heavy, and gravity-realistic — NOT flat, NOT stiff.
 Fabric should show natural gravity, deep realistic folds, and creases with **visible silk sheen under lighting**.
-Styling must feel film-industry celebrity level, not catalog or wedding shoot.` : `High-fashion premium corporate suit with "Old Money" aesthetic.
-Color MUST complement the [BUSINESS TYPE]:
-• Preferred Colors: Beige, Cream, Pastel Pink, Soft Grey, Navy Blue
-• Structured blazer, crisp white shirt, minimalist styling
-• Fabric must look premium — Italian wool, fine cashmere blend, or luxury linen
-• Looks CEO / Founder / Brand Ambassador level — red carpet ready
-• The suit must look like it was custom-tailored by a luxury designer — think ₹1–2 lakh executive couture`}
+Styling must feel film-industry celebrity level, not catalog or wedding shoot.
+• Commercial traditional saree output must preserve visible pores · micro skin texture · soft tonal variation · true photographic realism — never bridal-doll glam, mannequin polish, or synthetic beauty.` : `ATTIRE (PREMIUM BEIGE/PASTEL SUIT — LUXURY CAMPAIGN REALISM — MANDATORY):
+This is NOT generic officewear and NOT a stock corporate portrait.
+It must feel like a luxury Indian commercial campaign where a youthful, exceptionally beautiful actress-level ambassador is styled in a premium feminine suit.
+• Suit family: premium beige, cream, taupe, blush-beige, champagne, soft sand, warm pastel mocha, or elegant neutral-pastel tones only
+• CASTING RULE FOR SUIT OUTPUTS: choose a premium Indian woman with youthful softness, bright expressive eyes, gentle rosy warmth, and believable campaign-level beauty — never a repeated default face, never a copied stock-model look, never a severe western executive archetype
+• BUSINESS-SPECIFIC MODEL VARIATION: the face, complexion depth, styling nuance, and casting energy must change according to the specific [BUSINESS TYPE], brand personality, and client context so different businesses do NOT keep getting the same woman in a different suit
+• BLAZER: premium well-tailored blazer in the chosen beige/pastel family with elegant waist definition, refined shoulder structure, clean lapel roll, believable seam tension, and expensive matte-luxe suiting texture
+• BLOUSE: crisp white fitted blouse or shirt under the blazer — clean collar line, fresh bright contrast, polished professional finish, and real fabric structure
+• TROUSERS: slim formal trousers in the same suit family — straight or gently tapered cut, graceful premium drape, clean hem, and a sharp luxury-commercial silhouette
+• Fabric: expensive matte-luxe suiting with believable weight, texture, sleeve fall, trouser break, lapel structure, and natural movement — never shiny polyester, never stiff costume fabric
+• Styling must preserve beauty and femininity: the woman should still feel glamorous, attractive, warm, and actress-level beautiful in the suit — never harsh, lifeless, plain, or overly stern
+• The suit must read as a luxury fashion-commercial look, not HR portrait clothing, not a bank-uniform vibe, not startup officewear, and not stock-photo executive styling
+• Keep the neutral/pastel palette rich, dimensional, creamy, and expensive — never flat beige, never chalky, never washed out, never lifeless under indoor lighting
+• Face and grooming direction: soft youthful facial features, clean brows, fresh natural glow, subtle rosy warmth in the cheeks, refined lip color, no spectacles, no eyewear, no harsh retouching, no bridal heaviness, no waxy or synthetic skin finish
+• Hair should feel premium and feminine with silky dark black hair, healthy shine, and polished movement that flatters the face — refined blowout, elegant straight finish, or controlled soft waves are preferred over stiff corporate hair
+• Pose and styling should feel soft-confident and premium: graceful posture, subtle elegance, poised warmth, camera-ready polish — not rigid boardroom stiffness
+• Preserve true photographic realism: visible pores · natural warm Indian complexion · real fabric tension · authentic tailoring details · no plastic beauty-filter skin · no synthetic fashion-render feel
+• The final suit impression must feel like a real luxury beauty-fashion campaign shot in the premium front-office or consultation-facing zone of the actual business — beautiful woman first, premium tailoring second, realism always`}
 
 JEWELLERY (MANDATORY — ALWAYS REQUIRED):
 **Jewellery is NON-NEGOTIABLE and must ALWAYS be present:**
@@ -742,104 +871,53 @@ JEWELLERY (MANDATORY — ALWAYS REQUIRED):
 Jewellery must feel understated, expensive, and actress-style — the kind worn by celebrities in brand endorsements.`}
 
 ${isFestival && festivalTheme ? `ENVIRONMENT (REAL [BUSINESS TYPE] OFFICE/STORE WITH ${festivalName.toUpperCase()} DECORATIONS — MOST CRITICAL SECTION):
-**The background MUST look like the REAL office/store of this specific [BUSINESS TYPE] business — with ${festivalName} festival decorations added on top of it.**
+**The background MUST look like the REAL office/store of this specific [BUSINESS TYPE] business first; ${festivalName} decoration is a secondary layer, not a replacement set.**
 
-**STEP 1 — BUILD THE REAL BUSINESS ENVIRONMENT FIRST (BASE LAYER):**
-The background must FIRST look like a REAL, OPERATIONAL [BUSINESS TYPE] office/store/establishment.
-Business-specific elements MUST be clearly visible so anyone looking at the background can INSTANTLY tell what type of business this is:
-• **Medical/Healthcare:** Clinic reception counter, medical equipment, health posters, clean white/blue interiors
-• **Real Estate:** Property display boards, building models, floor-plan frames on walls
-• **Fashion/Boutique:** Clothing displays, designer outfits on mannequins/racks, luxury retail setup
-• **Food/Restaurant/Catering:** Kitchen setup, food displays, serving counters, hospitality décor
-• **Tech/Software/Agency:** Modern office setup, computers, creative workspace, contemporary design
-• **Education/Consultancy:** Achievement boards, global study visuals, professional counseling setup
-• **Solar/Energy:** Solar panel displays, energy system models, green tech elements
-• **Laundry/Wash:** Washing machines, folded linens, neatly organized racks, clean counters
-• **Tea/Beverage:** Tea packet shelves, wooden counters, distribution setup
-• **Jewellery:** Display cases, elegant showcases, luxury interior
-• **Electrical/Hardware:** Equipment displays, organized tools, service counter
-• **Default:** Professional reception area appropriate to the detected business type
-This business-type environment is the FOUNDATION — the photo should look like it was genuinely taken INSIDE their actual premises.
+**STEP 1 — RECREATE THE REAL BUSINESS PREMISES (DOMINANT BASE LAYER):**
+Build a believable, operational [BUSINESS TYPE] location using extracted business details, store/office images, products, signage, and brand cues.
+If actual store or office images are available, mirror their architecture and material reality: wall finishes, flooring, counters, shelving, furniture, equipment, display layouts, lighting fixtures, aisle widths, partitions, glass reflections, and real working-area depth.
+Business-specific elements MUST remain clearly visible so the viewer instantly recognizes the business category.
 
-**STEP 2 — ADD ${festivalName.toUpperCase()} FESTIVAL DECORATIONS ON TOP (DECORATION LAYER):**
-Now, ON TOP of this real business environment, add ${festivalName} festival decorations as if the employees decorated their own office/store for the festival.
+**STEP 2 — ADD CONTROLLED ${festivalName.toUpperCase()} CUES (SUPPORTING LAYER ONLY):**
+Add tasteful ${festivalName} decoration as if the real staff decorated their actual premises for the festival.
+Festival decoration should enrich roughly 20% to 35% of the visible scene, while the business environment remains the dominant location anchor.
+Use only the festival elements that can realistically fit inside a real office/store without turning it into a temple, wedding hall, palace, movie set, or generic celebration stage.
 
-**${festivalName.toUpperCase()} DECORATIONS TO ADD:**
-${festivalTheme.environmentDecorations}
+**FESTIVAL CUES TO INCORPORATE NATURALLY:**
+• Cultural inspiration: ${festivalTheme.culturalElements}
+• Floor / entry decoration inspiration: ${festivalTheme.floorDecor}
+• Lighting inspiration: ${festivalTheme.lightingStyle}
+• Mood target: ${festivalTheme.mood}
 
-**FLOOR DECORATION:**
-${festivalTheme.floorDecor}
-
-**FESTIVAL CULTURAL ELEMENTS (MUST BE VISIBLE):**
-Key cultural elements: ${festivalTheme.culturalElements}
-These elements make the image INSTANTLY recognizable as a ${festivalName} celebration — they CANNOT be omitted.
-
-**FESTIVAL LIGHTING:**
-${festivalTheme.lightingStyle}
-
-**LOGO PLACEMENT (NATURAL ON THE WALL):**
-${festivalTheme.backgroundElements}
-• Take the ATTACHED LOGO image and place it exactly as-is on the wall — as if it was ALREADY mounted there as the business signage
-• The logo must appear as real physical signage — naturally part of the office/store
-• Festival decorations (garlands, flowers) may surround or frame the logo — this is expected and natural
-• Do NOT generate, recreate, or design a new logo — use ONLY the attached logo image file
-• ⚠️ CRITICAL: The logo must be a PIXEL-PERFECT copy of the attached image — same colors, same shapes, same text, same proportions
-• Do NOT simplify, stylize, redraw, reinterpret, add text to, remove text from, or alter the logo in ANY way
-• If the logo has specific text/font/colors, those MUST appear EXACTLY as in the attached file
-
-**THE GOLDEN RULE — REAL OFFICE + FESTIVAL DECORATION:**
-The final image should look like a photographer walked into THIS SPECIFIC BUSINESS and took a photo of their ${festivalName}-decorated premises.
-• The business identity (what they do) must be CLEARLY visible from the environment
-• The festival decorations are ADDED on TOP of the existing business space
-• It should feel like the real owners decorated their real office for ${festivalName}
-• NOT a generic festival scene — NOT a studio setup — it must feel like THEIR actual place
-• Anyone who knows this business should be able to say: "Yes, that looks like their office/store with ${festivalName} decorations"
-
-**FESTIVAL MOOD & ATMOSPHERE:**
-${festivalTheme.mood}
-The viewer should feel: "This business decorated their actual office beautifully for ${festivalName}."` : `ENVIRONMENT (BUSINESS-THEMED OFFICE — VERY IMPORTANT):
-Photographed **inside a real, operational, premium [BUSINESS TYPE] office/store/establishment** — the environment must INSTANTLY communicate the business type.
-
-[Generate DETAILED environment description based on detected business type:]
-• **Medical/Healthcare:** Premium clinic/hospital reception, clean white & blue interiors, subtle medical signage, health trust elements
-• **Real Estate:** Elegant office with property displays, building models, floor-plan frames, architectural elements on walls
-• **Fashion/Boutique:** Luxury boutique interior, elegant displays, designer clothing visible, rich textures
-• **Food/Restaurant/Catering:** Warm hospitality décor, premium ambiance, appetizing setup hints
-• **Tech/Software/Agency:** Modern startup office, clean contemporary design, soft curves, tech aesthetic
-• **Education/Consultancy:** Professional office with achievement displays, global study visuals, success imagery
-• **Solar/Energy:** Modern energy office, solar panel displays visible, green tech aesthetic
-• **Laundry/Wash:** Premium laundry reception, washing machines/dryers visible, folded white linens, clean fresh aesthetic
-• **Tea/Beverage:** Tea distribution office, wooden counters, tea packet shelves in green/gold tones
-• **Jewellery:** Luxurious showroom, elegant display cases, soft spotlighting
-• **Electrical/Hardware:** Professional service center, organized equipment displays
-
-Environment Requirements:
-• Clean, modern reception/counter area with premium finishes
-• **Business-specific elements MUST be clearly visible in background** — these elements should make it INSTANTLY obvious what type of business this is, even without reading the logo
-• **Brand colors subtly present in the space** matching the logo identity
-• Natural indoor lighting from windows and ceiling fixtures — NO studio lighting
-• DSLR depth-of-field — subject razor sharp, background softly blurred but identifiable
-• Space must feel authentic, operational, and successful — NOT staged, NOT showroom-like
-• The background alone should clearly communicate "[BUSINESS TYPE]" even without the logo
-• The background must look like the REAL business premises — as if the photo was taken at the ACTUAL location
+**REALISM RULES:**
+• The business identity must stay obvious at first glance
+• Decorations must sit on real counters, real walls, real entrances, real display zones, and real circulation space
+• Keep believable depth, materials, lighting falloff, and operational details — not a flat decorative backdrop
+• Do NOT overwhelm the location with festival props; the office/store must still feel like the actual business
 
 LOGO PLACEMENT (CRITICAL — DO NOT MODIFY THE LOGO):
-Take the ATTACHED LOGO image and place it exactly as-is in the scene.
+Take the ATTACHED LOGO image and place it exactly as-is as real physical signage already mounted in the premises.
+• The logo must remain pixel-perfect and unchanged
+• Decorations may frame it lightly, but must not block, redraw, stylize, or overpower it
+• The signage should feel naturally installed in the real office/store, not pasted onto a fake backdrop
 
-Placement Rules:
-• Place the attached logo image as **real physical signage** on the wall or reception panel behind the subject
-• Mounted on a clean wall board, acrylic panel, or reception backdrop
-• Do NOT generate, recreate, or design a new logo — use ONLY the attached logo image file
-• Do NOT describe or interpret what the logo looks like — just place the attached image directly
-• Do NOT change, modify, redesign, or recolor the logo in any way
-• Do NOT simplify, stylize, redraw, add text to, remove text from, or reinterpret the logo
-• ⚠️ The logo must be a PIXEL-PERFECT reproduction of the attached image — same colors, fonts, shapes, proportions, and layout
-• If the attached logo contains specific text, that EXACT text must appear — do NOT substitute, translate, or rephrase it
-• Logo should be properly sized — visible and recognizable but not oversized
-• Natural office lighting falling on it realistically`}
+**THE FINAL IMPRESSION:**
+The viewer should feel: "This is the real business premises, beautifully and believably decorated for ${festivalName}."` : `ENVIRONMENT (REAL BUSINESS PREMISES — KEEP IT CONCISE):
+Photographed inside the real, operational, premium [BUSINESS TYPE] premises — the location must read instantly as the actual business, not a generic luxury set.
+• Use extracted business/store evidence first: the strongest counters, shelves, equipment, consultation zones, workstations, signage, display units, materials, or architectural cues that identify this business
+• If store or office images are available, mirror their layout, finishes, lighting, reflections, display rhythm, and spatial depth
+${isProfessional ? `• For professional suit outputs, prefer the clean executive-facing zone of the real business — reception office, consultation area, glass-partition workspace, or premium front-desk section with natural daylight, refined wood/stone materials, indoor greenery, and modern corporate polish
+• The background should feel like a bright premium corporate interior captured on location — not a fake set, not an empty luxury hall, and not a generic coworking stock photo` : ''}
+• Keep the background premium, believable, and specific with only the strongest business cues in frame
+• Avoid studio backdrops, fake lobbies, empty luxury halls, hotel interiors, or CGI-looking spaces
+
+LOGO PLACEMENT (CRITICAL — DO NOT MODIFY THE LOGO):
+Place the attached logo exactly as-is as real physical signage inside the premises.
+• Pixel-perfect, unchanged, naturally lit, properly installed, and clearly secondary to the subject`}
 
 CAMERA & PHOTO REALISM:
 • Professional DSLR (85mm or 50mm portrait lens look)
+${isProfessional ? `• For professional suit outputs, prefer Canon EOS R5 realism — 85mm portrait lens at f/1.8, natural daylight on the face, sharp eye focus, and softly blurred premium office depth` : ''}
 • Natural color science and grading
 • Real indoor shadows, realistic highlights
 • Slight lens softness and beautiful depth-of-field
@@ -849,16 +927,34 @@ ${isFestival && festivalTheme ? `• Color temperature should lean warm/golden m
 • Capture the warm glow from festival lamps, diyas, and decorations naturally` : ''}
 
 OVERALL RESULT:
-${isFestival ? `A **real, premium ${festivalName} celebration photograph at a [BUSINESS TYPE] establishment** featuring a **top-class celebrity-level beautiful Indian woman** representing [BUSINESS NAME] celebrating ${festivalName}.
-The image must look like a **REAL ${festivalName} celebration at a premium office** — with LAVISH festival decorations, culturally authentic elements, and a model who looks like she was hired for a national-level festival campaign.
-The ${festivalName} theme must be OVERWHELMING and UNMISTAKABLE — any viewer should INSTANTLY identify this as a ${festivalName} celebration.
-Viewer reaction should be: **"This company threw an incredible ${festivalName} celebration and hired a celebrity for their festival campaign photo — and it looks absolutely REAL."**` : `A **real, premium [BUSINESS TYPE] campaign photograph** featuring a **top-class celebrity-level beautiful Indian woman** representing [BUSINESS NAME].
-The image must look like it was shot for a **national-level brand campaign** with a real celebrity.
-Viewer reaction should be: **"This looks like a real high-end brand shoot with an actual celebrity, not AI."**`}
+${isFestival ? `A **real, premium ${festivalName} celebration photograph at a [BUSINESS TYPE] establishment** featuring one **distinct premium female brand ambassador** representing [BUSINESS NAME].
+The image must feel like a real commercial photoshoot captured inside the business's actual decorated premises.
+The ${festivalName} theme should be unmistakable, but the business environment must still remain believable and specific.
+Viewer reaction should be: **"This looks like a real premium business campaign shot during ${festivalName}, inside their actual place."**` : `A **real, premium [BUSINESS TYPE] campaign photograph** featuring one **distinct premium female brand ambassador** representing [BUSINESS NAME].
+The image must look like a real high-end commercial campaign — elegant, believable, aspirational, and fully photographic.
+The woman must read as a real human model with truthful Indian complexion, visible skin realism, natural facial detail, and elite commercial-photo polish.
+FINAL MANDATORY CHECK:
+If the generated woman does not look like she belongs
+on the cover of Vogue India, Femina, or a Tanishq
+national campaign — the image has FAILED.
+She must be STUNNING. MAGNETIC. MEMORABLE.
+A face that makes the viewer say:
+"Who is she? She must be famous."
+NOT: "She looks like a nice person."
+NOT: "She could work in that office."
+She is the STAR. Everything else is the backdrop.`}
+
+${isProfessional ? `PROFESSIONAL SUIT NEGATIVE RULES:
+• No spectacles or eyewear
+• No casual clothing, denim, oversized tailoring, loud prints, or shapeless officewear
+• No heavy jewellery, bridal styling, temple ornaments, or stacked accessories
+• No heavy glamour makeup, smoky-eye drama, glitter, or over-lined lips
+• No plastic skin, AI glow, over-smoothing, mannequin stiffness, cartoon, CGI, or illustration look
+• No fake office set, studio backdrop, hotel-lobby fakery, or generic stock-photo executive vibe` : ''}
 
 STRICTLY NO TEXT anywhere except the exact real-world logo signage.
 
-PRODUCT IMAGES PLACEMENT (ONLY WHEN PRODUCT IMAGES ARE ATTACHED — STORE BACKGROUND INTEGRATION):
+${isFestival ? `PRODUCT IMAGES PLACEMENT (ONLY WHEN PRODUCT IMAGES ARE ATTACHED — STORE BACKGROUND INTEGRATION):
 If product images are attached along with this prompt, follow these **CRITICAL RULES FOR REALISTIC STORE INTEGRATION**:
 
 **PLACEMENT STRATEGY — PRODUCTS IN STORE BACKGROUND (NOT BOTTOM OF FRAME):**
@@ -884,7 +980,13 @@ If product images are attached along with this prompt, follow these **CRITICAL R
 • Proper lighting on products — matching the store's ambient light
 • Products should be **clearly visible and recognizable** but NOT competing with the model (model still dominates the frame)
 • The background with products should feel like "walking into this business and seeing their products on display"
-• This makes the image feel like a REAL photo taken at the ACTUAL business location
+• In festival mode, products must still stay integrated into the real business fixtures and festival-decorated premises — never floating as staged props
+• This makes the image feel like a REAL photo taken at the ACTUAL business location` : `PRODUCT IMAGES PLACEMENT (ONLY WHEN PRODUCT IMAGES ARE ATTACHED):
+• Use the exact uploaded product images unchanged
+• Place them naturally on real shelves, display racks, tables, counters, or display cases behind the model
+• Never place products at the bottom of the frame
+• Keep product directions concise and secondary to subject realism
+• Match the premises lighting so the products feel like actual inventory in the real business location`}
 
 ---END OF PROMPT FORMAT---
 
@@ -898,19 +1000,13 @@ ${isFestival ? `3. For ATTIRE section: The saree must BLEND the ${festivalName} 
 
 4. For ENVIRONMENT section: The background must clearly indicate the BUSINESS SECTOR — a medical clinic should look like a medical clinic, a real estate office should look like a real estate office. The ${festivalName} festival decorations are ADDED ON TOP of this business environment. Think: "What would THIS specific [business type] office look like if they decorated for ${festivalName}?"
 
-5. CRITICAL: Every single decoration, cultural element, and festival-specific item listed in the ENVIRONMENT section must appear in the generated prompt. DO NOT skip any festival elements. But the BASE environment must still clearly communicate the business type.` : `3. For ATTIRE section: Adjust saree/suit colors based on:
-   - Business type (MANDATORY color matching as listed above)
-   - Festival theme if applicable: ${festivalName || 'Commercial/Brand Intro'}
-     • Republic Day = saffron/white/green
-     • Diwali = maroon/gold
-     • Pongal/Sankranthi = festive orange/gold
-     • New Year = royal purple/gold
+5. CRITICAL: Every single decoration, cultural element, and festival-specific item listed in the ENVIRONMENT section must appear in the generated prompt. DO NOT skip any festival elements. But the BASE environment must still clearly communicate the business type.` : `3. For ATTIRE section: Keep the outfit premium, realistic, and business-appropriate. Traditional attire must preserve visible pores, micro skin texture, soft tonal variation, and true photographic realism. Professional attire must follow the premium power-suit anchor and never look like generic officewear.
 
-4. For ENVIRONMENT section: Generate DETAILED description specific to the business type as listed above
+4. For ENVIRONMENT section: Use only the strongest business-specific cues from extracted/store evidence so the location reads instantly as the real premises.
 
-5. Always include specific visual elements that make the business type INSTANTLY recognizable from the background alone`}
+5. For LOGO and PRODUCT sections: Keep both concise. Use the exact logo unchanged and place exact uploaded products naturally on real background fixtures behind the model when product images exist.`}
 
-6. The celebrity beauty, natural warm complexion (NOT pink), mandatory jewellery, 70% screen presence, and natural logo placement are ALL NON-NEGOTIABLE
+${isFestival ? `6. The celebrity beauty, natural warm complexion (NOT pink), mandatory jewellery, 70% screen presence, and natural logo placement are ALL NON-NEGOTIABLE` : `6. The exact commercial realism anchors, truthful Indian complexion, mandatory jewellery, premium attire realism, and concise natural logo placement are ALL NON-NEGOTIABLE`}
 
 OUTPUT: Generate ONLY the final prompt following the exact format above. Fill in all bracketed placeholders with extracted business information. No explanations, no labels.`;
 };
@@ -937,42 +1033,42 @@ export const MULTI_FRAME_SYSTEM_PROMPT = (
       location: 'Main reception area / front counter / primary welcome zone of the business',
       camera: 'Standard mid-shot, straight-on at chest level, subject perfectly centered — classic brand ambassador establishing shot',
       pose: 'Hands gently folded at waist, one hand resting over the other, confident welcoming posture — brand ambassador stance',
-      purpose: 'Introduce the brand ambassador and the business atmosphere. The viewer sees the model AND instantly recognizes the business type from the environment. Model maintains DIRECT EYE CONTACT with the camera.',
+      purpose: 'Introduce the brand ambassador and the business atmosphere. The viewer sees the model AND instantly recognizes the business type from the environment.',
     },
     {
       name: 'SHOWCASE / PRODUCT SHOT',
       location: 'Product display area / service showcase zone / core business section — where the actual products, services, or offerings are visible',
       camera: 'Slight low-angle mid-shot (camera slightly below chest), subject on one side using rule-of-thirds — products/services visible on the other side',
       pose: 'One hand gesturing gently toward the products/services behind her, or resting on a display counter — naturally interacting with the business environment',
-      purpose: 'Show what the business DOES. The model guides the viewer\'s attention to products, equipment, or services displayed behind/around her. Model maintains DIRECT EYE CONTACT with the camera.',
+      purpose: 'Show what the business DOES. The model guides the viewer\'s attention to products, equipment, or services displayed behind/around her.',
     },
     {
       name: 'CREDIBILITY / TRUST SHOT',
       location: 'Near the business logo wall / achievement display / certification area / consultation zone — the trust-building section of the establishment',
       camera: 'Gentle 10-15° side angle mid-shot, creating depth with the logo/achievements visible in the background — cinematic depth composition',
       pose: 'Confident stance with slight body turn toward the logo/achievements, warm authoritative expression — exuding trust and credibility',
-      purpose: 'Build trust and brand authority. The logo is prominently visible, along with any awards, certifications, or trust signals. Model maintains DIRECT EYE CONTACT with the camera.',
+      purpose: 'Build trust and brand authority. The logo is prominently visible, along with any awards, certifications, or trust signals.',
     },
     {
       name: 'DETAIL / IMMERSION SHOT',
       location: 'A different section of the business — specialized area, secondary display zone, workstation area, or another distinct part of the premises that hasn\'t been shown yet',
       camera: 'Slightly wider mid-shot showing more of this new area, or a close mid-shot (head to upper waist) for intimate feel — environment-rich composition',
       pose: 'Natural relaxed pose — perhaps lightly touching a surface, standing near equipment relevant to the business, or a natural mid-conversation gesture',
-      purpose: 'Reveal more depth of the business — show the viewer that this is a REAL, multi-area establishment. Add visual variety. Model maintains DIRECT EYE CONTACT with the camera.',
+      purpose: 'Reveal more depth of the business — show the viewer that this is a REAL, multi-area establishment. Add visual variety.',
     },
     {
       name: 'WARM CLOSING SHOT',
       location: 'Back near the main area / entrance zone / a warm, inviting spot in the establishment — full circle back to a welcoming position',
       camera: 'Standard to slight high-angle mid-shot, soft and warm composition — the "come visit us" feel',
       pose: 'Open welcoming gesture — warm smile, slightly open hands or namaste gesture, inviting the viewer — the final impression',
-      purpose: 'End on a warm, inviting note. The viewer should feel: "I want to visit this place." This is the closing brand impression. Model maintains DIRECT EYE CONTACT with the camera.',
+      purpose: 'End on a warm, inviting note. The viewer should feel: "I want to visit this place." This is the closing brand impression.',
     },
     {
       name: 'ALTERNATIVE ANGLE SHOT',
       location: 'The most visually interesting or unique section of the business — a spot that best represents the brand\'s personality and uniqueness',
       camera: 'Creative composition — slight dutch angle or artistic framing using environment elements as natural frames (doorways, arches, shelving)',
       pose: 'Dynamic pose that matches the script energy — could be mid-stride, turning to face camera, or engaged with something in the environment',
-      purpose: 'Show the business from a fresh, unexpected angle that adds cinematic variety. Model maintains DIRECT EYE CONTACT with the camera.',
+      purpose: 'Show the business from a fresh, unexpected angle that adds cinematic variety.',
     },
   ];
 
@@ -991,6 +1087,13 @@ EACH CLIP DURATION: 8 seconds
 
 VOICE-OVER SCRIPT PER CLIP (use to guide mood, action, and location choice):
 ${segmentContext}
+
+===== CASTING CONTINUITY RULES (MANDATORY) =====
+
+Before writing Clip 1, choose ONE distinct female ambassador identity for this campaign based on the business type, brand tone, attire, and ${adType === AdType.FESTIVAL ? `${festivalName} festival mood` : 'commercial brand mood'}.
+That identity must stay consistent across all clips in this one campaign.
+However, this business must NOT default to the same generic face used for other businesses — choose a fresh, business-specific ambassador brief.
+The consistency rule is: same woman within this campaign; different businesses should feel like different women.
 
 ===== THE DIRECTOR'S SHOT PLAN =====
 
@@ -1034,7 +1137,7 @@ ${Array.from({ length: segmentCount }, (_, i) => {
    Generate a COMPLETE, detailed image generation prompt following ALL the rules/sections from the base prompt above.
    This frame sets the visual foundation — character face, hair, skin, beauty, attire, jewellery, AND this specific location within the business.
    This is the ONLY clip where you fully describe the model's physical appearance.
-   Include ALL sections: SUBJECT, Facial characteristics, POSE, HAIR, ATTIRE, JEWELLERY, ENVIRONMENT, CAMERA, OVERALL RESULT.
+  Include ALL sections: SUBJECT, FACE, MAKEUP, EXPRESSION, HAIR, ATTIRE, JEWELLERY, ENVIRONMENT, LOGO PLACEMENT, CAMERA, OVERALL RESULT.
    Target length: 500-800 words.`;
   }
   
@@ -1058,7 +1161,7 @@ ${Array.from({ length: segmentCount }, (_, i) => {
    ❌ South Indian, actress, celebrity, model appearance, film star, glamorous
    
    **✅ INSTEAD — Write ONLY this one line about the model:**
-   "The exact same woman from Clip 1 — identical in every way, same face, same attire, same jewellery, completely unchanged."
+  "The same woman from Clip 1 — same identity, same core styling, same wardrobe family, same jewellery set, naturally consistent across the campaign."
    
    **✅ THEN FOCUS 100% ON THESE (the ONLY things you should describe):**
    • 📍 The NEW LOCATION within the business (a completely different spot from previous clips — describe the area in rich detail)
@@ -1071,7 +1174,7 @@ ${Array.from({ length: segmentCount }, (_, i) => {
    WHY THIS MATTERS: Any model description — even saying "beautiful woman" or "silk saree" — will cause the AI image generator to create a COMPLETELY DIFFERENT person. The model's identity is LOCKED from Clip 1. You ONLY control the scene around her.
    
    **OUTPUT LENGTH FOR THIS CLIP: 100-200 words MAXIMUM.**
-   **DO NOT include these section headers: SUBJECT, Facial characteristics, HAIR, ATTIRE, JEWELLERY, PRODUCT IMAGES PLACEMENT, OVERALL RESULT.**
+  **DO NOT include these section headers: SUBJECT, FACE, MAKEUP, EXPRESSION, HAIR, ATTIRE, JEWELLERY, PRODUCT IMAGES PLACEMENT, OVERALL RESULT.**
    **ONLY include: one model reference line + POSE + NEW LOCATION/ENVIRONMENT + CAMERA/LIGHTING + MOOD.**`;
 }).join('\n\n')}
 
@@ -1091,11 +1194,11 @@ ${Array.from({ length: segmentCount }, (_, i) => {
 • **Overall establishment** — same business, same décor style, same color palette
 • **Color grading & mood** — consistent cinematic feel throughout
 • **Image quality** — same DSLR realism level
-• **Direct eye contact with camera** — the model ALWAYS looks directly into the camera lens in EVERY clip, maintaining eye contact with the viewer. This is NON-NEGOTIABLE.
+• **Viewer connection** — direct eye contact is preferred for hero, trust, and closing shots; showcase or detail shots may use a natural glance toward the business context when it improves realism.
 
 **⛔⛔⛔ ABSOLUTE ZERO-TOLERANCE RULE FOR CLIPS 2+ ⛔⛔⛔**
 For ANY clip after Clip 1, you must write ZERO words about the model's appearance.
-The ONLY reference to the model should be: "The exact same woman from Clip 1 — identical in every way, same face, same attire, same jewellery, completely unchanged."
+The ONLY reference to the model should be: "The same woman from Clip 1 — same identity, same core styling, same wardrobe family, same jewellery set, naturally consistent across the campaign."
 
 NEVER write about: face, hair, skin, beauty, makeup, attire, fabric, saree, silk, jewellery, necklace, earrings, bangles, eyes, lips, complexion, height, figure, or ANY physical/clothing description.
 Even writing "beautiful woman in silk saree" will make the AI generate a DIFFERENT person.
@@ -1128,14 +1231,16 @@ Frame prompts should focus ONLY on the visual scene — no overlaid text except 
 
 ===== ⛔ FORBIDDEN SECTION HEADERS FOR CLIPS 2+ (CRITICAL — READ THIS) ⛔ =====
 
-**The base prompt above defines sections like SUBJECT, Facial characteristics, HAIR, ATTIRE, JEWELLERY, etc.**
+**The base prompt above defines sections like SUBJECT, FACE, MAKEUP, EXPRESSION, HAIR, ATTIRE, JEWELLERY, etc.**
 **These section headers are ONLY for Clip 1. For Clips 2+, you must NOT include these sections AT ALL.**
 
-**CLIP 1 must include ALL these sections:** SUBJECT, Facial characteristics, POSE & FRAMING, HAIR, ATTIRE, JEWELLERY, ENVIRONMENT, LOGO PLACEMENT, CAMERA & PHOTO REALISM, OVERALL RESULT, PRODUCT IMAGES PLACEMENT
+**CLIP 1 must include ALL these sections:** SUBJECT, FACE, MAKEUP, EXPRESSION, HAIR, ATTIRE, JEWELLERY, ENVIRONMENT, LOGO PLACEMENT, CAMERA & PHOTO REALISM, OVERALL RESULT, PRODUCT IMAGES PLACEMENT
 
 **CLIPS 2+ must NEVER include ANY of these sections:**
 ⛔ SUBJECT (CELEBRITY STANDARD…) — FORBIDDEN
-⛔ Facial characteristics (MANDATORY…) — FORBIDDEN  
+⛔ FACE — LUXURY CASTING BRIEF — FORBIDDEN  
+⛔ MAKEUP — HIGH-FASHION EDITORIAL LEVEL — FORBIDDEN  
+⛔ EXPRESSION — STAR QUALITY — FORBIDDEN  
 ⛔ HAIR (ACTRESS-LEVEL…) — FORBIDDEN
 ⛔ ATTIRE (ULTRA-LUXURY…) — FORBIDDEN
 ⛔ JEWELLERY (LUXURIOUS…) — FORBIDDEN
@@ -1143,7 +1248,7 @@ Frame prompts should focus ONLY on the visual scene — no overlaid text except 
 ⛔ OVERALL RESULT — FORBIDDEN (already covered in Clip 1)
 
 **CLIPS 2+ should ONLY contain these sections:**
-✅ One-line model reference ("The exact same woman from Clip 1…")
+✅ One-line model reference ("The same woman from Clip 1…")
 ✅ POSE & FRAMING (new pose for this location)
 ✅ ENVIRONMENT — NEW LOCATION (the new spot within the business)
 ✅ CAMERA (angle for this shot)
@@ -1178,7 +1283,7 @@ Create a Ultra-realistic DSLR photograph, single image, 9:16 vertical…
 Here is an EXAMPLE of what a correct Clip 2 prompt looks like:
 
 Clip 2 – Main Frame Prompt (${shotDesigns[1 % shotDesigns.length].name})
-The exact same woman from Clip 1 — identical in every way, same face, same attire, same jewellery, completely unchanged.
+The same woman from Clip 1 — same identity, same core styling, same wardrobe family, same jewellery set, naturally consistent across the campaign.
 
 POSE: Subject positioned on the right side using rule-of-thirds, one hand gesturing gently toward the product display behind her. Slight low-angle mid-shot, camera slightly below chest level.
 
