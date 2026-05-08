@@ -623,8 +623,8 @@ export const generateAdAssets = async (
   const commercialMainFramePriorityNote = isCommercialMainFrame
     ? `
   COMMERCIAL PRIORITY: Beauty tier comes first. The subject/model descriptor must establish an exceptionally beautiful cinema-heroine-tier national luxury brand ambassador before realism, environment, logo, or product detail.
-  COMMERCIAL CASTING DENIAL: Never allow an average-looking woman, plain office worker, generic model, safe face, or stock-photo feel.
-  COMMERCIAL REALISM ANCHORS: visible pores · micro skin texture · soft tonal variation · true photographic realism. warm/honey/wheatish/golden-brown complexion · never pink never grey never artificially pale. no plastic skin · no beauty-filter effect · no over-smoothing · no waxy highlights.
+  COMMERCIAL CASTING DENIAL: Never allow an average-looking woman, plain office worker, generic model, safe face, stock-photo feel, ethnically ambiguous look, or any non-Indian casting drift.
+  COMMERCIAL REALISM FORMULA: FACE ANCHOR = Bollywood-heroine-tier premium Indian brand ambassador face with photogenic sharp attractive features. LIGHT SOURCE = natural daylight from the left window or believable left-side daylight with soft cinematic fill. SKIN TRUTH = visible real pores, natural skin texture, dewy complexion, soft tonal variation, no filter, no smoothing, no waxy highlights. SCENE DEPTH = real architectural client-business interior with softly blurred natural depth of field, never a studio backdrop. CAMERA PHYSICS = Canon EOS R5 realism, 85mm f/1.8 portrait look, shallow depth of field, natural color science.
   COMMERCIAL CONCISION RULE: Keep environment, logo, and product instructions concise and non-redundant after the realism brief.`
     : '';
   const mainFrameProductLine = hasProductImages
@@ -663,20 +663,32 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
   ATTIRE: ${formData.attireType}
   TOTAL DURATION: ${formData.duration} seconds (${segmentCount} clips of 8 seconds each)
   SPECIAL CLIENT INSTRUCTIONS: ${businessInfo.specialRequirements?.customInstructions || 'None'}
-  CAMPAIGN CASTING RULE: Choose one distinct premium female ambassador identity for THIS business and keep her consistent across all clips. Different businesses should not fall back to the same default face.
-  REALISM RULE: The environment must look like the actual business premises using extracted business/store context. In festival mode, keep the real business location dominant and layer festival cues naturally on top.
-  COMMERCIAL QUALITY RULE: For commercial ads, prioritize believable premium Indian brand-shoot realism over artificial glam or plastic beauty.
+  CAMPAIGN CASTING RULE: Choose one distinct premium female ambassador identity for THIS business and keep her consistent across all clips. Different businesses should not fall back to the same default face. In commercial mode she must stay Indian-only in every clip with no ethnic drift.
+  REALISM RULE: The environment must look like the actual business premises using extracted business/store context. In festival mode, keep the real business location dominant and layer festival cues naturally on top. In commercial mode, every clip must choose the business zone, background proof, and mood that best matches that exact voice-over segment.
+  COMMERCIAL QUALITY RULE: For commercial ads, strictly follow the realism formula: Face Anchor + Light Source + Skin Truth + Scene Depth + Camera Physics. If any one is missing, the frame is not acceptable.
+  MAIN FRAME FRAMING RULE: In EVERY clip, the model must appear in a close mid-shot, occupy roughly 70% of the frame, and maintain direct eye contact with the camera.
+  LOGO RULE: Use only the attached logo exactly as provided, mounted in the upper background behind the model, fully visible and never cropped, blocked, blurred, stretched, tilted, or redesigned.
+  CONTINUATION FRAME RULE: For every clip after Clip 1, write the prompt as if the image generator is also receiving the attached Clip 1 reference frame image.
   ${mainFrameProductLine}
   
-  VOICE-OVER SCRIPT SEGMENTS (use these to guide each frame's mood and action):
+  VOICE-OVER SCRIPT SEGMENTS (each segment must directly drive that frame's location, background proof, pose energy, and emotional tone):
   ${parsedSegments.map((s, i) => `Clip ${i+1}: ${s}`).join('\n  ')}
   
   Generate ${segmentCount} complete, unique Main Frame image prompts now. Separate each with ###CLIP### on its own line.
   You MUST output EXACTLY ${segmentCount} prompts. Each prompt must be separated by ###CLIP### (on its own line, nothing else on that line).
   Do NOT combine multiple clips into one block. Each clip gets its own complete prompt.${productImageMainFrameNote}`;
 
-  // Build main frame parts including product images
+  // Build main frame parts including logo and product images
   const mainFrameParts: any[] = [{ text: mainFrameUserPrompt }];
+  if (files.logo) {
+    mainFrameParts.push({
+      inlineData: {
+        mimeType: files.logo.type,
+        data: await fileToBase64(files.logo)
+      }
+    });
+    mainFrameParts.push({ text: "This is the EXACT BUSINESS LOGO. You MUST describe this logo placement in every clip prompt so it appears as REAL PHYSICAL SIGNAGE in the upper background behind the model (wall-mounted board, reception panel, acrylic sign). The logo must be reproduced PIXEL-PERFECT — do NOT redesign, reimagine, alter, crop, block, blur, tilt, stretch, or partially hide it in any way. The full logo must remain completely visible in one piece in every clip." });
+  }
   if (hasProductImages) {
     for (let i = 0; i < files.productImages.length; i++) {
       mainFrameParts.push({

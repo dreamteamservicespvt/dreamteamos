@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Copy, Check, ChevronDown, Languages, RefreshCw, Send, X, Loader2 } from 'lucide-react';
+import { Copy, Check, Languages, RefreshCw, Send, X, Loader2 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
 import { transliterateToEnglish } from '@/services/geminiService';
@@ -146,19 +146,33 @@ export const GeneratedCard: React.FC<GeneratedCardProps> = ({
   };
 
   const ActionBar = () => (
-    <div className={cn("px-4 py-2 border-b flex justify-between items-center", isDark ? "border-slate-700" : "border-slate-200")}>
-      <div className="flex items-center space-x-2">
+    <div className={cn("px-4 py-2 border-b flex justify-between items-center gap-3 flex-wrap", isDark ? "border-slate-700" : "border-slate-200")}>
+      <div className="flex items-center gap-2 min-w-0 flex-wrap">
         {variant === 'dropdown' && items.length > 1 && (
-          <div className="relative">
-            <select value={selectedIndex} onChange={(e) => setSelectedIndex(Number(e.target.value))}
-              className={cn("appearance-none border text-xs font-medium py-1 px-3 pr-8 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer",
-                isDark ? "bg-slate-700 border-slate-600 text-slate-200" : "bg-white border-slate-300 text-slate-700"
-              )}>
-              {items.map((_, idx) => (
-                <option key={idx} value={idx}>{sectionType === 'mainFrame' ? `Clip ${idx + 1}` : `Segment ${idx + 1}`}</option>
-              ))}
-            </select>
-            <ChevronDown className={cn("absolute right-2 top-1.5 w-3 h-3 pointer-events-none", isDark ? "text-slate-400" : "text-slate-500")} />
+          <div className="flex items-center gap-2 flex-wrap">
+            {items.map((_, idx) => {
+              const isSelected = selectedIndex === idx;
+              const label = sectionType === 'mainFrame' ? `Clip ${idx + 1}` : `Segment ${idx + 1}`;
+
+              return (
+                <button
+                  key={label}
+                  onClick={() => setSelectedIndex(idx)}
+                  className={cn(
+                    "rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all",
+                    isSelected
+                      ? isDark
+                        ? "border-slate-200 bg-white text-slate-900 shadow-sm"
+                        : "border-slate-900 bg-slate-900 text-white shadow-sm"
+                      : isDark
+                        ? "border-slate-600 bg-slate-700/70 text-slate-300 hover:border-slate-500 hover:bg-slate-700"
+                        : "border-slate-300 bg-white text-slate-600 hover:border-slate-400 hover:bg-slate-50"
+                  )}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
         )}
         {showTransliteration && (
@@ -173,7 +187,7 @@ export const GeneratedCard: React.FC<GeneratedCardProps> = ({
           </button>
         )}
       </div>
-      <div className="flex items-center space-x-2">
+      <div className="flex items-center gap-2 shrink-0 ml-auto">
         {showRefinement && onRefine && (
           <button onClick={() => setShowRefineInput(!showRefineInput)} disabled={isRefining}
             className={cn("flex items-center space-x-1 text-xs font-medium px-2 py-1 rounded transition-colors",

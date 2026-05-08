@@ -33,6 +33,15 @@ import { generateAdAssets, extractBusinessOnly, generateStockImagePrompts, refin
 import { saveGeneration, getSavedGenerations, SavedGeneration } from './services/firebase';
 import { clsx } from 'clsx';
 
+const cleanPromptForClipboard = (content: string) => {
+  return content
+    .replace(/^```(?:markdown|json|text|plaintext)?\s*\n?/gim, '')
+    .replace(/\n?```\s*$/gim, '')
+    .replace(/^```\s*\n?/gim, '')
+    .replace(/\n?```$/gim, '')
+    .trim();
+};
+
 const App: React.FC = () => {
   const { user, loading, signOut } = useAuth();
   const { resolvedTheme } = useTheme();
@@ -1061,18 +1070,34 @@ const App: React.FC = () => {
                       "rounded-xl border overflow-hidden transition-colors",
                       resolvedTheme === 'dark' ? "border-slate-700" : "border-slate-200"
                     )}>
-                      <button
-                        onClick={() => toggleOutputSection('mainFrame')}
+                      <div
                         className={clsx(
-                          "w-full flex items-center justify-between px-4 py-3 text-left transition-colors cursor-pointer",
+                          "w-full flex items-center justify-between gap-3 px-4 py-3 transition-colors",
                           resolvedTheme === 'dark'
                             ? "bg-slate-800 hover:bg-slate-750 text-slate-200"
                             : "bg-slate-50 hover:bg-slate-100 text-slate-800"
                         )}
                       >
-                        <span className="font-semibold text-sm uppercase tracking-wide">1. Main Frame Prompts ({outputs.mainFramePrompts.length} Clips)</span>
-                        <ChevronDown className={clsx("w-4 h-4 transition-transform", collapsedOutputs['mainFrame'] && "rotate-180")} />
-                      </button>
+                        <div className="min-w-0 flex-1">
+                          <span className="font-semibold text-sm uppercase tracking-wide">1. Main Frame Prompts ({outputs.mainFramePrompts.length} Clips)</span>
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap justify-end">
+                          <MainFrameQuickCopyActions prompts={outputs.mainFramePrompts} resolvedTheme={resolvedTheme} />
+                          <button
+                            type="button"
+                            onClick={() => toggleOutputSection('mainFrame')}
+                            className={clsx(
+                              "inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors",
+                              resolvedTheme === 'dark'
+                                ? "text-slate-400 hover:bg-slate-700 hover:text-white"
+                                : "text-slate-500 hover:bg-slate-200 hover:text-slate-900"
+                            )}
+                            aria-label={collapsedOutputs['mainFrame'] ? 'Collapse main frame prompts' : 'Expand main frame prompts'}
+                          >
+                            <ChevronDown className={clsx("w-4 h-4 transition-transform", collapsedOutputs['mainFrame'] && "rotate-180")} />
+                          </button>
+                        </div>
+                      </div>
                       {collapsedOutputs['mainFrame'] && (
                         <>
                           <GeneratedCard 
@@ -1487,12 +1512,7 @@ const HeaderCopyButton: React.FC<{ content: string; resolvedTheme: string | unde
   const isDark = resolvedTheme === 'dark';
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const cleaned = content
-      .replace(/^```(?:markdown|json|text|plaintext)?\s*\n?/gim, '')
-      .replace(/\n?```\s*$/gim, '')
-      .replace(/^```\s*\n?/gim, '')
-      .replace(/\n?```$/gim, '')
-      .trim();
+    const cleaned = cleanPromptForClipboard(content);
     navigator.clipboard.writeText(cleaned);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -1510,6 +1530,79 @@ const HeaderCopyButton: React.FC<{ content: string; resolvedTheme: string | unde
       {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
       <span>{copied ? 'Copied' : 'Copy'}</span>
     </span>
+  );
+};
+
+const MainFrameQuickCopyActions: React.FC<{
+  prompts: string[];
+  resolvedTheme: string | undefined;
+}> = ({ prompts, resolvedTheme }) => {
+  const isDark = resolvedTheme === 'dark';
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  const copyPrompt = (event: React.MouseEvent, key: string, content: string) => {
+    event.stopPropagation();
+    navigator.clipboard.writeText(cleanPromptForClipboard(content));
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey((current) => (current === key ? null : current)), 2000);
+  };
+
+  const copyAllPrompts = (event: React.MouseEvent) => {
+    const combined = prompts
+      .map((prompt, index) => `Clip ${index + 1}\n${cleanPromptForClipboard(prompt)}`)
+      .join('\n\n###CLIP###\n\n');
+
+    copyPrompt(event, 'all', combined);
+  };
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap justify-end">
+      <button
+        type="button"
+        onClick={copyAllPrompts}
+        className={clsx(
+          "group inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition-all",
+          copiedKey === 'all'
+            ? isDark
+              ? "border-emerald-500/50 bg-emerald-900/30 text-emerald-300"
+              : "border-emerald-200 bg-emerald-50 text-emerald-700"
+            : isDark
+              ? "border-slate-600 bg-slate-700/70 text-slate-200 hover:border-blue-500/60 hover:bg-slate-700 hover:text-white"
+              : "border-slate-300 bg-white text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+        )}
+        title="Copy all main frame prompts"
+      >
+        {copiedKey === 'all' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+        <span>{copiedKey === 'all' ? 'Copied All' : 'Copy All'}</span>
+      </button>
+
+      {prompts.map((prompt, index) => {
+        const key = `clip-${index}`;
+        const isCopied = copiedKey === key;
+
+        return (
+          <button
+            key={key}
+            type="button"
+            onClick={(event) => copyPrompt(event, key, prompt)}
+            className={clsx(
+              "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition-all",
+              isCopied
+                ? isDark
+                  ? "border-emerald-500/50 bg-emerald-900/30 text-emerald-300"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : isDark
+                  ? "border-slate-500 bg-white text-slate-900 shadow-sm hover:border-blue-500 hover:text-blue-700"
+                  : "border-slate-300 bg-white text-slate-700 shadow-sm hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+            )}
+            title={`Copy Clip ${index + 1} prompt`}
+          >
+            {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5 opacity-70" />}
+            <span>{isCopied ? `Copied ${index + 1}` : `Clip ${index + 1}`}</span>
+          </button>
+        );
+      })}
+    </div>
   );
 };
 

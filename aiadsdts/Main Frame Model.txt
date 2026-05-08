@@ -23,18 +23,44 @@ FIXED IMAGE RULES
 6. Real skin texture, real fabric behavior, real depth of field, real business environment.
 
 SUBJECT BASELINE
-- One exceptionally photogenic young Indian woman, early-to-mid 20s.
+- One exceptionally photogenic young North Indian woman, strictly 20 to 25 years old only.
 - Premium, aspirational, actress-level campaign beauty, but still believable and photographic.
-- Soft youthful facial features, large bright expressive eyes, naturally shaped brows, subtle rosy warmth in the cheeks, gentle confident smile, defined jawline, attractive camera-ready face.
-- Fresh natural skin finish with visible pores and true skin texture.
+- Soft youthful facial features, large bright expressive eyes, well-shaped naturally full brows, subtle rosy warmth in the cheeks, gentle confident smile, defined jawline, and a stunning camera-ready face.
+- Fresh radiant skin with natural glow, visible pores, smooth clear complexion, and true skin texture.
 - No spectacles or eyewear.
 - She must feel like a real brand ambassador chosen for a national-quality business campaign.
+
+SUBJECT SPECIFICATION (MANDATORY)
+- North Indian woman specifically, age strictly between 20 and 25 only.
+- Fresh radiant complexion with natural glow and truthful skin texture.
+- Celebrity face level, Bollywood-heroine-quality brand ambassador appearance, photogenic sharp attractive features, but still photographic and believable.
+- She must occupy roughly 70% of the full 9:16 frame height.
+- Standing centered, head-to-hip visibility preferred within the close mid-shot framing, facing the camera directly.
+- Vibe must feel positive, energetic, confident, intelligent, approachable, attractive, and full of modern young professional elegance.
+
+REALISM RULES (MANDATORY — NEVER SKIP)
+- Skin must show visible natural pores, real texture, subtle imperfections, and dewy truthful complexion.
+- Zero smoothing, zero plastic finish, zero AI glow, zero waxy beauty filter.
+- Use a single believable primary light source only: soft daylight from the left window or one soft cinematic key with gentle fill.
+- Background must be a real architectural business interior with natural depth, not a studio backdrop, not CGI, not a fake luxury set.
+- Background blur must come from lens physics only, with believable depth-of-field separation.
+- Camera physics must feel real: Canon EOS R5, 85mm portrait lens, f/1.8 aperture, natural color science, shallow depth of field, slight real lens falloff.
+
+NEGATIVE RULES (ALWAYS APPLY)
+- No spectacles, no glasses, no heavy makeup.
+- No plastic skin, no AI glow, no smooth filter, no over-retouching.
+- No cartoon, no anime, no CGI, no illustration.
+- No studio backdrop, no fake background, no generic stock-photo corporate set.
+- No watermark, no unrelated text, and no fake logo overlays.
+- No deformed hands, no broken anatomy, no distorted facial proportions.
+- No traditional heavy jewellery unless the business or styling branch specifically requires it.
 
 POSE AND FRAMING
 - Mid shot only, roughly head to just below waist.
 - The hero or anchor shot must be exactly centered.
 - Keep equal visual space on the left and right.
 - Camera should sit around chest level.
+- Subject should visually dominate the portrait while still allowing enough environment to communicate the business context.
 - Hands must be gently folded at the waist or lower abdomen, one hand resting naturally over the other, fingers relaxed.
 - Expression should be warm, confident, graceful, and inviting.
 - If a multi-clip system is used, keep this centered folded-hands posture for the hero shot; later supporting shots may vary naturally if the system explicitly calls for it.
@@ -49,16 +75,18 @@ ATTIRE OVERVIEW
 Use the attire branch chosen by the system or user.
 
 TRADITIONAL ATTIRE (DEFAULT)
-- Premium Indian saree aligned to the business type, logo palette, and campaign tone.
+- Premium elegant modern saree aligned to the business type, logo palette, and campaign tone.
+- Prefer soft pastel or muted-tone sarees with a minimal contemporary design when the business tone supports modern corporate elegance.
 - High-quality fabric with clean pleats, natural folds, realistic silk behavior, and premium designer finish.
-- Jewellery should remain elegant and premium, never heavy or costume-like unless a luxury jewellery business specifically demands it.
+- Saree should be neatly draped in a polished professional style with a well-fitted blouse, youthful charm, and strict semi-jewellery styling only.
+- For saree looks, jewellery must stay semi-jewellery only: elegant but controlled, clearly visible, premium, and feminine, never heavy, never bridal, never overloaded.
 
 MODEL ATTIRE PROFESSIONAL (PREMIUM BEIGE/PASTEL SUIT)
 Use this branch when the selected model attire is Professional.
 
 SUBJECT DIRECTION
-- A youthful premium Indian woman with bright expressive eyes, fresh radiant skin, subtle rosy warmth, and actress-level commercial beauty.
-- She must feel polished, intelligent, aspirational, approachable, and camera-ready.
+- A youthful premium North Indian woman with bright expressive eyes, fresh radiant skin, subtle rosy warmth, and actress-level commercial beauty.
+- She must feel polished, intelligent, aspirational, approachable, camera-ready, and full of inspiring young professional energy.
 - Realistic and premium, never plain, never severe, never stock-model generic.
 
 PROFESSIONAL SUIT
@@ -66,17 +94,19 @@ PROFESSIONAL SUIT
 - Blazer must be well-tailored with feminine waist definition, clean shoulder structure, refined lapels, and believable seam tension.
 - Under the blazer, use a crisp white fitted blouse or shirt with a polished professional finish.
 - Use slim formal trousers in the same suit family with a straight or gently tapered silhouette and expensive matte-luxe drape.
+- The full look should read as stylish modern office formals with youthful charm, minimal elegant jewellery, and premium corporate polish.
 - Styling must read as a luxury business campaign, not generic officewear, not a bank uniform, not startup casual, and not a stock corporate portrait.
 
 PROFESSIONAL GROOMING
 - Silky dark black hair with polished movement: refined blowout, elegant straight finish, or controlled soft waves.
+- A neat half-open hairstyle is allowed when it supports a modern graceful corporate look.
 - Makeup should be premium and camera-ready but not heavy: softly defined eyes, clean brows, subtle lip tone, healthy skin finish.
 - Jewellery must stay minimal and expensive: delicate gold chain and small premium studs only.
 
 PROFESSIONAL ENVIRONMENT
 - Use the executive-facing zone of the real business: reception office, consultation area, premium front desk, glass-partition workspace, or a bright modern corporate-facing section of the actual premises.
 - Background should feel like a real premium business interior captured on location.
-- Natural daylight, refined wood or stone materials, indoor greenery, clean desk surfaces, and subtle work elements such as a laptop may appear naturally.
+- Glass windows, indoor plants, natural daylight illuminating her face, clean desk surfaces, and subtle work elements such as a laptop or notebook may appear naturally.
 - Never use a fake office set, empty luxury hall, generic coworking stock background, or studio backdrop.
 
 ENVIRONMENT RULES
@@ -109,9 +139,9 @@ JEWELLERY RULE
 CAMERA AND REALISM
 - Shot on a professional DSLR.
 - For premium professional suit outputs, prefer Canon EOS R5 realism with an 85mm portrait lens at f/1.8.
-- Natural daylight on the face, real shadows, realistic highlights, and softly blurred background depth.
-- True-to-life colors, visible skin detail, real fabric texture, and premium commercial-photo finish.
-- High-detail, photorealistic output with no plastic skin and no fake HDR exaggeration.
+- Natural daylight on the face, cinematic soft lighting, real shadows, realistic highlights, and softly blurred background depth.
+- True-to-life colors, visible skin detail, real fabric texture, premium commercial-photo finish, and natural color science.
+- High-detail, photorealistic output with no plastic skin, no fake HDR exaggeration, and hyper-detailed premium portrait realism.
 
 STRICTLY AVOID
 - Off-center hero framing.
@@ -127,3 +157,52 @@ FINAL OUTPUT RULE
 - Keep it inside a code block.
 - No explanations unless explicitly requested.
 - No text in the image except the real business logo signage.
+
+REALISM FORMULA (MANDATORY)
+- REALISM = FACE ANCHOR + LIGHT SOURCE + SKIN TRUTH + SCENE DEPTH + CAMERA PHYSICS
+- FACE ANCHOR: Bollywood-heroine quality, brand ambassador face, photogenic sharp attractive features.
+- LIGHT SOURCE: natural daylight from left window with soft cinematic fill light.
+- SKIN TRUTH: natural skin texture, visible real pores, dewy complexion, no filter, no smoothing.
+- SCENE DEPTH: real architectural interior, softly blurred background depth from real lens physics, never a studio backdrop.
+- CAMERA PHYSICS: Canon EOS R5, 85mm f/1.8, shallow depth of field, natural color science.
+- STYLE TARGET: ultra-realistic photography, premium corporate portrait, realistic colors, photorealistic finish, high-detail output.
+- Missing even one realism chemical weakens the result.
+
+----------------------
+A youthful and stunning North Indian woman with fair radiant skin, fresh natural glow, soft youthful facial features, bright expressive eyes, well-shaped eyebrows, smooth clear complexion, subtle rosy cheeks, gentle confident smile, no spectacles, no eyewear.
+
+She is dressed in an elegant modern saree – a soft pastel or muted-tone saree with a minimalistic contemporary design, neatly draped in a professional style, paired with a well-fitted blouse, minimal elegant jewelry, clean professional look with a youthful charm.
+
+Hair is silky, dark black, naturally shiny, styled in soft waves or a neat half-open hairstyle, modern and graceful.
+
+Setting is a bright contemporary corporate office, glass windows, indoor plants, natural daylight illuminating her face, laptop and notebook subtly visible, background softly blurred.
+
+The vibe is positive, energetic, confident, intelligent, approachable, attractive, modern corporate elegance, inspiring young professional energy.
+
+Ultra-realistic photography, cinematic soft lighting, shallow depth of field, premium corporate portrait, natural skin texture, realistic colors, professional studio quality, 8K resolution, hyper-detailed, photorealistic.
+
+🔹 Negative Prompt
+spectacles, glasses, heavy makeup, artificial skin, cartoon, anime, unrealistic beauty, blur, noise, distortion, casual clothes, western blazer, traditional heavy bridal wear, ethnic jewelry (heavy), watermark, logo, text
+
+🔧 Recommended Settings
+Aspect Ratio: 9:16
+Resolution: 8K / Ultra HD
+Lighting: Soft cinematic daylight + studio fill
+Camera Feel: 85mm portrait, f/1.8
+Style: Photorealistic, Corporate Cinematic
+
+______________
+
+A youthful and stunning North Indian woman with fair radiant skin, fresh natural glow, soft youthful facial features, bright expressive eyes, well-shaped eyebrows, smooth clear complexion, subtle rosy cheeks, gentle confident smile, no spectacles, no eyewear.
+She is dressed in modern office formal attire – a stylish pastel blazer over a crisp white blouse, slim-fit formal trousers or pencil skirt, minimal elegant jewelry, clean professional look with a youthful charm.
+Hair is silky, dark black, naturally shiny, styled in soft waves or a neat half-open hairstyle, modern and graceful.
+Setting is a bright contemporary corporate office, glass windows, indoor plants, natural daylight illuminating her face, laptop and notebook subtly visible, background softly blurred.
+The vibe is positive, energetic, confident, intelligent, approachable, attractive, modern corporate elegance, inspiring young professional energy.
+Ultra-realistic photography, cinematic soft lighting, shallow depth of field, premium corporate portrait, natural skin texture, realistic colors, professional studio quality, 8K resolution, hyper-detailed, photorealistic.
+🔹 Negative Prompt
+spectacles, glasses, heavy makeup, artificial skin, cartoon, anime, unrealistic beauty, blur, noise, distortion, casual clothes, traditional wear, ethnic jewelry, watermark, logo, text🔧 Recommended Settings (Both)
+Aspect Ratio: 9:16
+Resolution: 8K / Ultra HD
+Lighting: Soft cinematic daylight + studio fill
+Camera Feel: 85mm portrait, f/1.8
+Style: Photorealistic, Corporate Cinematic

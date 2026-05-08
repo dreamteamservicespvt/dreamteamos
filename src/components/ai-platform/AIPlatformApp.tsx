@@ -25,6 +25,15 @@ interface AIPlatformAppProps {
   onComplete?: () => void;
 }
 
+const cleanPromptForClipboard = (content: string) => {
+  return content
+    .replace(/^```(?:markdown|json|text|plaintext)?\s*\n?/gim, '')
+    .replace(/\n?```\s*$/gim, '')
+    .replace(/^```\s*\n?/gim, '')
+    .replace(/\n?```$/gim, '')
+    .trim();
+};
+
 const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   assignment, assignmentId, onBusinessNameExtracted, onClose, onComplete
 }) => {
@@ -710,7 +719,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                   {creationMode === 'video' && outputs.mainFramePrompts?.length > 0 && (
                       <OutputSection title={`1. Main Frame Prompts (${outputs.mainFramePrompts.length} Clips)`} sectionKey="mainFrame"
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
-                        isDark={isDark}>
+                        isDark={isDark} quickCopyItems={outputs.mainFramePrompts}>
                         <GeneratedCard title="Main Frame" content={outputs.mainFramePrompts} variant="dropdown" sectionType="mainFrame"
                           showRefinement={true} onRefine={(i) => handleRefineSection('mainFrame', i)} isRefining={refiningSection === 'mainFrame'} hideTitle />
                       </OutputSection>
@@ -843,28 +852,29 @@ const OutputSection: React.FC<{
   collapsedOutputs: Record<string, boolean>; toggleOutputSection: (s: string) => void;
   isDark: boolean;
   copyContent?: string;
-}> = ({ title, sectionKey, children, collapsedOutputs, toggleOutputSection, isDark, copyContent }) => {
+  quickCopyItems?: string[];
+}> = ({ title, sectionKey, children, collapsedOutputs, toggleOutputSection, isDark, copyContent, quickCopyItems }) => {
   const [copied, setCopied] = useState(false);
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!copyContent) return;
-    const cleaned = copyContent
-      .replace(/^```(?:markdown|json|text|plaintext)?\s*\n?/gim, '')
-      .replace(/\n?```\s*$/gim, '')
-      .replace(/^```\s*\n?/gim, '')
-      .replace(/\n?```$/gim, '')
-      .trim();
+    const cleaned = cleanPromptForClipboard(copyContent);
     navigator.clipboard.writeText(cleaned);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
   return (
     <div className={cn("rounded-xl border overflow-hidden", isDark ? "border-slate-700" : "border-slate-200")}>
-      <button onClick={() => toggleOutputSection(sectionKey)} className={cn("w-full flex items-center justify-between px-4 py-3 cursor-pointer",
+      <div className={cn("w-full flex items-center justify-between gap-3 px-4 py-3",
         isDark ? "bg-slate-800 hover:bg-slate-750 text-slate-200" : "bg-slate-50 hover:bg-slate-100 text-slate-800"
       )}>
-        <span className="font-semibold text-sm uppercase tracking-wide text-left">{title}</span>
-        <div className="flex items-center space-x-2">
+        <div className="min-w-0 flex-1">
+          <span className="font-semibold text-sm uppercase tracking-wide text-left">{title}</span>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {quickCopyItems && quickCopyItems.length > 0 && (
+            <MainFrameHeaderActions prompts={quickCopyItems} isDark={isDark} />
+          )}
           {copyContent && (
             <span
               onClick={handleCopy}
@@ -879,10 +889,106 @@ const OutputSection: React.FC<{
               <span>{copied ? 'Copied' : 'Copy'}</span>
             </span>
           )}
-          <ChevronDown className={cn("w-4 h-4 transition-transform", collapsedOutputs[sectionKey] && "rotate-180")} />
+          <button
+            type="button"
+            onClick={() => toggleOutputSection(sectionKey)}
+            className={cn(
+              "inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors",
+              isDark ? "text-slate-400 hover:bg-slate-700 hover:text-white" : "text-slate-500 hover:bg-slate-200 hover:text-slate-900"
+            )}
+            aria-label={collapsedOutputs[sectionKey] ? `Collapse ${title}` : `Expand ${title}`}
+          >
+            <ChevronDown className={cn("w-4 h-4 transition-transform", collapsedOutputs[sectionKey] && "rotate-180")} />
+          </button>
         </div>
-      </button>
+      </div>
       {collapsedOutputs[sectionKey] && children}
+    </div>
+  );
+};
+
+const MainFrameHeaderActions: React.FC<{
+  prompts: string[];
+  isDark: boolean;
+}> = ({ prompts, isDark }) => {
+  const promptFingerprint = prompts
+    .map((prompt) => cleanPromptForClipboard(prompt))
+    .join('||');
+  const storageKey = `ai-platform-main-frame-last-copied-${promptFingerprint}`;
+  const [copiedKey, setCopiedKey] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return window.localStorage.getItem(storageKey);
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setCopiedKey(window.localStorage.getItem(storageKey));
+  }, [storageKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (copiedKey) {
+      window.localStorage.setItem(storageKey, copiedKey);
+      return;
+    }
+    window.localStorage.removeItem(storageKey);
+  }, [copiedKey, storageKey]);
+
+  const copyText = (event: React.MouseEvent, key: string, content: string) => {
+    event.stopPropagation();
+    navigator.clipboard.writeText(cleanPromptForClipboard(content));
+    setCopiedKey(key);
+  };
+
+  const copiedIndex = copiedKey?.startsWith('clip-') ? Number(copiedKey.replace('clip-', '')) : null;
+  const copiedFrameLabel = copiedIndex !== null && !Number.isNaN(copiedIndex) ? `F${copiedIndex + 1}` : null;
+
+  const clearCopiedState = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    setCopiedKey(null);
+  };
+
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap justify-end">
+      {copiedFrameLabel && (
+        <button
+          type="button"
+          onClick={clearCopiedState}
+          title={`Last copied ${copiedFrameLabel}. Click to clear this marker.`}
+          className={cn(
+            "inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition-all",
+            isDark
+              ? "border-emerald-500/40 bg-emerald-900/20 text-emerald-300 hover:bg-emerald-900/30"
+              : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+          )}
+        >
+          <Check className="w-3 h-3" />
+          <span>Last: {copiedFrameLabel}</span>
+        </button>
+      )}
+      {prompts.map((prompt, index) => {
+        const key = `clip-${index}`;
+        const isCopied = copiedKey === key;
+        const frameLabel = `F${index + 1}`;
+
+        return (
+          <button
+            key={key}
+            type="button"
+            onClick={(event) => copyText(event, key, prompt)}
+            title={`Copy ${frameLabel} main frame prompt`}
+            className={cn(
+              "inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-semibold transition-all",
+              isCopied
+                ? isDark ? "border-emerald-500/50 bg-emerald-900/30 text-emerald-300" : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : isDark ? "border-slate-500 bg-white text-slate-900 shadow-sm hover:border-blue-500 hover:text-blue-700" : "border-slate-300 bg-white text-slate-700 shadow-sm hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+            )}
+          >
+            {isCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3 opacity-70" />}
+            <span>{frameLabel}</span>
+          </button>
+        );
+      })}
     </div>
   );
 };
