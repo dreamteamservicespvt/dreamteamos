@@ -5,7 +5,8 @@ import {
   MULTI_FRAME_SYSTEM_PROMPT,
   HEADER_SYSTEM_PROMPT, 
   POSTER_SYSTEM_PROMPT,
-  VOICEOVER_SYSTEM_PROMPT, 
+  VOICEOVER_SYSTEM_PROMPT,
+  VOICEOVER_REPAIR_SYSTEM_PROMPT,
   VEO_SEGMENT_SYSTEM_PROMPT,
   STOCK_IMAGE_SYSTEM_PROMPT,
   EXTRACTION_SYSTEM_PROMPT
@@ -576,24 +577,11 @@ const parseVoiceOverSegments = (script: string, segmentCount: number): string[] 
 };
 
 const enforceClipWordCount = (clipText: string): string => {
-  const words = tokenizeWords(cleanScriptText(clipText));
-  if (words.length === 0) return '';
+  let result = cleanScriptText(clipText)
+    .replace(/\s+([,!?])/g, '$1')
+    .trim();
 
-  // Soft range: allow 14-26 words so complete sentences are preserved.
-  // Only trim if significantly over the upper limit, and never pad with
-  // random filler — the AI-generated script is already meaningful.
-  const MAX_WORDS = 26;
-
-  let result: string;
-  if (words.length > MAX_WORDS) {
-    result = words.slice(0, MAX_WORDS).join(' ');
-  } else {
-    result = words.join(' ');
-  }
-
-  // Every clip must end with a period for a meaningful conclusion.
-  // tokenizeWords strips punctuation for counting, so re-append the period.
-  if (result && !result.endsWith('.')) {
+  if (result && !/[.!?]$/.test(result)) {
     result += '.';
   }
 
@@ -625,6 +613,140 @@ const formatVoiceOverScript = (segments: string[]): string => {
   });
 
   return clipLines.join('\n').trim();
+};
+
+const CTA_OR_CONTACT_PATTERN = /(కాల్|సంప్రదించ|నంబర్|ఫోన్|వాట్సాప్|సంప్రదింపు|కాంటాక్ట్|విజిట్)/;
+const LATIN_OR_DIGIT_PATTERN = /[A-Za-z0-9]/;
+const TWO_CLIP_FINAL_CTA = "స్క్రీన్ పై ఉన్న నంబర్ కి ఇప్పుడే కాల్ చేయండి";
+const STRUCTURED_SEGMENT_PATTERN = /^(\d+\s*-\s*\d+)\s*:|^segment\s*\d+\s*:/i;
+const PHONE_DIGIT_WORD_PATTERN = /\b(జీరో|వన్|టూ|త్రీ|ఫోర్|ఫైవ్|సిక్స్|సెవెన్|ఎయిట్|నైన్)\b/g;
+const NATIVE_DIGIT_WORD_PATTERN = /\b(సున్నా|ఒకటి|రెండు|మూడు|నాలుగు|ఐదు|ఆరు|ఏడు|ఎనిమిది|తొమ్మిది)\b/g;
+const MAX_VOICEOVER_REPAIR_PASSES = 2;
+
+const getStructuredSegmentLineCount = (script: string): number => {
+  return cleanScriptText(script)
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => STRUCTURED_SEGMENT_PATTERN.test(line))
+    .length;
+};
+
+const countPatternMatches = (text: string, pattern: RegExp): number => {
+  const matches = text.match(pattern);
+  return matches ? matches.length : 0;
+};
+
+const hasOverSeparatedDigitSpeech = (text: string): boolean => {
+  const groups = text
+    .split(',')
+    .map(group => group.trim())
+    .filter(Boolean);
+
+  if (groups.length < 2) {
+    return false;
+  }
+
+  const singleDigitGroups = groups.filter(group => countPatternMatches(group, PHONE_DIGIT_WORD_PATTERN) === 1).length;
+  return singleDigitGroups >= groups.length - 1;
+};
+
+const hasAdjacentRepeatedWords = (text: string): boolean => {
+  const words = tokenizeWords(text).map(word => word.toLowerCase());
+
+  for (let index = 1; index < words.length; index++) {
+    if (words[index] === words[index - 1]) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+const validateVoiceOverSegments = (rawScript: string, segments: string[], segmentCount: number): string[] => {
+  const issues: string[] = [];
+  const structuredSegmentCount = getStructuredSegmentLineCount(rawScript);
+  const seenSegments = new Map<string, number>();
+
+  if (structuredSegmentCount > 0 && structuredSegmentCount !== segmentCount) {
+    issues.push(`Structured output contains ${structuredSegmentCount} clips instead of the required ${segmentCount}.`);
+  }
+
+  if (segments.length !== segmentCount) {
+    issues.push(`Expected exactly ${segmentCount} clips but got ${segments.length}.`);
+  }
+
+  segments.forEach((segment, index) => {
+    const clipNumber = index + 1;
+    const words = tokenizeWords(segment);
+    const isFinalClip = index === segmentCount - 1;
+
+    if (!segment.trim()) {
+      issues.push(`Clip ${clipNumber} is empty.`);
+      return;
+    }
+
+    if (LATIN_OR_DIGIT_PATTERN.test(segment)) {
+      issues.push(`Clip ${clipNumber} contains Latin letters or digits in spoken content.`);
+    }
+
+    if (!/[.!?]$/.test(segment.trim())) {
+      issues.push(`Clip ${clipNumber} must end with spoken punctuation.`);
+    }
+
+    if (hasAdjacentRepeatedWords(segment)) {
+      issues.push(`Clip ${clipNumber} contains repeated adjacent words.`);
+    }
+
+    if (words.length !== 18) {
+      issues.push(`Clip ${clipNumber} must contain exactly 18 spoken words, but it has ${words.length}.`);
+    }
+
+    if (!isFinalClip && CTA_OR_CONTACT_PATTERN.test(segment)) {
+      issues.push(`Clip ${clipNumber} leaks CTA or contact language before the final clip.`);
+    }
+
+    if (!isFinalClip && countPatternMatches(segment, PHONE_DIGIT_WORD_PATTERN) > 0) {
+      issues.push(`Clip ${clipNumber} contains a spoken phone number before the final clip.`);
+    }
+
+    if (CTA_OR_CONTACT_PATTERN.test(segment) && countPatternMatches(segment, NATIVE_DIGIT_WORD_PATTERN) > 0) {
+      issues.push(`Clip ${clipNumber} uses native counting words for a phone number instead of transliterated English digit names.`);
+    }
+
+    const spokenDigitWordCount = countPatternMatches(segment, PHONE_DIGIT_WORD_PATTERN);
+    if (spokenDigitWordCount >= 4 && hasOverSeparatedDigitSpeech(segment)) {
+      issues.push(`Clip ${clipNumber} over-separates the phone number with comma-after-every-digit delivery.`);
+    }
+
+    const normalizedSegmentKey = cleanScriptText(segment).toLowerCase();
+    const firstSeenClip = seenSegments.get(normalizedSegmentKey);
+    if (typeof firstSeenClip === 'number') {
+      issues.push(`Clip ${clipNumber} duplicates clip ${firstSeenClip}.`);
+    } else {
+      seenSegments.set(normalizedSegmentKey, clipNumber);
+    }
+  });
+
+  if (segmentCount === 2) {
+    const finalClip = segments[segmentCount - 1] || '';
+    if (!finalClip.includes(TWO_CLIP_FINAL_CTA)) {
+      issues.push(`Final clip must include the exact 2-clip CTA phrase: ${TWO_CLIP_FINAL_CTA}`);
+    }
+  }
+
+  return issues;
+};
+
+const normalizeAndFormatVoiceOver = (script: string, segmentCount: number) => {
+  const parsed = parseVoiceOverSegments(script, segmentCount);
+  const segments = normalizeVoiceOverSegments(parsed, segmentCount);
+
+  return {
+    rawScript: script,
+    parsed,
+    segments,
+    formatted: formatVoiceOverScript(segments)
+  };
 };
 
 export const generateAdAssets = async (
@@ -826,6 +948,44 @@ export const generateAdAssets = async (
   let voiceOverScript: string;
   let parsedSegments: string[];
 
+  const applyVoiceOverRepairIfNeeded = async (candidateScript: string) => {
+    let normalizedVoiceOver = normalizeAndFormatVoiceOver(candidateScript, segmentCount);
+    let voiceOverIssues = validateVoiceOverSegments(normalizedVoiceOver.rawScript, normalizedVoiceOver.segments, segmentCount);
+
+    for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES && voiceOverIssues.length > 0; pass++) {
+      const repairSystemPrompt = VOICEOVER_REPAIR_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName);
+      const repairUserPrompt = `Repair this Telugu voice-over script using only verified business facts.
+
+BUSINESS INFORMATION:
+${JSON.stringify(businessInfo, null, 2)}
+
+CURRENT SCRIPT:
+${normalizedVoiceOver.formatted}
+
+VALIDATION ISSUES:
+${voiceOverIssues.map(issue => `- ${issue}`).join('\n')}
+
+Return only the repaired ${segmentCount} clip lines.`;
+
+      const repairResponse = await callWithFallback(async (ai, model) => {
+        return await ai.models.generateContent({
+          model,
+          contents: [{ role: 'user', parts: [{ text: repairUserPrompt }] }],
+          config: { systemInstruction: repairSystemPrompt }
+        });
+      });
+
+      normalizedVoiceOver = normalizeAndFormatVoiceOver(repairResponse.text || normalizedVoiceOver.formatted, segmentCount);
+      voiceOverIssues = validateVoiceOverSegments(normalizedVoiceOver.rawScript, normalizedVoiceOver.segments, segmentCount);
+    }
+
+    if (voiceOverIssues.length > 0) {
+      console.warn('Voice-over validation issues remain after repair:', voiceOverIssues);
+    }
+
+    return normalizedVoiceOver;
+  };
+
   if (customScript && customScript.trim()) {
     // Clean the script: remove emojis, special characters, normalize
     const cleanedScript = cleanScriptText(customScript.trim());
@@ -856,10 +1016,9 @@ Segment 2: <text>
       });
     });
 
-    voiceOverScript = segmentResponse.text || cleanedScript;
-    const parsed = parseVoiceOverSegments(voiceOverScript, segmentCount);
-    parsedSegments = normalizeVoiceOverSegments(parsed, segmentCount);
-    voiceOverScript = formatVoiceOverScript(parsedSegments);
+    const repairedVoiceOver = await applyVoiceOverRepairIfNeeded(segmentResponse.text || cleanedScript);
+    parsedSegments = repairedVoiceOver.segments;
+    voiceOverScript = repairedVoiceOver.formatted;
   } else {
     // Auto-generate voice-over script
     const scriptSystemPrompt = VOICEOVER_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName);
@@ -877,10 +1036,9 @@ Segment 2: <text>
       });
     });
 
-    voiceOverScript = scriptResponse.text || "Failed to generate Script.";
-    const parsed = parseVoiceOverSegments(voiceOverScript, segmentCount);
-    parsedSegments = normalizeVoiceOverSegments(parsed, segmentCount);
-    voiceOverScript = formatVoiceOverScript(parsedSegments);
+    const repairedVoiceOver = await applyVoiceOverRepairIfNeeded(scriptResponse.text || "Failed to generate Script.");
+    parsedSegments = repairedVoiceOver.segments;
+    voiceOverScript = repairedVoiceOver.formatted;
   }
 
   // Emit partial result: voiceOver ready

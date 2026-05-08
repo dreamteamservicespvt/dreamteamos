@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   MAIN_FRAME_SYSTEM_PROMPT,
   MULTI_FRAME_SYSTEM_PROMPT,
+  VOICEOVER_REPAIR_SYSTEM_PROMPT,
+  VOICEOVER_SYSTEM_PROMPT,
   getAttireMode,
 } from "../services/prompts";
 
@@ -47,5 +49,24 @@ describe("multi-frame hero shot guidance", () => {
 
     expect(prompt).toContain("subject perfectly centered");
     expect(prompt).toContain("Hands gently folded at waist, one hand resting over the other");
+  });
+});
+
+describe("voice-over prompt hardening", () => {
+  it("forces exact 18-word clips and transliterated English digit names", () => {
+    const prompt = VOICEOVER_SYSTEM_PROMPT(32, 4, "commercial", "");
+
+    expect(prompt).toContain("Every clip must contain EXACTLY 18 spoken words");
+    expect(prompt).toContain("జీరో, వన్, టూ, త్రీ, ఫోర్, ఫైవ్, సిక్స్, సెవెన్, ఎయిట్, నైన్");
+    expect(prompt).toContain("group the digit names with commas for clean pauses");
+    expect(prompt).toContain("No duplicate clips");
+  });
+
+  it("keeps the repair prompt aligned with exact clip and phone rules", () => {
+    const prompt = VOICEOVER_REPAIR_SYSTEM_PROMPT(32, 4, "commercial", "");
+
+    expect(prompt).toContain("Every clip must contain EXACTLY 18 spoken words");
+    expect(prompt).toContain("Never speak a phone number using native counting words");
+    expect(prompt).toContain("Remove duplicated clips and repeated closings");
   });
 });
