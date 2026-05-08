@@ -85,9 +85,14 @@ MODEL ATTIRE PROFESSIONAL (PREMIUM BEIGE/PASTEL SUIT)
 Use this branch when the selected model attire is Professional.
 
 SUBJECT DIRECTION
+- Strictly 20 to 25 years old only.
 - A youthful premium North Indian woman with bright expressive eyes, fresh radiant skin, subtle rosy warmth, and actress-level commercial beauty.
 - She must feel polished, intelligent, aspirational, approachable, camera-ready, and full of inspiring young professional energy.
 - Realistic and premium, never plain, never severe, never stock-model generic.
+- This is NOT a corporate headshot and NOT a stock-photo executive portrait. It must read like a high-budget national commercial campaign with a top-tier beautiful brand ambassador.
+- Her beauty must be stop-scrolling, luxury-campaign grade, and impossible to mistake for a normal office employee.
+- She should feel like the one woman a luxury brand creative director chose after rejecting 500 candidates.
+- Hard negative ban: no plain receptionist look, no HR portrait look, no employee ID-photo look, no LinkedIn headshot energy, and no generic office-worker prettiness.
 
 PROFESSIONAL SUIT
 - Premium blazer color must stay within the beige or pastel luxury family: beige, cream, taupe, champagne, blush-beige, soft sand, or warm pastel mocha.
@@ -96,18 +101,34 @@ PROFESSIONAL SUIT
 - Use slim formal trousers in the same suit family with a straight or gently tapered silhouette and expensive matte-luxe drape.
 - The full look should read as stylish modern office formals with youthful charm, minimal elegant jewellery, and premium corporate polish.
 - Styling must read as a luxury business campaign, not generic officewear, not a bank uniform, not startup casual, and not a stock corporate portrait.
+- The model must still feel stunning, magnetic, and memorable inside the professional styling — beautiful woman first, premium tailoring second.
+- Suit fabric must look truly expensive with believable structure, seam tension, sleeve fall, trouser drape, and natural tailoring realism.
 
 PROFESSIONAL GROOMING
+CASTING OVERRIDE — SUIT BRANCH:
+- This is NOT a corporate headshot. This is NOT a stock photo shoot.
+- This is a HIGH-BUDGET NATIONAL BRAND CAMPAIGN.
+- The model must feel like the luxury campaign face selected after 500 auditions.
+- She must still read as top 0.1% beautiful, stop-scrolling, memorable, and clearly above normal office-beauty level.
+
+FACE — LUXURY CASTING BRIEF:
+- Face structure should read premium and photogenic: perfect oval harmony, large almond-shaped deep brown eyes, naturally full brows, elegant photogenic nose, softly full lips, subtly high cheekbones, and a clean feminine jawline.
 - Silky dark black hair with polished movement: refined blowout, elegant straight finish, or controlled soft waves.
 - A neat half-open hairstyle is allowed when it supports a modern graceful corporate look.
-- Makeup should be premium and camera-ready but not heavy: softly defined eyes, clean brows, subtle lip tone, healthy skin finish.
-- Jewellery must stay minimal and expensive: delicate gold chain and small premium studs only.
+- MAKEUP — HIGH-FASHION COMMERCIAL LEVEL:
+- Makeup should be premium and camera-ready but not heavy: dewy real skin, softly defined warm-brown eyes, subtle kajal presence, clean brows, refined blush warmth, intentional nude-rose or soft warm lip tone, and healthy skin finish.
+- EXPRESSION — STAR QUALITY:
+- Expression must stay star-quality: real warm smile, alive direct eyes, subtle laugh-line realism, relaxed confidence, and no blank corporate-neutral face.
+- Skin must stay truthful: visible pores, real micro-texture, natural glow, and no plastic beauty-filter finish.
+- Jewellery must stay semi-jewellery only even in the suit branch: delicate gold chain, small premium studs or tiny elegant jhumkas, and optionally one thin gold bangle.
+- Keep the beauty finish truthful: visible pores, smooth clear complexion, natural glow, no plastic skin, no waxy retouching, and no severe executive styling.
 
 PROFESSIONAL ENVIRONMENT
-- Use the executive-facing zone of the real business: reception office, consultation area, premium front desk, glass-partition workspace, or a bright modern corporate-facing section of the actual premises.
-- Background should feel like a real premium business interior captured on location.
+- Use the executive-facing zone of the real business: reception office, consultation area, premium front desk, branded consultation bay, sample wall, product-proof zone, glass-partition workspace, or a bright modern corporate-facing section of the actual premises.
+- Background should feel like a real premium business interior captured on location and should immediately communicate the client business category, not just "generic office".
 - Glass windows, indoor plants, natural daylight illuminating her face, clean desk surfaces, and subtle work elements such as a laptop or notebook may appear naturally.
-- Never use a fake office set, empty luxury hall, generic coworking stock background, or studio backdrop.
+- The strongest client-business proof cues must be visible: branded wall signage, consultation desk, service counter, sample displays, product shelves, certification wall, material swatches, brochures, or business-specific premium fixtures.
+- Never use a fake office set, empty luxury hall, generic coworking stock background, hotel-lobby look, or studio backdrop.
 
 ENVIRONMENT RULES
 IF store or office images are provided:
@@ -131,7 +152,7 @@ LOGO RULE
 - Logo must be sharp, readable, realistic in size, properly installed, not floating, not glowing, and not oversized.
 
 JEWELLERY RULE
-- Jewellery is always required, but it must remain minimal and premium.
+- Jewellery is always required, but it must remain semi-jewellery only, minimal, and premium.
 - One delicate gold chain necklace.
 - Small premium stud earrings or tiny elegant jhumkas when appropriate.
 - No heavy jewellery, no chunky pieces, no layered chains, no loud accessories.
@@ -168,41 +189,71 @@ REALISM FORMULA (MANDATORY)
 - STYLE TARGET: ultra-realistic photography, premium corporate portrait, realistic colors, photorealistic finish, high-detail output.
 - Missing even one realism chemical weakens the result.
 
-----------------------
-A youthful and stunning North Indian woman with fair radiant skin, fresh natural glow, soft youthful facial features, bright expressive eyes, well-shaped eyebrows, smooth clear complexion, subtle rosy cheeks, gentle confident smile, no spectacles, no eyewear.
+COMMERCIAL PROFESSIONAL HERO STRUCTURE (REFERENCE EXAMPLE)
+Use this structure when:
+- Ad Type = Commercial
+- Model Attire = Professional (Premium Beige/Pastel Suit)
+- This is NOT a festival output
 
-She is dressed in an elegant modern saree – a soft pastel or muted-tone saree with a minimalistic contemporary design, neatly draped in a professional style, paired with a well-fitted blouse, minimal elegant jewelry, clean professional look with a youthful charm.
+Clip 1 – Main Frame Prompt (HERO ESTABLISHING SHOT)
+CASTING OVERRIDE — THIS IS MANDATORY:
+This is NOT a corporate headshot. This is NOT a stock photo shoot.
+This is a HIGH-BUDGET NATIONAL BRAND CAMPAIGN.
+The model must be in the top 0.1% of female beauty.
+She must have the kind of face that makes a viewer stop scrolling.
+If she looks average, plain, forgettable, or like a generic office employee, the image has failed.
 
-Hair is silky, dark black, naturally shiny, styled in soft waves or a neat half-open hairstyle, modern and graceful.
+Create a Ultra-realistic DSLR photograph, single image, 9:16 vertical — must look like a real, high-budget national [BUSINESS TYPE] commercial photoshoot, absolutely no AI-art, no rendering, no stock-photo feel. Indistinguishable from a real professional photograph.
 
-Setting is a bright contemporary corporate office, glass windows, indoor plants, natural daylight illuminating her face, laptop and notebook subtly visible, background softly blurred.
+SUBJECT (PREMIUM BRAND AMBASSADOR — FEMALE ONLY — MUST FEEL DISTINCT TO THIS BUSINESS):
+One exceptionally photogenic Indian woman chosen as the exclusive brand ambassador for this specific business campaign.
+She must look premium, aspirational, believable, and naturally striking — the kind of woman a serious brand would cast for a real national ad campaign.
+Her age is strictly 20 to 25 years old.
+She has a naturally attractive North Indian facial structure with refined proportions, a strong screen presence with expressive eyes and confident warmth, visible real pores, a smooth clear complexion, fresh radiant skin with natural glow, and premium but believable commercial beauty.
+Her expression must feel welcoming, trustworthy, poised, intelligent, and approachable according to the business category.
 
-The vibe is positive, energetic, confident, intelligent, approachable, attractive, modern corporate elegance, inspiring young professional energy.
+POSE & FRAMING (PREMIUM COMMERCIAL PHOTOGRAPHY — HERO SHOT):
+Close mid-shot only, roughly head to upper waist / upper torso.
+For Clip 1, the hero shot must be exactly centered with balanced left-right spacing.
+For Clip 1, hands must be gently folded at the waist, one hand resting over the other, exactly like the traditional and festival hero frame.
+Camera at chest level.
+The model must occupy roughly 70% of the total frame height.
+Direct eye contact with the camera is mandatory.
+From Clip 2 onward, hand position and pose energy must change according to that clip's voice-over script, business proof point, and location.
 
-Ultra-realistic photography, cinematic soft lighting, shallow depth of field, premium corporate portrait, natural skin texture, realistic colors, professional studio quality, 8K resolution, hyper-detailed, photorealistic.
+HAIR (LUXURY GROOMING — CONSISTENT WITHIN THE CAMPAIGN):
+Silky dark black hair only.
+Professionally groomed, naturally shiny, camera-ready.
+Styled as a refined blowout, elegant straight finish, soft polished waves, or neat half-open graceful styling.
 
-🔹 Negative Prompt
-spectacles, glasses, heavy makeup, artificial skin, cartoon, anime, unrealistic beauty, blur, noise, distortion, casual clothes, western blazer, traditional heavy bridal wear, ethnic jewelry (heavy), watermark, logo, text
+ATTIRE (PREMIUM BEIGE/PASTEL SUIT — COMMERCIAL ONLY):
+She wears modern office formal attire in the premium beige / pastel suit family.
+The blazer is well-tailored with feminine waist definition, refined lapels, and believable premium structure.
+Under the blazer is a crisp white fitted blouse or shirt with a polished professional finish.
+Lower styling uses slim formal trousers or a clean pencil-skirt silhouette only when it suits the brand context.
+The full impression must feel like stylish modern office formals with youthful charm, premium corporate polish, and luxury campaign realism.
+The styling must never collapse into generic HR portrait clothing or stock corporate fashion.
 
-🔧 Recommended Settings
-Aspect Ratio: 9:16
-Resolution: 8K / Ultra HD
-Lighting: Soft cinematic daylight + studio fill
-Camera Feel: 85mm portrait, f/1.8
-Style: Photorealistic, Corporate Cinematic
+JEWELLERY (MINIMAL PREMIUM — MANDATORY):
+Minimal elegant jewellery only.
+One delicate gold chain necklace.
+Small premium stud earrings or tiny elegant jhumkas.
+Optional one thin gold bangle only.
+Never heavy, never bridal, never overloaded.
 
-______________
+ENVIRONMENT (REAL BUSINESS PREMISES — COMMERCIAL PROFESSIONAL):
+The background must depict a bright contemporary corporate-facing zone of the actual business premises.
+Use real business cues relevant to the business category: reception desk, consultation zone, branded wall, workstations, laptop, notebook, indoor plants, glass windows, premium furniture, service counters, sample walls, certification displays, brochures, or business-specific display elements.
+The environment must feel operational, believable, modern, and premium — never a fake office set, never a hotel lobby, never a studio backdrop.
+The background should instantly explain the client business at first glance.
+No festival decorations, no garlands, no diyas, no celebration props, and no cultural event cues.
 
-A youthful and stunning North Indian woman with fair radiant skin, fresh natural glow, soft youthful facial features, bright expressive eyes, well-shaped eyebrows, smooth clear complexion, subtle rosy cheeks, gentle confident smile, no spectacles, no eyewear.
-She is dressed in modern office formal attire – a stylish pastel blazer over a crisp white blouse, slim-fit formal trousers or pencil skirt, minimal elegant jewelry, clean professional look with a youthful charm.
-Hair is silky, dark black, naturally shiny, styled in soft waves or a neat half-open hairstyle, modern and graceful.
-Setting is a bright contemporary corporate office, glass windows, indoor plants, natural daylight illuminating her face, laptop and notebook subtly visible, background softly blurred.
-The vibe is positive, energetic, confident, intelligent, approachable, attractive, modern corporate elegance, inspiring young professional energy.
-Ultra-realistic photography, cinematic soft lighting, shallow depth of field, premium corporate portrait, natural skin texture, realistic colors, professional studio quality, 8K resolution, hyper-detailed, photorealistic.
-🔹 Negative Prompt
-spectacles, glasses, heavy makeup, artificial skin, cartoon, anime, unrealistic beauty, blur, noise, distortion, casual clothes, traditional wear, ethnic jewelry, watermark, logo, text🔧 Recommended Settings (Both)
-Aspect Ratio: 9:16
-Resolution: 8K / Ultra HD
-Lighting: Soft cinematic daylight + studio fill
-Camera Feel: 85mm portrait, f/1.8
-Style: Photorealistic, Corporate Cinematic
+LOGO PLACEMENT (CRITICAL — DO NOT MODIFY THE LOGO):
+The attached business logo must appear as real, pixel-perfect wall signage in the upper background behind the subject, fully readable and visible in one piece.
+
+CAMERA & PHOTO REALISM:
+Professional DSLR / Canon EOS R5 realism, 85mm portrait lens at f/1.8, natural color science, cinematic soft daylight with gentle fill, real shadows, realistic highlights, softly blurred background depth, hyper-detailed premium corporate portrait realism, and no fake HDR look.
+
+OVERALL RESULT:
+A real, premium [BUSINESS TYPE] commercial campaign photograph featuring one distinct premium female brand ambassador representing [BUSINESS NAME].
+The image must feel like a real high-end commercial photoshoot captured inside the actual business premises with modern corporate elegance, strong realism, and no festival mood at all.

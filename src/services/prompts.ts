@@ -727,16 +727,35 @@ MAKEUP — HIGH-FASHION EDITORIAL LEVEL:
   polished, intentional, flawless but human
 ${isProfessional ? `
 PROFESSIONAL SUIT BEAUTY OVERRIDE (MANDATORY):
-- She must still read as youthful, radiant, camera-ready,
-  and actress-level beautiful inside the professional styling —
-  never plain, severe, matronly, or forgettable
-- Beauty target: premium Indian campaign ambassador with
-  bright expressive eyes, soft rosy warmth in the cheeks,
-  believable skin detail, polished luxury-brand presence,
-  youthful charm, and inspiring young professional energy
-- No spectacles, no eyewear, no harsh contour, no loud
-  editorial drama, no frozen expression, and no waxy beauty
-  filter finish
+CASTING OVERRIDE — SUIT BRANCH (MANDATORY):
+- She must be strictly 20 to 25 years old only in this suit branch — youthful, fresh, modern, and unmistakably in that age band
+- This is NOT a corporate headshot. This is NOT a stock photo shoot.
+- This is a HIGH-BUDGET NATIONAL BRAND CAMPAIGN.
+- The model must feel like the luxury campaign face selected after 500 auditions — top 0.1% beauty tier, stop-scrolling presence, star quality, and clearly above normal office-beauty level.
+- She must still read as youthful, radiant, camera-ready, and actress-level beautiful inside the professional styling — never plain, severe, matronly, forgettable, or generic.
+- HARD NEGATIVE RULE: reject plain receptionist energy, HR portrait energy, employee ID-photo look, LinkedIn headshot energy, bank-uniform vibe, startup-office casualness, and generic stock corporate beauty.
+
+FACE — LUXURY CASTING BRIEF (SUIT BRANCH):
+- Perfect oval face with soft feminine harmony and refined screen-ready structure
+- Large almond-shaped deep brown eyes with bright whites, natural depth, magnetic pull, and expressive premium Indian screen presence
+- Naturally full arched brows that frame the eyes strongly without looking drawn-on
+- Slender photogenic nose with refined bridge and delicate tip
+- Softly full lips with a defined cupid's bow, natural softness, and a polished campaign finish
+- Subtly high cheekbones, clean feminine jawline, and a delicate refined chin
+- Fresh radiant Indian complexion with visible pores, true micro-texture, smooth clear skin, natural glow on the high points, and absolutely no plastic skin or filter finish
+
+MAKEUP — HIGH-FASHION COMMERCIAL LEVEL (SUIT BRANCH):
+- Dewy perfected-real skin with believable texture, never waxy and never over-smoothed
+- Softly defined warm-brown eyes with subtle kajal presence and refined lash definition
+- Structured clean brows, refined blush warmth, and gentle contour only where natural
+- Intentional nude-rose or soft warm lip tone that still looks realistic and premium on camera
+- No spectacles, no eyewear, no harsh contour, no loud editorial drama, no frozen expression, and no beauty-filter finish
+
+EXPRESSION — STAR QUALITY (SUIT BRANCH):
+- Real warm smile only — never blank, never cold, never stiff, never corporate-neutral
+- Alive direct eyes only — she must look straight into the lens as if she owns the shoot
+- Subtle laugh-line realism is allowed because she must feel human and premium, not frozen
+- Relaxed star-quality confidence, aspirational warmth, and trust-building charisma are mandatory
 
 COMMERCIAL REALISM FORMULA (ABSOLUTE — EVERY CHEMICAL MUST BE PRESENT):
 - FACE ANCHOR: Bollywood-heroine quality, brand-ambassador face, photogenic sharp attractive features, premium Indian screen presence, and memorable beauty that still feels human and believable
@@ -801,8 +820,8 @@ POSE ANCHOR FOR THE HERO MAIN FRAME (MANDATORY):
 - Camera at chest level, mid-shot framing only, with a calm,
   premium, welcoming posture` : `POSE & FRAMING (PREMIUM COMMERCIAL PHOTOGRAPHY — NATURAL VARIATION ALLOWED):
 • Close mid-shot only (head to upper waist / upper torso) — never full-body, never wide enough to weaken the model's presence
-• The hero / anchor shot must be EXACTLY centered with balanced left-right spacing and hands gently folded at the waist, one hand resting over the other
-• Clip 1 may be centered and iconic, but later clips may use balanced off-center compositions that suit the shot purpose
+• For professional suit outputs, Clip 1 must use the same hero pose as the traditional and festival anchor frames: EXACTLY centered with balanced left-right spacing and hands gently folded at the waist, one hand resting over the other
+• From Clip 2 onward, hand position, body angle, and pose energy must change according to that clip's exact voice-over script, business proof point, and location instead of repeating the folded-hands hero pose
 • Camera should remain premium and intentional — mostly chest-level or eye-level, with modest angle changes only when they improve realism and storytelling
 • Hands and posture must feel graceful and believable — allow variation based on the location and shot purpose instead of forcing the same folded-hands pose every time
 • Body language must feel poised, elegant, and premium — never stiff, never mannequin-like, never awkward
@@ -862,6 +881,7 @@ Styling must feel film-industry celebrity level, not catalog or wedding shoot.
 • Commercial traditional saree output must preserve visible pores · micro skin texture · soft tonal variation · true photographic realism — never bridal-doll glam, mannequin polish, or synthetic beauty.` : `ATTIRE (PREMIUM BEIGE/PASTEL SUIT — LUXURY CAMPAIGN REALISM — MANDATORY):
 This is NOT generic officewear and NOT a stock corporate portrait.
 It must feel like a luxury Indian commercial campaign where a youthful, exceptionally beautiful actress-level ambassador is styled in a premium feminine suit.
+This branch is for COMMERCIAL AD TYPE behavior only — never festival-themed, never celebratory, never saree-led, and never decorated with garlands, diyas, rangoli, or cultural-event props.
 • The professional suit color MUST be DYNAMIC and BUSINESS-SPECIFIC — do NOT keep giving the same beige or same neutral suit to every client
 • First derive the suit palette from the actual business type, logo colors, brand mood, and if applicable the festival theme — the outfit should feel chosen for THIS exact client campaign, not reused from a universal template
 • Suit palette direction by business type:
@@ -884,26 +904,27 @@ It must feel like a luxury Indian commercial campaign where a youthful, exceptio
 • TROUSERS: slim formal trousers in the same business-specific suit family — straight or gently tapered cut, graceful premium drape, clean hem, and a sharp luxury-commercial silhouette
 • Fabric: expensive matte-luxe suiting with believable weight, texture, sleeve fall, trouser break, lapel structure, and natural movement — never shiny polyester, never stiff costume fabric
 • Styling must preserve beauty and femininity: the woman should still feel glamorous, attractive, warm, actress-level beautiful, youthful, and intelligent in the suit — never harsh, lifeless, plain, or overly stern
+• Suit-girl casting must follow luxury beauty logic: stop-scrolling face value, star-quality smile, alive direct eyes, and the kind of premium photogenic appeal associated with top Indian national campaigns
 • The suit must read as a luxury fashion-commercial look, not HR portrait clothing, not a bank-uniform vibe, not startup officewear, and not stock-photo executive styling
+• HARD NEGATIVE BAN: no plain receptionist look, no HR portrait look, no employee ID-photo look, no LinkedIn headshot energy, and no generic office-worker prettiness
 • Keep the chosen palette rich, dimensional, creamy, and expensive — never flat beige, never chalky, never washed out, never lifeless under indoor lighting
-• Face and grooming direction: soft youthful facial features, clean brows, fresh natural glow, subtle rosy warmth in the cheeks, refined lip color, no spectacles, no eyewear, no harsh retouching, no bridal heaviness, no waxy or synthetic skin finish
+• Face and grooming direction: soft youthful facial features, perfect oval harmony, large expressive almond eyes, clean strong brows, elegant nose, softly full lips, fresh natural glow, subtle rosy warmth in the cheeks, refined lip color, no spectacles, no eyewear, no harsh retouching, no bridal heaviness, no waxy or synthetic skin finish
 • The overall impression should feel like a premium young corporate professional portrait with approachable confidence, modern elegance, and inspiring energy
 • Hair should feel premium and feminine with silky dark black hair only, healthy shine, and polished movement that flatters the face — refined blowout, elegant straight finish, or controlled soft waves are preferred over stiff corporate hair
 • Pose and styling should feel soft-confident and premium: graceful posture, subtle elegance, poised warmth, camera-ready polish — not rigid boardroom stiffness
 • Preserve true photographic realism: visible pores · natural warm Indian complexion · real fabric tension · authentic tailoring details · no plastic beauty-filter skin · no synthetic fashion-render feel
-• The final suit impression must feel like a real luxury beauty-fashion campaign shot in the premium front-office or consultation-facing zone of the actual business — beautiful woman first, premium tailoring second, realism always`}
+• The final suit impression must feel like a real luxury beauty-fashion campaign shot in the premium front-office or consultation-facing zone of the actual business — beautiful woman first, premium tailoring second, realism always
+• The suit branch must NEVER drift into a plain corporate employee look — if the model does not still feel top-tier beautiful and campaign-worthy, regenerate`}
 
 JEWELLERY (MANDATORY — ALWAYS REQUIRED):
 **Jewellery is NON-NEGOTIABLE and must ALWAYS be present:**
 • For saree/traditional outputs: semi-jewellery only — refined necklace, elegant earrings, and limited bangles with premium controlled styling
-• For professional outputs: one ultra-thin elegant gold chain necklace
-• Small premium stud earrings OR tiny elegant jhumkas — visible and classy
-• Optional: One thin gold bangle on one wrist (subtle, not heavy)
+• For professional outputs: semi-jewellery only — one delicate elegant gold chain necklace, small premium stud earrings or tiny elegant jhumkas, and optionally one thin gold bangle on one wrist
 • NO heavy temple jewellery
 • NO layered chains
 • NO chunky pieces
 • NO bridal-jewellery overload
-Jewellery must feel understated, expensive, actress-style, and strictly semi-jewellery when the outfit is a saree.`}
+Jewellery must feel understated, expensive, actress-style, and strictly semi-jewellery for both saree and professional suit outputs.`}
 
 ${isFestival && festivalTheme ? `ENVIRONMENT (REAL [BUSINESS TYPE] OFFICE/STORE WITH ${festivalName.toUpperCase()} DECORATIONS — MOST CRITICAL SECTION):
 **The background MUST look like the REAL office/store of this specific [BUSINESS TYPE] business first; ${festivalName} decoration is a secondary layer, not a replacement set.**
@@ -946,7 +967,10 @@ Photographed inside the real, operational, premium [BUSINESS TYPE] premises — 
 • For EVERY commercial clip, choose the exact functional zone of the premises that best matches that clip's voice-over line, business claim, and selling point — do not reuse one generic premium corner across multiple clips
 • The visible background must prove the spoken message of that clip using real business cues: service counters, demo areas, consultation desks, product displays, workstations, certification walls, entrances, waiting zones, or operational fixtures relevant to the line
 ${isProfessional ? `• For professional suit outputs, choose the clean executive-facing or consultation-facing zone that best matches that clip's voice-over meaning — reception office, consultation area, glass-partition workspace, meeting zone, service desk, or branded front-office section with natural daylight, refined wood/stone materials, indoor greenery, and modern corporate polish
-• The background should feel like a bright premium corporate interior captured on location — not a fake set, not an empty luxury hall, and not a generic coworking stock photo` : ''}
+• The background should feel like a bright contemporary corporate office captured on location, with glass windows, indoor plants, clean desk surfaces, and subtle laptop or notebook presence when natural to the scene
+• The background must instantly communicate the client business through the strongest proof surface in frame — branded wall, service counter, consultation bay, sample wall, certification display, premium product shelf, brochure stand, or other business-specific cue
+• Never introduce festival decorations, celebration props, garlands, diyas, rangoli, or cultural-event cues in this professional commercial branch
+• The background should never feel like a fake set, an empty luxury hall, or a generic coworking stock photo` : ''}
 • Keep the background premium, believable, and specific with only the strongest business cues in frame
 • Avoid studio backdrops, fake lobbies, empty luxury halls, hotel interiors, or CGI-looking spaces
 
