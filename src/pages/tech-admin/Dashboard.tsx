@@ -81,7 +81,7 @@ export default function TechAdminDashboard() {
 
   const verified = filteredAssignments.filter((a) => a.status === "verified");
   const pending = filteredAssignments.filter((a) => a.status === "assigned" || a.status === "in_progress");
-  const totalVideos = verified.length;
+  const totalVideos = verified.reduce((sum, assignment) => sum + (assignment.clipCount || 0), 0);
   const totalRevenue = verified.reduce((s, a) => s + (a.totalPrice || 0), 0);
 
   const chartData = members.map((m) => {
@@ -93,16 +93,18 @@ export default function TechAdminDashboard() {
     const categoryBreakdown = { wishes: 0, promotional: 0, cinematic: 0 };
     mVerified.forEach((a) => {
       if (a.category in categoryBreakdown) {
-        categoryBreakdown[a.category as keyof typeof categoryBreakdown] += 1;
+        categoryBreakdown[a.category as keyof typeof categoryBreakdown] += a.clipCount || 0;
       }
     });
+
+    const verifiedClipCount = mVerified.reduce((sum, assignment) => sum + (assignment.clipCount || 0), 0);
 
     return {
       uid: m.uid,
       name: m.name?.split(" ")[0] || "?",
       fullName: m.name || "?",
       initial: m.name?.charAt(0) || "?",
-      videos: mVerified.length,
+      videos: verifiedClipCount,
       submissions: mAssignments.length,
       revenue: mVerified.reduce((s, a) => s + (a.totalPrice || 0), 0),
       assigned: mActive.length,
