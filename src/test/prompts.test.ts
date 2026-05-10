@@ -54,6 +54,7 @@ describe("multi-frame hero shot guidance", () => {
 
     expect(prompt).toContain("subject perfectly centered");
     expect(prompt).toContain("Hands gently folded at waist, one hand resting over the other");
+  expect(prompt).toContain("explicit natural rich black hair only rule");
     expect(prompt).toContain("the exact same natural rich black hair from the first frame onward");
     expect(prompt).toContain("Hair color baseline");
     expect(prompt).toContain("COMMERCIAL LOCATION DENSITY RULE");

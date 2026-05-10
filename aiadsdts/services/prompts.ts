@@ -1380,7 +1380,7 @@ Separate each clip's prompt with the marker: ###CLIP###
 
 Clip 1 – Main Frame Prompt (${shotDesigns[0].name})
 Create a Ultra-realistic DSLR photograph, single image, 9:16 vertical…
-[Full SUBJECT section with face, hair, beauty description]
+[Full SUBJECT section with face, hair, beauty description, and an explicit natural rich black hair only rule]
 [Full ATTIRE section]
 [Full JEWELLERY section]
 [Full ENVIRONMENT section with real business base layer ${adType === AdType.FESTIVAL ? '+ festival cues' : '+ business-proof layer'}]
@@ -1393,7 +1393,7 @@ Create a Ultra-realistic DSLR photograph, single image, 9:16 vertical…
 Here is an EXAMPLE of what a correct Clip 2 prompt looks like:
 
 Clip 2 – Main Frame Prompt (${shotDesigns[1 % shotDesigns.length].name})
-Use the attached reference frame image as the exact identity and styling anchor for this clip — same woman, same core styling, same wardrobe family, same jewellery set, perfectly consistent with the attached reference frame.
+Use the attached reference frame image as the exact identity and styling anchor for this clip — same woman, same core styling, the exact same natural rich black hair from the first frame onward, same wardrobe family, same jewellery set, perfectly consistent with the attached reference frame.
 
 POSE: Subject positioned on the right side using rule-of-thirds, one hand gesturing gently toward the product display behind her. Close mid-shot, camera slightly below chest level, subject still occupying roughly 70% of the frame and maintaining direct eye contact with the camera.
 
