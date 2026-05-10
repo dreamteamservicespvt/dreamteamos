@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import type { DateRange } from "react-day-picker";
 import { useNavigate } from "react-router-dom";
 import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, serverTimestamp, query, where } from "firebase/firestore";
 import { db } from "@/services/firebase";
@@ -7,12 +8,13 @@ import { useAuthStore } from "@/store/authStore";
 import { normalizePhone, formatPhoneDisplay, getWhatsAppUrl, getCallUrl } from "@/utils/phone";
 import type { AppUser, DailyCheckin, WorkAssignment } from "@/types";
 import { formatCurrency } from "@/utils/formatters";
-import { Users, Plus, X, Loader2, Eye, EyeOff, UserCheck, UserX, Trash2, Phone, MessageCircle, Pencil, Share2, Search, LogIn, LogOut } from "lucide-react";
+import { Users, Plus, X, Loader2, Eye, EyeOff, UserCheck, UserX, Trash2, Phone, MessageCircle, Pencil, Share2, Search, LogIn, LogOut, Sparkles } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import EditMemberModal from "@/components/EditMemberModal";
-import DashboardDayPicker from "@/components/dashboard/DayPicker";
+import DashboardDateRangePicker from "@/components/dashboard/DateRangePicker";
 import { format, subDays, startOfDay } from "date-fns";
+import { formatDateRangeLabel, isDateWithinRange, normalizeDateRange } from "@/utils/dateRange";
 
 export default function TechAdminMyTeam() {
   const currentUser = useAuthStore((s) => s.user);
@@ -31,7 +33,7 @@ export default function TechAdminMyTeam() {
   const [memberRevenue, setMemberRevenue] = useState<Map<string, number>>(new Map());
   const [revenueStatusFilter, setRevenueStatusFilter] = useState<"verified" | "completed_verified" | "all">("verified");
   const [revenueDayFilter, setRevenueDayFilter] = useState<string>("all");
-  const [revenueSelectedDate, setRevenueSelectedDate] = useState<Date | undefined>(undefined);
+  const [revenueDateRange, setRevenueDateRange] = useState<DateRange | undefined>(undefined);
   const [revenueSortOrder, setRevenueSortOrder] = useState<"none" | "high_to_low" | "low_to_high">("none");
 
   const todayStr = format(new Date(), "yyyy-MM-dd");
@@ -88,8 +90,6 @@ export default function TechAdminMyTeam() {
 
   useEffect(() => {
     const memberIds = new Set(members.map((m) => m.uid));
-    const dateStr = revenueSelectedDate ? format(revenueSelectedDate, "yyyy-MM-dd") : null;
-
     let filtered = assignments.filter((a) => memberIds.has(a.assignedTo) && a.assignedBy === currentUser?.uid);
 
     if (revenueStatusFilter === "verified") {
@@ -98,8 +98,8 @@ export default function TechAdminMyTeam() {
       filtered = filtered.filter((a) => a.status === "completed" || a.status === "verified");
     }
 
-    if (dateStr) {
-      filtered = filtered.filter((a) => a.date === dateStr);
+    if (revenueDateRange?.from) {
+      filtered = filtered.filter((a) => isDateWithinRange(a.date, revenueDateRange));
     } else if (revenueDayFilter !== "all") {
       const dayIndex = parseInt(revenueDayFilter);
       const dayDateStr = recentDays[dayIndex]?.dateStr;
@@ -111,7 +111,7 @@ export default function TechAdminMyTeam() {
       revMap.set(a.assignedTo, (revMap.get(a.assignedTo) || 0) + (a.totalPrice || 0));
     });
     setMemberRevenue(revMap);
-  }, [assignments, members, currentUser?.uid, revenueStatusFilter, revenueDayFilter, revenueSelectedDate, recentDays]);
+  }, [assignments, members, currentUser?.uid, revenueStatusFilter, revenueDayFilter, revenueDateRange, recentDays]);
 
   const grandTotalRevenue = useMemo(
     () => Array.from(memberRevenue.values()).reduce((sum, revenue) => sum + revenue, 0),
@@ -238,13 +238,20 @@ export default function TechAdminMyTeam() {
       </div>
 
       {/* Revenue Filters + Grand Total */}
-      <div className="bg-card border border-border rounded-xl p-3 md:p-4 space-y-3">
-        <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-3">
-          <span className="text-xs md:text-sm font-medium text-foreground">Revenue Filters</span>
+      <div className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-accent/20 p-3 md:p-4 shadow-sm space-y-3">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-medium text-primary">
+              <Sparkles size={12} />
+              Team revenue lens
+            </div>
+            <p className="text-xs md:text-sm font-medium text-foreground">Track overall and member-wise output inside a custom date window.</p>
+          </div>
+          <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center md:justify-end">
           <select
             value={revenueStatusFilter}
             onChange={(e) => setRevenueStatusFilter(e.target.value as "verified" | "completed_verified" | "all")}
-            className="border rounded-lg px-2 md:px-3 py-2 text-xs md:text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none"
+            className="h-10 rounded-xl border border-border/70 bg-background/80 px-3 text-xs md:text-sm text-foreground shadow-sm outline-none focus:ring-2 focus:ring-primary/20"
           >
             <option value="verified">Verified Only</option>
             <option value="completed_verified">Completed + Verified</option>
@@ -253,17 +260,17 @@ export default function TechAdminMyTeam() {
           <select
             value={revenueSortOrder}
             onChange={(e) => setRevenueSortOrder(e.target.value as "none" | "high_to_low" | "low_to_high")}
-            className="border rounded-lg px-2 md:px-3 py-2 text-xs md:text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none"
+            className="h-10 rounded-xl border border-border/70 bg-background/80 px-3 text-xs md:text-sm text-foreground shadow-sm outline-none focus:ring-2 focus:ring-primary/20"
           >
             <option value="none">Revenue Sort: Default</option>
             <option value="high_to_low">Revenue: High to Low</option>
             <option value="low_to_high">Revenue: Low to High</option>
           </select>
-          {!revenueSelectedDate && (
+          {!revenueDateRange?.from && (
             <select
               value={revenueDayFilter}
               onChange={(e) => setRevenueDayFilter(e.target.value)}
-              className="border rounded-lg px-2 md:px-3 py-2 text-xs md:text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none"
+              className="h-10 rounded-xl border border-border/70 bg-background/80 px-3 text-xs md:text-sm text-foreground shadow-sm outline-none focus:ring-2 focus:ring-primary/20"
             >
               <option value="all">All Days</option>
               {recentDays.map((d, i) => (
@@ -271,12 +278,13 @@ export default function TechAdminMyTeam() {
               ))}
             </select>
           )}
-          <DashboardDayPicker selectedDate={revenueSelectedDate} onSelect={(d) => { setRevenueSelectedDate(d); if (d) setRevenueDayFilter("all"); }} />
-          {(revenueSelectedDate || revenueDayFilter !== "all") && (
-            <button onClick={() => { setRevenueSelectedDate(undefined); setRevenueDayFilter("all"); }} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+          <DashboardDateRangePicker value={revenueDateRange} onSelect={(range) => { setRevenueDateRange(normalizeDateRange(range)); if (range?.from) setRevenueDayFilter("all"); }} />
+          {(revenueDateRange?.from || revenueDayFilter !== "all") && (
+            <button onClick={() => { setRevenueDateRange(undefined); setRevenueDayFilter("all"); }} className="h-10 rounded-xl border border-border/70 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground">
               Clear
             </button>
           )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -291,8 +299,8 @@ export default function TechAdminMyTeam() {
           <div className="rounded-lg border border-border bg-background px-3 py-2">
             <p className="text-[11px] text-muted-foreground">Current Scope</p>
             <p className="font-medium text-foreground text-xs md:text-sm">
-              {revenueSelectedDate
-                ? format(revenueSelectedDate, "dd/MM/yyyy")
+              {revenueDateRange?.from
+                ? formatDateRangeLabel(revenueDateRange)
                 : revenueDayFilter === "all"
                   ? "All Days"
                   : (recentDays[parseInt(revenueDayFilter)]?.label || "All Days")}

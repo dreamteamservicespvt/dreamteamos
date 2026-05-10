@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
+import type { DateRange } from 'react-day-picker';
 import {
   ClipboardList, Plus, Trash2, Eye, CheckCircle2, Edit3, Loader2, AlertCircle,
-  Search, Filter, ChevronDown, ChevronRight, Pencil, X, Save, Undo2, Users, UserCircle, History, Copy, Check, MessageCircle, Phone
+  Search, Filter, ChevronDown, ChevronRight, Pencil, X, Save, Undo2, Users, UserCircle, History, Copy, Check, MessageCircle, Phone, Sparkles
 } from 'lucide-react';
 import { formatPhoneDisplay, getWhatsAppUrl, normalizePhone } from '@/utils/phone';
 import { collection, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, query, where, onSnapshot } from 'firebase/firestore';
@@ -12,9 +13,10 @@ import { useAuthStore } from '@/store/authStore';
 import { useFirestoreCollection } from '@/hooks/useFirestore';
 import { PRICING } from '@/utils/pricing';
 import { formatCurrency, formatDate, formatTime } from '@/utils/formatters';
-import { format, subDays, startOfDay, parseISO, isValid } from 'date-fns';
-import DashboardDayPicker from '@/components/dashboard/DayPicker';
+import { format, subDays, startOfDay } from 'date-fns';
+import DashboardDateRangePicker from '@/components/dashboard/DateRangePicker';
 import type { WorkAssignment, AppUser, DailyCheckin } from '@/types';
+import { formatDateRangeLabel, isDateWithinRange, normalizeDateRange, parseQueryDate, parseQueryDateRange } from '@/utils/dateRange';
 
 const DURATIONS: Record<string, string[]> = {
   wishes: ['20s', '40s'],
@@ -35,12 +37,6 @@ const HAS_POSTER: Record<string, boolean> = {
 };
 
 const VALID_STATUS_FILTERS = ['all', 'assigned', 'in_progress', 'completed', 'verified', 'editing'] as const;
-
-function parseQueryDate(value: string | null): Date | undefined {
-  if (!value) return undefined;
-  const parsed = parseISO(value);
-  return isValid(parsed) ? parsed : undefined;
-}
 
 function isValidDayFilter(value: string | null): value is string {
   return value === 'all' || (typeof value === 'string' && /^[0-4]$/.test(value));
@@ -84,7 +80,7 @@ export default function WorkAssign() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [dayFilter, setDayFilter] = useState<string>('all');
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const [selectedRange, setSelectedRange] = useState<DateRange | undefined>(undefined);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<{ category: string; duration: string; pricePerUnit: number; businessName: string; businessWhatsapp: string } | null>(null);
   const [memberSearch, setMemberSearch] = useState('');
@@ -101,14 +97,22 @@ export default function WorkAssign() {
       setStatusFilter(statusParam);
     }
 
-    const parsedDate = parseQueryDate(searchParams.get('date'));
-    if (parsedDate) {
-      setSelectedDate(parsedDate);
-      setDayFilter('0');
+    const parsedRange = parseQueryDateRange(searchParams.get('from'), searchParams.get('to'));
+      
+    if (parsedRange?.from) {
+      setSelectedRange(parsedRange);
+      setDayFilter('all');
       return;
     }
 
-    setSelectedDate(undefined);
+    const parsedDate = parseQueryDate(searchParams.get('date'));
+    if (parsedDate) {
+      setSelectedRange({ from: parsedDate, to: parsedDate });
+      setDayFilter('all');
+      return;
+    }
+
+    setSelectedRange(undefined);
     const dayParam = searchParams.get('day');
     setDayFilter(isValidDayFilter(dayParam) ? dayParam : 'all');
   }, [searchParams]);
@@ -367,9 +371,8 @@ export default function WorkAssign() {
     }
 
     // Date filter
-    if (selectedDate) {
-      const dateStr = format(selectedDate, 'yyyy-MM-dd');
-      result = result.filter(a => a.date === dateStr);
+    if (selectedRange?.from) {
+      result = result.filter(a => isDateWithinRange(a.date, selectedRange));
     } else if (dayFilter !== 'all') {
       const dayIndex = parseInt(dayFilter);
       const dayDateStr = recentDays[dayIndex]?.dateStr;
@@ -384,7 +387,7 @@ export default function WorkAssign() {
     }
 
     return result.sort((a, b) => (b.assignedAt?.seconds || 0) - (a.assignedAt?.seconds || 0));
-  }, [assignments, statusFilter, searchQuery, techMembers, selectedDate, dayFilter, recentDays]);
+  }, [assignments, statusFilter, searchQuery, techMembers, selectedRange, dayFilter, recentDays]);
 
   const getMemberName = (uid: string) => allUsers.find(u => u.uid === uid)?.name || 'Unknown';
 
@@ -416,13 +419,14 @@ export default function WorkAssign() {
   const memberViewQuery = useMemo(() => {
     const params = new URLSearchParams();
     params.set('status', statusFilter);
-    if (selectedDate) {
-      params.set('date', format(selectedDate, 'yyyy-MM-dd'));
+    if (selectedRange?.from) {
+      params.set('from', format(selectedRange.from, 'yyyy-MM-dd'));
+      params.set('to', format(selectedRange.to ?? selectedRange.from, 'yyyy-MM-dd'));
     } else {
       params.set('day', dayFilter);
     }
     return params.toString();
-  }, [statusFilter, selectedDate, dayFilter]);
+  }, [statusFilter, selectedRange, dayFilter]);
 
   const completedVisibleAssignments = useMemo(
     () => filteredAssignments.filter((a) => a.status === 'completed'),
@@ -568,15 +572,21 @@ export default function WorkAssign() {
       )}
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-accent/20 p-4 md:p-5 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
+          <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-medium text-primary">
+            <Sparkles className="w-3 h-3" />
+            Assignment control center
+          </div>
           <h1 className="text-xl md:text-2xl font-bold text-foreground">Work Assignments</h1>
           <p className="text-xs md:text-sm text-muted-foreground mt-1">Assign, track and verify AI ad generation work</p>
         </div>
         <button onClick={() => setShowForm(!showForm)}
-          className="flex items-center justify-center space-x-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium w-full sm:w-auto">
+          className="flex h-10 items-center justify-center space-x-2 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 w-full sm:w-auto">
           <Plus className="w-4 h-4" /><span>{showForm ? 'Cancel' : 'New Assignment'}</span>
         </button>
+        </div>
       </div>
 
       {/* Create Form */}
@@ -669,16 +679,34 @@ export default function WorkAssign() {
       )}
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 flex-wrap">
+      <div className="rounded-2xl border border-border/70 bg-card/80 p-3 md:p-4 shadow-sm backdrop-blur-sm">
+        <div className="mb-3 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-foreground">Filter assignments</p>
+            <p className="text-xs text-muted-foreground">Compare overall status or inspect a specific member workload across a custom date range.</p>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {selectedRange?.from
+              ? `Showing assignments from ${formatDateRangeLabel(selectedRange)}`
+              : dayFilter === "all"
+                ? "Showing all assignments"
+                : dayFilter === "0"
+                  ? "Today's assignments + incoming (assigned) from past"
+                  : `Showing assignments from ${recentDays[parseInt(dayFilter)]?.label}`
+            }
+          </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 flex-wrap">
         <div className="relative flex-1 min-w-0">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input type="text" placeholder="Search..."
             value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none" />
+            className="h-10 w-full rounded-xl border border-border/70 bg-background pl-9 pr-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20" />
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
-            className="border rounded-lg px-2 md:px-3 py-2 text-xs md:text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none flex-1 sm:flex-none">
+            className="h-10 rounded-xl border border-border/70 bg-background px-3 text-xs md:text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20 flex-1 sm:flex-none">
             <option value="all">All Status</option>
             <option value="assigned">Assigned</option>
             <option value="in_progress">In Progress</option>
@@ -686,42 +714,31 @@ export default function WorkAssign() {
             <option value="verified">Verified</option>
             <option value="editing">Editing</option>
           </select>
-          {!selectedDate && (
+          {!selectedRange?.from && (
             <select value={dayFilter} onChange={(e) => setDayFilter(e.target.value)}
-              className="border rounded-lg px-2 md:px-3 py-2 text-xs md:text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none flex-1 sm:flex-none">
+              className="h-10 rounded-xl border border-border/70 bg-background px-3 text-xs md:text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20 flex-1 sm:flex-none">
               {recentDays.map((d, i) => (
                 <option key={d.dateStr} value={String(i)}>{d.label} ({format(d.date, "dd/MM")})</option>
               ))}
               <option value="all">All Days</option>
             </select>
           )}
-          <DashboardDayPicker selectedDate={selectedDate} onSelect={(d) => { setSelectedDate(d); if (d) setDayFilter('0'); }} />
-          {selectedDate && (
-            <button onClick={() => setSelectedDate(undefined)} className="text-xs text-muted-foreground hover:text-foreground">Clear</button>
+          <DashboardDateRangePicker value={selectedRange} onSelect={(range) => { setSelectedRange(normalizeDateRange(range)); if (range?.from) setDayFilter('all'); }} />
+          {(selectedRange?.from || dayFilter !== 'all') && (
+            <button onClick={() => { setSelectedRange(undefined); setDayFilter('all'); }} className="h-10 rounded-xl border border-border/70 px-3 text-xs font-medium text-muted-foreground hover:bg-accent/60 hover:text-foreground">Clear</button>
           )}
           <button
             onClick={() => handleVerifyAll(completedVisibleAssignments)}
             disabled={verifyingAll || completedVisibleAssignments.length === 0}
-            className="flex items-center gap-1.5 px-2 md:px-3 py-2 text-xs md:text-sm font-medium rounded-lg bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex h-10 items-center gap-1.5 rounded-xl bg-green-100 px-3 text-xs md:text-sm font-medium text-green-700 transition-colors hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 disabled:cursor-not-allowed disabled:opacity-50"
             title="Verify all completed assignments in current filter"
           >
             {verifyingAll ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
             <span>{verifyingAll ? 'Verifying...' : `Verify All (${completedVisibleAssignments.length})`}</span>
           </button>
         </div>
+        </div>
       </div>
-
-      {/* Day info */}
-      <p className="text-xs text-muted-foreground">
-        {selectedDate
-          ? `Showing assignments from ${format(selectedDate, "dd/MM/yyyy")}`
-          : dayFilter === "all"
-            ? "Showing all assignments"
-            : dayFilter === "0"
-              ? "Today's assignments + incoming (assigned) from past"
-              : `Showing assignments from ${recentDays[parseInt(dayFilter)]?.label}`
-        }
-      </p>
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 md:gap-3">
@@ -758,7 +775,7 @@ export default function WorkAssign() {
         </div>
         {filteredWorkload.length === 0 ? (
           <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-            {workloadSearch.trim() ? 'No members match this business name.' : 'No active assignments today.'}
+            {workloadSearch.trim() ? 'No members match this business name.' : selectedRange?.from || dayFilter === 'all' ? 'No assignments in this range.' : 'No active assignments today.'}
           </div>
         ) : (
           <div className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">

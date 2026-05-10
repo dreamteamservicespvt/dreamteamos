@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import type { DateRange } from 'react-day-picker';
 import {
   ArrowLeft, ClipboardList, Trash2, CheckCircle2, Edit3, Loader2,
   Pencil, X, Save, Undo2, Search, Copy, Check, MessageCircle
@@ -12,9 +13,10 @@ import { useFirestoreCollection } from '@/hooks/useFirestore';
 import { PRICING } from '@/utils/pricing';
 import { formatCurrency, formatDate, formatTime } from '@/utils/formatters';
 import { formatPhoneDisplay, getWhatsAppUrl, normalizePhone } from '@/utils/phone';
-import { format, subDays, startOfDay, parseISO, isValid } from 'date-fns';
-import DashboardDayPicker from '@/components/dashboard/DayPicker';
+import { format, subDays, startOfDay } from 'date-fns';
+import DashboardDateRangePicker from '@/components/dashboard/DateRangePicker';
 import type { WorkAssignment, AppUser } from '@/types';
+import { formatDateRangeLabel, isDateWithinRange, normalizeDateRange, parseQueryDate, parseQueryDateRange } from '@/utils/dateRange';
 
 const DURATIONS: Record<string, string[]> = {
   wishes: ['20s', '40s'],
@@ -41,12 +43,6 @@ const statusColors: Record<string, string> = {
 };
 
 const VALID_STATUS_FILTERS = ['all', 'assigned', 'in_progress', 'completed', 'verified', 'editing'] as const;
-
-function parseQueryDate(value: string | null): Date | undefined {
-  if (!value) return undefined;
-  const parsed = parseISO(value);
-  return isValid(parsed) ? parsed : undefined;
-}
 
 function isValidDayFilter(value: string | null): value is string {
   return value === 'all' || (typeof value === 'string' && /^[0-4]$/.test(value));
@@ -112,7 +108,7 @@ export default function MemberAssignments() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dayFilter, setDayFilter] = useState<string>('0');
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const [selectedRange, setSelectedRange] = useState<DateRange | undefined>(undefined);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<{ category: string; duration: string; pricePerUnit: number; businessName: string; businessWhatsapp: string } | null>(null);
   const [confirmAction, setConfirmAction] = useState<{ type: 'delete' | 'sendback'; id: string; assignedTo?: string; title: string } | null>(null);
@@ -133,14 +129,21 @@ export default function MemberAssignments() {
       setStatusFilter('all');
     }
 
-    const parsedDate = parseQueryDate(searchParams.get('date'));
-    if (parsedDate) {
-      setSelectedDate(parsedDate);
-      setDayFilter('0');
+    const parsedRange = parseQueryDateRange(searchParams.get('from'), searchParams.get('to'));
+    if (parsedRange?.from) {
+      setSelectedRange(parsedRange);
+      setDayFilter('all');
       return;
     }
 
-    setSelectedDate(undefined);
+    const parsedDate = parseQueryDate(searchParams.get('date'));
+    if (parsedDate) {
+      setSelectedRange({ from: parsedDate, to: parsedDate });
+      setDayFilter('all');
+      return;
+    }
+
+    setSelectedRange(undefined);
     const dayParam = searchParams.get('day');
     setDayFilter(isValidDayFilter(dayParam) ? dayParam : '0');
   }, [searchParams, memberId]);
@@ -182,9 +185,8 @@ export default function MemberAssignments() {
     if (statusFilter !== 'all') result = result.filter(a => a.status === statusFilter);
 
     // Date filter
-    if (selectedDate) {
-      const dateStr = format(selectedDate, 'yyyy-MM-dd');
-      result = result.filter(a => a.date === dateStr);
+    if (selectedRange?.from) {
+      result = result.filter(a => isDateWithinRange(a.date, selectedRange));
     } else if (dayFilter !== 'all') {
       const dayIndex = parseInt(dayFilter);
       const dayDateStr = recentDays[dayIndex]?.dateStr;
@@ -198,7 +200,7 @@ export default function MemberAssignments() {
     }
 
     return result.sort((a, b) => (b.assignedAt?.seconds || 0) - (a.assignedAt?.seconds || 0));
-  }, [allAssignments, memberId, statusFilter, selectedDate, dayFilter, recentDays]);
+  }, [allAssignments, memberId, statusFilter, selectedRange, dayFilter, recentDays]);
 
   const filteredAssignments = useMemo(() => {
     if (!searchQuery.trim()) return memberAssignments;
@@ -489,7 +491,7 @@ export default function MemberAssignments() {
             <option value="verified">Verified</option>
             <option value="editing">Editing</option>
           </select>
-          {!selectedDate && (
+          {!selectedRange?.from && (
             <select value={dayFilter} onChange={(e) => setDayFilter(e.target.value)}
               className="border rounded-lg px-2 md:px-3 py-2 text-xs md:text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none flex-1 sm:flex-none">
               {recentDays.map((d, i) => (
@@ -498,9 +500,9 @@ export default function MemberAssignments() {
               <option value="all">All Days</option>
             </select>
           )}
-          <DashboardDayPicker selectedDate={selectedDate} onSelect={(d) => { setSelectedDate(d); if (d) setDayFilter('0'); }} />
-          {selectedDate && (
-            <button onClick={() => setSelectedDate(undefined)} className="text-xs text-muted-foreground hover:text-foreground">Clear</button>
+          <DashboardDateRangePicker value={selectedRange} onSelect={(range) => { setSelectedRange(normalizeDateRange(range)); if (range?.from) setDayFilter('all'); }} />
+          {(selectedRange?.from || dayFilter !== 'all') && (
+            <button onClick={() => { setSelectedRange(undefined); setDayFilter('0'); }} className="text-xs text-muted-foreground hover:text-foreground">Clear</button>
           )}
           <button
             onClick={() => handleVerifyAll(completedVisibleAssignments)}
@@ -515,6 +517,16 @@ export default function MemberAssignments() {
       </div>
 
       {/* Stats Row */}
+      <p className="text-xs text-muted-foreground">
+        {selectedRange?.from
+          ? `Showing assignments from ${formatDateRangeLabel(selectedRange)}`
+          : dayFilter === 'all'
+            ? 'Showing all assignments'
+            : dayFilter === '0'
+              ? 'Showing today\'s assignments + active items from past days'
+              : `Showing assignments from ${recentDays[parseInt(dayFilter)]?.label}`}
+      </p>
+
       <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
         {['assigned', 'in_progress', 'editing', 'completed', 'verified'].map(status => {
           const count = filteredAssignments.filter(a => a.status === status).length;

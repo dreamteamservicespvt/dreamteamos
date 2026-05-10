@@ -5,12 +5,14 @@ import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { formatCurrency } from "@/utils/formatters";
 import { format, subDays, startOfDay } from "date-fns";
+import type { DateRange } from "react-day-picker";
 import type { AppUser, WorkAssignment } from "@/types";
-import { Users, Video, CheckCircle, Clock, TrendingUp, ArrowDownUp, ClipboardList, Search } from "lucide-react";
+import { Users, Video, CheckCircle, Clock, TrendingUp, ArrowDownUp, ClipboardList, Search, Sparkles } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
-import DashboardDayPicker from "@/components/dashboard/DayPicker";
+import DashboardDateRangePicker from "@/components/dashboard/DateRangePicker";
+import { formatDateRangeLabel, isDateWithinRange, normalizeDateRange } from "@/utils/dateRange";
 
 export default function TechAdminDashboard() {
   const currentUser = useAuthStore((s) => s.user);
@@ -18,7 +20,7 @@ export default function TechAdminDashboard() {
   const [members, setMembers] = useState<AppUser[]>([]);
   const [assignments, setAssignments] = useState<WorkAssignment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const [selectedRange, setSelectedRange] = useState<DateRange | undefined>(undefined);
   const [dayFilter, setDayFilter] = useState<string>('all');
   const [sortOrder, setSortOrder] = useState<'high' | 'low'>(() => (localStorage.getItem('dash_sortOrder') as 'high' | 'low') || 'high');
   const [sortBy, setSortBy] = useState<'videos' | 'assigned'>(() => (localStorage.getItem('dash_sortBy') as 'videos' | 'assigned') || 'videos');
@@ -61,9 +63,8 @@ export default function TechAdminDashboard() {
   const teamAssignments = assignments.filter((a) => memberIds.includes(a.assignedTo) && a.assignedBy === currentUser?.uid);
 
   // Filter by selected date or day filter
-  const dateStr = selectedDate ? format(selectedDate, "yyyy-MM-dd") : null;
   const filteredAssignments = (() => {
-    if (dateStr) return teamAssignments.filter((a) => a.date === dateStr);
+    if (selectedRange?.from) return teamAssignments.filter((a) => isDateWithinRange(a.date, selectedRange));
     if (dayFilter !== 'all') {
       const dayIndex = parseInt(dayFilter);
       const dayDateStr = recentDays[dayIndex]?.dateStr;
@@ -72,8 +73,8 @@ export default function TechAdminDashboard() {
     return teamAssignments;
   })();
 
-  const filterLabel = selectedDate
-    ? format(selectedDate, "dd/MM/yyyy")
+  const filterLabel = selectedRange?.from
+    ? formatDateRangeLabel(selectedRange)
     : dayFilter === 'all'
       ? 'All Days'
       : recentDays[parseInt(dayFilter)]?.label || 'All Days';
@@ -132,29 +133,35 @@ export default function TechAdminDashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-accent/20 p-4 md:p-5 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
+          <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-medium text-primary">
+            <Sparkles size={12} />
+            Performance window
+          </div>
           <h1 className="font-display text-xl md:text-2xl font-bold text-foreground">Tech Dashboard</h1>
           <p className="text-muted-foreground text-xs md:text-sm mt-1">
-            {selectedDate ? `Showing data for ${format(selectedDate, "dd/MM/yyyy")}` : dayFilter !== 'all' ? `Showing data for ${recentDays[parseInt(dayFilter)]?.label}` : "Overview of your team's work"}
+            {selectedRange?.from ? `Showing data for ${formatDateRangeLabel(selectedRange)}` : dayFilter !== 'all' ? `Showing data for ${recentDays[parseInt(dayFilter)]?.label}` : "Overview of your team's work"}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          {!selectedDate && (
+        <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:justify-end">
+          {!selectedRange?.from && (
             <select value={dayFilter} onChange={(e) => setDayFilter(e.target.value)}
-              className="border rounded-lg px-2 md:px-3 py-1.5 md:py-2 text-xs md:text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none">
+              className="h-10 rounded-xl border border-border/70 bg-background/80 px-3 text-xs md:text-sm text-foreground shadow-sm outline-none focus:ring-2 focus:ring-primary/20">
               <option value="all">All Days</option>
               {recentDays.map((d, i) => (
                 <option key={d.dateStr} value={String(i)}>{d.label} ({format(d.date, "dd/MM")})</option>
               ))}
             </select>
           )}
-          <DashboardDayPicker selectedDate={selectedDate} onSelect={(d) => { setSelectedDate(d); if (d) setDayFilter('all'); }} />
-          {(selectedDate || dayFilter !== 'all') && (
-            <button onClick={() => { setSelectedDate(undefined); setDayFilter('all'); }} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+          <DashboardDateRangePicker value={selectedRange} onSelect={(range) => { setSelectedRange(normalizeDateRange(range)); if (range?.from) setDayFilter('all'); }} />
+          {(selectedRange?.from || dayFilter !== 'all') && (
+            <button onClick={() => { setSelectedRange(undefined); setDayFilter('all'); }} className="h-10 rounded-xl border border-border/70 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground">
               Clear
             </button>
           )}
+        </div>
         </div>
       </div>
 
