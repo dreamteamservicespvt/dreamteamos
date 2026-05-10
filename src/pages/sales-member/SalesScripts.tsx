@@ -22,6 +22,7 @@ import {
   ArrowRight,
   Palette,
   MapPin,
+  GraduationCap,
   Download,
   X,
   FileDown,
@@ -216,8 +217,8 @@ function OtherServicesFAQ() {
 }
 
 /* ═══════════════════════════════════════════════════════
-   SCRIPT DATA — 9 TABS
-   ═══════════════════════════════════════════════════════ */
+  SCRIPT DATA
+  ═══════════════════════════════════════════════════════ */
 
 function buildTabs(greeting: string, userName: string, festivalName: string): ScriptTab[] {
   const g = greeting; // "morning" | "afternoon" | "evening"
@@ -497,7 +498,125 @@ function buildTabs(greeting: string, userName: string, festivalName: string): Sc
       ],
     },
 
-    /* ──────── 3. PROMOTIONAL AD (Direct Lead) ──────── */
+    /* ──────── 3. EDUCATION SCRIPT ──────── */
+    {
+      id: "education",
+      label: "Education Script",
+      icon: GraduationCap,
+      color: "text-indigo-500",
+      sections: [
+        {
+          title: "1. Introduction & Main Pitch",
+          icon: Phone,
+          content: (
+            <>
+              <Line>
+                "Hello Sir/Madam, Namaste! Dream Team Services nunchi <strong>{n}</strong> matladutunnanu."
+              </Line>
+              <Line>
+                "Sir, mi school ledha college ki kotha admissions penchadaniki ma daggara overall ga <strong>3 packages</strong> unnayi sir. Miku clear ga use cases explain chestanu, so that mi requirement ki thagatuga meeru select chuskovachu."
+              </Line>
+
+              <Label>Admission Intro - 20 sec - ₹499</Label>
+              <Line>
+                "First package vachesariki <strong>'Admission Intro'</strong> sir. Ee video meeku <strong>20 seconds</strong> ostundi. Indulo first 15 seconds mi institute gurinchi short information and contact details ostayi, last 5 seconds mi address and contact details tho poster ostundi. Idi just WhatsApp status pettukodaniki leda short info pass cheyadaniki baguntundi sir. Deeni package price <strong>₹499</strong>."
+              </Line>
+
+              <Label>Admission Promotion Ad - 40 sec - ₹999</Label>
+              <Line>
+                "Second package vachesariki <strong>'Admission Promotion Ad'</strong> sir. Idi <strong>40 seconds</strong> video sir. Indulo 35 seconds mi campus facilities, transport, experienced faculty lanti main highlights anni detail ga cover chestam. Last 5 seconds admission poster ostundi. Facebook, Instagram, mariyu WhatsApp lo kotha admissions kosam ads run cheyadaniki idi chala baga use avuthundi sir. Admission Promotion Ad package price <strong>₹999</strong>."
+              </Line>
+
+              <Label>Complete Institutional Film - 1 min 15 sec - ₹1,999</Label>
+              <Line>
+                "Third package vachesariki <strong>'Complete Institutional Film'</strong> sir. Idi <strong>1 minute 15 seconds</strong> ostundi sir. Evaraina parents mi ad chusi details kosam WhatsApp lo message chesinappudu, vallaki direct ga ee video pampiste saripothundi sir. Indulo mi complete infrastructure, vision, and total offerings cover avuthayi kabatti parents ki chala high trust build avuthundi. Deeni package price <strong>₹1,999</strong>."
+              </Line>
+
+              <Line>
+                "Sir, memu mostly anni educational institutes ki prefer chesedi <strong>40 seconds Admission Promotion Ad</strong> sir. Endukante 40 seconds ane time Facebook/Insta ads ki perfect, parents scroll chestunnappudu aagi chudataniki and mi specialities anni cover cheyadaniki exact ga set avuthundi. Leads kuda baga generate avadaniki use avuthundhi."
+              </Line>
+
+              <PriceTable
+                headers={["Package", "Duration", "Price"]}
+                rows={
+                  <>
+                    <tr className="border-b border-border">
+                      <td className="py-2 px-3 text-sm">Admission Intro</td>
+                      <td className="py-2 px-3 text-sm">20 sec</td>
+                      <td className="py-2 px-3 text-sm font-semibold">₹499</td>
+                    </tr>
+                    <tr className="border-b border-border">
+                      <td className="py-2 px-3 text-sm">Admission Promotion Ad</td>
+                      <td className="py-2 px-3 text-sm">40 sec</td>
+                      <td className="py-2 px-3 text-sm font-semibold">₹999</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3 text-sm">Complete Institutional Film</td>
+                      <td className="py-2 px-3 text-sm">1 min 15 sec</td>
+                      <td className="py-2 px-3 text-sm font-semibold">₹1,999</td>
+                    </tr>
+                  </>
+                }
+              />
+            </>
+          ),
+        },
+        {
+          title: "2. Closing",
+          icon: CheckCircle2,
+          content: (
+            <Line>
+              "Cheppandi sir mee institution ki edhe cheyimantaru? Only '20 Admission Intro', '40 Admission Promotion Ad', ledha '1 Complete Institutional Film' ?"
+            </Line>
+          ),
+        },
+        {
+          title: "3. After Package Selection",
+          icon: IndianRupee,
+          content: (
+            <>
+              <Label>What to collect from client</Label>
+              <div className="bg-card border border-border rounded-lg p-3 space-y-2">
+                <Line>✅ Institution logo</Line>
+                <Line>✅ Institution details</Line>
+                <Line>✅ Visiting card ledha address and contact details</Line>
+              </div>
+
+              <Label>Process</Label>
+              <div className="bg-card border border-border rounded-lg p-3 space-y-2">
+                <Line>
+                  "Sir, mee institution logo, institution details and visiting card ledha address and contact details share cheyiandi sir."
+                </Line>
+                <Line>
+                  "At the same time memu kuda meku maa vaipu nunchi meeru select chesukuna package details and ma company QR send chestham sir."
+                </Line>
+                <Line>
+                  "Payment chesi screenshot pettandi sir, nenu ma team ki forward chesthanu. Mee work immediately start chestharu sir."
+                </Line>
+              </div>
+            </>
+          ),
+        },
+        {
+          title: "4. Objection Handling & FAQs",
+          icon: HelpCircle,
+          content: (
+            <>
+              <FraudFAQ />
+              <VideoPreviewFAQ />
+              <Label>1. "Which package is best for admissions?"</Label>
+              <div className="bg-card border border-border rounded-lg p-3 space-y-2">
+                <Line>
+                  "Sir, kotha admissions kosam quickest results ravali ante memu mostly <strong>40 seconds Admission Promotion Ad</strong> recommend chesthamu sir. Short ga untundi, highlights anni cover avuthayi, social media ads ki perfect ga set avuthundi."
+                </Line>
+              </div>
+            </>
+          ),
+        },
+      ],
+    },
+
+    /* ──────── 4. PROMOTIONAL AD (Direct Lead) ──────── */
     {
       id: "promotional",
       label: "Promotional Ad",
