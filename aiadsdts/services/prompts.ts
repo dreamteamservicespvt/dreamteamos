@@ -778,6 +778,7 @@ Facial characteristics (MANDATORY — REAL PREMIUM BEAUTY, NOT AI GLAMOUR):
 ${!isFestival ? `
 HAIR — LUXURY BLOWOUT / STYLED:
 ${attireType === 'professional' ? `SUIT BRANCH:
+Strictly natural rich black hair ONLY from the very first frame onward — no brown, no auburn, no burgundy, no copper, no highlights, no sun-browned ends, and no lighting-induced color shift.
 Silky dark black hair with a polished luxury finish —
 professionally groomed, healthy shine, soft controlled movement —
 styled as a premium blowout, refined straight finish, or
@@ -853,49 +854,53 @@ JEWELLERY (LUXURIOUS CELEBRITY-LEVEL — MANDATORY):
 For saree outputs, jewellery must stay STRICTLY semi-jewellery only — premium, elegant, feminine, clearly visible, but never heavy, never bridal, never overloaded.
 Use tasteful gold or gold-diamond semi-jewellery only: refined necklace, elegant earrings, and limited bangles when needed.
 NEVER use heavy bridal sets, temple-jewellery overload, chunky layers, or religious accessories.` : `ATTIRE (BUSINESS-THEMED COLOR — MANDATORY — MUST BE DYNAMIC PER BUSINESS):
-${attireType === 'traditional' ? `**ULTRA-LUXURY** elegant modern Indian saree — the saree MUST be **OUTRAGEOUSLY EXPENSIVE-LOOKING** and **UNIQUELY DYNAMIC** based on the specific business type and brand colors. Do NOT use the same saree for different businesses.
+${attireType === 'traditional' ? `ATTIRE (COMMERCIAL DESIGNER SAREE — BUSINESS-SPECIFIC LUXURY — MANDATORY):
+This is a COMMERCIAL campaign saree branch — not a festival greeting saree, not bridal styling, and not a wedding-catalog look.
+The saree must feel like it was chosen specifically for THIS business's premium national campaign.
+• Start from the actual business identity: logo colors, brand tone, business category, and the material language of the premises must influence the saree direction
+• The saree MUST be **DYNAMIC and UNIQUE per business sector** — do NOT reuse one safe pastel saree across different clients
+• When the brand supports modern corporate elegance, prefer refined soft pastel or muted-tone sarees with clean designer restraint, polished drape, and a youthful premium blouse silhouette
+• For stronger luxury businesses, the saree may become deeper, richer, or more dramatic — but it must still read as a commercial campaign wardrobe, never bridal overload and never festival-specific celebration styling
 
-When the brand tone supports modern corporate elegance, prefer soft pastel or muted-tone sarees with a minimal contemporary design, neatly draped in a polished professional style with a well-fitted blouse and youthful charm.
-For saree outputs, the girl must wear STRICTLY semi-jewellery only — premium, elegant, feminine, and visible, but never heavy, never bridal, never overloaded.
+Color guide by business type (each MUST feel like a distinct luxury campaign wardrobe decision):
+• Medical/Healthcare: elegant ivory / pearl white / sterile soft blue silk with restrained zari accents — clinical clarity with premium grace
+• Real Estate: deep royal blue, emerald, sandstone-gold, or powerful jewel-tone silk with authoritative premium richness
+• Fashion/Boutique: rich wine, couture mauve, deep plum, or editorial pastel silk with refined designer finish
+• Food/Catering: warm maroon, saffron-gold, caramel, or tasteful inviting jewel tones that still photograph as upscale hospitality luxury
+• Tech/Software/Agency: navy, charcoal-silver, graphite-blue, steel-toned tissue silk, or modern cool-luxury palettes with subtle geometric detail
+• Education/Consultancy: deep academic blue, dignified forest green, parchment-cream, or heritage luxury tones with controlled elegance
+• Solar/Energy: premium green-blue, sage-gold, sunlit emerald, or progressive clean-energy luxury tones
+• Laundry/Wash: pearl ivory, champagne beige, powder blue, or pristine clean luxury hues with believable silk sheen
+• Tea/Beverage: leaf-green, warm gold, earthy maroon, or plantation-rich premium tones that still feel polished and modern
+• Jewellery: deep maroon, royal plum, luxe cream-gold, or boutique-showroom silk with expensive rich depth
+• Electrical/Hardware: steel grey, deep blue, graphite-silver, or premium industrial-luxury tones with restrained zari detail
+• Default: derive the saree palette from the strongest business colors and interior material cues while keeping it campaign-worthy and unmistakably premium
 
-Color guide by business type (each MUST feel like a different designer collection):
-• Medical/Healthcare: Elegant soft ivory / pearl white Kanchipuram silk with subtle blue-and-gold zari border — clinical elegance meets luxury
-• Real Estate: Deep royal blue OR rich emerald green Kanjeevaram with heavy gold zari temple border — conveys power, prosperity
-• Fashion/Boutique: Rich royal purple OR deep wine Banarasi silk with intricate gold brocade all-over — pure couture luxury
-• Food/Catering: Warm maroon OR golden yellow pure silk with traditional paisley/mango motifs in real gold zari — warm, rich, inviting
-• Tech/Software/Agency: Modern navy blue OR charcoal tissue silk with subtle silver-platinum zari geometric patterns — futuristic elegance
-• Education: Deep blue OR forest green Kanchipuram with classic gold temple border — academic prestige meets tradition
-• Solar/Energy: Deep green with solar-blue tones, gold zari with contemporary motifs — progressive luxury
-• Laundry/Wash: Soft pearl ivory / champagne beige Banarasi with subtle blue and copper zari — pristine, fresh, elegant
-• Tea/Beverage: Rich leaf-green Kanjeevaram with warm golden zari paisley motifs — earthy opulence
-• Jewellery: Rich royal maroon OR deep purple with heavy gold Kanchipuram temple border — jewellery-showroom worthy
-• Electrical/Hardware: Professional deep blue OR steel grey silk with subtle silver zari — industrial premium
-• Default: Premium colors extracted from the brand logo palette in Kanchipuram/Banarasi silk with gold zari
+**CRITICAL: Each business MUST get a VISUALLY DIFFERENT saree based on its sector, palette, and brand mood.**
 
-**CRITICAL: Each business MUST get a VISUALLY DIFFERENT saree based on its business sector.**
-
-**FABRIC MUST LOOK OUTRAGEOUSLY EXPENSIVE** — pure handwoven Kanchipuram / Banarasi / Kanjeevaram silk with real gold zari work, heavy temple borders or intricate brocade. The saree must look like it costs ₹50,000–₹2,00,000 — the kind worn at film premieres or luxury brand launches.
-Pallu drape must be elegant, heavy, and gravity-realistic — NOT flat, NOT stiff.
-Fabric should show natural gravity, deep realistic folds, and creases with **visible silk sheen under lighting**.
-Styling must feel film-industry celebrity level, not catalog or wedding shoot.
-• Commercial traditional saree output must preserve visible pores · micro skin texture · soft tonal variation · true photographic realism — never bridal-doll glam, mannequin polish, or synthetic beauty.` : `ATTIRE (PREMIUM BEIGE/PASTEL SUIT — LUXURY CAMPAIGN REALISM — MANDATORY):
+**FABRIC MUST LOOK UNEQUIVOCALLY EXPENSIVE** — premium handwoven silk, Banarasi/Kanchipuram/Kanjeevaram families, or equivalent designer-level fabric with believable gravity, deep folds, refined texture, and real silk sheen under business lighting.
+• The saree must look like a top stylist selected it for a serious ad campaign — expensive, camera-ready, graceful, and memorable, yet still believable inside a real office/store environment
+• Pallu drape must be elegant, weighty, and gravity-realistic — never flat, never cardboard-stiff, never synthetic costume cloth
+• The blouse must feel tailored and premium, with youthful charm, sharp fit, polished finishing, and zero generic wedding-blouse energy
+• For saree outputs, the jewellery must stay STRICTLY semi-jewellery only — elegant, feminine, clearly visible, premium, and controlled, never heavy, never bridal, never overloaded
+• Commercial traditional saree output must preserve visible pores · micro skin texture · soft tonal variation · truthful Indian complexion · true photographic realism — never bridal-doll glam, mannequin polish, catalog stiffness, or synthetic beauty
+• HARD NEGATIVE: no wedding-stage styling, no temple-jewellery overload, no festive garlands, no bridal makeup, and no generic "traditional wear" shortcut that ignores the actual business identity` : `ATTIRE (PREMIUM BEIGE/PASTEL SUIT — LUXURY CAMPAIGN REALISM — MANDATORY):
 This is NOT generic officewear and NOT a stock corporate portrait.
 It must feel like a luxury Indian commercial campaign where a youthful, exceptionally beautiful actress-level ambassador is styled in a premium feminine suit.
 This branch is for COMMERCIAL AD TYPE behavior only — never festival-themed, never celebratory, never saree-led, and never decorated with garlands, diyas, rangoli, or cultural-event props.
 • The professional suit color MUST be DYNAMIC and BUSINESS-SPECIFIC — do NOT keep giving the same beige or same neutral suit to every client
-• First derive the suit palette from the actual business type, logo colors, brand mood, and if applicable the festival theme — the outfit should feel chosen for THIS exact client campaign, not reused from a universal template
+• First derive the suit palette from the actual business type, logo colors, brand mood, and interior material cues — the outfit should feel chosen for THIS exact client campaign, not reused from a universal template
 • Suit palette direction by business type:
   - Medical/Healthcare: soft ivory, pearl white, sterile beige with subtle blue-grey accents
   - Real Estate: sandstone beige, camel, mocha, muted gold-beige, or warm taupe with authority
   - Tech/Software/Agency: cool stone beige, mist grey-beige, champagne-taupe, soft steel greige, or muted blue-grey accents
   - Education/Consultancy: elegant almond, parchment beige, academic taupe, muted forest-beige, or dignified cream tones
   - Solar/Energy: soft sand, sunlit beige, warm khaki-beige, muted sage-beige, or clean energy neutrals
-  - Food/Catering/Hospitality: warm cream, honey beige, latte, caramel beige, or tasteful festive warm neutrals
+  - Food/Catering/Hospitality: warm cream, honey beige, latte, caramel beige, or tasteful hospitality warm neutrals
   - Jewellery/Luxury Retail: champagne gold-beige, blush taupe, rose-beige, luxe cream, or refined mocha-glow tones
   - Automobile: graphite-beige, metallic greige, sand-taupe, espresso-beige, or premium showroom neutrals
   - Beauty/Fashion: blush-beige, rosy taupe, champagne blush, warm nude, or couture pastel neutrals
   - Default: derive a premium suit tone from the logo and brand mood while staying elegant, feminine, and campaign-worthy
-• Festival mode professional suits must still respect the client brand and can borrow a subtle festive undertone from the festival palette while remaining premium and wearable
 • Avoid repeating the same suit color across different businesses unless the business palette genuinely demands it
 • CASTING RULE FOR SUIT OUTPUTS: choose a premium Indian woman with youthful softness, bright expressive eyes, gentle rosy warmth, and believable campaign-level beauty — never a repeated default face, never a copied stock-model look, never a severe western executive archetype
 • BUSINESS-SPECIFIC MODEL VARIATION: the face, complexion depth, styling nuance, and casting energy must change according to the specific [BUSINESS TYPE], brand personality, and client context so different businesses do NOT keep getting the same woman in a different suit
@@ -903,6 +908,7 @@ This branch is for COMMERCIAL AD TYPE behavior only — never festival-themed, n
 • BLOUSE: crisp white fitted blouse or shirt under the blazer — clean collar line, fresh bright contrast, polished professional finish, and real fabric structure
 • TROUSERS: slim formal trousers in the same business-specific suit family — straight or gently tapered cut, graceful premium drape, clean hem, and a sharp luxury-commercial silhouette
 • Fabric: expensive matte-luxe suiting with believable weight, texture, sleeve fall, trouser break, lapel structure, and natural movement — never shiny polyester, never stiff costume fabric
+• The tailoring must feel expensive because of real structure, real fabric behavior, and commercial styling polish — not because of theatrical costume exaggeration
 • Styling must preserve beauty and femininity: the woman should still feel glamorous, attractive, warm, actress-level beautiful, youthful, and intelligent in the suit — never harsh, lifeless, plain, or overly stern
 • Suit-girl casting must follow luxury beauty logic: stop-scrolling face value, star-quality smile, alive direct eyes, and the kind of premium photogenic appeal associated with top Indian national campaigns
 • The suit must read as a luxury fashion-commercial look, not HR portrait clothing, not a bank-uniform vibe, not startup officewear, and not stock-photo executive styling
@@ -913,7 +919,7 @@ This branch is for COMMERCIAL AD TYPE behavior only — never festival-themed, n
 • Hair should feel premium and feminine with silky dark black hair only, healthy shine, and polished movement that flatters the face — refined blowout, elegant straight finish, or controlled soft waves are preferred over stiff corporate hair
 • Pose and styling should feel soft-confident and premium: graceful posture, subtle elegance, poised warmth, camera-ready polish — not rigid boardroom stiffness
 • Preserve true photographic realism: visible pores · natural warm Indian complexion · real fabric tension · authentic tailoring details · no plastic beauty-filter skin · no synthetic fashion-render feel
-• The final suit impression must feel like a real luxury beauty-fashion campaign shot in the premium front-office or consultation-facing zone of the actual business — beautiful woman first, premium tailoring second, realism always
+• The final suit impression must feel like a real luxury beauty-fashion campaign shot inside the best executive-facing or consultation-facing zone of the actual business — beautiful woman first, premium tailoring second, business truth always
 • The suit branch must NEVER drift into a plain corporate employee look — if the model does not still feel top-tier beautiful and campaign-worthy, regenerate`}
 
 JEWELLERY (MANDATORY — ALWAYS REQUIRED):
@@ -960,19 +966,32 @@ Take the ATTACHED LOGO image and place it exactly as-is as real physical signage
 • The signage should feel naturally installed in the real office/store, not pasted onto a fake backdrop
 
 **THE FINAL IMPRESSION:**
-The viewer should feel: "This is the real business premises, beautifully and believably decorated for ${festivalName}."` : `ENVIRONMENT (REAL BUSINESS PREMISES — KEEP IT CONCISE):
-Photographed inside the real, operational, premium [BUSINESS TYPE] premises — the location must read instantly as the actual business, not a generic luxury set.
-• Use extracted business/store evidence first: the strongest counters, shelves, equipment, consultation zones, workstations, signage, display units, materials, or architectural cues that identify this business
-• If store or office images are available, mirror their layout, finishes, lighting, reflections, display rhythm, and spatial depth
-• For EVERY commercial clip, choose the exact functional zone of the premises that best matches that clip's voice-over line, business claim, and selling point — do not reuse one generic premium corner across multiple clips
-• The visible background must prove the spoken message of that clip using real business cues: service counters, demo areas, consultation desks, product displays, workstations, certification walls, entrances, waiting zones, or operational fixtures relevant to the line
-${isProfessional ? `• For professional suit outputs, choose the clean executive-facing or consultation-facing zone that best matches that clip's voice-over meaning — reception office, consultation area, glass-partition workspace, meeting zone, service desk, or branded front-office section with natural daylight, refined wood/stone materials, indoor greenery, and modern corporate polish
-• The background should feel like a bright contemporary corporate office captured on location, with glass windows, indoor plants, clean desk surfaces, and subtle laptop or notebook presence when natural to the scene
-• The background must instantly communicate the client business through the strongest proof surface in frame — branded wall, service counter, consultation bay, sample wall, certification display, premium product shelf, brochure stand, or other business-specific cue
-• Never introduce festival decorations, celebration props, garlands, diyas, rangoli, or cultural-event cues in this professional commercial branch
-• The background should never feel like a fake set, an empty luxury hall, or a generic coworking stock photo` : ''}
-• Keep the background premium, believable, and specific with only the strongest business cues in frame
-• Avoid studio backdrops, fake lobbies, empty luxury halls, hotel interiors, or CGI-looking spaces
+The viewer should feel: "This is the real business premises, beautifully and believably decorated for ${festivalName}."` : `ENVIRONMENT (REAL BUSINESS PREMISES — MOST CRITICAL SECTION):
+**The background MUST look like the REAL operating [BUSINESS TYPE] premises first; premium commercial polish is a supporting layer, not a replacement set.**
+
+**STEP 1 — RECREATE THE REAL BUSINESS PREMISES (DOMINANT BASE LAYER):**
+Build a believable, operational [BUSINESS TYPE] location using extracted business details, store/office images, products, signage, brand cues, and spatial evidence.
+If actual store or office images are available, mirror their architecture and material reality: wall finishes, flooring, counters, shelving, cabinetry, furniture, equipment, lighting fixtures, aisle widths, partitions, glass reflections, display rhythm, and real working depth.
+Business-specific elements MUST remain clearly visible so the viewer instantly recognizes the business category without guessing.
+
+**STEP 2 — ADD BUSINESS-PROOF LAYER (SUPPORTING BUT CLEARLY VISIBLE):**
+Choose the exact functional zone that proves the spoken selling point of that clip.
+Use real proof elements that belong to this business: consultation desks, reception counters, treatment bays, product displays, certification walls, sample boards, workstations, shelving, demo tables, waiting zones, service counters, brochure stands, branded installations, or equipment clusters relevant to the line.
+The proof layer should occupy meaningful visual space in the frame — not disappear into a generic blur.
+
+${isProfessional ? `**STEP 3 — ADD PREMIUM CORPORATE ATMOSPHERE (WITHOUT CATEGORY DRIFT):**
+For professional suit outputs, build a bright executive-facing or consultation-facing zone with natural daylight, refined wood/stone/glass materials, indoor greenery, clean desk surfaces, subtle laptop or notebook presence when natural, and premium front-office polish.
+The atmosphere must feel like a real on-location corporate/business environment captured on its best day — never a fake luxury hall, hotel lobby, generic coworking stock background, or empty boardroom set.
+Never introduce festival decorations, celebration props, garlands, diyas, rangoli, or cultural-event cues in this professional commercial branch.` : `**STEP 3 — ADD PREMIUM COMMERCIAL ATMOSPHERE (WITHOUT FESTIVAL OR BRIDAL DRIFT):**
+For commercial traditional saree outputs, keep the real business premises dominant while elevating the scene through premium counters, polished display surfaces, refined signage, believable glass/reflection behavior, rich but realistic materials, and commercial lighting that flatters both the ambassador and the business.
+The space must feel aspirational and expensive, but still like a real business captured on its best day — never a wedding hall, festival stage, palace set, or generic luxury backdrop.`}
+
+**REALISM RULES:**
+• The business identity must stay obvious at first glance
+• Premium polish must come from real materials, real lighting falloff, real reflections, and real working surfaces — not fake set dressing
+• The chosen background zone must visibly prove the exact voice-over meaning of that clip
+• Keep believable circulation space, depth, operational details, and material transitions — not a flat decorative backdrop
+• The environment should feel dense, specific, and premium without becoming cluttered, theatrical, or category-confused
 
 COMMERCIAL REALISM FORMULA (MANDATORY — DO NOT WEAKEN):
 • FACE ANCHOR: wonderful premium Indian ambassador face with Bollywood-heroine-tier screen presence, brand-ambassador polish, and photogenic sharp attractive features
@@ -985,7 +1004,10 @@ LOGO PLACEMENT (CRITICAL — DO NOT MODIFY THE LOGO):
 Place the attached logo exactly as-is as real physical signage inside the premises.
 • Pixel-perfect, unchanged, naturally lit, properly installed, and clearly secondary to the subject
 • Mount it in the upper background behind the model so the full logo remains completely visible without cropping, blocking, blur, tilt, stretching, or redesign
-• The model, hair, shoulders, props, or furniture must never cover any part of the logo`}
+• The model, hair, shoulders, props, or furniture must never cover any part of the logo
+
+**THE FINAL IMPRESSION:**
+${isProfessional ? `The viewer should feel: "This is the real business premises, photographed like a national premium corporate campaign with a stunning ambassador, credible business proof, and high-end executive polish."` : `The viewer should feel: "This is the real business premises, photographed like a national premium commercial campaign with a stunning saree-clad ambassador and believable business-specific luxury."`}`}
 
 CAMERA & PHOTO REALISM:
 • Professional DSLR (85mm or 50mm portrait lens look)
@@ -1004,7 +1026,9 @@ The image must feel like a real commercial photoshoot captured inside the busine
 The ${festivalName} theme should be unmistakable, but the business environment must still remain believable and specific.
 Viewer reaction should be: **"This looks like a real premium business campaign shot during ${festivalName}, inside their actual place."**` : `A **real, premium [BUSINESS TYPE] campaign photograph** featuring one **distinct premium female brand ambassador** representing [BUSINESS NAME].
 The image must look like a real high-end commercial campaign — elegant, believable, aspirational, and fully photographic.
+The environment must feel like the business's actual best-facing zone, with strong category proof, premium materials, and believable on-location depth.
 The woman must read as a real human model with truthful Indian complexion, visible skin realism, natural facial detail, and elite commercial-photo polish.
+Viewer reaction should be: **"This looks like a real national-level campaign photographed inside the actual business, and the background clearly proves what the company does."**
 FINAL MANDATORY CHECK:
 If the generated woman does not look like she belongs
 on the cover of Vogue India, Femina, or a Tanishq
@@ -1103,7 +1127,7 @@ export const MULTI_FRAME_SYSTEM_PROMPT = (
     {
       name: 'HERO ESTABLISHING SHOT',
       location: 'Main reception area / front counter / primary welcome zone of the business',
-      camera: 'Close mid-shot, straight-on at chest or eye level, subject visually dominant in frame with roughly 70% frame presence — classic brand ambassador establishing shot',
+      camera: 'Close mid-shot, straight-on at chest or eye level, subject perfectly centered in frame with balanced left-right spacing and roughly 70% frame presence — classic brand ambassador establishing shot',
       pose: 'Hands gently folded at waist, one hand resting over the other, confident welcoming posture — brand ambassador stance',
       purpose: 'Introduce the brand ambassador and the business atmosphere. The viewer sees the model AND instantly recognizes the business type from the environment.',
     },
@@ -1178,6 +1202,12 @@ Just like in real TV commercials — the actress doesn't stand in one spot for 3
 • Each location must be selected because it supports the meaning of that clip's script, not just because it looks premium
 • The viewer sees the FULL business through the model's journey
 
+${adType === AdType.FESTIVAL ? '' : `**COMMERCIAL LOCATION DENSITY RULE:**
+Every commercial clip must keep the real business premises as the dominant base layer, then add the strongest business-proof layer for that line.
+For commercial traditional, premium richness may come from real counters, polished displays, reflective glass, signage, and believable material depth — never bridal or festive staging.
+For commercial professional, use executive-facing, consultation-facing, showcase, or proof-heavy business zones — never empty boardrooms, generic coworking corners, or stock office backgrounds.
+Commercial polish must come from real materials, real light, and real proof surfaces, not fake set dressing.`}
+
 **LOCATION PLANNING PER BUSINESS TYPE:**
 The AI must pick ${segmentCount} DIFFERENT spots from within the specific [BUSINESS TYPE] establishment:
 Each chosen spot must match the exact service claim, business proof point, or emotional promise being spoken in that clip's voice-over line.
@@ -1238,7 +1268,7 @@ ${Array.from({ length: segmentCount }, (_, i) => {
    ❌ South Indian, actress, celebrity, model appearance, film star, glamorous
    
    **✅ INSTEAD — Write ONLY this one line about the model:**
-  "Use the attached reference frame image as the exact identity and styling anchor for this clip — same woman, same core styling, same wardrobe family, same jewellery set, perfectly consistent with the attached reference frame."
+  "Use the attached reference frame image as the exact identity and styling anchor for this clip — same woman, same core styling, the exact same natural rich black hair from the first frame onward, same wardrobe family, same jewellery set, perfectly consistent with the attached reference frame."
    
    **✅ THEN FOCUS 100% ON THESE (the ONLY things you should describe):**
   • 📍 The NEW LOCATION within the business (a completely different spot from previous clips — describe the area in rich detail, and make sure it is the best fit for Clip ${clipNum}'s voice-over message)
@@ -1269,6 +1299,7 @@ ${Array.from({ length: segmentCount }, (_, i) => {
 
 **⚠️ WHAT MUST NEVER CHANGE (MODEL CONSISTENCY IS SACRED):**
 • **Model's identity** — exact same person, same face, same beauty level in every clip
+• **Hair color baseline** — the exact same natural rich black hair established in Clip 1 must remain unchanged in every later clip, with no brown, auburn, burgundy, copper, highlight, or lighting-driven color drift
 • **Attire & jewellery** — exact same outfit, exact same jewellery, exact same fabric
 • **Overall establishment** — same business, same décor style, same color palette
 • **Color grading & mood** — consistent cinematic feel throughout
@@ -1276,7 +1307,7 @@ ${Array.from({ length: segmentCount }, (_, i) => {
 
 **⛔⛔⛔ ABSOLUTE ZERO-TOLERANCE RULE FOR CLIPS 2+ ⛔⛔⛔**
 For ANY clip after Clip 1, you must write ZERO words about the model's appearance.
-The ONLY reference to the model should be: "Use the attached reference frame image as the exact identity and styling anchor for this clip — same woman, same core styling, same wardrobe family, same jewellery set, perfectly consistent with the attached reference frame."
+The ONLY reference to the model should be: "Use the attached reference frame image as the exact identity and styling anchor for this clip — same woman, same core styling, the exact same natural rich black hair from the first frame onward, same wardrobe family, same jewellery set, perfectly consistent with the attached reference frame."
 
 NEVER write about: face, hair, skin, beauty, makeup, attire, fabric, saree, silk, jewellery, necklace, earrings, bangles, eyes, lips, complexion, height, figure, or ANY physical/clothing description.
 Even writing "beautiful woman in silk saree" will make the AI generate a DIFFERENT person.
@@ -1352,7 +1383,7 @@ Create a Ultra-realistic DSLR photograph, single image, 9:16 vertical…
 [Full SUBJECT section with face, hair, beauty description]
 [Full ATTIRE section]
 [Full JEWELLERY section]
-[Full ENVIRONMENT section with business + decorations]
+[Full ENVIRONMENT section with real business base layer ${adType === AdType.FESTIVAL ? '+ festival cues' : '+ business-proof layer'}]
 [Full CAMERA & REALISM section]
 [Full OVERALL RESULT]
 
@@ -1368,11 +1399,15 @@ POSE: Subject positioned on the right side using rule-of-thirds, one hand gestur
 
 NEW LOCATION: She has moved to the product showcase area of the office. Behind her, a large sleek monitor displays website designs and AI-powered tools. Modern display shelving with tech awards and client project samples visible. The attached logo signage is mounted in the upper background on the far wall, fully visible and unmodified.
 
-Festival decorations from the office are still visible — mango leaf thoranam above the display, marigold garlands framing the monitor, brass deepam on the desk corner, rangoli patterns continuing on the floor.
+${adType === AdType.FESTIVAL ? `Festival decorations from the office are still visible — mango leaf thoranam above the display, marigold garlands framing the monitor, brass deepam on the desk corner, rangoli patterns continuing on the floor.
 
 LIGHTING: Cool blue-tinted ambient light from the display screens blends with warm golden festival lamp glow — creating a unique tech-meets-tradition atmosphere.
 
-MOOD: Professional, aspirational — showcasing the company's innovative capabilities while celebrating Ugadi.
+MOOD: Professional, aspirational — showcasing the company's innovative capabilities while celebrating ${festivalName || 'the festival'}.` : `BUSINESS PROOF LAYER: The strongest commercial proof surfaces are clearly visible — branded presentation materials, premium product/service displays, certification frames, consultation assets, or operational fixtures that make the business instantly legible without looking staged.
+
+LIGHTING: Natural daylight from the left window mixes with soft practical interior lighting and believable reflections on real materials — polished, premium, and fully photographic.
+
+MOOD: Professional, aspirational, and persuasive — showcasing the company's actual strengths with national-campaign polish.`}
 
 **^^^ THAT is the correct length and format for Clips 2+. Notice: NO facial description, NO hair, NO attire, NO jewellery, NO "Facial characteristics" section, NO "HAIR" section, NO "ATTIRE" section. Just location + pose + camera + lighting + mood.**
 
