@@ -6,6 +6,7 @@ import {
   VOICEOVER_REPAIR_SYSTEM_PROMPT,
   VOICEOVER_SYSTEM_PROMPT,
   getAttireMode,
+  getProfessionalSuitPaletteForBusiness,
 } from "../services/prompts";
 
 describe("professional main-frame prompts", () => {
@@ -25,11 +26,27 @@ describe("professional main-frame prompts", () => {
   });
 
   it("keeps the exported attire helper aligned with the strengthened suit direction", () => {
-    const attire = getAttireMode("professional");
+    const attire = getAttireMode("professional", "tech");
 
-    expect(attire).toContain("premium beige/pastel luxury campaign suit");
+    expect(attire).toContain("premium business-specific luxury campaign suit");
+    expect(attire).toContain("soft steel greige");
     expect(attire).toContain("crisp white fitted blouse");
     expect(attire).toContain("slim formal trousers");
+    expect(attire).toContain("chosen for this exact business");
+  });
+
+  it("derives a more client-specific suit palette from business context", () => {
+    const palette = getProfessionalSuitPaletteForBusiness(
+      "default",
+      JSON.stringify({
+        businessName: "Ruby Smile Dental Studio",
+        brandColors: ["maroon", "gold"],
+        description: "Premium dental clinic with maroon and gold logo walls"
+      })
+    );
+
+    expect(palette).toContain("rich maroon-taupe");
+    expect(palette).toContain("logo colors");
   });
 
   it("keeps traditional prompts free of professional-only suit markers", () => {
@@ -54,10 +71,12 @@ describe("multi-frame hero shot guidance", () => {
 
     expect(prompt).toContain("subject perfectly centered");
     expect(prompt).toContain("Hands gently folded at waist, one hand resting over the other");
-  expect(prompt).toContain("explicit natural rich black hair only rule");
+    expect(prompt).toContain("explicit natural rich black hair only rule");
     expect(prompt).toContain("the exact same natural rich black hair from the first frame onward");
     expect(prompt).toContain("Hair color baseline");
     expect(prompt).toContain("COMMERCIAL LOCATION DENSITY RULE");
+    expect(prompt).toContain("approved business-specific palette");
+    expect(prompt).toContain("may shift the suit tone within that same palette family");
     expect(prompt).not.toContain("Festival decorations from the office are still visible");
   });
 });
@@ -102,7 +121,7 @@ describe("voice-over prompt hardening", () => {
 
     expect(prompt).toContain("Every clip must contain EXACTLY 18 spoken words");
     expect(prompt).toContain("జీరో, వన్, టూ, త్రీ, ఫోర్, ఫైవ్, సిక్స్, సెవెన్, ఎయిట్, నైన్");
-    expect(prompt).toContain("group the digit names with commas for clean pauses");
+    expect(prompt).toContain("group the digit names mainly in pairs");
     expect(prompt).toContain("No duplicate clips");
   });
 

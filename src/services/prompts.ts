@@ -50,6 +50,82 @@ export const getSareeColorForBusiness = (businessType: string): string => {
   return colors[businessType] || colors.default;
 };
 
+const getBrandDrivenSuitPaletteFromContext = (businessContext: string): string | null => {
+  const info = businessContext.toLowerCase();
+  if (!info || info === 'default') return null;
+
+  const contextPalettes: Array<{ keywords: string[]; palette: string }> = [
+    {
+      keywords: ['maroon', 'burgundy', 'wine', 'ruby', 'crimson', 'oxblood'],
+      palette: 'rich maroon-taupe, oxblood-mocha, muted wine-beige, or rose-bronze suiting lifted from the client brand palette'
+    },
+    {
+      keywords: ['emerald', 'green', 'sage', 'olive', 'mint'],
+      palette: 'sage-greige, muted olive-taupe, eucalyptus stone, or warm sand tailoring with controlled green brand accents'
+    },
+    {
+      keywords: ['navy', 'blue', 'teal', 'cyan', 'azure', 'royal blue'],
+      palette: 'cool stone, steel greige, mist taupe, or pearl beige tailoring shaped by navy-teal brand accents'
+    },
+    {
+      keywords: ['gold', 'champagne', 'mustard', 'amber'],
+      palette: 'champagne taupe, warm almond, soft camel, or luxe cream tailoring with restrained gold undertones'
+    },
+    {
+      keywords: ['pink', 'rose', 'blush', 'peach', 'coral'],
+      palette: 'blush taupe, rose-beige, powder mocha, or champagne blush tailoring with polished feminine warmth'
+    },
+    {
+      keywords: ['black', 'charcoal', 'graphite', 'slate', 'grey', 'gray', 'silver'],
+      palette: 'graphite greige, slate taupe, metallic stone, or smoke-beige tailoring with restrained charcoal depth'
+    },
+    {
+      keywords: ['purple', 'plum', 'violet', 'lavender', 'lilac'],
+      palette: 'mauve-taupe, plum-beige, soft truffle, or couture lavender-greige tailoring with editorial restraint'
+    },
+    {
+      keywords: ['orange', 'terracotta', 'rust'],
+      palette: 'caramel beige, terracotta-taupe, honey stone, or warm sand tailoring with refined amber warmth'
+    }
+  ];
+
+  const matchedPalette = contextPalettes.find(({ keywords }) => keywords.some((keyword) => info.includes(keyword)));
+  return matchedPalette?.palette || null;
+};
+
+export const getProfessionalSuitPaletteForBusiness = (businessType: string, businessContext: string = ''): string => {
+  const palettes: Record<string, string> = {
+    medical: 'soft ivory, pearl white, or sterile beige with subtle blue-grey accents for a clean healthcare-trust feel',
+    realestate: 'sandstone beige, camel, mocha, muted gold-beige, or warm taupe for authority and premium trust',
+    fashion: 'blush-beige, rosy taupe, champagne blush, warm nude, or couture pastel neutrals with polished femininity',
+    food: 'warm cream, honey beige, latte, caramel beige, or tasteful hospitality neutrals with inviting warmth',
+    tech: 'cool stone beige, mist grey-beige, champagne-taupe, soft steel greige, or muted blue-grey accents for modern polish',
+    education: 'elegant almond, parchment beige, academic taupe, muted forest-beige, or dignified cream tones',
+    solar: 'soft sand, sunlit beige, warm khaki-beige, muted sage-beige, or clean-energy neutrals',
+    laundry: 'fresh ivory, soft sand, pearl beige, clean greige, or airy blue-grey neutrals that still feel premium',
+    mattress: 'soft cream, almond beige, powder taupe, serene greige, or comfort-led pastel neutrals',
+    electrical: 'graphite-beige, steel greige, sand-taupe, muted slate-beige, or precise service-led neutrals',
+    tea: 'warm cream, leaf-tinted beige, honey sand, soft caramel, or earthy premium neutrals',
+    jewellery: 'champagne gold-beige, blush taupe, rose-beige, luxe cream, or refined mocha-glow tones',
+    security: 'commanding taupe-charcoal, graphite-beige, muted metallic greige, or disciplined stone neutrals',
+    automobile: 'graphite-beige, metallic greige, sand-taupe, espresso-beige, or showroom-grade premium neutrals',
+    pharma: 'clean ivory, sterile cream, pearl beige, or subtle clinical blue-grey neutrals',
+    transport: 'structured stone beige, muted khaki, cool taupe, or logistics-grade premium neutrals with restrained blue accents',
+    fitness: 'sculpted greige, athletic sand, warm stone, or energetic premium neutrals with subtle slate accents',
+    beauty: 'blush-beige, rosy taupe, champagne blush, soft nude, or elegant pastel neutrals with luxury glow',
+    default: 'a premium business-specific suit palette derived from the logo colors, brand mood, and interior materials rather than a reusable default beige'
+  };
+
+  const sectorPalette = palettes[businessType] || palettes.default;
+  const brandPalette = getBrandDrivenSuitPaletteFromContext(businessContext);
+
+  if (!brandPalette) {
+    return sectorPalette;
+  }
+
+  return `${brandPalette}; keep the final suit within this sector direction as well: ${sectorPalette}`;
+};
+
 // Get environment description based on business type
 export const getEnvironmentForBusiness = (businessType: string, businessName: string): string => {
   const environments: Record<string, string> = {
@@ -597,15 +673,16 @@ export const getFestivalTheme = (festivalName: string): FestivalTheme => {
 
 // ===== END OF FESTIVAL THEME SYSTEM =====
 
-export const getAttireMode = (attireType: string, businessType: string = 'default') => {
+export const getAttireMode = (attireType: string, businessType: string = 'default', businessContext: string = '') => {
   if (attireType === 'traditional') {
     const sareeColor = getSareeColorForBusiness(businessType);
     return `Attire: premium traditional Indian saree — ${sareeColor}. High-quality fabric, crisp pleats, natural realistic folds, elegant and luxurious advertising look.`;
   } else {
-    return `Attire: premium beige/pastel luxury campaign suit.
-Preferred Colors: beige, cream, taupe, champagne, blush-beige, or soft sand.
+    const suitPalette = getProfessionalSuitPaletteForBusiness(businessType, businessContext);
+    return `Attire: premium business-specific luxury campaign suit.
+Preferred Colors: ${suitPalette}.
 Style: well-tailored feminine blazer, crisp white fitted blouse, slim formal trousers, delicate gold chain, and small premium studs.
-Look: youthful Indian brand ambassador with polished beauty, real corporate-luxury styling, and premium commercial realism.`;
+Look: youthful Indian brand ambassador with polished beauty, real corporate-luxury styling, premium commercial realism, and a palette chosen for this exact business instead of the same beige suit used for every client.`;
   }
 };
 
@@ -890,6 +967,7 @@ It must feel like a luxury Indian commercial campaign where a youthful, exceptio
 This branch is for COMMERCIAL AD TYPE behavior only — never festival-themed, never celebratory, never saree-led, and never decorated with garlands, diyas, rangoli, or cultural-event props.
 • The professional suit color MUST be DYNAMIC and BUSINESS-SPECIFIC — do NOT keep giving the same beige or same neutral suit to every client
 • First derive the suit palette from the actual business type, logo colors, brand mood, and interior material cues — the outfit should feel chosen for THIS exact client campaign, not reused from a universal template
+• Within one commercial campaign, keep the tailoring silhouette premium and consistent but allow clip-to-clip suit shade variation inside the approved business-specific palette when the script, business zone, or lighting makes that version feel more authentic
 • Suit palette direction by business type:
   - Medical/Healthcare: soft ivory, pearl white, sterile beige with subtle blue-grey accents
   - Real Estate: sandstone beige, camel, mocha, muted gold-beige, or warm taupe with authority
@@ -1266,7 +1344,7 @@ ${Array.from({ length: segmentCount }, (_, i) => {
    ❌ South Indian, actress, celebrity, model appearance, film star, glamorous
    
    **✅ INSTEAD — Write ONLY this one line about the model:**
-  "Use the attached reference frame image as the exact identity and styling anchor for this clip — same woman, same core styling, the exact same natural rich black hair from the first frame onward, same wardrobe family, same jewellery set, perfectly consistent with the attached reference frame."
+  "Use the attached reference frame image as the exact identity and styling anchor for this clip — same woman, same core styling, the exact same natural rich black hair from the first frame onward, same wardrobe family rooted in the approved business-specific palette, same jewellery set, and for professional commercial suit campaigns only you may shift the suit tone within that same palette family instead of repeating one identical beige in every clip."
    
    **✅ THEN FOCUS 100% ON THESE (the ONLY things you should describe):**
   • 📍 The NEW LOCATION within the business (a completely different spot from previous clips — describe the area in rich detail, and make sure it is the best fit for Clip ${clipNum}'s voice-over message)
@@ -1294,11 +1372,12 @@ ${Array.from({ length: segmentCount }, (_, i) => {
 • **😊 Subject EXPRESSION** — match the script mood (welcoming → proud → trustworthy → warm → inviting)
 • **🔍 Background content** — different business elements visible at each new location
 • **💡 Lighting nuance** — natural variation as model moves (near window = warmer, deeper inside = ambient, near displays = spotlit)
+• **🧥 Professional suit shade nuance** — in commercial professional campaigns, the suit may shift within the approved business-specific palette family so the client does not get one repeated beige tone in every frame
 
 **⚠️ WHAT MUST NEVER CHANGE (MODEL CONSISTENCY IS SACRED):**
 • **Model's identity** — exact same person, same face, same beauty level in every clip
 • **Hair color baseline** — the exact same natural rich black hair established in Clip 1 must remain unchanged in every later clip, with no brown, auburn, burgundy, copper, highlight, or lighting-driven color drift
-• **Attire & jewellery** — exact same outfit, exact same jewellery, exact same fabric
+• **Attire & jewellery** — keep the same jewellery set and the same wardrobe family; traditional outputs stay in the exact same outfit, while commercial professional outputs may vary only the suit shade inside the approved business-specific palette family without changing the overall styling identity
 • **Overall establishment** — same business, same décor style, same color palette
 • **Color grading & mood** — consistent cinematic feel throughout
 • **Image quality** — same DSLR realism level
@@ -1306,7 +1385,7 @@ ${Array.from({ length: segmentCount }, (_, i) => {
 
 **⛔⛔⛔ ABSOLUTE ZERO-TOLERANCE RULE FOR CLIPS 2+ ⛔⛔⛔**
 For ANY clip after Clip 1, you must write ZERO words about the model's appearance.
-The ONLY reference to the model should be: "Use the attached reference frame image as the exact identity and styling anchor for this clip — same woman, same core styling, the exact same natural rich black hair from the first frame onward, same wardrobe family, same jewellery set, perfectly consistent with the attached reference frame."
+The ONLY reference to the model should be: "Use the attached reference frame image as the exact identity and styling anchor for this clip — same woman, same core styling, the exact same natural rich black hair from the first frame onward, same wardrobe family rooted in the approved business-specific palette, same jewellery set, and for professional commercial suit campaigns only you may shift the suit tone within that same palette family instead of repeating one identical beige in every clip."
 
 NEVER write about: face, hair, skin, beauty, makeup, attire, fabric, saree, silk, jewellery, necklace, earrings, bangles, eyes, lips, complexion, height, figure, or ANY physical/clothing description.
 Even writing "beautiful woman in silk saree" will make the AI generate a DIFFERENT person.

@@ -9,7 +9,9 @@ import {
   VOICEOVER_REPAIR_SYSTEM_PROMPT,
   VEO_SEGMENT_SYSTEM_PROMPT,
   STOCK_IMAGE_SYSTEM_PROMPT,
-  EXTRACTION_SYSTEM_PROMPT
+  EXTRACTION_SYSTEM_PROMPT,
+  detectBusinessType,
+  getProfessionalSuitPaletteForBusiness
 } from "./prompts";
 import { fileToBase64, readFileAsText } from "../utils/fileHelpers";
 
@@ -942,6 +944,10 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
       
     : '';
   
+  const serializedBusinessInfo = JSON.stringify(businessInfo);
+  const detectedBusinessType = detectBusinessType(serializedBusinessInfo);
+  const professionalSuitPalette = getProfessionalSuitPaletteForBusiness(detectedBusinessType, serializedBusinessInfo);
+
   const mainFrameUserPrompt = `Generate ${segmentCount} unique Main Frame image prompts (one per 8-second clip) for:${commercialMainFramePriorityNote}
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
   AD TYPE: ${formData.adType}
@@ -954,7 +960,7 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
   REALISM RULE: The environment must look like the actual business premises using extracted business/store context. In festival mode, keep the real business location dominant and layer festival cues naturally on top. In commercial mode, every clip must rebuild the real premises as the dominant base layer, then use the strongest business-proof surface for that exact voice-over segment, then premium atmosphere from real materials, real light, and real fixtures.
   COMMERCIAL QUALITY RULE: For commercial ads, strictly follow the realism formula: Face Anchor + Light Source + Skin Truth + Scene Depth + Camera Physics. If any one is missing, the frame is not acceptable.
   TRADITIONAL ATTIRE RULE: When ATTIRE = Traditional, keep the saree business-specific, commercial, premium, and realistic — never bridal, never wedding-stage, never festival-styled. Use polished real business zones, premium counters, refined signage, believable glass/reflection behavior, and strong category proof instead of decorative clutter.
-  PROFESSIONAL ATTIRE RULE: When ATTIRE = Professional, build the frame in a bright contemporary corporate-facing or consultation-facing business zone with premium beige/pastel suit styling, semi-jewellery only, zero festival cues, and the strongest business-proof surfaces in frame. The suit woman must be strictly 20 to 25 years old, distinctly Indian, actress-level beautiful, smiling warmly, and impossible to confuse with a generic employee portrait. Her hair in Clip 1 must read as unmistakably natural rich black only, never soft brown or highlighted under warm light. For Clip 1, use the exact folded-hands hero pose at the waist like the traditional and festival anchor frame. From Clip 2 onward, the hand position and pose must change according to that clip's exact voice-over script and location.
+  PROFESSIONAL ATTIRE RULE: When ATTIRE = Professional, build the frame in a bright contemporary corporate-facing or consultation-facing business zone with a business-specific premium suit palette. For this business, the preferred suit palette is ${professionalSuitPalette}. Do NOT reuse the same beige/pastel suit family across unrelated businesses unless the brand cues clearly justify it. Also do NOT force one identical suit tone into every clip: keep the same premium wardrobe family, but allow clip-to-clip shade shifts inside this approved business palette when the exact location, script beat, or brand materials support it. Keep semi-jewellery only, zero festival cues, and the strongest business-proof surfaces in frame. The suit woman must be strictly 20 to 25 years old, distinctly Indian, actress-level beautiful, smiling warmly, and impossible to confuse with a generic employee portrait. Her hair in Clip 1 must read as unmistakably natural rich black only, never soft brown or highlighted under warm light. For Clip 1, use the exact folded-hands hero pose at the waist like the traditional and festival anchor frame. From Clip 2 onward, the hand position and pose must change according to that clip's exact voice-over script and location.
   MAIN FRAME FRAMING RULE: In EVERY clip, the model must appear in a close mid-shot, occupy roughly 70% of the frame, and maintain direct eye contact with the camera.
   LOGO RULE: Use only the attached logo exactly as provided, mounted in the upper background behind the model, fully visible and never cropped, blocked, blurred, stretched, tilted, or redesigned.
   CONTINUATION FRAME RULE: For every clip after Clip 1, write the prompt as if the image generator is also receiving the attached Clip 1 reference frame image.
