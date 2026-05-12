@@ -1,26 +1,38 @@
 import { AdType } from '@/types/aiPlatform';
 
+const escapeKeywordForRegex = (keyword: string): string => (
+  keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')
+);
+
+const hasKeyword = (info: string, keyword: string): boolean => (
+  new RegExp(`(^|[^a-z0-9])${escapeKeywordForRegex(keyword)}([^a-z0-9]|$)`).test(info)
+);
+
+const hasAnyKeyword = (info: string, keywords: string[]): boolean => (
+  keywords.some((keyword) => hasKeyword(info, keyword))
+);
+
 // Business type detection for environment and color matching
 export const detectBusinessType = (businessInfo: string): string => {
   const info = businessInfo.toLowerCase();
-  if (info.includes('medical') || info.includes('hospital') || info.includes('clinic') || info.includes('doctor') || info.includes('physician') || info.includes('health')) return 'medical';
-  if (info.includes('real estate') || info.includes('realty') || info.includes('property') || info.includes('builders') || info.includes('construction')) return 'realestate';
-  if (info.includes('fashion') || info.includes('boutique') || info.includes('saree') || info.includes('clothing') || info.includes('couture') || info.includes('garment')) return 'fashion';
-  if (info.includes('food') || info.includes('restaurant') || info.includes('catering') || info.includes('caterer') || info.includes('hotel')) return 'food';
-  if (info.includes('tech') || info.includes('software') || info.includes('app') || info.includes('digital') || info.includes('it ')) return 'tech';
-  if (info.includes('education') || info.includes('school') || info.includes('college') || info.includes('study') || info.includes('abroad') || info.includes('consultant')) return 'education';
-  if (info.includes('solar') || info.includes('energy') || info.includes('power') || info.includes('renewable')) return 'solar';
-  if (info.includes('laundry') || info.includes('wash') || info.includes('dry clean') || info.includes('fabric care')) return 'laundry';
-  if (info.includes('mattress') || info.includes('sleep') || info.includes('furniture') || info.includes('bed')) return 'mattress';
-  if (info.includes('electrical') || info.includes('plumbing') || info.includes('hardware') || info.includes('ac ') || info.includes('air conditioner') || info.includes('appliance')) return 'electrical';
-  if (info.includes('tea') || info.includes('coffee') || info.includes('beverage')) return 'tea';
-  if (info.includes('jewel') || info.includes('gold') || info.includes('diamond')) return 'jewellery';
-  if (info.includes('security') || info.includes('guard') || info.includes('manpower') || info.includes('detective') || info.includes('surveillance') || info.includes('patrol')) return 'security';
-  if (info.includes('automobile') || info.includes('car') || info.includes('bike') || info.includes('vehicle') || info.includes('motor') || info.includes('auto')) return 'automobile';
-  if (info.includes('pharma') || info.includes('medicine') || info.includes('drug') || info.includes('chemist')) return 'pharma';
-  if (info.includes('transport') || info.includes('logistics') || info.includes('courier') || info.includes('cargo') || info.includes('shipping')) return 'transport';
-  if (info.includes('gym') || info.includes('fitness') || info.includes('yoga') || info.includes('sport')) return 'fitness';
-  if (info.includes('beauty') || info.includes('salon') || info.includes('spa') || info.includes('parlour') || info.includes('parlor') || info.includes('cosmetic')) return 'beauty';
+  if (hasAnyKeyword(info, ['medical', 'hospital', 'clinic', 'doctor', 'physician', 'health'])) return 'medical';
+  if (hasAnyKeyword(info, ['real estate', 'realty', 'property', 'builders', 'construction'])) return 'realestate';
+  if (hasAnyKeyword(info, ['fashion', 'boutique', 'saree', 'clothing', 'couture', 'garment'])) return 'fashion';
+  if (hasAnyKeyword(info, ['food', 'restaurant', 'catering', 'caterer', 'hotel'])) return 'food';
+  if (hasAnyKeyword(info, ['education', 'school', 'college', 'study', 'study abroad', 'abroad', 'consultant', 'consultancy', 'counselor', 'counsellor', 'counseling', 'counselling', 'university', 'institute', 'admission', 'admissions', 'visa'])) return 'education';
+  if (hasAnyKeyword(info, ['tech', 'software', 'app', 'digital', 'it'])) return 'tech';
+  if (hasAnyKeyword(info, ['solar', 'energy', 'power', 'renewable'])) return 'solar';
+  if (hasAnyKeyword(info, ['laundry', 'wash', 'dry clean', 'fabric care'])) return 'laundry';
+  if (hasAnyKeyword(info, ['mattress', 'sleep', 'furniture', 'bed'])) return 'mattress';
+  if (hasAnyKeyword(info, ['electrical', 'plumbing', 'hardware', 'ac', 'air conditioner', 'appliance'])) return 'electrical';
+  if (hasAnyKeyword(info, ['tea', 'coffee', 'beverage'])) return 'tea';
+  if (hasAnyKeyword(info, ['jewel', 'gold', 'diamond'])) return 'jewellery';
+  if (hasAnyKeyword(info, ['security', 'guard', 'manpower', 'detective', 'surveillance', 'patrol'])) return 'security';
+  if (hasAnyKeyword(info, ['automobile', 'car', 'bike', 'vehicle', 'motor', 'auto'])) return 'automobile';
+  if (hasAnyKeyword(info, ['pharma', 'medicine', 'drug', 'chemist'])) return 'pharma';
+  if (hasAnyKeyword(info, ['transport', 'logistics', 'courier', 'cargo', 'shipping'])) return 'transport';
+  if (hasAnyKeyword(info, ['gym', 'fitness', 'yoga', 'sport'])) return 'fitness';
+  if (hasAnyKeyword(info, ['beauty', 'salon', 'spa', 'parlour', 'parlor', 'cosmetic'])) return 'beauty';
   return 'default';
 };
 
@@ -93,6 +105,201 @@ const getBrandDrivenSuitPaletteFromContext = (businessContext: string): string |
   return matchedPalette?.palette || null;
 };
 
+export type EducationEnvironmentMode = 'institution' | 'consultancy';
+
+type ShotDesignKey = 'hero' | 'showcase' | 'credibility' | 'detail' | 'closing' | 'alternative';
+
+const EDUCATION_INSTITUTION_KEYWORDS = [
+  'college',
+  'school',
+  'campus',
+  'university',
+  'institute',
+  'institution',
+  'academy',
+  'classroom',
+  'lecture',
+  'lab',
+  'library',
+  'seminar',
+  'students',
+  'student',
+  'faculty',
+  'principal',
+  'admissions',
+  'admission',
+  'department',
+  'training center',
+  'coaching center'
+];
+
+const EDUCATION_CONSULTANCY_KEYWORDS = [
+  'consultant',
+  'consultancy',
+  'counselor',
+  'counsellor',
+  'counseling',
+  'counselling',
+  'study abroad',
+  'overseas',
+  'visa',
+  'immigration',
+  'application',
+  'applications',
+  'ielts',
+  'toefl',
+  'gre',
+  'gmat',
+  'documentation',
+  'admission guidance',
+  'university partner',
+  'foreign education'
+];
+
+const countKeywordMatches = (info: string, keywords: string[]): number => (
+  keywords.reduce((count, keyword) => count + (info.includes(keyword) ? 1 : 0), 0)
+);
+
+export const detectEducationEnvironmentMode = (businessContext: string = ''): EducationEnvironmentMode => {
+  const info = businessContext.toLowerCase();
+
+  if (!info) {
+    return 'institution';
+  }
+
+  const institutionScore = countKeywordMatches(info, EDUCATION_INSTITUTION_KEYWORDS);
+  const consultancyScore = countKeywordMatches(info, EDUCATION_CONSULTANCY_KEYWORDS);
+
+  if (consultancyScore > institutionScore && consultancyScore > 0) {
+    return 'consultancy';
+  }
+
+  return 'institution';
+};
+
+const getEducationSuitPalette = (businessContext: string = ''): string => {
+  const educationMode = detectEducationEnvironmentMode(businessContext);
+
+  if (educationMode === 'consultancy') {
+    return 'elegant almond, dignified cream, polished latte-stone, parchment taupe, or muted olive-beige tones with premium counseling-office polish';
+  }
+
+  return 'parchment beige, sandstone cream, academic stone, cedar taupe, or soft sage-beige tones with premium campus polish';
+};
+
+const getEducationEnvironmentDescription = (businessContext: string = ''): string => {
+  const educationMode = detectEducationEnvironmentMode(businessContext);
+
+  if (educationMode === 'consultancy') {
+    return 'real, operational, premium education consultancy office. Counseling desks, application review tables, brochure stands, university partnership walls, passport or document-review counters, success-story displays, and branded admissions guidance surfaces should define the background. The space should instantly communicate education guidance, admissions support, and counseling credibility';
+  }
+
+  return 'real, operational college, school, or educational institute environment. Campus entrance branding, admissions desk, academic reception, classroom or lecture hall depth, seminar hall cues, library shelves, lab stations, corridor notice boards, student interaction zones, and institutional signage should define the background. The space should instantly communicate live campus energy, education trust, student ambition, and real institutional credibility';
+};
+
+const getEducationLocationPlan = (businessContext: string = ''): string => {
+  const educationMode = detectEducationEnvironmentMode(businessContext);
+
+  if (educationMode === 'consultancy') {
+    return 'Reception / counseling desk → University partnership or destination wall → Application review desk → Brochure or study-material display → Success-story or testimonial wall → Visa or document consultation zone';
+  }
+
+  return 'Campus entrance or branded reception → Admissions desk → Classroom or lecture hall → Library or lab zone → Seminar corridor or notice-board wall → Student interaction or help-desk area';
+};
+
+export const getCommercialLocationPlanForBusiness = (businessType: string, businessContext: string = ''): string => {
+  const locationPlans: Record<string, string> = {
+    medical: 'Reception counter → Consultation room doorway → Treatment or equipment zone → Patient waiting area → Certification wall',
+    realestate: 'Reception desk → Property display wall → Building model showcase → Floor-plan gallery → Client meeting zone',
+    fashion: 'Store entrance → Clothing display racks → Mirror or trial area → Accessory showcase → Designer feature wall',
+    food: 'Host station → Dining area → Kitchen pass or display counter → Beverage station → Ambiance seating zone',
+    tech: 'Reception or lobby → Workspace zone → Meeting-room doorway → Whiteboard or creative wall → Tech equipment area',
+    education: getEducationLocationPlan(businessContext),
+    solar: 'Reception → Solar panel display → System demo area → Certification or partnership wall → Energy model showcase',
+    laundry: 'Counter or reception → Washing machine area → Folded linen display → Pressing zone → Rack or collection area',
+    mattress: 'Showroom reception → Mattress experience bed zone → Comfort comparison wall → Fabric cutaway display → Premium consultation corner',
+    electrical: 'Service counter → Equipment display → Tool showcase area → Demo workstation → Certification wall',
+    tea: 'Counter → Tea packet shelf display → Tasting area → Storage or distribution zone → Brand story wall',
+    jewellery: 'Entrance display case → Gold collection showcase → Diamond section → Trial mirror area → Heritage or trust wall',
+    security: 'Reception → Surveillance monitor zone → Control desk → Equipment or uniform display → Certification wall',
+    automobile: 'Reception desk → Vehicle display zone → Feature wall or spec board → Consultation desk → Delivery or trust wall',
+    pharma: 'Reception or help desk → Prescription or product shelves → Consultation counter → Clinical workstation → Trust or compliance wall',
+    transport: 'Reception → Route map wall → Dispatch desk → Fleet model or proof board → Client service area',
+    fitness: 'Reception → Equipment showcase → Training zone → Consultation desk → Transformation or result wall',
+    beauty: 'Reception → Treatment station → Product display shelves → Styling mirror zone → Brand or trust wall',
+    default: 'Reception → Product or service showcase → Logo or brand wall → Work area → Entrance or closing zone'
+  };
+
+  return locationPlans[businessType] || locationPlans.default;
+};
+
+export const getEnvironmentNegativeRules = (businessType: string, businessContext: string = ''): string => {
+  if (businessType !== 'education') {
+    return 'Never drift into a generic office corner, empty luxury hall, hotel-lobby set, fake coworking floor, or home-like interior. Keep the premises operational, dense, and client-specific.';
+  }
+
+  if (detectEducationEnvironmentMode(businessContext) === 'consultancy') {
+    return 'Never use a home interior, living room, apartment, bedroom, hotel lobby, empty coworking corner, or anonymous office. The space must read as a real education-guidance consultancy with counseling desks, document surfaces, university information walls, and success-proof displays.';
+  }
+
+  return 'Never use a home interior, living room, apartment, bedroom, sofa set, residential staircase, hotel lobby, generic luxury hall, bland coworking corner, or consultancy cubicle. The space must read as a real college, school, campus, institute, lecture, library, lab, admissions, or student-services environment.';
+};
+
+export const getRealisticLogoPlacementGuidance = (businessType: string, businessContext: string = ''): string => {
+  if (businessType === 'education') {
+    if (detectEducationEnvironmentMode(businessContext) === 'consultancy') {
+      return 'Use real counseling-office branding surfaces such as a reception panel, counseling desk backdrop, university partner wall, application-review glass sign, or success-story feature wall. The logo must feel installed into the consultancy architecture, not pasted as an overlay.';
+    }
+
+    return 'Use real campus or institute branding surfaces such as an admissions wall panel, academic reception board, corridor acrylic sign, seminar-hall branding wall, library section sign, student-help desk fascia, or entrance monument sign. The logo must feel physically mounted into the institution architecture, not pasted as an overlay.';
+  }
+
+  return 'Use real architectural branding surfaces such as a reception panel, acrylic wall sign, consultation-zone feature wall, achievement board, showroom fascia, or entrance sign. The logo must feel installed into the premises with believable material depth and reflections, never pasted as an overlay.';
+};
+
+const getShotLogoPlacementForBusiness = (
+  shotKey: ShotDesignKey,
+  businessType: string,
+  businessContext: string = ''
+): string => {
+  const generalPlacements: Record<ShotDesignKey, string> = {
+    hero: 'a reception panel or front-desk brand wall mounted on real architectural material behind the subject',
+    showcase: 'a service-zone sign, department panel, or branded side-wall board integrated with the actual showcase area',
+    credibility: 'an achievement wall, certification board, trust-display panel, or founder-story surface installed behind her',
+    detail: 'a corridor acrylic sign, section label, workstation brand panel, or departmental header built into the space',
+    closing: 'an entrance welcome sign, visitor-facing reception board, or client-service fascia visible behind her',
+    alternative: 'a landmark brand wall, branded partition, or premium architectural feature sign that suits the most iconic zone'
+  };
+
+  if (businessType !== 'education') {
+    return generalPlacements[shotKey];
+  }
+
+  if (detectEducationEnvironmentMode(businessContext) === 'consultancy') {
+    const consultancyPlacements: Record<ShotDesignKey, string> = {
+      hero: 'a counseling-office reception board or front-desk brand panel mounted above the real welcome desk',
+      showcase: 'a university-destination wall sign or brochure-zone brand panel installed beside the study-guidance display',
+      credibility: 'a success-story wall, accreditation board, or university-partner feature panel installed behind her',
+      detail: 'a document-review area acrylic sign or application-desk header integrated into the architecture',
+      closing: 'an entrance consultation sign or visitor-facing counseling-desk fascia visible behind her',
+      alternative: 'a branded partition in the student-guidance area or a premium destination-wall feature sign'
+    };
+
+    return consultancyPlacements[shotKey];
+  }
+
+  const institutionPlacements: Record<ShotDesignKey, string> = {
+    hero: 'an admissions or academic reception board mounted above the real front desk or welcome wall',
+    showcase: 'a classroom, lab, library, or department sign integrated into the visible academic zone behind her',
+    credibility: 'an achievement wall, accreditation board, institutional crest panel, or ranking display installed behind her',
+    detail: 'a corridor acrylic sign, library section board, lab-door branding, or notice-board header built into the campus architecture',
+    closing: 'an entrance welcome panel or student-service desk fascia visible behind her',
+    alternative: 'a seminar-hall branding wall, campus monument sign, or branded student-interaction area partition'
+  };
+
+  return institutionPlacements[shotKey];
+};
+
 export const getProfessionalSuitPaletteForBusiness = (businessType: string, businessContext: string = ''): string => {
   const palettes: Record<string, string> = {
     medical: 'soft ivory, pearl white, or sterile beige with subtle blue-grey accents for a clean healthcare-trust feel',
@@ -100,7 +307,7 @@ export const getProfessionalSuitPaletteForBusiness = (businessType: string, busi
     fashion: 'blush-beige, rosy taupe, champagne blush, warm nude, or couture pastel neutrals with polished femininity',
     food: 'warm cream, honey beige, latte, caramel beige, or tasteful hospitality neutrals with inviting warmth',
     tech: 'cool stone beige, mist grey-beige, champagne-taupe, soft steel greige, or muted blue-grey accents for modern polish',
-    education: 'elegant almond, parchment beige, academic taupe, muted forest-beige, or dignified cream tones',
+    education: getEducationSuitPalette(businessContext),
     solar: 'soft sand, sunlit beige, warm khaki-beige, muted sage-beige, or clean-energy neutrals',
     laundry: 'fresh ivory, soft sand, pearl beige, clean greige, or airy blue-grey neutrals that still feel premium',
     mattress: 'soft cream, almond beige, powder taupe, serene greige, or comfort-led pastel neutrals',
@@ -118,23 +325,24 @@ export const getProfessionalSuitPaletteForBusiness = (businessType: string, busi
 
   const sectorPalette = palettes[businessType] || palettes.default;
   const brandPalette = getBrandDrivenSuitPaletteFromContext(businessContext);
+  const paletteFamilyRule = 'Treat this as an approved palette family with multiple valid premium beige or pastel shades, not one fixed suit color. Different businesses must not collapse into the same reusable beige. Within one campaign, the suit may shift shade only inside this approved family when the script, business zone, or lighting supports it.';
 
   if (!brandPalette) {
-    return sectorPalette;
+    return `${sectorPalette}. ${paletteFamilyRule}`;
   }
 
-  return `${brandPalette}; keep the final suit within this sector direction as well: ${sectorPalette}`;
+  return `approved palette family from the logo colors and brand mood: ${brandPalette}; keep the final suit within this sector direction as well: ${sectorPalette}. ${paletteFamilyRule}`;
 };
 
 // Get environment description based on business type
-export const getEnvironmentForBusiness = (businessType: string, businessName: string): string => {
+export const getEnvironmentForBusiness = (businessType: string, businessContext: string = ''): string => {
   const environments: Record<string, string> = {
     medical: `real, operational, premium medical clinic / hospital reception area. Clean modern interiors with spotless counters, soft warm-toned walls, subtle blue highlights suggesting healthcare trust. Behind her, organized medical signage, clean waiting area visible. Space should instantly communicate healthcare, trust, and professionalism`,
     realestate: `real, operational, premium real-estate office or experience center. Elegant reception desk, wall-mounted project visuals, building elevations, floor-plan displays, or miniature building models visible. Sophisticated color palette with deep blues, muted greens, warm neutrals. Space should instantly communicate real estate, trust, growth, and success`,
     fashion: `real, operational, premium fashion boutique interior. Elegant displays, designer clothing visible, luxury retail ambiance. Rich textures, soft lighting, boutique-style finish. Space should instantly communicate fashion, elegance, and premium quality`,
     food: `real, operational, premium restaurant or catering service reception. Warm hospitality décor, elegant setup visible, appetizing and welcoming ambiance. Space should instantly communicate food, hospitality, and quality service`,
     tech: `real, modern, premium tech office or startup space. Clean reception-style setup with soft curves and contemporary design. Subtle gradient elements, natural indoor lighting. Space should instantly communicate innovation, professionalism, and trust`,
-    education: `real, operational, premium education consultancy office. Modern professional interiors, achievement displays, global study visuals. Space should instantly communicate education, guidance, and success`,
+    education: getEducationEnvironmentDescription(businessContext),
     solar: `real, operational, premium solar-energy office / experience center. Clean modern reception area with wooden and white interiors, subtle tech finish. Behind her, organized displays suggesting solar panels, energy systems. Space should instantly communicate clean energy, innovation, and trust`,
     laundry: `real, operational, premium laundry service reception / experience center. Clean, modern interior with spotless counters, soft warm-toned walls, subtle blue highlights suggesting water and freshness. Behind her, clearly visible professional laundry setup — neatly arranged washing machines or dryers, folded white linens, organized racks. Space should instantly communicate laundry, cleanliness, professionalism, and premium service`,
     mattress: `real, operational, premium mattress showroom interior. Elegant displays, comfortable sleep-focused ambiance, organized product presentation. Space should instantly communicate comfort, quality, and premium sleep solutions`,
@@ -682,7 +890,7 @@ export const getAttireMode = (attireType: string, businessType: string = 'defaul
     return `Attire: premium business-specific luxury campaign suit.
 Preferred Colors: ${suitPalette}.
 Style: well-tailored feminine blazer, crisp white fitted blouse, slim formal trousers, delicate gold chain, and small premium studs.
-Look: youthful Indian brand ambassador with polished beauty, real corporate-luxury styling, premium commercial realism, and a palette chosen for this exact business instead of the same beige suit used for every client.`;
+Look: youthful Indian brand ambassador with polished beauty, real corporate-luxury styling, premium commercial realism, and a palette chosen for this exact business instead of the same beige suit used for every client. Treat the color direction as an approved palette family with multiple valid tones rather than one repeated beige across every frame.`;
   }
 };
 
@@ -694,10 +902,26 @@ export const getAdTypeMode = (adType: string, festivalName = '') => {
   }
 };
 
-export const MAIN_FRAME_SYSTEM_PROMPT = (attireType: string, adType: string, festivalName: string, aspectRatio: string = '1:1') => {
+export const MAIN_FRAME_SYSTEM_PROMPT = (attireType: string, adType: string, festivalName: string, aspectRatio: string = '1:1', businessContext: string = '') => {
   const isFestival = adType === AdType.FESTIVAL && festivalName;
   const festivalTheme = isFestival ? getFestivalTheme(festivalName) : null;
   const isProfessional = attireType === 'professional';
+  const detectedBusinessType = businessContext ? detectBusinessType(businessContext) : 'default';
+  const educationEnvironmentMode = detectedBusinessType === 'education' ? detectEducationEnvironmentMode(businessContext) : null;
+  const clientEnvironmentGuidance = businessContext ? getEnvironmentForBusiness(detectedBusinessType, businessContext) : '';
+  const clientLocationPlan = businessContext ? getCommercialLocationPlanForBusiness(detectedBusinessType, businessContext) : '';
+  const clientEnvironmentNegatives = businessContext ? getEnvironmentNegativeRules(detectedBusinessType, businessContext) : '';
+  const clientLogoPlacementGuidance = businessContext ? getRealisticLogoPlacementGuidance(detectedBusinessType, businessContext) : '';
+  const clientSpecificCommercialEnvironmentBlock = !isFestival && businessContext
+    ? `**CLIENT-SPECIFIC ENVIRONMENT ANCHOR (NON-NEGOTIABLE FOR THIS CAMPAIGN):**
+• Detected business type: ${detectedBusinessType}${educationEnvironmentMode ? ` (${educationEnvironmentMode === 'institution' ? 'college / school / institute campus mode' : 'education consultancy mode'})` : ''}
+• Preferred real-world environment: ${clientEnvironmentGuidance}
+• Preferred location ladder for this client: ${clientLocationPlan}
+• Hard negatives: ${clientEnvironmentNegatives}
+• Realistic logo installation surfaces: ${clientLogoPlacementGuidance}
+
+`
+    : '';
 
   return `You are an AI assistant specialized in generating START-FRAME IMAGE PROMPTS for business ads and brand intro creatives.
 
@@ -978,7 +1202,10 @@ This branch is for COMMERCIAL AD TYPE behavior only — never festival-themed, n
   - Jewellery/Luxury Retail: champagne gold-beige, blush taupe, rose-beige, luxe cream, or refined mocha-glow tones
   - Automobile: graphite-beige, metallic greige, sand-taupe, espresso-beige, or premium showroom neutrals
   - Beauty/Fashion: blush-beige, rosy taupe, champagne blush, warm nude, or couture pastel neutrals
+  • Education institutions/campuses: parchment beige, sandstone cream, academic stone, cedar taupe, or soft sage-beige tones with premium campus polish
+  • Education consultancies: elegant almond, dignified cream, polished latte-stone, parchment taupe, or muted olive-beige tones with counseling-office polish
   - Default: derive a premium suit tone from the logo and brand mood while staying elegant, feminine, and campaign-worthy
+  • Treat the selected colors as an approved business-specific palette family with multiple valid shades — never one flat beige repeated for every client or every clip
 • Avoid repeating the same suit color across different businesses unless the business palette genuinely demands it
 • CASTING RULE FOR SUIT OUTPUTS: choose a premium Indian woman with youthful softness, bright expressive eyes, gentle rosy warmth, and believable campaign-level beauty — never a repeated default face, never a copied stock-model look, never a severe western executive archetype
 • BUSINESS-SPECIFIC MODEL VARIATION: the face, complexion depth, styling nuance, and casting energy must change according to the specific [BUSINESS TYPE], brand personality, and client context so different businesses do NOT keep getting the same woman in a different suit
@@ -1047,6 +1274,8 @@ Take the ATTACHED LOGO image and place it exactly as-is as real physical signage
 The viewer should feel: "This is the real business premises, beautifully and believably decorated for ${festivalName}."` : `ENVIRONMENT (REAL BUSINESS PREMISES — MOST CRITICAL SECTION):
 **The background MUST look like the REAL operating [BUSINESS TYPE] premises first; premium commercial polish is a supporting layer, not a replacement set.**
 
+${clientSpecificCommercialEnvironmentBlock}
+
 **STEP 1 — RECREATE THE REAL BUSINESS PREMISES (DOMINANT BASE LAYER):**
 Build a believable, operational [BUSINESS TYPE] location using extracted business details, store/office images, products, signage, brand cues, and spatial evidence.
 If actual store or office images are available, mirror their architecture and material reality: wall finishes, flooring, counters, shelving, cabinetry, furniture, equipment, lighting fixtures, aisle widths, partitions, glass reflections, display rhythm, and real working depth.
@@ -1070,6 +1299,8 @@ The space must feel aspirational and expensive, but still like a real business c
 • The chosen background zone must visibly prove the exact voice-over meaning of that clip
 • Keep believable circulation space, depth, operational details, and material transitions — not a flat decorative backdrop
 • The environment should feel dense, specific, and premium without becoming cluttered, theatrical, or category-confused
+${!isFestival && businessContext ? `• Hard-negative drift to reject for this client: ${clientEnvironmentNegatives}
+` : ''}
 
 COMMERCIAL REALISM FORMULA (MANDATORY — DO NOT WEAKEN):
 • FACE ANCHOR: wonderful premium Indian ambassador face with Bollywood-heroine-tier screen presence, brand-ambassador polish, and photogenic sharp attractive features
@@ -1083,6 +1314,8 @@ Place the attached logo exactly as-is as real physical signage inside the premis
 • Pixel-perfect, unchanged, naturally lit, properly installed, and clearly secondary to the subject
 • Mount it in the upper background behind the model so the full logo remains completely visible without cropping, blocking, blur, tilt, stretching, or redesign
 • The model, hair, shoulders, props, or furniture must never cover any part of the logo
+${!isFestival && businessContext ? `• For this client, prioritize these realistic installation surfaces: ${clientLogoPlacementGuidance}
+` : ''}
 
 **THE FINAL IMPRESSION:**
 ${isProfessional ? `The viewer should feel: "This is the real business premises, photographed like a national premium corporate campaign with a stunning ambassador, credible business proof, and high-end executive polish."` : `The viewer should feel: "This is the real business premises, photographed like a national premium commercial campaign with a stunning saree-clad ambassador and believable business-specific luxury."`}`}
@@ -1189,58 +1422,86 @@ export const MULTI_FRAME_SYSTEM_PROMPT = (
   adType: string,
   festivalName: string,
   segmentCount: number,
-  voiceOverSegments: string[]
+  voiceOverSegments: string[],
+  businessContext: string = ''
 ) => {
-  const basePrompt = MAIN_FRAME_SYSTEM_PROMPT(attireType, adType, festivalName);
+  const basePrompt = MAIN_FRAME_SYSTEM_PROMPT(attireType, adType, festivalName, '1:1', businessContext);
+  const detectedBusinessType = businessContext ? detectBusinessType(businessContext) : 'default';
+  const educationEnvironmentMode = detectedBusinessType === 'education' ? detectEducationEnvironmentMode(businessContext) : null;
+  const clientEnvironmentGuidance = businessContext ? getEnvironmentForBusiness(detectedBusinessType, businessContext) : '';
+  const clientLocationPlan = businessContext ? getCommercialLocationPlanForBusiness(detectedBusinessType, businessContext) : '';
+  const clientEnvironmentNegatives = businessContext ? getEnvironmentNegativeRules(detectedBusinessType, businessContext) : '';
 
   // Build segment context for the AI
   const segmentContext = voiceOverSegments.map((seg, i) => 
     `  Clip ${i + 1} Script: ${seg}`
   ).join('\n');
 
+  const clientSpecificLocationBlock = businessContext
+    ? `**FOR THIS CLIENT'S COMMERCIAL CAMPAIGN, PRIORITIZE THIS EXACT REAL-WORLD ROUTE:**
+• Client business type: ${detectedBusinessType}${educationEnvironmentMode ? ` (${educationEnvironmentMode === 'institution' ? 'college / school / institute campus mode' : 'education consultancy mode'})` : ''}
+• Preferred environment anchor: ${clientEnvironmentGuidance}
+• Preferred location ladder: ${clientLocationPlan}
+• Hard negatives: ${clientEnvironmentNegatives}
+
+`
+    : '';
+
   // Director's shot types — each clip has a cinematic PURPOSE and a DIFFERENT LOCATION within the same establishment
   const shotDesigns = [
     {
+      key: 'hero' as const,
       name: 'HERO ESTABLISHING SHOT',
       location: 'Main reception area / front counter / primary welcome zone of the business',
       camera: 'Close mid-shot, straight-on at chest or eye level, subject perfectly centered in frame with balanced left-right spacing and roughly 70% frame presence — classic brand ambassador establishing shot',
       pose: 'Hands gently folded at waist, one hand resting over the other, confident welcoming posture — brand ambassador stance',
       purpose: 'Introduce the brand ambassador and the business atmosphere. The viewer sees the model AND instantly recognizes the business type from the environment.',
+      logoPlacement: getShotLogoPlacementForBusiness('hero', detectedBusinessType, businessContext),
     },
     {
+      key: 'showcase' as const,
       name: 'SHOWCASE / PRODUCT SHOT',
       location: 'Product display area / service showcase zone / core business section — where the actual products, services, or offerings are visible',
       camera: 'Close mid-shot with slight low-angle polish (camera slightly below chest), subject still occupying roughly 70% of frame while products/services remain visible on the other side',
       pose: 'One hand gesturing gently toward the products/services behind her, or resting on a display counter — naturally interacting with the business environment',
       purpose: 'Show what the business DOES. The model guides the viewer\'s attention to products, equipment, or services displayed behind/around her.',
+      logoPlacement: getShotLogoPlacementForBusiness('showcase', detectedBusinessType, businessContext),
     },
     {
+      key: 'credibility' as const,
       name: 'CREDIBILITY / TRUST SHOT',
       location: 'Near the business logo wall / achievement display / certification area / consultation zone — the trust-building section of the establishment',
       camera: 'Close mid-shot with a gentle 10-15° body angle while the face still addresses camera directly, creating depth with the logo/achievements visible in the background',
       pose: 'Confident stance with slight body turn toward the logo/achievements, warm authoritative expression — exuding trust and credibility',
       purpose: 'Build trust and brand authority. The logo is prominently visible, along with any awards, certifications, or trust signals.',
+      logoPlacement: getShotLogoPlacementForBusiness('credibility', detectedBusinessType, businessContext),
     },
     {
+      key: 'detail' as const,
       name: 'DETAIL / IMMERSION SHOT',
       location: 'A different section of the business — specialized area, secondary display zone, workstation area, or another distinct part of the premises that hasn\'t been shown yet',
       camera: 'Close mid-shot (head to upper waist) with environment-rich composition, keeping the model dominant at roughly 70% of frame while revealing this new area',
       pose: 'Natural relaxed pose — perhaps lightly touching a surface, standing near equipment relevant to the business, or a natural mid-conversation gesture',
       purpose: 'Reveal more depth of the business — show the viewer that this is a REAL, multi-area establishment. Add visual variety.',
+      logoPlacement: getShotLogoPlacementForBusiness('detail', detectedBusinessType, businessContext),
     },
     {
+      key: 'closing' as const,
       name: 'WARM CLOSING SHOT',
       location: 'Back near the main area / entrance zone / a warm, inviting spot in the establishment — full circle back to a welcoming position',
       camera: 'Close mid-shot, standard to very slight high-angle polish, soft and warm composition with roughly 70% model presence — the "come visit us" feel',
       pose: 'Open welcoming gesture — warm smile, slightly open hands or namaste gesture, inviting the viewer — the final impression',
       purpose: 'End on a warm, inviting note. The viewer should feel: "I want to visit this place." This is the closing brand impression.',
+      logoPlacement: getShotLogoPlacementForBusiness('closing', detectedBusinessType, businessContext),
     },
     {
+      key: 'alternative' as const,
       name: 'ALTERNATIVE ANGLE SHOT',
       location: 'The most visually interesting or unique section of the business — a spot that best represents the brand\'s personality and uniqueness',
       camera: 'Creative but controlled close mid-shot using environment elements as natural frames, while keeping the model dominant at roughly 70% of frame',
       pose: 'Dynamic pose that matches the script energy — could be mid-stride, turning to face camera, or engaged with something in the environment',
       purpose: 'Show the business from a fresh, unexpected angle that adds cinematic variety.',
+      logoPlacement: getShotLogoPlacementForBusiness('alternative', detectedBusinessType, businessContext),
     },
   ];
 
@@ -1284,6 +1545,8 @@ For commercial traditional, premium richness may come from real counters, polish
 For commercial professional, use executive-facing, consultation-facing, showcase, or proof-heavy business zones — never empty boardrooms, generic coworking corners, or stock office backgrounds.
 Commercial polish must come from real materials, real light, and real proof surfaces, not fake set dressing.`}
 
+${clientSpecificLocationBlock}
+
 **LOCATION PLANNING PER BUSINESS TYPE:**
 The AI must pick ${segmentCount} DIFFERENT spots from within the specific [BUSINESS TYPE] establishment:
 Each chosen spot must match the exact service claim, business proof point, or emotional promise being spoken in that clip's voice-over line.
@@ -1293,7 +1556,7 @@ Each chosen spot must match the exact service claim, business proof point, or em
 • **Fashion/Boutique:** Store entrance → Clothing display racks → Mirror/trial area → Accessory showcase → Designer collection wall
 • **Food/Restaurant/Catering:** Host station → Dining area → Kitchen pass/display counter → Beverage station → Ambiance seating zone
 • **Tech/Software:** Reception/lobby → Workspace area → Meeting room doorway → Creative wall/whiteboard area → Tech equipment zone
-• **Education:** Front desk → Achievement/trophy wall → Counseling desk area → Study material display → Global map/university display wall
+• **Education:** ${getEducationLocationPlan(businessContext)}
 • **Solar/Energy:** Reception → Solar panel display → System demo area → Certificate/partnership wall → Energy model showcase
 • **Laundry/Wash:** Counter/reception → Washing machine area → Folded linen display → Pressing/finishing zone → Rack/collection area
 • **Tea/Beverage:** Counter → Tea packet shelf display → Tasting area → Storage/distribution zone → Brand display wall
@@ -1314,11 +1577,13 @@ ${Array.from({ length: segmentCount }, (_, i) => {
    🎥 CAMERA: ${shot.camera}
    🧍 POSE: ${shot.pose}
    🎯 PURPOSE: ${shot.purpose}
+    🪧 LOGO SURFACE: ${shot.logoPlacement}
    
    Generate a COMPLETE, detailed image generation prompt following ALL the rules/sections from the base prompt above.
    This frame sets the visual foundation — character face, hair, skin, beauty, attire, jewellery, AND this specific location within the business.
    This is the ONLY clip where you fully describe the model's physical appearance.
   The chosen location, visible business cues, pose energy, and emotional tone must directly match Clip ${clipNum}'s voice-over line.
+    The logo must feel physically installed on ${shot.logoPlacement}, with believable depth, reflections, and material behavior.
   Include ALL sections: SUBJECT, FACE, MAKEUP, EXPRESSION, HAIR, ATTIRE, JEWELLERY, ENVIRONMENT, LOGO PLACEMENT, CAMERA, OVERALL RESULT.
    The subject must occupy roughly 70% of the frame, maintain direct eye contact with the camera, and the attached logo must appear fully visible in the upper background without any alteration.
    Target length: 500-800 words.`;
@@ -1329,6 +1594,7 @@ ${Array.from({ length: segmentCount }, (_, i) => {
    🎥 CAMERA: ${shot.camera}
    🧍 POSE: ${shot.pose}
    🎯 PURPOSE: ${shot.purpose}
+    🪧 LOGO SURFACE: ${shot.logoPlacement}
    
    **⛔ FORBIDDEN — DO NOT WRITE ANY OF THESE FOR CLIP ${clipNum}:**
    You must NOT mention, describe, or reference ANY of the following words/concepts for the model:
@@ -1354,7 +1620,7 @@ ${Array.from({ length: segmentCount }, (_, i) => {
    • 🎥 The new CAMERA ANGLE and composition
   • 💡 How lighting naturally differs at this new spot (e.g., near window = warm, interior = ambient) while still preserving the realism formula
   • 👁️ Mandatory direct eye contact to the camera while holding this new pose
-  • 🪧 The attached logo placed in the upper background behind her, fully visible and completely unmodified
+  • 🪧 The attached logo placed on this clip's believable physical surface — ${shot.logoPlacement} — fully visible, physically installed, and completely unmodified
    
    WHY THIS MATTERS: Any model description — even saying "beautiful woman" or "silk saree" — will cause the AI image generator to create a COMPLETELY DIFFERENT person. The model's identity is LOCKED from Clip 1. You ONLY control the scene around her.
    
@@ -1372,6 +1638,7 @@ ${Array.from({ length: segmentCount }, (_, i) => {
 • **😊 Subject EXPRESSION** — match the script mood (welcoming → proud → trustworthy → warm → inviting)
 • **🔍 Background content** — different business elements visible at each new location
 • **💡 Lighting nuance** — natural variation as model moves (near window = warmer, deeper inside = ambient, near displays = spotlit)
+• **🪧 Logo installation surface** — move the exact logo to the most believable mounted sign or branded architectural panel for that zone, never as a floating overlay
 • **🧥 Professional suit shade nuance** — in commercial professional campaigns, the suit may shift within the approved business-specific palette family so the client does not get one repeated beige tone in every frame
 
 **⚠️ WHAT MUST NEVER CHANGE (MODEL CONSISTENCY IS SACRED):**

@@ -11,7 +11,12 @@ import {
   STOCK_IMAGE_SYSTEM_PROMPT,
   EXTRACTION_SYSTEM_PROMPT,
   detectBusinessType,
-  getProfessionalSuitPaletteForBusiness
+  detectEducationEnvironmentMode,
+  getCommercialLocationPlanForBusiness,
+  getEnvironmentForBusiness,
+  getEnvironmentNegativeRules,
+  getProfessionalSuitPaletteForBusiness,
+  getRealisticLogoPlacementGuidance
 } from "./prompts";
 import { fileToBase64, readFileAsText } from "../utils/fileHelpers";
 
@@ -408,7 +413,12 @@ export const refineSection = async (
 
   switch (sectionType) {
     case 'mainFrame':
-      systemPrompt = MAIN_FRAME_SYSTEM_PROMPT(formData.attireType, formData.adType, formData.festivalName);
+      systemPrompt = MAIN_FRAME_SYSTEM_PROMPT(
+        formData.attireType,
+        formData.adType,
+        formData.festivalName,
+        JSON.stringify(businessInfo)
+      );
       userPrompt = `You previously generated these Main Frame prompts (one per clip, separated by ###CLIP###):
 
 ---CURRENT PROMPTS---
@@ -522,6 +532,222 @@ IMPORTANT:
   });
 
   return response.text || currentContent;
+};
+
+const HOME_INTERIOR_MARKERS = [
+  'living room',
+  'home interior',
+  'bedroom',
+  'apartment',
+  'residential',
+  'sofa',
+  'couch',
+  'villa',
+  'drawing room',
+  'hotel lobby',
+  'generic office corner'
+];
+
+const REALISTIC_LOGO_SURFACE_MARKERS = [
+  'reception panel',
+  'acrylic sign',
+  'wall signage',
+  'mounted',
+  'mounted sign',
+  'feature wall',
+  'fascia',
+  'branding wall',
+  'achievement wall',
+  'board',
+  'signage'
+];
+
+const INSTITUTION_ENVIRONMENT_MARKERS = [
+  'campus',
+  'admissions',
+  'classroom',
+  'lecture hall',
+  'lecture',
+  'library',
+  'lab',
+  'seminar',
+  'student',
+  'corridor',
+  'notice board',
+  'academic reception'
+];
+
+const CONSULTANCY_ENVIRONMENT_MARKERS = [
+  'counseling',
+  'counselling',
+  'consultation',
+  'application',
+  'brochure',
+  'university partnership',
+  'success story',
+  'document',
+  'visa',
+  'destination wall'
+];
+
+const LOCATION_ANCHOR_MARKERS = [
+  'campus',
+  'admissions',
+  'reception',
+  'front desk',
+  'classroom',
+  'lecture hall',
+  'lecture',
+  'library',
+  'lab',
+  'seminar',
+  'corridor',
+  'notice board',
+  'student help desk',
+  'student interaction',
+  'counseling',
+  'counselling',
+  'consultation',
+  'brochure',
+  'document',
+  'application',
+  'achievement wall',
+  'certification wall',
+  'logo wall',
+  'product display',
+  'showcase',
+  'workstation',
+  'meeting room',
+  'entrance'
+];
+
+const containsAnyMarker = (text: string, markers: string[]): boolean => (
+  markers.some((marker) => text.includes(marker))
+);
+
+const normalizePromptForComparison = (prompt: string): string => (
+  prompt
+    .toLowerCase()
+    .replace(/clip\s+\d+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+);
+
+const getLocationAnchorSignature = (prompt: string): string => {
+  const loweredPrompt = prompt.toLowerCase();
+  const matches = LOCATION_ANCHOR_MARKERS.filter((marker) => loweredPrompt.includes(marker));
+
+  return Array.from(new Set(matches)).slice(0, 3).sort().join('|');
+};
+
+const collectParsedMainFramePrompts = (responseText: string, segmentCount: number): string[] => {
+  const cleanedResponse = responseText
+    .replace(/^```(?:markdown|json|text|plaintext)?\s*\n?/gim, '')
+    .replace(/\n?```\s*$/gim, '')
+    .replace(/^```\s*\n?/gim, '')
+    .replace(/\n?```$/gim, '');
+
+  let rawClipPrompts: string[] = [];
+  const separatorPatterns = [
+    /###\s*CLIP\s*###/gi,
+    /---\s*CLIP\s*---/gi,
+    /\n={3,}\s*\n/g,
+  ];
+
+  for (const pattern of separatorPatterns) {
+    const splits = cleanedResponse.split(pattern)
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0);
+
+    if (splits.length >= segmentCount) {
+      rawClipPrompts = splits;
+      break;
+    }
+
+    if (splits.length > rawClipPrompts.length) {
+      rawClipPrompts = splits;
+    }
+  }
+
+  if (rawClipPrompts.length < segmentCount) {
+    const clipHeaderSplit = cleanedResponse.split(/\n(?=Clip\s+\d+\s*[\u2013\u2014–—-])/gi)
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0);
+
+    if (clipHeaderSplit.length > rawClipPrompts.length) {
+      rawClipPrompts = clipHeaderSplit;
+    }
+  }
+
+  return rawClipPrompts;
+};
+
+const finalizeMainFramePrompts = (rawClipPrompts: string[], segmentCount: number, fallbackPrompt: string): string[] => {
+  if (rawClipPrompts.length >= segmentCount) {
+    return rawClipPrompts.slice(0, segmentCount);
+  }
+
+  if (rawClipPrompts.length > 0) {
+    const paddedPrompts = [...rawClipPrompts];
+
+    while (paddedPrompts.length < segmentCount) {
+      paddedPrompts.push(rawClipPrompts[rawClipPrompts.length - 1]);
+    }
+
+    return paddedPrompts;
+  }
+
+  return Array.from({ length: segmentCount }, () => fallbackPrompt);
+};
+
+const getMainFramePromptValidationIssues = (
+  prompts: string[],
+  businessType: string,
+  educationEnvironmentMode: 'institution' | 'consultancy' | null
+): string[] => {
+  const issues: string[] = [];
+
+  if (prompts.length <= 1) {
+    return issues;
+  }
+
+  const normalizedPrompts = prompts.map(normalizePromptForComparison);
+  if (new Set(normalizedPrompts).size < normalizedPrompts.length) {
+    issues.push('Two or more clip prompts are nearly identical instead of using distinct real locations.');
+  }
+
+  const locationSignatures = prompts
+    .map(getLocationAnchorSignature)
+    .filter((signature) => signature.length > 0);
+
+  if (locationSignatures.length >= 2 && new Set(locationSignatures).size < Math.max(2, Math.ceil(prompts.length / 2))) {
+    issues.push('Too many clips appear to reuse the same location anchor instead of switching to a new real zone for each voice-over line.');
+  }
+
+  const combinedPrompts = prompts.join(' ').toLowerCase();
+  if (containsAnyMarker(combinedPrompts, HOME_INTERIOR_MARKERS)) {
+    issues.push('Some clip prompts drift into home-like, residential, lounge, or generic interior wording.');
+  }
+
+  if (businessType === 'education') {
+    const expectedMarkers = educationEnvironmentMode === 'consultancy'
+      ? CONSULTANCY_ENVIRONMENT_MARKERS
+      : INSTITUTION_ENVIRONMENT_MARKERS;
+
+    if (!containsAnyMarker(combinedPrompts, expectedMarkers)) {
+      issues.push(
+        educationEnvironmentMode === 'consultancy'
+          ? 'Education consultancy prompts are missing counseling-office proof surfaces.'
+          : 'Education institution prompts are missing campus or institute proof surfaces.'
+      );
+    }
+  }
+
+  if (!containsAnyMarker(combinedPrompts, REALISTIC_LOGO_SURFACE_MARKERS)) {
+    issues.push('Logo placement language is missing believable installed signage surfaces.');
+  }
+
+  return issues;
 };
 
 // --- Poster-Only Mode: Extract business info only ---
@@ -894,16 +1120,38 @@ Return only the repaired ${segmentCount} clip lines.`;
 
   // --- Step 3: Multi-Frame Main Frame Prompts (Per-Clip) ---
   onProgress("Generating per-clip Main Frame prompts...", 35);
+
+  const serializedBusinessInfo = JSON.stringify(businessInfo);
+  const detectedBusinessType = detectBusinessType(serializedBusinessInfo);
+  const educationEnvironmentMode = detectedBusinessType === 'education'
+    ? detectEducationEnvironmentMode(serializedBusinessInfo)
+    : null;
+  const professionalSuitPalette = getProfessionalSuitPaletteForBusiness(detectedBusinessType, serializedBusinessInfo);
+  const resolvedEnvironmentGuidance = getEnvironmentForBusiness(detectedBusinessType, serializedBusinessInfo);
+  const resolvedLocationPlan = getCommercialLocationPlanForBusiness(detectedBusinessType, serializedBusinessInfo);
+  const environmentNegativeRules = getEnvironmentNegativeRules(detectedBusinessType, serializedBusinessInfo);
+  const realisticLogoPlacementGuidance = getRealisticLogoPlacementGuidance(detectedBusinessType, serializedBusinessInfo);
   
   const multiFrameSystemPrompt = MULTI_FRAME_SYSTEM_PROMPT(
     formData.attireType, 
     formData.adType, 
     formData.festivalName,
     segmentCount,
-    parsedSegments
+    parsedSegments,
+    serializedBusinessInfo
   );
 
   const isCommercialMainFrame = formData.adType !== 'festival';
+  const mainFrameEnvironmentRoutingNote = isCommercialMainFrame
+    ? `
+  CLIENT BUSINESS TYPE: ${detectedBusinessType}
+  ${educationEnvironmentMode ? `EDUCATION ENVIRONMENT MODE: ${educationEnvironmentMode === 'institution' ? 'college / school / institute campus mode' : 'education consultancy mode'}
+  ` : ''}CLIENT ENVIRONMENT ANCHOR: ${resolvedEnvironmentGuidance}
+  CLIENT LOCATION LADDER: ${resolvedLocationPlan}
+  BACKGROUND NEGATIVE RULES: ${environmentNegativeRules}
+  LOGO INSTALLATION SURFACES: ${realisticLogoPlacementGuidance}
+  LOCATION VARIATION RULE: Every clip must choose a different real business zone from the client location ladder unless the script absolutely demands a return to the same spot.`
+    : '';
   const commercialMainFramePriorityNote = isCommercialMainFrame
     ? `
   COMMERCIAL PRIORITY: Beauty tier comes first. The subject/model descriptor must establish an exceptionally beautiful cinema-heroine-tier national luxury brand ambassador before realism, environment, logo, or product detail.
@@ -944,10 +1192,6 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
       
     : '';
   
-  const serializedBusinessInfo = JSON.stringify(businessInfo);
-  const detectedBusinessType = detectBusinessType(serializedBusinessInfo);
-  const professionalSuitPalette = getProfessionalSuitPaletteForBusiness(detectedBusinessType, serializedBusinessInfo);
-
   const mainFrameUserPrompt = `Generate ${segmentCount} unique Main Frame image prompts (one per 8-second clip) for:${commercialMainFramePriorityNote}
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
   AD TYPE: ${formData.adType}
@@ -955,6 +1199,7 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
   ATTIRE: ${formData.attireType}
   TOTAL DURATION: ${formData.duration} seconds (${segmentCount} clips of 8 seconds each)
   SPECIAL CLIENT INSTRUCTIONS: ${businessInfo.specialRequirements?.customInstructions || 'None'}
+  ${mainFrameEnvironmentRoutingNote}
   CAMPAIGN CASTING RULE: Choose one distinct premium female ambassador identity for THIS business and keep her consistent across all clips. Different businesses should not fall back to the same default face. In commercial mode she must stay Indian-only in every clip with no ethnic drift.
   HAIR COLOR LOCK RULE: The woman must have strictly natural rich black hair in Clip 1 and that exact black hair color must stay locked for the full campaign. Reject brown, auburn, burgundy, copper, highlighted, sun-browned, or lighting-shifted hair. If any prompt drifts away from natural rich black hair, rewrite it before output.
   REALISM RULE: The environment must look like the actual business premises using extracted business/store context. In festival mode, keep the real business location dominant and layer festival cues naturally on top. In commercial mode, every clip must rebuild the real premises as the dominant base layer, then use the strongest business-proof surface for that exact voice-over segment, then premium atmosphere from real materials, real light, and real fixtures.
@@ -962,7 +1207,7 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
   TRADITIONAL ATTIRE RULE: When ATTIRE = Traditional, keep the saree business-specific, commercial, premium, and realistic — never bridal, never wedding-stage, never festival-styled. Use polished real business zones, premium counters, refined signage, believable glass/reflection behavior, and strong category proof instead of decorative clutter.
   PROFESSIONAL ATTIRE RULE: When ATTIRE = Professional, build the frame in a bright contemporary corporate-facing or consultation-facing business zone with a business-specific premium suit palette. For this business, the preferred suit palette is ${professionalSuitPalette}. Do NOT reuse the same beige/pastel suit family across unrelated businesses unless the brand cues clearly justify it. Also do NOT force one identical suit tone into every clip: keep the same premium wardrobe family, but allow clip-to-clip shade shifts inside this approved business palette when the exact location, script beat, or brand materials support it. Keep semi-jewellery only, zero festival cues, and the strongest business-proof surfaces in frame. The suit woman must be strictly 20 to 25 years old, distinctly Indian, actress-level beautiful, smiling warmly, and impossible to confuse with a generic employee portrait. Her hair in Clip 1 must read as unmistakably natural rich black only, never soft brown or highlighted under warm light. For Clip 1, use the exact folded-hands hero pose at the waist like the traditional and festival anchor frame. From Clip 2 onward, the hand position and pose must change according to that clip's exact voice-over script and location.
   MAIN FRAME FRAMING RULE: In EVERY clip, the model must appear in a close mid-shot, occupy roughly 70% of the frame, and maintain direct eye contact with the camera.
-  LOGO RULE: Use only the attached logo exactly as provided, mounted in the upper background behind the model, fully visible and never cropped, blocked, blurred, stretched, tilted, or redesigned.
+  LOGO RULE: Use only the attached logo exactly as provided, installed on the most believable physical surface for that clip's zone, fully visible and never cropped, blocked, blurred, stretched, tilted, redesigned, or pasted like an overlay. Prioritize these surface types: ${realisticLogoPlacementGuidance}
   CONTINUATION FRAME RULE: For every clip after Clip 1, write the prompt as if the image generator is also receiving the attached Clip 1 reference frame image.
   ${mainFrameProductLine}
   
@@ -982,7 +1227,7 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
         data: await fileToBase64(files.logo)
       }
     });
-    mainFrameParts.push({ text: "This is the EXACT BUSINESS LOGO. You MUST describe this logo placement in every clip prompt so it appears as REAL PHYSICAL SIGNAGE in the upper background behind the model (wall-mounted board, reception panel, acrylic sign). The logo must be reproduced PIXEL-PERFECT — do NOT redesign, reimagine, alter, crop, block, blur, tilt, stretch, or partially hide it in any way. The full logo must remain completely visible in one piece in every clip." });
+    mainFrameParts.push({ text: `This is the EXACT BUSINESS LOGO. You MUST describe this logo placement in every clip prompt so it appears as REAL PHYSICAL SIGNAGE installed on believable architectural surfaces for that zone. Prioritize these surface types: ${realisticLogoPlacementGuidance}. The logo must be reproduced PIXEL-PERFECT — do NOT redesign, reimagine, alter, crop, block, blur, tilt, stretch, partially hide, or paste it like a floating overlay in any way. The full logo must remain completely visible in one piece in every clip.` });
   }
   if (hasProductImages) {
     for (let i = 0; i < files.productImages.length; i++) {
@@ -1002,47 +1247,9 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
     'Main Frame (Multi-Clip)'
   );
 
-  // Parse multi-frame response into individual clip prompts
-  // First clean any code block wrappers the AI might have added
-  const cleanedResponse = mainFrameRawResponse
-    .replace(/^```(?:markdown|json|text|plaintext)?\s*\n?/gim, '')
-    .replace(/\n?```\s*$/gim, '')
-    .replace(/^```\s*\n?/gim, '')
-    .replace(/\n?```$/gim, '');
-
-  // Try multiple separator patterns — AI sometimes uses variations
-  let rawClipPrompts: string[] = [];
-  const separatorPatterns = [
-    /###\s*CLIP\s*###/gi,          // ###CLIP###, ### CLIP ###, etc.
-    /---\s*CLIP\s*---/gi,          // ---CLIP---
-    /\n={3,}\s*\n/g,               // === separator lines
-  ];
-
-  for (const pattern of separatorPatterns) {
-    const splits = cleanedResponse.split(pattern)
-      .map(p => p.trim())
-      .filter(p => p.length > 0);
-    if (splits.length >= segmentCount) {
-      rawClipPrompts = splits;
-      break;
-    }
-    if (splits.length > rawClipPrompts.length) {
-      rawClipPrompts = splits;
-    }
-  }
-
-  // If separator splitting didn't work well, try splitting by "Clip N" headers
-  if (rawClipPrompts.length < segmentCount) {
-    const clipHeaderSplit = cleanedResponse.split(/\n(?=Clip\s+\d+\s*[\u2013\u2014–—-])/gi)
-      .map(p => p.trim())
-      .filter(p => p.length > 0);
-    if (clipHeaderSplit.length > rawClipPrompts.length) {
-      rawClipPrompts = clipHeaderSplit;
-    }
-  }
+  let rawClipPrompts = collectParsedMainFramePrompts(mainFrameRawResponse, segmentCount);
 
   // If we still got fewer clips than needed, retry generation once
-  let mainFramePrompts: string[];
   if (rawClipPrompts.length < segmentCount && rawClipPrompts.length <= 2) {
     console.warn(`Parsed only ${rawClipPrompts.length} clips, expected ${segmentCount}. Retrying generation...`);
     const retryResponse = await generateWithRetry(
@@ -1050,42 +1257,76 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
       multiFrameSystemPrompt,
       'Main Frame (Multi-Clip Retry)'
     );
-    const retryClean = retryResponse
-      .replace(/^```(?:markdown|json|text|plaintext)?\s*\n?/gim, '')
-      .replace(/\n?```\s*$/gim, '');
-    
-    let retryClips = retryClean.split(/###\s*CLIP\s*###/gi)
-      .map(p => p.trim())
-      .filter(p => p.length > 0);
-    
-    if (retryClips.length < segmentCount) {
-      const retryHeaderSplit = retryClean.split(/\n(?=Clip\s+\d+\s*[\u2013\u2014–—-])/gi)
-        .map(p => p.trim())
-        .filter(p => p.length > 0);
-      if (retryHeaderSplit.length > retryClips.length) {
-        retryClips = retryHeaderSplit;
-      }
-    }
+    const retryClips = collectParsedMainFramePrompts(retryResponse, segmentCount);
     
     if (retryClips.length > rawClipPrompts.length) {
       rawClipPrompts = retryClips;
     }
   }
 
-  // Final assignment
-  if (rawClipPrompts.length >= segmentCount) {
-    mainFramePrompts = rawClipPrompts.slice(0, segmentCount);
-  } else if (rawClipPrompts.length > 0) {
-    // Pad — but log a warning
+  let mainFramePrompts = finalizeMainFramePrompts(rawClipPrompts, segmentCount, mainFrameRawResponse);
+
+  if (rawClipPrompts.length > 0 && rawClipPrompts.length < segmentCount) {
     console.warn(`Final clip count: ${rawClipPrompts.length}/${segmentCount}. Padding remaining clips.`);
-    mainFramePrompts = [...rawClipPrompts];
-    while (mainFramePrompts.length < segmentCount) {
-      mainFramePrompts.push(rawClipPrompts[rawClipPrompts.length - 1]);
-    }
-  } else {
-    mainFramePrompts = [mainFrameRawResponse];
-    while (mainFramePrompts.length < segmentCount) {
-      mainFramePrompts.push(mainFrameRawResponse);
+  }
+
+  if (isCommercialMainFrame) {
+    let mainFrameValidationIssues = getMainFramePromptValidationIssues(
+      mainFramePrompts,
+      detectedBusinessType,
+      educationEnvironmentMode
+    );
+
+    if (mainFrameValidationIssues.length > 0) {
+      console.warn(`Main frame prompts need focused repair: ${mainFrameValidationIssues.join(' | ')}`);
+
+      const repairInstructions = [
+        'You previously generated these Main Frame prompts (one per clip, separated by ###CLIP###):',
+        '',
+        '---CURRENT PROMPTS---',
+        mainFramePrompts.join('\n###CLIP###\n'),
+        '---END CURRENT PROMPTS---',
+        '',
+        'Fix ONLY the following issues:',
+        ...mainFrameValidationIssues.map((issue) => `- ${issue}`),
+        '',
+        'MANDATORY REPAIR RULES:',
+        `- Keep EXACTLY ${segmentCount} clips separated by ###CLIP###`,
+        '- Keep the same woman, continuity, and styling anchor',
+        '- Each clip must use a different real business zone that best proves that clip\'s exact voice-over line',
+        `- Client environment anchor: ${resolvedEnvironmentGuidance}`,
+        `- Client location ladder: ${resolvedLocationPlan}`,
+        `- Hard negatives: ${environmentNegativeRules}`,
+        `- Keep professional suit styling inside this approved palette family: ${professionalSuitPalette}`,
+        `- Keep the logo pixel-perfect but physically installed on realistic surfaces: ${realisticLogoPlacementGuidance}`,
+        detectedBusinessType === 'education'
+          ? `- This education campaign is ${educationEnvironmentMode === 'consultancy' ? 'education consultancy mode' : 'college / school / institute campus mode'} and must not drift out of that mode.`
+          : '- Do not drift into a generic office corner, home-like interior, or stock-photo background.',
+        '- Output ONLY the repaired prompts separated by ###CLIP### with no explanations'
+      ].join('\n');
+
+      const repairResponse = await generateWithRetry(
+        [{ text: repairInstructions }],
+        multiFrameSystemPrompt,
+        'Main Frame (Location Repair)'
+      );
+
+      const repairedRawClipPrompts = collectParsedMainFramePrompts(repairResponse, segmentCount);
+      const repairedMainFramePrompts = finalizeMainFramePrompts(repairedRawClipPrompts, segmentCount, repairResponse);
+      const repairedValidationIssues = getMainFramePromptValidationIssues(
+        repairedMainFramePrompts,
+        detectedBusinessType,
+        educationEnvironmentMode
+      );
+
+      if (repairedMainFramePrompts.length > 0 && repairedValidationIssues.length <= mainFrameValidationIssues.length) {
+        mainFramePrompts = repairedMainFramePrompts;
+        mainFrameValidationIssues = repairedValidationIssues;
+      }
+
+      if (mainFrameValidationIssues.length > 0) {
+        console.warn(`Main frame prompts still have residual validation issues after repair: ${mainFrameValidationIssues.join(' | ')}`);
+      }
     }
   }
 
