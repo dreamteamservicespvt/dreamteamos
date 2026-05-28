@@ -11,6 +11,7 @@ import { normalizePhone } from "@/utils/phone";
 import { format, subDays, startOfDay } from "date-fns";
 import type { AppUser, Lead, LeadStatus, SaleDetail } from "@/types";
 import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
 import {
   Search, Phone, MessageCircle, StickyNote, ChevronDown, ChevronUp,
@@ -88,6 +89,7 @@ export default function MyLeads() {
   const [expandedNotes, setExpandedNotes] = useState<string | null>(null);
   const [expandedSale, setExpandedSale] = useState<string | null>(null);
   const [showCustomModal, setShowCustomModal] = useState(false);
+  const pendingDeletesRef = useRef<Map<string, { timeoutId: ReturnType<typeof setTimeout>; intervalId: ReturnType<typeof setInterval> }>>(new Map());
 
   // Realtime listener
   useEffect(() => {
@@ -237,13 +239,61 @@ export default function MyLeads() {
     }
   };
 
-  const deleteCustomLead = async (id: string) => {
-    try {
-      await deleteDoc(doc(db, "leads", id));
-      toast({ title: "Deleted", description: "Custom lead removed." });
-    } catch {
-      toast({ title: "Error", description: "Failed to delete lead.", variant: "destructive" });
+  const deleteCustomLead = (id: string, displayName: string) => {
+    // Cancel any already-pending delete for this lead
+    const existing = pendingDeletesRef.current.get(id);
+    if (existing) {
+      clearTimeout(existing.timeoutId);
+      clearInterval(existing.intervalId);
+      pendingDeletesRef.current.delete(id);
     }
+
+    let secondsLeft = 5;
+    const label = displayName || "Custom lead";
+
+    const { dismiss, update } = toast({
+      title: "Deleting lead",
+      description: `"${label}" will be deleted in ${secondsLeft}s`,
+      variant: "destructive",
+      duration: 6000,
+      action: (
+        <ToastAction
+          altText="Undo"
+          onClick={() => {
+            const pending = pendingDeletesRef.current.get(id);
+            if (pending) {
+              clearTimeout(pending.timeoutId);
+              clearInterval(pending.intervalId);
+              pendingDeletesRef.current.delete(id);
+            }
+            dismiss();
+            toast({ title: "Cancelled", description: "Lead delete cancelled." });
+          }}
+        >
+          Undo
+        </ToastAction>
+      ),
+    });
+
+    const intervalId = setInterval(() => {
+      secondsLeft -= 1;
+      if (secondsLeft > 0) {
+        update({ description: `"${label}" will be deleted in ${secondsLeft}s` });
+      }
+    }, 1000);
+
+    const timeoutId = setTimeout(async () => {
+      clearInterval(intervalId);
+      pendingDeletesRef.current.delete(id);
+      dismiss();
+      try {
+        await deleteDoc(doc(db, "leads", id));
+      } catch {
+        toast({ title: "Error", description: "Failed to delete lead.", variant: "destructive" });
+      }
+    }, 5000);
+
+    pendingDeletesRef.current.set(id, { timeoutId, intervalId });
   };
 
   if (loading) {
@@ -396,7 +446,7 @@ export default function MyLeads() {
                   lead={lead}
                   pastDayLabel={getLeadPastDayLabel(lead)}
                   updateLead={updateLead}
-                  onDelete={lead.isCustomEntry ? () => deleteCustomLead(lead.id) : undefined}
+                  onDelete={lead.isCustomEntry ? () => deleteCustomLead(lead.id, lead.displayName) : undefined}
                   expandedNotes={expandedNotes}
                   setExpandedNotes={setExpandedNotes}
                   expandedSale={expandedSale}
@@ -473,6 +523,7 @@ function LeadCard({ lead, pastDayLabel, updateLead, onDelete, expandedNotes, set
   const [notes, setNotes] = useState(lead.notes || "");
   const [saleDone, setSaleDone] = useState(lead.saleDone || false);
   const [showSalesList, setShowSalesList] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   const allSaleItems = lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
@@ -536,13 +587,33 @@ function LeadCard({ lead, pastDayLabel, updateLead, onDelete, expandedNotes, set
             </span>
           )}
           {onDelete && (
-            <button
-              onClick={onDelete}
-              title="Delete custom lead"
-              className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-            >
-              <Trash2 size={13} />
-            </button>
+            confirmDelete ? (
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] text-destructive font-medium whitespace-nowrap">Sure?</span>
+                <button
+                  onClick={() => setConfirmDelete(false)}
+                  className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                  title="Cancel"
+                >
+                  <X size={11} />
+                </button>
+                <button
+                  onClick={() => { setConfirmDelete(false); onDelete(); }}
+                  className="h-6 px-2 rounded flex items-center justify-center gap-1 bg-destructive/15 text-destructive hover:bg-destructive/25 transition-colors text-[10px] font-medium"
+                  title="Confirm delete"
+                >
+                  <Trash2 size={11} /> Delete
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                title="Delete custom lead"
+                className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+              >
+                <Trash2 size={13} />
+              </button>
+            )
           )}
         </div>
       </div>
@@ -729,10 +800,13 @@ function AddCustomLeadModal({ user, onClose }: { user: AppUser; onClose: () => v
             <label className="text-xs font-medium text-muted-foreground mb-1 block">Phone Number *</label>
             <input
               type="tel"
+              inputMode="numeric"
+              pattern="[0-9]*"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => setPhone(e.target.value.replace(/[^0-9]/g, ""))}
               placeholder="9876543210"
               autoFocus
+              maxLength={10}
               onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
               className="w-full h-10 px-4 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary font-mono"
             />
