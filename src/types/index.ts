@@ -20,6 +20,7 @@ export interface AppUser {
   googleDriveBaseUrl?: string;
   phone: string;
   avatar?: string;
+  earningsOption?: "stipend_plus_5" | "incentive_10";
   createdAt: any;
   updatedAt: any;
 }
@@ -76,6 +77,7 @@ export interface Lead {
   saleDone: boolean;
   saleDetails?: SaleDetail | null;
   saleItems?: SaleDetail[];
+  isCustomEntry?: boolean;
   lastUpdated: any;
   createdAt: any;
 }

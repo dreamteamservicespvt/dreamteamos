@@ -21,6 +21,9 @@ export default function EditMemberModal({ member, onClose, onUpdated, variant }:
   const [target, setTarget] = useState(member.target || 0);
   const [dailyTarget, setDailyTarget] = useState(member.dailyTarget || 0);
   const [monthlyTarget, setMonthlyTarget] = useState(member.monthlyTarget || 0);
+  const [earningsOption, setEarningsOption] = useState<"stipend_plus_5" | "incentive_10" | "">(
+    member.earningsOption || ""
+  );
   const [driveUrl, setDriveUrl] = useState(member.googleDriveBaseUrl || "");
   const [saving, setSaving] = useState(false);
 
@@ -44,6 +47,7 @@ export default function EditMemberModal({ member, onClose, onUpdated, variant }:
         updates.target = target;
         updates.dailyTarget = dailyTarget;
         updates.monthlyTarget = monthlyTarget;
+        if (earningsOption) updates.earningsOption = earningsOption;
       } else {
         updates.googleDriveBaseUrl = driveUrl.trim() || null;
       }
@@ -115,6 +119,19 @@ export default function EditMemberModal({ member, onClose, onUpdated, variant }:
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Legacy Target (₹)</label>
                 <input type="number" min={0} value={target || ""} onChange={(e) => setTarget(Number(e.target.value) || 0)}
                   className="w-full h-10 px-4 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary font-mono" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Earnings Option</label>
+                <select
+                  value={earningsOption}
+                  onChange={(e) => setEarningsOption(e.target.value as "stipend_plus_5" | "incentive_10" | "")}
+                  className="w-full h-10 px-4 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary"
+                >
+                  <option value="">Not Assigned</option>
+                  <option value="stipend_plus_5">Option 1 — Stipend (up to ₹5,000) + 5% Incentives</option>
+                  <option value="incentive_10">Option 2 — 10% Direct Incentives</option>
+                </select>
+                <p className="text-[10px] text-muted-foreground mt-0.5">This controls which earnings plan the member is on</p>
               </div>
             </>
           )}

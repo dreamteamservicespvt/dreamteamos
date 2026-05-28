@@ -3,9 +3,10 @@ import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { formatCurrency } from "@/utils/formatters";
-import type { Lead } from "@/types";
+import { format } from "date-fns";
+import type { Lead, SaleDetail } from "@/types";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import { TrendingUp, Target, Award, Zap } from "lucide-react";
+import { TrendingUp, Target, Award, Zap, IndianRupee } from "lucide-react";
 
 const PIE_COLORS = [
   "hsl(142 71% 45%)",   // success
@@ -20,6 +21,7 @@ export default function MyPerformance() {
   const user = useAuthStore((s) => s.user);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
+  const [earningsView, setEarningsView] = useState<"option1" | "option2">("option1");
 
   useEffect(() => {
     if (!user) return;
@@ -31,20 +33,46 @@ export default function MyPerformance() {
     return unsub;
   }, [user]);
 
+  const getSaleItems = (l: Lead): SaleDetail[] =>
+    l.saleItems || (l.saleDetails ? [l.saleDetails] : []);
+
   const total = leads.length;
-  const salesDone = leads.filter((l) => l.saleDone);
-  const totalRevenue = salesDone.reduce((sum, l) => sum + (l.saleDetails?.amount || 0), 0);
-  const verified = salesDone.filter((l) => l.saleDetails?.verificationStatus === "verified");
-  const verifiedRevenue = verified.reduce((sum, l) => sum + (l.saleDetails?.amount || 0), 0);
+  const salesDoneCount = leads.filter((l) => l.saleDone).length;
+
+  // All-time revenue (all sale items)
+  const totalRevenue = leads.reduce((sum, l) =>
+    sum + getSaleItems(l).reduce((s, i) => s + (i.amount || 0), 0), 0);
+  const verifiedRevenue = leads.reduce((sum, l) =>
+    sum + getSaleItems(l).filter((i) => i.verificationStatus === "verified").reduce((s, i) => s + (i.amount || 0), 0), 0);
+
   const target = user?.monthlyTarget || user?.target || 0;
 
-  // Category breakdown
+  // Current-month revenue for earnings calculation
+  const currentMonthStr = format(new Date(), "yyyy-MM");
+  const monthlyLeads = leads.filter((l) => {
+    if (!l.createdAt?.seconds) return false;
+    return format(new Date(l.createdAt.seconds * 1000), "yyyy-MM") === currentMonthStr;
+  });
+  const monthlyVerifiedRevenue = monthlyLeads.reduce((sum, l) =>
+    sum + getSaleItems(l).filter((i) => i.verificationStatus === "verified").reduce((s, i) => s + (i.amount || 0), 0), 0);
+
+  // Earnings calculations
+  const MONTHLY_TARGET = 30000;
+  const STIPEND_MAX = 5000;
+  const stipendAmount = Math.min(STIPEND_MAX, (monthlyVerifiedRevenue / MONTHLY_TARGET) * STIPEND_MAX);
+  const option1Total = stipendAmount + monthlyVerifiedRevenue * 0.05;
+  const option2Total = monthlyVerifiedRevenue * 0.10;
+  const assignedOption = user?.earningsOption;
+
+  // Category breakdown (all sale items)
   const categoryMap: Record<string, { count: number; amount: number }> = {};
-  salesDone.forEach((l) => {
-    const cat = l.saleDetails?.category || "unknown";
-    if (!categoryMap[cat]) categoryMap[cat] = { count: 0, amount: 0 };
-    categoryMap[cat].count++;
-    categoryMap[cat].amount += l.saleDetails?.amount || 0;
+  leads.forEach((l) => {
+    getSaleItems(l).forEach((item) => {
+      const cat = item.category || "unknown";
+      if (!categoryMap[cat]) categoryMap[cat] = { count: 0, amount: 0 };
+      categoryMap[cat].count++;
+      categoryMap[cat].amount += item.amount || 0;
+    });
   });
   const categoryData = Object.entries(categoryMap).map(([name, v]) => ({
     name: name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
@@ -54,7 +82,7 @@ export default function MyPerformance() {
 
   // Status pie
   const statusData = [
-    { name: "Sale Done", value: salesDone.length },
+    { name: "Sale Done", value: salesDoneCount },
     { name: "Answered", value: leads.filter((l) => l.status === "answered" && !l.saleDone).length },
     { name: "Not Answered", value: leads.filter((l) => l.status === "not_answered").length },
     { name: "Call Later", value: leads.filter((l) => l.status === "call_later").length },
@@ -87,7 +115,7 @@ export default function MyPerformance() {
         {[
           { label: "Total Revenue", value: formatCurrency(totalRevenue), icon: TrendingUp, color: "text-success" },
           { label: "Verified Revenue", value: formatCurrency(verifiedRevenue), icon: Award, color: "text-primary" },
-          { label: "Conversion Rate", value: `${total > 0 ? ((salesDone.length / total) * 100).toFixed(1) : 0}%`, icon: Zap, color: "text-warning" },
+          { label: "Conversion Rate", value: `${total > 0 ? ((salesDoneCount / total) * 100).toFixed(1) : 0}%`, icon: Zap, color: "text-warning" },
           { label: "Target Progress", value: target > 0 ? `${Math.min((totalRevenue / target) * 100, 100).toFixed(0)}%` : "No target", icon: Target, color: "text-info" },
         ].map((s) => (
           <div key={s.label} className="bg-card border border-border rounded-xl p-5">
@@ -98,6 +126,113 @@ export default function MyPerformance() {
             <p className="font-display font-bold text-2xl text-foreground">{s.value}</p>
           </div>
         ))}
+      </div>
+
+      {/* Earnings Estimator */}
+      <div className="bg-card border border-border rounded-xl p-5">
+        <div className="flex items-start justify-between mb-4 flex-wrap gap-2">
+          <div>
+            <div className="flex items-center gap-2">
+              <IndianRupee size={16} className="text-primary" />
+              <h2 className="font-display font-semibold text-foreground">My Earnings This Month</h2>
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Based on {formatCurrency(monthlyVerifiedRevenue)} verified revenue in {format(new Date(), "MMMM yyyy")}
+            </p>
+          </div>
+          {assignedOption && (
+            <span className={`text-[10px] font-medium px-2.5 py-1 rounded-full border ${
+              assignedOption === "stipend_plus_5"
+                ? "bg-primary/10 text-primary border-primary/30"
+                : "bg-success/10 text-success border-success/30"
+            }`}>
+              Your Plan: {assignedOption === "stipend_plus_5" ? "Stipend + 5%" : "10% Incentive"}
+            </span>
+          )}
+        </div>
+
+        {/* Toggle */}
+        <div className="flex gap-1.5 mb-4">
+          <button
+            onClick={() => setEarningsView("option1")}
+            className={`flex-1 h-9 rounded-lg text-xs font-medium transition-colors relative ${
+              earningsView === "option1"
+                ? "bg-primary/15 text-primary border border-primary/30"
+                : "bg-accent border border-border text-muted-foreground hover:bg-accent/80"
+            }`}
+          >
+            Stipend + 5%
+            {assignedOption === "stipend_plus_5" && (
+              <span className="ml-1 text-[9px] opacity-75">★ Your Plan</span>
+            )}
+          </button>
+          <button
+            onClick={() => setEarningsView("option2")}
+            className={`flex-1 h-9 rounded-lg text-xs font-medium transition-colors ${
+              earningsView === "option2"
+                ? "bg-success/15 text-success border border-success/30"
+                : "bg-accent border border-border text-muted-foreground hover:bg-accent/80"
+            }`}
+          >
+            10% Incentive
+            {assignedOption === "incentive_10" && (
+              <span className="ml-1 text-[9px] opacity-75">★ Your Plan</span>
+            )}
+          </button>
+        </div>
+
+        {/* Option 1 breakdown */}
+        {earningsView === "option1" && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm py-1">
+              <span className="text-muted-foreground">Stipend (proportional to ₹30,000 target)</span>
+              <span className="font-mono font-medium text-foreground">{formatCurrency(stipendAmount)}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm py-1">
+              <span className="text-muted-foreground">5% Incentive on {formatCurrency(monthlyVerifiedRevenue)}</span>
+              <span className="font-mono font-medium text-foreground">{formatCurrency(monthlyVerifiedRevenue * 0.05)}</span>
+            </div>
+            <div className="border-t border-border pt-2 flex items-center justify-between">
+              <span className="font-semibold text-foreground">Total Earnings</span>
+              <span className="font-display font-bold text-xl text-primary">{formatCurrency(option1Total)}</span>
+            </div>
+            <p className="text-[10px] text-muted-foreground bg-muted/40 rounded-md px-2.5 py-1.5 mt-1">
+              Stipend is proportional: ₹5,000 max at ₹30,000 sales. At {monthlyVerifiedRevenue >= MONTHLY_TARGET ? "100%" : `${Math.round((monthlyVerifiedRevenue / MONTHLY_TARGET) * 100)}%`} you earn {formatCurrency(stipendAmount)} stipend.
+            </p>
+          </div>
+        )}
+
+        {/* Option 2 breakdown */}
+        {earningsView === "option2" && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm py-1">
+              <span className="text-muted-foreground">10% on {formatCurrency(monthlyVerifiedRevenue)} verified sales</span>
+              <span className="font-mono font-medium text-foreground">{formatCurrency(option2Total)}</span>
+            </div>
+            <div className="border-t border-border pt-2 flex items-center justify-between">
+              <span className="font-semibold text-foreground">Total Earnings</span>
+              <span className="font-display font-bold text-xl text-success">{formatCurrency(option2Total)}</span>
+            </div>
+            <p className="text-[10px] text-muted-foreground bg-muted/40 rounded-md px-2.5 py-1.5 mt-1">
+              No target required — earn 10% on every verified sale. More you sell, more you earn.
+            </p>
+          </div>
+        )}
+
+        {/* Side-by-side comparison hint */}
+        <div className="mt-3 pt-3 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
+          <span>Option 1 (Stipend + 5%)</span>
+          <span className="font-mono font-medium text-foreground">{formatCurrency(option1Total)}</span>
+          <span className="text-muted-foreground/40">vs</span>
+          <span className="font-mono font-medium text-foreground">{formatCurrency(option2Total)}</span>
+          <span>Option 2 (10%)</span>
+        </div>
+
+        {!assignedOption && (
+          <p className="text-xs text-muted-foreground text-center mt-3 italic">
+            Your earnings plan hasn't been assigned yet — contact your sales admin.
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -153,7 +288,7 @@ export default function MyPerformance() {
       </div>
 
       {/* Sales Table */}
-      {salesDone.length > 0 && (
+      {salesDoneCount > 0 && (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
           <div className="p-4 border-b border-border">
             <h2 className="font-display font-semibold text-foreground">Completed Sales</h2>
@@ -170,23 +305,30 @@ export default function MyPerformance() {
                 </tr>
               </thead>
               <tbody>
-                {salesDone.map((l) => (
-                  <tr key={l.id} className="border-b border-border/50 hover:bg-accent/30 transition-colors">
-                    <td className="p-3 font-medium text-foreground">{l.displayName}</td>
-                    <td className="p-3 text-muted-foreground capitalize">{l.saleDetails?.category?.replace(/_/g, " ")}</td>
-                    <td className="p-3 text-muted-foreground">{l.saleDetails?.packageKey}</td>
-                    <td className="p-3 text-right font-mono text-foreground">{formatCurrency(l.saleDetails?.amount || 0)}</td>
-                    <td className="p-3">
-                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
-                        l.saleDetails?.verificationStatus === "verified"
-                          ? "bg-success/15 text-success"
-                          : "bg-warning/15 text-warning"
-                      }`}>
-                        {l.saleDetails?.verificationStatus === "verified" ? "Verified" : "Pending"}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {leads.filter((l) => l.saleDone).flatMap((l) =>
+                  getSaleItems(l).map((item, idx) => (
+                    <tr key={`${l.id}-${idx}`} className="border-b border-border/50 hover:bg-accent/30 transition-colors">
+                      <td className="p-3 font-medium text-foreground">
+                        {l.displayName}
+                        {l.isCustomEntry && <span className="ml-1.5 text-[9px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">Custom</span>}
+                      </td>
+                      <td className="p-3 text-muted-foreground capitalize">{item.category?.replace(/_/g, " ")}</td>
+                      <td className="p-3 text-muted-foreground">{item.packageKey}</td>
+                      <td className="p-3 text-right font-mono text-foreground">{formatCurrency(item.amount || 0)}</td>
+                      <td className="p-3">
+                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
+                          item.verificationStatus === "verified"
+                            ? "bg-success/15 text-success"
+                            : item.verificationStatus === "rejected"
+                            ? "bg-destructive/15 text-destructive"
+                            : "bg-warning/15 text-warning"
+                        }`}>
+                          {item.verificationStatus === "verified" ? "Verified" : item.verificationStatus === "rejected" ? "Rejected" : "Pending"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
