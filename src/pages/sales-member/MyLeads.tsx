@@ -1,19 +1,21 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  collection, query, where, onSnapshot, doc, updateDoc, serverTimestamp,
+  collection, query, where, onSnapshot, doc, updateDoc, addDoc, deleteDoc, serverTimestamp,
 } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import { formatCurrency } from "@/utils/formatters";
+import { normalizePhone } from "@/utils/phone";
 import { format, subDays, startOfDay } from "date-fns";
-import type { Lead, LeadStatus, SaleDetail } from "@/types";
+import type { AppUser, Lead, LeadStatus, SaleDetail } from "@/types";
 import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
 import {
   Search, Phone, MessageCircle, StickyNote, ChevronDown, ChevronUp,
-  Loader2, Check, Upload, ExternalLink, Plus, Trash2, ShoppingBag,
+  Loader2, Check, Upload, ExternalLink, Plus, Trash2, ShoppingBag, X,
 } from "lucide-react";
 
 const STATUS_OPTIONS: { value: LeadStatus; label: string; color: string }[] = [
@@ -86,6 +88,8 @@ export default function MyLeads() {
   const [viewTab, setViewTab] = useState<"leads" | "sales">("leads");
   const [expandedNotes, setExpandedNotes] = useState<string | null>(null);
   const [expandedSale, setExpandedSale] = useState<string | null>(null);
+  const [showCustomModal, setShowCustomModal] = useState(false);
+  const pendingDeletesRef = useRef<Map<string, { timeoutId: ReturnType<typeof setTimeout>; intervalId: ReturnType<typeof setInterval> }>>(new Map());
 
   // Realtime listener
   useEffect(() => {
@@ -93,7 +97,14 @@ export default function MyLeads() {
     const q = query(collection(db, "leads"), where("assignedTo", "==", user.uid));
     const unsub = onSnapshot(q, (snap) => {
       const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Lead));
-      list.sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
+      list.sort((a, b) => {
+        // Custom entries always at the top (newest first among custom)
+        if (a.isCustomEntry && !b.isCustomEntry) return -1;
+        if (!a.isCustomEntry && b.isCustomEntry) return 1;
+        if (a.isCustomEntry && b.isCustomEntry) return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0);
+        // Regular leads: oldest first (daily workflow order)
+        return (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0);
+      });
       setLeads(list);
       setLoading(false);
     });
@@ -228,6 +239,63 @@ export default function MyLeads() {
     }
   };
 
+  const deleteCustomLead = (id: string, displayName: string) => {
+    // Cancel any already-pending delete for this lead
+    const existing = pendingDeletesRef.current.get(id);
+    if (existing) {
+      clearTimeout(existing.timeoutId);
+      clearInterval(existing.intervalId);
+      pendingDeletesRef.current.delete(id);
+    }
+
+    let secondsLeft = 5;
+    const label = displayName || "Custom lead";
+
+    const { dismiss, update } = toast({
+      title: "Deleting lead",
+      description: `"${label}" will be deleted in ${secondsLeft}s`,
+      variant: "destructive",
+      duration: 6000,
+      action: (
+        <ToastAction
+          altText="Undo"
+          onClick={() => {
+            const pending = pendingDeletesRef.current.get(id);
+            if (pending) {
+              clearTimeout(pending.timeoutId);
+              clearInterval(pending.intervalId);
+              pendingDeletesRef.current.delete(id);
+            }
+            dismiss();
+            toast({ title: "Cancelled", description: "Lead delete cancelled." });
+          }}
+        >
+          Undo
+        </ToastAction>
+      ),
+    });
+
+    const intervalId = setInterval(() => {
+      secondsLeft -= 1;
+      if (secondsLeft > 0) {
+        update({ description: `"${label}" will be deleted in ${secondsLeft}s` });
+      }
+    }, 1000);
+
+    const timeoutId = setTimeout(async () => {
+      clearInterval(intervalId);
+      pendingDeletesRef.current.delete(id);
+      dismiss();
+      try {
+        await deleteDoc(doc(db, "leads", id));
+      } catch {
+        toast({ title: "Error", description: "Failed to delete lead.", variant: "destructive" });
+      }
+    }, 5000);
+
+    pendingDeletesRef.current.set(id, { timeoutId, intervalId });
+  };
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -244,6 +312,11 @@ export default function MyLeads() {
 
   return (
     <div className="space-y-6">
+      {/* Custom Lead Modal */}
+      {showCustomModal && user && (
+        <AddCustomLeadModal user={user} onClose={() => setShowCustomModal(false)} />
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -253,6 +326,12 @@ export default function MyLeads() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowCustomModal(true)}
+            className="h-8 md:h-9 px-3 md:px-4 rounded-lg bg-success/10 text-success border border-success/30 text-xs font-medium flex items-center gap-1.5 hover:bg-success/20 transition-colors"
+          >
+            <Plus size={13} /> Add Custom Lead
+          </button>
           <DashboardDayPicker selectedDate={selectedDate} onSelect={setSelectedDate} dateIndicators={dateIndicators} />
           {selectedDate && (
             <button onClick={() => setSelectedDate(undefined)} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
@@ -367,6 +446,7 @@ export default function MyLeads() {
                   lead={lead}
                   pastDayLabel={getLeadPastDayLabel(lead)}
                   updateLead={updateLead}
+                  onDelete={lead.isCustomEntry ? () => deleteCustomLead(lead.id, lead.displayName) : undefined}
                   expandedNotes={expandedNotes}
                   setExpandedNotes={setExpandedNotes}
                   expandedSale={expandedSale}
@@ -431,17 +511,19 @@ interface LeadCardProps {
   lead: Lead;
   pastDayLabel: string | null;
   updateLead: (id: string, data: Record<string, any>) => Promise<void>;
+  onDelete?: () => void;
   expandedNotes: string | null;
   setExpandedNotes: (id: string | null) => void;
   expandedSale: string | null;
   setExpandedSale: (id: string | null) => void;
 }
 
-function LeadCard({ lead, pastDayLabel, updateLead, expandedNotes, setExpandedNotes, expandedSale, setExpandedSale }: LeadCardProps) {
+function LeadCard({ lead, pastDayLabel, updateLead, onDelete, expandedNotes, setExpandedNotes, expandedSale, setExpandedSale }: LeadCardProps) {
   const { toast } = useToast();
   const [notes, setNotes] = useState(lead.notes || "");
   const [saleDone, setSaleDone] = useState(lead.saleDone || false);
   const [showSalesList, setShowSalesList] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   const allSaleItems = lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
@@ -490,14 +572,50 @@ function LeadCard({ lead, pastDayLabel, updateLead, expandedNotes, setExpandedNo
           />
           {lead.realName && <p className="text-xs text-muted-foreground">{lead.realName}</p>}
         </div>
-        {lead.saleDone && (
-          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-success/15 text-success">Sale ✓</span>
-        )}
-        {pastDayLabel && (
-          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-warning/15 text-warning">
-            From {pastDayLabel}
-          </span>
-        )}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {lead.isCustomEntry && (
+            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/20">
+              Custom
+            </span>
+          )}
+          {lead.saleDone && (
+            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-success/15 text-success">Sale ✓</span>
+          )}
+          {pastDayLabel && (
+            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-warning/15 text-warning">
+              From {pastDayLabel}
+            </span>
+          )}
+          {onDelete && (
+            confirmDelete ? (
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] text-destructive font-medium whitespace-nowrap">Sure?</span>
+                <button
+                  onClick={() => setConfirmDelete(false)}
+                  className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                  title="Cancel"
+                >
+                  <X size={11} />
+                </button>
+                <button
+                  onClick={() => { setConfirmDelete(false); onDelete(); }}
+                  className="h-6 px-2 rounded flex items-center justify-center gap-1 bg-destructive/15 text-destructive hover:bg-destructive/25 transition-colors text-[10px] font-medium"
+                  title="Confirm delete"
+                >
+                  <Trash2 size={11} /> Delete
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                title="Delete custom lead"
+                className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+              >
+                <Trash2 size={13} />
+              </button>
+            )
+          )}
+        </div>
       </div>
 
       {/* Phone + Status on same line */}
@@ -618,6 +736,104 @@ function LeadCard({ lead, pastDayLabel, updateLead, expandedNotes, setExpandedNo
             </motion.div>
           )}
         </AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Add Custom Lead Modal ─── */
+
+function AddCustomLeadModal({ user, onClose }: { user: AppUser; onClose: () => void }) {
+  const { toast } = useToast();
+  const [phone, setPhone] = useState("");
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const handleCreate = async () => {
+    const trimmed = phone.trim();
+    if (!trimmed) {
+      toast({ title: "Error", description: "Phone number is required.", variant: "destructive" });
+      return;
+    }
+    const normalized = normalizePhone(trimmed);
+    if (normalized.replace(/[^0-9]/g, "").length < 10) {
+      toast({ title: "Error", description: "Enter a valid phone number (at least 10 digits).", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      await addDoc(collection(db, "leads"), {
+        assignedTo: user.uid,
+        assignedBy: user.uid,
+        phone: normalized,
+        displayName: name.trim() || normalized,
+        realName: null,
+        status: "answered" as LeadStatus,
+        notes: "",
+        saleDone: false,
+        saleDetails: null,
+        saleItems: [],
+        isCustomEntry: true,
+        lastUpdated: serverTimestamp(),
+        createdAt: serverTimestamp(),
+      });
+      toast({ title: "Lead Added", description: "Custom lead created. Use the 'Add Sale' button on the card to record the sale." });
+      onClose();
+    } catch {
+      toast({ title: "Error", description: "Failed to create lead.", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-card border border-border rounded-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="font-display font-bold text-lg text-foreground">Add Custom Lead</h3>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Phone Number *</label>
+            <input
+              type="tel"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value.replace(/[^0-9]/g, ""))}
+              placeholder="9876543210"
+              autoFocus
+              maxLength={10}
+              onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
+              className="w-full h-10 px-4 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary font-mono"
+            />
+            <p className="text-[10px] text-muted-foreground mt-0.5">+91 will be added automatically</p>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Name / Business Name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Optional"
+              className="w-full h-10 px-4 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary"
+            />
+          </div>
+          <div className="bg-info/10 border border-info/30 text-info text-xs rounded-md p-2.5 leading-relaxed">
+            This lead will appear in your My Leads list. Use the "Add Sale" button on the card to record the sale and get commission.
+          </div>
+          <button
+            onClick={handleCreate}
+            disabled={saving}
+            className="w-full h-10 rounded-lg bg-primary text-primary-foreground font-display font-semibold text-sm hover:bg-primary/90 disabled:opacity-40 transition-colors flex items-center justify-center gap-2"
+          >
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+            {saving ? "Creating..." : "Create Lead"}
+          </button>
+        </div>
       </div>
     </div>
   );
