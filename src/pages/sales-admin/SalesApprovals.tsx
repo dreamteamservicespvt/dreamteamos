@@ -1,12 +1,13 @@
 import { useState, useEffect } from "react";
-import { collection, onSnapshot, updateDoc, doc, serverTimestamp, deleteDoc } from "firebase/firestore";
+import { collection, onSnapshot, updateDoc, doc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
+import { logActivity } from "@/services/activityLog";
 import { useAuthStore } from "@/store/authStore";
 import { formatCurrency } from "@/utils/formatters";
 import { format } from "date-fns";
 import type { AppUser, Lead, SaleDetail } from "@/types";
-import { CheckCircle, XCircle, ShoppingBag, ExternalLink, RotateCcw, Trash2 } from "lucide-react";
+import { CheckCircle, XCircle, ShoppingBag, ExternalLink, RotateCcw, Trash2, CheckSquare, Square } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
 
@@ -18,6 +19,8 @@ export default function SalesApprovals() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"pending" | "verified" | "rejected">("pending");
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [bulkProcessing, setBulkProcessing] = useState(false);
 
   useEffect(() => {
     const unsubs: (() => void)[] = [];
@@ -38,28 +41,48 @@ export default function SalesApprovals() {
     return () => unsubs.forEach((u) => u());
   }, [currentUser?.uid]);
 
+  // Clear selections when tab changes
+  useEffect(() => { setSelectedKeys(new Set()); }, [tab]);
+
   const getAllItems = (lead: Lead): SaleDetail[] => {
     return lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
   };
+
+  const getMemberName = (uid: string) => members.find((m) => m.uid === uid)?.name || "Unknown";
+
+  const makeKey = (leadId: string, itemIndex: number) => `${leadId}__${itemIndex}`;
+
+  // ── Single item actions ──────────────────────────────────────────────────
 
   const handleVerifyItem = async (leadId: string, itemIndex: number) => {
     const lead = leads.find((l) => l.id === leadId);
     if (!lead) return;
     try {
       const items = [...getAllItems(lead)];
-      items[itemIndex] = { ...items[itemIndex], verificationStatus: "verified" };
-      await updateDoc(doc(db, "leads", leadId), {
-        saleItems: items,
-        lastUpdated: serverTimestamp(),
+      const oldItem = items[itemIndex];
+      items[itemIndex] = { ...oldItem, verificationStatus: "verified" };
+      await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
+      await sendNotification({
+        userId: lead.assignedTo,
+        type: "sale_approved",
+        title: "Sale Verified",
+        message: `Your sale of ₹${items[itemIndex].amount?.toLocaleString()} for ${lead.displayName} has been verified!`,
       });
-      if (lead) {
-        await sendNotification({
-          userId: lead.assignedTo,
-          type: "sale_approved",
-          title: "Sale Verified",
-          message: `Your sale of ₹${items[itemIndex].amount?.toLocaleString()} for ${lead.displayName} has been verified!`,
-        });
-      }
+      await logActivity({
+        actorId: currentUser!.uid,
+        actorName: currentUser!.name,
+        actorRole: "sales_admin",
+        adminId: currentUser!.uid,
+        action: "verified_sale",
+        details: {
+          leadId,
+          leadName: lead.displayName,
+          memberId: lead.assignedTo,
+          memberName: getMemberName(lead.assignedTo),
+          amount: oldItem.amount,
+          category: oldItem.category,
+        },
+      });
       setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, saleItems: items } : l));
       toast({ title: "Verified", description: "Sale item verified." });
     } catch {
@@ -72,19 +95,30 @@ export default function SalesApprovals() {
     if (!lead) return;
     try {
       const items = [...getAllItems(lead)];
-      items[itemIndex] = { ...items[itemIndex], verificationStatus: "rejected" };
-      await updateDoc(doc(db, "leads", leadId), {
-        saleItems: items,
-        lastUpdated: serverTimestamp(),
+      const oldItem = items[itemIndex];
+      items[itemIndex] = { ...oldItem, verificationStatus: "rejected" };
+      await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
+      await sendNotification({
+        userId: lead.assignedTo,
+        type: "sale_rejected",
+        title: "Sale Rejected",
+        message: `Your ${items[itemIndex].category} sale of ₹${items[itemIndex].amount?.toLocaleString()} for ${lead.displayName} has been rejected.`,
       });
-      if (lead) {
-        await sendNotification({
-          userId: lead.assignedTo,
-          type: "sale_rejected",
-          title: "Sale Rejected",
-          message: `Your ${items[itemIndex].category} sale of ₹${items[itemIndex].amount?.toLocaleString()} for ${lead.displayName} has been rejected.`,
-        });
-      }
+      await logActivity({
+        actorId: currentUser!.uid,
+        actorName: currentUser!.name,
+        actorRole: "sales_admin",
+        adminId: currentUser!.uid,
+        action: "rejected_sale",
+        details: {
+          leadId,
+          leadName: lead.displayName,
+          memberId: lead.assignedTo,
+          memberName: getMemberName(lead.assignedTo),
+          amount: oldItem.amount,
+          category: oldItem.category,
+        },
+      });
       setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, saleItems: items } : l));
       toast({ title: "Rejected", description: "Sale item rejected." });
     } catch {
@@ -97,19 +131,30 @@ export default function SalesApprovals() {
     if (!lead) return;
     try {
       const items = [...getAllItems(lead)];
-      items[itemIndex] = { ...items[itemIndex], verificationStatus: "pending" };
-      await updateDoc(doc(db, "leads", leadId), {
-        saleItems: items,
-        lastUpdated: serverTimestamp(),
+      const oldItem = items[itemIndex];
+      items[itemIndex] = { ...oldItem, verificationStatus: "pending" };
+      await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
+      await sendNotification({
+        userId: lead.assignedTo,
+        type: "sale_revoked",
+        title: "Sale Approval Revoked",
+        message: `Your ${items[itemIndex].category} sale for ${lead.displayName} has been moved back to pending.`,
       });
-      if (lead) {
-        await sendNotification({
-          userId: lead.assignedTo,
-          type: "sale_revoked",
-          title: "Sale Approval Revoked",
-          message: `Your ${items[itemIndex].category} sale for ${lead.displayName} has been moved back to pending.`,
-        });
-      }
+      await logActivity({
+        actorId: currentUser!.uid,
+        actorName: currentUser!.name,
+        actorRole: "sales_admin",
+        adminId: currentUser!.uid,
+        action: "revoked_sale",
+        details: {
+          leadId,
+          leadName: lead.displayName,
+          memberId: lead.assignedTo,
+          memberName: getMemberName(lead.assignedTo),
+          amount: oldItem.amount,
+          category: oldItem.category,
+        },
+      });
       setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, saleItems: items } : l));
       toast({ title: "Revoked", description: "Sale moved back to pending." });
     } catch {
@@ -122,16 +167,26 @@ export default function SalesApprovals() {
     if (!lead) return;
     try {
       const items = [...getAllItems(lead)];
+      const oldItem = items[itemIndex];
       items.splice(itemIndex, 1);
-      const updates: Record<string, any> = {
-        saleItems: items,
-        lastUpdated: serverTimestamp(),
-      };
-      if (items.length === 0) {
-        updates.saleDone = false;
-        updates.saleDetails = null;
-      }
+      const updates: Record<string, any> = { saleItems: items, lastUpdated: serverTimestamp() };
+      if (items.length === 0) { updates.saleDone = false; updates.saleDetails = null; }
       await updateDoc(doc(db, "leads", leadId), updates);
+      await logActivity({
+        actorId: currentUser!.uid,
+        actorName: currentUser!.name,
+        actorRole: "sales_admin",
+        adminId: currentUser!.uid,
+        action: "deleted_sale",
+        details: {
+          leadId,
+          leadName: lead.displayName,
+          memberId: lead.assignedTo,
+          memberName: getMemberName(lead.assignedTo),
+          amount: oldItem.amount,
+          category: oldItem.category,
+        },
+      });
       if (items.length === 0) {
         setLeads((prev) => prev.filter((l) => l.id !== leadId));
       } else {
@@ -143,16 +198,146 @@ export default function SalesApprovals() {
     }
   };
 
-  const getMemberName = (uid: string) => members.find((m) => m.uid === uid)?.name || "Unknown";
+  // ── Bulk select helpers ──────────────────────────────────────────────────
+
+  const toggleSelect = (key: string) => {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = (keys: string[]) => {
+    if (keys.every((k) => selectedKeys.has(k))) {
+      setSelectedKeys(new Set());
+    } else {
+      setSelectedKeys(new Set(keys));
+    }
+  };
+
+  // ── Bulk actions (only for pending tab) ─────────────────────────────────
+
+  const handleBulkVerify = async (displayItems: Array<{ lead: Lead; item: SaleDetail; itemIndex: number }>) => {
+    const selected = displayItems.filter((li) => selectedKeys.has(makeKey(li.lead.id, li.itemIndex)));
+    if (selected.length === 0) return;
+    setBulkProcessing(true);
+    try {
+      // Group by lead to batch updates
+      const byLead: Record<string, typeof selected> = {};
+      selected.forEach((li) => {
+        if (!byLead[li.lead.id]) byLead[li.lead.id] = [];
+        byLead[li.lead.id].push(li);
+      });
+
+      for (const leadId of Object.keys(byLead)) {
+        const lead = leads.find((l) => l.id === leadId)!;
+        const items = [...getAllItems(lead)];
+        const affected = byLead[leadId];
+        affected.forEach(({ itemIndex }) => {
+          items[itemIndex] = { ...items[itemIndex], verificationStatus: "verified" };
+        });
+        await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
+        // Notify member once per lead
+        await sendNotification({
+          userId: lead.assignedTo,
+          type: "sale_approved",
+          title: `${affected.length} Sale(s) Verified`,
+          message: `${affected.length} of your sale(s) for ${lead.displayName} have been verified.`,
+        });
+        setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, saleItems: items } : l));
+      }
+
+      await logActivity({
+        actorId: currentUser!.uid,
+        actorName: currentUser!.name,
+        actorRole: "sales_admin",
+        adminId: currentUser!.uid,
+        action: "bulk_verified_sales",
+        details: {
+          count: selected.length,
+          items: selected.map((li) => ({
+            leadId: li.lead.id,
+            leadName: li.lead.displayName,
+            amount: li.item.amount,
+            category: li.item.category,
+            memberName: getMemberName(li.lead.assignedTo),
+          })),
+        },
+      });
+
+      setSelectedKeys(new Set());
+      toast({ title: `Verified ${selected.length} item(s)`, description: "Bulk verification complete." });
+    } catch {
+      toast({ title: "Error", description: "Bulk verify failed.", variant: "destructive" });
+    } finally {
+      setBulkProcessing(false);
+    }
+  };
+
+  const handleBulkReject = async (displayItems: Array<{ lead: Lead; item: SaleDetail; itemIndex: number }>) => {
+    const selected = displayItems.filter((li) => selectedKeys.has(makeKey(li.lead.id, li.itemIndex)));
+    if (selected.length === 0) return;
+    setBulkProcessing(true);
+    try {
+      const byLead: Record<string, typeof selected> = {};
+      selected.forEach((li) => {
+        if (!byLead[li.lead.id]) byLead[li.lead.id] = [];
+        byLead[li.lead.id].push(li);
+      });
+
+      for (const leadId of Object.keys(byLead)) {
+        const lead = leads.find((l) => l.id === leadId)!;
+        const items = [...getAllItems(lead)];
+        const affected = byLead[leadId];
+        affected.forEach(({ itemIndex }) => {
+          items[itemIndex] = { ...items[itemIndex], verificationStatus: "rejected" };
+        });
+        await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
+        await sendNotification({
+          userId: lead.assignedTo,
+          type: "sale_rejected",
+          title: `${affected.length} Sale(s) Rejected`,
+          message: `${affected.length} of your sale(s) for ${lead.displayName} have been rejected.`,
+        });
+        setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, saleItems: items } : l));
+      }
+
+      await logActivity({
+        actorId: currentUser!.uid,
+        actorName: currentUser!.name,
+        actorRole: "sales_admin",
+        adminId: currentUser!.uid,
+        action: "bulk_rejected_sales",
+        details: {
+          count: selected.length,
+          items: selected.map((li) => ({
+            leadId: li.lead.id,
+            leadName: li.lead.displayName,
+            amount: li.item.amount,
+            category: li.item.category,
+            memberName: getMemberName(li.lead.assignedTo),
+          })),
+        },
+      });
+
+      setSelectedKeys(new Set());
+      toast({ title: `Rejected ${selected.length} item(s)`, description: "Bulk rejection complete." });
+    } catch {
+      toast({ title: "Error", description: "Bulk reject failed.", variant: "destructive" });
+    } finally {
+      setBulkProcessing(false);
+    }
+  };
+
+  // ── Build filtered lists ─────────────────────────────────────────────────
 
   const dateStr = selectedDate ? format(selectedDate, "dd/MM/yyyy") : null;
 
-  // Build flat list of lead+item pairs for filtering
   type LeadItem = { lead: Lead; item: SaleDetail; itemIndex: number };
   const allLeadItems: LeadItem[] = leads.flatMap((lead) =>
     getAllItems(lead).map((item, idx) => ({ lead, item, itemIndex: idx }))
   );
-  // Pending always shows all; verified filters by date
   const pending = allLeadItems.filter((li) => li.item.verificationStatus === "pending");
   const verified = allLeadItems.filter((li) => {
     if (li.item.verificationStatus !== "verified") return false;
@@ -170,6 +355,10 @@ export default function SalesApprovals() {
   });
   const displayItems = tab === "pending" ? pending : tab === "verified" ? verified : rejected;
 
+  const pendingKeys = pending.map((li) => makeKey(li.lead.id, li.itemIndex));
+  const allPendingSelected = pendingKeys.length > 0 && pendingKeys.every((k) => selectedKeys.has(k));
+  const someSelected = selectedKeys.size > 0 && tab === "pending";
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -181,6 +370,7 @@ export default function SalesApprovals() {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-lg md:text-2xl font-bold text-foreground">Sales Approvals</h1>
@@ -196,6 +386,7 @@ export default function SalesApprovals() {
         </div>
       </div>
 
+      {/* Tabs */}
       <div className="flex gap-1.5 overflow-x-auto">
         <button onClick={() => setTab("pending")}
           className={`h-8 md:h-9 px-3 md:px-4 rounded-lg text-xs md:text-sm font-medium transition-colors whitespace-nowrap ${tab === "pending" ? "bg-warning/15 text-warning border border-warning/30" : "bg-card border border-border text-muted-foreground hover:bg-accent"}`}>
@@ -211,6 +402,58 @@ export default function SalesApprovals() {
         </button>
       </div>
 
+      {/* Bulk action bar — only on Pending tab */}
+      {tab === "pending" && pending.length > 0 && (
+        <div className="bg-card border border-border rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          {/* Select all toggle */}
+          <button
+            onClick={() => toggleSelectAll(pendingKeys)}
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {allPendingSelected ? (
+              <CheckSquare size={16} className="text-primary" />
+            ) : (
+              <Square size={16} />
+            )}
+            <span>{allPendingSelected ? "Deselect All" : "Select All"}</span>
+            {selectedKeys.size > 0 && (
+              <span className="text-[10px] bg-primary/15 text-primary px-1.5 py-0.5 rounded-full font-medium">
+                {selectedKeys.size} selected
+              </span>
+            )}
+          </button>
+
+          {/* Bulk action buttons */}
+          {someSelected && (
+            <div className="flex gap-2 sm:ml-auto">
+              <button
+                onClick={() => handleBulkVerify(displayItems)}
+                disabled={bulkProcessing}
+                className="flex items-center gap-1.5 h-8 px-4 rounded-lg bg-success/15 text-success font-medium text-xs hover:bg-success/25 transition-colors disabled:opacity-50"
+              >
+                <CheckCircle size={13} />
+                Verify All ({selectedKeys.size})
+              </button>
+              <button
+                onClick={() => handleBulkReject(displayItems)}
+                disabled={bulkProcessing}
+                className="flex items-center gap-1.5 h-8 px-4 rounded-lg bg-destructive/15 text-destructive font-medium text-xs hover:bg-destructive/25 transition-colors disabled:opacity-50"
+              >
+                <XCircle size={13} />
+                Reject All ({selectedKeys.size})
+              </button>
+            </div>
+          )}
+
+          {!someSelected && (
+            <p className="text-xs text-muted-foreground sm:ml-auto">
+              Select items above to bulk verify or reject
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Items */}
       {displayItems.length === 0 ? (
         <div className="bg-card border border-border rounded-xl p-12 text-center">
           <ShoppingBag size={32} className="mx-auto text-muted-foreground/30 mb-2" />
@@ -218,96 +461,120 @@ export default function SalesApprovals() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {displayItems.map((li, key) => (
-            <div key={`${li.lead.id}-${li.itemIndex}-${key}`} className="bg-card border border-border rounded-xl p-3 md:p-5 space-y-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="font-medium text-foreground text-sm md:text-base">{li.lead.displayName || li.lead.phone}</p>
-                  <p className="text-[10px] md:text-xs text-muted-foreground font-mono truncate">{li.lead.phone}</p>
+          {displayItems.map((li, key) => {
+            const itemKey = makeKey(li.lead.id, li.itemIndex);
+            const isSelected = selectedKeys.has(itemKey);
+            return (
+              <div
+                key={`${li.lead.id}-${li.itemIndex}-${key}`}
+                className={`bg-card border rounded-xl p-3 md:p-5 space-y-3 transition-colors ${
+                  tab === "pending" && isSelected ? "border-primary/50 bg-primary/5" : "border-border"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2 min-w-0">
+                    {/* Checkbox for pending items */}
+                    {tab === "pending" && (
+                      <button
+                        onClick={() => toggleSelect(itemKey)}
+                        className="mt-0.5 shrink-0 text-muted-foreground hover:text-primary transition-colors"
+                      >
+                        {isSelected ? (
+                          <CheckSquare size={16} className="text-primary" />
+                        ) : (
+                          <Square size={16} />
+                        )}
+                      </button>
+                    )}
+                    <div className="min-w-0">
+                      <p className="font-medium text-foreground text-sm md:text-base">{li.lead.displayName || li.lead.phone}</p>
+                      <p className="text-[10px] md:text-xs text-muted-foreground font-mono truncate">{li.lead.phone}</p>
+                    </div>
+                  </div>
+                  <p className="font-display font-bold text-primary text-base md:text-lg shrink-0">{formatCurrency(li.item.amount || 0)}</p>
                 </div>
-                <p className="font-display font-bold text-primary text-base md:text-lg shrink-0">{formatCurrency(li.item.amount || 0)}</p>
-              </div>
 
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <span className="text-muted-foreground">Category:</span>{" "}
-                  <span className="text-foreground font-medium capitalize">{li.item.category?.replace(/_/g, " ") || "—"}</span>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="text-muted-foreground">Category:</span>{" "}
+                    <span className="text-foreground font-medium capitalize">{li.item.category?.replace(/_/g, " ") || "—"}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Package:</span>{" "}
+                    <span className="text-foreground font-medium">{li.item.packageKey || "—"}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Sold by:</span>{" "}
+                    <span className="text-foreground font-medium">{getMemberName(li.lead.assignedTo)}</span>
+                  </div>
+                  {li.item.customDescription && (
+                    <div className="col-span-2">
+                      <span className="text-muted-foreground">Note:</span>{" "}
+                      <span className="text-foreground">{li.item.customDescription}</span>
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <span className="text-muted-foreground">Package:</span>{" "}
-                  <span className="text-foreground font-medium">{li.item.packageKey || "—"}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Sold by:</span>{" "}
-                  <span className="text-foreground font-medium">{getMemberName(li.lead.assignedTo)}</span>
-                </div>
-                {li.item.customDescription && (
-                  <div className="col-span-2">
-                    <span className="text-muted-foreground">Note:</span>{" "}
-                    <span className="text-foreground">{li.item.customDescription}</span>
+
+                {li.item.paymentScreenshotUrl && (
+                  <a href={li.item.paymentScreenshotUrl} target="_blank" rel="noopener noreferrer"
+                    className="text-xs text-info flex items-center gap-1 hover:underline">
+                    <ExternalLink size={12} /> View Payment Screenshot
+                  </a>
+                )}
+
+                {tab === "pending" && (
+                  <div className="flex gap-1.5 md:gap-2 pt-1">
+                    <button onClick={() => handleVerifyItem(li.lead.id, li.itemIndex)}
+                      className="flex-1 h-8 md:h-9 rounded-lg bg-success/15 text-success font-medium text-xs md:text-sm hover:bg-success/25 transition-colors flex items-center justify-center gap-1">
+                      <CheckCircle size={14} /> Verify
+                    </button>
+                    <button onClick={() => handleRejectItem(li.lead.id, li.itemIndex)}
+                      className="flex-1 h-8 md:h-9 rounded-lg bg-destructive/15 text-destructive font-medium text-xs md:text-sm hover:bg-destructive/25 transition-colors flex items-center justify-center gap-1">
+                      <XCircle size={14} /> Reject
+                    </button>
+                    <button onClick={() => handleDeleteItem(li.lead.id, li.itemIndex)}
+                      className="w-8 md:w-9 h-8 md:h-9 rounded-lg bg-muted text-muted-foreground hover:text-destructive hover:bg-destructive/15 transition-colors flex items-center justify-center shrink-0">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )}
+
+                {tab === "verified" && (
+                  <div className="flex gap-1.5 md:gap-2 pt-1">
+                    <button onClick={() => handleRevokeItem(li.lead.id, li.itemIndex)}
+                      className="flex-1 h-8 md:h-9 rounded-lg bg-warning/15 text-warning font-medium text-xs md:text-sm hover:bg-warning/25 transition-colors flex items-center justify-center gap-1">
+                      <RotateCcw size={14} /> Revoke
+                    </button>
+                    <button onClick={() => handleRejectItem(li.lead.id, li.itemIndex)}
+                      className="flex-1 h-8 md:h-9 rounded-lg bg-destructive/15 text-destructive font-medium text-xs md:text-sm hover:bg-destructive/25 transition-colors flex items-center justify-center gap-1">
+                      <XCircle size={14} /> Reject
+                    </button>
+                    <button onClick={() => handleDeleteItem(li.lead.id, li.itemIndex)}
+                      className="w-8 md:w-9 h-8 md:h-9 rounded-lg bg-muted text-muted-foreground hover:text-destructive hover:bg-destructive/15 transition-colors flex items-center justify-center shrink-0">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )}
+
+                {tab === "rejected" && (
+                  <div className="flex gap-1.5 md:gap-2 pt-1">
+                    <button onClick={() => handleRevokeItem(li.lead.id, li.itemIndex)}
+                      className="flex-1 h-8 md:h-9 rounded-lg bg-warning/15 text-warning font-medium text-xs md:text-sm hover:bg-warning/25 transition-colors flex items-center justify-center gap-1">
+                      <RotateCcw size={14} /> To Pending
+                    </button>
+                    <button onClick={() => handleVerifyItem(li.lead.id, li.itemIndex)}
+                      className="flex-1 h-8 md:h-9 rounded-lg bg-success/15 text-success font-medium text-xs md:text-sm hover:bg-success/25 transition-colors flex items-center justify-center gap-1">
+                      <CheckCircle size={14} /> Approve
+                    </button>
+                    <button onClick={() => handleDeleteItem(li.lead.id, li.itemIndex)}
+                      className="w-8 md:w-9 h-8 md:h-9 rounded-lg bg-muted text-muted-foreground hover:text-destructive hover:bg-destructive/15 transition-colors flex items-center justify-center shrink-0">
+                      <Trash2 size={14} />
+                    </button>
                   </div>
                 )}
               </div>
-
-              {li.item.paymentScreenshotUrl && (
-                <a href={li.item.paymentScreenshotUrl} target="_blank" rel="noopener noreferrer"
-                  className="text-xs text-info flex items-center gap-1 hover:underline">
-                  <ExternalLink size={12} /> View Payment Screenshot
-                </a>
-              )}
-
-              {tab === "pending" && (
-                <div className="flex gap-1.5 md:gap-2 pt-1">
-                  <button onClick={() => handleVerifyItem(li.lead.id, li.itemIndex)}
-                    className="flex-1 h-8 md:h-9 rounded-lg bg-success/15 text-success font-medium text-xs md:text-sm hover:bg-success/25 transition-colors flex items-center justify-center gap-1">
-                    <CheckCircle size={14} /> Verify
-                  </button>
-                  <button onClick={() => handleRejectItem(li.lead.id, li.itemIndex)}
-                    className="flex-1 h-8 md:h-9 rounded-lg bg-destructive/15 text-destructive font-medium text-xs md:text-sm hover:bg-destructive/25 transition-colors flex items-center justify-center gap-1">
-                    <XCircle size={14} /> Reject
-                  </button>
-                  <button onClick={() => handleDeleteItem(li.lead.id, li.itemIndex)}
-                    className="w-8 md:w-9 h-8 md:h-9 rounded-lg bg-muted text-muted-foreground hover:text-destructive hover:bg-destructive/15 transition-colors flex items-center justify-center shrink-0">
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              )}
-
-              {tab === "verified" && (
-                <div className="flex gap-1.5 md:gap-2 pt-1">
-                  <button onClick={() => handleRevokeItem(li.lead.id, li.itemIndex)}
-                    className="flex-1 h-8 md:h-9 rounded-lg bg-warning/15 text-warning font-medium text-xs md:text-sm hover:bg-warning/25 transition-colors flex items-center justify-center gap-1">
-                    <RotateCcw size={14} /> Revoke
-                  </button>
-                  <button onClick={() => handleRejectItem(li.lead.id, li.itemIndex)}
-                    className="flex-1 h-8 md:h-9 rounded-lg bg-destructive/15 text-destructive font-medium text-xs md:text-sm hover:bg-destructive/25 transition-colors flex items-center justify-center gap-1">
-                    <XCircle size={14} /> Reject
-                  </button>
-                  <button onClick={() => handleDeleteItem(li.lead.id, li.itemIndex)}
-                    className="w-8 md:w-9 h-8 md:h-9 rounded-lg bg-muted text-muted-foreground hover:text-destructive hover:bg-destructive/15 transition-colors flex items-center justify-center shrink-0">
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              )}
-
-              {tab === "rejected" && (
-                <div className="flex gap-1.5 md:gap-2 pt-1">
-                  <button onClick={() => handleRevokeItem(li.lead.id, li.itemIndex)}
-                    className="flex-1 h-8 md:h-9 rounded-lg bg-warning/15 text-warning font-medium text-xs md:text-sm hover:bg-warning/25 transition-colors flex items-center justify-center gap-1">
-                    <RotateCcw size={14} /> To Pending
-                  </button>
-                  <button onClick={() => handleVerifyItem(li.lead.id, li.itemIndex)}
-                    className="flex-1 h-8 md:h-9 rounded-lg bg-success/15 text-success font-medium text-xs md:text-sm hover:bg-success/25 transition-colors flex items-center justify-center gap-1">
-                    <CheckCircle size={14} /> Approve
-                  </button>
-                  <button onClick={() => handleDeleteItem(li.lead.id, li.itemIndex)}
-                    className="w-8 md:w-9 h-8 md:h-9 rounded-lg bg-muted text-muted-foreground hover:text-destructive hover:bg-destructive/15 transition-colors flex items-center justify-center shrink-0">
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

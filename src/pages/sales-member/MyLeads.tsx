@@ -5,6 +5,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
+import { logActivity } from "@/services/activityLog";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import { formatCurrency } from "@/utils/formatters";
 import { normalizePhone } from "@/utils/phone";
@@ -288,6 +289,14 @@ export default function MyLeads() {
       dismiss();
       try {
         await deleteDoc(doc(db, "leads", id));
+        await logActivity({
+          actorId: user!.uid,
+          actorName: user!.name,
+          actorRole: "sales_member",
+          adminId: user!.createdBy,
+          action: "deleted_lead",
+          details: { leadId: id, leadName: displayName },
+        });
       } catch {
         toast({ title: "Error", description: "Failed to delete lead.", variant: "destructive" });
       }
@@ -520,6 +529,7 @@ interface LeadCardProps {
 
 function LeadCard({ lead, pastDayLabel, updateLead, onDelete, expandedNotes, setExpandedNotes, expandedSale, setExpandedSale }: LeadCardProps) {
   const { toast } = useToast();
+  const currentUser = useAuthStore((s) => s.user);
   const [notes, setNotes] = useState(lead.notes || "");
   const [saleDone, setSaleDone] = useState(lead.saleDone || false);
   const [showSalesList, setShowSalesList] = useState(false);
@@ -533,6 +543,7 @@ function LeadCard({ lead, pastDayLabel, updateLead, onDelete, expandedNotes, set
   useEffect(() => { setSaleDone(lead.saleDone || false); }, [lead.saleDone]);
 
   const handleDeleteSaleItem = async (itemIndex: number) => {
+    const deletedItem = allSaleItems[itemIndex];
     const items = [...allSaleItems];
     items.splice(itemIndex, 1);
     const updates: Record<string, any> = { saleItems: items };
@@ -541,6 +552,21 @@ function LeadCard({ lead, pastDayLabel, updateLead, onDelete, expandedNotes, set
       updates.saleDetails = null;
     }
     await updateLead(lead.id, updates);
+    if (currentUser) {
+      await logActivity({
+        actorId: currentUser.uid,
+        actorName: currentUser.name,
+        actorRole: "sales_member",
+        adminId: currentUser.createdBy,
+        action: "deleted_sale_item",
+        details: {
+          leadId: lead.id,
+          leadName: lead.displayName,
+          amount: deletedItem?.amount,
+          category: deletedItem?.category,
+        },
+      });
+    }
     toast({ title: "Deleted", description: "Sale item removed." });
   };
 
@@ -859,6 +885,7 @@ function WhatsAppButton({ phone, onActivity }: { phone: string; onActivity?: () 
 
 function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: string, data: Record<string, any>) => Promise<void>; onDone: () => void }) {
   const { toast } = useToast();
+  const saleFormUser = useAuthStore((s) => s.user);
   const [category, setCategory] = useState("wishes");
   const [packageKey, setPackageKey] = useState("");
   const [customAmount, setCustomAmount] = useState<number>(0);
@@ -902,6 +929,22 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
     const existingItems = lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
     const updatedItems = [...existingItems, newItem];
     await updateLead(lead.id, { saleDone: true, saleItems: updatedItems, saleDetails: newItem });
+    if (saleFormUser) {
+      await logActivity({
+        actorId: saleFormUser.uid,
+        actorName: saleFormUser.name,
+        actorRole: "sales_member",
+        adminId: saleFormUser.createdBy,
+        action: "submitted_sale",
+        details: {
+          leadId: lead.id,
+          leadName: lead.displayName,
+          amount,
+          category,
+          packageKey: packageKey || "custom",
+        },
+      });
+    }
     setSaving(false);
     toast({ title: "Sale Added", description: `Sale of ${formatCurrency(amount)} added.` });
     onDone();
