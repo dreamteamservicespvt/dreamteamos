@@ -7,7 +7,8 @@ import { useAuthStore } from "@/store/authStore";
 import { formatCurrency } from "@/utils/formatters";
 import { format } from "date-fns";
 import type { AppUser, Lead, SaleDetail } from "@/types";
-import { CheckCircle, XCircle, ShoppingBag, ExternalLink, RotateCcw, Trash2, CheckSquare, Square } from "lucide-react";
+import { CheckCircle, XCircle, ShoppingBag, ExternalLink, RotateCcw, Trash2, CheckSquare, Square, Phone, MessageCircle } from "lucide-react";
+import { formatPhoneDisplay, getCallUrl, getWhatsAppUrl } from "@/utils/phone";
 import { useToast } from "@/hooks/use-toast";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
 
@@ -488,7 +489,27 @@ export default function SalesApprovals() {
                     )}
                     <div className="min-w-0">
                       <p className="font-medium text-foreground text-sm md:text-base">{li.lead.displayName || li.lead.phone}</p>
-                      <p className="text-[10px] md:text-xs text-muted-foreground font-mono truncate">{li.lead.phone}</p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <p className="text-[10px] md:text-xs text-muted-foreground font-mono">{formatPhoneDisplay(li.lead.phone)}</p>
+                        <a
+                          href={getCallUrl(li.lead.phone)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-5 h-5 rounded flex items-center justify-center text-info hover:bg-info/10 transition-colors"
+                          title="Call"
+                        >
+                          <Phone size={11} />
+                        </a>
+                        <a
+                          href={getWhatsAppUrl(li.lead.phone)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-5 h-5 rounded flex items-center justify-center text-success hover:bg-success/10 transition-colors"
+                          title="WhatsApp"
+                        >
+                          <MessageCircle size={11} />
+                        </a>
+                      </div>
                     </div>
                   </div>
                   <p className="font-display font-bold text-primary text-base md:text-lg shrink-0">{formatCurrency(li.item.amount || 0)}</p>
