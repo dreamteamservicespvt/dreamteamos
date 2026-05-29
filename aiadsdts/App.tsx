@@ -342,10 +342,20 @@ const App: React.FC = () => {
     } catch (error: any) {
       console.error(error);
       const isStopped = error.message?.includes('stopped by user');
+      let userMessage = error.message || 'An unexpected error occurred.';
+
+      // Map known generative API image errors to friendly guidance
+      if (!isStopped) {
+        const msg = (error.message || '').toLowerCase();
+        if (msg.includes('unable to process input image') || msg.includes('invalid_argument')) {
+          userMessage = 'One or more uploaded images could not be processed. Try uploading JPEG/PNG files under 4MB, or reduce image resolution/orientation and retry.';
+        }
+      }
+
       setStatus(prev => ({ 
         ...prev, 
         isProcessing: false, 
-        error: isStopped ? 'Generation stopped.' : (error.message || "An unexpected error occurred.")
+        error: isStopped ? 'Generation stopped.' : userMessage
       }));
     } finally {
       abortControllerRef.current = null;
