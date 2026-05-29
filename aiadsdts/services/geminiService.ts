@@ -18,7 +18,7 @@ import {
   getProfessionalSuitPaletteForBusiness,
   getRealisticLogoPlacementGuidance
 } from "./prompts";
-import { fileToBase64, readFileAsText } from "../utils/fileHelpers";
+import { fileToBase64, readFileAsText, normalizeImageForGenAPI } from "../utils/fileHelpers";
 
 // Multi-API Key Fallback System
 // Keys are stored in environment variables for security
@@ -772,36 +772,81 @@ export const extractBusinessOnly = async (
     }
   }
   if (files.logo) {
-    parts.push({ inlineData: { mimeType: files.logo.type, data: await fileToBase64(files.logo) } });
+    try {
+      const normalized = await normalizeImageForGenAPI(files.logo);
+      parts.push({ inlineData: { mimeType: normalized.mimeType, data: normalized.base64 } });
+    } catch (e) {
+      parts.push({ inlineData: { mimeType: files.logo.type, data: await fileToBase64(files.logo) } });
+    }
     parts.push({ text: "This is the Business Logo. CRITICAL: Place this EXACT logo image as-is in the scene. Do NOT recreate, redesign, redraw, recolor, simplify, or modify this logo in ANY way. Use the attached image pixel-for-pixel." });
   }
   if (files.visitingCard && files.visitingCard.length > 0) {
     for (let i = 0; i < files.visitingCard.length; i++) {
-      parts.push({ inlineData: { mimeType: files.visitingCard[i].type, data: await fileToBase64(files.visitingCard[i]) } });
+      const vf = files.visitingCard[i];
+      if (vf.type && vf.type.startsWith('image/')) {
+        try {
+          const normalized = await normalizeImageForGenAPI(vf);
+          parts.push({ inlineData: { mimeType: normalized.mimeType, data: normalized.base64 } });
+        } catch (e) {
+          parts.push({ inlineData: { mimeType: vf.type, data: await fileToBase64(vf) } });
+        }
+      } else {
+        parts.push({ inlineData: { mimeType: vf.type, data: await fileToBase64(vf) } });
+      }
       parts.push({ text: `This is the Visiting Card (${i === 0 ? 'Front' : 'Back'}).` });
     }
   }
   if (files.storeImage && files.storeImage.length > 0) {
     for (let i = 0; i < files.storeImage.length; i++) {
-      parts.push({ inlineData: { mimeType: files.storeImage[i].type, data: await fileToBase64(files.storeImage[i]) } });
+      const sf = files.storeImage[i];
+      if (sf.type && sf.type.startsWith('image/')) {
+        try {
+          const normalized = await normalizeImageForGenAPI(sf);
+          parts.push({ inlineData: { mimeType: normalized.mimeType, data: normalized.base64 } });
+        } catch (e) {
+          parts.push({ inlineData: { mimeType: sf.type, data: await fileToBase64(sf) } });
+        }
+      } else {
+        parts.push({ inlineData: { mimeType: sf.type, data: await fileToBase64(sf) } });
+      }
       parts.push({ text: `This is a Store/Office Image (${i + 1} of ${files.storeImage.length}).` });
     }
   }
   if (files.productImages && files.productImages.length > 0) {
-    for (let i = 0; i < files.productImages.length; i++) {
-      parts.push({ inlineData: { mimeType: files.productImages[i].type, data: await fileToBase64(files.productImages[i]) } });
-      parts.push({ text: `This is a Product Image (${i + 1} of ${files.productImages.length}). Extract product categories, hero products, packaging cues, and the exact products that should influence the advertisement.` });
-    }
+      for (let i = 0; i < files.productImages.length; i++) {
+        const pf = files.productImages[i];
+        if (pf.type && pf.type.startsWith('image/')) {
+          try {
+            const normalized = await normalizeImageForGenAPI(pf);
+            parts.push({ inlineData: { mimeType: normalized.mimeType, data: normalized.base64 } });
+          } catch (e) {
+            parts.push({ inlineData: { mimeType: pf.type, data: await fileToBase64(pf) } });
+          }
+        } else {
+          parts.push({ inlineData: { mimeType: pf.type, data: await fileToBase64(pf) } });
+        }
+        parts.push({ text: `This is a Product Image (${i + 1} of ${files.productImages.length}). Extract product categories, hero products, packaging cues, and the exact products that should influence the advertisement.` });
+      }
   }
   if (files.voiceRecording && files.voiceRecording.length > 0) {
-    for (let i = 0; i < files.voiceRecording.length; i++) {
-      parts.push({ inlineData: { mimeType: files.voiceRecording[i].type, data: await fileToBase64(files.voiceRecording[i]) } });
-      parts.push({ text: `This is the Client's Voice Instructions (${i + 1} of ${files.voiceRecording.length}). Listen carefully.` });
-    }
+      for (let i = 0; i < files.voiceRecording.length; i++) {
+        parts.push({ inlineData: { mimeType: files.voiceRecording[i].type, data: await fileToBase64(files.voiceRecording[i]) } });
+        parts.push({ text: `This is the Client's Voice Instructions (${i + 1} of ${files.voiceRecording.length}). Listen carefully.` });
+      }
   }
   if (files.flyersPosters && files.flyersPosters.length > 0) {
     for (let i = 0; i < files.flyersPosters.length; i++) {
-      parts.push({ inlineData: { mimeType: files.flyersPosters[i].type, data: await fileToBase64(files.flyersPosters[i]) } });
+      const ff = files.flyersPosters[i];
+      if (ff.type && ff.type.startsWith('image/')) {
+        try {
+          const normalized = await normalizeImageForGenAPI(ff);
+          parts.push({ inlineData: { mimeType: normalized.mimeType, data: normalized.base64 } });
+        } catch (e) {
+          parts.push({ inlineData: { mimeType: ff.type, data: await fileToBase64(ff) } });
+        }
+      } else {
+        parts.push({ inlineData: { mimeType: ff.type, data: await fileToBase64(ff) } });
+      }
       parts.push({ text: `This is a Flyer/Offer Poster/Brochure (${i + 1} of ${files.flyersPosters.length}). Extract ALL business information, offers, services, contact details, and branding from this material.` });
     }
   }
