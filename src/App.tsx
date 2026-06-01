@@ -47,6 +47,8 @@ import TechAdminSettings from "@/pages/tech-admin/Settings";
 import TechAdminMemberHistory from "@/pages/tech-admin/MemberHistory";
 import WorkAssign from "@/pages/tech-admin/WorkAssign";
 import MemberAssignments from "@/pages/tech-admin/MemberAssignments";
+import TeamLeaderWorkAssign from "@/pages/tech-team-leader/WorkAssign";
+import TeamLeaderMemberAssignments from "@/pages/tech-team-leader/MemberAssignments";
 import TechAdminTools from "@/pages/tech-admin/Tools";
 import CinematicAds from "@/pages/tech-admin/CinematicAds";
 import AccountsDashboard from "@/pages/accounts-admin/Dashboard";
@@ -172,6 +174,12 @@ const App = () => (
             <Route path="/sales/chat" element={<Chat />} />
             <Route path="/sales/meeting" element={<Meeting />} />
             <Route path="/sales/salary" element={<MySalaryPage />} />
+          </Route>
+
+          {/* Tech Team Leader */}
+          <Route element={<AppLayout allowedRoles={["tech_team_leader"]} />}>
+            <Route path="/team-leader/work-assign" element={<TeamLeaderWorkAssign />} />
+            <Route path="/team-leader/work-assign/:memberId" element={<TeamLeaderMemberAssignments />} />
           </Route>
 
           <Route path="*" element={<NotFound />} />

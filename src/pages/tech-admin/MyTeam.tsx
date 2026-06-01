@@ -44,6 +44,7 @@ export default function TechAdminMyTeam() {
   const [formPassword, setFormPassword] = useState("");
   const [formSalary, setFormSalary] = useState<number>(0);
   const [formDriveUrl, setFormDriveUrl] = useState("");
+  const [formRole, setFormRole] = useState<"tech_member" | "tech_team_leader">("tech_member");
   const [showPw, setShowPw] = useState(false);
   const [creating, setCreating] = useState(false);
 
@@ -65,7 +66,7 @@ export default function TechAdminMyTeam() {
     const unsubs: (() => void)[] = [];
     unsubs.push(onSnapshot(collection(db, "users"), (snap) => {
       const all = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser));
-      setMembers(all.filter((u) => u.role === "tech_member" && u.createdBy === currentUser?.uid));
+      setMembers(all.filter((u) => (u.role === "tech_member" || u.role === "tech_team_leader") && u.createdBy === currentUser?.uid));
       setLoading(false);
     }));
     unsubs.push(onSnapshot(
@@ -137,7 +138,7 @@ export default function TechAdminMyTeam() {
         uid,
         email: formEmail.trim().toLowerCase(),
         name: formName.trim(),
-        role: "tech_member",
+        role: formRole,
         createdBy: currentUser?.uid || "",
         isActive: true,
         salary: formSalary,
@@ -151,7 +152,7 @@ export default function TechAdminMyTeam() {
       setMembers((prev) => [...prev, { ...newUser, createdAt: new Date(), updatedAt: new Date() } as AppUser]);
       setShowModal(false);
       resetForm();
-      toast({ title: "Member Created", description: `${formName.trim()} added to your team.` });
+      toast({ title: formRole === "tech_team_leader" ? "Team Leader Created" : "Member Created", description: `${formName.trim()} added to your team.` });
     } catch (err: any) {
       const msg = err.code === "auth/email-already-in-use" ? "Email already in use." : "Failed to create member.";
       toast({ title: "Error", description: msg, variant: "destructive" });
@@ -186,7 +187,7 @@ export default function TechAdminMyTeam() {
 
   const resetForm = () => {
     setFormName(""); setFormEmail(""); setFormPhone(""); setFormPassword("");
-    setFormSalary(0); setFormDriveUrl(""); setShowPw(false);
+    setFormSalary(0); setFormDriveUrl(""); setFormRole("tech_member"); setShowPw(false);
   };
 
   const handleShareCredentials = (member: AppUser) => {
@@ -433,10 +434,18 @@ export default function TechAdminMyTeam() {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-card border border-border rounded-xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="font-display font-bold text-lg text-foreground">Add Tech Member</h3>
+              <h3 className="font-display font-bold text-lg text-foreground">Add Team Member</h3>
               <button onClick={() => setShowModal(false)} className="text-muted-foreground hover:text-foreground"><X size={18} /></button>
             </div>
             <form onSubmit={handleCreate} className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Role *</label>
+                <select value={formRole} onChange={(e) => setFormRole(e.target.value as "tech_member" | "tech_team_leader")}
+                  className="w-full h-10 px-4 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary">
+                  <option value="tech_member">Tech Member</option>
+                  <option value="tech_team_leader">Tech Team Leader</option>
+                </select>
+              </div>
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Full Name *</label>
                 <input type="text" value={formName} onChange={(e) => setFormName(e.target.value)} required
@@ -476,7 +485,7 @@ export default function TechAdminMyTeam() {
               <button type="submit" disabled={creating}
                 className="w-full h-10 rounded-lg bg-primary text-primary-foreground font-display font-semibold text-sm hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 mt-2">
                 {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                {creating ? "Creating..." : "Create Member"}
+                {creating ? "Creating..." : formRole === "tech_team_leader" ? "Create Team Leader" : "Create Member"}
               </button>
             </form>
           </div>

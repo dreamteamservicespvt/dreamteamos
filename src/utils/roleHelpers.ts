@@ -2,7 +2,7 @@ import type { UserRole } from "@/types";
 import {
   LayoutDashboard, Users, TrendingUp, Code, Phone, Clock, Wallet,
   Settings, BookOpen, FolderOpen, Target, User, BarChart3,
-  ClipboardList, Briefcase, Wrench, FileCheck, MessageSquare, Video, Eye, Film, ScrollText, CalendarClock,
+  ClipboardList, Briefcase, Wrench, FileCheck, MessageSquare, Video, Eye, Film, ScrollText, CalendarClock, UserCog,
 } from "lucide-react";
 
 export interface NavItem {
@@ -76,6 +76,9 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "Sales Scripts", path: "/sales/scripts", icon: ScrollText },
     { title: "My Profile", path: "/sales/profile", icon: User },
   ],
+  tech_team_leader: [
+    { title: "Work Assign", path: "/team-leader/work-assign", icon: ClipboardList },
+  ],
 };
 
 export function getNavItems(role: UserRole): NavItem[] {
@@ -90,6 +93,7 @@ export function getRoleLabel(role: UserRole): string {
     accounts_admin: "Accounts Admin",
     tech_member: "Tech Member",
     sales_member: "Sales Member",
+    tech_team_leader: "Tech Team Leader",
   };
   return labels[role] || role;
 }
@@ -102,6 +106,7 @@ export function getRoleColor(role: UserRole): string {
     accounts_admin: "bg-role-accounts/20 text-role-accounts",
     tech_member: "bg-role-tech-member/20 text-role-tech-member",
     sales_member: "bg-role-sales-member/20 text-role-sales-member",
+    tech_team_leader: "bg-purple-500/20 text-purple-500",
   };
   return colors[role] || "";
 }
@@ -114,6 +119,7 @@ export function getDefaultRoute(role: UserRole): string {
     accounts_admin: "/accounts/dashboard",
     tech_member: "/tech/dashboard",
     sales_member: "/sales/dashboard",
+    tech_team_leader: "/team-leader/work-assign",
   };
   return routes[role] || "/login";
 }

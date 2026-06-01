@@ -4,7 +4,8 @@ export type UserRole =
   | "sales_admin"
   | "accounts_admin"
   | "tech_member"
-  | "sales_member";
+  | "sales_member"
+  | "tech_team_leader";
 
 export interface AppUser {
   uid: string;
