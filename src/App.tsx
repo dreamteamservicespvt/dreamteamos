@@ -27,6 +27,7 @@ import MyPerformance from "@/pages/sales-member/MyPerformance";
 import SalesMemberTraining from "@/pages/sales-member/Training";
 import SalesMemberProfile from "@/pages/sales-member/MyProfile";
 import SalesScripts from "@/pages/sales-member/SalesScripts";
+import SalesMemberActivityHistory from "@/pages/sales-member/ActivityHistory";
 import SalesAdminDashboard from "@/pages/sales-admin/Dashboard";
 import SalesAdminMyTeam from "@/pages/sales-admin/MyTeam";
 import LeadsManagement from "@/pages/sales-admin/LeadsManagement";
@@ -38,6 +39,8 @@ import SalesAdminSessionHistory from "@/pages/sales-admin/SessionHistory";
 import SalesAdminSettings from "@/pages/sales-admin/Settings";
 import SalesAnalytics from "@/pages/sales-admin/Analytics";
 import ScheduleNumbers from "@/pages/sales-admin/ScheduleNumbers";
+import SalesAdminActivityHistory from "@/pages/sales-admin/ActivityHistory";
+import Leaderboard from "@/pages/shared/Leaderboard";
 import TechAdminDashboard from "@/pages/tech-admin/Dashboard";
 import TechAdminMyTeam from "@/pages/tech-admin/MyTeam";
 import DriveManagement from "@/pages/tech-admin/DriveManagement";
@@ -138,6 +141,8 @@ const App = () => (
             <Route path="/sales-admin/scripts" element={<SalesScripts />} />
             <Route path="/sales-admin/sessions" element={<SalesAdminSessionHistory />} />
             <Route path="/sales-admin/settings" element={<SalesAdminSettings />} />
+            <Route path="/sales-admin/leaderboard" element={<Leaderboard />} />
+            <Route path="/sales-admin/history" element={<SalesAdminActivityHistory />} />
             <Route path="/sales-admin/chat" element={<Chat />} />
             <Route path="/sales-admin/meeting" element={<Meeting />} />
             <Route path="/sales-admin/chat-monitor" element={<AdminChatMonitor />} />
@@ -171,6 +176,8 @@ const App = () => (
             <Route path="/sales/training" element={<SalesMemberTraining />} />
             <Route path="/sales/scripts" element={<SalesScripts />} />
             <Route path="/sales/profile" element={<SalesMemberProfile />} />
+            <Route path="/sales/leaderboard" element={<Leaderboard />} />
+            <Route path="/sales/history" element={<SalesMemberActivityHistory />} />
             <Route path="/sales/chat" element={<Chat />} />
             <Route path="/sales/meeting" element={<Meeting />} />
             <Route path="/sales/salary" element={<MySalaryPage />} />

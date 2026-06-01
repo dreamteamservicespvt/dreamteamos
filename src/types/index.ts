@@ -90,6 +90,7 @@ export interface SaleDetail {
   amount: number;
   verificationStatus: "pending" | "verified" | "rejected";
   paymentScreenshotUrl?: string | null;
+  submittedAt?: any;
 }
 
 // Schedule Numbers Pool System

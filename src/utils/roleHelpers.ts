@@ -2,7 +2,12 @@ import type { UserRole } from "@/types";
 import {
   LayoutDashboard, Users, TrendingUp, Code, Phone, Clock, Wallet,
   Settings, BookOpen, FolderOpen, Target, User, BarChart3,
+<<<<<<< HEAD
   ClipboardList, Briefcase, Wrench, FileCheck, MessageSquare, Video, Eye, Film, ScrollText, CalendarClock, UserCog,
+=======
+  ClipboardList, Briefcase, Wrench, FileCheck, MessageSquare, Video, Eye, Film, ScrollText, CalendarClock,
+  Trophy, History,
+>>>>>>> 934cbda3f5c6d039a846d6fb78869a44e0ffb6eb
 } from "lucide-react";
 
 export interface NavItem {
@@ -43,7 +48,9 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "Leads Management", path: "/sales-admin/leads", icon: Phone },
     { title: "Schedule Numbers", path: "/sales-admin/schedule-numbers", icon: CalendarClock },
     { title: "Sales Approvals", path: "/sales-admin/approvals", icon: FileCheck },
+    { title: "Leaderboard", path: "/sales-admin/leaderboard", icon: Trophy },
     { title: "Analytics", path: "/sales-admin/analytics", icon: BarChart3 },
+    { title: "Activity History", path: "/sales-admin/history", icon: History },
     { title: "Team Chat", path: "/sales-admin/chat", icon: MessageSquare },
     { title: "Meetings", path: "/sales-admin/meeting", icon: Video },
     { title: "Chat Monitor", path: "/sales-admin/chat-monitor", icon: Eye },
@@ -70,6 +77,8 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "Dashboard", path: "/sales/dashboard", icon: LayoutDashboard },
     { title: "My Leads", path: "/sales/leads", icon: Phone },
     { title: "My Performance", path: "/sales/performance", icon: Target },
+    { title: "Leaderboard", path: "/sales/leaderboard", icon: Trophy },
+    { title: "My History", path: "/sales/history", icon: History },
     { title: "Team Chat", path: "/sales/chat", icon: MessageSquare },
     { title: "Meetings", path: "/sales/meeting", icon: Video },
     { title: "Training", path: "/sales/training", icon: BookOpen },

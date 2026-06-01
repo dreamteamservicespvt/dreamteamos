@@ -66,6 +66,13 @@ function getDayLabel(date: Date): string {
   return `${diffDays} days ago`;
 }
 
+function getSaleDate(item: SaleDetail, lead: Lead): string | null {
+  const ts = (item.submittedAt as any)?.seconds;
+  if (ts) return format(new Date(ts * 1000), "yyyy-MM-dd");
+  if (lead.createdAt?.seconds) return format(new Date(lead.createdAt.seconds * 1000), "yyyy-MM-dd");
+  return null;
+}
+
 type SaleRow = { lead: Lead; item: SaleDetail; itemIndex: number };
 
 export default function MemberLeadsDetail() {
@@ -87,6 +94,10 @@ export default function MemberLeadsDetail() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [expandedNotes, setExpandedNotes] = useState<string | null>(null);
   const [dayFilter, setDayFilter] = useState<string>("0");
+
+  const [salesSearch, setSalesSearch] = useState("");
+  const [salesDay, setSalesDay] = useState<string>("all");
+  const [salesStatus, setSalesStatus] = useState<string>("all");
 
   // Add leads form
   const [showAdd, setShowAdd] = useState(false);
@@ -267,12 +278,6 @@ export default function MemberLeadsDetail() {
     return true;
   });
 
-  // Sale rows from all filtered (for sales tab)
-  const allSaleRows: SaleRow[] = filtered.flatMap((lead) => {
-    const items = lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
-    return items.map((item, idx) => ({ lead, item, itemIndex: idx }));
-  });
-
   // Last 5 days
   const recentDays = useMemo(() => {
     const days: { date: Date; dateStr: string; label: string }[] = [];
@@ -282,6 +287,31 @@ export default function MemberLeadsDetail() {
     }
     return days;
   }, []);
+
+  // Sale rows (for sales tab) — filtered by salesSearch + salesDay + salesStatus
+  const allSaleRows: SaleRow[] = leads.flatMap((lead) => {
+    const items = lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
+    return items
+      .filter((item) => {
+        if (salesStatus !== "all") {
+          if (item.verificationStatus !== salesStatus) return false;
+        }
+        if (salesDay !== "all") {
+          const d = getSaleDate(item, lead);
+          const dayDateStr = recentDays[parseInt(salesDay)]?.dateStr;
+          if (!d || d !== dayDateStr) return false;
+        }
+        if (salesSearch) {
+          const q = salesSearch.toLowerCase();
+          const matchName = lead.displayName?.toLowerCase().includes(q);
+          const matchPhone = lead.phone?.includes(q);
+          const matchCat = item.category?.toLowerCase().includes(q);
+          if (!matchName && !matchPhone && !matchCat) return false;
+        }
+        return true;
+      })
+      .map((item, idx) => ({ lead, item, itemIndex: idx }));
+  });
 
   // Group leads by date
   const groupLeadsByDate = (memberLeads: Lead[]) => {
@@ -821,50 +851,84 @@ export default function MemberLeadsDetail() {
 
       {/* ─── SALES TAB ─── */}
       {viewTab === "sales" && (
-        allSaleRows.length === 0 ? (
-          <div className="bg-card border border-border rounded-xl p-12 text-center">
-            <ShoppingBag size={32} className="mx-auto text-muted-foreground/30 mb-2" />
-            <p className="text-muted-foreground text-sm">No sales found</p>
+        <div className="space-y-4">
+          {/* Sales filters */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="relative flex-1 max-w-xs">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                value={salesSearch}
+                onChange={(e) => setSalesSearch(e.target.value)}
+                placeholder="Search by name, phone, category..."
+                className="w-full h-9 pl-9 pr-3 rounded-lg bg-card border border-border text-foreground text-sm outline-none focus:border-primary"
+              />
+            </div>
+            <select
+              value={salesStatus}
+              onChange={(e) => setSalesStatus(e.target.value)}
+              className="h-9 px-3 rounded-lg bg-card border border-border text-foreground text-xs md:text-sm outline-none focus:border-primary"
+            >
+              <option value="all">All Status</option>
+              <option value="pending">Pending</option>
+              <option value="verified">Verified</option>
+            </select>
+            <select
+              value={salesDay}
+              onChange={(e) => setSalesDay(e.target.value)}
+              className="h-9 px-3 rounded-lg bg-card border border-border text-foreground text-xs md:text-sm outline-none focus:border-primary"
+            >
+              {recentDays.map((d, i) => (
+                <option key={d.dateStr} value={String(i)}>{d.label} ({format(d.date, "dd/MM")})</option>
+              ))}
+              <option value="all">All Days</option>
+            </select>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {allSaleRows.map((r, key) => (
-              <div key={`${r.lead.id}-${r.itemIndex}-${key}`} className="bg-card border border-border rounded-xl p-5 space-y-3">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="font-medium text-foreground">{r.lead.displayName || r.lead.phone}</p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-xs text-muted-foreground font-mono">{formatPhoneDisplay(r.lead.phone)}</span>
-                      <a href={getCallUrl(r.lead.phone)} className="text-success hover:bg-success/10 w-5 h-5 rounded flex items-center justify-center"><Phone size={10} /></a>
-                      <a href={getWhatsAppUrl(r.lead.phone)} target="_blank" rel="noopener noreferrer" className="text-success hover:bg-success/10 w-5 h-5 rounded flex items-center justify-center"><MessageCircle size={10} /></a>
+          {allSaleRows.length === 0 ? (
+            <div className="bg-card border border-border rounded-xl p-12 text-center">
+              <ShoppingBag size={32} className="mx-auto text-muted-foreground/30 mb-2" />
+              <p className="text-muted-foreground text-sm">No sales found{salesSearch || salesDay !== "all" || salesStatus !== "all" ? " for these filters" : ""}</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {allSaleRows.map((r, key) => (
+                <div key={`${r.lead.id}-${r.itemIndex}-${key}`} className="bg-card border border-border rounded-xl p-5 space-y-3">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="font-medium text-foreground">{r.lead.displayName || r.lead.phone}</p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-xs text-muted-foreground font-mono">{formatPhoneDisplay(r.lead.phone)}</span>
+                        <a href={getCallUrl(r.lead.phone)} className="text-success hover:bg-success/10 w-5 h-5 rounded flex items-center justify-center"><Phone size={10} /></a>
+                        <a href={getWhatsAppUrl(r.lead.phone)} target="_blank" rel="noopener noreferrer" className="text-success hover:bg-success/10 w-5 h-5 rounded flex items-center justify-center"><MessageCircle size={10} /></a>
+                      </div>
+                    </div>
+                    <p className="font-display font-bold text-primary text-lg">{formatCurrency(r.item.amount || 0)}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span className="text-muted-foreground">Category:</span>{" "}
+                      <span className="text-foreground font-medium capitalize">{r.item.category?.replace(/_/g, " ") || "—"}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Package:</span>{" "}
+                      <span className="text-foreground font-medium">{r.item.packageKey || "—"}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Status:</span>{" "}
+                      <span className={`font-medium ${r.item.verificationStatus === "verified" ? "text-success" : r.item.verificationStatus === "rejected" ? "text-destructive" : "text-warning"}`}>
+                        {r.item.verificationStatus === "verified" ? "Verified ✓" : r.item.verificationStatus === "rejected" ? "Rejected ✗" : "Pending ⏳"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Lead Status:</span>{" "}
+                      <span className="text-foreground font-medium capitalize">{r.lead.status?.replace(/_/g, " ")}</span>
                     </div>
                   </div>
-                  <p className="font-display font-bold text-primary text-lg">{formatCurrency(r.item.amount || 0)}</p>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <span className="text-muted-foreground">Category:</span>{" "}
-                    <span className="text-foreground font-medium capitalize">{r.item.category?.replace(/_/g, " ") || "—"}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Package:</span>{" "}
-                    <span className="text-foreground font-medium">{r.item.packageKey || "—"}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Status:</span>{" "}
-                    <span className={`font-medium ${r.item.verificationStatus === "verified" ? "text-success" : r.item.verificationStatus === "rejected" ? "text-destructive" : "text-warning"}`}>
-                      {r.item.verificationStatus === "verified" ? "Verified ✓" : r.item.verificationStatus === "rejected" ? "Rejected ✗" : "Pending ⏳"}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Lead Status:</span>{" "}
-                    <span className="text-foreground font-medium capitalize">{r.lead.status?.replace(/_/g, " ")}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
