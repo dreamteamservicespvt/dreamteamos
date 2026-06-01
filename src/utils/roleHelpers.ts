@@ -2,12 +2,7 @@ import type { UserRole } from "@/types";
 import {
   LayoutDashboard, Users, TrendingUp, Code, Phone, Clock, Wallet,
   Settings, BookOpen, FolderOpen, Target, User, BarChart3,
-<<<<<<< HEAD
-  ClipboardList, Briefcase, Wrench, FileCheck, MessageSquare, Video, Eye, Film, ScrollText, CalendarClock, UserCog,
-=======
-  ClipboardList, Briefcase, Wrench, FileCheck, MessageSquare, Video, Eye, Film, ScrollText, CalendarClock,
-  Trophy, History,
->>>>>>> 934cbda3f5c6d039a846d6fb78869a44e0ffb6eb
+  ClipboardList, Briefcase, Wrench, FileCheck, MessageSquare, Video, Eye, Film, ScrollText, CalendarClock, Trophy, History,
 } from "lucide-react";
 
 export interface NavItem {
