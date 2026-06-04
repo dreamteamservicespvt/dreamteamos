@@ -359,15 +359,42 @@ export default function WorkAssign() {
     let result = assignments;
     if (statusFilter !== 'all') result = result.filter(a => a.status === statusFilter);
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(a =>
-        a.displayTitle?.toLowerCase().includes(q) ||
-        a.businessName?.toLowerCase().includes(q) ||
-        a.businessName?.toLowerCase().includes(q) ||
-        a.clientName?.toLowerCase().includes(q) ||
-        a.uniqueId?.toLowerCase().includes(q) ||
-        techMembers.find(m => m.uid === a.assignedTo)?.name.toLowerCase().includes(q)
-      );
+      const rawQ = searchQuery.trim();
+      const q = rawQ.toLowerCase();
+      const hasDigits = /[0-9]/.test(rawQ);
+      const normalizedQ = hasDigits ? normalizePhone(rawQ) : null;
+
+      result = result.filter(a => {
+        const member = techMembers.find(m => m.uid === a.assignedTo);
+        const memberName = member?.name?.toLowerCase() || '';
+        const businessName = (a.businessName || a.clientName || '').toLowerCase();
+        const displayTitle = a.displayTitle?.toLowerCase() || '';
+        const uniqueId = a.uniqueId?.toLowerCase() || '';
+
+        // Text matches
+        if (displayTitle.includes(q) || businessName.includes(q) || uniqueId.includes(q) || memberName.includes(q)) return true;
+
+        // If query contains digits, try phone matches (supports partials)
+        if (hasDigits) {
+          const queryDigits = (normalizedQ || '').replace(/\D/g, '');
+
+          // Match assignment's business WhatsApp / phone
+          if (a.businessWhatsapp) {
+            const norm = normalizePhone(a.businessWhatsapp);
+            const normDigits = norm.replace(/\D/g, '');
+            if (normDigits.includes(queryDigits) || queryDigits.includes(normDigits)) return true;
+          }
+
+          // Match assigned member phone from users list
+          const memberPhone = allUsers.find(u => u.uid === a.assignedTo)?.phone;
+          if (memberPhone) {
+            const normM = normalizePhone(memberPhone).replace(/\D/g, '');
+            if (normM.includes(queryDigits) || queryDigits.includes(normM)) return true;
+          }
+        }
+
+        return false;
+      });
     }
 
     // Date filter
