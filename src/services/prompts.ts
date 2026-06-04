@@ -1770,104 +1770,35 @@ Do NOT wrap individual prompts in code blocks — output them as plain text sepa
 };
 
 export const HEADER_SYSTEM_PROMPT = (_adType: string, _festivalName: string) => {
-  return `Create a 9:16 vertical 4K advertisement poster.
+    return `Create a 9:16 vertical 4K advertisement poster.
 
-STRICT CANVAS RULE:
+    STRICT CANVAS RULE:
 
-* Design ONLY the top 7% horizontal strip as the header. The remaining area must be empty.
-* Do NOT place any elements below the top 7% boundary.
+    * Design ONLY the top 7% horizontal strip as the header. The remaining area must be empty.
+    * Do NOT place any elements below the top 7% boundary.
 
-HEADER OUTPUT CONTRACT (MUST FOLLOW EXACTLY):
+    HEADER OUTPUT CONTRACT (MUST FOLLOW EXACTLY):
 
-1) The header may contain ONLY the following items, and ONLY if they are present in the extracted business data:
-   - Logo (use the attached logo image exactly if provided)
-   - Business name
-   - Address (shortened intelligently if needed)
-   - Contact numbers (one or more)
-   - Email
-   - Website
+    1) The header may contain ONLY the following items, and ONLY if they are present in the extracted business data:
+      - Logo (use the attached logo image exactly if provided)
+      - Business name
+      - Address (shortened intelligently if needed)
+      - Contact numbers (one or more)
+      - Email
+      - Website
 
-2) Do NOT add, invent, or imply any other content (no headlines, offers, CTAs, urgency, product images, decorative micro-tags, pricing, or promotional copy).
+    2) Do NOT add, invent, or imply any other content (no headlines, offers, CTAs, urgency, product images, decorative micro-tags, pricing, or promotional copy).
 
-3) If any of the listed fields are missing from the extracted data, OMIT that field — do NOT fabricate or substitute values.
+    3) If any of the listed fields are missing from the extracted data, OMIT that field — do NOT fabricate or substitute values.
 
-4) Layout guidance (informational only): keep the header minimal and readable inside the 7% strip. Prioritize clear visibility and contrast for contact numbers and business name. Do not include extra icons, badges, or decorative illustrations beyond a simple location icon for address if absolutely needed.
+    4) Layout guidance (informational only): keep the header minimal and readable inside the 7% strip. Prioritize clear visibility and contrast for contact numbers and business name. Do not include extra icons, badges, or decorative illustrations beyond a simple location icon for address if absolutely needed.
 
-5) Output requirement: return a short, plain-text prompt describing the header composition and exact content to place. The prompt must list only the present fields and their exact values (no extra commentary). Example formats accepted:
+    5) Output requirement: return a short, plain-text prompt describing the header composition and exact content to place. The prompt must list only the present fields and their exact values (no extra commentary). Example formats accepted:
 
-   - If all fields present: "LOGO: <inline image>; NAME: <Business Name>; CONTACT: <numbers>; EMAIL: <email>; WEBSITE: <url>; ADDRESS: <short address>"
-   - If some fields missing: include only the available fields in the same concise key-value style.
+      - If all fields present: "LOGO: <inline image>; NAME: <Business Name>; CONTACT: <numbers>; EMAIL: <email>; WEBSITE: <url>; ADDRESS: <short address>"
+      - If some fields missing: include only the available fields in the same concise key-value style.
 
-6) Never wrap the output in code blocks and do not output explanations. Output must be copy-paste ready and truthful to the provided extracted business info.`;
-LEFT:
-
-* Logo OR premium badge
-* Subtle glow / embossed effect
-
-CENTER (MAIN HOOK):
-
-* Strong, short, high-impact headline
-* Highlight numbers (₹, %, benefits)
-* Maintain strong readability and hierarchy
-
-TOP RIGHT (PRIMARY CTA – HIGHEST PRIORITY):
-
-* Place ALL contact numbers here
-* Large, bold typography (high visibility)
-* Add phone icon
-* Place inside highlighted container (pill / glow box)
-* Ensure maximum contrast
-* Support multiple numbers with clean separators ( | )
-
-RIGHT (BELOW CONTACT):
-
-* Show urgency (date / limited / closing soon)
-* Smaller than contact but clearly visible
-
-BOTTOM STRIP INSIDE HEADER (MANDATORY FOR ADDRESS):
-
-* If address/location is present → MUST display here
-* Use short, clean version (area + city preferred)
-* Add location icon
-* Keep font smaller than contact but readable
-* Do NOT overcrowd or wrap excessively
-* If address is long → intelligently shorten while preserving clarity
-
-OPTIONAL MICRO TAG:
-
-* Add small trigger like “Limited”, “Offer”, “2 Chances” if space allows
-
-DESIGN QUALITY (WORLD-CLASS):
-
-* Cinematic lighting and depth
-* Premium color grading
-* Strong contrast for mobile ads
-* Clean spacing, no clutter
-* CTA (contact) remains visually dominant
-
-COLOR STRATEGY:
-
-* Adapt based on business type
-* Ensure contact CTA has highest contrast
-
-TYPOGRAPHY:
-
-* Max 1–2 fonts
-* Clear hierarchy:
-
-  1. Contact (CTA)
-  2. Headline (Hook)
-  3. Address / urgency
-
-LAYOUT RULES:
-
-* Everything strictly inside top 7%
-* Perfect alignment and spacing
-* No overlapping elements
-* Maintain clean premium feel
-
-OUTPUT:
-Ultra-premium, high-conversion Meta Ads header with dominant contact CTA and clearly visible address, strictly confined to top 7%.`;
+    6) Never wrap the output in code blocks and do not output explanations. Output must be copy-paste ready and truthful to the provided extracted business info.`;
 };
 
 export const getToneForAdType = (adType: string) =>
