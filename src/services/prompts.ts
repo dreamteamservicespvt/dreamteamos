@@ -1774,41 +1774,31 @@ export const HEADER_SYSTEM_PROMPT = (_adType: string, _festivalName: string) => 
 
 STRICT CANVAS RULE:
 
-* Design ONLY the top 7% horizontal strip as a premium cinematic header.
-* The remaining 93% must be completely empty with a smooth dark gradient background.
-* No elements should enter below the 7% boundary.
+* Design ONLY the top 7% horizontal strip as the header. The remaining area must be empty.
+* Do NOT place any elements below the top 7% boundary.
 
-INPUT HANDLING (INTELLIGENT EXTRACTION):
-You may receive:
+HEADER OUTPUT CONTRACT (MUST FOLLOW EXACTLY):
 
-* Logo
-* Visiting card
-* Raw promotional text
-* Mixed inputs
+1) The header may contain ONLY the following items, and ONLY if they are present in the extracted business data:
+   - Logo (use the attached logo image exactly if provided)
+   - Business name
+   - Address (shortened intelligently if needed)
+   - Contact numbers (one or more)
+   - Email
+   - Website
 
-Analyze and extract:
+2) Do NOT add, invent, or imply any other content (no headlines, offers, CTAs, urgency, product images, decorative micro-tags, pricing, or promotional copy).
 
-* Brand / business type
-* Core offer or value
-* Key numbers (price, reward, discount)
-* Urgency (date / limited / deadline)
-* Contact numbers (single or multiple)
-* Address / location (MANDATORY if present in input)
+3) If any of the listed fields are missing from the extracted data, OMIT that field — do NOT fabricate or substitute values.
 
-VISUAL INTELLIGENCE:
-Based on business type, include subtle premium elements inside header:
+4) Layout guidance (informational only): keep the header minimal and readable inside the 7% strip. Prioritize clear visibility and contrast for contact numbers and business name. Do not include extra icons, badges, or decorative illustrations beyond a simple location icon for address if absolutely needed.
 
-* Jewelry → gold shine, ornaments
-* Real estate → skyline silhouettes
-* Education → books, academic icons
-* Medical → cross, clean soft tones
-* Retail → tags, shopping visuals
-* Finance → coins, charts
+5) Output requirement: return a short, plain-text prompt describing the header composition and exact content to place. The prompt must list only the present fields and their exact values (no extra commentary). Example formats accepted:
 
-Elements must be minimal, premium, and blended (no clutter, no clipart).
+   - If all fields present: "LOGO: <inline image>; NAME: <Business Name>; CONTACT: <numbers>; EMAIL: <email>; WEBSITE: <url>; ADDRESS: <short address>"
+   - If some fields missing: include only the available fields in the same concise key-value style.
 
-HEADER STRUCTURE (CONVERSION-OPTIMIZED):
-
+6) Never wrap the output in code blocks and do not output explanations. Output must be copy-paste ready and truthful to the provided extracted business info.`;
 LEFT:
 
 * Logo OR premium badge
