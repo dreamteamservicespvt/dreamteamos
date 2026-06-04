@@ -1064,12 +1064,80 @@ const App: React.FC = () => {
                     <ChevronDown className={clsx("w-4 h-4 transition-transform", collapsedOutputs['businessInfo'] && "rotate-180")} />
                   </button>
                   {collapsedOutputs['businessInfo'] && (
-                    <GeneratedCard 
-                        title="Business Intelligence (Extracted)" 
-                        content={outputs.businessInfo} 
-                        isJson 
-                        hideTitle
-                    />
+                    <div className={clsx(
+                      "p-4",
+                      resolvedTheme === 'dark' ? "bg-slate-800" : "bg-white"
+                    )}>
+                      {/* Show only the requested fields: logo, business name, contact numbers, address, email, website */}
+                      {(() => {
+                        const info = outputs.businessInfo || {};
+                        const name = info.businessName || info.name || info.brand || null;
+                        const contacts = info.contactNumbers || info.phone || info.phones || info.contact || null;
+                        const email = info.email || info.contactEmail || null;
+                        const website = info.website || info.web || info.url || null;
+                        const address = info.address || info.location || info.shortAddress || null;
+                        const logo = info.logo || info.logoUrl || info.logoBase64 || null;
+
+                        const contactList = Array.isArray(contacts)
+                          ? contacts
+                          : (typeof contacts === 'string' && contacts.length > 0)
+                            ? contacts.split(/[,;|\n]/).map(s => s.trim()).filter(Boolean)
+                            : null;
+
+                        return (
+                          <div className="space-y-3">
+                            {logo && (
+                              <div className="flex items-center">
+                                {String(logo).startsWith('data:') ? (
+                                  <img src={String(logo)} alt="logo" className="w-24 h-12 object-contain rounded-md mr-3" />
+                                ) : (
+                                  <img src={String(logo)} alt="logo" className="w-24 h-12 object-contain rounded-md mr-3" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                                )}
+                                <div>
+                                  {name && <div className="text-lg font-bold">{name}</div>}
+                                  {website && <div className="text-sm text-slate-500">{website}</div>}
+                                </div>
+                              </div>
+                            )}
+
+                            {!logo && name && (
+                              <div>
+                                <div className="text-lg font-bold">{name}</div>
+                              </div>
+                            )}
+
+                            {contactList && contactList.length > 0 && (
+                              <div>
+                                <div className="text-xs font-semibold mb-1">Contact</div>
+                                <div className="text-sm">
+                                  {contactList.map((c: any, i: number) => (
+                                    <div key={i}>{c}</div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {email && (
+                              <div>
+                                <div className="text-xs font-semibold mb-1">Email</div>
+                                <div className="text-sm">{email}</div>
+                              </div>
+                            )}
+
+                            {address && (
+                              <div>
+                                <div className="text-xs font-semibold mb-1">Address</div>
+                                <div className="text-sm">{address}</div>
+                              </div>
+                            )}
+
+                            {!logo && !name && !contactList && !email && !website && !address && (
+                              <div className="text-sm text-slate-500">No business contact fields were extracted.</div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
                   )}
                 </div>
                 
