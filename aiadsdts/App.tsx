@@ -16,6 +16,11 @@ import {
   Camera,
   Video,
   PenTool,
+  Coffee,
+  Hammer,
+  Stethoscope,
+  ShoppingBag,
+  BookOpen,
   ChevronDown,
   Copy,
   ExternalLink,
@@ -40,6 +45,84 @@ const cleanPromptForClipboard = (content: string) => {
     .replace(/^```\s*\n?/gim, '')
     .replace(/\n?```$/gim, '')
     .trim();
+};
+
+const getBusinessInitials = (name?: string | null) => {
+  if (!name) return 'NN';
+  const letters = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word[0].toUpperCase())
+    .slice(0, 2);
+  if (letters.length === 0) return 'NN';
+  if (letters.length === 1) return (letters[0] + (name.trim()[1] || '')).toUpperCase();
+  return letters.join('');
+};
+
+const getHeaderTheme = (businessType: string = '') => {
+  const type = businessType.toLowerCase();
+  if (/restaurant|cafe|food|bakery|deli|bistro|tea|coffee|eatery/.test(type)) {
+    return {
+      gradient: 'linear-gradient(135deg, #ff7a18 0%, #ffb347 100%)',
+      text: 'text-white',
+      border: 'border-white/20',
+      accent: 'text-amber-100',
+      icon: <Coffee className="w-20 h-20 text-white/15" />
+    };
+  }
+  if (/clinic|hospital|medical|dental|pharmacy|health|wellness|clinic|therapy/.test(type)) {
+    return {
+      gradient: 'linear-gradient(135deg, #0f172a 0%, #2563eb 100%)',
+      text: 'text-white',
+      border: 'border-white/20',
+      accent: 'text-cyan-100',
+      icon: <Stethoscope className="w-20 h-20 text-white/15" />
+    };
+  }
+  if (/hardware|repair|tools|mechanic|garage|construction|maintenance|auto/.test(type)) {
+    return {
+      gradient: 'linear-gradient(135deg, #1f2937 0%, #4b5563 100%)',
+      text: 'text-white',
+      border: 'border-white/20',
+      accent: 'text-slate-200',
+      icon: <Hammer className="w-20 h-20 text-white/15" />
+    };
+  }
+  if (/salon|beauty|spa|fashion|boutique|studio|cosmetic|design/.test(type)) {
+    return {
+      gradient: 'linear-gradient(135deg, #be185d 0%, #f9a8d4 100%)',
+      text: 'text-white',
+      border: 'border-white/20',
+      accent: 'text-pink-100',
+      icon: <PenTool className="w-20 h-20 text-white/15" />
+    };
+  }
+  if (/store|shop|retail|market|mart|boutique|supermarket/.test(type)) {
+    return {
+      gradient: 'linear-gradient(135deg, #0f172a 0%, #0ea5e9 100%)',
+      text: 'text-white',
+      border: 'border-white/20',
+      accent: 'text-sky-100',
+      icon: <ShoppingBag className="w-20 h-20 text-white/15" />
+    };
+  }
+  return {
+    gradient: 'linear-gradient(135deg, #111827 0%, #4338ca 100%)',
+    text: 'text-white',
+    border: 'border-white/20',
+    accent: 'text-slate-100',
+    icon: <BookOpen className="w-20 h-20 text-white/15" />
+  };
+};
+
+const parseContacts = (contacts: any): string[] => {
+  if (!contacts) return [];
+  const items = Array.isArray(contacts)
+    ? contacts
+    : typeof contacts === 'string'
+      ? contacts.split(/[,;|\n]/).map((s) => s.trim()).filter(Boolean)
+      : [];
+  return items.slice(0, 2);
 };
 
 const App: React.FC = () => {
@@ -1068,72 +1151,161 @@ const App: React.FC = () => {
                       "p-4",
                       resolvedTheme === 'dark' ? "bg-slate-800" : "bg-white"
                     )}>
-                      {/* Show only the requested fields: logo, business name, contact numbers, address, email, website */}
                       {(() => {
                         const info = outputs.businessInfo || {};
                         const name = info.businessName || info.name || info.brand || null;
                         const contacts = info.contactNumbers || info.phone || info.phones || info.contact || null;
-                        const email = info.email || info.contactEmail || null;
-                        const website = info.website || info.web || info.url || null;
                         const address = info.address || info.location || info.shortAddress || null;
                         const logo = info.logo || info.logoUrl || info.logoBase64 || null;
+                        const businessType = info.businessType || info.type || '';
 
-                        const contactList = Array.isArray(contacts)
-                          ? contacts
-                          : (typeof contacts === 'string' && contacts.length > 0)
-                            ? contacts.split(/[,;|\n]/).map(s => s.trim()).filter(Boolean)
-                            : null;
+                        const contactList = parseContacts(contacts);
+                        const theme = getHeaderTheme(businessType);
+                        const initials = getBusinessInitials(name);
 
                         return (
-                          <div className="space-y-3">
-                            {logo && (
-                              <div className="flex items-center">
-                                {String(logo).startsWith('data:') ? (
-                                  <img src={String(logo)} alt="logo" className="w-24 h-12 object-contain rounded-md mr-3" />
+                          <div
+                            className="overflow-hidden shadow-xl rounded-xl relative"
+                            style={{ background: theme.gradient }}
+                          >
+                            {/* Decorative bg glows */}
+                            <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                              <div className="absolute -left-10 -top-10 w-32 h-32 rounded-full bg-white/10 blur-2xl" />
+                              <div className="absolute right-8 top-4 w-24 h-24 rounded-full bg-white/10 blur-2xl" />
+                              <div className="absolute inset-0 flex items-center justify-center opacity-10">
+                                {theme.icon}
+                              </div>
+                            </div>
+
+                            {/*
+                              CSS Grid layout matching the blueprint exactly:
+                              Col 1 (logo)  | Col 2 (name + contacts)
+                              Col 1 (logo)  | Col 2 (address bar)
+                              Logo spans both rows; address bar stays in col 2 only.
+                            */}
+                            <div
+                              style={{
+                                position: 'relative',
+                                zIndex: 10,
+                                display: 'grid',
+                                gridTemplateColumns: 'auto 1fr',
+                                gridTemplateRows: '1fr auto',
+                              }}
+                            >
+                              {/* LOGO — col 1, rows 1+2 (full height) */}
+                              <div
+                                style={{
+                                  gridColumn: '1',
+                                  gridRow: '1 / 3',
+                                  margin: '10px',
+                                  width: '88px',
+                                  background: 'white',
+                                  borderRadius: '8px',
+                                  overflow: 'hidden',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+                                }}
+                              >
+                                {logo ? (
+                                  <img
+                                    src={String(logo)}
+                                    alt="Business logo"
+                                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                                    onError={(event) => { (event.target as HTMLImageElement).style.display = 'none'; }}
+                                  />
                                 ) : (
-                                  <img src={String(logo)} alt="logo" className="w-24 h-12 object-contain rounded-md mr-3" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                                  <span style={{ fontSize: '1.5rem', fontWeight: 900, color: '#1e293b', letterSpacing: '-0.02em', userSelect: 'none' }}>
+                                    {initials}
+                                  </span>
                                 )}
-                                <div>
-                                  {name && <div className="text-lg font-bold">{name}</div>}
-                                  {website && <div className="text-sm text-slate-500">{website}</div>}
+                              </div>
+
+                              {/* NAME + CONTACTS — col 2, row 1 */}
+                              <div
+                                style={{
+                                  gridColumn: '2',
+                                  gridRow: '1',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '10px',
+                                  padding: '10px 10px 6px 0',
+                                }}
+                              >
+                                {/* Business name — dashed border box */}
+                                <div
+                                  style={{
+                                    flex: 1,
+                                    border: '2px dashed rgba(255,255,255,0.75)',
+                                    borderRadius: '8px',
+                                    padding: '8px 12px',
+                                    textAlign: 'center',
+                                  }}
+                                >
+                                  <span style={{ color: 'white', fontWeight: 800, fontSize: '1.1rem', lineHeight: 1.2, wordBreak: 'break-word' }}>
+                                    {name || 'Business Name'}
+                                  </span>
+                                </div>
+
+                                {/* Contact numbers — solid white boxes stacked */}
+                                <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                  {contactList.length > 0 ? (
+                                    contactList.map((contact, index) => (
+                                      <div
+                                        key={index}
+                                        style={{
+                                          background: 'white',
+                                          border: '1.5px solid #e0e0e0',
+                                          borderRadius: '6px',
+                                          padding: '7px 14px',
+                                          minWidth: '150px',
+                                          fontWeight: 900,
+                                          fontSize: '1rem',
+                                          textAlign: 'center',
+                                          color: '#111111',
+                                          boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
+                                          letterSpacing: '0.01em',
+                                          whiteSpace: 'nowrap',
+                                        }}
+                                      >
+                                        {contact}
+                                      </div>
+                                    ))
+                                  ) : (
+                                    <div
+                                      style={{
+                                        background: 'rgba(255,255,255,0.15)',
+                                        border: '1px solid rgba(255,255,255,0.3)',
+                                        borderRadius: '6px',
+                                        padding: '6px 10px',
+                                        minWidth: '120px',
+                                        fontSize: '0.75rem',
+                                        textAlign: 'center',
+                                        color: 'rgba(255,255,255,0.75)',
+                                      }}
+                                    >
+                                      No contact
+                                    </div>
+                                  )}
                                 </div>
                               </div>
-                            )}
 
-                            {!logo && name && (
-                              <div>
-                                <div className="text-lg font-bold">{name}</div>
+                              {/* ADDRESS BAR — col 2, row 2 (silver/gray strip) */}
+                              <div
+                                style={{
+                                  gridColumn: '2',
+                                  gridRow: '2',
+                                  background: 'linear-gradient(90deg, #a8a8a8 0%, #d8d8d8 30%, #ececec 60%, #c0c0c0 100%)',
+                                  padding: '7px 14px',
+                                  textAlign: 'center',
+                                }}
+                              >
+                                <span style={{ fontWeight: 800, fontSize: '0.8rem', color: '#1a1a1a', lineHeight: 1.3 }}>
+                                  {address || 'Address not available'}
+                                </span>
                               </div>
-                            )}
-
-                            {contactList && contactList.length > 0 && (
-                              <div>
-                                <div className="text-xs font-semibold mb-1">Contact</div>
-                                <div className="text-sm">
-                                  {contactList.map((c: any, i: number) => (
-                                    <div key={i}>{c}</div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-
-                            {email && (
-                              <div>
-                                <div className="text-xs font-semibold mb-1">Email</div>
-                                <div className="text-sm">{email}</div>
-                              </div>
-                            )}
-
-                            {address && (
-                              <div>
-                                <div className="text-xs font-semibold mb-1">Address</div>
-                                <div className="text-sm">{address}</div>
-                              </div>
-                            )}
-
-                            {!logo && !name && !contactList && !email && !website && !address && (
-                              <div className="text-sm text-slate-500">No business contact fields were extracted.</div>
-                            )}
+                            </div>
                           </div>
                         );
                       })()}
