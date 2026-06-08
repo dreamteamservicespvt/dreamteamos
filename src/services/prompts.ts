@@ -69,35 +69,35 @@ const getBrandDrivenSuitPaletteFromContext = (businessContext: string): string |
   const contextPalettes: Array<{ keywords: string[]; palette: string }> = [
     {
       keywords: ['maroon', 'burgundy', 'wine', 'ruby', 'crimson', 'oxblood'],
-      palette: 'rich maroon-taupe, oxblood-mocha, muted wine-beige, or rose-bronze suiting lifted from the client brand palette'
+      palette: 'rich maroon, deep wine, oxblood, or maroon-and-gold tailoring drawn straight from the client brand palette'
     },
     {
       keywords: ['emerald', 'green', 'sage', 'olive', 'mint'],
-      palette: 'sage-greige, muted olive-taupe, eucalyptus stone, or warm sand tailoring with controlled green brand accents'
+      palette: 'deep emerald, forest green, bottle green, or refined olive tailoring with confident green brand presence'
     },
     {
       keywords: ['navy', 'blue', 'teal', 'cyan', 'azure', 'royal blue'],
-      palette: 'cool stone, steel greige, mist taupe, or pearl beige tailoring shaped by navy-teal brand accents'
+      palette: 'deep navy, royal blue, midnight blue, or navy-and-silver tailoring shaped by the brand accents'
     },
     {
       keywords: ['gold', 'champagne', 'mustard', 'amber'],
-      palette: 'champagne taupe, warm almond, soft camel, or luxe cream tailoring with restrained gold undertones'
+      palette: 'champagne gold, mustard-gold, ivory-gold, or elegant black-and-gold tailoring with a rich brand-gold finish'
     },
     {
       keywords: ['pink', 'rose', 'blush', 'peach', 'coral'],
-      palette: 'blush taupe, rose-beige, powder mocha, or champagne blush tailoring with polished feminine warmth'
+      palette: 'rose, blush, dusty pink, or coral-accented tailoring with polished feminine warmth'
     },
     {
       keywords: ['black', 'charcoal', 'graphite', 'slate', 'grey', 'gray', 'silver'],
-      palette: 'graphite greige, slate taupe, metallic stone, or smoke-beige tailoring with restrained charcoal depth'
+      palette: 'charcoal, jet black, graphite, slate grey, or black-and-gold tailoring with confident depth'
     },
     {
       keywords: ['purple', 'plum', 'violet', 'lavender', 'lilac'],
-      palette: 'mauve-taupe, plum-beige, soft truffle, or couture lavender-greige tailoring with editorial restraint'
+      palette: 'deep purple, plum, aubergine, or wine-purple tailoring with editorial richness'
     },
     {
       keywords: ['orange', 'terracotta', 'rust'],
-      palette: 'caramel beige, terracotta-taupe, honey stone, or warm sand tailoring with refined amber warmth'
+      palette: 'terracotta, rust, burnt orange, or deep caramel tailoring with warm brand energy'
     }
   ];
 
@@ -302,30 +302,30 @@ const getShotLogoPlacementForBusiness = (
 
 export const getProfessionalSuitPaletteForBusiness = (businessType: string, businessContext: string = ''): string => {
   const palettes: Record<string, string> = {
-    medical: 'soft ivory, pearl white, or sterile beige with subtle blue-grey accents for a clean healthcare-trust feel',
-    realestate: 'sandstone beige, camel, mocha, muted gold-beige, or warm taupe for authority and premium trust',
-    fashion: 'blush-beige, rosy taupe, champagne blush, warm nude, or couture pastel neutrals with polished femininity',
-    food: 'warm cream, honey beige, latte, caramel beige, or tasteful hospitality neutrals with inviting warmth',
-    tech: 'cool stone beige, mist grey-beige, champagne-taupe, soft steel greige, or muted blue-grey accents for modern polish',
+    medical: 'soft ivory, clinical navy-and-white, teal-accented, or pearl tones with a clean healthcare-trust feel',
+    realestate: 'deep navy, charcoal, sandstone-gold, royal blue, or warm taupe for authority and premium trust',
+    fashion: 'rich wine, deep plum, blush-rose, champagne, or couture pastel tones with polished femininity',
+    food: 'warm maroon, saffron-gold, deep caramel, honey, or inviting hospitality tones with warmth',
+    tech: 'deep navy, steel blue, charcoal, graphite-blue, or soft steel greige with modern polish',
     education: getEducationSuitPalette(businessContext),
-    solar: 'soft sand, sunlit beige, warm khaki-beige, muted sage-beige, or clean-energy neutrals',
-    laundry: 'fresh ivory, soft sand, pearl beige, clean greige, or airy blue-grey neutrals that still feel premium',
-    mattress: 'soft cream, almond beige, powder taupe, serene greige, or comfort-led pastel neutrals',
-    electrical: 'graphite-beige, steel greige, sand-taupe, muted slate-beige, or precise service-led neutrals',
-    tea: 'warm cream, leaf-tinted beige, honey sand, soft caramel, or earthy premium neutrals',
-    jewellery: 'champagne gold-beige, blush taupe, rose-beige, luxe cream, or refined mocha-glow tones',
-    security: 'commanding taupe-charcoal, graphite-beige, muted metallic greige, or disciplined stone neutrals',
-    automobile: 'graphite-beige, metallic greige, sand-taupe, espresso-beige, or showroom-grade premium neutrals',
-    pharma: 'clean ivory, sterile cream, pearl beige, or subtle clinical blue-grey neutrals',
-    transport: 'structured stone beige, muted khaki, cool taupe, or logistics-grade premium neutrals with restrained blue accents',
-    fitness: 'sculpted greige, athletic sand, warm stone, or energetic premium neutrals with subtle slate accents',
-    beauty: 'blush-beige, rosy taupe, champagne blush, soft nude, or elegant pastel neutrals with luxury glow',
-    default: 'a premium business-specific suit palette derived from the logo colors, brand mood, and interior materials rather than a reusable default beige'
+    solar: 'deep green, solar-blue, sunlit gold, sage, or clean-energy tones',
+    laundry: 'fresh ivory, crisp white-and-blue, pearl, powder blue, or clean premium tones',
+    mattress: 'soft cream, calm blue, lavender, almond, or comfort-led tones',
+    electrical: 'steel blue, deep navy, graphite, charcoal, or precise service-led tones',
+    tea: 'leaf green, warm gold, earthy maroon, deep caramel, or plantation-rich tones',
+    jewellery: 'deep maroon, royal plum, black-and-gold, champagne-gold, or luxe jewel tones',
+    security: 'deep navy, charcoal, graphite, black-and-gold, or commanding disciplined tones',
+    automobile: 'graphite, jet black, metallic charcoal, racing-red accents, or showroom-grade premium tones',
+    pharma: 'clean ivory, clinical navy-and-white, teal, or sterile premium tones',
+    transport: 'deep navy, structured charcoal, logistics-orange accents, or premium stone tones',
+    fitness: 'bold black, charcoal, energetic red or electric-blue accents, or athletic premium tones',
+    beauty: 'blush-rose, deep plum, champagne, rosy nude, or elegant luxury tones',
+    default: 'a premium business-specific suit palette derived from the logo colors, brand mood, and interior materials — a rich brand tone (maroon, navy, emerald, charcoal, plum, black-and-gold) or a premium neutral only when the brand truly calls for it, never a reusable default beige'
   };
 
   const sectorPalette = palettes[businessType] || palettes.default;
   const brandPalette = getBrandDrivenSuitPaletteFromContext(businessContext);
-  const paletteFamilyRule = 'Treat this as an approved palette family with multiple valid premium beige or pastel shades, not one fixed suit color. Different businesses must not collapse into the same reusable beige. Within one campaign, the suit may shift shade only inside this approved family when the script, business zone, or lighting supports it.';
+  const paletteFamilyRule = 'Treat this as an approved palette family of premium, brand-derived shades — not one fixed suit color and never a default beige. Pull the dominant suit color from the logo and brand identity (it may be a rich brand tone such as maroon, navy, emerald, charcoal, plum, or black-and-gold, or a premium neutral only when the brand truly calls for it). Different businesses must look visibly different and must not collapse into the same reusable beige. Within one campaign keep the same wardrobe family but allow shade shifts inside this approved family when the script, business zone, or lighting supports it.';
 
   if (!brandPalette) {
     return `${sectorPalette}. ${paletteFamilyRule}`;
@@ -923,6 +923,72 @@ export const MAIN_FRAME_SYSTEM_PROMPT = (attireType: string, adType: string, fes
 `
     : '';
 
+  // ===== COMMERCIAL FIRST FRAME (SUIT OR SAREE) — COMPACT EXAMPLE-FORMAT PROMPT =====
+  // Mirrors the user's proven "first frame" prompt structure: short, clean, sectioned,
+  // brand-driven attire colour, real business reception background, no negative-prompt block.
+  if ((isProfessional || attireType === 'traditional') && !isFestival) {
+    const isTraditional = attireType === 'traditional';
+    const brandSuit = getBrandDrivenSuitPaletteFromContext(businessContext);
+    const suitColourHint = brandSuit
+      || 'a rich brand tone such as maroon, deep navy, emerald, charcoal, plum, coffee-cream, ivory-gold, or black-and-gold';
+    const sareeColourHint = getSareeColorForBusiness(detectedBusinessType);
+    const receptionGuidance = clientEnvironmentGuidance
+      || 'a premium, real reception interior whose desk, signage, furniture and props clearly match the exact business type';
+    return `You are an expert prompt writer for ultra-realistic AI image generation. Using the attached business details and logo, write ONE clean, copy-paste-ready image prompt for the FIRST FRAME of a commercial brand ad.
+
+STEP 1 — ANALYSE THE ATTACHED FILES AND EXTRACT: business name, business type / industry, the main services they offer, and the brand colours from the logo.
+STEP 2 — BUILD THE WHOLE SCENE FROM THIS EXACT BUSINESS (NON-NEGOTIABLE). The environment and background MUST be 100% relatable to the provided business: use the business name, services, products, and description to recreate THIS business's real reception, including the specific equipment, products, displays, counters, and service cues that make it instantly recognisable as this exact business. A viewer must immediately know what this business does just from the background. Never use a generic, random, unrelated, or "any office" background.
+
+Output the prompt EXACTLY in the following structure and order, as simple short bullet lines (no commentary, no markdown headings, inside one code block):
+
+Create an ultra-realistic promotional portrait for "[BUSINESS NAME]" using the attached official logo as branding reference.
+
+Generate a premium [BUSINESS TYPE] reception environment and place a confident young Indian girl (a professional [role that fits this business]) standing in front of the reception area. The atmosphere should feel [3-4 adjectives that match this business].
+
+Main Character:
+- Indian girl (female), age 20–25
+- A NEW, different, naturally good-looking girl each time — never reuse the same recurring face
+- Natural warm Indian complexion, real skin texture, light natural makeup, neat natural black hairstyle
+- Friendly welcoming smile, confident and approachable expression, looking directly at the camera
+${isTraditional ? `- Wearing an elegant premium designer saree (graceful, sophisticated, modest, premium) with a well-fitted blouse — NOT a suit
+- Saree colour inspired by the logo / brand colours (for example ${sareeColourHint}); make it look like an expensive designer campaign saree — never bridal, never a costume, never festival-styled
+- Wearing elegant traditional semi-jewellery (MANDATORY): a necklace or chain on the neck, earrings, a few bangles, a small finger ring, and a small bindi on the forehead — refined and premium, never heavy bridal overload` : `- Wearing simple elegant jewellery (MANDATORY): a small finger ring, a thin necklace or chain on the neck, ear studs / earrings, a wristwatch, and a small bindi on the forehead
+- Wearing a premium tailored formal suit (not saree): blazer + crisp white or cream inner shirt + formal trousers
+- Suit colour inspired by the logo / brand colours — pick ONE specific brand tone (for example ${suitColourHint}); avoid the same beige and avoid a repetitive plain blue corporate suit`}
+
+Pose:
+- Standing in the exact middle of the [BUSINESS TYPE] reception, facing the camera directly
+- Both hands positioned at the lower waist level, right hand lightly resting over the left hand, fingers naturally relaxed and partially overlapping — formal front-clasp corporate pose (no crossed arms, no pockets, no hand gestures)
+- Calm, confident, welcoming standing posture
+
+Background:
+- A real, premium reception interior of THIS exact [BUSINESS TYPE] — instantly recognisable as this specific business from its real equipment, products, displays, furniture, and service cues
+- Fill the space with the SPECIFIC real elements this business actually uses (derived from the provided business name, services, and description) — real functional equipment, products, counters, furniture and natural props that prove what this business does — as solid real objects (NOT empty frames, blank boards, or placeholder signage) and with no readable text on them
+- Reference for the kind of real physical setting (use only as a guide for the type of objects, not as fixed wording): ${receptionGuidance}
+- If any store/office reference images are provided, mirror their real interior, layout, and materials
+- It must read as a genuine, operational [BUSINESS TYPE] — realistic and 100% relatable to this exact business, never fake, generic, or unrelated
+- Place the attached logo naturally as a real, SMALL-to-medium wall sign on the reception back wall behind the girl — fully visible and uncropped, realistically integrated, and DYNAMICALLY sized to the free wall space around her. The logo is clearly secondary to the girl: keep it modest, never large or dominating, and never shrink or push the girl smaller just to fit the logo
+- LOGO SHARPNESS (IMPORTANT): reproduce the attached logo exactly and keep it perfectly SHARP and in focus — do NOT blur or soften it with depth of field — so every letter and all text in the logo stays crisp and clearly readable
+- TEXT RULE (STRICT — VERY IMPORTANT): the attached logo is the ONLY text or branding anywhere in the entire image. Do NOT add or invent ANY other text — no words, letters, numbers, dates, academic years, taglines, slogans, mission lines, service lists, or signage. Reproduce the attached logo exactly and never add extra words above, below, or around it
+- NO EMPTY PLACEHOLDERS (IMPORTANT): do NOT add blank or empty boards, picture frames, certificate frames, brochures, brochure stands, posters, standees, banners, or blank / dark screens — empty placeholder panels look like cheap cardboard and must be avoided. Keep walls and surfaces clean and uncluttered, carrying only the attached logo plus real, natural elements (soft wall texture, warm lighting, plants, tasteful décor, and the business's real functional objects)
+
+Visual Style:
+- Ultra realistic photography, cinematic indoor lighting, natural skin texture, premium colour grading, realistic reflections and shadows, clean polished environment
+
+Composition:
+- Aspect ratio: 9:16 vertical
+- Three-quarter shot: frame the girl from the top of her head down to roughly her thighs / knees — do NOT show her full head-to-feet (that makes her look small and distant)
+- The girl must clearly fill about 70% of the frame height, centred and dominant, with only a little headroom above her head, and the reception and logo clearly visible behind her
+- PRIORITY (IMPORTANT): the girl's ~70% size always comes first; size the logo and background to fit around her. NEVER enlarge the logo at the cost of the girl — if wall space is tight, make the logo smaller, not the girl
+- Leave natural headroom for future talking-video animation
+
+Important:
+- Use the attached logo only as real environmental branding on the wall, fully visible and complete
+- Keep the look premium, professional, realistic, and appropriate to this exact business
+
+Fill every [BRACKET] with the real extracted business details. Output ONLY the final image prompt above, inside one code block, with no explanations.`;
+  }
+
   return `You are an AI assistant specialized in generating START-FRAME IMAGE PROMPTS for business ads and brand intro creatives.
 
 WORKFLOW RULES (MANDATORY):
@@ -970,7 +1036,15 @@ She should feel like a wonderful premium North Indian brand ambassador chosen sp
 **Do NOT default to the same face used in other ads.** Create ONE unique ambassador identity for this business based on the business type, brand tone, festival/commercial mood, attire style, and environment.
 Choose an age band that fits the brand positioning — strictly 20 to 25 only — and keep that same woman consistent across all clips in this campaign.
 Do NOT imitate a specific actress, do NOT describe her as a South Indian film actress, do NOT use one generic celebrity face pattern, and do NOT drift away from clear Indian identity in any clip.
-${!isFestival ? `
+${!isFestival ? `${isProfessional ? `
+SUBJECT — THE GIRL (PROFESSIONAL SUIT, FRESH CASTING EACH TIME — MANDATORY):
+A genuinely beautiful, youthful Indian girl, strictly 20 to 25 years old, cast as the exclusive brand ambassador for THIS business.
+• NEW GIRL EVERY TIME (CRITICAL): each generation must produce a NEW, different, unique girl — vary the face shape, features, hairstyle, and complexion within natural Indian casting, and NEVER reuse the same recurring ad face. Two different businesses must clearly look like two different girls.
+• Clearly and unmistakably Indian — natural warm Indian complexion (honey, wheatish, golden-brown, or fair-Indian), never ethnically ambiguous, never westernized, never pale-pink or grey.
+• Naturally pretty and photogenic with soft feminine features, bright expressive eyes, clean brows, and a fresh radiant glow — premium and aspirational but believable and human, not plastic, not doll-like, not over-sculpted.
+• Real skin truth: visible pores, natural micro-texture, soft tonal variation, no beauty-filter, no waxy or over-smoothed finish.
+• Light, camera-ready makeup only — softly defined eyes, a subtle nude-rose or warm lip, gentle blush; no heavy glamour, no smoky eye, no spectacles.
+• EXPRESSION: a real, warm, confident smile that reaches the eyes, looking directly into the lens — friendly, trustworthy, and approachable, never blank, stiff, or corporate-cold.` : `
 FACE — LUXURY CASTING BRIEF (MANDATORY):
 - Face shape: Perfect oval — the mathematically ideal face
   shape for screen — soft but defined, no harshness
@@ -1025,46 +1099,7 @@ MAKEUP — HIGH-FASHION EDITORIAL LEVEL:
   without looking overdone
 - Overall: She must look like she just walked out of a
   2-hour professional makeup session for a magazine cover —
-  polished, intentional, flawless but human
-${isProfessional ? `
-PROFESSIONAL SUIT BEAUTY OVERRIDE (MANDATORY):
-CASTING OVERRIDE — SUIT BRANCH (MANDATORY):
-- She must be strictly 20 to 25 years old only in this suit branch — youthful, fresh, modern, and unmistakably in that age band
-- This is NOT a corporate headshot. This is NOT a stock photo shoot.
-- This is a HIGH-BUDGET NATIONAL BRAND CAMPAIGN.
-- The model must feel like the luxury campaign face selected after 500 auditions — top 0.1% beauty tier, stop-scrolling presence, star quality, and clearly above normal office-beauty level.
-- She must still read as youthful, radiant, camera-ready, and actress-level beautiful inside the professional styling — never plain, severe, matronly, forgettable, or generic.
-- HARD NEGATIVE RULE: reject plain receptionist energy, HR portrait energy, employee ID-photo look, LinkedIn headshot energy, bank-uniform vibe, startup-office casualness, and generic stock corporate beauty.
-
-FACE — LUXURY CASTING BRIEF (SUIT BRANCH):
-- Perfect oval face with soft feminine harmony and refined screen-ready structure
-- Large almond-shaped deep brown eyes with bright whites, natural depth, magnetic pull, and expressive premium Indian screen presence
-- Naturally full arched brows that frame the eyes strongly without looking drawn-on
-- Slender photogenic nose with refined bridge and delicate tip
-- Softly full lips with a defined cupid's bow, natural softness, and a polished campaign finish
-- Subtly high cheekbones, clean feminine jawline, and a delicate refined chin
-- Fresh radiant Indian complexion with visible pores, true micro-texture, smooth clear skin, natural glow on the high points, and absolutely no plastic skin or filter finish
-
-MAKEUP — HIGH-FASHION COMMERCIAL LEVEL (SUIT BRANCH):
-- Dewy perfected-real skin with believable texture, never waxy and never over-smoothed
-- Softly defined warm-brown eyes with subtle kajal presence and refined lash definition
-- Structured clean brows, refined blush warmth, and gentle contour only where natural
-- Intentional nude-rose or soft warm lip tone that still looks realistic and premium on camera
-- No spectacles, no eyewear, no harsh contour, no loud editorial drama, no frozen expression, and no beauty-filter finish
-
-EXPRESSION — STAR QUALITY (SUIT BRANCH):
-- Real warm smile only — never blank, never cold, never stiff, never corporate-neutral
-- Alive direct eyes only — she must look straight into the lens as if she owns the shoot
-- Subtle laugh-line realism is allowed because she must feel human and premium, not frozen
-- Relaxed star-quality confidence, aspirational warmth, and trust-building charisma are mandatory
-
-COMMERCIAL REALISM FORMULA (ABSOLUTE — EVERY CHEMICAL MUST BE PRESENT):
-- FACE ANCHOR: Bollywood-heroine quality, brand-ambassador face, photogenic sharp attractive features, premium Indian screen presence, and memorable beauty that still feels human and believable
-- LIGHT SOURCE: natural daylight from the left window OR a believable left-side daylight source with soft cinematic fill light — never flat front lighting, never harsh synthetic glam light
-- SKIN TRUTH: natural skin texture, visible real pores, dewy complexion, soft tonal variation, natural micro-highlights, no filter, no smoothing, no waxy finish, no plastic retouching
-- SCENE DEPTH: real architectural interior of the client's actual business, background softly blurred with natural depth of field, never a studio backdrop, never a fake luxury hall, never a generic set
-- CAMERA PHYSICS: Canon EOS R5 realism, 85mm f/1.8 portrait look, shallow depth of field, natural color science, sharp eye focus, and premium DSLR lens falloff
-- If even one of these realism chemicals is missing, the result has FAILED and must be regenerated` : ''}` : `
+  polished, intentional, flawless but human`}` : `
 Facial characteristics (MANDATORY — REAL PREMIUM BEAUTY, NOT AI GLAMOUR):
 • Naturally attractive North Indian facial structure with refined proportions — premium but believable, not plastic, not doll-like
 • Strong screen presence with expressive eyes and confident warmth
@@ -1114,13 +1149,17 @@ EXPRESSION — STAR QUALITY (MANDATORY):
   the viewer should feel: "I want to be her" or
   "I trust her" — she is selling a dream
 
-POSE ANCHOR FOR THE HERO MAIN FRAME (MANDATORY):
+${isProfessional ? `POSE & FRAMING (HERO FIRST FRAME — MANDATORY):
+- The girl stands in the EXACT CENTER of the 9:16 frame with balanced left-right spacing, occupying roughly 70% of the frame height — a medium full / three-quarter standing shot, never a tight head-and-shoulders crop.
+- HANDS (STRICT RULE): Both hands positioned at the lower waist level, right hand lightly resting over the left hand, fingers naturally relaxed and partially overlapping, no crossed arms, no pockets, no hand gestures, formal front-clasp corporate pose.
+- Standing tall and professional, shoulders square to camera, chin level, calm confident welcoming posture, looking directly into the lens.
+- Camera at chest / eye level with the business reception clearly visible behind her.` : `POSE ANCHOR FOR THE HERO MAIN FRAME (MANDATORY):
 - The hero or anchor image must be EXACTLY centered with
   balanced left-right spacing
 - Hands gently folded at the waist or lower abdomen, one
   hand resting over the other, fingers relaxed
 - Camera at chest level, mid-shot framing only, with a calm,
-  premium, welcoming posture` : `POSE & FRAMING (PREMIUM COMMERCIAL PHOTOGRAPHY — NATURAL VARIATION ALLOWED):
+  premium, welcoming posture`}` : `POSE & FRAMING (PREMIUM COMMERCIAL PHOTOGRAPHY — NATURAL VARIATION ALLOWED):
 • Close mid-shot only (head to upper waist / upper torso) — never full-body, never wide enough to weaken the model's presence
 • For professional suit outputs, Clip 1 must use the same hero pose as the traditional and festival anchor frames: EXACTLY centered with balanced left-right spacing and hands gently folded at the waist, one hand resting over the other
 • From Clip 2 onward, hand position, body angle, and pose energy must change according to that clip's exact voice-over script, business proof point, and location instead of repeating the folded-hands hero pose
@@ -1185,47 +1224,17 @@ Color guide by business type (each MUST feel like a distinct luxury campaign war
 • The blouse must feel tailored and premium, with youthful charm, sharp fit, polished finishing, and zero generic wedding-blouse energy
 • For saree outputs, the jewellery must stay STRICTLY semi-jewellery only — elegant, feminine, clearly visible, premium, and controlled, never heavy, never bridal, never overloaded
 • Commercial traditional saree output must preserve visible pores · micro skin texture · soft tonal variation · truthful Indian complexion · true photographic realism — never bridal-doll glam, mannequin polish, catalog stiffness, or synthetic beauty
-• HARD NEGATIVE: no wedding-stage styling, no temple-jewellery overload, no festive garlands, no bridal makeup, and no generic "traditional wear" shortcut that ignores the actual business identity` : `ATTIRE (PREMIUM BEIGE/PASTEL SUIT — LUXURY CAMPAIGN REALISM — MANDATORY):
-This is NOT generic officewear and NOT a stock corporate portrait.
-It must feel like a luxury Indian commercial campaign where a youthful, exceptionally beautiful actress-level ambassador is styled in a premium feminine suit.
-This branch is for COMMERCIAL AD TYPE behavior only — never festival-themed, never celebratory, never saree-led, and never decorated with garlands, diyas, rangoli, or cultural-event props.
-• The professional suit color MUST be DYNAMIC and BUSINESS-SPECIFIC — do NOT keep giving the same beige or same neutral suit to every client
-• First derive the suit palette from the actual business type, logo colors, brand mood, and interior material cues — the outfit should feel chosen for THIS exact client campaign, not reused from a universal template
-• Within one commercial campaign, keep the tailoring silhouette premium and consistent but allow clip-to-clip suit shade variation inside the approved business-specific palette when the script, business zone, or lighting makes that version feel more authentic
-• Suit palette direction by business type:
-  - Medical/Healthcare: soft ivory, pearl white, sterile beige with subtle blue-grey accents
-  - Real Estate: sandstone beige, camel, mocha, muted gold-beige, or warm taupe with authority
-  - Tech/Software/Agency: cool stone beige, mist grey-beige, champagne-taupe, soft steel greige, or muted blue-grey accents
-  - Education/Consultancy: elegant almond, parchment beige, academic taupe, muted forest-beige, or dignified cream tones
-  - Solar/Energy: soft sand, sunlit beige, warm khaki-beige, muted sage-beige, or clean energy neutrals
-  - Food/Catering/Hospitality: warm cream, honey beige, latte, caramel beige, or tasteful hospitality warm neutrals
-  - Jewellery/Luxury Retail: champagne gold-beige, blush taupe, rose-beige, luxe cream, or refined mocha-glow tones
-  - Automobile: graphite-beige, metallic greige, sand-taupe, espresso-beige, or premium showroom neutrals
-  - Beauty/Fashion: blush-beige, rosy taupe, champagne blush, warm nude, or couture pastel neutrals
-  • Education institutions/campuses: parchment beige, sandstone cream, academic stone, cedar taupe, or soft sage-beige tones with premium campus polish
-  • Education consultancies: elegant almond, dignified cream, polished latte-stone, parchment taupe, or muted olive-beige tones with counseling-office polish
-  - Default: derive a premium suit tone from the logo and brand mood while staying elegant, feminine, and campaign-worthy
-  • Treat the selected colors as an approved business-specific palette family with multiple valid shades — never one flat beige repeated for every client or every clip
-• Avoid repeating the same suit color across different businesses unless the business palette genuinely demands it
-• CASTING RULE FOR SUIT OUTPUTS: choose a premium Indian woman with youthful softness, bright expressive eyes, gentle rosy warmth, and believable campaign-level beauty — never a repeated default face, never a copied stock-model look, never a severe western executive archetype
-• BUSINESS-SPECIFIC MODEL VARIATION: the face, complexion depth, styling nuance, and casting energy must change according to the specific [BUSINESS TYPE], brand personality, and client context so different businesses do NOT keep getting the same woman in a different suit
-• BLAZER: premium well-tailored blazer in the chosen business-specific palette with elegant waist definition, refined shoulder structure, clean lapel roll, believable seam tension, and expensive matte-luxe suiting texture
-• BLOUSE: crisp white fitted blouse or shirt under the blazer — clean collar line, fresh bright contrast, polished professional finish, and real fabric structure
-• TROUSERS: slim formal trousers in the same business-specific suit family — straight or gently tapered cut, graceful premium drape, clean hem, and a sharp luxury-commercial silhouette
-• Fabric: expensive matte-luxe suiting with believable weight, texture, sleeve fall, trouser break, lapel structure, and natural movement — never shiny polyester, never stiff costume fabric
-• The tailoring must feel expensive because of real structure, real fabric behavior, and commercial styling polish — not because of theatrical costume exaggeration
-• Styling must preserve beauty and femininity: the woman should still feel glamorous, attractive, warm, actress-level beautiful, youthful, and intelligent in the suit — never harsh, lifeless, plain, or overly stern
-• Suit-girl casting must follow luxury beauty logic: stop-scrolling face value, star-quality smile, alive direct eyes, and the kind of premium photogenic appeal associated with top Indian national campaigns
-• The suit must read as a luxury fashion-commercial look, not HR portrait clothing, not a bank-uniform vibe, not startup officewear, and not stock-photo executive styling
-• HARD NEGATIVE BAN: no plain receptionist look, no HR portrait look, no employee ID-photo look, no LinkedIn headshot energy, and no generic office-worker prettiness
-• Keep the chosen palette rich, dimensional, creamy, and expensive — never flat beige, never chalky, never washed out, never lifeless under indoor lighting
-• Face and grooming direction: soft youthful facial features, perfect oval harmony, large expressive almond eyes, clean strong brows, elegant nose, softly full lips, fresh natural glow, subtle rosy warmth in the cheeks, refined lip color, no spectacles, no eyewear, no harsh retouching, no bridal heaviness, no waxy or synthetic skin finish
-• The overall impression should feel like a premium young corporate professional portrait with approachable confidence, modern elegance, and inspiring energy
-• Hair should feel premium and feminine with silky dark black hair only, healthy shine, and polished movement that flatters the face — refined blowout, elegant straight finish, or controlled soft waves are preferred over stiff corporate hair
-• Pose and styling should feel soft-confident and premium: graceful posture, subtle elegance, poised warmth, camera-ready polish — not rigid boardroom stiffness
-• Preserve true photographic realism: visible pores · natural warm Indian complexion · real fabric tension · authentic tailoring details · no plastic beauty-filter skin · no synthetic fashion-render feel
-• The final suit impression must feel like a real luxury beauty-fashion campaign shot inside the best executive-facing or consultation-facing zone of the actual business — beautiful woman first, premium tailoring second, business truth always
-• The suit branch must NEVER drift into a plain corporate employee look — if the model does not still feel top-tier beautiful and campaign-worthy, regenerate`}
+• HARD NEGATIVE: no wedding-stage styling, no temple-jewellery overload, no festive garlands, no bridal makeup, and no generic "traditional wear" shortcut that ignores the actual business identity` : `ATTIRE (BRAND-DRIVEN PREMIUM SUIT — VARIED PER BUSINESS — MANDATORY):
+The girl wears a premium, well-tailored formal women's suit (blazer + inner blouse + formal trousers) — a luxury commercial campaign look, never generic officewear, never a stock corporate portrait, never saree-led, and never decorated with festival or cultural props.
+• SUIT COLOR — BRAND-DRIVEN AND VARIED (CRITICAL): choose the suit color from the client's logo and brand identity — for example elegant maroon, deep navy, coffee-cream, charcoal, emerald, plum, ivory-gold, or black-and-gold — picking the tone that matches THIS brand.
+• DO NOT default to the same beige/pastel suit, and DO NOT use a plain bright-blue corporate suit, for every client — different businesses must get visibly different suit colors, and the color must not repeat identically across generations.
+• BLAZER: premium well-tailored blazer in the chosen brand color with elegant waist definition, refined shoulder structure, clean lapel roll, and expensive matte-luxe suiting texture.
+• BLOUSE: crisp white fitted blouse or shirt under the blazer — clean collar line, fresh contrast, and a polished professional finish.
+• TROUSERS: slim formal trousers in the same suit family — straight or gently tapered, graceful premium drape, clean hem, and a sharp luxury-commercial silhouette.
+• Fabric: expensive matte-luxe suiting with believable weight, sleeve fall, and natural movement — never shiny polyester, never stiff costume fabric.
+• Keep the styling premium, feminine, and youthful — the girl should look glamorous, warm, and confident in the suit, never plain, severe, or matronly.
+• Hair: silky natural rich black hair only, healthy shine, refined blowout / straight finish / soft waves that flatter the face.
+• HARD NEGATIVE: no saree in this branch, no casual wear, no plain receptionist / HR / ID-photo look, no spectacles, no festival or cultural props.`}
 
 JEWELLERY (MANDATORY — ALWAYS REQUIRED):
 **Jewellery is NON-NEGOTIABLE and must ALWAYS be present:**
@@ -1287,6 +1296,7 @@ Use real proof elements that belong to this business: consultation desks, recept
 The proof layer should occupy meaningful visual space in the frame — not disappear into a generic blur.
 
 ${isProfessional ? `**STEP 3 — ADD PREMIUM CORPORATE ATMOSPHERE (WITHOUT CATEGORY DRIFT):**
+For the hero first frame, the girl stands directly in front of THIS business's own reception / front desk, with the branded reception back wall behind her. The background must clearly read as this exact business's reception — using the real business type, signage, counter, and proof cues — and must NEVER be a generic, fake, or unrelated backdrop.
 For professional suit outputs, build a bright executive-facing or consultation-facing zone with natural daylight, refined wood/stone/glass materials, indoor greenery, clean desk surfaces, subtle laptop or notebook presence when natural, and premium front-office polish.
 The atmosphere must feel like a real on-location corporate/business environment captured on its best day — never a fake luxury hall, hotel lobby, generic coworking stock background, or empty boardroom set.
 Never introduce festival decorations, celebration props, garlands, diyas, rangoli, or cultural-event cues in this professional commercial branch.` : `**STEP 3 — ADD PREMIUM COMMERCIAL ATMOSPHERE (WITHOUT FESTIVAL OR BRIDAL DRIFT):**
@@ -1314,7 +1324,8 @@ Place the attached logo exactly as-is as real physical signage inside the premis
 • Pixel-perfect, unchanged, naturally lit, properly installed, and clearly secondary to the subject
 • Mount it in the upper background behind the model so the full logo remains completely visible without cropping, blocking, blur, tilt, stretching, or redesign
 • The model, hair, shoulders, props, or furniture must never cover any part of the logo
-${!isFestival && businessContext ? `• For this client, prioritize these realistic installation surfaces: ${clientLogoPlacementGuidance}
+${isProfessional ? `• Size the logo so it fits naturally and completely on the reception back wall behind the girl — large enough to be clearly readable, proportionate to the wall, never oversized, and never cropped by the frame edge or hidden behind the girl.
+` : ''}${!isFestival && businessContext ? `• For this client, prioritize these realistic installation surfaces: ${clientLogoPlacementGuidance}
 ` : ''}
 
 **THE FINAL IMPRESSION:**
@@ -1453,8 +1464,12 @@ export const MULTI_FRAME_SYSTEM_PROMPT = (
       key: 'hero' as const,
       name: 'HERO ESTABLISHING SHOT',
       location: 'Main reception area / front counter / primary welcome zone of the business',
-      camera: 'Close mid-shot, straight-on at chest or eye level, subject perfectly centered in frame with balanced left-right spacing and roughly 70% frame presence — classic brand ambassador establishing shot',
-      pose: 'Hands gently folded at waist, one hand resting over the other, confident welcoming posture — brand ambassador stance',
+      camera: adType !== AdType.FESTIVAL
+        ? 'Medium full / three-quarter standing shot, straight-on at eye level, subject perfectly centered in frame with balanced left-right spacing and roughly 70% frame presence, with the business reception clearly visible behind her — classic brand ambassador establishing shot'
+        : 'Close mid-shot, straight-on at chest or eye level, subject perfectly centered in frame with balanced left-right spacing and roughly 70% frame presence — classic brand ambassador establishing shot',
+      pose: adType !== AdType.FESTIVAL
+        ? 'Both hands at the lower waist, right hand lightly resting over the left hand, fingers relaxed and partially overlapping — no crossed arms, no pockets, no hand gestures, formal front-clasp corporate pose; the girl standing tall and centered'
+        : 'Hands gently folded at waist, one hand resting over the other, confident welcoming posture — brand ambassador stance',
       purpose: 'Introduce the brand ambassador and the business atmosphere. The viewer sees the model AND instantly recognizes the business type from the environment.',
       logoPlacement: getShotLogoPlacementForBusiness('hero', detectedBusinessType, businessContext),
     },
@@ -1579,14 +1594,19 @@ ${Array.from({ length: segmentCount }, (_, i) => {
    🎯 PURPOSE: ${shot.purpose}
     🪧 LOGO SURFACE: ${shot.logoPlacement}
    
-   Generate a COMPLETE, detailed image generation prompt following ALL the rules/sections from the base prompt above.
+   ${adType !== AdType.FESTIVAL ? `Generate a COMPLETE standalone first-frame image prompt EXACTLY in the base format above (the headers: Create an ultra-realistic promotional portrait…, Main Character, Pose, Background, Visual Style, Composition, Important).
+   Keep it clean and concise — about 200–300 words, simple bullet lines, no extra sections, no negative list.
+   Describe the girl (with elegant jewellery — ${attireType === 'traditional' ? 'necklace/chain, earrings, bangles, finger ring' : 'finger ring, necklace/chain, earrings, watch'} — and a bindi on the forehead), the formal front-clasp pose, the real [BUSINESS TYPE] reception background built from the business details and 100% relatable to this exact business (its real equipment, products, displays, and service cues so a viewer instantly recognises what it does), and the attached logo fully visible on the reception wall.
+   The reception, visible business cues, pose, and mood must directly match Clip ${clipNum}'s voice-over line, and the logo must feel physically installed on ${shot.logoPlacement}, fully visible and unaltered.
+   The attached logo must be the ONLY text in the image — do NOT invent any other signage, banners, taglines, mission lines, service lists, dates, or academic years, and do NOT add empty/blank boards, frames, certificates, brochures, posters, standees, or blank screens (empty placeholders look like cardboard) — keep walls and surfaces clean. Keep the logo perfectly sharp and in focus (not blurred by depth of field) so all its text is clearly readable.
+   Frame the girl as a three-quarter shot (head to thighs/knees), centered and clearly filling about 70% of the frame height (not a small full head-to-feet shot), looking directly at the camera. Keep the girl's ~70% size the priority and the attached logo small-to-medium and secondary — dynamically sized to the free wall space and never enlarged at the cost of the girl's size.` : `Generate a COMPLETE, detailed image generation prompt following ALL the rules/sections from the base prompt above.
    This frame sets the visual foundation — character face, hair, skin, beauty, attire, jewellery, AND this specific location within the business.
    This is the ONLY clip where you fully describe the model's physical appearance.
   The chosen location, visible business cues, pose energy, and emotional tone must directly match Clip ${clipNum}'s voice-over line.
     The logo must feel physically installed on ${shot.logoPlacement}, with believable depth, reflections, and material behavior.
   Include ALL sections: SUBJECT, FACE, MAKEUP, EXPRESSION, HAIR, ATTIRE, JEWELLERY, ENVIRONMENT, LOGO PLACEMENT, CAMERA, OVERALL RESULT.
    The subject must occupy roughly 70% of the frame, maintain direct eye contact with the camera, and the attached logo must appear fully visible in the upper background without any alteration.
-   Target length: 500-800 words.`;
+   Target length: 500-800 words.`}`;
   }
   
   return `**CLIP ${clipNum} — ${shot.name} (⚠️ DO NOT RE-DESCRIBE THE MODEL)**
@@ -1613,14 +1633,16 @@ ${Array.from({ length: segmentCount }, (_, i) => {
   "Use the attached reference frame image as the exact identity and styling anchor for this clip — same woman, same core styling, the exact same natural rich black hair from the first frame onward, same wardrobe family rooted in the approved business-specific palette, same jewellery set, and for professional commercial suit campaigns only you may shift the suit tone within that same palette family instead of repeating one identical beige in every clip."
    
    **✅ THEN FOCUS 100% ON THESE (the ONLY things you should describe):**
-  • 📍 The NEW LOCATION within the business (a completely different spot from previous clips — describe the area in rich detail, and make sure it is the best fit for Clip ${clipNum}'s voice-over message)
-  • 🔍 What's visible in the background at this new location (business-specific elements, furniture, displays, signage, and proof points that directly support the script line)
+  • 📍 The NEW LOCATION within the SAME business — a different REAL area/zone that best matches the meaning of Clip ${clipNum}'s voice-over line (show the real place the script is talking about). Describe it as a real, operational spot with real physical objects.
+  • 🔍 What's visible in the background: ONLY real physical things this business actually has — furniture, equipment, products, counters, fixtures, materials, plants — shown as solid real objects with NO readable text on them
+  • 🚫 TEXT RULE (STRICT — VERY IMPORTANT): the attached logo is the ONLY text anywhere in the frame. Do NOT add or invent ANY other text — no signage, banners, posters, notice boards, brochures, application forms, department lists, course / curriculum lists, certificates, taglines, slogans, dates, or years on the walls, desks, screens, or anywhere. (The image generator mis-spells such text, so it must NEVER appear.)
+  • 🚫 NO EMPTY PLACEHOLDERS: do NOT add blank/empty boards, picture frames, certificate frames, brochures, posters, standees, or blank/dark screens — keep walls and surfaces clean; real physical objects only, plus the attached logo
   • 🧍 The new POSE — body angle, hand position, interaction with environment elements at this location in a way that matches the clip's selling point
    • 😊 The new EXPRESSION — emotional tone matching Clip ${clipNum}'s voice-over script
    • 🎥 The new CAMERA ANGLE and composition
   • 💡 How lighting naturally differs at this new spot (e.g., near window = warm, interior = ambient) while still preserving the realism formula
   • 👁️ Mandatory direct eye contact to the camera while holding this new pose
-  • 🪧 The attached logo placed on this clip's believable physical surface — ${shot.logoPlacement} — fully visible, physically installed, and completely unmodified
+  • 🪧 The attached logo placed on this clip's believable physical surface — ${shot.logoPlacement} — small-to-medium, sharp and clearly readable, fully visible, physically installed, and completely unmodified
    
    WHY THIS MATTERS: Any model description — even saying "beautiful woman" or "silk saree" — will cause the AI image generator to create a COMPLETELY DIFFERENT person. The model's identity is LOCKED from Clip 1. You ONLY control the scene around her.
    
@@ -1712,7 +1734,7 @@ Frame prompts should focus ONLY on the visual scene — no overlaid text except 
 
 ===== WORD COUNT RULES (ENFORCED) =====
 
-**Clip 1: 500–800 words** — Full detailed prompt with every section.
+**Clip 1: ${adType !== AdType.FESTIVAL ? '200–300 words — clean example-format prompt (Main Character, Pose, Background, Visual Style, Composition, Important)' : '500–800 words — Full detailed prompt with every section'}.**
 **Clips 2, 3, 4, etc.: 100–200 words MAXIMUM** — Short, location-focused prompts. If your continuation clip is longer than 200 words, you are re-describing the model. DELETE those lines.
 
 A continuation clip that is 500+ words means you are repeating model/attire/jewellery descriptions — this is WRONG and will produce different-looking women across clips.
@@ -1721,7 +1743,16 @@ A continuation clip that is 500+ words means you are repeating model/attire/jewe
 
 Separate each clip's prompt with the marker: ###CLIP###
 
-**CLIP 1 FORMAT (FULL — 500-800 words):**
+${adType !== AdType.FESTIVAL ? `**CLIP 1 FORMAT (CLEAN — 200-300 words):**
+
+Clip 1 – Main Frame Prompt (${shotDesigns[0].name})
+Create an ultra-realistic promotional portrait for "[BUSINESS NAME]" using the attached official logo as branding reference.
+Generate a premium [BUSINESS TYPE] reception environment and place a confident young Indian girl standing in front of the reception area.
+Main Character: Indian girl, age 20–25, a new different natural-looking girl, ${attireType === 'traditional' ? 'elegant designer saree (not a suit)' : 'premium tailored formal suit (not saree)'} in a brand-derived colour, natural black hair, ${attireType === 'traditional' ? 'traditional jewellery (necklace/chain, earrings, bangles, ring, bindi)' : 'simple jewellery (finger ring, thin necklace/chain, earrings, wristwatch, bindi)'}, friendly welcoming smile.
+Pose: standing centered, both hands at the lower waist with the right hand lightly resting over the left — formal front-clasp corporate pose, looking at the camera.
+Background: the real [BUSINESS TYPE] reception built from the business details, with the attached logo as a small-to-medium wall sign behind her — fully visible, sharp and clearly readable (in focus, not blurred), but secondary, never large enough to shrink the girl. The attached logo is the ONLY text anywhere — no other signage, banners, taglines, mission lines, service lists, dates, academic years, or any invented text. No empty/blank boards, picture frames, certificates, brochures, posters, or blank screens — keep walls and surfaces clean.
+Visual Style: ultra realistic, cinematic indoor lighting, natural skin texture, premium colour grading.
+Composition: 9:16 vertical, three-quarter shot from head to thighs/knees, girl centered and clearly filling about 70% of the frame height (not a small full head-to-feet shot).` : `**CLIP 1 FORMAT (FULL — 500-800 words):**
 
 Clip 1 – Main Frame Prompt (${shotDesigns[0].name})
 Create a Ultra-realistic DSLR photograph, single image, 9:16 vertical…
@@ -1730,7 +1761,7 @@ Create a Ultra-realistic DSLR photograph, single image, 9:16 vertical…
 [Full JEWELLERY section]
 [Full ENVIRONMENT section with real business base layer ${adType === AdType.FESTIVAL ? '+ festival cues' : '+ business-proof layer'}]
 [Full CAMERA & REALISM section]
-[Full OVERALL RESULT]
+[Full OVERALL RESULT]`}
 
 ###CLIP###
 
@@ -1742,13 +1773,13 @@ Use the attached reference frame image as the exact identity and styling anchor 
 
 POSE: Subject positioned on the right side using rule-of-thirds, one hand gesturing gently toward the product display behind her. Close mid-shot, camera slightly below chest level, subject still occupying roughly 70% of the frame and maintaining direct eye contact with the camera.
 
-NEW LOCATION: She has moved to the product showcase area of the office. Behind her, a large sleek monitor displays website designs and AI-powered tools. Modern display shelving with tech awards and client project samples visible. The attached logo signage is mounted in the upper background on the far wall, fully visible and unmodified.
+NEW LOCATION: She has moved to a different real area of the premises that matches this clip's script line — for example a service / work zone with the business's real equipment, counters, and fixtures around her. Behind her are ONLY real physical objects (no text, no signage, no posters, no boards). The attached logo is mounted small-to-medium on the far wall, fully visible, sharp, readable, and unmodified.
 
 ${adType === AdType.FESTIVAL ? `Festival decorations from the office are still visible — mango leaf thoranam above the display, marigold garlands framing the monitor, brass deepam on the desk corner, rangoli patterns continuing on the floor.
 
 LIGHTING: Cool blue-tinted ambient light from the display screens blends with warm golden festival lamp glow — creating a unique tech-meets-tradition atmosphere.
 
-MOOD: Professional, aspirational — showcasing the company's innovative capabilities while celebrating ${festivalName || 'the festival'}.` : `BUSINESS PROOF LAYER: The strongest commercial proof surfaces are clearly visible — branded presentation materials, premium product/service displays, certification frames, consultation assets, or operational fixtures that make the business instantly legible without looking staged.
+MOOD: Professional, aspirational — showcasing the company's innovative capabilities while celebrating ${festivalName || 'the festival'}.` : `BUSINESS PROOF LAYER: The strongest REAL physical proof of this business is visible — real equipment, product/service items, counters, work fixtures, or operational objects that make the business obvious WITHOUT any text. No signage, posters, certificates with text, brochures, department/course lists, or invented words — the attached logo is the ONLY text.
 
 LIGHTING: Natural daylight from the left window mixes with soft practical interior lighting and believable reflections on real materials — polished, premium, and fully photographic.
 
@@ -1770,37 +1801,49 @@ Do NOT wrap individual prompts in code blocks — output them as plain text sepa
 };
 
 export const HEADER_SYSTEM_PROMPT = (_adType: string, _festivalName: string) => {
-    return `Create a 9:16 vertical 4K advertisement poster.
+    return `Design a PREMIUM, BUSINESS-THEMED HEADER for a 9:16 vertical advertisement.
 
-    STRICT CANVAS RULE:
+CANVAS & SIZE (FULL-BLEED TOP STRIP — NO OUTER PADDING):
+- 9:16 vertical frame. The ENTIRE header — logo row AND the address bar together — is ONE compact band that FILLS the top of the frame COMPLETELY: it spans the FULL WIDTH from the left edge to the right edge and starts flush at the very TOP edge, filling about the top 7% as a slim strip. Everything below the header stays empty / blank.
+- FULL-BLEED (IMPORTANT): there must be NO outer margin, NO padding, and NO gap around the header band, and it must NOT look like a floating rounded card with empty space around it. The band reaches the TOP, LEFT, and RIGHT edges of the canvas; do NOT round the top-left or top-right outer corners (only the bottom edge of the band may be softly finished).
+- Inside the band, the LOGO box, NAME container, and CONTACT pills keep their rounded premium shapes, with comfortable INNER spacing so no element is clipped or cramped — elements are padded INSIDE the full-bleed band, while the band itself has no outer padding.
 
-    * Design ONLY the top 7% horizontal strip as the header. The remaining area must be empty.
-    * Do NOT place any elements below the top 7% boundary.
+EXACT LAYOUT (keep this structure — do not move or change it):
+- LEFT: a square / rounded-square LOGO container holding the attached logo (used exactly as provided, unchanged).
+- CENTRE: a large rounded-rectangle container with the BUSINESS NAME as the hero element.
+- RIGHT: the contact number(s) as premium pill / button(s), stacked vertically.
+- BOTTOM: a SLIM full-width ADDRESS bar, tightly attached under the row above as part of the SAME header unit (NOT a separate thick band), with the address text CENTER-aligned.
+- The LOGO box, the NAME container, and the CONTACT pills must share the SAME height and baseline and align evenly in one neat row.
 
-    HEADER OUTPUT CONTRACT (MUST FOLLOW EXACTLY):
+ADAPTIVE RULES (IMPORTANT):
+- Contacts: if TWO numbers are given, show two evenly-stacked pills that fill the right side neatly. If only ONE number is given, show a single comfortably-sized pill centered on the right with balanced spacing and NO empty glow panel and NO blank gap. If NO number is given, remove the contact area entirely and let the BUSINESS NAME grow larger / wider to fill that space.
+- Address: the address bar is ONLY for a real street / postal address. ALWAYS center-align the address text and ALWAYS keep the ENTIRE address on ONE SINGLE LINE — STRICTLY never wrap it, never break it, and never let it run onto a second line. If the address is long, shrink the address text size as much as needed so the whole address fits on that single line; if short, keep it centered at a comfortable size. If NO real address is given — or the provided value is just the business name or a vague label — OMIT the address bar completely and collapse the space. NEVER repeat the business name inside the address bar.
 
-    1) The header may contain ONLY the following items, and ONLY if they are present in the extracted business data:
-      - Logo (use the attached logo image exactly if provided)
-      - Business name
-      - Address (shortened intelligently if needed)
-      - Contact numbers (one or more)
-      - Email
-      - Website
+BUSINESS-THEMED GRAPHIC DESIGN (MANDATORY — this was missing before):
+- The header MUST contain clear, tasteful GRAPHIC DESIGN ELEMENTS that match the business category — not just a plain coloured band. Render subtle themed motifs / decorative graphics inside the header:
+  - Education / college / school → academic motifs (graduation cap, open book, laurel wreath, knowledge / line-art).
+  - Hospital / clinic → medical motifs (cross, heartbeat line, caduceus), clean healthcare feel.
+  - Technology → circuit / grid / digital line-art.
+  - Retail / store → premium commerce / shopping motifs.
+  - Gym / fitness → dynamic energy / motion lines.
+  - Restaurant / food → luxury hospitality / culinary motifs.
+  - Any other category → fitting motifs for that exact industry.
+- Place these themed graphics as soft decorative accents (in the corners, behind the name, or as a faint watermark pattern) that clearly signal the business type while keeping all text fully readable.
 
-    2) Do NOT add, invent, or imply any other content (no headlines, offers, CTAs, urgency, product images, decorative micro-tags, pricing, or promotional copy).
+PREMIUM FINISH:
+- Use the brand / logo colours as the base. Add rich gradients, premium soft shadows, tasteful glassmorphism, subtle metallic / gold highlights, and gentle depth and lighting so it feels dimensional — never a flat band, wireframe, form, dashboard, or plain bordered boxes.
+- LOGO container: premium with subtle depth, fully inside the frame, never clipped, never a plain white box.
+- BUSINESS NAME: the visual hero — premium typography, elegant treatment, strong hierarchy, perfectly spelled and readable.
+- CONTACT pills: premium gradient / glass buttons with a small phone icon and a soft shadow.
+- ADDRESS bar: slim and integrated, with a subtle gradient / glass treatment and a small location-pin icon — never a thick separate rectangle. The address text stays on ONE single line always (shrink the text to fit), never wrapped onto a second line.
 
-    3) If any of the listed fields are missing from the extracted data, OMIT that field — do NOT fabricate or substitute values.
-
-    4) Layout guidance (informational only): keep the header minimal and readable inside the 7% strip. Prioritize clear visibility and contrast for contact numbers and business name. Do not include extra icons, badges, or decorative illustrations beyond a simple location icon for address if absolutely needed.
-
-    5) Output requirement: return a short, plain-text prompt describing the header composition and exact content to place. The prompt must list only the present fields and their exact values (no extra commentary). Example formats accepted:
-
-      - If all fields present: "LOGO: <inline image>; NAME: <Business Name>; CONTACT: <numbers>; EMAIL: <email>; WEBSITE: <url>; ADDRESS: <short address>"
-      - If some fields missing: include only the available fields in the same concise key-value style.
-
-    6) Never wrap the output in code blocks and do not output explanations. Output must be copy-paste ready and truthful to the provided extracted business info.`;
+CONTENT RULES (STRICT):
+- Place ONLY these elements: the logo, the business name, the contact number(s), and a real address — using EXACTLY the values provided to you.
+- Use ONLY the values that are provided. If a value is not provided, simply leave that element out — do NOT draw an empty box and do NOT write words like "not provided", "N/A", or any placeholder.
+- NEVER invent, guess, autocomplete, or fabricate any value — especially NEVER make up an address, street, area, city, pincode, or phone number. If the address (or a contact number) is not given to you, that element does NOT exist: do NOT draw its bar / pill and do NOT place any text for it. A field that is missing must be completely absent, not faked.
+- No taglines, no offers, no services, no extra text — nothing beyond logo, name, contacts, and a real address.
+- All text must be crisp, perfectly spelled, and clearly readable.`;
 };
-
 export const getToneForAdType = (adType: string) =>
   adType === AdType.FESTIVAL
     ? 'Warm, celebratory, festive, heartfelt'
@@ -1837,6 +1880,7 @@ ${clipLines}
 4. Do NOT force awkward hybrid lines. If a natural Telugu phrase is stronger, use it.
 5. Do NOT use archaic, bookish, devotional, or government-style Telugu.
 6. Write how a polished Telugu commercial voice artist would actually speak in Andhra Pradesh or Telangana today.
+7. PROFESSIONAL TRANSLITERATION RULE (IMPORTANT): For a modern, professional ad tone, prefer commonly-spoken English business/professional words written in Telugu script (transliteration) instead of heavy, literary, or pure-Telugu translations. Examples: use "ఫ్రీ బ్రేక్‌ఫాస్ట్" not "ఉచిత అల్పాహారం"; "న్యూ బిల్డింగ్" not "నూతన భవనం"; "బ్రైట్ ఫ్యూచర్" not "బంగారు భవిత"; "ఇండస్ట్రీ ట్రైనింగ్" or "డైరెక్ట్ ట్రైనింగ్" not "పరిశ్రమలో ప్రత్యక్ష శిక్షణ". Write these English words in Telugu script, the way urban Telugu ads actually speak.
 
 ===== CONTENT TRUTH RULES =====
 
@@ -1848,20 +1892,12 @@ ${clipLines}
 
 ===== NUMBER AND CTA RULES =====
 
-1. Never use digits inside spoken content. Use Telugu-script spoken forms only.
-2. Contact number must appear ONLY in the FINAL clip.
-3. CTA must appear ONLY in the FINAL clip.
-4. For a 2-clip ad, the FINAL clip must use this exact phrase for contact handling instead of reading digits:
-  "స్క్రీన్ పై ఉన్న నంబర్ కి ఇప్పుడే కాల్ చేయండి"
-5. For ads longer than 2 clips, only the FINAL clip may include the contact number, read only as English digit names transliterated into Telugu script:
-  జీరో, వన్, టూ, త్రీ, ఫోర్, ఫైవ్, సిక్స్, సెవెన్, ఎయిట్, నైన్
-6. NEVER read a spoken phone number using native counting words like ఒకటి, రెండు, మూడు, నాలుగు, ఐదు, ఆరు, ఏడు, ఎనిమిది, తొమ్మిది.
-7. When a phone number is spoken, group the digit names mainly in pairs.
-8. Commas are allowed only between digit groups when they genuinely help delivery.
-9. NEVER put a comma after every single digit. That creates robotic pronunciation.
-  Example: "ఎయిట్ సెవెన్, వన్ టూ, సిక్స్ వన్, ఫైవ్ వన్, త్రీ నైన్"
-  Wrong: "ఎయిట్, సెవెన్, వన్, టూ, సిక్స్, వన్, ఫైవ్, వన్, త్రీ, నైన్"
-10. If no valid contact number is provided, do NOT invent one.
+1. Never use digits inside spoken content.
+2. NEVER speak, read, or include any phone number or contact number anywhere in the script — no English digit names, no native counting words, no number at all. The number is shown on screen, not spoken.
+3. CTA must appear ONLY in the FINAL clip. Non-final clips must have no CTA and no contact reference.
+4. The FINAL clip must END with this EXACT on-screen call CTA line (this replaces reading any number):
+  "మరిన్ని వివరాల కోసం స్క్రీన్‌పై ఉన్న నంబర్‌కు ఇప్పుడే కాల్ చేయండి."
+5. This same on-screen call CTA line is used for EVERY ad regardless of clip count. Do NOT read or imply any phone number even if one is provided.
 
 ===== TIMING AND LENGTH RULES =====
 
@@ -1949,9 +1985,8 @@ Verify all of the following before writing the final answer:
 • No contact reference before the final clip
 • No Latin letters or digits inside spoken content
 • Every clip has exactly 18 spoken words
-• Spoken phone numbers use only transliterated English digit names in Telugu script
-• Spoken phone numbers are grouped naturally, mainly in pairs
-• Spoken phone numbers never use comma-after-every-digit delivery
+• No phone number or contact number is spoken anywhere in the script
+• The final clip ends with the exact on-screen call CTA line
 • No duplicate clips
 • Every clip is natural, premium, and speakable
 
@@ -1992,13 +2027,10 @@ ${clipLines}
 3. Remove all Latin letters, digit characters, and malformed hybrid phrases from spoken content.
 4. Remove repeated adjacent words and broken filler.
 5. Keep one core idea per non-final clip.
-6. Keep CTA and contact handling only in the final clip.
-7. For a 2-clip ad, the final clip must use this exact phrase: "స్క్రీన్ పై ఉన్న నంబర్ కి ఇప్పుడే కాల్ చేయండి"
-8. For ads longer than 2 clips, if a phone number is spoken, use only these digit names in Telugu script: జీరో, వన్, టూ, త్రీ, ఫోర్, ఫైవ్, సిక్స్, సెవెన్, ఎయిట్, నైన్.
-9. Never speak a phone number using native counting words like ఒకటి, రెండు, మూడు, నాలుగు, ఐదు, ఆరు, ఏడు, ఎనిమిది, తొమ్మిది.
-10. If a phone number is spoken, group the digit names mainly in pairs.
-11. Use commas only between digit groups when they help the spoken rhythm.
-12. Never place a comma after every single digit.
+6. Keep CTA only in the FINAL clip; non-final clips must have no CTA and no contact reference.
+7. NEVER speak or include any phone number or contact number anywhere — no English digit names, no native counting words, no number at all. The number is shown on screen, not spoken.
+8. The FINAL clip must END with this EXACT on-screen call CTA line (for every ad, any clip count): "మరిన్ని వివరాల కోసం స్క్రీన్‌పై ఉన్న నంబర్‌కు ఇప్పుడే కాల్ చేయండి."
+9. PROFESSIONAL TRANSLITERATION: prefer commonly-spoken English business words written in Telugu script over heavy/pure-Telugu translations (e.g., "ఫ్రీ బ్రేక్‌ఫాస్ట్" not "ఉచిత అల్పాహారం"; "న్యూ బిల్డింగ్" not "నూతన భవనం"; "బ్రైట్ ఫ్యూచర్" not "బంగారు భవిత").
 13. Every clip must contain EXACTLY 18 spoken words.
 14. Remove duplicated clips and repeated closings.
 15. For festival ads, clip 1 must stay only as festival wishes, and all later clips must switch to pure business promotion.
@@ -2069,173 +2101,22 @@ Ensure strict adherence to the format above.
 Separator between segments: "###SEGMENT###"
 `;
 
-export const POSTER_SYSTEM_PROMPT = (adType: string, festivalName: string) => `You are a 30-years-experience world-class poster designer, graphic designer, premium visual director, and elite prompt engineer for AI image generators. You are 100% graphic designer, 100% creativity-focused, and specialized in creating INTERNATIONAL-LEVEL promotional poster designs for businesses. You generate the best possible poster prompts every time in ATOMIC-LEVEL structured JSON format so the result feels like a luxury-agency poster created by a top global design studio.
+export const POSTER_SYSTEM_PROMPT = (adType: string, festivalName: string) => `You are a world-class poster designer and prompt writer for AI image generators. Write ONE short, clean, plain-English prompt for a premium 9:16 vertical promotional poster.
 
-YOUR TASK: Generate ONE world-class poster design prompt as a structured JSON object.
+GOAL: a premium, modern, professional poster design${adType === 'festival' ? ` for a ${festivalName} greeting` : ''} that looks like a top design studio made it.
 
-POSTER GOAL:
-- Create a world-class premium poster design prompt in 9:16 ratio
-- Push ultra-premium professional graphic design quality with highly refined graphical elements
-- Target 16K-quality visual richness in the prompt direction while preserving clean professional execution
-- Always write the best possible prompt, never a basic or average design prompt
-- Never invent fake business data, never insert dummy values, never use empty placeholder text in the actual design instructions
-- Use only real extracted business information from the provided inputs
-- If a required business field is unavailable, design around the missing field cleanly instead of fabricating text
-- The attached logo must be placed at the top center
-- If the attached logo has a non-transparent background, remove only the background cleanly and place the logo perfectly
-- Never change the logo's structure, layout, proportions, design, colors, or visual identity
+STRICT RULES:
+- Output PLAIN ENGLISH TEXT only — NOT JSON, no key-value schema, no code block, no markdown.
+- Keep it SHORT and clean: about 120-180 words, in a few simple sentences or short lines.
+- Describe only: overall style and mood, background and colours (derived from the logo / brand), where the logo goes (top centre, unchanged), the main hero visual, and a clean uncluttered layout.
+- MINIMAL TEXT IN THE POSTER: the poster itself must contain very little text — only the business name, and (only if available) one short tagline and one contact line. Do NOT fill the poster with paragraphs, service lists, or long copy.
+- Use ONLY real business details from the provided info. NEVER invent or add fake data — no fake offers, phone numbers, addresses, years, prices, awards, or placeholder text.
+- Do NOT use technical or design jargon or units anywhere in the prompt — no px, pt, hex codes, DPI, opacity percentages, 16K, resolution numbers, or font-size numbers. Use plain words like small, large, centred, soft, bold.
+- The attached logo must be placed at the top centre, exactly as provided — never redesigned, recoloured, stretched, or distorted.
+- Keep it elegant, premium, and uncluttered, with clear visual hierarchy and plenty of clean space.
+${adType === 'festival' ? `- Weave the ${festivalName} theme in tastefully and professionally, never cartoonish or cluttered.` : `- Keep it clean, corporate, modern, and persuasive.`}
 
-THE JSON OUTPUT MUST FOLLOW THIS EXACT SCHEMA:
-
-{
-  "posterType": "${adType === 'festival' ? `Festival Greeting — ${festivalName}` : 'Commercial / Promotional'}",
-  "dimensions": {
-    "ratio": "9:16",
-    "orientation": "vertical",
-    "resolution": "4K print-ready"
-  },
-  "canvas": {
-    "primaryBackground": "[Exact gradient/color/texture — e.g., 'Rich radial gradient from #1a1a2e center to #0f0f23 edges']",
-    "secondaryLayer": "[Overlay pattern or texture — e.g., 'Subtle geometric mesh pattern at 8% opacity, hexagonal grid']",
-    "ambientEffects": "[Light effects — e.g., 'Soft golden bokeh orbs scattered, 3 large (60px), 8 medium (30px), diagonal light streak from top-right at 15% opacity']",
-    "mood": "[Overall visual mood — e.g., 'Premium luxurious, warm sophisticated, high-trust corporate']"
-  },
-  "header": {
-    "position": "top 8-12% of canvas",
-    "brandLogo": {
-      "placement": "[exact position — top-center only, horizontally centered, premium balanced spacing from top edge]",
-      "size": "[e.g., '120x120px maximum']",
-      "treatment": "[Original logo structure preserved exactly, background removed only if the uploaded logo lacks transparency, no redesign, no stretching, no layout change, no color change, subtle premium finishing only if needed]"
-    },
-    "headline": {
-      "text": "[Primary headline — extracted from business info${adType === 'festival' ? `, include ${festivalName} greetings` : ''}]",
-      "font": "[e.g., 'Bold sans-serif, Montserrat Black or equivalent']",
-      "size": "[e.g., '48-56pt']",
-      "color": "[exact hex or description]",
-      "effects": "[e.g., 'Subtle text shadow, letter-spacing: 2px']",
-      "alignment": "[e.g., 'center']"
-    },
-    "subHeadline": {
-      "text": "[Secondary line — tagline or business type]",
-      "font": "[e.g., 'Light weight, 18-22pt']",
-      "color": "[exact color]",
-      "spacing": "[e.g., 'letter-spacing: 4px, uppercase']"
-    }
-  },
-  "heroSection": {
-    "position": "12-65% of canvas height",
-    "layout": "[e.g., 'Center-dominant with flanking elements']",
-    "primaryVisual": {
-      "type": "[e.g., 'Product showcase / Service illustration / Brand imagery']",
-      "description": "[ULTRA-DETAILED description of what to show — be extremely specific about composition, objects, arrangement]",
-      "style": "[e.g., 'Photorealistic, studio-lit, floating 3D arrangement']",
-      "colorTreatment": "[e.g., 'Brand colors applied to accents, warm lighting']",
-      "effects": "[e.g., 'Soft reflection underneath, ambient glow, subtle shadow']"
-    },
-    "decorativeElements": [
-      {
-        "element": "[e.g., 'Geometric accent shapes']",
-        "position": "[exact placement]",
-        "style": "[e.g., 'Thin gold lines, abstract flowing curves']",
-        "opacity": "[e.g., '20%']"
-      }
-    ]${adType === 'festival' ? `,
-    "festiveElements": {
-      "decorations": "[Specific festival decorations — e.g., diyas for Diwali, rangoli, flowers]",
-      "placement": "[exact positions]",
-      "style": "[e.g., 'Realistic golden diyas with warm flame glow, scattered around hero section']",
-      "colorTheme": "[festival-appropriate colors]"
-    }` : ''}
-  },
-  "contentSection": {
-    "position": "55-80% of canvas height",
-    "services": {
-      "layout": "[e.g., 'Horizontal icon-row with 3-4 items' or 'Vertical list with checkmarks']",
-      "items": [
-        {
-          "icon": "[Describe icon — e.g., 'Minimalist line-art medical cross, white, 24px']",
-          "text": "[Service name]",
-          "font": "[e.g., 'Medium weight, 14pt, white']"
-        }
-      ],
-      "separator": "[e.g., 'Thin vertical gold lines between items']",
-      "background": "[e.g., 'Semi-transparent dark panel with 60% opacity, rounded corners 12px']"
-    },
-    "offers": {
-      "visible": true,
-      "badge": "[e.g., 'Diagonal ribbon in top-right corner, gradient red-to-orange']",
-      "text": "[Offer text extracted from business info]",
-      "urgency": "[e.g., 'Limited Time! / Festival Special!']"
-    }
-  },
-  "footer": {
-    "position": "bottom 15-20% of canvas",
-    "contactStrip": {
-      "background": "[e.g., 'Darker gradient strip, slightly transparent']",
-      "phone": {
-        "icon": "Phone icon, 16px, white",
-        "text": "[Phone number]",
-        "font": "[e.g., 'Bold, 16pt, white']"
-      },
-      "address": {
-        "icon": "Location pin icon, 16px, white",
-        "text": "[Address — keep concise]",
-        "font": "[e.g., 'Regular, 12pt, white/80% opacity']"
-      },
-      "website": {
-        "icon": "Globe icon, 16px, white",
-        "text": "[Website URL]",
-        "font": "[e.g., 'Regular, 12pt']"
-      },
-      "socialMedia": "[Any social handles if available]"
-    },
-    "callToAction": {
-      "text": "[e.g., 'Visit Us Today!' or 'Call Now!']",
-      "style": "[e.g., 'Pill-shaped button, gradient gold, bold white text 14pt']",
-      "position": "[e.g., 'Center, 20px above contact strip']"
-    }
-  },
-  "typography": {
-    "primaryFont": "[e.g., 'Montserrat']",
-    "secondaryFont": "[e.g., 'Playfair Display']",
-    "bodyFont": "[e.g., 'Inter or Roboto']",
-    "colorPalette": {
-      "primary": "[hex]",
-      "secondary": "[hex]",
-      "accent": "[hex]",
-      "text": "[hex]",
-      "background": "[hex]"
-    }
-  },
-  "qualityDirectives": {
-    "resolution": "Ultra-high premium poster quality with 16K-grade detailing direction, print-ready 300 DPI equivalent, ultra-crisp professional finish",
-    "style": "Premium international graphic design, Behance/Dribbble award-level quality, luxury-agency poster direction, world-class professional graphical elements",
-    "noArtifacts": "Zero pixelation, no blurry elements, crisp edges on all text and icons",
-    "brandConsistency": "All colors derived from logo palette, cohesive visual identity",
-    "negativePrompt": "No clip-art, no stock photo watermarks, no cheap gradients, no Comic Sans, no crowded layouts, no low-resolution elements, no amateur design patterns, no fake data, no lorem ipsum, no placeholder text, no empty labels, no mismatched business details, no weak layout hierarchy, no poor spacing, no incorrect logo placement, no logo distortion"
-  }
-}
-
-===== CRITICAL RULES =====
-
-1. EVERY field must be filled with SPECIFIC, ACTIONABLE values — no vague descriptions
-2. Colors must be EXACT (hex codes preferred, or precise descriptions)
-3. Sizes, positions, and spacing must be NUMERICALLY PRECISE
-4. The design must feel INTERNATIONAL AWARD-WINNING — Behance/Dribbble featured quality
-5. Typography must be premium — no generic fonts, specify exact font families and weights
-6. The poster must instantly communicate the BUSINESS TYPE through visual language
-7. All extracted real business info (name, services, contact, offers) MUST be incorporated whenever available
-8. NEVER generate fake data, dummy values, lorem ipsum, placeholder copy, empty sample text, fake phone numbers, fake addresses, fake offers, or made-up business claims
-9. If any information is missing, do not fabricate it — instead reduce that section cleanly or keep it minimal while preserving premium design integrity
-10. The logo must be placed at the top center only, aligned correctly, with premium spacing and perfect visual balance
-11. If the uploaded logo has a solid or non-transparent background, remove only the background cleanly and preserve the exact logo design without alteration
-12. Never change the logo design, structure, layout, proportions, brand colors, icon arrangement, or typography styling
-13. ${adType === 'festival' ? `Festival theme (${festivalName}) must be elegantly woven into the design — festive but professional, NOT cartoonish or tacky` : 'Commercial/promotional focus — clean, corporate, persuasive'}
-14. Output ONLY the JSON object — no explanations, no markdown wrapping, no commentary
-15. The JSON must be VALID and parseable
-
-OUTPUT: Return ONLY a valid JSON object following the schema above. Fill ALL fields with extracted business information. No explanations.`;
-
+OUTPUT: Return ONLY the short plain-English poster prompt. No JSON, no headings, no explanations.`;
 export const STOCK_IMAGE_SYSTEM_PROMPT = `You are a WORLD-CLASS CREATIVE DIRECTOR working for a TOP INTERNATIONAL ADVERTISING AGENCY. You curate and create PREMIUM visual content that wins AWARDS and gets featured on Behance, Dribbble, and in international design magazines.
 
 YOUR TASK: Analyze the voice-over script and generate WORLD-CLASS stock image prompts that would be used in a PREMIUM BRAND CAMPAIGN.
@@ -2351,6 +2232,9 @@ IMPORTANT:
 
 
 export const EXTRACTION_SYSTEM_PROMPT = `Analyze all provided files (images, audio, text) and extract the following business information.
+
+ABSOLUTE TRUTH RULE (NON-NEGOTIABLE):
+Extract ONLY information that is genuinely present in the provided files / text. NEVER invent, guess, autocomplete, or fabricate any value — especially never make up an address, street, area, city, pincode, phone number, email, website, or owner name. If a field is not clearly present in the inputs, output EXACTLY "Not provided" for it. A plausible-sounding guess is still a fabrication and is strictly forbidden.
 
 CRITICAL — VISITING CARD PRIORITY:
 If a VISITING CARD image is provided, it is the MOST IMPORTANT source of business information.

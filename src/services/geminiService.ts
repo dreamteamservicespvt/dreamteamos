@@ -321,7 +321,7 @@ IMPORTANT:
 
     case 'poster':
       systemPrompt = POSTER_SYSTEM_PROMPT(formData.adType, formData.festivalName);
-      userPrompt = `You previously generated this Poster design prompt (JSON):
+      userPrompt = `You previously generated this Poster design prompt:
 
 ---CURRENT PROMPT---
 ${currentContent}
@@ -331,15 +331,14 @@ The user wants the following changes/additions:
 "${additionalInstructions}"
 
 IMPORTANT:
-- Apply ONLY the requested changes to the existing JSON prompt
-- Keep all other fields exactly the same
-- Output ONLY the refined JSON, no explanations
-- The output must be a valid JSON object
-- Do NOT wrap in markdown code blocks`;
+- Apply ONLY the requested changes
+- Keep it a SHORT, clean, plain-English poster prompt (NOT JSON, no code block)
+- Keep only real business details, no fake data, minimal poster text, no technical units like px/pt/hex
+- Output ONLY the refined plain-text prompt, no explanations`;
       break;
 
     case 'voiceOver':
-      const segmentCount = formData.duration / 8;
+      const segmentCount = Math.round(formData.duration / 8);
       systemPrompt = VOICEOVER_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName);
       userPrompt = `You previously generated this Voice Over script:
 
@@ -358,7 +357,7 @@ IMPORTANT:
       break;
 
     case 'veo':
-      const segCount = formData.duration / 8;
+      const segCount = Math.round(formData.duration / 8);
       systemPrompt = VEO_SEGMENT_SYSTEM_PROMPT(segCount);
       userPrompt = `You previously generated these Veo prompts:
 
@@ -846,7 +845,7 @@ const formatVoiceOverScript = (segments: string[]): string => {
 
 const CTA_OR_CONTACT_PATTERN = /(కాల్|సంప్రదించ|నంబర్|ఫోన్|వాట్సాప్|సంప్రదింపు|కాంటాక్ట్|విజిట్)/;
 const LATIN_OR_DIGIT_PATTERN = /[A-Za-z0-9]/;
-const TWO_CLIP_FINAL_CTA = "స్క్రీన్ పై ఉన్న నంబర్ కి ఇప్పుడే కాల్ చేయండి";
+const FINAL_SCREEN_CTA = "మరిన్ని వివరాల కోసం స్క్రీన్‌పై ఉన్న నంబర్‌కు ఇప్పుడే కాల్ చేయండి.";
 const STRUCTURED_SEGMENT_PATTERN = /^(\d+\s*-\s*\d+)\s*:|^segment\s*\d+\s*:/i;
 const PHONE_DIGIT_WORD_PATTERN = /\b(జీరో|వన్|టూ|త్రీ|ఫోర్|ఫైవ్|సిక్స్|సెవెన్|ఎయిట్|నైన్)\b/g;
 const NATIVE_DIGIT_WORD_PATTERN = /\b(సున్నా|ఒకటి|రెండు|మూడు|నాలుగు|ఐదు|ఆరు|ఏడు|ఎనిమిది|తొమ్మిది)\b/g;
@@ -934,17 +933,9 @@ const validateVoiceOverSegments = (rawScript: string, segments: string[], segmen
       issues.push(`Clip ${clipNumber} leaks CTA or contact language before the final clip.`);
     }
 
-    if (!isFinalClip && countPatternMatches(segment, PHONE_DIGIT_WORD_PATTERN) > 0) {
-      issues.push(`Clip ${clipNumber} contains a spoken phone number before the final clip.`);
-    }
-
-    if (CTA_OR_CONTACT_PATTERN.test(segment) && countPatternMatches(segment, NATIVE_DIGIT_WORD_PATTERN) > 0) {
-      issues.push(`Clip ${clipNumber} uses native counting words for a phone number instead of transliterated English digit names.`);
-    }
-
-    const spokenDigitWordCount = countPatternMatches(segment, PHONE_DIGIT_WORD_PATTERN);
-    if (spokenDigitWordCount >= 4 && hasOverSeparatedDigitSpeech(segment)) {
-      issues.push(`Clip ${clipNumber} over-separates the phone number with comma-after-every-digit delivery.`);
+    // No spoken phone/contact numbers anywhere — the on-screen call CTA is used instead
+    if (countPatternMatches(segment, PHONE_DIGIT_WORD_PATTERN) >= 2 || countPatternMatches(segment, NATIVE_DIGIT_WORD_PATTERN) >= 3) {
+      issues.push(`Clip ${clipNumber} appears to speak a phone/contact number — remove all spoken numbers and use the on-screen call CTA instead.`);
     }
 
     const normalizedSegmentKey = cleanScriptText(segment).toLowerCase();
@@ -956,11 +947,10 @@ const validateVoiceOverSegments = (rawScript: string, segments: string[], segmen
     }
   });
 
-  if (segmentCount === 2) {
-    const finalClip = segments[segmentCount - 1] || '';
-    if (!finalClip.includes(TWO_CLIP_FINAL_CTA)) {
-      issues.push(`Final clip must include the exact 2-clip CTA phrase: ${TWO_CLIP_FINAL_CTA}`);
-    }
+  // Every ad must close with the on-screen call CTA (no spoken phone number)
+  const finalClip = segments[segmentCount - 1] || '';
+  if (!(finalClip.includes('స్క్రీన్') && finalClip.includes('కాల్'))) {
+    issues.push(`Final clip must include the on-screen call CTA: ${FINAL_SCREEN_CTA}`);
   }
 
   return issues;
@@ -1152,28 +1142,34 @@ export const generateAdAssets = async (
     businessInfo = { raw: businessInfoText };
   }
 
+  const hasProductImages = files.productImages && files.productImages.length > 0;
+  const productImageCount = hasProductImages ? files.productImages.length : 0;
+
+  // Shared snapshot for progressive partial results. Merging patches keeps emissions
+  // correct even when later steps (main frame, poster, veo) finish concurrently.
+  const partial: any = {
+    businessInfo,
+    mainFramePrompts: [],
+    headerPrompt: '',
+    posterPrompt: '',
+    voiceOverScript: '',
+    veoPrompts: [],
+    hasProductImages,
+    productImageCount,
+    stockImagePrompts: null
+  };
+  const emitPartial = (patch: Record<string, any>) => {
+    Object.assign(partial, patch);
+    if (onPartialResult) onPartialResult({ ...partial });
+  };
+
   // Emit partial result: businessInfo extracted
-  if (onPartialResult) {
-    onPartialResult({
-      businessInfo,
-      mainFramePrompts: [],
-      headerPrompt: '',
-      posterPrompt: '',
-      voiceOverScript: '',
-      veoPrompts: [],
-      hasProductImages: files.productImages && files.productImages.length > 0,
-      productImageCount: files.productImages ? files.productImages.length : 0,
-      stockImagePrompts: null
-    });
-  }
+  emitPartial({});
 
   // --- Step 2: Voice Over Script ---
   onProgress(customScript ? "Processing custom script..." : "Writing Voice Over script...", 20);
 
-  const hasProductImages = files.productImages && files.productImages.length > 0;
-  const productImageCount = hasProductImages ? files.productImages.length : 0;
-
-  const segmentCount = formData.duration / 8;
+  const segmentCount = Math.round(formData.duration / 8);
   let voiceOverScript: string;
   let parsedSegments: string[];
 
@@ -1271,22 +1267,10 @@ Segment 2: <text>
   }
 
   // Emit partial result: voiceOver ready
-  if (onPartialResult) {
-    onPartialResult({
-      businessInfo,
-      mainFramePrompts: [],
-      headerPrompt: '',
-      posterPrompt: '',
-      voiceOverScript,
-      veoPrompts: [],
-      hasProductImages,
-      productImageCount,
-      stockImagePrompts: null
-    });
-  }
+  emitPartial({ voiceOverScript });
 
-  // --- Step 3: Multi-Frame Main Frame Prompts (Per-Clip) ---
-  onProgress("Generating per-clip Main Frame prompts...", 35);
+  // --- Steps 3-6 run CONCURRENTLY: Main Frame, Header (local), Poster, Veo ---
+  onProgress("Generating Main Frame, Poster & Video prompts...", 45);
 
   const serializedBusinessInfo = JSON.stringify(businessInfo);
   const detectedBusinessType = detectBusinessType(serializedBusinessInfo);
@@ -1299,6 +1283,7 @@ Segment 2: <text>
   const environmentNegativeRules = getEnvironmentNegativeRules(detectedBusinessType, serializedBusinessInfo);
   const realisticLogoPlacementGuidance = getRealisticLogoPlacementGuidance(detectedBusinessType, serializedBusinessInfo);
   
+  const mainFramePromise = (async (): Promise<string[]> => {
   const multiFrameSystemPrompt = MULTI_FRAME_SYSTEM_PROMPT(
     formData.attireType, 
     formData.adType, 
@@ -1371,10 +1356,11 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
   HAIR COLOR LOCK RULE: The woman must have strictly natural rich black hair in Clip 1 and that exact black hair color must stay locked for the full campaign. Reject brown, auburn, burgundy, copper, highlighted, sun-browned, or lighting-shifted hair. If any prompt drifts away from natural rich black hair, rewrite it before output.
   REALISM RULE: The environment must look like the actual business premises using extracted business/store context. In festival mode, keep the real business location dominant and layer festival cues naturally on top. In commercial mode, every clip must rebuild the real premises as the dominant base layer, then use the strongest business-proof surface for that exact voice-over segment, then premium atmosphere from real materials, real light, and real fixtures.
   COMMERCIAL QUALITY RULE: For commercial ads, strictly follow the realism formula: Face Anchor + Light Source + Skin Truth + Scene Depth + Camera Physics. If any one is missing, the frame is not acceptable.
-  TRADITIONAL ATTIRE RULE: When ATTIRE = Traditional, keep the saree business-specific, commercial, premium, and realistic — never bridal, never wedding-stage, never festival-styled. Use polished real business zones, premium counters, refined signage, believable glass/reflection behavior, and strong category proof instead of decorative clutter.
-  PROFESSIONAL ATTIRE RULE: When ATTIRE = Professional, build the frame in a bright contemporary corporate-facing or consultation-facing business zone with a business-specific premium suit palette. For this business, the preferred suit palette is ${professionalSuitPalette}. Do NOT reuse the same beige/pastel suit family across unrelated businesses unless the brand cues clearly justify it. Also do NOT force one identical suit tone into every clip: keep the same premium wardrobe family, but allow clip-to-clip shade shifts inside this approved business palette when the exact location, script beat, or brand materials support it. Keep semi-jewellery only, zero festival cues, and the strongest business-proof surfaces in frame. The suit woman must be strictly 20 to 25 years old, distinctly Indian, actress-level beautiful, smiling warmly, and impossible to confuse with a generic employee portrait. Her hair in Clip 1 must read as unmistakably natural rich black only, never soft brown or highlighted under warm light. For Clip 1, use the exact folded-hands hero pose at the waist like the traditional and festival anchor frame. From Clip 2 onward, the hand position and pose must change according to that clip's exact voice-over script and location.
-  MAIN FRAME FRAMING RULE: In EVERY clip, the model must appear in a close mid-shot, occupy roughly 70% of the frame, and maintain direct eye contact with the camera.
-  LOGO RULE: Use only the attached logo exactly as provided, installed on the most believable physical surface for that clip's zone, fully visible and never cropped, blocked, blurred, stretched, tilted, redesigned, or pasted like an overlay. Prioritize these surface types: ${realisticLogoPlacementGuidance}
+  TRADITIONAL ATTIRE RULE: When ATTIRE = Traditional, keep the saree business-specific, commercial, premium, and realistic — never bridal, never wedding-stage, never festival-styled. Use polished real business zones, premium counters, refined décor, believable glass/reflection behavior, and strong category proof instead of decorative clutter. Every business should get a NEW, different girl in an elegant designer saree (brand-derived colour) with elegant traditional jewellery — a necklace/chain, earrings, bangles, a finger ring, and a small bindi. For Clip 1 the girl stands centered in front of the business's own reception with both hands at the lower waist, the right hand lightly resting over the left in a formal front-clasp corporate pose; frame her as a three-quarter shot from head to thighs/knees clearly filling about 70% of the frame, never a small full head-to-feet shot. The background must be 100% relatable to THIS exact business. The attached logo must be the ONLY text in the frame (kept small-to-medium, sharp, in focus and clearly readable, never large enough to shrink the girl); do NOT invent any other text, and do NOT add empty/blank boards, picture frames, certificates, brochures, posters, standees, or blank screens — keep walls and surfaces clean.
+  PROFESSIONAL ATTIRE RULE: When ATTIRE = Professional, build the frame in a bright contemporary corporate-facing or consultation-facing business zone with a business-specific premium suit palette. For this business, the preferred suit palette is ${professionalSuitPalette}. Do NOT reuse the same beige/pastel suit family across unrelated businesses unless the brand cues clearly justify it. Also do NOT force one identical suit tone into every clip: keep the same premium wardrobe family, but allow clip-to-clip shade shifts inside this approved business palette when the exact location, script beat, or brand materials support it. Keep semi-jewellery only, zero festival cues, and the strongest business-proof surfaces in frame. The suit woman must be strictly 20 to 25 years old, distinctly Indian, actress-level beautiful, smiling warmly, and impossible to confuse with a generic employee portrait. Every business should get a NEW, different girl — never reuse the same recurring face. Her hair in Clip 1 must read as unmistakably natural rich black only, never soft brown or highlighted under warm light. For Clip 1, the girl stands in the exact center of the frame as a medium full / three-quarter standing shot occupying roughly 70% of the frame, directly in front of the business's own reception, with both hands at the lower waist and the right hand lightly resting over the left in a formal front-clasp corporate pose (no crossed arms, no pockets, no gestures). From Clip 2 onward, the hand position and pose must change according to that clip's exact voice-over script and location. The attached logo must be the ONLY text anywhere in the frame — do NOT invent any other wall text, signage, banners, posters, taglines, mission lines, service lists, certificate text, dates, or academic years. The girl must wear simple jewellery: a finger ring, a thin necklace or chain, earrings, a wristwatch, and a small bindi on the forehead. Frame her as a three-quarter shot from head to thighs/knees so she clearly fills about 70% of the frame, never a small full head-to-feet shot. Keep the attached logo small-to-medium and clearly secondary — dynamically sized to the free wall space and never large enough to shrink the girl or steal her 70% dominance. Keep the logo perfectly sharp and in focus (not blurred by depth of field) so every letter and all text on it is crisp and clearly readable. The background must be 100% relatable to THIS exact business — fill the reception with the real equipment, products, displays, and service cues of this specific business (from the provided business details) so a viewer instantly recognises what it does; never a generic or unrelated office. Keep walls and surfaces clean — do NOT add empty/blank boards, picture frames, certificates, brochures, posters, standees, or blank screens (empty placeholders look like cardboard); the only branding is the attached logo.
+  MAIN FRAME FRAMING RULE: In EVERY clip, the subject must be centered, occupy roughly 70% of the frame, and maintain direct eye contact with the camera.
+  LOGO RULE: Use only the attached logo exactly as provided, installed on the most believable physical surface for that clip's zone, kept small-to-medium, sharp and clearly readable, fully visible and never cropped, blocked, blurred, stretched, tilted, redesigned, or pasted like an overlay. Prioritize these surface types: ${realisticLogoPlacementGuidance}
+  NO BACKGROUND TEXT RULE (ALL CLIPS — STRICT): In EVERY clip (Clip 1 and all continuation clips), the attached logo is the ONLY text anywhere in the image. NEVER invent or render any other text on walls, desks, screens, boards, or props — no signage, banners, posters, notice boards, brochures, application forms, department lists, course / curriculum lists, certificates, taglines, slogans, dates, or years. The image generator mis-spells such text, so it must not appear. Also do NOT add blank/empty boards, frames, or screens. Each continuation clip's background must be a REAL location/zone of the same business that matches that clip's voice-over line, built only from real physical objects (equipment, products, counters, furniture, fixtures, plants).
   CONTINUATION FRAME RULE: For every clip after Clip 1, write the prompt as if the image generator is also receiving the attached Clip 1 reference frame image.
   ${mainFrameProductLine}
   
@@ -1396,7 +1382,7 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
         data: await fileToBase64(files.logo)
       }
     });
-    mainFrameParts.push({ text: `This is the EXACT BUSINESS LOGO. You MUST describe this logo placement in every clip prompt so it appears as REAL PHYSICAL SIGNAGE installed on believable architectural surfaces for that zone. Prioritize these surface types: ${realisticLogoPlacementGuidance}. The logo must be reproduced PIXEL-PERFECT — do NOT redesign, reimagine, alter, crop, block, blur, tilt, stretch, partially hide, or paste it like a floating overlay in any way. The full logo must remain completely visible in one piece in every clip.` });
+    mainFrameParts.push({ text: `This is the EXACT BUSINESS LOGO. You MUST describe this logo placement in every clip prompt so it appears as REAL PHYSICAL SIGNAGE installed on believable architectural surfaces for that zone. Prioritize these surface types: ${realisticLogoPlacementGuidance}. The logo must be reproduced PIXEL-PERFECT — do NOT redesign, reimagine, alter, crop, block, blur, tilt, stretch, partially hide, or paste it like a floating overlay in any way. The full logo must remain completely visible in one piece in every clip. Even though it sits in the background, keep the logo perfectly SHARP and in focus — never softened by depth-of-field blur — so every letter and all text on the logo is crisp and clearly readable.` });
   }
 
   if (hasProductImages) {
@@ -1500,62 +1486,57 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
     }
   }
 
-  // Emit partial result: mainFrame ready
-  if (onPartialResult) {
-    onPartialResult({
-      businessInfo,
-      mainFramePrompts,
-      headerPrompt: '',
-      posterPrompt: '',
-      voiceOverScript,
-      veoPrompts: [],
-      hasProductImages,
-      productImageCount,
-      stockImagePrompts: null
-    });
-  }
+    emitPartial({ mainFramePrompts });
+    return mainFramePrompts;
+  })();
 
-  // --- Step 4: Header Prompt ---
-  onProgress("Preparing Header prompt...", 55);
+  // --- Step 4: Header Prompt (local — no API call) ---
 
   const headerSystemPrompt = HEADER_SYSTEM_PROMPT(formData.adType, formData.festivalName);
+  // Extract ONLY logo/name/contacts/address — never dump the full business JSON or any other data.
+  const headerBusinessName = extractBusinessNameFromInfo(businessInfo);
+  const headerContacts = extractContactsFromInfo(businessInfo).slice(0, 2);
+  let headerAddress = extractAddressFromInfo(businessInfo);
+  // Guard: never use the business name (or a vague label with no street/pincode) as the address.
+  if (headerAddress) {
+    const norm = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const nName = norm(headerBusinessName);
+    const nAddr = norm(headerAddress);
+    const hasRealAddressSignal = /\d/.test(headerAddress) || /\b(road|rd|street|st|nagar|colony|lane|cross|main|opp|near|beside|floor|plot|door|pin|pincode|dist|district|mandal|village|town|city|state|highway|circle|sector|block|phase|market|complex|building)\b/i.test(headerAddress);
+    if (nName && nAddr && !hasRealAddressSignal && (nAddr === nName || nName.includes(nAddr) || nAddr.includes(nName))) {
+      headerAddress = '';
+    }
+  }
+  const headerValueLines = [
+    'LOGO = use the attached logo image exactly as provided, unchanged',
+    headerBusinessName ? `NAME = ${headerBusinessName}` : '',
+    headerContacts[0] ? `CONTACT 1 = ${headerContacts[0]}` : '',
+    headerContacts[1] ? `CONTACT 2 = ${headerContacts[1]}` : '',
+    headerAddress ? `ADDRESS = ${headerAddress}` : '',
+  ].filter(Boolean);
+  // Explicit negatives for missing fields, so the image generator never fabricates them.
+  const headerMissingLines: string[] = [];
+  if (headerContacts.length === 0) headerMissingLines.push('NO CONTACT NUMBER provided — do NOT show any contact pill and do NOT invent, guess, autocomplete, or fabricate any phone number.');
+  if (!headerAddress) headerMissingLines.push('NO ADDRESS provided — do NOT show any address bar and do NOT invent, guess, autocomplete, or fabricate any address, street, area, city, pincode, or location. Close that space cleanly.');
   const headerPrompt = [
-    "Use ONLY the following extracted business intelligence to create the header prompt.",
-    "This extraction is based on the provided Visiting Card, Store/Office Images, Product Images, Flyers / Offer Posters, Voice Instructions, and Business Messages / Text Instructions.",
+    headerSystemPrompt,
     "",
-    "EXTRACTED BUSINESS INTELLIGENCE:",
-    JSON.stringify(businessInfo, null, 2),
-    "",
-    `AD TYPE: ${formData.adType === 'festival' ? 'Festival Wishes' : 'Commercial'}`,
-    formData.adType === 'festival' && formData.festivalName ? `FESTIVAL: ${formData.festivalName}` : '',
-    "",
-    headerSystemPrompt
-  ].filter(Boolean).join('\n');
+    "REAL CONTENT TO PLACE (use ONLY these EXACT values — do not add anything else, and do not write or invent any field that is not listed here):",
+    ...headerValueLines,
+    ...(headerMissingLines.length ? ["", "MISSING FIELDS (STRICT — NEVER FABRICATE THESE):", ...headerMissingLines] : []),
+  ].join('\n');
 
   // Emit partial result: header ready
-  if (onPartialResult) {
-    onPartialResult({
-      businessInfo,
-      mainFramePrompts,
-      headerPrompt,
-      posterPrompt: '',
-      voiceOverScript,
-      veoPrompts: [],
-      hasProductImages,
-      productImageCount,
-      stockImagePrompts: null
-    });
-  }
+  emitPartial({ headerPrompt });
 
-  // --- Step 5: Poster Design Prompt (JSON) ---
-  onProgress("Designing Poster prompt...", 65);
-
+  // --- Step 5: Poster Design Prompt (JSON) — runs concurrently ---
+  const posterPromise = (async (): Promise<string> => {
   const posterSystemPrompt = POSTER_SYSTEM_PROMPT(formData.adType, formData.festivalName);
-  const posterUserPrompt = `Generate an atomic-level detailed poster design prompt in JSON format for:
+  const posterUserPrompt = `Write the poster design prompt for:
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
   AD TYPE: ${formData.adType}
   ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName}` : ''}
-  Generate the complete poster design JSON now.`;
+  Write the short, clean, plain-English poster prompt now.`;
 
   const posterResponse = await callWithFallback(async (ai, model) => {
     return await ai.models.generateContent({
@@ -1564,39 +1545,19 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
           { role: 'user', parts: [{ text: posterUserPrompt }] }
       ],
       config: {
-          systemInstruction: posterSystemPrompt,
-          responseMimeType: "application/json"
+          systemInstruction: posterSystemPrompt
       }
     });
   });
 
-  const posterPromptRaw = posterResponse.text || "{}";
-  let posterPrompt: string;
-  try {
-    const parsed = JSON.parse(posterPromptRaw);
-    posterPrompt = JSON.stringify(parsed, null, 2);
-  } catch {
-    posterPrompt = posterPromptRaw;
-  }
+  const posterPrompt = (posterResponse.text || "").trim();
 
-  // Emit partial result: poster ready
-  if (onPartialResult) {
-    onPartialResult({
-      businessInfo,
-      mainFramePrompts,
-      headerPrompt,
-      posterPrompt,
-      voiceOverScript,
-      veoPrompts: [],
-      hasProductImages,
-      productImageCount,
-      stockImagePrompts: null
-    });
-  }
+    emitPartial({ posterPrompt });
+    return posterPrompt;
+  })();
 
-  // --- Step 6: Veo 3 Segment Prompts ---
-  onProgress("Creating Veo 3 video segment prompts...", 85);
-
+  // --- Step 6: Veo 3 Segment Prompts — runs concurrently ---
+  const veoPromise = (async (): Promise<string[]> => {
   const veoSystemPrompt = VEO_SEGMENT_SYSTEM_PROMPT(segmentCount);
   const veoUserPrompt = `Generate Veo 3 prompts for all segments.
   VOICE-OVER SEGMENTS: ${parsedSegments.map((s, i) => `Segment ${i+1}: ${s}`).join('\n')}
@@ -1623,16 +1584,26 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
 
   // If separator strategy fails, fallback to whole text or newline split (simple fallback)
   const finalVeoPrompts = veoPrompts.length > 0 ? veoPrompts : [veoPromptsText];
+  emitPartial({ veoPrompts: finalVeoPrompts });
+  return finalVeoPrompts;
+  })();
+
+  // Run Main Frame, Poster, and Veo prompt generation concurrently (independent steps)
+  const [mainFramePromptsResult, posterPromptResult, veoPromptsResult] = await Promise.all([
+    mainFramePromise,
+    posterPromise,
+    veoPromise,
+  ]);
 
   onProgress("Finalizing...", 100);
 
   return {
     businessInfo,
-    mainFramePrompts,
+    mainFramePrompts: mainFramePromptsResult,
     headerPrompt,
-    posterPrompt,
+    posterPrompt: posterPromptResult,
     voiceOverScript,
-    veoPrompts: finalVeoPrompts,
+    veoPrompts: veoPromptsResult,
     hasProductImages,
     productImageCount,
     stockImagePrompts: null // Generated on-demand by user after main process
@@ -1651,12 +1622,12 @@ export const generatePosterPrompt = async (
   }
 
   const posterSystemPrompt = POSTER_SYSTEM_PROMPT(adType, festivalName);
-  const posterUserPrompt = `Generate an atomic-level detailed poster design prompt in JSON format for:
+  const posterUserPrompt = `Write the poster design prompt for:
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
   AD TYPE: ${adType}
   ${adType === 'festival' ? `FESTIVAL: ${festivalName}` : ''}
   ${posterInstructions ? `\nUSER POSTER INSTRUCTIONS (IMPORTANT — follow these closely):\n${posterInstructions}` : ''}
-  Generate the complete poster design JSON now.`;
+  Write the short, clean, plain-English poster prompt now.`;
 
   const posterResponse = await callWithFallback(async (ai, model) => {
     return await ai.models.generateContent({
@@ -1665,19 +1636,42 @@ export const generatePosterPrompt = async (
         { role: 'user', parts: [{ text: posterUserPrompt }] }
       ],
       config: {
-        systemInstruction: posterSystemPrompt,
-        responseMimeType: "application/json"
+        systemInstruction: posterSystemPrompt
       }
     });
   });
 
-  const posterPromptRaw = posterResponse.text || "{}";
-  try {
-    const parsed = JSON.parse(posterPromptRaw);
-    return JSON.stringify(parsed, null, 2);
-  } catch {
-    return posterPromptRaw;
+  return (posterResponse.text || "").trim();
+};
+
+// --- Regenerate Veo prompts from a (refined) voice-over script ---
+// Used so that refining the Voice Over script also updates the Veo 3 segment prompts.
+export const regenerateVeoFromVoiceOver = async (
+  voiceOverScript: string,
+  formData: AdFormData
+): Promise<string[]> => {
+  if (API_KEYS.length === 0) {
+    throw new Error("No API keys configured. Please set API_KEY_1, API_KEY_2, etc. in your environment.");
   }
+
+  const segmentCount = Math.round(formData.duration / 8);
+  const { segments } = normalizeAndFormatVoiceOver(voiceOverScript, segmentCount);
+  const veoSystemPrompt = VEO_SEGMENT_SYSTEM_PROMPT(segmentCount);
+  const veoUserPrompt = `Generate Veo 3 prompts for all segments.
+  VOICE-OVER SEGMENTS: ${segments.map((s, i) => `Segment ${i + 1}: ${s}`).join('\n')}
+  Generate ${segmentCount} complete Veo 3 prompts now.`;
+
+  const veoResponse = await callWithFallback(async (ai, model) => {
+    return await ai.models.generateContent({
+      model,
+      contents: [{ role: 'user', parts: [{ text: veoUserPrompt }] }],
+      config: { systemInstruction: veoSystemPrompt }
+    });
+  });
+
+  const veoPromptsText = veoResponse.text || "";
+  const segs = veoPromptsText.split("###SEGMENT###").map(p => p.trim()).filter(p => p.length > 0);
+  return segs.length > 0 ? segs : [veoPromptsText];
 };
 
 // --- Stock Image Prompts (On-Demand, User-Triggered) ---
@@ -1888,4 +1882,66 @@ export function extractBusinessNameFromInfo(info: any): string {
   };
 
   return deepSearch(info, 0);
+}
+
+// Extract phone/contact numbers (deep search). Returns display strings in the order found.
+function extractContactsFromInfo(info: any): string[] {
+  if (!info || typeof info !== 'object') return [];
+  const found: string[] = [];
+  const addFromString = (raw: string) => {
+    if (!raw || /^not\s*provided$/i.test(raw.trim())) return;
+    const matches = raw.match(/\+?\d[\d\s\-()]{6,}\d/g) || [];
+    for (const m of matches) {
+      const digitCount = m.replace(/\D/g, '').length;
+      if (digitCount >= 7 && digitCount <= 15) {
+        const display = m.trim().replace(/\s{2,}/g, ' ');
+        if (!found.some(f => f.replace(/\D/g, '') === display.replace(/\D/g, ''))) {
+          found.push(display);
+        }
+      }
+    }
+  };
+  const isContactKey = (key: string) => {
+    const lk = key.toLowerCase();
+    return (lk.includes('phone') || lk.includes('contact') || lk.includes('mobile') || lk.includes('whatsapp') || lk.includes('number') || lk.includes('cell') || lk.includes('tel')) && !lk.includes('email');
+  };
+  const visit = (obj: any, depth: number, underContactKey: boolean) => {
+    if (obj == null || depth > 6) return;
+    if (typeof obj === 'string') {
+      if (underContactKey) addFromString(obj);
+      return;
+    }
+    if (Array.isArray(obj)) {
+      obj.forEach(v => visit(v, depth + 1, underContactKey));
+      return;
+    }
+    if (typeof obj === 'object') {
+      for (const [key, val] of Object.entries(obj)) {
+        visit(val, depth + 1, underContactKey || isContactKey(key));
+      }
+    }
+  };
+  visit(info, 0, false);
+  return found;
+}
+
+// Extract the address string (deep search for an "address" key).
+function extractAddressFromInfo(info: any): string {
+  if (!info || typeof info !== 'object') return '';
+  const invalid = (v: any) => typeof v !== 'string' || !v.trim() || /^not\s*provided$/i.test(v.trim());
+  let result = '';
+  const visit = (obj: any, depth: number) => {
+    if (result || obj == null || depth > 6 || typeof obj !== 'object') return;
+    for (const [key, val] of Object.entries(obj)) {
+      if (key.toLowerCase().includes('address') && !invalid(val)) { result = String(val).trim(); return; }
+    }
+    for (const val of Object.values(obj)) {
+      if (val && typeof val === 'object') {
+        visit(val, depth + 1);
+        if (result) return;
+      }
+    }
+  };
+  visit(info, 0);
+  return result;
 }

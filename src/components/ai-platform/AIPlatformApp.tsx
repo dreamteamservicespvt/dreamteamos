@@ -10,7 +10,7 @@ import { FileUpload } from './FileUpload';
 import { GeneratedCard } from './GeneratedCard';
 import { SavedItems, SavedGeneration } from './SavedItems';
 import { AdFormData, AdType, AttireType, FileStore, GeneratedOutputs, GenerationStatus } from '@/types/aiPlatform';
-import { generateAdAssets, extractBusinessOnly, generateStockImagePrompts, refineSection, SectionType, extractBusinessNameFromInfo } from '@/services/geminiService';
+import { generateAdAssets, extractBusinessOnly, generateStockImagePrompts, refineSection, regenerateVeoFromVoiceOver, SectionType, extractBusinessNameFromInfo } from '@/services/geminiService';
 import { collection, addDoc, getDocs, query, where, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/services/firebase';
 import { useAuthStore } from '@/store/authStore';
@@ -223,9 +223,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
             return { ...prev, mainFramePrompts: clips.length > 0 ? clips : [refinedContent] };
           }
           case 'header': return { ...prev, headerPrompt: refinedContent };
-          case 'poster': {
-            try { return { ...prev, posterPrompt: JSON.stringify(JSON.parse(refinedContent), null, 2) }; } catch { return { ...prev, posterPrompt: refinedContent }; }
-          }
+          case 'poster': return { ...prev, posterPrompt: refinedContent };
           case 'voiceOver': return { ...prev, voiceOverScript: refinedContent };
           case 'veo': {
             const segs = refinedContent.split("###SEGMENT###").map(p => p.trim()).filter(p => p.length > 0);
@@ -234,6 +232,16 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
           default: return prev;
         }
       });
+
+      // When the voice-over is refined, regenerate the Veo 3 prompts from the new script
+      if (section === 'voiceOver') {
+        try {
+          const newVeo = await regenerateVeoFromVoiceOver(refinedContent, formData);
+          setOutputs(prev => (prev ? { ...prev, veoPrompts: newVeo } : prev));
+        } catch (e) {
+          console.error('Veo regeneration after voice-over refine failed:', e);
+        }
+      }
     } catch (error: any) {
       console.error('Refinement error:', error);
     } finally {

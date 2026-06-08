@@ -29,19 +29,31 @@ const consultancyBusinessContext = JSON.stringify({
 });
 
 describe("professional main-frame prompts", () => {
-  it("includes the strengthened premium suit markers", () => {
+  it("uses the compact example-format first-frame prompt", () => {
     const prompt = MAIN_FRAME_SYSTEM_PROMPT("professional", "commercial", "");
 
-    expect(prompt).toContain("BLAZER: premium well-tailored blazer");
-    expect(prompt).toContain("BLOUSE: crisp white fitted blouse or shirt");
-    expect(prompt).toContain("TROUSERS: slim formal trousers");
-    expect(prompt).toContain("Strictly natural rich black hair ONLY from the very first frame onward");
-    expect(prompt).toContain("Canon EOS R5 realism");
-    expect(prompt).toContain("PROFESSIONAL SUIT NEGATIVE RULES");
-    expect(prompt).toContain("POSE ANCHOR FOR THE HERO MAIN FRAME");
-    expect(prompt).toContain("The hero or anchor image must be EXACTLY centered");
-    expect(prompt).toContain("ENVIRONMENT (REAL BUSINESS PREMISES — MOST CRITICAL SECTION)");
-    expect(prompt).toContain("STEP 2 — ADD BUSINESS-PROOF LAYER");
+    expect(prompt).toContain("Main Character:");
+    expect(prompt).toContain("Pose:");
+    expect(prompt).toContain("Background:");
+    expect(prompt).toContain("Composition:");
+    expect(prompt).toContain("formal front-clasp corporate pose");
+    expect(prompt).toContain("fill about 70% of the frame height");
+    expect(prompt).toContain("(not saree)");
+    expect(prompt).toContain("avoid a repetitive plain blue corporate suit");
+    expect(prompt).toContain("never reuse the same recurring face");
+    expect(prompt).toContain("reception");
+    expect(prompt).toContain("Three-quarter shot");
+    expect(prompt).toContain("finger ring");
+    expect(prompt).toContain("the attached logo is the ONLY text or branding anywhere");
+    expect(prompt).toContain("SMALL-to-medium wall sign");
+    expect(prompt).toContain("NEVER enlarge the logo at the cost of the girl");
+    expect(prompt).toContain("a small bindi on the forehead");
+    expect(prompt).toContain("crisp and clearly readable");
+    expect(prompt).toContain("NO EMPTY PLACEHOLDERS");
+    expect(prompt).not.toContain("must be blank / textless");
+    // negative-prompt block and verbose meta-sections must be gone
+    expect(prompt).not.toContain("PROFESSIONAL SUIT NEGATIVE RULES");
+    expect(prompt).not.toContain("CASTING OVERRIDE");
   });
 
   it("keeps the exported attire helper aligned with the strengthened suit direction", () => {
@@ -64,7 +76,7 @@ describe("professional main-frame prompts", () => {
       })
     );
 
-    expect(palette).toContain("rich maroon-taupe");
+    expect(palette).toContain("rich maroon");
     expect(palette).toContain("logo colors");
   });
 
@@ -79,12 +91,19 @@ describe("professional main-frame prompts", () => {
     expect(institutionPalette).not.toBe(consultancyPalette);
   });
 
-  it("keeps traditional prompts free of professional-only suit markers", () => {
+  it("uses the compact example-format first-frame prompt for commercial saree", () => {
     const prompt = MAIN_FRAME_SYSTEM_PROMPT("traditional", "commercial", "");
 
-    expect(prompt).toContain("ATTIRE (COMMERCIAL DESIGNER SAREE — BUSINESS-SPECIFIC LUXURY — MANDATORY)");
-    expect(prompt).toContain("ENVIRONMENT (REAL BUSINESS PREMISES — MOST CRITICAL SECTION)");
-    expect(prompt).not.toContain("BLAZER: premium well-tailored blazer");
+    expect(prompt).toContain("Main Character:");
+    expect(prompt).toContain("elegant premium designer saree");
+    expect(prompt).toContain("Wearing elegant traditional semi-jewellery (MANDATORY)");
+    expect(prompt).toContain("formal front-clasp corporate pose");
+    expect(prompt).toContain("fill about 70% of the frame height");
+    expect(prompt).toContain("NO EMPTY PLACEHOLDERS");
+    expect(prompt).toContain("the attached logo is the ONLY text or branding anywhere");
+    // saree compact must NOT fall back to the suit branch or the old verbose template
+    expect(prompt).not.toContain("Wearing a premium tailored formal suit");
+    expect(prompt).not.toContain("ATTIRE (COMMERCIAL DESIGNER SAREE — BUSINESS-SPECIFIC LUXURY — MANDATORY)");
     expect(prompt).not.toContain("PROFESSIONAL SUIT NEGATIVE RULES");
   });
 });
@@ -98,9 +117,9 @@ describe("education environment routing", () => {
     expect(environment).toContain("Campus entrance branding");
     expect(environment).toContain("admissions desk");
     expect(environment).toContain("library");
-    expect(prompt).toContain("CLIENT-SPECIFIC ENVIRONMENT ANCHOR");
-    expect(prompt).toContain("college / school / institute campus mode");
-    expect(prompt).toContain("Hard-negative drift to reject for this client");
+    expect(prompt).toContain("Campus entrance branding");
+    expect(prompt).toContain("admissions desk");
+    expect(prompt).toContain("100% relatable to the provided business");
   });
 
   it("routes consultancy inputs to counseling-office mode", () => {
@@ -137,8 +156,11 @@ describe("multi-frame hero shot guidance", () => {
     );
 
     expect(prompt).toContain("subject perfectly centered");
-    expect(prompt).toContain("Hands gently folded at waist, one hand resting over the other");
-    expect(prompt).toContain("explicit natural rich black hair only rule");
+    expect(prompt).toContain("formal front-clasp corporate pose");
+    // continuation clips must forbid invented background text
+    expect(prompt).toContain("the attached logo is the ONLY text anywhere in the frame");
+    expect(prompt).toContain("course / curriculum lists");
+    expect(prompt).toContain("Main Character");
     expect(prompt).toContain("the exact same natural rich black hair from the first frame onward");
     expect(prompt).toContain("Hair color baseline");
     expect(prompt).toContain("COMMERCIAL LOCATION DENSITY RULE");
@@ -237,20 +259,20 @@ describe("commercial and festival separation", () => {
 });
 
 describe("voice-over prompt hardening", () => {
-  it("forces exact 18-word clips and transliterated English digit names", () => {
+  it("forces exact 18-word clips, no spoken numbers, and the on-screen call CTA", () => {
     const prompt = VOICEOVER_SYSTEM_PROMPT(32, 4, "commercial", "");
 
     expect(prompt).toContain("Every clip must contain EXACTLY 18 spoken words");
-    expect(prompt).toContain("జీరో, వన్, టూ, త్రీ, ఫోర్, ఫైవ్, సిక్స్, సెవెన్, ఎయిట్, నైన్");
-    expect(prompt).toContain("group the digit names mainly in pairs");
+    expect(prompt).toContain("NEVER speak, read, or include any phone number or contact number");
+    expect(prompt).toContain("PROFESSIONAL TRANSLITERATION RULE");
     expect(prompt).toContain("No duplicate clips");
   });
 
-  it("keeps the repair prompt aligned with exact clip and phone rules", () => {
+  it("keeps the repair prompt aligned with no-number and CTA rules", () => {
     const prompt = VOICEOVER_REPAIR_SYSTEM_PROMPT(32, 4, "commercial", "");
 
     expect(prompt).toContain("Every clip must contain EXACTLY 18 spoken words");
-    expect(prompt).toContain("Never speak a phone number using native counting words");
+    expect(prompt).toContain("NEVER speak or include any phone number or contact number");
     expect(prompt).toContain("Remove duplicated clips and repeated closings");
   });
 });
