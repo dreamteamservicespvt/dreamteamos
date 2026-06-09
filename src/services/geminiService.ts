@@ -1532,10 +1532,15 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
   // --- Step 5: Poster Design Prompt (JSON) — runs concurrently ---
   const posterPromise = (async (): Promise<string> => {
   const posterSystemPrompt = POSTER_SYSTEM_PROMPT(formData.adType, formData.festivalName);
+  const posterContacts = extractContactsFromInfo(businessInfo).slice(0, 2);
+  const posterContactRule = posterContacts.length
+    ? `CONTACT NUMBER(S) — use ONLY these exact number(s), at most two, digit-for-digit; NEVER alter, complete, reorder, merge, or invent any number: ${posterContacts.join('  |  ')}`
+    : `NO CONTACT NUMBER provided — do NOT show or invent any phone number on the poster.`;
   const posterUserPrompt = `Write the poster design prompt for:
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
   AD TYPE: ${formData.adType}
   ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName}` : ''}
+  ${posterContactRule}
   Write the short, clean, plain-English poster prompt now.`;
 
   const posterResponse = await callWithFallback(async (ai, model) => {
@@ -1622,11 +1627,16 @@ export const generatePosterPrompt = async (
   }
 
   const posterSystemPrompt = POSTER_SYSTEM_PROMPT(adType, festivalName);
+  const posterContacts = extractContactsFromInfo(businessInfo).slice(0, 2);
+  const posterContactRule = posterContacts.length
+    ? `CONTACT NUMBER(S) — use ONLY these exact number(s), at most two, digit-for-digit; NEVER alter, complete, reorder, merge, or invent any number: ${posterContacts.join('  |  ')}`
+    : `NO CONTACT NUMBER provided — do NOT show or invent any phone number on the poster.`;
   const posterUserPrompt = `Write the poster design prompt for:
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
   AD TYPE: ${adType}
   ${adType === 'festival' ? `FESTIVAL: ${festivalName}` : ''}
   ${posterInstructions ? `\nUSER POSTER INSTRUCTIONS (IMPORTANT — follow these closely):\n${posterInstructions}` : ''}
+  ${posterContactRule}
   Write the short, clean, plain-English poster prompt now.`;
 
   const posterResponse = await callWithFallback(async (ai, model) => {

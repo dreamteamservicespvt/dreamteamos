@@ -1816,7 +1816,7 @@ EXACT LAYOUT (keep this structure — do not move or change it):
 - The LOGO box, the NAME container, and the CONTACT pills must share the SAME height and baseline and align evenly in one neat row.
 
 ADAPTIVE RULES (IMPORTANT):
-- Contacts: if TWO numbers are given, show two evenly-stacked pills that fill the right side neatly. If only ONE number is given, show a single comfortably-sized pill centered on the right with balanced spacing and NO empty glow panel and NO blank gap. If NO number is given, remove the contact area entirely and let the BUSINESS NAME grow larger / wider to fill that space.
+- Contacts: if TWO numbers are given, show two evenly-stacked pills that fill the right side neatly. If only ONE number is given, show a single comfortably-sized pill centered on the right with balanced spacing and NO empty glow panel and NO blank gap. If NO number is given, remove the contact area entirely and let the BUSINESS NAME grow larger / wider to fill that space. Show AT MOST TWO contact numbers and reproduce each number EXACTLY as provided, digit-for-digit — NEVER change, swap, add, drop, reorder, or invent any digit, and never make up a number.
 - Address: the address bar is ONLY for a real street / postal address. ALWAYS center-align the address text and ALWAYS keep the ENTIRE address on ONE SINGLE LINE — STRICTLY never wrap it, never break it, and never let it run onto a second line. If the address is long, shrink the address text size as much as needed so the whole address fits on that single line; if short, keep it centered at a comfortable size. If NO real address is given — or the provided value is just the business name or a vague label — OMIT the address bar completely and collapse the space. NEVER repeat the business name inside the address bar.
 
 BUSINESS-THEMED GRAPHIC DESIGN (MANDATORY — this was missing before):
@@ -2111,6 +2111,7 @@ STRICT RULES:
 - Describe only: overall style and mood, background and colours (derived from the logo / brand), where the logo goes (top centre, unchanged), the main hero visual, and a clean uncluttered layout.
 - MINIMAL TEXT IN THE POSTER: the poster itself must contain very little text — only the business name, and (only if available) one short tagline and one contact line. Do NOT fill the poster with paragraphs, service lists, or long copy.
 - Use ONLY real business details from the provided info. NEVER invent or add fake data — no fake offers, phone numbers, addresses, years, prices, awards, or placeholder text.
+- CONTACT NUMBERS: show ONLY the real contact number(s) given to you, AT MOST TWO (the first two), exactly as provided digit-for-digit. NEVER alter, complete, reorder, merge, or invent a phone number. If no contact number is given, show NO contact number at all.
 - Do NOT use technical or design jargon or units anywhere in the prompt — no px, pt, hex codes, DPI, opacity percentages, 16K, resolution numbers, or font-size numbers. Use plain words like small, large, centred, soft, bold.
 - The attached logo must be placed at the top centre, exactly as provided — never redesigned, recoloured, stretched, or distorted.
 - Keep it elegant, premium, and uncluttered, with clear visual hierarchy and plenty of clean space.
