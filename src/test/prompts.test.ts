@@ -49,7 +49,7 @@ describe("professional main-frame prompts", () => {
     expect(prompt).toContain("NEVER enlarge the logo at the cost of the girl");
     expect(prompt).toContain("a small bindi on the forehead");
     expect(prompt).toContain("crisp and clearly readable");
-    expect(prompt).toContain("NO EMPTY PLACEHOLDERS");
+    expect(prompt).toContain("NO FRAMES / DISPLAYS / PLACEHOLDERS");
     expect(prompt).not.toContain("must be blank / textless");
     // negative-prompt block and verbose meta-sections must be gone
     expect(prompt).not.toContain("PROFESSIONAL SUIT NEGATIVE RULES");
@@ -99,7 +99,7 @@ describe("professional main-frame prompts", () => {
     expect(prompt).toContain("Wearing elegant traditional semi-jewellery (MANDATORY)");
     expect(prompt).toContain("formal front-clasp corporate pose");
     expect(prompt).toContain("fill about 70% of the frame height");
-    expect(prompt).toContain("NO EMPTY PLACEHOLDERS");
+    expect(prompt).toContain("NO FRAMES / DISPLAYS / PLACEHOLDERS");
     expect(prompt).toContain("the attached logo is the ONLY text or branding anywhere");
     // saree compact must NOT fall back to the suit branch or the old verbose template
     expect(prompt).not.toContain("Wearing a premium tailored formal suit");

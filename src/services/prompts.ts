@@ -970,7 +970,7 @@ Background:
 - Place the attached logo naturally as a real, SMALL-to-medium wall sign on the reception back wall behind the girl — fully visible and uncropped, realistically integrated, and DYNAMICALLY sized to the free wall space around her. The logo is clearly secondary to the girl: keep it modest, never large or dominating, and never shrink or push the girl smaller just to fit the logo
 - LOGO SHARPNESS (IMPORTANT): reproduce the attached logo exactly and keep it perfectly SHARP and in focus — do NOT blur or soften it with depth of field — so every letter and all text in the logo stays crisp and clearly readable
 - TEXT RULE (STRICT — VERY IMPORTANT): the attached logo is the ONLY text or branding anywhere in the entire image. Do NOT add or invent ANY other text — no words, letters, numbers, dates, academic years, taglines, slogans, mission lines, service lists, or signage. Reproduce the attached logo exactly and never add extra words above, below, or around it
-- NO EMPTY PLACEHOLDERS (IMPORTANT): do NOT add blank or empty boards, picture frames, certificate frames, brochures, brochure stands, posters, standees, banners, or blank / dark screens — empty placeholder panels look like cheap cardboard and must be avoided. Keep walls and surfaces clean and uncluttered, carrying only the attached logo plus real, natural elements (soft wall texture, warm lighting, plants, tasteful décor, and the business's real functional objects)
+- NO FRAMES / DISPLAYS / PLACEHOLDERS (IMPORTANT): do NOT add ANY wall frames, picture frames, photo frames, certificate frames, achievement / award / "success" / proof / display walls, photo walls, notice boards, posters, standees, brochures, banners, or blank / dark screens — NEITHER empty NOR filled (empty ones look like cheap cardboard, and filled ones force fake text). Never describe "empty frames", "frames to hold photos", or "displays without text". Walls stay clean and uncluttered, carrying ONLY the attached logo plus real, natural elements (soft wall texture, warm lighting, plants, and the business's real in-use objects)
 
 Visual Style:
 - Ultra realistic photography, cinematic indoor lighting, natural skin texture, premium colour grading, realistic reflections and shadows, clean polished environment
@@ -1476,19 +1476,19 @@ export const MULTI_FRAME_SYSTEM_PROMPT = (
     {
       key: 'showcase' as const,
       name: 'SHOWCASE / PRODUCT SHOT',
-      location: 'Product display area / service showcase zone / core business section — where the actual products, services, or offerings are visible',
-      camera: 'Close mid-shot with slight low-angle polish (camera slightly below chest), subject still occupying roughly 70% of frame while products/services remain visible on the other side',
-      pose: 'One hand gesturing gently toward the products/services behind her, or resting on a display counter — naturally interacting with the business environment',
-      purpose: 'Show what the business DOES. The model guides the viewer\'s attention to products, equipment, or services displayed behind/around her.',
+      location: 'The core working area of the business — its real, in-use space (e.g. the shop floor with real stock, the workshop / lab with real equipment, the service counter, or the main work zone). If the business has no physical products, use its real work area and real objects — NEVER an invented display wall, achievement wall, or frames',
+      camera: 'Close mid-shot with slight low-angle polish (camera slightly below chest), subject still occupying roughly 70% of frame while the real work area remains visible on the other side',
+      pose: 'One hand gesturing gently toward the real equipment / stock / work area behind her, or resting on a real counter — naturally interacting with the business environment',
+      purpose: 'Show what the business DOES using its REAL work area, equipment, or stock around her — never through invented display walls, posters, or frames.',
       logoPlacement: getShotLogoPlacementForBusiness('showcase', detectedBusinessType, businessContext),
     },
     {
       key: 'credibility' as const,
       name: 'CREDIBILITY / TRUST SHOT',
-      location: 'Near the business logo wall / achievement display / certification area / consultation zone — the trust-building section of the establishment',
-      camera: 'Close mid-shot with a gentle 10-15° body angle while the face still addresses camera directly, creating depth with the logo/achievements visible in the background',
-      pose: 'Confident stance with slight body turn toward the logo/achievements, warm authoritative expression — exuding trust and credibility',
-      purpose: 'Build trust and brand authority. The logo is prominently visible, along with any awards, certifications, or trust signals.',
+      location: 'Near the business logo wall in the main reception or consultation zone — the trust-building section of the establishment, shown with real architecture and real in-use objects (NEVER achievement frames, certificate walls, award displays, or photo panels)',
+      camera: 'Close mid-shot with a gentle 10-15° body angle while the face still addresses camera directly, creating depth with the logo and the real premises visible in the background',
+      pose: 'Confident stance with a slight body turn, warm authoritative expression — exuding trust and credibility',
+      purpose: 'Build trust and brand authority through the real premises and the clearly visible logo — never through invented awards, certificates, or achievement / display frames.',
       logoPlacement: getShotLogoPlacementForBusiness('credibility', detectedBusinessType, businessContext),
     },
     {
@@ -1634,9 +1634,9 @@ ${Array.from({ length: segmentCount }, (_, i) => {
    
    **✅ THEN FOCUS 100% ON THESE (the ONLY things you should describe):**
   • 📍 The NEW LOCATION within the SAME business — a different REAL area/zone that best matches the meaning of Clip ${clipNum}'s voice-over line (show the real place the script is talking about). Describe it as a real, operational spot with real physical objects.
-  • 🔍 What's visible in the background: ONLY real physical things this business actually has — furniture, equipment, products, counters, fixtures, materials, plants — shown as solid real objects with NO readable text on them
+  • 🔍 What's visible in the background: ONLY real, in-use, naturally-present objects this business actually has — e.g. shelves stacked with real books, real equipment / machines / tools, work counters, desks, seating, stock, materials, plants — shown as solid real objects with NO readable text on them. Do NOT invent any decorative wall content.
   • 🚫 TEXT RULE (STRICT — VERY IMPORTANT): the attached logo is the ONLY text anywhere in the frame. Do NOT add or invent ANY other text — no signage, banners, posters, notice boards, brochures, application forms, department lists, course / curriculum lists, certificates, taglines, slogans, dates, or years on the walls, desks, screens, or anywhere. (The image generator mis-spells such text, so it must NEVER appear.)
-  • 🚫 NO EMPTY PLACEHOLDERS: do NOT add blank/empty boards, picture frames, certificate frames, brochures, posters, standees, or blank/dark screens — keep walls and surfaces clean; real physical objects only, plus the attached logo
+  • 🚫 NO FRAMES / DISPLAYS / PLACEHOLDERS (STRICT — VERY IMPORTANT): do NOT create ANY wall frames, picture frames, photo frames, certificate frames, achievement / award / "success" / proof / display walls, photo walls, notice boards, posters, standees, brochures, or screens — NEITHER empty NOR filled. They are ALL forbidden. NEVER write phrases like "empty frames", "frames to hold photos", "displays without text", "achievement display", "wall displays", or similar — those create ugly empty cardboard panels. Walls stay clean (plain wall + real architecture) carrying ONLY the attached logo; communicate the business through REAL in-use objects, never through any display or frame.
   • 🧍 The new POSE — body angle, hand position, interaction with environment elements at this location in a way that matches the clip's selling point
    • 😊 The new EXPRESSION — emotional tone matching Clip ${clipNum}'s voice-over script
    • 🎥 The new CAMERA ANGLE and composition
@@ -1779,7 +1779,7 @@ ${adType === AdType.FESTIVAL ? `Festival decorations from the office are still v
 
 LIGHTING: Cool blue-tinted ambient light from the display screens blends with warm golden festival lamp glow — creating a unique tech-meets-tradition atmosphere.
 
-MOOD: Professional, aspirational — showcasing the company's innovative capabilities while celebrating ${festivalName || 'the festival'}.` : `BUSINESS PROOF LAYER: The strongest REAL physical proof of this business is visible — real equipment, product/service items, counters, work fixtures, or operational objects that make the business obvious WITHOUT any text. No signage, posters, certificates with text, brochures, department/course lists, or invented words — the attached logo is the ONLY text.
+MOOD: Professional, aspirational — showcasing the company's innovative capabilities while celebrating ${festivalName || 'the festival'}.` : `REAL ENVIRONMENT LAYER: A real, in-use functional area of the business is visible — e.g. shelves with real books / stock, real equipment, machines, work counters, tools, seating, or operational objects — so the business is obvious from the real surroundings. NEVER show any frames, photo / achievement / award / display walls, certificates, posters, boards, or screens (empty or filled), and no invented text — the attached logo is the ONLY text.
 
 LIGHTING: Natural daylight from the left window mixes with soft practical interior lighting and believable reflections on real materials — polished, premium, and fully photographic.
 
