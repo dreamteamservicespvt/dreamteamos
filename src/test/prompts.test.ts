@@ -114,10 +114,10 @@ describe("education environment routing", () => {
     const prompt = MAIN_FRAME_SYSTEM_PROMPT("professional", "commercial", "", "1:1", institutionBusinessContext);
 
     expect(detectEducationEnvironmentMode(institutionBusinessContext)).toBe("institution");
-    expect(environment).toContain("Campus entrance branding");
+    expect(environment).toContain("classrooms with desks");
     expect(environment).toContain("admissions desk");
     expect(environment).toContain("library");
-    expect(prompt).toContain("Campus entrance branding");
+    expect(prompt).toContain("classrooms with desks");
     expect(prompt).toContain("admissions desk");
     expect(prompt).toContain("100% relatable to the provided business");
   });

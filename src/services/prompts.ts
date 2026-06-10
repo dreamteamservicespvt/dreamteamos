@@ -15,6 +15,9 @@ const hasAnyKeyword = (info: string, keywords: string[]): boolean => (
 // Business type detection for environment and color matching
 export const detectBusinessType = (businessInfo: string): string => {
   const info = businessInfo.toLowerCase();
+  // Education institutions take priority: an institution word means it is education even if other industry
+  // words also appear (e.g. "College of Hotel Management" must be education, not a hotel/food business).
+  if (hasAnyKeyword(info, ['college', 'university', 'institute', 'institution', 'academy', 'vidyalaya', 'gurukul', 'polytechnic'])) return 'education';
   if (hasAnyKeyword(info, ['medical', 'hospital', 'clinic', 'doctor', 'physician', 'health'])) return 'medical';
   if (hasAnyKeyword(info, ['real estate', 'realty', 'property', 'builders', 'construction'])) return 'realestate';
   if (hasAnyKeyword(info, ['fashion', 'boutique', 'saree', 'clothing', 'couture', 'garment'])) return 'fashion';
@@ -191,10 +194,10 @@ const getEducationEnvironmentDescription = (businessContext: string = ''): strin
   const educationMode = detectEducationEnvironmentMode(businessContext);
 
   if (educationMode === 'consultancy') {
-    return 'real, operational, premium education consultancy office. Counseling desks, application review tables, brochure stands, university partnership walls, passport or document-review counters, success-story displays, and branded admissions guidance surfaces should define the background. The space should instantly communicate education guidance, admissions support, and counseling credibility';
+    return 'real, operational, premium education consultancy office. Counseling desks, comfortable seating for students and parents, a clean modern reception counter, computers and tidy work desks define the background. Use only real, in-use functional office furniture and spaces — NO brochure stands, partnership walls, success-story displays, certificate walls, photo walls, or signage text. The space should instantly communicate education guidance and counseling credibility';
   }
 
-  return 'real, operational college, school, or educational institute environment. Campus entrance branding, admissions desk, academic reception, classroom or lecture hall depth, seminar hall cues, library shelves, lab stations, corridor notice boards, student interaction zones, and institutional signage should define the background. The space should instantly communicate live campus energy, education trust, student ambition, and real institutional credibility';
+  return 'real, operational college, school, or educational institute campus environment. A real academic reception and admissions desk, classrooms with desks and chairs, a library with shelves of real books, lab stations with real equipment, and a campus corridor with student seating define the background. Use only real, in-use functional academic spaces — NO entrance branding, notice boards, certificate walls, photo / portrait walls, achievement or success displays, or institutional signage text. The space should instantly communicate live campus energy and real institutional credibility';
 };
 
 const getEducationLocationPlan = (businessContext: string = ''): string => {
@@ -970,7 +973,7 @@ Background:
 - Place the attached logo naturally as a real, SMALL-to-medium wall sign on the reception back wall behind the girl — fully visible and uncropped, realistically integrated, and DYNAMICALLY sized to the free wall space around her. The logo is clearly secondary to the girl: keep it modest, never large or dominating, and never shrink or push the girl smaller just to fit the logo
 - LOGO SHARPNESS (IMPORTANT): reproduce the attached logo exactly and keep it perfectly SHARP and in focus — do NOT blur or soften it with depth of field — so every letter and all text in the logo stays crisp and clearly readable
 - TEXT RULE (STRICT — VERY IMPORTANT): the attached logo is the ONLY text or branding anywhere in the entire image. Do NOT add or invent ANY other text — no words, letters, numbers, dates, academic years, taglines, slogans, mission lines, service lists, or signage. Reproduce the attached logo exactly and never add extra words above, below, or around it
-- NO FRAMES / DISPLAYS / PLACEHOLDERS (IMPORTANT): do NOT add ANY wall frames, picture frames, photo frames, certificate frames, achievement / award / "success" / proof / display walls, photo walls, notice boards, posters, standees, brochures, banners, or blank / dark screens — NEITHER empty NOR filled (empty ones look like cheap cardboard, and filled ones force fake text). Never describe "empty frames", "frames to hold photos", or "displays without text". Walls stay clean and uncluttered, carrying ONLY the attached logo plus real, natural elements (soft wall texture, warm lighting, plants, and the business's real in-use objects)
+- NO FRAMES / DISPLAYS / PLACEHOLDERS (IMPORTANT): do NOT add ANY wall frames, picture frames, photo frames, certificate frames or certificate walls, rows of framed certificates, staff / employee / student photo walls or portrait galleries, "wall of fame", achievement / award / "success" / proof / display walls, photo walls, notice boards, posters, standees, brochures, banners, or blank / dark screens — NEITHER empty NOR filled (empty ones look like cheap cardboard, and filled ones force fake text and fake faces). Never describe "empty frames", "frames to hold photos", "displays without text", "certificate wall", or "staff photos". Walls stay clean and uncluttered, carrying ONLY the attached logo plus real, natural elements (soft wall texture, warm lighting, plants, and the business's real in-use objects)
 
 Visual Style:
 - Ultra realistic photography, cinematic indoor lighting, natural skin texture, premium colour grading, realistic reflections and shadows, clean polished environment
@@ -2103,13 +2106,14 @@ Separator between segments: "###SEGMENT###"
 
 export const POSTER_SYSTEM_PROMPT = (adType: string, festivalName: string) => `You are a world-class poster designer and prompt writer for AI image generators. Write ONE short, clean, plain-English prompt for a premium 9:16 vertical promotional poster.
 
-GOAL: a premium, modern, professional poster design${adType === 'festival' ? ` for a ${festivalName} greeting` : ''} that looks like a top design studio made it.
+GOAL: a genuinely PREMIUM, modern, award-level professional poster design${adType === 'festival' ? ` for a ${festivalName} greeting` : ''} that looks like a top international design studio created it — intentional, polished, and visually rich (never basic, flat, cramped, or amateur).
 
 STRICT RULES:
 - Output PLAIN ENGLISH TEXT only — NOT JSON, no key-value schema, no code block, no markdown.
-- Keep it SHORT and clean: about 120-180 words, in a few simple sentences or short lines.
-- Describe only: overall style and mood, background and colours (derived from the logo / brand), where the logo goes (top centre, unchanged), the main hero visual, and a clean uncluttered layout.
-- MINIMAL TEXT IN THE POSTER: the poster itself must contain very little text — only the business name, and (only if available) one short tagline and one contact line. Do NOT fill the poster with paragraphs, service lists, or long copy.
+- Keep it SHORT and clean: about 130-200 words, in a few simple sentences or short lines.
+- GRAPHIC-DESIGN QUALITY (IMPORTANT): make the design genuinely premium — strong visual hierarchy, balanced composition, a clear hero focal area, tasteful brand-colour gradients with real depth, soft shadows and highlights, generous spacing, crisp modern typography, and business-themed graphic accents that suit the industry. It must look professionally art-directed — never plain, flat, template-like, or poorly composed.
+- Describe only: overall style and mood, background and colours (derived from the logo / brand), where the logo goes (top centre, unchanged), the main hero visual, and a clean, well-composed layout.
+- MINIMAL TEXT IN THE POSTER: keep text minimal and clean — the business name, the contact number(s), and the address (when an address is provided it MUST be included, on ONE clean single line), plus optionally one short tagline. Do NOT fill the poster with paragraphs, service lists, or long copy.
 - Use ONLY real business details from the provided info. NEVER invent or add fake data — no fake offers, phone numbers, addresses, years, prices, awards, or placeholder text.
 - CONTACT NUMBERS: show ONLY the real contact number(s) given to you, AT MOST TWO (the first two), exactly as provided digit-for-digit. NEVER alter, complete, reorder, merge, or invent a phone number. If no contact number is given, show NO contact number at all.
 - Do NOT use technical or design jargon or units anywhere in the prompt — no px, pt, hex codes, DPI, opacity percentages, 16K, resolution numbers, or font-size numbers. Use plain words like small, large, centred, soft, bold.

@@ -1496,17 +1496,7 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
   // Extract ONLY logo/name/contacts/address — never dump the full business JSON or any other data.
   const headerBusinessName = extractBusinessNameFromInfo(businessInfo);
   const headerContacts = extractContactsFromInfo(businessInfo).slice(0, 2);
-  let headerAddress = extractAddressFromInfo(businessInfo);
-  // Guard: never use the business name (or a vague label with no street/pincode) as the address.
-  if (headerAddress) {
-    const norm = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-    const nName = norm(headerBusinessName);
-    const nAddr = norm(headerAddress);
-    const hasRealAddressSignal = /\d/.test(headerAddress) || /\b(road|rd|street|st|nagar|colony|lane|cross|main|opp|near|beside|floor|plot|door|pin|pincode|dist|district|mandal|village|town|city|state|highway|circle|sector|block|phase|market|complex|building)\b/i.test(headerAddress);
-    if (nName && nAddr && !hasRealAddressSignal && (nAddr === nName || nName.includes(nAddr) || nAddr.includes(nName))) {
-      headerAddress = '';
-    }
-  }
+  const headerAddress = resolveRealAddress(businessInfo, headerBusinessName);
   const headerValueLines = [
     'LOGO = use the attached logo image exactly as provided, unchanged',
     headerBusinessName ? `NAME = ${headerBusinessName}` : '',
@@ -1536,11 +1526,16 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
   const posterContactRule = posterContacts.length
     ? `CONTACT NUMBER(S) — use ONLY these exact number(s), at most two, digit-for-digit; NEVER alter, complete, reorder, merge, or invent any number: ${posterContacts.join('  |  ')}`
     : `NO CONTACT NUMBER provided — do NOT show or invent any phone number on the poster.`;
+  const posterAddress = resolveRealAddress(businessInfo, extractBusinessNameFromInfo(businessInfo));
+  const posterAddressRule = posterAddress
+    ? `ADDRESS — an address IS provided, so it MUST appear in the poster, on ONE clean line, exactly as given: ${posterAddress}`
+    : `NO ADDRESS provided — do NOT show or invent any address.`;
   const posterUserPrompt = `Write the poster design prompt for:
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
   AD TYPE: ${formData.adType}
   ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName}` : ''}
   ${posterContactRule}
+  ${posterAddressRule}
   Write the short, clean, plain-English poster prompt now.`;
 
   const posterResponse = await callWithFallback(async (ai, model) => {
@@ -1631,12 +1626,17 @@ export const generatePosterPrompt = async (
   const posterContactRule = posterContacts.length
     ? `CONTACT NUMBER(S) — use ONLY these exact number(s), at most two, digit-for-digit; NEVER alter, complete, reorder, merge, or invent any number: ${posterContacts.join('  |  ')}`
     : `NO CONTACT NUMBER provided — do NOT show or invent any phone number on the poster.`;
+  const posterAddress = resolveRealAddress(businessInfo, extractBusinessNameFromInfo(businessInfo));
+  const posterAddressRule = posterAddress
+    ? `ADDRESS — an address IS provided, so it MUST appear in the poster, on ONE clean line, exactly as given: ${posterAddress}`
+    : `NO ADDRESS provided — do NOT show or invent any address.`;
   const posterUserPrompt = `Write the poster design prompt for:
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
   AD TYPE: ${adType}
   ${adType === 'festival' ? `FESTIVAL: ${festivalName}` : ''}
   ${posterInstructions ? `\nUSER POSTER INSTRUCTIONS (IMPORTANT — follow these closely):\n${posterInstructions}` : ''}
   ${posterContactRule}
+  ${posterAddressRule}
   Write the short, clean, plain-English poster prompt now.`;
 
   const posterResponse = await callWithFallback(async (ai, model) => {
@@ -1954,4 +1954,18 @@ function extractAddressFromInfo(info: any): string {
   };
   visit(info, 0);
   return result;
+}
+
+// Resolve a REAL address (drops values that are just the business name / a vague label with no street or pincode).
+function resolveRealAddress(info: any, businessName: string): string {
+  const addr = extractAddressFromInfo(info);
+  if (!addr) return '';
+  const norm = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const nName = norm(businessName);
+  const nAddr = norm(addr);
+  const hasRealAddressSignal = /\d/.test(addr) || /\b(road|rd|street|st|nagar|colony|lane|cross|main|opp|near|beside|floor|plot|door|pin|pincode|dist|district|mandal|village|town|city|state|highway|circle|sector|block|phase|market|complex|building)\b/i.test(addr);
+  if (nName && nAddr && !hasRealAddressSignal && (nAddr === nName || nName.includes(nAddr) || nAddr.includes(nName))) {
+    return '';
+  }
+  return addr;
 }
