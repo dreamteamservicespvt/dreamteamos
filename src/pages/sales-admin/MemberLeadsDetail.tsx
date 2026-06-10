@@ -14,6 +14,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useConfirm } from "@/hooks/useConfirm";
 import { AnimatePresence, motion } from "framer-motion";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
+import NumberTimelineButton from "@/components/sales/NumberTimelineButton";
 
 /**
  * Extract 10-digit Indian phone numbers from raw input.
@@ -976,7 +977,10 @@ function LeadsList({ leads, members, isMobile, expandedNotes, setExpandedNotes, 
                   <div>
                     <p className="font-display font-bold text-foreground text-sm">{l.displayName || l.phone}</p>
                     {l.realName && <p className="text-[10px] text-muted-foreground">{l.realName}</p>}
-                    <p className="text-[10px] font-mono text-muted-foreground mt-0.5">{formatPhoneDisplay(l.phone)}</p>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <p className="text-[10px] font-mono text-muted-foreground">{formatPhoneDisplay(l.phone)}</p>
+                      <NumberTimelineButton phone={l.phone} />
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-1">

@@ -79,8 +79,42 @@ export interface Lead {
   saleDetails?: SaleDetail | null;
   saleItems?: SaleDetail[];
   isCustomEntry?: boolean;
+  // Number-lock: set when this number is taken over by another member after the 24h window
+  frozen?: boolean;
+  frozenAt?: any;
+  frozenReason?: string;   // "taken_over"
+  takenOverBy?: string;    // display name of the new owner
   lastUpdated: any;
   createdAt: any;
+}
+
+// ─── Number Lock / Reservation System ───
+// One doc per real phone number in the `numberLocks` collection (doc id = digits-only phone).
+// Reserves a number to whoever added it for 24h, allows takeover after, and freezes sold clients.
+export type NumberLockAction = "claimed" | "taken_over" | "sold" | "admin_override";
+
+export interface NumberLockTimelineEntry {
+  action: NumberLockAction;
+  byId: string;
+  byName: string;
+  at: any;                 // Timestamp.now() — serverTimestamp() is not allowed inside arrays
+  note?: string;
+  freezeDays?: number;     // for "sold" entries
+}
+
+export interface NumberLock {
+  phone: string;           // normalized "+91..."
+  ownerId: string;         // current owner uid
+  ownerName: string;
+  ownerLeadId: string;     // current owner's lead doc id (so takeover can freeze it)
+  claimedAt: any;
+  reserveExpiresAt: any;   // claimedAt + 24h
+  saleFrozen: boolean;
+  saleFrozenUntil: any | null;  // sale time + N days
+  saleById: string | null;
+  saleByName: string | null;
+  timeline: NumberLockTimelineEntry[];
+  updatedAt: any;
 }
 
 export interface SaleDetail {

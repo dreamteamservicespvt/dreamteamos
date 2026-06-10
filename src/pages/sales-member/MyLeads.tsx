@@ -1,12 +1,13 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  collection, query, where, onSnapshot, doc, updateDoc, addDoc, deleteDoc, serverTimestamp, Timestamp,
+  collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, Timestamp,
 } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { logActivity } from "@/services/activityLog";
 import { uploadToCloudinary } from "@/services/cloudinary";
+import { claimNumber, applySaleFreeze, releaseLockForLead } from "@/services/numberLock";
 import { formatCurrency } from "@/utils/formatters";
 import { normalizePhone } from "@/utils/phone";
 import { format, subDays, startOfDay } from "date-fns";
@@ -14,9 +15,10 @@ import type { AppUser, Lead, LeadStatus, SaleDetail } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
+import NumberTimelineButton from "@/components/sales/NumberTimelineButton";
 import {
   Search, Phone, MessageCircle, StickyNote, ChevronDown, ChevronUp,
-  Loader2, Check, Upload, ExternalLink, Plus, Trash2, ShoppingBag, X,
+  Loader2, Check, Upload, ExternalLink, Plus, Trash2, ShoppingBag, X, Lock,
 } from "lucide-react";
 
 const STATUS_OPTIONS: { value: LeadStatus; label: string; color: string }[] = [
@@ -269,7 +271,7 @@ export default function MyLeads() {
     }
   };
 
-  const deleteCustomLead = (id: string, displayName: string) => {
+  const deleteCustomLead = (id: string, displayName: string, phone: string) => {
     // Cancel any already-pending delete for this lead
     const existing = pendingDeletesRef.current.get(id);
     if (existing) {
@@ -318,6 +320,12 @@ export default function MyLeads() {
       dismiss();
       try {
         await deleteDoc(doc(db, "leads", id));
+        // Release the number lock so it can be re-added immediately (only if still owned by this member).
+        if (phone) {
+          try {
+            await releaseLockForLead({ user: { uid: user!.uid, name: user!.name }, phone, leadId: id });
+          } catch { /* non-fatal: lead is already deleted */ }
+        }
         await logActivity({
           actorId: user!.uid,
           actorName: user!.name,
@@ -484,7 +492,7 @@ export default function MyLeads() {
                   lead={lead}
                   pastDayLabel={getLeadPastDayLabel(lead)}
                   updateLead={updateLead}
-                  onDelete={lead.isCustomEntry ? () => deleteCustomLead(lead.id, lead.displayName) : undefined}
+                  onDelete={lead.isCustomEntry ? () => deleteCustomLead(lead.id, lead.displayName, lead.phone) : undefined}
                   expandedNotes={expandedNotes}
                   setExpandedNotes={setExpandedNotes}
                   expandedSale={expandedSale}
@@ -641,10 +649,11 @@ function LeadCard({ lead, pastDayLabel, updateLead, onDelete, expandedNotes, set
 
   const cleanPhone = lead.phone?.replace(/[^0-9]/g, "") || "";
   const statusInfo = STATUS_OPTIONS.find((s) => s.value === lead.status);
+  const frozen = !!lead.frozen;
 
   return (
     <div className={`bg-card border rounded-xl p-4 space-y-3 transition-colors ${
-      lead.saleDone ? "border-success/40" : "border-border"
+      frozen ? "border-warning/40 opacity-60" : lead.saleDone ? "border-success/40" : "border-border"
     }`}>
       {/* Header */}
       <div className="flex items-start justify-between">
@@ -662,6 +671,11 @@ function LeadCard({ lead, pastDayLabel, updateLead, onDelete, expandedNotes, set
           {lead.realName && <p className="text-xs text-muted-foreground">{lead.realName}</p>}
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
+          {frozen && (
+            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-warning/15 text-warning border border-warning/20 flex items-center gap-1">
+              <Lock size={9} /> Taken over{lead.takenOverBy ? ` by ${lead.takenOverBy}` : ""}
+            </span>
+          )}
           {lead.isCustomEntry && (
             <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/20">
               Custom
@@ -709,11 +723,15 @@ function LeadCard({ lead, pastDayLabel, updateLead, onDelete, expandedNotes, set
 
       {/* Phone + Status on same line */}
       <div className="flex items-center justify-between">
-        <p className="text-sm font-mono text-muted-foreground">{lead.phone}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-sm font-mono text-muted-foreground">{lead.phone}</p>
+          <NumberTimelineButton phone={lead.phone} />
+        </div>
         <select
           value={lead.status}
           onChange={(e) => updateLead(lead.id, { status: e.target.value })}
-          className={`h-8 px-3 rounded-full text-xs font-medium border-0 outline-none cursor-pointer ${statusInfo?.color || "bg-muted text-muted-foreground"}`}
+          disabled={frozen}
+          className={`h-8 px-3 rounded-full text-xs font-medium border-0 outline-none cursor-pointer disabled:cursor-not-allowed disabled:opacity-70 ${statusInfo?.color || "bg-muted text-muted-foreground"}`}
         >
           {STATUS_OPTIONS.map((s) => (
             <option key={s.value} value={s.value}>{s.label}</option>
@@ -724,13 +742,14 @@ function LeadCard({ lead, pastDayLabel, updateLead, onDelete, expandedNotes, set
       {/* Action buttons */}
       <div className="flex gap-2">
         <a
-          href={`tel:${cleanPhone}`}
-          onClick={() => { try { updateLead(lead.id, {}); } catch {} }}
-          className="flex-1 h-9 rounded-lg bg-info/10 text-info text-xs font-medium flex items-center justify-center gap-1.5 hover:bg-info/20 transition-colors"
+          href={frozen ? undefined : `tel:${cleanPhone}`}
+          onClick={() => { if (frozen) return; try { updateLead(lead.id, {}); } catch {} }}
+          aria-disabled={frozen}
+          className={`flex-1 h-9 rounded-lg bg-info/10 text-info text-xs font-medium flex items-center justify-center gap-1.5 hover:bg-info/20 transition-colors ${frozen ? "pointer-events-none opacity-50" : ""}`}
         >
           <Phone size={13} /> Call
         </a>
-        <WhatsAppButton phone={cleanPhone} onActivity={() => { try { updateLead(lead.id, {}); } catch {} }} />
+        <WhatsAppButton phone={cleanPhone} disabled={frozen} onActivity={() => { try { updateLead(lead.id, {}); } catch {} }} />
         <button
           onClick={() => setExpandedNotes(expandedNotes === lead.id ? null : lead.id)}
           className="flex-1 h-9 rounded-lg bg-accent text-foreground text-xs font-medium flex items-center justify-center gap-1.5 hover:bg-accent/80 transition-colors border border-border"
@@ -773,7 +792,9 @@ function LeadCard({ lead, pastDayLabel, updateLead, onDelete, expandedNotes, set
             )}
             <button
               onClick={() => setExpandedSale(expandedSale === lead.id ? null : lead.id)}
-              className="h-7 px-3 rounded-md bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors flex items-center gap-1"
+              disabled={frozen}
+              title={frozen ? "This number was taken over by another member" : undefined}
+              className="h-7 px-3 rounded-md bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Plus size={12} /> Add Sale
             </button>
@@ -851,22 +872,40 @@ function AddCustomLeadModal({ user, onClose }: { user: AppUser; onClose: () => v
     }
     setSaving(true);
     try {
-      await addDoc(collection(db, "leads"), {
-        assignedTo: user.uid,
-        assignedBy: user.uid,
+      const result = await claimNumber({
+        user: { uid: user.uid, name: user.name },
         phone: normalized,
-        displayName: name.trim() || normalized,
-        realName: null,
-        status: "answered" as LeadStatus,
-        notes: "",
-        saleDone: false,
-        saleDetails: null,
-        saleItems: [],
-        isCustomEntry: true,
-        lastUpdated: serverTimestamp(),
-        createdAt: serverTimestamp(),
+        displayName: name.trim(),
       });
-      toast({ title: "Lead Added", description: "Custom lead created. Use the 'Add Sale' button on the card to record the sale." });
+
+      if (result.kind === "reserved") {
+        toast({
+          title: "Number already taken",
+          description: `Already added by ${result.ownerName}. Reserved until ${format(result.until, "dd MMM, h:mm a")}. You can't add it yet.`,
+          variant: "destructive",
+        });
+        return;
+      }
+      if (result.kind === "sale_frozen") {
+        toast({
+          title: "Client sold & frozen",
+          description: `Sold by ${result.saleByName}, frozen until ${format(result.until, "dd MMM yyyy")}. You can't add this client.`,
+          variant: "destructive",
+        });
+        return;
+      }
+      if (result.kind === "already_yours") {
+        toast({ title: "Already yours", description: "This number is already in your leads." });
+        return;
+      }
+      if (result.kind === "takeover") {
+        toast({
+          title: "Number added to you",
+          description: `This number was added by ${result.previousOwnerName}, but its 24-hour validity is over, so it's now added to you.`,
+        });
+      } else {
+        toast({ title: "Lead Added", description: "Custom lead created. Use the 'Add Sale' button on the card to record the sale." });
+      }
       onClose();
     } catch {
       toast({ title: "Error", description: "Failed to create lead.", variant: "destructive" });
@@ -930,14 +969,15 @@ function AddCustomLeadModal({ user, onClose }: { user: AppUser; onClose: () => v
 
 /* ─── WhatsApp Button ─── */
 
-function WhatsAppButton({ phone, onActivity }: { phone: string; onActivity?: () => void }) {
+function WhatsAppButton({ phone, onActivity, disabled }: { phone: string; onActivity?: () => void; disabled?: boolean }) {
   return (
     <a
-      href={`https://wa.me/${phone}`}
+      href={disabled ? undefined : `https://wa.me/${phone}`}
       target="_blank"
       rel="noopener noreferrer"
-      onClick={() => onActivity?.()}
-      className="flex-1 h-9 rounded-lg bg-success/10 text-success text-xs font-medium flex items-center justify-center gap-1.5 hover:bg-success/20 transition-colors"
+      onClick={() => { if (disabled) return; onActivity?.(); }}
+      aria-disabled={disabled}
+      className={`flex-1 h-9 rounded-lg bg-success/10 text-success text-xs font-medium flex items-center justify-center gap-1.5 hover:bg-success/20 transition-colors ${disabled ? "pointer-events-none opacity-50" : ""}`}
     >
       <MessageCircle size={13} /> WhatsApp
     </a>
@@ -955,6 +995,7 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
   const [screenshotUrl, setScreenshotUrl] = useState("");
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [freezeDays, setFreezeDays] = useState(1);
 
   const packages = PACKAGES[category] || [];
   const selectedPkg = packages.find((p) => p.label === packageKey);
@@ -1009,8 +1050,28 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
         },
       });
     }
+    // Freeze this client so no other member can poach the number while it's sold.
+    let froze = false;
+    if (saleFormUser) {
+      try {
+        await applySaleFreeze({
+          user: { uid: saleFormUser.uid, name: saleFormUser.name },
+          phone: lead.phone,
+          days: freezeDays,
+          leadId: lead.id,
+        });
+        froze = true;
+      } catch {
+        /* non-fatal: the sale is already recorded */
+      }
+    }
     setSaving(false);
-    toast({ title: "Sale Added", description: `Sale of ${formatCurrency(amount)} added.` });
+    toast({
+      title: "Sale Added",
+      description: froze
+        ? `Sale of ${formatCurrency(amount)} added. Client frozen for ${freezeDays} day${freezeDays > 1 ? "s" : ""} — protected from other members.`
+        : `Sale of ${formatCurrency(amount)} added.`,
+    });
     onDone();
   };
 
@@ -1076,6 +1137,22 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
         </div>
         <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f); }} />
       </label>
+
+      {/* Freeze duration — protect this sold client from other members */}
+      <div className="flex items-center justify-between gap-2 bg-success/5 border border-success/20 rounded-md px-3 h-9">
+        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Lock size={12} className="text-success" /> Freeze client for
+        </span>
+        <select
+          value={freezeDays}
+          onChange={(e) => setFreezeDays(Number(e.target.value))}
+          className="h-7 px-2 rounded-md bg-card border border-border text-foreground text-xs outline-none focus:border-primary"
+        >
+          {[1, 2, 3, 4, 5, 6, 7].map((d) => (
+            <option key={d} value={d}>{d} day{d > 1 ? "s" : ""}</option>
+          ))}
+        </select>
+      </div>
 
       <button
         onClick={handleSave}
