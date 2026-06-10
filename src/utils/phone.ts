@@ -23,6 +23,15 @@ export function normalizePhone(raw: string): string {
 }
 
 /**
+ * Stable Firestore doc-id for a phone number's global lock.
+ * Digits-only (drops the leading "+") so the id is always a valid Firestore key.
+ * e.g. "+919876543210" -> "919876543210"
+ */
+export function phoneLockId(raw: string): string {
+  return normalizePhone(raw).replace(/[^0-9]/g, "");
+}
+
+/**
  * Format phone for display: +91 XXXXX XXXXX
  */
 export function formatPhoneDisplay(phone: string): string {
