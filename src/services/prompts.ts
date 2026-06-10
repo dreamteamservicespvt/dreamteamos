@@ -2087,8 +2087,7 @@ with appropriate gestures in same location don't change face 100% face match. \$
 
 Negative prompt:
 No text on the screen
-
----
+No background music , pure studio type voice over script , crystall clear voice, no echos,--
 
 GUIDELINES FOR GESTURES:
 Segment 1: Warm welcoming smile, slight head tilt, hands clasped or inviting, maintaining direct eye contact with the camera throughout.
