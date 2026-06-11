@@ -8,7 +8,7 @@ import { useAuthStore } from "@/store/authStore";
 import { logActivity } from "@/services/activityLog";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import { claimNumber, applySaleFreeze, releaseLockForLead } from "@/services/numberLock";
-import { findOtherHolders } from "@/services/duplicateLeads";
+import { findOtherHolders, findMemberDuplicates } from "@/services/duplicateLeads";
 import { formatCurrency } from "@/utils/formatters";
 import { normalizePhone } from "@/utils/phone";
 import { format, subDays, startOfDay } from "date-fns";
@@ -101,7 +101,7 @@ export default function MyLeads() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [dayFilter, setDayFilter] = useState<string>("0");
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
-  const [viewTab, setViewTab] = useState<"leads" | "sales">("leads");
+  const [viewTab, setViewTab] = useState<"leads" | "sales" | "duplicates">("leads");
   const [salesSearch, setSalesSearch] = useState("");
   const [salesDay, setSalesDay] = useState<string>("all");
   const [salesStatus, setSalesStatus] = useState<string>("all");
@@ -131,33 +131,27 @@ export default function MyLeads() {
     return unsub;
   }, [user]);
 
-  // Detect duplicate sales — numbers another member has also sold (dispute flag).
-  // Keyed on the set of sold phone numbers so it doesn't re-query on every notes keystroke.
-  const soldPhonesKey = useMemo(
-    () => [...new Set(leads.filter((l) => l.saleDone && !l.frozen).map((l) => l.phone))].sort().join(","),
+  // Detect duplicates — numbers another member also holds (dispute flag).
+  // Keyed on the set of (non-frozen) phone numbers so it doesn't re-query on every notes keystroke.
+  const phonesKey = useMemo(
+    () => [...new Set(leads.filter((l) => !l.frozen).map((l) => l.phone))].sort().join(","),
     [leads],
   );
   useEffect(() => {
     if (!user) return;
-    const phones = soldPhonesKey ? soldPhonesKey.split(",") : [];
-    if (phones.length === 0) { setDuplicateLeadIds(new Set()); return; }
+    if (!phonesKey) { setDuplicateLeadIds(new Set()); return; }
     let cancelled = false;
     (async () => {
-      const dupPhones = new Set<string>();
-      await Promise.all(
-        phones.map(async (p) => {
-          const others = await findOtherHolders(p, user.uid);
-          if (others.some((o) => o.saleDone)) dupPhones.add(p);
-        }),
+      const map = await findMemberDuplicates(
+        leads.filter((l) => !l.frozen).map((l) => ({ id: l.id, phone: l.phone, frozen: l.frozen })),
+        user.uid,
       );
       if (cancelled) return;
-      setDuplicateLeadIds(new Set(
-        leads.filter((l) => l.saleDone && !l.frozen && dupPhones.has(l.phone)).map((l) => l.id),
-      ));
+      setDuplicateLeadIds(new Set(Object.keys(map)));
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [soldPhonesKey, user]);
+  }, [phonesKey, user]);
 
   // Filter by search + status
   const filtered = leads.filter((l) => {
@@ -464,6 +458,10 @@ export default function MyLeads() {
           className={`h-8 md:h-9 px-3 md:px-4 rounded-lg text-xs md:text-sm font-medium transition-colors ${viewTab === "sales" ? "bg-success/15 text-success border border-success/30" : "bg-card border border-border text-muted-foreground hover:bg-accent"}`}>
           Sales ({allSaleRows.length})
         </button>
+        <button onClick={() => setViewTab("duplicates")}
+          className={`h-8 md:h-9 px-3 md:px-4 rounded-lg text-xs md:text-sm font-medium transition-colors flex items-center gap-1.5 ${viewTab === "duplicates" ? "bg-destructive/15 text-destructive border border-destructive/30" : "bg-card border border-border text-muted-foreground hover:bg-accent"}`}>
+          <AlertTriangle size={13} /> Duplicates ({duplicateLeadIds.size})
+        </button>
       </div>
 
       {/* ─── LEADS TAB ─── */}
@@ -629,6 +627,42 @@ export default function MyLeads() {
         )}
         </div>
       )}
+
+      {/* ─── DUPLICATES TAB ─── */}
+      {viewTab === "duplicates" && (() => {
+        const dupLeads = leads.filter((l) => duplicateLeadIds.has(l.id));
+        return (
+          <div className="space-y-4">
+            <div className="flex items-start gap-1.5 rounded-md bg-destructive/10 border border-destructive/30 text-destructive text-xs p-2.5">
+              <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+              <span>These numbers are also held by another sales member. If you both record a sale, you'll be asked to upload proof (call-record image or note) so the admin can decide who made the sale.</span>
+            </div>
+            {dupLeads.length === 0 ? (
+              <div className="bg-card border border-border rounded-xl p-12 text-center">
+                <AlertTriangle size={32} className="mx-auto text-muted-foreground/30 mb-2" />
+                <p className="text-muted-foreground text-sm">No duplicate numbers — none of your numbers are held by another member.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {dupLeads.map((lead) => (
+                  <LeadCard
+                    key={lead.id}
+                    lead={lead}
+                    isDuplicate
+                    pastDayLabel={getLeadPastDayLabel(lead)}
+                    updateLead={updateLead}
+                    onDelete={lead.isCustomEntry ? () => deleteCustomLead(lead.id, lead.displayName, lead.phone) : undefined}
+                    expandedNotes={expandedNotes}
+                    setExpandedNotes={setExpandedNotes}
+                    expandedSale={expandedSale}
+                    setExpandedSale={setExpandedSale}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -726,7 +760,7 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
             </span>
           )}
           {isDuplicate && (
-            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-destructive/15 text-destructive border border-destructive/20 flex items-center gap-1" title="Another member also recorded a sale on this number">
+            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-destructive/15 text-destructive border border-destructive/20 flex items-center gap-1" title="Another member also holds this number">
               <AlertTriangle size={9} /> Duplicate
             </span>
           )}

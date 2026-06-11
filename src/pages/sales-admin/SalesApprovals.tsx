@@ -18,7 +18,7 @@ export default function SalesApprovals() {
   const [members, setMembers] = useState<AppUser[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"pending" | "verified" | "rejected">("pending");
+  const [tab, setTab] = useState<"pending" | "verified" | "rejected" | "duplicates">("pending");
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [bulkProcessing, setBulkProcessing] = useState(false);
@@ -369,7 +369,18 @@ export default function SalesApprovals() {
     if (!ts) return false;
     return format(new Date(ts * 1000), "dd/MM/yyyy") === dateStr;
   });
-  const displayItems = tab === "pending" ? pending : tab === "verified" ? verified : rejected;
+  // Duplicates: every sale item whose number was sold by 2+ different members (any status).
+  // Sorted by number so competing sales sit side by side, then oldest submission first.
+  const duplicates = allLeadItems
+    .filter((li) => getDuplicateOthers(li.lead).length > 0)
+    .sort((a, b) => {
+      const pa = normalizePhone(a.lead.phone);
+      const pb = normalizePhone(b.lead.phone);
+      if (pa !== pb) return pa < pb ? -1 : 1;
+      return ((a.item.submittedAt as any)?.seconds || 0) - ((b.item.submittedAt as any)?.seconds || 0);
+    });
+  const displayItems =
+    tab === "pending" ? pending : tab === "verified" ? verified : tab === "rejected" ? rejected : duplicates;
 
   const pendingKeys = pending.map((li) => makeKey(li.lead.id, li.itemIndex));
   const allPendingSelected = pendingKeys.length > 0 && pendingKeys.every((k) => selectedKeys.has(k));
@@ -415,6 +426,10 @@ export default function SalesApprovals() {
         <button onClick={() => setTab("rejected")}
           className={`h-8 md:h-9 px-3 md:px-4 rounded-lg text-xs md:text-sm font-medium transition-colors whitespace-nowrap ${tab === "rejected" ? "bg-destructive/15 text-destructive border border-destructive/30" : "bg-card border border-border text-muted-foreground hover:bg-accent"}`}>
           Rejected ({rejected.length})
+        </button>
+        <button onClick={() => setTab("duplicates")}
+          className={`h-8 md:h-9 px-3 md:px-4 rounded-lg text-xs md:text-sm font-medium transition-colors whitespace-nowrap flex items-center gap-1.5 ${tab === "duplicates" ? "bg-destructive/15 text-destructive border border-destructive/30" : "bg-card border border-border text-muted-foreground hover:bg-accent"}`}>
+          <AlertTriangle size={13} /> Duplicates ({duplicates.length})
         </button>
       </div>
 
@@ -473,7 +488,7 @@ export default function SalesApprovals() {
       {displayItems.length === 0 ? (
         <div className="bg-card border border-border rounded-xl p-12 text-center">
           <ShoppingBag size={32} className="mx-auto text-muted-foreground/30 mb-2" />
-          <p className="text-muted-foreground text-sm">No {tab} sales</p>
+          <p className="text-muted-foreground text-sm">{tab === "duplicates" ? "No duplicate sales — no number has been sold by more than one member" : `No ${tab} sales`}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -648,6 +663,40 @@ export default function SalesApprovals() {
                       className="w-8 md:w-9 h-8 md:h-9 rounded-lg bg-muted text-muted-foreground hover:text-destructive hover:bg-destructive/15 transition-colors flex items-center justify-center shrink-0">
                       <Trash2 size={14} />
                     </button>
+                  </div>
+                )}
+
+                {tab === "duplicates" && (
+                  <div className="space-y-2 pt-1">
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-muted-foreground">Status:</span>
+                      <span className={`font-medium px-2 py-0.5 rounded-full text-[10px] ${li.item.verificationStatus === "verified" ? "bg-success/15 text-success" : li.item.verificationStatus === "rejected" ? "bg-destructive/15 text-destructive" : "bg-warning/15 text-warning"}`}>
+                        {li.item.verificationStatus === "verified" ? "Verified ✓" : li.item.verificationStatus === "rejected" ? "Rejected ✗" : "Pending ⏳"}
+                      </span>
+                    </div>
+                    <div className="flex gap-1.5 md:gap-2">
+                      {li.item.verificationStatus !== "verified" ? (
+                        <button onClick={() => handleVerifyItem(li.lead.id, li.itemIndex)}
+                          className="flex-1 h-8 md:h-9 rounded-lg bg-success/15 text-success font-medium text-xs md:text-sm hover:bg-success/25 transition-colors flex items-center justify-center gap-1">
+                          <CheckCircle size={14} /> Approve this one
+                        </button>
+                      ) : (
+                        <button onClick={() => handleRevokeItem(li.lead.id, li.itemIndex)}
+                          className="flex-1 h-8 md:h-9 rounded-lg bg-warning/15 text-warning font-medium text-xs md:text-sm hover:bg-warning/25 transition-colors flex items-center justify-center gap-1">
+                          <RotateCcw size={14} /> Revoke
+                        </button>
+                      )}
+                      {li.item.verificationStatus !== "rejected" && (
+                        <button onClick={() => handleRejectItem(li.lead.id, li.itemIndex)}
+                          className="flex-1 h-8 md:h-9 rounded-lg bg-destructive/15 text-destructive font-medium text-xs md:text-sm hover:bg-destructive/25 transition-colors flex items-center justify-center gap-1">
+                          <XCircle size={14} /> Reject
+                        </button>
+                      )}
+                      <button onClick={() => handleDeleteItem(li.lead.id, li.itemIndex)}
+                        className="w-8 md:w-9 h-8 md:h-9 rounded-lg bg-muted text-muted-foreground hover:text-destructive hover:bg-destructive/15 transition-colors flex items-center justify-center shrink-0">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
