@@ -416,6 +416,14 @@ export default function MemberSalesHistory() {
                         </span>
                       </div>
                     )}
+                    {r.item.verificationStatus === "verified" && (r.item.verifiedAt as any)?.seconds && (
+                      <div className="col-span-2">
+                        <span className="text-muted-foreground">Approved:</span>{" "}
+                        <span className="text-success font-mono text-[10px]">
+                          {format(new Date((r.item.verifiedAt as any).seconds * 1000), "dd MMM yyyy, hh:mm a")}
+                        </span>
+                      </div>
+                    )}
                   </div>
                   {r.item.paymentScreenshotUrl && (
                     <a href={r.item.paymentScreenshotUrl} target="_blank" rel="noopener noreferrer"

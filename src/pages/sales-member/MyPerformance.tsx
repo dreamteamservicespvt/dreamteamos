@@ -302,6 +302,8 @@ export default function MyPerformance() {
                   <th className="p-3 text-xs text-muted-foreground font-medium">Package</th>
                   <th className="p-3 text-xs text-muted-foreground font-medium text-right">Amount</th>
                   <th className="p-3 text-xs text-muted-foreground font-medium">Status</th>
+                  <th className="p-3 text-xs text-muted-foreground font-medium">Submitted</th>
+                  <th className="p-3 text-xs text-muted-foreground font-medium">Approved</th>
                 </tr>
               </thead>
               <tbody>
@@ -325,6 +327,14 @@ export default function MyPerformance() {
                         }`}>
                           {item.verificationStatus === "verified" ? "Verified" : item.verificationStatus === "rejected" ? "Rejected" : "Pending"}
                         </span>
+                      </td>
+                      <td className="p-3 text-[10px] text-muted-foreground font-mono">
+                        {(item.submittedAt as any)?.seconds ? format(new Date((item.submittedAt as any).seconds * 1000), "dd MMM, hh:mm a") : "—"}
+                      </td>
+                      <td className="p-3 text-[10px] font-mono">
+                        {item.verificationStatus === "verified" && (item.verifiedAt as any)?.seconds
+                          ? <span className="text-success">{format(new Date((item.verifiedAt as any).seconds * 1000), "dd MMM, hh:mm a")}</span>
+                          : <span className="text-muted-foreground">—</span>}
                       </td>
                     </tr>
                   ))

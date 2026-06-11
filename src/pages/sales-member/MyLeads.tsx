@@ -8,6 +8,7 @@ import { useAuthStore } from "@/store/authStore";
 import { logActivity } from "@/services/activityLog";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import { claimNumber, applySaleFreeze, releaseLockForLead } from "@/services/numberLock";
+import { findOtherHolders } from "@/services/duplicateLeads";
 import { formatCurrency } from "@/utils/formatters";
 import { normalizePhone } from "@/utils/phone";
 import { format, subDays, startOfDay } from "date-fns";
@@ -18,7 +19,7 @@ import DashboardDayPicker from "@/components/dashboard/DayPicker";
 import NumberTimelineButton from "@/components/sales/NumberTimelineButton";
 import {
   Search, Phone, MessageCircle, StickyNote, ChevronDown, ChevronUp,
-  Loader2, Check, Upload, ExternalLink, Plus, Trash2, ShoppingBag, X, Lock,
+  Loader2, Check, Upload, ExternalLink, Plus, Trash2, ShoppingBag, X, Lock, AlertTriangle,
 } from "lucide-react";
 
 const STATUS_OPTIONS: { value: LeadStatus; label: string; color: string }[] = [
@@ -74,6 +75,11 @@ function getSaleDate(item: SaleDetail, lead: Lead): string | null {
   return null;
 }
 
+function fmtSaleTs(ts: any): string | null {
+  const s = ts?.seconds;
+  return s ? format(new Date(s * 1000), "dd MMM, hh:mm a") : null;
+}
+
 function getDayLabel(date: Date): string {
   const today = startOfDay(new Date());
   const target = startOfDay(date);
@@ -102,6 +108,7 @@ export default function MyLeads() {
   const [expandedNotes, setExpandedNotes] = useState<string | null>(null);
   const [expandedSale, setExpandedSale] = useState<string | null>(null);
   const [showCustomModal, setShowCustomModal] = useState(false);
+  const [duplicateLeadIds, setDuplicateLeadIds] = useState<Set<string>>(new Set());
   const pendingDeletesRef = useRef<Map<string, { timeoutId: ReturnType<typeof setTimeout>; intervalId: ReturnType<typeof setInterval> }>>(new Map());
 
   // Realtime listener
@@ -123,6 +130,34 @@ export default function MyLeads() {
     });
     return unsub;
   }, [user]);
+
+  // Detect duplicate sales — numbers another member has also sold (dispute flag).
+  // Keyed on the set of sold phone numbers so it doesn't re-query on every notes keystroke.
+  const soldPhonesKey = useMemo(
+    () => [...new Set(leads.filter((l) => l.saleDone && !l.frozen).map((l) => l.phone))].sort().join(","),
+    [leads],
+  );
+  useEffect(() => {
+    if (!user) return;
+    const phones = soldPhonesKey ? soldPhonesKey.split(",") : [];
+    if (phones.length === 0) { setDuplicateLeadIds(new Set()); return; }
+    let cancelled = false;
+    (async () => {
+      const dupPhones = new Set<string>();
+      await Promise.all(
+        phones.map(async (p) => {
+          const others = await findOtherHolders(p, user.uid);
+          if (others.some((o) => o.saleDone)) dupPhones.add(p);
+        }),
+      );
+      if (cancelled) return;
+      setDuplicateLeadIds(new Set(
+        leads.filter((l) => l.saleDone && !l.frozen && dupPhones.has(l.phone)).map((l) => l.id),
+      ));
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [soldPhonesKey, user]);
 
   // Filter by search + status
   const filtered = leads.filter((l) => {
@@ -490,6 +525,7 @@ export default function MyLeads() {
                 <LeadCard
                   key={lead.id}
                   lead={lead}
+                  isDuplicate={duplicateLeadIds.has(lead.id)}
                   pastDayLabel={getLeadPastDayLabel(lead)}
                   updateLead={updateLead}
                   onDelete={lead.isCustomEntry ? () => deleteCustomLead(lead.id, lead.displayName, lead.phone) : undefined}
@@ -574,6 +610,18 @@ export default function MyLeads() {
                     <span className="text-muted-foreground">Lead Status:</span>{" "}
                     <span className="text-foreground font-medium capitalize">{r.lead.status?.replace(/_/g, " ")}</span>
                   </div>
+                  {fmtSaleTs(r.item.submittedAt) && (
+                    <div className="col-span-2">
+                      <span className="text-muted-foreground">Submitted:</span>{" "}
+                      <span className="text-foreground font-mono text-[10px]">{fmtSaleTs(r.item.submittedAt)}</span>
+                    </div>
+                  )}
+                  {r.item.verificationStatus === "verified" && fmtSaleTs(r.item.verifiedAt) && (
+                    <div className="col-span-2">
+                      <span className="text-muted-foreground">Approved:</span>{" "}
+                      <span className="text-success font-mono text-[10px]">{fmtSaleTs(r.item.verifiedAt)}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -589,6 +637,7 @@ export default function MyLeads() {
 
 interface LeadCardProps {
   lead: Lead;
+  isDuplicate?: boolean;
   pastDayLabel: string | null;
   updateLead: (id: string, data: Record<string, any>) => Promise<void>;
   onDelete?: () => void;
@@ -598,7 +647,7 @@ interface LeadCardProps {
   setExpandedSale: (id: string | null) => void;
 }
 
-function LeadCard({ lead, pastDayLabel, updateLead, onDelete, expandedNotes, setExpandedNotes, expandedSale, setExpandedSale }: LeadCardProps) {
+function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expandedNotes, setExpandedNotes, expandedSale, setExpandedSale }: LeadCardProps) {
   const { toast } = useToast();
   const currentUser = useAuthStore((s) => s.user);
   const [notes, setNotes] = useState(lead.notes || "");
@@ -674,6 +723,11 @@ function LeadCard({ lead, pastDayLabel, updateLead, onDelete, expandedNotes, set
           {frozen && (
             <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-warning/15 text-warning border border-warning/20 flex items-center gap-1">
               <Lock size={9} /> Taken over{lead.takenOverBy ? ` by ${lead.takenOverBy}` : ""}
+            </span>
+          )}
+          {isDuplicate && (
+            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-destructive/15 text-destructive border border-destructive/20 flex items-center gap-1" title="Another member also recorded a sale on this number">
+              <AlertTriangle size={9} /> Duplicate
             </span>
           )}
           {lead.isCustomEntry && (
@@ -835,6 +889,22 @@ function LeadCard({ lead, pastDayLabel, updateLead, onDelete, expandedNotes, set
                 <ExternalLink size={10} /> View Payment Screenshot
               </a>
             )}
+            {item.proofImageUrl && (
+              <a
+                href={item.proofImageUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-[10px] text-destructive hover:underline ml-2"
+              >
+                <ExternalLink size={10} /> Sale proof
+              </a>
+            )}
+            <div className="flex flex-col gap-0.5 text-[9px] text-muted-foreground font-mono pt-0.5">
+              {fmtSaleTs(item.submittedAt) && <span>Submitted: {fmtSaleTs(item.submittedAt)}</span>}
+              {item.verificationStatus === "verified" && fmtSaleTs(item.verifiedAt) && (
+                <span className="text-success">Approved: {fmtSaleTs(item.verifiedAt)}</span>
+              )}
+            </div>
           </div>
         ))}
 
@@ -996,11 +1066,32 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [freezeDays, setFreezeDays] = useState(1);
+  // Duplicate-sale dispute: another member already sold this number → proof required.
+  const [isDuplicate, setIsDuplicate] = useState(false);
+  const [dupChecking, setDupChecking] = useState(true);
+  const [proofUrl, setProofUrl] = useState("");
+  const [proofNote, setProofNote] = useState("");
+  const [proofUploading, setProofUploading] = useState(false);
 
   const packages = PACKAGES[category] || [];
   const selectedPkg = packages.find((p) => p.label === packageKey);
   const amount = selectedPkg?.amount || customAmount;
   const needsCustomAmount = packages.length === 0 || (selectedPkg && selectedPkg.amount === 0);
+  const hasProof = !!proofUrl || !!proofNote.trim();
+
+  // Check whether another member has already sold this number (duplicate dispute).
+  useEffect(() => {
+    let cancelled = false;
+    setDupChecking(true);
+    (async () => {
+      if (!saleFormUser) { setDupChecking(false); return; }
+      const others = await findOtherHolders(lead.phone, saleFormUser.uid);
+      if (cancelled) return;
+      setIsDuplicate(others.some((o) => o.saleDone));
+      setDupChecking(false);
+    })();
+    return () => { cancelled = true; };
+  }, [lead.phone, saleFormUser]);
 
   const handleUpload = async (file: File) => {
     setUploading(true);
@@ -1015,9 +1106,26 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
     }
   };
 
+  const handleProofUpload = async (file: File) => {
+    setProofUploading(true);
+    try {
+      const url = await uploadToCloudinary(file);
+      setProofUrl(url);
+      toast({ title: "Uploaded", description: "Proof image uploaded." });
+    } catch {
+      toast({ title: "Error", description: "Upload failed.", variant: "destructive" });
+    } finally {
+      setProofUploading(false);
+    }
+  };
+
   const handleSave = async () => {
     if (amount <= 0) {
       toast({ title: "Error", description: "Please enter a valid amount.", variant: "destructive" });
+      return;
+    }
+    if (isDuplicate && !hasProof) {
+      toast({ title: "Proof required", description: "This number was already sold by another member. Upload a call-record image or write a note as proof.", variant: "destructive" });
       return;
     }
     setSaving(true);
@@ -1029,6 +1137,9 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
       verificationStatus: "pending",
       paymentScreenshotUrl: screenshotUrl || null,
       submittedAt: Timestamp.now(),
+      disputed: isDuplicate,
+      proofImageUrl: proofUrl || null,
+      proofNote: proofNote.trim() || null,
     };
     // Append to existing saleItems array
     const existingItems = lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
@@ -1138,6 +1249,39 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
         <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f); }} />
       </label>
 
+      {/* Duplicate dispute — proof required (another member already sold this number) */}
+      {isDuplicate && (
+        <div className="space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-2.5">
+          <div className="flex items-start gap-1.5 text-xs text-destructive">
+            <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+            <span>This number was already sold by another member. Upload a call-record image <b>or</b> write a note as proof of who made the sale.</span>
+          </div>
+          <label className="block cursor-pointer">
+            <div className="border border-dashed border-destructive/40 rounded-md p-2.5 text-center hover:border-destructive/60 transition-colors">
+              {proofUploading ? (
+                <Loader2 size={16} className="animate-spin text-destructive mx-auto" />
+              ) : proofUrl ? (
+                <div className="flex items-center gap-2 justify-center text-xs text-success">
+                  <Check size={14} /> Proof image uploaded
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 justify-center text-xs text-muted-foreground">
+                  <Upload size={14} /> Upload call-record / proof image
+                </div>
+              )}
+            </div>
+            <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleProofUpload(f); }} />
+          </label>
+          <textarea
+            value={proofNote}
+            onChange={(e) => setProofNote(e.target.value)}
+            maxLength={500}
+            placeholder="…or write a proof note (e.g. called at 3pm, spoke to owner, paid via GPay)"
+            className="w-full h-16 p-2 rounded-md bg-card border border-border text-foreground text-xs outline-none focus:border-primary resize-none"
+          />
+        </div>
+      )}
+
       {/* Freeze duration — protect this sold client from other members */}
       <div className="flex items-center justify-between gap-2 bg-success/5 border border-success/20 rounded-md px-3 h-9">
         <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -1156,11 +1300,11 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
 
       <button
         onClick={handleSave}
-        disabled={saving || amount <= 0}
+        disabled={saving || amount <= 0 || dupChecking || (isDuplicate && !hasProof)}
         className="w-full h-9 rounded-lg bg-primary text-primary-foreground font-display font-semibold text-xs hover:bg-primary/90 disabled:opacity-40 transition-colors flex items-center justify-center gap-2"
       >
         {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-        {saving ? "Saving..." : `Add Sale — ${formatCurrency(amount)}`}
+        {saving ? "Saving..." : dupChecking ? "Checking…" : isDuplicate && !hasProof ? "Add proof to continue" : `Add Sale — ${formatCurrency(amount)}`}
       </button>
     </div>
   );

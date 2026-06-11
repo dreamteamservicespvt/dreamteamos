@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { collection, onSnapshot, updateDoc, doc, serverTimestamp } from "firebase/firestore";
+import { collection, onSnapshot, updateDoc, doc, serverTimestamp, Timestamp } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import { logActivity } from "@/services/activityLog";
@@ -7,8 +7,8 @@ import { useAuthStore } from "@/store/authStore";
 import { formatCurrency } from "@/utils/formatters";
 import { format } from "date-fns";
 import type { AppUser, Lead, SaleDetail } from "@/types";
-import { CheckCircle, XCircle, ShoppingBag, ExternalLink, RotateCcw, Trash2, CheckSquare, Square, Phone, MessageCircle } from "lucide-react";
-import { formatPhoneDisplay, getCallUrl, getWhatsAppUrl } from "@/utils/phone";
+import { CheckCircle, XCircle, ShoppingBag, ExternalLink, RotateCcw, Trash2, CheckSquare, Square, Phone, MessageCircle, AlertTriangle, FileText } from "lucide-react";
+import { formatPhoneDisplay, getCallUrl, getWhatsAppUrl, normalizePhone } from "@/utils/phone";
 import { useToast } from "@/hooks/use-toast";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
 
@@ -61,7 +61,7 @@ export default function SalesApprovals() {
     try {
       const items = [...getAllItems(lead)];
       const oldItem = items[itemIndex];
-      items[itemIndex] = { ...oldItem, verificationStatus: "verified" };
+      items[itemIndex] = { ...oldItem, verificationStatus: "verified", verifiedAt: Timestamp.now() };
       await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
       await sendNotification({
         userId: lead.assignedTo,
@@ -97,7 +97,7 @@ export default function SalesApprovals() {
     try {
       const items = [...getAllItems(lead)];
       const oldItem = items[itemIndex];
-      items[itemIndex] = { ...oldItem, verificationStatus: "rejected" };
+      items[itemIndex] = { ...oldItem, verificationStatus: "rejected", verifiedAt: null };
       await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
       await sendNotification({
         userId: lead.assignedTo,
@@ -133,7 +133,7 @@ export default function SalesApprovals() {
     try {
       const items = [...getAllItems(lead)];
       const oldItem = items[itemIndex];
-      items[itemIndex] = { ...oldItem, verificationStatus: "pending" };
+      items[itemIndex] = { ...oldItem, verificationStatus: "pending", verifiedAt: null };
       await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
       await sendNotification({
         userId: lead.assignedTo,
@@ -235,8 +235,9 @@ export default function SalesApprovals() {
         const lead = leads.find((l) => l.id === leadId)!;
         const items = [...getAllItems(lead)];
         const affected = byLead[leadId];
+        const verifiedTs = Timestamp.now();
         affected.forEach(({ itemIndex }) => {
-          items[itemIndex] = { ...items[itemIndex], verificationStatus: "verified" };
+          items[itemIndex] = { ...items[itemIndex], verificationStatus: "verified", verifiedAt: verifiedTs };
         });
         await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
         // Notify member once per lead
@@ -292,7 +293,7 @@ export default function SalesApprovals() {
         const items = [...getAllItems(lead)];
         const affected = byLead[leadId];
         affected.forEach(({ itemIndex }) => {
-          items[itemIndex] = { ...items[itemIndex], verificationStatus: "rejected" };
+          items[itemIndex] = { ...items[itemIndex], verificationStatus: "rejected", verifiedAt: null };
         });
         await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
         await sendNotification({
@@ -339,6 +340,20 @@ export default function SalesApprovals() {
   const allLeadItems: LeadItem[] = leads.flatMap((lead) =>
     getAllItems(lead).map((item, idx) => ({ lead, item, itemIndex: idx }))
   );
+
+  // Duplicate detection: a number sold by 2+ different members → dispute (unclear who made the sale).
+  const phoneSellers = new Map<string, Map<string, string>>(); // normPhone -> (memberId -> memberName)
+  leads.forEach((l) => {
+    if (!l.saleDone) return;
+    const np = normalizePhone(l.phone);
+    if (!phoneSellers.has(np)) phoneSellers.set(np, new Map());
+    phoneSellers.get(np)!.set(l.assignedTo, getMemberName(l.assignedTo));
+  });
+  const getDuplicateOthers = (lead: Lead): string[] => {
+    const sellers = phoneSellers.get(normalizePhone(lead.phone));
+    if (!sellers || sellers.size < 2) return [];
+    return [...sellers.entries()].filter(([id]) => id !== lead.assignedTo).map(([, name]) => name);
+  };
   const pending = allLeadItems.filter((li) => li.item.verificationStatus === "pending");
   const verified = allLeadItems.filter((li) => {
     if (li.item.verificationStatus !== "verified") return false;
@@ -465,13 +480,20 @@ export default function SalesApprovals() {
           {displayItems.map((li, key) => {
             const itemKey = makeKey(li.lead.id, li.itemIndex);
             const isSelected = selectedKeys.has(itemKey);
+            const dupOthers = getDuplicateOthers(li.lead);
             return (
               <div
                 key={`${li.lead.id}-${li.itemIndex}-${key}`}
                 className={`bg-card border rounded-xl p-3 md:p-5 space-y-3 transition-colors ${
-                  tab === "pending" && isSelected ? "border-primary/50 bg-primary/5" : "border-border"
+                  dupOthers.length > 0 ? "border-destructive/50" : tab === "pending" && isSelected ? "border-primary/50 bg-primary/5" : "border-border"
                 }`}
               >
+                {dupOthers.length > 0 && (
+                  <div className="flex items-start gap-1.5 rounded-md bg-destructive/10 border border-destructive/30 text-destructive text-xs p-2">
+                    <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                    <span><b>Duplicate sale.</b> This number was also sold by {dupOthers.join(", ")}. Check both members' proof before deciding who made the sale.</span>
+                  </div>
+                )}
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-start gap-2 min-w-0">
                     {/* Checkbox for pending items */}
@@ -534,7 +556,42 @@ export default function SalesApprovals() {
                       <span className="text-foreground">{li.item.customDescription}</span>
                     </div>
                   )}
+                  {(li.item.submittedAt as any)?.seconds && (
+                    <div className="col-span-2">
+                      <span className="text-muted-foreground">Submitted:</span>{" "}
+                      <span className="text-foreground font-mono text-[10px]">
+                        {format(new Date((li.item.submittedAt as any).seconds * 1000), "dd MMM yyyy, hh:mm a")}
+                      </span>
+                    </div>
+                  )}
+                  {li.item.verificationStatus === "verified" && (li.item.verifiedAt as any)?.seconds && (
+                    <div className="col-span-2">
+                      <span className="text-muted-foreground">Approved:</span>{" "}
+                      <span className="text-success font-mono text-[10px]">
+                        {format(new Date((li.item.verifiedAt as any).seconds * 1000), "dd MMM yyyy, hh:mm a")}
+                      </span>
+                    </div>
+                  )}
                 </div>
+
+                {/* Duplicate-dispute proof (call record image / note) */}
+                {(li.item.proofImageUrl || li.item.proofNote) && (
+                  <div className="rounded-md bg-elevated/40 border border-border p-2 space-y-1.5">
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Sale proof</p>
+                    {li.item.proofImageUrl && (
+                      <a href={li.item.proofImageUrl} target="_blank" rel="noopener noreferrer"
+                        className="text-xs text-info flex items-center gap-1 hover:underline">
+                        <ExternalLink size={12} /> View call-record / proof image
+                      </a>
+                    )}
+                    {li.item.proofNote && (
+                      <p className="text-xs text-foreground flex items-start gap-1">
+                        <FileText size={12} className="mt-0.5 shrink-0 text-muted-foreground" />
+                        <span className="whitespace-pre-wrap break-words">{li.item.proofNote}</span>
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {li.item.paymentScreenshotUrl && (
                   <a href={li.item.paymentScreenshotUrl} target="_blank" rel="noopener noreferrer"

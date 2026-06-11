@@ -924,6 +924,22 @@ export default function MemberLeadsDetail() {
                       <span className="text-muted-foreground">Lead Status:</span>{" "}
                       <span className="text-foreground font-medium capitalize">{r.lead.status?.replace(/_/g, " ")}</span>
                     </div>
+                    {(r.item.submittedAt as any)?.seconds && (
+                      <div className="col-span-2">
+                        <span className="text-muted-foreground">Submitted:</span>{" "}
+                        <span className="text-foreground font-mono text-[10px]">
+                          {format(new Date((r.item.submittedAt as any).seconds * 1000), "dd MMM yyyy, hh:mm a")}
+                        </span>
+                      </div>
+                    )}
+                    {r.item.verificationStatus === "verified" && (r.item.verifiedAt as any)?.seconds && (
+                      <div className="col-span-2">
+                        <span className="text-muted-foreground">Approved:</span>{" "}
+                        <span className="text-success font-mono text-[10px]">
+                          {format(new Date((r.item.verifiedAt as any).seconds * 1000), "dd MMM yyyy, hh:mm a")}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

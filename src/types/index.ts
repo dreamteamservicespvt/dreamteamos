@@ -124,7 +124,12 @@ export interface SaleDetail {
   amount: number;
   verificationStatus: "pending" | "verified" | "rejected";
   paymentScreenshotUrl?: string | null;
-  submittedAt?: any;
+  submittedAt?: any;        // when the member recorded the sale
+  verifiedAt?: any;         // when the admin approved it
+  // Duplicate-sale dispute proof — required when another member already sold this number
+  disputed?: boolean;       // recorded on a number already sold by another member
+  proofImageUrl?: string | null;  // call-record / proof screenshot
+  proofNote?: string | null;      // text-note proof
 }
 
 // Schedule Numbers Pool System
