@@ -110,14 +110,9 @@ export default function Login() {
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-primary/10" />
 
         <div className="relative z-10 text-center px-12">
-          <h1 className="font-display text-6xl font-800 tracking-tight mb-4">
-            <span className="bg-gradient-to-r from-primary to-warning bg-clip-text text-transparent">
-              DTS
-            </span>
-          </h1>
-          <p className="font-display text-xl font-semibold text-foreground/80 mb-2">
-            Dream Team Services
-          </p>
+          <div className="inline-block rounded-2xl bg-black px-8 py-6 shadow-2xl shadow-black/40 ring-1 ring-white/10 mb-5">
+            <img src="/dts-logo-full.png" alt="DTS — Dream Team Services" className="w-72 max-w-full h-auto" />
+          </div>
           <p className="text-muted-foreground text-sm">Command Center</p>
 
           <div className="mt-16 flex items-center justify-center gap-2 text-muted-foreground/50 text-xs">
@@ -131,10 +126,10 @@ export default function Login() {
       <div className="flex-1 flex items-center justify-center p-8 bg-card">
         <div className="w-full max-w-[420px]">
           {/* Mobile logo */}
-          <div className="lg:hidden text-center mb-10">
-            <h1 className="font-display text-4xl font-800 bg-gradient-to-r from-primary to-warning bg-clip-text text-transparent">
-              DTS
-            </h1>
+          <div className="lg:hidden flex justify-center mb-10">
+            <div className="rounded-xl bg-black px-5 py-4 shadow-xl shadow-black/30 ring-1 ring-white/10">
+              <img src="/dts-logo-full.png" alt="DTS — Dream Team Services" className="w-48 h-auto" />
+            </div>
           </div>
 
           <h2 className="font-display text-3xl font-bold text-foreground mb-2">Welcome Back</h2>

@@ -5,7 +5,7 @@ import { auth, db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { useSidebarStore } from "@/store/sidebarStore";
 import { getNavItems, getRoleLabel, getRoleColor } from "@/utils/roleHelpers";
-import { ChevronLeft, ChevronRight, LogOut, X } from "lucide-react";
+import { ChevronLeft, LogOut, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { deleteFCMToken } from "@/services/fcm";
@@ -87,7 +87,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
             >
               <div className="h-14 flex items-center px-4 border-b border-border justify-between shrink-0">
-                <span className="font-display font-bold text-xl bg-gradient-to-r from-primary to-warning bg-clip-text text-transparent">DTS</span>
+                <img src="/dts-logo-wide.png" alt="DTS — Dream Team Services" className="h-5 w-auto rounded-sm" />
                 <button onClick={onMobileClose} className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
                   <X size={18} />
                 </button>
@@ -136,14 +136,21 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
       <div className="h-16 flex items-center px-4 border-b border-border justify-between">
         <AnimatePresence mode="wait">
           {!collapsed ? (
-            <motion.span key="full" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="font-display font-bold text-xl bg-gradient-to-r from-primary to-warning bg-clip-text text-transparent">DTS</motion.span>
+            <motion.div key="full" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <img src="/dts-logo-wide.png" alt="DTS — Dream Team Services" className="h-5 w-auto rounded-sm" />
+            </motion.div>
           ) : (
-            <motion.span key="icon" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="font-display font-bold text-lg text-primary mx-auto">D</motion.span>
+            <motion.button key="icon" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={toggle} title="Expand sidebar" className="mx-auto rounded-lg transition-transform hover:scale-105">
+              <img src="/dts-logo-mark.png" alt="DTS" className="w-9 h-9 rounded-lg ring-1 ring-border shadow-sm" />
+            </motion.button>
           )}
         </AnimatePresence>
+        {!collapsed && (
         <button onClick={toggle} className="w-7 h-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
-          {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          <ChevronLeft size={16} />
         </button>
+        )}
       </div>
       <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto">
         {navItems.map((item) => {

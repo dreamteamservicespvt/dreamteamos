@@ -471,7 +471,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
             <ArrowLeft className="w-4 h-4" /><span className="hidden sm:inline">Back</span>
           </button>
           <div className="flex items-center gap-2.5 min-w-0">
-            <img src="/dts-logo.png" alt="DTS — Dream Team Services"
+            <img src="/dts-logo-mark.png" alt="DTS — Dream Team Services"
               className="h-8 sm:h-9 w-8 sm:w-9 rounded-xl object-cover ring-1 ring-white/10 shadow-lg shrink-0" />
             <div className="min-w-0 leading-tight">
               <h1 className={cn("text-base sm:text-lg font-extrabold tracking-tight", BRAND_TEXT)}>AdGen.ai</h1>
