@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { collection, getDocs, addDoc, updateDoc, doc, serverTimestamp, deleteDoc, onSnapshot } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
+import { adminAssignNumber, transferLockOwnership } from "@/services/numberLock";
 import { useAuthStore } from "@/store/authStore";
 import { normalizePhone, formatPhoneDisplay, getWhatsAppUrl, getCallUrl } from "@/utils/phone";
 import { formatCurrency } from "@/utils/formatters";
@@ -119,10 +120,12 @@ export default function MemberLeadsDetail() {
   const [schedNumbers, setSchedNumbers] = useState<string[]>([]);
   const [creatingPool, setCreatingPool] = useState(false);
 
-  // Multi-select delete
+  // Multi-select delete / reassign
   const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
+  const [reassignTarget, setReassignTarget] = useState("");
+  const [bulkReassigning, setBulkReassigning] = useState(false);
 
   // Auto-refocus input after queue changes (React re-render safe)
   useEffect(() => {
@@ -257,27 +260,23 @@ export default function MemberLeadsDetail() {
     return () => unsubs.forEach((u) => u());
   }, [memberId, currentUser?.uid]);
 
-  // Filter leads by search + status
-  const filtered = leads.filter((l) => {
-    if (statusFilter !== "all") {
-      if (statusFilter === "sale_done") {
-        if (!l.saleDone) return false;
-      } else if (statusFilter === "verification_pending") {
-        const items = l.saleItems || (l.saleDetails ? [l.saleDetails] : []);
-        if (!items.some((item) => item.verificationStatus === "pending")) return false;
-      } else if (statusFilter === "verified_sales") {
-        const items = l.saleItems || (l.saleDetails ? [l.saleDetails] : []);
-        if (!items.some((item) => item.verificationStatus === "verified")) return false;
-      } else if (l.status !== statusFilter) {
-        return false;
-      }
-    }
-    if (search) {
-      const q = search.toLowerCase();
-      return l.phone.includes(q) || l.displayName?.toLowerCase().includes(q) || l.notes?.toLowerCase().includes(q) || l.realName?.toLowerCase().includes(q);
-    }
-    return true;
-  });
+  // Search and status filters kept separate so the dropdown counts can ignore the
+  // selected status (otherwise picking a status zeroes every other count).
+  const matchesSearch = (l: Lead) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return l.phone.includes(q) || l.displayName?.toLowerCase().includes(q) || l.notes?.toLowerCase().includes(q) || l.realName?.toLowerCase().includes(q);
+  };
+  const matchesStatus = (l: Lead) => {
+    if (statusFilter === "all") return true;
+    const items = l.saleItems || (l.saleDetails ? [l.saleDetails] : []);
+    if (statusFilter === "sale_done") return !!l.saleDone;
+    if (statusFilter === "verification_pending") return items.some((item) => item.verificationStatus === "pending");
+    if (statusFilter === "verified_sales") return items.some((item) => item.verificationStatus === "verified");
+    return l.status === statusFilter;
+  };
+  const searchFiltered = leads.filter(matchesSearch);
+  const filtered = searchFiltered.filter(matchesStatus);
 
   // Last 5 days
   const recentDays = useMemo(() => {
@@ -327,8 +326,6 @@ export default function MemberLeadsDetail() {
     return groups;
   };
 
-  const groupedLeads = groupLeadsByDate(filtered);
-
   // Calendar date indicators — performance per day
   const dateIndicators = useMemo(() => {
     const indicators: Record<string, "good" | "average" | "bad"> = {};
@@ -345,17 +342,21 @@ export default function MemberLeadsDetail() {
     return indicators;
   }, [leads]);
 
-  // Get leads for the currently selected day filter
-  const activeDayLeads = selectedDate
-    ? (groupedLeads[format(selectedDate, "yyyy-MM-dd")] || [])
-    : dayFilter === "all"
-      ? filtered
-      : (groupedLeads[recentDays[parseInt(dayFilter)]?.dateStr] || []);
+  // Apply the active day window to any list — used for both display and (status-independent) counts
+  const applyDayWindow = (src: Lead[]): Lead[] => {
+    const groups = groupLeadsByDate(src);
+    if (selectedDate) return groups[format(selectedDate, "yyyy-MM-dd")] || [];
+    if (dayFilter === "all") return src;
+    return groups[recentDays[parseInt(dayFilter)]?.dateStr] || [];
+  };
 
-  // Stats from currently visible leads (day-based)
-  const calledLeads = activeDayLeads.filter((l) => l.status !== "not_called").length;
-  const saleDoneLeads = activeDayLeads.filter((l) => l.saleDone).length;
-  const activeSaleRows: SaleRow[] = activeDayLeads.flatMap((lead) => {
+  const activeDayLeads = applyDayWindow(filtered);           // displayed list
+  const dayWindowLeads = applyDayWindow(searchFiltered);     // counts/stats — ignores the status filter
+
+  // Stats from the day window (independent of the status filter)
+  const calledLeads = dayWindowLeads.filter((l) => l.status !== "not_called").length;
+  const saleDoneLeads = dayWindowLeads.filter((l) => l.saleDone).length;
+  const activeSaleRows: SaleRow[] = dayWindowLeads.flatMap((lead) => {
     const items = lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
     return items.map((item, idx) => ({ lead, item, itemIndex: idx }));
   });
@@ -363,15 +364,16 @@ export default function MemberLeadsDetail() {
   const verified = activeSaleRows.filter((r) => r.item.verificationStatus === "verified");
   const totalRevenue = verified.reduce((s, r) => s + (r.item.amount || 0), 0);
 
-  // Status counts for dropdown
+  // Status counts for dropdown — from the day window WITHOUT the status filter applied
   const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: activeDayLeads.length };
-    STATUS_OPTIONS.forEach((s) => { counts[s.value] = activeDayLeads.filter((l) => l.status === s.value).length; });
+    const counts: Record<string, number> = { all: dayWindowLeads.length };
+    STATUS_OPTIONS.forEach((s) => { counts[s.value] = dayWindowLeads.filter((l) => l.status === s.value).length; });
     counts["verification_pending"] = activeSaleRows.filter((r) => r.item.verificationStatus === "pending").length;
     counts["verified_sales"] = activeSaleRows.filter((r) => r.item.verificationStatus === "verified").length;
-    counts["sale_done"] = activeDayLeads.filter((l) => l.saleDone).length;
+    counts["sale_done"] = dayWindowLeads.filter((l) => l.saleDone).length;
     return counts;
-  }, [activeDayLeads, activeSaleRows]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leads, search, selectedDate, dayFilter, recentDays]);
 
   // Handlers
   const handleBulkAdd = async (e: React.FormEvent) => {
@@ -383,35 +385,56 @@ export default function MemberLeadsDetail() {
     setAdding(true);
     try {
       const existingCount = leads.length;
+      let added = 0;
+      let takenOver = 0;
+      const skipped: string[] = [];
 
+      // Each number goes through the global number-lock, so a number already held by another
+      // member inside its validity window (or sale-frozen) is refused instead of duplicated.
       for (let i = 0; i < numberQueue.length; i++) {
         const phone = normalizePhone(numberQueue[i]);
         const displayName = `C${existingCount + i + 1}`;
-        await addDoc(collection(db, "leads"), {
-          assignedTo: memberId,
-          assignedBy: currentUser?.uid || "",
-          phone,
-          displayName,
-          status: "not_called",
-          notes: "",
-          saleDone: false,
-          lastUpdated: serverTimestamp(),
-          createdAt: serverTimestamp(),
-        });
-
-        await sendNotification({
-          userId: memberId,
-          type: "lead_assigned",
-          title: "New Lead Assigned",
-          message: `You have a new lead: ${displayName}`,
-        });
+        try {
+          const result = await adminAssignNumber({
+            admin: { uid: currentUser?.uid || "", name: currentUser?.name || "Admin" },
+            member: { uid: memberId, name: member?.name || "Member" },
+            phone,
+            displayName,
+          });
+          if (result.kind === "created" || result.kind === "takeover") {
+            added++;
+            if (result.kind === "takeover") takenOver++;
+            await sendNotification({
+              userId: memberId,
+              type: "lead_assigned",
+              title: "New Lead Assigned",
+              message: `You have a new lead: ${displayName}`,
+            });
+          } else if (result.kind === "reserved") {
+            skipped.push(`${numberQueue[i]} (with ${result.ownerName} until ${format(result.until, "dd MMM, h:mm a")})`);
+          } else if (result.kind === "sale_frozen") {
+            skipped.push(`${numberQueue[i]} (sold by ${result.saleByName}, frozen until ${format(result.until, "dd MMM")})`);
+          } else {
+            skipped.push(`${numberQueue[i]} (already with this member)`);
+          }
+        } catch {
+          skipped.push(`${numberQueue[i]} (failed)`);
+        }
       }
 
       setNumberQueue([]);
       setNumberInput("");
       setBulkText("");
       setShowAdd(false);
-      toast({ title: "Leads Added", description: `${numberQueue.length} leads assigned.` });
+      const parts: string[] = [];
+      if (added > 0) parts.push(`${added} assigned${takenOver > 0 ? ` (${takenOver} taken over after validity expiry)` : ""}`);
+      if (skipped.length > 0) parts.push(`${skipped.length} skipped: ${skipped.slice(0, 3).join("; ")}${skipped.length > 3 ? "…" : ""}`);
+      toast({
+        title: added > 0 ? "Leads Added" : "Nothing added",
+        description: parts.join(" · ") || "No numbers processed.",
+        variant: added > 0 ? undefined : "destructive",
+        duration: skipped.length > 0 ? 9000 : undefined,
+      });
     } catch {
       toast({ title: "Error", description: "Failed to add leads.", variant: "destructive" });
     } finally {
@@ -478,9 +501,65 @@ export default function MemberLeadsDetail() {
 
   const handleReassign = async (leadId: string, newMemberId: string) => {
     try {
+      const target = members.find((m) => m.uid === newMemberId);
+      const lead = leads.find((l) => l.id === leadId);
       await updateDoc(doc(db, "leads", leadId), { assignedTo: newMemberId, lastUpdated: serverTimestamp() });
+      // Keep the number-lock pointing at the new holder so validity checks stay correct.
+      if (lead?.phone && target) {
+        try {
+          await transferLockOwnership({ phone: lead.phone, leadId, newOwner: { uid: target.uid, name: target.name } });
+        } catch { /* best-effort */ }
+      }
     } catch {
       toast({ title: "Error", description: "Failed to reassign.", variant: "destructive" });
+    }
+  };
+
+  // Quick-select every not-called lead in the current day window (date filter already applied)
+  const selectNotCalled = () => {
+    const ids = activeDayLeads.filter((l) => l.status === "not_called").map((l) => l.id);
+    setSelectedLeads(new Set(ids));
+    if (ids.length === 0) {
+      toast({ title: "No not-called leads", description: "There are no not-called leads in the current view." });
+    }
+  };
+
+  const handleBulkReassign = async () => {
+    if (selectedLeads.size === 0 || !reassignTarget) return;
+    const target = members.find((m) => m.uid === reassignTarget);
+    if (!target) return;
+    const { confirmed } = await confirm({
+      title: "Reassign Selected Leads",
+      description: `Move ${selectedLeads.size} lead${selectedLeads.size > 1 ? "s" : ""} from ${member?.name || "this member"} to ${target.name}?`,
+      confirmText: `Reassign ${selectedLeads.size}`,
+    });
+    if (!confirmed) return;
+    setBulkReassigning(true);
+    try {
+      const ids = Array.from(selectedLeads);
+      await Promise.all(ids.map(async (id) => {
+        const lead = leads.find((l) => l.id === id);
+        await updateDoc(doc(db, "leads", id), { assignedTo: reassignTarget, lastUpdated: serverTimestamp() });
+        if (lead?.phone) {
+          try {
+            await transferLockOwnership({ phone: lead.phone, leadId: id, newOwner: { uid: target.uid, name: target.name } });
+          } catch { /* best-effort */ }
+        }
+      }));
+      await sendNotification({
+        userId: target.uid,
+        type: "lead_assigned",
+        title: "Leads Reassigned to You",
+        message: `${ids.length} lead${ids.length > 1 ? "s were" : " was"} reassigned to you from ${member?.name || "another member"}.`,
+      });
+      toast({ title: "Reassigned", description: `${ids.length} lead${ids.length > 1 ? "s" : ""} moved to ${target.name}.` });
+      setSelectedLeads(new Set());
+      setSelectMode(false);
+      setReassignTarget("");
+    } catch {
+      toast({ title: "Error", description: "Failed to reassign some leads.", variant: "destructive" });
+    } finally {
+      setBulkReassigning(false);
     }
   };
 
@@ -753,33 +832,64 @@ export default function MemberLeadsDetail() {
                 exit={{ height: 0, opacity: 0 }}
                 className="overflow-hidden"
               >
-                <div className="flex items-center justify-between gap-2 bg-destructive/10 border border-destructive/30 rounded-xl px-3 py-2 md:px-4 md:py-2.5">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <CheckSquare size={16} className="text-destructive shrink-0" />
-                    <span className="text-xs md:text-sm font-medium text-destructive truncate">
-                      {selectedLeads.size} selected
-                    </span>
+                <div className="space-y-2 bg-destructive/10 border border-destructive/30 rounded-xl px-3 py-2 md:px-4 md:py-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <CheckSquare size={16} className="text-destructive shrink-0" />
+                      <span className="text-xs md:text-sm font-medium text-destructive truncate">
+                        {selectedLeads.size} selected
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        onClick={() => toggleSelectAll(activeDayLeads)}
+                        className="h-7 md:h-8 px-2 md:px-3 rounded-lg text-[10px] md:text-xs font-medium bg-card border border-border text-foreground hover:bg-accent transition-colors"
+                      >
+                        {activeDayLeads.length > 0 && activeDayLeads.every((l) => selectedLeads.has(l.id)) ? "Deselect All" : "Select All"}
+                      </button>
+                      <button
+                        onClick={selectNotCalled}
+                        className="h-7 md:h-8 px-2 md:px-3 rounded-lg text-[10px] md:text-xs font-medium bg-card border border-border text-foreground hover:bg-accent transition-colors"
+                        title="Select every not-called lead in the current day/date view"
+                      >
+                        Select Not Called
+                      </button>
+                      <button
+                        onClick={handleBulkDelete}
+                        disabled={selectedLeads.size === 0 || bulkDeleting}
+                        className="h-7 md:h-8 px-2 md:px-3 rounded-lg text-[10px] md:text-xs font-semibold bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50 flex items-center gap-1 transition-colors"
+                      >
+                        {bulkDeleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                        {bulkDeleting ? "Deleting..." : "Delete"}
+                      </button>
+                      <button
+                        onClick={exitSelectMode}
+                        className="h-7 md:h-8 w-7 md:w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent border border-border transition-colors"
+                      >
+                        <XCircle size={14} />
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      onClick={() => toggleSelectAll(activeDayLeads)}
-                      className="h-7 md:h-8 px-2 md:px-3 rounded-lg text-[10px] md:text-xs font-medium bg-card border border-border text-foreground hover:bg-accent transition-colors"
+                  {/* Reassign selected leads to another member */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[10px] md:text-xs text-muted-foreground">Reassign selected to:</span>
+                    <select
+                      value={reassignTarget}
+                      onChange={(e) => setReassignTarget(e.target.value)}
+                      className="h-7 md:h-8 px-2 rounded-lg bg-card border border-border text-foreground text-[10px] md:text-xs outline-none focus:border-primary"
                     >
-                      {activeDayLeads.length > 0 && activeDayLeads.every((l) => selectedLeads.has(l.id)) ? "Deselect All" : "Select All"}
-                    </button>
+                      <option value="">Select member…</option>
+                      {members.filter((m) => m.uid !== memberId).map((m) => (
+                        <option key={m.uid} value={m.uid}>{m.name}</option>
+                      ))}
+                    </select>
                     <button
-                      onClick={handleBulkDelete}
-                      disabled={selectedLeads.size === 0 || bulkDeleting}
-                      className="h-7 md:h-8 px-2 md:px-3 rounded-lg text-[10px] md:text-xs font-semibold bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50 flex items-center gap-1 transition-colors"
+                      onClick={handleBulkReassign}
+                      disabled={selectedLeads.size === 0 || !reassignTarget || bulkReassigning}
+                      className="h-7 md:h-8 px-2 md:px-3 rounded-lg text-[10px] md:text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 flex items-center gap-1 transition-colors"
                     >
-                      {bulkDeleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                      {bulkDeleting ? "Deleting..." : "Delete"}
-                    </button>
-                    <button
-                      onClick={exitSelectMode}
-                      className="h-7 md:h-8 w-7 md:w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent border border-border transition-colors"
-                    >
-                      <XCircle size={14} />
+                      {bulkReassigning ? <Loader2 size={12} className="animate-spin" /> : <ArrowLeft size={12} className="rotate-180" />}
+                      {bulkReassigning ? "Moving..." : `Reassign (${selectedLeads.size})`}
                     </button>
                   </div>
                 </div>

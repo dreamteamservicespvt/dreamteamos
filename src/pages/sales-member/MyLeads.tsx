@@ -8,9 +8,9 @@ import { useAuthStore } from "@/store/authStore";
 import { logActivity } from "@/services/activityLog";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import { claimNumber, applySaleFreeze, releaseLockForLead, buildLeadFreezeFields, fetchNumberLock } from "@/services/numberLock";
-import { findOtherHolders, findMemberDuplicates } from "@/services/duplicateLeads";
+import { findOtherHolders, findMemberDuplicates, resolveNonSaleDuplicates } from "@/services/duplicateLeads";
 import { formatCurrency, formatDuration } from "@/utils/formatters";
-import { normalizePhone } from "@/utils/phone";
+import { normalizePhone, getCallUrl, getWhatsAppUrl } from "@/utils/phone";
 import { useNow } from "@/hooks/useNow";
 import { format, subDays, startOfDay } from "date-fns";
 import type { AppUser, Lead, LeadStatus, SaleDetail } from "@/types";
@@ -118,6 +118,7 @@ export default function MyLeads() {
   const [expandedSale, setExpandedSale] = useState<string | null>(null);
   const [showCustomModal, setShowCustomModal] = useState(false);
   const [duplicateLeadIds, setDuplicateLeadIds] = useState<Set<string>>(new Set());
+  const [dupLoading, setDupLoading] = useState(true);
   const pendingDeletesRef = useRef<Map<string, { timeoutId: ReturnType<typeof setTimeout>; intervalId: ReturnType<typeof setInterval> }>>(new Map());
 
   // Realtime listener
@@ -148,7 +149,7 @@ export default function MyLeads() {
   );
   useEffect(() => {
     if (!user) return;
-    if (!phonesKey) { setDuplicateLeadIds(new Set()); return; }
+    if (!phonesKey) { setDuplicateLeadIds(new Set()); setDupLoading(false); return; }
     let cancelled = false;
     (async () => {
       const map = await findMemberDuplicates(
@@ -156,31 +157,50 @@ export default function MyLeads() {
         user.uid,
       );
       if (cancelled) return;
-      setDuplicateLeadIds(new Set(Object.keys(map)));
+      // Old admin-added duplicates with no sale on either side get auto-resolved:
+      // first member to engage (status ≠ not_called) keeps the number, otherwise first added wins.
+      // Only sale disputes remain in the Duplicates tab.
+      const resolution = await resolveNonSaleDuplicates(leads, map, { uid: user.uid, name: user.name });
+      if (cancelled) return;
+      setDuplicateLeadIds(new Set(Object.keys(map).filter((id) => !resolution.resolvedMyLeadIds.has(id))));
+      setDupLoading(false);
+      if (resolution.frozeMineCount > 0) {
+        toast({
+          title: "Duplicate numbers released",
+          description: `${resolution.frozeMineCount} of your duplicate number(s) went to the member who worked them first.`,
+        });
+      }
+      if (resolution.wonCount > 0) {
+        toast({
+          title: "Duplicate numbers kept",
+          description: `You kept ${resolution.wonCount} duplicate number(s) — you worked them first.`,
+        });
+      }
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phonesKey, user]);
 
-  // Filter by search + status
-  const filtered = leads.filter((l) => {
-    const matchSearch =
-      !search ||
-      l.displayName?.toLowerCase().includes(search.toLowerCase()) ||
-      l.phone?.includes(search) ||
-      l.realName?.toLowerCase().includes(search.toLowerCase());
-    let matchStatus = statusFilter === "all" || l.status === statusFilter;
-    if (statusFilter === "sale_done") matchStatus = !!l.saleDone;
-    if (statusFilter === "verification_pending") {
-      const items = l.saleItems || (l.saleDetails ? [l.saleDetails] : []);
-      matchStatus = items.some((i: any) => i.verificationStatus === "pending");
-    }
-    if (statusFilter === "verified_sales") {
-      const items = l.saleItems || (l.saleDetails ? [l.saleDetails] : []);
-      matchStatus = items.some((i: any) => i.verificationStatus === "verified");
-    }
-    return matchSearch && matchStatus;
-  });
+  // Search and status filters are kept separate: the dropdown counts must come from the
+  // search+day window only, NOT the status-filtered list (otherwise selecting "Answered"
+  // makes every other status count read 0).
+  const matchesSearch = (l: Lead) =>
+    !search ||
+    l.displayName?.toLowerCase().includes(search.toLowerCase()) ||
+    l.phone?.includes(search) ||
+    l.realName?.toLowerCase().includes(search.toLowerCase());
+
+  const matchesStatus = (l: Lead) => {
+    if (statusFilter === "all") return true;
+    const items = l.saleItems || (l.saleDetails ? [l.saleDetails] : []);
+    if (statusFilter === "sale_done") return !!l.saleDone;
+    if (statusFilter === "verification_pending") return items.some((i: any) => i.verificationStatus === "pending");
+    if (statusFilter === "verified_sales") return items.some((i: any) => i.verificationStatus === "verified");
+    return l.status === statusFilter;
+  };
+
+  const searchFiltered = leads.filter(matchesSearch);
+  const filtered = searchFiltered.filter(matchesStatus);
 
   // Last 5 days for day filter
   const recentDays = useMemo(() => {
@@ -230,20 +250,21 @@ export default function MyLeads() {
     return groups;
   };
 
-  const groupedLeads = groupLeadsByDate(filtered);
-
-  // Get leads for the currently selected day — with special uncalled past leads logic for "Today"
-  const activeDayLeads = useMemo(() => {
-    if (selectedDate) return groupedLeads[format(selectedDate, "yyyy-MM-dd")] || [];
-    if (dayFilter === "all") return filtered;
+  // Apply the active day window (calendar date / day dropdown, incl. "Today + uncalled past")
+  // to any list. Used twice: on the status-filtered list for display, and on the
+  // search-only list for the dropdown counts.
+  const applyDayWindow = (src: Lead[]): Lead[] => {
+    const groups = groupLeadsByDate(src);
+    if (selectedDate) return groups[format(selectedDate, "yyyy-MM-dd")] || [];
+    if (dayFilter === "all") return src;
 
     const dayIndex = parseInt(dayFilter);
     const dayDateStr = recentDays[dayIndex]?.dateStr;
-    const dayLeads = groupedLeads[dayDateStr] || [];
+    const dayLeads = groups[dayDateStr] || [];
 
     // Special: if viewing Today (index 0), also include uncalled leads from past days
     if (dayIndex === 0) {
-      const uncalledPast = filtered.filter((l) => {
+      const uncalledPast = src.filter((l) => {
         if (l.status !== "not_called") return false;
         const ts = l.createdAt?.seconds;
         if (!ts) return false;
@@ -254,11 +275,14 @@ export default function MyLeads() {
     }
 
     return dayLeads;
-  }, [selectedDate, dayFilter, filtered, groupedLeads, recentDays]);
+  };
 
-  // Status counts for dropdown — based on active day leads, not all filtered
+  const activeDayLeads = applyDayWindow(filtered);            // what's displayed
+  const dayWindowLeads = applyDayWindow(searchFiltered);      // counts/stats — independent of status filter
+
+  // Status counts for dropdown — from the day window WITHOUT the status filter applied
   const statusCounts = useMemo(() => {
-    const src = activeDayLeads;
+    const src = dayWindowLeads;
     const counts: Record<string, number> = { all: src.length };
     STATUS_OPTIONS.forEach((s) => { counts[s.value] = src.filter((l) => l.status === s.value).length; });
     counts.sale_done = src.filter((l) => l.saleDone).length;
@@ -271,7 +295,8 @@ export default function MyLeads() {
       return items.some((i: any) => i.verificationStatus === "verified");
     }).length;
     return counts;
-  }, [activeDayLeads]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leads, search, selectedDate, dayFilter, recentDays]);
 
   // Calendar date indicators — performance per day
   const dateIndicators = useMemo(() => {
@@ -425,9 +450,9 @@ export default function MyLeads() {
         </div>
       </div>
 
-      {/* Stats Cards – based on active day leads */}
+      {/* Stats Cards – based on the day window (independent of the status filter) */}
       {(() => {
-        const dayLeads = activeDayLeads;
+        const dayLeads = dayWindowLeads;
         const calledCount = dayLeads.filter((l) => l.status !== "not_called").length;
         const saleDone = dayLeads.filter((l) => l.saleDone).length;
         const pendingVerif = dayLeads.filter((l) => {
@@ -469,7 +494,7 @@ export default function MyLeads() {
         </button>
         <button onClick={() => setViewTab("duplicates")}
           className={`h-8 md:h-9 px-3 md:px-4 rounded-lg text-xs md:text-sm font-medium transition-colors flex items-center gap-1.5 ${viewTab === "duplicates" ? "bg-destructive/15 text-destructive border border-destructive/30" : "bg-card border border-border text-muted-foreground hover:bg-accent"}`}>
-          <AlertTriangle size={13} /> Duplicates ({duplicateLeadIds.size})
+          <AlertTriangle size={13} /> Duplicates {dupLoading ? <Loader2 size={11} className="animate-spin" /> : `(${duplicateLeadIds.size})`}
         </button>
       </div>
 
@@ -739,7 +764,6 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
     debounceRef.current = setTimeout(() => updateLead(lead.id, { notes: val }), 500);
   };
 
-  const cleanPhone = lead.phone?.replace(/[^0-9]/g, "") || "";
   const statusInfo = STATUS_OPTIONS.find((s) => s.value === lead.status);
   const frozen = !!lead.frozen;
 
@@ -765,7 +789,10 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
         <div className="flex items-center gap-1 flex-shrink-0">
           {frozen && (
             <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-warning/15 text-warning border border-warning/20 flex items-center gap-1">
-              <Lock size={9} /> Taken over{lead.takenOverBy ? ` by ${lead.takenOverBy}` : ""}
+              <Lock size={9} />
+              {lead.frozenReason === "duplicate_resolved"
+                ? "Duplicate — kept by the member who worked it first"
+                : `Taken over${lead.takenOverBy ? ` by ${lead.takenOverBy}` : ""}`}
             </span>
           )}
           {!frozen && lead.saleFrozen && <FrozenBadge until={lead.saleFrozenUntil} />}
@@ -840,14 +867,14 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
       {/* Action buttons */}
       <div className="flex gap-2">
         <a
-          href={frozen ? undefined : `tel:${cleanPhone}`}
+          href={frozen ? undefined : getCallUrl(lead.phone)}
           onClick={() => { if (frozen) return; try { updateLead(lead.id, {}); } catch {} }}
           aria-disabled={frozen}
           className={`flex-1 h-9 rounded-lg bg-info/10 text-info text-xs font-medium flex items-center justify-center gap-1.5 hover:bg-info/20 transition-colors ${frozen ? "pointer-events-none opacity-50" : ""}`}
         >
           <Phone size={13} /> Call
         </a>
-        <WhatsAppButton phone={cleanPhone} disabled={frozen} onActivity={() => { try { updateLead(lead.id, {}); } catch {} }} />
+        <WhatsAppButton phone={lead.phone} disabled={frozen} onActivity={() => { try { updateLead(lead.id, {}); } catch {} }} />
         <button
           onClick={() => setExpandedNotes(expandedNotes === lead.id ? null : lead.id)}
           className="flex-1 h-9 rounded-lg bg-accent text-foreground text-xs font-medium flex items-center justify-center gap-1.5 hover:bg-accent/80 transition-colors border border-border"
@@ -991,8 +1018,9 @@ function AddCustomLeadModal({ user, onClose }: { user: AppUser; onClose: () => v
       return;
     }
     const normalized = normalizePhone(trimmed);
-    if (normalized.replace(/[^0-9]/g, "").length < 10) {
-      toast({ title: "Error", description: "Enter a valid phone number (at least 10 digits).", variant: "destructive" });
+    const digitCount = normalized.replace(/[^0-9]/g, "").length;
+    if (digitCount < 10 || digitCount > 15) {
+      toast({ title: "Error", description: "Enter a valid phone number (10–15 digits including country code).", variant: "destructive" });
       return;
     }
     setSaving(true);
@@ -1062,17 +1090,23 @@ function AddCustomLeadModal({ user, onClose }: { user: AppUser; onClose: () => v
             <label className="text-xs font-medium text-muted-foreground mb-1 block">Phone Number *</label>
             <input
               type="tel"
-              inputMode="numeric"
-              pattern="[0-9]*"
+              inputMode="tel"
               value={phone}
-              onChange={(e) => setPhone(e.target.value.replace(/[^0-9]/g, ""))}
-              placeholder="9876543210"
+              onChange={(e) => {
+                // Allow digits, spaces, dashes, parens, dots and a single leading "+"
+                let v = e.target.value.replace(/[^0-9+\s\-().]/g, "");
+                v = v.replace(/(?!^)\+/g, ""); // "+" only allowed at the start
+                setPhone(v);
+              }}
+              placeholder="9876543210 or +1 415 555 0100"
               autoFocus
-              maxLength={10}
+              maxLength={20}
               onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
               className="w-full h-10 px-4 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary font-mono"
             />
-            <p className="text-[10px] text-muted-foreground mt-0.5">+91 will be added automatically</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              Any format works. 10-digit numbers get +91 automatically; for international start with + and the country code.
+            </p>
           </div>
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1 block">Name / Business Name</label>
@@ -1106,7 +1140,7 @@ function AddCustomLeadModal({ user, onClose }: { user: AppUser; onClose: () => v
 function WhatsAppButton({ phone, onActivity, disabled }: { phone: string; onActivity?: () => void; disabled?: boolean }) {
   return (
     <a
-      href={disabled ? undefined : `https://wa.me/${phone}`}
+      href={disabled ? undefined : getWhatsAppUrl(phone)}
       target="_blank"
       rel="noopener noreferrer"
       onClick={() => { if (disabled) return; onActivity?.(); }}

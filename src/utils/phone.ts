@@ -1,24 +1,38 @@
 /**
- * Normalize a phone number: strip spaces/dashes, ensure +91 prefix.
- * If already has a country code (starts with +), leave it.
- * Otherwise prepend +91.
+ * Normalize a phone number to E.164-ish form ("+<country code><number>").
+ * Accepts any human formatting (spaces, dashes, parens, dots):
+ *  - "+<cc>…" / "00<cc>…"  → kept as-is (international)
+ *  - 10-digit local        → assumed Indian, "+91" prepended
+ *  - "91XXXXXXXXXX" (12)   → "+91XXXXXXXXXX"
+ *  - other >10-digit       → assumed to already include a country code, "+" prepended
  */
 export function normalizePhone(raw: string): string {
-  // Strip spaces, dashes, parens
+  // Strip spaces, dashes, parens, dots
   let cleaned = raw.replace(/[\s\-().]/g, "");
   if (!cleaned) return "";
 
-  // If already has +, assume country code present
-  if (cleaned.startsWith("+")) return cleaned;
+  // "00" international dialing prefix → "+"
+  if (cleaned.startsWith("00")) cleaned = "+" + cleaned.slice(2);
+
+  // Already has + → country code present; keep digits only after it
+  if (cleaned.startsWith("+")) {
+    const digits = cleaned.slice(1).replace(/[^0-9]/g, "");
+    return digits ? `+${digits}` : "";
+  }
+
+  cleaned = cleaned.replace(/[^0-9]/g, "");
+  if (!cleaned) return "";
 
   // Remove leading 0 (trunk prefix in India)
   if (cleaned.startsWith("0")) cleaned = cleaned.slice(1);
 
-  // Remove leading 91 if it makes number > 10 digits (e.g. 919876543210)
-  if (cleaned.length > 10 && cleaned.startsWith("91")) {
-    cleaned = cleaned.slice(2);
-  }
+  // Standard Indian local number
+  if (cleaned.length === 10) return `+91${cleaned}`;
 
+  // Longer than 10 digits → assume the country code was typed in (91…, 1…, 44…)
+  if (cleaned.length > 10) return `+${cleaned}`;
+
+  // Short numbers: keep legacy +91 default
   return `+91${cleaned}`;
 }
 

@@ -2,12 +2,17 @@ import { useState, useEffect } from "react";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
+import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/utils/formatters";
 import { format } from "date-fns";
 import type { Lead } from "@/types";
 import { motion } from "framer-motion";
-import { Phone, CheckCircle, Clock, TrendingUp, AlertCircle } from "lucide-react";
+import { Phone, CheckCircle, Clock, TrendingUp, AlertCircle, LogIn, LogOut, Loader2, Send } from "lucide-react";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
+import {
+  recordCheckIn, recordCheckOut, watchTodayCheckin, buildCheckInMessage, buildCheckOutReport,
+  reportWhatsAppUrl, type SalesCheckin,
+} from "@/services/salesCheckin";
 
 const statVariant = (i: number) => ({
   initial: { opacity: 0, y: 16 },
@@ -113,6 +118,9 @@ export default function SalesMemberDashboard() {
         </div>
       </div>
 
+      {/* Daily check-in / check-out — drives monthly attendance */}
+      {user && <CheckinCard user={{ uid: user.uid, name: user.name }} leads={leads} />}
+
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
         {stats.map((s, i) => (
           <motion.div key={s.label} {...statVariant(i)} className="bg-card border border-border rounded-xl p-4">
@@ -206,6 +214,105 @@ export default function SalesMemberDashboard() {
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Daily Check-In / Check-Out ─── */
+
+function fmtTs(ts: any): string {
+  const s = ts?.seconds;
+  return s ? format(new Date(s * 1000), "hh:mm a") : "—";
+}
+
+function CheckinCard({ user, leads }: { user: { uid: string; name: string }; leads: Lead[] }) {
+  const { toast } = useToast();
+  const [checkin, setCheckin] = useState<SalesCheckin | null>(null);
+  const [busy, setBusy] = useState<"in" | "out" | null>(null);
+
+  useEffect(() => watchTodayCheckin(user.uid, setCheckin), [user.uid]);
+
+  const checkedIn = !!checkin?.checkInAt;
+  const checkedOut = !!checkin?.checkOutAt;
+
+  const handleCheckIn = async () => {
+    setBusy("in");
+    try {
+      await recordCheckIn(user);
+      window.open(reportWhatsAppUrl(buildCheckInMessage(user.name)), "_blank");
+      toast({ title: "Checked in", description: "Check-in recorded — send the WhatsApp message that just opened." });
+    } catch (e: any) {
+      toast({ title: "Error", description: e?.message || "Check-in failed.", variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleCheckOut = async () => {
+    setBusy("out");
+    try {
+      const report = buildCheckOutReport(user.name, leads);
+      await recordCheckOut(user, report);
+      window.open(reportWhatsAppUrl(report.reportText), "_blank");
+      toast({ title: "Checked out", description: "Progress report ready — send the WhatsApp message that just opened." });
+    } catch (e: any) {
+      toast({ title: "Error", description: e?.message || "Check-out failed.", variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const resendReport = () => {
+    const text = checkin?.reportText || buildCheckOutReport(user.name, leads).reportText;
+    window.open(reportWhatsAppUrl(text), "_blank");
+  };
+
+  return (
+    <div className="bg-card border border-border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
+          checkedOut ? "bg-success/15 text-success" : checkedIn ? "bg-info/15 text-info" : "bg-warning/15 text-warning"
+        }`}>
+          {checkedOut ? <CheckCircle size={18} /> : checkedIn ? <Clock size={18} /> : <LogIn size={18} />}
+        </div>
+        <div className="min-w-0">
+          <p className="font-display font-semibold text-foreground text-sm">
+            {checkedOut ? "Day complete" : checkedIn ? "Checked in — working" : "Start your day"}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {checkedIn ? `In: ${fmtTs(checkin?.checkInAt)}` : "Check in to mark today's attendance"}
+            {checkedOut ? ` · Out: ${fmtTs(checkin?.checkOutAt)} · Sales ₹${(checkin?.totalSalesAmount || 0).toLocaleString("en-IN")}` : ""}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        {!checkedIn && (
+          <button
+            onClick={handleCheckIn}
+            disabled={busy !== null}
+            className="h-9 px-4 rounded-lg bg-success text-white font-display font-semibold text-xs flex items-center gap-1.5 hover:bg-success/90 disabled:opacity-50 transition-colors"
+          >
+            {busy === "in" ? <Loader2 size={14} className="animate-spin" /> : <LogIn size={14} />} Check In
+          </button>
+        )}
+        {checkedIn && !checkedOut && (
+          <button
+            onClick={handleCheckOut}
+            disabled={busy !== null}
+            className="h-9 px-4 rounded-lg bg-primary text-primary-foreground font-display font-semibold text-xs flex items-center gap-1.5 hover:bg-primary/90 disabled:opacity-50 transition-colors"
+          >
+            {busy === "out" ? <Loader2 size={14} className="animate-spin" /> : <LogOut size={14} />} Check Out
+          </button>
+        )}
+        {checkedOut && (
+          <button
+            onClick={resendReport}
+            className="h-9 px-4 rounded-lg bg-accent border border-border text-foreground font-medium text-xs flex items-center gap-1.5 hover:bg-accent/80 transition-colors"
+          >
+            <Send size={13} /> Resend report
+          </button>
+        )}
       </div>
     </div>
   );

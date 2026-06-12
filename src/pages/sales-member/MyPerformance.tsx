@@ -7,6 +7,7 @@ import { format } from "date-fns";
 import type { Lead, SaleDetail } from "@/types";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { TrendingUp, Target, Award, Zap, IndianRupee } from "lucide-react";
+import AttendanceCard from "@/components/sales/AttendanceCard";
 
 const PIE_COLORS = [
   "hsl(142 71% 45%)",   // success
@@ -127,6 +128,9 @@ export default function MyPerformance() {
           </div>
         ))}
       </div>
+
+      {/* Monthly Attendance (from daily check-in/check-out) */}
+      {user && <AttendanceCard memberId={user.uid} />}
 
       {/* Earnings Estimator */}
       <div className="bg-card border border-border rounded-xl p-5">

@@ -210,6 +210,148 @@ export async function claimNumber({
   });
 }
 
+export type AdminAssignResult =
+  | { kind: "created"; leadId: string }
+  | { kind: "takeover"; leadId: string; previousOwnerName: string }
+  | { kind: "reserved"; ownerName: string; until: Date }
+  | { kind: "sale_frozen"; saleByName: string; until: Date }
+  | { kind: "already_with_member" };
+
+/**
+ * Admin-side counterpart of claimNumber: assign a number to a member atomically, respecting the
+ * same lock rules. If another member holds the number inside its 24h validity (or it's
+ * sale-frozen), the assignment is refused — so neither members nor admins can create duplicates.
+ * Past the validity window it becomes a takeover, freezing the previous holder's lead.
+ */
+export async function adminAssignNumber({
+  admin,
+  member,
+  phone,
+  displayName,
+}: {
+  admin: LockActor;
+  member: LockActor;
+  phone: string;
+  displayName: string;
+}): Promise<AdminAssignResult> {
+  const normalized = normalizePhone(phone);
+  const lockRef = doc(db, "numberLocks", phoneLockId(phone));
+  const newLeadRef = doc(collection(db, "leads"));
+
+  const adminLeadData = {
+    assignedTo: member.uid,
+    assignedBy: admin.uid,
+    phone: normalized,
+    displayName,
+    realName: null,
+    status: "not_called" as LeadStatus,
+    notes: "",
+    saleDone: false,
+    saleDetails: null,
+    saleItems: [],
+    isCustomEntry: false,
+    frozen: false,
+    lastUpdated: serverTimestamp(),
+    createdAt: serverTimestamp(),
+  };
+
+  return runTransaction<AdminAssignResult>(db, async (tx) => {
+    const lockSnap = await tx.get(lockRef);
+    const now = Date.now();
+    const nowTs = Timestamp.now();
+    const reserveExpiresAt = Timestamp.fromMillis(now + RESERVE_WINDOW_MS);
+
+    const newLock = (timeline: NumberLockTimelineEntry[]): NumberLock => ({
+      phone: normalized,
+      ownerId: member.uid,
+      ownerName: member.name,
+      ownerLeadId: newLeadRef.id,
+      claimedAt: nowTs,
+      reserveExpiresAt,
+      saleFrozen: false,
+      saleFrozenUntil: null,
+      saleById: null,
+      saleByName: null,
+      timeline,
+      updatedAt: nowTs,
+    });
+
+    if (!lockSnap.exists()) {
+      tx.set(newLeadRef, adminLeadData);
+      tx.set(lockRef, newLock([
+        { action: "claimed", byId: member.uid, byName: member.name, at: nowTs, note: `Assigned by ${admin.name}` },
+      ]));
+      return { kind: "created", leadId: newLeadRef.id };
+    }
+
+    const lock = lockSnap.data() as NumberLock;
+
+    const frozenUntilMs = toMillis(lock.saleFrozenUntil);
+    if (lock.saleFrozen && frozenUntilMs > now) {
+      return { kind: "sale_frozen", saleByName: lock.saleByName || lock.ownerName, until: new Date(frozenUntilMs) };
+    }
+    if (lock.ownerId === member.uid) {
+      return { kind: "already_with_member" };
+    }
+    const reserveMs = toMillis(lock.reserveExpiresAt);
+    if (reserveMs > now) {
+      return { kind: "reserved", ownerName: lock.ownerName, until: new Date(reserveMs) };
+    }
+
+    // Past validity → takeover (freeze the previous owner's lead first)
+    let prevLeadExists = false;
+    if (lock.ownerLeadId) {
+      const prevSnap = await tx.get(doc(db, "leads", lock.ownerLeadId));
+      prevLeadExists = prevSnap.exists();
+    }
+    if (prevLeadExists) {
+      tx.update(doc(db, "leads", lock.ownerLeadId), {
+        frozen: true,
+        frozenAt: nowTs,
+        frozenReason: "taken_over",
+        takenOverBy: member.name,
+        lastUpdated: serverTimestamp(),
+      });
+    }
+    tx.set(newLeadRef, adminLeadData);
+    tx.set(lockRef, newLock([
+      ...(lock.timeline || []),
+      {
+        action: "taken_over",
+        byId: member.uid,
+        byName: member.name,
+        at: nowTs,
+        note: `Reassigned by ${admin.name} from ${lock.ownerName}`,
+      } as NumberLockTimelineEntry,
+    ]));
+    return { kind: "takeover", leadId: newLeadRef.id, previousOwnerName: lock.ownerName };
+  });
+}
+
+/**
+ * Move a number-lock's ownership to a new member when an admin reassigns the lead doc itself
+ * (the lead id stays the same). Best-effort: a missing lock or one tracking a different lead
+ * is left untouched.
+ */
+export async function transferLockOwnership({
+  phone,
+  leadId,
+  newOwner,
+}: {
+  phone: string;
+  leadId: string;
+  newOwner: LockActor;
+}): Promise<void> {
+  const lockRef = doc(db, "numberLocks", phoneLockId(phone));
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(lockRef);
+    if (!snap.exists()) return;
+    const lock = snap.data() as NumberLock;
+    if (lock.ownerLeadId !== leadId) return;
+    tx.update(lockRef, { ownerId: newOwner.uid, ownerName: newOwner.name, updatedAt: Timestamp.now() });
+  });
+}
+
 /**
  * Freeze a number after a sale so no other member can claim it for `days` (1–7) days.
  * Creates the lock if one does not exist yet (e.g. the sold lead was admin-assigned).

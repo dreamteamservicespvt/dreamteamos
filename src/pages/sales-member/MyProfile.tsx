@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/utils/formatters";
 import { User, Mail, Phone, Shield, Loader2, Check, Lock, Receipt } from "lucide-react";
 import SalaryTimeline from "@/components/SalaryTimeline";
+import AttendanceCard from "@/components/sales/AttendanceCard";
 
 export default function MyProfile() {
   const user = useAuthStore((s) => s.user);
@@ -133,6 +134,9 @@ export default function MyProfile() {
           {saving ? "Saving..." : "Save Changes"}
         </button>
       </div>
+
+      {/* Monthly Attendance (from daily check-in/check-out) */}
+      <AttendanceCard memberId={user.uid} />
 
       {/* Salary History */}
       <div className="bg-card border border-border rounded-xl p-5">
