@@ -578,7 +578,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                           )} value={formData.duration} onChange={(e) => setFormData(prev => ({ ...prev, duration: parseInt(e.target.value) }))}>
                           <option value={16}>16 Seconds (2 Clips)</option>
                           <option value={32}>32 Seconds (4 Clips)</option>
-                          <option value={45}>45 Seconds (6 Clips)</option>
+                          <option value={48}>48 Seconds (6 Clips)</option>
                           <option value={64}>64 Seconds (8 Clips)</option>
                         </select>
                       ) : (
@@ -627,9 +627,9 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                                       <span className={isDark ? "text-slate-300" : "text-slate-600"}>Word Count:</span>
                                       <span className="font-medium">{wordCount} words</span>
                                     </div>
-                                    {[16, 32, 45, 64].some(p => estSeconds <= p) && (
+                                    {[16, 32, 48, 64].some(p => estSeconds <= p) && (
                                       <div className="flex gap-1.5 mt-1">
-                                        {[16, 32, 45, 64].map(p => (
+                                        {[16, 32, 48, 64].map(p => (
                                           <span key={p} className={cn("px-1.5 py-0.5 rounded text-[10px] font-medium",
                                             estSeconds <= p
                                               ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"

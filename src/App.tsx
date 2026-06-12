@@ -21,6 +21,7 @@ import TechMemberDashboard from "@/pages/tech-member/Dashboard";
 import TechMemberTraining from "@/pages/tech-member/Training";
 import TechMemberProfile from "@/pages/tech-member/MyProfile";
 import MyWork from "@/pages/tech-member/MyWork";
+import TechMemberMyAnalytics from "@/pages/tech-member/MyAnalytics";
 import MyLeads from "@/pages/sales-member/MyLeads";
 import SalesMemberDashboard from "@/pages/sales-member/Dashboard";
 import MyPerformance from "@/pages/sales-member/MyPerformance";
@@ -48,6 +49,7 @@ import TechTrainingModules from "@/pages/tech-admin/TrainingModules";
 import TechAdminSessionHistory from "@/pages/tech-admin/SessionHistory";
 import TechAdminSettings from "@/pages/tech-admin/Settings";
 import TechAdminMemberHistory from "@/pages/tech-admin/MemberHistory";
+import TechAdminMemberAnalytics from "@/pages/tech-admin/MemberAnalytics";
 import WorkAssign from "@/pages/tech-admin/WorkAssign";
 import MemberAssignments from "@/pages/tech-admin/MemberAssignments";
 import TeamLeaderWorkAssign from "@/pages/tech-team-leader/WorkAssign";
@@ -113,6 +115,7 @@ const App = () => (
             <Route path="/tech-admin/dashboard" element={<TechAdminDashboard />} />
             <Route path="/tech-admin/team" element={<TechAdminMyTeam />} />
             <Route path="/tech-admin/team/:memberId" element={<TechAdminMemberHistory />} />
+            <Route path="/tech-admin/team/:memberId/analytics" element={<TechAdminMemberAnalytics />} />
             <Route path="/tech-admin/drive" element={<DriveManagement />} />
             <Route path="/tech-admin/training" element={<TechTrainingModules />} />
             <Route path="/tech-admin/sessions" element={<TechAdminSessionHistory />} />
@@ -161,6 +164,7 @@ const App = () => (
           <Route element={<AppLayout allowedRoles={["tech_member"]} />}>
             <Route path="/tech/dashboard" element={<TechMemberDashboard />} />
             <Route path="/tech/my-work" element={<MyWork />} />
+            <Route path="/tech/analytics" element={<TechMemberMyAnalytics />} />
             <Route path="/tech/training" element={<TechMemberTraining />} />
             <Route path="/tech/profile" element={<TechMemberProfile />} />
             <Route path="/tech/chat" element={<Chat />} />

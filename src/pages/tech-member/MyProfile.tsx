@@ -260,6 +260,12 @@ export default function TechMemberProfile() {
               {selectedCheckin.totalVideos != null && (
                 <span className="flex items-center gap-1"><Video size={10} /> {selectedCheckin.totalVideos} videos</span>
               )}
+              {selectedCheckin.inProgressTasks != null && (
+                <span>In progress: {selectedCheckin.inProgressTasks}</span>
+              )}
+              {selectedCheckin.pendingTasks != null && (
+                <span>Pending: {selectedCheckin.pendingTasks}</span>
+              )}
               {selectedCheckin.aiVerificationResult && (
                 <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
                   selectedCheckin.aiVerificationResult === "pass" ? "bg-success/15 text-success" : "bg-warning/15 text-warning"

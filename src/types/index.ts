@@ -161,6 +161,7 @@ export type CheckinStatus = "checked_in" | "pending_approval" | "approved" | "re
 export interface DailyCheckin {
   id: string;
   memberId: string;
+  memberName?: string;
   date: string;
   checkedInAt: any;
   checkedOutAt?: any;
@@ -176,6 +177,13 @@ export interface DailyCheckin {
   approvedBy?: string;
   approvedAt?: any;
   rejectionNote?: string;
+  // Auto-computed work snapshot at check-in time
+  checkinPendingTasks?: number;
+  checkinInProgressTasks?: number;
+  // Auto-computed work snapshot at check-out time
+  completedTodayAuto?: number;
+  pendingTasks?: number;
+  inProgressTasks?: number;
 }
 
 // Chat System

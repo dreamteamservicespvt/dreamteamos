@@ -8,7 +8,7 @@ import { useAuthStore } from "@/store/authStore";
 import { normalizePhone, formatPhoneDisplay, getWhatsAppUrl, getCallUrl } from "@/utils/phone";
 import type { AppUser, DailyCheckin, WorkAssignment } from "@/types";
 import { formatCurrency } from "@/utils/formatters";
-import { Users, Plus, X, Loader2, Eye, EyeOff, UserCheck, UserX, Trash2, Phone, MessageCircle, Pencil, Share2, Search, LogIn, LogOut, Sparkles } from "lucide-react";
+import { Users, Plus, X, Loader2, Eye, EyeOff, UserCheck, UserX, Trash2, Phone, MessageCircle, Pencil, Share2, Search, LogIn, LogOut, Sparkles, BarChart3 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import EditMemberModal from "@/components/EditMemberModal";
@@ -383,6 +383,10 @@ export default function TechAdminMyTeam() {
                     </td>
                     <td className="px-4 py-3 text-center">
                        <div className="flex items-center gap-1 justify-center" onClick={(e) => e.stopPropagation()}>
+                        <button onClick={() => navigate(`/tech-admin/team/${m.uid}/analytics`)} title="Analytics"
+                          className="w-8 h-8 rounded-md inline-flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
+                          <BarChart3 size={15} />
+                        </button>
                         <button onClick={() => handleShareCredentials(m)} title="Share Credentials"
                           className="w-8 h-8 rounded-md inline-flex items-center justify-center text-muted-foreground hover:text-success hover:bg-success/10 transition-colors">
                           <Share2 size={15} />
