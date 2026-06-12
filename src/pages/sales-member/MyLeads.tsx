@@ -772,8 +772,8 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
       frozen ? "border-warning/40 opacity-60" : lead.saleDone ? "border-success/40" : "border-border"
     }`}>
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div className="flex-1 mr-2">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0 mr-1">
           <input
             type="text"
             defaultValue={lead.displayName || ""}
@@ -784,9 +784,9 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
             className="font-display font-bold text-foreground text-lg bg-transparent border-b border-transparent hover:border-border focus:border-primary outline-none w-full transition-colors"
             title="Click to edit name"
           />
-          {lead.realName && <p className="text-xs text-muted-foreground">{lead.realName}</p>}
+          {lead.realName && <p className="text-xs text-muted-foreground truncate">{lead.realName}</p>}
         </div>
-        <div className="flex items-center gap-1 flex-shrink-0">
+        <div className="flex flex-wrap items-center justify-end gap-1 min-w-0 max-w-[60%]">
           {frozen && (
             <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-warning/15 text-warning border border-warning/20 flex items-center gap-1">
               <Lock size={9} />
