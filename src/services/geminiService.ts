@@ -560,6 +560,35 @@ const finalizeMainFramePrompts = (rawClipPrompts: string[], segmentCount: number
   return Array.from({ length: segmentCount }, () => fallbackPrompt);
 };
 
+// Robustly split a Veo response into individual segment prompts. The model is
+// asked to use ###SEGMENT### separators but sometimes drops one (yielding N-1
+// blocks) or uses "Segment N:" headers instead. We try both, then enforce the
+// exact requested count so a 6-clip job never silently becomes 5.
+const parseVeoSegmentPrompts = (text: string, segmentCount: number): string[] => {
+  const cleaned = text
+    .replace(/^```(?:markdown|json|text|plaintext)?\s*\n?/gim, '')
+    .replace(/\n?```\s*$/gim, '')
+    .trim();
+
+  let parts = cleaned
+    .split(/###\s*SEGMENT\s*###/gi)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+
+  if (parts.length < segmentCount) {
+    const byHeader = cleaned
+      .split(/\n(?=(?:Segment|Clip)\s*\d+\s*[:.)–—-])/gi)
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+
+    if (byHeader.length > parts.length) {
+      parts = byHeader;
+    }
+  }
+
+  return finalizeMainFramePrompts(parts, segmentCount, cleaned);
+};
+
 const getMainFramePromptValidationIssues = (
   prompts: string[],
   businessType: string,
@@ -1576,14 +1605,9 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
   });
 
   const veoPromptsText = veoResponse.text || "";
-  
-  // Parse using the requested separator
-  const veoPrompts = veoPromptsText.split("###SEGMENT###")
-    .map(p => p.trim())
-    .filter(p => p.length > 0);
 
-  // If separator strategy fails, fallback to whole text or newline split (simple fallback)
-  const finalVeoPrompts = veoPrompts.length > 0 ? veoPrompts : [veoPromptsText];
+  // Always return EXACTLY segmentCount prompts (parser pads/truncates to match).
+  const finalVeoPrompts = parseVeoSegmentPrompts(veoPromptsText, segmentCount);
   emitPartial({ veoPrompts: finalVeoPrompts });
   return finalVeoPrompts;
   })();
@@ -1680,8 +1704,7 @@ export const regenerateVeoFromVoiceOver = async (
   });
 
   const veoPromptsText = veoResponse.text || "";
-  const segs = veoPromptsText.split("###SEGMENT###").map(p => p.trim()).filter(p => p.length > 0);
-  return segs.length > 0 ? segs : [veoPromptsText];
+  return parseVeoSegmentPrompts(veoPromptsText, segmentCount);
 };
 
 // --- Stock Image Prompts (On-Demand, User-Triggered) ---

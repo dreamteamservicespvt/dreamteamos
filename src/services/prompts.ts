@@ -115,6 +115,16 @@ type ShotDesignKey = 'hero' | 'showcase' | 'credibility' | 'detail' | 'closing' 
 const EDUCATION_INSTITUTION_KEYWORDS = [
   'college',
   'school',
+  'preschool',
+  'pre-school',
+  'pre school',
+  'playschool',
+  'play school',
+  'kindergarten',
+  'montessori',
+  'daycare',
+  'day care',
+  'nursery',
   'campus',
   'university',
   'institute',
@@ -197,7 +207,7 @@ const getEducationEnvironmentDescription = (businessContext: string = ''): strin
     return 'real, operational, premium education consultancy office. Counseling desks, comfortable seating for students and parents, a clean modern reception counter, computers and tidy work desks define the background. Use only real, in-use functional office furniture and spaces — NO brochure stands, partnership walls, success-story displays, certificate walls, photo walls, or signage text. The space should instantly communicate education guidance and counseling credibility';
   }
 
-  return 'real, operational college, school, or educational institute campus environment. A real academic reception and admissions desk, classrooms with desks and chairs, a library with shelves of real books, lab stations with real equipment, and a campus corridor with student seating define the background. Use only real, in-use functional academic spaces — NO entrance branding, notice boards, certificate walls, photo / portrait walls, achievement or success displays, or institutional signage text. The space should instantly communicate live campus energy and real institutional credibility';
+  return 'real, operational, photographically authentic educational-institution environment, matched to the EXACT kind of institution in the brief — an early-learning preschool / playschool / kindergarten gets a warm, colourful, child-safe reception with low furniture, soft play-learning corners, alphabet/number learning props and tiny chairs; a school, college, university, or institute gets a real academic reception and admissions desk, classrooms with desks and chairs, a library with shelves of real books, lab stations with real equipment, and a campus corridor with student seating. It must instantly read as a REAL, photographed institution (believable architecture, depth, flooring, lighting, and natural everyday academic objects) — never a plain corporate lobby or generic office. Use only real, in-use functional academic spaces — NO entrance branding, notice boards, certificate walls, photo / portrait walls, achievement or success displays, or institutional signage text. The space should instantly communicate live campus / classroom energy and real institutional credibility';
 };
 
 const getEducationLocationPlan = (businessContext: string = ''): string => {
@@ -211,25 +221,28 @@ const getEducationLocationPlan = (businessContext: string = ''): string => {
 };
 
 export const getCommercialLocationPlanForBusiness = (businessType: string, businessContext: string = ''): string => {
+  // NOTE: zones end on a clean BRANDED feature wall (logo-only), never a
+  // "certification / achievement / award / proof" wall — those force the image
+  // model to invent fake framed certificates and garbled text on the wall.
   const locationPlans: Record<string, string> = {
-    medical: 'Reception counter → Consultation room doorway → Treatment or equipment zone → Patient waiting area → Certification wall',
+    medical: 'Reception counter → Consultation room doorway → Treatment or equipment zone → Patient waiting area → Branded reception feature wall',
     realestate: 'Reception desk → Property display wall → Building model showcase → Floor-plan gallery → Client meeting zone',
     fashion: 'Store entrance → Clothing display racks → Mirror or trial area → Accessory showcase → Designer feature wall',
     food: 'Host station → Dining area → Kitchen pass or display counter → Beverage station → Ambiance seating zone',
     tech: 'Reception or lobby → Workspace zone → Meeting-room doorway → Whiteboard or creative wall → Tech equipment area',
     education: getEducationLocationPlan(businessContext),
-    solar: 'Reception → Solar panel display → System demo area → Certification or partnership wall → Energy model showcase',
+    solar: 'Reception → Solar panel display → System demo area → Branded reception feature wall → Energy model showcase',
     laundry: 'Counter or reception → Washing machine area → Folded linen display → Pressing zone → Rack or collection area',
     mattress: 'Showroom reception → Mattress experience bed zone → Comfort comparison wall → Fabric cutaway display → Premium consultation corner',
-    electrical: 'Service counter → Equipment display → Tool showcase area → Demo workstation → Certification wall',
-    tea: 'Counter → Tea packet shelf display → Tasting area → Storage or distribution zone → Brand story wall',
-    jewellery: 'Entrance display case → Gold collection showcase → Diamond section → Trial mirror area → Heritage or trust wall',
-    security: 'Reception → Surveillance monitor zone → Control desk → Equipment or uniform display → Certification wall',
-    automobile: 'Reception desk → Vehicle display zone → Feature wall or spec board → Consultation desk → Delivery or trust wall',
-    pharma: 'Reception or help desk → Prescription or product shelves → Consultation counter → Clinical workstation → Trust or compliance wall',
-    transport: 'Reception → Route map wall → Dispatch desk → Fleet model or proof board → Client service area',
-    fitness: 'Reception → Equipment showcase → Training zone → Consultation desk → Transformation or result wall',
-    beauty: 'Reception → Treatment station → Product display shelves → Styling mirror zone → Brand or trust wall',
+    electrical: 'Service counter → Equipment display → Tool showcase area → Demo workstation → Branded reception feature wall',
+    tea: 'Counter → Tea packet shelf display → Tasting area → Storage or distribution zone → Branded feature wall',
+    jewellery: 'Entrance display case → Gold collection showcase → Diamond section → Trial mirror area → Premium branded feature wall',
+    security: 'Reception → Surveillance monitor zone → Control desk → Equipment or uniform display → Branded reception feature wall',
+    automobile: 'Reception desk → Vehicle display zone → Feature wall or spec board → Consultation desk → Branded delivery feature wall',
+    pharma: 'Reception or help desk → Prescription or product shelves → Consultation counter → Clinical workstation → Branded reception feature wall',
+    transport: 'Reception → Route map wall → Dispatch desk → Fleet model showcase → Client service area',
+    fitness: 'Reception → Equipment showcase → Training zone → Consultation desk → Branded feature wall',
+    beauty: 'Reception → Treatment station → Product display shelves → Styling mirror zone → Branded feature wall',
     default: 'Reception → Product or service showcase → Logo or brand wall → Work area → Entrance or closing zone'
   };
 
@@ -251,13 +264,13 @@ export const getEnvironmentNegativeRules = (businessType: string, businessContex
 export const getRealisticLogoPlacementGuidance = (businessType: string, businessContext: string = ''): string => {
   if (businessType === 'education') {
     if (detectEducationEnvironmentMode(businessContext) === 'consultancy') {
-      return 'Use real counseling-office branding surfaces such as a reception panel, counseling desk backdrop, university partner wall, application-review glass sign, or success-story feature wall. The logo must feel installed into the consultancy architecture, not pasted as an overlay.';
+      return 'Use real counseling-office branding surfaces such as a reception panel, counseling desk backdrop brand board, glass-partition brand sign, or a clean branded feature wall. The logo must feel installed into the consultancy architecture, not pasted as an overlay. Do NOT use certificate, accreditation, success-story, university-partner, or photo walls.';
     }
 
     return 'Use real campus or institute branding surfaces such as an admissions wall panel, academic reception board, corridor acrylic sign, seminar-hall branding wall, library section sign, student-help desk fascia, or entrance monument sign. The logo must feel physically mounted into the institution architecture, not pasted as an overlay.';
   }
 
-  return 'Use real architectural branding surfaces such as a reception panel, acrylic wall sign, consultation-zone feature wall, achievement board, showroom fascia, or entrance sign. The logo must feel installed into the premises with believable material depth and reflections, never pasted as an overlay.';
+  return 'Use real architectural branding surfaces such as a reception panel, acrylic wall sign, consultation-zone feature wall, showroom fascia, or entrance sign. The logo must feel installed into the premises with believable material depth and reflections, never pasted as an overlay. Do NOT use certificate, achievement, award, or photo walls.';
 };
 
 const getShotLogoPlacementForBusiness = (
@@ -268,7 +281,7 @@ const getShotLogoPlacementForBusiness = (
   const generalPlacements: Record<ShotDesignKey, string> = {
     hero: 'a reception panel or front-desk brand wall mounted on real architectural material behind the subject',
     showcase: 'a service-zone sign, department panel, or branded side-wall board integrated with the actual showcase area',
-    credibility: 'an achievement wall, certification board, trust-display panel, or founder-story surface installed behind her',
+    credibility: 'a premium branded feature wall, reception back-panel, or branded partition installed behind her (clean surface carrying only the real logo — never a certificate, award, or photo wall)',
     detail: 'a corridor acrylic sign, section label, workstation brand panel, or departmental header built into the space',
     closing: 'an entrance welcome sign, visitor-facing reception board, or client-service fascia visible behind her',
     alternative: 'a landmark brand wall, branded partition, or premium architectural feature sign that suits the most iconic zone'
@@ -282,7 +295,7 @@ const getShotLogoPlacementForBusiness = (
     const consultancyPlacements: Record<ShotDesignKey, string> = {
       hero: 'a counseling-office reception board or front-desk brand panel mounted above the real welcome desk',
       showcase: 'a university-destination wall sign or brochure-zone brand panel installed beside the study-guidance display',
-      credibility: 'a success-story wall, accreditation board, or university-partner feature panel installed behind her',
+      credibility: 'a clean branded feature wall or premium reception back-panel installed behind her (logo-only surface — never a success-story, accreditation, certificate, or photo wall)',
       detail: 'a document-review area acrylic sign or application-desk header integrated into the architecture',
       closing: 'an entrance consultation sign or visitor-facing counseling-desk fascia visible behind her',
       alternative: 'a branded partition in the student-guidance area or a premium destination-wall feature sign'
@@ -294,7 +307,7 @@ const getShotLogoPlacementForBusiness = (
   const institutionPlacements: Record<ShotDesignKey, string> = {
     hero: 'an admissions or academic reception board mounted above the real front desk or welcome wall',
     showcase: 'a classroom, lab, library, or department sign integrated into the visible academic zone behind her',
-    credibility: 'an achievement wall, accreditation board, institutional crest panel, or ranking display installed behind her',
+    credibility: 'a clean branded academic feature wall or premium reception back-panel installed behind her (logo-only surface — never an achievement, accreditation, ranking, certificate, or photo wall)',
     detail: 'a corridor acrylic sign, library section board, lab-door branding, or notice-board header built into the campus architecture',
     closing: 'an entrance welcome panel or student-service desk fascia visible behind her',
     alternative: 'a seminar-hall branding wall, campus monument sign, or branded student-interaction area partition'
@@ -887,7 +900,7 @@ export const getFestivalTheme = (festivalName: string): FestivalTheme => {
 export const getAttireMode = (attireType: string, businessType: string = 'default', businessContext: string = '') => {
   if (attireType === 'traditional') {
     const sareeColor = getSareeColorForBusiness(businessType);
-    return `Attire: premium traditional Indian saree — ${sareeColor}. High-quality fabric, crisp pleats, natural realistic folds, elegant and luxurious advertising look.`;
+    return `Attire: premium DESIGNER silk / fancy Indian saree — ${sareeColor}. The saree MUST carry tasteful design / work (woven or zari border, subtle motifs/buttis, elegant patterned pallu) — NEVER a flat plain saree, and keep the work refined light-to-medium (never heavy bridal). Use rich, attractive, vibrant colours — NEVER dull, washed-out, grey, or lifeless tones. Well-fitted blouse with elbow-length or short sleeves — STRICTLY no sleeveless / strappy / deep-cut blouse. High-quality fabric, crisp pleats, natural realistic folds, elegant and luxurious advertising look.`;
   } else {
     const suitPalette = getProfessionalSuitPaletteForBusiness(businessType, businessContext);
     return `Attire: premium business-specific luxury campaign suit.
@@ -953,9 +966,12 @@ Main Character:
 - A NEW, different, naturally good-looking girl each time — never reuse the same recurring face
 - Natural warm Indian complexion, real skin texture, light natural makeup, neat natural black hairstyle
 - Friendly welcoming smile, confident and approachable expression, looking directly at the camera
-${isTraditional ? `- Wearing an elegant premium designer saree (graceful, sophisticated, modest, premium) with a well-fitted blouse — NOT a suit
-- Saree colour inspired by the logo / brand colours (for example ${sareeColourHint}); make it look like an expensive designer campaign saree — never bridal, never a costume, never festival-styled
-- Wearing elegant traditional semi-jewellery (MANDATORY): a necklace or chain on the neck, earrings, a few bangles, a small finger ring, and a small bindi on the forehead — refined and premium, never heavy bridal overload` : `- Wearing simple elegant jewellery (MANDATORY): a small finger ring, a thin necklace or chain on the neck, ear studs / earrings, a wristwatch, and a small bindi on the forehead
+${isTraditional ? `- Wearing an elegant premium DESIGNER silk / fancy saree (graceful, sophisticated, modest, premium) with a well-fitted blouse — NOT a suit
+- The saree MUST have tasteful design / work on it: a woven or zari border, subtle motifs, buttis, or an elegant pallu pattern — NEVER a flat plain saree with no design. Keep the work refined and premium (light-to-medium), never heavy bridal overload
+- Saree colour inspired by the logo / brand colours (for example ${sareeColourHint}); use rich, attractive, vibrant colours — NEVER dull, washed-out, grey, or lifeless tones; make it look like an expensive designer campaign saree — never bridal, never a costume, never festival-styled
+- BLOUSE: a well-fitted blouse with elbow-length or short sleeves — STRICTLY no sleeveless / spaghetti / noodle-strap / deep-cut blouse; keep it modest, classy and professional
+- Wearing elegant traditional semi-jewellery (MANDATORY): a necklace or chain on the neck, earrings, a few bangles, a small finger ring, and a small bindi on the forehead — refined and premium, never heavy bridal overload` : `- Wearing simple elegant jewellery (MANDATORY): a small finger ring, a thin necklace or chain on the neck, ear studs / earrings, and a wristwatch
+- NO bindi on the forehead in this professional-suit look — keep the forehead clean (bindi is only for the saree / traditional look)
 - Wearing a premium tailored formal suit (not saree): blazer + crisp white or cream inner shirt + formal trousers
 - Suit colour inspired by the logo / brand colours — pick ONE specific brand tone (for example ${suitColourHint}); avoid the same beige and avoid a repetitive plain blue corporate suit`}
 
@@ -1202,7 +1218,9 @@ This is a COMMERCIAL campaign saree branch — not a festival greeting saree, no
 The saree must feel like it was chosen specifically for THIS business's premium national campaign.
 • Start from the actual business identity: logo colors, brand tone, business category, and the material language of the premises must influence the saree direction
 • The saree MUST be **DYNAMIC and UNIQUE per business sector** — do NOT reuse one safe pastel saree across different clients
-• When the brand supports modern corporate elegance, prefer refined soft pastel or muted-tone sarees with clean designer restraint, polished drape, and a youthful premium blouse silhouette
+• Use rich, attractive, vibrant, camera-flattering colours — NEVER dull, washed-out, greyed-out, muddy, or lifeless tones. Soft tones are allowed ONLY when they are clean, luminous and premium (e.g. luminous blush, ivory-gold, jewel-pastel), never flat or muted-dead
+• The saree MUST always be a DESIGNER saree with tasteful work — a woven/zari border, subtle motifs or buttis, and an elegant patterned pallu. NEVER a flat plain saree with no design. Keep the work refined light-to-medium, never heavy bridal
+• BLOUSE: well-fitted with elbow-length or short sleeves — STRICTLY no sleeveless / spaghetti-strap / noodle-strap / deep-cut blouse; modest, classy and professional
 • For stronger luxury businesses, the saree may become deeper, richer, or more dramatic — but it must still read as a commercial campaign wardrobe, never bridal overload and never festival-specific celebration styling
 
 Color guide by business type (each MUST feel like a distinct luxury campaign wardrobe decision):
@@ -1569,17 +1587,17 @@ ${clientSpecificLocationBlock}
 The AI must pick ${segmentCount} DIFFERENT spots from within the specific [BUSINESS TYPE] establishment:
 Each chosen spot must match the exact service claim, business proof point, or emotional promise being spoken in that clip's voice-over line.
 
-• **Medical/Healthcare:** Reception counter → Consultation room doorway → Medicine/equipment display area → Patient waiting zone → Near health certifications wall
+• **Medical/Healthcare:** Reception counter → Consultation room doorway → Medicine/equipment display area → Patient waiting zone → Branded reception feature wall
 • **Real Estate:** Reception desk → Property display board wall → Building model showcase → Floor plan gallery → Client meeting zone
 • **Fashion/Boutique:** Store entrance → Clothing display racks → Mirror/trial area → Accessory showcase → Designer collection wall
 • **Food/Restaurant/Catering:** Host station → Dining area → Kitchen pass/display counter → Beverage station → Ambiance seating zone
 • **Tech/Software:** Reception/lobby → Workspace area → Meeting room doorway → Creative wall/whiteboard area → Tech equipment zone
 • **Education:** ${getEducationLocationPlan(businessContext)}
-• **Solar/Energy:** Reception → Solar panel display → System demo area → Certificate/partnership wall → Energy model showcase
+• **Solar/Energy:** Reception → Solar panel display → System demo area → Branded reception feature wall → Energy model showcase
 • **Laundry/Wash:** Counter/reception → Washing machine area → Folded linen display → Pressing/finishing zone → Rack/collection area
 • **Tea/Beverage:** Counter → Tea packet shelf display → Tasting area → Storage/distribution zone → Brand display wall
 • **Jewellery:** Entrance/display case → Gold collection showcase → Diamond/premium section → Trial mirror area → Heritage/trust wall
-• **Electrical/Hardware:** Service counter → Equipment display → Tool showcase area → Workstation/demo zone → Certification wall
+• **Electrical/Hardware:** Service counter → Equipment display → Tool showcase area → Workstation/demo zone → Branded reception feature wall
 • **Default:** Reception → Product/service showcase → Logo/brand wall → Work area → Entrance/closing zone
 
 ===== FRAME-BY-FRAME GENERATION RULES =====
@@ -1599,7 +1617,7 @@ ${Array.from({ length: segmentCount }, (_, i) => {
    
    ${adType !== AdType.FESTIVAL ? `Generate a COMPLETE standalone first-frame image prompt EXACTLY in the base format above (the headers: Create an ultra-realistic promotional portrait…, Main Character, Pose, Background, Visual Style, Composition, Important).
    Keep it clean and concise — about 200–300 words, simple bullet lines, no extra sections, no negative list.
-   Describe the girl (with elegant jewellery — ${attireType === 'traditional' ? 'necklace/chain, earrings, bangles, finger ring' : 'finger ring, necklace/chain, earrings, watch'} — and a bindi on the forehead), the formal front-clasp pose, the real [BUSINESS TYPE] reception background built from the business details and 100% relatable to this exact business (its real equipment, products, displays, and service cues so a viewer instantly recognises what it does), and the attached logo fully visible on the reception wall.
+   Describe the girl (with elegant jewellery — ${attireType === 'traditional' ? 'necklace/chain, earrings, bangles, finger ring, and a small bindi on the forehead' : 'finger ring, necklace/chain, earrings, watch, and NO bindi on the forehead'}), the formal front-clasp pose, the real [BUSINESS TYPE] reception background built from the business details and 100% relatable to this exact business (its real equipment, products, displays, and service cues so a viewer instantly recognises what it does), and the attached logo fully visible on the reception wall.
    The reception, visible business cues, pose, and mood must directly match Clip ${clipNum}'s voice-over line, and the logo must feel physically installed on ${shot.logoPlacement}, fully visible and unaltered.
    The attached logo must be the ONLY text in the image — do NOT invent any other signage, banners, taglines, mission lines, service lists, dates, or academic years, and do NOT add empty/blank boards, frames, certificates, brochures, posters, standees, or blank screens (empty placeholders look like cardboard) — keep walls and surfaces clean. Keep the logo perfectly sharp and in focus (not blurred by depth of field) so all its text is clearly readable.
    Frame the girl as a three-quarter shot (head to thighs/knees), centered and clearly filling about 70% of the frame height (not a small full head-to-feet shot), looking directly at the camera. Keep the girl's ~70% size the priority and the attached logo small-to-medium and secondary — dynamically sized to the free wall space and never enlarged at the cost of the girl's size.` : `Generate a COMPLETE, detailed image generation prompt following ALL the rules/sections from the base prompt above.
@@ -1751,7 +1769,7 @@ ${adType !== AdType.FESTIVAL ? `**CLIP 1 FORMAT (CLEAN — 200-300 words):**
 Clip 1 – Main Frame Prompt (${shotDesigns[0].name})
 Create an ultra-realistic promotional portrait for "[BUSINESS NAME]" using the attached official logo as branding reference.
 Generate a premium [BUSINESS TYPE] reception environment and place a confident young Indian girl standing in front of the reception area.
-Main Character: Indian girl, age 20–25, a new different natural-looking girl, ${attireType === 'traditional' ? 'elegant designer saree (not a suit)' : 'premium tailored formal suit (not saree)'} in a brand-derived colour, natural black hair, ${attireType === 'traditional' ? 'traditional jewellery (necklace/chain, earrings, bangles, ring, bindi)' : 'simple jewellery (finger ring, thin necklace/chain, earrings, wristwatch, bindi)'}, friendly welcoming smile.
+Main Character: Indian girl, age 20–25, a new different natural-looking girl, ${attireType === 'traditional' ? 'elegant DESIGNER silk/fancy saree (not a suit) with tasteful zari/border work (never plain) in a rich attractive non-dull colour and a modest elbow/short-sleeve blouse (never sleeveless)' : 'premium tailored formal suit (not saree)'} in a brand-derived colour, natural black hair, ${attireType === 'traditional' ? 'traditional jewellery (necklace/chain, earrings, bangles, ring, bindi)' : 'simple jewellery (finger ring, thin necklace/chain, earrings, wristwatch) and NO bindi on the forehead'}, friendly welcoming smile.
 Pose: standing centered, both hands at the lower waist with the right hand lightly resting over the left — formal front-clasp corporate pose, looking at the camera.
 Background: the real [BUSINESS TYPE] reception built from the business details, with the attached logo as a small-to-medium wall sign behind her — fully visible, sharp and clearly readable (in focus, not blurred), but secondary, never large enough to shrink the girl. The attached logo is the ONLY text anywhere — no other signage, banners, taglines, mission lines, service lists, dates, academic years, or any invented text. No empty/blank boards, picture frames, certificates, brochures, posters, or blank screens — keep walls and surfaces clean.
 Visual Style: ultra realistic, cinematic indoor lighting, natural skin texture, premium colour grading.
@@ -2105,19 +2123,20 @@ Separator between segments: "###SEGMENT###"
 
 export const POSTER_SYSTEM_PROMPT = (adType: string, festivalName: string) => `You are a world-class poster designer and prompt writer for AI image generators. Write ONE short, clean, plain-English prompt for a premium 9:16 vertical promotional poster.
 
-GOAL: a genuinely PREMIUM, modern, award-level professional poster design${adType === 'festival' ? ` for a ${festivalName} greeting` : ''} that looks like a top international design studio created it — intentional, polished, and visually rich (never basic, flat, cramped, or amateur).
+GOAL: a genuinely PREMIUM, modern, award-level professional poster design${adType === 'festival' ? ` for a ${festivalName} greeting` : ''} that looks like a top international design studio (Behance / Dribbble featured) created it — intentional, polished, and visually RICH. It must NEVER look boring, empty, plain, flat, cramped, template-like, or amateur.
 
 STRICT RULES:
 - Output PLAIN ENGLISH TEXT only — NOT JSON, no key-value schema, no code block, no markdown.
-- Keep it SHORT and clean: about 130-200 words, in a few simple sentences or short lines.
-- GRAPHIC-DESIGN QUALITY (IMPORTANT): make the design genuinely premium — strong visual hierarchy, balanced composition, a clear hero focal area, tasteful brand-colour gradients with real depth, soft shadows and highlights, generous spacing, crisp modern typography, and business-themed graphic accents that suit the industry. It must look professionally art-directed — never plain, flat, template-like, or poorly composed.
-- Describe only: overall style and mood, background and colours (derived from the logo / brand), where the logo goes (top centre, unchanged), the main hero visual, and a clean, well-composed layout.
+- Keep it SHORT and clean: about 150-220 words, in a few simple sentences or short lines.
+- GRAPHIC-DESIGN QUALITY (MOST IMPORTANT): make the design genuinely world-class and visually rich — strong visual hierarchy, a bold hero focal area, layered depth, tasteful brand-colour gradients, soft shadows and highlights, premium modern typography, and a confident, dynamic, well-art-directed composition. The canvas must feel intentionally FILLED and designed (not empty or sparse), yet balanced and breathable — rich but never cluttered.
+- BUSINESS-RELEVANT DESIGN ELEMENTS (CRITICAL — this is what makes it stop looking boring): weave in tasteful graphic elements, icons, illustrations, motifs, patterns, or product/service imagery that directly represent THIS specific business and industry (e.g. medical → clean health/care icons & equipment imagery; education → learning/campus motifs; food → appetising food imagery; jewellery → elegant sparkle & gold accents). These accents must feel custom-designed for this brand, integrated into the composition with depth — never generic clip-art, never random shapes.
+- Describe only: overall style and mood, background and colours (derived from the logo / brand), where the logo goes (top centre, unchanged), the main hero visual, the business-relevant graphic elements, and a polished, well-composed layout.
 - MINIMAL TEXT IN THE POSTER: keep text minimal and clean — the business name, the contact number(s), and the address (when an address is provided it MUST be included, on ONE clean single line), plus optionally one short tagline. Do NOT fill the poster with paragraphs, service lists, or long copy.
 - Use ONLY real business details from the provided info. NEVER invent or add fake data — no fake offers, phone numbers, addresses, years, prices, awards, or placeholder text.
 - CONTACT NUMBERS: show ONLY the real contact number(s) given to you, AT MOST TWO (the first two), exactly as provided digit-for-digit. NEVER alter, complete, reorder, merge, or invent a phone number. If no contact number is given, show NO contact number at all.
 - Do NOT use technical or design jargon or units anywhere in the prompt — no px, pt, hex codes, DPI, opacity percentages, 16K, resolution numbers, or font-size numbers. Use plain words like small, large, centred, soft, bold.
 - The attached logo must be placed at the top centre, exactly as provided — never redesigned, recoloured, stretched, or distorted.
-- Keep it elegant, premium, and uncluttered, with clear visual hierarchy and plenty of clean space.
+- Keep it elegant and premium with clear visual hierarchy and intentional spacing — rich and fully designed, but never cluttered or text-heavy. Empty, bare, or boring layouts are NOT acceptable.
 ${adType === 'festival' ? `- Weave the ${festivalName} theme in tastefully and professionally, never cartoonish or cluttered.` : `- Keep it clean, corporate, modern, and persuasive.`}
 
 OUTPUT: Return ONLY the short plain-English poster prompt. No JSON, no headings, no explanations.`;

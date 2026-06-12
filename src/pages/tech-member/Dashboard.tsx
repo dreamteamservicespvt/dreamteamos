@@ -1,20 +1,16 @@
-import { useState, useEffect, useRef } from "react";
-import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from "firebase/firestore";
+import { useState, useEffect } from "react";
+import { collection, query, where, onSnapshot, updateDoc, deleteDoc, doc } from "firebase/firestore";
 import { db } from "@/services/firebase";
-import { sendNotification } from "@/services/notifications";
 import { useAuthStore } from "@/store/authStore";
 import { format } from "date-fns";
 import type { WorkAssignment, DailyCheckin } from "@/types";
 import { motion } from "framer-motion";
-import { CheckCircle, Clock, Video, Briefcase, Play, Edit3, AlertCircle, LogIn, LogOut, Loader2, Upload, Image, ExternalLink, Undo2 } from "lucide-react";
+import { CheckCircle, Clock, Video, Briefcase, Play, Edit3, AlertCircle, LogIn, LogOut, Loader2, Undo2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { getWhatsAppUrl } from "@/utils/phone";
-import { uploadToCloudinary } from "@/services/cloudinary";
-import { verifyScreenshot } from "@/services/gemini";
+import { performCheckIn } from "@/utils/attendance";
+import CheckoutModal from "@/components/attendance/CheckoutModal";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirm } from "@/hooks/useConfirm";
-
-const ADMIN_WHATSAPP = "9959935203";
 
 export default function TechMemberDashboard() {
   const user = useAuthStore((s) => s.user);
@@ -26,11 +22,6 @@ export default function TechMemberDashboard() {
   const [loading, setLoading] = useState(true);
   const [checkingIn, setCheckingIn] = useState(false);
   const [showCheckout, setShowCheckout] = useState(false);
-  const [checkoutForm, setCheckoutForm] = useState({ summary: "", totalVideos: 0, driveFolderUrl: "" });
-  const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [submittingCheckout, setSubmittingCheckout] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   const todayStr = format(new Date(), "yyyy-MM-dd");
 
@@ -64,26 +55,8 @@ export default function TechMemberDashboard() {
     if (!user) return;
     setCheckingIn(true);
     try {
-      await addDoc(collection(db, "daily_checkins"), {
-        memberId: user.uid,
-        date: todayStr,
-        checkedInAt: serverTimestamp(),
-        status: "checked_in",
-      });
-
-      // Notify tech admin
-      await sendNotification({
-        userId: user.createdBy,
-        type: "check_in",
-        title: "Team Check-In",
-        message: `${user.name} has checked in for today.`,
-        link: `/tech-admin/team/${user.uid}`,
-      });
-
+      const waUrl = await performCheckIn(user, assignments);
       toast({ title: "Checked In!", description: "Opening WhatsApp..." });
-
-      // 2-second delay then open WhatsApp
-      const waUrl = getWhatsAppUrl(ADMIN_WHATSAPP, `Hi, I have checked in for today (${todayStr}). Please assign me work. – ${user.name}`);
       await new Promise((r) => setTimeout(r, 2000));
       window.open(waUrl, "_blank");
     } catch {
@@ -117,6 +90,9 @@ export default function TechMemberDashboard() {
         totalVideos: null,
         driveFolderUrl: null,
         screenshotUrl: null,
+        completedTodayAuto: null,
+        pendingTasks: null,
+        inProgressTasks: null,
         aiVideoCount: null,
         aiConfidence: null,
         aiNotes: null,
@@ -125,61 +101,6 @@ export default function TechMemberDashboard() {
       toast({ title: "Checkout reverted", description: "You are back to checked-in state." });
     } catch {
       toast({ title: "Error", description: "Failed to revert checkout.", variant: "destructive" });
-    }
-  };
-
-  const handleCheckout = async () => {
-    if (!user || !todayCheckin) return;
-    if (!checkoutForm.summary.trim() || checkoutForm.totalVideos <= 0 || !checkoutForm.driveFolderUrl.trim() || !screenshotFile) {
-      toast({ title: "Missing fields", description: "Fill all fields and attach a screenshot.", variant: "destructive" });
-      return;
-    }
-
-    setSubmittingCheckout(true);
-    try {
-      // Upload screenshot
-      const screenshotUrl = await uploadToCloudinary(screenshotFile, setUploadProgress);
-
-      // AI verification
-      let aiResult: { videoCount: number; confidence: string; notes: string } = { videoCount: 0, confidence: "low", notes: "Verification skipped" };
-      try {
-        aiResult = await verifyScreenshot(screenshotUrl);
-      } catch {
-        // continue without AI verification
-      }
-
-      // Update the checkin doc
-      await updateDoc(doc(db, "daily_checkins", todayCheckin.id), {
-        checkedOutAt: serverTimestamp(),
-        status: "pending_approval",
-        summary: checkoutForm.summary.trim(),
-        totalVideos: checkoutForm.totalVideos,
-        driveFolderUrl: checkoutForm.driveFolderUrl.trim(),
-        screenshotUrl,
-        aiVideoCount: aiResult.videoCount,
-        aiConfidence: aiResult.confidence,
-        aiNotes: aiResult.notes,
-        aiVerificationResult: Math.abs(aiResult.videoCount - checkoutForm.totalVideos) <= 1 ? "pass" : "mismatch",
-      });
-
-      // Notify tech admin
-      await sendNotification({
-        userId: user.createdBy,
-        type: "check_out",
-        title: "Work Submitted for Approval",
-        message: `${user.name} checked out — ${checkoutForm.totalVideos} videos. Tap to review & approve.`,
-        link: `/tech-admin/team/${user.uid}`,
-      });
-
-      setShowCheckout(false);
-      setCheckoutForm({ summary: "", totalVideos: 0, driveFolderUrl: "" });
-      setScreenshotFile(null);
-      toast({ title: "Checked Out!", description: `Daily summary submitted. AI counted ${aiResult.videoCount} videos.` });
-    } catch {
-      toast({ title: "Error", description: "Failed to check out.", variant: "destructive" });
-    } finally {
-      setSubmittingCheckout(false);
-      setUploadProgress(0);
     }
   };
 
@@ -325,97 +246,13 @@ export default function TechMemberDashboard() {
       </div>
 
       {/* Check-Out Modal */}
-      {showCheckout && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => !submittingCheckout && setShowCheckout(false)}>
-          <div className="bg-card border border-border rounded-xl w-full max-w-md p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-display font-bold text-foreground text-lg">Daily Check-Out</h3>
-
-            <div className="bg-info/10 border border-info/20 rounded-lg p-3 text-xs text-info space-y-1">
-              <p className="font-semibold">Instructions:</p>
-              <p>1. Create a folder named <span className="font-mono font-bold">{todayStr}</span> in your Drive</p>
-              <p>2. Upload all today's completed videos into that folder</p>
-              <p>3. Paste the folder URL below & attach a screenshot</p>
-              <p>4. Your submission will be sent to admin for approval</p>
-            </div>
-
-            <div>
-              <label className="text-xs text-muted-foreground font-medium mb-1 block">Daily Summary</label>
-              <textarea
-                value={checkoutForm.summary}
-                onChange={(e) => setCheckoutForm((p) => ({ ...p, summary: e.target.value }))}
-                placeholder="What did you work on today?"
-                className="w-full h-20 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:ring-1 focus:ring-primary outline-none"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-muted-foreground font-medium mb-1 block">Total Videos</label>
-                <input
-                  type="number"
-                  min={0}
-                  value={checkoutForm.totalVideos || ""}
-                  onChange={(e) => setCheckoutForm((p) => ({ ...p, totalVideos: parseInt(e.target.value) || 0 }))}
-                  className="w-full h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:ring-1 focus:ring-primary outline-none"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground font-medium mb-1 block">Google Drive URL</label>
-                <input
-                  type="url"
-                  value={checkoutForm.driveFolderUrl}
-                  onChange={(e) => setCheckoutForm((p) => ({ ...p, driveFolderUrl: e.target.value }))}
-                  placeholder="https://drive.google.com/..."
-                  className="w-full h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus:ring-1 focus:ring-primary outline-none"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs text-muted-foreground font-medium mb-1 block">Drive Screenshot (for AI verification)</label>
-              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => setScreenshotFile(e.target.files?.[0] || null)} />
-              <button
-                onClick={() => fileRef.current?.click()}
-                className="w-full h-20 rounded-lg border-2 border-dashed border-border hover:border-primary/50 flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {screenshotFile ? (
-                  <>
-                    <Image size={16} className="text-success" />
-                    <span className="text-xs text-success font-medium truncate max-w-[200px]">{screenshotFile.name}</span>
-                  </>
-                ) : (
-                  <>
-                    <Upload size={16} />
-                    <span className="text-xs">Click to upload screenshot</span>
-                  </>
-                )}
-              </button>
-              {uploadProgress > 0 && uploadProgress < 100 && (
-                <div className="mt-2 h-1.5 bg-border rounded-full overflow-hidden">
-                  <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${uploadProgress}%` }} />
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-2 pt-2">
-              <button
-                onClick={() => setShowCheckout(false)}
-                disabled={submittingCheckout}
-                className="flex-1 h-9 rounded-lg bg-accent text-foreground text-sm font-medium border border-border"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCheckout}
-                disabled={submittingCheckout}
-                className="flex-1 h-9 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
-              >
-                {submittingCheckout ? <Loader2 size={14} className="animate-spin" /> : <LogOut size={14} />}
-                Submit & Check Out
-              </button>
-            </div>
-          </div>
-        </div>
+      {showCheckout && user && todayCheckin && (
+        <CheckoutModal
+          user={user}
+          todayCheckin={todayCheckin}
+          assignments={assignments}
+          onClose={() => setShowCheckout(false)}
+        />
       )}
 
       {/* Active Work Section */}

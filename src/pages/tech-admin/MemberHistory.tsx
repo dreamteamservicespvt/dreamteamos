@@ -6,7 +6,7 @@ import { sendNotification } from "@/services/notifications";
 import { useAuthStore } from "@/store/authStore";
 import type { WorkAssignment, AppUser, DailyCheckin } from "@/types";
 import { format, subDays, startOfDay } from "date-fns";
-import { ArrowLeft, FileText, Loader2, TrendingUp, IndianRupee, Video, CheckCircle2, XCircle, ExternalLink, Image, Clock, Calendar, ChevronDown } from "lucide-react";
+import { ArrowLeft, BarChart3, FileText, Loader2, TrendingUp, IndianRupee, Video, CheckCircle2, XCircle, ExternalLink, Image, Clock, Calendar, ChevronDown } from "lucide-react";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
 import { formatCurrency, formatDate, formatTime } from "@/utils/formatters";
 import { useToast } from "@/hooks/use-toast";
@@ -212,10 +212,16 @@ export default function TechAdminMemberHistory() {
         <button onClick={() => navigate(-1)} className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0">
           <ArrowLeft size={16} />
         </button>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="font-display text-lg md:text-2xl font-bold text-foreground truncate">{member?.name || "Member"}'s History</h1>
           <p className="text-muted-foreground text-xs md:text-sm mt-0.5 truncate">{assignments.length} assignments · {member?.email}</p>
         </div>
+        <button
+          onClick={() => navigate(`/tech-admin/team/${memberId}/analytics`)}
+          className="h-9 px-3 md:px-4 rounded-lg bg-primary text-primary-foreground font-display font-semibold text-xs flex items-center gap-1.5 hover:bg-primary/90 transition-colors shrink-0"
+        >
+          <BarChart3 size={14} /> <span className="hidden sm:inline">Analytics</span>
+        </button>
       </div>
 
       {/* Revenue Overview */}
