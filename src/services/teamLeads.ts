@@ -35,17 +35,28 @@ export function subscribeTeamLeads(memberIds: string[], cb: (leads: Lead[]) => v
 
   const results = new Map<number, Lead[]>();
   const unsubs = chunks.map((chunk, idx) =>
-    onSnapshot(query(collection(db, "leads"), where("assignedTo", "in", chunk)), (snap) => {
-      results.set(idx, snap.docs.map((d) => ({ id: d.id, ...d.data() } as Lead)));
-      if (results.size === chunks.length) cb([...results.values()].flat());
-    }),
+    onSnapshot(
+      query(collection(db, "leads"), where("assignedTo", "in", chunk)),
+      (snap) => {
+        results.set(idx, snap.docs.map((d) => ({ id: d.id, ...d.data() } as Lead)));
+        if (results.size === chunks.length) cb([...results.values()].flat());
+      },
+      () => {
+        // A failed chunk (rules / quota) must not hang the page in "loading" forever —
+        // treat it as empty and still emit what the other chunks delivered.
+        results.set(idx, []);
+        if (results.size === chunks.length) cb([...results.values()].flat());
+      },
+    ),
   );
   return () => unsubs.forEach((u) => u());
 }
 
 /** Live-listen to a single member's leads (member detail / history pages). */
 export function subscribeMemberLeads(memberId: string, cb: (leads: Lead[]) => void): () => void {
-  return onSnapshot(query(collection(db, "leads"), where("assignedTo", "==", memberId)), (snap) => {
-    cb(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Lead)));
-  });
+  return onSnapshot(
+    query(collection(db, "leads"), where("assignedTo", "==", memberId)),
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Lead))),
+    () => cb([]), // error → emit empty so the page renders instead of hanging
+  );
 }

@@ -119,6 +119,9 @@ export default function MyLeads() {
   const [showCustomModal, setShowCustomModal] = useState(false);
   const [duplicateLeadIds, setDuplicateLeadIds] = useState<Set<string>>(new Set());
   const [dupLoading, setDupLoading] = useState(true);
+  // Render leads 10 at a time ("Show 10 more") — resets whenever the visible set changes.
+  const [visibleLeadCount, setVisibleLeadCount] = useState(10);
+  useEffect(() => { setVisibleLeadCount(10); }, [dayFilter, statusFilter, search, selectedDate, viewTab]);
   const pendingDeletesRef = useRef<Map<string, { timeoutId: ReturnType<typeof setTimeout>; intervalId: ReturnType<typeof setInterval> }>>(new Map());
 
   // Realtime listener
@@ -353,7 +356,7 @@ export default function MyLeads() {
     let secondsLeft = 5;
     const label = displayName || "Custom lead";
 
-    const { dismiss, update } = toast({
+    const { dismiss, update, id: toastId } = toast({
       title: "Deleting lead",
       description: `"${label}" will be deleted in ${secondsLeft}s`,
       variant: "destructive",
@@ -380,7 +383,7 @@ export default function MyLeads() {
     const intervalId = setInterval(() => {
       secondsLeft -= 1;
       if (secondsLeft > 0) {
-        update({ description: `"${label}" will be deleted in ${secondsLeft}s` });
+        update({ id: toastId, description: `"${label}" will be deleted in ${secondsLeft}s` });
       }
     }, 1000);
 
@@ -562,29 +565,39 @@ export default function MyLeads() {
             </span>
           </div>
 
-          {/* Lead Cards */}
+          {/* Lead Cards — rendered 10 at a time to keep the page light */}
           {activeDayLeads.length === 0 ? (
             <div className="bg-card border border-border rounded-xl p-12 text-center">
               <Phone size={32} className="mx-auto text-muted-foreground/30 mb-2" />
               <p className="text-muted-foreground text-sm">No leads found{search || statusFilter !== "all" ? " for these filters" : selectedDate ? " on this date" : " for this day"}</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {activeDayLeads.map((lead) => (
-                <LeadCard
-                  key={lead.id}
-                  lead={lead}
-                  isDuplicate={duplicateLeadIds.has(lead.id)}
-                  pastDayLabel={getLeadPastDayLabel(lead)}
-                  updateLead={updateLead}
-                  onDelete={lead.isCustomEntry ? () => deleteCustomLead(lead.id, lead.displayName, lead.phone) : undefined}
-                  expandedNotes={expandedNotes}
-                  setExpandedNotes={setExpandedNotes}
-                  expandedSale={expandedSale}
-                  setExpandedSale={setExpandedSale}
-                />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {activeDayLeads.slice(0, visibleLeadCount).map((lead) => (
+                  <LeadCard
+                    key={lead.id}
+                    lead={lead}
+                    isDuplicate={duplicateLeadIds.has(lead.id)}
+                    pastDayLabel={getLeadPastDayLabel(lead)}
+                    updateLead={updateLead}
+                    onDelete={lead.isCustomEntry ? () => deleteCustomLead(lead.id, lead.displayName, lead.phone) : undefined}
+                    expandedNotes={expandedNotes}
+                    setExpandedNotes={setExpandedNotes}
+                    expandedSale={expandedSale}
+                    setExpandedSale={setExpandedSale}
+                  />
+                ))}
+              </div>
+              {activeDayLeads.length > visibleLeadCount && (
+                <button
+                  onClick={() => setVisibleLeadCount((c) => c + 10)}
+                  className="w-full h-10 rounded-xl bg-card border border-border text-foreground text-sm font-medium hover:bg-accent transition-colors flex items-center justify-center gap-2"
+                >
+                  <ChevronDown size={15} /> Show 10 more ({activeDayLeads.length - visibleLeadCount} remaining)
+                </button>
+              )}
+            </>
           )}
         </div>
       )}
@@ -808,7 +821,7 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
             <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-warning/15 text-warning border border-warning/20 flex items-center gap-1">
               <Lock size={9} />
               {lead.frozenReason === "duplicate_resolved"
-                ? "Duplicate — kept by the member who worked it first"
+                ? `Duplicate — kept by ${lead.takenOverBy && !lead.takenOverBy.includes("duplicate rule") ? lead.takenOverBy : "the member who worked it first"}`
                 : `Taken over${lead.takenOverBy ? ` by ${lead.takenOverBy}` : ""}`}
             </span>
           )}

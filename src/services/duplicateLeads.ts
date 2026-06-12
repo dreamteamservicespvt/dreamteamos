@@ -1,4 +1,4 @@
-import { collection, doc, getDocs, query, serverTimestamp, Timestamp, updateDoc, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, serverTimestamp, Timestamp, updateDoc, where } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { normalizePhone } from "@/utils/phone";
 import type { Lead, LeadStatus } from "@/types";
@@ -134,22 +134,38 @@ export async function resolveNonSaleDuplicates(
 ): Promise<DuplicateResolution> {
   const res: DuplicateResolution = { resolvedMyLeadIds: new Set(), frozeMineCount: 0, wonCount: 0 };
 
+  // Resolve member uids → display names so the frozen lead shows WHO kept the number
+  // (1 cached read per distinct member, only when they win a duplicate).
+  const nameCache = new Map<string, string>([[me.uid, me.name]]);
+  const memberNameOf = async (uid: string): Promise<string> => {
+    if (nameCache.has(uid)) return nameCache.get(uid)!;
+    let name = "another member";
+    try {
+      const snap = await getDoc(doc(db, "users", uid));
+      if (snap.exists()) name = (snap.data() as any).name || name;
+    } catch { /* fall back to generic */ }
+    nameCache.set(uid, name);
+    return name;
+  };
+
   for (const [myLeadId, holders] of Object.entries(dupMap)) {
     const mine = myLeads.find((l) => l.id === myLeadId);
     if (!mine || mine.frozen) continue;
     // Any sale on either side → dispute flow (proof + admin decision), don't auto-resolve.
     if (mine.saleDone || holders.some((h) => h.saleDone)) continue;
 
-    type Contender = { leadId: string; isMine: boolean; engaged: boolean; createdAt: number };
+    type Contender = { leadId: string; memberId: string; isMine: boolean; engaged: boolean; createdAt: number };
     const contenders: Contender[] = [
       {
         leadId: mine.id,
+        memberId: me.uid,
         isMine: true,
         engaged: mine.status !== "not_called",
         createdAt: (mine.createdAt as any)?.seconds || 0,
       },
       ...holders.map((h) => ({
         leadId: h.leadId,
+        memberId: h.memberId,
         isMine: false,
         engaged: h.status !== "not_called",
         createdAt: h.createdAtSeconds,
@@ -162,6 +178,8 @@ export async function resolveNonSaleDuplicates(
     const winner = [...pool].sort((a, b) => (a.createdAt - b.createdAt) || (a.leadId < b.leadId ? -1 : 1))[0];
     const losers = contenders.filter((c) => c.leadId !== winner.leadId);
 
+    const winnerName = await memberNameOf(winner.memberId);
+
     let allOk = true;
     for (const loser of losers) {
       try {
@@ -169,7 +187,7 @@ export async function resolveNonSaleDuplicates(
           frozen: true,
           frozenAt: Timestamp.now(),
           frozenReason: "duplicate_resolved",
-          takenOverBy: winner.isMine ? me.name : "another member (duplicate rule)",
+          takenOverBy: winnerName,
           lastUpdated: serverTimestamp(),
         });
         if (loser.isMine) res.frozeMineCount++;

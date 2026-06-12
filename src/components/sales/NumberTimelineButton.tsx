@@ -90,9 +90,12 @@ export default function NumberTimelineButton({ phone, lead }: { phone: string; l
 
   // Why the member's own lead is frozen (taken over vs duplicate-rule), from the lead itself.
   const leadFrozen = !!lead?.frozen;
+  const keptByName = lead?.takenOverBy && !lead.takenOverBy.includes("duplicate rule") ? lead.takenOverBy : null;
   const leadFrozenReason =
     lead?.frozenReason === "duplicate_resolved"
-      ? `Duplicate — kept by the member who worked it first${lead?.takenOverBy ? ` (${lead.takenOverBy})` : ""}`
+      ? keptByName
+        ? `Duplicate — kept by ${keptByName} (worked it first)`
+        : "Duplicate — kept by the member who worked it first"
       : leadFrozen
         ? `Taken over${lead?.takenOverBy ? ` by ${lead.takenOverBy}` : " after its 24h validity"}`
         : null;

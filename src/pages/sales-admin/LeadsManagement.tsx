@@ -12,6 +12,7 @@ import { useNow } from "@/hooks/useNow";
 import { normalizePhone, formatPhoneDisplay, getCallUrl, getWhatsAppUrl } from "@/utils/phone";
 import { formatCurrency, formatDuration } from "@/utils/formatters";
 import { fetchNumberLock, applySaleFreeze, adminReleaseLock, buildLeadFreezeFields, clearedLeadFreezeFields } from "@/services/numberLock";
+import NumberTimelineButton from "@/components/sales/NumberTimelineButton";
 import { format } from "date-fns";
 
 type TimestampLike = { toMillis?: () => number; seconds?: number } | null | undefined;
@@ -271,6 +272,7 @@ function NumberGroupCard({
           <div className="flex items-center gap-1.5 mt-0.5">
             <a href={getCallUrl(phone)} className="w-6 h-6 rounded flex items-center justify-center text-info hover:bg-info/10 transition-colors" title="Call"><Phone size={12} /></a>
             <a href={getWhatsAppUrl(phone)} target="_blank" rel="noopener noreferrer" className="w-6 h-6 rounded flex items-center justify-center text-success hover:bg-success/10 transition-colors" title="WhatsApp"><MessageCircle size={12} /></a>
+            <NumberTimelineButton phone={phone} />
             <span className="text-[10px] text-muted-foreground">{holders.length} holder{holders.length > 1 ? "s" : ""}</span>
           </div>
         </div>

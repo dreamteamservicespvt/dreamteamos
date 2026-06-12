@@ -10,7 +10,7 @@ import { normalizePhone, formatPhoneDisplay, getWhatsAppUrl, getCallUrl } from "
 import { formatCurrency } from "@/utils/formatters";
 import { format, subDays, startOfDay } from "date-fns";
 import type { AppUser, Lead, LeadStatus, SaleDetail } from "@/types";
-import { ArrowLeft, Phone, Plus, Loader2, Search, Trash2, MessageCircle, StickyNote, ShoppingBag, X, Hash, List, Type, CheckSquare, Square, XCircle, CalendarClock } from "lucide-react";
+import { ArrowLeft, Phone, Plus, Loader2, Search, Trash2, MessageCircle, StickyNote, ShoppingBag, X, Hash, List, Type, CheckSquare, Square, XCircle, CalendarClock, ChevronDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useConfirm } from "@/hooks/useConfirm";
@@ -125,6 +125,9 @@ export default function MemberLeadsDetail() {
   const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
+  // Render leads 10 at a time ("Show 10 more") — resets when the visible set changes.
+  const [visibleLeadCount, setVisibleLeadCount] = useState(10);
+  useEffect(() => { setVisibleLeadCount(10); }, [dayFilter, statusFilter, search, selectedDate, viewTab]);
   const [reassignTarget, setReassignTarget] = useState("");
   const [bulkReassigning, setBulkReassigning] = useState(false);
 
@@ -510,14 +513,16 @@ export default function MemberLeadsDetail() {
     }
   };
 
-  // Quick-select every not-called lead in the current day window (date filter already applied)
-  const selectNotCalled = () => {
-    const ids = activeDayLeads.filter((l) => l.status === "not_called").map((l) => l.id);
+  // Quick-select every lead with the given status in the current day window (date filter applied)
+  const selectByStatus = (status: "not_called" | "not_answered", label: string) => {
+    const ids = activeDayLeads.filter((l) => l.status === status).map((l) => l.id);
     setSelectedLeads(new Set(ids));
     if (ids.length === 0) {
-      toast({ title: "No not-called leads", description: "There are no not-called leads in the current view." });
+      toast({ title: `No ${label} leads`, description: `There are no ${label} leads in the current view.` });
     }
   };
+  const selectNotCalled = () => selectByStatus("not_called", "not-called");
+  const selectNotAnswered = () => selectByStatus("not_answered", "not-answered");
 
   const handleBulkReassign = async () => {
     if (selectedLeads.size === 0 || !reassignTarget) return;
@@ -850,6 +855,13 @@ export default function MemberLeadsDetail() {
                         Select Not Called
                       </button>
                       <button
+                        onClick={selectNotAnswered}
+                        className="h-7 md:h-8 px-2 md:px-3 rounded-lg text-[10px] md:text-xs font-medium bg-card border border-border text-foreground hover:bg-accent transition-colors"
+                        title="Select every not-answered lead in the current day/date view"
+                      >
+                        Select Not Answered
+                      </button>
+                      <button
                         onClick={handleBulkDelete}
                         disabled={selectedLeads.size === 0 || bulkDeleting}
                         className="h-7 md:h-8 px-2 md:px-3 rounded-lg text-[10px] md:text-xs font-semibold bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50 flex items-center gap-1 transition-colors"
@@ -948,9 +960,20 @@ export default function MemberLeadsDetail() {
               <p className="text-muted-foreground text-sm">No leads found{search || statusFilter !== "all" ? " for these filters" : selectedDate ? " on this date" : " for this day"}</p>
             </div>
           ) : (
-            <div className="bg-card border border-border rounded-xl overflow-hidden">
-              <LeadsList leads={activeDayLeads} members={members} isMobile={isMobile} expandedNotes={expandedNotes} setExpandedNotes={setExpandedNotes} onDelete={handleDelete} onReassign={handleReassign} selectMode={selectMode} selectedLeads={selectedLeads} onToggleSelect={toggleSelectLead} onToggleSelectAll={() => toggleSelectAll(activeDayLeads)} />
-            </div>
+            <>
+              <div className="bg-card border border-border rounded-xl overflow-hidden">
+                {/* Rendered 10 at a time to keep large lists (500+) fast; select-all / select-not-called still cover the FULL day list */}
+                <LeadsList leads={activeDayLeads.slice(0, visibleLeadCount)} members={members} isMobile={isMobile} expandedNotes={expandedNotes} setExpandedNotes={setExpandedNotes} onDelete={handleDelete} onReassign={handleReassign} selectMode={selectMode} selectedLeads={selectedLeads} onToggleSelect={toggleSelectLead} onToggleSelectAll={() => toggleSelectAll(activeDayLeads)} />
+              </div>
+              {activeDayLeads.length > visibleLeadCount && (
+                <button
+                  onClick={() => setVisibleLeadCount((c) => c + 10)}
+                  className="w-full h-10 mt-3 rounded-xl bg-card border border-border text-foreground text-sm font-medium hover:bg-accent transition-colors flex items-center justify-center gap-2"
+                >
+                  <ChevronDown size={15} /> Show 10 more ({activeDayLeads.length - visibleLeadCount} remaining)
+                </button>
+              )}
+            </>
           )}
         </div>
       )}
