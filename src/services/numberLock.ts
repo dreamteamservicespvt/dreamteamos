@@ -29,6 +29,38 @@ interface LockActor {
   name: string;
 }
 
+/** Clamp a requested freeze length to the allowed 1–7 day range. */
+export function clampFreezeDays(days: number): number {
+  return Math.min(7, Math.max(1, Math.round(days || 1)));
+}
+
+/**
+ * Fields mirrored onto the seller's lead doc when a sale-freeze is applied. The canonical lock
+ * still lives in `numberLocks` (and is what blocks other members), but mirroring lets the member's
+ * own list and the admin Frozen Numbers tab render a live countdown straight from `leads`.
+ */
+export function buildLeadFreezeFields(days: number, byName: string) {
+  const clampedDays = clampFreezeDays(days);
+  const nowTs = Timestamp.now();
+  return {
+    saleFrozen: true,
+    saleFrozenAt: nowTs,
+    saleFrozenUntil: Timestamp.fromMillis(Date.now() + clampedDays * DAY_MS),
+    saleFrozenDays: clampedDays,
+    saleFrozenByName: byName,
+  };
+}
+
+/** Fields to write on a lead when a sale-freeze is cleared / released. */
+export function clearedLeadFreezeFields() {
+  return {
+    saleFrozen: false,
+    saleFrozenUntil: null,
+    saleFrozenDays: null,
+    saleFrozenByName: null,
+  };
+}
+
 export type ClaimResult =
   | { kind: "created"; leadId: string }
   | { kind: "takeover"; leadId: string; previousOwnerName: string }
@@ -195,7 +227,7 @@ export async function applySaleFreeze({
 }): Promise<void> {
   const normalized = normalizePhone(phone);
   const lockRef = doc(db, "numberLocks", phoneLockId(phone));
-  const clampedDays = Math.min(7, Math.max(1, Math.round(days || 1)));
+  const clampedDays = clampFreezeDays(days);
 
   await runTransaction(db, async (tx) => {
     const lockSnap = await tx.get(lockRef);

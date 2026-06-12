@@ -7,10 +7,11 @@ import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { logActivity } from "@/services/activityLog";
 import { uploadToCloudinary } from "@/services/cloudinary";
-import { claimNumber, applySaleFreeze, releaseLockForLead } from "@/services/numberLock";
+import { claimNumber, applySaleFreeze, releaseLockForLead, buildLeadFreezeFields, fetchNumberLock } from "@/services/numberLock";
 import { findOtherHolders, findMemberDuplicates } from "@/services/duplicateLeads";
-import { formatCurrency } from "@/utils/formatters";
+import { formatCurrency, formatDuration } from "@/utils/formatters";
 import { normalizePhone } from "@/utils/phone";
+import { useNow } from "@/hooks/useNow";
 import { format, subDays, startOfDay } from "date-fns";
 import type { AppUser, Lead, LeadStatus, SaleDetail } from "@/types";
 import { useToast } from "@/hooks/use-toast";
@@ -19,8 +20,16 @@ import DashboardDayPicker from "@/components/dashboard/DayPicker";
 import NumberTimelineButton from "@/components/sales/NumberTimelineButton";
 import {
   Search, Phone, MessageCircle, StickyNote, ChevronDown, ChevronUp,
-  Loader2, Check, Upload, ExternalLink, Plus, Trash2, ShoppingBag, X, Lock, AlertTriangle,
+  Loader2, Check, Upload, ExternalLink, Plus, Trash2, ShoppingBag, X, Lock, AlertTriangle, Snowflake, FileText,
 } from "lucide-react";
+
+type TimestampLike = { toMillis?: () => number; seconds?: number } | null | undefined;
+function tsToMs(ts: TimestampLike): number {
+  if (!ts) return 0;
+  if (typeof ts.toMillis === "function") return ts.toMillis();
+  if (typeof ts.seconds === "number") return ts.seconds * 1000;
+  return 0;
+}
 
 const STATUS_OPTIONS: { value: LeadStatus; label: string; color: string }[] = [
   { value: "not_called", label: "Not Called", color: "bg-muted-foreground/15 text-muted-foreground" },
@@ -759,6 +768,7 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
               <Lock size={9} /> Taken over{lead.takenOverBy ? ` by ${lead.takenOverBy}` : ""}
             </span>
           )}
+          {!frozen && lead.saleFrozen && <FrozenBadge until={lead.saleFrozenUntil} />}
           {isDuplicate && (
             <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-destructive/15 text-destructive border border-destructive/20 flex items-center gap-1" title="Another member also holds this number">
               <AlertTriangle size={9} /> Duplicate
@@ -933,6 +943,12 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
                 <ExternalLink size={10} /> Sale proof
               </a>
             )}
+            {item.proofNote && (
+              <p className="flex items-start gap-1 text-[10px] text-foreground/80 bg-destructive/5 border border-destructive/20 rounded p-1.5">
+                <FileText size={10} className="mt-0.5 shrink-0 text-destructive" />
+                <span className="whitespace-pre-wrap break-words">{item.proofNote}</span>
+              </p>
+            )}
             <div className="flex flex-col gap-0.5 text-[9px] text-muted-foreground font-mono pt-0.5">
               {fmtSaleTs(item.submittedAt) && <span>Submitted: {fmtSaleTs(item.submittedAt)}</span>}
               {item.verificationStatus === "verified" && fmtSaleTs(item.verifiedAt) && (
@@ -941,6 +957,11 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
             </div>
           </div>
         ))}
+
+        {/* Freeze / extend an already-added number (available once a sale exists) */}
+        {!frozen && allSaleItems.length > 0 && (
+          <FreezeControl lead={lead} updateLead={updateLead} />
+        )}
 
         {/* Add Sale Form */}
         <AnimatePresence>
@@ -1011,8 +1032,17 @@ function AddCustomLeadModal({ user, onClose }: { user: AppUser; onClose: () => v
         toast({ title: "Lead Added", description: "Custom lead created. Use the 'Add Sale' button on the card to record the sale." });
       }
       onClose();
-    } catch {
-      toast({ title: "Error", description: "Failed to create lead.", variant: "destructive" });
+    } catch (e: any) {
+      // Surface the real cause instead of a generic message. The most common failure here is a
+      // Firestore "permission-denied" on the numberLocks write (rules not updated for that
+      // collection) — call it out specifically so it can be fixed at the source.
+      const msg =
+        e?.code === "permission-denied" || /permission/i.test(e?.message || "")
+          ? "Couldn't reserve this number (permission denied on the number-lock). Ask the admin to update Firestore rules for the 'numberLocks' collection."
+          : e?.message
+            ? `Failed to create lead: ${e.message}`
+            : "Failed to create lead.";
+      toast({ title: "Error", description: msg, variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -1114,14 +1144,24 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
   const hasProof = !!proofUrl || !!proofNote.trim();
 
   // Check whether another member has already sold this number (duplicate dispute).
+  // Two signals so detection still works even if cross-member `leads` reads are blocked by rules:
+  //  1) the shared leads query (findOtherHolders), and
+  //  2) the per-number lock (always readable) — saleById set to someone else means they sold it.
   useEffect(() => {
     let cancelled = false;
     setDupChecking(true);
     (async () => {
       if (!saleFormUser) { setDupChecking(false); return; }
       const others = await findOtherHolders(lead.phone, saleFormUser.uid);
+      let dup = others.some((o) => o.saleDone);
+      if (!dup) {
+        try {
+          const lock = await fetchNumberLock(lead.phone);
+          if (lock?.saleById && lock.saleById !== saleFormUser.uid) dup = true;
+        } catch { /* lock read failed — fall back to the leads signal only */ }
+      }
       if (cancelled) return;
-      setIsDuplicate(others.some((o) => o.saleDone));
+      setIsDuplicate(dup);
       setDupChecking(false);
     })();
     return () => { cancelled = true; };
@@ -1156,6 +1196,14 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
   const handleSave = async () => {
     if (amount <= 0) {
       toast({ title: "Error", description: "Please enter a valid amount.", variant: "destructive" });
+      return;
+    }
+    if (uploading) {
+      toast({ title: "Hold on", description: "Wait for the payment screenshot to finish uploading.", variant: "destructive" });
+      return;
+    }
+    if (!screenshotUrl) {
+      toast({ title: "Screenshot required", description: "Upload the payment screenshot before adding the sale.", variant: "destructive" });
       return;
     }
     if (isDuplicate && !hasProof) {
@@ -1196,6 +1244,8 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
       });
     }
     // Freeze this client so no other member can poach the number while it's sold.
+    // Mirror the freeze onto the lead (for the member's list + admin Frozen tab) only after the
+    // canonical lock write succeeds, so display never claims a freeze that isn't actually enforced.
     let froze = false;
     if (saleFormUser) {
       try {
@@ -1205,6 +1255,7 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
           days: freezeDays,
           leadId: lead.id,
         });
+        await updateLead(lead.id, buildLeadFreezeFields(freezeDays, saleFormUser.name));
         froze = true;
       } catch {
         /* non-fatal: the sale is already recorded */
@@ -1267,16 +1318,18 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
       )}
 
       <label className="block cursor-pointer">
-        <div className="border border-dashed border-border rounded-md p-3 text-center hover:border-primary/50 transition-colors">
+        <div className={`border border-dashed rounded-md p-3 text-center transition-colors ${screenshotUrl ? "border-success/50" : "border-destructive/40 hover:border-primary/50"}`}>
           {uploading ? (
-            <Loader2 size={16} className="animate-spin text-primary mx-auto" />
+            <div className="flex items-center gap-2 justify-center text-xs text-primary">
+              <Loader2 size={16} className="animate-spin" /> Uploading screenshot…
+            </div>
           ) : screenshotUrl ? (
             <div className="flex items-center gap-2 justify-center text-xs text-success">
               <Check size={14} /> Payment screenshot uploaded
             </div>
           ) : (
             <div className="flex items-center gap-2 justify-center text-xs text-muted-foreground">
-              <Upload size={14} /> Upload payment screenshot
+              <Upload size={14} /> Upload payment screenshot <span className="text-destructive">*</span>
             </div>
           )}
         </div>
@@ -1334,12 +1387,119 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
 
       <button
         onClick={handleSave}
-        disabled={saving || amount <= 0 || dupChecking || (isDuplicate && !hasProof)}
+        disabled={saving || amount <= 0 || uploading || !screenshotUrl || dupChecking || proofUploading || (isDuplicate && !hasProof)}
         className="w-full h-9 rounded-lg bg-primary text-primary-foreground font-display font-semibold text-xs hover:bg-primary/90 disabled:opacity-40 transition-colors flex items-center justify-center gap-2"
       >
         {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-        {saving ? "Saving..." : dupChecking ? "Checking…" : isDuplicate && !hasProof ? "Add proof to continue" : `Add Sale — ${formatCurrency(amount)}`}
+        {saving
+          ? "Saving..."
+          : uploading
+            ? "Uploading screenshot…"
+            : !screenshotUrl
+              ? "Upload screenshot to continue"
+              : dupChecking
+                ? "Checking…"
+                : isDuplicate && !hasProof
+                  ? "Add proof to continue"
+                  : `Add Sale — ${formatCurrency(amount)}`}
       </button>
+    </div>
+  );
+}
+
+/* ─── Frozen badge (live countdown) ─── */
+
+/** Self-contained green pill that ticks every second and disappears when the freeze expires. */
+function FrozenBadge({ until }: { until: any }) {
+  const now = useNow(1000);
+  const ms = tsToMs(until) - now;
+  if (ms <= 0) return null;
+  return (
+    <span
+      className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-success/15 text-success border border-success/20 flex items-center gap-1"
+      title={`Frozen until ${format(new Date(tsToMs(until)), "dd MMM yyyy, hh:mm a")}`}
+    >
+      <Snowflake size={9} /> Frozen · {formatDuration(ms)} left
+    </span>
+  );
+}
+
+/* ─── Freeze control (freeze / extend an already-added number) ─── */
+
+function FreezeControl({
+  lead,
+  updateLead,
+}: {
+  lead: Lead;
+  updateLead: (id: string, data: Record<string, any>) => Promise<void>;
+}) {
+  const user = useAuthStore((s) => s.user);
+  const { toast } = useToast();
+  const now = useNow(1000);
+  const [open, setOpen] = useState(false);
+  const [days, setDays] = useState(lead.saleFrozenDays || 1);
+  const [busy, setBusy] = useState(false);
+
+  const remainingMs = tsToMs(lead.saleFrozenUntil) - now;
+  const isFrozen = !!lead.saleFrozen && remainingMs > 0;
+
+  const apply = async () => {
+    if (!user) return;
+    setBusy(true);
+    try {
+      await applySaleFreeze({ user: { uid: user.uid, name: user.name }, phone: lead.phone, days, leadId: lead.id });
+      await updateLead(lead.id, buildLeadFreezeFields(days, user.name));
+      toast({
+        title: isFrozen ? "Freeze updated" : "Number frozen",
+        description: `Protected from other members for ${days} day${days > 1 ? "s" : ""}.`,
+      });
+      setOpen(false);
+    } catch (e: any) {
+      toast({ title: "Error", description: e?.message || "Could not freeze this number.", variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-success/20 bg-success/5 p-2 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-xs text-muted-foreground min-w-0">
+          <Snowflake size={12} className="text-success shrink-0" />
+          {isFrozen ? (
+            <span className="truncate">Frozen · <span className="text-success font-medium">{formatDuration(remainingMs)} left</span></span>
+          ) : (
+            "Not frozen — protect this number from other members"
+          )}
+        </span>
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="h-6 px-2 rounded-md bg-success/10 text-success text-[11px] font-medium hover:bg-success/20 transition-colors shrink-0"
+        >
+          {isFrozen ? "Extend" : "Freeze"}
+        </button>
+      </div>
+      {open && (
+        <div className="flex items-center gap-2">
+          <select
+            value={days}
+            onChange={(e) => setDays(Number(e.target.value))}
+            className="h-7 px-2 rounded-md bg-card border border-border text-foreground text-xs outline-none focus:border-primary"
+          >
+            {[1, 2, 3, 4, 5, 6, 7].map((d) => (
+              <option key={d} value={d}>{d} day{d > 1 ? "s" : ""}</option>
+            ))}
+          </select>
+          <button
+            onClick={apply}
+            disabled={busy}
+            className="h-7 px-3 rounded-md bg-success text-white text-[11px] font-medium disabled:opacity-50 flex items-center gap-1 hover:bg-success/90 transition-colors"
+          >
+            {busy ? <Loader2 size={12} className="animate-spin" /> : <Lock size={12} />}
+            {isFrozen ? "Update freeze" : "Freeze number"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

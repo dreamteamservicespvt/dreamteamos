@@ -4,13 +4,23 @@ import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import { logActivity } from "@/services/activityLog";
 import { useAuthStore } from "@/store/authStore";
-import { formatCurrency } from "@/utils/formatters";
+import { formatCurrency, formatDuration } from "@/utils/formatters";
+import { useNow } from "@/hooks/useNow";
+import { applySaleFreeze, adminReleaseLock, buildLeadFreezeFields, clearedLeadFreezeFields } from "@/services/numberLock";
 import { format } from "date-fns";
 import type { AppUser, Lead, SaleDetail } from "@/types";
-import { CheckCircle, XCircle, ShoppingBag, ExternalLink, RotateCcw, Trash2, CheckSquare, Square, Phone, MessageCircle, AlertTriangle, FileText } from "lucide-react";
+import { CheckCircle, XCircle, ShoppingBag, ExternalLink, RotateCcw, Trash2, CheckSquare, Square, Phone, MessageCircle, AlertTriangle, FileText, Snowflake, Lock, ShieldOff, Loader2 } from "lucide-react";
 import { formatPhoneDisplay, getCallUrl, getWhatsAppUrl, normalizePhone } from "@/utils/phone";
 import { useToast } from "@/hooks/use-toast";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
+
+type TimestampLike = { toMillis?: () => number; seconds?: number } | null | undefined;
+function tsToMs(ts: TimestampLike): number {
+  if (!ts) return 0;
+  if (typeof ts.toMillis === "function") return ts.toMillis();
+  if (typeof ts.seconds === "number") return ts.seconds * 1000;
+  return 0;
+}
 
 export default function SalesApprovals() {
   const currentUser = useAuthStore((s) => s.user);
@@ -18,8 +28,11 @@ export default function SalesApprovals() {
   const [members, setMembers] = useState<AppUser[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"pending" | "verified" | "rejected" | "duplicates">("pending");
+  const [tab, setTab] = useState<"pending" | "verified" | "rejected" | "duplicates" | "frozen">("pending");
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  // Live clock for real-time freeze countdowns. Ticks every second only while the Frozen tab is
+  // open (so the list re-filters as freezes expire); a lazy tick elsewhere keeps inline counters fresh.
+  const now = useNow(tab === "frozen" ? 1000 : 5000);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [bulkProcessing, setBulkProcessing] = useState(false);
 
@@ -196,6 +209,81 @@ export default function SalesApprovals() {
       toast({ title: "Deleted", description: "Sale item deleted." });
     } catch {
       toast({ title: "Error", description: "Failed to delete.", variant: "destructive" });
+    }
+  };
+
+  // ── Duplicate dispute: approve one winner, auto-reject the competitors ────
+  const handleApproveDuplicateWinner = async (leadId: string, itemIndex: number) => {
+    const winner = leads.find((l) => l.id === leadId);
+    if (!winner) return;
+    const np = normalizePhone(winner.phone);
+    try {
+      // 1) Verify the chosen item.
+      const wItems = [...getAllItems(winner)];
+      const wOld = wItems[itemIndex];
+      wItems[itemIndex] = { ...wOld, verificationStatus: "verified", verifiedAt: Timestamp.now() };
+      await updateDoc(doc(db, "leads", leadId), { saleItems: wItems, lastUpdated: serverTimestamp() });
+
+      // 2) Reject every still-standing competing sale on the SAME number held by OTHER members
+      //    (never the winner's own other leads on that number).
+      const competitors = leads.filter((l) => l.assignedTo !== winner.assignedTo && normalizePhone(l.phone) === np);
+      for (const c of competitors) {
+        const cItems = getAllItems(c);
+        if (!cItems.some((it) => it.verificationStatus !== "rejected")) continue; // already all rejected
+        const newItems = cItems.map((it) =>
+          it.verificationStatus === "rejected" ? it : { ...it, verificationStatus: "rejected" as const, verifiedAt: null },
+        );
+        await updateDoc(doc(db, "leads", c.id), { saleItems: newItems, lastUpdated: serverTimestamp() });
+        await sendNotification({
+          userId: c.assignedTo,
+          type: "sale_rejected",
+          title: "Duplicate sale rejected",
+          message: `Another member's sale for ${c.displayName || formatPhoneDisplay(c.phone)} was approved, so your competing sale was rejected.`,
+        });
+      }
+
+      // 3) Notify the winner + log the resolution.
+      await sendNotification({
+        userId: winner.assignedTo,
+        type: "sale_approved",
+        title: "Sale Verified",
+        message: `Your sale of ₹${wOld.amount?.toLocaleString()} for ${winner.displayName} was approved over the duplicate.`,
+      });
+      await logActivity({
+        actorId: currentUser!.uid,
+        actorName: currentUser!.name,
+        actorRole: "sales_admin",
+        adminId: currentUser!.uid,
+        action: "resolved_duplicate_sale",
+        details: {
+          leadId,
+          leadName: winner.displayName,
+          phone: np,
+          winnerMember: getMemberName(winner.assignedTo),
+          amount: wOld.amount,
+          category: wOld.category,
+          rejectedMembers: competitors.map((c) => getMemberName(c.assignedTo)),
+        },
+      });
+
+      // 4) Optimistic local update so the dispute resolves immediately.
+      setLeads((prev) =>
+        prev.map((l) => {
+          if (l.id === leadId) return { ...l, saleItems: wItems };
+          if (l.assignedTo !== winner.assignedTo && normalizePhone(l.phone) === np) {
+            return {
+              ...l,
+              saleItems: getAllItems(l).map((it) =>
+                it.verificationStatus === "rejected" ? it : { ...it, verificationStatus: "rejected" as const, verifiedAt: null },
+              ),
+            };
+          }
+          return l;
+        }),
+      );
+      toast({ title: "Duplicate resolved", description: "Approved this sale and rejected the competing one(s)." });
+    } catch {
+      toast({ title: "Error", description: "Failed to resolve duplicate.", variant: "destructive" });
     }
   };
 
@@ -379,8 +467,14 @@ export default function SalesApprovals() {
       if (pa !== pb) return pa < pb ? -1 : 1;
       return ((a.item.submittedAt as any)?.seconds || 0) - ((b.item.submittedAt as any)?.seconds || 0);
     });
+  // Frozen numbers: every sold lead with an active sale-freeze, soonest-to-unfreeze first.
+  // Built straight from `leads` (which the admin already streams) so it needs no extra reads.
+  const frozenLeads = leads
+    .filter((l) => l.saleFrozen && tsToMs(l.saleFrozenUntil) > now)
+    .sort((a, b) => tsToMs(a.saleFrozenUntil) - tsToMs(b.saleFrozenUntil));
+
   const displayItems =
-    tab === "pending" ? pending : tab === "verified" ? verified : tab === "rejected" ? rejected : duplicates;
+    tab === "pending" ? pending : tab === "verified" ? verified : tab === "rejected" ? rejected : tab === "duplicates" ? duplicates : [];
 
   const pendingKeys = pending.map((li) => makeKey(li.lead.id, li.itemIndex));
   const allPendingSelected = pendingKeys.length > 0 && pendingKeys.every((k) => selectedKeys.has(k));
@@ -430,6 +524,10 @@ export default function SalesApprovals() {
         <button onClick={() => setTab("duplicates")}
           className={`h-8 md:h-9 px-3 md:px-4 rounded-lg text-xs md:text-sm font-medium transition-colors whitespace-nowrap flex items-center gap-1.5 ${tab === "duplicates" ? "bg-destructive/15 text-destructive border border-destructive/30" : "bg-card border border-border text-muted-foreground hover:bg-accent"}`}>
           <AlertTriangle size={13} /> Duplicates ({duplicates.length})
+        </button>
+        <button onClick={() => setTab("frozen")}
+          className={`h-8 md:h-9 px-3 md:px-4 rounded-lg text-xs md:text-sm font-medium transition-colors whitespace-nowrap flex items-center gap-1.5 ${tab === "frozen" ? "bg-success/15 text-success border border-success/30" : "bg-card border border-border text-muted-foreground hover:bg-accent"}`}>
+          <Snowflake size={13} /> Frozen Numbers ({frozenLeads.length})
         </button>
       </div>
 
@@ -484,8 +582,33 @@ export default function SalesApprovals() {
         </div>
       )}
 
-      {/* Items */}
-      {displayItems.length === 0 ? (
+      {/* Frozen Numbers tab — number-centric, live countdown */}
+      {tab === "frozen" ? (
+        frozenLeads.length === 0 ? (
+          <div className="bg-card border border-border rounded-xl p-12 text-center">
+            <Snowflake size={32} className="mx-auto text-muted-foreground/30 mb-2" />
+            <p className="text-muted-foreground text-sm">No numbers are currently frozen.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-start gap-1.5 rounded-md bg-success/10 border border-success/30 text-success text-xs p-2.5">
+              <Snowflake size={14} className="mt-0.5 shrink-0" />
+              <span>These sold numbers are frozen — no other member can claim them until the timer runs out. Counts update live. You can extend or release any freeze.</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {frozenLeads.map((lead) => (
+                <FrozenNumberCard
+                  key={lead.id}
+                  lead={lead}
+                  now={now}
+                  memberName={getMemberName(lead.assignedTo)}
+                  admin={currentUser ? { uid: currentUser.uid, name: currentUser.name } : { uid: "", name: "" }}
+                />
+              ))}
+            </div>
+          </div>
+        )
+      ) : /* Items */ displayItems.length === 0 ? (
         <div className="bg-card border border-border rounded-xl p-12 text-center">
           <ShoppingBag size={32} className="mx-auto text-muted-foreground/30 mb-2" />
           <p className="text-muted-foreground text-sm">{tab === "duplicates" ? "No duplicate sales — no number has been sold by more than one member" : `No ${tab} sales`}</p>
@@ -676,7 +799,7 @@ export default function SalesApprovals() {
                     </div>
                     <div className="flex gap-1.5 md:gap-2">
                       {li.item.verificationStatus !== "verified" ? (
-                        <button onClick={() => handleVerifyItem(li.lead.id, li.itemIndex)}
+                        <button onClick={() => handleApproveDuplicateWinner(li.lead.id, li.itemIndex)}
                           className="flex-1 h-8 md:h-9 rounded-lg bg-success/15 text-success font-medium text-xs md:text-sm hover:bg-success/25 transition-colors flex items-center justify-center gap-1">
                           <CheckCircle size={14} /> Approve this one
                         </button>
@@ -697,13 +820,193 @@ export default function SalesApprovals() {
                         <Trash2 size={14} />
                       </button>
                     </div>
+                    <p className="text-[10px] text-muted-foreground">Approving auto-rejects the competing sale(s) on this number.</p>
                   </div>
+                )}
+
+                {/* Admin freeze / release — available on active sale cards */}
+                {(tab === "pending" || tab === "verified" || tab === "duplicates") && currentUser && (
+                  <AdminFreezeControl
+                    lead={li.lead}
+                    admin={{ uid: currentUser.uid, name: currentUser.name }}
+                    now={now}
+                  />
                 )}
               </div>
             );
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+/* ─── Admin freeze / extend / release control ─── */
+
+function AdminFreezeControl({
+  lead,
+  admin,
+  now,
+}: {
+  lead: Lead;
+  admin: { uid: string; name: string };
+  now: number;
+}) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [days, setDays] = useState(lead.saleFrozenDays || 1);
+  const [busy, setBusy] = useState<"freeze" | "release" | null>(null);
+
+  const remainingMs = tsToMs(lead.saleFrozenUntil) - now;
+  const isFrozen = !!lead.saleFrozen && remainingMs > 0;
+
+  const freeze = async () => {
+    if (!admin.uid) return;
+    setBusy("freeze");
+    try {
+      await applySaleFreeze({ user: admin, phone: lead.phone, days, leadId: lead.id });
+      await updateDoc(doc(db, "leads", lead.id), { ...buildLeadFreezeFields(days, admin.name), lastUpdated: serverTimestamp() });
+      toast({ title: isFrozen ? "Freeze updated" : "Number frozen", description: `Frozen for ${days} day${days > 1 ? "s" : ""}.` });
+      setOpen(false);
+    } catch (e: any) {
+      toast({ title: "Error", description: e?.message || "Failed to freeze.", variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const release = async () => {
+    if (!admin.uid) return;
+    setBusy("release");
+    try {
+      await adminReleaseLock({ admin, phone: lead.phone });
+      await updateDoc(doc(db, "leads", lead.id), { ...clearedLeadFreezeFields(), lastUpdated: serverTimestamp() });
+      toast({ title: "Freeze released", description: "This number is claimable again." });
+    } catch (e: any) {
+      toast({ title: "Error", description: e?.message || "Failed to release.", variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-success/20 bg-success/5 p-2 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-xs text-muted-foreground min-w-0">
+          <Snowflake size={12} className="text-success shrink-0" />
+          {isFrozen ? (
+            <span className="truncate">
+              Frozen · <span className="text-success font-medium">{formatDuration(remainingMs)} left</span>
+              {lead.saleFrozenByName ? ` · by ${lead.saleFrozenByName}` : ""}
+            </span>
+          ) : (
+            "Not frozen"
+          )}
+        </span>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={() => setOpen((o) => !o)}
+            className="h-6 px-2 rounded-md bg-success/10 text-success text-[11px] font-medium hover:bg-success/20 transition-colors"
+          >
+            {isFrozen ? "Extend" : "Freeze"}
+          </button>
+          {isFrozen && (
+            <button
+              onClick={release}
+              disabled={busy !== null}
+              className="h-6 px-2 rounded-md bg-destructive/10 text-destructive text-[11px] font-medium hover:bg-destructive/20 disabled:opacity-50 transition-colors flex items-center gap-1"
+            >
+              {busy === "release" ? <Loader2 size={11} className="animate-spin" /> : <ShieldOff size={11} />} Release
+            </button>
+          )}
+        </div>
+      </div>
+      {open && (
+        <div className="flex items-center gap-2">
+          <select
+            value={days}
+            onChange={(e) => setDays(Number(e.target.value))}
+            className="h-7 px-2 rounded-md bg-card border border-border text-foreground text-xs outline-none focus:border-primary"
+          >
+            {[1, 2, 3, 4, 5, 6, 7].map((d) => (
+              <option key={d} value={d}>{d} day{d > 1 ? "s" : ""}</option>
+            ))}
+          </select>
+          <button
+            onClick={freeze}
+            disabled={busy !== null}
+            className="h-7 px-3 rounded-md bg-success text-white text-[11px] font-medium disabled:opacity-50 flex items-center gap-1 hover:bg-success/90 transition-colors"
+          >
+            {busy === "freeze" ? <Loader2 size={12} className="animate-spin" /> : <Lock size={12} />}
+            {isFrozen ? "Update freeze" : "Freeze number"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Frozen number card (Frozen Numbers tab) ─── */
+
+function FrozenNumberCard({
+  lead,
+  admin,
+  now,
+  memberName,
+}: {
+  lead: Lead;
+  admin: { uid: string; name: string };
+  now: number;
+  memberName: string;
+}) {
+  const remainingMs = tsToMs(lead.saleFrozenUntil) - now;
+  const frozenAtMs = tsToMs(lead.saleFrozenAt);
+  const untilMs = tsToMs(lead.saleFrozenUntil);
+
+  return (
+    <div className="bg-card border border-success/30 rounded-xl p-3 md:p-5 space-y-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="font-medium text-foreground text-sm md:text-base">{lead.displayName || formatPhoneDisplay(lead.phone)}</p>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <p className="text-[10px] md:text-xs text-muted-foreground font-mono">{formatPhoneDisplay(lead.phone)}</p>
+            <a href={getCallUrl(lead.phone)} className="w-5 h-5 rounded flex items-center justify-center text-info hover:bg-info/10 transition-colors" title="Call">
+              <Phone size={11} />
+            </a>
+            <a href={getWhatsAppUrl(lead.phone)} target="_blank" rel="noopener noreferrer" className="w-5 h-5 rounded flex items-center justify-center text-success hover:bg-success/10 transition-colors" title="WhatsApp">
+              <MessageCircle size={11} />
+            </a>
+          </div>
+        </div>
+        <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-full bg-success/15 text-success">
+          <Snowflake size={12} /> {formatDuration(remainingMs)} left
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div>
+          <span className="text-muted-foreground">Sold by:</span>{" "}
+          <span className="text-foreground font-medium">{memberName}</span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Freeze length:</span>{" "}
+          <span className="text-foreground font-medium">{lead.saleFrozenDays || 1} day{(lead.saleFrozenDays || 1) > 1 ? "s" : ""}</span>
+        </div>
+        {frozenAtMs > 0 && (
+          <div className="col-span-2">
+            <span className="text-muted-foreground">Frozen at:</span>{" "}
+            <span className="text-foreground font-mono text-[10px]">{format(new Date(frozenAtMs), "dd MMM yyyy, hh:mm a")}</span>
+          </div>
+        )}
+        {untilMs > 0 && (
+          <div className="col-span-2">
+            <span className="text-muted-foreground">Unfreezes:</span>{" "}
+            <span className="text-foreground font-mono text-[10px]">{format(new Date(untilMs), "dd MMM yyyy, hh:mm a")}</span>
+          </div>
+        )}
+      </div>
+
+      <AdminFreezeControl lead={lead} admin={admin} now={now} />
     </div>
   );
 }

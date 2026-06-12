@@ -84,6 +84,13 @@ export interface Lead {
   frozenAt?: any;
   frozenReason?: string;   // "taken_over"
   takenOverBy?: string;    // display name of the new owner
+  // Sale-freeze mirror (canonical lock lives in numberLocks; mirrored here so the member's
+  // own list and the admin's Frozen Numbers tab can render without extra cross-collection reads)
+  saleFrozen?: boolean;
+  saleFrozenAt?: any;          // when the freeze was (re)applied
+  saleFrozenUntil?: any;       // freeze end time
+  saleFrozenDays?: number;     // chosen freeze length (1–7)
+  saleFrozenByName?: string;   // who froze it (member or admin name)
   lastUpdated: any;
   createdAt: any;
 }

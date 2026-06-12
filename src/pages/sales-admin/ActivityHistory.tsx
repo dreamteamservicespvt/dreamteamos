@@ -29,6 +29,7 @@ const ACTION_META: Record<ActivityAction, { label: string; icon: any; color: str
   submitted_sale: { label: "Submitted Sale", icon: ShoppingBag, color: "text-primary", bgColor: "bg-primary/10 border-primary/20" },
   deleted_sale_item: { label: "Deleted Sale Item", icon: Trash2, color: "text-destructive", bgColor: "bg-destructive/10 border-destructive/20" },
   deleted_lead: { label: "Deleted Lead", icon: Trash2, color: "text-destructive", bgColor: "bg-destructive/10 border-destructive/20" },
+  resolved_duplicate_sale: { label: "Resolved Duplicate", icon: CheckCircle, color: "text-success", bgColor: "bg-success/10 border-success/20" },
 };
 
 function getActionDescription(log: ActivityLog): string {
@@ -52,6 +53,8 @@ function getActionDescription(log: ActivityLog): string {
       return `Deleted their own ${d.category?.replace(/_/g, " ")} sale of ${formatCurrency(d.amount || 0)} for "${d.leadName}"`;
     case "deleted_lead":
       return `Deleted custom lead "${d.leadName}"`;
+    case "resolved_duplicate_sale":
+      return `Resolved duplicate on ${d.phone || d.leadName} — approved ${d.winnerMember}'s sale${d.rejectedMembers?.length ? ` and rejected ${d.rejectedMembers.join(", ")}` : ""}`;
     default:
       return "Unknown action";
   }

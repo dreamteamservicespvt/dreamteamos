@@ -10,7 +10,8 @@ export type ActivityAction =
   | "bulk_rejected_sales"
   | "submitted_sale"
   | "deleted_sale_item"
-  | "deleted_lead";
+  | "deleted_lead"
+  | "resolved_duplicate_sale";
 
 export interface ActivityLogEntry {
   actorId: string;
