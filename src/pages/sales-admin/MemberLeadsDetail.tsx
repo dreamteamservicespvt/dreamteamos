@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { collection, getDocs, addDoc, updateDoc, doc, serverTimestamp, deleteDoc, onSnapshot } from "firebase/firestore";
+import { collection, addDoc, updateDoc, doc, serverTimestamp, deleteDoc } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import { adminAssignNumber, transferLockOwnership } from "@/services/numberLock";
+import { fetchTeamMembers, subscribeMemberLeads } from "@/services/teamLeads";
 import { useAuthStore } from "@/store/authStore";
 import { normalizePhone, formatPhoneDisplay, getWhatsAppUrl, getCallUrl } from "@/utils/phone";
 import { formatCurrency } from "@/utils/formatters";
@@ -235,29 +236,23 @@ export default function MemberLeadsDetail() {
     }
   };
 
-  // Fetch all team members + listen to leads for this member
+  // Fetch team members (one-time, scoped) + listen ONLY to this member's leads — quota-friendly.
   useEffect(() => {
-    const unsubs: (() => void)[] = [];
+    if (!memberId || !currentUser?.uid) return;
 
-    // Get all sales members (for reassign dropdown)
-    getDocs(collection(db, "users")).then((snap) => {
-      const allUsers = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser));
-      const teamMembers = allUsers.filter((u) => u.role === "sales_member" && u.createdBy === currentUser?.uid);
+    // Team members for the reassign dropdown (scoped query, not the whole users collection)
+    fetchTeamMembers(currentUser.uid).then((teamMembers) => {
       setMembers(teamMembers);
-      setMember(allUsers.find((u) => u.uid === memberId) || null);
-    });
+      setMember(teamMembers.find((u) => u.uid === memberId) || null);
+    }).catch(() => {});
 
-    // Real-time leads for this member
-    unsubs.push(onSnapshot(collection(db, "leads"), (snap) => {
-      const memberLeads = snap.docs
-        .map((d) => ({ id: d.id, ...d.data() } as Lead))
-        .filter((l) => l.assignedTo === memberId);
+    // Real-time leads for this member only
+    const unsub = subscribeMemberLeads(memberId, (memberLeads) => {
       memberLeads.sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
       setLeads(memberLeads);
       setLoading(false);
-    }));
-
-    return () => unsubs.forEach((u) => u());
+    });
+    return unsub;
   }, [memberId, currentUser?.uid]);
 
   // Search and status filters kept separate so the dropdown counts can ignore the

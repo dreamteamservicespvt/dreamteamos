@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { collection, onSnapshot } from "firebase/firestore";
-import { db } from "@/services/firebase";
+import { fetchTeamMembers, subscribeTeamLeads } from "@/services/teamLeads";
 import { useAuthStore } from "@/store/authStore";
 import { formatCurrency } from "@/utils/formatters";
 import {
@@ -64,20 +63,19 @@ export default function SalesAnalytics() {
   const [sortOrder, setSortOrder] = useState<SortOrder>("best");
 
   useEffect(() => {
-    const unsubs: (() => void)[] = [];
-    unsubs.push(
-      onSnapshot(collection(db, "users"), (snap) => {
-        const allUsers = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser));
-        setMembers(allUsers.filter((u) => u.role === "sales_member" && u.createdBy === currentUser?.uid));
-      })
-    );
-    unsubs.push(
-      onSnapshot(collection(db, "leads"), (snap) => {
-        setLeads(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    if (!currentUser?.uid) return;
+    // Quota-friendly: one-time team fetch + leads listener scoped to the team only.
+    let unsubLeads: (() => void) | undefined;
+    let cancelled = false;
+    fetchTeamMembers(currentUser.uid).then((myMembers) => {
+      if (cancelled) return;
+      setMembers(myMembers);
+      unsubLeads = subscribeTeamLeads(myMembers.map((m) => m.uid), (teamLeads) => {
+        setLeads(teamLeads);
         setLoading(false);
-      })
-    );
-    return () => unsubs.forEach((u) => u());
+      });
+    }).catch(() => setLoading(false));
+    return () => { cancelled = true; unsubLeads?.(); };
   }, [currentUser?.uid]);
 
   const memberIds = members.map((m) => m.uid);

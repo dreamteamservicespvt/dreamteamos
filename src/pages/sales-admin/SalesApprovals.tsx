@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
-import { collection, onSnapshot, updateDoc, doc, serverTimestamp, Timestamp } from "firebase/firestore";
+import { updateDoc, doc, serverTimestamp, Timestamp } from "firebase/firestore";
 import { db } from "@/services/firebase";
+import { fetchTeamMembers, subscribeTeamLeads } from "@/services/teamLeads";
 import { sendNotification } from "@/services/notifications";
 import { logActivity } from "@/services/activityLog";
 import { useAuthStore } from "@/store/authStore";
@@ -37,22 +38,20 @@ export default function SalesApprovals() {
   const [bulkProcessing, setBulkProcessing] = useState(false);
 
   useEffect(() => {
-    const unsubs: (() => void)[] = [];
-    let myMemberIds: string[] = [];
-    unsubs.push(onSnapshot(collection(db, "users"), (snap) => {
-      const allUsers = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser));
-      const myMembers = allUsers.filter((u) => u.role === "sales_member" && u.createdBy === currentUser?.uid);
+    if (!currentUser?.uid) return;
+    // Quota-friendly: fetch team members once, then listen ONLY to their leads
+    // (scoped `in` queries) instead of streaming the entire leads collection.
+    let unsubLeads: (() => void) | undefined;
+    let cancelled = false;
+    fetchTeamMembers(currentUser.uid).then((myMembers) => {
+      if (cancelled) return;
       setMembers(myMembers);
-      myMemberIds = myMembers.map((m) => m.uid);
-    }));
-    unsubs.push(onSnapshot(collection(db, "leads"), (snap) => {
-      const salesLeads = snap.docs
-        .map((d) => ({ id: d.id, ...d.data() } as Lead))
-        .filter((l) => myMemberIds.includes(l.assignedTo) && l.saleDone);
-      setLeads(salesLeads);
-      setLoading(false);
-    }));
-    return () => unsubs.forEach((u) => u());
+      unsubLeads = subscribeTeamLeads(myMembers.map((m) => m.uid), (teamLeads) => {
+        setLeads(teamLeads);
+        setLoading(false);
+      });
+    }).catch(() => setLoading(false));
+    return () => { cancelled = true; unsubLeads?.(); };
   }, [currentUser?.uid]);
 
   // Clear selections when tab changes

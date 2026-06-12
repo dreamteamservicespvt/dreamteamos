@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
-import { collection, onSnapshot } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
+import { subscribeMemberLeads } from "@/services/teamLeads";
 import { db } from "@/services/firebase";
 import { formatCurrency } from "@/utils/formatters";
 import { format, subDays } from "date-fns";
@@ -75,21 +76,19 @@ export default function MemberSalesHistory() {
     : "All Days";
 
   // ── Data fetching ────────────────────────────────────────────────────────
+  // Quota-friendly: read the one member doc once, and listen only to THIS member's leads.
   useEffect(() => {
-    const unsubs: (() => void)[] = [];
-    unsubs.push(onSnapshot(collection(db, "users"), (snap) => {
-      const u = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser)).find((u) => u.uid === memberId);
-      setMember(u || null);
-    }));
-    unsubs.push(onSnapshot(collection(db, "leads"), (snap) => {
-      const memberLeads = snap.docs
-        .map((d) => ({ id: d.id, ...d.data() } as Lead))
-        .filter((l) => l.assignedTo === memberId);
+    if (!memberId) return;
+    getDoc(doc(db, "users", memberId)).then((snap) => {
+      setMember(snap.exists() ? ({ uid: snap.id, ...snap.data() } as AppUser) : null);
+    }).catch(() => setMember(null));
+
+    const unsub = subscribeMemberLeads(memberId, (memberLeads) => {
       memberLeads.sort((a, b) => (b.lastUpdated?.seconds || 0) - (a.lastUpdated?.seconds || 0));
       setLeads(memberLeads);
       setLoading(false);
-    }));
-    return () => unsubs.forEach((u) => u());
+    });
+    return unsub;
   }, [memberId]);
 
   // ── Leads tab: filter by lead createdAt ──────────────────────────────────

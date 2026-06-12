@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 
 export const firebaseConfig = {
   apiKey: "AIzaSyDJcuVz64r8STeCmY-SqhFlv1nKvbjGmC8",
@@ -14,5 +14,13 @@ export const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+
+// Persistent IndexedDB cache (free-plan quota saver): documents served from the local
+// cache cost ZERO reads — when a page re-opens a listener, the server only sends docs
+// that changed since last sync instead of re-reading the whole result set every time.
+// Multi-tab manager keeps the cache working when several tabs are open.
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+});
+
 export default app;

@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { collection, getDocs, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
+import { doc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/services/firebase";
+import { fetchTeamMembers, subscribeTeamLeads } from "@/services/teamLeads";
 import { useAuthStore } from "@/store/authStore";
 import type { AppUser, Lead, NumberLock } from "@/types";
 import { Search, Users, ChevronRight, Phone, MessageCircle, Snowflake, ShieldOff, Trash2, AlertTriangle, Loader2, Lock, UserCheck } from "lucide-react";
@@ -40,29 +41,19 @@ export default function LeadsManagement() {
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    const fetchMembers = async () => {
-      const usersSnap = await getDocs(collection(db, "users"));
-      const allUsers = usersSnap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser));
-      const myMembers = allUsers.filter((u) => u.role === "sales_member" && u.createdBy === currentUser?.uid);
-      setMembers(myMembers);
-      return myMembers;
-    };
-
+    if (!currentUser?.uid) return;
+    // Quota-friendly: one-time scoped team fetch + leads listener scoped to the team only.
     let unsub: (() => void) | undefined;
-
-    fetchMembers().then((myMembers) => {
-      const leadsRef = collection(db, "leads");
-      unsub = onSnapshot(leadsRef, (snap) => {
-        const memberIds = myMembers.map((m) => m.uid);
-        const allLeads = snap.docs
-          .map((d) => ({ id: d.id, ...d.data() } as Lead))
-          .filter((l) => memberIds.includes(l.assignedTo) || l.assignedBy === currentUser?.uid);
-        setLeads(allLeads);
+    let cancelled = false;
+    fetchTeamMembers(currentUser.uid).then((myMembers) => {
+      if (cancelled) return;
+      setMembers(myMembers);
+      unsub = subscribeTeamLeads(myMembers.map((m) => m.uid), (teamLeads) => {
+        setLeads(teamLeads);
         setLoading(false);
       });
-    });
-
-    return () => { unsub?.(); };
+    }).catch(() => setLoading(false));
+    return () => { cancelled = true; unsub?.(); };
   }, [currentUser?.uid]);
 
   const getLeadsForMember = (uid: string) => leads.filter((l) => l.assignedTo === uid);
