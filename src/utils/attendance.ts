@@ -32,20 +32,20 @@ export function getTodayWorkStats(assignments: WorkAssignment[], todayStr?: stri
   return { completedToday, pending, inProgress, activeTotal: pending + inProgress };
 }
 
-/** WhatsApp message sent to admin when a member checks in. Professional & humble. */
+/** WhatsApp message sent to admin when a member checks in. Plain text, no emojis. */
 export function buildCheckinMessage(name: string, dateStr: string, stats: TodayWorkStats): string {
   const time = format(new Date(), "hh:mm a");
   return [
-    `🙏 *CHECK-IN* — ${dateStr}`,
+    `*CHECK-IN* — ${dateStr}`,
     ``,
-    `👤 *${name}*`,
-    `🕐 Checked in at ${time}`,
+    `*${name}*`,
+    `Checked in at ${time}`,
     ``,
-    `📋 *My Work:*`,
-    `▶️ In Progress: ${stats.inProgress}`,
-    `⏳ Pending: ${stats.pending}`,
+    `*My Work:*`,
+    `In Progress: ${stats.inProgress}`,
+    `Pending: ${stats.pending}`,
     ``,
-    `✅ Thank you for assigning me the work — I will start working on it immediately. 🚀`,
+    `Please assign me the work — I will start the work now.`,
   ].join("\n");
 }
 
@@ -54,39 +54,27 @@ export interface CheckoutReport {
   dateStr: string;
   checkInTime: string;
   checkOutTime: string;
-  /** Human-readable total duration between check-in and check-out, e.g. "6h 12m". */
-  totalDuration: string;
   totalVideos: number;
   stats: TodayWorkStats;
   /** Member's editable note for the day. */
   note: string;
 }
 
-/** WhatsApp message sent to admin when a member checks out (Today Work Report). */
+/** WhatsApp message sent to admin when a member checks out (Today Work Report). Plain text, no emojis. */
 export function buildCheckoutMessage(r: CheckoutReport): string {
   return [
-    `🏁 *TODAY WORK REPORT* — ${r.dateStr}`,
+    `*TODAY WORK REPORT* — ${r.dateStr}`,
     ``,
-    `👤 *${r.name}*`,
-    `🕐 In: ${r.checkInTime}  →  🕔 Out: ${r.checkOutTime}`,
-    `⏱️ Total Duration: *${r.totalDuration || "—"}*`,
+    `*${r.name}*`,
+    `In: ${r.checkInTime}  →  Out: ${r.checkOutTime}`,
     ``,
-    `🎬 Videos Completed: *${r.totalVideos}*`,
-    `⏳ Pending: ${r.stats.pending}`,
-    ...(r.note ? [``, `📝 *Note:* ${r.note}`] : []),
+    `Videos Completed: *${r.totalVideos}*`,
+    `In Progress: ${r.stats.inProgress}`,
+    `Pending: ${r.stats.pending}`,
+    ...(r.note ? [``, `*Note:* ${r.note}`] : []),
     ``,
-    `🙏 Thank you! I will continue the work tomorrow. 🌅`,
+    `Thank you! I will continue the work tomorrow.`,
   ].join("\n");
-}
-
-/** Human-readable duration between two epoch-ms timestamps, e.g. "6h 12m". */
-export function formatDurationBetween(startMs: number, endMs: number): string {
-  if (!startMs || !endMs || endMs <= startMs) return "";
-  const totalMinutes = Math.round((endMs - startMs) / 60000);
-  const h = Math.floor(totalMinutes / 60);
-  const m = totalMinutes % 60;
-  if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
-  return `${m}m`;
 }
 
 /**

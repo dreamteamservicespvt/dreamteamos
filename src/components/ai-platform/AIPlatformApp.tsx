@@ -34,6 +34,11 @@ const cleanPromptForClipboard = (content: string) => {
     .trim();
 };
 
+// ── DTS brand system (violet → blue → cyan, from "JUST DREAM BIG, WE BUILD IT") ──
+const BRAND_GRADIENT = 'bg-gradient-to-r from-violet-600 via-blue-600 to-cyan-500';
+const BRAND_GRADIENT_HOVER = 'hover:from-violet-500 hover:via-blue-500 hover:to-cyan-400';
+const BRAND_TEXT = 'bg-clip-text text-transparent bg-gradient-to-r from-violet-500 via-blue-500 to-cyan-400';
+
 const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   assignment, assignmentId, onBusinessNameExtracted, onClose, onComplete
 }) => {
@@ -61,6 +66,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   });
 
   const [status, setStatus] = useState<GenerationStatus>({ step: '', isProcessing: false, error: null, progress: 0 });
+  const [errorModalDismissed, setErrorModalDismissed] = useState(false);
   const [outputs, setOutputs] = useState<GeneratedOutputs | null>(null);
   const [refiningSection, setRefiningSection] = useState<SectionType | null>(null);
   const [collapsedSections, setCollapsedSections] = useState({
@@ -289,6 +295,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       return;
     }
     abortControllerRef.current = new AbortController();
+    setErrorModalDismissed(false);
     setStatus({ step: 'Initializing...', isProcessing: true, error: null, progress: 0 });
     setOutputs(null);
     setTimeout(() => outputPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
@@ -416,67 +423,120 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background overflow-hidden">
       {ConfirmDialog}
+
+      {/* Generation-failed popup — centered so the user can't miss it */}
+      {status.error && status.error !== 'Generation stopped.' && !errorModalDismissed && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className={cn("w-full max-w-md rounded-xl border shadow-2xl p-6", isDark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200")}>
+            <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto mb-4">
+              <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
+            </div>
+            <h3 className={cn("text-lg font-bold text-center mb-2", isDark ? "text-white" : "text-slate-800")}>Ad Generation Failed</h3>
+            <p className={cn("text-sm text-center rounded-lg border px-3 py-2 mb-4 break-words", isDark ? "bg-red-900/20 border-red-800/50 text-red-300" : "bg-red-50 border-red-200 text-red-700")}>
+              {status.error}
+            </p>
+            <div className={cn("text-sm space-y-2 mb-5", isDark ? "text-slate-300" : "text-slate-600")}>
+              <p className="font-semibold">What to do:</p>
+              <ol className="list-decimal list-inside space-y-1.5">
+                <li>Close this website (tab) completely, open it again, and retry the generation.</li>
+                <li>If it fails again, wait <strong>5–10 minutes</strong> and then try once more.</li>
+                <li>If the same problem still continues after that, <strong>contact your admin</strong>.</li>
+              </ol>
+            </div>
+            <button onClick={() => setErrorModalDismissed(true)}
+              className="w-full py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold transition-colors">
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
       {showSavedItems && (
         <SavedItems items={savedItems} onSelect={handleSelectSavedItem} onDelete={handleDeleteSavedItem}
           onClose={() => setShowSavedItems(false)} isLoading={loadingSaved} userRole={user?.role} />
       )}
 
-      {/* Top Bar */}
-      <div className={cn("border-b px-4 h-14 flex items-center justify-between shrink-0",
-        isDark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200"
+      {/* Top Bar — DTS branded */}
+      <div className={cn("relative border-b px-3 sm:px-4 h-14 sm:h-16 flex items-center justify-between gap-2 shrink-0 backdrop-blur-xl",
+        isDark ? "bg-slate-900/90 border-slate-800" : "bg-white/90 border-slate-200"
       )}>
-        <div className="flex items-center space-x-3">
-          <button onClick={onClose} className={cn("flex items-center space-x-1 text-sm px-3 py-1.5 rounded-lg transition-colors",
-            isDark ? "text-slate-300 hover:bg-slate-700" : "text-slate-600 hover:bg-slate-100"
-          )}>
-            <ArrowLeft className="w-4 h-4" /><span>Back</span>
+        {/* brand hairline */}
+        <div className={cn("absolute bottom-0 inset-x-0 h-[2px] opacity-80", BRAND_GRADIENT)} />
+
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <button onClick={onClose} aria-label="Back"
+            className={cn("flex items-center gap-1 text-sm px-2 sm:px-3 py-1.5 rounded-xl transition-colors shrink-0",
+              isDark ? "text-slate-300 hover:bg-slate-800" : "text-slate-600 hover:bg-slate-100"
+            )}>
+            <ArrowLeft className="w-4 h-4" /><span className="hidden sm:inline">Back</span>
           </button>
-          <div className="flex items-center space-x-2">
-            <div className="bg-gradient-to-r from-blue-600 to-violet-600 p-1.5 rounded-lg text-white"><Sparkles className="w-4 h-4" /></div>
-            <h1 className="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-violet-700">AdGen.ai</h1>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <img src="/dts-logo.png" alt="DTS — Dream Team Services"
+              className="h-8 sm:h-9 w-8 sm:w-9 rounded-xl object-cover ring-1 ring-white/10 shadow-lg shrink-0" />
+            <div className="min-w-0 leading-tight">
+              <h1 className={cn("text-base sm:text-lg font-extrabold tracking-tight", BRAND_TEXT)}>AdGen.ai</h1>
+              <p className={cn("hidden sm:block text-[9px] font-semibold tracking-[0.18em] uppercase", isDark ? "text-slate-500" : "text-slate-400")}>
+                Dream Team Services
+              </p>
+            </div>
           </div>
         </div>
 
         {/* Assignment Info Banner */}
         {assignment && (
-          <div className={cn("flex items-center space-x-3 px-3 py-1.5 rounded-lg text-sm",
-            isDark ? "bg-slate-700/50 text-slate-300" : "bg-slate-100 text-slate-600"
+          <div className={cn("hidden lg:flex items-center gap-2.5 px-3.5 py-1.5 rounded-full text-xs border",
+            isDark ? "bg-slate-800/80 text-slate-300 border-slate-700" : "bg-slate-50 text-slate-600 border-slate-200"
           )}>
-            <span className="font-medium">{assignment.businessName || assignment.displayTitle}</span>
-            <span className="text-xs opacity-70">•</span>
+            <span className={cn("w-1.5 h-1.5 rounded-full", BRAND_GRADIENT)} />
+            <span className="font-semibold truncate max-w-[200px]">{assignment.businessName || assignment.displayTitle}</span>
+            <span className="opacity-40">·</span>
             <span className="capitalize">{assignment.category}</span>
-            <span className="text-xs opacity-70">•</span>
+            <span className="opacity-40">·</span>
             <span>{assignment.clipCount} clips + EC</span>
             <span className="font-mono text-[10px] opacity-50">{assignment.uniqueId}</span>
           </div>
         )}
 
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {onComplete && (
             <button onClick={onComplete}
-              className="flex items-center space-x-1.5 text-sm font-medium px-4 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white transition-colors">
-              <CheckCircle2 className="w-4 h-4" /><span>Mark Complete</span>
+              className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold px-3 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-600/20 transition-all active:scale-[0.98]">
+              <CheckCircle2 className="w-4 h-4" /><span className="hidden sm:inline">Mark Complete</span><span className="sm:hidden">Done</span>
             </button>
           )}
           <button onClick={onClose}
-            className="flex items-center space-x-1.5 text-sm font-medium px-4 py-1.5 rounded-lg bg-slate-200 text-slate-700 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600 transition-colors">
-            <Home className="w-4 h-4" /><span>Close &amp; back to home</span>
+            className={cn("flex items-center gap-1.5 text-xs sm:text-sm font-medium px-3 sm:px-4 py-2 rounded-xl border transition-colors",
+              isDark ? "bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700" : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+            )}>
+            <Home className="w-4 h-4" /><span className="hidden md:inline">Close &amp; back to home</span><span className="md:hidden">Home</span>
           </button>
         </div>
       </div>
 
       {/* Main Content - Scrollable */}
-      <div className="flex-1 overflow-y-auto">
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div className="flex-1 overflow-y-auto relative">
+        {/* ambient brand glows */}
+        <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-violet-600/10 blur-3xl" />
+          <div className="absolute top-1/3 -right-32 w-96 h-96 rounded-full bg-cyan-500/10 blur-3xl" />
+          <div className="absolute bottom-0 left-1/3 w-80 h-80 rounded-full bg-blue-600/10 blur-3xl" />
+        </div>
+        <main className="relative max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
 
             {/* LEFT: INPUTS */}
-            <div className="lg:col-span-5 space-y-6">
+            <div className="lg:col-span-5 space-y-5 sm:space-y-6">
               {/* File Upload */}
-              <div className={cn("rounded-xl shadow-sm border p-6", isDark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200")}>
-                <div className="flex items-center space-x-2 mb-6">
-                  <Layout className="w-5 h-5 text-blue-600" />
-                  <h2 className={cn("text-lg font-bold", isDark ? "text-white" : "text-slate-800")}>Assets & Files</h2>
+              <div className={cn("rounded-2xl border p-4 sm:p-6 shadow-xl",
+                isDark ? "bg-slate-900/70 border-slate-800 shadow-black/20 backdrop-blur" : "bg-white/90 border-slate-200 shadow-slate-200/60 backdrop-blur")}>
+                <div className="flex items-center gap-3 mb-5 sm:mb-6">
+                  <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-600/25", BRAND_GRADIENT)}>
+                    <Layout className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className={cn("text-base sm:text-lg font-bold leading-tight", isDark ? "text-white" : "text-slate-800")}>Assets &amp; Files</h2>
+                    <p className={cn("text-[11px]", isDark ? "text-slate-500" : "text-slate-400")}>Step 1 · Upload the business material</p>
+                  </div>
                 </div>
                 <div className="space-y-4">
                   {!formData.noLogo && (
@@ -550,22 +610,28 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
               </div>
 
               {/* Configuration */}
-              <div className={cn("rounded-xl shadow-sm border p-6", isDark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200")}>
-                <div className="flex items-center space-x-2 mb-6">
-                  <Type className="w-5 h-5 text-purple-600" />
-                  <h2 className={cn("text-lg font-bold", isDark ? "text-white" : "text-slate-800")}>Configuration</h2>
+              <div className={cn("rounded-2xl border p-4 sm:p-6 shadow-xl",
+                isDark ? "bg-slate-900/70 border-slate-800 shadow-black/20 backdrop-blur" : "bg-white/90 border-slate-200 shadow-slate-200/60 backdrop-blur")}>
+                <div className="flex items-center gap-3 mb-5 sm:mb-6">
+                  <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-lg shadow-violet-600/25", BRAND_GRADIENT)}>
+                    <Type className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className={cn("text-base sm:text-lg font-bold leading-tight", isDark ? "text-white" : "text-slate-800")}>Configuration</h2>
+                    <p className={cn("text-[11px]", isDark ? "text-slate-500" : "text-slate-400")}>Step 2 · Choose how the ad is made</p>
+                  </div>
                 </div>
                 <div className="space-y-5">
                   {/* Creation Mode */}
                   <div>
                     <label className={cn("block text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>Creation Mode</label>
                     <div className="grid grid-cols-2 gap-3">
-                      {[{ mode: 'video' as const, icon: Video, label: 'Video Ad', color: 'blue' }, { mode: 'poster' as const, icon: PenTool, label: 'Poster Only', color: 'violet' }].map(({ mode, icon: Icon, label, color }) => (
+                      {[{ mode: 'video' as const, icon: Video, label: 'Video Ad' }, { mode: 'poster' as const, icon: PenTool, label: 'Poster Only' }].map(({ mode, icon: Icon, label }) => (
                         <button key={mode} onClick={() => setCreationMode(mode)}
-                          className={cn("flex items-center justify-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-medium border transition-all",
+                          className={cn("flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-semibold border transition-all",
                             creationMode === mode
-                              ? (isDark ? `border-${color}-500 bg-${color}-900/30 text-${color}-400` : `border-${color}-500 bg-${color}-50 text-${color}-700`)
-                              : (isDark ? "border-slate-600 hover:border-slate-500 text-slate-400" : "border-slate-200 hover:border-slate-300 text-slate-600")
+                              ? cn("border-transparent text-white shadow-lg shadow-blue-600/25", BRAND_GRADIENT)
+                              : (isDark ? "border-slate-700 hover:border-slate-600 text-slate-400 bg-slate-800/40" : "border-slate-200 hover:border-slate-300 text-slate-600 bg-white")
                           )}>
                           <Icon className="w-4 h-4" /><span>{label}</span>
                         </button>
@@ -818,15 +884,17 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                   {/* Generate Button */}
                   <div className="flex space-x-2">
                     <button onClick={handleGenerate} disabled={status.isProcessing}
-                      className={cn("flex-1 py-3.5 px-4 rounded-xl text-white font-bold text-sm shadow-lg flex items-center justify-center space-x-2 transition-all",
-                        status.isProcessing ? "bg-slate-400 cursor-not-allowed" : "bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700"
+                      className={cn("flex-1 py-3.5 px-4 rounded-2xl text-white font-bold text-sm flex items-center justify-center space-x-2 transition-all",
+                        status.isProcessing
+                          ? "bg-slate-500/70 cursor-not-allowed"
+                          : cn(BRAND_GRADIENT, BRAND_GRADIENT_HOVER, "shadow-xl shadow-blue-600/30 hover:shadow-blue-500/40 active:scale-[0.99]")
                       )}>
                       {status.isProcessing ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Rocket className="w-5 h-5" />}
                       <span>{status.isProcessing ? 'Processing...' : creationMode === 'poster' ? 'Extract Business Info' : 'Start Generation'}</span>
                     </button>
                     {status.isProcessing && (
                       <button onClick={handleStopGeneration}
-                        className="py-3.5 px-4 rounded-xl bg-red-500 hover:bg-red-600 text-white font-bold text-sm flex items-center space-x-2">
+                        className="py-3.5 px-4 rounded-2xl bg-red-500 hover:bg-red-600 text-white font-bold text-sm flex items-center space-x-2 active:scale-[0.98] transition-all">
                         <StopCircle className="w-5 h-5" /><span>Stop</span>
                       </button>
                     )}
@@ -843,16 +911,19 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
             {/* RIGHT: OUTPUTS */}
             <div className="lg:col-span-7" ref={outputPanelRef}>
               {(status.isProcessing || status.step) && (
-                <div className={cn("rounded-xl shadow-sm border px-4 py-3 mb-4", isDark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200")}>
-                  <div className="flex items-center justify-between mb-2">
+                <div className={cn("rounded-2xl border px-4 py-3.5 mb-4 shadow-xl",
+                  isDark ? "bg-slate-900/70 border-slate-800 shadow-black/20 backdrop-blur" : "bg-white/90 border-slate-200 shadow-slate-200/60 backdrop-blur")}>
+                  <div className="flex items-center justify-between mb-2.5">
                     <h2 className={cn("text-sm font-bold", isDark ? "text-white" : "text-slate-800")}>Generation Status</h2>
-                    <div className="flex items-center space-x-2 text-xs animate-pulse">
-                      <Wand2 className="w-3.5 h-3.5 text-blue-500" />
-                      <span className={cn(isDark ? "text-slate-400" : "text-slate-600")}>{status.step}</span>
+                    <div className="flex items-center gap-2 text-xs">
+                      <Wand2 className={cn("w-3.5 h-3.5 text-blue-500", status.isProcessing && "animate-pulse")} />
+                      <span className={cn(status.isProcessing && "animate-pulse", isDark ? "text-slate-400" : "text-slate-600")}>{status.step}</span>
+                      <span className={cn("font-mono font-bold text-[11px] px-1.5 py-0.5 rounded-md",
+                        isDark ? "bg-slate-800 text-cyan-400" : "bg-slate-100 text-blue-600")}>{Math.round(status.progress)}%</span>
                     </div>
                   </div>
-                  <div className={cn("w-full rounded-full h-2", isDark ? "bg-slate-700" : "bg-slate-100")}>
-                    <div className="bg-blue-600 h-2 rounded-full transition-all duration-500" style={{ width: `${status.progress}%` }} />
+                  <div className={cn("w-full rounded-full h-2 overflow-hidden", isDark ? "bg-slate-800" : "bg-slate-100")}>
+                    <div className={cn("h-2 rounded-full transition-all duration-500", BRAND_GRADIENT)} style={{ width: `${status.progress}%` }} />
                   </div>
                 </div>
               )}
@@ -860,7 +931,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
               {outputs && (
                 <div className="space-y-6">
                   <div className="flex items-center justify-between mb-2">
-                    <h2 className={cn("text-xl font-bold", isDark ? "text-white" : "text-slate-800")}>
+                    <h2 className={cn("text-lg sm:text-xl font-extrabold tracking-tight", BRAND_TEXT)}>
                       Generated Assets
                       {viewingSavedItem && <span className="ml-2 text-sm font-normal text-slate-500">(Viewing Saved)</span>}
                     </h2>
@@ -881,7 +952,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                   {/* Video Generation Platform Link - at top */}
                   {creationMode === 'video' && (
                     <a href="https://labs.google/fx/tools/flow" target="_blank" rel="noopener noreferrer"
-                      className="flex items-center justify-center space-x-3 w-full py-3.5 px-6 rounded-xl font-semibold text-sm bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-500 hover:to-violet-500 text-white shadow-lg hover:shadow-xl transition-all">
+                      className={cn("flex items-center justify-center space-x-3 w-full py-3.5 px-6 rounded-2xl font-semibold text-sm text-white shadow-xl shadow-blue-600/25 hover:shadow-blue-500/35 transition-all active:scale-[0.99]",
+                        BRAND_GRADIENT, BRAND_GRADIENT_HOVER)}>
                       <Video className="w-5 h-5" /><span>Open Video Generation Platform</span><ExternalLink className="w-4 h-4 opacity-70" />
                     </a>
                   )}
@@ -935,9 +1007,10 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
 
                   {/* Stock Image Prompts */}
                   {creationMode === 'video' && outputs.voiceOverScript && (
-                        <div className={cn("rounded-xl shadow-sm border overflow-hidden", isDark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200")}>
-                          <div className={cn("px-4 py-3 border-b flex justify-between items-center", isDark ? "bg-slate-900/50 border-slate-700" : "bg-slate-50 border-slate-200")}>
-                            <div className="flex items-center space-x-2">
+                        <div className={cn("rounded-2xl border overflow-hidden shadow-lg", isDark ? "bg-slate-900/70 border-slate-800 shadow-black/10" : "bg-white border-slate-200 shadow-slate-200/50")}>
+                          <div className={cn("relative px-4 py-3 border-b flex justify-between items-center", isDark ? "bg-slate-900/80 border-slate-800" : "bg-slate-50 border-slate-200")}>
+                            <div className={cn("absolute left-0 top-0 bottom-0 w-1", BRAND_GRADIENT)} />
+                            <div className="flex items-center space-x-2 pl-1.5">
                               <Camera className="w-4 h-4 text-teal-500" />
                               <h3 className={cn("font-semibold text-sm uppercase tracking-wide", isDark ? "text-slate-200" : "text-slate-800")}>6. Stock Image Prompts (B-Roll)</h3>
                             </div>
@@ -1024,9 +1097,10 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
 
                   {/* 7. Overlay Texts (#14) */}
                   {creationMode === 'video' && outputs.voiceOverScript && (
-                    <div className={cn("rounded-xl shadow-sm border overflow-hidden", isDark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200")}>
-                      <div className={cn("px-4 py-3 border-b flex justify-between items-center", isDark ? "bg-slate-900/50 border-slate-700" : "bg-slate-50 border-slate-200")}>
-                        <div className="flex items-center space-x-2">
+                    <div className={cn("rounded-2xl border overflow-hidden shadow-lg", isDark ? "bg-slate-900/70 border-slate-800 shadow-black/10" : "bg-white border-slate-200 shadow-slate-200/50")}>
+                      <div className={cn("relative px-4 py-3 border-b flex justify-between items-center", isDark ? "bg-slate-900/80 border-slate-800" : "bg-slate-50 border-slate-200")}>
+                        <div className={cn("absolute left-0 top-0 bottom-0 w-1", BRAND_GRADIENT)} />
+                        <div className="flex items-center space-x-2 pl-1.5">
                           <TypeIcon className="w-4 h-4 text-amber-500" />
                           <h3 className={cn("font-semibold text-sm uppercase tracking-wide", isDark ? "text-slate-200" : "text-slate-800")}>7. Overlay Texts</h3>
                         </div>
@@ -1085,10 +1159,26 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
               )}
 
               {!outputs && !status.isProcessing && (
-                <div className={cn("rounded-xl border p-12 text-center", isDark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200")}>
-                  <Sparkles className={cn("w-16 h-16 mx-auto mb-4 opacity-20", isDark ? "text-slate-600" : "text-slate-300")} />
-                  <h3 className={cn("text-lg font-semibold mb-2", isDark ? "text-slate-400" : "text-slate-500")}>Ready to Generate</h3>
-                  <p className={cn("text-sm", isDark ? "text-slate-500" : "text-slate-400")}>Upload business assets and configure settings, then click Generate.</p>
+                <div className={cn("rounded-2xl border p-8 sm:p-12 text-center shadow-xl",
+                  isDark ? "bg-slate-900/70 border-slate-800 shadow-black/20 backdrop-blur" : "bg-white/90 border-slate-200 shadow-slate-200/60 backdrop-blur")}>
+                  <div className={cn("w-16 h-16 mx-auto mb-5 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-blue-600/25", BRAND_GRADIENT)}>
+                    <Sparkles className="w-8 h-8" />
+                  </div>
+                  <h3 className={cn("text-xl font-extrabold mb-1.5 tracking-tight", BRAND_TEXT)}>Just dream big, we build it</h3>
+                  <p className={cn("text-sm mb-7", isDark ? "text-slate-400" : "text-slate-500")}>Your complete ad kit — frames, poster, voice-over, Veo prompts, B-roll &amp; overlays.</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-lg mx-auto text-left">
+                    {[
+                      { n: '1', t: 'Upload assets', d: 'Logo or name board, cards & store photos' },
+                      { n: '2', t: 'Configure', d: 'Mode, ratio, language, attire & duration' },
+                      { n: '3', t: 'Generate', d: 'Copy each prompt into the video platform' },
+                    ].map(s => (
+                      <div key={s.n} className={cn("rounded-xl border p-3.5", isDark ? "bg-slate-800/60 border-slate-700/60" : "bg-slate-50 border-slate-200")}>
+                        <span className={cn("inline-flex w-6 h-6 mb-2 rounded-lg text-[11px] font-bold text-white items-center justify-center", BRAND_GRADIENT)}>{s.n}</span>
+                        <p className={cn("text-xs font-bold mb-0.5", isDark ? "text-slate-200" : "text-slate-700")}>{s.t}</p>
+                        <p className={cn("text-[11px] leading-relaxed", isDark ? "text-slate-500" : "text-slate-400")}>{s.d}</p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -1117,11 +1207,13 @@ const OutputSection: React.FC<{
     setTimeout(() => setCopied(false), 2000);
   };
   return (
-    <div className={cn("rounded-xl border overflow-hidden", isDark ? "border-slate-700" : "border-slate-200")}>
-      <div className={cn("w-full flex items-center justify-between gap-3 px-4 py-3",
-        isDark ? "bg-slate-800 hover:bg-slate-750 text-slate-200" : "bg-slate-50 hover:bg-slate-100 text-slate-800"
+    <div className={cn("rounded-2xl border overflow-hidden shadow-lg",
+      isDark ? "border-slate-800 shadow-black/10" : "border-slate-200 shadow-slate-200/50")}>
+      <div className={cn("relative w-full flex items-center justify-between gap-3 px-4 py-3",
+        isDark ? "bg-slate-900/80 text-slate-200" : "bg-slate-50 text-slate-800"
       )}>
-        <div className="min-w-0 flex-1">
+        <div className={cn("absolute left-0 top-0 bottom-0 w-1", BRAND_GRADIENT)} />
+        <div className="min-w-0 flex-1 pl-1.5">
           <span className="font-semibold text-sm uppercase tracking-wide text-left">{title}</span>
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
