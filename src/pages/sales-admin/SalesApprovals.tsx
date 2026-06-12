@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { collection, onSnapshot, updateDoc, doc, serverTimestamp } from "firebase/firestore";
+import { collection, onSnapshot, updateDoc, doc, serverTimestamp, Timestamp } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import { logActivity } from "@/services/activityLog";
@@ -7,8 +7,8 @@ import { useAuthStore } from "@/store/authStore";
 import { formatCurrency } from "@/utils/formatters";
 import { format } from "date-fns";
 import type { AppUser, Lead, SaleDetail } from "@/types";
-import { CheckCircle, XCircle, ShoppingBag, ExternalLink, RotateCcw, Trash2, CheckSquare, Square, Phone, MessageCircle } from "lucide-react";
-import { formatPhoneDisplay, getCallUrl, getWhatsAppUrl } from "@/utils/phone";
+import { CheckCircle, XCircle, ShoppingBag, ExternalLink, RotateCcw, Trash2, CheckSquare, Square, Phone, MessageCircle, AlertTriangle, FileText } from "lucide-react";
+import { formatPhoneDisplay, getCallUrl, getWhatsAppUrl, normalizePhone } from "@/utils/phone";
 import { useToast } from "@/hooks/use-toast";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
 
@@ -18,7 +18,7 @@ export default function SalesApprovals() {
   const [members, setMembers] = useState<AppUser[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"pending" | "verified" | "rejected">("pending");
+  const [tab, setTab] = useState<"pending" | "verified" | "rejected" | "duplicates">("pending");
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [bulkProcessing, setBulkProcessing] = useState(false);
@@ -61,7 +61,7 @@ export default function SalesApprovals() {
     try {
       const items = [...getAllItems(lead)];
       const oldItem = items[itemIndex];
-      items[itemIndex] = { ...oldItem, verificationStatus: "verified" };
+      items[itemIndex] = { ...oldItem, verificationStatus: "verified", verifiedAt: Timestamp.now() };
       await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
       await sendNotification({
         userId: lead.assignedTo,
@@ -97,7 +97,7 @@ export default function SalesApprovals() {
     try {
       const items = [...getAllItems(lead)];
       const oldItem = items[itemIndex];
-      items[itemIndex] = { ...oldItem, verificationStatus: "rejected" };
+      items[itemIndex] = { ...oldItem, verificationStatus: "rejected", verifiedAt: null };
       await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
       await sendNotification({
         userId: lead.assignedTo,
@@ -133,7 +133,7 @@ export default function SalesApprovals() {
     try {
       const items = [...getAllItems(lead)];
       const oldItem = items[itemIndex];
-      items[itemIndex] = { ...oldItem, verificationStatus: "pending" };
+      items[itemIndex] = { ...oldItem, verificationStatus: "pending", verifiedAt: null };
       await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
       await sendNotification({
         userId: lead.assignedTo,
@@ -235,8 +235,9 @@ export default function SalesApprovals() {
         const lead = leads.find((l) => l.id === leadId)!;
         const items = [...getAllItems(lead)];
         const affected = byLead[leadId];
+        const verifiedTs = Timestamp.now();
         affected.forEach(({ itemIndex }) => {
-          items[itemIndex] = { ...items[itemIndex], verificationStatus: "verified" };
+          items[itemIndex] = { ...items[itemIndex], verificationStatus: "verified", verifiedAt: verifiedTs };
         });
         await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
         // Notify member once per lead
@@ -292,7 +293,7 @@ export default function SalesApprovals() {
         const items = [...getAllItems(lead)];
         const affected = byLead[leadId];
         affected.forEach(({ itemIndex }) => {
-          items[itemIndex] = { ...items[itemIndex], verificationStatus: "rejected" };
+          items[itemIndex] = { ...items[itemIndex], verificationStatus: "rejected", verifiedAt: null };
         });
         await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
         await sendNotification({
@@ -339,6 +340,20 @@ export default function SalesApprovals() {
   const allLeadItems: LeadItem[] = leads.flatMap((lead) =>
     getAllItems(lead).map((item, idx) => ({ lead, item, itemIndex: idx }))
   );
+
+  // Duplicate detection: a number sold by 2+ different members → dispute (unclear who made the sale).
+  const phoneSellers = new Map<string, Map<string, string>>(); // normPhone -> (memberId -> memberName)
+  leads.forEach((l) => {
+    if (!l.saleDone) return;
+    const np = normalizePhone(l.phone);
+    if (!phoneSellers.has(np)) phoneSellers.set(np, new Map());
+    phoneSellers.get(np)!.set(l.assignedTo, getMemberName(l.assignedTo));
+  });
+  const getDuplicateOthers = (lead: Lead): string[] => {
+    const sellers = phoneSellers.get(normalizePhone(lead.phone));
+    if (!sellers || sellers.size < 2) return [];
+    return [...sellers.entries()].filter(([id]) => id !== lead.assignedTo).map(([, name]) => name);
+  };
   const pending = allLeadItems.filter((li) => li.item.verificationStatus === "pending");
   const verified = allLeadItems.filter((li) => {
     if (li.item.verificationStatus !== "verified") return false;
@@ -354,7 +369,18 @@ export default function SalesApprovals() {
     if (!ts) return false;
     return format(new Date(ts * 1000), "dd/MM/yyyy") === dateStr;
   });
-  const displayItems = tab === "pending" ? pending : tab === "verified" ? verified : rejected;
+  // Duplicates: every sale item whose number was sold by 2+ different members (any status).
+  // Sorted by number so competing sales sit side by side, then oldest submission first.
+  const duplicates = allLeadItems
+    .filter((li) => getDuplicateOthers(li.lead).length > 0)
+    .sort((a, b) => {
+      const pa = normalizePhone(a.lead.phone);
+      const pb = normalizePhone(b.lead.phone);
+      if (pa !== pb) return pa < pb ? -1 : 1;
+      return ((a.item.submittedAt as any)?.seconds || 0) - ((b.item.submittedAt as any)?.seconds || 0);
+    });
+  const displayItems =
+    tab === "pending" ? pending : tab === "verified" ? verified : tab === "rejected" ? rejected : duplicates;
 
   const pendingKeys = pending.map((li) => makeKey(li.lead.id, li.itemIndex));
   const allPendingSelected = pendingKeys.length > 0 && pendingKeys.every((k) => selectedKeys.has(k));
@@ -400,6 +426,10 @@ export default function SalesApprovals() {
         <button onClick={() => setTab("rejected")}
           className={`h-8 md:h-9 px-3 md:px-4 rounded-lg text-xs md:text-sm font-medium transition-colors whitespace-nowrap ${tab === "rejected" ? "bg-destructive/15 text-destructive border border-destructive/30" : "bg-card border border-border text-muted-foreground hover:bg-accent"}`}>
           Rejected ({rejected.length})
+        </button>
+        <button onClick={() => setTab("duplicates")}
+          className={`h-8 md:h-9 px-3 md:px-4 rounded-lg text-xs md:text-sm font-medium transition-colors whitespace-nowrap flex items-center gap-1.5 ${tab === "duplicates" ? "bg-destructive/15 text-destructive border border-destructive/30" : "bg-card border border-border text-muted-foreground hover:bg-accent"}`}>
+          <AlertTriangle size={13} /> Duplicates ({duplicates.length})
         </button>
       </div>
 
@@ -458,20 +488,27 @@ export default function SalesApprovals() {
       {displayItems.length === 0 ? (
         <div className="bg-card border border-border rounded-xl p-12 text-center">
           <ShoppingBag size={32} className="mx-auto text-muted-foreground/30 mb-2" />
-          <p className="text-muted-foreground text-sm">No {tab} sales</p>
+          <p className="text-muted-foreground text-sm">{tab === "duplicates" ? "No duplicate sales — no number has been sold by more than one member" : `No ${tab} sales`}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {displayItems.map((li, key) => {
             const itemKey = makeKey(li.lead.id, li.itemIndex);
             const isSelected = selectedKeys.has(itemKey);
+            const dupOthers = getDuplicateOthers(li.lead);
             return (
               <div
                 key={`${li.lead.id}-${li.itemIndex}-${key}`}
                 className={`bg-card border rounded-xl p-3 md:p-5 space-y-3 transition-colors ${
-                  tab === "pending" && isSelected ? "border-primary/50 bg-primary/5" : "border-border"
+                  dupOthers.length > 0 ? "border-destructive/50" : tab === "pending" && isSelected ? "border-primary/50 bg-primary/5" : "border-border"
                 }`}
               >
+                {dupOthers.length > 0 && (
+                  <div className="flex items-start gap-1.5 rounded-md bg-destructive/10 border border-destructive/30 text-destructive text-xs p-2">
+                    <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                    <span><b>Duplicate sale.</b> This number was also sold by {dupOthers.join(", ")}. Check both members' proof before deciding who made the sale.</span>
+                  </div>
+                )}
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-start gap-2 min-w-0">
                     {/* Checkbox for pending items */}
@@ -534,7 +571,42 @@ export default function SalesApprovals() {
                       <span className="text-foreground">{li.item.customDescription}</span>
                     </div>
                   )}
+                  {(li.item.submittedAt as any)?.seconds && (
+                    <div className="col-span-2">
+                      <span className="text-muted-foreground">Submitted:</span>{" "}
+                      <span className="text-foreground font-mono text-[10px]">
+                        {format(new Date((li.item.submittedAt as any).seconds * 1000), "dd MMM yyyy, hh:mm a")}
+                      </span>
+                    </div>
+                  )}
+                  {li.item.verificationStatus === "verified" && (li.item.verifiedAt as any)?.seconds && (
+                    <div className="col-span-2">
+                      <span className="text-muted-foreground">Approved:</span>{" "}
+                      <span className="text-success font-mono text-[10px]">
+                        {format(new Date((li.item.verifiedAt as any).seconds * 1000), "dd MMM yyyy, hh:mm a")}
+                      </span>
+                    </div>
+                  )}
                 </div>
+
+                {/* Duplicate-dispute proof (call record image / note) */}
+                {(li.item.proofImageUrl || li.item.proofNote) && (
+                  <div className="rounded-md bg-elevated/40 border border-border p-2 space-y-1.5">
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Sale proof</p>
+                    {li.item.proofImageUrl && (
+                      <a href={li.item.proofImageUrl} target="_blank" rel="noopener noreferrer"
+                        className="text-xs text-info flex items-center gap-1 hover:underline">
+                        <ExternalLink size={12} /> View call-record / proof image
+                      </a>
+                    )}
+                    {li.item.proofNote && (
+                      <p className="text-xs text-foreground flex items-start gap-1">
+                        <FileText size={12} className="mt-0.5 shrink-0 text-muted-foreground" />
+                        <span className="whitespace-pre-wrap break-words">{li.item.proofNote}</span>
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {li.item.paymentScreenshotUrl && (
                   <a href={li.item.paymentScreenshotUrl} target="_blank" rel="noopener noreferrer"
@@ -591,6 +663,40 @@ export default function SalesApprovals() {
                       className="w-8 md:w-9 h-8 md:h-9 rounded-lg bg-muted text-muted-foreground hover:text-destructive hover:bg-destructive/15 transition-colors flex items-center justify-center shrink-0">
                       <Trash2 size={14} />
                     </button>
+                  </div>
+                )}
+
+                {tab === "duplicates" && (
+                  <div className="space-y-2 pt-1">
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-muted-foreground">Status:</span>
+                      <span className={`font-medium px-2 py-0.5 rounded-full text-[10px] ${li.item.verificationStatus === "verified" ? "bg-success/15 text-success" : li.item.verificationStatus === "rejected" ? "bg-destructive/15 text-destructive" : "bg-warning/15 text-warning"}`}>
+                        {li.item.verificationStatus === "verified" ? "Verified ✓" : li.item.verificationStatus === "rejected" ? "Rejected ✗" : "Pending ⏳"}
+                      </span>
+                    </div>
+                    <div className="flex gap-1.5 md:gap-2">
+                      {li.item.verificationStatus !== "verified" ? (
+                        <button onClick={() => handleVerifyItem(li.lead.id, li.itemIndex)}
+                          className="flex-1 h-8 md:h-9 rounded-lg bg-success/15 text-success font-medium text-xs md:text-sm hover:bg-success/25 transition-colors flex items-center justify-center gap-1">
+                          <CheckCircle size={14} /> Approve this one
+                        </button>
+                      ) : (
+                        <button onClick={() => handleRevokeItem(li.lead.id, li.itemIndex)}
+                          className="flex-1 h-8 md:h-9 rounded-lg bg-warning/15 text-warning font-medium text-xs md:text-sm hover:bg-warning/25 transition-colors flex items-center justify-center gap-1">
+                          <RotateCcw size={14} /> Revoke
+                        </button>
+                      )}
+                      {li.item.verificationStatus !== "rejected" && (
+                        <button onClick={() => handleRejectItem(li.lead.id, li.itemIndex)}
+                          className="flex-1 h-8 md:h-9 rounded-lg bg-destructive/15 text-destructive font-medium text-xs md:text-sm hover:bg-destructive/25 transition-colors flex items-center justify-center gap-1">
+                          <XCircle size={14} /> Reject
+                        </button>
+                      )}
+                      <button onClick={() => handleDeleteItem(li.lead.id, li.itemIndex)}
+                        className="w-8 md:w-9 h-8 md:h-9 rounded-lg bg-muted text-muted-foreground hover:text-destructive hover:bg-destructive/15 transition-colors flex items-center justify-center shrink-0">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
