@@ -9,6 +9,7 @@ import {
   VOICEOVER_REPAIR_SYSTEM_PROMPT,
   VEO_SEGMENT_SYSTEM_PROMPT,
   STOCK_IMAGE_SYSTEM_PROMPT,
+  OVERLAY_TEXT_SYSTEM_PROMPT,
   EXTRACTION_SYSTEM_PROMPT,
   detectBusinessType,
   detectEducationEnvironmentMode,
@@ -256,6 +257,30 @@ const callWithFallback = async <T>(
 // Section refinement types
 export type SectionType = 'mainFrame' | 'header' | 'poster' | 'voiceOver' | 'veo';
 
+// ── Output directives threaded into prompts from the user's configuration ──
+const usesLatinScript = (language?: string) => ['english'].includes((language || '').trim().toLowerCase());
+
+const buildRatioDirective = (formData: AdFormData): string => {
+  const ratio = formData.aspectRatio === '16:9' ? '16:9' : '9:16';
+  const orient = ratio === '16:9' ? 'horizontal (landscape)' : 'vertical (portrait)';
+  return `OUTPUT ASPECT RATIO (MANDATORY): The final image/design MUST be ${ratio} ${orient}. Wherever any other aspect ratio (such as "9:16" or "1:1") appears below, OVERRIDE it to ${ratio} and compose / frame everything for a ${orient} ${ratio} canvas.\n\n`;
+};
+
+const buildNameBoardDirective = (formData: AdFormData): string => {
+  const name = (formData.logoNameText || '').trim().toUpperCase();
+  if (!formData.noLogo || !name) return '';
+  return `NO-LOGO / NAME-BOARD MODE (MANDATORY): There is NO logo file. Instead, render a realistic, premium NAME BOARD / wall signage behind the model showing EXACTLY this business name in clean bold UPPERCASE letters: "${name}". Treat this name board as the brand signage wherever this prompt references "the logo" — it must be fully visible, correctly spelled, upright, realistically mounted on the wall, and never distorted. Do NOT invent any other text.\n\n`;
+};
+
+const buildLanguageDirective = (formData: AdFormData): string => {
+  const lang = (formData.language || 'Telugu').trim();
+  if (!lang || lang.toLowerCase() === 'telugu') return '';
+  return `LANGUAGE OVERRIDE (MANDATORY): Write the ENTIRE voice-over in ${lang}${usesLatinScript(lang) ? ' (clean conversational English)' : ` using natural ${lang} script`}. Do NOT use Telugu anywhere. Every spoken line AND the closing call-to-action must be in ${lang}. Ignore any instruction below that says to write in Telugu — use ${lang} instead.\n\n`;
+};
+
+// Pixel-perfect refine: change ONLY what the user asked, keep everything else identical.
+const REFINE_EDIT_DIRECTIVE = `You are a precise prompt EDITOR (not a re-generator). Apply ONLY the user's requested change to the given content and keep EVERYTHING else exactly the same, word-for-word. Do NOT rewrite, restructure, reorder, shorten, expand, or "improve" any part the user did not ask about. Make the smallest possible edit that fully satisfies the request, and preserve all existing separators, structure, and formatting.\n\n`;
+
 // Function to refine a specific section
 export const refineSection = async (
   sectionType: SectionType,
@@ -273,11 +298,11 @@ export const refineSection = async (
 
   switch (sectionType) {
     case 'mainFrame':
-      systemPrompt = MAIN_FRAME_SYSTEM_PROMPT(
+      systemPrompt = REFINE_EDIT_DIRECTIVE + buildRatioDirective(formData) + buildNameBoardDirective(formData) + MAIN_FRAME_SYSTEM_PROMPT(
         formData.attireType,
         formData.adType,
         formData.festivalName,
-        '1:1',
+        formData.aspectRatio,
         JSON.stringify(businessInfo)
       );
       userPrompt = `You previously generated these Main Frame prompts (one per clip, separated by ###CLIP###):
@@ -301,7 +326,7 @@ IMPORTANT:
       break;
 
     case 'header':
-      systemPrompt = HEADER_SYSTEM_PROMPT(formData.adType, formData.festivalName);
+      systemPrompt = REFINE_EDIT_DIRECTIVE + buildRatioDirective(formData) + buildNameBoardDirective(formData) + HEADER_SYSTEM_PROMPT(formData.adType, formData.festivalName);
       userPrompt = `You previously generated this Header prompt:
 
 ---CURRENT PROMPT---
@@ -320,7 +345,7 @@ IMPORTANT:
       break;
 
     case 'poster':
-      systemPrompt = POSTER_SYSTEM_PROMPT(formData.adType, formData.festivalName);
+      systemPrompt = REFINE_EDIT_DIRECTIVE + buildRatioDirective(formData) + buildNameBoardDirective(formData) + POSTER_SYSTEM_PROMPT(formData.adType, formData.festivalName);
       userPrompt = `You previously generated this Poster design prompt:
 
 ---CURRENT PROMPT---
@@ -338,8 +363,8 @@ IMPORTANT:
       break;
 
     case 'voiceOver':
-      const segmentCount = Math.round(formData.duration / 8);
-      systemPrompt = VOICEOVER_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName);
+      const segmentCount = Math.ceil(formData.duration / 8);
+      systemPrompt = REFINE_EDIT_DIRECTIVE + buildLanguageDirective(formData) + VOICEOVER_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName, formData.language);
       userPrompt = `You previously generated this Voice Over script:
 
 ---CURRENT SCRIPT---
@@ -352,13 +377,13 @@ The user wants the following changes/additions:
 IMPORTANT:
 - Apply ONLY the requested changes to the existing script
 - Keep the same structure and duration
-- Maintain Telugu language
+- Maintain the ${formData.language || 'Telugu'} language
 - Output ONLY the refined script, no explanations`;
       break;
 
     case 'veo':
-      const segCount = Math.round(formData.duration / 8);
-      systemPrompt = VEO_SEGMENT_SYSTEM_PROMPT(segCount);
+      const segCount = Math.ceil(formData.duration / 8);
+      systemPrompt = REFINE_EDIT_DIRECTIVE + VEO_SEGMENT_SYSTEM_PROMPT(segCount);
       userPrompt = `You previously generated these Veo prompts:
 
 ---CURRENT PROMPTS---
@@ -919,7 +944,7 @@ const hasAdjacentRepeatedWords = (text: string): boolean => {
   return false;
 };
 
-const validateVoiceOverSegments = (rawScript: string, segments: string[], segmentCount: number): string[] => {
+const validateVoiceOverSegments = (rawScript: string, segments: string[], segmentCount: number, language?: string): string[] => {
   const issues: string[] = [];
   const structuredSegmentCount = getStructuredSegmentLineCount(rawScript);
   const seenSegments = new Map<string, number>();
@@ -942,8 +967,10 @@ const validateVoiceOverSegments = (rawScript: string, segments: string[], segmen
       return;
     }
 
-    if (LATIN_OR_DIGIT_PATTERN.test(segment)) {
+    if (!usesLatinScript(language) && LATIN_OR_DIGIT_PATTERN.test(segment)) {
       issues.push(`Clip ${clipNumber} contains Latin letters or digits in spoken content.`);
+    } else if (usesLatinScript(language) && /\d/.test(segment)) {
+      issues.push(`Clip ${clipNumber} contains digits in spoken content.`);
     }
 
     if (!/[.!?]$/.test(segment.trim())) {
@@ -1204,11 +1231,11 @@ export const generateAdAssets = async (
 
   const applyVoiceOverRepairIfNeeded = async (candidateScript: string) => {
     let normalizedVoiceOver = normalizeAndFormatVoiceOver(candidateScript, segmentCount);
-    let voiceOverIssues = validateVoiceOverSegments(normalizedVoiceOver.rawScript, normalizedVoiceOver.segments, segmentCount);
+    let voiceOverIssues = validateVoiceOverSegments(normalizedVoiceOver.rawScript, normalizedVoiceOver.segments, segmentCount, formData.language);
 
     for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES && voiceOverIssues.length > 0; pass++) {
-      const repairSystemPrompt = VOICEOVER_REPAIR_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName);
-      const repairUserPrompt = `Repair this Telugu voice-over script using only verified business facts.
+      const repairSystemPrompt = buildLanguageDirective(formData) + VOICEOVER_REPAIR_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName);
+      const repairUserPrompt = `Repair this ${formData.language || 'Telugu'} voice-over script using only verified business facts.
 
 BUSINESS INFORMATION:
 ${JSON.stringify(businessInfo, null, 2)}
@@ -1230,7 +1257,7 @@ Return only the repaired ${segmentCount} clip lines.`;
       });
 
       normalizedVoiceOver = normalizeAndFormatVoiceOver(repairResponse.text || normalizedVoiceOver.formatted, segmentCount);
-      voiceOverIssues = validateVoiceOverSegments(normalizedVoiceOver.rawScript, normalizedVoiceOver.segments, segmentCount);
+      voiceOverIssues = validateVoiceOverSegments(normalizedVoiceOver.rawScript, normalizedVoiceOver.segments, segmentCount, formData.language);
     }
 
     if (voiceOverIssues.length > 0) {
@@ -1275,8 +1302,8 @@ Segment 2: <text>
     voiceOverScript = repairedVoiceOver.formatted;
   } else {
     // Auto-generate voice-over script
-    const scriptSystemPrompt = VOICEOVER_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName);
-    const scriptUserPrompt = `Generate a ${formData.duration}-second Telugu voice-over script for:
+    const scriptSystemPrompt = buildLanguageDirective(formData) + VOICEOVER_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName, formData.language);
+    const scriptUserPrompt = `Generate a ${formData.duration}-second ${formData.language || 'Telugu'} voice-over script for:
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
   AD TYPE: ${formData.adType}
   ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName}` : ''}
@@ -1313,9 +1340,9 @@ Segment 2: <text>
   const realisticLogoPlacementGuidance = getRealisticLogoPlacementGuidance(detectedBusinessType, serializedBusinessInfo);
   
   const mainFramePromise = (async (): Promise<string[]> => {
-  const multiFrameSystemPrompt = MULTI_FRAME_SYSTEM_PROMPT(
-    formData.attireType, 
-    formData.adType, 
+  const multiFrameSystemPrompt = buildRatioDirective(formData) + buildNameBoardDirective(formData) + MULTI_FRAME_SYSTEM_PROMPT(
+    formData.attireType,
+    formData.adType,
     formData.festivalName,
     segmentCount,
     parsedSegments,
@@ -1521,7 +1548,7 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
 
   // --- Step 4: Header Prompt (local — no API call) ---
 
-  const headerSystemPrompt = HEADER_SYSTEM_PROMPT(formData.adType, formData.festivalName);
+  const headerSystemPrompt = buildRatioDirective(formData) + buildNameBoardDirective(formData) + HEADER_SYSTEM_PROMPT(formData.adType, formData.festivalName);
   // Extract ONLY logo/name/contacts/address — never dump the full business JSON or any other data.
   const headerBusinessName = extractBusinessNameFromInfo(businessInfo);
   const headerContacts = extractContactsFromInfo(businessInfo).slice(0, 2);
@@ -1550,7 +1577,7 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
 
   // --- Step 5: Poster Design Prompt (JSON) — runs concurrently ---
   const posterPromise = (async (): Promise<string> => {
-  const posterSystemPrompt = POSTER_SYSTEM_PROMPT(formData.adType, formData.festivalName);
+  const posterSystemPrompt = buildRatioDirective(formData) + buildNameBoardDirective(formData) + POSTER_SYSTEM_PROMPT(formData.adType, formData.festivalName);
   const posterContacts = extractContactsFromInfo(businessInfo).slice(0, 2);
   const posterContactRule = posterContacts.length
     ? `CONTACT NUMBER(S) — use ONLY these exact number(s), at most two, digit-for-digit; NEVER alter, complete, reorder, merge, or invent any number: ${posterContacts.join('  |  ')}`
@@ -1713,7 +1740,9 @@ export const generateStockImagePrompts = async (
   businessInfo: any,
   adType: string,
   festivalName: string,
-  theme: string = 'indian'
+  theme: string = 'indian',
+  aspectRatio: string = '9:16',
+  clipCount?: number
 ): Promise<any[]> => {
   if (API_KEYS.length === 0) {
     throw new Error("No API keys configured. Please set API_KEY_1, API_KEY_2, etc. in your environment.");
@@ -1730,6 +1759,13 @@ export const generateStockImagePrompts = async (
   };
 
   const themeInstruction = themeDescriptions[theme] || themeDescriptions['indian'];
+  const ratio = aspectRatio === '16:9' ? '16:9' : '9:16';
+  const orient = ratio === '16:9' ? 'horizontal (landscape)' : 'vertical (portrait)';
+
+  // One B-roll image per clip (segment), matched to that clip's voice-over line.
+  const countInstruction = clipCount && clipCount > 0
+    ? `The voice-over has ${clipCount} clips (each ~8 seconds). Generate EXACTLY ${clipCount} B-roll image prompts — ONE per clip, in clip order. Each image MUST visually match the meaning of THAT clip's spoken line and be a hyper-realistic, highly relatable real-world shot for editing over that clip.`
+    : `Generate ONLY the stock image prompts that this specific script needs (1-5 maximum). Do NOT always give 5 — analyze the script and provide only what's genuinely needed for editing.`;
 
   const userPrompt = `Analyze this voice-over script and generate stock image prompts for B-roll / cutaway shots to use during video editing.
 
@@ -1745,7 +1781,11 @@ ${adType === 'festival' ? `FESTIVAL: ${festivalName}` : ''}
 CULTURAL THEME: ${themeInstruction}
 ALL people, clothing, settings, and cultural elements in every image MUST match this theme. This is NON-NEGOTIABLE.
 
-Generate ONLY the stock image prompts that this specific script needs (1-5 maximum). Do NOT always give 5 — analyze the script and provide only what's genuinely needed for editing.`;
+OUTPUT ASPECT RATIO (MANDATORY): Every B-roll image MUST be ${ratio} ${orient}. Begin each "prompt" with "Create a hyper-realistic ${ratio} ${orient} image of". Override any other ratio mentioned.
+
+${countInstruction}
+
+For each item return an object with: "id" (clip number), "concept" (short label), "timing" (which clip / second range), "prompt" (the full image prompt), "usage" (how the editor uses it).`;
 
   const response = await callWithFallback(async (ai, model) => {
     return await ai.models.generateContent({
@@ -1754,7 +1794,7 @@ Generate ONLY the stock image prompts that this specific script needs (1-5 maxim
         { role: 'user', parts: [{ text: userPrompt }] }
       ],
       config: {
-        systemInstruction: STOCK_IMAGE_SYSTEM_PROMPT,
+        systemInstruction: `OUTPUT ASPECT RATIO OVERRIDE: every image MUST be ${ratio} ${orient}; ignore any "9:16" mention and use ${ratio}.\n\n` + STOCK_IMAGE_SYSTEM_PROMPT,
         responseMimeType: "application/json"
       }
     });
@@ -1766,6 +1806,70 @@ Generate ONLY the stock image prompts that this specific script needs (1-5 maxim
     return Array.isArray(parsed) ? parsed : [parsed];
   } catch {
     return [{ id: 1, concept: "Parse Error", timing: "N/A", prompt: text, usage: "Manual review needed" }];
+  }
+};
+
+// Refine a SINGLE B-roll stock image prompt (per-image refine) — applies only the requested change.
+export const refineStockImagePrompt = async (
+  currentPrompt: string,
+  instruction: string,
+  aspectRatio: string = '9:16'
+): Promise<string> => {
+  const ratio = aspectRatio === '16:9' ? '16:9' : '9:16';
+  const orient = ratio === '16:9' ? 'horizontal (landscape)' : 'vertical (portrait)';
+  const response = await callWithFallback(async (ai, model) => {
+    return await ai.models.generateContent({
+      model,
+      contents: [{ role: 'user', parts: [{ text:
+`Refine this single B-roll stock image prompt.
+
+CURRENT PROMPT:
+${currentPrompt}
+
+REQUESTED CHANGE:
+"${instruction}"
+
+The image MUST stay ${ratio} ${orient} and hyper-realistic / highly relatable. Output ONLY the refined image prompt text — no explanations, no code block.` }] }],
+      config: { systemInstruction: REFINE_EDIT_DIRECTIVE + `You refine single hyper-realistic ${ratio} ${orient} B-roll image prompts.` }
+    });
+  });
+  return (response.text || currentPrompt)
+    .replace(/^```(?:json|text|plaintext)?\s*\n?/gim, '')
+    .replace(/\n?```\s*$/gim, '')
+    .trim();
+};
+
+// Generate per-clip on-screen OVERLAY TEXTS with CapCut-searchable sound-effect suggestions.
+export const generateOverlayTexts = async (
+  voiceOverScript: string,
+  businessInfo: any,
+  language: string = 'Telugu'
+): Promise<any[]> => {
+  if (API_KEYS.length === 0) {
+    throw new Error("No API keys configured. Please set API_KEY_1, API_KEY_2, etc. in your environment.");
+  }
+  const response = await callWithFallback(async (ai, model) => {
+    return await ai.models.generateContent({
+      model,
+      contents: [{ role: 'user', parts: [{ text:
+`VOICE-OVER SCRIPT (per clip, in order):
+${voiceOverScript}
+
+BUSINESS INFORMATION:
+${JSON.stringify(businessInfo, null, 2)}
+
+LANGUAGE: ${language}
+
+Generate the on-screen overlay texts now.` }] }],
+      config: { systemInstruction: OVERLAY_TEXT_SYSTEM_PROMPT(language), responseMimeType: "application/json" }
+    });
+  });
+  const text = response.text || "[]";
+  try {
+    const parsed = JSON.parse(text);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
   }
 };
 

@@ -178,8 +178,23 @@ export default function MyWork() {
     editing: { icon: <Edit3 className="w-4 h-4" />, color: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400', label: 'Edits Required' },
   };
 
-  const activeWork = useMemo(() => assignments.filter(a => ['assigned', 'in_progress', 'editing'].includes(a.status)), [assignments]);
-  const completedWork = useMemo(() => assignments.filter(a => ['completed', 'verified'].includes(a.status)), [assignments]);
+  // Latest-added work first (most recent assignment on top)
+  const assignedSeconds = (a: WorkAssignment) => {
+    const ts = a.assignedAt as any;
+    return ts?.seconds || (a.assignedAtIso ? Math.floor(new Date(a.assignedAtIso).getTime() / 1000) : 0);
+  };
+  const activeWork = useMemo(
+    () => assignments.filter(a => ['assigned', 'in_progress', 'editing'].includes(a.status)).sort((a, b) => assignedSeconds(b) - assignedSeconds(a)),
+    [assignments]
+  );
+  const completedWork = useMemo(
+    () => assignments.filter(a => ['completed', 'verified'].includes(a.status)).sort((a, b) => {
+      const ca = (a.completedAt as any)?.seconds || assignedSeconds(a);
+      const cb = (b.completedAt as any)?.seconds || assignedSeconds(b);
+      return cb - ca;
+    }),
+    [assignments]
+  );
 
   // 5-day filter
   const recentDays = useMemo(() => {

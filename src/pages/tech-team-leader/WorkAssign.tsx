@@ -186,9 +186,20 @@ export default function TeamLeaderWorkAssign() {
     });
   };
 
-  const filteredMembers = techMembers.filter(m =>
-    m.name.toLowerCase().includes(memberSearch.toLowerCase())
-  );
+  const filteredMembers = useMemo(() => {
+    const qRaw = memberSearch.trim();
+    if (!qRaw) return techMembers;
+    const q = qRaw.toLowerCase();
+    const qDigits = qRaw.replace(/\D/g, '');
+    return techMembers.filter(m => {
+      if (m.name.toLowerCase().includes(q)) return true;
+      if (qDigits && m.phone) {
+        const pd = normalizePhone(m.phone).replace(/\D/g, '');
+        if (pd.includes(qDigits) || qDigits.includes(pd)) return true;
+      }
+      return false;
+    });
+  }, [techMembers, memberSearch]);
 
   const handleCreate = async () => {
     if (!user || !form.assignedTo) return;
@@ -351,14 +362,29 @@ export default function TeamLeaderWorkAssign() {
     let result = assignments;
     if (statusFilter !== 'all') result = result.filter(a => a.status === statusFilter);
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(a =>
-        a.displayTitle?.toLowerCase().includes(q) ||
-        a.businessName?.toLowerCase().includes(q) ||
-        a.clientName?.toLowerCase().includes(q) ||
-        a.uniqueId?.toLowerCase().includes(q) ||
-        techMembers.find(m => m.uid === a.assignedTo)?.name.toLowerCase().includes(q)
-      );
+      const rawQ = searchQuery.trim();
+      const q = rawQ.toLowerCase();
+      const hasDigits = /[0-9]/.test(rawQ);
+      const queryDigits = hasDigits ? normalizePhone(rawQ).replace(/\D/g, '') : '';
+      result = result.filter(a => {
+        const member = techMembers.find(m => m.uid === a.assignedTo);
+        const memberName = member?.name?.toLowerCase() || '';
+        const businessName = (a.businessName || a.clientName || '').toLowerCase();
+        const displayTitle = a.displayTitle?.toLowerCase() || '';
+        const uniqueId = a.uniqueId?.toLowerCase() || '';
+        if (displayTitle.includes(q) || businessName.includes(q) || uniqueId.includes(q) || memberName.includes(q)) return true;
+        if (hasDigits && queryDigits) {
+          if (a.businessWhatsapp) {
+            const nd = normalizePhone(a.businessWhatsapp).replace(/\D/g, '');
+            if (nd.includes(queryDigits) || queryDigits.includes(nd)) return true;
+          }
+          if (member?.phone) {
+            const nd = normalizePhone(member.phone).replace(/\D/g, '');
+            if (nd.includes(queryDigits) || queryDigits.includes(nd)) return true;
+          }
+        }
+        return false;
+      });
     }
 
     if (selectedRange?.from) {

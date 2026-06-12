@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Wand2, Sparkles, Layout, Type, Mic, Image as ImageIcon, Rocket, AlertCircle,
-  Loader2, Bookmark, Save, Check, Camera, Video, PenTool, ChevronDown, Copy,
-  ExternalLink, StopCircle, ArrowLeft, CheckCircle2
+  Wand2, Sparkles, Layout, Type, Rocket, AlertCircle,
+  Loader2, Save, Check, Camera, Video, PenTool, ChevronDown, Copy,
+  ExternalLink, StopCircle, ArrowLeft, CheckCircle2, Home, Ratio, Languages, Type as TypeIcon, Music
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
@@ -10,7 +10,7 @@ import { FileUpload } from './FileUpload';
 import { GeneratedCard } from './GeneratedCard';
 import { SavedItems, SavedGeneration } from './SavedItems';
 import { AdFormData, AdType, AttireType, FileStore, GeneratedOutputs, GenerationStatus } from '@/types/aiPlatform';
-import { generateAdAssets, extractBusinessOnly, generateStockImagePrompts, refineSection, regenerateVeoFromVoiceOver, SectionType, extractBusinessNameFromInfo } from '@/services/geminiService';
+import { generateAdAssets, extractBusinessOnly, generateStockImagePrompts, refineStockImagePrompt, generateOverlayTexts, refineSection, regenerateVeoFromVoiceOver, SectionType, extractBusinessNameFromInfo } from '@/services/geminiService';
 import { collection, addDoc, getDocs, query, where, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/services/firebase';
 import { useAuthStore } from '@/store/authStore';
@@ -48,7 +48,11 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     attireType: AttireType.TRADITIONAL,
     duration: 16,
     durationMode: 'preset',
-    textInstructions: ''
+    textInstructions: '',
+    aspectRatio: '9:16',
+    language: 'Telugu',
+    noLogo: false,
+    logoNameText: ''
   });
 
   const [files, setFiles] = useState<FileStore>({
@@ -76,6 +80,11 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   const [stockImageError, setStockImageError] = useState<string | null>(null);
   const [stockImageTheme, setStockImageTheme] = useState<string>('indian');
   const [copiedStockIdx, setCopiedStockIdx] = useState<number | null>(null);
+  const [stockRefineIdx, setStockRefineIdx] = useState<number | null>(null);
+  const [stockRefineText, setStockRefineText] = useState('');
+  const [refiningStockIdx, setRefiningStockIdx] = useState<number | null>(null);
+  const [isGeneratingOverlay, setIsGeneratingOverlay] = useState(false);
+  const [overlayError, setOverlayError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const outputPanelRef = useRef<HTMLDivElement>(null);
   const [collapsedOutputs, setCollapsedOutputs] = useState<Record<string, boolean>>({});
@@ -87,6 +96,16 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   const [customFestivalName, setCustomFestivalName] = useState<string>('');
   const [customScript, setCustomScript] = useState<string>('');
   const [useCustomScript, setUseCustomScript] = useState(false);
+  const [languageOpen, setLanguageOpen] = useState(false);
+  const [languageSearch, setLanguageSearch] = useState('');
+
+  const LANGUAGE_OPTIONS = [
+    'Telugu', 'English', 'Hindi', 'Kannada', 'Tamil', 'Malayalam',
+    'Marathi', 'Bengali', 'Gujarati', 'Punjabi', 'Urdu', 'Odia', 'Assamese',
+  ];
+
+  // #2 — Video Duration is fixed by the assignment's clip count when launched from an assignment
+  const durationLocked = !!assignment;
 
   const CUSTOM_FESTIVAL_OPTION = '__custom_festival__';
 
@@ -101,6 +120,16 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   useEffect(() => {
     if (user) loadSavedItems();
   }, [user]);
+
+  // #2 — Prefill & lock Video Duration from the assignment's clip count (clips × 8s),
+  // so the member generates exactly what the admin/leader assigned.
+  useEffect(() => {
+    if (!assignment) return;
+    const clips = assignment.clipCount || Math.max(1, Math.floor((parseInt(assignment.duration) || 16) / 8));
+    const seconds = Math.min(120, Math.max(8, clips * 8));
+    const isPreset = [16, 32, 48, 64].includes(seconds);
+    setFormData(prev => ({ ...prev, duration: seconds, durationMode: isPreset ? 'preset' : 'custom' }));
+  }, [assignment?.id]);
 
   // Extract business name whenever outputs change
   useEffect(() => {
@@ -250,7 +279,11 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   };
 
   const handleGenerate = async () => {
-    if (!files.logo) { await showAlert({ title: "Missing Logo", description: "Please upload a logo image to proceed.", confirmText: "OK" }); return; }
+    const hasNameBoard = !!(formData.noLogo && formData.logoNameText?.trim());
+    if (!files.logo && !hasNameBoard) {
+      await showAlert({ title: "Missing Logo", description: "Upload a logo image, OR tick 'No logo' and enter the business name to use as a name board.", confirmText: "OK" });
+      return;
+    }
     if (formData.adType === AdType.FESTIVAL && !formData.festivalName.trim()) {
       await showAlert({ title: "Missing Festival", description: "Please select a festival or enter a custom festival name.", confirmText: "OK" });
       return;
@@ -333,12 +366,50 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     setIsGeneratingStock(true);
     setStockImageError(null);
     try {
-      const stockPrompts = await generateStockImagePrompts(outputs.voiceOverScript, outputs.businessInfo, formData.adType, formData.festivalName, stockImageTheme);
+      const clipCount = outputs.veoPrompts?.length || outputs.mainFramePrompts?.length || Math.round(formData.duration / 8);
+      const stockPrompts = await generateStockImagePrompts(outputs.voiceOverScript, outputs.businessInfo, formData.adType, formData.festivalName, stockImageTheme, formData.aspectRatio, clipCount);
       setOutputs(prev => prev ? { ...prev, stockImagePrompts: stockPrompts } : prev);
     } catch (error: any) {
       setStockImageError(error.message || 'Failed to generate stock image prompts.');
     } finally {
       setIsGeneratingStock(false);
+    }
+  };
+
+  // #10 — refine a single B-roll image prompt
+  const handleRefineStockImage = async (idx: number) => {
+    if (!outputs?.stockImagePrompts || !stockRefineText.trim()) return;
+    setRefiningStockIdx(idx);
+    try {
+      const current = outputs.stockImagePrompts[idx];
+      const refined = await refineStockImagePrompt(current.prompt, stockRefineText.trim(), formData.aspectRatio);
+      setOutputs(prev => {
+        if (!prev?.stockImagePrompts) return prev;
+        const next = [...prev.stockImagePrompts];
+        next[idx] = { ...next[idx], prompt: refined };
+        return { ...prev, stockImagePrompts: next };
+      });
+      setStockRefineIdx(null);
+      setStockRefineText('');
+    } catch (error: any) {
+      setStockImageError(error.message || 'Failed to refine image prompt.');
+    } finally {
+      setRefiningStockIdx(null);
+    }
+  };
+
+  // #14 — generate per-clip on-screen overlay texts + CapCut SFX suggestions
+  const handleGenerateOverlayTexts = async () => {
+    if (!outputs || !outputs.voiceOverScript) return;
+    setIsGeneratingOverlay(true);
+    setOverlayError(null);
+    try {
+      const items = await generateOverlayTexts(outputs.voiceOverScript, outputs.businessInfo, formData.language);
+      setOutputs(prev => prev ? { ...prev, overlayTexts: items } : prev);
+    } catch (error: any) {
+      setOverlayError(error.message || 'Failed to generate overlay texts.');
+    } finally {
+      setIsGeneratingOverlay(false);
     }
   };
 
@@ -381,21 +452,16 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
         )}
 
         <div className="flex items-center space-x-2">
-          <button onClick={() => setShowSavedItems(true)}
-            className={cn("relative flex items-center space-x-1 text-sm px-3 py-1.5 rounded-lg transition-colors",
-              isDark ? "text-slate-300 hover:text-blue-400 hover:bg-slate-700" : "text-slate-600 hover:text-blue-600 hover:bg-blue-50"
-            )}>
-            <Bookmark className="w-4 h-4" /><span className="hidden sm:inline">Saved</span>
-            {savedItems.length > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-blue-500 text-white text-xs rounded-full flex items-center justify-center">{savedItems.length > 9 ? '9+' : savedItems.length}</span>
-            )}
-          </button>
           {onComplete && (
             <button onClick={onComplete}
               className="flex items-center space-x-1.5 text-sm font-medium px-4 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white transition-colors">
               <CheckCircle2 className="w-4 h-4" /><span>Mark Complete</span>
             </button>
           )}
+          <button onClick={onClose}
+            className="flex items-center space-x-1.5 text-sm font-medium px-4 py-1.5 rounded-lg bg-slate-200 text-slate-700 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600 transition-colors">
+            <Home className="w-4 h-4" /><span>Close &amp; back to home</span>
+          </button>
         </div>
       </div>
 
@@ -413,7 +479,33 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                   <h2 className={cn("text-lg font-bold", isDark ? "text-white" : "text-slate-800")}>Assets & Files</h2>
                 </div>
                 <div className="space-y-4">
-                  <FileUpload label="Business Logo" accept="image/png, image/jpeg" required onChange={(f) => setFiles(prev => ({ ...prev, logo: f as File }))} helperText="High resolution PNG/JPG" />
+                  {!formData.noLogo && (
+                    <FileUpload label="Business Logo" accept="image/png, image/jpeg" required value={files.logo} onChange={(f) => setFiles(prev => ({ ...prev, logo: f as File }))} helperText="High resolution PNG/JPG" />
+                  )}
+                  {/* #5 — No-logo option: use business name as a physical name board behind the model */}
+                  <div className={cn("rounded-lg border p-3", isDark ? "border-slate-600 bg-slate-700/30" : "border-slate-200 bg-slate-50")}>
+                    <label className={cn("flex items-center gap-2 text-sm font-medium cursor-pointer", isDark ? "text-slate-300" : "text-slate-700")}>
+                      <input type="checkbox" checked={!!formData.noLogo}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setFormData(prev => ({ ...prev, noLogo: checked }));
+                          if (checked) setFiles(prev => ({ ...prev, logo: null }));
+                        }}
+                        className="rounded border-slate-300" />
+                      NO LOGO — use business name as a name board
+                    </label>
+                    {formData.noLogo && (
+                      <input
+                        type="text"
+                        value={formData.logoNameText || ''}
+                        onChange={(e) => setFormData(prev => ({ ...prev, logoNameText: e.target.value.toUpperCase() }))}
+                        placeholder="BUSINESS NAME"
+                        className={cn("mt-2 w-full border rounded-lg px-3 py-2 text-sm uppercase tracking-wide focus:ring-2 outline-none",
+                          isDark ? "bg-slate-700 border-slate-600 text-slate-200 placeholder-slate-500 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 placeholder-slate-400 focus:ring-blue-200"
+                        )}
+                      />
+                    )}
+                  </div>
                   <FileUpload label="Visiting Card" accept="image/*" multiple maxFiles={2} value={files.visitingCard} onChange={(f) => setFiles(prev => ({ ...prev, visitingCard: (f ? (Array.isArray(f) ? f : [f]) : []) as File[] }))} helperText="Front & back (max 2)" />
                   
                   {/* Collapsible sections */}
@@ -478,6 +570,65 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                           <Icon className="w-4 h-4" /><span>{label}</span>
                         </button>
                       ))}
+                    </div>
+                  </div>
+
+                  {/* #4a — Aspect Ratio */}
+                  <div>
+                    <label className={cn("flex items-center gap-1.5 text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>
+                      <Ratio className="w-4 h-4 text-blue-500" /> Aspect Ratio
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      {([['9:16', 'Vertical'], ['16:9', 'Horizontal']] as const).map(([r, label]) => (
+                        <button key={r} type="button" onClick={() => setFormData(prev => ({ ...prev, aspectRatio: r }))}
+                          className={cn("flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-all",
+                            formData.aspectRatio === r
+                              ? (isDark ? "border-blue-500 bg-blue-900/30 text-blue-400" : "border-blue-500 bg-blue-50 text-blue-700")
+                              : (isDark ? "border-slate-600 hover:border-slate-500 text-slate-400" : "border-slate-200 hover:border-slate-300 text-slate-600")
+                          )}>
+                          <span className="font-mono">{r}</span><span className="text-xs opacity-70">{label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* #4b — Language (searchable) */}
+                  <div>
+                    <label className={cn("flex items-center gap-1.5 text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>
+                      <Languages className="w-4 h-4 text-purple-500" /> Language
+                    </label>
+                    <div className="relative">
+                      <button type="button" onClick={() => { setLanguageOpen(o => !o); setLanguageSearch(''); }}
+                        className={cn("w-full flex items-center justify-between border rounded-lg px-3 py-2 text-sm outline-none",
+                          isDark ? "bg-slate-700 border-slate-600 text-slate-200" : "bg-white border-slate-300 text-slate-700"
+                        )}>
+                        <span>{formData.language}</span>
+                        <ChevronDown className={cn("w-4 h-4 transition-transform", languageOpen && "rotate-180")} />
+                      </button>
+                      {languageOpen && (
+                        <div className={cn("absolute z-30 mt-1 w-full rounded-lg border shadow-lg overflow-hidden",
+                          isDark ? "bg-slate-800 border-slate-600" : "bg-white border-slate-200")}>
+                          <input autoFocus value={languageSearch} onChange={(e) => setLanguageSearch(e.target.value)}
+                            placeholder="Search language..."
+                            className={cn("w-full px-3 py-2 text-sm border-b outline-none",
+                              isDark ? "bg-slate-800 border-slate-600 text-slate-200 placeholder-slate-500" : "bg-white border-slate-200 text-slate-700 placeholder-slate-400")} />
+                          <div className="max-h-48 overflow-y-auto">
+                            {LANGUAGE_OPTIONS.filter(l => l.toLowerCase().includes(languageSearch.toLowerCase())).map(l => (
+                              <button key={l} type="button"
+                                onClick={() => { setFormData(prev => ({ ...prev, language: l })); setLanguageOpen(false); setLanguageSearch(''); }}
+                                className={cn("w-full text-left px-3 py-2 text-sm transition-colors",
+                                  formData.language === l
+                                    ? (isDark ? "bg-purple-900/30 text-purple-300" : "bg-purple-50 text-purple-700")
+                                    : (isDark ? "text-slate-300 hover:bg-slate-700" : "text-slate-700 hover:bg-slate-100"))}>
+                                {l}
+                              </button>
+                            ))}
+                            {LANGUAGE_OPTIONS.filter(l => l.toLowerCase().includes(languageSearch.toLowerCase())).length === 0 && (
+                              <p className={cn("px-3 py-2 text-xs", isDark ? "text-slate-500" : "text-slate-400")}>No language found</p>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -560,6 +711,16 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                   {creationMode === 'video' && (
                     <div>
                       <label className={cn("block text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>Video Duration</label>
+                      {durationLocked ? (
+                        <div className={cn("flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm",
+                          isDark ? "bg-slate-700/60 border-slate-600 text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
+                          <span className="font-mono font-semibold">{formData.duration}s · {Math.round(formData.duration / 8)} clips</span>
+                          <span className={cn("text-[11px] px-2 py-0.5 rounded-full", isDark ? "bg-blue-900/40 text-blue-300" : "bg-blue-100 text-blue-700")}>
+                            🔒 Fixed by assignment{assignment?.category ? ` · ${assignment.category}` : ''}
+                          </span>
+                        </div>
+                      ) : (
+                      <>
                       <div className="grid grid-cols-2 gap-2 mb-2">
                         <button onClick={() => setFormData(prev => ({ ...prev, durationMode: 'preset', duration: 16 }))}
                           className={cn("px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
@@ -593,6 +754,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                             }} />
                           <span className={cn("text-sm whitespace-nowrap", isDark ? "text-slate-400" : "text-slate-500")}>sec</span>
                         </div>
+                      )}
+                      </>
                       )}
                     </div>
                   )}
@@ -743,7 +906,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                   )}
 
                   {creationMode === 'video' && outputs.posterPrompt && (
-                      <OutputSection title="3. Poster Design (JSON)" sectionKey="poster"
+                      <OutputSection title="3. Poster Design" sectionKey="poster"
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                         isDark={isDark} copyContent={outputs.posterPrompt}>
                         <GeneratedCard title="Poster" content={outputs.posterPrompt} isJson sectionType="poster"
@@ -752,7 +915,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                   )}
 
                   {creationMode === 'video' && outputs.voiceOverScript && (
-                      <OutputSection title="4. Voice Over Script (Telugu)" sectionKey="voiceOver"
+                      <OutputSection title={`4. Voice Over Script (${formData.language || 'Telugu'})`} sectionKey="voiceOver"
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                         isDark={isDark}>
                         <GeneratedCard title="Voice Over" content={outputs.voiceOverScript} sectionType="voiceOver"
@@ -831,10 +994,92 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                                   </button>
                                 </div>
                                 <p className={cn("text-sm leading-relaxed", isDark ? "text-slate-300" : "text-slate-600")}>{item.prompt}</p>
+                                {/* #10 — per-image refine */}
+                                {stockRefineIdx === idx ? (
+                                  <div className="mt-2 flex items-center gap-2">
+                                    <input autoFocus value={stockRefineText} onChange={(e) => setStockRefineText(e.target.value)}
+                                      onKeyDown={(e) => { if (e.key === 'Enter') handleRefineStockImage(idx); }}
+                                      placeholder="Describe the change for this image..."
+                                      className={cn("flex-1 border rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-2",
+                                        isDark ? "bg-slate-800 border-slate-600 text-slate-200 focus:ring-teal-800" : "bg-white border-slate-300 text-slate-700 focus:ring-teal-200")} />
+                                    <button onClick={() => handleRefineStockImage(idx)} disabled={refiningStockIdx === idx || !stockRefineText.trim()}
+                                      className="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 inline-flex items-center gap-1">
+                                      {refiningStockIdx === idx ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />} Apply
+                                    </button>
+                                    <button onClick={() => { setStockRefineIdx(null); setStockRefineText(''); }}
+                                      className={cn("text-xs px-2 py-1.5 rounded-lg", isDark ? "text-slate-400 hover:bg-slate-700" : "text-slate-500 hover:bg-slate-100")}>Cancel</button>
+                                  </div>
+                                ) : (
+                                  <button onClick={() => { setStockRefineIdx(idx); setStockRefineText(''); }}
+                                    className={cn("mt-2 inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded transition-colors",
+                                      isDark ? "text-teal-400 hover:bg-teal-900/30" : "text-teal-600 hover:bg-teal-50")}>
+                                    <Wand2 className="w-3 h-3" /> Refine this image
+                                  </button>
+                                )}
                               </div>
                             ))}
                           </div>
                         </div>
+                  )}
+
+                  {/* 7. Overlay Texts (#14) */}
+                  {creationMode === 'video' && outputs.voiceOverScript && (
+                    <div className={cn("rounded-xl shadow-sm border overflow-hidden", isDark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200")}>
+                      <div className={cn("px-4 py-3 border-b flex justify-between items-center", isDark ? "bg-slate-900/50 border-slate-700" : "bg-slate-50 border-slate-200")}>
+                        <div className="flex items-center space-x-2">
+                          <TypeIcon className="w-4 h-4 text-amber-500" />
+                          <h3 className={cn("font-semibold text-sm uppercase tracking-wide", isDark ? "text-slate-200" : "text-slate-800")}>7. Overlay Texts</h3>
+                        </div>
+                        {!outputs.overlayTexts && (
+                          <button onClick={handleGenerateOverlayTexts} disabled={isGeneratingOverlay}
+                            className={cn("flex items-center space-x-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all",
+                              isGeneratingOverlay ? (isDark ? "bg-slate-700 text-slate-400 cursor-not-allowed" : "bg-slate-100 text-slate-400")
+                                : (isDark ? "bg-amber-900/40 text-amber-400 hover:bg-amber-900/60 border border-amber-700/50" : "bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200"))}>
+                            {isGeneratingOverlay ? <><Loader2 className="w-3 h-3 animate-spin" /><span>Generating...</span></> : <><Sparkles className="w-3 h-3" /><span>Generate</span></>}
+                          </button>
+                        )}
+                      </div>
+                      <div className="p-4">
+                        {!outputs.overlayTexts && !isGeneratingOverlay && (
+                          <div className={cn("text-center py-6", isDark ? "text-slate-500" : "text-slate-400")}>
+                            <TypeIcon className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                            <p className="text-sm font-medium">On-screen overlay texts (1–3 per clip) with a CapCut sound-effect for each — for editing</p>
+                          </div>
+                        )}
+                        {overlayError && (
+                          <div className="flex items-start space-x-2 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 p-3 rounded-lg text-sm">
+                            <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" /><span>{overlayError}</span>
+                          </div>
+                        )}
+                        {isGeneratingOverlay && (
+                          <div className="flex items-center justify-center py-8 space-x-2">
+                            <Loader2 className="w-5 h-5 animate-spin text-amber-500" />
+                            <span className={cn("text-sm", isDark ? "text-slate-400" : "text-slate-500")}>Generating overlay texts...</span>
+                          </div>
+                        )}
+                        {outputs.overlayTexts && outputs.overlayTexts.length > 0 && (
+                          Array.from(new Set(outputs.overlayTexts.map((o: any) => o.clip))).sort((a: any, b: any) => a - b).map((clip: any) => (
+                            <div key={clip} className="mb-3 last:mb-0">
+                              <p className={cn("text-[11px] font-semibold uppercase tracking-wide mb-1.5", isDark ? "text-slate-400" : "text-slate-500")}>Clip {clip}</p>
+                              {outputs.overlayTexts!.filter((o: any) => o.clip === clip).map((o: any, i: number) => (
+                                <div key={i} className={cn("flex items-center justify-between gap-2 rounded-lg border p-2.5 mb-1.5", isDark ? "bg-slate-700/50 border-slate-600" : "bg-slate-50 border-slate-200")}>
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <TypeIcon className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                                    <span className={cn("font-medium text-sm truncate", isDark ? "text-slate-200" : "text-slate-700")}>{o.text}</span>
+                                  </div>
+                                  <span className={cn("inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-full flex-shrink-0", isDark ? "bg-slate-800 text-amber-300 border border-amber-700/40" : "bg-amber-100 text-amber-700")}>
+                                    <Music className="w-3 h-3" /> {o.soundEffect}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          ))
+                        )}
+                        {outputs.overlayTexts && outputs.overlayTexts.length === 0 && (
+                          <p className={cn("text-sm text-center py-4", isDark ? "text-slate-500" : "text-slate-400")}>No overlay texts needed for this script.</p>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </div>
               )}

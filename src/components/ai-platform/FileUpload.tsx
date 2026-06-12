@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { Upload, X, FileAudio, FileText, Image as ImageIcon, Plus } from 'lucide-react';
+import React, { useRef, useState, useMemo, useEffect } from 'react';
+import { X, FileAudio, FileText, Image as ImageIcon, Plus } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
 
@@ -41,6 +41,16 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   const files = value !== undefined ? getFilesFromValue() : internalFiles;
 
   const hasReachedMax = maxFiles !== undefined && files.length >= maxFiles;
+
+  // Image preview thumbnails (object URLs), cleaned up when files change/unmount
+  const isImageFile = (f: File) => f.type.startsWith('image/');
+  const previewUrls = useMemo(
+    () => files.map((f) => (isImageFile(f) ? URL.createObjectURL(f) : null)),
+    [files]
+  );
+  useEffect(() => {
+    return () => { previewUrls.forEach((u) => u && URL.revokeObjectURL(u)); };
+  }, [previewUrls]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -118,23 +128,39 @@ export const FileUpload: React.FC<FileUploadProps> = ({
         </div>
       ) : (
         <div className="space-y-2">
-          {files.map((file, idx) => (
+          {files.map((file, idx) => {
+            const previewUrl = previewUrls[idx];
+            return (
             <div key={idx} className={cn(
-              "flex items-center justify-between p-3 border rounded-lg shadow-sm",
+              "flex items-center justify-between p-2.5 border rounded-lg shadow-sm",
               isDark ? "bg-slate-700 border-slate-600" : "bg-white border-slate-200"
             )}>
               <div className="flex items-center space-x-3 overflow-hidden">
-                <div className="flex-shrink-0">{getIcon()}</div>
+                {previewUrl ? (
+                  <button
+                    type="button"
+                    onClick={() => window.open(previewUrl, '_blank', 'noopener,noreferrer')}
+                    title="Click to view full image"
+                    className="flex-shrink-0 w-12 h-12 rounded-md overflow-hidden border border-slate-300/60 dark:border-slate-500/60 hover:ring-2 hover:ring-blue-400 transition-all"
+                  >
+                    <img src={previewUrl} alt={file.name} className="w-full h-full object-cover" />
+                  </button>
+                ) : (
+                  <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center rounded-md bg-slate-100 dark:bg-slate-600/40">{getIcon()}</div>
+                )}
                 <div className="truncate">
-                  <p className={cn("text-sm font-medium truncate max-w-[200px]", isDark ? "text-slate-200" : "text-slate-700")}>{file.name}</p>
-                  <p className={cn("text-xs", isDark ? "text-slate-400" : "text-slate-500")}>{(file.size / 1024).toFixed(1)} KB</p>
+                  <p className={cn("text-sm font-medium truncate max-w-[180px]", isDark ? "text-slate-200" : "text-slate-700")}>{file.name}</p>
+                  <p className={cn("text-xs", isDark ? "text-slate-400" : "text-slate-500")}>
+                    {(file.size / 1024).toFixed(1)} KB{previewUrl ? ' · tap thumbnail to preview' : ''}
+                  </p>
                 </div>
               </div>
-              <button onClick={() => removeFile(idx)} className="p-1 rounded-full hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors">
+              <button onClick={() => removeFile(idx)} className="p-1 rounded-full hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors flex-shrink-0">
                 <X className="w-4 h-4 text-red-500" />
               </button>
             </div>
-          ))}
+            );
+          })}
           {canAddMore && !hasReachedMax ? (
             <button
               onClick={triggerAddAnother}

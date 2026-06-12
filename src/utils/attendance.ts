@@ -32,21 +32,20 @@ export function getTodayWorkStats(assignments: WorkAssignment[], todayStr?: stri
   return { completedToday, pending, inProgress, activeTotal: pending + inProgress };
 }
 
-/** WhatsApp message sent to admin when a member checks in. */
+/** WhatsApp message sent to admin when a member checks in. Professional & humble. */
 export function buildCheckinMessage(name: string, dateStr: string, stats: TodayWorkStats): string {
   const time = format(new Date(), "hh:mm a");
   return [
-    `✅ *CHECK-IN* — ${dateStr}`,
+    `🙏 *CHECK-IN* — ${dateStr}`,
     ``,
-    `👤 Name: *${name}*`,
-    `🕐 Time: ${time}`,
+    `👤 *${name}*`,
+    `🕐 Checked in at ${time}`,
     ``,
-    `📋 *Work Status:*`,
+    `📋 *My Work:*`,
     `▶️ In Progress: ${stats.inProgress}`,
     `⏳ Pending: ${stats.pending}`,
-    `🎬 Completed Today: ${stats.completedToday}`,
     ``,
-    stats.activeTotal === 0 ? `No active tasks — please assign me work. 🙏` : `Starting work on my tasks now. 💪`,
+    `✅ Thank you for assigning me the work — I will start working on it immediately. 🚀`,
   ].join("\n");
 }
 
@@ -55,40 +54,39 @@ export interface CheckoutReport {
   dateStr: string;
   checkInTime: string;
   checkOutTime: string;
-  hoursWorked: string;
+  /** Human-readable total duration between check-in and check-out, e.g. "6h 12m". */
+  totalDuration: string;
   totalVideos: number;
   stats: TodayWorkStats;
-  summary: string;
-  driveFolderUrl: string;
+  /** Member's editable note for the day. */
+  note: string;
 }
 
-/** WhatsApp message sent to admin when a member checks out (full day report). */
+/** WhatsApp message sent to admin when a member checks out (Today Work Report). */
 export function buildCheckoutMessage(r: CheckoutReport): string {
   return [
-    `🏁 *CHECK-OUT — Daily Work Report* (${r.dateStr})`,
+    `🏁 *TODAY WORK REPORT* — ${r.dateStr}`,
     ``,
-    `👤 Name: *${r.name}*`,
-    `🕐 In: ${r.checkInTime}  →  Out: ${r.checkOutTime}${r.hoursWorked ? `  (${r.hoursWorked}h)` : ""}`,
+    `👤 *${r.name}*`,
+    `🕐 In: ${r.checkInTime}  →  🕔 Out: ${r.checkOutTime}`,
+    `⏱️ Total Duration: *${r.totalDuration || "—"}*`,
     ``,
-    `🎬 Videos Completed Today: *${r.totalVideos}*`,
-    `▶️ In Progress: ${r.stats.inProgress}`,
+    `🎬 Videos Completed: *${r.totalVideos}*`,
     `⏳ Pending: ${r.stats.pending}`,
+    ...(r.note ? [``, `📝 *Note:* ${r.note}`] : []),
     ``,
-    `📝 *Summary:*`,
-    r.summary,
-    ``,
-    r.driveFolderUrl ? `📁 Drive: ${r.driveFolderUrl}` : ``,
-  ].filter((line, i, arr) => !(line === "" && arr[i - 1] === "")).join("\n");
+    `🙏 Thank you! I will continue the work tomorrow. 🌅`,
+  ].join("\n");
 }
 
-/** Auto-generated, editable checkout summary text. */
-export function buildAutoSummary(stats: TodayWorkStats): string {
-  const parts: string[] = [];
-  parts.push(`Completed ${stats.completedToday} video${stats.completedToday === 1 ? "" : "s"} today.`);
-  if (stats.inProgress > 0) parts.push(`${stats.inProgress} task${stats.inProgress === 1 ? "" : "s"} in progress.`);
-  if (stats.pending > 0) parts.push(`${stats.pending} task${stats.pending === 1 ? "" : "s"} pending.`);
-  if (stats.inProgress === 0 && stats.pending === 0) parts.push("All assigned work is done.");
-  return parts.join(" ");
+/** Human-readable duration between two epoch-ms timestamps, e.g. "6h 12m". */
+export function formatDurationBetween(startMs: number, endMs: number): string {
+  if (!startMs || !endMs || endMs <= startMs) return "";
+  const totalMinutes = Math.round((endMs - startMs) / 60000);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  return `${m}m`;
 }
 
 /**

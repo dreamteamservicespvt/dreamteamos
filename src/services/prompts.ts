@@ -255,10 +255,10 @@ export const getEnvironmentNegativeRules = (businessType: string, businessContex
   }
 
   if (detectEducationEnvironmentMode(businessContext) === 'consultancy') {
-    return 'Never use a home interior, living room, apartment, bedroom, hotel lobby, empty coworking corner, or anonymous office. The space must read as a real education-guidance consultancy with counseling desks, document surfaces, university information walls, and success-proof displays.';
+    return 'Never use a home interior, living room, apartment, bedroom, hotel lobby, empty coworking corner, or anonymous office. NEVER use wooden / timber / wood-panelled walls, wooden plank backdrops, log-cabin or rustic wood themes — education-consultancy walls must be clean painted plaster, glass, or light modern institutional finishes. The space must read as a real education-guidance consultancy with counseling desks, document surfaces, university information walls, and success-proof displays.';
   }
 
-  return 'Never use a home interior, living room, apartment, bedroom, sofa set, residential staircase, hotel lobby, generic luxury hall, bland coworking corner, or consultancy cubicle. The space must read as a real college, school, campus, institute, lecture, library, lab, admissions, or student-services environment.';
+  return 'Never use a home interior, living room, apartment, bedroom, sofa set, residential staircase, hotel lobby, generic luxury hall, bland coworking corner, or consultancy cubicle. NEVER use wooden / timber / wood-panelled walls, wooden plank or log-cabin backdrops, or rustic wood themes for the walls — school / college / institute walls must be clean painted plaster, glass, or bright modern institutional finishes (a small amount of natural wood only on furniture like desks is fine, never as the wall or overall theme). The space must read as a real college, school, campus, institute, lecture, library, lab, admissions, or student-services environment.';
 };
 
 export const getRealisticLogoPlacementGuidance = (businessType: string, businessContext: string = ''): string => {
@@ -270,7 +270,7 @@ export const getRealisticLogoPlacementGuidance = (businessType: string, business
     return 'Use real campus or institute branding surfaces such as an admissions wall panel, academic reception board, corridor acrylic sign, seminar-hall branding wall, library section sign, student-help desk fascia, or entrance monument sign. The logo must feel physically mounted into the institution architecture, not pasted as an overlay.';
   }
 
-  return 'Use real architectural branding surfaces such as a reception panel, acrylic wall sign, consultation-zone feature wall, showroom fascia, or entrance sign. The logo must feel installed into the premises with believable material depth and reflections, never pasted as an overlay. Do NOT use certificate, achievement, award, or photo walls.';
+  return 'Use real architectural branding surfaces such as a reception panel, acrylic wall sign, consultation-zone feature wall, showroom fascia, or entrance sign. The logo must feel installed into the premises with believable material depth and reflections, never pasted as an overlay. Do NOT use certificate, achievement, award, or photo walls. LOGO REALISM (STRICT): place the logo on a flat wall surface that directly faces the camera so it is 100% fully visible, complete, upright and clearly readable — never tilted at an awkward oblique angle, never wrapped around a corner, never skewed, cropped, half-hidden, partially behind the model, or distorted by perspective. The camera angle and the logo wall must be chosen so the whole logo reads cleanly and naturally within the scene.';
 };
 
 const getShotLogoPlacementForBusiness = (
@@ -900,7 +900,7 @@ export const getFestivalTheme = (festivalName: string): FestivalTheme => {
 export const getAttireMode = (attireType: string, businessType: string = 'default', businessContext: string = '') => {
   if (attireType === 'traditional') {
     const sareeColor = getSareeColorForBusiness(businessType);
-    return `Attire: premium DESIGNER silk / fancy Indian saree — ${sareeColor}. The saree MUST carry tasteful design / work (woven or zari border, subtle motifs/buttis, elegant patterned pallu) — NEVER a flat plain saree, and keep the work refined light-to-medium (never heavy bridal). Use rich, attractive, vibrant colours — NEVER dull, washed-out, grey, or lifeless tones. Well-fitted blouse with elbow-length or short sleeves — STRICTLY no sleeveless / strappy / deep-cut blouse. High-quality fabric, crisp pleats, natural realistic folds, elegant and luxurious advertising look.`;
+    return `Attire: premium DESIGNER silk / fancy Indian saree — ${sareeColor}. The saree MUST carry tasteful design / work (woven or zari border, subtle motifs/buttis, elegant patterned pallu) — NEVER a flat plain saree, and keep the work refined light-to-medium (never heavy bridal). Use rich, attractive, vibrant colours — NEVER dull, washed-out, grey, or lifeless tones. Well-fitted blouse with elbow-length or short sleeves — STRICTLY no sleeveless / strappy / deep-cut blouse. High-quality fabric, crisp pleats, natural realistic folds, elegant and luxurious advertising look. The woman must look like a polished CELEBRITY BRAND AMBASSADOR — graceful, glamorous, confident and aspirational, the kind of stunning ambassador featured in a high-end national TV commercial — while staying professional and believable.`;
   } else {
     const suitPalette = getProfessionalSuitPaletteForBusiness(businessType, businessContext);
     return `Attire: premium business-specific luxury campaign suit.
@@ -1215,6 +1215,7 @@ Use tasteful gold or gold-diamond semi-jewellery only: refined necklace, elegant
 NEVER use heavy bridal sets, temple-jewellery overload, chunky layers, or religious accessories.` : `ATTIRE (BUSINESS-THEMED COLOR — MANDATORY — MUST BE DYNAMIC PER BUSINESS):
 ${attireType === 'traditional' ? `ATTIRE (COMMERCIAL DESIGNER SAREE — BUSINESS-SPECIFIC LUXURY — MANDATORY):
 This is a COMMERCIAL campaign saree branch — not a festival greeting saree, not bridal styling, and not a wedding-catalog look.
+The model must look like a CELEBRITY BRAND AMBASSADOR shot for a premium national campaign — graceful, glamorous, aspirational, camera-ready, and unmistakably high-end, like a film actress or top model endorsing the brand, while staying professional and believable in the real business premises.
 The saree must feel like it was chosen specifically for THIS business's premium national campaign.
 • Start from the actual business identity: logo colors, brand tone, business category, and the material language of the premises must influence the saree direction
 • The saree MUST be **DYNAMIC and UNIQUE per business sector** — do NOT reuse one safe pastel saree across different clients
@@ -2252,6 +2253,25 @@ IMPORTANT:
 - Each image must be DISTINCTLY different and serve a unique purpose
 - Think like an award-winning creative director — every image should elevate the brand
 - EVERY image must have exact second-level timing for the video editor`;
+
+
+export const OVERLAY_TEXT_SYSTEM_PROMPT = (language: string = 'Telugu') => `You are a senior short-form video editor who edits in CapCut. You design ON-SCREEN TEXT OVERLAYS for a voice-over driven ad.
+
+YOUR TASK: Read the voice-over script (one line per clip) and propose minimal, punchy on-screen overlay texts plus, for each, ONE sound effect that the editor can find by searching CapCut's built-in sound-effects library.
+
+STRICT RULES:
+- For EACH clip, output between 1 and 3 overlay texts — ONLY for the genuine KEY POINTS of that clip (a benefit, an offer, a number, a strong hook word, the CTA). Do NOT add overlays for filler.
+- Many clips need only 1 overlay. NEVER force 3. If a clip has no real key point, output 0 overlays for that clip.
+- Keep each overlay SHORT and impactful — ideally 1 to 4 words (a headline/keyword, not the full sentence). It should reinforce, not duplicate, the spoken line.
+- Write the overlay text in ${language} (the same language as the voice-over). For the CTA overlay you may use a short ${language} call-to-action.
+- For each overlay, suggest ONE "soundEffect" that is a COMMON, SEARCHABLE term in CapCut's sound-effects search — e.g. "whoosh", "swoosh transition", "pop", "ding", "notification", "cash register", "camera shutter", "sparkle", "boom impact", "riser", "click", "applause". Use the kind of short term that returns results when typed into CapCut search.
+- Match the sound effect to the meaning/mood of that overlay (e.g. an offer/price → "cash register" or "ding"; a transition/hook → "whoosh"; excitement → "sparkle" or "applause").
+
+OUTPUT FORMAT (STRICT):
+- Output ONLY a valid JSON array. No markdown, no code block, no commentary.
+- Each element: { "clip": <clip number, integer>, "text": "<short overlay text in ${language}>", "soundEffect": "<capcut-searchable sfx term>" }
+- Order by clip number, then by appearance within the clip.
+- If a clip has no overlay, simply include no entries for it.`;
 
 
 export const EXTRACTION_SYSTEM_PROMPT = `Analyze all provided files (images, audio, text) and extract the following business information.

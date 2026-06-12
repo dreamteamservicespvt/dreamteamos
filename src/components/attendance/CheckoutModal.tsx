@@ -4,7 +4,7 @@ import { format } from "date-fns";
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import { useToast } from "@/hooks/use-toast";
-import { getTodayWorkStats, buildAutoSummary, buildCheckoutMessage, ADMIN_WHATSAPP } from "@/utils/attendance";
+import { getTodayWorkStats, buildCheckoutMessage, formatDurationBetween, ADMIN_WHATSAPP } from "@/utils/attendance";
 import { getWhatsAppUrl } from "@/utils/phone";
 import type { AppUser, DailyCheckin, WorkAssignment } from "@/types";
 import { Clock, LogOut, Loader2, User, Video } from "lucide-react";
@@ -21,27 +21,27 @@ export default function CheckoutModal({ user, todayCheckin, assignments, onClose
   const todayStr = format(new Date(), "yyyy-MM-dd");
   const stats = useMemo(() => getTodayWorkStats(assignments, todayStr), [assignments, todayStr]);
 
-  const [videosDone, setVideosDone] = useState<number>(stats.completedToday);
-  const [pending, setPending] = useState<number>(stats.pending);
+  // Everything except the note is fetched automatically — only the note is editable.
+  const [note, setNote] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
 
-  const checkInTime = todayCheckin.checkedInAt?.toDate?.() ? format(todayCheckin.checkedInAt.toDate(), "hh:mm a") : "—";
+  const inMs = todayCheckin.checkedInAt?.toDate?.()?.getTime?.() || 0;
+  const checkInTime = inMs ? format(todayCheckin.checkedInAt.toDate(), "hh:mm a") : "—";
 
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      // Auto-built, human-readable summary stored on the record + sent to WhatsApp
-      const reportStats = { ...stats, completedToday: videosDone, pending };
-      const summary = buildAutoSummary(reportStats);
+      const checkOutTime = format(new Date(), "hh:mm a");
+      const totalDuration = formatDurationBetween(inMs, Date.now());
 
       await updateDoc(doc(db, "daily_checkins", todayCheckin.id), {
         checkedOutAt: serverTimestamp(),
         status: "pending_approval",
         memberName: user.name,
-        summary,
-        totalVideos: videosDone,
+        summary: note.trim() || null,
+        totalVideos: stats.completedToday,
         completedTodayAuto: stats.completedToday,
-        pendingTasks: pending,
+        pendingTasks: stats.pending,
         inProgressTasks: stats.inProgress,
       });
 
@@ -49,26 +49,22 @@ export default function CheckoutModal({ user, todayCheckin, assignments, onClose
         userId: user.createdBy,
         type: "check_out",
         title: "Work Submitted for Approval",
-        message: `${user.name} checked out — ${videosDone} videos done, ${pending} pending. Tap to review & approve.`,
+        message: `${user.name} checked out — ${stats.completedToday} videos done, ${stats.pending} pending. Tap to review & approve.`,
         link: `/tech-admin/team/${user.uid}`,
       });
 
-      const checkOutTime = format(new Date(), "hh:mm a");
-      const inMs = todayCheckin.checkedInAt?.toDate?.()?.getTime?.() || 0;
-      const hoursWorked = inMs ? ((Date.now() - inMs) / 3600000).toFixed(1) : "";
       const waUrl = getWhatsAppUrl(ADMIN_WHATSAPP, buildCheckoutMessage({
         name: user.name,
         dateStr: todayStr,
         checkInTime,
         checkOutTime,
-        hoursWorked,
-        totalVideos: videosDone,
-        stats: reportStats,
-        summary,
-        driveFolderUrl: "",
+        totalDuration,
+        totalVideos: stats.completedToday,
+        stats,
+        note: note.trim(),
       }));
 
-      toast({ title: "Checked Out!", description: "Day report saved. Opening WhatsApp..." });
+      toast({ title: "Checked Out!", description: "Today's report saved. Opening WhatsApp..." });
       onClose();
       await new Promise((r) => setTimeout(r, 1500));
       window.open(waUrl, "_blank");
@@ -83,41 +79,41 @@ export default function CheckoutModal({ user, todayCheckin, assignments, onClose
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => !submitting && onClose()}>
       <div className="bg-card border border-border rounded-xl w-full max-w-sm p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
         <div>
-          <h3 className="font-display font-bold text-foreground text-lg">Check Out</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">Confirm your work for today & submit.</p>
+          <h3 className="font-display font-bold text-foreground text-lg">Today Work Report</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">Auto-filled from your work. Add a note & check out.</p>
         </div>
 
-        {/* Name + check-in (read-only) */}
+        {/* Name + check-in (read-only, fetched) */}
         <div className="flex items-center justify-between bg-background border border-border rounded-lg px-3 py-2.5 text-xs">
           <span className="flex items-center gap-1.5 text-foreground font-medium"><User size={13} className="text-primary" /> {user.name}</span>
           <span className="flex items-center gap-1 text-muted-foreground"><Clock size={11} /> In at {checkInTime}</span>
         </div>
 
-        {/* Editable fields */}
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs text-muted-foreground font-medium mb-1 block">Number of Videos Done Today</label>
-            <input
-              type="number"
-              min={0}
-              value={videosDone}
-              onChange={(e) => setVideosDone(Math.max(0, parseInt(e.target.value) || 0))}
-              className="w-full h-11 rounded-lg border border-border bg-background px-3 text-base text-foreground focus:ring-1 focus:ring-primary outline-none"
-            />
+        {/* Auto stats (read-only) */}
+        <div className="grid grid-cols-3 gap-2">
+          <div className="bg-success/10 rounded-lg p-2 text-center">
+            <p className="font-display font-bold text-success text-lg">{stats.completedToday}</p>
+            <p className="text-[10px] text-muted-foreground">Videos Done</p>
           </div>
-          <div>
-            <label className="text-xs text-muted-foreground font-medium mb-1 block">Number of Pending Videos</label>
-            <input
-              type="number"
-              min={0}
-              value={pending}
-              onChange={(e) => setPending(Math.max(0, parseInt(e.target.value) || 0))}
-              className="w-full h-11 rounded-lg border border-border bg-background px-3 text-base text-foreground focus:ring-1 focus:ring-primary outline-none"
-            />
+          <div className="bg-warning/10 rounded-lg p-2 text-center">
+            <p className="font-display font-bold text-warning text-lg">{stats.inProgress}</p>
+            <p className="text-[10px] text-muted-foreground">In Progress</p>
           </div>
-          {stats.inProgress > 0 && (
-            <p className="text-[11px] text-muted-foreground">{stats.inProgress} task{stats.inProgress === 1 ? "" : "s"} currently in progress (auto-tracked).</p>
-          )}
+          <div className="bg-info/10 rounded-lg p-2 text-center">
+            <p className="font-display font-bold text-info text-lg">{stats.pending}</p>
+            <p className="text-[10px] text-muted-foreground">Pending</p>
+          </div>
+        </div>
+
+        {/* Only editable field: Note */}
+        <div>
+          <label className="text-xs text-muted-foreground font-medium mb-1 block">Note <span className="text-muted-foreground/60">(optional)</span></label>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Anything to add for the admin about today's work?"
+            className="w-full h-20 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:ring-1 focus:ring-primary outline-none"
+          />
         </div>
 
         <div className="flex gap-2 pt-1">

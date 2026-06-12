@@ -16,6 +16,8 @@ export enum DurationPackage {
   CUSTOM = 0
 }
 
+export type AspectRatio = '9:16' | '16:9';
+
 export interface AdFormData {
   adType: AdType;
   festivalName: string;
@@ -23,6 +25,14 @@ export interface AdFormData {
   duration: number;
   durationMode: 'preset' | 'custom';
   textInstructions: string;
+  /** Output aspect ratio for poster / header / main-frame prompts. Default 9:16. */
+  aspectRatio: AspectRatio;
+  /** Voice-over + on-screen language. Default "Telugu". */
+  language: string;
+  /** When true, no logo is provided — the business name is used as a name board instead. */
+  noLogo?: boolean;
+  /** Business name (forced UPPERCASE) used as a physical name board when noLogo is true. */
+  logoNameText?: string;
 }
 
 export interface FileStore {
@@ -35,6 +45,15 @@ export interface FileStore {
   textInstructionsFile: File[];
 }
 
+export interface OverlayTextItem {
+  /** 1-based clip / segment number this overlay belongs to */
+  clip: number;
+  /** The short on-screen text (key point) */
+  text: string;
+  /** Suggested CapCut-searchable sound effect name */
+  soundEffect: string;
+}
+
 export interface GeneratedOutputs {
   businessInfo: any;
   mainFramePrompts: string[];
@@ -44,7 +63,9 @@ export interface GeneratedOutputs {
   veoPrompts: string[];
   hasProductImages: boolean;
   productImageCount: number;
-  stockImagePrompts: string[] | null;
+  stockImagePrompts: any[] | null;
+  /** Per-clip on-screen overlay texts with CapCut SFX suggestions (generated on demand). */
+  overlayTexts?: OverlayTextItem[] | null;
 }
 
 export interface GenerationStatus {

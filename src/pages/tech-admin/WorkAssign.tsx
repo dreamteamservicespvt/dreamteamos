@@ -192,9 +192,20 @@ export default function WorkAssign() {
   const clipCount = getClipCount(form.duration);
   const totalPrice = form.pricePerUnit;
 
-  const filteredMembers = techMembers.filter(m =>
-    m.name.toLowerCase().includes(memberSearch.toLowerCase())
-  );
+  const filteredMembers = useMemo(() => {
+    const qRaw = memberSearch.trim();
+    if (!qRaw) return techMembers;
+    const q = qRaw.toLowerCase();
+    const qDigits = qRaw.replace(/\D/g, '');
+    return techMembers.filter(m => {
+      if (m.name.toLowerCase().includes(q)) return true;
+      if (qDigits && m.phone) {
+        const pd = normalizePhone(m.phone).replace(/\D/g, '');
+        if (pd.includes(qDigits) || qDigits.includes(pd)) return true;
+      }
+      return false;
+    });
+  }, [techMembers, memberSearch]);
 
   const handleCreate = async () => {
     if (!user || !form.assignedTo) return;
