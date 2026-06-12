@@ -113,13 +113,13 @@ export const FileUpload: React.FC<FileUploadProps> = ({
       )}
       <input ref={inputRef} type="file" accept={accept} multiple={canAddMore && !maxFiles} onChange={handleFileChange} className="hidden" />
       {files.length === 0 ? (
-        <div 
+        <div
           onClick={() => inputRef.current?.click()}
           className={cn(
-            "border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center cursor-pointer transition-colors",
+            "group border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer transition-all",
             isDark
-              ? "border-slate-600 bg-slate-700/50 hover:bg-slate-700 hover:border-blue-500"
-              : "border-slate-300 bg-white hover:bg-slate-50 hover:border-blue-400"
+              ? "border-slate-700 bg-slate-800/50 hover:bg-slate-800 hover:border-blue-500/70 hover:shadow-lg hover:shadow-blue-900/20"
+              : "border-slate-300 bg-white hover:bg-blue-50/40 hover:border-blue-400 hover:shadow-lg hover:shadow-blue-100"
           )}
         >
           <div className="mb-2">{getIcon()}</div>

@@ -102,10 +102,13 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
       {/* Left side */}
       <div className="flex items-center gap-3">
         {isMobile && (
-          <button onClick={onMenuClick}
-            className="w-9 h-9 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
-            <Menu size={20} />
-          </button>
+          <>
+            <button onClick={onMenuClick}
+              className="w-9 h-9 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+              <Menu size={20} />
+            </button>
+            <img src="/dts-logo-mark.png" alt="DTS" className="w-7 h-7 rounded-md ring-1 ring-border shadow-sm shrink-0" />
+          </>
         )}
         <div className="flex items-center gap-2 text-sm">
           {breadcrumb.map((item, i) => (

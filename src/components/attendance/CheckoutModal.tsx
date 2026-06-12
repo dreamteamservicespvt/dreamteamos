@@ -4,7 +4,7 @@ import { format } from "date-fns";
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import { useToast } from "@/hooks/use-toast";
-import { getTodayWorkStats, buildCheckoutMessage, formatDurationBetween, ADMIN_WHATSAPP } from "@/utils/attendance";
+import { getTodayWorkStats, buildCheckoutMessage, ADMIN_WHATSAPP } from "@/utils/attendance";
 import { getWhatsAppUrl } from "@/utils/phone";
 import type { AppUser, DailyCheckin, WorkAssignment } from "@/types";
 import { Clock, LogOut, Loader2, User, Video } from "lucide-react";
@@ -32,7 +32,6 @@ export default function CheckoutModal({ user, todayCheckin, assignments, onClose
     setSubmitting(true);
     try {
       const checkOutTime = format(new Date(), "hh:mm a");
-      const totalDuration = formatDurationBetween(inMs, Date.now());
 
       await updateDoc(doc(db, "daily_checkins", todayCheckin.id), {
         checkedOutAt: serverTimestamp(),
@@ -58,7 +57,6 @@ export default function CheckoutModal({ user, todayCheckin, assignments, onClose
         dateStr: todayStr,
         checkInTime,
         checkOutTime,
-        totalDuration,
         totalVideos: stats.completedToday,
         stats,
         note: note.trim(),
