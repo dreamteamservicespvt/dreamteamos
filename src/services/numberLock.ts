@@ -2,13 +2,24 @@ import {
   doc,
   collection,
   getDoc,
-  runTransaction,
+  runTransaction as fsRunTransaction,
   serverTimestamp,
   Timestamp,
 } from "firebase/firestore";
+import type { Firestore, Transaction } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { normalizePhone, phoneLockId } from "@/utils/phone";
 import type { LeadStatus, NumberLock, NumberLockTimelineEntry } from "@/types";
+
+/**
+ * All lock writes go through this wrapper, which caps Firestore transaction retries at 2.
+ * The SDK default is 5, and it retries even on `resource-exhausted` (429) — so when the project's
+ * daily quota is hit, a single click would hammer Firestore 5× per call. Two attempts keeps genuine
+ * write-contention resilience without the retry storm.
+ */
+function runTransaction<T>(database: Firestore, updateFn: (tx: Transaction) => Promise<T>): Promise<T> {
+  return fsRunTransaction(database, updateFn, { maxAttempts: 2 });
+}
 
 /**
  * Global per-number lock / reservation system.

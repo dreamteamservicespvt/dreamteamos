@@ -20,7 +20,7 @@ import DashboardDayPicker from "@/components/dashboard/DayPicker";
 import NumberTimelineButton from "@/components/sales/NumberTimelineButton";
 import {
   Search, Phone, MessageCircle, StickyNote, ChevronDown, ChevronUp,
-  Loader2, Check, Upload, ExternalLink, Plus, Trash2, ShoppingBag, X, Lock, AlertTriangle, Snowflake, FileText,
+  Loader2, Check, Upload, ExternalLink, Plus, Trash2, ShoppingBag, X, Lock, AlertTriangle, Snowflake, FileText, RotateCcw,
 } from "lucide-react";
 
 type TimestampLike = { toMillis?: () => number; seconds?: number } | null | undefined;
@@ -142,28 +142,25 @@ export default function MyLeads() {
   }, [user]);
 
   // Detect duplicates — numbers another member also holds (dispute flag).
-  // Keyed on the set of (non-frozen) phone numbers so it doesn't re-query on every notes keystroke.
-  const phonesKey = useMemo(
-    () => [...new Set(leads.filter((l) => !l.frozen).map((l) => l.phone))].sort().join(","),
-    [leads],
-  );
-  useEffect(() => {
+  // IMPORTANT (quota): this does cross-member reads, so it runs ONCE per page mount, not on every
+  // lead change. Keying it on a changing value (e.g. the phone set) caused a feedback loop —
+  // resolveNonSaleDuplicates freezes leads, which changed the key, which re-ran the scan — burning
+  // through the Firestore daily read quota. A manual "Recheck" button lets the member refresh on demand.
+  const dupRanRef = useRef(false);
+  const runDuplicateScan = async () => {
     if (!user) return;
-    if (!phonesKey) { setDuplicateLeadIds(new Set()); setDupLoading(false); return; }
-    let cancelled = false;
-    (async () => {
+    const nonFrozen = leads.filter((l) => !l.frozen);
+    if (nonFrozen.length === 0) { setDuplicateLeadIds(new Set()); setDupLoading(false); return; }
+    setDupLoading(true);
+    try {
       const map = await findMemberDuplicates(
-        leads.filter((l) => !l.frozen).map((l) => ({ id: l.id, phone: l.phone, frozen: l.frozen })),
+        nonFrozen.map((l) => ({ id: l.id, phone: l.phone, frozen: l.frozen })),
         user.uid,
       );
-      if (cancelled) return;
       // Old admin-added duplicates with no sale on either side get auto-resolved:
       // first member to engage (status ≠ not_called) keeps the number, otherwise first added wins.
-      // Only sale disputes remain in the Duplicates tab.
       const resolution = await resolveNonSaleDuplicates(leads, map, { uid: user.uid, name: user.name });
-      if (cancelled) return;
       setDuplicateLeadIds(new Set(Object.keys(map).filter((id) => !resolution.resolvedMyLeadIds.has(id))));
-      setDupLoading(false);
       if (resolution.frozeMineCount > 0) {
         toast({
           title: "Duplicate numbers released",
@@ -176,10 +173,20 @@ export default function MyLeads() {
           description: `You kept ${resolution.wonCount} duplicate number(s) — you worked them first.`,
         });
       }
-    })();
-    return () => { cancelled = true; };
+    } catch {
+      /* leave previous result; never block the page on a quota/permission error */
+    } finally {
+      setDupLoading(false);
+    }
+  };
+
+  // Run the scan exactly once, after the first batch of leads has loaded.
+  useEffect(() => {
+    if (!user || loading || dupRanRef.current) return;
+    dupRanRef.current = true;
+    runDuplicateScan();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phonesKey, user]);
+  }, [user, loading]);
 
   // Search and status filters are kept separate: the dropdown counts must come from the
   // search+day window only, NOT the status-filtered list (otherwise selecting "Answered"
@@ -496,6 +503,16 @@ export default function MyLeads() {
           className={`h-8 md:h-9 px-3 md:px-4 rounded-lg text-xs md:text-sm font-medium transition-colors flex items-center gap-1.5 ${viewTab === "duplicates" ? "bg-destructive/15 text-destructive border border-destructive/30" : "bg-card border border-border text-muted-foreground hover:bg-accent"}`}>
           <AlertTriangle size={13} /> Duplicates {dupLoading ? <Loader2 size={11} className="animate-spin" /> : `(${duplicateLeadIds.size})`}
         </button>
+        {viewTab === "duplicates" && (
+          <button
+            onClick={() => { if (!dupLoading) runDuplicateScan(); }}
+            disabled={dupLoading}
+            title="Re-scan for duplicate numbers"
+            className="h-8 md:h-9 px-3 rounded-lg text-xs md:text-sm font-medium bg-card border border-border text-muted-foreground hover:bg-accent transition-colors flex items-center gap-1.5 disabled:opacity-50"
+          >
+            {dupLoading ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />} Recheck
+          </button>
+        )}
       </div>
 
       {/* ─── LEADS TAB ─── */}
@@ -1061,16 +1078,19 @@ function AddCustomLeadModal({ user, onClose }: { user: AppUser; onClose: () => v
       }
       onClose();
     } catch (e: any) {
-      // Surface the real cause instead of a generic message. The most common failure here is a
-      // Firestore "permission-denied" on the numberLocks write (rules not updated for that
-      // collection) — call it out specifically so it can be fixed at the source.
-      const msg =
-        e?.code === "permission-denied" || /permission/i.test(e?.message || "")
+      // Surface the real cause instead of a generic message.
+      const code = e?.code || "";
+      const text = e?.message || "";
+      const isQuota = code === "resource-exhausted" || /quota|resource-exhausted|too many requests/i.test(text);
+      const isPerm = code === "permission-denied" || /permission/i.test(text);
+      const msg = isQuota
+        ? "The database has hit today's free usage limit. Please try again later — or ask the admin to upgrade the Firebase plan (Blaze) to remove this limit."
+        : isPerm
           ? "Couldn't reserve this number (permission denied on the number-lock). Ask the admin to update Firestore rules for the 'numberLocks' collection."
-          : e?.message
-            ? `Failed to create lead: ${e.message}`
+          : text
+            ? `Failed to create lead: ${text}`
             : "Failed to create lead.";
-      toast({ title: "Error", description: msg, variant: "destructive" });
+      toast({ title: isQuota ? "Daily limit reached" : "Error", description: msg, variant: "destructive" });
     } finally {
       setSaving(false);
     }
