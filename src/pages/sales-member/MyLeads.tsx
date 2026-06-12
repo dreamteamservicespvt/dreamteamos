@@ -850,7 +850,7 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <p className="text-sm font-mono text-muted-foreground">{lead.phone}</p>
-          <NumberTimelineButton phone={lead.phone} />
+          <NumberTimelineButton phone={lead.phone} lead={lead} />
         </div>
         <select
           value={lead.status}

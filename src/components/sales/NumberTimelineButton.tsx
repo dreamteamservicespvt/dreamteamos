@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
-import { History, Lock, Loader2, ShieldOff } from "lucide-react";
+import { History, Lock, Loader2, ShieldOff, AlertTriangle, UserCheck } from "lucide-react";
 import { format } from "date-fns";
 import { useAuthStore } from "@/store/authStore";
 import { useToast } from "@/hooks/use-toast";
 import { fetchNumberLock, adminReleaseLock } from "@/services/numberLock";
-import type { NumberLock, NumberLockAction } from "@/types";
+import type { Lead, NumberLock, NumberLockAction } from "@/types";
 
 const ACTION_LABELS: Record<NumberLockAction, string> = {
   claimed: "Added",
@@ -34,7 +34,7 @@ function tsToDate(ts: TimestampLike): Date | null {
  * Small clickable history icon next to a phone number. Opens a popover showing the full
  * timeline of who added/took over/sold the number, plus an admin-only "release lock" action.
  */
-export default function NumberTimelineButton({ phone }: { phone: string }) {
+export default function NumberTimelineButton({ phone, lead }: { phone: string; lead?: Lead }) {
   const user = useAuthStore((s) => s.user);
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -83,6 +83,20 @@ export default function NumberTimelineButton({ phone }: { phone: string }) {
   const frozenUntil = tsToDate(lock?.saleFrozenUntil);
   const isFrozen = !!(lock?.saleFrozen && frozenUntil && frozenUntil.getTime() > Date.now());
 
+  // Who originally added this number (earliest "claimed" entry in the lock timeline).
+  const addedBy = [...(lock?.timeline || [])]
+    .filter((e) => e.action === "claimed")
+    .sort((a, b) => (tsToDate(a.at)?.getTime() || 0) - (tsToDate(b.at)?.getTime() || 0))[0];
+
+  // Why the member's own lead is frozen (taken over vs duplicate-rule), from the lead itself.
+  const leadFrozen = !!lead?.frozen;
+  const leadFrozenReason =
+    lead?.frozenReason === "duplicate_resolved"
+      ? `Duplicate — kept by the member who worked it first${lead?.takenOverBy ? ` (${lead.takenOverBy})` : ""}`
+      : leadFrozen
+        ? `Taken over${lead?.takenOverBy ? ` by ${lead.takenOverBy}` : " after its 24h validity"}`
+        : null;
+
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
@@ -100,6 +114,27 @@ export default function NumberTimelineButton({ phone }: { phone: string }) {
           <h4 className="font-display font-semibold text-sm text-foreground">Number History</h4>
           <span className="text-[10px] font-mono text-muted-foreground">{phone}</span>
         </div>
+
+        {/* Who added it / current owner */}
+        {(addedBy || lock?.ownerName) && (
+          <div className="mb-2 flex items-start gap-1.5 rounded-md bg-info/10 border border-info/30 text-info text-[11px] p-2">
+            <UserCheck size={12} className="mt-0.5 shrink-0" />
+            <span>
+              {addedBy ? <>Added by <b>{addedBy.byName}</b>{addedBy.at && tsToDate(addedBy.at) ? ` · ${format(tsToDate(addedBy.at)!, "dd MMM yyyy")}` : ""}</> : null}
+              {lock?.ownerName && (!addedBy || lock.ownerName !== addedBy.byName) ? (
+                <>{addedBy ? <br /> : null}Currently with <b>{lock.ownerName}</b></>
+              ) : null}
+            </span>
+          </div>
+        )}
+
+        {/* Why this member's lead is frozen (duplicate rule / takeover) */}
+        {leadFrozenReason && (
+          <div className="mb-2 flex items-start gap-1.5 rounded-md bg-warning/10 border border-warning/30 text-warning text-[11px] p-2">
+            <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+            <span>{leadFrozenReason}</span>
+          </div>
+        )}
 
         {isFrozen && (
           <div className="mb-2 flex items-start gap-1.5 rounded-md bg-success/10 border border-success/30 text-success text-[11px] p-2">

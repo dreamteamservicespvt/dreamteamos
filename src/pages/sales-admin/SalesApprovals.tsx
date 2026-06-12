@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { collection, onSnapshot, updateDoc, doc, serverTimestamp, Timestamp } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
@@ -467,6 +467,21 @@ export default function SalesApprovals() {
       if (pa !== pb) return pa < pb ? -1 : 1;
       return ((a.item.submittedAt as any)?.seconds || 0) - ((b.item.submittedAt as any)?.seconds || 0);
     });
+  // Group competing sales by number → one combined card per disputed number.
+  const duplicateGroups = useMemo(() => {
+    const map = new Map<string, LeadItem[]>();
+    duplicates.forEach((li) => {
+      const np = normalizePhone(li.lead.phone);
+      if (!map.has(np)) map.set(np, []);
+      map.get(np)!.push(li);
+    });
+    // Within a group: oldest submission first so the earliest claimant is on top.
+    for (const arr of map.values()) {
+      arr.sort((a, b) => ((a.item.submittedAt as any)?.seconds || 0) - ((b.item.submittedAt as any)?.seconds || 0));
+    }
+    return [...map.entries()];
+  }, [duplicates]);
+
   // Frozen numbers: every sold lead with an active sale-freeze, soonest-to-unfreeze first.
   // Built straight from `leads` (which the admin already streams) so it needs no extra reads.
   const frozenLeads = leads
@@ -608,10 +623,36 @@ export default function SalesApprovals() {
             </div>
           </div>
         )
+      ) : tab === "duplicates" ? (
+        duplicateGroups.length === 0 ? (
+          <div className="bg-card border border-border rounded-xl p-12 text-center">
+            <AlertTriangle size={32} className="mx-auto text-muted-foreground/30 mb-2" />
+            <p className="text-muted-foreground text-sm">No duplicate sales — no number has been sold by more than one member.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-start gap-1.5 rounded-md bg-destructive/10 border border-destructive/30 text-destructive text-xs p-2.5">
+              <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+              <span>Each card is one number sold by 2+ members. Review both members' proof, then <b>Approve</b> the real one — the competing sale(s) on that number are auto-rejected. You can re-approve a different member anytime, even after a mistaken approval.</span>
+            </div>
+            {duplicateGroups.map(([phone, items]) => (
+              <DuplicateGroupCard
+                key={phone}
+                phone={phone}
+                items={items}
+                getMemberName={getMemberName}
+                onApproveWinner={handleApproveDuplicateWinner}
+                onReject={handleRejectItem}
+                onRevoke={handleRevokeItem}
+                onDelete={handleDeleteItem}
+              />
+            ))}
+          </div>
+        )
       ) : /* Items */ displayItems.length === 0 ? (
         <div className="bg-card border border-border rounded-xl p-12 text-center">
           <ShoppingBag size={32} className="mx-auto text-muted-foreground/30 mb-2" />
-          <p className="text-muted-foreground text-sm">{tab === "duplicates" ? "No duplicate sales — no number has been sold by more than one member" : `No ${tab} sales`}</p>
+          <p className="text-muted-foreground text-sm">No {tab} sales</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -789,43 +830,8 @@ export default function SalesApprovals() {
                   </div>
                 )}
 
-                {tab === "duplicates" && (
-                  <div className="space-y-2 pt-1">
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="text-muted-foreground">Status:</span>
-                      <span className={`font-medium px-2 py-0.5 rounded-full text-[10px] ${li.item.verificationStatus === "verified" ? "bg-success/15 text-success" : li.item.verificationStatus === "rejected" ? "bg-destructive/15 text-destructive" : "bg-warning/15 text-warning"}`}>
-                        {li.item.verificationStatus === "verified" ? "Verified ✓" : li.item.verificationStatus === "rejected" ? "Rejected ✗" : "Pending ⏳"}
-                      </span>
-                    </div>
-                    <div className="flex gap-1.5 md:gap-2">
-                      {li.item.verificationStatus !== "verified" ? (
-                        <button onClick={() => handleApproveDuplicateWinner(li.lead.id, li.itemIndex)}
-                          className="flex-1 h-8 md:h-9 rounded-lg bg-success/15 text-success font-medium text-xs md:text-sm hover:bg-success/25 transition-colors flex items-center justify-center gap-1">
-                          <CheckCircle size={14} /> Approve this one
-                        </button>
-                      ) : (
-                        <button onClick={() => handleRevokeItem(li.lead.id, li.itemIndex)}
-                          className="flex-1 h-8 md:h-9 rounded-lg bg-warning/15 text-warning font-medium text-xs md:text-sm hover:bg-warning/25 transition-colors flex items-center justify-center gap-1">
-                          <RotateCcw size={14} /> Revoke
-                        </button>
-                      )}
-                      {li.item.verificationStatus !== "rejected" && (
-                        <button onClick={() => handleRejectItem(li.lead.id, li.itemIndex)}
-                          className="flex-1 h-8 md:h-9 rounded-lg bg-destructive/15 text-destructive font-medium text-xs md:text-sm hover:bg-destructive/25 transition-colors flex items-center justify-center gap-1">
-                          <XCircle size={14} /> Reject
-                        </button>
-                      )}
-                      <button onClick={() => handleDeleteItem(li.lead.id, li.itemIndex)}
-                        className="w-8 md:w-9 h-8 md:h-9 rounded-lg bg-muted text-muted-foreground hover:text-destructive hover:bg-destructive/15 transition-colors flex items-center justify-center shrink-0">
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                    <p className="text-[10px] text-muted-foreground">Approving auto-rejects the competing sale(s) on this number.</p>
-                  </div>
-                )}
-
                 {/* Admin freeze / release — available on active sale cards */}
-                {(tab === "pending" || tab === "verified" || tab === "duplicates") && currentUser && (
+                {(tab === "pending" || tab === "verified") && currentUser && (
                   <AdminFreezeControl
                     lead={li.lead}
                     admin={{ uid: currentUser.uid, name: currentUser.name }}
@@ -1007,6 +1013,130 @@ function FrozenNumberCard({
       </div>
 
       <AdminFreezeControl lead={lead} admin={admin} now={now} />
+    </div>
+  );
+}
+
+/* ─── Duplicate group card (one number, all competing members' sales) ─── */
+
+function DuplicateGroupCard({
+  phone,
+  items,
+  getMemberName,
+  onApproveWinner,
+  onReject,
+  onRevoke,
+  onDelete,
+}: {
+  phone: string;
+  items: { lead: Lead; item: SaleDetail; itemIndex: number }[];
+  getMemberName: (uid: string) => string;
+  onApproveWinner: (leadId: string, itemIndex: number) => void;
+  onReject: (leadId: string, itemIndex: number) => void;
+  onRevoke: (leadId: string, itemIndex: number) => void;
+  onDelete: (leadId: string, itemIndex: number) => void;
+}) {
+  const memberCount = new Set(items.map((i) => i.lead.assignedTo)).size;
+  const verifiedCount = items.filter((i) => i.item.verificationStatus === "verified").length;
+
+  return (
+    <div className="bg-card border border-destructive/40 rounded-xl p-3 md:p-5 space-y-3">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="font-mono font-semibold text-foreground text-sm md:text-base">{formatPhoneDisplay(phone)}</p>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <a href={getCallUrl(phone)} className="w-5 h-5 rounded flex items-center justify-center text-info hover:bg-info/10 transition-colors" title="Call"><Phone size={11} /></a>
+            <a href={getWhatsAppUrl(phone)} target="_blank" rel="noopener noreferrer" className="w-5 h-5 rounded flex items-center justify-center text-success hover:bg-success/10 transition-colors" title="WhatsApp"><MessageCircle size={11} /></a>
+            <span className="text-[10px] text-destructive font-medium inline-flex items-center gap-1"><AlertTriangle size={10} /> {memberCount} members · {items.length} sales</span>
+          </div>
+        </div>
+        {verifiedCount > 1 && (
+          <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-full bg-warning/15 text-warning">
+            <AlertTriangle size={11} /> {verifiedCount} verified — should be 1
+          </span>
+        )}
+      </div>
+
+      {/* Competing entries */}
+      <div className="space-y-2">
+        {items.map((li) => {
+          const st = li.item.verificationStatus;
+          const submittedSec = (li.item.submittedAt as any)?.seconds;
+          return (
+            <div
+              key={`${li.lead.id}-${li.itemIndex}`}
+              className={`rounded-lg border p-2.5 space-y-2 ${st === "verified" ? "border-success/40 bg-success/5" : st === "rejected" ? "border-destructive/30 bg-destructive/5 opacity-70" : "border-border"}`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-medium text-foreground text-sm">{getMemberName(li.lead.assignedTo)}</p>
+                  <p className="text-[10px] text-muted-foreground capitalize">
+                    {li.item.category?.replace(/_/g, " ") || "—"}
+                    {li.item.packageKey && li.item.packageKey !== "custom" ? ` · ${li.item.packageKey}` : ""}
+                    {submittedSec ? ` · ${format(new Date(submittedSec * 1000), "dd MMM, hh:mm a")}` : ""}
+                  </p>
+                </div>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <span className="font-display font-bold text-primary text-sm">{formatCurrency(li.item.amount || 0)}</span>
+                  <span className={`font-medium px-2 py-0.5 rounded-full text-[10px] ${st === "verified" ? "bg-success/15 text-success" : st === "rejected" ? "bg-destructive/15 text-destructive" : "bg-warning/15 text-warning"}`}>
+                    {st === "verified" ? "Verified ✓" : st === "rejected" ? "Rejected ✗" : "Pending ⏳"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Proof + screenshot */}
+              {(li.item.proofImageUrl || li.item.proofNote || li.item.paymentScreenshotUrl) && (
+                <div className="rounded-md bg-elevated/40 border border-border p-2 space-y-1">
+                  {li.item.paymentScreenshotUrl && (
+                    <a href={li.item.paymentScreenshotUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] text-info flex items-center gap-1 hover:underline">
+                      <ExternalLink size={11} /> Payment screenshot
+                    </a>
+                  )}
+                  {li.item.proofImageUrl && (
+                    <a href={li.item.proofImageUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] text-info flex items-center gap-1 hover:underline">
+                      <ExternalLink size={11} /> Call-record / proof image
+                    </a>
+                  )}
+                  {li.item.proofNote && (
+                    <p className="text-[11px] text-foreground flex items-start gap-1">
+                      <FileText size={11} className="mt-0.5 shrink-0 text-muted-foreground" />
+                      <span className="whitespace-pre-wrap break-words">{li.item.proofNote}</span>
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex gap-1.5">
+                {st !== "verified" ? (
+                  <button onClick={() => onApproveWinner(li.lead.id, li.itemIndex)}
+                    className="flex-1 h-8 rounded-lg bg-success/15 text-success font-medium text-xs hover:bg-success/25 transition-colors flex items-center justify-center gap-1">
+                    <CheckCircle size={13} /> Approve this
+                  </button>
+                ) : (
+                  <button onClick={() => onRevoke(li.lead.id, li.itemIndex)}
+                    className="flex-1 h-8 rounded-lg bg-warning/15 text-warning font-medium text-xs hover:bg-warning/25 transition-colors flex items-center justify-center gap-1">
+                    <RotateCcw size={13} /> Revoke
+                  </button>
+                )}
+                {st !== "rejected" && (
+                  <button onClick={() => onReject(li.lead.id, li.itemIndex)}
+                    className="flex-1 h-8 rounded-lg bg-destructive/15 text-destructive font-medium text-xs hover:bg-destructive/25 transition-colors flex items-center justify-center gap-1">
+                    <XCircle size={13} /> Reject
+                  </button>
+                )}
+                <button onClick={() => onDelete(li.lead.id, li.itemIndex)}
+                  className="w-8 h-8 rounded-lg bg-muted text-muted-foreground hover:text-destructive hover:bg-destructive/15 transition-colors flex items-center justify-center shrink-0">
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <p className="text-[10px] text-muted-foreground">Approving one auto-rejects the competing sale(s) on this number.</p>
     </div>
   );
 }
