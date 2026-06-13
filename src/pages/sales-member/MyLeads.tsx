@@ -8,7 +8,7 @@ import { useAuthStore } from "@/store/authStore";
 import { logActivity } from "@/services/activityLog";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import { claimNumber, applySaleFreeze, releaseLockForLead, buildLeadFreezeFields, fetchNumberLock } from "@/services/numberLock";
-import { findOtherHolders, findMemberDuplicates, resolveNonSaleDuplicates } from "@/services/duplicateLeads";
+import { findMemberDuplicates, resolveNonSaleDuplicates } from "@/services/duplicateLeads";
 import { formatCurrency, formatDuration } from "@/utils/formatters";
 import { normalizePhone, getCallUrl, getWhatsAppUrl } from "@/utils/phone";
 import { useNow } from "@/hooks/useNow";
@@ -152,7 +152,8 @@ export default function MyLeads() {
   const dupRanRef = useRef(false);
   const runDuplicateScan = async () => {
     if (!user) return;
-    const nonFrozen = leads.filter((l) => !l.frozen);
+    // Exclude frozen (taken-over) and admin-cleared ("separate sales") leads from detection.
+    const nonFrozen = leads.filter((l) => !l.frozen && !l.duplicateCleared);
     if (nonFrozen.length === 0) { setDuplicateLeadIds(new Set()); setDupLoading(false); return; }
     setDupLoading(true);
     try {
@@ -1210,23 +1211,25 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
   const needsCustomAmount = packages.length === 0 || (selectedPkg && selectedPkg.amount === 0);
   const hasProof = !!proofUrl || !!proofNote.trim();
 
-  // Check whether another member has already sold this number (duplicate dispute).
-  // Two signals so detection still works even if cross-member `leads` reads are blocked by rules:
-  //  1) the shared leads query (findOtherHolders), and
-  //  2) the per-number lock (always readable) — saleById set to someone else means they sold it.
+  // A "duplicate dispute" (proof required) exists ONLY while another member's sale is still inside
+  // its freeze/validity window. Once that validity has expired, a new sale by anyone is a legitimate
+  // SEPARATE sale — no proof needed (e.g. member A sold yesterday, the freeze ended, member B sells
+  // a new ad today). The per-number lock is the source of truth and is always readable.
   useEffect(() => {
     let cancelled = false;
     setDupChecking(true);
     (async () => {
       if (!saleFormUser) { setDupChecking(false); return; }
-      const others = await findOtherHolders(lead.phone, saleFormUser.uid);
-      let dup = others.some((o) => o.saleDone);
-      if (!dup) {
-        try {
-          const lock = await fetchNumberLock(lead.phone);
-          if (lock?.saleById && lock.saleById !== saleFormUser.uid) dup = true;
-        } catch { /* lock read failed — fall back to the leads signal only */ }
-      }
+      let dup = false;
+      try {
+        const lock = await fetchNumberLock(lead.phone);
+        const activeFreezeByOther =
+          !!lock?.saleFrozen &&
+          tsToMs(lock.saleFrozenUntil) > Date.now() &&
+          !!lock.saleById &&
+          lock.saleById !== saleFormUser.uid;
+        dup = activeFreezeByOther;
+      } catch { /* lock unreadable → treat as no active dispute */ }
       if (cancelled) return;
       setIsDuplicate(dup);
       setDupChecking(false);

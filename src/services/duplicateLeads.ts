@@ -26,7 +26,7 @@ export async function findOtherHolders(phone: string, excludeMemberId: string): 
     const snap = await getDocs(query(collection(db, "leads"), where("phone", "==", normalized)));
     return snap.docs
       .map((d) => ({ leadId: d.id, ...(d.data() as Lead) }))
-      .filter((l) => l.assignedTo !== excludeMemberId && !l.frozen)
+      .filter((l) => l.assignedTo !== excludeMemberId && !l.frozen && !l.duplicateCleared)
       .map((l) => ({
         leadId: l.leadId,
         memberId: l.assignedTo,
@@ -78,7 +78,7 @@ export async function findMemberDuplicates(
     snaps.forEach((snap) => {
       snap.docs.forEach((d) => {
         const data = d.data() as Lead;
-        if (data.assignedTo === memberId || data.frozen) return;
+        if (data.assignedTo === memberId || data.frozen || data.duplicateCleared) return;
         const np = normalizePhone(data.phone);
         if (!othersByPhone[np]) othersByPhone[np] = [];
         othersByPhone[np].push({
@@ -150,7 +150,7 @@ export async function resolveNonSaleDuplicates(
 
   for (const [myLeadId, holders] of Object.entries(dupMap)) {
     const mine = myLeads.find((l) => l.id === myLeadId);
-    if (!mine || mine.frozen) continue;
+    if (!mine || mine.frozen || mine.duplicateCleared) continue;
     // Any sale on either side → dispute flow (proof + admin decision), don't auto-resolve.
     if (mine.saleDone || holders.some((h) => h.saleDone)) continue;
 

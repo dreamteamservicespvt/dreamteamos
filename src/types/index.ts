@@ -91,6 +91,9 @@ export interface Lead {
   saleFrozenUntil?: any;       // freeze end time
   saleFrozenDays?: number;     // chosen freeze length (1–7)
   saleFrozenByName?: string;   // who froze it (member or admin name)
+  // Admin marked this number's competing sales as legitimate SEPARATE sales (not a dispute).
+  // Excludes the lead from duplicate detection on both the member and admin sides.
+  duplicateCleared?: boolean;
   lastUpdated: any;
   createdAt: any;
 }

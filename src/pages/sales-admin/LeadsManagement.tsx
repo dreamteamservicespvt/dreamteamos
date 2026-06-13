@@ -258,7 +258,9 @@ function NumberGroupCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phone]);
 
-  const isDuplicate = holders.length > 1;
+  // A real dispute = 2+ members who CURRENTLY hold a sale (exclude frozen/taken-over + admin-cleared).
+  const activeSellers = new Set(holders.filter((h) => h.saleDone && !h.frozen && !h.duplicateCleared).map((h) => h.assignedTo));
+  const isDuplicate = activeSellers.size > 1;
   const lockSaleUntil = tsToMs(lock?.saleFrozenUntil);
   const lockSaleFrozen = !!lock?.saleFrozen && lockSaleUntil > now;
   const reserveMs = tsToMs(lock?.reserveExpiresAt);
@@ -278,7 +280,7 @@ function NumberGroupCard({
         </div>
         {isDuplicate && (
           <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-medium px-2 py-1 rounded-full bg-destructive/15 text-destructive">
-            <AlertTriangle size={11} /> Duplicate · {holders.length} members
+            <AlertTriangle size={11} /> Duplicate · {activeSellers.size} members
           </span>
         )}
       </div>

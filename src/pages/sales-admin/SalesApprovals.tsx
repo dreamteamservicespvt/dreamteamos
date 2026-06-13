@@ -223,9 +223,12 @@ export default function SalesApprovals() {
       wItems[itemIndex] = { ...wOld, verificationStatus: "verified", verifiedAt: Timestamp.now() };
       await updateDoc(doc(db, "leads", leadId), { saleItems: wItems, lastUpdated: serverTimestamp() });
 
-      // 2) Reject every still-standing competing sale on the SAME number held by OTHER members
-      //    (never the winner's own other leads on that number).
-      const competitors = leads.filter((l) => l.assignedTo !== winner.assignedTo && normalizePhone(l.phone) === np);
+      // 2) Reject every still-standing competing sale on the SAME number held by OTHER members.
+      //    Never touch the winner's own leads, nor frozen/taken-over or admin-cleared leads —
+      //    those are legitimate earlier/separate sales, not part of this dispute.
+      const competitors = leads.filter(
+        (l) => l.assignedTo !== winner.assignedTo && normalizePhone(l.phone) === np && !l.frozen && !l.duplicateCleared,
+      );
       for (const c of competitors) {
         const cItems = getAllItems(c);
         if (!cItems.some((it) => it.verificationStatus !== "rejected")) continue; // already all rejected
@@ -269,7 +272,7 @@ export default function SalesApprovals() {
       setLeads((prev) =>
         prev.map((l) => {
           if (l.id === leadId) return { ...l, saleItems: wItems };
-          if (l.assignedTo !== winner.assignedTo && normalizePhone(l.phone) === np) {
+          if (l.assignedTo !== winner.assignedTo && normalizePhone(l.phone) === np && !l.frozen && !l.duplicateCleared) {
             return {
               ...l,
               saleItems: getAllItems(l).map((it) =>
@@ -283,6 +286,31 @@ export default function SalesApprovals() {
       toast({ title: "Duplicate resolved", description: "Approved this sale and rejected the competing one(s)." });
     } catch {
       toast({ title: "Error", description: "Failed to resolve duplicate.", variant: "destructive" });
+    }
+  };
+
+  // ── "Not a duplicate" — mark a number's competing sales as legitimate separate sales ──
+  // Both sales stand and go through normal approval; the number leaves the Duplicates tab.
+  const handleMarkNotDuplicate = async (phone: string) => {
+    const np = normalizePhone(phone);
+    const affected = leads.filter((l) => normalizePhone(l.phone) === np && l.saleDone && !l.frozen);
+    if (affected.length === 0) return;
+    try {
+      await Promise.all(
+        affected.map((l) => updateDoc(doc(db, "leads", l.id), { duplicateCleared: true, lastUpdated: serverTimestamp() })),
+      );
+      setLeads((prev) => prev.map((l) => (normalizePhone(l.phone) === np && !l.frozen ? { ...l, duplicateCleared: true } : l)));
+      await logActivity({
+        actorId: currentUser!.uid,
+        actorName: currentUser!.name,
+        actorRole: "sales_admin",
+        adminId: currentUser!.uid,
+        action: "resolved_duplicate_sale",
+        details: { phone: np, outcome: "marked_separate_sales", members: affected.map((l) => getMemberName(l.assignedTo)) },
+      });
+      toast({ title: "Marked as separate sales", description: "These are no longer treated as a duplicate — both sales can be approved normally." });
+    } catch {
+      toast({ title: "Error", description: "Failed to update.", variant: "destructive" });
     }
   };
 
@@ -428,18 +456,41 @@ export default function SalesApprovals() {
     getAllItems(lead).map((item, idx) => ({ lead, item, itemIndex: idx }))
   );
 
-  // Duplicate detection: a number sold by 2+ different members → dispute (unclear who made the sale).
-  const phoneSellers = new Map<string, Map<string, string>>(); // normPhone -> (memberId -> memberName)
+  // Duplicate DISPUTE detection based on the freeze/validity window.
+  // Two members on the same number are a dispute ONLY if their sale-protection (freeze) windows
+  // OVERLAP. Sequential sales — a later member selling after the earlier member's validity ended —
+  // are separate legitimate sales, not a dispute. Frozen/taken-over and admin-cleared leads excluded.
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+  const numberWindows = new Map<string, { memberId: string; start: number; end: number }[]>();
   leads.forEach((l) => {
-    if (!l.saleDone) return;
+    if (!l.saleDone || l.frozen || l.duplicateCleared) return;
+    const subs = getAllItems(l)
+      .map((i) => ((i.submittedAt as any)?.seconds ? (i.submittedAt as any).seconds * 1000 : 0))
+      .filter((n) => n > 0);
+    const start = subs.length ? Math.min(...subs) : (l.createdAt?.seconds ? l.createdAt.seconds * 1000 : 0);
+    const freezeEnd = tsToMs(l.saleFrozenUntil);
+    const end = freezeEnd > 0 ? freezeEnd : start + ONE_DAY_MS; // fallback: minimum 1-day validity
     const np = normalizePhone(l.phone);
-    if (!phoneSellers.has(np)) phoneSellers.set(np, new Map());
-    phoneSellers.get(np)!.set(l.assignedTo, getMemberName(l.assignedTo));
+    if (!numberWindows.has(np)) numberWindows.set(np, []);
+    numberWindows.get(np)!.push({ memberId: l.assignedTo, start, end });
   });
+  const disputedByNumber = new Map<string, Set<string>>(); // normPhone -> memberIds in a real dispute
+  for (const [np, windows] of numberWindows) {
+    for (let i = 0; i < windows.length; i++) {
+      for (let j = i + 1; j < windows.length; j++) {
+        const a = windows[i], b = windows[j];
+        if (a.memberId === b.memberId) continue;
+        if (a.start <= b.end && b.start <= a.end) { // overlapping protection windows → dispute
+          if (!disputedByNumber.has(np)) disputedByNumber.set(np, new Set());
+          disputedByNumber.get(np)!.add(a.memberId).add(b.memberId);
+        }
+      }
+    }
+  }
   const getDuplicateOthers = (lead: Lead): string[] => {
-    const sellers = phoneSellers.get(normalizePhone(lead.phone));
-    if (!sellers || sellers.size < 2) return [];
-    return [...sellers.entries()].filter(([id]) => id !== lead.assignedTo).map(([, name]) => name);
+    const members = disputedByNumber.get(normalizePhone(lead.phone));
+    if (!members || !members.has(lead.assignedTo) || members.size < 2) return [];
+    return [...members].filter((id) => id !== lead.assignedTo).map((id) => getMemberName(id));
   };
   const pending = allLeadItems.filter((li) => li.item.verificationStatus === "pending");
   const verified = allLeadItems.filter((li) => {
@@ -644,6 +695,7 @@ export default function SalesApprovals() {
                 onReject={handleRejectItem}
                 onRevoke={handleRevokeItem}
                 onDelete={handleDeleteItem}
+                onMarkNotDuplicate={handleMarkNotDuplicate}
               />
             ))}
           </div>
@@ -1026,6 +1078,7 @@ function DuplicateGroupCard({
   onReject,
   onRevoke,
   onDelete,
+  onMarkNotDuplicate,
 }: {
   phone: string;
   items: { lead: Lead; item: SaleDetail; itemIndex: number }[];
@@ -1034,6 +1087,7 @@ function DuplicateGroupCard({
   onReject: (leadId: string, itemIndex: number) => void;
   onRevoke: (leadId: string, itemIndex: number) => void;
   onDelete: (leadId: string, itemIndex: number) => void;
+  onMarkNotDuplicate: (phone: string) => void;
 }) {
   const memberCount = new Set(items.map((i) => i.lead.assignedTo)).size;
   const verifiedCount = items.filter((i) => i.item.verificationStatus === "verified").length;
@@ -1135,7 +1189,16 @@ function DuplicateGroupCard({
         })}
       </div>
 
-      <p className="text-[10px] text-muted-foreground">Approving one auto-rejects the competing sale(s) on this number.</p>
+      <div className="flex items-center justify-between gap-2 pt-1 border-t border-border">
+        <p className="text-[10px] text-muted-foreground">Approving one auto-rejects the competing sale(s).</p>
+        <button
+          onClick={() => onMarkNotDuplicate(phone)}
+          className="shrink-0 h-7 px-2.5 rounded-md bg-info/10 text-info text-[11px] font-medium hover:bg-info/20 transition-colors inline-flex items-center gap-1"
+          title="These are legitimate separate sales by different members (e.g. a repeat sale after the earlier freeze ended) — keep both, not a dispute"
+        >
+          <CheckCircle size={12} /> Not a duplicate — separate sales
+        </button>
+      </div>
     </div>
   );
 }
