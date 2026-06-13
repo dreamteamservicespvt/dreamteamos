@@ -22,10 +22,12 @@ export interface TodayWorkStats {
 /** Compute a member's live work snapshot from their assignments. */
 export function getTodayWorkStats(assignments: WorkAssignment[], todayStr?: string): TodayWorkStats {
   const today = todayStr || format(new Date(), "yyyy-MM-dd");
-  // Count by the assignment's work date (`a.date`) so these numbers line up with
-  // the admin's MyTeam / Dashboard / Member History screens, which all bucket by `a.date`.
+  // Count videos actually completed today: prefer completedDate (when the member marked it done),
+  // fall back to a.date (assignment date) when completedDate is absent.
   const completedToday = assignments.filter(
-    (a) => (a.status === "completed" || a.status === "verified") && a.date === today
+    (a) =>
+      (a.status === "completed" || a.status === "verified") &&
+      (a.completedDate ? a.completedDate === today : a.date === today)
   ).length;
   const pending = assignments.filter((a) => a.status === "assigned").length;
   const inProgress = assignments.filter((a) => a.status === "in_progress" || a.status === "editing").length;
