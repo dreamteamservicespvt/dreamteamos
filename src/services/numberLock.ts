@@ -454,6 +454,31 @@ export async function releaseLockForLead({
   });
 }
 
+/**
+ * An ADMIN deleted a lead: fully free its number so anyone can add it fresh (no leftover
+ * "frozen"/reserved state from the deleted lead's sale). Unlike `releaseLockForLead`, this does
+ * NOT check the actor's uid (the admin is acting on the member's behalf). It deletes the lock only
+ * if the lock still points to this lead (or has no owner lead) — so a number that has since been
+ * taken over by someone else keeps that new owner's lock intact.
+ */
+export async function releaseLockForDeletedLead({
+  phone,
+  leadId,
+}: {
+  phone: string;
+  leadId: string;
+}): Promise<void> {
+  const lockRef = doc(db, "numberLocks", phoneLockId(phone));
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(lockRef);
+    if (!snap.exists()) return;
+    const lock = snap.data() as NumberLock;
+    // Owned by a different (still-active) lead → another member took it over; leave it alone.
+    if (lock.ownerLeadId && leadId && lock.ownerLeadId !== leadId) return;
+    tx.delete(lockRef);
+  });
+}
+
 /** One-off read of a number's lock (for the timeline popover). */
 export async function fetchNumberLock(phone: string): Promise<NumberLock | null> {
   const snap = await getDoc(doc(db, "numberLocks", phoneLockId(phone)));

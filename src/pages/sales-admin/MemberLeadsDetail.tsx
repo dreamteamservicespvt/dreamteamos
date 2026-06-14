@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { collection, addDoc, updateDoc, doc, serverTimestamp, deleteDoc } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
-import { adminAssignNumber, transferLockOwnership } from "@/services/numberLock";
+import { adminAssignNumber, transferLockOwnership, releaseLockForDeletedLead } from "@/services/numberLock";
 import { fetchTeamMembers, subscribeMemberLeads } from "@/services/teamLeads";
 import { useAuthStore } from "@/store/authStore";
 import { normalizePhone, formatPhoneDisplay, getWhatsAppUrl, getCallUrl } from "@/utils/phone";
@@ -444,8 +444,11 @@ export default function MemberLeadsDetail() {
     const { confirmed } = await confirm({ title: "Delete Lead", description: "Delete this lead?", confirmText: "Delete", variant: "destructive" });
     if (!confirmed) return;
     try {
+      const phone = leads.find((l) => l.id === leadId)?.phone;
       await deleteDoc(doc(db, "leads", leadId));
-      toast({ title: "Deleted", description: "Lead removed." });
+      // Free the number's lock so it's no longer "frozen/reserved" and can be re-added.
+      if (phone) { try { await releaseLockForDeletedLead({ phone, leadId }); } catch { /* lead already deleted */ } }
+      toast({ title: "Deleted", description: "Lead removed and number freed." });
     } catch {
       toast({ title: "Error", description: "Failed to delete.", variant: "destructive" });
     }
@@ -481,8 +484,14 @@ export default function MemberLeadsDetail() {
     setBulkDeleting(true);
     try {
       const ids = Array.from(selectedLeads);
+      const phoneById = new Map(ids.map((id) => [id, leads.find((l) => l.id === id)?.phone]));
       await Promise.all(ids.map((id) => deleteDoc(doc(db, "leads", id))));
-      toast({ title: "Deleted", description: `${ids.length} lead${ids.length > 1 ? "s" : ""} removed.` });
+      // Free each number's lock so deleted numbers don't stay "frozen/reserved".
+      await Promise.all(ids.map(async (id) => {
+        const phone = phoneById.get(id);
+        if (phone) { try { await releaseLockForDeletedLead({ phone, leadId: id }); } catch { /* already deleted */ } }
+      }));
+      toast({ title: "Deleted", description: `${ids.length} lead${ids.length > 1 ? "s" : ""} removed and number(s) freed.` });
       setSelectedLeads(new Set());
       setSelectMode(false);
     } catch {

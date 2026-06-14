@@ -11,7 +11,7 @@ import { useConfirm } from "@/hooks/useConfirm";
 import { useNow } from "@/hooks/useNow";
 import { normalizePhone, formatPhoneDisplay, getCallUrl, getWhatsAppUrl } from "@/utils/phone";
 import { formatCurrency, formatDuration } from "@/utils/formatters";
-import { fetchNumberLock, applySaleFreeze, adminReleaseLock, buildLeadFreezeFields, clearedLeadFreezeFields } from "@/services/numberLock";
+import { fetchNumberLock, applySaleFreeze, adminReleaseLock, buildLeadFreezeFields, clearedLeadFreezeFields, releaseLockForDeletedLead } from "@/services/numberLock";
 import NumberTimelineButton from "@/components/sales/NumberTimelineButton";
 import { format } from "date-fns";
 
@@ -408,7 +408,9 @@ function HolderRow({
     setBusy("delete");
     try {
       await deleteDoc(doc(db, "leads", lead.id));
-      toast({ title: "Deleted", description: "Lead removed." });
+      // Free the number's lock so it's no longer "frozen/reserved" and can be re-added.
+      try { await releaseLockForDeletedLead({ phone: lead.phone, leadId: lead.id }); } catch { /* lead already deleted */ }
+      toast({ title: "Deleted", description: "Lead removed and number freed." });
     } catch {
       toast({ title: "Error", description: "Failed to delete.", variant: "destructive" });
     } finally {
