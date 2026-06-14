@@ -7,7 +7,7 @@ import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { logActivity } from "@/services/activityLog";
 import { uploadToCloudinary } from "@/services/cloudinary";
-import { claimNumber, applySaleFreeze, releaseLockForLead, buildLeadFreezeFields, fetchNumberLock } from "@/services/numberLock";
+import { claimNumber, applySaleFreeze, releaseLockForLead, buildLeadFreezeFields, fetchNumberLock, clearSaleFreeze, clearedLeadFreezeFields } from "@/services/numberLock";
 import { findMemberDuplicates, resolveNonSaleDuplicates } from "@/services/duplicateLeads";
 import { formatCurrency, formatDuration } from "@/utils/formatters";
 import { normalizePhone, getCallUrl, getWhatsAppUrl } from "@/utils/phone";
@@ -766,11 +766,17 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
     const items = [...allSaleItems];
     items.splice(itemIndex, 1);
     const updates: Record<string, any> = { saleItems: items };
-    if (items.length === 0) {
+    const noSalesLeft = items.length === 0;
+    if (noSalesLeft) {
       updates.saleDone = false;
       updates.saleDetails = null;
+      // No sales left → lift the sale-freeze (the number stays in this member's leads).
+      Object.assign(updates, clearedLeadFreezeFields());
     }
     await updateLead(lead.id, updates);
+    if (noSalesLeft && currentUser) {
+      try { await clearSaleFreeze({ phone: lead.phone, actor: { uid: currentUser.uid, name: currentUser.name } }); } catch { /* best-effort */ }
+    }
     if (currentUser) {
       await logActivity({
         actorId: currentUser.uid,

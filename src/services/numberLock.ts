@@ -479,6 +479,40 @@ export async function releaseLockForDeletedLead({
   });
 }
 
+/**
+ * A SALE was deleted (but the number/lead stays with the member): lift ONLY the sale-freeze
+ * (type 2, the 1–7 day extension) while leaving ownership and the original 24h reservation (type 1)
+ * intact. The number then follows the normal lifecycle — claimable by others only once its base
+ * validity is over. No-op if there's no active sale-freeze.
+ */
+export async function clearSaleFreeze({
+  phone,
+  actor,
+}: {
+  phone: string;
+  actor?: LockActor;
+}): Promise<void> {
+  const lockRef = doc(db, "numberLocks", phoneLockId(phone));
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(lockRef);
+    if (!snap.exists()) return;
+    const lock = snap.data() as NumberLock;
+    if (!lock.saleFrozen) return; // nothing to clear
+    const nowTs = Timestamp.now();
+    tx.update(lockRef, {
+      saleFrozen: false,
+      saleFrozenUntil: null,
+      saleById: null,
+      saleByName: null,
+      timeline: [
+        ...(lock.timeline || []),
+        { action: "admin_override", byId: actor?.uid || "", byName: actor?.name || "—", at: nowTs, note: "Sale deleted — freeze cleared" },
+      ],
+      updatedAt: nowTs,
+    });
+  });
+}
+
 /** One-off read of a number's lock (for the timeline popover). */
 export async function fetchNumberLock(phone: string): Promise<NumberLock | null> {
   const snap = await getDoc(doc(db, "numberLocks", phoneLockId(phone)));

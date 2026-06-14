@@ -7,7 +7,7 @@ import { logActivity } from "@/services/activityLog";
 import { useAuthStore } from "@/store/authStore";
 import { formatCurrency, formatDuration } from "@/utils/formatters";
 import { useNow } from "@/hooks/useNow";
-import { applySaleFreeze, adminReleaseLock, buildLeadFreezeFields, clearedLeadFreezeFields } from "@/services/numberLock";
+import { applySaleFreeze, adminReleaseLock, buildLeadFreezeFields, clearedLeadFreezeFields, clearSaleFreeze } from "@/services/numberLock";
 import { format } from "date-fns";
 import type { AppUser, Lead, SaleDetail } from "@/types";
 import { CheckCircle, XCircle, ShoppingBag, ExternalLink, RotateCcw, Trash2, CheckSquare, Square, Phone, MessageCircle, AlertTriangle, FileText, Snowflake, Lock, ShieldOff, Loader2 } from "lucide-react";
@@ -183,8 +183,16 @@ export default function SalesApprovals() {
       const oldItem = items[itemIndex];
       items.splice(itemIndex, 1);
       const updates: Record<string, any> = { saleItems: items, lastUpdated: serverTimestamp() };
-      if (items.length === 0) { updates.saleDone = false; updates.saleDetails = null; }
+      // No sales left → the number is no longer "sold", so lift the sale-freeze (type 2)
+      // but KEEP the lead with the member (the number itself is not deleted).
+      const noSalesLeft = items.length === 0;
+      if (noSalesLeft) { updates.saleDone = false; updates.saleDetails = null; Object.assign(updates, clearedLeadFreezeFields()); }
       await updateDoc(doc(db, "leads", leadId), updates);
+      if (noSalesLeft) {
+        try {
+          await clearSaleFreeze({ phone: lead.phone, actor: currentUser ? { uid: currentUser.uid, name: currentUser.name } : undefined });
+        } catch { /* freeze clear is best-effort */ }
+      }
       await logActivity({
         actorId: currentUser!.uid,
         actorName: currentUser!.name,
