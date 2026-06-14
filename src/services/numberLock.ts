@@ -153,14 +153,43 @@ export async function claimNumber({
 
     const lock = lockSnap.data() as NumberLock;
 
-    // ── Sold & still frozen → blocked for everyone ──
+    // ── Sold & still frozen → blocked for everyone, UNLESS the freeze is orphaned ──
     const frozenUntilMs = toMillis(lock.saleFrozenUntil);
     if (lock.saleFrozen && frozenUntilMs > now) {
-      return {
-        kind: "sale_frozen",
-        saleByName: lock.saleByName || lock.ownerName,
-        until: new Date(frozenUntilMs),
-      };
+      // Verify the sale that created this freeze still exists. If its lead was deleted (e.g. an admin
+      // removed the number before the auto-release fix existed), the freeze is STALE — clear it and
+      // let this member claim the number fresh instead of blocking forever.
+      let sellerLeadExists = false;
+      if (lock.ownerLeadId) {
+        sellerLeadExists = (await tx.get(doc(db, "leads", lock.ownerLeadId))).exists();
+      }
+      if (sellerLeadExists) {
+        return {
+          kind: "sale_frozen",
+          saleByName: lock.saleByName || lock.ownerName,
+          until: new Date(frozenUntilMs),
+        };
+      }
+      // Orphaned freeze (seller's lead is gone) → reclaim fresh for this member, overwriting the stale lock.
+      tx.set(newLeadRef, buildLeadData(user, normalized, displayName));
+      tx.set(lockRef, {
+        phone: normalized,
+        ownerId: user.uid,
+        ownerName: user.name,
+        ownerLeadId: newLeadRef.id,
+        claimedAt: nowTs,
+        reserveExpiresAt,
+        saleFrozen: false,
+        saleFrozenUntil: null,
+        saleById: null,
+        saleByName: null,
+        timeline: [
+          ...(lock.timeline || []),
+          { action: "claimed", byId: user.uid, byName: user.name, at: nowTs, note: "Re-added after stale freeze cleared" },
+        ],
+        updatedAt: nowTs,
+      } as NumberLock);
+      return { kind: "created", leadId: newLeadRef.id };
     }
 
     // ── Already owned by the same member ──
