@@ -17,6 +17,9 @@ import { format, subDays, startOfDay } from 'date-fns';
 import DashboardDateRangePicker from '@/components/dashboard/DateRangePicker';
 import type { WorkAssignment, AppUser, DailyCheckin } from '@/types';
 import { formatDateRangeLabel, isDateWithinRange, normalizeDateRange, parseQueryDate, parseQueryDateRange } from '@/utils/dateRange';
+import { upsertClientOnWorkVerify } from '@/services/clients';
+import { revertOrderToAssigned, markOrderCompleted } from '@/services/orders';
+import DeadlineChip from '@/components/work/DeadlineChip';
 
 const DURATIONS: Record<string, string[]> = {
   wishes: ['20s', '40s'],
@@ -273,6 +276,9 @@ export default function WorkAssign() {
           title: 'Work Verified!',
           message: `Your ${assignment.category} work (${assignment.displayTitle}) has been verified and approved.`,
         });
+
+        // Order-driven work → record the delivery on the client (single customer view).
+        await upsertClientOnWorkVerify({ assignment, deliveredByName: getMemberName(assignment.assignedTo) });
       }
     } catch (error) {
       console.error('Failed to verify assignment(s):', error);
@@ -302,6 +308,9 @@ export default function WorkAssign() {
   const handleSetEditing = async (assignmentId: string, assignedTo: string) => {
     try {
       await updateDoc(doc(db, 'work_assignments', assignmentId), { status: 'editing' });
+      // Sent back for edits → order returns to the active queue.
+      const orderId = assignments.find(a => a.id === assignmentId)?.orderId;
+      if (orderId) await revertOrderToAssigned(orderId);
       await sendNotification({
         userId: assignedTo,
         type: 'work_editing',
@@ -317,6 +326,9 @@ export default function WorkAssign() {
   const handleUndoEditing = async (assignmentId: string) => {
     try {
       await updateDoc(doc(db, 'work_assignments', assignmentId), { status: 'completed' });
+      // Undo edits → work is completed again, so the order is awaiting verify.
+      const orderId = assignments.find(a => a.id === assignmentId)?.orderId;
+      if (orderId) await markOrderCompleted(orderId);
     } catch (error) {
       console.error('Failed to undo editing:', error);
     }
@@ -899,6 +911,7 @@ export default function WorkAssign() {
                     {a.status.replace('_', ' ')}
                   </span>
                   <span className="text-[10px] md:text-xs font-mono text-muted-foreground">{a.uniqueId}</span>
+                  {a.status !== 'verified' && <DeadlineChip promise={a.promise} />}
                 </div>
 
                 {/* Inline edit mode */}
@@ -915,7 +928,7 @@ export default function WorkAssign() {
                     </select>
                     <select value={editForm.duration} onChange={(e) => setEditForm(prev => prev ? { ...prev, duration: e.target.value, pricePerUnit: PRICING[prev.category]?.[e.target.value] ?? 0 } : prev)}
                       className="border rounded px-2 py-1 text-xs bg-background text-foreground border-border">
-                      {DURATIONS[editForm.category].map(d => <option key={d} value={d}>{d} ({getClipCount(d)} clips + {hasPoster(d) ? 'Poster ' : ''}{getEndCredits(d)}s EC)</option>)}
+                      {(DURATIONS[editForm.category] || []).map(d => <option key={d} value={d}>{d} ({getClipCount(d)} clips + {hasPoster(d) ? 'Poster ' : ''}{getEndCredits(d)}s EC)</option>)}
                     </select>
                     <div className="flex items-center gap-1">
                       <span className="text-xs text-muted-foreground">₹</span>

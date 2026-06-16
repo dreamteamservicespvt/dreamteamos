@@ -28,11 +28,13 @@ import MyPerformance from "@/pages/sales-member/MyPerformance";
 import SalesMemberTraining from "@/pages/sales-member/Training";
 import SalesMemberProfile from "@/pages/sales-member/MyProfile";
 import SalesScripts from "@/pages/sales-member/SalesScripts";
+import MyReviews from "@/pages/sales-member/MyReviews";
 import SalesMemberActivityHistory from "@/pages/sales-member/ActivityHistory";
 import SalesAdminDashboard from "@/pages/sales-admin/Dashboard";
 import SalesAdminMyTeam from "@/pages/sales-admin/MyTeam";
 import LeadsManagement from "@/pages/sales-admin/LeadsManagement";
 import SalesApprovals from "@/pages/sales-admin/SalesApprovals";
+import Settlements from "@/pages/sales-admin/Settlements";
 import MemberSalesHistory from "@/pages/sales-admin/MemberSalesHistory";
 import MemberLeadsDetail from "@/pages/sales-admin/MemberLeadsDetail";
 import SalesTrainingModules from "@/pages/sales-admin/TrainingModules";
@@ -51,6 +53,8 @@ import TechAdminSettings from "@/pages/tech-admin/Settings";
 import TechAdminMemberHistory from "@/pages/tech-admin/MemberHistory";
 import TechAdminMemberAnalytics from "@/pages/tech-admin/MemberAnalytics";
 import WorkAssign from "@/pages/tech-admin/WorkAssign";
+import Orders from "@/pages/tech-admin/Orders";
+import Clients from "@/pages/shared/Clients";
 import MemberAssignments from "@/pages/tech-admin/MemberAssignments";
 import TeamLeaderWorkAssign from "@/pages/tech-team-leader/WorkAssign";
 import TeamLeaderMemberAssignments from "@/pages/tech-team-leader/MemberAssignments";
@@ -108,6 +112,7 @@ const App = () => (
             <Route path="/main-admin/accounts" element={<Accounts />} />
             <Route path="/main-admin/settings" element={<MainAdminSettings />} />
             <Route path="/main-admin/salary" element={<MySalaryPage />} />
+            <Route path="/main-admin/clients" element={<Clients />} />
           </Route>
 
           {/* Tech Admin */}
@@ -123,6 +128,8 @@ const App = () => (
             <Route path="/tech-admin/salary" element={<MySalaryPage />} />
             <Route path="/tech-admin/work-assign" element={<WorkAssign />} />
             <Route path="/tech-admin/work-assign/:memberId" element={<MemberAssignments />} />
+            <Route path="/tech-admin/orders" element={<Orders />} />
+            <Route path="/tech-admin/clients" element={<Clients />} />
             <Route path="/tech-admin/tools" element={<TechAdminTools />} />
             <Route path="/tech-admin/cinematic-ads" element={<CinematicAds />} />
             <Route path="/tech-admin/chat" element={<Chat />} />
@@ -139,6 +146,7 @@ const App = () => (
             <Route path="/sales-admin/leads/:memberId" element={<MemberLeadsDetail />} />
             <Route path="/sales-admin/schedule-numbers" element={<ScheduleNumbers />} />
             <Route path="/sales-admin/approvals" element={<SalesApprovals />} />
+            <Route path="/sales-admin/settlements" element={<Settlements />} />
             <Route path="/sales-admin/analytics" element={<SalesAnalytics />} />
             <Route path="/sales-admin/training" element={<SalesTrainingModules />} />
             <Route path="/sales-admin/scripts" element={<SalesScripts />} />
@@ -146,6 +154,7 @@ const App = () => (
             <Route path="/sales-admin/settings" element={<SalesAdminSettings />} />
             <Route path="/sales-admin/leaderboard" element={<Leaderboard />} />
             <Route path="/sales-admin/history" element={<SalesAdminActivityHistory />} />
+            <Route path="/sales-admin/clients" element={<Clients />} />
             <Route path="/sales-admin/chat" element={<Chat />} />
             <Route path="/sales-admin/meeting" element={<Meeting />} />
             <Route path="/sales-admin/chat-monitor" element={<AdminChatMonitor />} />
@@ -176,6 +185,7 @@ const App = () => (
           <Route element={<AppLayout allowedRoles={["sales_member"]} />}>
             <Route path="/sales/dashboard" element={<SalesMemberDashboard />} />
             <Route path="/sales/leads" element={<MyLeads />} />
+            <Route path="/sales/reviews" element={<MyReviews />} />
             <Route path="/sales/performance" element={<MyPerformance />} />
             <Route path="/sales/training" element={<SalesMemberTraining />} />
             <Route path="/sales/scripts" element={<SalesScripts />} />
@@ -191,6 +201,7 @@ const App = () => (
           <Route element={<AppLayout allowedRoles={["tech_team_leader"]} />}>
             <Route path="/team-leader/work-assign" element={<TeamLeaderWorkAssign />} />
             <Route path="/team-leader/work-assign/:memberId" element={<TeamLeaderMemberAssignments />} />
+            <Route path="/team-leader/orders" element={<Orders />} />
           </Route>
 
           <Route path="*" element={<NotFound />} />

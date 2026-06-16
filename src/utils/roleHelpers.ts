@@ -3,6 +3,7 @@ import {
   LayoutDashboard, Users, TrendingUp, Code, Phone, Clock, Wallet,
   Settings, BookOpen, FolderOpen, Target, User, BarChart3,
   ClipboardList, Briefcase, Wrench, FileCheck, MessageSquare, Video, Eye, Film, ScrollText, CalendarClock, Trophy, History,
+  ShoppingBag, Contact, Star,
 } from "lucide-react";
 
 export interface NavItem {
@@ -19,6 +20,7 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "Revenue Overview", path: "/main-admin/revenue", icon: TrendingUp },
     { title: "Tech Department", path: "/main-admin/tech", icon: Code },
     { title: "Sales Department", path: "/main-admin/sales", icon: Phone },
+    { title: "Clients", path: "/main-admin/clients", icon: Contact },
     { title: "Session History", path: "/main-admin/sessions", icon: Clock },
     { title: "Accounts", path: "/main-admin/accounts", icon: Wallet },
     { title: "Settings", path: "/main-admin/settings", icon: Settings },
@@ -26,7 +28,9 @@ const NAV: Record<UserRole, NavItem[]> = {
   tech_admin: [
     { title: "Dashboard", path: "/tech-admin/dashboard", icon: LayoutDashboard },
     { title: "My Team", path: "/tech-admin/team", icon: Users },
+    { title: "Orders", path: "/tech-admin/orders", icon: ShoppingBag },
     { title: "Work Assign", path: "/tech-admin/work-assign", icon: ClipboardList },
+    { title: "Clients", path: "/tech-admin/clients", icon: Contact },
     { title: "Drive Management", path: "/tech-admin/drive", icon: FolderOpen },
     { title: "Training Modules", path: "/tech-admin/training", icon: BookOpen },
     { title: "Session History", path: "/tech-admin/sessions", icon: Clock },
@@ -43,9 +47,11 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "Leads Management", path: "/sales-admin/leads", icon: Phone },
     { title: "Schedule Numbers", path: "/sales-admin/schedule-numbers", icon: CalendarClock },
     { title: "Sales Approvals", path: "/sales-admin/approvals", icon: FileCheck },
+    { title: "Settlements", path: "/sales-admin/settlements", icon: Wallet },
     { title: "Leaderboard", path: "/sales-admin/leaderboard", icon: Trophy },
     { title: "Analytics", path: "/sales-admin/analytics", icon: BarChart3 },
     { title: "Activity History", path: "/sales-admin/history", icon: History },
+    { title: "Clients", path: "/sales-admin/clients", icon: Contact },
     { title: "Team Chat", path: "/sales-admin/chat", icon: MessageSquare },
     { title: "Meetings", path: "/sales-admin/meeting", icon: Video },
     { title: "Chat Monitor", path: "/sales-admin/chat-monitor", icon: Eye },
@@ -72,6 +78,7 @@ const NAV: Record<UserRole, NavItem[]> = {
   sales_member: [
     { title: "Dashboard", path: "/sales/dashboard", icon: LayoutDashboard },
     { title: "My Leads", path: "/sales/leads", icon: Phone },
+    { title: "My Reviews", path: "/sales/reviews", icon: Star },
     { title: "My Performance", path: "/sales/performance", icon: Target },
     { title: "Leaderboard", path: "/sales/leaderboard", icon: Trophy },
     { title: "My History", path: "/sales/history", icon: History },
@@ -82,6 +89,7 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "My Profile", path: "/sales/profile", icon: User },
   ],
   tech_team_leader: [
+    { title: "Orders", path: "/team-leader/orders", icon: ShoppingBag },
     { title: "Work Assign", path: "/team-leader/work-assign", icon: ClipboardList },
   ],
 };

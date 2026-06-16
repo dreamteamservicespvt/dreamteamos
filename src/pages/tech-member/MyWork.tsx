@@ -5,6 +5,7 @@ import {
 import { collection, query, where, doc, updateDoc, deleteField, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/services/firebase';
 import { sendNotification } from '@/services/notifications';
+import { markOrderCompleted, revertOrderToAssigned } from '@/services/orders';
 import { useAuthStore } from '@/store/authStore';
 import { useFirestoreQuery } from '@/hooks/useFirestore';
 import { format, subDays, startOfDay } from 'date-fns';
@@ -116,6 +117,11 @@ export default function MyWork() {
         });
       }
 
+      // Order-driven work → reflect completion on the order (queue shows "Awaiting verify").
+      if (openAssignment.orderId) {
+        await markOrderCompleted(openAssignment.orderId);
+      }
+
       setOpenAssignment(null);
     } catch (error) {
       console.error('Failed to mark complete:', error);
@@ -131,6 +137,8 @@ export default function MyWork() {
         completedAt: deleteField(),
         completedDate: deleteField(),
       });
+      // Order-driven work → put the order back in the active queue (resumes deadline alerts).
+      if (assignment.orderId) await revertOrderToAssigned(assignment.orderId);
     } catch (error) {
       console.error('Failed to undo complete:', error);
     }

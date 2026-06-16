@@ -78,3 +78,25 @@ export function getWhatsAppUrl(phone: string, text?: string): string {
 export function getCallUrl(phone: string): string {
   return `tel:${normalizePhone(phone)}`;
 }
+
+/**
+ * Default WhatsApp greeting prefilled when a sales member opens a lead's chat.
+ * `wa.me?text=` only PREFILLS the message — the member can still edit before sending.
+ * `clientName` personalises the greeting; `senderName` is the sales member's own name.
+ */
+export function buildLeadGreeting(clientName?: string | null, senderName?: string | null): string {
+  const name = (clientName || "").trim() || "Sir";
+  const sender = (senderName || "").trim();
+  const introLine = sender
+    ? `I'm ${sender} from DREAM TEAM SERVICES`
+    : `I'm from DREAM TEAM SERVICES`;
+  return [
+    `Hi ${name},`,
+    ``,
+    introLine,
+    `Please check our sample works once 🎬`,
+    `Also, kindly share your details like logo, brochures, and posters`,
+    ``,
+    `Once you're free, message us — we'll call you back to discuss about your ad requirements 🚀`,
+  ].join("\n");
+}

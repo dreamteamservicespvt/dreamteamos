@@ -10,7 +10,7 @@ import { uploadToCloudinary } from "@/services/cloudinary";
 import { claimNumber, applySaleFreeze, releaseLockForLead, buildLeadFreezeFields, fetchNumberLock, clearSaleFreeze, clearedLeadFreezeFields } from "@/services/numberLock";
 import { findMemberDuplicates, resolveNonSaleDuplicates } from "@/services/duplicateLeads";
 import { formatCurrency, formatDuration } from "@/utils/formatters";
-import { normalizePhone, getCallUrl, getWhatsAppUrl } from "@/utils/phone";
+import { normalizePhone, getCallUrl, getWhatsAppUrl, buildLeadGreeting } from "@/utils/phone";
 import { useNow } from "@/hooks/useNow";
 import { format, subDays, startOfDay } from "date-fns";
 import type { AppUser, Lead, LeadStatus, SaleDetail } from "@/types";
@@ -18,8 +18,10 @@ import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
 import NumberTimelineButton from "@/components/sales/NumberTimelineButton";
+import { SALE_CATEGORIES, PACKAGES, categoryLabel } from "@/utils/serviceCatalog";
+import { presetsForCategory, buildPromise, CUSTOM_PRESET_KEY } from "@/utils/promiseSla";
 import {
-  Search, Phone, MessageCircle, StickyNote, ChevronDown, ChevronUp,
+  Search, Phone, MessageCircle, StickyNote, ChevronDown, ChevronUp, Clock,
   Loader2, Check, Upload, ExternalLink, Plus, Trash2, ShoppingBag, X, Lock, AlertTriangle, Snowflake, FileText, RotateCcw,
 } from "lucide-react";
 
@@ -39,43 +41,8 @@ const STATUS_OPTIONS: { value: LeadStatus; label: string; color: string }[] = [
   { value: "not_interested", label: "Not Interested", color: "bg-destructive/15 text-destructive" },
 ];
 
-const SALE_CATEGORIES = [
-  "wishes", "promotional", "cinematic", "digital_marketing", "website", "logo", "google_listing", "software", "custom",
-] as const;
-
-const PACKAGES: Record<string, { label: string; amount: number }[]> = {
-  wishes: [
-    { label: "20 Seconds", amount: 499 },
-    { label: "40 Seconds", amount: 999 },
-  ],
-  promotional: [
-    { label: "15 Seconds", amount: 499 },
-    { label: "30 Seconds", amount: 999 },
-    { label: "45 Seconds", amount: 1499 },
-    { label: "60 Seconds", amount: 1999 },
-  ],
-  cinematic: [
-    { label: "15 Seconds", amount: 999 },
-    { label: "30 Seconds", amount: 1999 },
-    { label: "45 Seconds", amount: 2999 },
-    { label: "60 Seconds", amount: 3999 },
-  ],
-  digital_marketing: [
-    { label: "Meta Campaign Setup", amount: 2000 },
-    { label: "Single Post (IG+FB+SEO)", amount: 250 },
-    { label: "Monthly Package — Custom", amount: 0 },
-  ],
-  website: [],
-  logo: [
-    { label: "Standard Logo", amount: 499 },
-    { label: "Premium Logo", amount: 999 },
-  ],
-  google_listing: [
-    { label: "Google Business Listing Setup", amount: 999 },
-  ],
-  software: [],
-  custom: [],
-};
+// Sale categories + packages now live in the canonical DTS catalog (single source of truth,
+// shared with Orders and the Clients "Our Works" breakdown): src/utils/serviceCatalog.ts
 
 function getSaleDate(item: SaleDetail, lead: Lead): string | null {
   const ts = (item.submittedAt as any)?.seconds;
@@ -911,7 +878,7 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
         >
           <Phone size={13} /> Call
         </a>
-        <WhatsAppButton phone={lead.phone} disabled={frozen} onActivity={() => { try { updateLead(lead.id, {}); } catch {} }} />
+        <WhatsAppButton phone={lead.phone} clientName={lead.realName || lead.displayName} senderName={currentUser?.name} disabled={frozen} onActivity={() => { try { updateLead(lead.id, {}); } catch {} }} />
         <button
           onClick={() => setExpandedNotes(expandedNotes === lead.id ? null : lead.id)}
           className="flex-1 h-9 rounded-lg bg-accent text-foreground text-xs font-medium flex items-center justify-center gap-1.5 hover:bg-accent/80 transition-colors border border-border"
@@ -1177,10 +1144,11 @@ function AddCustomLeadModal({ user, onClose }: { user: AppUser; onClose: () => v
 
 /* ─── WhatsApp Button ─── */
 
-function WhatsAppButton({ phone, onActivity, disabled }: { phone: string; onActivity?: () => void; disabled?: boolean }) {
+function WhatsAppButton({ phone, clientName, senderName, onActivity, disabled }: { phone: string; clientName?: string; senderName?: string; onActivity?: () => void; disabled?: boolean }) {
+  const greeting = buildLeadGreeting(clientName, senderName);
   return (
     <a
-      href={disabled ? undefined : getWhatsAppUrl(phone)}
+      href={disabled ? undefined : getWhatsAppUrl(phone, greeting)}
       target="_blank"
       rel="noopener noreferrer"
       onClick={() => { if (disabled) return; onActivity?.(); }}
@@ -1210,12 +1178,22 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
   const [proofUrl, setProofUrl] = useState("");
   const [proofNote, setProofNote] = useState("");
   const [proofUploading, setProofUploading] = useState(false);
+  // Delivery promise / turnaround SLA the member promises the client (countdown starts at sale).
+  const [slaPreset, setSlaPreset] = useState<string>(CUSTOM_PRESET_KEY);
+  const [customDays, setCustomDays] = useState<number>(1);
 
   const packages = PACKAGES[category] || [];
   const selectedPkg = packages.find((p) => p.label === packageKey);
   const amount = selectedPkg?.amount || customAmount;
   const needsCustomAmount = packages.length === 0 || (selectedPkg && selectedPkg.amount === 0);
   const hasProof = !!proofUrl || !!proofNote.trim();
+  const slaOptions = presetsForCategory(category);
+
+  // Default the promise to the category's first preset (or custom) whenever the category changes.
+  useEffect(() => {
+    const opts = presetsForCategory(category);
+    setSlaPreset(opts.length > 0 ? opts[0].key : CUSTOM_PRESET_KEY);
+  }, [category]);
 
   // A "duplicate dispute" (proof required) exists ONLY while another member's sale is still inside
   // its freeze/validity window. Once that validity has expired, a new sale by anyone is a legitimate
@@ -1287,6 +1265,11 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
       return;
     }
     setSaving(true);
+    const promise = buildPromise({
+      presetKey: slaPreset || CUSTOM_PRESET_KEY,
+      customHours: slaPreset === CUSTOM_PRESET_KEY ? Math.max(1, Math.round(customDays * 24)) : undefined,
+      startMs: Date.now(),
+    });
     const newItem: SaleDetail = {
       category,
       packageKey: packageKey || "custom",
@@ -1298,6 +1281,7 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
       disputed: isDuplicate,
       proofImageUrl: proofUrl || null,
       proofNote: proofNote.trim() || null,
+      promise,
     };
     // Append to existing saleItems array
     const existingItems = lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
@@ -1359,7 +1343,7 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
         className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary"
       >
         {SALE_CATEGORIES.map((c) => (
-          <option key={c} value={c}>{c.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}</option>
+          <option key={c} value={c}>{categoryLabel(c)}</option>
         ))}
       </select>
 
@@ -1392,6 +1376,37 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
           className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary font-mono"
         />
       )}
+
+      {/* Delivery promise / turnaround SLA — countdown starts at sale, shown to the tech team */}
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+          <Clock size={12} /> Delivery promise to client
+        </label>
+        <div className="flex gap-2">
+          <select
+            value={slaPreset}
+            onChange={(e) => setSlaPreset(e.target.value)}
+            className="flex-1 h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary"
+          >
+            {slaOptions.map((p) => (
+              <option key={p.key} value={p.key}>{p.label}</option>
+            ))}
+            <option value={CUSTOM_PRESET_KEY}>Custom…</option>
+          </select>
+          {slaPreset === CUSTOM_PRESET_KEY && (
+            <div className="flex items-center gap-1.5 shrink-0">
+              <input
+                type="number"
+                min={1}
+                value={customDays || ""}
+                onChange={(e) => setCustomDays(Number(e.target.value) || 0)}
+                className="w-16 h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary font-mono"
+              />
+              <span className="text-xs text-muted-foreground">days</span>
+            </div>
+          )}
+        </div>
+      </div>
 
       <label className="block cursor-pointer">
         <div className={`border border-dashed rounded-md p-3 text-center transition-colors ${screenshotUrl ? "border-success/50" : "border-destructive/40 hover:border-primary/50"}`}>

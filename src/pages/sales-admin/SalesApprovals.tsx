@@ -4,6 +4,7 @@ import { db } from "@/services/firebase";
 import { fetchTeamMembers, subscribeTeamLeads } from "@/services/teamLeads";
 import { sendNotification } from "@/services/notifications";
 import { logActivity } from "@/services/activityLog";
+import { upsertOrderForSale, cancelOrderForSale } from "@/services/orders";
 import { useAuthStore } from "@/store/authStore";
 import { formatCurrency, formatDuration } from "@/utils/formatters";
 import { useNow } from "@/hooks/useNow";
@@ -75,6 +76,8 @@ export default function SalesApprovals() {
       const oldItem = items[itemIndex];
       items[itemIndex] = { ...oldItem, verificationStatus: "verified", verifiedAt: Timestamp.now() };
       await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
+      // Verified sale → create/refresh the Order so it enters the tech "Orders" queue.
+      await upsertOrderForSale({ lead, item: items[itemIndex], itemIndex, verifierUid: currentUser!.uid, soldByName: getMemberName(lead.assignedTo) });
       await sendNotification({
         userId: lead.assignedTo,
         type: "sale_approved",
@@ -111,6 +114,8 @@ export default function SalesApprovals() {
       const oldItem = items[itemIndex];
       items[itemIndex] = { ...oldItem, verificationStatus: "rejected", verifiedAt: null };
       await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
+      // Sale left "verified" → pull its Order out of the tech queue.
+      await cancelOrderForSale({ leadId, item: oldItem, itemIndex });
       await sendNotification({
         userId: lead.assignedTo,
         type: "sale_rejected",
@@ -147,6 +152,8 @@ export default function SalesApprovals() {
       const oldItem = items[itemIndex];
       items[itemIndex] = { ...oldItem, verificationStatus: "pending", verifiedAt: null };
       await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
+      // Back to pending → pull its Order out of the tech queue.
+      await cancelOrderForSale({ leadId, item: oldItem, itemIndex });
       await sendNotification({
         userId: lead.assignedTo,
         type: "sale_revoked",
@@ -181,6 +188,8 @@ export default function SalesApprovals() {
     try {
       const items = [...getAllItems(lead)];
       const oldItem = items[itemIndex];
+      // Cancel its Order before the splice reshuffles indexes (order id is keyed on submittedAt).
+      await cancelOrderForSale({ leadId, item: oldItem, itemIndex });
       items.splice(itemIndex, 1);
       const updates: Record<string, any> = { saleItems: items, lastUpdated: serverTimestamp() };
       // No sales left → the number is no longer "sold", so lift the sale-freeze (type 2)
@@ -230,6 +239,8 @@ export default function SalesApprovals() {
       const wOld = wItems[itemIndex];
       wItems[itemIndex] = { ...wOld, verificationStatus: "verified", verifiedAt: Timestamp.now() };
       await updateDoc(doc(db, "leads", leadId), { saleItems: wItems, lastUpdated: serverTimestamp() });
+      // Winner verified → create its Order for the tech queue.
+      await upsertOrderForSale({ lead: winner, item: wItems[itemIndex], itemIndex, verifierUid: currentUser!.uid, soldByName: getMemberName(winner.assignedTo) });
 
       // 2) Reject every still-standing competing sale on the SAME number held by OTHER members.
       //    Never touch the winner's own leads, nor frozen/taken-over or admin-cleared leads —
@@ -244,6 +255,10 @@ export default function SalesApprovals() {
           it.verificationStatus === "rejected" ? it : { ...it, verificationStatus: "rejected" as const, verifiedAt: null },
         );
         await updateDoc(doc(db, "leads", c.id), { saleItems: newItems, lastUpdated: serverTimestamp() });
+        // Any previously-verified competing sale must drop out of the tech queue too.
+        for (let ci = 0; ci < cItems.length; ci++) {
+          await cancelOrderForSale({ leadId: c.id, item: cItems[ci], itemIndex: ci });
+        }
         await sendNotification({
           userId: c.assignedTo,
           type: "sale_rejected",
@@ -363,6 +378,10 @@ export default function SalesApprovals() {
           items[itemIndex] = { ...items[itemIndex], verificationStatus: "verified", verifiedAt: verifiedTs };
         });
         await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
+        // Each verified sale → an Order in the tech queue.
+        for (const { itemIndex } of affected) {
+          await upsertOrderForSale({ lead, item: items[itemIndex], itemIndex, verifierUid: currentUser!.uid, soldByName: getMemberName(lead.assignedTo) });
+        }
         // Notify member once per lead
         await sendNotification({
           userId: lead.assignedTo,
@@ -419,6 +438,10 @@ export default function SalesApprovals() {
           items[itemIndex] = { ...items[itemIndex], verificationStatus: "rejected", verifiedAt: null };
         });
         await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
+        // Each rejected sale → pull its Order from the tech queue.
+        for (const { itemIndex } of affected) {
+          await cancelOrderForSale({ leadId, item: items[itemIndex], itemIndex });
+        }
         await sendNotification({
           userId: lead.assignedTo,
           type: "sale_rejected",

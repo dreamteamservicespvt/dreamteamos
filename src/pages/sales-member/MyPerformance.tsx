@@ -1,12 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
+import { useFirestoreQuery } from "@/hooks/useFirestore";
 import { formatCurrency } from "@/utils/formatters";
-import { format } from "date-fns";
-import type { Lead, SaleDetail } from "@/types";
+import { format, addDays, parseISO } from "date-fns";
+import type { Lead, SaleDetail, CommissionSettlement } from "@/types";
+import { commissionRate, computeCommissionInRange, earliestVerifiedSaleDate, paidThrough, totalPaid, memberSettlementsQuery } from "@/services/settlements";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import { TrendingUp, Target, Award, Zap, IndianRupee } from "lucide-react";
+import { TrendingUp, Target, Award, Zap, IndianRupee, Wallet, History, CheckCircle2 } from "lucide-react";
 import AttendanceCard from "@/components/sales/AttendanceCard";
 
 const PIE_COLORS = [
@@ -64,6 +66,26 @@ export default function MyPerformance() {
   const option1Total = stipendAmount + monthlyVerifiedRevenue * 0.05;
   const option2Total = monthlyVerifiedRevenue * 0.10;
   const assignedOption = user?.earningsOption;
+
+  // ── Commission settlements (what's been paid vs what's still owed) ──
+  const { data: settlements } = useFirestoreQuery<CommissionSettlement>(
+    useMemo(() => (user ? memberSettlementsQuery(user.uid) : null), [user?.uid]),
+    [user?.uid],
+  );
+  const commRate = commissionRate(user?.earningsOption);
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const settlePaidThrough = user ? paidThrough(settlements, user.uid) : null;
+  const settleUnpaidFrom = settlePaidThrough
+    ? format(addDays(parseISO(settlePaidThrough), 1), "yyyy-MM-dd")
+    : (earliestVerifiedSaleDate(leads) || todayStr);
+  const settleOutstanding = settleUnpaidFrom <= todayStr
+    ? computeCommissionInRange(leads, settleUnpaidFrom, todayStr, commRate)
+    : { base: 0, commission: 0, saleCount: 0 };
+  const settlePaidTotal = user ? totalPaid(settlements, user.uid) : 0;
+  const settleHistory = useMemo(
+    () => settlements.filter((s) => s.memberId === user?.uid).sort((a, b) => (b.paidAt?.seconds || 0) - (a.paidAt?.seconds || 0)),
+    [settlements, user?.uid],
+  );
 
   // Category breakdown (all sale items)
   const categoryMap: Record<string, { count: number; amount: number }> = {};
@@ -131,6 +153,53 @@ export default function MyPerformance() {
 
       {/* Monthly Attendance (from daily check-in/check-out) */}
       {user && <AttendanceCard memberId={user.uid} />}
+
+      {/* Commission Settlements (paid vs pending, from the sales admin) */}
+      <div className="bg-card border border-border rounded-xl p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <Wallet size={16} className="text-primary" />
+          <h2 className="font-display font-semibold text-foreground">Commission Settlements</h2>
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-info/15 text-info">{commRate}%</span>
+        </div>
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="rounded-lg bg-muted/40 p-3 text-center">
+            <p className="text-[10px] text-muted-foreground">Paid so far</p>
+            <p className="font-display font-bold text-lg text-foreground">{formatCurrency(settlePaidTotal)}</p>
+          </div>
+          <div className="rounded-lg bg-warning/10 p-3 text-center">
+            <p className="text-[10px] text-muted-foreground">Pending</p>
+            <p className="font-display font-bold text-lg text-warning">{formatCurrency(settleOutstanding.commission)}</p>
+          </div>
+          <div className="rounded-lg bg-muted/40 p-3 text-center">
+            <p className="text-[10px] text-muted-foreground">Paid through</p>
+            <p className="font-display font-bold text-sm text-foreground pt-1.5">{settlePaidThrough ? format(parseISO(settlePaidThrough), "dd MMM") : "—"}</p>
+          </div>
+        </div>
+        {settleOutstanding.commission > 0 && (
+          <p className="text-[11px] text-muted-foreground bg-muted/40 rounded-md px-2.5 py-1.5 mb-3">
+            Pending = {commRate}% of {formatCurrency(settleOutstanding.base)} verified sales from {format(parseISO(settleUnpaidFrom), "dd MMM")} to today ({settleOutstanding.saleCount} sales).
+          </p>
+        )}
+        <div className="flex items-center gap-2 mb-2">
+          <History size={13} className="text-muted-foreground" />
+          <h3 className="text-xs font-semibold text-foreground">Payment history</h3>
+        </div>
+        {settleHistory.length === 0 ? (
+          <p className="text-xs text-muted-foreground inline-flex items-center gap-1"><CheckCircle2 size={12} /> No commission paid yet.</p>
+        ) : (
+          <div className="border border-border rounded-lg divide-y divide-border">
+            {settleHistory.map((s) => (
+              <div key={s.id} className="flex items-center justify-between px-3 py-2 text-xs">
+                <div>
+                  <span className="text-foreground font-medium">{format(parseISO(s.fromDate), "dd MMM")} → {format(parseISO(s.toDate), "dd MMM yyyy")}</span>
+                  <span className="block text-[10px] text-muted-foreground">{s.commissionRate}% of {formatCurrency(s.salesBase)}{s.note ? ` · ${s.note}` : ""}</span>
+                </div>
+                <span className="font-semibold text-primary">{formatCurrency(s.amount)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Earnings Estimator */}
       <div className="bg-card border border-border rounded-xl p-5">
