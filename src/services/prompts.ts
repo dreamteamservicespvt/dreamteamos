@@ -986,10 +986,17 @@ Background:
 - Reference for the kind of real physical setting (use only as a guide for the type of objects, not as fixed wording): ${receptionGuidance}
 - If any store/office reference images are provided, mirror their real interior, layout, and materials
 - It must read as a genuine, operational [BUSINESS TYPE] — realistic and 100% relatable to this exact business, never fake, generic, or unrelated
-- Place the attached logo naturally as a real, SMALL-to-medium wall sign on the reception back wall behind the girl — fully visible and uncropped, realistically integrated, and DYNAMICALLY sized to the free wall space around her. The logo is clearly secondary to the girl: keep it modest, never large or dominating, and never shrink or push the girl smaller just to fit the logo
-- LOGO SHARPNESS (IMPORTANT): reproduce the attached logo exactly and keep it perfectly SHARP and in focus — do NOT blur or soften it with depth of field — so every letter and all text in the logo stays crisp and clearly readable
-- TEXT RULE (STRICT — VERY IMPORTANT): the attached logo is the ONLY text or branding anywhere in the entire image. Do NOT add or invent ANY other text — no words, letters, numbers, dates, academic years, taglines, slogans, mission lines, service lists, or signage. Reproduce the attached logo exactly and never add extra words above, below, or around it
-- NO FRAMES / DISPLAYS / PLACEHOLDERS (IMPORTANT): do NOT add ANY wall frames, picture frames, photo frames, certificate frames or certificate walls, rows of framed certificates, staff / employee / student photo walls or portrait galleries, "wall of fame", achievement / award / "success" / proof / display walls, photo walls, notice boards, posters, standees, brochures, banners, or blank / dark screens — NEITHER empty NOR filled (empty ones look like cheap cardboard, and filled ones force fake text and fake faces). Never describe "empty frames", "frames to hold photos", "displays without text", "certificate wall", or "staff photos". Walls stay clean and uncluttered, carrying ONLY the attached logo plus real, natural elements (soft wall texture, warm lighting, plants, and the business's real in-use objects)
+
+LOGO PLACEMENT (CRITICAL — DO NOT MODIFY THE LOGO):
+- Take the attached logo image and place it exactly as-is as real physical signage already mounted in the premises
+- The logo must remain pixel-perfect and unchanged
+- Mount the logo in the upper background behind the subject as real wall signage so it is fully readable and fully visible in one piece
+- Nothing must block, crop, redraw, stylize, blur, tilt, stretch, or overpower it — keep it perfectly sharp and in focus (do NOT blur with depth of field) so all its text is clearly readable
+- The model, hair, shoulders, props, or furniture must never cover any part of the logo
+- The signage should feel naturally installed in the real office/store, not pasted onto a fake backdrop
+- The logo is clearly secondary to the girl — small-to-medium, never enlarged at the cost of the girl's size
+- The logo is the ONLY text anywhere in the image — do NOT add or invent ANY other text, signage, taglines, slogans, dates, service lists, or words anywhere
+- NO FRAMES / DISPLAYS / PLACEHOLDERS: do NOT add ANY wall frames, photo frames, certificate walls, achievement walls, photo walls, notice boards, posters, standees, brochures, or blank / dark screens — walls stay clean carrying ONLY the logo plus real, natural elements
 
 Visual Style:
 - Ultra realistic photography, cinematic indoor lighting, natural skin texture, premium colour grading, realistic reflections and shadows, clean polished environment
@@ -1342,10 +1349,12 @@ COMMERCIAL REALISM FORMULA (MANDATORY — DO NOT WEAKEN):
 • CAMERA PHYSICS: Canon EOS R5 realism, 85mm f/1.8 portrait look, shallow depth of field, natural color science, and true DSLR focus falloff
 
 LOGO PLACEMENT (CRITICAL — DO NOT MODIFY THE LOGO):
-Place the attached logo exactly as-is as real physical signage inside the premises.
-• Pixel-perfect, unchanged, naturally lit, properly installed, and clearly secondary to the subject
-• Mount it in the upper background behind the model so the full logo remains completely visible without cropping, blocking, blur, tilt, stretching, or redesign
+Take the ATTACHED LOGO image and place it exactly as-is as real physical signage already mounted in the premises.
+• The logo must remain pixel-perfect and unchanged
+• Mount the logo in the upper background behind the subject as real wall signage so it is fully readable and fully visible in one piece
+• Nothing must block, crop, redraw, stylize, blur, tilt, stretch, or overpower it
 • The model, hair, shoulders, props, or furniture must never cover any part of the logo
+• The signage should feel naturally installed in the real office/store, not pasted onto a fake backdrop
 ${isProfessional ? `• Size the logo so it fits naturally and completely on the reception back wall behind the girl — large enough to be clearly readable, proportionate to the wall, never oversized, and never cropped by the frame edge or hidden behind the girl.
 ` : ''}${!isFestival && businessContext ? `• For this client, prioritize these realistic installation surfaces: ${clientLogoPlacementGuidance}
 ` : ''}
@@ -1619,7 +1628,7 @@ ${Array.from({ length: segmentCount }, (_, i) => {
    ${adType !== AdType.FESTIVAL ? `Generate a COMPLETE standalone first-frame image prompt EXACTLY in the base format above (the headers: Create an ultra-realistic promotional portrait…, Main Character, Pose, Background, Visual Style, Composition, Important).
    Keep it clean and concise — about 200–300 words, simple bullet lines, no extra sections, no negative list.
    Describe the girl (with elegant jewellery — ${attireType === 'traditional' ? 'necklace/chain, earrings, bangles, finger ring, and a small bindi on the forehead' : 'finger ring, necklace/chain, earrings, watch, and NO bindi on the forehead'}), the formal front-clasp pose, the real [BUSINESS TYPE] reception background built from the business details and 100% relatable to this exact business (its real equipment, products, displays, and service cues so a viewer instantly recognises what it does), and the attached logo fully visible on the reception wall.
-   The reception, visible business cues, pose, and mood must directly match Clip ${clipNum}'s voice-over line, and the logo must feel physically installed on ${shot.logoPlacement}, fully visible and unaltered.
+   The reception, visible business cues, pose, and mood must directly match Clip ${clipNum}'s voice-over line, and the logo must feel physically installed on ${shot.logoPlacement} — pixel-perfect and unchanged, mounted in the upper background, fully readable and fully visible in one piece, with nothing blocking, cropping, or altering it.
    The attached logo must be the ONLY text in the image — do NOT invent any other signage, banners, taglines, mission lines, service lists, dates, or academic years, and do NOT add empty/blank boards, frames, certificates, brochures, posters, standees, or blank screens (empty placeholders look like cardboard) — keep walls and surfaces clean. Keep the logo perfectly sharp and in focus (not blurred by depth of field) so all its text is clearly readable.
    Frame the girl as a three-quarter shot (head to thighs/knees), centered and clearly filling about 70% of the frame height (not a small full head-to-feet shot), looking directly at the camera. Keep the girl's ~70% size the priority and the attached logo small-to-medium and secondary — dynamically sized to the free wall space and never enlarged at the cost of the girl's size.` : `Generate a COMPLETE, detailed image generation prompt following ALL the rules/sections from the base prompt above.
    This frame sets the visual foundation — character face, hair, skin, beauty, attire, jewellery, AND this specific location within the business.

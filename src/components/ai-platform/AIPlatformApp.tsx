@@ -7,11 +7,11 @@ import {
 import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
 import { FileUpload } from './FileUpload';
-import { GeneratedCard } from './GeneratedCard';
+import { GeneratedCard, parseVoiceOverClips } from './GeneratedCard';
 import { SavedItems, SavedGeneration } from './SavedItems';
 import { AdFormData, AdType, AttireType, FileStore, GeneratedOutputs, GenerationStatus } from '@/types/aiPlatform';
 import { generateAdAssets, extractBusinessOnly, generateStockImagePrompts, refineStockImagePrompt, generateOverlayTexts, refineSection, regenerateVeoFromVoiceOver, SectionType, extractBusinessNameFromInfo } from '@/services/geminiService';
-import { collection, addDoc, getDocs, query, where, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, getDoc, query, where, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/services/firebase';
 import { useAuthStore } from '@/store/authStore';
 import type { WorkAssignment } from '@/types';
@@ -147,6 +147,51 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     }
   }, [outputs?.businessInfo]);
 
+  // Auto-load the last saved generation when opening from an assignment
+  useEffect(() => {
+    if (!assignment?.savedGenerationId) return;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'ai_generations', assignment.savedGenerationId!));
+        if (!snap.exists()) return;
+        const item = { id: snap.id, ...snap.data() } as SavedGeneration;
+        const savedFestivalName = item.festivalName || '';
+        const isKnownFestival = savedFestivalName ? upcomingFestivals.includes(savedFestivalName) : false;
+        setSelectedFestivalOption(savedFestivalName ? (isKnownFestival ? savedFestivalName : CUSTOM_FESTIVAL_OPTION) : '');
+        setCustomFestivalName(savedFestivalName && !isKnownFestival ? savedFestivalName : '');
+        setViewingSavedItem(item);
+        setOutputs({
+          businessInfo: item.businessInfo,
+          mainFramePrompts: item.mainFramePrompts || [],
+          headerPrompt: item.headerPrompt,
+          posterPrompt: item.posterPrompt || '',
+          voiceOverScript: item.voiceOverScript,
+          veoPrompts: item.veoPrompts,
+          hasProductImages: false,
+          productImageCount: 0,
+          stockImagePrompts: item.stockImagePrompts || null,
+          overlayTexts: item.overlayTexts || null,
+        });
+        setFormData(prev => ({
+          ...prev,
+          adType: item.adType as AdType,
+          festivalName: item.festivalName || '',
+          attireType: item.attireType as AttireType,
+          // Duration stays locked from assignment — do not override
+          ...(item.aspectRatio ? { aspectRatio: item.aspectRatio as any } : {}),
+          ...(item.language ? { language: item.language } : {}),
+          ...(item.noLogo !== undefined ? { noLogo: item.noLogo } : {}),
+          ...(item.logoNameText !== undefined ? { logoNameText: item.logoNameText } : {}),
+        }));
+        if (item.creationMode === 'video' || item.creationMode === 'poster') {
+          setCreationMode(item.creationMode);
+        }
+      } catch (e) {
+        console.error('Failed to auto-load saved generation:', e);
+      }
+    })();
+  }, [assignment?.savedGenerationId]);
+
   const loadSavedItems = async () => {
     if (!user) return;
     setLoadingSaved(true);
@@ -181,11 +226,16 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
         voiceOverScript: outputs.voiceOverScript,
         veoPrompts: outputs.veoPrompts,
         stockImagePrompts: outputs.stockImagePrompts,
+        overlayTexts: outputs.overlayTexts || null,
         adType: formData.adType,
         festivalName: formData.festivalName,
         attireType: formData.attireType,
         duration: formData.duration,
         creationMode: creationMode,
+        aspectRatio: formData.aspectRatio,
+        language: formData.language,
+        noLogo: formData.noLogo || false,
+        logoNameText: formData.logoNameText || '',
         createdAt: serverTimestamp()
       });
       // Link to assignment if exists
@@ -219,17 +269,26 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       posterPrompt: item.posterPrompt || '',
       voiceOverScript: item.voiceOverScript,
       veoPrompts: item.veoPrompts,
-      hasProductImages: false, productImageCount: 0,
-      stockImagePrompts: item.stockImagePrompts || null
+      hasProductImages: false,
+      productImageCount: 0,
+      stockImagePrompts: item.stockImagePrompts || null,
+      overlayTexts: item.overlayTexts || null,
     });
     setFormData(prev => ({
       ...prev,
       adType: item.adType as AdType,
       festivalName: item.festivalName || '',
       attireType: item.attireType as AttireType,
-      duration: item.duration || 16,
-      durationMode: 'preset'
+      // Only restore duration when not locked by an assignment
+      ...(durationLocked ? {} : { duration: item.duration || 16, durationMode: 'preset' as const }),
+      ...(item.aspectRatio ? { aspectRatio: item.aspectRatio as any } : {}),
+      ...(item.language ? { language: item.language } : {}),
+      ...(item.noLogo !== undefined ? { noLogo: item.noLogo } : {}),
+      ...(item.logoNameText !== undefined ? { logoNameText: item.logoNameText } : {}),
     }));
+    if (item.creationMode === 'video' || item.creationMode === 'poster') {
+      setCreationMode(item.creationMode);
+    }
     setShowSavedItems(false);
   };
 
@@ -336,11 +395,16 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
             voiceOverScript: generatedResult.voiceOverScript,
             veoPrompts: generatedResult.veoPrompts,
             stockImagePrompts: generatedResult.stockImagePrompts,
+            overlayTexts: generatedResult.overlayTexts || null,
             adType: formData.adType,
             festivalName: formData.festivalName,
             attireType: formData.attireType,
             duration: formData.duration,
             creationMode: creationMode,
+            aspectRatio: formData.aspectRatio,
+            language: formData.language,
+            noLogo: formData.noLogo || false,
+            logoNameText: formData.logoNameText || '',
             createdAt: serverTimestamp()
           });
           if (assignmentId) {
@@ -986,20 +1050,29 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       </OutputSection>
                   )}
 
-                  {creationMode === 'video' && outputs.voiceOverScript && (
+                  {creationMode === 'video' && outputs.voiceOverScript && (() => {
+                      const voiceClips = parseVoiceOverClips(cleanPromptForClipboard(outputs.voiceOverScript));
+                      const hasClips = voiceClips.length > 0;
+                      return (
                       <OutputSection title={`4. Voice Over Script (${formData.language || 'Telugu'})`} sectionKey="voiceOver"
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
-                        isDark={isDark}>
+                        isDark={isDark}
+                        copyContent={hasClips ? undefined : outputs.voiceOverScript}
+                        quickCopyItems={hasClips ? voiceClips.map(c => `${c.label}: ${c.text}`) : undefined}
+                        quickCopyLabel="C" quickCopyNamespace="voice-over"
+                        quickCopyRanges={hasClips ? voiceClips.map(c => (/^\d+-\d+$/.test(c.label) ? c.label : '')) : undefined}>
                         <GeneratedCard title="Voice Over" content={outputs.voiceOverScript} sectionType="voiceOver"
                           showTransliteration showRefinement={true}
                           onRefine={(i) => handleRefineSection('voiceOver', i)} isRefining={refiningSection === 'voiceOver'} hideTitle />
                       </OutputSection>
-                  )}
+                      );
+                  })()}
 
                   {creationMode === 'video' && outputs.veoPrompts?.length > 0 && (
                       <OutputSection title="5. Veo 3 Video Prompts" sectionKey="veo"
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
-                        isDark={isDark}>
+                        isDark={isDark} quickCopyItems={outputs.veoPrompts} quickCopyLabel="S" quickCopyNamespace="veo"
+                        quickCopyRanges={outputs.veoPrompts.map((_, i) => `${i * 8}-${(i + 1) * 8}`)}>
                         <GeneratedCard title="Veo" content={outputs.veoPrompts} variant="dropdown" sectionType="veo"
                           showRefinement={true} onRefine={(i) => handleRefineSection('veo', i)} isRefining={refiningSection === 'veo'} hideTitle />
                       </OutputSection>
@@ -1196,7 +1269,10 @@ const OutputSection: React.FC<{
   isDark: boolean;
   copyContent?: string;
   quickCopyItems?: string[];
-}> = ({ title, sectionKey, children, collapsedOutputs, toggleOutputSection, isDark, copyContent, quickCopyItems }) => {
+  quickCopyLabel?: string;
+  quickCopyNamespace?: string;
+  quickCopyRanges?: string[];
+}> = ({ title, sectionKey, children, collapsedOutputs, toggleOutputSection, isDark, copyContent, quickCopyItems, quickCopyLabel, quickCopyNamespace, quickCopyRanges }) => {
   const [copied, setCopied] = useState(false);
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1218,7 +1294,9 @@ const OutputSection: React.FC<{
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
           {quickCopyItems && quickCopyItems.length > 0 && (
-            <MainFrameHeaderActions prompts={quickCopyItems} isDark={isDark} />
+            <QuickCopyActions prompts={quickCopyItems} isDark={isDark}
+              labelPrefix={quickCopyLabel ?? 'F'} namespace={quickCopyNamespace ?? 'main-frame'}
+              ranges={quickCopyRanges} />
           )}
           {copyContent && (
             <span
@@ -1252,14 +1330,17 @@ const OutputSection: React.FC<{
   );
 };
 
-const MainFrameHeaderActions: React.FC<{
+const QuickCopyActions: React.FC<{
   prompts: string[];
   isDark: boolean;
-}> = ({ prompts, isDark }) => {
+  labelPrefix?: string;
+  namespace?: string;
+  ranges?: string[];
+}> = ({ prompts, isDark, labelPrefix = 'F', namespace = 'main-frame', ranges }) => {
   const promptFingerprint = prompts
     .map((prompt) => cleanPromptForClipboard(prompt))
     .join('||');
-  const storageKey = `ai-platform-main-frame-last-copied-${promptFingerprint}`;
+  const storageKey = `ai-platform-${namespace}-last-copied-${promptFingerprint}`;
   const [copiedKey, setCopiedKey] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
     return window.localStorage.getItem(storageKey);
@@ -1286,7 +1367,7 @@ const MainFrameHeaderActions: React.FC<{
   };
 
   const copiedIndex = copiedKey?.startsWith('clip-') ? Number(copiedKey.replace('clip-', '')) : null;
-  const copiedFrameLabel = copiedIndex !== null && !Number.isNaN(copiedIndex) ? `F${copiedIndex + 1}` : null;
+  const copiedFrameLabel = copiedIndex !== null && !Number.isNaN(copiedIndex) ? `${labelPrefix}${copiedIndex + 1}` : null;
 
   const clearCopiedState = (event: React.MouseEvent) => {
     event.stopPropagation();
@@ -1314,14 +1395,15 @@ const MainFrameHeaderActions: React.FC<{
       {prompts.map((prompt, index) => {
         const key = `clip-${index}`;
         const isCopied = copiedKey === key;
-        const frameLabel = `F${index + 1}`;
+        const frameLabel = `${labelPrefix}${index + 1}`;
+        const range = ranges?.[index];
 
         return (
           <button
             key={key}
             type="button"
             onClick={(event) => copyText(event, key, prompt)}
-            title={`Copy ${frameLabel} main frame prompt`}
+            title={range ? `Copy ${frameLabel} · ${range}s` : `Copy ${frameLabel} prompt`}
             className={cn(
               "inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-semibold transition-all",
               isCopied
@@ -1331,6 +1413,7 @@ const MainFrameHeaderActions: React.FC<{
           >
             {isCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3 opacity-70" />}
             <span>{frameLabel}</span>
+            {range && <span className="font-normal opacity-60">{range}</span>}
           </button>
         );
       })}

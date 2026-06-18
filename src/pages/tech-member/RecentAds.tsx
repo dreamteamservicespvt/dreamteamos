@@ -1,8 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
-  Film, Clock, Loader2, CheckCircle2, Sparkles, Play, Edit3, Search, Copy, Check,
+  Film, Clock, Loader2, CheckCircle2, Sparkles, Play, Edit3, Search, Copy, Check, ChevronRight,
 } from 'lucide-react';
-import { collection, query, where } from 'firebase/firestore';
+import { collection, query, where, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/services/firebase';
 import { useAuthStore } from '@/store/authStore';
 import { useFirestoreQuery } from '@/hooks/useFirestore';
@@ -10,15 +10,18 @@ import { formatDate, formatTime } from '@/utils/formatters';
 import type { WorkAssignment } from '@/types';
 import CodeVerificationModal from '@/components/ai-platform/CodeVerificationModal';
 import AIPlatformApp from '@/components/ai-platform/AIPlatformApp';
-import { doc, updateDoc } from 'firebase/firestore';
-import { useRef } from 'react';
 
-const STATUS_CONFIG: Record<string, { icon: React.ReactNode; color: string; label: string }> = {
-  assigned:    { icon: <Play className="w-3 h-3" />,        color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',       label: 'Assigned' },
-  in_progress: { icon: <Sparkles className="w-3 h-3" />,    color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400', label: 'In Progress' },
-  completed:   { icon: <CheckCircle2 className="w-3 h-3" />,color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',     label: 'Completed' },
-  verified:    { icon: <CheckCircle2 className="w-3 h-3" />,color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400', label: 'Verified' },
-  editing:     { icon: <Edit3 className="w-3 h-3" />,       color: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',  label: 'Edits Required' },
+const STATUS_CONFIG: Record<string, {
+  icon: React.ReactNode;
+  label: string;
+  badge: string;
+  accent: string;
+}> = {
+  assigned:    { icon: <Play className="w-3 h-3" />,         label: 'Assigned',       badge: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',       accent: 'bg-blue-500' },
+  in_progress: { icon: <Sparkles className="w-3 h-3" />,     label: 'In Progress',    badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',    accent: 'bg-amber-500' },
+  completed:   { icon: <CheckCircle2 className="w-3 h-3" />, label: 'Completed',      badge: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',    accent: 'bg-green-500' },
+  verified:    { icon: <CheckCircle2 className="w-3 h-3" />, label: 'Verified',       badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300', accent: 'bg-emerald-500' },
+  editing:     { icon: <Edit3 className="w-3 h-3" />,        label: 'Edits Required', badge: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300', accent: 'bg-orange-500' },
 };
 
 function getAssignedSeconds(a: WorkAssignment): number {
@@ -46,6 +49,7 @@ export default function RecentAds() {
   const { data: assignments, loading } = useFirestoreQuery<WorkAssignment>(q, [user?.uid]);
 
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [verifyingAssignment, setVerifyingAssignment] = useState<WorkAssignment | null>(null);
   const [openAssignment, setOpenAssignment] = useState<WorkAssignment | null>(null);
@@ -57,17 +61,19 @@ export default function RecentAds() {
   );
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return sorted;
-    const q = search.toLowerCase();
-    return sorted.filter(
-      (a) =>
-        (a.businessName || a.displayTitle || '').toLowerCase().includes(q) ||
-        (a.category || '').toLowerCase().includes(q) ||
-        (a.uniqueId || '').toLowerCase().includes(q),
-    );
-  }, [sorted, search]);
+    let result = statusFilter === 'all' ? sorted : sorted.filter((a) => a.status === statusFilter);
+    if (search.trim()) {
+      const s = search.toLowerCase();
+      result = result.filter(
+        (a) =>
+          (a.businessName || a.displayTitle || '').toLowerCase().includes(s) ||
+          (a.category || '').toLowerCase().includes(s) ||
+          (a.uniqueId || '').toLowerCase().includes(s),
+      );
+    }
+    return result;
+  }, [sorted, search, statusFilter]);
 
-  // Track session when an ad is opened
   React.useEffect(() => {
     if (openAssignment) {
       sessionStartRef.current = new Date();
@@ -80,11 +86,9 @@ export default function RecentAds() {
         const durationSeconds = Math.round((Date.now() - sessionStartRef.current.getTime()) / 1000);
         if (durationSeconds > 5) {
           const newSession = { openedAt: sessionStartRef.current.toISOString(), closedAt: new Date().toISOString(), durationSeconds };
-          const prevSessions = openAssignment.sessions || [];
-          const prevTotal = openAssignment.totalDurationSeconds || 0;
           updateDoc(doc(db, 'work_assignments', openAssignment.id), {
-            sessions: [...prevSessions, newSession],
-            totalDurationSeconds: prevTotal + durationSeconds,
+            sessions: [...(openAssignment.sessions || []), newSession],
+            totalDurationSeconds: (openAssignment.totalDurationSeconds || 0) + durationSeconds,
           });
         }
         sessionStartRef.current = null;
@@ -95,10 +99,7 @@ export default function RecentAds() {
   const handleBusinessNameExtracted = async (name: string) => {
     if (!openAssignment || openAssignment.businessName || openAssignment.clientName) return;
     try {
-      await updateDoc(doc(db, 'work_assignments', openAssignment.id), {
-        businessName: name,
-        displayTitle: name,
-      });
+      await updateDoc(doc(db, 'work_assignments', openAssignment.id), { businessName: name, displayTitle: name });
     } catch {}
   };
 
@@ -121,106 +122,159 @@ export default function RecentAds() {
     );
   }
 
+  const statusCounts = Object.keys(STATUS_CONFIG).reduce<Record<string, number>>((acc, s) => {
+    acc[s] = assignments.filter((a) => a.status === s).length;
+    return acc;
+  }, {});
+
   return (
     <div className="space-y-6">
       {verifyingAssignment && (
         <CodeVerificationModal
           accessCode={verifyingAssignment.accessCode}
-          onVerified={() => {
-            setOpenAssignment(verifyingAssignment);
-            setVerifyingAssignment(null);
-          }}
+          onVerified={() => { setOpenAssignment(verifyingAssignment); setVerifyingAssignment(null); }}
           onClose={() => setVerifyingAssignment(null)}
         />
       )}
 
+      {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-          <Film className="w-6 h-6" /> Recent Ads
+        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+            <Film className="w-5 h-5 text-primary" />
+          </div>
+          Recent Ads
         </h1>
-        <p className="text-sm text-muted-foreground mt-1">All your ad generation assignments</p>
+        <p className="text-sm text-muted-foreground mt-1 ml-11">All your ad generation assignments</p>
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by name, category…"
-          className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border bg-card text-card-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-        />
-      </div>
+      {/* Filter pills — Total + each status */}
+      <div className="flex flex-wrap gap-2">
+        {/* Total / All */}
+        <button
+          onClick={() => setStatusFilter('all')}
+          className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-all ${
+            statusFilter === 'all'
+              ? 'bg-foreground text-background border-foreground shadow-sm'
+              : 'bg-card text-muted-foreground border-border hover:border-foreground/40 hover:text-foreground'
+          }`}
+        >
+          All <span className="font-bold">{assignments.length}</span>
+        </button>
 
-      {/* Stats row */}
-      <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
-        <span className="bg-card border rounded-lg px-3 py-1.5">Total <strong className="text-foreground ml-1">{assignments.length}</strong></span>
         {Object.entries(STATUS_CONFIG).map(([status, cfg]) => {
-          const count = assignments.filter((a) => a.status === status).length;
+          const count = statusCounts[status];
           if (!count) return null;
+          const active = statusFilter === status;
           return (
-            <span key={status} className={`rounded-lg px-3 py-1.5 flex items-center gap-1.5 ${cfg.color}`}>
-              {cfg.icon} {cfg.label} <strong>{count}</strong>
-            </span>
+            <button
+              key={status}
+              onClick={() => setStatusFilter(active ? 'all' : status)}
+              className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-all ${
+                active
+                  ? `${cfg.badge} border-current ring-2 ring-current/30 shadow-sm`
+                  : `${cfg.badge} border-transparent opacity-60 hover:opacity-100 hover:border-current`
+              }`}
+            >
+              {cfg.icon} {cfg.label} <span className="font-bold">{count}</span>
+            </button>
           );
         })}
       </div>
 
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by business name, category…"
+          className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border bg-card text-card-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 transition-shadow"
+        />
+      </div>
+
       {/* List */}
       {filtered.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground">
-          <Film className="w-14 h-14 mx-auto mb-4 opacity-20" />
-          <p className="text-lg font-medium">{search ? 'No matching ads' : 'No ads yet'}</p>
-          <p className="text-sm mt-1">{search ? 'Try a different search term' : 'Your ad assignments will appear here'}</p>
+        <div className="text-center py-20 text-muted-foreground">
+          <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-4">
+            <Film className="w-8 h-8 opacity-30" />
+          </div>
+          <p className="text-base font-semibold">
+            {search ? 'No matching ads' : statusFilter !== 'all' ? `No ${STATUS_CONFIG[statusFilter]?.label} ads` : 'No ads yet'}
+          </p>
+          <p className="text-sm mt-1 opacity-70">
+            {search ? 'Try a different search term' : statusFilter !== 'all' ? 'Try a different filter' : 'Your ad assignments will appear here'}
+          </p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {filtered.map((a) => {
             const cfg = STATUS_CONFIG[a.status] ?? STATUS_CONFIG.assigned;
+            const name = a.businessName || a.displayTitle || a.uniqueId;
+
             return (
               <div
                 key={a.id}
-                className="bg-card border rounded-xl px-5 py-4 hover:border-primary/40 hover:bg-accent/30 transition-all group cursor-pointer"
-                onClick={() => setVerifyingAssignment(a)}
+                className="bg-card border rounded-2xl overflow-hidden hover:border-primary/30 hover:shadow-sm transition-all"
               >
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className={`shrink-0 flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${cfg.color}`}>
-                      {cfg.icon} {cfg.label}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="font-semibold text-sm text-card-foreground truncate">
-                        {a.businessName || a.displayTitle || a.uniqueId}
-                      </p>
-                      <p className="text-xs text-muted-foreground flex flex-wrap gap-x-3 mt-0.5">
+                <div className="flex items-stretch">
+                  {/* Status accent stripe */}
+                  <div className={`w-1 shrink-0 ${cfg.accent}`} />
+
+                  {/* Content */}
+                  <div className="flex-1 flex items-center justify-between gap-4 px-5 py-4 min-w-0">
+                    {/* Left: info */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${cfg.badge}`}>
+                          {cfg.icon} {cfg.label}
+                        </span>
+                        <h3 className="font-bold text-sm text-foreground truncate">{name}</h3>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
                         <span className="capitalize">{a.category}</span>
+                        <span className="opacity-40">·</span>
                         <span>{a.clipCount} clips</span>
+                        <span className="opacity-40">·</span>
                         <span>{a.duration}</span>
-                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{getAssignedStamp(a)}</span>
-                      </p>
+                        <span className="opacity-40">·</span>
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {getAssignedStamp(a)}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                  <div className="shrink-0 flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center gap-2 bg-muted/60 rounded-lg px-3 py-1.5">
-                      <span className="text-xs text-muted-foreground">Code:</span>
-                      <code className="font-mono text-sm font-bold text-foreground">{a.accessCode}</code>
+
+                    {/* Right: code + open */}
+                    <div className="shrink-0 flex items-center gap-2">
+                      {/* Code badge */}
+                      <div className="flex items-center gap-1.5 bg-muted/80 rounded-lg px-3 py-2">
+                        <span className="text-[11px] text-muted-foreground font-medium">Code</span>
+                        <code className="font-mono text-sm font-bold text-foreground tracking-wider">{a.accessCode}</code>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigator.clipboard.writeText(a.accessCode);
+                            setCopiedCode(a.id);
+                            setTimeout(() => setCopiedCode(null), 2000);
+                          }}
+                          className="p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors"
+                          title="Copy code"
+                        >
+                          {copiedCode === a.id
+                            ? <Check className="w-3.5 h-3.5 text-green-500" />
+                            : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+
+                      {/* Open button — standalone, always visible */}
                       <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(a.accessCode);
-                          setCopiedCode(a.id);
-                          setTimeout(() => setCopiedCode(null), 2000);
-                        }}
-                        className="p-0.5 rounded hover:bg-muted transition-colors"
-                        title="Copy code"
+                        onClick={() => setVerifyingAssignment(a)}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 active:scale-95 transition-all shadow-sm shadow-primary/20"
                       >
-                        {copiedCode === a.id
-                          ? <Check className="w-3.5 h-3.5 text-green-500" />
-                          : <Copy className="w-3.5 h-3.5 text-muted-foreground" />}
+                        Open <ChevronRight className="w-4 h-4" />
                       </button>
                     </div>
-                    <span className="text-xs text-primary font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                      Open →
-                    </span>
                   </div>
                 </div>
               </div>

@@ -26,11 +26,16 @@ export interface SavedGeneration {
   voiceOverScript: string;
   veoPrompts: string[];
   stockImagePrompts?: any[] | null;
+  overlayTexts?: any[] | null;
   adType: string;
   festivalName?: string;
   attireType: string;
   duration: number;
   creationMode?: string;
+  aspectRatio?: string;
+  language?: string;
+  noLogo?: boolean;
+  logoNameText?: string;
   createdAt: any;
   workAssignmentId?: string;
 }

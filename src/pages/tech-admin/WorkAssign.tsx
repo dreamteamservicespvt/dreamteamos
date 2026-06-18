@@ -140,14 +140,15 @@ export default function WorkAssign() {
   // Form state — no more end credits or manual clip count
   const [form, setForm] = useState({
     assignedTo: '',
-    category: 'wishes' as 'wishes' | 'promotional' | 'cinematic',
-    duration: '20s',
+    category: 'promotional' as 'wishes' | 'promotional' | 'cinematic',
+    duration: '16s',
     pricePerUnit: 499,
     clientName: '',
     businessName: '',
     businessWhatsapp: '',
   });
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
+  const [copiedBusiness, setCopiedBusiness] = useState<string | null>(null);
 
   // Auto-open form with pre-selected member from query param
   useEffect(() => {
@@ -251,7 +252,7 @@ export default function WorkAssign() {
       });
 
       setShowForm(false);
-      setForm({ assignedTo: '', category: 'wishes', duration: '20s', pricePerUnit: 499, clientName: '', businessName: '', businessWhatsapp: '' });
+      setForm({ assignedTo: '', category: 'promotional', duration: '16s', pricePerUnit: 499, clientName: '', businessName: '', businessWhatsapp: '' });
       setMemberSearch('');
     } catch (error) {
       console.error('Failed to create assignment:', error);
@@ -673,8 +674,8 @@ export default function WorkAssign() {
               <label className="block text-sm font-medium text-muted-foreground mb-1">Category</label>
               <select value={form.category} onChange={(e) => updateField('category', e.target.value)}
                 className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none">
-                <option value="wishes">Wishes</option>
                 <option value="promotional">Promotional</option>
+                <option value="wishes">Wishes</option>
                 <option value="cinematic">Cinematic</option>
               </select>
             </div>
@@ -830,8 +831,16 @@ export default function WorkAssign() {
         ) : (
           <div className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {filteredWorkload.map(({ member, assignments: mAsgn }) => {
-              const businessNames = [...new Set(mAsgn.map(a => a.businessName || a.clientName).filter(Boolean))];
               const totalMemberPrice = mAsgn.reduce((s, a) => s + a.totalPrice, 0);
+              // name → best available whatsapp (prefer entries that have one)
+              const namePhoneMap = new Map<string, string | null>();
+              mAsgn.forEach(a => {
+                const name = a.businessName || a.clientName;
+                if (!name) return;
+                if (!namePhoneMap.has(name) || (!namePhoneMap.get(name) && a.businessWhatsapp))
+                  namePhoneMap.set(name, a.businessWhatsapp || null);
+              });
+              const businessEntries = [...namePhoneMap.entries()];
               return (
                 <button key={member.uid}
                   onClick={() => navigate(`/tech-admin/work-assign/${member.uid}?${memberViewQuery}`)}
@@ -863,15 +872,37 @@ export default function WorkAssign() {
                     </div>
                     <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0" />
                   </div>
-                  {businessNames.length > 0 && (
+                  {businessEntries.length > 0 && (
                     <div className="flex flex-wrap gap-1 mb-2">
-                      {businessNames.slice(0, 3).map(name => (
-                        <span key={name} className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] bg-primary/10 text-primary font-medium truncate max-w-[140px]">
-                          {name}
-                        </span>
-                      ))}
-                      {businessNames.length > 3 && (
-                        <span className="text-[10px] text-muted-foreground">+{businessNames.length - 3} more</span>
+                      {businessEntries.slice(0, 3).map(([name, phone]) => {
+                        const key = `${member.uid}-${name}`;
+                        const copied = copiedBusiness === key;
+                        return (
+                          <button
+                            key={name}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!phone) return;
+                              navigator.clipboard.writeText(phone);
+                              setCopiedBusiness(key);
+                              setTimeout(() => setCopiedBusiness(null), 2000);
+                            }}
+                            title={phone ? `Copy WhatsApp: ${phone}` : 'No WhatsApp number'}
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium truncate max-w-[140px] transition-colors ${
+                              copied
+                                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                : phone
+                                  ? 'bg-primary/10 text-primary hover:bg-green-100 hover:text-green-700 dark:hover:bg-green-900/30 dark:hover:text-green-400 cursor-pointer'
+                                  : 'bg-primary/10 text-primary cursor-default'
+                            }`}
+                          >
+                            {copied ? <Check className="w-2.5 h-2.5 shrink-0" /> : phone ? <Copy className="w-2.5 h-2.5 shrink-0 opacity-50" /> : null}
+                            <span className="truncate">{name}</span>
+                          </button>
+                        );
+                      })}
+                      {businessEntries.length > 3 && (
+                        <span className="text-[10px] text-muted-foreground">+{businessEntries.length - 3} more</span>
                       )}
                     </div>
                   )}
@@ -922,8 +953,8 @@ export default function WorkAssign() {
                       const dur = DURATIONS[cat][0];
                       setEditForm(prev => prev ? { ...prev, category: cat, duration: dur, pricePerUnit: PRICING[cat]?.[dur] ?? 0 } : prev);
                     }} className="border rounded px-2 py-1 text-xs bg-background text-foreground border-border">
-                      <option value="wishes">Wishes</option>
                       <option value="promotional">Promotional</option>
+                      <option value="wishes">Wishes</option>
                       <option value="cinematic">Cinematic</option>
                     </select>
                     <select value={editForm.duration} onChange={(e) => setEditForm(prev => prev ? { ...prev, duration: e.target.value, pricePerUnit: PRICING[prev.category]?.[e.target.value] ?? 0 } : prev)}

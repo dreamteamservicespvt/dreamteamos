@@ -26,9 +26,9 @@ const cleanCodeBlocks = (text: string): string => {
     .trim();
 };
 
-type VoiceClip = { label: string; text: string };
+export type VoiceClip = { label: string; text: string };
 
-const parseVoiceOverClips = (text: string): VoiceClip[] => {
+export const parseVoiceOverClips = (text: string): VoiceClip[] => {
   const lines = text.split(/\r?\n/);
   const headerPattern = /^\s*(\d+\s*-\s*\d+)\s*:\s*(.*)$/;
   const fullScriptPattern = /^\s*FULL\s*SCRIPT\s*:/i;
