@@ -8,6 +8,9 @@ import { formatCurrency } from "@/utils/formatters";
 import { User, Mail, Phone, Shield, Loader2, Check, Lock, ExternalLink, Receipt, Calendar, Video } from "lucide-react";
 import SalaryTimeline from "@/components/SalaryTimeline";
 import ThemeSelector from "@/components/ThemeSelector";
+import MemberAttendanceCard from "@/components/attendance/MemberAttendanceCard";
+import MemberAgreements from "@/components/agreement/MemberAgreements";
+import { EMPLOYMENT_LABELS, employmentOf } from "@/services/employment";
 import type { DailyCheckin } from "@/types";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, getDay } from "date-fns";
 
@@ -82,7 +85,10 @@ export default function TechMemberProfile() {
           </div>
           <div>
             <p className="font-display font-bold text-foreground text-lg">{user.name}</p>
-            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-role-tech-member/15 text-role-tech-member capitalize">Tech Member</span>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-role-tech-member/15 text-role-tech-member capitalize">Tech Member</span>
+              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary">{EMPLOYMENT_LABELS[employmentOf(user.employmentType)]}</span>
+            </div>
           </div>
         </div>
 
@@ -138,6 +144,12 @@ export default function TechMemberProfile() {
           {saving ? "Saving..." : "Save Changes"}
         </button>
       </div>
+
+      {/* Monthly Attendance (Full / Half / Absent / Leave / Holiday) */}
+      <MemberAttendanceCard memberId={user.uid} />
+
+      {/* Agreements to review & sign */}
+      <MemberAgreements />
 
       {/* Salary History */}
       <div className="bg-card border border-border rounded-xl p-5">

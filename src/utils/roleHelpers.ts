@@ -28,6 +28,8 @@ const NAV: Record<UserRole, NavItem[]> = {
   tech_admin: [
     { title: "Dashboard", path: "/tech-admin/dashboard", icon: LayoutDashboard },
     { title: "My Team", path: "/tech-admin/team", icon: Users },
+    { title: "Attendance", path: "/tech-admin/attendance", icon: CalendarClock },
+    { title: "Agreements", path: "/tech-admin/agreements", icon: FileCheck },
     { title: "Orders", path: "/tech-admin/orders", icon: ShoppingBag },
     { title: "Work Assign", path: "/tech-admin/work-assign", icon: ClipboardList },
     { title: "Clients", path: "/tech-admin/clients", icon: Contact },
@@ -44,6 +46,7 @@ const NAV: Record<UserRole, NavItem[]> = {
   sales_admin: [
     { title: "Dashboard", path: "/sales-admin/dashboard", icon: LayoutDashboard },
     { title: "My Team", path: "/sales-admin/team", icon: Users },
+    { title: "Agreements", path: "/sales-admin/agreements", icon: FileCheck },
     { title: "Leads Management", path: "/sales-admin/leads", icon: Phone },
     { title: "Schedule Numbers", path: "/sales-admin/schedule-numbers", icon: CalendarClock },
     { title: "Sales Approvals", path: "/sales-admin/approvals", icon: FileCheck },
@@ -92,6 +95,8 @@ const NAV: Record<UserRole, NavItem[]> = {
   tech_team_leader: [
     { title: "Orders", path: "/team-leader/orders", icon: ShoppingBag },
     { title: "Work Assign", path: "/team-leader/work-assign", icon: ClipboardList },
+    { title: "Attendance", path: "/team-leader/attendance", icon: CalendarClock },
+    { title: "Agreements", path: "/team-leader/agreements", icon: FileCheck },
   ],
 };
 

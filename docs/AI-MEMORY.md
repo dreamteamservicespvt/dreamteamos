@@ -41,6 +41,19 @@ Integrated the user's copywriting spec into `VOICEOVER_SYSTEM_PROMPT`: added OBJ
 ### Follow-up — male model age 30–35 (same session)
 Added gender-aware `ageYears` ("30–35" male / "20–25" female) and `ageYearsWords` to `getModelProfile`, and changed male `personYoung` from "young man" → "man". Replaced every hardcoded "20 to 25 / 20–25 / young" age cue in the frame prompts (MAIN_FRAME both variants, MULTI_FRAME clip-1 example, geminiService male override + PROFESSIONAL rule) with the profile values. Female stays 20–25; male renders age 30–35. Locked with a test.
 
+## Session — Tech attendance, employment type & agreements
+Three features (all built on existing check-in infra; new Firestore collections: `attendance`, `holidays`, `agreements`).
+
+**A. Employment type (full/part-time).** Added `employmentType?: "full_time" | "part_time"` to `AppUser` ([types/index.ts]). Helper `src/services/employment.ts`. Per-member Full↔Part toggle badge lives on the **Team Attendance** page (both Tech Admin `/tech-admin/attendance` and Tech Team Lead `/team-leader/attendance`) and a read-only badge on the tech-member profile.
+
+**B. Tech attendance.** `src/services/techAttendance.ts` — statuses `full|half|absent|leave|holiday`. Auto rule (in `resolveStatus`): manual override wins → Sunday/announced-festival = Holiday → future working day = null → checked-in = Full → today-not-checked-in = null (pending) → past-no-checkin = Absent. Videos are informational only (user's choice). Manual override + `announceHoliday` + leave quota (`MONTHLY_LEAVE_QUOTA = 2`). Only overrides (`attendance/{memberId}_{date}`) and holidays (`holidays/{date}`) are persisted; Full/Absent derived from existing `daily_checkins`. Admin/Lead grid = `src/pages/shared/TeamAttendance.tsx` (click any cell to override); member view = `src/components/attendance/MemberAttendanceCard.tsx` (in tech-member profile). Logic unit-tested in `src/test/attendance.test.ts`.
+
+**C. Agreements (paste → beautify → sign → store).** Deps added: `jspdf` + `html2canvas`. `src/services/agreements.ts` (`agreements` collection, `sendAgreement`/`signAgreement` + notifications). Admin page `src/pages/shared/SendAgreement.tsx` (Tech Admin, Sales Admin, Tech Team Lead) — paste text, auto-fill Name/Mobile/Date from profile (`fillAgreementText` in `AgreementView.tsx`), preview, send. Member signs in their profile via `src/components/agreement/MemberAgreements.tsx` → `SignaturePad.tsx` (draw on canvas OR upload/photo → Cloudinary) → signature embedded in `AgreementView` → locked → PDF via `src/utils/agreementPdf.ts` (html2canvas+jspdf, multi-page A4). "Load DREAM TEAM template" button prefills the standard agreement.
+
+Routes added in `App.tsx`; nav in `roleHelpers.ts` (Attendance + Agreements for tech_admin & tech_team_leader; Agreements for sales_admin).
+
+**IMPORTANT follow-ups:** (1) **Firestore security rules** must allow read/write on the new `attendance`, `holidays`, `agreements` collections or the features silently fail in production. (2) Native Android "take photo" uses the web file-input `capture` attr; a true native camera needs `@capacitor/camera` (not installed) + `capacitor.config.ts` — draw + upload work everywhere meanwhile.
+
 ### Known pre-existing (NOT introduced here)
 - `tsconfig.app.json` `ignoreDeprecations: "6.0"` breaks `tsc -p` (use vite build).
 - Repo has ~57 pre-existing eslint `no-explicit-any` errors; lint is not part of the build. This batch added zero new lint errors.

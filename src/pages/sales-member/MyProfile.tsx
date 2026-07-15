@@ -8,6 +8,7 @@ import { formatCurrency } from "@/utils/formatters";
 import { User, Mail, Phone, Shield, Loader2, Check, Lock, Receipt } from "lucide-react";
 import SalaryTimeline from "@/components/SalaryTimeline";
 import AttendanceCard from "@/components/sales/AttendanceCard";
+import MemberAgreements from "@/components/agreement/MemberAgreements";
 
 export default function MyProfile() {
   const user = useAuthStore((s) => s.user);
@@ -137,6 +138,9 @@ export default function MyProfile() {
 
       {/* Monthly Attendance (from daily check-in/check-out) */}
       <AttendanceCard memberId={user.uid} />
+
+      {/* Agreements to review & sign */}
+      <MemberAgreements />
 
       {/* Salary History */}
       <div className="bg-card border border-border rounded-xl p-5">

@@ -59,6 +59,8 @@ import Clients from "@/pages/shared/Clients";
 import MemberAssignments from "@/pages/tech-admin/MemberAssignments";
 import TeamLeaderWorkAssign from "@/pages/tech-team-leader/WorkAssign";
 import TeamLeaderMemberAssignments from "@/pages/tech-team-leader/MemberAssignments";
+import TeamAttendance from "@/pages/shared/TeamAttendance";
+import SendAgreement from "@/pages/shared/SendAgreement";
 import TechAdminTools from "@/pages/tech-admin/Tools";
 import CinematicAds from "@/pages/tech-admin/CinematicAds";
 import AccountsDashboard from "@/pages/accounts-admin/Dashboard";
@@ -122,6 +124,8 @@ const App = () => (
             <Route path="/tech-admin/team" element={<TechAdminMyTeam />} />
             <Route path="/tech-admin/team/:memberId" element={<TechAdminMemberHistory />} />
             <Route path="/tech-admin/team/:memberId/analytics" element={<TechAdminMemberAnalytics />} />
+            <Route path="/tech-admin/attendance" element={<TeamAttendance />} />
+            <Route path="/tech-admin/agreements" element={<SendAgreement />} />
             <Route path="/tech-admin/drive" element={<DriveManagement />} />
             <Route path="/tech-admin/training" element={<TechTrainingModules />} />
             <Route path="/tech-admin/sessions" element={<TechAdminSessionHistory />} />
@@ -153,6 +157,7 @@ const App = () => (
             <Route path="/sales-admin/scripts" element={<SalesScripts />} />
             <Route path="/sales-admin/sessions" element={<SalesAdminSessionHistory />} />
             <Route path="/sales-admin/settings" element={<SalesAdminSettings />} />
+            <Route path="/sales-admin/agreements" element={<SendAgreement />} />
             <Route path="/sales-admin/leaderboard" element={<Leaderboard />} />
             <Route path="/sales-admin/history" element={<SalesAdminActivityHistory />} />
             <Route path="/sales-admin/clients" element={<Clients />} />
@@ -204,6 +209,8 @@ const App = () => (
             <Route path="/team-leader/work-assign" element={<TeamLeaderWorkAssign />} />
             <Route path="/team-leader/work-assign/:memberId" element={<TeamLeaderMemberAssignments />} />
             <Route path="/team-leader/orders" element={<Orders />} />
+            <Route path="/team-leader/attendance" element={<TeamAttendance />} />
+            <Route path="/team-leader/agreements" element={<SendAgreement />} />
           </Route>
 
           <Route path="*" element={<NotFound />} />

@@ -22,6 +22,8 @@ export interface AppUser {
   phone: string;
   avatar?: string;
   earningsOption?: "stipend_plus_5" | "incentive_10";
+  /** Employment type — set/updated by Tech Admin or Tech Team Lead. Defaults to full_time when unset. */
+  employmentType?: "full_time" | "part_time";
   createdAt: any;
   updatedAt: any;
 }
