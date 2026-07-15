@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 import { FileUpload } from './FileUpload';
 import { GeneratedCard, parseVoiceOverClips } from './GeneratedCard';
 import { SavedItems, SavedGeneration } from './SavedItems';
-import { AdFormData, AdType, AttireType, FileStore, GeneratedOutputs, GenerationStatus } from '@/types/aiPlatform';
+import { AdFormData, AdType, AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER, FileStore, GeneratedOutputs, GenerationStatus } from '@/types/aiPlatform';
 import { generateAdAssets, extractBusinessOnly, generateStockImagePrompts, refineStockImagePrompt, generateOverlayTexts, refineSection, regenerateVeoFromVoiceOver, SectionType, extractBusinessNameFromInfo } from '@/services/geminiService';
 import { collection, addDoc, getDocs, getDoc, query, where, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/services/firebase';
@@ -24,6 +24,14 @@ interface AIPlatformAppProps {
   onClose: () => void;
   onComplete?: () => void;
 }
+
+// Human-readable labels for each attire option (shown in the attire dropdown, filtered by gender).
+const ATTIRE_LABELS: Record<AttireType, string> = {
+  [AttireType.PROFESSIONAL]: 'Professional (Formal Suit)',
+  [AttireType.TRADITIONAL]: 'Traditional (Designer Saree)',
+  [AttireType.SHIRT_PANT]: 'Professional (In-shirt & Pant)',
+  [AttireType.CUSTOM]: 'Custom (describe below)',
+};
 
 const cleanPromptForClipboard = (content: string) => {
   return content
@@ -50,7 +58,9 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   const [formData, setFormData] = useState<AdFormData>({
     adType: AdType.COMMERCIAL,
     festivalName: '',
+    gender: ModelGender.FEMALE,
     attireType: AttireType.TRADITIONAL,
+    customAttire: '',
     duration: 16,
     durationMode: 'preset',
     textInstructions: '',
@@ -177,6 +187,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
           adType: item.adType as AdType,
           festivalName: item.festivalName || '',
           attireType: item.attireType as AttireType,
+          ...(item.gender ? { gender: item.gender as ModelGender } : {}),
+          ...(item.customAttire !== undefined ? { customAttire: item.customAttire } : {}),
           // Duration stays locked from assignment — do not override
           ...(item.aspectRatio ? { aspectRatio: item.aspectRatio as any } : {}),
           ...(item.language ? { language: item.language } : {}),
@@ -229,7 +241,9 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
         overlayTexts: outputs.overlayTexts || null,
         adType: formData.adType,
         festivalName: formData.festivalName,
+        gender: formData.gender || ModelGender.FEMALE,
         attireType: formData.attireType,
+        customAttire: formData.customAttire || '',
         duration: formData.duration,
         creationMode: creationMode,
         aspectRatio: formData.aspectRatio,
@@ -279,6 +293,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       adType: item.adType as AdType,
       festivalName: item.festivalName || '',
       attireType: item.attireType as AttireType,
+      ...(item.gender ? { gender: item.gender as ModelGender } : {}),
+      ...(item.customAttire !== undefined ? { customAttire: item.customAttire } : {}),
       // Only restore duration when not locked by an assignment
       ...(durationLocked ? {} : { duration: item.duration || 16, durationMode: 'preset' as const }),
       ...(item.aspectRatio ? { aspectRatio: item.aspectRatio as any } : {}),
@@ -398,7 +414,9 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
             overlayTexts: generatedResult.overlayTexts || null,
             adType: formData.adType,
             festivalName: formData.festivalName,
+            gender: formData.gender || ModelGender.FEMALE,
             attireType: formData.attireType,
+            customAttire: formData.customAttire || '',
             duration: formData.duration,
             creationMode: creationMode,
             aspectRatio: formData.aspectRatio,
@@ -824,16 +842,53 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     </div>
                   )}
 
-                  {/* Attire — Video only */}
+                  {/* Model Gender — Video only */}
+                  {creationMode === 'video' && (
+                    <div>
+                      <label className={cn("block text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>Model Gender</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {[ModelGender.FEMALE, ModelGender.MALE].map((g) => (
+                          <button key={g} type="button"
+                            onClick={() => setFormData(prev => {
+                              const allowed = ATTIRE_OPTIONS_BY_GENDER[g];
+                              // Keep the current attire if it's valid for the new gender, else default to Professional
+                              const nextAttire = allowed.includes(prev.attireType) ? prev.attireType : AttireType.PROFESSIONAL;
+                              return { ...prev, gender: g, attireType: nextAttire };
+                            })}
+                            className={cn("px-3 py-2 rounded-lg text-sm font-medium border transition-all capitalize",
+                              (formData.gender || ModelGender.FEMALE) === g
+                                ? (isDark ? "border-blue-500 bg-blue-900/30 text-blue-400" : "border-blue-500 bg-blue-50 text-blue-700")
+                                : (isDark ? "border-slate-600 text-slate-400" : "border-slate-200 text-slate-600")
+                            )}>
+                            {g === ModelGender.FEMALE ? '👩 Female' : '👨 Male'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Attire — Video only (adapts to gender) */}
                   {creationMode === 'video' && (
                     <div>
                       <label className={cn("block text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>Model Attire</label>
                       <select className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
                           isDark ? "bg-slate-700 border-slate-600 text-slate-200 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200"
                         )} value={formData.attireType} onChange={(e) => setFormData(prev => ({ ...prev, attireType: e.target.value as AttireType }))}>
-                        <option value={AttireType.PROFESSIONAL}>Professional (Premium Beige/Pastel Suit)</option>
-                        <option value={AttireType.TRADITIONAL}>Traditional (Designer Saree)</option>
+                        {ATTIRE_OPTIONS_BY_GENDER[formData.gender || ModelGender.FEMALE].map((a) => (
+                          <option key={a} value={a}>{ATTIRE_LABELS[a]}</option>
+                        ))}
                       </select>
+                      {formData.attireType === AttireType.CUSTOM && (
+                        <textarea
+                          className={cn("w-full mt-2 border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none resize-y",
+                            isDark ? "bg-slate-700 border-slate-600 text-slate-200 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200"
+                          )}
+                          rows={2}
+                          placeholder="Describe the exact attire (e.g. white chef coat with black apron, blue mechanic jumpsuit, cream kurta with Nehru jacket)…"
+                          value={formData.customAttire || ''}
+                          onChange={(e) => setFormData(prev => ({ ...prev, customAttire: e.target.value }))}
+                        />
+                      )}
                     </div>
                   )}
 

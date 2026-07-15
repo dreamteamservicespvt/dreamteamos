@@ -4,9 +4,26 @@ export enum AdType {
 }
 
 export enum AttireType {
+  /** Female: premium designer saree. */
+  TRADITIONAL = 'traditional',
+  /** Female & Male: premium tailored formal suit. */
   PROFESSIONAL = 'professional',
-  TRADITIONAL = 'traditional'
+  /** Male: crisp formal shirt tucked into tailored formal trousers. */
+  SHIRT_PANT = 'shirt_pant',
+  /** Any gender: free-text attire described by the user. */
+  CUSTOM = 'custom'
 }
+
+export enum ModelGender {
+  FEMALE = 'female',
+  MALE = 'male'
+}
+
+/** Attire options offered for each gender (drives the UI dropdown and validation). */
+export const ATTIRE_OPTIONS_BY_GENDER: Record<ModelGender, AttireType[]> = {
+  [ModelGender.FEMALE]: [AttireType.PROFESSIONAL, AttireType.TRADITIONAL, AttireType.CUSTOM],
+  [ModelGender.MALE]: [AttireType.PROFESSIONAL, AttireType.SHIRT_PANT, AttireType.CUSTOM],
+};
 
 export enum DurationPackage {
   SHORT = 16,
@@ -22,6 +39,10 @@ export interface AdFormData {
   adType: AdType;
   festivalName: string;
   attireType: AttireType;
+  /** Model gender. Default "female" for backward compatibility. */
+  gender?: ModelGender;
+  /** Free-text attire description, used only when attireType === CUSTOM. */
+  customAttire?: string;
   duration: number;
   durationMode: 'preset' | 'custom';
   textInstructions: string;

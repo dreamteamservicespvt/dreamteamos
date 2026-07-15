@@ -8,7 +8,7 @@ import {
 import { formatPhoneDisplay, getWhatsAppUrl, normalizePhone } from '@/utils/phone';
 import { collection, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/services/firebase';
-import { sendNotification } from '@/services/notifications';
+import { sendNotification, notifyTechTeamLeaders } from '@/services/notifications';
 import { useAuthStore } from '@/store/authStore';
 import { useFirestoreCollection } from '@/hooks/useFirestore';
 import { PRICING } from '@/utils/pricing';
@@ -243,12 +243,21 @@ export default function WorkAssign() {
         date: today,
       });
 
-      // Send notification
+      // Send notification to the assignee
       await sendNotification({
         userId: form.assignedTo,
         type: 'work_assigned',
         title: 'New Work Assigned',
         message: `You have been assigned a new ${form.category} work (${clips} clips, ${form.duration}). Access code: ${accessCode}`,
+      });
+
+      // Keep the tech team leader(s) informed of new work on their team.
+      await notifyTechTeamLeaders({
+        teamAdminUid: user.uid,
+        excludeUserId: form.assignedTo,
+        type: 'work_assigned',
+        title: 'New Team Work Assigned',
+        message: `${getMemberName(form.assignedTo)} was assigned a new ${form.category} work (${clips} clips, ${form.duration}).`,
       });
 
       setShowForm(false);

@@ -5,9 +5,13 @@ import {
   MULTI_FRAME_SYSTEM_PROMPT,
   VOICEOVER_REPAIR_SYSTEM_PROMPT,
   VOICEOVER_SYSTEM_PROMPT,
+  VEO_SEGMENT_SYSTEM_PROMPT,
+  OVERLAY_TEXT_SYSTEM_PROMPT,
   detectEducationEnvironmentMode,
   getCommercialLocationPlanForBusiness,
   getAttireMode,
+  getBrandMark,
+  getModelProfile,
   getEnvironmentForBusiness,
   getEnvironmentNegativeRules,
   getProfessionalSuitPaletteForBusiness,
@@ -44,11 +48,11 @@ describe("professional main-frame prompts", () => {
     expect(prompt).toContain("reception");
     expect(prompt).toContain("Three-quarter shot");
     expect(prompt).toContain("finger ring");
-    expect(prompt).toContain("the attached logo is the ONLY text or branding anywhere");
-    expect(prompt).toContain("SMALL-to-medium wall sign");
+    expect(prompt).toContain("The logo is the ONLY text anywhere in the image");
+    expect(prompt).toContain("clearly secondary to the girl — small-to-medium");
     expect(prompt).toContain("NEVER enlarge the logo at the cost of the girl");
-    expect(prompt).toContain("a small bindi on the forehead");
-    expect(prompt).toContain("crisp and clearly readable");
+    expect(prompt).toContain("NO bindi on the forehead in this professional-suit look");
+    expect(prompt).toContain("clearly readable");
     expect(prompt).toContain("NO FRAMES / DISPLAYS / PLACEHOLDERS");
     expect(prompt).not.toContain("must be blank / textless");
     // negative-prompt block and verbose meta-sections must be gone
@@ -95,12 +99,12 @@ describe("professional main-frame prompts", () => {
     const prompt = MAIN_FRAME_SYSTEM_PROMPT("traditional", "commercial", "");
 
     expect(prompt).toContain("Main Character:");
-    expect(prompt).toContain("elegant premium designer saree");
+    expect(prompt).toContain("elegant premium DESIGNER silk / fancy saree");
     expect(prompt).toContain("Wearing elegant traditional semi-jewellery (MANDATORY)");
     expect(prompt).toContain("formal front-clasp corporate pose");
     expect(prompt).toContain("fill about 70% of the frame height");
     expect(prompt).toContain("NO FRAMES / DISPLAYS / PLACEHOLDERS");
-    expect(prompt).toContain("the attached logo is the ONLY text or branding anywhere");
+    expect(prompt).toContain("The logo is the ONLY text anywhere in the image");
     // saree compact must NOT fall back to the suit branch or the old verbose template
     expect(prompt).not.toContain("Wearing a premium tailored formal suit");
     expect(prompt).not.toContain("ATTIRE (COMMERCIAL DESIGNER SAREE — BUSINESS-SPECIFIC LUXURY — MANDATORY)");
@@ -161,11 +165,13 @@ describe("multi-frame hero shot guidance", () => {
     expect(prompt).toContain("the attached logo is the ONLY text anywhere in the frame");
     expect(prompt).toContain("course / curriculum lists");
     expect(prompt).toContain("Main Character");
-    expect(prompt).toContain("the exact same natural rich black hair from the first frame onward");
+    expect(prompt).toContain("same face, same hair");
     expect(prompt).toContain("Hair color baseline");
     expect(prompt).toContain("COMMERCIAL LOCATION DENSITY RULE");
-    expect(prompt).toContain("approved business-specific palette");
-    expect(prompt).toContain("may shift the suit tone within that same palette family");
+    // Task 5: continuous frames must LOCK the attire/colour to the attached Frame-1 image
+    expect(prompt).toContain("EXACT SAME attire in the EXACT SAME colour");
+    expect(prompt).toContain("keep it perfectly identical to the attached image");
+    expect(prompt).not.toContain("may shift the suit tone within that same palette family");
     expect(prompt).not.toContain("Festival decorations from the office are still visible");
   });
 
@@ -274,5 +280,94 @@ describe("voice-over prompt hardening", () => {
     expect(prompt).toContain("Every clip must contain EXACTLY 18 spoken words");
     expect(prompt).toContain("NEVER speak or include any phone number or contact number");
     expect(prompt).toContain("Remove duplicated clips and repeated closings");
+  });
+});
+
+describe("model gender support (task 1)", () => {
+  it("renders a male suit ambassador without female styling", () => {
+    const prompt = MAIN_FRAME_SYSTEM_PROMPT("professional", "commercial", "", "1:1", "", "male");
+    expect(prompt).toContain("Indian man (male), age 30–35");
+    expect(prompt).toContain("men's business suit");
+    expect(prompt).not.toContain("a small bindi on the forehead");
+    expect(prompt).not.toContain("well-fitted blouse");
+  });
+
+  it("renders male in-shirt & pant attire", () => {
+    const prompt = MAIN_FRAME_SYSTEM_PROMPT("shirt_pant", "commercial", "", "1:1", "", "male");
+    expect(prompt).toContain("full-sleeve formal shirt neatly tucked into tailored formal trousers");
+  });
+
+  it("keeps the female output unchanged when gender is omitted", () => {
+    const withDefault = MAIN_FRAME_SYSTEM_PROMPT("professional", "commercial", "");
+    const withFemale = MAIN_FRAME_SYSTEM_PROMPT("professional", "commercial", "", "1:1", "", "female");
+    expect(withDefault).toBe(withFemale);
+  });
+
+  it("uses a male voice line in the Veo prompt", () => {
+    expect(VEO_SEGMENT_SYSTEM_PROMPT(4, "male")).toContain("he needs to say");
+    expect(VEO_SEGMENT_SYSTEM_PROMPT(4)).toContain("sweet voice she needs to say");
+  });
+
+  it("marks the voice-over script for a male voice artist", () => {
+    expect(VOICEOVER_SYSTEM_PROMPT(32, 4, "commercial", "", "Telugu", "male")).toContain("MALE voice artist");
+  });
+
+  it("exposes gender-aware descriptors via getModelProfile", () => {
+    expect(getModelProfile("male").pronoun).toBe("he");
+    expect(getModelProfile("female").pronoun).toBe("she");
+    expect(getModelProfile().possessive).toBe("her");
+  });
+
+  it("uses age 30-35 for male and 20-25 for female", () => {
+    expect(getModelProfile("male").ageYears).toBe("30–35");
+    expect(getModelProfile("female").ageYears).toBe("20–25");
+    const male = MAIN_FRAME_SYSTEM_PROMPT("professional", "commercial", "", "1:1", "", "male");
+    const female = MAIN_FRAME_SYSTEM_PROMPT("professional", "commercial", "", "1:1", "", "female");
+    expect(male).toContain("age 30–35");
+    expect(male).not.toContain("age 20–25");
+    expect(female).toContain("age 20–25");
+  });
+});
+
+describe("custom attire (task 6)", () => {
+  it("replaces the wardrobe wording with the custom description", () => {
+    const attire = getAttireMode("custom", "default", "", "female", "white chef coat and black apron");
+    expect(attire).toContain("white chef coat and black apron");
+    expect(attire).toContain("CUSTOM");
+    const prompt = MAIN_FRAME_SYSTEM_PROMPT("custom", "commercial", "", "1:1", "", "female", "white chef coat and black apron");
+    expect(prompt).toContain("white chef coat and black apron");
+  });
+});
+
+describe("no-logo name board (tasks 2 & 3)", () => {
+  it("renders a name board instead of asking for an attached logo", () => {
+    const prompt = MAIN_FRAME_SYSTEM_PROMPT("professional", "commercial", "", "1:1", "", "female", "", true, "ACME LABS");
+    expect(prompt).toContain("NAME BOARD PLACEMENT");
+    expect(prompt).toContain("ACME LABS");
+    expect(prompt).not.toContain("using the attached official logo as branding reference");
+  });
+
+  it("getBrandMark falls back cleanly and toggles by mode", () => {
+    expect(getBrandMark(false).ref).toBe("the attached logo");
+    expect(getBrandMark(true, "shop name").ref).toContain("SHOP NAME");
+    expect(getBrandMark(true).isNameBoard).toBe(true);
+  });
+});
+
+describe("overlay texts in english (task 9)", () => {
+  it("forces english overlays regardless of voice-over language", () => {
+    const prompt = OVERLAY_TEXT_SYSTEM_PROMPT("Telugu");
+    expect(prompt).toContain("Write EVERY overlay text in ENGLISH ONLY");
+    expect(prompt).toContain("<short overlay text in ENGLISH>");
+  });
+});
+
+describe("multi-language voice-over (task 7)", () => {
+  it("writes the script in the selected language and drops the hardcoded telugu CTA", () => {
+    const hindi = VOICEOVER_SYSTEM_PROMPT(32, 4, "commercial", "", "Hindi");
+    expect(hindi).toContain("HINDI VOICE-OVER SCRIPT ARTIST");
+    expect(hindi).not.toContain("మరిన్ని వివరాల కోసం స్క్రీన్‌పై");
+    const telugu = VOICEOVER_SYSTEM_PROMPT(32, 4, "commercial", "", "Telugu");
+    expect(telugu).toContain("మరిన్ని వివరాల కోసం స్క్రీన్‌పై");
   });
 });

@@ -17,7 +17,8 @@ import {
   getEnvironmentForBusiness,
   getEnvironmentNegativeRules,
   getProfessionalSuitPaletteForBusiness,
-  getRealisticLogoPlacementGuidance
+  getRealisticLogoPlacementGuidance,
+  getModelProfile
 } from "./prompts";
 import { fileToBase64, readFileAsText } from "@/utils/fileHelpers";
 
@@ -266,10 +267,24 @@ const buildRatioDirective = (formData: AdFormData): string => {
   return `OUTPUT ASPECT RATIO (MANDATORY): The final image/design MUST be ${ratio} ${orient}. Wherever any other aspect ratio (such as "9:16" or "1:1") appears below, OVERRIDE it to ${ratio} and compose / frame everything for a ${orient} ${ratio} canvas.\n\n`;
 };
 
-const buildNameBoardDirective = (formData: AdFormData): string => {
-  const name = (formData.logoNameText || '').trim().toUpperCase();
-  if (!formData.noLogo || !name) return '';
-  return `NO-LOGO / NAME-BOARD MODE (MANDATORY): There is NO logo file. Instead, render a realistic, premium NAME BOARD / wall signage behind the model showing EXACTLY this business name in clean bold UPPERCASE letters: "${name}". Treat this name board as the brand signage wherever this prompt references "the logo" — it must be fully visible, correctly spelled, upright, realistically mounted on the wall, and never distorted. Do NOT invent any other text.\n\n`;
+/**
+ * Resolves the name-board text: the explicit "logoNameText" if the user typed one, else a
+ * fallback to the business name extracted from the business info (task 3 — the name board must
+ * still render even when the user did not type a custom name).
+ */
+const resolveNameBoardText = (formData: AdFormData, businessInfo?: Record<string, unknown>): string => {
+  const typed = (formData.logoNameText || '').trim();
+  const fallback = businessInfo ? (extractBusinessNameFromInfo(businessInfo) || '').trim() : '';
+  return (typed || fallback).toUpperCase();
+};
+
+const buildNameBoardDirective = (formData: AdFormData, businessInfo?: Record<string, unknown>): string => {
+  if (!formData.noLogo) return '';
+  const name = resolveNameBoardText(formData, businessInfo);
+  const exact = name
+    ? `showing EXACTLY this business name in clean bold UPPERCASE letters: "${name}"`
+    : `showing the business's EXACT name in clean, correctly-spelled bold UPPERCASE letters`;
+  return `NO-LOGO / NAME-BOARD MODE (MANDATORY): There is NO logo file. Instead, render a realistic, premium NAME BOARD / wall signage behind the model ${exact}. This name board REPLACES the logo — wherever this prompt says "the logo" or "the attached logo", render this name board instead. It must be present in the frame background, fully visible, correctly spelled, upright, realistically mounted on the wall, sharp/in-focus, and never distorted. Do NOT ask for or reference any attached logo file, and do NOT invent any other text.\n\n`;
 };
 
 const buildLanguageDirective = (formData: AdFormData): string => {
@@ -298,12 +313,16 @@ export const refineSection = async (
 
   switch (sectionType) {
     case 'mainFrame':
-      systemPrompt = REFINE_EDIT_DIRECTIVE + buildRatioDirective(formData) + buildNameBoardDirective(formData) + MAIN_FRAME_SYSTEM_PROMPT(
+      systemPrompt = REFINE_EDIT_DIRECTIVE + buildRatioDirective(formData) + buildNameBoardDirective(formData, businessInfo) + MAIN_FRAME_SYSTEM_PROMPT(
         formData.attireType,
         formData.adType,
         formData.festivalName,
         formData.aspectRatio,
-        JSON.stringify(businessInfo)
+        JSON.stringify(businessInfo),
+        formData.gender || 'female',
+        formData.customAttire || '',
+        formData.noLogo || false,
+        resolveNameBoardText(formData, businessInfo)
       );
       userPrompt = `You previously generated these Main Frame prompts (one per clip, separated by ###CLIP###):
 
@@ -326,7 +345,7 @@ IMPORTANT:
       break;
 
     case 'header':
-      systemPrompt = REFINE_EDIT_DIRECTIVE + buildRatioDirective(formData) + buildNameBoardDirective(formData) + HEADER_SYSTEM_PROMPT(formData.adType, formData.festivalName);
+      systemPrompt = REFINE_EDIT_DIRECTIVE + buildRatioDirective(formData) + buildNameBoardDirective(formData, businessInfo) + HEADER_SYSTEM_PROMPT(formData.adType, formData.festivalName);
       userPrompt = `You previously generated this Header prompt:
 
 ---CURRENT PROMPT---
@@ -345,7 +364,7 @@ IMPORTANT:
       break;
 
     case 'poster':
-      systemPrompt = REFINE_EDIT_DIRECTIVE + buildRatioDirective(formData) + buildNameBoardDirective(formData) + POSTER_SYSTEM_PROMPT(formData.adType, formData.festivalName);
+      systemPrompt = REFINE_EDIT_DIRECTIVE + buildRatioDirective(formData) + buildNameBoardDirective(formData, businessInfo) + POSTER_SYSTEM_PROMPT(formData.adType, formData.festivalName);
       userPrompt = `You previously generated this Poster design prompt:
 
 ---CURRENT PROMPT---
@@ -364,7 +383,7 @@ IMPORTANT:
 
     case 'voiceOver':
       const segmentCount = Math.ceil(formData.duration / 8);
-      systemPrompt = REFINE_EDIT_DIRECTIVE + buildLanguageDirective(formData) + VOICEOVER_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName, formData.language);
+      systemPrompt = REFINE_EDIT_DIRECTIVE + buildLanguageDirective(formData) + VOICEOVER_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName, formData.language, formData.gender || 'female');
       userPrompt = `You previously generated this Voice Over script:
 
 ---CURRENT SCRIPT---
@@ -383,7 +402,7 @@ IMPORTANT:
 
     case 'veo':
       const segCount = Math.ceil(formData.duration / 8);
-      systemPrompt = REFINE_EDIT_DIRECTIVE + VEO_SEGMENT_SYSTEM_PROMPT(segCount);
+      systemPrompt = REFINE_EDIT_DIRECTIVE + VEO_SEGMENT_SYSTEM_PROMPT(segCount, formData.gender || 'female');
       userPrompt = `You previously generated these Veo prompts:
 
 ---CURRENT PROMPTS---
@@ -1302,7 +1321,7 @@ Segment 2: <text>
     voiceOverScript = repairedVoiceOver.formatted;
   } else {
     // Auto-generate voice-over script
-    const scriptSystemPrompt = buildLanguageDirective(formData) + VOICEOVER_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName, formData.language);
+    const scriptSystemPrompt = buildLanguageDirective(formData) + VOICEOVER_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName, formData.language, formData.gender || 'female');
     const scriptUserPrompt = `Generate a ${formData.duration}-second ${formData.language || 'Telugu'} voice-over script for:
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
   AD TYPE: ${formData.adType}
@@ -1340,13 +1359,22 @@ Segment 2: <text>
   const realisticLogoPlacementGuidance = getRealisticLogoPlacementGuidance(detectedBusinessType, serializedBusinessInfo);
   
   const mainFramePromise = (async (): Promise<string[]> => {
-  const multiFrameSystemPrompt = buildRatioDirective(formData) + buildNameBoardDirective(formData) + MULTI_FRAME_SYSTEM_PROMPT(
+  const p = getModelProfile(formData.gender || 'female');
+  const isCustomAttireMainFrame = formData.attireType === 'custom';
+  const maleCastingOverride = p.isMale
+    ? `  MODEL GENDER OVERRIDE (ABSOLUTE — HIGHEST PRIORITY): The brand ambassador for THIS campaign is a MALE — a handsome, premium, believable, mature Indian MAN (age 30–35). Wherever ANY rule below says "woman", "girl", "she", "her", "female", "saree", "blouse", "bindi", "bangles", or any female jewellery/makeup, IGNORE the female specifics and render THIS MALE model instead — with sharp masculine grooming (clean-shaven or a neatly trimmed beard), a neat men's haircut, and NO bindi, NO saree, NO blouse, NO necklace/earrings/bangles, NO feminine makeup. Male accessories are limited to a wristwatch and an optional slim ring. Keep the same man consistent across all clips.\n`
+    : '';
+  const multiFrameSystemPrompt = buildRatioDirective(formData) + buildNameBoardDirective(formData, businessInfo) + MULTI_FRAME_SYSTEM_PROMPT(
     formData.attireType,
     formData.adType,
     formData.festivalName,
     segmentCount,
     parsedSegments,
-    serializedBusinessInfo
+    serializedBusinessInfo,
+    formData.gender || 'female',
+    formData.customAttire || '',
+    formData.noLogo || false,
+    resolveNameBoardText(formData, businessInfo)
   );
 
   const isCommercialMainFrame = formData.adType !== 'festival';
@@ -1400,20 +1428,23 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
       
     : '';
   
-  const mainFrameUserPrompt = `Generate ${segmentCount} unique Main Frame image prompts (one per 8-second clip) for:${commercialMainFramePriorityNote}
+  const mainFrameUserPrompt = `Generate ${segmentCount} unique Main Frame image prompts (one per 8-second clip) for:
+${maleCastingOverride}${commercialMainFramePriorityNote}
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
   AD TYPE: ${formData.adType}
   ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName}` : ''}
-  ATTIRE: ${formData.attireType}
+  MODEL GENDER: ${p.isMale ? 'Male' : 'Female'}
+  ATTIRE: ${formData.attireType === 'traditional' ? 'Traditional (designer saree)' : formData.attireType === 'shirt_pant' ? 'Professional (formal shirt tucked into trousers)' : formData.attireType === 'custom' ? `Custom — ${(formData.customAttire || '').trim() || 'as specified by the user'}` : `Professional (${p.isMale ? "men's formal suit" : 'formal suit'})`}
   TOTAL DURATION: ${formData.duration} seconds (${segmentCount} clips of 8 seconds each)
   SPECIAL CLIENT INSTRUCTIONS: ${businessInfo.specialRequirements?.customInstructions || 'None'}
   ${mainFrameEnvironmentRoutingNote}
-  CAMPAIGN CASTING RULE: Choose one distinct premium female ambassador identity for THIS business and keep her consistent across all clips. Different businesses should not fall back to the same default face. In commercial mode she must stay Indian-only in every clip with no ethnic drift.
-  HAIR COLOR LOCK RULE: The woman must have strictly natural rich black hair in Clip 1 and that exact black hair color must stay locked for the full campaign. Reject brown, auburn, burgundy, copper, highlighted, sun-browned, or lighting-shifted hair. If any prompt drifts away from natural rich black hair, rewrite it before output.
+  CAMPAIGN CASTING RULE: Choose one distinct premium ${p.gender} ambassador identity for THIS business and keep ${p.object} consistent across all clips. Different businesses should not fall back to the same default face. In commercial mode ${p.pronoun} must stay Indian-only in every clip with no ethnic drift.
+  HAIR COLOR LOCK RULE: The ${p.person} must have strictly natural rich black hair in Clip 1 and that exact black hair color must stay locked for the full campaign. Reject brown, auburn, burgundy, copper, highlighted, sun-browned, or lighting-shifted hair. If any prompt drifts away from natural rich black hair, rewrite it before output.
   REALISM RULE: The environment must look like the actual business premises using extracted business/store context. In festival mode, keep the real business location dominant and layer festival cues naturally on top. In commercial mode, every clip must rebuild the real premises as the dominant base layer, then use the strongest business-proof surface for that exact voice-over segment, then premium atmosphere from real materials, real light, and real fixtures.
   COMMERCIAL QUALITY RULE: For commercial ads, strictly follow the realism formula: Face Anchor + Light Source + Skin Truth + Scene Depth + Camera Physics. If any one is missing, the frame is not acceptable.
-  TRADITIONAL ATTIRE RULE: When ATTIRE = Traditional, keep the saree business-specific, commercial, premium, and realistic — never bridal, never wedding-stage, never festival-styled. Use polished real business zones, premium counters, refined décor, believable glass/reflection behavior, and strong category proof instead of decorative clutter. Every business should get a NEW, different girl in an elegant designer saree (brand-derived colour) with elegant traditional jewellery — a necklace/chain, earrings, bangles, a finger ring, and a small bindi. For Clip 1 the girl stands centered in front of the business's own reception with both hands at the lower waist, the right hand lightly resting over the left in a formal front-clasp corporate pose; frame her as a three-quarter shot from head to thighs/knees clearly filling about 70% of the frame, never a small full head-to-feet shot. The background must be 100% relatable to THIS exact business. The attached logo must be the ONLY text in the frame (kept small-to-medium, sharp, in focus and clearly readable, never large enough to shrink the girl); do NOT invent any other text, and do NOT add empty/blank boards, picture frames, certificates, brochures, posters, standees, or blank screens — keep walls and surfaces clean.
-  PROFESSIONAL ATTIRE RULE: When ATTIRE = Professional, build the frame in a bright contemporary corporate-facing or consultation-facing business zone with a business-specific premium suit palette. For this business, the preferred suit palette is ${professionalSuitPalette}. Do NOT reuse the same beige/pastel suit family across unrelated businesses unless the brand cues clearly justify it. Also do NOT force one identical suit tone into every clip: keep the same premium wardrobe family, but allow clip-to-clip shade shifts inside this approved business palette when the exact location, script beat, or brand materials support it. Keep semi-jewellery only, zero festival cues, and the strongest business-proof surfaces in frame. The suit woman must be strictly 20 to 25 years old, distinctly Indian, actress-level beautiful, smiling warmly, and impossible to confuse with a generic employee portrait. Every business should get a NEW, different girl — never reuse the same recurring face. Her hair in Clip 1 must read as unmistakably natural rich black only, never soft brown or highlighted under warm light. For Clip 1, the girl stands in the exact center of the frame as a medium full / three-quarter standing shot occupying roughly 70% of the frame, directly in front of the business's own reception, with both hands at the lower waist and the right hand lightly resting over the left in a formal front-clasp corporate pose (no crossed arms, no pockets, no gestures). From Clip 2 onward, the hand position and pose must change according to that clip's exact voice-over script and location. The attached logo must be the ONLY text anywhere in the frame — do NOT invent any other wall text, signage, banners, posters, taglines, mission lines, service lists, certificate text, dates, or academic years. The girl must wear simple jewellery: a finger ring, a thin necklace or chain, earrings, a wristwatch, and a small bindi on the forehead. Frame her as a three-quarter shot from head to thighs/knees so she clearly fills about 70% of the frame, never a small full head-to-feet shot. Keep the attached logo small-to-medium and clearly secondary — dynamically sized to the free wall space and never large enough to shrink the girl or steal her 70% dominance. Keep the logo perfectly sharp and in focus (not blurred by depth of field) so every letter and all text on it is crisp and clearly readable. The background must be 100% relatable to THIS exact business — fill the reception with the real equipment, products, displays, and service cues of this specific business (from the provided business details) so a viewer instantly recognises what it does; never a generic or unrelated office. Keep walls and surfaces clean — do NOT add empty/blank boards, picture frames, certificates, brochures, posters, standees, or blank screens (empty placeholders look like cardboard); the only branding is the attached logo.
+  ${formData.attireType === 'traditional' ? `TRADITIONAL ATTIRE RULE: When ATTIRE = Traditional, keep the saree business-specific, commercial, premium, and realistic — never bridal, never wedding-stage, never festival-styled. Use polished real business zones, premium counters, refined décor, believable glass/reflection behavior, and strong category proof instead of decorative clutter. Every business should get a NEW, different girl in an elegant designer saree (brand-derived colour) with elegant traditional jewellery — a necklace/chain, earrings, bangles, a finger ring, and a small bindi. For Clip 1 the girl stands centered in front of the business's own reception with both hands at the lower waist, the right hand lightly resting over the left in a formal front-clasp corporate pose; frame her as a three-quarter shot from head to thighs/knees clearly filling about 70% of the frame, never a small full head-to-feet shot. The background must be 100% relatable to THIS exact business. The attached logo must be the ONLY text in the frame (kept small-to-medium, sharp, in focus and clearly readable, never large enough to shrink the girl); do NOT invent any other text, and do NOT add empty/blank boards, picture frames, certificates, brochures, posters, standees, or blank screens — keep walls and surfaces clean.` : ''}
+  ${(formData.attireType === 'professional' || formData.attireType === 'shirt_pant') ? `PROFESSIONAL ATTIRE RULE: When ATTIRE = Professional, build the frame in a bright contemporary corporate-facing or consultation-facing business zone with a business-specific premium suit palette. For this business, the preferred suit palette is ${professionalSuitPalette}. Do NOT reuse the same beige/pastel suit family across unrelated businesses unless the brand cues clearly justify it. Also do NOT force one identical suit tone into every clip: keep the same premium wardrobe family, but allow clip-to-clip shade shifts inside this approved business palette when the exact location, script beat, or brand materials support it. Keep semi-jewellery only, zero festival cues, and the strongest business-proof surfaces in frame. The suit ${p.person} must be strictly ${p.ageYearsWords} years old, distinctly Indian, ${p.isMale ? 'leading-man-level handsome' : 'actress-level beautiful'}, smiling warmly, and impossible to confuse with a generic employee portrait. Every business should get a NEW, different ${p.personYoung} — never reuse the same recurring face. ${p.Pronoun === 'He' ? 'His' : 'Her'} hair in Clip 1 must read as unmistakably natural rich black only, never soft brown or highlighted under warm light. For Clip 1, the girl stands in the exact center of the frame as a medium full / three-quarter standing shot occupying roughly 70% of the frame, directly in front of the business's own reception, with both hands at the lower waist and the right hand lightly resting over the left in a formal front-clasp corporate pose (no crossed arms, no pockets, no gestures). From Clip 2 onward, the hand position and pose must change according to that clip's exact voice-over script and location. The attached logo must be the ONLY text anywhere in the frame — do NOT invent any other wall text, signage, banners, posters, taglines, mission lines, service lists, certificate text, dates, or academic years. ${p.isMale ? 'The man must wear only minimal masculine accessories: a wristwatch and an optional slim ring — NO necklace, NO earrings, NO bangles, and NO bindi.' : 'The girl must wear simple jewellery: a finger ring, a thin necklace or chain, earrings, a wristwatch, and a small bindi on the forehead.'} Frame ${p.object} as a three-quarter shot from head to thighs/knees so ${p.pronoun} clearly fills about 70% of the frame, never a small full head-to-feet shot. Keep the attached logo small-to-medium and clearly secondary — dynamically sized to the free wall space and never large enough to shrink the girl or steal her 70% dominance. Keep the logo perfectly sharp and in focus (not blurred by depth of field) so every letter and all text on it is crisp and clearly readable. The background must be 100% relatable to THIS exact business — fill the reception with the real equipment, products, displays, and service cues of this specific business (from the provided business details) so a viewer instantly recognises what it does; never a generic or unrelated office. Keep walls and surfaces clean — do NOT add empty/blank boards, picture frames, certificates, brochures, posters, standees, or blank screens (empty placeholders look like cardboard); the only branding is the attached logo.` : ''}
+  ${isCustomAttireMainFrame ? `CUSTOM ATTIRE RULE: Dress the ${p.person} in the EXACT custom attire specified in the MODEL SPEC / ATTIRE above — same outfit, same colours, same details in every clip. Do NOT substitute a suit, saree, or any default wardrobe. Keep ${p.isMale ? 'clean masculine grooming with only a wristwatch and an optional slim ring' : 'tasteful, minimal, premium styling'}, direct eye contact, ~70% frame height, and no invented background text.` : ''}
   MAIN FRAME FRAMING RULE: In EVERY clip, the subject must be centered, occupy roughly 70% of the frame, and maintain direct eye contact with the camera.
   LOGO RULE: Use only the attached logo exactly as provided, installed on the most believable physical surface for that clip's zone, kept small-to-medium, sharp and clearly readable, fully visible and never cropped, blocked, blurred, stretched, tilted, redesigned, or pasted like an overlay. Prioritize these surface types: ${realisticLogoPlacementGuidance}
   NO BACKGROUND TEXT RULE (ALL CLIPS — STRICT): In EVERY clip (Clip 1 and all continuation clips), the attached logo is the ONLY text anywhere in the image. NEVER invent or render any other text on walls, desks, screens, boards, or props — no signage, banners, posters, notice boards, brochures, application forms, department lists, course / curriculum lists, certificates, taglines, slogans, dates, or years. The image generator mis-spells such text, so it must not appear. Also do NOT add blank/empty boards, frames, or screens. Each continuation clip's background must be a REAL location/zone of the same business that matches that clip's voice-over line, built only from real physical objects (equipment, products, counters, furniture, fixtures, plants).
@@ -1504,7 +1535,7 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
         '',
         'MANDATORY REPAIR RULES:',
         `- Keep EXACTLY ${segmentCount} clips separated by ###CLIP###`,
-        '- Keep the same woman, continuity, and styling anchor',
+        `- Keep the same ${p.person}, continuity, and styling anchor`,
         '- Each clip must use a different real business zone that best proves that clip\'s exact voice-over line',
         `- Client environment anchor: ${resolvedEnvironmentGuidance}`,
         `- Client location ladder: ${resolvedLocationPlan}`,
@@ -1614,7 +1645,7 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
 
   // --- Step 6: Veo 3 Segment Prompts — runs concurrently ---
   const veoPromise = (async (): Promise<string[]> => {
-  const veoSystemPrompt = VEO_SEGMENT_SYSTEM_PROMPT(segmentCount);
+  const veoSystemPrompt = VEO_SEGMENT_SYSTEM_PROMPT(segmentCount, formData.gender || 'female');
   const veoUserPrompt = `Generate Veo 3 prompts for all segments.
   VOICE-OVER SEGMENTS: ${parsedSegments.map((s, i) => `Segment ${i+1}: ${s}`).join('\n')}
   Generate ${segmentCount} complete Veo 3 prompts now.`;
@@ -1717,7 +1748,7 @@ export const regenerateVeoFromVoiceOver = async (
 
   const segmentCount = Math.round(formData.duration / 8);
   const { segments } = normalizeAndFormatVoiceOver(voiceOverScript, segmentCount);
-  const veoSystemPrompt = VEO_SEGMENT_SYSTEM_PROMPT(segmentCount);
+  const veoSystemPrompt = VEO_SEGMENT_SYSTEM_PROMPT(segmentCount, formData.gender || 'female');
   const veoUserPrompt = `Generate Veo 3 prompts for all segments.
   VOICE-OVER SEGMENTS: ${segments.map((s, i) => `Segment ${i + 1}: ${s}`).join('\n')}
   Generate ${segmentCount} complete Veo 3 prompts now.`;

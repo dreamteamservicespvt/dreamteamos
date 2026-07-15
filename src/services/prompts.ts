@@ -897,7 +897,128 @@ export const getFestivalTheme = (festivalName: string): FestivalTheme => {
 
 // ===== END OF FESTIVAL THEME SYSTEM =====
 
-export const getAttireMode = (attireType: string, businessType: string = 'default', businessContext: string = '') => {
+export type ModelGender = 'female' | 'male';
+
+export interface ModelProfile {
+  gender: ModelGender;
+  isMale: boolean;
+  /** "man" | "woman" */
+  person: string;
+  /** "young man" | "girl" — used where the source text said "girl" */
+  personYoung: string;
+  /** "Man" | "Woman" */
+  personCap: string;
+  /** "he" | "she" */
+  pronoun: string;
+  /** "He" | "She" */
+  Pronoun: string;
+  /** possessive: "his" | "her" */
+  possessive: string;
+  /** object pronoun: "him" | "her" */
+  object: string;
+  /** age range with en-dash for "age 30–35" style: "30–35" (male) | "20–25" (female) */
+  ageYears: string;
+  /** age range in words for "strictly 30 to 35" style: "30 to 35" (male) | "20 to 25" (female) */
+  ageYearsWords: string;
+  /** "handsome" | "beautiful" */
+  attractive: string;
+  /** grooming / jewellery guidance appropriate to the gender */
+  jewellery: string;
+  /** short casting reference tier (e.g. Bollywood A-list leading man vs actress) */
+  castingTier: string;
+}
+
+/**
+ * Returns gender-aware descriptors so the same prompt template can render either a
+ * female or a male brand ambassador. Female values are the exact words the templates
+ * used before gender support existed, so the female output stays byte-for-byte identical.
+ */
+export const getModelProfile = (gender: string = 'female'): ModelProfile => {
+  const isMale = gender === 'male';
+  return {
+    gender: isMale ? 'male' : 'female',
+    isMale,
+    person: isMale ? 'man' : 'woman',
+    personYoung: isMale ? 'man' : 'girl',
+    personCap: isMale ? 'Man' : 'Woman',
+    pronoun: isMale ? 'he' : 'she',
+    Pronoun: isMale ? 'He' : 'She',
+    possessive: isMale ? 'his' : 'her',
+    object: isMale ? 'him' : 'her',
+    ageYears: isMale ? '30–35' : '20–25',
+    ageYearsWords: isMale ? '30 to 35' : '20 to 25',
+    attractive: isMale ? 'handsome' : 'beautiful',
+    jewellery: isMale
+      ? 'a classic premium wristwatch, and optionally a single slim formal ring — NO necklace, NO earrings, NO bangles, NO bindi, NO female jewellery of any kind. Clean, minimal, masculine styling.'
+      : 'a small finger ring, a thin necklace or chain on the neck, ear studs / earrings, and a wristwatch',
+    castingTier: isMale
+      ? 'a Bollywood A-list leading man or a face you would see on a premium menswear / grooming national TV commercial'
+      : 'a Bollywood A-list leading actress or a face you would see on a Lakme / Tanishq / Malabar Gold national TV commercial',
+  };
+};
+
+export interface BrandMark {
+  /** true when there is NO logo file and we render a physical name board instead. */
+  isNameBoard: boolean;
+  /** noun phrase used in place of "the attached logo", e.g. "the business name board". */
+  ref: string;
+  /** UPPERCASE business name to render on the name board (empty when a logo is used). */
+  name: string;
+}
+
+/**
+ * Resolves how the brand is shown on the wall. With a logo it stays "the attached logo".
+ * Without a logo it becomes a realistic premium NAME BOARD carrying the business name, so
+ * the prompt never tells the generator to "attach a logo" that does not exist (tasks 2 & 3).
+ */
+export const getBrandMark = (noLogo: boolean = false, logoName: string = ''): BrandMark => {
+  const name = (logoName || '').trim().toUpperCase();
+  if (noLogo) {
+    return {
+      isNameBoard: true,
+      ref: name
+        ? `the business NAME BOARD (a realistic premium wall sign, board, or fascia that reads exactly "${name}" in clean, correctly-spelled bold UPPERCASE letters)`
+        : 'the business NAME BOARD (a realistic premium wall sign, board, or fascia showing the exact business name in clean, correctly-spelled bold UPPERCASE letters)',
+      name,
+    };
+  }
+  return { isNameBoard: false, ref: 'the attached logo', name: '' };
+};
+
+/** Male grooming description (hair + face + no-makeup) that mirrors the female HAIR/FACE blocks. */
+export const getMaleGroomingBlock = (): string => `HAIR & GROOMING (PREMIUM MENSWEAR CAMPAIGN — MANDATORY):
+- Neat, professionally styled short-to-medium men's haircut with natural rich black hair only — no highlights, no colour shift, healthy and camera-ready.
+- Either clean-shaven or a well-groomed short stubble / neatly trimmed beard that suits a premium brand ambassador — never messy, never patchy.
+- NO makeup look, NO lipstick, NO kajal, NO feminine grooming — just clean, healthy, realistic male skin with visible natural texture and pores.
+- Confident, warm, trustworthy expression with a genuine smile and direct eye contact.`;
+
+export const getAttireMode = (
+  attireType: string,
+  businessType: string = 'default',
+  businessContext: string = '',
+  gender: string = 'female',
+  customAttire: string = ''
+) => {
+  const isMale = gender === 'male';
+
+  // Custom attire fully replaces the wardrobe wording (task 6).
+  if (attireType === 'custom' && customAttire.trim()) {
+    return `Attire (CUSTOM — MANDATORY, use exactly as described): ${customAttire.trim()}. Render this exact attire faithfully — well-fitted, premium, clean, and photographically realistic — as chosen for a high-end national brand campaign. Keep this attire, its colours, and its details perfectly consistent in every frame; do NOT substitute a suit, saree, or any other outfit.`;
+  }
+
+  if (isMale) {
+    const suitPalette = getProfessionalSuitPaletteForBusiness(businessType, businessContext);
+    if (attireType === 'shirt_pant') {
+      return `Attire: sharp PROFESSIONAL formal wear for a male brand ambassador — a crisp, well-ironed full-sleeve formal shirt neatly tucked into tailored formal trousers, finished with a slim formal belt (sleeves may be buttoned at the cuff or cleanly rolled). No blazer required.
+Preferred Colors: shirt in a clean premium tone (white, sky, pastel, or a brand-derived shade) paired with well-matched formal trousers drawn from ${suitPalette}.
+Style: real corporate-luxury menswear styling — sharp fit, premium fabric with believable drape, polished shoes, and a confident, aspirational executive look. NO saree, NO female attire, NO blouse.`;
+    }
+    // Male professional suit (default)
+    return `Attire: premium, well-tailored men's business suit — structured blazer, crisp formal shirt, and matching formal trousers (a tie or pocket square is optional and brand-appropriate).
+Preferred Colors: ${suitPalette}.
+Style: sharp, masculine, real corporate-luxury tailoring with believable fabric weight and drape, polished formal shoes, and a confident brand-ambassador presence — never a plain office worker. Treat the colour direction as an approved palette family with multiple valid tones rather than one repeated shade. NO saree, NO female attire, NO blouse.`;
+  }
+
   if (attireType === 'traditional') {
     const sareeColor = getSareeColorForBusiness(businessType);
     return `Attire: premium DESIGNER silk / fancy Indian saree — ${sareeColor}. The saree MUST carry tasteful design / work (woven or zari border, subtle motifs/buttis, elegant patterned pallu) — NEVER a flat plain saree, and keep the work refined light-to-medium (never heavy bridal). Use rich, attractive, vibrant colours — NEVER dull, washed-out, grey, or lifeless tones. Well-fitted blouse with elbow-length or short sleeves — STRICTLY no sleeveless / strappy / deep-cut blouse. High-quality fabric, crisp pleats, natural realistic folds, elegant and luxurious advertising look. The woman must look like a polished CELEBRITY BRAND AMBASSADOR — graceful, glamorous, confident and aspirational, the kind of stunning ambassador featured in a high-end national TV commercial — while staying professional and believable.`;
@@ -918,10 +1039,17 @@ export const getAdTypeMode = (adType: string, festivalName = '') => {
   }
 };
 
-export const MAIN_FRAME_SYSTEM_PROMPT = (attireType: string, adType: string, festivalName: string, aspectRatio: string = '1:1', businessContext: string = '') => {
+export const MAIN_FRAME_SYSTEM_PROMPT = (attireType: string, adType: string, festivalName: string, aspectRatio: string = '1:1', businessContext: string = '', gender: string = 'female', customAttire: string = '', noLogo: boolean = false, logoName: string = '') => {
   const isFestival = adType === AdType.FESTIVAL && festivalName;
   const festivalTheme = isFestival ? getFestivalTheme(festivalName) : null;
-  const isProfessional = attireType === 'professional';
+  const p = getModelProfile(gender);
+  // Brand-mark abstraction: with a logo it is "the attached logo"; without one it is a
+  // realistic wall NAME BOARD showing the business name (tasks 2 & 3).
+  const brand = getBrandMark(noLogo, logoName);
+  const isCustomAttire = attireType === 'custom';
+  // "Professional" styling (corporate environment/pose) covers the female suit, both male
+  // attires (suit / shirt+pant), and custom attire — every non-traditional, non-saree look.
+  const isProfessional = attireType === 'professional' || attireType === 'shirt_pant' || isCustomAttire;
   const detectedBusinessType = businessContext ? detectBusinessType(businessContext) : 'default';
   const educationEnvironmentMode = detectedBusinessType === 'education' ? detectEducationEnvironmentMode(businessContext) : null;
   const clientEnvironmentGuidance = businessContext ? getEnvironmentForBusiness(detectedBusinessType, businessContext) : '';
@@ -950,30 +1078,52 @@ export const MAIN_FRAME_SYSTEM_PROMPT = (attireType: string, adType: string, fes
     const sareeColourHint = getSareeColorForBusiness(detectedBusinessType);
     const receptionGuidance = clientEnvironmentGuidance
       || 'a premium, real reception interior whose desk, signage, furniture and props clearly match the exact business type';
-    return `You are an expert prompt writer for ultra-realistic AI image generation. Using the attached business details and logo, write ONE clean, copy-paste-ready image prompt for the FIRST FRAME of a commercial brand ad.
+    const maleAttireBullets = isCustomAttire
+      ? `- ${getAttireMode('custom', detectedBusinessType, businessContext, gender, customAttire)}
+- Wearing minimal masculine accessories only: ${p.jewellery}`
+      : attireType === 'shirt_pant'
+        ? `- Wearing sharp professional menswear: a crisp, well-ironed full-sleeve formal shirt neatly tucked into tailored formal trousers with a slim formal belt (NO blazer, NOT a suit, NOT any female attire)
+- Shirt in a clean premium tone (white, sky, pastel, or a brand-derived shade) with well-matched formal trousers; polished formal shoes
+- Trouser / shirt colour inspired by the logo / brand colours (for example ${suitColourHint}); avoid a dull or washed-out look
+- Wearing minimal masculine accessories only: ${p.jewellery}`
+        : `- Wearing a premium, well-tailored men's business suit (NOT a saree, NOT any female attire): structured blazer + crisp formal shirt + matching formal trousers, with an optional brand-appropriate tie
+- Suit colour inspired by the logo / brand colours — pick ONE specific brand tone (for example ${suitColourHint}); avoid the same beige and avoid a repetitive plain blue corporate suit
+- Polished formal shoes and a sharp, masculine, executive silhouette
+- Wearing minimal masculine accessories only: ${p.jewellery}`;
 
-STEP 1 — ANALYSE THE ATTACHED FILES AND EXTRACT: business name, business type / industry, the main services they offer, and the brand colours from the logo.
+    const femaleAttireBullets = isCustomAttire
+      ? `- ${getAttireMode('custom', detectedBusinessType, businessContext, gender, customAttire)}
+- Wearing simple elegant jewellery (MANDATORY): a small finger ring, a thin necklace or chain on the neck, ear studs / earrings, and a wristwatch`
+      : isTraditional
+        ? `- Wearing an elegant premium DESIGNER silk / fancy saree (graceful, sophisticated, modest, premium) with a well-fitted blouse — NOT a suit
+- The saree MUST have tasteful design / work on it: a woven or zari border, subtle motifs, buttis, or an elegant pallu pattern — NEVER a flat plain saree with no design. Keep the work refined and premium (light-to-medium), never heavy bridal overload
+- Saree colour inspired by the logo / brand colours (for example ${sareeColourHint}); use rich, attractive, vibrant colours — NEVER dull, washed-out, grey, or lifeless tones; make it look like an expensive designer campaign saree — never bridal, never a costume, never festival-styled
+- BLOUSE: a well-fitted blouse with elbow-length or short sleeves — STRICTLY no sleeveless / spaghetti / noodle-strap / deep-cut blouse; keep it modest, classy and professional
+- Wearing elegant traditional semi-jewellery (MANDATORY): a necklace or chain on the neck, earrings, a few bangles, a small finger ring, and a small bindi on the forehead — refined and premium, never heavy bridal overload`
+        : `- Wearing simple elegant jewellery (MANDATORY): a small finger ring, a thin necklace or chain on the neck, ear studs / earrings, and a wristwatch
+- NO bindi on the forehead in this professional-suit look — keep the forehead clean (bindi is only for the saree / traditional look)
+- Wearing a premium tailored formal suit (not saree): blazer + crisp white or cream inner shirt + formal trousers
+- Suit colour inspired by the logo / brand colours — pick ONE specific brand tone (for example ${suitColourHint}); avoid the same beige and avoid a repetitive plain blue corporate suit`;
+
+    const attireBullets = p.isMale ? maleAttireBullets : femaleAttireBullets;
+
+    return `You are an expert prompt writer for ultra-realistic AI image generation. Using the attached business details${brand.isNameBoard ? '' : ' and logo'}, write ONE clean, copy-paste-ready image prompt for the FIRST FRAME of a commercial brand ad.
+
+STEP 1 — ANALYSE THE ATTACHED FILES AND EXTRACT: business name, business type / industry, the main services they offer, and the brand colours from the ${brand.isNameBoard ? 'business details' : 'logo'}.
 STEP 2 — BUILD THE WHOLE SCENE FROM THIS EXACT BUSINESS (NON-NEGOTIABLE). The environment and background MUST be 100% relatable to the provided business: use the business name, services, products, and description to recreate THIS business's real reception, including the specific equipment, products, displays, counters, and service cues that make it instantly recognisable as this exact business. A viewer must immediately know what this business does just from the background. Never use a generic, random, unrelated, or "any office" background.
 
 Output the prompt EXACTLY in the following structure and order, as simple short bullet lines (no commentary, no markdown headings, inside one code block):
 
-Create an ultra-realistic promotional portrait for "[BUSINESS NAME]" using the attached official logo as branding reference.
+Create an ultra-realistic promotional portrait for "[BUSINESS NAME]" using ${brand.isNameBoard ? `a realistic wall name board reading "${brand.name || '[BUSINESS NAME]'}" as branding` : 'the attached official logo as branding reference'}.
 
-Generate a premium [BUSINESS TYPE] reception environment and place a confident young Indian girl (a professional [role that fits this business]) standing in front of the reception area. The atmosphere should feel [3-4 adjectives that match this business].
+Generate a premium [BUSINESS TYPE] reception environment and place a confident ${p.isMale ? '' : 'young '}Indian ${p.personYoung} (a professional [role that fits this business]) standing in front of the reception area. The atmosphere should feel [3-4 adjectives that match this business].
 
 Main Character:
-- Indian girl (female), age 20–25
-- A NEW, different, naturally good-looking girl each time — never reuse the same recurring face
-- Natural warm Indian complexion, real skin texture, light natural makeup, neat natural black hairstyle
+- Indian ${p.personYoung} (${p.gender}), age ${p.ageYears}
+- A NEW, different, naturally good-looking ${p.personYoung} each time — never reuse the same recurring face
+- Natural warm Indian complexion, real skin texture, ${p.isMale ? 'clean healthy grooming (no makeup), neat natural black hairstyle, clean-shaven or a neatly trimmed short beard' : 'light natural makeup, neat natural black hairstyle'}
 - Friendly welcoming smile, confident and approachable expression, looking directly at the camera
-${isTraditional ? `- Wearing an elegant premium DESIGNER silk / fancy saree (graceful, sophisticated, modest, premium) with a well-fitted blouse — NOT a suit
-- The saree MUST have tasteful design / work on it: a woven or zari border, subtle motifs, buttis, or an elegant pallu pattern — NEVER a flat plain saree with no design. Keep the work refined and premium (light-to-medium), never heavy bridal overload
-- Saree colour inspired by the logo / brand colours (for example ${sareeColourHint}); use rich, attractive, vibrant colours — NEVER dull, washed-out, grey, or lifeless tones; make it look like an expensive designer campaign saree — never bridal, never a costume, never festival-styled
-- BLOUSE: a well-fitted blouse with elbow-length or short sleeves — STRICTLY no sleeveless / spaghetti / noodle-strap / deep-cut blouse; keep it modest, classy and professional
-- Wearing elegant traditional semi-jewellery (MANDATORY): a necklace or chain on the neck, earrings, a few bangles, a small finger ring, and a small bindi on the forehead — refined and premium, never heavy bridal overload` : `- Wearing simple elegant jewellery (MANDATORY): a small finger ring, a thin necklace or chain on the neck, ear studs / earrings, and a wristwatch
-- NO bindi on the forehead in this professional-suit look — keep the forehead clean (bindi is only for the saree / traditional look)
-- Wearing a premium tailored formal suit (not saree): blazer + crisp white or cream inner shirt + formal trousers
-- Suit colour inspired by the logo / brand colours — pick ONE specific brand tone (for example ${suitColourHint}); avoid the same beige and avoid a repetitive plain blue corporate suit`}
+${attireBullets}
 
 Pose:
 - Standing in the exact middle of the [BUSINESS TYPE] reception, facing the camera directly
@@ -987,29 +1137,37 @@ Background:
 - If any store/office reference images are provided, mirror their real interior, layout, and materials
 - It must read as a genuine, operational [BUSINESS TYPE] — realistic and 100% relatable to this exact business, never fake, generic, or unrelated
 
-LOGO PLACEMENT (CRITICAL — DO NOT MODIFY THE LOGO):
+${brand.isNameBoard ? `NAME BOARD PLACEMENT (CRITICAL — THERE IS NO LOGO FILE, RENDER A REAL NAME BOARD):
+- Render ${brand.ref} as real physical signage mounted on the reception wall behind the subject
+- The name board MUST be present and clearly readable — this is the brand identity in place of a logo, so it must never be omitted
+- Spell the business name EXACTLY and correctly, upright, evenly kerned, in clean bold UPPERCASE — never distorted, mirrored, misspelled, or stylised into gibberish
+- Mount it in the upper background as premium wall signage, fully visible in one piece, sharp and in focus (do NOT blur with depth of field)
+- The subject, hair, shoulders, props, or furniture must never cover any part of the name board
+- The name board is clearly secondary to the ${p.personYoung} — small-to-medium, never enlarged at the cost of the subject's size
+- The name board text is the ONLY text anywhere in the image — do NOT add or invent ANY other text, logo, signage, taglines, slogans, dates, service lists, or words anywhere
+- NO FRAMES / DISPLAYS / PLACEHOLDERS: do NOT add ANY wall frames, photo frames, certificate walls, achievement walls, photo walls, notice boards, posters, standees, brochures, or blank / dark screens — walls stay clean carrying ONLY the name board plus real, natural elements` : `LOGO PLACEMENT (CRITICAL — DO NOT MODIFY THE LOGO):
 - Take the attached logo image and place it exactly as-is as real physical signage already mounted in the premises
 - The logo must remain pixel-perfect and unchanged
 - Mount the logo in the upper background behind the subject as real wall signage so it is fully readable and fully visible in one piece
 - Nothing must block, crop, redraw, stylize, blur, tilt, stretch, or overpower it — keep it perfectly sharp and in focus (do NOT blur with depth of field) so all its text is clearly readable
 - The model, hair, shoulders, props, or furniture must never cover any part of the logo
 - The signage should feel naturally installed in the real office/store, not pasted onto a fake backdrop
-- The logo is clearly secondary to the girl — small-to-medium, never enlarged at the cost of the girl's size
+- The logo is clearly secondary to the ${p.personYoung} — small-to-medium, never enlarged at the cost of the ${p.personYoung}'s size
 - The logo is the ONLY text anywhere in the image — do NOT add or invent ANY other text, signage, taglines, slogans, dates, service lists, or words anywhere
-- NO FRAMES / DISPLAYS / PLACEHOLDERS: do NOT add ANY wall frames, photo frames, certificate walls, achievement walls, photo walls, notice boards, posters, standees, brochures, or blank / dark screens — walls stay clean carrying ONLY the logo plus real, natural elements
+- NO FRAMES / DISPLAYS / PLACEHOLDERS: do NOT add ANY wall frames, photo frames, certificate walls, achievement walls, photo walls, notice boards, posters, standees, brochures, or blank / dark screens — walls stay clean carrying ONLY the logo plus real, natural elements`}
 
 Visual Style:
 - Ultra realistic photography, cinematic indoor lighting, natural skin texture, premium colour grading, realistic reflections and shadows, clean polished environment
 
 Composition:
 - Aspect ratio: 9:16 vertical
-- Three-quarter shot: frame the girl from the top of her head down to roughly her thighs / knees — do NOT show her full head-to-feet (that makes her look small and distant)
-- The girl must clearly fill about 70% of the frame height, centred and dominant, with only a little headroom above her head, and the reception and logo clearly visible behind her
-- PRIORITY (IMPORTANT): the girl's ~70% size always comes first; size the logo and background to fit around her. NEVER enlarge the logo at the cost of the girl — if wall space is tight, make the logo smaller, not the girl
+- Three-quarter shot: frame the ${p.personYoung} from the top of ${p.possessive} head down to roughly ${p.possessive} thighs / knees — do NOT show ${p.object} full head-to-feet (that makes ${p.object} look small and distant)
+- The ${p.personYoung} must clearly fill about 70% of the frame height, centred and dominant, with only a little headroom above ${p.possessive} head, and the reception and ${brand.isNameBoard ? 'name board' : 'logo'} clearly visible behind ${p.object}
+- PRIORITY (IMPORTANT): the ${p.personYoung}'s ~70% size always comes first; size the ${brand.isNameBoard ? 'name board' : 'logo'} and background to fit around ${p.object}. NEVER enlarge the ${brand.isNameBoard ? 'name board' : 'logo'} at the cost of the ${p.personYoung} — if wall space is tight, make the ${brand.isNameBoard ? 'name board' : 'logo'} smaller, not the ${p.personYoung}
 - Leave natural headroom for future talking-video animation
 
 Important:
-- Use the attached logo only as real environmental branding on the wall, fully visible and complete
+- Use ${brand.ref} only as real environmental branding on the wall, fully visible and complete
 - Keep the look premium, professional, realistic, and appropriate to this exact business
 
 Fill every [BRACKET] with the real extracted business details. Output ONLY the final image prompt above, inside one code block, with no explanations.`;
@@ -1037,7 +1195,14 @@ Your output prompt MUST follow this EXACT structure with these EXACT section hea
 
 ---START OF PROMPT FORMAT---
 
-${!isFestival ? `CASTING OVERRIDE — THIS IS MANDATORY:
+${p.isMale ? `MODEL GENDER SPEC (ABSOLUTE — READ FIRST):
+This campaign's brand ambassador is MALE. Render a premium, handsome, mature Indian MAN (age ${p.ageYears}) — never a woman or girl.
+Wherever any wording below says "woman", "girl", "she", or "her", it refers to THIS male model — render him as a man accordingly.
+${getAttireMode(attireType, detectedBusinessType, businessContext, gender, customAttire)}
+${getMaleGroomingBlock()}
+NO saree, NO blouse, NO bindi, NO bangles, NO female jewellery, NO feminine makeup anywhere in the image.
+
+` : ''}${!isFestival ? `CASTING OVERRIDE — THIS IS MANDATORY:
 This is NOT a corporate headshot. This is NOT a stock photo shoot.
 This is a HIGH-BUDGET NATIONAL BRAND CAMPAIGN.
 The model must be in the top 0.1% of female beauty.
@@ -1053,18 +1218,18 @@ national TV commercial — REGENERATE.
 ` : ''}Create a Ultra-realistic DSLR photograph, single image, 9:16 vertical — must look like a real, high-budget national [BUSINESS TYPE] ${isFestival ? `**${festivalName} celebration** ` : ''}photoshoot, absolutely no AI-art, no rendering, no stock-photo feel. Indistinguishable from a real professional photograph.${isFestival ? `
 **THIS IS A ${festivalName.toUpperCase()} THEMED IMAGE — the business premises must still feel real and operational, while festival cues are layered in naturally and tastefully.**` : ''}
 
-SUBJECT (PREMIUM BRAND AMBASSADOR — FEMALE ONLY — MUST FEEL DISTINCT TO THIS BUSINESS):
-One exceptionally photogenic Indian woman chosen as the **exclusive brand ambassador for THIS specific business campaign**${isFestival ? ` during ${festivalName}` : ''}.
-She must look premium, aspirational, believable, and naturally striking — the kind of woman a serious brand would cast for a real ad campaign.
+SUBJECT (PREMIUM BRAND AMBASSADOR — ${p.isMale ? 'MALE ONLY' : 'FEMALE ONLY'} — MUST FEEL DISTINCT TO THIS BUSINESS):
+One exceptionally photogenic Indian ${p.person} chosen as the **exclusive brand ambassador for THIS specific business campaign**${isFestival ? ` during ${festivalName}` : ''}.
+${p.Pronoun} must look premium, aspirational, believable, and naturally striking — the kind of ${p.person} a serious brand would cast for a real ad campaign.
 ${!isFestival ? `**INDIAN-ONLY CASTING RULE (ABSOLUTE):** She must read clearly and unmistakably as Indian only — never ethnically ambiguous, never westernized, never caucasian, never latina, never east-asian, never middle-eastern, and never a generic global stock-model beauty pattern.
 She should feel like a wonderful premium North Indian brand ambassador chosen specifically for this client, with business-specific casting energy instead of a reused universal ad face.
 ` : ''}
 **Do NOT default to the same face used in other ads.** Create ONE unique ambassador identity for this business based on the business type, brand tone, festival/commercial mood, attire style, and environment.
-Choose an age band that fits the brand positioning — strictly 20 to 25 only — and keep that same woman consistent across all clips in this campaign.
+Choose an age band that fits the brand positioning — strictly ${p.ageYearsWords} only — and keep that same ${p.person} consistent across all clips in this campaign.
 Do NOT imitate a specific actress, do NOT describe her as a South Indian film actress, do NOT use one generic celebrity face pattern, and do NOT drift away from clear Indian identity in any clip.
 ${!isFestival ? `${isProfessional ? `
 SUBJECT — THE GIRL (PROFESSIONAL SUIT, FRESH CASTING EACH TIME — MANDATORY):
-A genuinely beautiful, youthful Indian girl, strictly 20 to 25 years old, cast as the exclusive brand ambassador for THIS business.
+A genuinely ${p.attractive}, well-presented Indian ${p.personYoung}, strictly ${p.ageYearsWords} years old, cast as the exclusive brand ambassador for THIS business.
 • NEW GIRL EVERY TIME (CRITICAL): each generation must produce a NEW, different, unique girl — vary the face shape, features, hairstyle, and complexion within natural Indian casting, and NEVER reuse the same recurring ad face. Two different businesses must clearly look like two different girls.
 • Clearly and unmistakably Indian — natural warm Indian complexion (honey, wheatish, golden-brown, or fair-Indian), never ethnically ambiguous, never westernized, never pale-pink or grey.
 • Naturally pretty and photogenic with soft feminine features, bright expressive eyes, clean brows, and a fresh radiant glow — premium and aspirational but believable and human, not plastic, not doll-like, not over-sculpted.
@@ -1202,7 +1367,16 @@ Hair color is STRICTLY natural rich black in EVERY clip and EVERY ad type — ne
 Hair must look healthy, professionally groomed, and camera-ready, with natural movement and slight flyaways allowed for realism.
 Keep the hair identity consistent across the campaign, but allow small natural shifts in fall, volume, and drape between clips.`}
 
-${isFestival && festivalTheme ? `ATTIRE (ULTRA-LUXURY — BUSINESS SECTOR + ${festivalName.toUpperCase()} FESTIVAL BLEND — MANDATORY):
+${isFestival && festivalTheme ? (p.isMale ? `ATTIRE (PREMIUM MENSWEAR — BUSINESS SECTOR + ${festivalName.toUpperCase()} FESTIVE POLISH — MANDATORY):
+${getAttireMode(attireType, detectedBusinessType, businessContext, gender, customAttire)}
+• The menswear MUST feel premium and festive-appropriate for ${festivalName} while staying business-professional — tie the shirt/suit tones to the business brand colours.
+• Blend a subtle festive richness (deeper tones, a refined festive accent) with sharp corporate tailoring — never a costume, never ethnic female wear.
+• Fabric must look genuinely expensive with believable weight and drape; polished formal shoes.
+• The attire must complement BOTH the business type AND the ${festivalName} decorations.
+
+GROOMING (PREMIUM MENSWEAR CAMPAIGN — MANDATORY):
+${getMaleGroomingBlock()}
+NO saree, NO blouse, NO bindi, NO bangles, NO female jewellery — masculine styling only.` : `ATTIRE (ULTRA-LUXURY — BUSINESS SECTOR + ${festivalName.toUpperCase()} FESTIVAL BLEND — MANDATORY):
 The saree MUST be **DYNAMIC and UNIQUE based on the business sector** — NOT the same saree for every business.
 • Base festival theme: **${festivalTheme.sareeColor}**
 • BUT the saree color MUST ALSO incorporate the **business brand colors** from the logo
@@ -1219,7 +1393,7 @@ JEWELLERY (LUXURIOUS CELEBRITY-LEVEL — MANDATORY):
 **${festivalTheme.jewellery}**
 For saree outputs, jewellery must stay STRICTLY semi-jewellery only — premium, elegant, feminine, clearly visible, but never heavy, never bridal, never overloaded.
 Use tasteful gold or gold-diamond semi-jewellery only: refined necklace, elegant earrings, and limited bangles when needed.
-NEVER use heavy bridal sets, temple-jewellery overload, chunky layers, or religious accessories.` : `ATTIRE (BUSINESS-THEMED COLOR — MANDATORY — MUST BE DYNAMIC PER BUSINESS):
+NEVER use heavy bridal sets, temple-jewellery overload, chunky layers, or religious accessories.`) : `ATTIRE (BUSINESS-THEMED COLOR — MANDATORY — MUST BE DYNAMIC PER BUSINESS):
 ${attireType === 'traditional' ? `ATTIRE (COMMERCIAL DESIGNER SAREE — BUSINESS-SPECIFIC LUXURY — MANDATORY):
 This is a COMMERCIAL campaign saree branch — not a festival greeting saree, not bridal styling, and not a wedding-catalog look.
 The model must look like a CELEBRITY BRAND AMBASSADOR shot for a premium national campaign — graceful, glamorous, aspirational, camera-ready, and unmistakably high-end, like a film actress or top model endorsing the brand, while staying professional and believable in the real business premises.
@@ -1374,7 +1548,7 @@ ${isFestival && festivalTheme ? `• Color temperature should lean warm/golden m
 • Capture the warm glow from festival lamps, diyas, and decorations naturally` : ''}
 
 OVERALL RESULT:
-${isFestival ? `A **real, premium ${festivalName} celebration photograph at a [BUSINESS TYPE] establishment** featuring one **distinct premium female brand ambassador** representing [BUSINESS NAME].
+${isFestival ? `A **real, premium ${festivalName} celebration photograph at a [BUSINESS TYPE] establishment** featuring one **distinct premium ${p.gender} brand ambassador** representing [BUSINESS NAME].
 The image must feel like a real commercial photoshoot captured inside the business's actual decorated premises.
 The ${festivalName} theme should be unmistakable, but the business environment must still remain believable and specific.
 Viewer reaction should be: **"This looks like a real premium business campaign shot during ${festivalName}, inside their actual place."**` : `A **real, premium [BUSINESS TYPE] campaign photograph** featuring one **distinct premium female brand ambassador** representing [BUSINESS NAME].
@@ -1465,9 +1639,16 @@ export const MULTI_FRAME_SYSTEM_PROMPT = (
   festivalName: string,
   segmentCount: number,
   voiceOverSegments: string[],
-  businessContext: string = ''
+  businessContext: string = '',
+  gender: string = 'female',
+  customAttire: string = '',
+  noLogo: boolean = false,
+  logoName: string = ''
 ) => {
-  const basePrompt = MAIN_FRAME_SYSTEM_PROMPT(attireType, adType, festivalName, '1:1', businessContext);
+  const p = getModelProfile(gender);
+  const brand = getBrandMark(noLogo, logoName);
+  const isCustomAttire = attireType === 'custom';
+  const basePrompt = MAIN_FRAME_SYSTEM_PROMPT(attireType, adType, festivalName, '1:1', businessContext, gender, customAttire, noLogo, logoName);
   const detectedBusinessType = businessContext ? detectBusinessType(businessContext) : 'default';
   const educationEnvironmentMode = detectedBusinessType === 'education' ? detectEducationEnvironmentMode(businessContext) : null;
   const clientEnvironmentGuidance = businessContext ? getEnvironmentForBusiness(detectedBusinessType, businessContext) : '';
@@ -1627,16 +1808,16 @@ ${Array.from({ length: segmentCount }, (_, i) => {
    
    ${adType !== AdType.FESTIVAL ? `Generate a COMPLETE standalone first-frame image prompt EXACTLY in the base format above (the headers: Create an ultra-realistic promotional portrait…, Main Character, Pose, Background, Visual Style, Composition, Important).
    Keep it clean and concise — about 200–300 words, simple bullet lines, no extra sections, no negative list.
-   Describe the girl (with elegant jewellery — ${attireType === 'traditional' ? 'necklace/chain, earrings, bangles, finger ring, and a small bindi on the forehead' : 'finger ring, necklace/chain, earrings, watch, and NO bindi on the forehead'}), the formal front-clasp pose, the real [BUSINESS TYPE] reception background built from the business details and 100% relatable to this exact business (its real equipment, products, displays, and service cues so a viewer instantly recognises what it does), and the attached logo fully visible on the reception wall.
-   The reception, visible business cues, pose, and mood must directly match Clip ${clipNum}'s voice-over line, and the logo must feel physically installed on ${shot.logoPlacement} — pixel-perfect and unchanged, mounted in the upper background, fully readable and fully visible in one piece, with nothing blocking, cropping, or altering it.
-   The attached logo must be the ONLY text in the image — do NOT invent any other signage, banners, taglines, mission lines, service lists, dates, or academic years, and do NOT add empty/blank boards, frames, certificates, brochures, posters, standees, or blank screens (empty placeholders look like cardboard) — keep walls and surfaces clean. Keep the logo perfectly sharp and in focus (not blurred by depth of field) so all its text is clearly readable.
-   Frame the girl as a three-quarter shot (head to thighs/knees), centered and clearly filling about 70% of the frame height (not a small full head-to-feet shot), looking directly at the camera. Keep the girl's ~70% size the priority and the attached logo small-to-medium and secondary — dynamically sized to the free wall space and never enlarged at the cost of the girl's size.` : `Generate a COMPLETE, detailed image generation prompt following ALL the rules/sections from the base prompt above.
+   Describe the ${p.personYoung} (with ${p.isMale ? 'minimal masculine accessories only — ' + p.jewellery : 'elegant jewellery — ' + (attireType === 'traditional' ? 'necklace/chain, earrings, bangles, finger ring, and a small bindi on the forehead' : 'finger ring, necklace/chain, earrings, watch, and NO bindi on the forehead')}), the formal front-clasp pose, the real [BUSINESS TYPE] reception background built from the business details and 100% relatable to this exact business (its real equipment, products, displays, and service cues so a viewer instantly recognises what it does), and ${brand.ref} fully visible on the reception wall.
+   The reception, visible business cues, pose, and mood must directly match Clip ${clipNum}'s voice-over line, and ${brand.ref} must feel physically installed on ${shot.logoPlacement} — pixel-perfect and unchanged, mounted in the upper background, fully readable and fully visible in one piece, with nothing blocking, cropping, or altering it.
+   ${brand.isNameBoard ? brand.ref.charAt(0).toUpperCase() + brand.ref.slice(1) : 'The attached logo'} must be the ONLY text in the image — do NOT invent any other logo, signage, banners, taglines, mission lines, service lists, dates, or academic years, and do NOT add empty/blank boards, frames, certificates, brochures, posters, standees, or blank screens (empty placeholders look like cardboard) — keep walls and surfaces clean. Keep it perfectly sharp and in focus (not blurred by depth of field) so all its text is clearly readable.
+   Frame the ${p.personYoung} as a three-quarter shot (head to thighs/knees), centered and clearly filling about 70% of the frame height (not a small full head-to-feet shot), looking directly at the camera. Keep the ${p.personYoung}'s ~70% size the priority and ${brand.ref} small-to-medium and secondary — dynamically sized to the free wall space and never enlarged at the cost of the ${p.personYoung}'s size.` : `Generate a COMPLETE, detailed image generation prompt following ALL the rules/sections from the base prompt above.
    This frame sets the visual foundation — character face, hair, skin, beauty, attire, jewellery, AND this specific location within the business.
    This is the ONLY clip where you fully describe the model's physical appearance.
   The chosen location, visible business cues, pose energy, and emotional tone must directly match Clip ${clipNum}'s voice-over line.
     The logo must feel physically installed on ${shot.logoPlacement}, with believable depth, reflections, and material behavior.
   Include ALL sections: SUBJECT, FACE, MAKEUP, EXPRESSION, HAIR, ATTIRE, JEWELLERY, ENVIRONMENT, LOGO PLACEMENT, CAMERA, OVERALL RESULT.
-   The subject must occupy roughly 70% of the frame, maintain direct eye contact with the camera, and the attached logo must appear fully visible in the upper background without any alteration.
+   The subject must occupy roughly 70% of the frame, maintain direct eye contact with the camera, and ${brand.ref} must appear fully visible in the upper background without any alteration.
    Target length: 500-800 words.`}`;
   }
   
@@ -1661,21 +1842,21 @@ ${Array.from({ length: segmentCount }, (_, i) => {
    ❌ South Indian, actress, celebrity, model appearance, film star, glamorous
    
    **✅ INSTEAD — Write ONLY this one line about the model:**
-  "Use the attached reference frame image as the exact identity and styling anchor for this clip — same woman, same core styling, the exact same natural rich black hair from the first frame onward, same wardrobe family rooted in the approved business-specific palette, same jewellery set, and for professional commercial suit campaigns only you may shift the suit tone within that same palette family instead of repeating one identical beige in every clip."
+  "Use the attached image (the Frame-1 reference) EXACTLY as the identity and styling anchor for this clip — the SAME ${p.person}, the SAME face, the SAME hair, and the EXACT SAME attire in the EXACT SAME colour, shade, and design as the attached image. Do NOT change, shift, re-tint, or re-style the outfit or its colour between clips — keep it perfectly identical to the attached image. Only the pose, hand position, action, and background location may change to match this clip's script."
    
    **✅ THEN FOCUS 100% ON THESE (the ONLY things you should describe):**
   • 📍 The NEW LOCATION within the SAME business — a different REAL area/zone that best matches the meaning of Clip ${clipNum}'s voice-over line (show the real place the script is talking about). Describe it as a real, operational spot with real physical objects.
   • 🔍 What's visible in the background: ONLY real, in-use, naturally-present objects this business actually has — e.g. shelves stacked with real books, real equipment / machines / tools, work counters, desks, seating, stock, materials, plants — shown as solid real objects with NO readable text on them. Do NOT invent any decorative wall content.
-  • 🚫 TEXT RULE (STRICT — VERY IMPORTANT): the attached logo is the ONLY text anywhere in the frame. Do NOT add or invent ANY other text — no signage, banners, posters, notice boards, brochures, application forms, department lists, course / curriculum lists, certificates, taglines, slogans, dates, or years on the walls, desks, screens, or anywhere. (The image generator mis-spells such text, so it must NEVER appear.)
-  • 🚫 NO FRAMES / DISPLAYS / PLACEHOLDERS (STRICT — VERY IMPORTANT): do NOT create ANY wall frames, picture frames, photo frames, certificate frames, achievement / award / "success" / proof / display walls, photo walls, notice boards, posters, standees, brochures, or screens — NEITHER empty NOR filled. They are ALL forbidden. NEVER write phrases like "empty frames", "frames to hold photos", "displays without text", "achievement display", "wall displays", or similar — those create ugly empty cardboard panels. Walls stay clean (plain wall + real architecture) carrying ONLY the attached logo; communicate the business through REAL in-use objects, never through any display or frame.
+  • 🚫 TEXT RULE (STRICT — VERY IMPORTANT): ${brand.ref} is the ONLY text anywhere in the frame. Do NOT add or invent ANY other text — no signage, banners, posters, notice boards, brochures, application forms, department lists, course / curriculum lists, certificates, taglines, slogans, dates, or years on the walls, desks, screens, or anywhere. (The image generator mis-spells such text, so it must NEVER appear.)
+  • 🚫 NO FRAMES / DISPLAYS / PLACEHOLDERS (STRICT — VERY IMPORTANT): do NOT create ANY wall frames, picture frames, photo frames, certificate frames, achievement / award / "success" / proof / display walls, photo walls, notice boards, posters, standees, brochures, or screens — NEITHER empty NOR filled. They are ALL forbidden. NEVER write phrases like "empty frames", "frames to hold photos", "displays without text", "achievement display", "wall displays", or similar — those create ugly empty cardboard panels. Walls stay clean (plain wall + real architecture) carrying ONLY ${brand.ref}; communicate the business through REAL in-use objects, never through any display or frame.
   • 🧍 The new POSE — body angle, hand position, interaction with environment elements at this location in a way that matches the clip's selling point
    • 😊 The new EXPRESSION — emotional tone matching Clip ${clipNum}'s voice-over script
    • 🎥 The new CAMERA ANGLE and composition
   • 💡 How lighting naturally differs at this new spot (e.g., near window = warm, interior = ambient) while still preserving the realism formula
   • 👁️ Mandatory direct eye contact to the camera while holding this new pose
-  • 🪧 The attached logo placed on this clip's believable physical surface — ${shot.logoPlacement} — small-to-medium, sharp and clearly readable, fully visible, physically installed, and completely unmodified
-   
-   WHY THIS MATTERS: Any model description — even saying "beautiful woman" or "silk saree" — will cause the AI image generator to create a COMPLETELY DIFFERENT person. The model's identity is LOCKED from Clip 1. You ONLY control the scene around her.
+  • 🪧 ${brand.isNameBoard ? 'The business name board' : 'The attached logo'} placed on this clip's believable physical surface — ${shot.logoPlacement} — small-to-medium, sharp and clearly readable, fully visible, physically installed, and completely unmodified${brand.isNameBoard && brand.name ? ` (it must read exactly "${brand.name}")` : ''}
+
+   WHY THIS MATTERS: Any model description — even saying "beautiful ${p.person}" or "silk saree" — will cause the AI image generator to create a COMPLETELY DIFFERENT person. The model's identity is LOCKED from Clip 1. You ONLY control the scene around ${p.object}.
    
    **OUTPUT LENGTH FOR THIS CLIP: 100-200 words MAXIMUM.**
   **DO NOT include these section headers: SUBJECT, FACE, MAKEUP, EXPRESSION, HAIR, ATTIRE, JEWELLERY, PRODUCT IMAGES PLACEMENT, OVERALL RESULT.**
@@ -1691,13 +1872,12 @@ ${Array.from({ length: segmentCount }, (_, i) => {
 • **😊 Subject EXPRESSION** — match the script mood (welcoming → proud → trustworthy → warm → inviting)
 • **🔍 Background content** — different business elements visible at each new location
 • **💡 Lighting nuance** — natural variation as model moves (near window = warmer, deeper inside = ambient, near displays = spotlit)
-• **🪧 Logo installation surface** — move the exact logo to the most believable mounted sign or branded architectural panel for that zone, never as a floating overlay
-• **🧥 Professional suit shade nuance** — in commercial professional campaigns, the suit may shift within the approved business-specific palette family so the client does not get one repeated beige tone in every frame
+• **🪧 ${brand.isNameBoard ? 'Name-board' : 'Logo'} installation surface** — move the exact ${brand.isNameBoard ? 'name board' : 'logo'} to the most believable mounted sign or branded architectural panel for that zone, never as a floating overlay
 
 **⚠️ WHAT MUST NEVER CHANGE (MODEL CONSISTENCY IS SACRED):**
 • **Model's identity** — exact same person, same face, same beauty level in every clip
 • **Hair color baseline** — the exact same natural rich black hair established in Clip 1 must remain unchanged in every later clip, with no brown, auburn, burgundy, copper, highlight, or lighting-driven color drift
-• **Attire & jewellery** — keep the same jewellery set and the same wardrobe family; traditional outputs stay in the exact same outfit, while commercial professional outputs may vary only the suit shade inside the approved business-specific palette family without changing the overall styling identity
+• **Attire & jewellery** — keep the EXACT SAME outfit, same colour, same design, and same accessories as the attached Frame-1 reference in every clip. Do NOT vary the suit shade or re-tint the outfit between clips — the attire and its colour must stay perfectly identical to the attached image; only pose, action, and location change
 • **Overall establishment** — same business, same décor style, same color palette
 • **Color grading & mood** — consistent cinematic feel throughout
 • **Image quality** — same DSLR realism level
@@ -1705,13 +1885,20 @@ ${Array.from({ length: segmentCount }, (_, i) => {
 
 **⛔⛔⛔ ABSOLUTE ZERO-TOLERANCE RULE FOR CLIPS 2+ ⛔⛔⛔**
 For ANY clip after Clip 1, you must write ZERO words about the model's appearance.
-The ONLY reference to the model should be: "Use the attached reference frame image as the exact identity and styling anchor for this clip — same woman, same core styling, the exact same natural rich black hair from the first frame onward, same wardrobe family rooted in the approved business-specific palette, same jewellery set, and for professional commercial suit campaigns only you may shift the suit tone within that same palette family instead of repeating one identical beige in every clip."
+The ONLY reference to the model should be: "Use the attached image (the Frame-1 reference) EXACTLY as the identity and styling anchor for this clip — the SAME ${p.person}, the SAME face, the SAME hair, and the EXACT SAME attire in the EXACT SAME colour, shade, and design as the attached image. Do NOT change, shift, re-tint, or re-style the outfit or its colour between clips — keep it perfectly identical to the attached image. Only the pose, hand position, action, and background location may change to match this clip's script."
 
 NEVER write about: face, hair, skin, beauty, makeup, attire, fabric, saree, silk, jewellery, necklace, earrings, bangles, eyes, lips, complexion, height, figure, or ANY physical/clothing description.
 Even writing "beautiful woman in silk saree" will make the AI generate a DIFFERENT person.
 The model is LOCKED from Clip 1 — you can ONLY control the SCENE around her (location, background, pose, expression, camera angle).
 
-===== REALISM REQUIREMENT (ABSOLUTE — NON-NEGOTIABLE) =====
+${segmentCount === 2 ? `===== TWO-CLIP CONTINUATION FRAME (CLIP 2) — EXTRA CARE (MANDATORY) =====
+
+In a 2-clip ad, Clip 2 is the ONLY continuation frame, so it must be flawless. While the model identity and attire stay LOCKED to the attached Frame-1 image, Clip 2 must NOT feel like a lazy copy of Clip 1:
+• BODY LANGUAGE: give the ${p.person} a clearly NEW, natural, confident pose and hand position that visibly matches Clip 2's exact voice-over line and the new location — e.g. presenting a real product/counter, gesturing toward equipment, or an open welcoming stance. Never repeat Clip 1's folded-hands hero pose, never a stiff, awkward, floating, or mannequin posture, and keep both hands and arms anatomically natural.
+• BACKGROUND: move the ${p.person} to a genuinely DIFFERENT, real, in-use zone of the SAME business that proves Clip 2's message (not the same reception wall as Clip 1). Fill it with that zone's real, specific equipment/products/fixtures so it instantly reads as this exact business, with believable depth, correct scale, and lighting consistent with Clip 1's grade.
+• The ${p.person} must stay the hero at ~70% frame height with direct eye contact, and ${brand.isNameBoard ? 'the name board' : 'the attached logo'} must remain correctly installed, sharp, and unmodified in this new zone.
+
+` : ''}===== REALISM REQUIREMENT (ABSOLUTE — NON-NEGOTIABLE) =====
 
 Every generated frame MUST look like:
 • Real DSLR camera photography (Canon 5D Mark IV / Sony A7III quality)
@@ -1777,11 +1964,11 @@ Separate each clip's prompt with the marker: ###CLIP###
 ${adType !== AdType.FESTIVAL ? `**CLIP 1 FORMAT (CLEAN — 200-300 words):**
 
 Clip 1 – Main Frame Prompt (${shotDesigns[0].name})
-Create an ultra-realistic promotional portrait for "[BUSINESS NAME]" using the attached official logo as branding reference.
-Generate a premium [BUSINESS TYPE] reception environment and place a confident young Indian girl standing in front of the reception area.
-Main Character: Indian girl, age 20–25, a new different natural-looking girl, ${attireType === 'traditional' ? 'elegant DESIGNER silk/fancy saree (not a suit) with tasteful zari/border work (never plain) in a rich attractive non-dull colour and a modest elbow/short-sleeve blouse (never sleeveless)' : 'premium tailored formal suit (not saree)'} in a brand-derived colour, natural black hair, ${attireType === 'traditional' ? 'traditional jewellery (necklace/chain, earrings, bangles, ring, bindi)' : 'simple jewellery (finger ring, thin necklace/chain, earrings, wristwatch) and NO bindi on the forehead'}, friendly welcoming smile.
+Create an ultra-realistic promotional portrait for "[BUSINESS NAME]" using ${brand.isNameBoard ? `a realistic wall name board reading "${brand.name || '[BUSINESS NAME]'}" as branding` : 'the attached official logo as branding reference'}.
+Generate a premium [BUSINESS TYPE] reception environment and place a confident young Indian ${p.personYoung} standing in front of the reception area.
+Main Character: Indian ${p.personYoung}, age ${p.ageYears}, a new different natural-looking ${p.personYoung}, ${p.isMale ? (isCustomAttire ? customAttire.trim() : attireType === 'shirt_pant' ? 'crisp formal full-sleeve shirt neatly tucked into tailored formal trousers (not a suit, not any female attire)' : "premium tailored men's business suit (not any female attire)") : (isCustomAttire ? customAttire.trim() : attireType === 'traditional' ? 'elegant DESIGNER silk/fancy saree (not a suit) with tasteful zari/border work (never plain) in a rich attractive non-dull colour and a modest elbow/short-sleeve blouse (never sleeveless)' : 'premium tailored formal suit (not saree)')} in a brand-derived colour, natural black hair, ${p.isMale ? 'a wristwatch and an optional slim ring only (no necklace, earrings, bangles, or bindi)' : (attireType === 'traditional' ? 'traditional jewellery (necklace/chain, earrings, bangles, ring, bindi)' : 'simple jewellery (finger ring, thin necklace/chain, earrings, wristwatch) and NO bindi on the forehead')}, friendly welcoming smile.
 Pose: standing centered, both hands at the lower waist with the right hand lightly resting over the left — formal front-clasp corporate pose, looking at the camera.
-Background: the real [BUSINESS TYPE] reception built from the business details, with the attached logo as a small-to-medium wall sign behind her — fully visible, sharp and clearly readable (in focus, not blurred), but secondary, never large enough to shrink the girl. The attached logo is the ONLY text anywhere — no other signage, banners, taglines, mission lines, service lists, dates, academic years, or any invented text. No empty/blank boards, picture frames, certificates, brochures, posters, or blank screens — keep walls and surfaces clean.
+Background: the real [BUSINESS TYPE] reception built from the business details, with ${brand.ref} as a small-to-medium wall sign behind ${p.object} — fully visible, sharp and clearly readable (in focus, not blurred), but secondary, never large enough to shrink the ${p.personYoung}. ${brand.isNameBoard ? 'The name board' : 'The attached logo'} is the ONLY text anywhere — no other signage, banners, taglines, mission lines, service lists, dates, academic years, or any invented text. No empty/blank boards, picture frames, certificates, brochures, posters, or blank screens — keep walls and surfaces clean.
 Visual Style: ultra realistic, cinematic indoor lighting, natural skin texture, premium colour grading.
 Composition: 9:16 vertical, three-quarter shot from head to thighs/knees, girl centered and clearly filling about 70% of the frame height (not a small full head-to-feet shot).` : `**CLIP 1 FORMAT (FULL — 500-800 words):**
 
@@ -1800,17 +1987,17 @@ Create a Ultra-realistic DSLR photograph, single image, 9:16 vertical…
 Here is an EXAMPLE of what a correct Clip 2 prompt looks like:
 
 Clip 2 – Main Frame Prompt (${shotDesigns[1 % shotDesigns.length].name})
-Use the attached reference frame image as the exact identity and styling anchor for this clip — same woman, same core styling, the exact same natural rich black hair from the first frame onward, same wardrobe family, same jewellery set, perfectly consistent with the attached reference frame.
+Use the attached image (the Frame-1 reference) EXACTLY as the identity and styling anchor for this clip — the SAME ${p.person}, same face, same hair, and the EXACT SAME attire in the EXACT SAME colour, shade, and design as the attached image. Do NOT change or re-tint the outfit or its colour between clips; keep it perfectly identical to the attached image. Only the pose, action, and background location may change to match this clip's script.
 
-POSE: Subject positioned on the right side using rule-of-thirds, one hand gesturing gently toward the product display behind her. Close mid-shot, camera slightly below chest level, subject still occupying roughly 70% of the frame and maintaining direct eye contact with the camera.
+POSE: Subject positioned on the right side using rule-of-thirds, one hand gesturing gently toward the product display behind ${p.object}. Close mid-shot, camera slightly below chest level, subject still occupying roughly 70% of the frame and maintaining direct eye contact with the camera.
 
-NEW LOCATION: She has moved to a different real area of the premises that matches this clip's script line — for example a service / work zone with the business's real equipment, counters, and fixtures around her. Behind her are ONLY real physical objects (no text, no signage, no posters, no boards). The attached logo is mounted small-to-medium on the far wall, fully visible, sharp, readable, and unmodified.
+NEW LOCATION: ${p.Pronoun} has moved to a different real area of the premises that matches this clip's script line — for example a service / work zone with the business's real equipment, counters, and fixtures around ${p.object}. Behind ${p.object} are ONLY real physical objects (no text, no signage, no posters, no boards). ${brand.isNameBoard ? 'The business name board' : 'The attached logo'} is mounted small-to-medium on the far wall, fully visible, sharp, readable, and unmodified.
 
 ${adType === AdType.FESTIVAL ? `Festival decorations from the office are still visible — mango leaf thoranam above the display, marigold garlands framing the monitor, brass deepam on the desk corner, rangoli patterns continuing on the floor.
 
 LIGHTING: Cool blue-tinted ambient light from the display screens blends with warm golden festival lamp glow — creating a unique tech-meets-tradition atmosphere.
 
-MOOD: Professional, aspirational — showcasing the company's innovative capabilities while celebrating ${festivalName || 'the festival'}.` : `REAL ENVIRONMENT LAYER: A real, in-use functional area of the business is visible — e.g. shelves with real books / stock, real equipment, machines, work counters, tools, seating, or operational objects — so the business is obvious from the real surroundings. NEVER show any frames, photo / achievement / award / display walls, certificates, posters, boards, or screens (empty or filled), and no invented text — the attached logo is the ONLY text.
+MOOD: Professional, aspirational — showcasing the company's innovative capabilities while celebrating ${festivalName || 'the festival'}.` : `REAL ENVIRONMENT LAYER: A real, in-use functional area of the business is visible — e.g. shelves with real books / stock, real equipment, machines, work counters, tools, seating, or operational objects — so the business is obvious from the real surroundings. NEVER show any frames, photo / achievement / award / display walls, certificates, posters, boards, or screens (empty or filled), and no invented text — ${brand.ref} is the ONLY text.
 
 LIGHTING: Natural daylight from the left window mixes with soft practical interior lighting and believable reflections on real materials — polished, premium, and fully photographic.
 
@@ -1880,7 +2067,7 @@ export const getToneForAdType = (adType: string) =>
     ? 'Warm, celebratory, festive, heartfelt'
     : 'Professional, confident, trustworthy, persuasive';
 
-export const VOICEOVER_SYSTEM_PROMPT = (duration: number, segmentCount: number, adType: string, festivalName: string, language: string = '') => {
+export const VOICEOVER_SYSTEM_PROMPT = (duration: number, segmentCount: number, adType: string, festivalName: string, language: string = '', gender: string = 'female') => {
   const clipLines = Array.from({ length: segmentCount }, (_, index) => {
    const start = index * 8;
    const end = start + 8;
@@ -1890,28 +2077,58 @@ export const VOICEOVER_SYSTEM_PROMPT = (duration: number, segmentCount: number, 
   const finalStart = (segmentCount - 1) * 8;
   const finalEnd = segmentCount * 8;
 
-  return `You are a WORLD-CLASS TELUGU VOICE-OVER SCRIPT ARTIST and premium commercial copywriter for top Indian brands.
+  const lang = (language || 'Telugu').trim() || 'Telugu';
+  const isTelugu = lang.toLowerCase() === 'telugu';
+  const isLatin = lang.toLowerCase() === 'english';
+  const p = getModelProfile(gender);
+  const scriptWord = isLatin ? 'clean conversational English (Latin script)' : `${lang} script`;
+  const voiceArtist = p.isMale
+    ? 'a warm, confident, premium MALE voice artist (a trustworthy male brand voice)'
+    : 'a warm, sweet, confident, premium FEMALE voice artist';
 
-YOUR TASK: Generate a ${duration}-second Telugu voice-over script for a business advertisement.
+  return `You are a WORLD-CLASS ${lang.toUpperCase()} VOICE-OVER SCRIPT ARTIST — an expert commercial copywriter with 15+ years of experience writing high-converting TV, radio, and social-media (Meta / Facebook / Instagram) advertisements for real businesses${isTelugu ? ' across Andhra Pradesh and Telangana' : ''}.
+
+YOUR TASK: Generate a ${duration}-second ${lang} voice-over script for a business advertisement, written to be spoken naturally by ${voiceArtist}. Write it in the correct, native, pixel-perfect ${scriptWord} with no broken or garbled characters.
+
+===== OBJECTIVE =====
+
+Create a natural, persuasive script that sounds like a REAL premium TV / Meta commercial — never AI-generated, never translated-sounding, never robotic, and never like a formal announcement.
+
+===== TARGET AUDIENCE =====
+
+Real customers of this business — including business owners, shop owners, retail stores, service providers, and small & medium businesses${isTelugu ? ' in Andhra Pradesh & Telangana' : ''}. Speak directly to them, in the words they actually use every day.
+
+===== TONE =====
+
+Professional, friendly, trustworthy, confident, energetic, and clearly sales-focused. ${getToneForAdType(adType)}
+
+===== VOICE-OVER STYLE =====
+
+Write exactly like a premium TV or Meta (Facebook / Instagram) advertisement. The delivery must feel natural, conversational, engaging, fast-paced, and emotionally appealing — never robotic, never a flat announcement.
 
 ===== CORE OUTPUT CONTRACT =====
 
 1. Output EXACTLY ${segmentCount} clip lines. No explanations. No notes. No analysis. No extra headings.
 2. Output format must be EXACTLY:
 ${clipLines}
-3. The timestamp labels may use digits and punctuation, but the SPOKEN SCRIPT after each colon must use Telugu script words only, with commas, periods, question marks, or exclamation marks allowed where natural for delivery.
+3. The timestamp labels may use digits and punctuation, but the SPOKEN SCRIPT after each colon must use ${scriptWord} words only, with commas, periods, question marks, or exclamation marks allowed where natural for delivery.
 4. Do NOT output a separate FULL SCRIPT section.
 5. Each clip line must contain ONE complete spoken sentence only.
 
-===== LANGUAGE RULES =====
+===== LANGUAGE RULES (${lang.toUpperCase()}) =====
 
-1. Spoken content must be 100% Telugu script. No English alphabet in spoken content.
-2. Brand names must be transliterated into Telugu script naturally.
-3. Use English-origin words only when Telugu speakers genuinely say them in everyday premium ad speech, and write them only in Telugu script.
-4. Do NOT force awkward hybrid lines. If a natural Telugu phrase is stronger, use it.
-5. Do NOT use archaic, bookish, devotional, or government-style Telugu.
-6. Write how a polished Telugu commercial voice artist would actually speak in Andhra Pradesh or Telangana today.
-7. PROFESSIONAL TRANSLITERATION RULE (IMPORTANT): For a modern, professional ad tone, prefer commonly-spoken English business/professional words written in Telugu script (transliteration) instead of heavy, literary, or pure-Telugu translations. Examples: use "ఫ్రీ బ్రేక్‌ఫాస్ట్" not "ఉచిత అల్పాహారం"; "న్యూ బిల్డింగ్" not "నూతన భవనం"; "బ్రైట్ ఫ్యూచర్" not "బంగారు భవిత"; "ఇండస్ట్రీ ట్రైనింగ్" or "డైరెక్ట్ ట్రైనింగ్" not "పరిశ్రమలో ప్రత్యక్ష శిక్షణ". Write these English words in Telugu script, the way urban Telugu ads actually speak.
+${isLatin ? `1. Spoken content must be clean, natural, conversational English.
+2. Keep brand names exactly as written.
+3. Keep it modern and premium — never stiff, archaic, or literal.
+4. Do NOT force awkward phrasing. Use the strongest natural English line.
+5. Avoid heavy, bookish, or corporate-jargon English — speak the way a polished national brand ad actually speaks.
+6. Write how a top Indian commercial voice artist would actually deliver premium English ad copy today.` : `1. Spoken content must be 100% correct, native, pixel-perfect ${lang} script. No Latin/English alphabet in spoken content (English-origin words are allowed only when written in ${lang} script — see rule 7). Never output broken, garbled, or wrongly-rendered ${lang} characters.
+2. Brand names must be transliterated into ${lang} script naturally.
+3. Use English-origin words only when ${lang} speakers genuinely say them in everyday premium ad speech, and write them only in ${lang} script.
+4. Do NOT force awkward hybrid lines. If a natural ${lang} phrase is stronger, use it.
+5. Do NOT use archaic, bookish, devotional, or government-style ${lang}.
+6. Write how a polished ${lang} commercial voice artist would actually speak today.
+7. SIMPLE-WORD / PROFESSIONAL TRANSLITERATION RULE (IMPORTANT — APPLIES TO EVERY LANGUAGE): For a modern, professional ad tone, prefer commonly-spoken SIMPLE English business/professional words written in ${lang} script instead of heavy, complex, literary, or purist ${lang} translations that ordinary listeners find hard. For example, in Telugu use "ఫ్రీ బ్రేక్‌ఫాస్ట్" not "ఉచిత అల్పాహారం"; "న్యూ బిల్డింగ్" not "నూతన భవనం"; "బ్రైట్ ఫ్యూచర్" not "బంగారు భవిత"; "ఇండస్ట్రీ ట్రైనింగ్" not "పరిశ్రమలో ప్రత్యక్ష శిక్షణ". Apply the SAME principle to ${lang}: whenever the pure/complex ${lang} word is hard, swap in the simple everyday English word written in ${lang} script, exactly as urban ${lang} ads actually speak.`}
 
 ===== CONTENT TRUTH RULES =====
 
@@ -1926,9 +2143,12 @@ ${clipLines}
 1. Never use digits inside spoken content.
 2. NEVER speak, read, or include any phone number or contact number anywhere in the script — no English digit names, no native counting words, no number at all. The number is shown on screen, not spoken.
 3. CTA must appear ONLY in the FINAL clip. Non-final clips must have no CTA and no contact reference.
-4. The FINAL clip must END with this EXACT on-screen call CTA line (this replaces reading any number):
-  "మరిన్ని వివరాల కోసం స్క్రీన్‌పై ఉన్న నంబర్‌కు ఇప్పుడే కాల్ చేయండి."
-5. This same on-screen call CTA line is used for EVERY ad regardless of clip count. Do NOT read or imply any phone number even if one is provided.
+4. The FINAL clip is the CALL-TO-ACTION — make it strong and natural, worded for THIS business, using an action such as "call now", "contact us today", "WhatsApp us today", "book now", or "don't miss this limited-time offer" (in ${lang}). Do NOT speak any phone number.
+5. The FINAL clip must END with the on-screen call CTA (this replaces reading any number):${isTelugu ? `
+  Use this EXACT line: "మరిన్ని వివరాల కోసం స్క్రీన్‌పై ఉన్న నంబర్‌కు ఇప్పుడే కాల్ చేయండి."` : isLatin ? `
+  End with a natural English CTA meaning "For more details, call the number shown on screen now." (keep it short, warm, and premium).` : `
+  End with a natural, native ${lang} sentence that means "For more details, call the number shown on screen now." Write it in correct, pixel-perfect ${lang} script — do NOT output the Telugu version.`}
+6. This same on-screen call CTA idea is used for EVERY ad regardless of clip count. Do NOT read or imply any phone number even if one is provided.
 
 ===== TIMING AND LENGTH RULES =====
 
@@ -1950,10 +2170,16 @@ Every script must have:
 • clean benefit-led messaging
 • one core idea per clip, not a service list dump
 • at least one memorable phrase across the full script
-• emotionally clear, instantly understandable Telugu
+• emotionally clear, instantly understandable ${lang}
+• business-specific writing (see the BUSINESS-SPECIFIC SCRIPT RULE below) — never a generic template that could belong to any other business
 
 Strictly avoid:
-• awkward literal translations
+• awkward literal translations and translated English sentence structures
+• complex, literary, bookish, or purist ${lang} vocabulary${isTelugu ? ' — no Sanskrit-heavy or grandhika words' : ' (no heavy or scholarly words)'}
+• long sentences — keep every spoken line short and easy to follow on the FIRST listen
+• unnecessary English words (use an English word only when people genuinely say it in everyday premium ad speech)
+• generic marketing clichés and hollow slogans
+• AI-related or technical explanations unless the business specifically requires them
 • Latin technical tokens in spoken lines such as "2D", "3D", "AI", "GP", "QR", "TV"
 • repeated words like "ఎమర్జింగ్ ఎమర్జింగ్"
 • broken hybrid lines like "మీ లైఫ్ మా ప్రామిస్"
@@ -1963,6 +2189,15 @@ Strictly avoid:
 • desperate sales tone
 • radio-jingle style or government-announcement tone
 • placeholder copy or fake details
+
+===== WRITING RULES =====
+
+• Every sentence must flow naturally into the next — the whole script should feel like one smooth spoken thought, not disconnected lines.
+• Keep sentences short and use real spoken ${lang}.
+• Sell BENEFITS and outcomes for the customer, not a dry list of features.
+• Create genuine excitement without exaggeration or false promises.
+• Make the listener feel this business will genuinely help them / their business.
+• It must be effortless to understand on the very first listen.
 
 ===== BUSINESS ANALYSIS =====
 
@@ -1974,20 +2209,27 @@ Extract and use only verified information from the provided inputs:
 • trust factor or proof point if actually provided
 • contact number only if actually provided and only in the final clip
 
+===== BUSINESS-SPECIFIC SCRIPT RULE (MANDATORY — NO TEMPLATES) =====
+
+1. This script must be written FOR THIS EXACT BUSINESS — never a reusable template. Read the provided business info, uploaded assets, and files (name, real services/products, offers, differentiators, tone, target customer) and build the lines from those REAL specifics.
+2. Two different businesses must produce clearly DIFFERENT scripts. If a line could be dropped into any other company's ad unchanged, it is too generic — rewrite it with this business's real specifics (its actual service names, real offers, real proof points, real audience).
+3. Pull concrete, verifiable details from the attached assets/files (e.g. the exact service, the real offer, the real specialty) and weave them in naturally — do NOT invent anything not present.
+4. Lead with what makes THIS business worth choosing, in plain words a real customer would connect with — benefits and outcomes, not a feature/service list dump.
+5. Word formation must be smooth, natural, and impactful when spoken aloud — no awkward, robotic, or literally-translated phrasing; every line should sound like a real premium ad, not a machine translation.
+
 ===== SCRIPT STRUCTURE =====
 
 ${adType === 'festival' ? `FESTIVAL MODE:
 • Clip 1 (${0}-${8}) must be pure festival wishes only.
-• Clip 1 should use this idea clearly and naturally: "{Business Name} తరఫున మీకు మరియు మీ కుటుంబానికి ${festivalName} హృదయపూర్వక శుభాకాంక్షలు"
+• Clip 1 should use this idea clearly and naturally${isTelugu ? `: "{Business Name} తరఫున మీకు మరియు మీ కుటుంబానికి ${festivalName} హృదయపూర్వక శుభాకాంక్షలు"` : `, written in native ${lang}: warm ${festivalName} wishes to you and your family on behalf of {Business Name}`}
 • Clip 1 must contain zero business promotion.
 • From Clip 2 onward, remove festival language completely and switch to pure business promotion.
-• Do NOT mix wishes and promotion in the same clip.` : `COMMERCIAL MODE:
-• Clip 1 (${0}-${8}) must be a premium hook that grabs attention instantly.
-• Clip 1 must not contain CTA or contact details.
-• Clip 2 (${8}-${16}) must introduce the brand or service with authority.
-• Middle clips, when present, must cover benefits, trust, or differentiation.
-• Every non-final clip must carry only one clear selling idea.
-• The final clip (${finalStart}-${finalEnd}) must close with CTA and contact handling only.`}
+• Do NOT mix wishes and promotion in the same clip.` : `COMMERCIAL MODE (build a real TV-commercial story arc across the clips):
+• Clip 1 (${0}-${8}) = a strong, attention-grabbing OPENING HOOK. No CTA, no contact details.
+• Then touch the customer's real PROBLEM or DESIRE, and introduce THIS business as the SOLUTION naturally (across Clip 2 and any middle clips).
+• Highlight the ONE main BENEFIT that makes this business worth choosing.
+• Every non-final clip carries only ONE clear selling idea — no CTA and no contact reference.
+• The final clip (${finalStart}-${finalEnd}) = a clear, confident CALL-TO-ACTION only.`}
 
 ${segmentCount === 2 ? `TWO-CLIP MODE:
 • Clip 1 = hook + core benefit or wish depending on ad type
@@ -2007,14 +2249,14 @@ ${segmentCount === 2 ? `TWO-CLIP MODE:
 Verify all of the following before writing the final answer:
 • Exactly ${segmentCount} clip lines
 • No extra heading except the timestamp labels
-• Spoken content is Telugu script only
+• Spoken content is ${scriptWord} only
 • No fake details
 • No broken transliteration
 • No repeated adjacent words
 • No incomplete thoughts
 • No CTA before the final clip
 • No contact reference before the final clip
-• No Latin letters or digits inside spoken content
+• ${isLatin ? 'No digits inside spoken content (spell numbers as words)' : `No Latin letters or digits inside spoken content — only native ${lang} script`}
 • Every clip has exactly 18 spoken words
 • No phone number or contact number is spoken anywhere in the script
 • The final clip ends with the exact on-screen call CTA line
@@ -2097,7 +2339,12 @@ ${adType === 'festival' ? `FESTIVAL MODE:
 Return only the repaired ${segmentCount} clip lines.`;
 };
 
-export const VEO_SEGMENT_SYSTEM_PROMPT = (segmentCount: number) => `You are an expert at formatting video generation prompts for Veo 3.
+export const VEO_SEGMENT_SYSTEM_PROMPT = (segmentCount: number, gender: string = 'female') => {
+  const p = getModelProfile(gender);
+  const voiceLine = p.isMale
+    ? `With a warm, confident voice he needs to say:`
+    : `With a very sweet voice she needs to say:`;
+  return `You are an expert at formatting video generation prompts for Veo 3.
 
 YOUR TASK: Generate ${segmentCount} copy-paste-ready Veo 3 prompts.
 
@@ -2107,7 +2354,7 @@ INPUT PROVIDED:
 CRITICAL INSTRUCTIONS:
 You must output each segment in this EXACT FORMAT:
 
-With a very sweet voice she needs to say:
+${voiceLine}
 
 "\${voiceOverSegment}"
 
@@ -2130,6 +2377,7 @@ Provide ONLY the prompts. Do not include the Main Frame description.
 Ensure strict adherence to the format above.
 Separator between segments: "###SEGMENT###"
 `;
+};
 
 export const POSTER_SYSTEM_PROMPT = (adType: string, festivalName: string) => `You are a world-class poster designer and prompt writer for AI image generators. Write ONE short, clean, plain-English prompt for a premium 9:16 vertical promotional poster.
 
@@ -2272,13 +2520,13 @@ STRICT RULES:
 - For EACH clip, output between 1 and 3 overlay texts — ONLY for the genuine KEY POINTS of that clip (a benefit, an offer, a number, a strong hook word, the CTA). Do NOT add overlays for filler.
 - Many clips need only 1 overlay. NEVER force 3. If a clip has no real key point, output 0 overlays for that clip.
 - Keep each overlay SHORT and impactful — ideally 1 to 4 words (a headline/keyword, not the full sentence). It should reinforce, not duplicate, the spoken line.
-- Write the overlay text in ${language} (the same language as the voice-over). For the CTA overlay you may use a short ${language} call-to-action.
+- LANGUAGE (MANDATORY): Write EVERY overlay text in ENGLISH ONLY, regardless of the voice-over language${language && language.toLowerCase() !== 'english' ? ` (the voice-over is in ${language}, but the on-screen overlays must still be in English)` : ''}. The spoken line may be in another language — but the on-screen key-point text and the CTA overlay must always be short, clean English. Do NOT output ${language && language.toLowerCase() !== 'english' ? language + ' or any non-English' : 'non-English'} script in the overlays.
 - For each overlay, suggest ONE "soundEffect" that is a COMMON, SEARCHABLE term in CapCut's sound-effects search — e.g. "whoosh", "swoosh transition", "pop", "ding", "notification", "cash register", "camera shutter", "sparkle", "boom impact", "riser", "click", "applause". Use the kind of short term that returns results when typed into CapCut search.
 - Match the sound effect to the meaning/mood of that overlay (e.g. an offer/price → "cash register" or "ding"; a transition/hook → "whoosh"; excitement → "sparkle" or "applause").
 
 OUTPUT FORMAT (STRICT):
 - Output ONLY a valid JSON array. No markdown, no code block, no commentary.
-- Each element: { "clip": <clip number, integer>, "text": "<short overlay text in ${language}>", "soundEffect": "<capcut-searchable sfx term>" }
+- Each element: { "clip": <clip number, integer>, "text": "<short overlay text in ENGLISH>", "soundEffect": "<capcut-searchable sfx term>" }
 - Order by clip number, then by appearance within the clip.
 - If a clip has no overlay, simply include no entries for it.`;
 

@@ -1,4 +1,4 @@
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { addDoc, collection, getDocs, query, serverTimestamp, where } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { isNative } from "@/utils/platform";
 
@@ -48,5 +48,42 @@ export async function sendNotification({ userId, type, title, message, link, cal
     });
   } catch (err) {
     console.error("[Push] send error:", err);
+  }
+}
+
+/**
+ * Notify every tech team leader who supervises a given tech team (team leaders and members
+ * created by the same tech admin share the same `createdBy`). Used to keep team leaders in
+ * the loop on their team's work (e.g. new assignments and completions) — previously these
+ * notifications never reached them. Optionally skips one uid to avoid a duplicate when the
+ * assigner/verifier is already that team leader.
+ */
+export async function notifyTechTeamLeaders(params: {
+  /** The admin uid that created the team member (member.createdBy). */
+  teamAdminUid: string;
+  /** A uid to skip (e.g. the assigner) so they don't get a duplicate notification. */
+  excludeUserId?: string;
+  type: string;
+  title: string;
+  message: string;
+  link?: string;
+}): Promise<void> {
+  const { teamAdminUid, excludeUserId, type, title, message, link } = params;
+  if (!teamAdminUid) return;
+  try {
+    const snap = await getDocs(
+      query(
+        collection(db, "users"),
+        where("role", "==", "tech_team_leader"),
+        where("createdBy", "==", teamAdminUid),
+      ),
+    );
+    await Promise.all(
+      snap.docs
+        .filter((d) => d.id !== excludeUserId)
+        .map((d) => sendNotification({ userId: d.id, type, title, message, ...(link ? { link } : {}) })),
+    );
+  } catch (err) {
+    console.error("[Notify] tech team-leader fan-out failed:", err);
   }
 }

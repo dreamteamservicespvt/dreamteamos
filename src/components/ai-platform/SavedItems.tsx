@@ -29,7 +29,9 @@ export interface SavedGeneration {
   overlayTexts?: any[] | null;
   adType: string;
   festivalName?: string;
+  gender?: string;
   attireType: string;
+  customAttire?: string;
   duration: number;
   creationMode?: string;
   aspectRatio?: string;

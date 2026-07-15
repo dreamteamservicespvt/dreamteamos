@@ -4,7 +4,7 @@ import {
 } from 'lucide-react';
 import { collection, query, where, doc, updateDoc, deleteField, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/services/firebase';
-import { sendNotification } from '@/services/notifications';
+import { sendNotification, notifyTechTeamLeaders } from '@/services/notifications';
 import { markOrderCompleted, revertOrderToAssigned } from '@/services/orders';
 import { useAuthStore } from '@/store/authStore';
 import { useFirestoreQuery } from '@/hooks/useFirestore';
@@ -106,7 +106,7 @@ export default function MyWork() {
         });
       }
 
-      // Notify admin
+      // Notify whoever assigned the work (admin or team leader)
       if (openAssignment.assignedBy) {
         await sendNotification({
           userId: openAssignment.assignedBy,
@@ -114,6 +114,20 @@ export default function MyWork() {
           title: 'Work Completed',
           message: `${user?.name || 'A member'} has completed work: ${openAssignment.businessName || openAssignment.displayTitle}`,
           link: `/tech-admin/work-assign/${user.uid}?verify=${openAssignment.id}`,
+        });
+      }
+
+      // Keep the member's tech team leader(s) in the loop on completions, even when the admin
+      // assigned the work directly. Skip the assigner so a team leader who assigned it isn't
+      // notified twice.
+      if (user?.createdBy) {
+        await notifyTechTeamLeaders({
+          teamAdminUid: user.createdBy,
+          excludeUserId: openAssignment.assignedBy,
+          type: 'work_completed',
+          title: 'Team Work Completed',
+          message: `${user?.name || 'A team member'} completed work: ${openAssignment.businessName || openAssignment.displayTitle}`,
+          link: `/team-leader/work-assign/${user.uid}?verify=${openAssignment.id}`,
         });
       }
 
