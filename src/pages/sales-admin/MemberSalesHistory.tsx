@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import AgreementListForMember from "@/components/agreement/AgreementListForMember";
 import { doc, getDoc } from "firebase/firestore";
 import { subscribeMemberLeads } from "@/services/teamLeads";
 import { db } from "@/services/firebase";
@@ -141,6 +142,7 @@ export default function MemberSalesHistory() {
 
   return (
     <div className="space-y-6" onClick={() => setDayDropOpen(false)}>
+      {memberId && <AgreementListForMember memberId={memberId} />}
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2 md:gap-3">

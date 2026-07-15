@@ -1,4 +1,4 @@
-import { addDoc, collection, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
 import type { Timestamp } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
@@ -91,4 +91,26 @@ export function watchSentAgreements(sentBy: string, cb: (list: Agreement[]) => v
 
 function sortByCreated(list: Agreement[]): Agreement[] {
   return list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+}
+
+// ── Per-category bulk templates ──────────────────────────────────────────────
+// One remembered template per admin per category (full_time / part_time), so the
+// admin doesn't have to re-paste the same agreement text on every bulk send.
+
+export async function saveAgreementTemplate(adminUid: string, category: string, bodyText: string): Promise<void> {
+  await setDoc(doc(db, "agreement_templates", `${adminUid}_${category}`), {
+    adminUid,
+    category,
+    bodyText,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function loadAgreementTemplate(adminUid: string, category: string): Promise<string> {
+  try {
+    const snap = await getDoc(doc(db, "agreement_templates", `${adminUid}_${category}`));
+    return (snap.exists() ? (snap.data().bodyText as string) : "") || "";
+  } catch {
+    return "";
+  }
 }

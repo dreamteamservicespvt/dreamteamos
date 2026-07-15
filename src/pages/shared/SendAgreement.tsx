@@ -4,11 +4,14 @@ import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { FileText, Send, Eye, CheckCircle2, Clock, FileSignature } from "lucide-react";
+import { FileText, Send, Eye, CheckCircle2, Clock, FileSignature, User, Users, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { AppUser } from "@/types";
-import { Agreement, extractTitle, sendAgreement, watchSentAgreements } from "@/services/agreements";
-import { employmentOf, EMPLOYMENT_LABELS } from "@/services/employment";
+import {
+  Agreement, extractTitle, sendAgreement, watchSentAgreements,
+  loadAgreementTemplate, saveAgreementTemplate,
+} from "@/services/agreements";
+import { employmentOf, EMPLOYMENT_LABELS, EmploymentType } from "@/services/employment";
 import AgreementView from "@/components/agreement/AgreementView";
 
 const DTS_TEMPLATE = `DREAM TEAM SERVICES
@@ -76,15 +79,21 @@ Date: ____________________`;
 const memberProfileLink = (role: string): string =>
   role === "sales_member" ? "/sales/profile" : role === "tech_member" ? "/tech/profile" : "";
 
+type SendMode = "individual" | "bulk";
+
 export default function SendAgreement() {
   const user = useAuthStore((s) => s.user);
   const { toast } = useToast();
   const [allUsers, setAllUsers] = useState<AppUser[]>([]);
   const [sent, setSent] = useState<Agreement[]>([]);
+  const [mode, setMode] = useState<SendMode>("individual");
   const [selectedId, setSelectedId] = useState<string>("");
+  const [category, setCategory] = useState<EmploymentType>("full_time");
+  const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [body, setBody] = useState<string>("");
   const [showPreview, setShowPreview] = useState(false);
   const [sending, setSending] = useState(false);
+  const [sendProgress, setSendProgress] = useState("");
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "users"), (snap) => setAllUsers(snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser))));
@@ -110,37 +119,94 @@ export default function SendAgreement() {
       .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   }, [allUsers, user]);
 
+  const categoryMembers = useMemo(
+    () => members.filter((m) => employmentOf(m.employmentType) === category),
+    [members, category],
+  );
+
+  // Pre-tick everyone in the category when the category / member list changes.
+  useEffect(() => {
+    if (mode === "bulk") setTicked(new Set(categoryMembers.map((m) => m.uid)));
+  }, [mode, category, categoryMembers.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Remembered template per category: load it when Bulk + category chosen and the box is empty.
+  useEffect(() => {
+    if (mode !== "bulk" || !user) return;
+    let cancelled = false;
+    loadAgreementTemplate(user.uid, category).then((tpl) => {
+      if (!cancelled && tpl) setBody((prev) => (prev.trim() ? prev : tpl));
+    });
+    return () => { cancelled = true; };
+  }, [mode, category, user?.uid]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const agreementFlag = (memberId: string): "signed" | "sent" | null => {
+    const mine = sent.filter((a) => a.memberId === memberId);
+    if (mine.some((a) => a.status === "signed")) return "signed";
+    if (mine.length > 0) return "sent";
+    return null;
+  };
+
   const selected = members.find((m) => m.uid === selectedId);
+  const previewMember = mode === "individual" ? selected : categoryMembers.find((m) => ticked.has(m.uid)) || categoryMembers[0];
+  const tickedMembers = categoryMembers.filter((m) => ticked.has(m.uid));
+
+  const toggleTick = (uid: string) =>
+    setTicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(uid)) next.delete(uid); else next.add(uid);
+      return next;
+    });
+
+  const sendTo = async (member: AppUser) => {
+    if (!user) return;
+    await sendAgreement(
+      {
+        memberId: member.uid,
+        memberName: member.name,
+        memberPhone: member.phone,
+        memberRole: member.role,
+        sentBy: user.uid,
+        sentByName: user.name,
+        sentByRole: user.role,
+        title: extractTitle(body),
+        bodyText: body.trim(),
+      },
+      memberProfileLink(member.role),
+    );
+  };
 
   const handleSend = async () => {
-    if (!user || !selected || !body.trim()) {
-      toast({ title: "Missing info", description: "Select a member and paste the agreement text.", variant: "destructive" });
+    if (!user || !body.trim()) {
+      toast({ title: "Missing info", description: "Paste the agreement text first.", variant: "destructive" });
+      return;
+    }
+    const targets = mode === "individual" ? (selected ? [selected] : []) : tickedMembers;
+    if (targets.length === 0) {
+      toast({ title: "No recipients", description: mode === "individual" ? "Select a member." : "Tick at least one member.", variant: "destructive" });
       return;
     }
     setSending(true);
     try {
-      await sendAgreement(
-        {
-          memberId: selected.uid,
-          memberName: selected.name,
-          memberPhone: selected.phone,
-          memberRole: selected.role,
-          sentBy: user.uid,
-          sentByName: user.name,
-          sentByRole: user.role,
-          title: extractTitle(body),
-          bodyText: body.trim(),
-        },
-        memberProfileLink(selected.role),
-      );
-      toast({ title: "Agreement sent", description: `${selected.name} will see it in their profile to sign.` });
-      setBody("");
-      setSelectedId("");
+      let done = 0;
+      for (const m of targets) {
+        setSendProgress(targets.length > 1 ? `Sending ${done + 1}/${targets.length} — ${m.name}…` : "");
+        await sendTo(m);
+        done++;
+      }
+      if (mode === "bulk") await saveAgreementTemplate(user.uid, category, body.trim());
+      toast({
+        title: targets.length > 1 ? `Sent to ${targets.length} members` : "Agreement sent",
+        description: targets.length > 1
+          ? `Every ${EMPLOYMENT_LABELS[category]} member got their own personalized copy to sign.`
+          : `${targets[0].name} will see it in their profile to sign.`,
+      });
+      if (mode === "individual") { setBody(""); setSelectedId(""); }
       setShowPreview(false);
     } catch {
       toast({ title: "Error", description: "Could not send the agreement.", variant: "destructive" });
     } finally {
       setSending(false);
+      setSendProgress("");
     }
   };
 
@@ -151,52 +217,131 @@ export default function SendAgreement() {
           <FileSignature className="w-5 h-5 text-primary" /> Agreements
         </h1>
         <p className="text-muted-foreground text-xs md:text-sm mt-1">
-          Paste any agreement text, auto-fill the member's details, preview, and send it for signature.
+          Paste any agreement text, auto-fill each member's details, preview, and send for signature — individually or in bulk.
         </p>
       </div>
 
       <div className="rounded-xl border border-border bg-card p-4 md:p-5 space-y-4">
-        <div className="grid md:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1.5">Send to</label>
-            <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)}
-              className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background text-foreground">
-              <option value="">Select a team member…</option>
-              {members.map((m) => (
-                <option key={m.uid} value={m.uid}>{m.name} · {EMPLOYMENT_LABELS[employmentOf(m.employmentType)]}</option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-end">
-            <button onClick={() => setBody(DTS_TEMPLATE)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border border-border bg-background hover:bg-accent text-foreground">
-              <FileText className="w-4 h-4" /> Load DREAM TEAM template
-            </button>
-          </div>
+        {/* Mode toggle */}
+        <div className="flex items-center gap-2">
+          <button onClick={() => setMode("individual")}
+            className={cn("inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border",
+              mode === "individual" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent")}>
+            <User className="w-3.5 h-3.5" /> Individual
+          </button>
+          <button onClick={() => setMode("bulk")}
+            className={cn("inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border",
+              mode === "bulk" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent")}>
+            <Users className="w-3.5 h-3.5" /> Bulk (by category)
+          </button>
         </div>
 
+        {mode === "individual" ? (
+          <div className="grid md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1.5">Send to</label>
+              <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)}
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background text-foreground">
+                <option value="">Select a team member…</option>
+                {members.map((m) => (
+                  <option key={m.uid} value={m.uid}>{m.name} · {EMPLOYMENT_LABELS[employmentOf(m.employmentType)]}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-end">
+              <button onClick={() => setBody(DTS_TEMPLATE)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border border-border bg-background hover:bg-accent text-foreground">
+                <FileText className="w-4 h-4" /> Load DREAM TEAM template
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {/* Category picker */}
+            <div className="flex flex-wrap items-center gap-2">
+              {(["full_time", "part_time"] as EmploymentType[]).map((c) => (
+                <button key={c} onClick={() => setCategory(c)}
+                  className={cn("px-3 py-1.5 rounded-lg text-xs font-semibold border",
+                    category === c
+                      ? c === "full_time" ? "border-emerald-500 bg-emerald-500/10 text-emerald-600" : "border-violet-500 bg-violet-500/10 text-violet-600"
+                      : "border-border text-muted-foreground hover:bg-accent")}>
+                  {EMPLOYMENT_LABELS[c]} ({members.filter((m) => employmentOf(m.employmentType) === c).length})
+                </button>
+              ))}
+              <button onClick={() => setBody(DTS_TEMPLATE)}
+                className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-border bg-background hover:bg-accent text-foreground">
+                <FileText className="w-4 h-4" /> Load DREAM TEAM template
+              </button>
+            </div>
+
+            {/* Recipient checklist — all pre-ticked */}
+            {categoryMembers.length === 0 ? (
+              <p className="text-sm text-muted-foreground rounded-lg border border-dashed border-border p-4 text-center">
+                No {EMPLOYMENT_LABELS[category]} members. Switch members to this category from the Attendance page.
+              </p>
+            ) : (
+              <div className="rounded-lg border border-border bg-background p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    Recipients — {tickedMembers.length}/{categoryMembers.length} selected
+                  </span>
+                  <button onClick={() => setTicked(new Set(categoryMembers.map((m) => m.uid)))}
+                    className="text-[11px] text-primary hover:underline">Select all</button>
+                </div>
+                <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-1.5 max-h-52 overflow-y-auto">
+                  {categoryMembers.map((m) => {
+                    const flag = agreementFlag(m.uid);
+                    return (
+                      <label key={m.uid}
+                        className={cn("flex items-center gap-2 rounded-lg border px-2.5 py-1.5 cursor-pointer text-sm",
+                          ticked.has(m.uid) ? "border-primary/40 bg-primary/5" : "border-border opacity-70")}>
+                        <input type="checkbox" checked={ticked.has(m.uid)} onChange={() => toggleTick(m.uid)} className="rounded border-border" />
+                        <span className="truncate text-foreground">{m.name}</span>
+                        {flag === "signed" && <span className="ml-auto shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600">signed</span>}
+                        {flag === "sent" && <span className="ml-auto shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600">sent</span>}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1.5">Agreement text</label>
+          <label className="block text-sm font-medium text-foreground mb-1.5">
+            Agreement text {mode === "bulk" && <span className="text-xs text-muted-foreground">— one text for all {EMPLOYMENT_LABELS[category]} members; each copy auto-fills that member's name & number</span>}
+          </label>
           <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={10}
-            placeholder="Paste the full agreement text here… Placeholders like 'Employee Name: ____', 'Mobile Number: ____' and 'Date: ____' are auto-filled from the member's profile."
+            placeholder="Paste the full agreement text here… Placeholders like 'Employee Name: ____', 'Mobile Number: ____' and 'Date: ____' are auto-filled from each member's profile."
             className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background text-foreground font-mono leading-relaxed resize-y" />
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button onClick={() => setShowPreview((v) => !v)} disabled={!body.trim() || !selected}
+          <button onClick={() => setShowPreview((v) => !v)} disabled={!body.trim() || !previewMember}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-border bg-background hover:bg-accent text-foreground disabled:opacity-40">
             <Eye className="w-4 h-4" /> {showPreview ? "Hide" : "Preview"}
           </button>
-          <button onClick={handleSend} disabled={sending || !body.trim() || !selected}
+          <button onClick={handleSend} disabled={sending || !body.trim() || (mode === "individual" ? !selected : tickedMembers.length === 0)}
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white bg-primary hover:opacity-90 disabled:opacity-40">
-            <Send className="w-4 h-4" /> {sending ? "Sending…" : "Send for signature"}
+            {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            {sending
+              ? (sendProgress || "Sending…")
+              : mode === "individual"
+                ? "Send for signature"
+                : `Send to ${tickedMembers.length} member${tickedMembers.length === 1 ? "" : "s"}`}
           </button>
-          {selected && <span className="text-xs text-muted-foreground">Auto-fills: {selected.name}{selected.phone ? ` · ${selected.phone}` : ""}</span>}
+          {mode === "individual" && selected && (
+            <span className="text-xs text-muted-foreground">Auto-fills: {selected.name}{selected.phone ? ` · ${selected.phone}` : ""}</span>
+          )}
         </div>
 
-        {showPreview && selected && body.trim() && (
+        {showPreview && previewMember && body.trim() && (
           <div className="rounded-lg bg-slate-200 p-2 md:p-4 overflow-x-auto">
-            <AgreementView bodyText={body} memberName={selected.name} memberPhone={selected.phone} />
+            {mode === "bulk" && (
+              <p className="text-[11px] text-slate-600 mb-2 text-center">Preview shown with <b>{previewMember.name}</b>'s details — each member gets their own.</p>
+            )}
+            <AgreementView bodyText={body} memberName={previewMember.name} memberPhone={previewMember.phone} />
           </div>
         )}
       </div>

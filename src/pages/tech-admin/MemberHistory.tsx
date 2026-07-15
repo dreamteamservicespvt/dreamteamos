@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import AgreementListForMember from "@/components/agreement/AgreementListForMember";
 import { collection, query, where, onSnapshot, doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
@@ -488,6 +489,8 @@ export default function TechAdminMemberHistory() {
           )}
         </div>
       </div>
+
+      {memberId && <AgreementListForMember memberId={memberId} />}
     </div>
   );
 }

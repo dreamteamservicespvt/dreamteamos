@@ -90,6 +90,11 @@ export async function announceHoliday(dateStr: string, label: string, by: { uid:
   });
 }
 
+/** Remove a wrongly announced holiday. */
+export async function deleteHoliday(dateStr: string): Promise<void> {
+  await deleteDoc(doc(db, "holidays", dateStr));
+}
+
 /** Live listener for announced holidays in a month. Returns unsubscribe. */
 export function watchHolidays(month: string, cb: (byDate: Map<string, Holiday>) => void): () => void {
   const q = query(collection(db, "holidays"), where("date", ">=", `${month}-01`), where("date", "<=", `${month}-31`));

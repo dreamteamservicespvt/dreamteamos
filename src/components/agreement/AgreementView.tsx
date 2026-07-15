@@ -25,9 +25,13 @@ const isSignatureLine = (l: string) => /signature\s*:/i.test(l);
 const isSectionHeading = (l: string) => /^\s*\d+\.\s+\S/.test(l);
 const isAllCaps = (l: string) => l.length > 2 && l === l.toUpperCase() && /[A-Z]/.test(l);
 
+/** Employee-detail labels whose filled values get the highlight treatment. */
+const HIGHLIGHT_LABEL = /^(Employee Name|Mobile Number|Date)\s*:/i;
+
 /**
  * Renders pasted agreement text as a clean, print-ready A4-ish document.
  * A plain white "paper" look (theme-independent) so the on-screen preview matches the PDF.
+ * The member's auto-filled details (name, mobile, date) and the signature block are highlighted.
  */
 const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function AgreementView(data, ref) {
   const filled = fillAgreementText(data.bodyText, data);
@@ -42,6 +46,8 @@ const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function Agr
     i++;
   }
   const body = lines.slice(i);
+
+  const signedDateLabel = data.signedDate ? format(new Date(data.signedDate), "dd MMM yyyy") : "";
 
   return (
     <div
@@ -63,20 +69,45 @@ const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function Agr
         {body.map((raw, idx) => {
           const l = raw.trim();
           if (l === "") return <div key={idx} className="h-1.5" />;
+
           if (isSignatureLine(l)) {
             const label = l.split(":")[0];
             const isEmployee = /employee/i.test(l);
             return (
-              <div key={idx} className="mt-4 flex items-end gap-3">
-                <span className="font-semibold text-slate-700">{label}:</span>
-                {isEmployee && data.signatureUrl ? (
-                  <img src={data.signatureUrl} alt="signature" className="h-14 object-contain" style={{ maxWidth: 220 }} />
-                ) : (
-                  <span className="inline-block min-w-[180px] border-b border-slate-400 pb-0.5">&nbsp;</span>
-                )}
+              <div key={idx} className="mt-5">
+                <div className="inline-block rounded-lg border border-amber-300 bg-amber-50 px-4 pt-2 pb-1.5">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-amber-700 mb-1">{label}</div>
+                  {isEmployee && data.signatureUrl ? (
+                    <div>
+                      <img src={data.signatureUrl} alt="signature" className="h-16 object-contain" style={{ maxWidth: 240 }} />
+                      <div className="border-t border-slate-500 mt-1 pt-1 min-w-[220px]">
+                        <span className="text-[11px] font-semibold text-slate-700">{data.signedName || data.memberName}</span>
+                        {signedDateLabel && <span className="text-[11px] text-slate-500"> · {signedDateLabel}</span>}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="h-14 min-w-[220px] border-b border-slate-500 flex items-end pb-1">
+                      <span className="text-[10px] text-slate-400 italic">{isEmployee ? "Awaiting signature" : ""}</span>
+                    </div>
+                  )}
+                </div>
               </div>
             );
           }
+
+          // Highlight the auto-filled employee details (Name / Mobile / Date).
+          const hl = l.match(HIGHLIGHT_LABEL);
+          if (hl) {
+            const label = hl[1];
+            const value = l.slice(hl[0].length).trim();
+            return (
+              <div key={idx} className="flex items-baseline gap-2 flex-wrap">
+                <span className="font-semibold text-slate-700">{label}:</span>
+                <span className="rounded-md bg-amber-100 border border-amber-300 px-2 py-0.5 font-bold text-slate-900">{value || "—"}</span>
+              </div>
+            );
+          }
+
           if (isSectionHeading(l)) {
             return <div key={idx} className="mt-4 mb-0.5 font-bold text-slate-900 text-[14px] md:text-[15px]">{l}</div>;
           }
@@ -90,7 +121,7 @@ const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function Agr
       {(data.signedName || data.signedDate) && (
         <div className="mt-8 pt-4 border-t border-slate-200 text-[12px] text-slate-500">
           Signed by <span className="font-semibold text-slate-700">{data.signedName || data.memberName}</span>
-          {data.signedDate ? ` on ${format(new Date(data.signedDate), "dd MMM yyyy")}` : ""}.
+          {signedDateLabel ? ` on ${signedDateLabel}` : ""}.
         </div>
       )}
     </div>

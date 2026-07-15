@@ -4,7 +4,7 @@ import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { CalendarDays, ChevronLeft, ChevronRight, PartyPopper, Users } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, PartyPopper, Trash2, Users, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { AppUser } from "@/types";
 import {
@@ -13,6 +13,8 @@ import {
   announceHoliday,
   clearAttendanceOverride,
   daysInMonth,
+  deleteHoliday,
+  isSunday,
   resolveStatus,
   setAttendanceOverride,
   summarize,
@@ -43,6 +45,10 @@ export default function TeamAttendance() {
   const [holidays, setHolidays] = useState<Map<string, Holiday>>(new Map());
   const [checkedIn, setCheckedIn] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<{ member: AppUser; date: string; current: AttendanceStatus | null } | null>(null);
+  const [holidayModal, setHolidayModal] = useState(false);
+  const [holidayDate, setHolidayDate] = useState<string>(todayDate());
+  const [holidayLabel, setHolidayLabel] = useState<string>("");
+  const [savingHoliday, setSavingHoliday] = useState(false);
 
   const todayStr = todayDate();
 
@@ -71,7 +77,12 @@ export default function TeamAttendance() {
       .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   }, [allUsers, user]);
 
-  const days = useMemo(() => daysInMonth(month).filter((d) => d <= todayStr || d.slice(0, 7) === todayStr.slice(0, 7)), [month, todayStr]);
+  // The COMPLETE month, day 1 → last day, always.
+  const days = useMemo(() => daysInMonth(month), [month]);
+  const monthHolidays = useMemo(
+    () => [...holidays.values()].sort((a, b) => a.date.localeCompare(b.date)),
+    [holidays],
+  );
 
   const statusFor = (member: AppUser, date: string): AttendanceStatus | null =>
     resolveStatus({
@@ -104,16 +115,26 @@ export default function TeamAttendance() {
   };
 
   const handleAnnounceHoliday = async () => {
-    if (!user) return;
-    const date = window.prompt("Holiday date (YYYY-MM-DD):", todayStr);
-    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
-    const label = window.prompt("Holiday name (e.g. Diwali):", "Festival Holiday") || "Holiday";
+    if (!user || !holidayDate) return;
+    setSavingHoliday(true);
     try {
-      await announceHoliday(date, label, { uid: user.uid });
-      setMonth(date.slice(0, 7));
-      toast({ title: "Holiday announced", description: `${label} on ${date}.` });
+      await announceHoliday(holidayDate, holidayLabel || "Holiday", { uid: user.uid });
+      setMonth(holidayDate.slice(0, 7));
+      setHolidayLabel("");
+      toast({ title: "Holiday announced", description: `${holidayLabel || "Holiday"} on ${format(new Date(holidayDate), "dd MMM yyyy")}.` });
     } catch {
       toast({ title: "Error", description: "Could not announce holiday.", variant: "destructive" });
+    } finally {
+      setSavingHoliday(false);
+    }
+  };
+
+  const handleDeleteHoliday = async (dateStr: string) => {
+    try {
+      await deleteHoliday(dateStr);
+      toast({ title: "Holiday removed", description: format(new Date(dateStr), "dd MMM yyyy") });
+    } catch {
+      toast({ title: "Error", description: "Could not remove holiday.", variant: "destructive" });
     }
   };
 
@@ -129,7 +150,7 @@ export default function TeamAttendance() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={handleAnnounceHoliday}
+          <button onClick={() => setHolidayModal(true)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-border bg-card hover:bg-accent text-foreground">
             <PartyPopper className="w-4 h-4 text-amber-500" /> Announce Holiday
           </button>
@@ -142,11 +163,16 @@ export default function TeamAttendance() {
         </div>
       </div>
 
-      {/* Legend */}
-      <div className="flex flex-wrap gap-2 mb-4">
+      {/* Legend + announced holidays */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
         {STATUS_ORDER.map((s) => (
           <span key={s} className={cn("text-[11px] px-2 py-0.5 rounded-full border", ATTENDANCE_META[s].tone)}>
             {ATTENDANCE_META[s].short} · {ATTENDANCE_META[s].label}
+          </span>
+        ))}
+        {monthHolidays.map((h) => (
+          <span key={h.date} className="text-[11px] px-2 py-0.5 rounded-full border bg-amber-500/10 text-amber-600 border-amber-500/30 inline-flex items-center gap-1">
+            <PartyPopper className="w-3 h-3" /> {h.label} · {format(new Date(h.date), "dd MMM")}
           </span>
         ))}
       </div>
@@ -157,18 +183,30 @@ export default function TeamAttendance() {
         </div>
       ) : (
         <div className="rounded-xl border border-border bg-card overflow-hidden">
+          {/* table-fixed + colgroup: the WHOLE month always fits the available width on desktop;
+              min-w keeps cells usable on small screens (horizontal scroll only there). */}
           <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
+            <table className="w-full min-w-[860px] table-fixed text-sm border-collapse">
+              <colgroup>
+                <col style={{ width: 150 }} />
+                <col style={{ width: 86 }} />
+                {days.map((d) => <col key={d} />)}
+              </colgroup>
               <thead>
                 <tr className="bg-muted/50">
-                  <th className="sticky left-0 z-10 bg-muted/50 text-left px-3 py-2 font-semibold text-foreground min-w-[190px]">Member</th>
-                  <th className="px-2 py-2 font-semibold text-foreground text-center min-w-[120px]">Summary</th>
-                  {days.map((d) => (
-                    <th key={d} className={cn("px-1 py-2 font-medium text-center min-w-[34px]", d === todayStr ? "text-primary" : "text-muted-foreground")}>
-                      <div className="text-[10px] leading-tight">{format(new Date(d), "EEE")[0]}</div>
-                      <div className="text-xs">{d.slice(-2)}</div>
-                    </th>
-                  ))}
+                  <th className="sticky left-0 z-10 bg-muted/50 text-left px-3 py-2 font-semibold text-foreground">Member</th>
+                  <th className="px-1 py-2 font-semibold text-foreground text-center">Summary</th>
+                  {days.map((d) => {
+                    const sun = isSunday(d);
+                    const fest = holidays.has(d);
+                    return (
+                      <th key={d} className={cn("px-0 py-1.5 font-medium text-center",
+                        d === todayStr ? "text-primary" : sun || fest ? "text-amber-500/80" : "text-muted-foreground")}>
+                        <div className="text-[9px] leading-tight">{format(new Date(d), "EEE")[0]}</div>
+                        <div className="text-[11px]">{d.slice(-2)}</div>
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
@@ -179,7 +217,7 @@ export default function TeamAttendance() {
                   return (
                     <tr key={m.uid} className="border-t border-border">
                       <td className="sticky left-0 z-10 bg-card px-3 py-2 align-top">
-                        <div className="font-medium text-foreground truncate max-w-[170px]">{m.name}</div>
+                        <div className="font-medium text-foreground truncate">{m.name}</div>
                         <button onClick={() => toggleEmployment(m)}
                           title="Click to switch Full-Time / Part-Time"
                           className={cn("mt-1 text-[10px] px-2 py-0.5 rounded-full border transition-colors",
@@ -189,24 +227,24 @@ export default function TeamAttendance() {
                           {EMPLOYMENT_LABELS[emp]} ⇄
                         </button>
                       </td>
-                      <td className="px-2 py-2 text-center align-top">
-                        <div className="text-[11px] text-muted-foreground whitespace-nowrap">
-                          <span className="text-emerald-600 font-semibold">{sum.full}F</span> ·{" "}
-                          <span className="text-amber-600 font-semibold">{sum.half}H</span> ·{" "}
-                          <span className="text-rose-600 font-semibold">{sum.absent}A</span> ·{" "}
+                      <td className="px-1 py-2 text-center align-top">
+                        <div className="text-[10px] text-muted-foreground whitespace-nowrap">
+                          <span className="text-emerald-600 font-semibold">{sum.full}F</span>{" "}
+                          <span className="text-amber-600 font-semibold">{sum.half}H</span>{" "}
+                          <span className="text-rose-600 font-semibold">{sum.absent}A</span>{" "}
                           <span className="text-sky-600 font-semibold">{sum.leave}L</span>
                         </div>
-                        <div className="text-[10px] text-muted-foreground mt-0.5">Leaves left: {sum.leavesLeft}</div>
+                        <div className="text-[9px] text-muted-foreground mt-0.5">Leaves left: {sum.leavesLeft}</div>
                       </td>
                       {days.map((d, i) => {
                         const st = statuses[i];
                         const isOverride = overrides.has(attendanceKey(m.uid, d));
                         return (
-                          <td key={d} className="px-0.5 py-1 text-center">
+                          <td key={d} className="px-[1px] py-1 text-center">
                             <button
                               onClick={() => setEditing({ member: m, date: d, current: st })}
                               className={cn(
-                                "w-7 h-7 rounded-md text-[11px] font-bold border transition-all hover:scale-105",
+                                "w-full max-w-[30px] h-6 rounded text-[10px] font-bold border transition-all hover:scale-110 mx-auto block",
                                 st ? ATTENDANCE_META[st].tone : "bg-transparent text-muted-foreground/40 border-dashed border-border",
                                 isOverride && "ring-1 ring-primary/50",
                               )}
@@ -245,6 +283,50 @@ export default function TeamAttendance() {
                 Auto (from check-in)
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Announce Holiday modal */}
+      {holidayModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setHolidayModal(false)}>
+          <div className="w-full max-w-sm rounded-xl border border-border bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-display font-semibold text-foreground flex items-center gap-2">
+                <PartyPopper className="w-4 h-4 text-amber-500" /> Announce Holiday
+              </h3>
+              <button onClick={() => setHolidayModal(false)} className="p-1 rounded-md hover:bg-accent"><X className="w-4 h-4" /></button>
+            </div>
+
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Date</label>
+            <input type="date" value={holidayDate} onChange={(e) => setHolidayDate(e.target.value)}
+              className="w-full mb-3 border border-border rounded-lg px-3 py-2 text-sm bg-background text-foreground" />
+
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Holiday name</label>
+            <input value={holidayLabel} onChange={(e) => setHolidayLabel(e.target.value)} placeholder="e.g. Diwali"
+              className="w-full mb-4 border border-border rounded-lg px-3 py-2 text-sm bg-background text-foreground" />
+
+            <button onClick={handleAnnounceHoliday} disabled={savingHoliday || !holidayDate}
+              className="w-full py-2.5 rounded-lg text-sm font-semibold text-white bg-primary hover:opacity-90 disabled:opacity-40">
+              {savingHoliday ? "Announcing…" : "Announce Holiday"}
+            </button>
+
+            {monthHolidays.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-border">
+                <div className="text-xs font-medium text-muted-foreground mb-2">Announced this month</div>
+                <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                  {monthHolidays.map((h) => (
+                    <div key={h.date} className="flex items-center justify-between gap-2 rounded-lg bg-muted/40 px-3 py-1.5">
+                      <span className="text-xs text-foreground truncate">{h.label} · {format(new Date(h.date), "EEE dd MMM")}</span>
+                      <button onClick={() => handleDeleteHoliday(h.date)} title="Remove holiday"
+                        className="p-1 rounded-md text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import AgreementListForMember from '@/components/agreement/AgreementListForMember';
 import type { DateRange } from 'react-day-picker';
 import {
   ArrowLeft, ClipboardList, Trash2, CheckCircle2, Edit3, Loader2,
@@ -549,6 +550,8 @@ export default function TeamLeaderMemberAssignments() {
           </div>
         ))}
       </div>
+
+      {memberId && <AgreementListForMember memberId={memberId} />}
     </div>
   );
 }

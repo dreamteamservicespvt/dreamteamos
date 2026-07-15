@@ -52,7 +52,14 @@ Three features (all built on existing check-in infra; new Firestore collections:
 
 Routes added in `App.tsx`; nav in `roleHelpers.ts` (Attendance + Agreements for tech_admin & tech_team_leader; Agreements for sales_admin).
 
-**IMPORTANT follow-ups:** (1) **Firestore security rules** must allow read/write on the new `attendance`, `holidays`, `agreements` collections or the features silently fail in production. (2) Native Android "take photo" uses the web file-input `capture` attr; a true native camera needs `@capacitor/camera` (not installed) + `capacitor.config.ts` — draw + upload work everywhere meanwhile.
+### Follow-up refinements (same feature set)
+- **Full-month grid:** `TeamAttendance.tsx` now uses `table-fixed` + `<colgroup>` so the WHOLE month (1→last day) fits the width on desktop; Sundays/holidays tinted in the header; small screens scroll. `daysInMonth(month)` is used unfiltered.
+- **Holiday announce:** replaced the `prompt()` with a proper modal (date picker + name), a live list of this month's holidays, and remove (`deleteHoliday`).
+- **Bulk agreements:** `SendAgreement.tsx` has Individual / Bulk modes. Bulk → pick Full-Time/Part-Time category → pre-ticked recipient checklist (already-signed/sent flagged) → sends each member their OWN personalized copy (auto-filled name/number). Per-category template remembered in `agreement_templates/{adminUid}_{category}` (`saveAgreementTemplate`/`loadAgreementTemplate`).
+- **PDF/signature UX:** `AgreementView.tsx` highlights auto-filled Employee Name / Mobile / Date (amber chips) and renders a proper signature block (framed, signature image on a line with signed name + date beneath).
+- **Admin views member agreement:** new read-only `src/components/agreement/AgreementListForMember.tsx` (view + download signed PDF) embedded in the member detail pages: tech-admin `MemberHistory.tsx`, tech-team-leader `MemberAssignments.tsx`, sales-admin `MemberSalesHistory.tsx`. New collection: `agreement_templates`.
+
+**IMPORTANT follow-ups:** (1) **Firestore security rules** must allow read/write on the new `attendance`, `holidays`, `agreements`, `agreement_templates` collections or the features silently fail in production. (2) Native Android "take photo" uses the web file-input `capture` attr; a true native camera needs `@capacitor/camera` (not installed) + `capacitor.config.ts` — draw + upload work everywhere meanwhile.
 
 ### Known pre-existing (NOT introduced here)
 - `tsconfig.app.json` `ignoreDeprecations: "6.0"` breaks `tsc -p` (use vite build).
