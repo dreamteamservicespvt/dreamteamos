@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { doc, getDoc, setDoc, serverTimestamp, collection, addDoc } from "firebase/firestore";
 import { auth, db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
@@ -62,6 +62,15 @@ export default function Login() {
       } else {
         userData = { uid: cred.user.uid, ...userDoc.data() } as AppUser;
       }
+
+      // Deactivated accounts are not allowed to sign in.
+      if (userData.isActive === false) {
+        await signOut(auth);
+        setError("Your account has been deactivated. Please contact your admin.");
+        setLoading(false);
+        return;
+      }
+
       setUser(userData);
 
       // Track session

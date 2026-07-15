@@ -61,6 +61,9 @@ Routes added in `App.tsx`; nav in `roleHelpers.ts` (Attendance + Agreements for 
 
 **IMPORTANT follow-ups:** (1) **Firestore security rules** must allow read/write on the new `attendance`, `holidays`, `agreements`, `agreement_templates` collections or the features silently fail in production. (2) Native Android "take photo" uses the web file-input `capture` attr; a true native camera needs `@capacitor/camera` (not installed) + `capacitor.config.ts` — draw + upload work everywhere meanwhile.
 
+### Follow-up — deactivate blocks login
+Both Tech Admin & Sales Admin "My Team" pages already had the Active/Inactive badge + activate/deactivate toggle (`toggleActive` flips `users.isActive`). The gap was enforcement. Fixed: `src/pages/auth/Login.tsx` blocks sign-in when `isActive === false` (signs out + shows "account deactivated"); `src/hooks/useAuth.ts` upgraded from `getDoc` to a live `onSnapshot` on the user's own doc — a deactivation now signs the user out **immediately** (and role/profile changes reflect live). Strict `=== false` check so legacy users without the field stay active.
+
 ### Known pre-existing (NOT introduced here)
 - `tsconfig.app.json` `ignoreDeprecations: "6.0"` breaks `tsc -p` (use vite build).
 - Repo has ~57 pre-existing eslint `no-explicit-any` errors; lint is not part of the build. This batch added zero new lint errors.
