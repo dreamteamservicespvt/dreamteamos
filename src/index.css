@@ -204,3 +204,15 @@ html.native-app body {
 ::-webkit-scrollbar-track { background: hsl(var(--background)); }
 ::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground)); }
+
+/* ── Agreement printing (see src/utils/agreementPrint.ts) ── */
+.agreement-print-root { display: none; }
+@media print {
+  body.printing-agreement > *:not(.agreement-print-root) { display: none !important; }
+  .agreement-print-root { display: block !important; }
+  .agreement-print-root * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .agreement-print-root .shadow-sm { box-shadow: none !important; }
+}

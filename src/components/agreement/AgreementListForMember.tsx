@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
-import { FileText, Download, CheckCircle2, Clock, X, Loader2 } from "lucide-react";
+import { FileText, Printer, CheckCircle2, Clock, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Agreement, watchMemberAgreements } from "@/services/agreements";
 import AgreementView from "./AgreementView";
-import { exportElementToPdf } from "@/utils/agreementPdf";
+import { printAgreementElement } from "@/utils/agreementPrint";
 
 /**
  * Read-only list of a specific member's agreements — for admins / team leads viewing a
@@ -14,7 +14,6 @@ export default function AgreementListForMember({ memberId }: { memberId: string 
   const { toast } = useToast();
   const [list, setList] = useState<Agreement[]>([]);
   const [open, setOpen] = useState<Agreement | null>(null);
-  const [downloading, setDownloading] = useState(false);
   const paperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -23,15 +22,12 @@ export default function AgreementListForMember({ memberId }: { memberId: string 
     return () => unsub();
   }, [memberId]);
 
-  const handleDownload = async () => {
-    if (!paperRef.current || !open) return;
-    setDownloading(true);
+  const handlePrint = async () => {
+    if (!paperRef.current) return;
     try {
-      await exportElementToPdf(paperRef.current, `${open.title.replace(/[^\w]+/g, "_")}.pdf`);
+      await printAgreementElement(paperRef.current);
     } catch {
-      toast({ title: "Error", description: "Could not generate the PDF.", variant: "destructive" });
-    } finally {
-      setDownloading(false);
+      toast({ title: "Error", description: "Could not open the print dialog.", variant: "destructive" });
     }
   };
 
@@ -73,9 +69,9 @@ export default function AgreementListForMember({ memberId }: { memberId: string 
           <div className="mx-auto max-w-3xl my-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-end gap-2 mb-2">
               {open.status === "signed" && (
-                <button onClick={handleDownload} disabled={downloading}
+                <button onClick={handlePrint}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/90 text-slate-800 hover:bg-white">
-                  {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />} PDF
+                  <Printer className="w-3.5 h-3.5" /> Print
                 </button>
               )}
               <button onClick={() => setOpen(null)} className="p-1.5 rounded-lg bg-white/90 text-slate-800 hover:bg-white"><X className="w-4 h-4" /></button>

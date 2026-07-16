@@ -79,7 +79,17 @@ const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function Agr
                   <div className="text-[11px] font-semibold uppercase tracking-wide text-amber-700 mb-1">{label}</div>
                   {isEmployee && data.signatureUrl ? (
                     <div>
-                      <img src={data.signatureUrl} alt="signature" className="h-16 object-contain" style={{ maxWidth: 240 }} />
+                      <div className="flex items-end min-h-[72px]">
+                        {/* mix-blend-multiply drops whitish photo backgrounds into the white paper,
+                            so uploaded photo signatures print as cleanly as drawn ones. */}
+                        <img
+                          src={data.signatureUrl}
+                          alt="signature"
+                          crossOrigin="anonymous"
+                          className="h-[68px] object-contain object-left-bottom mix-blend-multiply"
+                          style={{ maxWidth: 260 }}
+                        />
+                      </div>
                       <div className="border-t border-slate-500 mt-1 pt-1 min-w-[220px]">
                         <span className="text-[11px] font-semibold text-slate-700">{data.signedName || data.memberName}</span>
                         {signedDateLabel && <span className="text-[11px] text-slate-500"> · {signedDateLabel}</span>}
