@@ -27,6 +27,9 @@ import {
   Holiday,
 } from "@/services/techAttendance";
 import { EMPLOYMENT_LABELS, employmentOf, setEmploymentType } from "@/services/employment";
+import { sendNotification } from "@/services/notifications";
+import { getWhatsAppUrl } from "@/utils/phone";
+import { MessageCircle } from "lucide-react";
 
 const shiftMonth = (month: string, delta: number): string => {
   const [y, m] = month.split("-").map(Number);
@@ -45,6 +48,8 @@ export default function TeamAttendance() {
   const [holidays, setHolidays] = useState<Map<string, Holiday>>(new Map());
   const [checkedIn, setCheckedIn] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<{ member: AppUser; date: string; current: AttendanceStatus | null } | null>(null);
+  /** WhatsApp step shown after a manual status is applied: prefilled, fully editable message. */
+  const [waStep, setWaStep] = useState<{ member: AppUser; date: string; status: AttendanceStatus; message: string } | null>(null);
   const [holidayModal, setHolidayModal] = useState(false);
   const [holidayDate, setHolidayDate] = useState<string>(todayDate());
   const [holidayLabel, setHolidayLabel] = useState<string>("");
@@ -73,7 +78,7 @@ export default function TeamAttendance() {
     if (!user) return [];
     const teamAdminUid = user.role === "tech_team_leader" ? user.createdBy : user.uid;
     return allUsers
-      .filter((u) => u.role === "tech_member" && u.createdBy === teamAdminUid)
+      .filter((u) => u.role === "tech_member" && u.createdBy === teamAdminUid && u.isActive !== false)
       .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   }, [allUsers, user]);
 
@@ -96,9 +101,34 @@ export default function TeamAttendance() {
   const applyStatus = async (member: AppUser, date: string, status: AttendanceStatus | "auto") => {
     if (!user) return;
     try {
-      if (status === "auto") await clearAttendanceOverride(member.uid, date);
-      else await setAttendanceOverride(member, date, status, { uid: user.uid, name: user.name });
+      if (status === "auto") {
+        await clearAttendanceOverride(member.uid, date);
+        setEditing(null);
+        return;
+      }
+      await setAttendanceOverride(member, date, status, { uid: user.uid, name: user.name });
+      // In-app popup/notification to the member about the update.
+      sendNotification({
+        userId: member.uid,
+        type: "attendance_update",
+        title: "Attendance Updated",
+        message: `${format(new Date(date), "dd MMM yyyy")}: marked ${ATTENDANCE_META[status].label} by ${user.name}.`,
+        link: member.role === "sales_member" ? "/sales/profile" : "/tech/profile",
+      }).catch(() => {});
       setEditing(null);
+      // Move to the WhatsApp step with a prefilled, editable message.
+      const needsReason = status === "half" || status === "absent" || status === "leave";
+      setWaStep({
+        member,
+        date,
+        status,
+        message: [
+          `Attendance Update — ${format(new Date(date), "dd MMM yyyy")}`,
+          `Name: ${member.name}`,
+          `Status: ${ATTENDANCE_META[status].label}`,
+          ...(needsReason ? ["Reason: "] : []),
+        ].join("\n"),
+      });
     } catch {
       toast({ title: "Error", description: "Could not update attendance.", variant: "destructive" });
     }
@@ -229,7 +259,7 @@ export default function TeamAttendance() {
                       </td>
                       <td className="px-1 py-2 text-center align-top">
                         <div className="text-[10px] text-muted-foreground whitespace-nowrap">
-                          <span className="text-emerald-600 font-semibold">{sum.full}F</span>{" "}
+                          <span className="text-emerald-600 font-semibold">{sum.full}P</span>{" "}
                           <span className="text-amber-600 font-semibold">{sum.half}H</span>{" "}
                           <span className="text-rose-600 font-semibold">{sum.absent}A</span>{" "}
                           <span className="text-sky-600 font-semibold">{sum.leave}L</span>
@@ -281,6 +311,44 @@ export default function TeamAttendance() {
               <button onClick={() => applyStatus(editing.member, editing.date, "auto")}
                 className="px-3 py-2 rounded-lg text-xs font-medium border border-border bg-card hover:bg-accent text-foreground text-left">
                 Auto (from check-in)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp update step — after a manual status was applied */}
+      {waStep && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setWaStep(null)}>
+          <div className="w-full max-w-sm rounded-xl border border-border bg-card p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-1">
+              <MessageCircle className="w-4 h-4 text-emerald-500" />
+              <span className="font-semibold text-foreground">Send WhatsApp update</span>
+            </div>
+            <p className="text-xs text-muted-foreground mb-3">
+              {waStep.member.name} · {format(new Date(waStep.date), "dd MMM yyyy")} · marked <b>{ATTENDANCE_META[waStep.status].label}</b>. Edit the message (add the reason) and send.
+            </p>
+            <textarea
+              value={waStep.message}
+              onChange={(e) => setWaStep({ ...waStep, message: e.target.value })}
+              rows={5}
+              className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background text-foreground font-mono leading-relaxed resize-y mb-3"
+            />
+            {!waStep.member.phone && (
+              <p className="text-[11px] rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-600 px-3 py-2 mb-3">
+                This member has no phone number saved — add it in My Team to enable WhatsApp.
+              </p>
+            )}
+            <div className="flex gap-2">
+              <button onClick={() => setWaStep(null)}
+                className="flex-1 py-2 rounded-lg text-sm font-medium border border-border bg-background hover:bg-accent text-foreground">
+                Done
+              </button>
+              <button
+                disabled={!waStep.member.phone}
+                onClick={() => { window.open(getWhatsAppUrl(waStep.member.phone, waStep.message), "_blank"); setWaStep(null); }}
+                className="flex-[2] py-2 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 inline-flex items-center justify-center gap-1.5">
+                <MessageCircle className="w-4 h-4" /> Send on WhatsApp
               </button>
             </div>
           </div>

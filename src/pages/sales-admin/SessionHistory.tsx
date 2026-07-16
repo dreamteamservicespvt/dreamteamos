@@ -30,7 +30,7 @@ export default function SalesAdminSessionHistory() {
 
     unsubs.push(onSnapshot(collection(db, "users"), (snap) => {
       const allUsers = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser));
-      const myMembers = allUsers.filter((u) => u.role === "sales_member" && u.createdBy === currentUser?.uid);
+      const myMembers = allUsers.filter((u) => u.role === "sales_member" && u.createdBy === currentUser?.uid && u.isActive !== false);
       const relevantIds = [currentUser?.uid || "", ...myMembers.map((m) => m.uid)];
       setMembers([allUsers.find((u) => u.uid === currentUser?.uid)!, ...myMembers].filter(Boolean));
       myMemberIds = relevantIds;

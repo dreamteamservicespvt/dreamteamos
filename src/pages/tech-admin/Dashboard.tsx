@@ -48,7 +48,7 @@ export default function TechAdminDashboard() {
     const unsubs: (() => void)[] = [];
     unsubs.push(onSnapshot(collection(db, "users"), (snap) => {
       const allUsers = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser));
-      setMembers(allUsers.filter((u) => u.role === "tech_member" && u.createdBy === currentUser?.uid));
+      setMembers(allUsers.filter((u) => u.role === "tech_member" && u.createdBy === currentUser?.uid && u.isActive !== false));
     }));
     unsubs.push(onSnapshot(collection(db, "work_assignments"), (snap) => {
       setAssignments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as WorkAssignment)));

@@ -19,7 +19,7 @@ export default function SalesDepartment() {
     unsubs.push(onSnapshot(collection(db, "users"), (snap) => {
       const allUsers = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser));
       setSalesAdmins(allUsers.filter((u) => u.role === "sales_admin"));
-      setSalesMembers(allUsers.filter((u) => u.role === "sales_member"));
+      setSalesMembers(allUsers.filter((u) => u.role === "sales_member" && u.isActive !== false));
       checkDone();
     }));
     unsubs.push(onSnapshot(collection(db, "leads"), (snap) => { setLeads(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); checkDone(); }));

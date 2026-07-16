@@ -21,7 +21,7 @@ export default function TechDepartment() {
     unsubs.push(onSnapshot(collection(db, "users"), (snap) => {
       const allUsers = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser));
       setTechAdmins(allUsers.filter((u) => u.role === "tech_admin"));
-      setTechMembers(allUsers.filter((u) => u.role === "tech_member"));
+      setTechMembers(allUsers.filter((u) => u.role === "tech_member" && u.isActive !== false));
       checkDone();
     }));
     unsubs.push(onSnapshot(collection(db, "work_assignments"), (snap) => { setAssignments(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); checkDone(); }));

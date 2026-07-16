@@ -4,77 +4,16 @@ import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { FileText, Send, Eye, CheckCircle2, Clock, FileSignature, User, Users, Loader2 } from "lucide-react";
+import { Send, Eye, CheckCircle2, Clock, FileSignature, User, Users, Loader2, Sparkles, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { AppUser } from "@/types";
 import {
   Agreement, extractTitle, sendAgreement, watchSentAgreements,
-  loadAgreementTemplate, saveAgreementTemplate,
+  loadAgreementTemplate, saveAgreementTemplate, deleteAgreement,
 } from "@/services/agreements";
+import { formatAgreementWithAI } from "@/services/geminiService";
 import { employmentOf, EMPLOYMENT_LABELS, EmploymentType } from "@/services/employment";
 import AgreementView from "@/components/agreement/AgreementView";
-
-const DTS_TEMPLATE = `DREAM TEAM SERVICES
-FULL-TIME TECHNICAL TEAM MEMBER AGREEMENT
-
-Company Name: DREAM TEAM SERVICES
-Email: thedreamteamservicespvt@gmail.com
-Contact: +91 9849834102 / +91 9390011378
-Address: 50-6-23, Vishnalayam Street, Jagannaickpur, Kakinada, Andhra Pradesh – 533002
-
-Employee Details
-Employee Name: ____________________
-Mobile Number: ____________________
-Designation: Full-Time Technical Team Member
-
-1. Appointment
-This Employment Agreement is entered into between DREAM TEAM SERVICES and the employee. The employee agrees to work professionally, honestly and comply with all company policies.
-
-2. Roles & Responsibilities
-Manage social media accounts; create advertisements, videos and digital content; handle client requirements; support technical operations; complete assigned work within deadlines; assist with additional company projects.
-
-3. Daily Work Requirements
-Complete a minimum of 5 advertisements per working day whenever work is available; maintain quality standards; support additional work requirements.
-
-4. Working Days & Attendance
-26 working days per month excluding Sundays. Attendance will be recorded as Full Day, Half Day or Absent. Salary is calculated based on attendance.
-
-5. Leave Policy
-2 paid leaves per month. Unused leaves expire monthly. Leave requires prior approval except emergencies.
-
-6. Salary & Payment
-Monthly Salary: as agreed. Salary is based on attendance, work performance, quality and responsibilities.
-
-7. Performance
-Professional quality work, timely delivery, creativity and accuracy are expected.
-
-8. Communication
-Maintain professional communication and respond promptly to official work.
-
-9. Confidentiality & Data Security
-The employee shall not disclose, copy, share, transfer or misuse any company information, client information, workflows, business processes, internal logic, SOPs, strategies, source files, passwords, login credentials, or access to any company-owned or company-provided software/services, including but not limited to ChatGPT, Google Flow, AI tools, premium accounts or any other paid subscriptions. Sharing such information with any person or organization without written permission is strictly prohibited. The Company reserves the right to audit and thoroughly review account usage, login history, activity logs and related records of company accounts whenever required. Any confidentiality breach may result in immediate termination, legal action and recovery of damages.
-
-10. Growth
-High performers may receive salary hikes, promotions and training opportunities.
-
-11. Company Property
-All company accounts, files, devices, prompts, templates, client data and work created during employment remain the exclusive property of DREAM TEAM SERVICES and must be returned or access revoked immediately upon leaving the company.
-
-12. Code of Conduct
-Employees must act professionally, avoid conflicts of interest, protect company reputation and follow lawful instructions.
-
-13. Company Rights
-The Company may update policies, assign responsibilities and take disciplinary action for any violation of this agreement.
-
-14. Termination
-Employment may be terminated according to company policy or immediately for serious misconduct, fraud, confidentiality breaches, unauthorized sharing of company information/accounts or repeated negligence.
-
-15. Acceptance
-The employee confirms they have read, understood and accepted all terms and conditions.
-
-Employee Name: ____________________
-Employee Signature: ____________________
-Date: ____________________`;
 
 const memberProfileLink = (role: string): string =>
   role === "sales_member" ? "/sales/profile" : role === "tech_member" ? "/tech/profile" : "";
@@ -94,6 +33,9 @@ export default function SendAgreement() {
   const [showPreview, setShowPreview] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendProgress, setSendProgress] = useState("");
+  const [formatting, setFormatting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<Agreement | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "users"), (snap) => setAllUsers(snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser))));
@@ -115,7 +57,7 @@ export default function SendAgreement() {
     else if (user.role === "sales_admin") allowedRoles = ["sales_member"];
     else if (user.role === "tech_team_leader") { allowedRoles = ["tech_member"]; teamAdminUid = user.createdBy; }
     return allUsers
-      .filter((u) => allowedRoles.includes(u.role) && u.createdBy === teamAdminUid)
+      .filter((u) => allowedRoles.includes(u.role) && u.createdBy === teamAdminUid && u.isActive !== false)
       .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   }, [allUsers, user]);
 
@@ -173,6 +115,34 @@ export default function SendAgreement() {
       },
       memberProfileLink(member.role),
     );
+  };
+
+  const handleFormatAI = async () => {
+    if (!body.trim() || formatting) return;
+    setFormatting(true);
+    try {
+      const formatted = await formatAgreementWithAI(body);
+      setBody(formatted);
+      toast({ title: "Formatted with AI", description: "Structure cleaned up — review it before sending." });
+    } catch {
+      toast({ title: "Error", description: "AI formatting failed. Try again.", variant: "destructive" });
+    } finally {
+      setFormatting(false);
+    }
+  };
+
+  const handleDeleteAgreement = async () => {
+    if (!confirmDelete?.id || deleting) return;
+    setDeleting(true);
+    try {
+      await deleteAgreement(confirmDelete.id);
+      toast({ title: "Agreement deleted", description: `"${confirmDelete.title}" to ${confirmDelete.memberName} was removed.` });
+      setConfirmDelete(null);
+    } catch {
+      toast({ title: "Error", description: "Could not delete the agreement.", variant: "destructive" });
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleSend = async () => {
@@ -248,12 +218,6 @@ export default function SendAgreement() {
                 ))}
               </select>
             </div>
-            <div className="flex items-end">
-              <button onClick={() => setBody(DTS_TEMPLATE)}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border border-border bg-background hover:bg-accent text-foreground">
-                <FileText className="w-4 h-4" /> Load DREAM TEAM template
-              </button>
-            </div>
           </div>
         ) : (
           <div className="space-y-3">
@@ -268,10 +232,6 @@ export default function SendAgreement() {
                   {EMPLOYMENT_LABELS[c]} ({members.filter((m) => employmentOf(m.employmentType) === c).length})
                 </button>
               ))}
-              <button onClick={() => setBody(DTS_TEMPLATE)}
-                className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-border bg-background hover:bg-accent text-foreground">
-                <FileText className="w-4 h-4" /> Load DREAM TEAM template
-              </button>
             </div>
 
             {/* Recipient checklist — all pre-ticked */}
@@ -309,9 +269,17 @@ export default function SendAgreement() {
         )}
 
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1.5">
-            Agreement text {mode === "bulk" && <span className="text-xs text-muted-foreground">— one text for all {EMPLOYMENT_LABELS[category]} members; each copy auto-fills that member's name & number</span>}
-          </label>
+          <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
+            <label className="block text-sm font-medium text-foreground">
+              Agreement text {mode === "bulk" && <span className="text-xs text-muted-foreground">— one text for all {EMPLOYMENT_LABELS[category]} members; each copy auto-fills that member's name & number</span>}
+            </label>
+            <button onClick={handleFormatAI} disabled={!body.trim() || formatting}
+              title="AI cleans the structure: title, numbered sections, and auto-fill placeholders"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-violet-500/40 bg-violet-500/10 text-violet-500 hover:bg-violet-500/20 disabled:opacity-40">
+              {formatting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+              {formatting ? "Formatting…" : "Format with AI"}
+            </button>
+          </div>
           <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={10}
             placeholder="Paste the full agreement text here… Placeholders like 'Employee Name: ____', 'Mobile Number: ____' and 'Date: ____' are auto-filled from each member's profile."
             className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background text-foreground font-mono leading-relaxed resize-y" />
@@ -361,20 +329,53 @@ export default function SendAgreement() {
                     To {a.memberName}{a.createdAt?.seconds ? ` · ${format(new Date(a.createdAt.seconds * 1000), "dd MMM yyyy")}` : ""}
                   </div>
                 </div>
-                {a.status === "signed" ? (
-                  <span className="shrink-0 inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600">
-                    <CheckCircle2 className="w-3 h-3" /> Signed{a.signedDate ? ` · ${format(new Date(a.signedDate), "dd MMM")}` : ""}
-                  </span>
-                ) : (
-                  <span className="shrink-0 inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600">
-                    <Clock className="w-3 h-3" /> Awaiting signature
-                  </span>
-                )}
+                <div className="shrink-0 flex items-center gap-2">
+                  {a.status === "signed" ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600">
+                      <CheckCircle2 className="w-3 h-3" /> Signed{a.signedDate ? ` · ${format(new Date(a.signedDate), "dd MMM")}` : ""}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600">
+                      <Clock className="w-3 h-3" /> Awaiting signature
+                    </span>
+                  )}
+                  <button onClick={() => setConfirmDelete(a)} title="Delete agreement"
+                    className="p-1.5 rounded-md text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* Delete confirmation */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setConfirmDelete(null)}>
+          <div className="w-full max-w-sm rounded-xl border border-border bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-display font-semibold text-foreground mb-1">Delete this agreement?</h3>
+            <p className="text-sm text-muted-foreground mb-2">
+              "{confirmDelete.title}" sent to <b className="text-foreground">{confirmDelete.memberName}</b> will be permanently removed for both of you.
+            </p>
+            {confirmDelete.status === "signed" && (
+              <p className="text-xs rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-500 px-3 py-2 mb-2">
+                ⚠ This agreement is SIGNED — deleting it destroys the signed record permanently. Download the PDF first if you need a copy.
+              </p>
+            )}
+            <div className="flex gap-2 mt-3">
+              <button onClick={() => setConfirmDelete(null)}
+                className="flex-1 py-2 rounded-lg text-sm font-medium border border-border bg-background hover:bg-accent text-foreground">
+                Cancel
+              </button>
+              <button onClick={handleDeleteAgreement} disabled={deleting}
+                className="flex-1 py-2 rounded-lg text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-50 inline-flex items-center justify-center gap-1.5">
+                {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

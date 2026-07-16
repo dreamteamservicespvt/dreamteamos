@@ -18,7 +18,7 @@ import { format, getDay } from "date-fns";
 export type AttendanceStatus = "full" | "half" | "absent" | "leave" | "holiday";
 
 export const ATTENDANCE_META: Record<AttendanceStatus, { label: string; short: string; tone: string }> = {
-  full: { label: "Full Day", short: "F", tone: "bg-emerald-500/15 text-emerald-600 border-emerald-500/30" },
+  full: { label: "Full Day", short: "P", tone: "bg-emerald-500/15 text-emerald-600 border-emerald-500/30" },
   half: { label: "Half Day", short: "H", tone: "bg-amber-500/15 text-amber-600 border-amber-500/30" },
   absent: { label: "Absent", short: "A", tone: "bg-rose-500/15 text-rose-600 border-rose-500/30" },
   leave: { label: "Leave", short: "L", tone: "bg-sky-500/15 text-sky-600 border-sky-500/30" },

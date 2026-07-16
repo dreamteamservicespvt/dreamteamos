@@ -64,6 +64,19 @@ Routes added in `App.tsx`; nav in `roleHelpers.ts` (Attendance + Agreements for 
 ### Follow-up — deactivate blocks login
 Both Tech Admin & Sales Admin "My Team" pages already had the Active/Inactive badge + activate/deactivate toggle (`toggleActive` flips `users.isActive`). The gap was enforcement. Fixed: `src/pages/auth/Login.tsx` blocks sign-in when `isActive === false` (signs out + shows "account deactivated"); `src/hooks/useAuth.ts` upgraded from `getDoc` to a live `onSnapshot` on the user's own doc — a deactivation now signs the user out **immediately** (and role/profile changes reflect live). Strict `=== false` check so legacy users without the field stay active.
 
+### Follow-up — 10-item attendance/agreements polish batch
+1. **AI formatting:** `formatAgreementWithAI(raw)` in `geminiService.ts` (uses callWithFallback); "Format with AI" button in `SendAgreement.tsx`.
+2. **Delete sent agreements:** `deleteAgreement()` + confirm modal (signed ones show a stronger warning) in SendAgreement.
+3. **"Load DREAM TEAM template" button removed** (template constant deleted; per-category bulk template memory still exists).
+4. **MandatoryAgreementGate** (`components/agreement/MandatoryAgreementGate.tsx`, mounted in AppLayout, z-[55]): members/team-leads with unsigned agreements get a NO-CLOSE full-screen popup with AgreementView + SignaturePad embedded; queue advances until all signed; success screen offers PDF + Continue.
+5. **DailyCheckinPrompt is mandatory** — X and "Later" removed; only Check In closes it.
+6. **Attendance WhatsApp step:** after a manual status in TeamAttendance, a modal shows a prefilled editable message (Reason line for half/absent/leave) → wa.me to the member's own number; member also gets an `attendance_update` in-app notification.
+7. **"P" (Present)** replaces "F" in attendance (ATTENDANCE_META.full.short + summary row).
+8. **Deactivated members hidden** (`isActive !== false` filter) in TeamAttendance, SendAgreement, main-admin Sales/Tech Department, sales ScheduleNumbers/SessionHistory, Leaderboard, tech Dashboard/DriveManagement/SessionHistory/Tools — My Team pages still show them.
+9. **UpdatePopup** (`components/layout/UpdatePopup.tsx`, AppLayout, z-40): centered popup for members on unread work_assigned / work_editing / attendance_update (last 24h), Open (marks read + navigates) / Later (session-dismissed, bell stays unread).
+10. **Reassign work:** `services/workReassign.ts` + `components/work/ReassignWork.tsx` button/modal in tech-admin & team-leader MemberAssignments — moves assignment to another member (status→assigned, sessions/completion reset, `reassignedFrom/By/At` stamped), notifies both members.
+11. **Tech member profile:** `components/attendance/MyDayCalendar.tsx` replaces MemberAttendanceCard (deleted) + the old Check-In History section — one calendar merging attendance status (P/H/A/L/holiday), check-in dots, work-done dots; month summary chips; clicking a day shows the full day story (check-in/out, videos, assigned/completed work list, day-report status, drive link).
+
 ### Known pre-existing (NOT introduced here)
 - `tsconfig.app.json` `ignoreDeprecations: "6.0"` breaks `tsc -p` (use vite build).
 - Repo has ~57 pre-existing eslint `no-explicit-any` errors; lint is not part of the build. This batch added zero new lint errors.

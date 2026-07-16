@@ -95,8 +95,8 @@ export default function Leaderboard() {
       onSnapshot(collection(db, "users"), (snap) => {
         const allUsers = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser));
         const team = isAdmin
-          ? allUsers.filter((u) => u.role === "sales_member" && u.createdBy === currentUser.uid)
-          : allUsers.filter((u) => u.role === "sales_member" && u.createdBy === currentUser.createdBy);
+          ? allUsers.filter((u) => u.role === "sales_member" && u.createdBy === currentUser.uid && u.isActive !== false)
+          : allUsers.filter((u) => u.role === "sales_member" && u.createdBy === currentUser.createdBy && u.isActive !== false);
         setMembers(team);
       })
     );

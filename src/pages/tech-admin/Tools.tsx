@@ -55,7 +55,7 @@ export default function Tools() {
 
   // Members who are tech_member or admin
   const historyMembers = useMemo(() => {
-    return allUsers.filter(u => u.role === 'tech_member' || u.role === 'tech_admin');
+    return allUsers.filter(u => (u.role === 'tech_member' || u.role === 'tech_admin') && u.isActive !== false);
   }, [allUsers]);
 
   // Build unified history from work_assignments + ai_generations

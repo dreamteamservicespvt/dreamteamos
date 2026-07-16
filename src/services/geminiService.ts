@@ -2009,6 +2009,35 @@ Output STRICT JSON with no markdown wrapping:
   }
 };
 
+/**
+ * Formats raw pasted agreement text into a clean, professionally structured document.
+ * Content is preserved — only structure, numbering, spacing, and placeholder normalization
+ * change, so the auto-fill markers ("Employee Name: ____" etc.) keep working downstream.
+ */
+export const formatAgreementWithAI = async (rawText: string): Promise<string> => {
+  if (API_KEYS.length === 0) {
+    throw new Error("No API keys configured. Please set API_KEY_1, API_KEY_2, etc. in your environment.");
+  }
+  const systemInstruction = `You are an expert legal-document formatter. You will receive raw, possibly messy, pasted employment-agreement text. Reformat it into a clean, professional, well-structured plain-text agreement.
+
+STRICT RULES:
+1. PRESERVE the meaning and all real content — do NOT invent new clauses, change amounts, names, numbers, or terms, and do NOT drop any clause.
+2. Structure: company/title lines at the top in ALL CAPS, then company contact block, then an "Employee Details" block, then numbered sections ("1. Appointment", "2. Roles & Responsibilities", …), each section title on its own line followed by its paragraph.
+3. NORMALIZE fill-in placeholders to exactly this shape so software can auto-fill them: "Employee Name: ____________________", "Mobile Number: ____________________", "Date: ____________________", "Employee Signature: ____________________". Keep them on their own lines. If the pasted text asks for name/number/date/signature in any other wording, convert it to these exact labels.
+4. End with the acceptance section followed by the Employee Name / Employee Signature / Date placeholder lines.
+5. Plain text ONLY — no markdown, no asterisks, no code fences, no commentary. Output ONLY the formatted agreement text.
+6. Fix obvious typos, broken line-wraps, duplicated words, and inconsistent numbering. Keep language professional and concise.`;
+  const response = await callWithFallback(async (ai, model) => {
+    return await ai.models.generateContent({
+      model,
+      contents: [{ role: 'user', parts: [{ text: `RAW AGREEMENT TEXT:\n\n${rawText}\n\nFormat it now.` }] }],
+      config: { systemInstruction }
+    });
+  });
+  const out = (response.text || '').replace(/```[a-z]*\n?/gi, '').trim();
+  return out || rawText;
+};
+
 // Robustly extract business name from AI-generated businessInfo object
 // Gemini returns inconsistent JSON key names depending on prompt phrasing
 export function extractBusinessNameFromInfo(info: any): string {

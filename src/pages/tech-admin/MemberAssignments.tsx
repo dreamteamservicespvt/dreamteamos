@@ -10,6 +10,7 @@ import { db } from '@/services/firebase';
 import { sendNotification } from '@/services/notifications';
 import { useAuthStore } from '@/store/authStore';
 import { useFirestoreCollection } from '@/hooks/useFirestore';
+import ReassignWork from '@/components/work/ReassignWork';
 import { PRICING } from '@/utils/pricing';
 import { formatCurrency, formatDate, formatTime } from '@/utils/formatters';
 import { formatPhoneDisplay, getWhatsAppUrl, normalizePhone } from '@/utils/phone';
@@ -670,6 +671,10 @@ export default function MemberAssignments() {
                     className="flex items-center space-x-1 px-2.5 py-1 text-[10px] md:text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 rounded-lg transition-colors">
                     <Pencil className="w-3 h-3 md:w-3.5 md:h-3.5" /><span>Edit</span>
                   </button>
+                )}
+                {a.status !== 'verified' && currentUser && (
+                  <ReassignWork assignment={a} currentUser={{ uid: currentUser.uid, name: currentUser.name }}
+                    members={allUsers.filter(u => u.role === 'tech_member' && u.isActive !== false)} />
                 )}
                 <button onClick={() => setConfirmAction({ type: 'delete', id: a.id, title: a.businessName || a.clientName || a.displayTitle })}
                   className="flex items-center space-x-1 px-2.5 py-1 text-[10px] md:text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 rounded-lg transition-colors">

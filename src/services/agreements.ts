@@ -1,4 +1,4 @@
-import { addDoc, collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
 import type { Timestamp } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
@@ -67,6 +67,11 @@ export async function signAgreement(
     title: "Agreement Signed",
     message: `${agreement.memberName} signed "${agreement.title}".`,
   });
+}
+
+/** Delete a sent agreement (admin action — confirmed in the UI; signed ones get a stronger warning). */
+export async function deleteAgreement(agreementId: string): Promise<void> {
+  await deleteDoc(doc(db, "agreements", agreementId));
 }
 
 /** Live list of a member's agreements (for their profile). */

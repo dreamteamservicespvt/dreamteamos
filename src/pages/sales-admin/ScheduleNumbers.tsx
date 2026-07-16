@@ -123,7 +123,7 @@ export default function ScheduleNumbers() {
     const fetchMembers = async () => {
       const snap = await getDocs(collection(db, "users"));
       const allUsers = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser));
-      setMembers(allUsers.filter((u) => u.role === "sales_member" && u.createdBy === currentUser?.uid));
+      setMembers(allUsers.filter((u) => u.role === "sales_member" && u.createdBy === currentUser?.uid && u.isActive !== false));
     };
     fetchMembers();
 

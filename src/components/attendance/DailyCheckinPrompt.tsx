@@ -7,10 +7,11 @@ import { useAuthStore } from "@/store/authStore";
 import { useToast } from "@/hooks/use-toast";
 import { getTodayWorkStats, performCheckIn } from "@/utils/attendance";
 import type { WorkAssignment } from "@/types";
-import { LogIn, Loader2, Sun, X } from "lucide-react";
+import { LogIn, Loader2, Sun } from "lucide-react";
 
 /**
  * Shown automatically to tech members on the first website open of each day.
+ * MANDATORY: there is no close / "later" — the member must check in to continue.
  * Checking in records attendance and opens WhatsApp with the prefilled
  * attendance + work-status message for the admin.
  */
@@ -18,17 +19,13 @@ export default function DailyCheckinPrompt() {
   const user = useAuthStore((s) => s.user);
   const { toast } = useToast();
   const todayStr = format(new Date(), "yyyy-MM-dd");
-  const dismissKey = user ? `dts_checkin_prompt_${user.uid}_${todayStr}` : "";
 
   const [hasCheckin, setHasCheckin] = useState<boolean | null>(null);
   const [assignments, setAssignments] = useState<WorkAssignment[] | null>(null);
-  const [dismissed, setDismissed] = useState(false);
   const [checkingIn, setCheckingIn] = useState(false);
 
   useEffect(() => {
     if (!user) return;
-    setDismissed(Boolean(localStorage.getItem(dismissKey)));
-
     const unsubs: (() => void)[] = [];
     unsubs.push(onSnapshot(
       query(collection(db, "daily_checkins"), where("memberId", "==", user.uid), where("date", "==", todayStr)),
@@ -39,17 +36,12 @@ export default function DailyCheckinPrompt() {
       (snap) => setAssignments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as WorkAssignment)))
     ));
     return () => unsubs.forEach((u) => u());
-  }, [user?.uid, todayStr, dismissKey]);
+  }, [user?.uid, todayStr]);
 
   const stats = useMemo(() => getTodayWorkStats(assignments || [], todayStr), [assignments, todayStr]);
 
   if (!user || user.role !== "tech_member") return null;
-  const show = hasCheckin === false && assignments !== null && !dismissed;
-
-  const handleLater = () => {
-    localStorage.setItem(dismissKey, "1");
-    setDismissed(true);
-  };
+  const show = hasCheckin === false && assignments !== null;
 
   const handleCheckIn = async () => {
     if (!user || checkingIn) return;
@@ -81,10 +73,6 @@ export default function DailyCheckinPrompt() {
             exit={{ opacity: 0, scale: 0.95, y: 12 }}
             className="bg-card border border-border rounded-xl w-full max-w-sm p-5 space-y-4 relative"
           >
-            <button onClick={handleLater} className="absolute top-3 right-3 text-muted-foreground hover:text-foreground transition-colors">
-              <X size={16} />
-            </button>
-
             <div className="flex items-center gap-3">
               <div className="w-11 h-11 rounded-full bg-success/15 text-success flex items-center justify-center shrink-0">
                 <Sun size={20} />
@@ -111,16 +99,10 @@ export default function DailyCheckinPrompt() {
             </div>
 
             <p className="text-[11px] text-muted-foreground">
-              Checking in records your attendance and sends your work status to the admin on WhatsApp.
+              Checking in is required to continue. It records your attendance and sends your work status to the admin on WhatsApp.
             </p>
 
             <div className="flex gap-2">
-              <button
-                onClick={handleLater}
-                className="flex-1 h-10 rounded-lg bg-accent text-foreground text-sm font-medium border border-border"
-              >
-                Later
-              </button>
               <button
                 onClick={handleCheckIn}
                 disabled={checkingIn}

@@ -10,6 +10,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { initFCM, onForegroundMessage } from "@/services/fcm";
 import VideoCallManager from "@/components/chat/VideoCallManager";
 import DailyCheckinPrompt from "@/components/attendance/DailyCheckinPrompt";
+import MandatoryAgreementGate from "@/components/agreement/MandatoryAgreementGate";
+import UpdatePopup from "@/components/layout/UpdatePopup";
 import { registerBackButton } from "@/services/capacitor-plugins";
 import { isNative } from "@/utils/platform";
 import type { UserRole } from "@/types";
@@ -74,6 +76,8 @@ export default function AppLayout({ allowedRoles }: AppLayoutProps) {
         </main>
         <VideoCallManager />
         {user.role === "tech_member" && <DailyCheckinPrompt />}
+        <MandatoryAgreementGate />
+        <UpdatePopup />
       </div>
     </div>
   );
