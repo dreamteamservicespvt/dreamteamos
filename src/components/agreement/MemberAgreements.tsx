@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
-import { FileText, Printer, CheckCircle2, X } from "lucide-react";
+import { FileText, Download, CheckCircle2, X, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/store/authStore";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import { Agreement, signAgreement, watchMemberAgreements } from "@/services/agreements";
 import AgreementView from "./AgreementView";
 import SignaturePad from "./SignaturePad";
-import { printAgreementElement } from "@/utils/agreementPrint";
+import { downloadAgreementPdf } from "@/utils/agreementPdf";
 
 /** Member's own agreements section (shown in their profile). */
 export default function MemberAgreements() {
@@ -16,6 +16,7 @@ export default function MemberAgreements() {
   const [list, setList] = useState<Agreement[]>([]);
   const [open, setOpen] = useState<Agreement | null>(null);
   const [saving, setSaving] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const paperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -41,12 +42,15 @@ export default function MemberAgreements() {
     }
   };
 
-  const handlePrint = async () => {
-    if (!paperRef.current) return;
+  const handleDownload = async () => {
+    if (!paperRef.current || !open || downloading) return;
+    setDownloading(true);
     try {
-      await printAgreementElement(paperRef.current);
+      await downloadAgreementPdf(paperRef.current, `${open.title.replace(/[^\w]+/g, "_")}.pdf`);
     } catch {
-      toast({ title: "Error", description: "Could not open the print dialog.", variant: "destructive" });
+      toast({ title: "Error", description: "Could not generate the PDF.", variant: "destructive" });
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -85,9 +89,9 @@ export default function MemberAgreements() {
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 {open.status === "signed" && (
-                  <button onClick={handlePrint}
+                  <button onClick={handleDownload} disabled={downloading}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/90 text-slate-800 hover:bg-white">
-                    <Printer className="w-3.5 h-3.5" /> Print
+                    {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />} Download PDF
                   </button>
                 )}
               </div>

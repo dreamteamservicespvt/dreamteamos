@@ -267,6 +267,7 @@ export default function MemberAssignments() {
         type: 'work_editing',
         title: 'Edits Required',
         message: 'Your work has been sent back for edits. Please review and resubmit.',
+        link: '/tech/my-work',
       });
       setConfirmAction(null);
     } catch (error) {

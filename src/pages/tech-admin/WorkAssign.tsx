@@ -249,6 +249,7 @@ export default function WorkAssign() {
         type: 'work_assigned',
         title: 'New Work Assigned',
         message: `You have been assigned a new ${form.category} work (${clips} clips, ${form.duration}). Access code: ${accessCode}`,
+        link: '/tech/my-work',
       });
 
       // Keep the tech team leader(s) informed of new work on their team.
@@ -258,6 +259,7 @@ export default function WorkAssign() {
         type: 'work_assigned',
         title: 'New Team Work Assigned',
         message: `${getMemberName(form.assignedTo)} was assigned a new ${form.category} work (${clips} clips, ${form.duration}).`,
+        link: `/team-leader/work-assign/${form.assignedTo}`,
       });
 
       setShowForm(false);
@@ -326,6 +328,7 @@ export default function WorkAssign() {
         type: 'work_editing',
         title: 'Edits Required',
         message: 'Your work has been sent back for edits. Please review and resubmit.',
+        link: '/tech/my-work',
       });
       setConfirmAction(null);
     } catch (error) {

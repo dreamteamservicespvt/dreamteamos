@@ -56,7 +56,7 @@ const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function Agr
       className="mx-auto w-full max-w-[820px] bg-white text-slate-800 px-7 py-8 md:px-12 md:py-12 shadow-sm"
     >
       {titleLines.length > 0 && (
-        <div className="text-center mb-6 pb-4 border-b-2 border-slate-200">
+        <div data-pdf="title" className="text-center mb-6 pb-4 border-b-2 border-slate-200">
           {titleLines.map((t, idx) => (
             <div key={idx} className={idx === 0 ? "text-xl md:text-2xl font-extrabold tracking-tight text-slate-900" : "text-sm md:text-base font-semibold text-slate-600 mt-0.5"}>
               {t}
@@ -65,7 +65,7 @@ const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function Agr
         </div>
       )}
 
-      <div className="space-y-2.5 text-[13px] md:text-[14px] leading-relaxed">
+      <div data-pdf="body" className="space-y-2.5 text-[13px] md:text-[14px] leading-relaxed">
         {body.map((raw, idx) => {
           const l = raw.trim();
           if (l === "") return <div key={idx} className="h-1.5" />;
@@ -83,6 +83,7 @@ const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function Agr
                         {/* mix-blend-multiply drops whitish photo backgrounds into the white paper,
                             so uploaded photo signatures print as cleanly as drawn ones. */}
                         <img
+                          data-signature="true"
                           src={data.signatureUrl}
                           alt="signature"
                           crossOrigin="anonymous"
@@ -129,7 +130,7 @@ const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function Agr
       </div>
 
       {(data.signedName || data.signedDate) && (
-        <div className="mt-8 pt-4 border-t border-slate-200 text-[12px] text-slate-500">
+        <div data-pdf="footer" className="mt-8 pt-4 border-t border-slate-200 text-[12px] text-slate-500">
           Signed by <span className="font-semibold text-slate-700">{data.signedName || data.memberName}</span>
           {signedDateLabel ? ` on ${signedDateLabel}` : ""}.
         </div>

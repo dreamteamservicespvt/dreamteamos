@@ -242,6 +242,7 @@ export default function TeamLeaderWorkAssign() {
         type: 'work_assigned',
         title: 'New Work Assigned',
         message: `You have been assigned a new ${form.category} work (${clips} clips, ${form.duration}). Access code: ${accessCode}`,
+        link: '/tech/my-work',
       });
 
       setShowForm(false);
@@ -309,6 +310,7 @@ export default function TeamLeaderWorkAssign() {
         type: 'work_editing',
         title: 'Edits Required',
         message: 'Your work has been sent back for edits. Please review and resubmit.',
+        link: '/tech/my-work',
       });
       setConfirmAction(null);
     } catch (error) {

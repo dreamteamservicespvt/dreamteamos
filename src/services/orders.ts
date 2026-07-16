@@ -211,6 +211,7 @@ export async function assignOrderToMember(params: {
     type: "work_assigned",
     title: "New Work Assigned",
     message: `You've been assigned "${order.businessName || categoryLabel(category)}" (${uniqueId}).${order.promise ? ` Deliver within ${order.promise.label}.` : ""} Access code: ${accessCode}`,
+    link: "/tech/my-work",
   });
 
   return workRef.id;

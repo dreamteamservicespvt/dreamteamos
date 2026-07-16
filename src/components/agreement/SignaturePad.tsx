@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Eraser, PenLine, Upload, Camera } from "lucide-react";
+import { normalizeSignatureFile } from "@/utils/signatureImage";
 
 /**
  * Signature capture: draw on-screen (finger/mouse) OR upload / take a photo of a signature.
@@ -74,9 +75,11 @@ export default function SignaturePad({ onSave, saving }: { onSave: (file: File) 
     setUploadPreview(URL.createObjectURL(f));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (mode === "upload") {
-      if (uploadFile) onSave(uploadFile);
+      // Normalize the photo/scan: strip the whitish paper background to transparency so
+      // the stored signature is a clean PNG that renders perfectly on screen and in PDFs.
+      if (uploadFile) onSave(await normalizeSignatureFile(uploadFile));
       return;
     }
     const canvas = canvasRef.current;

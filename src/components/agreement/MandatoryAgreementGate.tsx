@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
-import { FileSignature, Printer, CheckCircle2 } from "lucide-react";
+import { FileSignature, Download, CheckCircle2, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/store/authStore";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import { Agreement, signAgreement, watchMemberAgreements } from "@/services/agreements";
 import AgreementView from "./AgreementView";
 import SignaturePad from "./SignaturePad";
-import { printAgreementElement } from "@/utils/agreementPrint";
+import { downloadAgreementPdf } from "@/utils/agreementPdf";
 
 const MEMBER_ROLES = new Set(["tech_member", "sales_member", "tech_team_leader"]);
 
@@ -25,6 +25,7 @@ export default function MandatoryAgreementGate() {
   const [unsigned, setUnsigned] = useState<Agreement[]>([]);
   const [saving, setSaving] = useState(false);
   const [justSigned, setJustSigned] = useState<Agreement | null>(null);
+  const [downloading, setDownloading] = useState(false);
   const paperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -56,12 +57,15 @@ export default function MandatoryAgreementGate() {
     }
   };
 
-  const handlePrint = async () => {
-    if (!paperRef.current) return;
+  const handleDownload = async () => {
+    if (!paperRef.current || !justSigned || downloading) return;
+    setDownloading(true);
     try {
-      await printAgreementElement(paperRef.current);
+      await downloadAgreementPdf(paperRef.current, `${justSigned.title.replace(/[^\w]+/g, "_")}.pdf`);
     } catch {
-      toast({ title: "Error", description: "Could not open the print dialog.", variant: "destructive" });
+      toast({ title: "Error", description: "Could not generate the PDF.", variant: "destructive" });
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -75,9 +79,9 @@ export default function MandatoryAgreementGate() {
               <CheckCircle2 className="w-4 h-4" /> Signed successfully — keep a copy if you like.
             </span>
             <div className="flex items-center gap-2">
-              <button onClick={handlePrint}
+              <button onClick={handleDownload} disabled={downloading}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/15 hover:bg-white/25">
-                <Printer className="w-3.5 h-3.5" /> Print
+                {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />} Download PDF
               </button>
               <button onClick={() => setJustSigned(null)}
                 className="px-4 py-1.5 rounded-lg text-xs font-bold bg-white text-emerald-700 hover:bg-emerald-50">

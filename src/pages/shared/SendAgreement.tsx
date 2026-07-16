@@ -8,7 +8,7 @@ import { Send, Eye, CheckCircle2, Clock, FileSignature, User, Users, Loader2, Sp
 import { useToast } from "@/hooks/use-toast";
 import type { AppUser } from "@/types";
 import {
-  Agreement, extractTitle, sendAgreement, watchSentAgreements,
+  Agreement, extractTitle, sendAgreement, watchTeamSentAgreements, watchAgreementsForMembers,
   loadAgreementTemplate, saveAgreementTemplate, deleteAgreement,
 } from "@/services/agreements";
 import { formatAgreementWithAI } from "@/services/geminiService";
@@ -42,11 +42,47 @@ export default function SendAgreement() {
     return () => unsub();
   }, []);
 
+  // Senders whose agreements appear in the "Sent agreements" list:
+  // a tech admin also sees everything their team leaders sent.
+  const senderUids = useMemo(() => {
+    if (!user) return [] as string[];
+    const uids = [user.uid];
+    if (user.role === "tech_admin") {
+      allUsers
+        .filter((u) => u.role === "tech_team_leader" && u.createdBy === user.uid)
+        .forEach((u) => uids.push(u.uid));
+    }
+    return uids;
+  }, [user, allUsers]);
+
   useEffect(() => {
     if (!user) return;
-    const unsub = watchSentAgreements(user.uid, setSent);
+    const unsub = watchTeamSentAgreements(senderUids, setSent);
     return () => unsub();
-  }, [user?.uid]);
+  }, [user?.uid, senderUids.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Tech admin AND tech team leader both see every agreement addressed TO the team
+  // (members + leads), no matter who sent it — one shared, complete list.
+  const teamMemberUids = useMemo(() => {
+    if (!user || (user.role !== "tech_admin" && user.role !== "tech_team_leader")) return [] as string[];
+    const teamAdminUid = user.role === "tech_team_leader" ? user.createdBy : user.uid;
+    return allUsers
+      .filter((u) => (u.role === "tech_member" || u.role === "tech_team_leader") && u.createdBy === teamAdminUid)
+      .map((u) => u.uid);
+  }, [user, allUsers]);
+
+  const [teamSent, setTeamSent] = useState<Agreement[]>([]);
+  useEffect(() => {
+    if (teamMemberUids.length === 0) { setTeamSent([]); return; }
+    const unsub = watchAgreementsForMembers(teamMemberUids, setTeamSent);
+    return () => unsub();
+  }, [teamMemberUids.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const allSent = useMemo(() => {
+    const map = new Map<string, Agreement>();
+    [...sent, ...teamSent].forEach((a) => { if (a.id) map.set(a.id, a); });
+    return [...map.values()].sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+  }, [sent, teamSent]);
 
   // Recipients eligible for this admin / lead.
   const members = useMemo(() => {
@@ -82,7 +118,7 @@ export default function SendAgreement() {
   }, [mode, category, user?.uid]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const agreementFlag = (memberId: string): "signed" | "sent" | null => {
-    const mine = sent.filter((a) => a.memberId === memberId);
+    const mine = allSent.filter((a) => a.memberId === memberId);
     if (mine.some((a) => a.status === "signed")) return "signed";
     if (mine.length > 0) return "sent";
     return null;
@@ -317,16 +353,18 @@ export default function SendAgreement() {
       {/* Sent list */}
       <div className="mt-6">
         <h2 className="font-display font-semibold text-foreground mb-2">Sent agreements</h2>
-        {sent.length === 0 ? (
+        {allSent.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nothing sent yet.</p>
         ) : (
           <div className="rounded-xl border border-border bg-card divide-y divide-border">
-            {sent.map((a) => (
+            {allSent.map((a) => (
               <div key={a.id} className="flex items-center justify-between gap-3 px-4 py-3">
                 <div className="min-w-0">
                   <div className="font-medium text-foreground text-sm truncate">{a.title}</div>
                   <div className="text-[11px] text-muted-foreground">
-                    To {a.memberName}{a.createdAt?.seconds ? ` · ${format(new Date(a.createdAt.seconds * 1000), "dd MMM yyyy")}` : ""}
+                    To {a.memberName}
+                    {a.sentBy !== user?.uid ? <span className="text-violet-500"> · by {a.sentByName}</span> : ""}
+                    {a.createdAt?.seconds ? ` · ${format(new Date(a.createdAt.seconds * 1000), "dd MMM yyyy")}` : ""}
                   </div>
                 </div>
                 <div className="shrink-0 flex items-center gap-2">

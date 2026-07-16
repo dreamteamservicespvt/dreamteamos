@@ -94,6 +94,69 @@ export function watchSentAgreements(sentBy: string, cb: (list: Agreement[]) => v
   );
 }
 
+/**
+ * Live list of agreements addressed TO any of the given members (chunked `in` queries).
+ * Lets the tech admin see every agreement their team received — no matter who sent it.
+ */
+export function watchAgreementsForMembers(memberUids: string[], cb: (list: Agreement[]) => void): () => void {
+  const ids = [...new Set(memberUids)].filter(Boolean);
+  if (ids.length === 0) {
+    cb([]);
+    return () => {};
+  }
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += 10) chunks.push(ids.slice(i, i + 10));
+
+  const results = new Map<number, Agreement[]>();
+  const emit = () => cb(sortByCreated([...results.values()].flat()));
+  const unsubs = chunks.map((chunk, idx) =>
+    onSnapshot(
+      query(collection(db, "agreements"), where("memberId", "in", chunk)),
+      (snap) => {
+        results.set(idx, snap.docs.map((d) => ({ id: d.id, ...d.data() } as Agreement)));
+        emit();
+      },
+      () => {
+        results.set(idx, []);
+        emit();
+      },
+    ),
+  );
+  return () => unsubs.forEach((u) => u());
+}
+
+/**
+ * Live list of agreements sent by ANY of the given senders (chunked `in` queries).
+ * Used by the tech admin to see their own sent agreements PLUS everything their
+ * team leaders sent, in one merged list.
+ */
+export function watchTeamSentAgreements(senderUids: string[], cb: (list: Agreement[]) => void): () => void {
+  const ids = [...new Set(senderUids)].filter(Boolean);
+  if (ids.length === 0) {
+    cb([]);
+    return () => {};
+  }
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += 10) chunks.push(ids.slice(i, i + 10));
+
+  const results = new Map<number, Agreement[]>();
+  const emit = () => cb(sortByCreated([...results.values()].flat()));
+  const unsubs = chunks.map((chunk, idx) =>
+    onSnapshot(
+      query(collection(db, "agreements"), where("sentBy", "in", chunk)),
+      (snap) => {
+        results.set(idx, snap.docs.map((d) => ({ id: d.id, ...d.data() } as Agreement)));
+        emit();
+      },
+      () => {
+        results.set(idx, []);
+        emit();
+      },
+    ),
+  );
+  return () => unsubs.forEach((u) => u());
+}
+
 function sortByCreated(list: Agreement[]): Agreement[] {
   return list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
 }
