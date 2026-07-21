@@ -62,21 +62,34 @@ export default function SalesAdminDashboard() {
       })
     : teamLeads;
 
+  // A sale belongs to the day the member SUBMITTED it — never lead.lastUpdated, which
+  // approving/rejecting bumps (that made a yesterday sale count as today once verified today).
+  const saleItemDate = (item: any, lead: any): string | null => {
+    const ts = item.submittedAt?.seconds ?? lead.createdAt?.seconds;
+    return ts ? format(new Date(ts * 1000), "yyyy-MM-dd") : null;
+  };
+  const teamSaleItems = teamLeads.flatMap((l: any) =>
+    (l.saleItems || (l.saleDetails ? [l.saleDetails] : [])).map((item: any) => ({ item, lead: l }))
+  );
+  const dateSaleItems = dateStr
+    ? teamSaleItems.filter(({ item, lead }: any) => saleItemDate(item, lead) === dateStr)
+    : teamSaleItems;
+
   const salesDone = filteredLeads.filter((l: any) => l.saleDone);
-  const allSaleItems = salesDone.flatMap((l: any) => l.saleItems || (l.saleDetails ? [l.saleDetails] : []));
-  const totalRevenue = allSaleItems.reduce((s: number, item: any) => s + (item.amount || 0), 0);
+  const totalRevenue = dateSaleItems.reduce((s: number, { item }: any) => s + (item.amount || 0), 0);
   const called = filteredLeads.filter((l: any) => l.status !== "not_called").length;
-  const pendingApprovals = allSaleItems.filter((item: any) => item.verificationStatus === "pending").length;
+  const pendingApprovals = dateSaleItems.filter(({ item }: any) => item.verificationStatus === "pending").length;
 
   const chartData = members.map((m) => {
     const mLeads = filteredLeads.filter((l: any) => l.assignedTo === m.uid);
     const mSales = mLeads.filter((l: any) => l.saleDone);
-    const mItems = mSales.flatMap((l: any) => l.saleItems || (l.saleDetails ? [l.saleDetails] : []));
     return {
       name: m.name?.split(" ")[0] || "?",
       leads: mLeads.length,
       sales: mSales.length,
-      revenue: mItems.reduce((s: number, item: any) => s + (item.amount || 0), 0),
+      revenue: dateSaleItems
+        .filter(({ lead }: any) => lead.assignedTo === m.uid)
+        .reduce((s: number, { item }: any) => s + (item.amount || 0), 0),
     };
   });
 
@@ -91,15 +104,17 @@ export default function SalesAdminDashboard() {
       const totalRev = allItems.reduce((s: number, item: any) => s + (item.amount || 0), 0);
       const verifiedRev = verifiedItems.reduce((s: number, item: any) => s + (item.amount || 0), 0);
 
-      // Group sales by day to count how many days they hit their target
+      // Group sales by the day each item was SUBMITTED (not lead.lastUpdated, which the
+      // approve action bumps) to count how many days they hit their target.
       const revenueByDay: Record<string, number> = {};
       memberSaleLeads.forEach((l: any) => {
-        const ts = l.lastUpdated?.seconds || l.createdAt?.seconds;
-        if (!ts) return;
-        const day = format(new Date(ts * 1000), "yyyy-MM-dd");
         const items = l.saleItems || (l.saleDetails ? [l.saleDetails] : []);
-        const dayRev = items.reduce((s: number, item: any) => s + (item.amount || 0), 0);
-        revenueByDay[day] = (revenueByDay[day] || 0) + dayRev;
+        items.forEach((item: any) => {
+          const ts = item.submittedAt?.seconds ?? l.createdAt?.seconds;
+          if (!ts) return;
+          const day = format(new Date(ts * 1000), "yyyy-MM-dd");
+          revenueByDay[day] = (revenueByDay[day] || 0) + (item.amount || 0);
+        });
       });
 
       const daysReachedTarget = Object.values(revenueByDay).filter((rev) => rev >= dailyTarget).length;

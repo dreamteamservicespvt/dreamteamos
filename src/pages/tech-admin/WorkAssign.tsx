@@ -20,6 +20,7 @@ import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from '@/types/aiPla
 import { formatDateRangeLabel, isDateWithinRange, normalizeDateRange, parseQueryDate, parseQueryDateRange } from '@/utils/dateRange';
 import { upsertClientOnWorkVerify } from '@/services/clients';
 import { revertOrderToAssigned, markOrderCompleted } from '@/services/orders';
+import { reassignWork } from '@/services/workReassign';
 import DeadlineChip from '@/components/work/DeadlineChip';
 
 // Human-readable labels for each attire option (mirrors AIPlatformApp's ATTIRE_LABELS so the
@@ -98,9 +99,10 @@ export default function WorkAssign() {
   const [selectedRange, setSelectedRange] = useState<DateRange | undefined>(undefined);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<{
-    category: string; duration: string; pricePerUnit: number; businessName: string; businessWhatsapp: string;
+    assignedTo: string; category: string; duration: string; pricePerUnit: number; businessName: string; businessWhatsapp: string;
     modelGender: ModelGender; attireType: AttireType; customAttire: string; aspectRatio: '9:16' | '16:9'; language: string; customLanguage: string;
   } | null>(null);
+  const [editMemberSearch, setEditMemberSearch] = useState('');
   const [memberSearch, setMemberSearch] = useState('');
   const [confirmAction, setConfirmAction] = useState<{ type: 'delete' | 'sendback'; id: string; assignedTo?: string; title: string } | null>(null);
   const [workloadSearch, setWorkloadSearch] = useState('');
@@ -422,6 +424,7 @@ export default function WorkAssign() {
     const attireType = (a.attireType as AttireType) || AttireType.TRADITIONAL;
     const isPresetLanguage = a.language && (ASSIGNMENT_LANGUAGE_OPTIONS as readonly string[]).includes(a.language);
     setEditForm({
+      assignedTo: a.assignedTo,
       category: a.category, duration: a.duration, pricePerUnit: a.pricePerUnit,
       businessName: a.businessName || a.clientName || '', businessWhatsapp: a.businessWhatsapp || '',
       modelGender: gender, attireType, customAttire: a.customAttire || '',
@@ -429,11 +432,13 @@ export default function WorkAssign() {
       language: a.language ? (isPresetLanguage ? a.language : 'Custom') : 'Telugu',
       customLanguage: a.language && !isPresetLanguage ? a.language : '',
     });
+    setEditMemberSearch(getMemberName(a.assignedTo));
   };
 
   const handleSaveEdit = async () => {
-    if (!editingId || !editForm) return;
+    if (!editingId || !editForm || !editForm.assignedTo) return;
     try {
+      const original = assignments.find(x => x.id === editingId);
       const clips = getClipCount(editForm.duration);
       const language = editForm.language === 'Custom' ? (editForm.customLanguage.trim() || 'Custom') : editForm.language;
       await updateDoc(doc(db, 'work_assignments', editingId), {
@@ -450,8 +455,21 @@ export default function WorkAssign() {
         aspectRatio: editForm.aspectRatio,
         language,
       });
+      // Member changed → hand off through the established reassign flow (resets the work to
+      // "assigned" for the new member and notifies both members).
+      if (user && original && editForm.assignedTo !== original.assignedTo) {
+        const newMember = techMembers.find(m => m.uid === editForm.assignedTo);
+        if (newMember) {
+          await reassignWork(
+            { ...original, businessName: editForm.businessName.trim() || original.businessName },
+            { uid: newMember.uid, name: newMember.name },
+            { uid: user.uid, name: user.name },
+          );
+        }
+      }
       setEditingId(null);
       setEditForm(null);
+      setEditMemberSearch('');
     } catch (error) {
       console.error('Failed to edit assignment:', error);
     }
@@ -1141,75 +1159,161 @@ export default function WorkAssign() {
                   {a.status !== 'verified' && <DeadlineChip promise={a.promise} />}
                 </div>
 
-                {/* Inline edit mode */}
+                {/* Inline edit mode — full labeled grid, mirroring Create New Assignment */}
                 {editingId === a.id && editForm ? (
-                  <div className="flex flex-wrap items-center gap-2 mt-2">
-                    <select value={editForm.category} onChange={(e) => {
-                      const cat = e.target.value;
-                      const dur = DURATIONS[cat][0];
-                      setEditForm(prev => prev ? { ...prev, category: cat, duration: dur, pricePerUnit: PRICING[cat]?.[dur] ?? 0 } : prev);
-                    }} className="border rounded px-2 py-1 text-xs bg-background text-foreground border-border">
-                      <option value="promotional">Promotional</option>
-                      <option value="wishes">Wishes</option>
-                      <option value="cinematic">Cinematic</option>
-                    </select>
-                    <select value={editForm.duration} onChange={(e) => setEditForm(prev => prev ? { ...prev, duration: e.target.value, pricePerUnit: PRICING[prev.category]?.[e.target.value] ?? 0 } : prev)}
-                      className="border rounded px-2 py-1 text-xs bg-background text-foreground border-border">
-                      {(DURATIONS[editForm.category] || []).map(d => <option key={d} value={d}>{d} ({getClipCount(d)} clips + {hasPoster(d) ? 'Poster ' : ''}{getEndCredits(d)}s EC)</option>)}
-                    </select>
-                    <div className="flex items-center gap-1">
-                      <span className="text-xs text-muted-foreground">₹</span>
-                      <input type="number" value={editForm.pricePerUnit} onChange={(e) => setEditForm(prev => prev ? { ...prev, pricePerUnit: parseInt(e.target.value) || 0 } : prev)}
-                        className="w-20 border rounded px-2 py-1 text-xs bg-background text-foreground border-border" />
+                  <div className="mt-3 rounded-xl border border-border bg-background/60 p-3 md:p-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {/* Assign To */}
+                      <div>
+                        <label className="block text-[11px] font-medium text-muted-foreground mb-1">Assign To</label>
+                        <div className="relative">
+                          <input type="text" placeholder="Search member..." value={editMemberSearch}
+                            onChange={(e) => { setEditMemberSearch(e.target.value); if (editForm.assignedTo) setEditForm(prev => prev ? { ...prev, assignedTo: '' } : prev); }}
+                            className="w-full border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border outline-none focus:ring-2 focus:ring-primary/20" />
+                          {editForm.assignedTo && (
+                            <div className="mt-1 text-[11px] text-green-500">
+                              ✓ {getMemberName(editForm.assignedTo)}{editForm.assignedTo !== a.assignedTo ? ' — will be reassigned on Save' : ''}
+                            </div>
+                          )}
+                          {!editForm.assignedTo && editMemberSearch && (
+                            <div className="absolute z-10 w-full mt-1 bg-card border border-border rounded-lg shadow-lg max-h-36 overflow-y-auto">
+                              {techMembers.filter(m => m.name.toLowerCase().includes(editMemberSearch.toLowerCase())).map(m => (
+                                <button key={m.uid} type="button"
+                                  onClick={() => { setEditForm(prev => prev ? { ...prev, assignedTo: m.uid } : prev); setEditMemberSearch(m.name); }}
+                                  className="w-full text-left px-2.5 py-1.5 text-xs hover:bg-accent transition-colors text-foreground">{m.name}</button>
+                              ))}
+                              {techMembers.filter(m => m.name.toLowerCase().includes(editMemberSearch.toLowerCase())).length === 0 && (
+                                <div className="px-2.5 py-1.5 text-[11px] text-muted-foreground">No members found</div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Category */}
+                      <div>
+                        <label className="block text-[11px] font-medium text-muted-foreground mb-1">Category</label>
+                        <select value={editForm.category} onChange={(e) => {
+                          const cat = e.target.value;
+                          const dur = DURATIONS[cat][0];
+                          setEditForm(prev => prev ? { ...prev, category: cat, duration: dur, pricePerUnit: PRICING[cat]?.[dur] ?? 0 } : prev);
+                        }} className="w-full border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border outline-none focus:ring-2 focus:ring-primary/20">
+                          <option value="promotional">Promotional</option>
+                          <option value="wishes">Wishes</option>
+                          <option value="cinematic">Cinematic</option>
+                        </select>
+                      </div>
+
+                      {/* Duration */}
+                      <div>
+                        <label className="block text-[11px] font-medium text-muted-foreground mb-1">Duration</label>
+                        <select value={editForm.duration} onChange={(e) => setEditForm(prev => prev ? { ...prev, duration: e.target.value, pricePerUnit: PRICING[prev.category]?.[e.target.value] ?? 0 } : prev)}
+                          className="w-full border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border outline-none focus:ring-2 focus:ring-primary/20">
+                          {(DURATIONS[editForm.category] || []).map(d => <option key={d} value={d}>{d} ({getClipCount(d)} clips + {hasPoster(d) ? 'Poster ' : ''}{getEndCredits(d)}s EC)</option>)}
+                        </select>
+                      </div>
+
+                      {/* Price */}
+                      <div>
+                        <label className="block text-[11px] font-medium text-muted-foreground mb-1">Price Per Unit (₹)</label>
+                        <input type="number" min={0} value={editForm.pricePerUnit}
+                          onChange={(e) => setEditForm(prev => prev ? { ...prev, pricePerUnit: parseInt(e.target.value) || 0 } : prev)}
+                          className="w-full border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border outline-none focus:ring-2 focus:ring-primary/20" />
+                      </div>
+
+                      {/* Business Name */}
+                      <div>
+                        <label className="block text-[11px] font-medium text-muted-foreground mb-1">Business Name</label>
+                        <input type="text" placeholder="e.g. Sharma Electronics" value={editForm.businessName}
+                          onChange={(e) => setEditForm(prev => prev ? { ...prev, businessName: e.target.value } : prev)}
+                          className="w-full border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/20" />
+                      </div>
+
+                      {/* Business WhatsApp */}
+                      <div>
+                        <label className="block text-[11px] font-medium text-muted-foreground mb-1">Business WhatsApp</label>
+                        <input type="text" placeholder="e.g. 9876543210" value={editForm.businessWhatsapp}
+                          onChange={(e) => setEditForm(prev => prev ? { ...prev, businessWhatsapp: e.target.value } : prev)}
+                          className="w-full border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/20" />
+                      </div>
+
+                      {/* Model */}
+                      <div>
+                        <label className="block text-[11px] font-medium text-muted-foreground mb-1">Model</label>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {[ModelGender.FEMALE, ModelGender.MALE].map(g => (
+                            <button key={g} type="button"
+                              onClick={() => setEditForm(prev => {
+                                if (!prev) return prev;
+                                const allowed = ATTIRE_OPTIONS_BY_GENDER[g];
+                                return { ...prev, modelGender: g, attireType: allowed.includes(prev.attireType) ? prev.attireType : AttireType.PROFESSIONAL };
+                              })}
+                              className={`px-2 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                                editForm.modelGender === g ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-accent'
+                              }`}>
+                              {g === ModelGender.FEMALE ? '👩 Female' : '👨 Male'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Attire */}
+                      <div>
+                        <label className="block text-[11px] font-medium text-muted-foreground mb-1">Attire</label>
+                        <select value={editForm.attireType} onChange={(e) => setEditForm(prev => prev ? { ...prev, attireType: e.target.value as AttireType } : prev)}
+                          className="w-full border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border outline-none focus:ring-2 focus:ring-primary/20">
+                          {ATTIRE_OPTIONS_BY_GENDER[editForm.modelGender].map(at => <option key={at} value={at}>{ATTIRE_LABELS[at]}</option>)}
+                        </select>
+                        {editForm.attireType === AttireType.CUSTOM && (
+                          <input type="text" placeholder="Describe the exact attire…" value={editForm.customAttire}
+                            onChange={(e) => setEditForm(prev => prev ? { ...prev, customAttire: e.target.value } : prev)}
+                            className="w-full mt-1.5 border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/20" />
+                        )}
+                      </div>
+
+                      {/* Aspect Ratio */}
+                      <div>
+                        <label className="block text-[11px] font-medium text-muted-foreground mb-1">Aspect Ratio</label>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {(['9:16', '16:9'] as const).map(r => (
+                            <button key={r} type="button" onClick={() => setEditForm(prev => prev ? { ...prev, aspectRatio: r } : prev)}
+                              className={`px-2 py-1.5 rounded-lg text-xs font-mono font-medium border transition-colors ${
+                                editForm.aspectRatio === r ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-accent'
+                              }`}>
+                              {r}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Language */}
+                      <div>
+                        <label className="block text-[11px] font-medium text-muted-foreground mb-1">Language</label>
+                        <select value={editForm.language} onChange={(e) => setEditForm(prev => prev ? { ...prev, language: e.target.value } : prev)}
+                          className="w-full border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border outline-none focus:ring-2 focus:ring-primary/20">
+                          {ASSIGNMENT_LANGUAGE_OPTIONS.map(l => <option key={l} value={l}>{l}</option>)}
+                        </select>
+                        {editForm.language === 'Custom' && (
+                          <input type="text" placeholder="Type the language…" value={editForm.customLanguage}
+                            onChange={(e) => setEditForm(prev => prev ? { ...prev, customLanguage: e.target.value } : prev)}
+                            className="w-full mt-1.5 border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/20" />
+                        )}
+                      </div>
                     </div>
-                    <input type="text" placeholder="Business name" value={editForm.businessName}
-                      onChange={(e) => setEditForm(prev => prev ? { ...prev, businessName: e.target.value } : prev)}
-                      className="w-32 border rounded px-2 py-1 text-xs bg-background text-foreground border-border placeholder:text-muted-foreground" />
-                    <input type="text" placeholder="WhatsApp no." value={editForm.businessWhatsapp}
-                      onChange={(e) => setEditForm(prev => prev ? { ...prev, businessWhatsapp: e.target.value } : prev)}
-                      className="w-28 border rounded px-2 py-1 text-xs bg-background text-foreground border-border placeholder:text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground">= {formatCurrency(editForm.pricePerUnit)}</span>
 
-                    {/* Ad specification — same fields as Create New Assignment */}
-                    <select value={editForm.modelGender} onChange={(e) => setEditForm(prev => {
-                      if (!prev) return prev;
-                      const g = e.target.value as ModelGender;
-                      const allowed = ATTIRE_OPTIONS_BY_GENDER[g];
-                      return { ...prev, modelGender: g, attireType: allowed.includes(prev.attireType) ? prev.attireType : AttireType.PROFESSIONAL };
-                    })} className="border rounded px-2 py-1 text-xs bg-background text-foreground border-border">
-                      <option value={ModelGender.FEMALE}>👩 Female</option>
-                      <option value={ModelGender.MALE}>👨 Male</option>
-                    </select>
-                    <select value={editForm.attireType} onChange={(e) => setEditForm(prev => prev ? { ...prev, attireType: e.target.value as AttireType } : prev)}
-                      className="border rounded px-2 py-1 text-xs bg-background text-foreground border-border">
-                      {ATTIRE_OPTIONS_BY_GENDER[editForm.modelGender].map(at => <option key={at} value={at}>{ATTIRE_LABELS[at]}</option>)}
-                    </select>
-                    {editForm.attireType === AttireType.CUSTOM && (
-                      <input type="text" placeholder="Describe attire…" value={editForm.customAttire}
-                        onChange={(e) => setEditForm(prev => prev ? { ...prev, customAttire: e.target.value } : prev)}
-                        className="w-32 border rounded px-2 py-1 text-xs bg-background text-foreground border-border placeholder:text-muted-foreground" />
-                    )}
-                    <select value={editForm.aspectRatio} onChange={(e) => setEditForm(prev => prev ? { ...prev, aspectRatio: e.target.value as '9:16' | '16:9' } : prev)}
-                      className="border rounded px-2 py-1 text-xs font-mono bg-background text-foreground border-border">
-                      <option value="9:16">9:16</option>
-                      <option value="16:9">16:9</option>
-                    </select>
-                    <select value={editForm.language} onChange={(e) => setEditForm(prev => prev ? { ...prev, language: e.target.value } : prev)}
-                      className="border rounded px-2 py-1 text-xs bg-background text-foreground border-border">
-                      {ASSIGNMENT_LANGUAGE_OPTIONS.map(l => <option key={l} value={l}>{l}</option>)}
-                    </select>
-                    {editForm.language === 'Custom' && (
-                      <input type="text" placeholder="Language…" value={editForm.customLanguage}
-                        onChange={(e) => setEditForm(prev => prev ? { ...prev, customLanguage: e.target.value } : prev)}
-                        className="w-24 border rounded px-2 py-1 text-xs bg-background text-foreground border-border placeholder:text-muted-foreground" />
-                    )}
-
-                    <button onClick={handleSaveEdit} className="flex items-center space-x-1 px-2 py-1 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded transition-colors">
-                      <Save className="w-3 h-3" /><span>Save</span>
-                    </button>
-                    <button onClick={() => { setEditingId(null); setEditForm(null); }} className="flex items-center space-x-1 px-2 py-1 text-xs font-medium bg-muted text-muted-foreground rounded transition-colors">
-                      <X className="w-3 h-3" /><span>Cancel</span>
-                    </button>
+                    <div className="mt-3 pt-3 border-t border-border flex items-center justify-between gap-2">
+                      <span className="text-xs text-muted-foreground">Total: <strong className="text-foreground">{formatCurrency(editForm.pricePerUnit)}</strong></span>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => { setEditingId(null); setEditForm(null); setEditMemberSearch(''); }}
+                          className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-muted text-muted-foreground rounded-lg transition-colors hover:text-foreground">
+                          <X className="w-3 h-3" /><span>Cancel</span>
+                        </button>
+                        <button onClick={handleSaveEdit} disabled={!editForm.assignedTo}
+                          className="flex items-center gap-1 px-4 py-1.5 text-xs font-semibold bg-green-600 text-white rounded-lg transition-colors hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed">
+                          <Save className="w-3 h-3" /><span>Save Changes</span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 ) : (
                   <>

@@ -45,28 +45,38 @@ export default function SalesMemberDashboard() {
       })
     : leads;
 
+  // A sale belongs to the day the MEMBER SUBMITTED it — never lead.lastUpdated, which the
+  // admin's approve/reject bumps (that made a yesterday sale show up as today's sale once
+  // verified today). Same submittedAt-first rule the leaderboard and settlements use.
+  const saleItemDate = (item: { submittedAt?: any }, lead: Lead): string | null => {
+    const ts = item.submittedAt?.seconds ?? lead.createdAt?.seconds;
+    return ts ? format(new Date(ts * 1000), "yyyy-MM-dd") : null;
+  };
+  const allSaleItems = leads.flatMap((l) =>
+    (l.saleItems || (l.saleDetails ? [l.saleDetails] : [])).map((item) => ({ item, lead: l }))
+  );
+
   const total = filtered.length;
   const called = filtered.filter((l) => l.status !== "not_called").length;
   const answered = filtered.filter((l) => l.status === "answered").length;
   const salesDone = filtered.filter((l) => l.saleDone).length;
-  const allItems = filtered.flatMap((l) => l.saleItems || (l.saleDetails ? [l.saleDetails] : []));
-  const pendingVerification = allItems.filter((item) => item.verificationStatus === "pending").length;
-  const totalRevenue = allItems.reduce((sum, item) => sum + (item.amount || 0), 0);
+  // Revenue for the selected day = items SUBMITTED that day (all items when no date picked).
+  const revenueItems = dateStr
+    ? allSaleItems.filter(({ item, lead }) => saleItemDate(item, lead) === dateStr)
+    : allSaleItems;
+  const pendingVerification = revenueItems.filter(({ item }) => item.verificationStatus === "pending").length;
+  const totalRevenue = revenueItems.reduce((sum, { item }) => sum + (item.amount || 0), 0);
   const conversionRate = total > 0 ? ((salesDone / total) * 100).toFixed(1) : "0";
   const monthlyTarget = user?.monthlyTarget || user?.target || 0;
   const dailyTarget = user?.dailyTarget || 0;
-  const allTimeRevenue = leads.flatMap((l) => l.saleItems || (l.saleDetails ? [l.saleDetails] : [])).reduce((sum, item) => sum + (item.amount || 0), 0);
+  const allTimeRevenue = allSaleItems.reduce((sum, { item }) => sum + (item.amount || 0), 0);
   const monthlyProgress = monthlyTarget > 0 ? Math.min((allTimeRevenue / monthlyTarget) * 100, 100) : 0;
 
-  // Daily revenue: today's leads only
+  // Daily revenue: sales SUBMITTED today only
   const todayStr = format(new Date(), "yyyy-MM-dd");
-  const todayRevenue = leads
-    .filter((l) => {
-      const ts = l.lastUpdated?.seconds || l.createdAt?.seconds;
-      return ts && format(new Date(ts * 1000), "yyyy-MM-dd") === todayStr;
-    })
-    .flatMap((l) => l.saleItems || (l.saleDetails ? [l.saleDetails] : []))
-    .reduce((sum, item) => sum + (item.amount || 0), 0);
+  const todayRevenue = allSaleItems
+    .filter(({ item, lead }) => saleItemDate(item, lead) === todayStr)
+    .reduce((sum, { item }) => sum + (item.amount || 0), 0);
   const dailyProgress = dailyTarget > 0 ? Math.min((todayRevenue / dailyTarget) * 100, 100) : 0;
 
   const stats = [

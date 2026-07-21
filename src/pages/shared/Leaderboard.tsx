@@ -84,6 +84,18 @@ export default function Leaderboard() {
   const [granularityChoice, setGranularityChoice] = useState<Granularity>("month");
   const granularity: Granularity = isAdmin ? granularityChoice : "month";
   const [selectedMonth, setSelectedMonth] = useState<string>(todayMonth());
+  // Optional custom period — when both dates are set they override the month cycle entirely,
+  // giving admin AND members full freedom over the window they're looking at.
+  const [rangeFrom, setRangeFrom] = useState<string>("");
+  const [rangeTo, setRangeTo] = useState<string>("");
+  const customRangeActive = granularity === "month" && !!rangeFrom && !!rangeTo && rangeFrom <= rangeTo;
+
+  // The business "month" runs on a 10th-to-10th pay cycle, not the calendar month:
+  // selecting June means 10 Jun → 9 Jul. (Custom range above overrides this when set.)
+  const cycleStart = `${selectedMonth}-10`;
+  const cycleEnd = `${shiftMonth(selectedMonth, 1)}-09`;
+  const periodStart = customRangeActive ? rangeFrom : cycleStart;
+  const periodEnd = customRangeActive ? rangeTo : cycleEnd;
 
   // Effective date: calendar takes priority over quick dropdown
   const effectiveDateStr = calendarDate
@@ -148,7 +160,10 @@ export default function Leaderboard() {
       .filter(({ item }) => item.verificationStatus === "verified")
       .reduce((s, { item }) => s + (item.amount || 0), 0);
 
-    const monthItems = allItems.filter(({ item, lead }) => getSaleDate(item, lead)?.slice(0, 7) === selectedMonth);
+    const monthItems = allItems.filter(({ item, lead }) => {
+      const d = getSaleDate(item, lead);
+      return d !== null && d >= periodStart && d <= periodEnd;
+    });
     const monthSales = monthItems
       .filter(({ item }) => item.verificationStatus === "verified")
       .reduce((s, { item }) => s + (item.amount || 0), 0);
@@ -198,7 +213,13 @@ export default function Leaderboard() {
   const totalSecondarySales = stats.reduce((s, m) => s + secondarySales(m), 0);
   const totalCommDay = stats.reduce((s, m) => s + m.commDay, 0);
   const totalSecondaryComm = stats.reduce((s, m) => s + secondaryComm(m), 0);
-  const secondaryLabel = granularity === "career" ? "Career" : format(new Date(`${selectedMonth}-01`), "MMM yyyy");
+  const secondaryLabel = granularity === "career"
+    ? "Career"
+    : customRangeActive
+      ? `${format(new Date(periodStart), "dd MMM")} → ${format(new Date(periodEnd), "dd MMM")}`
+      : format(new Date(`${selectedMonth}-01`), "MMM yyyy");
+  /** Full human-readable window, shown beside the month navigator. */
+  const periodLabel = `${format(new Date(periodStart), "dd MMM yyyy")} → ${format(new Date(periodEnd), "dd MMM yyyy")}`;
 
   const handleMemberClick = (memberId: string) => {
     if (!isAdmin) return;
@@ -295,18 +316,39 @@ export default function Leaderboard() {
           </div>
         )}
         {granularity === "month" && (
-          <div className="flex items-center gap-1 rounded-lg border border-border bg-card px-1">
-            <button onClick={() => setSelectedMonth((m) => shiftMonth(m, -1))} className="p-1.5 hover:bg-accent rounded-md">
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="text-sm font-semibold text-foreground px-1 min-w-[92px] text-center inline-flex items-center justify-center gap-1">
-              <CalendarRange className="w-3.5 h-3.5 text-muted-foreground" /> {format(new Date(`${selectedMonth}-01`), "MMM yyyy")}
+          <>
+            <div className={`flex items-center gap-1 rounded-lg border border-border bg-card px-1 ${customRangeActive ? "opacity-40" : ""}`}>
+              <button onClick={() => setSelectedMonth((m) => shiftMonth(m, -1))} className="p-1.5 hover:bg-accent rounded-md">
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-sm font-semibold text-foreground px-1 min-w-[92px] text-center inline-flex items-center justify-center gap-1">
+                <CalendarRange className="w-3.5 h-3.5 text-muted-foreground" /> {format(new Date(`${selectedMonth}-01`), "MMM yyyy")}
+              </span>
+              <button onClick={() => setSelectedMonth((m) => shiftMonth(m, 1))} disabled={selectedMonth >= todayMonth()}
+                className="p-1.5 hover:bg-accent rounded-md disabled:opacity-30">
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Custom period — overrides the 10th-to-10th cycle when both dates are set */}
+            <div className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1">
+              <span className="text-[10px] text-muted-foreground whitespace-nowrap">Custom:</span>
+              <input type="date" value={rangeFrom} onChange={(e) => setRangeFrom(e.target.value)}
+                className="h-7 rounded-md bg-background border border-border text-foreground text-xs px-1.5 outline-none focus:border-primary" />
+              <span className="text-[10px] text-muted-foreground">→</span>
+              <input type="date" value={rangeTo} min={rangeFrom || undefined} onChange={(e) => setRangeTo(e.target.value)}
+                className="h-7 rounded-md bg-background border border-border text-foreground text-xs px-1.5 outline-none focus:border-primary" />
+              {(rangeFrom || rangeTo) && (
+                <button onClick={() => { setRangeFrom(""); setRangeTo(""); }}
+                  className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">Clear</button>
+              )}
+            </div>
+
+            <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+              {customRangeActive ? "Custom period: " : "Cycle (10th → 9th): "}
+              <span className="text-foreground font-medium">{periodLabel}</span>
             </span>
-            <button onClick={() => setSelectedMonth((m) => shiftMonth(m, 1))} disabled={selectedMonth >= todayMonth()}
-              className="p-1.5 hover:bg-accent rounded-md disabled:opacity-30">
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
+          </>
         )}
         {!isAdmin && (
           <span className="text-[10px] text-muted-foreground">Showing month &amp; day performance — company career totals are admin-only.</span>
@@ -494,7 +536,7 @@ export default function Leaderboard() {
       )}
 
       <p className="text-[10px] text-muted-foreground text-center">
-        Day Sales = all amounts submitted on selected date • {secondaryLabel} = {granularity === "career" ? "all verified sales ever" : `verified sales in ${format(new Date(`${selectedMonth}-01`), "MMMM yyyy")}`} • Commission: 5% or 10% based on member plan
+        Day Sales = all amounts submitted on selected date • {secondaryLabel} = {granularity === "career" ? "all verified sales ever" : `verified sales in ${periodLabel}`} • Commission: 5% or 10% based on member plan
       </p>
     </div>
   );
