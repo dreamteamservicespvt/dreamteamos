@@ -6,8 +6,19 @@ import { formatCurrency } from "@/utils/formatters";
 import { format, subDays } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import type { AppUser, Lead, SaleDetail } from "@/types";
-import { Trophy, Medal, Crown, ChevronDown, ExternalLink } from "lucide-react";
+import { Trophy, Medal, Crown, ChevronDown, ExternalLink, ChevronLeft, ChevronRight, CalendarRange } from "lucide-react";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
+
+/** Granularity for the "Career Sales" / "Career Commission" columns — Month is the default and
+ *  the only option sales members ever see; Career (true all-time totals) is admin-only, since
+ *  it exposes company-wide lifetime revenue. */
+type Granularity = "career" | "month";
+
+const todayMonth = () => format(new Date(), "yyyy-MM");
+const shiftMonth = (month: string, delta: number): string => {
+  const [y, m] = month.split("-").map(Number);
+  return format(new Date(y, m - 1 + delta, 1), "yyyy-MM");
+};
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -68,6 +79,12 @@ export default function Leaderboard() {
 
   const isAdmin = currentUser?.role === "sales_admin";
 
+  // Career/Month toggle — defaults to Month for everyone. Sales members can never switch to
+  // Career (true all-time totals), since that exposes the company's lifetime revenue.
+  const [granularityChoice, setGranularityChoice] = useState<Granularity>("month");
+  const granularity: Granularity = isAdmin ? granularityChoice : "month";
+  const [selectedMonth, setSelectedMonth] = useState<string>(todayMonth());
+
   // Effective date: calendar takes priority over quick dropdown
   const effectiveDateStr = calendarDate
     ? format(calendarDate, "yyyy-MM-dd")
@@ -115,8 +132,10 @@ export default function Leaderboard() {
     member: AppUser;
     daySales: number;
     careerSales: number;
+    monthSales: number;
     commDay: number;
     commCareer: number;
+    commMonth: number;
   }
 
   const stats: MemberStats[] = members.map((member) => {
@@ -126,6 +145,11 @@ export default function Leaderboard() {
     );
 
     const careerSales = allItems
+      .filter(({ item }) => item.verificationStatus === "verified")
+      .reduce((s, { item }) => s + (item.amount || 0), 0);
+
+    const monthItems = allItems.filter(({ item, lead }) => getSaleDate(item, lead)?.slice(0, 7) === selectedMonth);
+    const monthSales = monthItems
       .filter(({ item }) => item.verificationStatus === "verified")
       .reduce((s, { item }) => s + (item.amount || 0), 0);
 
@@ -150,22 +174,31 @@ export default function Leaderboard() {
       member,
       daySales,
       careerSales,
+      monthSales,
       commDay: calcCommission(dayVerified, member.earningsOption),
       commCareer: calcCommission(careerSales, member.earningsOption),
+      commMonth: calcCommission(monthSales, member.earningsOption),
     };
   });
+
+  // The "Career Sales" / "Career Commission" columns show MONTH totals by default (and always
+  // for sales members); only an admin who has switched the toggle to Career sees true all-time
+  // totals. Sort keys "career" / "commCareer" follow whichever is currently on screen.
+  const secondarySales = (s: MemberStats) => (granularity === "career" ? s.careerSales : s.monthSales);
+  const secondaryComm = (s: MemberStats) => (granularity === "career" ? s.commCareer : s.commMonth);
 
   const sorted = [...stats].sort((a, b) => {
     if (sortBy === "daySales") return b.daySales - a.daySales;
     if (sortBy === "commDay") return b.commDay - a.commDay;
-    if (sortBy === "commCareer") return b.commCareer - a.commCareer;
-    return b.careerSales - a.careerSales; // default: career
+    if (sortBy === "commCareer") return secondaryComm(b) - secondaryComm(a);
+    return secondarySales(b) - secondarySales(a); // default: career/month
   });
 
   const totalDaySales = stats.reduce((s, m) => s + m.daySales, 0);
-  const totalCareerSales = stats.reduce((s, m) => s + m.careerSales, 0);
+  const totalSecondarySales = stats.reduce((s, m) => s + secondarySales(m), 0);
   const totalCommDay = stats.reduce((s, m) => s + m.commDay, 0);
-  const totalCommCareer = stats.reduce((s, m) => s + m.commCareer, 0);
+  const totalSecondaryComm = stats.reduce((s, m) => s + secondaryComm(m), 0);
+  const secondaryLabel = granularity === "career" ? "Career" : format(new Date(`${selectedMonth}-01`), "MMM yyyy");
 
   const handleMemberClick = (memberId: string) => {
     if (!isAdmin) return;
@@ -247,13 +280,46 @@ export default function Leaderboard() {
         </div>
       </div>
 
+      {/* Career / Month toggle (+ month navigator) — Day controls above are untouched */}
+      <div className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
+        {isAdmin && (
+          <div className="inline-flex items-center rounded-lg border border-border bg-card p-0.5">
+            {(["month", "career"] as Granularity[]).map((g) => (
+              <button key={g} onClick={() => setGranularityChoice(g)}
+                className={`px-3 h-8 rounded-md text-xs font-semibold transition-colors ${
+                  granularity === g ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                }`}>
+                {g === "month" ? "Month" : "Career"}
+              </button>
+            ))}
+          </div>
+        )}
+        {granularity === "month" && (
+          <div className="flex items-center gap-1 rounded-lg border border-border bg-card px-1">
+            <button onClick={() => setSelectedMonth((m) => shiftMonth(m, -1))} className="p-1.5 hover:bg-accent rounded-md">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-sm font-semibold text-foreground px-1 min-w-[92px] text-center inline-flex items-center justify-center gap-1">
+              <CalendarRange className="w-3.5 h-3.5 text-muted-foreground" /> {format(new Date(`${selectedMonth}-01`), "MMM yyyy")}
+            </span>
+            <button onClick={() => setSelectedMonth((m) => shiftMonth(m, 1))} disabled={selectedMonth >= todayMonth()}
+              className="p-1.5 hover:bg-accent rounded-md disabled:opacity-30">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+        {!isAdmin && (
+          <span className="text-[10px] text-muted-foreground">Showing month &amp; day performance — company career totals are admin-only.</span>
+        )}
+      </div>
+
       {/* Team Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { label: effectiveDateStr ? "Day's Total Sales" : "All Sales", value: formatCurrency(totalDaySales), color: "text-info" },
-          { label: "Career Sales (Verified)", value: formatCurrency(totalCareerSales), color: "text-success" },
+          { label: `${secondaryLabel} Sales (Verified)`, value: formatCurrency(totalSecondarySales), color: "text-success" },
           { label: effectiveDateStr ? "Day's Commission" : "All Commission", value: formatCurrency(totalCommDay), color: "text-warning" },
-          { label: "Career Commission", value: formatCurrency(totalCommCareer), color: "text-primary" },
+          { label: `${secondaryLabel} Commission`, value: formatCurrency(totalSecondaryComm), color: "text-primary" },
         ].map((card) => (
           <div key={card.label} className="bg-card border border-border rounded-xl p-3 md:p-4">
             <p className="text-[10px] md:text-xs text-muted-foreground mb-1">{card.label}</p>
@@ -266,7 +332,7 @@ export default function Leaderboard() {
       <p className="text-[10px] text-muted-foreground">
         Sort by clicking column headers below ↓ &nbsp;·&nbsp; Currently sorted by:{" "}
         <span className="text-foreground font-medium">
-          {sortBy === "career" ? "Career Sales" : sortBy === "daySales" ? "Day Sales" : sortBy === "commCareer" ? "Career Commission" : "Day Commission"}
+          {sortBy === "career" ? `${secondaryLabel} Sales` : sortBy === "daySales" ? "Day Sales" : sortBy === "commCareer" ? `${secondaryLabel} Commission` : "Day Commission"}
         </span>
         {isAdmin && " · Click a row to view that member's sales for the selected date"}
       </p>
@@ -297,7 +363,7 @@ export default function Leaderboard() {
                     className={`p-3 text-right text-xs font-medium cursor-pointer hover:text-foreground transition-colors select-none ${sortBy === "career" ? "text-primary underline" : "text-muted-foreground"}`}
                     onClick={() => setSortBy("career")}
                   >
-                    Career Sales {sortBy === "career" && "▲"}
+                    {secondaryLabel} Sales {sortBy === "career" && "▲"}
                   </th>
                   <th
                     className={`p-3 text-right text-xs font-medium cursor-pointer hover:text-foreground transition-colors select-none ${sortBy === "commDay" ? "text-primary underline" : "text-muted-foreground"}`}
@@ -310,7 +376,7 @@ export default function Leaderboard() {
                     className={`p-3 text-right text-xs font-medium cursor-pointer hover:text-foreground transition-colors select-none ${sortBy === "commCareer" ? "text-primary underline" : "text-muted-foreground"}`}
                     onClick={() => setSortBy("commCareer")}
                   >
-                    Career Commission {sortBy === "commCareer" && "▲"}
+                    {secondaryLabel} Commission {sortBy === "commCareer" && "▲"}
                   </th>
                   {isAdmin && <th className="p-3 w-8" />}
                 </tr>
@@ -348,14 +414,14 @@ export default function Leaderboard() {
                         <span className={`font-mono text-sm ${s.daySales > 0 ? "text-info font-semibold" : "text-muted-foreground"}`}>{formatCurrency(s.daySales)}</span>
                       </td>
                       <td className="p-3 text-right">
-                        <span className={`font-mono text-sm ${s.careerSales > 0 ? "text-success font-semibold" : "text-muted-foreground"}`}>{formatCurrency(s.careerSales)}</span>
+                        <span className={`font-mono text-sm ${secondarySales(s) > 0 ? "text-success font-semibold" : "text-muted-foreground"}`}>{formatCurrency(secondarySales(s))}</span>
                       </td>
                       <td className="p-3 text-right">
                         <span className={`font-mono text-sm ${s.commDay > 0 ? "text-warning font-semibold" : "text-muted-foreground"}`}>{formatCurrency(s.commDay)}</span>
                       </td>
                       <td className="p-3 text-right">
-                        <span className={`font-mono text-sm ${s.commCareer > 0 ? "text-primary font-semibold" : "text-muted-foreground"}`}>
-                          {formatCurrency(s.commCareer)}
+                        <span className={`font-mono text-sm ${secondaryComm(s) > 0 ? "text-primary font-semibold" : "text-muted-foreground"}`}>
+                          {formatCurrency(secondaryComm(s))}
                           {s.member.earningsOption && (
                             <span className="ml-1 text-[9px] text-muted-foreground">({s.member.earningsOption === "incentive_10" ? "10%" : "5%"})</span>
                           )}
@@ -408,16 +474,16 @@ export default function Leaderboard() {
                       <p className={`font-mono font-semibold ${s.daySales > 0 ? "text-info" : "text-muted-foreground"}`}>{formatCurrency(s.daySales)}</p>
                     </div>
                     <div className="bg-muted/30 rounded-lg p-2">
-                      <p className="text-muted-foreground mb-0.5">Career Sales</p>
-                      <p className={`font-mono font-semibold ${s.careerSales > 0 ? "text-success" : "text-muted-foreground"}`}>{formatCurrency(s.careerSales)}</p>
+                      <p className="text-muted-foreground mb-0.5">{secondaryLabel} Sales</p>
+                      <p className={`font-mono font-semibold ${secondarySales(s) > 0 ? "text-success" : "text-muted-foreground"}`}>{formatCurrency(secondarySales(s))}</p>
                     </div>
                     <div className="bg-muted/30 rounded-lg p-2">
                       <p className="text-muted-foreground mb-0.5">{effectiveDateStr ? "Day Commission" : "All Comm."}</p>
                       <p className={`font-mono font-semibold ${s.commDay > 0 ? "text-warning" : "text-muted-foreground"}`}>{formatCurrency(s.commDay)}</p>
                     </div>
                     <div className="bg-muted/30 rounded-lg p-2">
-                      <p className="text-muted-foreground mb-0.5">Career Comm.</p>
-                      <p className={`font-mono font-semibold ${s.commCareer > 0 ? "text-primary" : "text-muted-foreground"}`}>{formatCurrency(s.commCareer)}</p>
+                      <p className="text-muted-foreground mb-0.5">{secondaryLabel} Comm.</p>
+                      <p className={`font-mono font-semibold ${secondaryComm(s) > 0 ? "text-primary" : "text-muted-foreground"}`}>{formatCurrency(secondaryComm(s))}</p>
                     </div>
                   </div>
                 </div>
@@ -428,7 +494,7 @@ export default function Leaderboard() {
       )}
 
       <p className="text-[10px] text-muted-foreground text-center">
-        Day Sales = all amounts submitted on selected date • Career = all verified sales ever • Commission: 5% or 10% based on member plan
+        Day Sales = all amounts submitted on selected date • {secondaryLabel} = {granularity === "career" ? "all verified sales ever" : `verified sales in ${format(new Date(`${selectedMonth}-01`), "MMMM yyyy")}`} • Commission: 5% or 10% based on member plan
       </p>
     </div>
   );

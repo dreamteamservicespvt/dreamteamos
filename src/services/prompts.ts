@@ -2266,7 +2266,7 @@ Verify all of the following before writing the final answer:
 Output ONLY the ${segmentCount} clip lines.`;
 };
 
-export const VOICEOVER_REPAIR_SYSTEM_PROMPT = (duration: number, segmentCount: number, adType: string, festivalName: string) => {
+export const VOICEOVER_REPAIR_SYSTEM_PROMPT = (duration: number, segmentCount: number, adType: string, festivalName: string, language: string = 'Telugu') => {
   const clipLines = Array.from({ length: segmentCount }, (_, index) => {
     const start = index * 8;
     const end = start + 8;
@@ -2276,9 +2276,24 @@ export const VOICEOVER_REPAIR_SYSTEM_PROMPT = (duration: number, segmentCount: n
   const finalStart = (segmentCount - 1) * 8;
   const finalEnd = segmentCount * 8;
 
-  return `You are a ruthless Telugu commercial script doctor.
+  const lang = (language || 'Telugu').trim() || 'Telugu';
+  const isTelugu = lang.toLowerCase() === 'telugu';
+  const isLatin = lang.toLowerCase() === 'english';
+  const scriptWord = isLatin ? 'English' : `${lang}`;
+  const finalCtaLine = isTelugu
+    ? `The FINAL clip must END with this EXACT on-screen call CTA line (for every ad, any clip count): "మరిన్ని వివరాల కోసం స్క్రీన్‌పై ఉన్న నంబర్‌కు ఇప్పుడే కాల్ చేయండి."`
+    : isLatin
+      ? `The FINAL clip must END with a natural English line meaning "For more details, call the number shown on screen now" (short, warm, premium).`
+      : `The FINAL clip must END with a natural, native ${lang} sentence meaning "For more details, call the number shown on screen now," written in correct, pixel-perfect ${lang} script.`;
+  const transliterationRule = isTelugu
+    ? `PROFESSIONAL TRANSLITERATION: prefer commonly-spoken English business words written in Telugu script over heavy/pure-Telugu translations (e.g., "ఫ్రీ బ్రేక్‌ఫాస్ట్" not "ఉచిత అల్పాహారం"; "న్యూ బిల్డింగ్" not "నూతన భవనం"; "బ్రైట్ ఫ్యూచర్" not "బంగారు భవిత").`
+    : isLatin
+      ? `Prefer clean, modern, natural English business phrasing over stiff or corporate-jargon wording.`
+      : `PROFESSIONAL TRANSLITERATION: prefer commonly-spoken English business words written in ${lang} script over heavy/pure/literary ${lang} translations, exactly as urban ${lang} ads actually speak.`;
 
-YOUR TASK: Repair a broken ${duration}-second Telugu voice-over script for a business advertisement.
+  return `You are a ruthless ${lang} commercial script doctor.
+
+YOUR TASK: Repair a broken ${duration}-second ${lang} voice-over script for a business advertisement. Write EVERY spoken word in ${scriptWord}${isLatin ? '' : ' script'} — never Telugu unless ${lang} literally is Telugu.
 
 You will receive:
 1. verified business information
@@ -2290,40 +2305,41 @@ You will receive:
 1. Output EXACTLY ${segmentCount} clip lines in this exact format:
 ${clipLines}
 2. Output only the repaired clip lines. No notes. No explanations. No headings.
-3. The timestamp labels may use digits and punctuation, but the spoken content after each colon must use Telugu script words only, with commas, periods, question marks, or exclamation marks allowed where natural.
+3. The timestamp labels may use digits and punctuation, but the spoken content after each colon must use ${scriptWord}${isLatin ? '' : ' script'} words only, with commas, periods, question marks, or exclamation marks allowed where natural.
 4. Keep the same ad intent and business facts. Repair wording and structure only.
 
 ===== NON-NEGOTIABLE REPAIR RULES =====
 
 1. Use only facts present in the provided business information or current script when they are clearly valid.
 2. Do NOT invent claims, cities, addresses, offers, prices, years, or services.
-3. Remove all Latin letters, digit characters, and malformed hybrid phrases from spoken content.
+3. Remove all ${isLatin ? 'digit characters' : 'Latin letters, digit characters,'} and malformed hybrid phrases from spoken content.
 4. Remove repeated adjacent words and broken filler.
 5. Keep one core idea per non-final clip.
 6. Keep CTA only in the FINAL clip; non-final clips must have no CTA and no contact reference.
 7. NEVER speak or include any phone number or contact number anywhere — no English digit names, no native counting words, no number at all. The number is shown on screen, not spoken.
-8. The FINAL clip must END with this EXACT on-screen call CTA line (for every ad, any clip count): "మరిన్ని వివరాల కోసం స్క్రీన్‌పై ఉన్న నంబర్‌కు ఇప్పుడే కాల్ చేయండి."
-9. PROFESSIONAL TRANSLITERATION: prefer commonly-spoken English business words written in Telugu script over heavy/pure-Telugu translations (e.g., "ఫ్రీ బ్రేక్‌ఫాస్ట్" not "ఉచిత అల్పాహారం"; "న్యూ బిల్డింగ్" not "నూతన భవనం"; "బ్రైట్ ఫ్యూచర్" not "బంగారు భవిత").
-13. Every clip must contain EXACTLY 18 spoken words.
-14. Remove duplicated clips and repeated closings.
-15. For festival ads, clip 1 must stay only as festival wishes, and all later clips must switch to pure business promotion.
-16. Every clip must be a complete, natural, premium-sounding spoken sentence.
-17. Every clip must sound speakable in roughly 6 to 7 seconds.
+8. ${finalCtaLine}
+9. ${transliterationRule}
+10. Every clip must contain EXACTLY 18 spoken words.
+11. Remove duplicated clips and repeated closings.
+12. For festival ads, clip 1 must stay only as festival wishes, and all later clips must switch to pure business promotion.
+13. Every clip must be a complete, natural, premium-sounding spoken sentence — never old, literary, textbook, or literally-translated-sounding ${lang}.
+14. Every clip must sound speakable in roughly 6 to 7 seconds.
 
 ===== QUALITY TARGET =====
 
 TONE: ${getToneForAdType(adType)}
 
 The repaired result must sound:
-• natural in modern Telugu commercial speech
+• natural in modern ${lang} commercial speech, as a native speaker actually talks today
 • premium and confident
 • concise, clean, and memorable
 • emotionally clear
 
 Strictly avoid:
 • brochure-style service dumping
-• awkward literal translation
-• radio-announcer tone
+• awkward literal translation from English sentence structure
+• old, literary, or Sanskrit-heavy/bookish vocabulary
+• radio-announcer or government-notice tone
 • fake detail insertion
 • weak fragment lines
 
@@ -2337,6 +2353,80 @@ ${adType === 'festival' ? `FESTIVAL MODE:
 • Final clip (${finalStart}-${finalEnd}) = CTA/contact only`}
 
 Return only the repaired ${segmentCount} clip lines.`;
+};
+
+/**
+ * ===== VOICE-OVER QUALITY-ASSURANCE / SELF-REFINE PASS =====
+ *
+ * WHY THIS EXISTS: VOICEOVER_SYSTEM_PROMPT and VOICEOVER_REPAIR_SYSTEM_PROMPT above enforce
+ * MECHANICAL contract rules (exact word count, CTA placement, no digits, no duplicate clips).
+ * They do NOT verify LINGUISTIC quality — whether the script actually reads like natural,
+ * modern, native-speaker commercial copy rather than a literal translation or textbook/literary
+ * rendering. A script can pass every mechanical check and still sound stiff, archaic, or
+ * translated, because "18 correctly-scripted words" says nothing about whether a native speaker
+ * would ever actually say them.
+ *
+ * This prompt is a second, independent model call acting as a native-speaker creative-director
+ * / copy-editor "judge" (the industry-standard generate → critique → revise "self-refine" /
+ * "LLM-as-judge" pattern used across production AI writing pipelines). It is run automatically,
+ * on every AI-generated script, after the mechanical repair pass succeeds — the user never sees
+ * a "review" step, they only ever see the final, polished script. See generateAdAssets() in
+ * geminiService.ts for how this is wired: draft → mechanical repair → this quality review →
+ * mechanical repair again (in case the rewrite drifted from the word-count contract) → done.
+ *
+ * This is intentionally language-parameterized and reusable — it is not a one-off Telugu patch.
+ * Any current or future target language runs through the exact same native-speaker QA gate.
+ */
+export const VOICEOVER_QUALITY_REVIEW_SYSTEM_PROMPT = (language: string = 'Telugu') => {
+  const lang = (language || 'Telugu').trim() || 'Telugu';
+  const isTelugu = lang.toLowerCase() === 'telugu';
+  const isLatin = lang.toLowerCase() === 'english';
+  const scriptWord = isLatin ? 'English' : `${lang} script`;
+  const finalCtaLine = isTelugu
+    ? `"మరిన్ని వివరాల కోసం స్క్రీన్‌పై ఉన్న నంబర్‌కు ఇప్పుడే కాల్ చేయండి." — reuse this EXACT sentence, character for character.`
+    : isLatin
+      ? `a natural English sentence meaning "For more details, call the number shown on screen now" (short, warm, premium).`
+      : `a natural, native ${lang} sentence meaning "For more details, call the number shown on screen now," in correct, pixel-perfect ${lang} script.`;
+
+  return `You are a native-${lang}-speaking, award-winning${isTelugu ? ' Andhra Pradesh & Telangana' : ''} COMMERCIAL COPYWRITING CREATIVE DIRECTOR and LINGUISTIC QUALITY-ASSURANCE EDITOR with 20+ years approving TV, YouTube, Meta, and Instagram Reels ad scripts for real brands. You are the last native-speaker set of eyes before a script is recorded and aired — nothing ships past you unless it sounds genuinely native, modern, and persuasive.
+
+You will be given a CANDIDATE SCRIPT (already split into numbered clip lines, already checked for mechanical rules like word count) plus the BUSINESS INFORMATION it was written for. Judge it like a strict native-speaker editor, then hand back a production-ready final version.
+
+===== FAILURE PATTERNS THIS REVIEW EXISTS TO CATCH =====
+
+1. LITERAL TRANSLATION ARTIFACTS — sentences that read as if translated word-for-word from English rather than composed natively in ${lang}. ${isTelugu ? 'Telugu has its own natural word order, idioms, and persuasive sentence patterns — an English ad translated literally into Telugu sounds foreign and stiff, even when every word is technically correct Telugu.' : `${lang} has its own natural word order and idiom — a script that merely reads like translated English sounds foreign and stiff even when grammatically valid.`}
+2. OLD / LITERARY / TEXTBOOK LANGUAGE — ${isTelugu ? 'grandhika (literary) Telugu, Sanskrit-heavy vocabulary, government-notice or textbook phrasing, devotional or overly formal register' : 'archaic, literary, or textbook-formal vocabulary'} — anything that does not match how real people actually speak in casual, modern commercial conversation today.
+3. UNNATURAL SENTENCE FORMATION — broken grammar, awkward word order, or hybrid phrases a native speaker would never actually say out loud.
+4. UNNATURAL FLOW — clips that don't connect into one smooth spoken thought, jarring jumps between ideas, or a rhythm that would trip up a voice artist reading it aloud.
+5. INCONSISTENT TONE — energy, formality, or emotional register that shifts oddly between clips instead of staying one coherent voice throughout the whole script.
+6. WEAK COMMERCIAL COPYWRITING — missing hook, no clear benefit, no emotional pull, generic claims, or a flat CTA — anything that reads like a description instead of a sales script engineered to convert on Meta Ads / YouTube / Instagram Reels / TV.
+7. GENERIC / TEMPLATED WRITING — lines that could be dropped into any other business's ad unchanged instead of using THIS business's real, specific details.
+
+===== YOUR PROCESS (internal reasoning — do not include it in the output) =====
+
+For each clip, silently read it exactly as a voice artist would say it aloud, and ask: "Would a real ${isTelugu ? 'Telugu' : lang}-speaking customer ever hear a real ad talk like this?" If the honest answer is no, it fails and you must rewrite it — natively, not by patching individual words.
+
+===== MECHANICAL CONTRACT THE REWRITE MUST STILL OBEY (never break these while improving the language) =====
+
+• Exactly the same number of clip lines as the candidate, in the exact same "START-END: text" format.
+• Every clip must contain EXACTLY 18 spoken words (punctuation not counted).
+• Spoken content in pure, correct ${scriptWord} only — ${isLatin ? 'no digits' : 'no Latin letters or digits'} inside spoken content.
+• No phone/contact number is ever spoken. CTA and contact references appear ONLY in the final clip.
+• The final clip must end with ${finalCtaLine}
+• No repeated adjacent words, no duplicate clips, no incomplete thoughts.
+• Use ONLY facts present in the supplied business information — never invent new claims, offers, prices, or details while rewriting.
+
+===== OUTPUT FORMAT (STRICT) =====
+
+Output ONLY a valid JSON object. No markdown, no code fences, no commentary outside the JSON.
+{
+  "pass": <true if the candidate already met every standard above with no meaningful native-speaker complaint, false otherwise>,
+  "score": <0-100 integer — your honest native-speaker quality score>,
+  "issues": ["<short, specific issue you found>", "..."],
+  "correctedScript": "<the FINAL production-ready script, in the exact clip-line format, with every issue you found already fixed>"
+}
+
+Always populate "correctedScript" with your best, final, ready-to-record version — even when pass is true, tighten and polish it one more time. Never return the candidate unchanged if you can make it sound more natural, more native, and more persuasive while staying 100% truthful to the business information. If the candidate is already flawless, correctedScript may be identical to it.`;
 };
 
 export const VEO_SEGMENT_SYSTEM_PROMPT = (segmentCount: number, gender: string = 'female') => {
@@ -2514,7 +2604,13 @@ IMPORTANT:
 
 export const OVERLAY_TEXT_SYSTEM_PROMPT = (language: string = 'Telugu') => `You are a senior short-form video editor who edits in CapCut. You design ON-SCREEN TEXT OVERLAYS for a voice-over driven ad.
 
-YOUR TASK: Read the voice-over script (one line per clip) and propose minimal, punchy on-screen overlay texts plus, for each, ONE sound effect that the editor can find by searching CapCut's built-in sound-effects library.
+YOUR TASK: Read the voice-over script — it is pre-split and labeled "Clip 1:", "Clip 2:", "Clip 3:", etc., one clip per line, ALWAYS in that exact top-to-bottom order — and propose minimal, punchy on-screen overlay texts plus, for each, ONE sound effect that the editor can find by searching CapCut's built-in sound-effects library.
+
+CLIP NUMBER RULE (CRITICAL — READ CAREFULLY):
+- The input already tells you the clip number in its "Clip N:" label. Your job is ONLY to COPY that exact same integer N into the "clip" field of every overlay you create for that line.
+- NEVER invent, renumber, re-order, skip, merge, or guess a clip number. NEVER output a time range (like "0-8"), a string, or anything other than the plain integer N shown in that clip's own label.
+- Process the clips strictly top-to-bottom in the order given, and emit your JSON entries in that same top-to-bottom order.
+- Example: if the input shows "Clip 1: ...", "Clip 2: ...", "Clip 3: ...", your output must only ever contain "clip": 1, "clip": 2, or "clip": 3 — nothing else, and Clip 1's overlays must all appear before Clip 2's, which must all appear before Clip 3's.
 
 STRICT RULES:
 - For EACH clip, output between 1 and 3 overlay texts — ONLY for the genuine KEY POINTS of that clip (a benefit, an offer, a number, a strong hook word, the CTA). Do NOT add overlays for filler.
@@ -2526,9 +2622,10 @@ STRICT RULES:
 
 OUTPUT FORMAT (STRICT):
 - Output ONLY a valid JSON array. No markdown, no code block, no commentary.
-- Each element: { "clip": <clip number, integer>, "text": "<short overlay text in ENGLISH>", "soundEffect": "<capcut-searchable sfx term>" }
-- Order by clip number, then by appearance within the clip.
-- If a clip has no overlay, simply include no entries for it.`;
+- Each element: { "clip": <the exact clip number N copied from its "Clip N:" label, integer only>, "text": "<short overlay text in ENGLISH>", "soundEffect": "<capcut-searchable sfx term>" }
+- Order strictly by clip number ascending, then by appearance within the clip.
+- If a clip has no overlay, simply include no entries for it.
+- Before finalizing, self-check: does every "clip" value match a real "Clip N:" label from the input, and are entries grouped in ascending clip order with no gaps or reordering? Fix silently before you output.`;
 
 
 export const EXTRACTION_SYSTEM_PROMPT = `Analyze all provided files (images, audio, text) and extract the following business information.

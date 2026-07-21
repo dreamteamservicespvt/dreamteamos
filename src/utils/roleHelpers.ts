@@ -3,14 +3,17 @@ import {
   LayoutDashboard, Users, TrendingUp, Code, Phone, Clock, Wallet,
   Settings, BookOpen, FolderOpen, Target, User, BarChart3,
   ClipboardList, Briefcase, Wrench, FileCheck, MessageSquare, Video, Eye, Film, ScrollText, CalendarClock, Trophy, History,
-  ShoppingBag, Contact, Star,
+  ShoppingBag, Contact, Star, GraduationCap,
 } from "lucide-react";
 
 export interface NavItem {
   title: string;
-  path: string;
+  /** Present for a direct link. Omitted for a group — see `children`. */
+  path?: string;
   icon: any;
   badge?: string;
+  /** When present, this item is a collapsible dropdown group instead of a direct link. */
+  children?: NavItem[];
 }
 
 const NAV: Record<UserRole, NavItem[]> = {
@@ -52,15 +55,30 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "Sales Approvals", path: "/sales-admin/approvals", icon: FileCheck },
     { title: "Settlements", path: "/sales-admin/settlements", icon: Wallet },
     { title: "Leaderboard", path: "/sales-admin/leaderboard", icon: Trophy },
-    { title: "Analytics", path: "/sales-admin/analytics", icon: BarChart3 },
-    { title: "Activity History", path: "/sales-admin/history", icon: History },
+    {
+      title: "Reports & History", icon: BarChart3,
+      children: [
+        { title: "Analytics", path: "/sales-admin/analytics", icon: BarChart3 },
+        { title: "Activity History", path: "/sales-admin/history", icon: History },
+        { title: "Session History", path: "/sales-admin/sessions", icon: Clock },
+      ],
+    },
     { title: "Clients", path: "/sales-admin/clients", icon: Contact },
-    { title: "Team Chat", path: "/sales-admin/chat", icon: MessageSquare },
-    { title: "Meetings", path: "/sales-admin/meeting", icon: Video },
-    { title: "Chat Monitor", path: "/sales-admin/chat-monitor", icon: Eye },
-    { title: "Training Modules", path: "/sales-admin/training", icon: BookOpen },
-    { title: "Sales Scripts", path: "/sales-admin/scripts", icon: ScrollText },
-    { title: "Session History", path: "/sales-admin/sessions", icon: Clock },
+    {
+      title: "Communication", icon: MessageSquare,
+      children: [
+        { title: "Team Chat", path: "/sales-admin/chat", icon: MessageSquare },
+        { title: "Meetings", path: "/sales-admin/meeting", icon: Video },
+        { title: "Chat Monitor", path: "/sales-admin/chat-monitor", icon: Eye },
+      ],
+    },
+    {
+      title: "Training & Scripts", icon: GraduationCap,
+      children: [
+        { title: "Training Modules", path: "/sales-admin/training", icon: BookOpen },
+        { title: "Sales Scripts", path: "/sales-admin/scripts", icon: ScrollText },
+      ],
+    },
     { title: "Settings", path: "/sales-admin/settings", icon: Settings },
   ],
   accounts_admin: [
@@ -85,11 +103,22 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "My Reviews", path: "/sales/reviews", icon: Star },
     { title: "My Performance", path: "/sales/performance", icon: Target },
     { title: "Leaderboard", path: "/sales/leaderboard", icon: Trophy },
+    { title: "Settlements", path: "/sales/settlements", icon: Wallet },
     { title: "My History", path: "/sales/history", icon: History },
-    { title: "Team Chat", path: "/sales/chat", icon: MessageSquare },
-    { title: "Meetings", path: "/sales/meeting", icon: Video },
-    { title: "Training", path: "/sales/training", icon: BookOpen },
-    { title: "Sales Scripts", path: "/sales/scripts", icon: ScrollText },
+    {
+      title: "Communication", icon: MessageSquare,
+      children: [
+        { title: "Team Chat", path: "/sales/chat", icon: MessageSquare },
+        { title: "Meetings", path: "/sales/meeting", icon: Video },
+      ],
+    },
+    {
+      title: "Training & Scripts", icon: GraduationCap,
+      children: [
+        { title: "Training", path: "/sales/training", icon: BookOpen },
+        { title: "Sales Scripts", path: "/sales/scripts", icon: ScrollText },
+      ],
+    },
     { title: "My Profile", path: "/sales/profile", icon: User },
   ],
   tech_team_leader: [

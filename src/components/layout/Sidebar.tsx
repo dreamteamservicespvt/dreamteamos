@@ -1,11 +1,12 @@
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import { signOut } from "firebase/auth";
 import { collection, query, where, getDocs, updateDoc, doc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { useSidebarStore } from "@/store/sidebarStore";
-import { getNavItems, getRoleLabel, getRoleColor } from "@/utils/roleHelpers";
-import { ChevronLeft, LogOut, X } from "lucide-react";
+import { getNavItems, getRoleLabel, getRoleColor, type NavItem } from "@/utils/roleHelpers";
+import { ChevronLeft, ChevronDown, LogOut, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { deleteFCMToken } from "@/services/fcm";
@@ -23,6 +24,20 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+
+  // Dropdown groups (e.g. "Communication" bundling Team Chat / Meetings / Chat Monitor) —
+  // undefined means "not yet toggled by the user", so it defaults to open exactly when it
+  // contains the current route. Once toggled, the explicit choice sticks.
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  const isChildActive = (item: NavItem) => item.children?.some((c) => c.path === location.pathname) ?? false;
+  const toggleGroup = (title: string) => setOpenGroups((prev) => ({ ...prev, [title]: !(prev[title] ?? false) }));
+  // Auto-open the group holding the active route (e.g. after a deep link or refresh).
+  useEffect(() => {
+    if (!user) return;
+    const items = getNavItems(user.role);
+    const activeGroup = items.find((i) => i.children && isChildActive(i));
+    if (activeGroup) setOpenGroups((prev) => (prev[activeGroup.title] ? prev : { ...prev, [activeGroup.title]: true }));
+  }, [location.pathname, user?.role]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!user) return null;
 
@@ -94,9 +109,38 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               </div>
               <nav className="flex-1 py-3 px-2 space-y-1 overflow-y-auto min-h-0">
                 {navItems.map((item) => {
+                  if (item.children) {
+                    const isOpen = openGroups[item.title] ?? isChildActive(item);
+                    return (
+                      <div key={item.title}>
+                        <button onClick={() => toggleGroup(item.title)}
+                          className={`w-full flex items-center gap-3 px-3 h-10 rounded-lg transition-colors ${isChildActive(item) ? "text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"}`}>
+                          <item.icon size={18} className="shrink-0" />
+                          <span className="text-sm font-medium truncate flex-1 text-left">{item.title}</span>
+                          <ChevronDown size={14} className={`shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                        </button>
+                        <AnimatePresence initial={false}>
+                          {isOpen && (
+                            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden pl-3 space-y-1">
+                              {item.children.map((child) => {
+                                const active = location.pathname === child.path;
+                                return (
+                                  <Link key={child.path} to={child.path!} onClick={handleNavClick}
+                                    className={`flex items-center gap-3 px-3 h-9 rounded-lg transition-all duration-150 relative ${active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"}`}>
+                                    <child.icon size={16} className="shrink-0" />
+                                    <span className="text-sm font-medium truncate">{child.title}</span>
+                                  </Link>
+                                );
+                              })}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    );
+                  }
                   const active = location.pathname === item.path;
                   return (
-                    <Link key={item.path} to={item.path} onClick={handleNavClick}
+                    <Link key={item.path} to={item.path!} onClick={handleNavClick}
                       className={`flex items-center gap-3 px-3 h-10 rounded-lg transition-all duration-150 relative ${active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"}`}>
                       {active && <motion.div layoutId="sidebar-active-mobile" className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-primary rounded-r-full" transition={{ duration: 0.2 }} />}
                       <item.icon size={18} className="shrink-0" />
@@ -153,17 +197,62 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         )}
       </div>
       <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto">
-        {navItems.map((item) => {
+        {navItems.flatMap((item) => {
+          if (item.children) {
+            // Collapsed rail: no room for a group label, so surface every child as its own
+            // icon — nothing becomes unreachable, the grouping is purely a full-sidebar polish.
+            if (collapsed) {
+              return item.children.map((child) => {
+                const active = location.pathname === child.path;
+                return (
+                  <Link key={child.path} to={child.path!}
+                    className={`flex items-center gap-3 px-3 h-10 rounded-lg transition-all duration-150 group relative ${active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"}`}
+                    title={child.title}>
+                    {active && <motion.div layoutId="sidebar-active" className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-primary rounded-r-full" transition={{ duration: 0.2 }} />}
+                    <child.icon size={18} className="shrink-0" />
+                  </Link>
+                );
+              });
+            }
+            const isOpen = openGroups[item.title] ?? isChildActive(item);
+            return [
+              <div key={item.title}>
+                <button onClick={() => toggleGroup(item.title)}
+                  className={`w-full flex items-center gap-3 px-3 h-10 rounded-lg transition-colors ${isChildActive(item) ? "text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"}`}>
+                  <item.icon size={18} className="shrink-0" />
+                  <span className="text-sm font-medium truncate flex-1 text-left">{item.title}</span>
+                  <ChevronDown size={14} className={`shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                </button>
+                <AnimatePresence initial={false}>
+                  {isOpen && (
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden pl-3 space-y-1">
+                      {item.children.map((child) => {
+                        const active = location.pathname === child.path;
+                        return (
+                          <Link key={child.path} to={child.path!}
+                            className={`flex items-center gap-3 px-3 h-9 rounded-lg transition-all duration-150 relative ${active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"}`}>
+                            {active && <motion.div layoutId="sidebar-active" className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-primary rounded-r-full" transition={{ duration: 0.2 }} />}
+                            <child.icon size={16} className="shrink-0" />
+                            <span className="text-sm font-medium truncate">{child.title}</span>
+                          </Link>
+                        );
+                      })}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>,
+            ];
+          }
           const active = location.pathname === item.path;
-          return (
-            <Link key={item.path} to={item.path}
+          return [
+            <Link key={item.path} to={item.path!}
               className={`flex items-center gap-3 px-3 h-10 rounded-lg transition-all duration-150 group relative ${active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"}`}
               title={collapsed ? item.title : undefined}>
               {active && <motion.div layoutId="sidebar-active" className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-primary rounded-r-full" transition={{ duration: 0.2 }} />}
               <item.icon size={18} className="shrink-0" />
               {!collapsed && <span className="text-sm font-medium truncate">{item.title}</span>}
-            </Link>
-          );
+            </Link>,
+          ];
         })}
       </nav>
       <div className="border-t border-border p-3">

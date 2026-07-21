@@ -68,6 +68,13 @@ export interface WorkAssignment {
   promise?: PromiseDeadline;
   // Link back to the originating Order (set when assigned from the Orders queue)
   orderId?: string;
+  // Ad specification set by the admin/team leader at assignment time — pre-fills and locks
+  // the matching field in the assigned member's AI Platform tool (see AIPlatformApp.tsx).
+  modelGender?: "male" | "female";
+  attireType?: "professional" | "traditional" | "shirt_pant" | "custom";
+  customAttire?: string;
+  aspectRatio?: "9:16" | "16:9";
+  language?: string;
 }
 
 export type LeadStatus = "not_called" | "answered" | "not_answered" | "call_later" | "not_interested";

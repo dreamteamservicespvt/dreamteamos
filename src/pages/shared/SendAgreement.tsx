@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { Send, Eye, CheckCircle2, Clock, FileSignature, User, Users, Loader2, Sparkles, Trash2 } from "lucide-react";
+import { Send, Eye, CheckCircle2, Clock, FileSignature, User, Users, Loader2, Sparkles, Trash2, Download, X, Filter } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { AppUser } from "@/types";
 import {
@@ -14,6 +14,7 @@ import {
 import { formatAgreementWithAI } from "@/services/geminiService";
 import { employmentOf, EMPLOYMENT_LABELS, EmploymentType } from "@/services/employment";
 import AgreementView from "@/components/agreement/AgreementView";
+import { downloadAgreementPdf } from "@/utils/agreementPdf";
 
 const memberProfileLink = (role: string): string =>
   role === "sales_member" ? "/sales/profile" : role === "tech_member" ? "/tech/profile" : "";
@@ -36,6 +37,11 @@ export default function SendAgreement() {
   const [formatting, setFormatting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Agreement | null>(null);
   const [deleting, setDeleting] = useState(false);
+  /** Filter the sent list down to one individual's agreements ("view agreement of the individual"). */
+  const [viewMemberId, setViewMemberId] = useState<string>("");
+  const [viewOpen, setViewOpen] = useState<Agreement | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const paperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "users"), (snap) => setAllUsers(snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser))));
@@ -122,6 +128,31 @@ export default function SendAgreement() {
     if (mine.some((a) => a.status === "signed")) return "signed";
     if (mine.length > 0) return "sent";
     return null;
+  };
+
+  // Every individual who has at least one agreement on record — derived from the sent list
+  // itself so it still covers deactivated / former members, not just current recipients.
+  const individualsWithAgreements = useMemo(() => {
+    const map = new Map<string, string>();
+    allSent.forEach((a) => map.set(a.memberId, a.memberName));
+    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [allSent]);
+
+  const visibleSent = useMemo(
+    () => (viewMemberId ? allSent.filter((a) => a.memberId === viewMemberId) : allSent),
+    [allSent, viewMemberId],
+  );
+
+  const handleDownloadViewed = async () => {
+    if (!paperRef.current || !viewOpen || downloading) return;
+    setDownloading(true);
+    try {
+      await downloadAgreementPdf(paperRef.current, `${viewOpen.title.replace(/[^\w]+/g, "_")}.pdf`);
+    } catch {
+      toast({ title: "Error", description: "Could not generate the PDF.", variant: "destructive" });
+    } finally {
+      setDownloading(false);
+    }
   };
 
   const selected = members.find((m) => m.uid === selectedId);
@@ -352,21 +383,37 @@ export default function SendAgreement() {
 
       {/* Sent list */}
       <div className="mt-6">
-        <h2 className="font-display font-semibold text-foreground mb-2">Sent agreements</h2>
+        <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
+          <h2 className="font-display font-semibold text-foreground">Sent agreements</h2>
+          {individualsWithAgreements.length > 0 && (
+            <label className="flex items-center gap-1.5 text-xs">
+              <Filter className="w-3.5 h-3.5 text-muted-foreground" />
+              <select value={viewMemberId} onChange={(e) => setViewMemberId(e.target.value)}
+                className="border border-border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground max-w-[220px]">
+                <option value="">View agreement of — all members</option>
+                {individualsWithAgreements.map(([uid, name]) => (
+                  <option key={uid} value={uid}>{name}</option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
         {allSent.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nothing sent yet.</p>
+        ) : visibleSent.length === 0 ? (
+          <p className="text-sm text-muted-foreground rounded-lg border border-dashed border-border p-4 text-center">No agreements for this member.</p>
         ) : (
           <div className="rounded-xl border border-border bg-card divide-y divide-border">
-            {allSent.map((a) => (
+            {visibleSent.map((a) => (
               <div key={a.id} className="flex items-center justify-between gap-3 px-4 py-3">
-                <div className="min-w-0">
-                  <div className="font-medium text-foreground text-sm truncate">{a.title}</div>
+                <button onClick={() => setViewOpen(a)} className="min-w-0 text-left group">
+                  <div className="font-medium text-foreground text-sm truncate group-hover:underline underline-offset-2">{a.title}</div>
                   <div className="text-[11px] text-muted-foreground">
                     To {a.memberName}
                     {a.sentBy !== user?.uid ? <span className="text-violet-500"> · by {a.sentByName}</span> : ""}
                     {a.createdAt?.seconds ? ` · ${format(new Date(a.createdAt.seconds * 1000), "dd MMM yyyy")}` : ""}
                   </div>
-                </div>
+                </button>
                 <div className="shrink-0 flex items-center gap-2">
                   {a.status === "signed" ? (
                     <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600">
@@ -377,6 +424,10 @@ export default function SendAgreement() {
                       <Clock className="w-3 h-3" /> Awaiting signature
                     </span>
                   )}
+                  <button onClick={() => setViewOpen(a)} title="View this member's agreement"
+                    className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10">
+                    <Eye className="w-3.5 h-3.5" />
+                  </button>
                   <button onClick={() => setConfirmDelete(a)} title="Delete agreement"
                     className="p-1.5 rounded-md text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10">
                     <Trash2 className="w-3.5 h-3.5" />
@@ -387,6 +438,37 @@ export default function SendAgreement() {
           </div>
         )}
       </div>
+
+      {/* View one individual's agreement — full document, signature, and PDF download if signed */}
+      {viewOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 overflow-y-auto p-2 sm:p-4" onClick={() => setViewOpen(null)}>
+          <div className="mx-auto max-w-3xl my-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="text-xs font-medium text-white/90 bg-black/30 rounded-lg px-2.5 py-1.5">{viewOpen.memberName}</span>
+              <div className="flex items-center gap-2">
+                {viewOpen.status === "signed" && (
+                  <button onClick={handleDownloadViewed} disabled={downloading}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/90 text-slate-800 hover:bg-white">
+                    {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />} Download PDF
+                  </button>
+                )}
+                <button onClick={() => setViewOpen(null)} className="p-1.5 rounded-lg bg-white/90 text-slate-800 hover:bg-white"><X className="w-4 h-4" /></button>
+              </div>
+            </div>
+            <div className="rounded-lg overflow-hidden">
+              <AgreementView
+                ref={paperRef}
+                bodyText={viewOpen.bodyText}
+                memberName={viewOpen.memberName}
+                memberPhone={viewOpen.memberPhone}
+                signatureUrl={viewOpen.signatureUrl}
+                signedName={viewOpen.signedName}
+                signedDate={viewOpen.signedDate}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete confirmation */}
       {confirmDelete && (

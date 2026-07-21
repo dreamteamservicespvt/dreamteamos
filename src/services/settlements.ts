@@ -6,7 +6,7 @@
  * ranges and marks each one paid, so both sides always know "paid through <date>" and what's left.
  */
 import {
-  collection, addDoc, query, where, serverTimestamp, type Query, type DocumentData,
+  collection, addDoc, doc, updateDoc, query, where, serverTimestamp, type Query, type DocumentData,
 } from "firebase/firestore";
 import { format } from "date-fns";
 import { db } from "@/services/firebase";
@@ -121,4 +121,66 @@ export function adminSettlementsQuery(adminUid: string): Query<DocumentData> {
 /** A member's own settlements. */
 export function memberSettlementsQuery(memberId: string): Query<DocumentData> {
   return query(collection(db, "commission_settlements"), where("memberId", "==", memberId));
+}
+
+// ── Settlement requests — a member asks their admin to review & pay the unpaid period ──────
+
+export interface SettlementRequest {
+  id: string;
+  memberId: string;
+  memberName: string;
+  adminId: string;
+  fromDate: string;
+  toDate: string;
+  amount: number;
+  saleCount: number;
+  status: "pending" | "resolved";
+  requestedAt: any;
+}
+
+/** Member asks their admin to pay out the currently unpaid period. Notifies the admin with a
+ *  deep link straight into that member's settlement detail so they can review and pay. */
+export async function requestSettlement(params: {
+  member: AppUser;
+  adminId: string;
+  fromDate: string;
+  toDate: string;
+  amount: number;
+  saleCount: number;
+}): Promise<void> {
+  const { member, adminId, fromDate, toDate, amount, saleCount } = params;
+  await addDoc(collection(db, "settlement_requests"), {
+    memberId: member.uid,
+    memberName: member.name,
+    adminId,
+    fromDate,
+    toDate,
+    amount,
+    saleCount,
+    status: "pending",
+    requestedAt: serverTimestamp(),
+  });
+  await sendNotification({
+    userId: adminId,
+    type: "settlement_requested",
+    title: "Settlement requested",
+    message: `${member.name} requested their commission settlement of ${formatCurrency(amount)} for ${fromDate} → ${toDate}.`,
+    link: `/sales-admin/settlements?member=${member.uid}`,
+  });
+}
+
+/** A member's own pending settlement request(s), if any. */
+export function memberPendingRequestsQuery(memberId: string): Query<DocumentData> {
+  return query(collection(db, "settlement_requests"), where("memberId", "==", memberId), where("status", "==", "pending"));
+}
+
+/** Every pending settlement request addressed to this admin, across their whole team. */
+export function adminPendingRequestsQuery(adminId: string): Query<DocumentData> {
+  return query(collection(db, "settlement_requests"), where("adminId", "==", adminId), where("status", "==", "pending"));
+}
+
+/** Clears a member's pending request(s) once the admin has paid them out. */
+export async function resolvePendingRequests(memberId: string, pending: SettlementRequest[]): Promise<void> {
+  const mine = pending.filter((r) => r.memberId === memberId && r.status === "pending");
+  await Promise.all(mine.map((r) => updateDoc(doc(db, "settlement_requests", r.id), { status: "resolved", resolvedAt: serverTimestamp() })));
 }

@@ -16,10 +16,22 @@ import { formatCurrency, formatDate, formatTime } from '@/utils/formatters';
 import { format, subDays, startOfDay } from 'date-fns';
 import DashboardDateRangePicker from '@/components/dashboard/DateRangePicker';
 import type { WorkAssignment, AppUser, DailyCheckin } from '@/types';
+import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from '@/types/aiPlatform';
 import { formatDateRangeLabel, isDateWithinRange, normalizeDateRange, parseQueryDate, parseQueryDateRange } from '@/utils/dateRange';
 import { upsertClientOnWorkVerify } from '@/services/clients';
 import { revertOrderToAssigned, markOrderCompleted } from '@/services/orders';
 import DeadlineChip from '@/components/work/DeadlineChip';
+
+// Human-readable labels for each attire option (mirrors AIPlatformApp's ATTIRE_LABELS so the
+// requirement the admin sets here reads identically wherever it's shown).
+const ATTIRE_LABELS: Record<AttireType, string> = {
+  [AttireType.PROFESSIONAL]: 'Professional (Formal Suit)',
+  [AttireType.TRADITIONAL]: 'Traditional (Designer Saree)',
+  [AttireType.SHIRT_PANT]: 'Professional (In-shirt & Pant)',
+  [AttireType.CUSTOM]: 'Custom',
+};
+
+const ASSIGNMENT_LANGUAGE_OPTIONS = ['Telugu', 'English', 'Hindi', 'Kannada', 'Custom'] as const;
 
 const DURATIONS: Record<string, string[]> = {
   wishes: ['20s', '40s'],
@@ -146,9 +158,18 @@ export default function WorkAssign() {
     clientName: '',
     businessName: '',
     businessWhatsapp: '',
+    modelGender: ModelGender.FEMALE as ModelGender,
+    attireType: AttireType.TRADITIONAL as AttireType,
+    customAttire: '',
+    aspectRatio: '9:16' as '9:16' | '16:9',
+    language: 'Telugu' as string,
+    customLanguage: '',
   });
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
   const [copiedBusiness, setCopiedBusiness] = useState<string | null>(null);
+  /** Requirements message to copy/send on WhatsApp, shown right after Create Assignment succeeds. */
+  const [waReq, setWaReq] = useState<{ member: AppUser; message: string } | null>(null);
+  const [waReqCopied, setWaReqCopied] = useState(false);
 
   // Auto-open form with pre-selected member from query param
   useEffect(() => {
@@ -211,6 +232,8 @@ export default function WorkAssign() {
     });
   }, [techMembers, memberSearch]);
 
+  const resolvedLanguage = () => (form.language === 'Custom' ? (form.customLanguage.trim() || 'Custom') : form.language);
+
   const handleCreate = async () => {
     if (!user || !form.assignedTo) return;
     setSubmitting(true);
@@ -219,6 +242,8 @@ export default function WorkAssign() {
       const accessCode = generateAccessCode();
       const today = format(new Date(), 'yyyy-MM-dd');
       const clips = getClipCount(form.duration);
+      const language = resolvedLanguage();
+      const attireLabel = form.attireType === AttireType.CUSTOM && form.customAttire.trim() ? form.customAttire.trim() : ATTIRE_LABELS[form.attireType];
 
       await addDoc(collection(db, 'work_assignments'), {
         assignedTo: form.assignedTo,
@@ -241,6 +266,11 @@ export default function WorkAssign() {
         sessions: [],
         totalDurationSeconds: 0,
         date: today,
+        modelGender: form.modelGender,
+        attireType: form.attireType,
+        ...(form.attireType === AttireType.CUSTOM && form.customAttire.trim() ? { customAttire: form.customAttire.trim() } : {}),
+        aspectRatio: form.aspectRatio,
+        language,
       });
 
       // Send notification to the assignee
@@ -262,8 +292,32 @@ export default function WorkAssign() {
         link: `/team-leader/work-assign/${form.assignedTo}`,
       });
 
+      // Build the WhatsApp-ready requirements message — every ad spec + configuration the
+      // member needs, in one copy-paste-able block — and surface it for the admin to send.
+      const assignedMember = techMembers.find(m => m.uid === form.assignedTo);
+      const message = [
+        `🎬 New Ad Assignment — ${uniqueId}`,
+        form.businessName.trim() ? `Business: ${form.businessName.trim()}` : null,
+        `Category: ${form.category.charAt(0).toUpperCase() + form.category.slice(1)}`,
+        `Duration: ${form.duration} (${clips} clips${hasPoster(form.duration) ? ' + Poster' : ''} + ${getEndCredits(form.duration)}s EC)`,
+        `Price: ${formatCurrency(form.pricePerUnit)}`,
+        ``,
+        `📋 Ad Specification:`,
+        `• Model: ${form.modelGender === ModelGender.MALE ? 'Male' : 'Female'}`,
+        `• Attire: ${attireLabel}`,
+        `• Aspect Ratio: ${form.aspectRatio}`,
+        `• Language: ${language}`,
+        ``,
+        `Access Code: ${accessCode}`,
+      ].filter((line): line is string => line !== null).join('\n');
+
+      if (assignedMember) setWaReq({ member: assignedMember, message });
+
       setShowForm(false);
-      setForm({ assignedTo: '', category: 'promotional', duration: '16s', pricePerUnit: 499, clientName: '', businessName: '', businessWhatsapp: '' });
+      setForm({
+        assignedTo: '', category: 'promotional', duration: '16s', pricePerUnit: 499, clientName: '', businessName: '', businessWhatsapp: '',
+        modelGender: ModelGender.FEMALE, attireType: AttireType.TRADITIONAL, customAttire: '', aspectRatio: '9:16', language: 'Telugu', customLanguage: '',
+      });
       setMemberSearch('');
     } catch (error) {
       console.error('Failed to create assignment:', error);
@@ -634,6 +688,49 @@ export default function WorkAssign() {
         </div>
       )}
 
+      {/* WhatsApp requirements — shown right after Create Assignment succeeds */}
+      {waReq && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setWaReq(null)}>
+          <div className="w-full max-w-sm rounded-xl border border-border bg-card p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-1">
+              <MessageCircle className="w-4 h-4 text-emerald-500" />
+              <span className="font-semibold text-foreground">Share ad requirements</span>
+            </div>
+            <p className="text-xs text-muted-foreground mb-3">
+              Assignment created for <b>{waReq.member.name}</b>. Copy or send this requirements message so they generate exactly what you configured.
+            </p>
+            <textarea
+              value={waReq.message}
+              onChange={(e) => setWaReq({ ...waReq, message: e.target.value })}
+              rows={9}
+              className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background text-foreground font-mono leading-relaxed resize-y mb-3"
+            />
+            {!waReq.member.phone && (
+              <p className="text-[11px] rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-600 px-3 py-2 mb-3">
+                This member has no phone number saved — you can still copy the message.
+              </p>
+            )}
+            <div className="flex gap-2">
+              <button onClick={() => setWaReq(null)}
+                className="flex-1 py-2 rounded-lg text-sm font-medium border border-border bg-background hover:bg-accent text-foreground">
+                Done
+              </button>
+              <button
+                onClick={() => { navigator.clipboard.writeText(waReq.message); setWaReqCopied(true); setTimeout(() => setWaReqCopied(false), 2000); }}
+                className="flex-1 py-2 rounded-lg text-sm font-semibold border border-border bg-background hover:bg-accent text-foreground inline-flex items-center justify-center gap-1.5">
+                {waReqCopied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />} {waReqCopied ? 'Copied' : 'Copy'}
+              </button>
+              <button
+                disabled={!waReq.member.phone}
+                onClick={() => { window.open(getWhatsAppUrl(waReq.member.phone, waReq.message), "_blank"); setWaReq(null); }}
+                className="flex-[1.4] py-2 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 inline-flex items-center justify-center gap-1.5">
+                <MessageCircle className="w-4 h-4" /> WhatsApp
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-accent/20 p-4 md:p-5 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -723,6 +820,71 @@ export default function WorkAssign() {
               <input type="text" placeholder="e.g. 9876543210" value={form.businessWhatsapp}
                 onChange={(e) => setForm(prev => ({ ...prev, businessWhatsapp: e.target.value }))}
                 className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none" />
+            </div>
+
+            {/* Model Gender */}
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">Model</label>
+              <div className="grid grid-cols-2 gap-2">
+                {[ModelGender.FEMALE, ModelGender.MALE].map(g => (
+                  <button key={g} type="button"
+                    onClick={() => setForm(prev => {
+                      const allowed = ATTIRE_OPTIONS_BY_GENDER[g];
+                      const nextAttire = allowed.includes(prev.attireType) ? prev.attireType : AttireType.PROFESSIONAL;
+                      return { ...prev, modelGender: g, attireType: nextAttire };
+                    })}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                      form.modelGender === g ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-accent'
+                    }`}>
+                    {g === ModelGender.FEMALE ? '👩 Female' : '👨 Male'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Attire */}
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">Attire</label>
+              <select value={form.attireType} onChange={(e) => setForm(prev => ({ ...prev, attireType: e.target.value as AttireType }))}
+                className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none">
+                {ATTIRE_OPTIONS_BY_GENDER[form.modelGender].map(a => (
+                  <option key={a} value={a}>{ATTIRE_LABELS[a]}</option>
+                ))}
+              </select>
+              {form.attireType === AttireType.CUSTOM && (
+                <input type="text" placeholder="Describe the exact attire…" value={form.customAttire}
+                  onChange={(e) => setForm(prev => ({ ...prev, customAttire: e.target.value }))}
+                  className="w-full mt-1.5 border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none" />
+              )}
+            </div>
+
+            {/* Aspect Ratio */}
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">Aspect Ratio</label>
+              <div className="grid grid-cols-2 gap-2">
+                {(['9:16', '16:9'] as const).map(r => (
+                  <button key={r} type="button" onClick={() => setForm(prev => ({ ...prev, aspectRatio: r }))}
+                    className={`px-3 py-2 rounded-lg text-sm font-mono font-medium border transition-colors ${
+                      form.aspectRatio === r ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-accent'
+                    }`}>
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Language */}
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">Language</label>
+              <select value={form.language} onChange={(e) => setForm(prev => ({ ...prev, language: e.target.value }))}
+                className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none">
+                {ASSIGNMENT_LANGUAGE_OPTIONS.map(l => <option key={l} value={l}>{l}</option>)}
+              </select>
+              {form.language === 'Custom' && (
+                <input type="text" placeholder="Type the language…" value={form.customLanguage}
+                  onChange={(e) => setForm(prev => ({ ...prev, customLanguage: e.target.value }))}
+                  className="w-full mt-1.5 border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none" />
+              )}
             </div>
           </div>
 

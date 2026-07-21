@@ -1,55 +1,115 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { collection, query, where, onSnapshot, updateDoc, deleteDoc, doc } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { format } from "date-fns";
-import type { WorkAssignment, DailyCheckin } from "@/types";
-import { motion } from "framer-motion";
-import { CheckCircle, Clock, Video, Briefcase, Play, Edit3, AlertCircle, LogIn, LogOut, Loader2, Undo2 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { cn } from "@/lib/utils";
+import type { DailyCheckin, WorkAssignment } from "@/types";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  CheckCircle2, LogIn, LogOut, Loader2, Undo2, Sparkles, Sun, Sunrise, Moon,
+  Video, ClipboardCheck, ShieldCheck, ShieldAlert, TimerReset,
+} from "lucide-react";
 import { performCheckIn } from "@/utils/attendance";
 import CheckoutModal from "@/components/attendance/CheckoutModal";
+import MyDayCalendar from "@/components/attendance/MyDayCalendar";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirm } from "@/hooks/useConfirm";
+import {
+  ATTENDANCE_META, AttendanceStatus, Holiday, attendanceKey, resolveStatus,
+  todayDate, todayMonth, watchCheckedInDays, watchHolidays, watchOverrides,
+} from "@/services/techAttendance";
+
+/** Live ticking elapsed-time string between two instants, formatted HH:MM:SS. */
+const useElapsed = (since: Date | null): string => {
+  const [, force] = useState(0);
+  useEffect(() => {
+    if (!since) return;
+    const id = setInterval(() => force((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [since]);
+  if (!since) return "00:00:00";
+  const diff = Math.max(0, Date.now() - since.getTime());
+  const h = Math.floor(diff / 3_600_000);
+  const m = Math.floor((diff % 3_600_000) / 60_000);
+  const s = Math.floor((diff % 60_000) / 1000);
+  return [h, m, s].map((n) => String(n).padStart(2, "0")).join(":");
+};
+
+const greeting = (hour: number) => {
+  if (hour < 12) return { text: "Good morning", Icon: Sunrise };
+  if (hour < 17) return { text: "Good afternoon", Icon: Sun };
+  return { text: "Good evening", Icon: Moon };
+};
 
 export default function TechMemberDashboard() {
   const user = useAuthStore((s) => s.user);
-  const navigate = useNavigate();
   const { toast } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
-  const [assignments, setAssignments] = useState<WorkAssignment[]>([]);
   const [todayCheckin, setTodayCheckin] = useState<DailyCheckin | null>(null);
+  // Not rendered on this attendance-only dashboard — kept only so Check-In can report
+  // accurate pending/in-progress task counts in its WhatsApp message (see performCheckIn).
+  const [assignments, setAssignments] = useState<WorkAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [checkingIn, setCheckingIn] = useState(false);
   const [showCheckout, setShowCheckout] = useState(false);
+  const [now, setNow] = useState(new Date());
 
-  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const [overrides, setOverrides] = useState<Map<string, AttendanceStatus>>(new Map());
+  const [holidays, setHolidays] = useState<Map<string, Holiday>>(new Map());
+  const [checkedIn, setCheckedIn] = useState<Set<string>>(new Set());
+
+  const todayStr = todayDate();
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (!user) return;
-    const unsubs: (() => void)[] = [];
-
-    unsubs.push(onSnapshot(
-      query(collection(db, "work_assignments"), where("assignedTo", "==", user.uid)),
-      (snap) => {
-        setAssignments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as WorkAssignment)));
-        setLoading(false);
-      }
-    ));
-
-    unsubs.push(onSnapshot(
-      query(collection(db, "daily_checkins"), where("memberId", "==", user.uid), where("date", "==", todayStr)),
-      (snap) => {
-        if (!snap.empty) {
-          setTodayCheckin({ id: snap.docs[0].id, ...snap.docs[0].data() } as DailyCheckin);
-        } else {
-          setTodayCheckin(null);
+    const unsubs = [
+      onSnapshot(
+        query(collection(db, "daily_checkins"), where("memberId", "==", user.uid), where("date", "==", todayStr)),
+        (snap) => {
+          setTodayCheckin(!snap.empty ? ({ id: snap.docs[0].id, ...snap.docs[0].data() } as DailyCheckin) : null);
+          setLoading(false);
         }
-      }
-    ));
-
+      ),
+      onSnapshot(
+        query(collection(db, "work_assignments"), where("assignedTo", "==", user.uid)),
+        (snap) => setAssignments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as WorkAssignment)))
+      ),
+    ];
     return () => unsubs.forEach((u) => u());
   }, [user, todayStr]);
+
+  useEffect(() => {
+    const month = todayMonth();
+    const unsubs = [
+      watchOverrides(month, setOverrides),
+      watchHolidays(month, setHolidays),
+      watchCheckedInDays(month, setCheckedIn),
+    ];
+    return () => unsubs.forEach((u) => u());
+  }, []);
+
+  const todayAttendance = useMemo(() => {
+    if (!user) return null;
+    return resolveStatus({
+      override: overrides.get(attendanceKey(user.uid, todayStr)),
+      checkedIn: checkedIn.has(attendanceKey(user.uid, todayStr)) || !!todayCheckin,
+      dateStr: todayStr,
+      hasFestivalHoliday: holidays.has(todayStr),
+      todayStr,
+    });
+  }, [user, overrides, checkedIn, holidays, todayCheckin, todayStr]);
+
+  const { text: greetText, Icon: GreetIcon } = greeting(now.getHours());
+
+  const checkedInAt = todayCheckin?.checkedInAt?.toDate?.() || null;
+  const checkedOutAt = todayCheckin?.checkedOutAt?.toDate?.() || null;
+  const elapsed = useElapsed(todayCheckin && !checkedOutAt ? checkedInAt : null);
 
   const handleCheckIn = async () => {
     if (!user) return;
@@ -57,7 +117,7 @@ export default function TechMemberDashboard() {
     try {
       const waUrl = await performCheckIn(user, assignments);
       toast({ title: "Checked In!", description: "Opening WhatsApp..." });
-      await new Promise((r) => setTimeout(r, 2000));
+      await new Promise((r) => setTimeout(r, 1500));
       window.open(waUrl, "_blank");
     } catch {
       toast({ title: "Error", description: "Failed to check in.", variant: "destructive" });
@@ -84,19 +144,10 @@ export default function TechMemberDashboard() {
     if (!confirmed) return;
     try {
       await updateDoc(doc(db, "daily_checkins", todayCheckin.id), {
-        checkedOutAt: null,
-        status: "checked_in",
-        summary: null,
-        totalVideos: null,
-        driveFolderUrl: null,
-        screenshotUrl: null,
-        completedTodayAuto: null,
-        pendingTasks: null,
-        inProgressTasks: null,
-        aiVideoCount: null,
-        aiConfidence: null,
-        aiNotes: null,
-        aiVerificationResult: null,
+        checkedOutAt: null, status: "checked_in", summary: null, totalVideos: null,
+        driveFolderUrl: null, screenshotUrl: null, completedTodayAuto: null,
+        pendingTasks: null, inProgressTasks: null, aiVideoCount: null, aiConfidence: null,
+        aiNotes: null, aiVerificationResult: null,
       });
       toast({ title: "Checkout reverted", description: "You are back to checked-in state." });
     } catch {
@@ -104,217 +155,151 @@ export default function TechMemberDashboard() {
     }
   };
 
-  // Today's assigned tasks + unfinished past tasks
-  const activeTasks = assignments.filter(a =>
-    ['assigned', 'in_progress', 'editing'].includes(a.status)
-  );
-  const todayTasks = activeTasks.filter(a => a.date === todayStr);
-  const unfinishedPast = activeTasks.filter(a => a.date !== todayStr);
-
-  const verified = assignments.filter(a => a.status === "verified");
-  const completed = assignments.filter(a => a.status === "completed");
-  const totalVideos = verified.length;
-  const stats = [
-    { label: "Total Assigned", value: assignments.length, icon: Briefcase, color: "text-info" },
-    { label: "Videos Done", value: totalVideos, icon: Video, color: "text-primary" },
-    { label: "Verified", value: verified.length, icon: CheckCircle, color: "text-success" },
-    { label: "Completed", value: completed.length, icon: Clock, color: "text-warning" },
-  ];
-
-  const taskStatusConfig: Record<string, { icon: typeof Play; label: string; color: string }> = {
-    assigned: { icon: Play, label: 'New', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
-    in_progress: { icon: Clock, label: 'In Progress', color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' },
-    editing: { icon: Edit3, label: 'Needs Edit', color: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' },
-  };
-
-  if (loading) {
+  if (loading || !user) {
     return (
       <div className="space-y-6">
         <div className="h-8 w-48 bg-muted rounded animate-pulse" />
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="bg-card border border-border rounded-xl p-4 h-24 animate-pulse" />
-          ))}
-        </div>
+        <div className="h-56 bg-muted rounded-2xl animate-pulse" />
+        <div className="h-96 bg-muted rounded-2xl animate-pulse" />
       </div>
     );
   }
 
+  const phase: "pre" | "in" | "out" = !todayCheckin ? "pre" : !checkedOutAt ? "in" : "out";
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-3xl mx-auto">
       {ConfirmDialog}
-      <div>
-        <h1 className="font-display text-2xl font-bold text-foreground">Dashboard</h1>
-        <p className="text-muted-foreground text-sm mt-1">Welcome back, {user?.name}</p>
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {stats.map((s, i) => (
-          <motion.div
-            key={s.label}
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0, transition: { delay: i * 0.08 } }}
-            className="bg-card border border-border rounded-xl p-4"
-          >
-            <div className="flex items-center gap-2 mb-2">
-              <s.icon size={16} className={s.color} />
-              <span className="text-xs text-muted-foreground">{s.label}</span>
-            </div>
-            <p className="font-display font-bold text-xl text-foreground">{s.value}</p>
-          </motion.div>
-        ))}
-      </div>
 
-      {/* Daily Attendance */}
-      <div className="bg-card border border-border rounded-xl px-4 py-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
-            {todayCheckin ? <LogOut size={14} className="text-primary" /> : <LogIn size={14} className="text-success" />}
-            Daily Attendance
-          </h2>
-          <span className="text-[10px] text-muted-foreground font-mono">{todayStr}</span>
+      {/* Greeting header */}
+      <div className="flex items-end justify-between gap-3 flex-wrap">
+        <div>
+          <p className="text-muted-foreground text-xs flex items-center gap-1.5 mb-0.5">
+            <GreetIcon size={13} /> {greetText}
+          </p>
+          <h1 className="font-display text-2xl font-bold text-foreground">{user.name}</h1>
         </div>
-
-        {!todayCheckin ? (
-          <div className="flex items-center justify-between mt-2">
-            <p className="text-xs text-muted-foreground">You haven't checked in yet.</p>
-            <button
-              onClick={handleCheckIn}
-              disabled={checkingIn}
-              className="h-8 px-4 rounded-lg bg-success text-success-foreground font-semibold text-xs hover:bg-success/90 disabled:opacity-50 transition-colors inline-flex items-center gap-1.5"
-            >
-              {checkingIn ? <Loader2 size={12} className="animate-spin" /> : <LogIn size={12} />}
-              Check In
-            </button>
-          </div>
-        ) : !todayCheckin.checkedOutAt ? (
-          <div className="flex items-center justify-between mt-2">
-            <div className="flex items-center gap-2 text-xs">
-              <span className="px-1.5 py-0.5 rounded-full bg-success/15 text-success font-medium text-[10px]">In</span>
-              <span className="text-muted-foreground">
-                {todayCheckin.checkedInAt?.toDate?.() ? format(todayCheckin.checkedInAt.toDate(), "hh:mm a") : "—"}
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => setShowCheckout(true)}
-                className="h-8 px-4 rounded-lg bg-primary text-primary-foreground font-semibold text-xs hover:bg-primary/90 transition-colors inline-flex items-center gap-1.5"
-              >
-                <LogOut size={12} /> Check Out
-              </button>
-              <button
-                onClick={handleUndoCheckIn}
-                className="h-8 px-3 rounded-lg border border-destructive/30 text-destructive text-xs font-medium hover:bg-destructive/10 transition-colors inline-flex items-center gap-1"
-              >
-                <Undo2 size={12} /> Undo
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center justify-between mt-2">
-            <div className="flex items-center gap-2 flex-wrap text-xs">
-              <span className="px-1.5 py-0.5 rounded-full bg-success/15 text-success font-medium text-[10px]">In</span>
-              <span className="text-muted-foreground">{todayCheckin.checkedInAt?.toDate?.() ? format(todayCheckin.checkedInAt.toDate(), "hh:mm a") : "—"}</span>
-              <span className="text-muted-foreground">→</span>
-              <span className="px-1.5 py-0.5 rounded-full bg-info/15 text-info font-medium text-[10px]">Out</span>
-              <span className="text-muted-foreground">{todayCheckin.checkedOutAt?.toDate?.() ? format(todayCheckin.checkedOutAt.toDate(), "hh:mm a") : "—"}</span>
-              <span className="text-muted-foreground">· {todayCheckin.totalVideos} videos</span>
-              {todayCheckin.status === "pending_approval" && (
-                <span className="px-1.5 py-0.5 rounded-full bg-warning/15 text-warning font-medium text-[10px]">Pending Approval</span>
-              )}
-              {todayCheckin.status === "approved" && (
-                <span className="px-1.5 py-0.5 rounded-full bg-success/15 text-success font-medium text-[10px]">Approved</span>
-              )}
-              {todayCheckin.status === "rejected" && (
-                <span className="px-1.5 py-0.5 rounded-full bg-destructive/15 text-destructive font-medium text-[10px]">Rejected</span>
-              )}
-              {todayCheckin.aiVerificationResult && (
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                  todayCheckin.aiVerificationResult === "pass" ? "bg-success/15 text-success" : "bg-warning/15 text-warning"
-                }`}>AI: {todayCheckin.aiVerificationResult}</span>
-              )}
-            </div>
-            {todayCheckin.status !== "approved" && (
-              <button
-                onClick={handleRevertCheckout}
-                className="h-7 px-3 rounded-lg border border-destructive/30 text-destructive text-[10px] font-medium hover:bg-destructive/10 transition-colors inline-flex items-center gap-1 shrink-0 ml-2"
-              >
-                <Undo2 size={10} /> Revert
-              </button>
-            )}
-          </div>
-        )}
+        <div className="text-right">
+          <p className="font-mono text-lg font-bold text-foreground tabular-nums">{format(now, "hh:mm:ss a")}</p>
+          <p className="text-xs text-muted-foreground">{format(now, "EEEE, dd MMMM yyyy")}</p>
+        </div>
       </div>
+
+      {/* Hero attendance card */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+        className="relative overflow-hidden rounded-2xl border border-border shadow-lg"
+      >
+        <div className={cnPhase(phase)} />
+        <div className="relative p-6 sm:p-7">
+          <AnimatePresence mode="wait">
+            {phase === "pre" && (
+              <motion.div key="pre" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                className="flex flex-col sm:flex-row items-center sm:items-center justify-between gap-5 text-center sm:text-left">
+                <div>
+                  <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-white/80 bg-white/10 px-2.5 py-1 rounded-full mb-3">
+                    <Sparkles size={12} /> Ready when you are
+                  </div>
+                  <h2 className="text-2xl font-display font-bold text-white">You haven't checked in yet</h2>
+                  <p className="text-white/70 text-sm mt-1">Mark your attendance to start today's work day.</p>
+                </div>
+                <button onClick={handleCheckIn} disabled={checkingIn}
+                  className="h-14 px-8 rounded-xl bg-white text-emerald-700 font-display font-bold text-base hover:bg-white/90 disabled:opacity-60 transition-all shadow-xl shadow-black/10 inline-flex items-center gap-2 shrink-0 active:scale-95">
+                  {checkingIn ? <Loader2 size={18} className="animate-spin" /> : <LogIn size={18} />}
+                  {checkingIn ? "Checking in…" : "Check In Now"}
+                </button>
+              </motion.div>
+            )}
+
+            {phase === "in" && (
+              <motion.div key="in" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                <div className="flex items-center justify-between gap-3 flex-wrap mb-5">
+                  <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-white/15 px-2.5 py-1 rounded-full">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" /> Checked In · {checkedInAt ? format(checkedInAt, "hh:mm a") : "—"}
+                  </div>
+                  <button onClick={handleUndoCheckIn}
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-white/70 hover:text-white transition-colors">
+                    <Undo2 size={11} /> Undo check-in
+                  </button>
+                </div>
+                <div className="flex flex-col sm:flex-row items-center sm:items-end justify-between gap-5">
+                  <div>
+                    <p className="text-white/70 text-xs mb-1">Time on the clock today</p>
+                    <p className="font-mono text-4xl sm:text-5xl font-bold text-white tabular-nums tracking-tight">{elapsed}</p>
+                  </div>
+                  <button onClick={() => setShowCheckout(true)}
+                    className="h-14 px-8 rounded-xl bg-white text-blue-700 font-display font-bold text-base hover:bg-white/90 transition-all shadow-xl shadow-black/10 inline-flex items-center gap-2 shrink-0 active:scale-95">
+                    <LogOut size={18} /> Check Out
+                  </button>
+                </div>
+              </motion.div>
+            )}
+
+            {phase === "out" && (
+              <motion.div key="out" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                <div className="flex items-center justify-between gap-3 flex-wrap mb-5">
+                  <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-white/15 px-2.5 py-1 rounded-full">
+                    <CheckCircle2 size={13} /> Day complete
+                  </div>
+                  {todayCheckin?.status !== "approved" && (
+                    <button onClick={handleRevertCheckout}
+                      className="inline-flex items-center gap-1 text-[11px] font-medium text-white/70 hover:text-white transition-colors">
+                      <TimerReset size={11} /> Revert checkout
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <StatChip icon={LogIn} label="Check-in" value={checkedInAt ? format(checkedInAt, "hh:mm a") : "—"} />
+                  <StatChip icon={LogOut} label="Check-out" value={checkedOutAt ? format(checkedOutAt, "hh:mm a") : "—"} />
+                  <StatChip icon={Video} label="Videos" value={String(todayCheckin?.totalVideos ?? 0)} />
+                  <StatChip
+                    icon={todayCheckin?.status === "approved" ? ShieldCheck : todayCheckin?.status === "rejected" ? ShieldAlert : ClipboardCheck}
+                    label="Day report"
+                    value={todayCheckin?.status === "pending_approval" ? "Pending" : todayCheckin?.status === "approved" ? "Approved" : todayCheckin?.status === "rejected" ? "Rejected" : "Submitted"}
+                  />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </motion.div>
+
+      {/* Today's official attendance status */}
+      {todayAttendance && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}
+          className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3">
+          <span className="text-sm text-muted-foreground">Today's official attendance status</span>
+          <span className={cn("text-xs font-bold px-2.5 py-1 rounded-full border", ATTENDANCE_META[todayAttendance].tone)}>
+            {ATTENDANCE_META[todayAttendance].label}
+          </span>
+        </motion.div>
+      )}
 
       {/* Check-Out Modal */}
       {showCheckout && user && todayCheckin && (
-        <CheckoutModal
-          user={user}
-          todayCheckin={todayCheckin}
-          assignments={assignments}
-          onClose={() => setShowCheckout(false)}
-        />
+        <CheckoutModal user={user} todayCheckin={todayCheckin} assignments={assignments} onClose={() => setShowCheckout(false)} />
       )}
 
-      {/* Active Work Section */}
-      {activeTasks.length > 0 && (
-        <div className="bg-card border border-border rounded-xl overflow-hidden">
-          <div className="p-4 border-b border-border flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Briefcase size={16} className="text-primary" />
-              <h2 className="font-display font-semibold text-foreground">Active Work</h2>
-              <span className="text-xs text-muted-foreground">({activeTasks.length} tasks)</span>
-            </div>
-            <button onClick={() => navigate('/tech/my-work')} className="text-xs text-primary hover:underline">View All</button>
-          </div>
-          <div className="p-4 space-y-3">
-            {todayTasks.length > 0 && (
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-2">Today's Tasks</p>
-                {todayTasks.map(a => {
-                  const cfg = taskStatusConfig[a.status];
-                  return (
-                    <div key={a.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/30 mb-2 last:mb-0">
-                      <div className="flex items-center space-x-3">
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${cfg?.color}`}>{cfg?.label}</span>
-                        <div>
-                          <p className="text-sm font-medium text-foreground">{a.businessName || a.displayTitle}</p>
-                          <p className="text-xs text-muted-foreground capitalize">{a.category} · {a.clipCount} clips + EC · {a.duration} · Code: <span className="font-mono">{a.accessCode}</span></p>
-                        </div>
-                      </div>
-                      <button onClick={() => navigate('/tech/my-work')} className="text-xs px-3 py-1.5 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">Open</button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {unfinishedPast.length > 0 && (
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
-                  <AlertCircle size={12} /> Previous Unfinished Tasks
-                </p>
-                {unfinishedPast.map(a => {
-                  const cfg = taskStatusConfig[a.status];
-                  return (
-                    <div key={a.id} className="flex items-center justify-between p-3 rounded-lg bg-destructive/5 border border-destructive/10 mb-2 last:mb-0">
-                      <div className="flex items-center space-x-3">
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${cfg?.color}`}>{cfg?.label}</span>
-                        <div>
-                          <p className="text-sm font-medium text-foreground">{a.businessName || a.displayTitle}</p>
-                          <p className="text-xs text-muted-foreground capitalize">{a.category} · {a.clipCount} clips + EC · {a.duration} · From: {a.date} · Code: <span className="font-mono">{a.accessCode}</span></p>
-                        </div>
-                      </div>
-                      <button onClick={() => navigate('/tech/my-work')} className="text-xs px-3 py-1.5 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">Open</button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {activeTasks.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">No active tasks. You're all caught up!</p>
-            )}
-          </div>
-        </div>
-      )}
+      {/* Full attendance history & calendar */}
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}>
+        <MyDayCalendar memberId={user.uid} />
+      </motion.div>
     </div>
   );
+}
+
+function StatChip({ icon: Icon, label, value }: { icon: any; label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-white/10 border border-white/15 px-3 py-2.5 backdrop-blur-sm">
+      <div className="flex items-center gap-1.5 text-white/70 text-[10px] mb-1"><Icon size={11} /> {label}</div>
+      <div className="text-white font-semibold text-sm truncate">{value}</div>
+    </div>
+  );
+}
+
+function cnPhase(phase: "pre" | "in" | "out"): string {
+  const base = "absolute inset-0 bg-gradient-to-br";
+  if (phase === "pre") return `${base} from-emerald-500 via-emerald-600 to-teal-700`;
+  if (phase === "in") return `${base} from-blue-500 via-blue-600 to-indigo-700`;
+  return `${base} from-slate-600 via-slate-700 to-slate-800`;
 }

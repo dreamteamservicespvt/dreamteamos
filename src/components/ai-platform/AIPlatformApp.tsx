@@ -147,6 +147,27 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     setFormData(prev => ({ ...prev, duration: seconds, durationMode: isPreset ? 'preset' : 'custom' }));
   }, [assignment?.id]);
 
+  // Prefill & lock the ad specification (model gender, attire, aspect ratio, language) set by
+  // the admin/team leader at assignment time — each field locks independently only when the
+  // assignment actually specifies it, so older assignments created before this feature existed
+  // stay fully editable exactly as before.
+  useEffect(() => {
+    if (!assignment) return;
+    setFormData(prev => ({
+      ...prev,
+      ...(assignment.modelGender ? { gender: assignment.modelGender as ModelGender } : {}),
+      ...(assignment.attireType ? { attireType: assignment.attireType as AttireType } : {}),
+      ...(assignment.attireType === AttireType.CUSTOM && assignment.customAttire ? { customAttire: assignment.customAttire } : {}),
+      ...(assignment.aspectRatio ? { aspectRatio: assignment.aspectRatio } : {}),
+      ...(assignment.language ? { language: assignment.language } : {}),
+    }));
+  }, [assignment?.id]);
+
+  const genderLocked = !!assignment?.modelGender;
+  const attireLocked = !!assignment?.attireType;
+  const aspectRatioLocked = !!assignment?.aspectRatio;
+  const languageLocked = !!assignment?.language;
+
   // Extract business name whenever outputs change
   useEffect(() => {
     if (outputs?.businessInfo && onBusinessNameExtracted) {
@@ -726,6 +747,13 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     <label className={cn("flex items-center gap-1.5 text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>
                       <Ratio className="w-4 h-4 text-blue-500" /> Aspect Ratio
                     </label>
+                    {aspectRatioLocked ? (
+                      <div className={cn("flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm",
+                        isDark ? "bg-slate-700/60 border-slate-600 text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
+                        <span className="font-mono font-semibold">{formData.aspectRatio}</span>
+                        <span className={cn("text-[11px] px-2 py-0.5 rounded-full", isDark ? "bg-blue-900/40 text-blue-300" : "bg-blue-100 text-blue-700")}>🔒 Fixed by assignment</span>
+                      </div>
+                    ) : (
                     <div className="grid grid-cols-2 gap-3">
                       {([['9:16', 'Vertical'], ['16:9', 'Horizontal']] as const).map(([r, label]) => (
                         <button key={r} type="button" onClick={() => setFormData(prev => ({ ...prev, aspectRatio: r }))}
@@ -738,6 +766,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                         </button>
                       ))}
                     </div>
+                    )}
                   </div>
 
                   {/* #4b — Language (searchable) */}
@@ -745,6 +774,13 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     <label className={cn("flex items-center gap-1.5 text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>
                       <Languages className="w-4 h-4 text-purple-500" /> Language
                     </label>
+                    {languageLocked ? (
+                      <div className={cn("flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm",
+                        isDark ? "bg-slate-700/60 border-slate-600 text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
+                        <span className="font-semibold">{formData.language}</span>
+                        <span className={cn("text-[11px] px-2 py-0.5 rounded-full", isDark ? "bg-blue-900/40 text-blue-300" : "bg-blue-100 text-blue-700")}>🔒 Fixed by assignment</span>
+                      </div>
+                    ) : (
                     <div className="relative">
                       <button type="button" onClick={() => { setLanguageOpen(o => !o); setLanguageSearch(''); }}
                         className={cn("w-full flex items-center justify-between border rounded-lg px-3 py-2 text-sm outline-none",
@@ -778,6 +814,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                         </div>
                       )}
                     </div>
+                    )}
                   </div>
 
                   {/* Ad Type */}
@@ -846,6 +883,13 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                   {creationMode === 'video' && (
                     <div>
                       <label className={cn("block text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>Model Gender</label>
+                      {genderLocked ? (
+                        <div className={cn("flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm capitalize",
+                          isDark ? "bg-slate-700/60 border-slate-600 text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
+                          <span className="font-semibold">{formData.gender === ModelGender.MALE ? '👨 Male' : '👩 Female'}</span>
+                          <span className={cn("text-[11px] px-2 py-0.5 rounded-full", isDark ? "bg-blue-900/40 text-blue-300" : "bg-blue-100 text-blue-700")}>🔒 Fixed by assignment</span>
+                        </div>
+                      ) : (
                       <div className="grid grid-cols-2 gap-2">
                         {[ModelGender.FEMALE, ModelGender.MALE].map((g) => (
                           <button key={g} type="button"
@@ -864,6 +908,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                           </button>
                         ))}
                       </div>
+                      )}
                     </div>
                   )}
 
@@ -871,6 +916,14 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                   {creationMode === 'video' && (
                     <div>
                       <label className={cn("block text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>Model Attire</label>
+                      {attireLocked ? (
+                        <div className={cn("flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm",
+                          isDark ? "bg-slate-700/60 border-slate-600 text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
+                          <span className="font-semibold truncate">{formData.attireType === AttireType.CUSTOM && formData.customAttire ? formData.customAttire : ATTIRE_LABELS[formData.attireType]}</span>
+                          <span className={cn("shrink-0 ml-2 text-[11px] px-2 py-0.5 rounded-full", isDark ? "bg-blue-900/40 text-blue-300" : "bg-blue-100 text-blue-700")}>🔒 Fixed</span>
+                        </div>
+                      ) : (
+                      <>
                       <select className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
                           isDark ? "bg-slate-700 border-slate-600 text-slate-200 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200"
                         )} value={formData.attireType} onChange={(e) => setFormData(prev => ({ ...prev, attireType: e.target.value as AttireType }))}>
@@ -888,6 +941,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                           value={formData.customAttire || ''}
                           onChange={(e) => setFormData(prev => ({ ...prev, customAttire: e.target.value }))}
                         />
+                      )}
+                      </>
                       )}
                     </div>
                   )}
@@ -1260,10 +1315,10 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                           </div>
                         )}
                         {outputs.overlayTexts && outputs.overlayTexts.length > 0 && (
-                          Array.from(new Set(outputs.overlayTexts.map((o: any) => o.clip))).sort((a: any, b: any) => a - b).map((clip: any) => (
+                          Array.from(new Set(outputs.overlayTexts.map((o: any) => Number(o.clip) || 0))).sort((a: number, b: number) => a - b).map((clip: number) => (
                             <div key={clip} className="mb-3 last:mb-0">
                               <p className={cn("text-[11px] font-semibold uppercase tracking-wide mb-1.5", isDark ? "text-slate-400" : "text-slate-500")}>Clip {clip}</p>
-                              {outputs.overlayTexts!.filter((o: any) => o.clip === clip).map((o: any, i: number) => (
+                              {outputs.overlayTexts!.filter((o: any) => (Number(o.clip) || 0) === clip).map((o: any, i: number) => (
                                 <div key={i} className={cn("flex items-center justify-between gap-2 rounded-lg border p-2.5 mb-1.5", isDark ? "bg-slate-700/50 border-slate-600" : "bg-slate-50 border-slate-200")}>
                                   <div className="flex items-center gap-2 min-w-0">
                                     <TypeIcon className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />

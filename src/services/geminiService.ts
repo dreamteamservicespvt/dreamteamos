@@ -7,6 +7,7 @@ import {
   POSTER_SYSTEM_PROMPT,
   VOICEOVER_SYSTEM_PROMPT,
   VOICEOVER_REPAIR_SYSTEM_PROMPT,
+  VOICEOVER_QUALITY_REVIEW_SYSTEM_PROMPT,
   VEO_SEGMENT_SYSTEM_PROMPT,
   STOCK_IMAGE_SYSTEM_PROMPT,
   OVERLAY_TEXT_SYSTEM_PROMPT,
@@ -1253,7 +1254,7 @@ export const generateAdAssets = async (
     let voiceOverIssues = validateVoiceOverSegments(normalizedVoiceOver.rawScript, normalizedVoiceOver.segments, segmentCount, formData.language);
 
     for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES && voiceOverIssues.length > 0; pass++) {
-      const repairSystemPrompt = buildLanguageDirective(formData) + VOICEOVER_REPAIR_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName);
+      const repairSystemPrompt = buildLanguageDirective(formData) + VOICEOVER_REPAIR_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName, formData.language);
       const repairUserPrompt = `Repair this ${formData.language || 'Telugu'} voice-over script using only verified business facts.
 
 BUSINESS INFORMATION:
@@ -1284,6 +1285,52 @@ Return only the repaired ${segmentCount} clip lines.`;
     }
 
     return normalizedVoiceOver;
+  };
+
+  // Native-speaker linguistic QA / self-refine pass (see VOICEOVER_QUALITY_REVIEW_SYSTEM_PROMPT
+  // in prompts.ts for the full rationale). applyVoiceOverRepairIfNeeded only enforces MECHANICAL
+  // rules (word count, CTA placement, forbidden characters) — it cannot judge whether the script
+  // actually sounds native, modern, and persuasive rather than translated or literary. This runs
+  // a second model call acting as a strict native-speaker copy editor that rewrites the script if
+  // needed, then hands it back through the mechanical repair pass again in case the rewrite
+  // drifted from the word-count/format contract the rest of the app depends on. Only applied to
+  // AI-generated scripts — never to a user's own pasted custom script, which must keep the user's
+  // original wording untouched.
+  const MAX_QUALITY_REVIEW_PASSES = 1;
+  const runVoiceOverQualityReview = async (candidateFormatted: string): Promise<string> => {
+    let reviewed = candidateFormatted;
+    for (let pass = 0; pass < MAX_QUALITY_REVIEW_PASSES; pass++) {
+      try {
+        const reviewResponse = await callWithFallback(async (ai, model) => {
+          return await ai.models.generateContent({
+            model,
+            contents: [{ role: 'user', parts: [{ text:
+`CANDIDATE SCRIPT (already mechanically valid — ${segmentCount} clips, 18 words each):
+${reviewed}
+
+BUSINESS INFORMATION:
+${JSON.stringify(businessInfo, null, 2)}
+
+Review it now and return the JSON verdict.` }] }],
+            config: { systemInstruction: VOICEOVER_QUALITY_REVIEW_SYSTEM_PROMPT(formData.language), responseMimeType: "application/json" }
+          });
+        });
+        const parsed = JSON.parse(reviewResponse.text || '{}');
+        if (parsed && typeof parsed.correctedScript === 'string' && parsed.correctedScript.trim()) {
+          reviewed = parsed.correctedScript;
+          if (Array.isArray(parsed.issues) && parsed.issues.length > 0) {
+            console.info(`Voice-over quality review (pass ${pass + 1}) — score ${parsed.score ?? '?'}, fixed:`, parsed.issues);
+          }
+          if (parsed.pass === true) break;
+        } else {
+          break; // malformed response — keep the mechanically-repaired script rather than risk corrupting it
+        }
+      } catch (err) {
+        console.warn('Voice-over quality review failed; keeping the mechanically-repaired script.', err);
+        break;
+      }
+    }
+    return reviewed;
   };
 
   if (customScript && customScript.trim()) {
@@ -1337,8 +1384,17 @@ Segment 2: <text>
     });
 
     const repairedVoiceOver = await applyVoiceOverRepairIfNeeded(scriptResponse.text || "Failed to generate Script.");
-    parsedSegments = repairedVoiceOver.segments;
-    voiceOverScript = repairedVoiceOver.formatted;
+
+    // Native-speaker QA pass, then re-run mechanical repair only if the rewrite actually
+    // changed something (keeps the common case — review confirms the script is already
+    // clean — to a single extra API call).
+    const qualityReviewed = await runVoiceOverQualityReview(repairedVoiceOver.formatted);
+    const finalVoiceOver = qualityReviewed === repairedVoiceOver.formatted
+      ? repairedVoiceOver
+      : await applyVoiceOverRepairIfNeeded(qualityReviewed);
+
+    parsedSegments = finalVoiceOver.segments;
+    voiceOverScript = finalVoiceOver.formatted;
   }
 
   // Emit partial result: voiceOver ready
@@ -1870,6 +1926,44 @@ The image MUST stay ${ratio} ${orient} and hyper-realistic / highly relatable. O
     .trim();
 };
 
+// The canonical voice-over format (see formatVoiceOverScript) labels each clip with its
+// TIME RANGE — "0-8: text", "8-16: text" — never a plain clip number. Handing that straight
+// to the overlay model forced it to GUESS which integer clip each line was, and it would
+// sometimes echo the time range itself (or invent a number), scrambling the on-screen
+// "Clip N" grouping and order. Fix: re-number the script into unambiguous "Clip 1:",
+// "Clip 2:", ... labels ourselves before the model ever sees it, so it only has to COPY a
+// number that's already right there — never infer one.
+const toNumberedClipScript = (script: string): { numberedScript: string; clipCount: number } => {
+  const headerPattern = /^\s*(?:\d+\s*-\s*\d+|segment\s*\d+)\s*:\s*(.*)$/i;
+  const lines = (script || '').split(/\r?\n/);
+  const clips: string[] = [];
+  let current: string | null = null;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (/^full\s*script\s*:?$/i.test(line)) break;
+    const match = line.match(headerPattern);
+    if (match) {
+      if (current !== null) clips.push(current.trim());
+      current = match[1] || '';
+    } else if (current !== null) {
+      current += ` ${line}`;
+    }
+  }
+  if (current !== null) clips.push(current.trim());
+
+  if (clips.length === 0) {
+    const whole = (script || '').trim();
+    return { numberedScript: whole ? `Clip 1: ${whole}` : '', clipCount: whole ? 1 : 0 };
+  }
+
+  return {
+    numberedScript: clips.map((text, i) => `Clip ${i + 1}: ${text}`).join('\n'),
+    clipCount: clips.length,
+  };
+};
+
 // Generate per-clip on-screen OVERLAY TEXTS with CapCut-searchable sound-effect suggestions.
 export const generateOverlayTexts = async (
   voiceOverScript: string,
@@ -1879,12 +1973,14 @@ export const generateOverlayTexts = async (
   if (API_KEYS.length === 0) {
     throw new Error("No API keys configured. Please set API_KEY_1, API_KEY_2, etc. in your environment.");
   }
+  const { numberedScript, clipCount } = toNumberedClipScript(voiceOverScript);
+
   const response = await callWithFallback(async (ai, model) => {
     return await ai.models.generateContent({
       model,
       contents: [{ role: 'user', parts: [{ text:
-`VOICE-OVER SCRIPT (per clip, in order):
-${voiceOverScript}
+`VOICE-OVER SCRIPT — already split into ${clipCount || 'its'} numbered clips, in order. Use these EXACT clip numbers ("clip": 1, 2, 3, ...) — never a time range, never invented:
+${numberedScript || voiceOverScript}
 
 BUSINESS INFORMATION:
 ${JSON.stringify(businessInfo, null, 2)}
@@ -1896,12 +1992,31 @@ Generate the on-screen overlay texts now.` }] }],
     });
   });
   const text = response.text || "[]";
+  let parsed: any[];
   try {
-    const parsed = JSON.parse(text);
-    return Array.isArray(parsed) ? parsed : [];
+    const raw = JSON.parse(text);
+    parsed = Array.isArray(raw) ? raw : [];
   } catch {
-    return [];
+    parsed = [];
   }
+
+  // Self-healing pass: guarantee every item carries a real integer clip number within
+  // range, regardless of what the model actually returned. If an item's clip is missing,
+  // non-numeric, or out of range, it inherits the previous (valid) item's clip number —
+  // items arrive in script order, so this keeps overlays grouped with their real clip
+  // instead of vanishing or rendering a garbled "Clip name".
+  let lastClip = 1;
+  return parsed
+    .map((item) => {
+      const digits = String(item?.clip ?? '').match(/\d+/);
+      const candidate = digits ? parseInt(digits[0], 10) : NaN;
+      const clip = Number.isFinite(candidate) && candidate >= 1 && (clipCount === 0 || candidate <= clipCount)
+        ? candidate
+        : lastClip;
+      lastClip = clip;
+      return { ...item, clip };
+    })
+    .sort((a, b) => a.clip - b.clip);
 };
 
 // Transliterate Telugu voice-over script to English using Gemini AI

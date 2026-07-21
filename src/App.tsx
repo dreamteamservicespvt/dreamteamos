@@ -31,6 +31,7 @@ import SalesMemberProfile from "@/pages/sales-member/MyProfile";
 import SalesScripts from "@/pages/sales-member/SalesScripts";
 import MyReviews from "@/pages/sales-member/MyReviews";
 import SalesMemberActivityHistory from "@/pages/sales-member/ActivityHistory";
+import SalesMemberSettlements from "@/pages/sales-member/Settlements";
 import SalesAdminDashboard from "@/pages/sales-admin/Dashboard";
 import SalesAdminMyTeam from "@/pages/sales-admin/MyTeam";
 import LeadsManagement from "@/pages/sales-admin/LeadsManagement";
@@ -198,6 +199,7 @@ const App = () => (
             <Route path="/sales/scripts" element={<SalesScripts />} />
             <Route path="/sales/profile" element={<SalesMemberProfile />} />
             <Route path="/sales/leaderboard" element={<Leaderboard />} />
+            <Route path="/sales/settlements" element={<SalesMemberSettlements />} />
             <Route path="/sales/history" element={<SalesMemberActivityHistory />} />
             <Route path="/sales/chat" element={<Chat />} />
             <Route path="/sales/meeting" element={<Meeting />} />

@@ -1,16 +1,17 @@
 import { useState, useEffect, useMemo } from "react";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { useSearchParams } from "react-router-dom";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { useFirestoreQuery } from "@/hooks/useFirestore";
 import { formatCurrency } from "@/utils/formatters";
 import { format, addDays, parseISO } from "date-fns";
 import {
-  Wallet, Loader2, Search, IndianRupee, CheckCircle2, CalendarRange, ChevronRight, History,
+  Wallet, Loader2, Search, IndianRupee, CheckCircle2, CalendarRange, ChevronRight, History, BellRing,
 } from "lucide-react";
 import {
   commissionRate, computeCommissionInRange, earliestVerifiedSaleDate, paidThrough, totalPaid, createSettlement,
-  adminSettlementsQuery,
+  adminSettlementsQuery, adminPendingRequestsQuery, resolvePendingRequests, type SettlementRequest,
 } from "@/services/settlements";
 import { useToast } from "@/hooks/use-toast";
 import type { AppUser, CommissionSettlement, Lead } from "@/types";
@@ -20,10 +21,15 @@ const today = () => format(new Date(), "yyyy-MM-dd");
 export default function Settlements() {
   const user = useAuthStore((s) => s.user);
   const { toast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [members, setMembers] = useState<AppUser[]>([]);
   const { data: settlements } = useFirestoreQuery<CommissionSettlement>(
     useMemo(() => (user ? adminSettlementsQuery(user.uid) : null), [user?.uid]),
+    [user?.uid],
+  );
+  const { data: pendingRequests } = useFirestoreQuery<SettlementRequest>(
+    useMemo(() => (user ? adminPendingRequestsQuery(user.uid) : null), [user?.uid]),
     [user?.uid],
   );
   const [loading, setLoading] = useState(true);
@@ -44,10 +50,28 @@ export default function Settlements() {
     return unsub;
   }, [user?.uid]);
 
+  // Deep link from a "settlement requested" notification — jump straight to that member.
+  useEffect(() => {
+    const memberUid = searchParams.get("member");
+    if (memberUid && members.length > 0) {
+      const member = members.find((m) => m.uid === memberUid);
+      if (member) {
+        setSelected(member);
+        const next = new URLSearchParams(searchParams);
+        next.delete("member");
+        setSearchParams(next, { replace: true });
+      }
+    }
+  }, [searchParams, members]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const requestedMemberIds = useMemo(() => new Set(pendingRequests.map((r) => r.memberId)), [pendingRequests]);
+
   const visibleMembers = useMemo(() => {
     const s = search.trim().toLowerCase();
-    return members.filter((m) => !s || m.name.toLowerCase().includes(s));
-  }, [members, search]);
+    return members
+      .filter((m) => !s || m.name.toLowerCase().includes(s))
+      .sort((a, b) => Number(requestedMemberIds.has(b.uid)) - Number(requestedMemberIds.has(a.uid)));
+  }, [members, search, requestedMemberIds]);
 
   if (loading) {
     return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
@@ -80,9 +104,10 @@ export default function Settlements() {
             const rate = commissionRate(m.earningsOption);
             const pt = paidThrough(settlements, m.uid);
             const paid = totalPaid(settlements, m.uid);
+            const requested = requestedMemberIds.has(m.uid);
             return (
               <button key={m.uid} onClick={() => setSelected(m)}
-                className="text-left bg-card border border-border rounded-xl p-4 hover:border-primary/40 hover:shadow-md transition-all">
+                className={`text-left bg-card border rounded-xl p-4 hover:shadow-md transition-all ${requested ? "border-warning/50 ring-1 ring-warning/30" : "border-border hover:border-primary/40"}`}>
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center font-display font-bold text-primary">{m.name?.charAt(0) || "?"}</div>
                   <div className="min-w-0">
@@ -91,6 +116,11 @@ export default function Settlements() {
                   </div>
                   <ChevronRight className="w-4 h-4 text-muted-foreground ml-auto" />
                 </div>
+                {requested && (
+                  <div className="flex items-center gap-1 mb-2 text-[10px] font-semibold text-warning">
+                    <BellRing className="w-3 h-3" /> Settlement requested
+                  </div>
+                )}
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground">Paid through {pt ? format(parseISO(pt), "dd MMM") : "—"}</span>
                   <span className="font-semibold text-primary">{formatCurrency(paid)} paid</span>
@@ -106,6 +136,7 @@ export default function Settlements() {
           member={selected}
           admin={user}
           settlements={settlements}
+          pendingRequests={pendingRequests.filter((r) => r.memberId === selected.uid)}
           onClose={() => setSelected(null)}
           toast={toast}
         />
@@ -115,10 +146,11 @@ export default function Settlements() {
 }
 
 // ── Per-member settlement modal ─────────────────────────────────────────────
-function SettlementDetail({ member, admin, settlements, onClose, toast }: {
+function SettlementDetail({ member, admin, settlements, pendingRequests, onClose, toast }: {
   member: AppUser;
   admin: AppUser;
   settlements: CommissionSettlement[];
+  pendingRequests: SettlementRequest[];
   onClose: () => void;
   toast: ReturnType<typeof useToast>["toast"];
 }) {
@@ -161,6 +193,7 @@ function SettlementDetail({ member, admin, settlements, onClose, toast }: {
         salesBase: range.base, amount: range.commission, saleCount: range.saleCount,
         note,
       });
+      if (pendingRequests.length > 0) await resolvePendingRequests(member.uid, pendingRequests).catch(() => {});
       setNote("");
       toast({ title: "Marked as paid", description: `${formatCurrency(range.commission)} commission recorded for ${member.name}.` });
     } catch {
@@ -182,6 +215,12 @@ function SettlementDetail({ member, admin, settlements, onClose, toast }: {
         </div>
 
         <div className="p-5 space-y-5">
+          {pendingRequests.length > 0 && (
+            <div className="flex items-start gap-2 rounded-lg bg-warning/10 border border-warning/30 text-warning text-xs p-2.5">
+              <BellRing className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              <span>{member.name} requested this settlement for {pendingRequests[0].fromDate} → {pendingRequests[0].toDate}. Paying below will clear the request.</span>
+            </div>
+          )}
           {leadsLoading ? (
             <div className="flex items-center justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
           ) : (

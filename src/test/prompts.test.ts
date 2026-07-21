@@ -5,6 +5,7 @@ import {
   MULTI_FRAME_SYSTEM_PROMPT,
   VOICEOVER_REPAIR_SYSTEM_PROMPT,
   VOICEOVER_SYSTEM_PROMPT,
+  VOICEOVER_QUALITY_REVIEW_SYSTEM_PROMPT,
   VEO_SEGMENT_SYSTEM_PROMPT,
   OVERLAY_TEXT_SYSTEM_PROMPT,
   detectEducationEnvironmentMode,
@@ -280,6 +281,36 @@ describe("voice-over prompt hardening", () => {
     expect(prompt).toContain("Every clip must contain EXACTLY 18 spoken words");
     expect(prompt).toContain("NEVER speak or include any phone number or contact number");
     expect(prompt).toContain("Remove duplicated clips and repeated closings");
+  });
+
+  it("repair prompt honors a non-Telugu language instead of hardcoding Telugu", () => {
+    const teluguPrompt = VOICEOVER_REPAIR_SYSTEM_PROMPT(32, 4, "commercial", "", "Telugu");
+    const hindiPrompt = VOICEOVER_REPAIR_SYSTEM_PROMPT(32, 4, "commercial", "", "Hindi");
+    const englishPrompt = VOICEOVER_REPAIR_SYSTEM_PROMPT(32, 4, "commercial", "", "English");
+
+    expect(teluguPrompt).toContain("మరిన్ని వివరాల కోసం స్క్రీన్‌పై ఉన్న నంబర్‌కు ఇప్పుడే కాల్ చేయండి");
+    expect(hindiPrompt).not.toContain("మరిన్ని వివరాల కోసం");
+    expect(hindiPrompt).toContain("Hindi commercial script doctor");
+    expect(hindiPrompt).toContain("native Hindi sentence meaning");
+    expect(englishPrompt).not.toContain("మరిన్ని వివరాల కోసం");
+    expect(englishPrompt).toContain("English commercial script doctor");
+  });
+
+  it("quality-review prompt targets native-speaker naturalness, not just mechanics", () => {
+    const prompt = VOICEOVER_QUALITY_REVIEW_SYSTEM_PROMPT("Telugu");
+
+    expect(prompt).toContain("LITERAL TRANSLATION ARTIFACTS");
+    expect(prompt).toContain("OLD / LITERARY / TEXTBOOK LANGUAGE");
+    expect(prompt).toContain("INCONSISTENT TONE");
+    expect(prompt).toContain("GENERIC / TEMPLATED WRITING");
+    expect(prompt).toContain('"correctedScript"');
+    expect(prompt).toContain("Every clip must contain EXACTLY 18 spoken words");
+  });
+
+  it("quality-review prompt is language-parameterized (not Telugu-only)", () => {
+    const kannadaPrompt = VOICEOVER_QUALITY_REVIEW_SYSTEM_PROMPT("Kannada");
+    expect(kannadaPrompt).not.toContain("మరిన్ని వివరాల కోసం");
+    expect(kannadaPrompt).toContain("native-Kannada-speaking");
   });
 });
 

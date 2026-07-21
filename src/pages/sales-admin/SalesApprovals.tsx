@@ -9,7 +9,7 @@ import { useAuthStore } from "@/store/authStore";
 import { formatCurrency, formatDuration } from "@/utils/formatters";
 import { useNow } from "@/hooks/useNow";
 import { applySaleFreeze, adminReleaseLock, buildLeadFreezeFields, clearedLeadFreezeFields, clearSaleFreeze } from "@/services/numberLock";
-import { format } from "date-fns";
+import { format, subDays, startOfDay } from "date-fns";
 import type { AppUser, Lead, SaleDetail } from "@/types";
 import { CheckCircle, XCircle, ShoppingBag, ExternalLink, RotateCcw, Trash2, CheckSquare, Square, Phone, MessageCircle, AlertTriangle, FileText, Snowflake, Lock, ShieldOff, Loader2 } from "lucide-react";
 import { formatPhoneDisplay, getCallUrl, getWhatsAppUrl, normalizePhone } from "@/utils/phone";
@@ -24,6 +24,15 @@ function tsToMs(ts: TimestampLike): number {
   return 0;
 }
 
+function getDayLabel(date: Date): string {
+  const today = startOfDay(new Date());
+  const target = startOfDay(date);
+  const diffDays = Math.round((today.getTime() - target.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  return `${diffDays} days ago`;
+}
+
 export default function SalesApprovals() {
   const currentUser = useAuthStore((s) => s.user);
   const { toast } = useToast();
@@ -32,6 +41,17 @@ export default function SalesApprovals() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"pending" | "verified" | "rejected" | "duplicates" | "frozen">("pending");
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  // Quick Today/Yesterday/last-5-days filter (same pattern used in Work Assign) — defaults to
+  // Today. An exact calendar date picked below takes precedence over this quick filter.
+  const [dayFilter, setDayFilter] = useState<string>("0");
+  const recentDays = useMemo(() => {
+    const days: { date: Date; dateStr: string; label: string }[] = [];
+    for (let i = 0; i < 5; i++) {
+      const d = subDays(new Date(), i);
+      days.push({ date: startOfDay(d), dateStr: format(d, "dd/MM/yyyy"), label: getDayLabel(d) });
+    }
+    return days;
+  }, []);
   // Live clock for real-time freeze countdowns. Ticks every second only while the Frozen tab is
   // open (so the list re-filters as freezes expire); a lazy tick elsewhere keeps inline counters fresh.
   const now = useNow(tab === "frozen" ? 1000 : 5000);
@@ -480,7 +500,16 @@ export default function SalesApprovals() {
 
   // ── Build filtered lists ─────────────────────────────────────────────────
 
-  const dateStr = selectedDate ? format(selectedDate, "dd/MM/yyyy") : null;
+  // An exact calendar date (selectedDate) takes precedence; otherwise fall back to the quick
+  // Today/Yesterday/last-5-days dropdown (dayFilter). "all" (from either) means no date filter.
+  const dateStr = selectedDate
+    ? format(selectedDate, "dd/MM/yyyy")
+    : dayFilter !== "all"
+      ? recentDays[parseInt(dayFilter)]?.dateStr ?? null
+      : null;
+  // "Today" also surfaces any older item still awaiting verification, so a still-pending sale
+  // never silently disappears from view just because a day has passed (mirrors Work Assign).
+  const isTodayFilter = !selectedDate && dayFilter === "0";
 
   type LeadItem = { lead: Lead; item: SaleDetail; itemIndex: number };
   const allLeadItems: LeadItem[] = leads.flatMap((lead) =>
@@ -523,7 +552,18 @@ export default function SalesApprovals() {
     if (!members || !members.has(lead.assignedTo) || members.size < 2) return [];
     return [...members].filter((id) => id !== lead.assignedTo).map((id) => getMemberName(id));
   };
-  const pending = allLeadItems.filter((li) => li.item.verificationStatus === "pending");
+  const pendingSubmittedDateStr = (li: LeadItem): string | null => {
+    const ts = (li.item.submittedAt as any)?.seconds;
+    return ts ? format(new Date(ts * 1000), "dd/MM/yyyy") : null;
+  };
+  const pending = allLeadItems.filter((li) => {
+    if (li.item.verificationStatus !== "pending") return false;
+    // Today (the default) or no filter at all → never hide work still awaiting verification,
+    // regardless of when it was submitted. A specific single day (Yesterday / N days ago / an
+    // exact calendar date) filters strictly to that day.
+    if (!dateStr || isTodayFilter) return true;
+    return pendingSubmittedDateStr(li) === dateStr;
+  });
   const verified = allLeadItems.filter((li) => {
     if (li.item.verificationStatus !== "verified") return false;
     if (!dateStr) return true;
@@ -576,6 +616,13 @@ export default function SalesApprovals() {
   const allPendingSelected = pendingKeys.length > 0 && pendingKeys.every((k) => selectedKeys.has(k));
   const someSelected = selectedKeys.size > 0 && tab === "pending";
 
+  // Totals — the filtered-list total is always visible (no selection needed); the selected
+  // total appears alongside it once the admin ticks contacts to verify.
+  const filteredTotal = displayItems.reduce((sum, li) => sum + (li.item.amount || 0), 0);
+  const selectedTotal = tab === "pending"
+    ? displayItems.filter((li) => selectedKeys.has(makeKey(li.lead.id, li.itemIndex))).reduce((sum, li) => sum + (li.item.amount || 0), 0)
+    : 0;
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -592,13 +639,22 @@ export default function SalesApprovals() {
         <div>
           <h1 className="font-display text-lg md:text-2xl font-bold text-foreground">Sales Approvals</h1>
           <p className="text-muted-foreground text-xs md:text-sm mt-1">
-            {selectedDate ? `Filtered: ${format(selectedDate, "dd/MM/yyyy")}` : "Verify sales reported by your team"}
+            {selectedDate ? `Filtered: ${format(selectedDate, "dd/MM/yyyy")}` : dayFilter !== "all" ? `Filtered: ${recentDays[parseInt(dayFilter)]?.label}` : "Verify sales reported by your team"}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <DashboardDayPicker selectedDate={selectedDate} onSelect={setSelectedDate} />
-          {selectedDate && (
-            <button onClick={() => setSelectedDate(undefined)} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Clear</button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {!selectedDate && (
+            <select value={dayFilter} onChange={(e) => setDayFilter(e.target.value)}
+              className="h-9 rounded-lg border border-border bg-card px-3 text-xs md:text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20">
+              {recentDays.map((d, i) => (
+                <option key={d.dateStr} value={String(i)}>{d.label} ({format(d.date, "dd/MM")})</option>
+              ))}
+              <option value="all">All Days</option>
+            </select>
+          )}
+          <DashboardDayPicker selectedDate={selectedDate} onSelect={(d) => { setSelectedDate(d); setDayFilter("all"); }} />
+          {(selectedDate || dayFilter !== "0") && (
+            <button onClick={() => { setSelectedDate(undefined); setDayFilter("0"); }} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Clear</button>
           )}
         </div>
       </div>
@@ -627,6 +683,14 @@ export default function SalesApprovals() {
         </button>
       </div>
 
+      {/* Total for the current tab + date filter — always visible, no selection required */}
+      {(tab === "pending" || tab === "verified" || tab === "rejected") && (
+        <div className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-2.5">
+          <span className="text-xs md:text-sm text-muted-foreground capitalize">{tab} total ({displayItems.length} sale{displayItems.length === 1 ? "" : "s"})</span>
+          <span className="font-display font-bold text-foreground text-base md:text-lg">{formatCurrency(filteredTotal)}</span>
+        </div>
+      )}
+
       {/* Bulk action bar — only on Pending tab */}
       {tab === "pending" && pending.length > 0 && (
         <div className="bg-card border border-border rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center gap-3">
@@ -643,7 +707,7 @@ export default function SalesApprovals() {
             <span>{allPendingSelected ? "Deselect All" : "Select All"}</span>
             {selectedKeys.size > 0 && (
               <span className="text-[10px] bg-primary/15 text-primary px-1.5 py-0.5 rounded-full font-medium">
-                {selectedKeys.size} selected
+                {selectedKeys.size} selected · {formatCurrency(selectedTotal)}
               </span>
             )}
           </button>

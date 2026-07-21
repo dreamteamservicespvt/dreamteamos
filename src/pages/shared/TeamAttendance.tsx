@@ -4,7 +4,8 @@ import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { CalendarDays, ChevronLeft, ChevronRight, PartyPopper, Trash2, Users, X } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { CalendarDays, ChevronLeft, ChevronRight, PartyPopper, Trash2, Users, X, CheckCircle2, User, CalendarClock, Clock3, UserCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { AppUser } from "@/types";
 import {
@@ -48,6 +49,9 @@ export default function TeamAttendance() {
   const [holidays, setHolidays] = useState<Map<string, Holiday>>(new Map());
   const [checkedIn, setCheckedIn] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<{ member: AppUser; date: string; current: AttendanceStatus | null } | null>(null);
+  /** Confirmation popup shown immediately after a manual status is applied: the individual
+   *  member's date, time-marked, and attendance detail — before offering the WhatsApp step. */
+  const [confirmStep, setConfirmStep] = useState<{ member: AppUser; date: string; status: AttendanceStatus; markedAt: Date } | null>(null);
   /** WhatsApp step shown after a manual status is applied: prefilled, fully editable message. */
   const [waStep, setWaStep] = useState<{ member: AppUser; date: string; status: AttendanceStatus; message: string } | null>(null);
   const [holidayModal, setHolidayModal] = useState(false);
@@ -116,22 +120,29 @@ export default function TeamAttendance() {
         link: member.role === "sales_member" ? "/sales/profile" : "/tech/profile",
       }).catch(() => {});
       setEditing(null);
-      // Move to the WhatsApp step with a prefilled, editable message.
-      const needsReason = status === "half" || status === "absent" || status === "leave";
-      setWaStep({
-        member,
-        date,
-        status,
-        message: [
-          `Attendance Update — ${format(new Date(date), "dd MMM yyyy")}`,
-          `Name: ${member.name}`,
-          `Status: ${ATTENDANCE_META[status].label}`,
-          ...(needsReason ? ["Reason: "] : []),
-        ].join("\n"),
-      });
+      // Show the confirmation popup first — the individual member's date, time-marked, and
+      // attendance detail — before offering to share it on WhatsApp.
+      setConfirmStep({ member, date, status, markedAt: new Date() });
     } catch {
       toast({ title: "Error", description: "Could not update attendance.", variant: "destructive" });
     }
+  };
+
+  /** Build the prefilled WhatsApp message and move from the confirmation popup into the WhatsApp step. */
+  const proceedToWhatsApp = (member: AppUser, date: string, status: AttendanceStatus) => {
+    const needsReason = status === "half" || status === "absent" || status === "leave";
+    setConfirmStep(null);
+    setWaStep({
+      member,
+      date,
+      status,
+      message: [
+        `Attendance Update — ${format(new Date(date), "dd MMM yyyy")}`,
+        `Name: ${member.name}`,
+        `Status: ${ATTENDANCE_META[status].label}`,
+        ...(needsReason ? ["Reason: "] : []),
+      ].join("\n"),
+    });
   };
 
   const toggleEmployment = async (member: AppUser) => {
@@ -316,6 +327,88 @@ export default function TeamAttendance() {
           </div>
         </div>
       )}
+
+      {/* Attendance recorded — individual member/date/time/status confirmation */}
+      <AnimatePresence>
+        {confirmStep && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            onClick={() => setConfirmStep(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+              transition={{ type: "spring", stiffness: 340, damping: 28 }}
+              className="w-full max-w-sm rounded-2xl border border-border bg-card shadow-2xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className={cn("px-5 pt-6 pb-5 text-center bg-gradient-to-b", ATTENDANCE_META[confirmStep.status].tone.includes("emerald") ? "from-emerald-500/15 to-transparent" : ATTENDANCE_META[confirmStep.status].tone.includes("amber") ? "from-amber-500/15 to-transparent" : ATTENDANCE_META[confirmStep.status].tone.includes("rose") ? "from-rose-500/15 to-transparent" : ATTENDANCE_META[confirmStep.status].tone.includes("sky") ? "from-sky-500/15 to-transparent" : "from-slate-400/15 to-transparent")}>
+                <motion.div
+                  initial={{ scale: 0, rotate: -20 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 18, delay: 0.1 }}
+                  className={cn("mx-auto w-14 h-14 rounded-full flex items-center justify-center mb-3 border", ATTENDANCE_META[confirmStep.status].tone)}
+                >
+                  <CheckCircle2 className="w-7 h-7" />
+                </motion.div>
+                <h3 className="font-display font-semibold text-foreground text-base">Attendance Recorded</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">The update has been saved successfully.</p>
+              </div>
+
+              <div className="p-5 space-y-2.5">
+                <div className="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5">
+                  <User className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-[10px] text-muted-foreground">Member</div>
+                    <div className="text-sm font-medium text-foreground truncate">{confirmStep.member.name}</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5">
+                  <CalendarClock className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-[10px] text-muted-foreground">Date</div>
+                    <div className="text-sm font-medium text-foreground">{format(new Date(confirmStep.date), "EEEE, dd MMMM yyyy")}</div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2.5">
+                    <Clock3 className="w-4 h-4 text-muted-foreground shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-muted-foreground">Time marked</div>
+                      <div className="text-sm font-medium text-foreground">{format(confirmStep.markedAt, "hh:mm a")}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2.5">
+                    <UserCheck className="w-4 h-4 text-muted-foreground shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-muted-foreground">Marked by</div>
+                      <div className="text-sm font-medium text-foreground truncate">{user?.name || "You"}</div>
+                    </div>
+                  </div>
+                </div>
+                <div className={cn("flex items-center justify-between rounded-lg border px-3 py-2.5", ATTENDANCE_META[confirmStep.status].tone)}>
+                  <span className="text-xs font-medium">Status</span>
+                  <span className="text-sm font-bold">{ATTENDANCE_META[confirmStep.status].label}</span>
+                </div>
+
+                <div className="flex gap-2 pt-1">
+                  <button onClick={() => setConfirmStep(null)}
+                    className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-border bg-background hover:bg-accent text-foreground transition-colors">
+                    Done
+                  </button>
+                  <button
+                    onClick={() => proceedToWhatsApp(confirmStep.member, confirmStep.date, confirmStep.status)}
+                    className="flex-[2] py-2.5 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 inline-flex items-center justify-center gap-1.5 transition-colors">
+                    <MessageCircle className="w-4 h-4" /> Send WhatsApp Update
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* WhatsApp update step — after a manual status was applied */}
       {waStep && (
