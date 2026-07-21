@@ -51,6 +51,75 @@ export function computeCommissionInRange(leads: Lead[], fromDate: string, toDate
   return { base, commission: Math.round((base * rate) / 100), saleCount };
 }
 
+/** Sales dated within [fromDate, toDate] still awaiting verification. A settlement only pays
+ *  VERIFIED sales, and once a day is behind "paid through" it is never revisited — so any
+ *  pending sale in the range would silently fall out of every future settlement. Surface the
+ *  count so the admin verifies (or rejects) them BEFORE marking the period paid. */
+export function countPendingInRange(leads: Lead[], fromDate: string, toDate: string): number {
+  let pending = 0;
+  for (const lead of leads) {
+    for (const it of saleItems(lead)) {
+      if (it.verificationStatus !== "pending") continue;
+      const d = saleDateStr(it, lead);
+      if (!d || d < fromDate || d > toDate) continue;
+      pending++;
+    }
+  }
+  return pending;
+}
+
+// ── Timestamp-cut settlement model ─────────────────────────────────────────────
+// A settlement pays EVERYTHING verified up to the exact moment it is marked (paidAt).
+// The next settlement pays everything verified AFTER that moment. Cutting by the payment
+// timestamp instead of a calendar date means a sale submitted/approved later on the very
+// day of a settlement simply falls into the next payout — it can never be skipped, which
+// the old "paid through <date>, resume next day" model allowed.
+
+/** Millisecond timestamp when a verified sale became payable — its verification moment,
+ *  falling back to submission time for legacy items that predate verifiedAt stamping. */
+function verifiedAtMs(item: SaleDetail, lead: Lead): number {
+  const s = (item.verifiedAt as any)?.seconds ?? (item.submittedAt as any)?.seconds ?? (lead.createdAt as any)?.seconds;
+  return s ? s * 1000 : 0;
+}
+
+/** The member's most recent settlement (by payment moment), or null if never settled. */
+export function lastSettlementOf(settlements: CommissionSettlement[], memberId: string): CommissionSettlement | null {
+  let latest: CommissionSettlement | null = null;
+  for (const s of settlements) {
+    if (s.memberId !== memberId) continue;
+    if (!latest || ((s.paidAt as any)?.seconds || 0) > ((latest.paidAt as any)?.seconds || 0)) latest = s;
+  }
+  return latest;
+}
+
+/** Commission on every VERIFIED sale not covered by the last settlement — i.e. verified
+ *  after the moment that settlement was marked (pass 0 when never settled). */
+export function computeUnpaidCommission(leads: Lead[], lastPaidAtMs: number, rate: number): RangeCommission {
+  let base = 0;
+  let saleCount = 0;
+  for (const lead of leads) {
+    for (const it of saleItems(lead)) {
+      if (it.verificationStatus !== "verified") continue;
+      if (verifiedAtMs(it, lead) <= lastPaidAtMs) continue;
+      base += it.amount || 0;
+      saleCount++;
+    }
+  }
+  return { base, commission: Math.round((base * rate) / 100), saleCount };
+}
+
+/** All of a member's sales still awaiting verification — they join a payout automatically
+ *  the moment they're verified, so this is purely informational. */
+export function countPendingSales(leads: Lead[]): number {
+  let pending = 0;
+  for (const lead of leads) {
+    for (const it of saleItems(lead)) {
+      if (it.verificationStatus === "pending") pending++;
+    }
+  }
+  return pending;
+}
+
 /** Earliest verified-sale date for a member (the natural start of the very first settlement). */
 export function earliestVerifiedSaleDate(leads: Lead[]): string | null {
   let min: string | null = null;

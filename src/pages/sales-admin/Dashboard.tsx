@@ -68,28 +68,31 @@ export default function SalesAdminDashboard() {
     const ts = item.submittedAt?.seconds ?? lead.createdAt?.seconds;
     return ts ? format(new Date(ts * 1000), "yyyy-MM-dd") : null;
   };
+  // REJECTED sales are failed sales — they must never count toward sales/revenue numbers.
   const teamSaleItems = teamLeads.flatMap((l: any) =>
-    (l.saleItems || (l.saleDetails ? [l.saleDetails] : [])).map((item: any) => ({ item, lead: l }))
+    (l.saleItems || (l.saleDetails ? [l.saleDetails] : []))
+      .filter((item: any) => item.verificationStatus !== "rejected")
+      .map((item: any) => ({ item, lead: l }))
   );
   const dateSaleItems = dateStr
     ? teamSaleItems.filter(({ item, lead }: any) => saleItemDate(item, lead) === dateStr)
     : teamSaleItems;
 
-  const salesDone = filteredLeads.filter((l: any) => l.saleDone);
+  // Sales Closed = sale items SUBMITTED in the period (not leads whose lastUpdated happens
+  // to fall in it — approval bumps lastUpdated and was shifting yesterday's sales to today).
+  const salesClosed = dateSaleItems.length;
   const totalRevenue = dateSaleItems.reduce((s: number, { item }: any) => s + (item.amount || 0), 0);
   const called = filteredLeads.filter((l: any) => l.status !== "not_called").length;
   const pendingApprovals = dateSaleItems.filter(({ item }: any) => item.verificationStatus === "pending").length;
 
   const chartData = members.map((m) => {
     const mLeads = filteredLeads.filter((l: any) => l.assignedTo === m.uid);
-    const mSales = mLeads.filter((l: any) => l.saleDone);
+    const mItems = dateSaleItems.filter(({ lead }: any) => lead.assignedTo === m.uid);
     return {
       name: m.name?.split(" ")[0] || "?",
       leads: mLeads.length,
-      sales: mSales.length,
-      revenue: dateSaleItems
-        .filter(({ lead }: any) => lead.assignedTo === m.uid)
-        .reduce((s: number, { item }: any) => s + (item.amount || 0), 0),
+      sales: mItems.length,
+      revenue: mItems.reduce((s: number, { item }: any) => s + (item.amount || 0), 0),
     };
   });
 
@@ -99,7 +102,10 @@ export default function SalesAdminDashboard() {
       const dailyTarget = m.dailyTarget || m.target || 10000;
       const memberLeads = teamLeads.filter((l: any) => l.assignedTo === m.uid);
       const memberSaleLeads = memberLeads.filter((l: any) => l.saleDone);
-      const allItems = memberSaleLeads.flatMap((l: any) => l.saleItems || (l.saleDetails ? [l.saleDetails] : []));
+      // Rejected sales are failed sales — never counted in revenue or sales totals.
+      const allItems = memberSaleLeads
+        .flatMap((l: any) => l.saleItems || (l.saleDetails ? [l.saleDetails] : []))
+        .filter((item: any) => item.verificationStatus !== "rejected");
       const verifiedItems = allItems.filter((item: any) => item.verificationStatus === "verified");
       const totalRev = allItems.reduce((s: number, item: any) => s + (item.amount || 0), 0);
       const verifiedRev = verifiedItems.reduce((s: number, item: any) => s + (item.amount || 0), 0);
@@ -108,7 +114,8 @@ export default function SalesAdminDashboard() {
       // approve action bumps) to count how many days they hit their target.
       const revenueByDay: Record<string, number> = {};
       memberSaleLeads.forEach((l: any) => {
-        const items = l.saleItems || (l.saleDetails ? [l.saleDetails] : []);
+        const items = (l.saleItems || (l.saleDetails ? [l.saleDetails] : []))
+          .filter((item: any) => item.verificationStatus !== "rejected");
         items.forEach((item: any) => {
           const ts = item.submittedAt?.seconds ?? l.createdAt?.seconds;
           if (!ts) return;
@@ -175,7 +182,7 @@ export default function SalesAdminDashboard() {
         <StatBox icon={Users} label="Team Members" value={members.length} color="text-role-sales-member" />
         <StatBox icon={Phone} label={selectedDate ? "Active Leads" : "Total Leads"} value={filteredLeads.length} color="text-info" />
         <StatBox icon={Target} label="Called" value={called} color="text-warning" />
-        <StatBox icon={ShoppingBag} label="Sales Closed" value={salesDone.length} color="text-success" />
+        <StatBox icon={ShoppingBag} label="Sales Closed" value={salesClosed} color="text-success" />
         <StatBox icon={TrendingUp} label="Revenue" value={formatCurrency(totalRevenue)} color="text-primary" />
       </div>
 

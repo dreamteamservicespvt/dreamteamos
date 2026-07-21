@@ -52,8 +52,12 @@ export default function SalesMemberDashboard() {
     const ts = item.submittedAt?.seconds ?? lead.createdAt?.seconds;
     return ts ? format(new Date(ts * 1000), "yyyy-MM-dd") : null;
   };
+  // Rejected sales are failed sales — excluded from every revenue/target figure (matches
+  // the sales admin dashboard, so both sides always show the same numbers).
   const allSaleItems = leads.flatMap((l) =>
-    (l.saleItems || (l.saleDetails ? [l.saleDetails] : [])).map((item) => ({ item, lead: l }))
+    (l.saleItems || (l.saleDetails ? [l.saleDetails] : []))
+      .filter((item) => item.verificationStatus !== "rejected")
+      .map((item) => ({ item, lead: l }))
   );
 
   const total = filtered.length;
@@ -70,14 +74,14 @@ export default function SalesMemberDashboard() {
   const monthlyTarget = user?.monthlyTarget || user?.target || 0;
   const dailyTarget = user?.dailyTarget || 0;
 
-  // Monthly target runs on the business pay cycle — 11th → 10th of next month (same cycle
+  // Monthly target runs on the business pay cycle — 10th → 9th of next month (same cycle
   // the leaderboard uses), NOT all-time and NOT the calendar month. The current cycle is
-  // the one containing today: on/after the 11th it started this month, before it started
+  // the one containing today: on/after the 10th it started this month, before it started
   // last month.
   const now = new Date();
-  const cycleAnchor = now.getDate() >= 11 ? now : new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const cycleStart = format(new Date(cycleAnchor.getFullYear(), cycleAnchor.getMonth(), 11), "yyyy-MM-dd");
-  const cycleEnd = format(new Date(cycleAnchor.getFullYear(), cycleAnchor.getMonth() + 1, 10), "yyyy-MM-dd");
+  const cycleAnchor = now.getDate() >= 10 ? now : new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const cycleStart = format(new Date(cycleAnchor.getFullYear(), cycleAnchor.getMonth(), 10), "yyyy-MM-dd");
+  const cycleEnd = format(new Date(cycleAnchor.getFullYear(), cycleAnchor.getMonth() + 1, 9), "yyyy-MM-dd");
   const cycleRevenue = allSaleItems
     .filter(({ item, lead }) => {
       const d = saleItemDate(item, lead);

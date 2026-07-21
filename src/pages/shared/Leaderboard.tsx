@@ -90,10 +90,10 @@ export default function Leaderboard() {
   const [rangeTo, setRangeTo] = useState<string>("");
   const customRangeActive = granularity === "month" && !!rangeFrom && !!rangeTo && rangeFrom <= rangeTo;
 
-  // The business "month" runs on an 11th-to-10th pay cycle, not the calendar month:
-  // selecting June means 11 Jun → 10 Jul. (Custom range above overrides this when set.)
-  const cycleStart = `${selectedMonth}-11`;
-  const cycleEnd = `${shiftMonth(selectedMonth, 1)}-10`;
+  // The business "month" runs on a 10th-to-9th pay cycle, not the calendar month:
+  // selecting June means 10 Jun → 9 Jul. (Custom range above overrides this when set.)
+  const cycleStart = `${selectedMonth}-10`;
+  const cycleEnd = `${shiftMonth(selectedMonth, 1)}-09`;
   const periodStart = customRangeActive ? rangeFrom : cycleStart;
   const periodEnd = customRangeActive ? rangeTo : cycleEnd;
 
@@ -267,7 +267,10 @@ export default function Leaderboard() {
               <ChevronDown size={14} className={`shrink-0 transition-transform ${dayOpen ? "rotate-180" : ""}`} />
             </button>
             {dayOpen && (
-              <div className="absolute right-0 top-full mt-1 z-50 bg-card border border-border rounded-xl shadow-xl overflow-hidden min-w-[200px]">
+              // Anchor LEFT on mobile (the controls sit at the screen's left there, so a
+              // right-anchored menu spilled off-screen) and RIGHT on desktop; cap the width to
+              // the viewport as a hard guard against any horizontal overflow.
+              <div className="absolute left-0 sm:left-auto sm:right-0 top-full mt-1 z-50 bg-card border border-border rounded-xl shadow-xl overflow-hidden min-w-[200px] max-w-[calc(100vw-2rem)]">
                 {dayOptions.map((opt, idx) => (
                   <button
                     key={idx}
@@ -330,7 +333,7 @@ export default function Leaderboard() {
               </button>
             </div>
 
-            {/* Custom period — overrides the 11th-to-10th cycle when both dates are set */}
+            {/* Custom period — overrides the 10th-to-9th cycle when both dates are set */}
             <div className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1">
               <span className="text-[10px] text-muted-foreground whitespace-nowrap">Custom:</span>
               <input type="date" value={rangeFrom} onChange={(e) => setRangeFrom(e.target.value)}
@@ -345,7 +348,7 @@ export default function Leaderboard() {
             </div>
 
             <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-              {customRangeActive ? "Custom period: " : "Cycle (11th → 10th): "}
+              {customRangeActive ? "Custom period: " : "Cycle (10th → 9th): "}
               <span className="text-foreground font-medium">{periodLabel}</span>
             </span>
           </>

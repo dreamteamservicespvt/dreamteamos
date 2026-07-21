@@ -4,10 +4,10 @@ import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { useFirestoreQuery } from "@/hooks/useFirestore";
 import { formatCurrency } from "@/utils/formatters";
-import { format, parseISO, addDays } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { Wallet, Loader2, IndianRupee, Send, CheckCircle2, Clock, History, CalendarRange } from "lucide-react";
 import {
-  commissionRate, computeCommissionInRange, earliestVerifiedSaleDate, paidThrough, totalPaid,
+  commissionRate, computeUnpaidCommission, countPendingSales, lastSettlementOf, earliestVerifiedSaleDate, totalPaid,
   memberSettlementsQuery, memberPendingRequestsQuery, requestSettlement, type SettlementRequest,
 } from "@/services/settlements";
 import { useToast } from "@/hooks/use-toast";
@@ -34,22 +34,28 @@ export default function SalesMemberSettlements() {
   );
 
   const rate = commissionRate(user?.earningsOption);
-  const pt = paidThrough(settlements, user?.uid || "");
   const earliest = earliestVerifiedSaleDate(leads);
-  const fromDate = pt ? format(addDays(parseISO(pt), 1), "yyyy-MM-dd") : (earliest || today());
-  const toDate = today();
-  const validRange = fromDate <= toDate;
-  const current = useMemo(
-    () => (validRange ? computeCommissionInRange(leads, fromDate, toDate, rate) : { base: 0, commission: 0, saleCount: 0 }),
-    [leads, fromDate, toDate, rate, validRange],
-  );
 
   const history = useMemo(
     () => [...settlements].sort((a, b) => (b.paidAt?.seconds || 0) - (a.paidAt?.seconds || 0)),
     [settlements],
   );
-  const lastSettlement = history[0] || null;
+  const lastSettlement = lastSettlementOf(settlements, user?.uid || "");
   const alreadyRequested = pendingRequests.length > 0;
+
+  // Timestamp-cut model (matches the admin side): everything verified since the last payout.
+  const lastPaidAtMs = (lastSettlement?.paidAt?.seconds || 0) * 1000;
+  const current = useMemo(
+    () => computeUnpaidCommission(leads, lastPaidAtMs, rate),
+    [leads, lastPaidAtMs, rate],
+  );
+  const pendingCount = useMemo(() => countPendingSales(leads), [leads]);
+
+  // Window for the settlement-request record: from just after the last payout to now.
+  const fromDate = lastSettlement?.paidAt?.seconds
+    ? format(new Date(lastSettlement.paidAt.seconds * 1000), "yyyy-MM-dd")
+    : (earliest || today());
+  const toDate = today();
 
   const handleRequest = async () => {
     if (!user || !user.createdBy || current.commission <= 0 || alreadyRequested) return;
@@ -100,8 +106,13 @@ export default function SalesMemberSettlements() {
       {/* Current unpaid period */}
       <div className="bg-card border border-border rounded-xl p-4 md:p-5 space-y-3">
         <h2 className="text-sm font-semibold text-foreground flex items-center gap-2"><CalendarRange size={15} className="text-primary" /> Current sales &amp; commission</h2>
-        <p className="text-xs text-muted-foreground">Since {pt ? format(parseISO(fromDate), "dd MMM yyyy") : "your first verified sale"} · {rate}% commission plan</p>
-        {!validRange || current.saleCount === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          Every verified sale since {lastSettlement?.paidAt?.seconds ? `your last payout on ${format(new Date(lastSettlement.paidAt.seconds * 1000), "dd MMM yyyy")}` : "your first sale"} · {rate}% commission plan
+          {pendingCount > 0 && (
+            <span className="block mt-0.5">{pendingCount} sale{pendingCount > 1 ? "s" : ""} still pending verification will be added automatically once approved.</span>
+          )}
+        </p>
+        {current.saleCount === 0 ? (
           <p className="text-xs text-muted-foreground rounded-lg border border-dashed border-border p-3 text-center">Nothing pending right now — you're all caught up.</p>
         ) : (
           <div className="rounded-lg bg-muted/40 p-3 space-y-1.5 text-sm">

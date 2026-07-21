@@ -5,16 +5,17 @@ import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { useFirestoreQuery } from "@/hooks/useFirestore";
 import { formatCurrency } from "@/utils/formatters";
-import { format, addDays, parseISO } from "date-fns";
+import { format, parseISO } from "date-fns";
 import {
   Wallet, Loader2, Search, IndianRupee, CheckCircle2, CalendarRange, ChevronRight, History, BellRing,
 } from "lucide-react";
 import {
-  commissionRate, computeCommissionInRange, earliestVerifiedSaleDate, paidThrough, totalPaid, createSettlement,
+  commissionRate, computeUnpaidCommission, countPendingSales, lastSettlementOf, earliestVerifiedSaleDate, totalPaid, createSettlement,
   adminSettlementsQuery, adminPendingRequestsQuery, resolvePendingRequests, type SettlementRequest,
 } from "@/services/settlements";
 import { useToast } from "@/hooks/use-toast";
 import type { AppUser, CommissionSettlement, Lead } from "@/types";
+import { Info } from "lucide-react";
 
 const today = () => format(new Date(), "yyyy-MM-dd");
 
@@ -102,7 +103,7 @@ export default function Settlements() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {visibleMembers.map((m) => {
             const rate = commissionRate(m.earningsOption);
-            const pt = paidThrough(settlements, m.uid);
+            const last = lastSettlementOf(settlements, m.uid);
             const paid = totalPaid(settlements, m.uid);
             const requested = requestedMemberIds.has(m.uid);
             return (
@@ -122,7 +123,7 @@ export default function Settlements() {
                   </div>
                 )}
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Paid through {pt ? format(parseISO(pt), "dd MMM") : "—"}</span>
+                  <span className="text-muted-foreground">Last paid {last?.paidAt?.seconds ? format(new Date(last.paidAt.seconds * 1000), "dd MMM") : "—"}</span>
                   <span className="font-semibold text-primary">{formatCurrency(paid)} paid</span>
                 </div>
               </button>
@@ -157,7 +158,6 @@ function SettlementDetail({ member, admin, settlements, pendingRequests, onClose
   const rate = commissionRate(member.earningsOption);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [leadsLoading, setLeadsLoading] = useState(true);
-  const [toDate, setToDate] = useState(today());
   const [note, setNote] = useState("");
   const [paying, setPaying] = useState(false);
 
@@ -175,17 +175,29 @@ function SettlementDetail({ member, admin, settlements, pendingRequests, onClose
     [settlements, member.uid],
   );
 
-  const pt = paidThrough(settlements, member.uid);
+  // Timestamp-cut model: pay EVERY verified sale since the last settlement's payment moment.
+  // A sale verified even a minute after the previous payout is picked up here — nothing can
+  // slip through a same-day boundary the way a calendar cut allowed.
+  const last = lastSettlementOf(settlements, member.uid);
+  const lastPaidAtMs = (last?.paidAt?.seconds || 0) * 1000;
   const earliest = earliestVerifiedSaleDate(leads);
-  const fromDate = pt ? format(addDays(parseISO(pt), 1), "yyyy-MM-dd") : (earliest || today());
-  const validRange = fromDate <= toDate;
   const range = useMemo(
-    () => (validRange ? computeCommissionInRange(leads, fromDate, toDate, rate) : { base: 0, commission: 0, saleCount: 0 }),
-    [leads, fromDate, toDate, rate, validRange],
+    () => computeUnpaidCommission(leads, lastPaidAtMs, rate),
+    [leads, lastPaidAtMs, rate],
   );
+  // Pending sales are purely informational now — they'll be paid automatically the moment
+  // they're verified (they land after this cut), so nothing is ever lost.
+  const pendingCount = useMemo(() => countPendingSales(leads), [leads]);
+
+  // Human-readable window for the history record: from just after the last payout (or the
+  // first verified sale) to now.
+  const fromDate = last?.paidAt?.seconds
+    ? format(new Date(last.paidAt.seconds * 1000), "yyyy-MM-dd")
+    : (earliest || today());
+  const toDate = today();
 
   const pay = async () => {
-    if (!validRange || range.commission <= 0) return;
+    if (range.commission <= 0) return;
     setPaying(true);
     try {
       await createSettlement({
@@ -209,7 +221,9 @@ function SettlementDetail({ member, admin, settlements, pendingRequests, onClose
         <div className="sticky top-0 bg-card border-b border-border px-5 py-3 flex items-center justify-between z-10">
           <div>
             <h3 className="text-lg font-semibold text-foreground">{member.name}</h3>
-            <p className="text-xs text-muted-foreground">{rate}% commission · paid through {pt ? format(parseISO(pt), "dd MMM yyyy") : "never"}</p>
+            <p className="text-xs text-muted-foreground">
+              {rate}% commission · last paid {last?.paidAt?.seconds ? format(new Date(last.paidAt.seconds * 1000), "dd MMM yyyy, hh:mm a") : "never"}
+            </p>
           </div>
           <button onClick={onClose} disabled={paying} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-50 text-sm">Close</button>
         </div>
@@ -218,34 +232,28 @@ function SettlementDetail({ member, admin, settlements, pendingRequests, onClose
           {pendingRequests.length > 0 && (
             <div className="flex items-start gap-2 rounded-lg bg-warning/10 border border-warning/30 text-warning text-xs p-2.5">
               <BellRing className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-              <span>{member.name} requested this settlement for {pendingRequests[0].fromDate} → {pendingRequests[0].toDate}. Paying below will clear the request.</span>
+              <span>{member.name} requested this settlement. Paying below will clear the request.</span>
             </div>
           )}
           {leadsLoading ? (
             <div className="flex items-center justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
           ) : (
             <>
-              {/* Pay the unpaid period */}
+              {/* Pay everything verified since the last payout */}
               <div className="rounded-lg border border-border p-4 space-y-3">
                 <div className="flex items-center gap-2">
                   <CalendarRange size={15} className="text-primary" />
                   <h4 className="text-sm font-semibold text-foreground">Pay commission</h4>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs text-muted-foreground mb-1">From (continues from last payment)</label>
-                    <input type="text" value={fromDate} readOnly
-                      className="w-full h-9 px-3 rounded-md bg-muted border border-border text-muted-foreground text-sm" />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-muted-foreground mb-1">To</label>
-                    <input type="date" value={toDate} min={fromDate} max={today()} onChange={(e) => setToDate(e.target.value)}
-                      className="w-full h-9 px-3 rounded-md bg-background border border-border text-foreground text-sm outline-none focus:border-primary" />
-                  </div>
-                </div>
 
-                {!validRange ? (
-                  <p className="text-xs text-success inline-flex items-center gap-1"><CheckCircle2 size={13} /> All caught up — nothing pending for this period.</p>
+                <p className="text-xs text-muted-foreground">
+                  Covers every verified sale since {last?.paidAt?.seconds
+                    ? `the last payment on ${format(new Date(last.paidAt.seconds * 1000), "dd MMM yyyy, hh:mm a")}`
+                    : "the member's first sale"}.
+                </p>
+
+                {range.commission <= 0 ? (
+                  <p className="text-xs text-success inline-flex items-center gap-1"><CheckCircle2 size={13} /> All caught up — no unpaid verified sales.</p>
                 ) : (
                   <div className="rounded-md bg-muted/40 p-3 space-y-1 text-sm">
                     <div className="flex justify-between"><span className="text-muted-foreground">Verified sales ({range.saleCount})</span><span className="text-foreground font-medium">{formatCurrency(range.base)}</span></div>
@@ -253,10 +261,20 @@ function SettlementDetail({ member, admin, settlements, pendingRequests, onClose
                   </div>
                 )}
 
+                {pendingCount > 0 && (
+                  <div className="flex items-start gap-2 rounded-md bg-info/10 border border-info/30 text-info text-xs p-2.5">
+                    <Info size={14} className="mt-0.5 shrink-0" />
+                    <span>
+                      {pendingCount} sale{pendingCount > 1 ? "s" : ""} still awaiting verification — {pendingCount > 1 ? "they'll" : "it'll"} be added to the next
+                      payout automatically once verified. Nothing is lost by paying now.
+                    </span>
+                  </div>
+                )}
+
                 <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional) — e.g. paid via UPI"
                   className="w-full h-9 px-3 rounded-md bg-background border border-border text-foreground text-sm outline-none focus:border-primary" />
 
-                <button onClick={pay} disabled={paying || !validRange || range.commission <= 0}
+                <button onClick={pay} disabled={paying || range.commission <= 0}
                   className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                   {paying ? <Loader2 className="w-4 h-4 animate-spin" /> : <IndianRupee className="w-4 h-4" />}
                   <span>{paying ? "Recording…" : `Mark as paid${range.commission > 0 ? ` — ${formatCurrency(range.commission)}` : ""}`}</span>
