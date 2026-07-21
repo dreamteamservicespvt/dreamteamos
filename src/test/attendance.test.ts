@@ -14,7 +14,7 @@ describe("techAttendance.resolveStatus", () => {
     expect(resolveStatus({ checkedIn: false, dateStr: "2026-07-19", hasFestivalHoliday: false, todayStr: today })).toBe("holiday"); // Sunday
     expect(resolveStatus({ checkedIn: false, dateStr: "2026-07-14", hasFestivalHoliday: true, todayStr: today })).toBe("holiday");
   });
-  it("manual override always wins", () => {
+  it("manual override always wins", () => { 
     expect(resolveStatus({ override: "half", checkedIn: true, dateStr: "2026-07-19", hasFestivalHoliday: true, todayStr: today })).toBe("half");
     expect(resolveStatus({ override: "leave", checkedIn: false, dateStr: "2026-07-14", hasFestivalHoliday: false, todayStr: today })).toBe("leave");
   });
