@@ -163,10 +163,19 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     }));
   }, [assignment?.id]);
 
+  // Ad Type is always implied by the assignment's category (every assignment has one) — the
+  // admin/lead already decided "Wishes" (festival) vs "Promotional"/"Cinematic" (commercial),
+  // so this is unconditionally locked, unlike the optional ad-spec fields above.
+  useEffect(() => {
+    if (!assignment) return;
+    setFormData(prev => ({ ...prev, adType: assignment.category === 'wishes' ? AdType.FESTIVAL : AdType.COMMERCIAL }));
+  }, [assignment?.id, assignment?.category]);
+
   const genderLocked = !!assignment?.modelGender;
   const attireLocked = !!assignment?.attireType;
   const aspectRatioLocked = !!assignment?.aspectRatio;
   const languageLocked = !!assignment?.language;
+  const adTypeLocked = !!assignment;
 
   // Extract business name whenever outputs change
   useEffect(() => {
@@ -820,6 +829,13 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                   {/* Ad Type */}
                   <div>
                     <label className={cn("block text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>Ad Type</label>
+                    {adTypeLocked ? (
+                      <div className={cn("flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm",
+                        isDark ? "bg-slate-700/60 border-slate-600 text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
+                        <span className="font-semibold">{formData.adType === AdType.FESTIVAL ? "Festival Wishes" : "Commercial"}</span>
+                        <span className={cn("text-[11px] px-2 py-0.5 rounded-full", isDark ? "bg-blue-900/40 text-blue-300" : "bg-blue-100 text-blue-700")}>🔒 Fixed by assignment</span>
+                      </div>
+                    ) : (
                     <div className="grid grid-cols-2 gap-3">
                       <button onClick={() => setFormData(prev => ({ ...prev, adType: AdType.COMMERCIAL }))}
                         className={cn("px-4 py-2 rounded-lg text-sm font-medium border transition-all",
@@ -834,6 +850,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                             : (isDark ? "border-slate-600 hover:border-slate-500 text-slate-400" : "border-slate-200 hover:border-slate-300 text-slate-600")
                         )}>Festival Wishes</button>
                     </div>
+                    )}
                   </div>
 
                   {/* Festival Name */}

@@ -2612,9 +2612,11 @@ CLIP NUMBER RULE (CRITICAL — READ CAREFULLY):
 - Process the clips strictly top-to-bottom in the order given, and emit your JSON entries in that same top-to-bottom order.
 - Example: if the input shows "Clip 1: ...", "Clip 2: ...", "Clip 3: ...", your output must only ever contain "clip": 1, "clip": 2, or "clip": 3 — nothing else, and Clip 1's overlays must all appear before Clip 2's, which must all appear before Clip 3's.
 
-STRICT RULES:
-- For EACH clip, output between 1 and 3 overlay texts — ONLY for the genuine KEY POINTS of that clip (a benefit, an offer, a number, a strong hook word, the CTA). Do NOT add overlays for filler.
-- Many clips need only 1 overlay. NEVER force 3. If a clip has no real key point, output 0 overlays for that clip.
+CLIP OVERLAY COUNT (READ CAREFULLY — DEFAULT IS ONE):
+- The default for every clip is EXACTLY 1 overlay — the single strongest key point of that line (its one real benefit, offer, number, hook word, or the CTA). Start from that default for each clip.
+- Only go beyond 1 — up to a hard maximum of 3 — when the clip's spoken line genuinely contains two or three SEPARATE, independently important key points that cannot be captured in one short phrase (e.g. a distinct benefit AND a distinct number/offer in the same line). This must be rare — most clips should stay at 1.
+- Before adding a 2nd or 3rd overlay to any clip, justify it against the actual words of that clip's line: if you cannot point to a second genuinely distinct key point in that exact line, do not add a second overlay. Never add extra overlays just to fill space, for rhythm, or "because 3 is allowed."
+- If a clip is pure filler/connective tissue with no real key point at all, output 0 overlays for that clip.
 - Keep each overlay SHORT and impactful — ideally 1 to 4 words (a headline/keyword, not the full sentence). It should reinforce, not duplicate, the spoken line.
 - LANGUAGE (MANDATORY): Write EVERY overlay text in ENGLISH ONLY, regardless of the voice-over language${language && language.toLowerCase() !== 'english' ? ` (the voice-over is in ${language}, but the on-screen overlays must still be in English)` : ''}. The spoken line may be in another language — but the on-screen key-point text and the CTA overlay must always be short, clean English. Do NOT output ${language && language.toLowerCase() !== 'english' ? language + ' or any non-English' : 'non-English'} script in the overlays.
 - For each overlay, suggest ONE "soundEffect" that is a COMMON, SEARCHABLE term in CapCut's sound-effects search — e.g. "whoosh", "swoosh transition", "pop", "ding", "notification", "cash register", "camera shutter", "sparkle", "boom impact", "riser", "click", "applause". Use the kind of short term that returns results when typed into CapCut search.

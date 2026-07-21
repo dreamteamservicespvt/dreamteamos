@@ -106,7 +106,10 @@ export default function TeamLeaderWorkAssign() {
   const [dayFilter, setDayFilter] = useState<string>('all');
   const [selectedRange, setSelectedRange] = useState<DateRange | undefined>(undefined);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<{ category: string; duration: string; businessName: string; businessWhatsapp: string } | null>(null);
+  const [editForm, setEditForm] = useState<{
+    category: string; duration: string; businessName: string; businessWhatsapp: string;
+    modelGender: ModelGender; attireType: AttireType; customAttire: string; aspectRatio: '9:16' | '16:9'; language: string; customLanguage: string;
+  } | null>(null);
   const [memberSearch, setMemberSearch] = useState('');
   const [confirmAction, setConfirmAction] = useState<{ type: 'delete' | 'sendback'; id: string; assignedTo?: string; title: string } | null>(null);
   const [workloadSearch, setWorkloadSearch] = useState('');
@@ -275,22 +278,26 @@ export default function TeamLeaderWorkAssign() {
         link: '/tech/my-work',
       });
 
-      // Build the WhatsApp-ready requirements message (no price — leads don't see pricing)
-      // and surface it for the lead to copy/send.
+      // Build the WhatsApp-ready requirements message (no price — leads don't see pricing;
+      // no internal assignment ID — the member doesn't need it) and surface it for the lead
+      // to copy/send, attention-grabbing.
       const assignedMember = techMembers.find(m => m.uid === form.assignedTo);
       const message = [
-        `🎬 New Ad Assignment — ${uniqueId}`,
-        form.businessName.trim() ? `Business: ${form.businessName.trim()}` : null,
-        `Category: ${form.category.charAt(0).toUpperCase() + form.category.slice(1)}`,
-        `Duration: ${form.duration} (${clips} clips${hasPoster(form.duration) ? ' + Poster' : ''} + ${getEndCredits(form.duration)}s EC)`,
+        `🎬✨ *NEW AD ASSIGNMENT* ✨🎬`,
         ``,
-        `📋 Ad Specification:`,
-        `• Model: ${form.modelGender === ModelGender.MALE ? 'Male' : 'Female'}`,
-        `• Attire: ${attireLabel}`,
-        `• Aspect Ratio: ${form.aspectRatio}`,
-        `• Language: ${language}`,
+        form.businessName.trim() ? `🏢 *Business:* ${form.businessName.trim()}` : null,
+        `🎯 *Category:* ${form.category.charAt(0).toUpperCase() + form.category.slice(1)}`,
+        `⏱️ *Duration:* ${form.duration} (${clips} clips${hasPoster(form.duration) ? ' + Poster' : ''} + ${getEndCredits(form.duration)}s EC)`,
         ``,
-        `Access Code: ${accessCode}`,
+        `📋 *AD SPECIFICATION*`,
+        `👤 *Model:* ${form.modelGender === ModelGender.MALE ? 'Male' : 'Female'}`,
+        `👔 *Attire:* ${attireLabel}`,
+        `📐 *Ratio:* ${form.aspectRatio}`,
+        `🗣️ *Language:* ${language}`,
+        ``,
+        `🔑 *Access Code:* ${accessCode}`,
+        ``,
+        `🚀 Let's create something amazing — good luck! 🔥`,
       ].filter((line): line is string => line !== null).join('\n');
 
       if (assignedMember) setWaReq({ member: assignedMember, message });
@@ -393,7 +400,16 @@ export default function TeamLeaderWorkAssign() {
 
   const handleStartEdit = (a: WorkAssignment) => {
     setEditingId(a.id);
-    setEditForm({ category: a.category, duration: a.duration, businessName: a.businessName || a.clientName || '', businessWhatsapp: a.businessWhatsapp || '' });
+    const gender = (a.modelGender as ModelGender) || ModelGender.FEMALE;
+    const attireType = (a.attireType as AttireType) || AttireType.TRADITIONAL;
+    const isPresetLanguage = a.language && (ASSIGNMENT_LANGUAGE_OPTIONS as readonly string[]).includes(a.language);
+    setEditForm({
+      category: a.category, duration: a.duration, businessName: a.businessName || a.clientName || '', businessWhatsapp: a.businessWhatsapp || '',
+      modelGender: gender, attireType, customAttire: a.customAttire || '',
+      aspectRatio: a.aspectRatio || '9:16',
+      language: a.language ? (isPresetLanguage ? a.language : 'Custom') : 'Telugu',
+      customLanguage: a.language && !isPresetLanguage ? a.language : '',
+    });
   };
 
   const handleSaveEdit = async () => {
@@ -401,6 +417,7 @@ export default function TeamLeaderWorkAssign() {
     try {
       const clips = getClipCount(editForm.duration);
       const price = PRICING[editForm.category]?.[editForm.duration] ?? 0;
+      const language = editForm.language === 'Custom' ? (editForm.customLanguage.trim() || 'Custom') : editForm.language;
       await updateDoc(doc(db, 'work_assignments', editingId), {
         category: editForm.category,
         duration: editForm.duration,
@@ -409,6 +426,11 @@ export default function TeamLeaderWorkAssign() {
         totalPrice: price,
         businessName: editForm.businessName.trim(),
         ...(editForm.businessWhatsapp.trim() ? { businessWhatsapp: normalizePhone(editForm.businessWhatsapp.trim()) } : { businessWhatsapp: '' }),
+        modelGender: editForm.modelGender,
+        attireType: editForm.attireType,
+        customAttire: editForm.attireType === AttireType.CUSTOM ? editForm.customAttire.trim() : '',
+        aspectRatio: editForm.aspectRatio,
+        language,
       });
       setEditingId(null);
       setEditForm(null);
@@ -1089,6 +1111,41 @@ export default function TeamLeaderWorkAssign() {
                         <input type="text" placeholder="WhatsApp no." value={editForm.businessWhatsapp}
                           onChange={(e) => setEditForm(prev => prev ? { ...prev, businessWhatsapp: e.target.value } : prev)}
                           className="w-28 border rounded px-2 py-1 text-xs bg-background text-foreground border-border placeholder:text-muted-foreground" />
+
+                        {/* Ad specification — same fields as Create New Assignment */}
+                        <select value={editForm.modelGender} onChange={(e) => setEditForm(prev => {
+                          if (!prev) return prev;
+                          const g = e.target.value as ModelGender;
+                          const allowed = ATTIRE_OPTIONS_BY_GENDER[g];
+                          return { ...prev, modelGender: g, attireType: allowed.includes(prev.attireType) ? prev.attireType : AttireType.PROFESSIONAL };
+                        })} className="border rounded px-2 py-1 text-xs bg-background text-foreground border-border">
+                          <option value={ModelGender.FEMALE}>👩 Female</option>
+                          <option value={ModelGender.MALE}>👨 Male</option>
+                        </select>
+                        <select value={editForm.attireType} onChange={(e) => setEditForm(prev => prev ? { ...prev, attireType: e.target.value as AttireType } : prev)}
+                          className="border rounded px-2 py-1 text-xs bg-background text-foreground border-border">
+                          {ATTIRE_OPTIONS_BY_GENDER[editForm.modelGender].map(at => <option key={at} value={at}>{ATTIRE_LABELS[at]}</option>)}
+                        </select>
+                        {editForm.attireType === AttireType.CUSTOM && (
+                          <input type="text" placeholder="Describe attire…" value={editForm.customAttire}
+                            onChange={(e) => setEditForm(prev => prev ? { ...prev, customAttire: e.target.value } : prev)}
+                            className="w-32 border rounded px-2 py-1 text-xs bg-background text-foreground border-border placeholder:text-muted-foreground" />
+                        )}
+                        <select value={editForm.aspectRatio} onChange={(e) => setEditForm(prev => prev ? { ...prev, aspectRatio: e.target.value as '9:16' | '16:9' } : prev)}
+                          className="border rounded px-2 py-1 text-xs font-mono bg-background text-foreground border-border">
+                          <option value="9:16">9:16</option>
+                          <option value="16:9">16:9</option>
+                        </select>
+                        <select value={editForm.language} onChange={(e) => setEditForm(prev => prev ? { ...prev, language: e.target.value } : prev)}
+                          className="border rounded px-2 py-1 text-xs bg-background text-foreground border-border">
+                          {ASSIGNMENT_LANGUAGE_OPTIONS.map(l => <option key={l} value={l}>{l}</option>)}
+                        </select>
+                        {editForm.language === 'Custom' && (
+                          <input type="text" placeholder="Language…" value={editForm.customLanguage}
+                            onChange={(e) => setEditForm(prev => prev ? { ...prev, customLanguage: e.target.value } : prev)}
+                            className="w-24 border rounded px-2 py-1 text-xs bg-background text-foreground border-border placeholder:text-muted-foreground" />
+                        )}
+
                         <button onClick={handleSaveEdit} className="flex items-center space-x-1 px-2 py-1 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded transition-colors">
                           <Save className="w-3 h-3" /><span>Save</span>
                         </button>
@@ -1107,6 +1164,26 @@ export default function TeamLeaderWorkAssign() {
                           {a.totalDurationSeconds > 0 && <span>Time: {formatDuration(a.totalDurationSeconds)}</span>}
                           <span className="font-mono text-[10px] md:text-xs">Code: {a.accessCode}</span>
                         </div>
+                        {(a.modelGender || a.attireType || a.aspectRatio || a.language) && (
+                          <div className="flex flex-wrap gap-1.5 mt-1.5">
+                            {a.modelGender && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                                {a.modelGender === 'male' ? '👨 Male' : '👩 Female'}
+                              </span>
+                            )}
+                            {a.attireType && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
+                                {a.attireType === 'custom' && a.customAttire ? a.customAttire : ATTIRE_LABELS[a.attireType]}
+                              </span>
+                            )}
+                            {a.aspectRatio && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-mono bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{a.aspectRatio}</span>
+                            )}
+                            {a.language && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">{a.language}</span>
+                            )}
+                          </div>
+                        )}
                         {a.businessWhatsapp && (
                           <div className="flex items-center gap-2 mt-2">
                             <a href={getWhatsAppUrl(a.businessWhatsapp)} target="_blank" rel="noopener noreferrer"

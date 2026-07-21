@@ -73,10 +73,10 @@ export default function MyDayCalendar({ memberId }: { memberId: string }) {
   const selCheckin = checkinByDate.get(selected);
   const selStatus = selected.startsWith(month) ? statusFor(selected) : null;
   const selHoliday = holidays.get(selected);
+  // Both keyed by the ASSIGNED date, not when the work was marked complete/submitted — a
+  // video assigned on this day still belongs here even if it was finished days later.
   const assignedThatDay = assignments.filter((a) => a.date === selected);
-  const completedThatDay = assignments.filter(
-    (a) => (a.status === "completed" || a.status === "verified") && (a.completedDate ? a.completedDate === selected : a.date === selected),
-  );
+  const completedThatDay = assignedThatDay.filter((a) => a.status === "completed" || a.status === "verified");
 
   const [y, m] = month.split("-").map(Number);
   const startPad = new Date(y, m - 1, 1).getDay();
@@ -121,7 +121,7 @@ export default function MyDayCalendar({ memberId }: { memberId: string }) {
           const st = statusFor(dateStr);
           const ci = checkinByDate.get(dateStr);
           const didWork = assignments.some(
-            (a) => (a.status === "completed" || a.status === "verified") && (a.completedDate ? a.completedDate === dateStr : a.date === dateStr),
+            (a) => a.date === dateStr && (a.status === "completed" || a.status === "verified"),
           );
           const isSel = selected === dateStr;
           return (

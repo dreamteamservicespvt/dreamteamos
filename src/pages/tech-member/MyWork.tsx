@@ -250,14 +250,16 @@ export default function MyWork() {
   }, [activeWork, selectedDate, dayFilter, recentDays]);
 
   const filteredCompleted = useMemo(() => {
+    // Bucketed by the ASSIGNED date, not when it was marked complete/submitted — a video
+    // assigned on day 1 but finished on day 3 still belongs to day 1's work.
     let result = completedWork;
     if (selectedDate) {
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
-      result = result.filter(a => (a.completedDate || a.date) === dateStr);
+      result = result.filter(a => a.date === dateStr);
     } else if (dayFilter !== 'all') {
       const dayIndex = parseInt(dayFilter);
       const dayDateStr = recentDays[dayIndex]?.dateStr;
-      result = result.filter(a => (a.completedDate || a.date) === dayDateStr);
+      result = result.filter(a => a.date === dayDateStr);
     }
     return result;
   }, [completedWork, selectedDate, dayFilter, recentDays]);

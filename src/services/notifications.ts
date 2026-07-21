@@ -9,6 +9,9 @@ interface SendNotificationParams {
   message: string;
   link?: string;
   callDocId?: string;
+  /** Optional structured payload (e.g. { status, date } for an attendance update) so a
+   *  consumer like UpdatePopup can render a rich UI without parsing the message string. */
+  meta?: Record<string, unknown>;
 }
 
 /**
@@ -21,7 +24,7 @@ const API_BASE = isNative() ? "https://dreamteamos.vercel.app" : "";
  * Creates a Firestore notification document and triggers a web push notification.
  * The push call is fire-and-forget — it never blocks the main action.
  */
-export async function sendNotification({ userId, type, title, message, link, callDocId }: SendNotificationParams): Promise<void> {
+export async function sendNotification({ userId, type, title, message, link, callDocId, meta }: SendNotificationParams): Promise<void> {
   // 1. Write the in-app notification to Firestore (this powers the existing bell + sound system)
   await addDoc(collection(db, "notifications"), {
     userId,
@@ -30,6 +33,7 @@ export async function sendNotification({ userId, type, title, message, link, cal
     message,
     read: false,
     ...(link ? { link } : {}),
+    ...(meta ? { meta } : {}),
     createdAt: serverTimestamp(),
   });
 

@@ -391,6 +391,13 @@ describe("overlay texts in english (task 9)", () => {
     expect(prompt).toContain("Write EVERY overlay text in ENGLISH ONLY");
     expect(prompt).toContain("<short overlay text in ENGLISH>");
   });
+
+  it("defaults to exactly 1 overlay per clip, up to 3 only when justified", () => {
+    const prompt = OVERLAY_TEXT_SYSTEM_PROMPT("Telugu");
+    expect(prompt).toContain("The default for every clip is EXACTLY 1 overlay");
+    expect(prompt).toContain("hard maximum of 3");
+    expect(prompt).toContain("most clips should stay at 1");
+  });
 });
 
 describe("multi-language voice-over (task 7)", () => {

@@ -111,13 +111,16 @@ export default function TeamAttendance() {
         return;
       }
       await setAttendanceOverride(member, date, status, { uid: user.uid, name: user.name });
-      // In-app popup/notification to the member about the update.
+      // In-app popup/notification to the member about the update. No admin name in the
+      // message by design; `meta` carries the structured status/date for UpdatePopup's
+      // rich attendance card so it never has to parse the message string.
       sendNotification({
         userId: member.uid,
         type: "attendance_update",
         title: "Attendance Updated",
-        message: `${format(new Date(date), "dd MMM yyyy")}: marked ${ATTENDANCE_META[status].label} by ${user.name}.`,
+        message: `Your attendance for ${format(new Date(date), "dd MMM yyyy")} has been updated.`,
         link: member.role === "sales_member" ? "/sales/profile" : "/tech/profile",
+        meta: { status, date },
       }).catch(() => {});
       setEditing(null);
       // Show the confirmation popup first — the individual member's date, time-marked, and
