@@ -10,6 +10,7 @@ import { ChevronLeft, ChevronDown, LogOut, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { deleteFCMToken } from "@/services/fcm";
+import InstallAppButton from "@/components/layout/InstallAppButton";
 
 interface SidebarProps {
   mobileOpen: boolean;
@@ -149,7 +150,8 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
                   );
                 })}
               </nav>
-              <div className="border-t border-border p-3 shrink-0">
+              <div className="border-t border-border p-3 shrink-0 space-y-2">
+                <InstallAppButton />
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-lg bg-primary/20 flex items-center justify-center font-display font-bold text-primary text-sm shrink-0">
                     {user.name?.charAt(0) || "U"}
@@ -255,7 +257,8 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
           ];
         })}
       </nav>
-      <div className="border-t border-border p-3">
+      <div className="border-t border-border p-3 space-y-2">
+        <InstallAppButton collapsed={collapsed} />
         {!collapsed ? (
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-primary/20 flex items-center justify-center font-display font-bold text-primary text-sm shrink-0">{user.name?.charAt(0) || "U"}</div>

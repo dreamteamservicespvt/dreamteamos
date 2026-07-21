@@ -69,8 +69,22 @@ export default function SalesMemberDashboard() {
   const conversionRate = total > 0 ? ((salesDone / total) * 100).toFixed(1) : "0";
   const monthlyTarget = user?.monthlyTarget || user?.target || 0;
   const dailyTarget = user?.dailyTarget || 0;
-  const allTimeRevenue = allSaleItems.reduce((sum, { item }) => sum + (item.amount || 0), 0);
-  const monthlyProgress = monthlyTarget > 0 ? Math.min((allTimeRevenue / monthlyTarget) * 100, 100) : 0;
+
+  // Monthly target runs on the business pay cycle — 11th → 10th of next month (same cycle
+  // the leaderboard uses), NOT all-time and NOT the calendar month. The current cycle is
+  // the one containing today: on/after the 11th it started this month, before it started
+  // last month.
+  const now = new Date();
+  const cycleAnchor = now.getDate() >= 11 ? now : new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const cycleStart = format(new Date(cycleAnchor.getFullYear(), cycleAnchor.getMonth(), 11), "yyyy-MM-dd");
+  const cycleEnd = format(new Date(cycleAnchor.getFullYear(), cycleAnchor.getMonth() + 1, 10), "yyyy-MM-dd");
+  const cycleRevenue = allSaleItems
+    .filter(({ item, lead }) => {
+      const d = saleItemDate(item, lead);
+      return d !== null && d >= cycleStart && d <= cycleEnd;
+    })
+    .reduce((sum, { item }) => sum + (item.amount || 0), 0);
+  const monthlyProgress = monthlyTarget > 0 ? Math.min((cycleRevenue / monthlyTarget) * 100, 100) : 0;
 
   // Daily revenue: sales SUBMITTED today only
   const todayStr = format(new Date(), "yyyy-MM-dd");
@@ -169,7 +183,7 @@ export default function SalesMemberDashboard() {
               <div className="flex items-center justify-between mb-2">
                 <h2 className="font-display font-semibold text-foreground text-sm">Monthly Target</h2>
                 <span className="text-xs text-muted-foreground font-mono">
-                  {formatCurrency(allTimeRevenue)} / {formatCurrency(monthlyTarget)}
+                  {formatCurrency(cycleRevenue)} / {formatCurrency(monthlyTarget)}
                 </span>
               </div>
               <div className="h-2 bg-border rounded-full overflow-hidden">
@@ -180,7 +194,9 @@ export default function SalesMemberDashboard() {
                   className={`h-full rounded-full ${monthlyProgress >= 100 ? "bg-success" : "bg-primary"}`}
                 />
               </div>
-              <p className="text-[10px] text-muted-foreground mt-1.5">{monthlyProgress.toFixed(0)}% achieved</p>
+              <p className="text-[10px] text-muted-foreground mt-1.5">
+                {monthlyProgress.toFixed(0)}% achieved · cycle {format(new Date(cycleStart), "dd MMM")} → {format(new Date(cycleEnd), "dd MMM")}
+              </p>
             </div>
           )}
         </div>
