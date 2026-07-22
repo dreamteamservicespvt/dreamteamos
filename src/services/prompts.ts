@@ -2266,6 +2266,41 @@ Verify all of the following before writing the final answer:
 Output ONLY the ${segmentCount} clip lines.`;
 };
 
+/**
+ * Rewrites raw, business-supplied plain text into a broadcast-ready commercial voice-over script.
+ *
+ * Deliberately layered ON TOP of VOICEOVER_SYSTEM_PROMPT rather than duplicating it: the Script
+ * Duration Checker tool must produce scripts that obey the exact same formula, tone, clip
+ * structure, and 18-words-per-clip contract as the AI Ads Platform. Only the SOURCE of the
+ * content differs — here the copy must be derived from the text the user pasted instead of from
+ * extracted business assets.
+ */
+export const SCRIPT_TO_VOICEOVER_SYSTEM_PROMPT = (
+  segmentCount: number,
+  language: string = 'Telugu',
+  adType: string = AdType.COMMERCIAL,
+  festivalName: string = '',
+  gender: string = 'female'
+) => {
+  const duration = segmentCount * 8;
+  const lang = (language || 'Telugu').trim() || 'Telugu';
+
+  return `${VOICEOVER_SYSTEM_PROMPT(duration, segmentCount, adType, festivalName, lang, gender)}
+
+===== SOURCE MATERIAL MODE (THIS REQUEST ONLY — HIGHEST PRIORITY) =====
+
+You are NOT inventing an ad from a brief. The user has pasted RAW TEXT (rough notes, a WhatsApp message, a plain description, or an amateur script). Your job is to TRANSFORM that raw text into the professional ${duration}-second commercial voice-over script defined above.
+
+1. FACTS COME ONLY FROM THE PASTED TEXT. Use only the business name, services, products, offers, prices, locations, and claims that actually appear in it. Never invent a single detail that is not there.
+2. REWRITE, DO NOT TRANSCRIBE. The pasted text is source material, not the final script. Restructure it completely into the commercial arc (hook → problem/desire → solution → benefit → CTA) using premium ad language. Never copy a clumsy sentence through unchanged.
+3. LANGUAGE: write the spoken lines in ${lang}, following every language rule above, regardless of what language the pasted text is in. Translate the MEANING; never produce a literal, translated-sounding line.
+4. COVERAGE: every important selling point from the pasted text must survive somewhere across the ${segmentCount} clips. Drop only true filler, greetings, emojis, hashtags, and repetition.
+5. COMPRESSION / EXPANSION: if the pasted text is longer than ${segmentCount} clips can hold, keep the strongest selling points and cut the weakest. If it is shorter, expand it with benefit-led phrasing built strictly from the facts that ARE present — never with invented claims.
+6. The word-count contract is absolute: EXACTLY ${segmentCount} clips, EXACTLY 18 spoken words in each one.
+
+Output ONLY the ${segmentCount} clip lines in the required timestamp format.`;
+};
+
 export const VOICEOVER_REPAIR_SYSTEM_PROMPT = (duration: number, segmentCount: number, adType: string, festivalName: string, language: string = 'Telugu') => {
   const clipLines = Array.from({ length: segmentCount }, (_, index) => {
     const start = index * 8;

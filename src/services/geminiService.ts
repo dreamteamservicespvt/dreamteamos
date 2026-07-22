@@ -7,6 +7,7 @@ import {
   POSTER_SYSTEM_PROMPT,
   VOICEOVER_SYSTEM_PROMPT,
   VOICEOVER_REPAIR_SYSTEM_PROMPT,
+  SCRIPT_TO_VOICEOVER_SYSTEM_PROMPT,
   VOICEOVER_QUALITY_REVIEW_SYSTEM_PROMPT,
   VEO_SEGMENT_SYSTEM_PROMPT,
   STOCK_IMAGE_SYSTEM_PROMPT,
@@ -22,6 +23,7 @@ import {
   getModelProfile
 } from "./prompts";
 import { fileToBase64, readFileAsText } from "@/utils/fileHelpers";
+import { CLIP_SECONDS, clipLabel, formatClipScript, parseLabeledClips } from "@/utils/voiceOverFormat";
 
 // Multi-API Key Fallback System
 // Checks both VITE_API_KEY_* and API_KEY_* (for Vercel deployments)
@@ -261,6 +263,11 @@ export type SectionType = 'mainFrame' | 'header' | 'poster' | 'voiceOver' | 'veo
 
 // ── Output directives threaded into prompts from the user's configuration ──
 const usesLatinScript = (language?: string) => ['english'].includes((language || '').trim().toLowerCase());
+/** Telugu is the default and the only language whose closing CTA wording is fixed verbatim. */
+const isTeluguScript = (language?: string) => {
+  const lang = (language || '').trim().toLowerCase();
+  return lang === '' || lang === 'telugu';
+};
 
 const buildRatioDirective = (formData: AdFormData): string => {
   const ratio = formData.aspectRatio === '16:9' ? '16:9' : '9:16';
@@ -1023,10 +1030,15 @@ const validateVoiceOverSegments = (rawScript: string, segments: string[], segmen
     }
   });
 
-  // Every ad must close with the on-screen call CTA (no spoken phone number)
-  const finalClip = segments[segmentCount - 1] || '';
-  if (!(finalClip.includes('స్క్రీన్') && finalClip.includes('కాల్'))) {
-    issues.push(`Final clip must include the on-screen call CTA: ${FINAL_SCREEN_CTA}`);
+  // Every ad must close with the on-screen call CTA (no spoken phone number). The exact wording
+  // is only pinned for Telugu — every other language is told to write its own native equivalent
+  // (see VOICEOVER_SYSTEM_PROMPT), so matching Telugu keywords there would fail permanently and
+  // send every non-Telugu script through pointless repair passes.
+  if (isTeluguScript(language)) {
+    const finalClip = segments[segmentCount - 1] || '';
+    if (!(finalClip.includes('స్క్రీన్') && finalClip.includes('కాల్'))) {
+      issues.push(`Final clip must include the on-screen call CTA: ${FINAL_SCREEN_CTA}`);
+    }
   }
 
   return issues;
@@ -1245,7 +1257,15 @@ export const generateAdAssets = async (
   // --- Step 2: Voice Over Script ---
   onProgress(customScript ? "Processing custom script..." : "Writing Voice Over script...", 20);
 
-  const segmentCount = Math.round(formData.duration / 8);
+  // A business-provided script pasted in the `clip-1[0-8sec]: …` format is authoritative: its
+  // clips are used verbatim (never re-segmented or re-worded), and its clip count — not the
+  // Video Duration dropdown — decides how many main-frame and Veo prompts get generated, so the
+  // attached script lands in the Generated Assets exactly as the business wrote it.
+  const preSplitCustomClips = customScript?.trim() ? parseLabeledClips(customScript) : [];
+  const segmentCount = preSplitCustomClips.length > 0
+    ? preSplitCustomClips.length
+    : Math.round(formData.duration / 8);
+  const effectiveDuration = segmentCount * CLIP_SECONDS;
   let voiceOverScript: string;
   let parsedSegments: string[];
 
@@ -1254,7 +1274,7 @@ export const generateAdAssets = async (
     let voiceOverIssues = validateVoiceOverSegments(normalizedVoiceOver.rawScript, normalizedVoiceOver.segments, segmentCount, formData.language);
 
     for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES && voiceOverIssues.length > 0; pass++) {
-      const repairSystemPrompt = buildLanguageDirective(formData) + VOICEOVER_REPAIR_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName, formData.language);
+      const repairSystemPrompt = buildLanguageDirective(formData) + VOICEOVER_REPAIR_SYSTEM_PROMPT(effectiveDuration, segmentCount, formData.adType, formData.festivalName, formData.language);
       const repairUserPrompt = `Repair this ${formData.language || 'Telugu'} voice-over script using only verified business facts.
 
 BUSINESS INFORMATION:
@@ -1333,12 +1353,19 @@ Review it now and return the JSON verdict.` }] }],
     return reviewed;
   };
 
-  if (customScript && customScript.trim()) {
+  if (preSplitCustomClips.length > 0) {
+    // The business already split the script into `clip-N[…sec]:` lines — honour it exactly.
+    // No AI re-segmentation, no word-count repair, no quality rewrite: the wording the business
+    // supplied is what ships, so it appears unchanged in both the Voice Over Script and the
+    // Veo 3 prompts built from these segments.
+    parsedSegments = preSplitCustomClips.map(clip => cleanScriptText(clip));
+    voiceOverScript = formatVoiceOverScript(parsedSegments);
+  } else if (customScript && customScript.trim()) {
     // Clean the script: remove emojis, special characters, normalize
     const cleanedScript = cleanScriptText(customScript.trim());
-    
+
     // Use Gemini to intelligently segment the custom script into equal clips
-    const segmentSystemPrompt = `You are an expert script editor. Split the given script into EXACTLY ${segmentCount} roughly equal segments for a ${formData.duration}-second video (each segment ~8 seconds of speaking time).
+    const segmentSystemPrompt = `You are an expert script editor. Split the given script into EXACTLY ${segmentCount} roughly equal segments for a ${effectiveDuration}-second video (each segment ~8 seconds of speaking time).
 
 RULES:
 - Split at natural sentence/phrase boundaries — NEVER split mid-sentence
@@ -1368,12 +1395,12 @@ Segment 2: <text>
     voiceOverScript = repairedVoiceOver.formatted;
   } else {
     // Auto-generate voice-over script
-    const scriptSystemPrompt = buildLanguageDirective(formData) + VOICEOVER_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName, formData.language, formData.gender || 'female');
-    const scriptUserPrompt = `Generate a ${formData.duration}-second ${formData.language || 'Telugu'} voice-over script for:
+    const scriptSystemPrompt = buildLanguageDirective(formData) + VOICEOVER_SYSTEM_PROMPT(effectiveDuration, segmentCount, formData.adType, formData.festivalName, formData.language, formData.gender || 'female');
+    const scriptUserPrompt = `Generate a ${effectiveDuration}-second ${formData.language || 'Telugu'} voice-over script for:
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
   AD TYPE: ${formData.adType}
   ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName}` : ''}
-  DURATION: ${formData.duration} seconds (${segmentCount} segments)`;
+  DURATION: ${effectiveDuration} seconds (${segmentCount} segments)`;
 
     const scriptResponse = await callWithFallback(async (ai, model) => {
       return await ai.models.generateContent({
@@ -1491,7 +1518,7 @@ ${maleCastingOverride}${commercialMainFramePriorityNote}
   ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName}` : ''}
   MODEL GENDER: ${p.isMale ? 'Male' : 'Female'}
   ATTIRE: ${formData.attireType === 'traditional' ? 'Traditional (designer saree)' : formData.attireType === 'shirt_pant' ? 'Professional (formal shirt tucked into trousers)' : formData.attireType === 'custom' ? `Custom — ${(formData.customAttire || '').trim() || 'as specified by the user'}` : `Professional (${p.isMale ? "men's formal suit" : 'formal suit'})`}
-  TOTAL DURATION: ${formData.duration} seconds (${segmentCount} clips of 8 seconds each)
+  TOTAL DURATION: ${effectiveDuration} seconds (${segmentCount} clips of 8 seconds each)
   SPECIAL CLIENT INSTRUCTIONS: ${businessInfo.specialRequirements?.customInstructions || 'None'}
   ${mainFrameEnvironmentRoutingNote}
   CAMPAIGN CASTING RULE: Choose one distinct premium ${p.gender} ambassador identity for THIS business and keep ${p.object} consistent across all clips. Different businesses should not fall back to the same default face. In commercial mode ${p.pronoun} must stay Indian-only in every clip with no ethnic drift.
@@ -1802,7 +1829,10 @@ export const regenerateVeoFromVoiceOver = async (
     throw new Error("No API keys configured. Please set API_KEY_1, API_KEY_2, etc. in your environment.");
   }
 
-  const segmentCount = Math.round(formData.duration / 8);
+  // The script is the authority on clip count — a business-supplied custom script can be longer
+  // or shorter than the Video Duration setting, and the Veo prompts must match it 1:1.
+  const scriptClips = parseLabeledClips(voiceOverScript).length;
+  const segmentCount = scriptClips > 0 ? scriptClips : Math.round(formData.duration / 8);
   const { segments } = normalizeAndFormatVoiceOver(voiceOverScript, segmentCount);
   const veoSystemPrompt = VEO_SEGMENT_SYSTEM_PROMPT(segmentCount, formData.gender || 'female');
   const veoUserPrompt = `Generate Veo 3 prompts for all segments.
@@ -2075,53 +2105,177 @@ export const extractScriptFromImage = async (imageFile: File): Promise<string> =
   return response.text || '';
 };
 
-// Analyze script duration — split into 8-second clips
-export interface ScriptAnalysis {
-  totalDuration: number;
+// --- Plain text → professional commercial voice-over script ---
+// Powers the "Script Duration Checker" tool. Takes whatever raw text a business sends us
+// (WhatsApp notes, a rough script, a service list) and rewrites it into a broadcast-ready
+// voice-over script using the SAME formula as the AI Ads Platform — see
+// SCRIPT_TO_VOICEOVER_SYSTEM_PROMPT, which composes VOICEOVER_SYSTEM_PROMPT so the tone,
+// clip arc, and exactly-18-words-per-clip contract stay identical across both surfaces.
+
+export interface VoiceOverClip {
+  /** 1-based clip number. */
+  index: number;
+  /** Business-facing label, e.g. `clip-1[0-8sec]`. */
+  label: string;
+  startSec: number;
+  endSec: number;
+  text: string;
+  wordCount: number;
+}
+
+export interface ScriptConversion {
+  clips: VoiceOverClip[];
   clipCount: number;
-  clips: { index: number; text: string; estimatedSeconds: number }[];
+  totalDuration: number;
+  language: string;
+  /** Copy-ready script: `clip-1[0-8sec]: …` one clip per line. */
+  formattedScript: string;
+  /** Canonical `0-8: …` form used everywhere else in the app. */
+  canonicalScript: string;
+  sourceWordCount: number;
   originalText: string;
 }
 
-export const analyzeScriptDuration = async (scriptText: string): Promise<ScriptAnalysis> => {
-  const systemPrompt = `You are an expert voice-over timing analyst. Given a script, you must:
-1. Estimate the total speaking duration at a natural, professional Indian voice-over pace (~2.5 words/second for English, ~2 words/second for Telugu/Hindi)
-2. Split the script into 8-second clips at natural sentence/phrase boundaries
-3. Each clip should be approximately 8 seconds of speaking time
+/** Words per clip in the ads-platform voice-over formula (see VOICEOVER_SYSTEM_PROMPT). */
+export const WORDS_PER_CLIP = 18;
 
-Output STRICT JSON with no markdown wrapping:
-{
-  "totalDuration": <number in seconds>,
-  "clipCount": <number>,
-  "clips": [
-    { "index": 1, "text": "<clip text>", "estimatedSeconds": <number> },
-    ...
-  ]
-}`;
+/** Word count of raw pasted text, ignoring punctuation and decorative characters. */
+export const countScriptWords = (scriptText: string): number =>
+  tokenizeWords(cleanScriptText(scriptText || '')).length;
+
+/**
+ * How many 8-second clips the pasted text naturally fills, at the platform's 18-words-per-clip
+ * pace. Used to pre-select "Auto" in the tool before any API call is made.
+ */
+export const suggestClipCount = (scriptText: string): number => {
+  const words = countScriptWords(scriptText);
+  if (words === 0) return 0;
+  return Math.max(1, Math.round(words / WORDS_PER_CLIP));
+};
+
+/** Detects the script's language from its Unicode block so "Auto" keeps the business's language. */
+export const detectScriptLanguage = (scriptText: string): string => {
+  if (/[ఀ-౿]/.test(scriptText)) return 'Telugu';
+  if (/[ಀ-೿]/.test(scriptText)) return 'Kannada';
+  if (/[஀-௿]/.test(scriptText)) return 'Tamil';
+  if (/[ഀ-ൿ]/.test(scriptText)) return 'Malayalam';
+  if (/[ऀ-ॿ]/.test(scriptText)) return 'Hindi';
+  return 'English';
+};
+
+const buildScriptConversion = (
+  segments: string[],
+  language: string,
+  originalText: string
+): ScriptConversion => {
+  const clips: VoiceOverClip[] = segments.map((text, index) => ({
+    index: index + 1,
+    label: clipLabel(index),
+    startSec: index * CLIP_SECONDS,
+    endSec: (index + 1) * CLIP_SECONDS,
+    text,
+    wordCount: tokenizeWords(text).length,
+  }));
+
+  return {
+    clips,
+    clipCount: clips.length,
+    totalDuration: clips.length * CLIP_SECONDS,
+    language,
+    formattedScript: formatClipScript(segments),
+    canonicalScript: formatVoiceOverScript(segments),
+    sourceWordCount: countScriptWords(originalText),
+    originalText,
+  };
+};
+
+export const convertToVoiceOverScript = async (
+  scriptText: string,
+  options: {
+    /** Fixed clip count, or omit / 'auto' to let the pasted text decide. */
+    clipCount?: number | 'auto';
+    /** Output language, or 'auto' to keep the pasted text's own language. */
+    language?: string;
+    adType?: string;
+    festivalName?: string;
+    gender?: string;
+  } = {}
+): Promise<ScriptConversion> => {
+  if (API_KEYS.length === 0) {
+    throw new Error("No API keys configured. Please set API_KEY_1, API_KEY_2, etc. in your environment.");
+  }
+
+  const source = scriptText.trim();
+  if (!source) throw new Error("Paste a script first.");
+
+  const requested = options.clipCount;
+  const segmentCount = typeof requested === 'number' && requested > 0
+    ? Math.round(requested)
+    : Math.max(1, suggestClipCount(source));
+
+  const language = !options.language || options.language === 'auto'
+    ? detectScriptLanguage(source)
+    : options.language;
+
+  const adType = options.adType || 'commercial';
+  const festivalName = options.festivalName || '';
+  const systemInstruction = SCRIPT_TO_VOICEOVER_SYSTEM_PROMPT(
+    segmentCount, language, adType, festivalName, options.gender || 'female'
+  );
+
+  const userPrompt = `RAW TEXT PROVIDED BY THE BUSINESS:
+
+${cleanScriptText(source)}
+
+Rewrite it as a ${segmentCount * CLIP_SECONDS}-second ${language} commercial voice-over script.
+Output exactly ${segmentCount} clip lines, exactly ${WORDS_PER_CLIP} spoken words each, using only the facts above.`;
 
   const response = await callWithFallback(async (ai, model) => {
     return await ai.models.generateContent({
       model,
-      contents: [{ role: 'user', parts: [{ text: `Analyze this script for duration and split into 8-second clips:\n\n${scriptText}` }] }],
-      config: {
-        systemInstruction: systemPrompt,
-        responseMimeType: "application/json"
-      }
+      contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+      config: { systemInstruction }
     });
   });
 
-  const text = response.text || '{}';
-  try {
-    const parsed = JSON.parse(text);
-    return {
-      totalDuration: parsed.totalDuration || 0,
-      clipCount: parsed.clipCount || parsed.clips?.length || 0,
-      clips: parsed.clips || [],
-      originalText: scriptText
-    };
-  } catch {
-    return { totalDuration: 0, clipCount: 0, clips: [], originalText: scriptText };
+  let normalized = normalizeAndFormatVoiceOver(response.text || '', segmentCount);
+  let issues = validateVoiceOverSegments(normalized.rawScript, normalized.segments, segmentCount, language);
+
+  // Same mechanical repair loop the platform runs — the pasted text stands in for the extracted
+  // business info, so the repair pass can only re-word using facts the business actually gave us.
+  for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES && issues.length > 0; pass++) {
+    const repairResponse = await callWithFallback(async (ai, model) => {
+      return await ai.models.generateContent({
+        model,
+        contents: [{ role: 'user', parts: [{ text: `Repair this ${language} voice-over script using ONLY the facts in the source text below.
+
+SOURCE TEXT (the only allowed source of facts):
+${cleanScriptText(source)}
+
+CURRENT SCRIPT:
+${normalized.formatted}
+
+VALIDATION ISSUES:
+${issues.map(issue => `- ${issue}`).join('\n')}
+
+Return only the repaired ${segmentCount} clip lines.` }] }],
+        config: {
+          systemInstruction: VOICEOVER_REPAIR_SYSTEM_PROMPT(
+            segmentCount * CLIP_SECONDS, segmentCount, adType, festivalName, language
+          )
+        }
+      });
+    });
+
+    normalized = normalizeAndFormatVoiceOver(repairResponse.text || normalized.formatted, segmentCount);
+    issues = validateVoiceOverSegments(normalized.rawScript, normalized.segments, segmentCount, language);
   }
+
+  if (issues.length > 0) {
+    console.warn('Script conversion validation issues remain after repair:', issues);
+  }
+
+  return buildScriptConversion(normalized.segments, language, source);
 };
 
 /**

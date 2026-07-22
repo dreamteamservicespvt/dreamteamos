@@ -35,6 +35,7 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "Agreements", path: "/tech-admin/agreements", icon: FileCheck },
     { title: "Orders", path: "/tech-admin/orders", icon: ShoppingBag },
     { title: "Work Assign", path: "/tech-admin/work-assign", icon: ClipboardList },
+    { title: "Work Done & Reports", path: "/tech-admin/work-reports", icon: BarChart3 },
     { title: "Clients", path: "/tech-admin/clients", icon: Contact },
     { title: "Drive Management", path: "/tech-admin/drive", icon: FolderOpen },
     { title: "Training Modules", path: "/tech-admin/training", icon: BookOpen },
@@ -124,8 +125,10 @@ const NAV: Record<UserRole, NavItem[]> = {
   tech_team_leader: [
     { title: "Orders", path: "/team-leader/orders", icon: ShoppingBag },
     { title: "Work Assign", path: "/team-leader/work-assign", icon: ClipboardList },
+    { title: "Work Done & Reports", path: "/team-leader/work-reports", icon: BarChart3 },
     { title: "Attendance", path: "/team-leader/attendance", icon: CalendarClock },
     { title: "Agreements", path: "/team-leader/agreements", icon: FileCheck },
+    { title: "Tools", path: "/team-leader/tools", icon: Wrench },
   ],
 };
 

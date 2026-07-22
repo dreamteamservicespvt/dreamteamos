@@ -5,7 +5,10 @@ import {
   Building2, Calendar, ChevronDown, ChevronRight, Video, PenTool, Search, AlertCircle
 } from 'lucide-react';
 import AIPlatformApp from '@/components/ai-platform/AIPlatformApp';
-import { extractScriptFromImage, analyzeScriptDuration, extractBusinessNameFromInfo, type ScriptAnalysis } from '@/services/geminiService';
+import {
+  extractScriptFromImage, convertToVoiceOverScript, suggestClipCount, countScriptWords,
+  detectScriptLanguage, extractBusinessNameFromInfo, WORDS_PER_CLIP, type ScriptConversion,
+} from '@/services/geminiService';
 import { db } from '@/services/firebase';
 import type { SavedGeneration } from '@/components/ai-platform/SavedItems';
 import { useFirestoreCollection } from '@/hooks/useFirestore';
@@ -13,6 +16,12 @@ import { useAuthStore } from '@/store/authStore';
 import type { AppUser, WorkAssignment } from '@/types';
 import { format, subDays, startOfDay } from 'date-fns';
 import DashboardDayPicker from '@/components/dashboard/DayPicker';
+import { normalizeClipCount } from '@/utils/assignmentDuration';
+
+/** Clip-count presets offered by the Script Duration Checker (matches the ad packages). */
+const CLIP_PRESETS = [2, 4, 6, 8] as const;
+
+const SCRIPT_LANGUAGES = ['auto', 'Telugu', 'English', 'Hindi', 'Kannada', 'Tamil', 'Malayalam'] as const;
 
 export default function Tools() {
   const user = useAuthStore(s => s.user);
@@ -21,10 +30,22 @@ export default function Tools() {
   const [scriptImage, setScriptImage] = useState<File | null>(null);
   const [isExtracting, setIsExtracting] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysis, setAnalysis] = useState<ScriptAnalysis | null>(null);
+  const [conversion, setConversion] = useState<ScriptConversion | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copiedClip, setCopiedClip] = useState<number | null>(null);
+  const [copiedFull, setCopiedFull] = useState(false);
+  /** 'auto' lets the pasted text decide; a number pins the script to that many 8s clips. */
+  const [clipMode, setClipMode] = useState<'auto' | number | 'custom'>('auto');
+  const [customClips, setCustomClips] = useState(3);
+  const [scriptLanguage, setScriptLanguage] = useState<string>('auto');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Live, no-API preview of what the pasted text will become
+  const sourceWordCount = useMemo(() => countScriptWords(scriptInput), [scriptInput]);
+  const autoClipCount = useMemo(() => suggestClipCount(scriptInput), [scriptInput]);
+  const resolvedClipCount = clipMode === 'auto'
+    ? autoClipCount
+    : clipMode === 'custom' ? customClips : clipMode;
 
   // History state
   const { data: allGenerations, loading: loadingHistory, error: generationsError } = useFirestoreCollection<SavedGeneration>('ai_generations');
@@ -214,28 +235,41 @@ export default function Tools() {
     if (!scriptInput.trim()) return;
     setIsAnalyzing(true);
     setError(null);
-    setAnalysis(null);
+    setConversion(null);
     try {
-      const result = await analyzeScriptDuration(scriptInput.trim());
-      setAnalysis(result);
+      const result = await convertToVoiceOverScript(scriptInput.trim(), {
+        clipCount: clipMode === 'auto' ? 'auto' : resolvedClipCount,
+        language: scriptLanguage,
+      });
+      setConversion(result);
     } catch (err: any) {
-      setError(err.message || 'Failed to analyze script.');
+      setError(err.message || 'Failed to generate the voice-over script.');
     } finally {
       setIsAnalyzing(false);
     }
   };
 
-  const handleCopyClip = (idx: number, text: string) => {
-    navigator.clipboard.writeText(text);
+  /** Copies one clip in the business-facing form: `clip-1[0-8sec]: <line>`. */
+  const handleCopyClip = (idx: number, label: string, text: string) => {
+    navigator.clipboard.writeText(`${label}: ${text}`);
     setCopiedClip(idx);
     setTimeout(() => setCopiedClip(null), 2000);
+  };
+
+  const handleCopyFullScript = () => {
+    if (!conversion) return;
+    navigator.clipboard.writeText(conversion.formattedScript);
+    setCopiedFull(true);
+    setTimeout(() => setCopiedFull(false), 2000);
   };
 
   const handleReset = () => {
     setScriptInput('');
     setScriptImage(null);
-    setAnalysis(null);
+    setConversion(null);
     setError(null);
+    setClipMode('auto');
+    setScriptLanguage('auto');
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -282,7 +316,7 @@ export default function Tools() {
               <div className="flex-1 min-w-0">
                 <h3 className="font-semibold text-foreground text-lg group-hover:text-primary transition-colors">Script Duration Checker</h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Paste a script or upload an image — the tool extracts the text, splits it into 8-second clips, and tells you the total duration.
+                  Paste any raw text — AI rewrites it into a professional commercial voice-over script, structured as clip-1[0-8sec], clip-2[8-16sec] and so on.
                 </p>
                 <div className="flex items-center gap-1 mt-3 text-xs text-primary font-medium">
                   <span>Open Tool</span>
@@ -355,21 +389,72 @@ export default function Tools() {
 
                 {/* Text Input */}
                 <div className="mb-4">
-                  <label className="block text-sm font-medium text-muted-foreground mb-2">Or Paste Script Text</label>
+                  <label className="block text-sm font-medium text-muted-foreground mb-2">Or Paste Plain Text</label>
                   <textarea
                     className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 outline-none"
-                    rows={8} placeholder="Paste your script here... (Telugu, Hindi, English, or any language)"
+                    rows={8}
+                    placeholder="Paste the business's raw text here — rough notes, a WhatsApp message, a service list, or an amateur script. Any language works. AI rewrites it into a professional commercial voice-over script."
                     value={scriptInput} onChange={(e) => setScriptInput(e.target.value)} />
+                  {sourceWordCount > 0 && (
+                    <p className="mt-1.5 text-[11px] text-muted-foreground">
+                      {sourceWordCount} words pasted · detected language: <span className="font-medium text-foreground">{detectScriptLanguage(scriptInput)}</span> · naturally fills <span className="font-medium text-foreground">{autoClipCount} clip{autoClipCount === 1 ? '' : 's'}</span>
+                    </p>
+                  )}
+                </div>
+
+                {/* Clip count — how long the finished ad should be */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-muted-foreground mb-2">Script Duration</label>
+                  <div className="flex flex-wrap gap-2">
+                    <button onClick={() => setClipMode('auto')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${clipMode === 'auto' ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'border-border text-muted-foreground hover:bg-accent'}`}>
+                      Auto{autoClipCount > 0 ? ` (${autoClipCount} clips)` : ''}
+                    </button>
+                    {CLIP_PRESETS.map(n => (
+                      <button key={n} onClick={() => setClipMode(n)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${clipMode === n ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'border-border text-muted-foreground hover:bg-accent'}`}>
+                        {n} clips <span className="font-normal opacity-70">({n * 8}s)</span>
+                      </button>
+                    ))}
+                    <button onClick={() => setClipMode('custom')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${clipMode === 'custom' ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'border-border text-muted-foreground hover:bg-accent'}`}>
+                      Custom
+                    </button>
+                  </div>
+                  {clipMode === 'custom' && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <input type="number" min={1} value={customClips}
+                        onChange={(e) => setCustomClips(normalizeClipCount(parseInt(e.target.value)))}
+                        className="w-24 border border-border rounded-lg px-3 py-1.5 text-sm bg-background text-foreground focus:ring-2 focus:ring-primary/20 outline-none" />
+                      <span className="text-xs text-muted-foreground">clips = {customClips * 8}s total</span>
+                    </div>
+                  )}
+                  {resolvedClipCount > 0 && (
+                    <p className="mt-2 text-[11px] text-muted-foreground">
+                      Output: <span className="font-medium text-foreground">{resolvedClipCount} clips × 8s = {resolvedClipCount * 8}s</span>, {WORDS_PER_CLIP} words per clip (ads-platform formula)
+                    </p>
+                  )}
+                </div>
+
+                {/* Output language */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-muted-foreground mb-2">Voice-Over Language</label>
+                  <select value={scriptLanguage} onChange={(e) => setScriptLanguage(e.target.value)}
+                    className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background text-foreground focus:ring-2 focus:ring-primary/20 outline-none">
+                    {SCRIPT_LANGUAGES.map(l => (
+                      <option key={l} value={l}>{l === 'auto' ? 'Same as pasted text (Auto)' : l}</option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Action Buttons */}
                 <div className="flex items-center gap-2">
                   <button onClick={handleAnalyze} disabled={!scriptInput.trim() || isAnalyzing}
                     className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                    {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Timer className="w-4 h-4" />}
-                    <span>{isAnalyzing ? 'Analyzing...' : 'Analyze Duration'}</span>
+                    {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <PenTool className="w-4 h-4" />}
+                    <span>{isAnalyzing ? 'Writing script...' : 'Generate Voice Over Script'}</span>
                   </button>
-                  {(scriptInput || analysis) && (
+                  {(scriptInput || conversion) && (
                     <button onClick={handleReset}
                       className="px-4 py-2.5 text-sm font-medium border border-border rounded-lg bg-background hover:bg-accent/50 transition-colors text-muted-foreground">
                       Reset
@@ -379,6 +464,7 @@ export default function Tools() {
 
                 {error && (
                   <div className="mt-3 flex items-start gap-2 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 p-3 rounded-lg text-sm">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                     <span>{error}</span>
                   </div>
                 )}
@@ -390,34 +476,37 @@ export default function Tools() {
               {isAnalyzing && (
                 <div className="bg-card border border-border rounded-xl p-12 text-center">
                   <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-3" />
-                  <p className="text-sm text-muted-foreground">Analyzing script duration...</p>
+                  <p className="text-sm text-muted-foreground">Rewriting into a professional commercial script...</p>
                 </div>
               )}
 
-              {analysis && !isAnalyzing && (
+              {conversion && !isAnalyzing && (
                 <>
                   {/* Summary */}
                   <div className="bg-card border border-border rounded-xl p-5">
-                    <h3 className="font-semibold text-foreground mb-3">Analysis Result</h3>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <h3 className="font-semibold text-foreground">Voice Over Script</h3>
+                      <span className="text-[11px] px-2 py-0.5 rounded bg-primary/10 text-primary font-medium">{conversion.language}</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
                       <div className="bg-background border border-border rounded-lg p-3 text-center">
-                        <p className="text-2xl font-bold text-foreground">{analysis.totalDuration}s</p>
+                        <p className="text-2xl font-bold text-foreground">{conversion.totalDuration}s</p>
                         <p className="text-[10px] text-muted-foreground">Total Duration</p>
                       </div>
                       <div className="bg-background border border-border rounded-lg p-3 text-center">
-                        <p className="text-2xl font-bold text-foreground">{analysis.clipCount}</p>
+                        <p className="text-2xl font-bold text-foreground">{conversion.clipCount}</p>
                         <p className="text-[10px] text-muted-foreground">8-Second Clips</p>
                       </div>
+                      <div className="bg-background border border-border rounded-lg p-3 text-center">
+                        <p className="text-2xl font-bold text-foreground">{conversion.clips.reduce((s, c) => s + c.wordCount, 0)}</p>
+                        <p className="text-[10px] text-muted-foreground">Spoken Words</p>
+                      </div>
                     </div>
-                    <div className="mt-3 grid grid-cols-4 gap-2">
-                      {[16, 32, 45, 64].map(pkg => (
-                        <div key={pkg} className={`text-center p-2 rounded-lg border text-xs ${analysis.totalDuration <= pkg ? 'border-green-500/50 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400' : 'border-border bg-background text-muted-foreground'}`}>
-                          <p className="font-bold">{pkg}s</p>
-                          <p className="text-[10px]">{pkg / 8} clips</p>
-                          {analysis.totalDuration <= pkg && <p className="text-[9px] mt-0.5">✓ Fits</p>}
-                        </div>
-                      ))}
-                    </div>
+                    <button onClick={handleCopyFullScript}
+                      className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white transition-all">
+                      {copiedFull ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                      <span>{copiedFull ? 'Copied Complete Script' : 'Copy Complete Voice Over Script'}</span>
+                    </button>
                   </div>
 
                   {/* Clips Breakdown */}
@@ -425,23 +514,25 @@ export default function Tools() {
                     <div className="px-4 py-3 border-b border-border">
                       <h3 className="font-semibold text-foreground text-sm flex items-center gap-2">
                         <ClipboardList className="w-4 h-4 text-muted-foreground" />
-                        Clip Breakdown ({analysis.clips.length} clips)
+                        Clip Breakdown ({conversion.clipCount} clips)
                       </h3>
                     </div>
                     <div className="divide-y divide-border">
-                      {analysis.clips.map((clip, idx) => (
-                        <div key={idx} className="px-4 py-3 flex items-start gap-3">
-                          <div className="w-7 h-7 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center shrink-0">
-                            {clip.index || idx + 1}
+                      {conversion.clips.map((clip, idx) => (
+                        <div key={clip.label} className="px-4 py-3">
+                          <div className="flex items-center justify-between gap-2 mb-1.5">
+                            <span className="text-xs font-bold text-primary font-mono">{clip.label}</span>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-[10px] ${clip.wordCount === WORDS_PER_CLIP ? 'text-muted-foreground' : 'text-amber-600 dark:text-amber-400 font-medium'}`}>
+                                {clip.wordCount} words
+                              </span>
+                              <button onClick={() => handleCopyClip(idx, clip.label, clip.text)}
+                                className="p-1.5 rounded text-muted-foreground hover:text-primary transition-colors shrink-0">
+                                {copiedClip === idx ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                              </button>
+                            </div>
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm text-foreground">{clip.text}</p>
-                            <p className="text-[10px] text-muted-foreground mt-1">~{clip.estimatedSeconds}s</p>
-                          </div>
-                          <button onClick={() => handleCopyClip(idx, clip.text)}
-                            className="p-1.5 rounded text-muted-foreground hover:text-primary transition-colors shrink-0">
-                            {copiedClip === idx ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
-                          </button>
+                          <p className="text-sm text-foreground leading-relaxed">{clip.text}</p>
                         </div>
                       ))}
                     </div>
@@ -449,11 +540,11 @@ export default function Tools() {
                 </>
               )}
 
-              {!analysis && !isAnalyzing && (
+              {!conversion && !isAnalyzing && (
                 <div className="bg-card border border-border rounded-xl p-12 text-center">
                   <FileText className="w-12 h-12 mx-auto mb-3 text-muted-foreground opacity-20" />
-                  <h3 className="text-sm font-medium text-muted-foreground mb-1">No Analysis Yet</h3>
-                  <p className="text-xs text-muted-foreground">Paste a script or upload an image, then click "Analyze Duration"</p>
+                  <h3 className="text-sm font-medium text-muted-foreground mb-1">No Script Yet</h3>
+                  <p className="text-xs text-muted-foreground">Paste plain text or upload an image, pick a duration, then click "Generate Voice Over Script"</p>
                 </div>
               )}
             </div>

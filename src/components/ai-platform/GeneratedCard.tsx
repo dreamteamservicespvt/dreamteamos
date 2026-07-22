@@ -3,6 +3,7 @@ import { Copy, Check, Languages, RefreshCw, Send, X, Loader2 } from 'lucide-reac
 import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
 import { transliterateToEnglish } from '@/services/geminiService';
+import { clipLabel, formatClipLine, formatClipScript, parseLabeledClips } from '@/utils/voiceOverFormat';
 
 interface GeneratedCardProps {
   title: string;
@@ -28,44 +29,21 @@ const cleanCodeBlocks = (text: string): string => {
 
 export type VoiceClip = { label: string; text: string };
 
+/**
+ * Splits a voice-over script into its clips. Accepts every header shape the app can produce or
+ * receive — canonical `0-8:`, business-facing `clip-1[0-8sec]:`, and `Segment 1:` — see
+ * utils/voiceOverFormat. Labels are regenerated from position, so callers always get the
+ * current business-facing form regardless of how the script was stored.
+ */
 export const parseVoiceOverClips = (text: string): VoiceClip[] => {
-  const lines = text.split(/\r?\n/);
-  const headerPattern = /^\s*(\d+\s*-\s*\d+)\s*:\s*(.*)$/;
-  const fullScriptPattern = /^\s*FULL\s*SCRIPT\s*:/i;
-  const clips: VoiceClip[] = [];
-  let current: VoiceClip | null = null;
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-
-    // Stop collecting once we hit the "FULL SCRIPT:" section
-    if (fullScriptPattern.test(line)) {
-      break;
-    }
-
-    const match = line.match(headerPattern);
-
-    if (match) {
-      if (current && current.text.trim()) clips.push(current);
-      current = {
-        label: match[1].replace(/\s+/g, ''),
-        text: match[2].trim(),
-      };
-      continue;
-    }
-
-    if (!line) continue;
-    if (current) {
-      current.text = current.text ? `${current.text}\n${line}` : line;
-    }
+  const texts = parseLabeledClips(text);
+  if (texts.length > 0) {
+    return texts.map((clipText, index) => ({ label: clipLabel(index), text: clipText }));
   }
 
-  if (current && current.text.trim()) clips.push(current);
-  if (clips.length > 0) return clips;
-
-  // Fallback: use text before FULL SCRIPT section
+  // Fallback: unlabelled script — treat everything before "FULL SCRIPT:" as a single clip
   const beforeFullScript = text.split(/FULL\s*SCRIPT\s*:/i)[0].trim();
-  return beforeFullScript ? [{ label: 'Clip 1', text: beforeFullScript }] : [];
+  return beforeFullScript ? [{ label: clipLabel(0), text: beforeFullScript }] : [];
 };
 
 export const GeneratedCard: React.FC<GeneratedCardProps> = ({ 
@@ -126,14 +104,17 @@ export const GeneratedCard: React.FC<GeneratedCardProps> = ({
   const handleCopy = () => {
     let copyText = textToDisplay;
     if (sectionType === 'mainFrame' || sectionType === 'header') copyText = cleanCodeBlocks(copyText);
+    // Voice-over copies always leave in the business-facing `clip-1[0-8sec]: …` shape,
+    // never the canonical `0-8: …` storage form.
+    if (voiceOverClips.length > 0) copyText = formatClipScript(voiceOverClips.map(c => c.text));
     navigator.clipboard.writeText(copyText);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleClipCopy = (label: string, clipText: string) => {
-    navigator.clipboard.writeText(`${label}: ${clipText}`);
-    setCopiedClipLabel(label);
+  const handleClipCopy = (index: number, clipText: string) => {
+    navigator.clipboard.writeText(formatClipLine(index, clipText));
+    setCopiedClipLabel(clipLabel(index));
     setTimeout(() => setCopiedClipLabel(null), 2000);
   };
 
@@ -245,14 +226,15 @@ export const GeneratedCard: React.FC<GeneratedCardProps> = ({
           </pre>
         ) : sectionType === 'voiceOver' && voiceOverClips.length > 0 ? (
           <div className="space-y-3">
-            {voiceOverClips.map((clip) => {
-              const isClipCopied = copiedClipLabel === clip.label;
+            {voiceOverClips.map((clip, index) => {
+              const label = clipLabel(index);
+              const isClipCopied = copiedClipLabel === label;
               return (
-                <div key={clip.label} className={cn("rounded-lg border overflow-hidden", isDark ? "border-slate-700" : "border-slate-200")}>
+                <div key={label} className={cn("rounded-lg border overflow-hidden", isDark ? "border-slate-700" : "border-slate-200")}>
                   <div className={cn("flex items-center justify-between px-3 py-1.5 border-b", isDark ? "bg-slate-700/50 border-slate-600" : "bg-slate-50 border-slate-200")}>
-                    <span className={cn("text-xs font-semibold tracking-wide", isDark ? "text-slate-300" : "text-slate-600")}>{clip.label}</span>
+                    <span className={cn("text-xs font-semibold tracking-wide font-mono", isDark ? "text-slate-300" : "text-slate-600")}>{label}</span>
                     <button
-                      onClick={() => handleClipCopy(clip.label, clip.text)}
+                      onClick={() => handleClipCopy(index, clip.text)}
                       className={cn(
                         "flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded transition-colors",
                         isClipCopied

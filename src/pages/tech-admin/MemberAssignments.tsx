@@ -11,7 +11,9 @@ import { sendNotification } from '@/services/notifications';
 import { useAuthStore } from '@/store/authStore';
 import { useFirestoreCollection } from '@/hooks/useFirestore';
 import ReassignWork from '@/components/work/ReassignWork';
-import { PRICING } from '@/utils/pricing';
+import {
+  DURATIONS, END_CREDITS_SECONDS, getClipCount, hasPoster, durationOptionsFor, priceForClips,
+} from '@/utils/assignmentDuration';
 import { formatCurrency, formatDate, formatTime } from '@/utils/formatters';
 import { formatPhoneDisplay, getWhatsAppUrl, normalizePhone } from '@/utils/phone';
 import { format, subDays, startOfDay } from 'date-fns';
@@ -29,22 +31,6 @@ const ATTIRE_LABELS: Record<AttireType, string> = {
 };
 
 const ASSIGNMENT_LANGUAGE_OPTIONS = ['Telugu', 'English', 'Hindi', 'Kannada', 'Custom'] as const;
-
-const DURATIONS: Record<string, string[]> = {
-  wishes: ['20s', '40s'],
-  promotional: ['16s', '32s', '48s', '64s'],
-  cinematic: ['16s', '32s', '48s', '64s'],
-};
-
-const CLIP_COUNTS: Record<string, number> = {
-  '16s': 2, '32s': 4, '48s': 6, '64s': 8,
-  '20s': 2, '40s': 4,
-};
-
-const HAS_POSTER: Record<string, boolean> = {
-  '16s': false, '32s': true, '48s': true, '64s': true,
-  '20s': false, '40s': false,
-};
 
 const statusColors: Record<string, string> = {
   assigned: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
@@ -227,10 +213,6 @@ export default function MemberAssignments() {
       a.category?.toLowerCase().includes(q)
     );
   }, [memberAssignments, searchQuery]);
-
-  const getClipCount = (duration: string) => CLIP_COUNTS[duration] || Math.floor(parseInt(duration) / 8);
-  const getEndCredits = () => 5;
-  const hasPoster = (duration: string) => HAS_POSTER[duration] || false;
 
   const verifyAssignments = async (items: WorkAssignment[]) => {
     if (!currentUser) return;
@@ -605,7 +587,7 @@ export default function MemberAssignments() {
                       <select value={editForm.category} onChange={(e) => {
                         const cat = e.target.value;
                         const dur = DURATIONS[cat][0];
-                        setEditForm(prev => prev ? { ...prev, category: cat, duration: dur, pricePerUnit: PRICING[cat]?.[dur] ?? 0 } : prev);
+                        setEditForm(prev => prev ? { ...prev, category: cat, duration: dur, pricePerUnit: priceForClips(cat, getClipCount(dur)) } : prev);
                       }} className="w-full border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border outline-none focus:ring-2 focus:ring-primary/20">
                         <option value="wishes">Wishes</option>
                         <option value="promotional">Promotional</option>
@@ -616,9 +598,9 @@ export default function MemberAssignments() {
                     {/* Duration */}
                     <div>
                       <label className="block text-[11px] font-medium text-muted-foreground mb-1">Duration</label>
-                      <select value={editForm.duration} onChange={(e) => setEditForm(prev => prev ? { ...prev, duration: e.target.value, pricePerUnit: PRICING[prev.category]?.[e.target.value] ?? 0 } : prev)}
+                      <select value={editForm.duration} onChange={(e) => setEditForm(prev => prev ? { ...prev, duration: e.target.value, pricePerUnit: priceForClips(prev.category, getClipCount(e.target.value)) } : prev)}
                         className="w-full border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border outline-none focus:ring-2 focus:ring-primary/20">
-                        {DURATIONS[editForm.category].map(d => <option key={d} value={d}>{d} ({getClipCount(d)} clips + {hasPoster(d) ? 'Poster ' : ''}{getEndCredits()}s EC)</option>)}
+                        {durationOptionsFor(editForm.category, editForm.duration).map(d => <option key={d} value={d}>{d} ({getClipCount(d)} clips + {hasPoster(d) ? 'Poster ' : ''}{END_CREDITS_SECONDS}s EC)</option>)}
                       </select>
                     </div>
 

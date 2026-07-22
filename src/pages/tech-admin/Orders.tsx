@@ -14,16 +14,7 @@ import DeadlineChip from "@/components/work/DeadlineChip";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import type { AppUser, Order, WorkAssignment } from "@/types";
-
-// Work-spec constants for ad-category assignments (mirrors WorkAssign).
-const DURATIONS: Record<string, string[]> = {
-  wishes: ["20s", "40s"],
-  promotional: ["16s", "32s", "48s", "64s"],
-  cinematic: ["16s", "32s", "48s", "64s"],
-};
-const CLIP_COUNTS: Record<string, number> = {
-  "16s": 2, "32s": 4, "48s": 6, "64s": 8, "20s": 2, "40s": 4,
-};
+import { DURATIONS, getClipCount } from "@/utils/assignmentDuration";
 
 type OrderTab = "unassigned" | "assigned" | "completed";
 
@@ -123,7 +114,7 @@ export default function Orders() {
     setAssigning(true);
     try {
       const ad = isAdCategory(assignTarget.category);
-      const clipCount = ad ? (CLIP_COUNTS[duration] || 0) : 0;
+      const clipCount = ad ? getClipCount(duration) : 0;
       const uniqueId = nextWorkUniqueId(assignTarget.category, allAssignments);
       await assignOrderToMember({
         order: assignTarget,
@@ -293,7 +284,7 @@ export default function Orders() {
                 <select value={duration} onChange={(e) => { setDuration(e.target.value); setPrice(PRICING[assignTarget.category]?.[e.target.value] ?? price); }}
                   className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border outline-none focus:ring-2 focus:ring-primary/20">
                   {(DURATIONS[assignTarget.category] || []).map((d) => (
-                    <option key={d} value={d}>{d} ({CLIP_COUNTS[d] || 0} clips)</option>
+                    <option key={d} value={d}>{d} ({getClipCount(d)} clips)</option>
                   ))}
                 </select>
               </div>

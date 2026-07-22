@@ -1,27 +1,30 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import type { DateRange } from 'react-day-picker';
 import {
-  ClipboardList, Plus, Trash2, Eye, CheckCircle2, Edit3, Loader2, AlertCircle,
-  Search, Filter, ChevronDown, ChevronRight, Pencil, X, Save, Undo2, Users, UserCircle, History, Copy, Check, MessageCircle, Phone, Sparkles
+  ClipboardList, Plus, CheckCircle2, Loader2,
+  Search, ChevronRight, X, Users, History, Copy, Check, MessageCircle, Sparkles
 } from 'lucide-react';
-import { formatPhoneDisplay, getWhatsAppUrl, normalizePhone } from '@/utils/phone';
-import { collection, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, query, where, onSnapshot } from 'firebase/firestore';
+import { getWhatsAppUrl, normalizePhone } from '@/utils/phone';
+import { collection, addDoc, serverTimestamp, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/services/firebase';
 import { sendNotification } from '@/services/notifications';
 import { useAuthStore } from '@/store/authStore';
 import { useFirestoreCollection } from '@/hooks/useFirestore';
-import { PRICING } from '@/utils/pricing';
+import {
+  DURATIONS, END_CREDITS_SECONDS,
+  getClipCount, hasPoster, durationForClips, normalizeClipCount, priceForClips,
+} from '@/utils/assignmentDuration';
 import { formatDate, formatTime } from '@/utils/formatters';
-import { format, subDays, startOfDay } from 'date-fns';
-import DashboardDateRangePicker from '@/components/dashboard/DateRangePicker';
+import { format } from 'date-fns';
 import type { WorkAssignment, AppUser, DailyCheckin } from '@/types';
 import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from '@/types/aiPlatform';
-import { formatDateRangeLabel, isDateWithinRange, normalizeDateRange, parseQueryDate, parseQueryDateRange } from '@/utils/dateRange';
-import { upsertClientOnWorkVerify } from '@/services/clients';
-import { revertOrderToAssigned, markOrderCompleted } from '@/services/orders';
-import { reassignWork } from '@/services/workReassign';
-import DeadlineChip from '@/components/work/DeadlineChip';
+import { verifyAssignments, awaitingVerification } from '@/services/workVerify';
+
+/**
+ * Work Assign — the control centre for work that still needs doing: search the team's live
+ * workload, assign new work, and approve what has been delivered. Reporting and the full
+ * assignment history live on the Work Done & Reports page (pages/shared/WorkReports).
+ */
 
 // Human-readable labels for each attire option (mirrors AIPlatformApp's ATTIRE_LABELS so the
 // requirement the lead sets here reads identically wherever it's shown).
@@ -33,28 +36,6 @@ const ATTIRE_LABELS: Record<AttireType, string> = {
 };
 
 const ASSIGNMENT_LANGUAGE_OPTIONS = ['Telugu', 'English', 'Hindi', 'Kannada', 'Custom'] as const;
-
-const DURATIONS: Record<string, string[]> = {
-  wishes: ['20s', '40s'],
-  promotional: ['16s', '32s', '48s', '64s'],
-  cinematic: ['16s', '32s', '48s', '64s'],
-};
-
-const CLIP_COUNTS: Record<string, number> = {
-  '16s': 2, '32s': 4, '48s': 6, '64s': 8,
-  '20s': 2, '40s': 4,
-};
-
-const HAS_POSTER: Record<string, boolean> = {
-  '16s': false, '32s': true, '48s': true, '64s': true,
-  '20s': false, '40s': false,
-};
-
-const VALID_STATUS_FILTERS = ['all', 'assigned', 'in_progress', 'completed', 'verified', 'editing'] as const;
-
-function isValidDayFilter(value: string | null): value is string {
-  return value === 'all' || (typeof value === 'string' && /^[0-4]$/.test(value));
-}
 
 function generateAccessCode(): string {
   return String(Math.floor(1000 + Math.random() * 9000));
@@ -68,16 +49,6 @@ function generateSimpleId(category: string, existingAssignments: WorkAssignment[
     return isNaN(num) ? max : Math.max(max, num);
   }, 0);
   return `${prefix}${String(maxNum + 1).padStart(3, '0')}`;
-}
-
-function getDayLabel(date: Date): string {
-  const today = startOfDay(new Date());
-  const target = startOfDay(date);
-  const diffMs = today.getTime() - target.getTime();
-  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
-  if (diffDays === 0) return "Today";
-  if (diffDays === 1) return "Yesterday";
-  return `${diffDays} days ago`;
 }
 
 export default function TeamLeaderWorkAssign() {
@@ -102,48 +73,14 @@ export default function TeamLeaderWorkAssign() {
 
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [dayFilter, setDayFilter] = useState<string>('all');
-  const [selectedRange, setSelectedRange] = useState<DateRange | undefined>(undefined);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<{
-    assignedTo: string; category: string; duration: string; businessName: string; businessWhatsapp: string;
-    modelGender: ModelGender; attireType: AttireType; customAttire: string; aspectRatio: '9:16' | '16:9'; language: string; customLanguage: string;
-  } | null>(null);
-  const [editMemberSearch, setEditMemberSearch] = useState('');
   const [memberSearch, setMemberSearch] = useState('');
-  const [confirmAction, setConfirmAction] = useState<{ type: 'delete' | 'sendback'; id: string; assignedTo?: string; title: string } | null>(null);
+  /** Duration entered as a free clip count instead of a standard package. */
+  const [customDuration, setCustomDuration] = useState(false);
+  const [customClips, setCustomClips] = useState(3);
   const [workloadSearch, setWorkloadSearch] = useState('');
-  const [showHistory, setShowHistory] = useState(false);
   const [todayCheckins, setTodayCheckins] = useState<Map<string, DailyCheckin>>(new Map());
-  const [verifyingAll, setVerifyingAll] = useState(false);
+  const [verifying, setVerifying] = useState(false);
   const [verifyDialog, setVerifyDialog] = useState<{ mode: 'single' | 'all'; items: WorkAssignment[] } | null>(null);
-
-  useEffect(() => {
-    const statusParam = searchParams.get('status');
-    if (statusParam && VALID_STATUS_FILTERS.includes(statusParam as typeof VALID_STATUS_FILTERS[number])) {
-      setStatusFilter(statusParam);
-    }
-
-    const parsedRange = parseQueryDateRange(searchParams.get('from'), searchParams.get('to'));
-    if (parsedRange?.from) {
-      setSelectedRange(parsedRange);
-      setDayFilter('all');
-      return;
-    }
-
-    const parsedDate = parseQueryDate(searchParams.get('date'));
-    if (parsedDate) {
-      setSelectedRange({ from: parsedDate, to: parsedDate });
-      setDayFilter('all');
-      return;
-    }
-
-    setSelectedRange(undefined);
-    const dayParam = searchParams.get('day');
-    setDayFilter(isValidDayFilter(dayParam) ? dayParam : 'all');
-  }, [searchParams]);
 
   useEffect(() => {
     const todayStr = format(new Date(), "yyyy-MM-dd");
@@ -176,7 +113,6 @@ export default function TeamLeaderWorkAssign() {
     language: 'Telugu' as string,
     customLanguage: '',
   });
-  const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
   const [copiedBusiness, setCopiedBusiness] = useState<string | null>(null);
   /** Requirements message to copy/send on WhatsApp, shown right after Create Assignment succeeds. */
   const [waReq, setWaReq] = useState<{ member: AppUser; message: string } | null>(null);
@@ -197,23 +133,37 @@ export default function TeamLeaderWorkAssign() {
     }
   }, [searchParams, techMembers]);
 
-  const getClipCount = (duration: string) => CLIP_COUNTS[duration] || Math.floor(parseInt(duration) / 8);
-  const getEndCredits = (_duration: string) => 5;
-  const hasPoster = (duration: string) => HAS_POSTER[duration] || false;
-
   const updateField = (field: string, value: any) => {
     setForm(prev => {
       const next = { ...prev, [field]: value };
       if (field === 'category') {
         const durations = DURATIONS[value as string];
-        next.duration = durations[0];
-        next.pricePerUnit = PRICING[value as string]?.[durations[0]] ?? 0;
+        // A custom clip count survives a category switch — only the price is re-derived.
+        if (!customDuration) next.duration = durations[0];
+        next.pricePerUnit = priceForClips(value as string, getClipCount(next.duration));
       }
       if (field === 'duration') {
-        next.pricePerUnit = PRICING[next.category]?.[value as string] ?? 0;
+        next.pricePerUnit = priceForClips(next.category, getClipCount(value as string));
       }
       return next;
     });
+  };
+
+  /** Switches the Duration dropdown to a free clip count, or back to the standard packages. */
+  const setCustomDurationMode = (enabled: boolean) => {
+    setCustomDuration(enabled);
+    const duration = enabled ? durationForClips(customClips) : DURATIONS[form.category][0];
+    setForm(prev => ({ ...prev, duration, pricePerUnit: priceForClips(prev.category, getClipCount(duration)) }));
+  };
+
+  const updateCustomClips = (clips: number) => {
+    const safe = normalizeClipCount(clips);
+    setCustomClips(safe);
+    setForm(prev => ({
+      ...prev,
+      duration: durationForClips(safe),
+      pricePerUnit: priceForClips(prev.category, safe),
+    }));
   };
 
   const filteredMembers = useMemo(() => {
@@ -289,7 +239,7 @@ export default function TeamLeaderWorkAssign() {
         ``,
         form.businessName.trim() ? `🏢 *Business:* ${form.businessName.trim()}` : null,
         `🎯 *Category:* ${form.category.charAt(0).toUpperCase() + form.category.slice(1)}`,
-        `⏱️ *Duration:* ${form.duration} (${clips} clips${hasPoster(form.duration) ? ' + Poster' : ''} + ${getEndCredits(form.duration)}s EC)`,
+        `⏱️ *Duration:* ${form.duration} (${clips} clips${hasPoster(form.duration) ? ' + Poster' : ''} + ${END_CREDITS_SECONDS}s EC)`,
         ``,
         `📋 *AD SPECIFICATION*`,
         `👤 *Model:* ${form.modelGender === ModelGender.MALE ? 'Male' : 'Female'}`,
@@ -309,6 +259,7 @@ export default function TeamLeaderWorkAssign() {
         assignedTo: '', category: 'promotional', duration: '16s', pricePerUnit: 499, clientName: '', businessName: '', businessWhatsapp: '',
         modelGender: ModelGender.FEMALE, attireType: AttireType.TRADITIONAL, customAttire: '', aspectRatio: '9:16', language: 'Telugu', customLanguage: '',
       });
+      setCustomDuration(false);
       setMemberSearch('');
     } catch (error) {
       console.error('Failed to create assignment:', error);
@@ -317,242 +268,68 @@ export default function TeamLeaderWorkAssign() {
     }
   };
 
-  const verifyAssignments = async (items: WorkAssignment[]) => {
-    if (!user) return;
-    try {
-      for (const assignment of items) {
-        await updateDoc(doc(db, 'work_assignments', assignment.id), {
-          status: 'verified',
-          verifiedAt: serverTimestamp(),
-          verifiedBy: user.uid,
-        });
-        await sendNotification({
-          userId: assignment.assignedTo,
-          type: 'work_verified',
-          title: 'Work Verified!',
-          message: `Your ${assignment.category} work (${assignment.displayTitle}) has been verified and approved.`,
-        });
-
-        // Order-driven work → record the delivery on the client (single customer view).
-        await upsertClientOnWorkVerify({ assignment, deliveredByName: getMemberName(assignment.assignedTo) });
-      }
-    } catch (error) {
-      console.error('Failed to verify assignment(s):', error);
-    }
-  };
-
-  const handleVerify = (assignment: WorkAssignment) => {
-    setVerifyDialog({ mode: 'single', items: [assignment] });
-  };
-
   const handleConfirmVerify = async () => {
-    if (!verifyDialog || verifyDialog.items.length === 0) return;
-    setVerifyingAll(true);
+    if (!verifyDialog?.items.length || !user) return;
+    setVerifying(true);
     try {
-      await verifyAssignments(verifyDialog.items);
+      await verifyAssignments(verifyDialog.items, user.uid, getMemberName);
       setVerifyDialog(null);
     } finally {
-      setVerifyingAll(false);
+      setVerifying(false);
     }
   };
-
-  const handleVerifyAll = async (items: WorkAssignment[]) => {
-    if (!items.length) return;
-    setVerifyDialog({ mode: 'all', items });
-  };
-
-  const handleSetEditing = async (assignmentId: string, assignedTo: string) => {
-    try {
-      await updateDoc(doc(db, 'work_assignments', assignmentId), { status: 'editing' });
-      // Sent back for edits → order returns to the active queue.
-      const orderId = assignments.find(a => a.id === assignmentId)?.orderId;
-      if (orderId) await revertOrderToAssigned(orderId);
-      await sendNotification({
-        userId: assignedTo,
-        type: 'work_editing',
-        title: 'Edits Required',
-        message: 'Your work has been sent back for edits. Please review and resubmit.',
-        link: '/tech/my-work',
-      });
-      setConfirmAction(null);
-    } catch (error) {
-      console.error('Failed to set editing:', error);
-    }
-  };
-
-  const handleUndoEditing = async (assignmentId: string) => {
-    try {
-      await updateDoc(doc(db, 'work_assignments', assignmentId), { status: 'completed' });
-      // Undo edits → work is completed again, so the order is awaiting verify.
-      const orderId = assignments.find(a => a.id === assignmentId)?.orderId;
-      if (orderId) await markOrderCompleted(orderId);
-    } catch (error) {
-      console.error('Failed to undo editing:', error);
-    }
-  };
-
-  const handleDelete = async (assignmentId: string) => {
-    try {
-      await deleteDoc(doc(db, 'work_assignments', assignmentId));
-      setConfirmAction(null);
-    } catch (error) {
-      console.error('Failed to delete assignment:', error);
-    }
-  };
-
-  const handleStartEdit = (a: WorkAssignment) => {
-    setEditingId(a.id);
-    const gender = (a.modelGender as ModelGender) || ModelGender.FEMALE;
-    const attireType = (a.attireType as AttireType) || AttireType.TRADITIONAL;
-    const isPresetLanguage = a.language && (ASSIGNMENT_LANGUAGE_OPTIONS as readonly string[]).includes(a.language);
-    setEditForm({
-      assignedTo: a.assignedTo,
-      category: a.category, duration: a.duration, businessName: a.businessName || a.clientName || '', businessWhatsapp: a.businessWhatsapp || '',
-      modelGender: gender, attireType, customAttire: a.customAttire || '',
-      aspectRatio: a.aspectRatio || '9:16',
-      language: a.language ? (isPresetLanguage ? a.language : 'Custom') : 'Telugu',
-      customLanguage: a.language && !isPresetLanguage ? a.language : '',
-    });
-    setEditMemberSearch(getMemberName(a.assignedTo));
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editingId || !editForm || !editForm.assignedTo) return;
-    try {
-      const original = assignments.find(x => x.id === editingId);
-      const clips = getClipCount(editForm.duration);
-      const price = PRICING[editForm.category]?.[editForm.duration] ?? 0;
-      const language = editForm.language === 'Custom' ? (editForm.customLanguage.trim() || 'Custom') : editForm.language;
-      await updateDoc(doc(db, 'work_assignments', editingId), {
-        category: editForm.category,
-        duration: editForm.duration,
-        pricePerUnit: price,
-        clipCount: clips,
-        totalPrice: price,
-        businessName: editForm.businessName.trim(),
-        ...(editForm.businessWhatsapp.trim() ? { businessWhatsapp: normalizePhone(editForm.businessWhatsapp.trim()) } : { businessWhatsapp: '' }),
-        modelGender: editForm.modelGender,
-        attireType: editForm.attireType,
-        customAttire: editForm.attireType === AttireType.CUSTOM ? editForm.customAttire.trim() : '',
-        aspectRatio: editForm.aspectRatio,
-        language,
-      });
-      // Member changed → hand off through the established reassign flow (resets the work to
-      // "assigned" for the new member and notifies both members).
-      if (user && original && editForm.assignedTo !== original.assignedTo) {
-        const newMember = techMembers.find(m => m.uid === editForm.assignedTo);
-        if (newMember) {
-          await reassignWork(
-            { ...original, businessName: editForm.businessName.trim() || original.businessName },
-            { uid: newMember.uid, name: newMember.name },
-            { uid: user.uid, name: user.name },
-          );
-        }
-      }
-      setEditingId(null);
-      setEditForm(null);
-      setEditMemberSearch('');
-    } catch (error) {
-      console.error('Failed to edit assignment:', error);
-    }
-  };
-
-  const recentDays = useMemo(() => {
-    const days: { date: Date; dateStr: string; label: string }[] = [];
-    for (let i = 0; i < 5; i++) {
-      const d = subDays(new Date(), i);
-      days.push({ date: startOfDay(d), dateStr: format(d, "yyyy-MM-dd"), label: getDayLabel(d) });
-    }
-    return days;
-  }, []);
-
-  const filteredAssignments = useMemo(() => {
-    let result = assignments;
-    if (statusFilter !== 'all') result = result.filter(a => a.status === statusFilter);
-    if (searchQuery.trim()) {
-      const rawQ = searchQuery.trim();
-      const q = rawQ.toLowerCase();
-      const hasDigits = /[0-9]/.test(rawQ);
-      const queryDigits = hasDigits ? normalizePhone(rawQ).replace(/\D/g, '') : '';
-      result = result.filter(a => {
-        const member = techMembers.find(m => m.uid === a.assignedTo);
-        const memberName = member?.name?.toLowerCase() || '';
-        const businessName = (a.businessName || a.clientName || '').toLowerCase();
-        const displayTitle = a.displayTitle?.toLowerCase() || '';
-        const uniqueId = a.uniqueId?.toLowerCase() || '';
-        if (displayTitle.includes(q) || businessName.includes(q) || uniqueId.includes(q) || memberName.includes(q)) return true;
-        if (hasDigits && queryDigits) {
-          if (a.businessWhatsapp) {
-            const nd = normalizePhone(a.businessWhatsapp).replace(/\D/g, '');
-            if (nd.includes(queryDigits) || queryDigits.includes(nd)) return true;
-          }
-          if (member?.phone) {
-            const nd = normalizePhone(member.phone).replace(/\D/g, '');
-            if (nd.includes(queryDigits) || queryDigits.includes(nd)) return true;
-          }
-        }
-        return false;
-      });
-    }
-
-    if (selectedRange?.from) {
-      result = result.filter(a => isDateWithinRange(a.date, selectedRange));
-    } else if (dayFilter !== 'all') {
-      const dayIndex = parseInt(dayFilter);
-      const dayDateStr = recentDays[dayIndex]?.dateStr;
-      if (dayIndex === 0) {
-        const todayTasks = result.filter(a => a.date === dayDateStr);
-        const incomingPast = result.filter(a => a.date !== dayDateStr && a.status === 'assigned');
-        result = [...todayTasks, ...incomingPast];
-      } else {
-        result = result.filter(a => a.date === dayDateStr);
-      }
-    }
-
-    return result.sort((a, b) => (b.assignedAt?.seconds || 0) - (a.assignedAt?.seconds || 0));
-  }, [assignments, statusFilter, searchQuery, techMembers, selectedRange, dayFilter, recentDays]);
 
   const getMemberName = (uid: string) => allUsers.find(u => u.uid === uid)?.name || 'Unknown';
 
-  const memberWorkload = useMemo(() => {
-    const grouped: Record<string, { member: AppUser; assignments: WorkAssignment[] }> = {};
-    for (const m of techMembers) {
-      const mAssignments = filteredAssignments.filter(a => a.assignedTo === m.uid);
-      if (mAssignments.length > 0) {
-        grouped[m.uid] = { member: m, assignments: mAssignments };
-      }
-    }
-    return Object.values(grouped).sort((a, b) => {
-      const latestA = Math.max(...a.assignments.map(x => x.assignedAt?.seconds || 0));
-      const latestB = Math.max(...b.assignments.map(x => x.assignedAt?.seconds || 0));
-      return latestB - latestA;
-    });
-  }, [filteredAssignments, techMembers]);
-
-  const filteredWorkload = useMemo(() => {
-    if (!workloadSearch.trim()) return memberWorkload;
-    const q = workloadSearch.toLowerCase();
-    return memberWorkload.filter(({ assignments: mAsgn }) =>
-      mAsgn.some(a => (a.businessName || a.clientName)?.toLowerCase().includes(q) || a.displayTitle?.toLowerCase().includes(q))
-    );
-  }, [memberWorkload, workloadSearch]);
-
-  const memberViewQuery = useMemo(() => {
-    const params = new URLSearchParams();
-    params.set('status', statusFilter);
-    if (selectedRange?.from) {
-      params.set('from', format(selectedRange.from, 'yyyy-MM-dd'));
-      params.set('to', format(selectedRange.to ?? selectedRange.from, 'yyyy-MM-dd'));
-    } else {
-      params.set('day', dayFilter);
-    }
-    return params.toString();
-  }, [statusFilter, selectedRange, dayFilter]);
-
-  const completedVisibleAssignments = useMemo(
-    () => filteredAssignments.filter((a) => a.status === 'completed'),
-    [filteredAssignments]
+  /**
+   * Live work only. This page is the control centre for what still needs doing — verified work
+   * has left the queue and belongs to Work Done & Reports.
+   */
+  const activeAssignments = useMemo(
+    () => assignments.filter(a => a.status !== 'verified'),
+    [assignments]
   );
+
+  /** Delivered work waiting on approval — the "approve work" queue. */
+  const pendingApproval = useMemo(() => awaitingVerification(assignments), [assignments]);
+
+  // Active work grouped by member, most recently assigned team first
+  const memberWorkload = useMemo(() => {
+    return techMembers
+      .map(member => ({ member, assignments: activeAssignments.filter(a => a.assignedTo === member.uid) }))
+      .filter(entry => entry.assignments.length > 0)
+      .sort((a, b) => {
+        const latest = (items: WorkAssignment[]) => Math.max(...items.map(x => x.assignedAt?.seconds || 0));
+        return latest(b.assignments) - latest(a.assignments);
+      });
+  }, [activeAssignments, techMembers]);
+
+  /**
+   * The page's one search box: matches a member by name or phone, or any of their live work by
+   * business name, title, ad ID, or the business's WhatsApp number.
+   */
+  const filteredWorkload = useMemo(() => {
+    const rawQ = workloadSearch.trim();
+    if (!rawQ) return memberWorkload;
+
+    const q = rawQ.toLowerCase();
+    const queryDigits = rawQ.replace(/D/g, '');
+    const digitsMatch = (value?: string | null) => {
+      if (!queryDigits || !value) return false;
+      const d = normalizePhone(value).replace(/D/g, '');
+      return d.includes(queryDigits) || queryDigits.includes(d);
+    };
+
+    return memberWorkload.filter(({ member, assignments: mAsgn }) => {
+      if (member.name?.toLowerCase().includes(q) || digitsMatch(member.phone)) return true;
+      return mAsgn.some(a =>
+        (a.businessName || a.clientName || '').toLowerCase().includes(q) ||
+        (a.displayTitle || '').toLowerCase().includes(q) ||
+        (a.uniqueId || '').toLowerCase().includes(q) ||
+        digitsMatch(a.businessWhatsapp)
+      );
+    });
+  }, [memberWorkload, workloadSearch]);
 
   const statusColors: Record<string, string> = {
     assigned: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
@@ -562,15 +339,8 @@ export default function TeamLeaderWorkAssign() {
     editing: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
   };
 
-  const formatDuration = (seconds: number) => {
-    if (seconds < 60) return `${seconds}s`;
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return s > 0 ? `${m}m ${s}s` : `${m}m`;
-  };
-
   const getAssignedStamp = (assignment: WorkAssignment) => {
-    const ts = assignment.assignedAt as any;
+    const ts = assignment.assignedAt;
     const assignedDate = ts?.toDate?.()
       || (typeof ts?.seconds === 'number' ? new Date(ts.seconds * 1000) : undefined)
       || (assignment.assignedAtIso ? new Date(assignment.assignedAtIso) : undefined)
@@ -593,40 +363,9 @@ export default function TeamLeaderWorkAssign() {
 
   return (
     <div className="space-y-6">
-      {/* Confirmation Dialog */}
-      {confirmAction && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setConfirmAction(null)}>
-          <div className="bg-card border border-border rounded-xl p-6 shadow-2xl max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
-            <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 ${confirmAction.type === 'delete' ? 'bg-red-100 dark:bg-red-900/30' : 'bg-orange-100 dark:bg-orange-900/30'}`}>
-              {confirmAction.type === 'delete'
-                ? <Trash2 className="w-6 h-6 text-red-600 dark:text-red-400" />
-                : <Edit3 className="w-6 h-6 text-orange-600 dark:text-orange-400" />}
-            </div>
-            <h3 className="text-lg font-semibold text-center text-foreground mb-2">
-              {confirmAction.type === 'delete' ? 'Delete Assignment' : 'Send Back for Edits'}
-            </h3>
-            <p className="text-sm text-muted-foreground text-center mb-6">
-              {confirmAction.type === 'delete'
-                ? <>Are you sure you want to delete <strong className="text-foreground">{confirmAction.title}</strong>? This action cannot be undone.</>
-                : <>Send <strong className="text-foreground">{confirmAction.title}</strong> back to the member for edits? You can undo this later.</>}
-            </p>
-            <div className="flex items-center space-x-3">
-              <button onClick={() => setConfirmAction(null)}
-                className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-border text-foreground hover:bg-muted transition-colors">
-                Cancel
-              </button>
-              <button onClick={() => confirmAction.type === 'delete' ? handleDelete(confirmAction.id) : handleSetEditing(confirmAction.id, confirmAction.assignedTo!)}
-                className={`flex-1 px-4 py-2.5 text-sm font-medium rounded-lg text-white transition-colors ${confirmAction.type === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-orange-600 hover:bg-orange-700'}`}>
-                {confirmAction.type === 'delete' ? 'Delete' : 'Send Back'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Verify Dialog — no pricing shown */}
       {verifyDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => !verifyingAll && setVerifyDialog(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => !verifying && setVerifyDialog(null)}>
           <div className="bg-card border border-border rounded-xl p-4 md:p-6 shadow-2xl w-full max-w-3xl mx-4 max-h-[85vh] overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="flex items-start justify-between gap-3 mb-4">
               <div>
@@ -639,7 +378,7 @@ export default function TeamLeaderWorkAssign() {
               </div>
               <button
                 onClick={() => setVerifyDialog(null)}
-                disabled={verifyingAll}
+                disabled={verifying}
                 className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-50"
                 aria-label="Close"
               >
@@ -671,18 +410,18 @@ export default function TeamLeaderWorkAssign() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setVerifyDialog(null)}
-                  disabled={verifyingAll}
+                  disabled={verifying}
                   className="px-4 py-2 text-sm font-medium rounded-lg border border-border text-foreground hover:bg-muted transition-colors disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleConfirmVerify}
-                  disabled={verifyingAll}
+                  disabled={verifying}
                   className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors disabled:opacity-50"
                 >
-                  {verifyingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                  <span>{verifyingAll ? 'Verifying...' : 'Confirm Verify'}</span>
+                  {verifying ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                  <span>{verifying ? 'Verifying...' : 'Confirm Verify'}</span>
                 </button>
               </div>
             </div>
@@ -791,13 +530,25 @@ export default function TeamLeaderWorkAssign() {
               </select>
             </div>
 
-            {/* Duration */}
+            {/* Duration — standard packages, or any custom clip count */}
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">Duration</label>
-              <select value={form.duration} onChange={(e) => updateField('duration', e.target.value)}
+              <select value={customDuration ? 'custom' : form.duration}
+                onChange={(e) => e.target.value === 'custom' ? setCustomDurationMode(true) : (setCustomDuration(false), updateField('duration', e.target.value))}
                 className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none">
-                {DURATIONS[form.category].map(d => <option key={d} value={d}>{d} ({getClipCount(d)} clips + {hasPoster(d) ? 'Poster ' : ''}{getEndCredits(d)}s EC)</option>)}
+                {DURATIONS[form.category].map(d => <option key={d} value={d}>{d} ({getClipCount(d)} clips + {hasPoster(d) ? 'Poster ' : ''}{END_CREDITS_SECONDS}s EC)</option>)}
+                <option value="custom">Custom clips…</option>
               </select>
+              {customDuration && (
+                <div className="mt-1.5 flex items-center gap-2">
+                  <input type="number" min={1} value={customClips}
+                    onChange={(e) => updateCustomClips(parseInt(e.target.value))}
+                    className="w-24 border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none" />
+                  <span className="text-xs text-muted-foreground">
+                    clips = {form.duration}{hasPoster(form.duration) ? ' + Poster' : ''} + {END_CREDITS_SECONDS}s EC
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Business Name */}
@@ -896,78 +647,31 @@ export default function TeamLeaderWorkAssign() {
         </div>
       )}
 
-      {/* Filters */}
+      {/* Approve work — everything the team has delivered and is waiting on a decision */}
       <div className="rounded-2xl border border-border/70 bg-card/80 p-3 md:p-4 shadow-sm backdrop-blur-sm">
-        <div className="mb-3 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-sm font-semibold text-foreground">Filter assignments</p>
-            <p className="text-xs text-muted-foreground">Compare overall status or inspect a specific member workload across a custom date range.</p>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {selectedRange?.from
-              ? `Showing assignments from ${formatDateRangeLabel(selectedRange)}`
-              : dayFilter === "all"
-                ? "Showing all assignments"
-                : dayFilter === "0"
-                  ? "Today's assignments + incoming (assigned) from past"
-                  : `Showing assignments from ${recentDays[parseInt(dayFilter)]?.label}`
-            }
-          </p>
-        </div>
-
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 flex-wrap">
-          <div className="relative flex-1 min-w-0">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input type="text" placeholder="Search..."
-              value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-10 w-full rounded-xl border border-border/70 bg-background pl-9 pr-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20" />
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
-              className="h-10 rounded-xl border border-border/70 bg-background px-3 text-xs md:text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20 flex-1 sm:flex-none">
-              <option value="all">All Status</option>
-              <option value="assigned">Assigned</option>
-              <option value="in_progress">In Progress</option>
-              <option value="completed">Completed</option>
-              <option value="verified">Verified</option>
-              <option value="editing">Editing</option>
-            </select>
-            {!selectedRange?.from && (
-              <select value={dayFilter} onChange={(e) => setDayFilter(e.target.value)}
-                className="h-10 rounded-xl border border-border/70 bg-background px-3 text-xs md:text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20 flex-1 sm:flex-none">
-                {recentDays.map((d, i) => (
-                  <option key={d.dateStr} value={String(i)}>{d.label} ({format(d.date, "dd/MM")})</option>
-                ))}
-                <option value="all">All Days</option>
-              </select>
-            )}
-            <DashboardDateRangePicker value={selectedRange} onSelect={(range) => { setSelectedRange(normalizeDateRange(range)); if (range?.from) setDayFilter('all'); }} />
-            {(selectedRange?.from || dayFilter !== 'all') && (
-              <button onClick={() => { setSelectedRange(undefined); setDayFilter('all'); }} className="h-10 rounded-xl border border-border/70 px-3 text-xs font-medium text-muted-foreground hover:bg-accent/60 hover:text-foreground">Clear</button>
-            )}
-            <button
-              onClick={() => handleVerifyAll(completedVisibleAssignments)}
-              disabled={verifyingAll || completedVisibleAssignments.length === 0}
-              className="flex h-10 items-center gap-1.5 rounded-xl bg-green-100 px-3 text-xs md:text-sm font-medium text-green-700 transition-colors hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {verifyingAll ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-              <span>{verifyingAll ? 'Verifying...' : `Verify All (${completedVisibleAssignments.length})`}</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 md:gap-3">
-        {['assigned', 'in_progress', 'completed', 'verified', 'editing'].map(status => {
-          const count = filteredAssignments.filter(a => a.status === status).length;
-          return (
-            <div key={status} className="bg-card border rounded-lg p-2 md:p-3 text-center">
-              <p className="text-xl md:text-2xl font-bold text-card-foreground">{count}</p>
-              <p className="text-[10px] md:text-xs text-muted-foreground capitalize">{status.replace('_', ' ')}</p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${pendingApproval.length > 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-muted text-muted-foreground'}`}>
+              <CheckCircle2 className="w-4.5 h-4.5" />
             </div>
-          );
-        })}
+            <div>
+              <p className="text-sm font-semibold text-foreground">Approve work</p>
+              <p className="text-xs text-muted-foreground">
+                {pendingApproval.length === 0
+                  ? 'Nothing waiting — all delivered work is approved.'
+                  : `${pendingApproval.length} delivered ${pendingApproval.length === 1 ? 'video is' : 'videos are'} waiting for your approval.`}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => pendingApproval.length && setVerifyDialog({ mode: 'all', items: pendingApproval })}
+            disabled={verifying || pendingApproval.length === 0}
+            className="flex h-10 items-center justify-center gap-1.5 rounded-xl bg-green-100 px-4 text-xs md:text-sm font-medium text-green-700 transition-colors hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 disabled:cursor-not-allowed disabled:opacity-50"
+            title="Review and approve all delivered work">
+            {verifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+            <span>{verifying ? 'Verifying...' : `Review & Verify (${pendingApproval.length})`}</span>
+          </button>
+        </div>
       </div>
 
       {/* Team Workload Overview — no pricing in member cards */}
@@ -977,22 +681,22 @@ export default function TeamLeaderWorkAssign() {
             <Users className="w-4 h-4 text-muted-foreground" />
             <h3 className="font-semibold text-foreground text-sm">Team Workload</h3>
             <span className="text-[10px] text-muted-foreground">{memberWorkload.reduce((s, m) => s + m.assignments.length, 0)} active across {memberWorkload.length} members</span>
-            <button onClick={() => setShowHistory(!showHistory)}
-              className={`ml-auto flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg border transition-colors ${showHistory ? 'bg-primary/10 text-primary border-primary/30' : 'bg-background text-muted-foreground border-border hover:text-foreground hover:bg-accent/50'}`}>
+            <button onClick={() => navigate('/team-leader/work-reports')}
+              className="ml-auto flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg border bg-background text-muted-foreground border-border hover:text-foreground hover:bg-accent/50 transition-colors">
               <History className="w-3.5 h-3.5" />
-              <span>History</span>
+              <span>History &amp; Reports</span>
             </button>
           </div>
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-            <input type="text" placeholder="Search by business name..." value={workloadSearch}
+            <input type="text" placeholder="Search by member, business, ID or phone..." value={workloadSearch}
               onChange={e => setWorkloadSearch(e.target.value)}
               className="w-full pl-8 pr-3 py-1.5 text-xs bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50" />
           </div>
         </div>
         {filteredWorkload.length === 0 ? (
           <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-            {workloadSearch.trim() ? 'No members match this business name.' : selectedRange?.from || dayFilter === 'all' ? 'No assignments in this range.' : 'No active assignments today.'}
+            {workloadSearch.trim() ? 'No members match that search.' : 'No active work right now — everything is verified.'}
           </div>
         ) : (
           <div className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -1008,7 +712,7 @@ export default function TeamLeaderWorkAssign() {
               const businessEntries = [...namePhoneMap.entries()];
               return (
                 <button key={member.uid}
-                  onClick={() => navigate(`/team-leader/work-assign/${member.uid}?${memberViewQuery}`)}
+                  onClick={() => navigate(`/team-leader/work-assign/${member.uid}?status=all&day=all`)}
                   className="bg-background border border-border rounded-xl p-3 hover:border-primary/40 hover:shadow-md transition-all text-left group"
                 >
                   <div className="flex items-center gap-2.5 mb-2.5">
@@ -1085,259 +789,6 @@ export default function TeamLeaderWorkAssign() {
         )}
       </div>
 
-      {showHistory && (
-        <>
-          {/* Assignments List — no pricing shown */}
-          <div className="space-y-3">
-            {filteredAssignments.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <ClipboardList className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                <p className="text-lg font-medium">No assignments found</p>
-              </div>
-            ) : filteredAssignments.map(a => (
-              <div key={a.id} className="bg-card border rounded-xl p-3 md:p-4 shadow-sm hover:shadow-md transition-shadow">
-                <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2 mb-2">
-                      <h3 className="font-semibold text-card-foreground text-sm md:text-base">{a.businessName || a.displayTitle}</h3>
-                      <span className={`text-[10px] md:text-xs font-medium px-2 py-0.5 rounded-full ${statusColors[a.status]}`}>
-                        {a.status.replace('_', ' ')}
-                      </span>
-                      <span className="text-[10px] md:text-xs font-mono text-muted-foreground">{a.uniqueId}</span>
-                      {a.status !== 'verified' && <DeadlineChip promise={a.promise} />}
-                    </div>
-
-                    {/* Inline edit mode — full labeled grid, mirroring Create New Assignment (no price for leads) */}
-                    {editingId === a.id && editForm ? (
-                      <div className="mt-3 rounded-xl border border-border bg-background/60 p-3 md:p-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                          {/* Assign To */}
-                          <div>
-                            <label className="block text-[11px] font-medium text-muted-foreground mb-1">Assign To</label>
-                            <div className="relative">
-                              <input type="text" placeholder="Search member..." value={editMemberSearch}
-                                onChange={(e) => { setEditMemberSearch(e.target.value); if (editForm.assignedTo) setEditForm(prev => prev ? { ...prev, assignedTo: '' } : prev); }}
-                                className="w-full border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border outline-none focus:ring-2 focus:ring-primary/20" />
-                              {editForm.assignedTo && (
-                                <div className="mt-1 text-[11px] text-green-500">
-                                  ✓ {getMemberName(editForm.assignedTo)}{editForm.assignedTo !== a.assignedTo ? ' — will be reassigned on Save' : ''}
-                                </div>
-                              )}
-                              {!editForm.assignedTo && editMemberSearch && (
-                                <div className="absolute z-10 w-full mt-1 bg-card border border-border rounded-lg shadow-lg max-h-36 overflow-y-auto">
-                                  {techMembers.filter(m => m.name.toLowerCase().includes(editMemberSearch.toLowerCase())).map(m => (
-                                    <button key={m.uid} type="button"
-                                      onClick={() => { setEditForm(prev => prev ? { ...prev, assignedTo: m.uid } : prev); setEditMemberSearch(m.name); }}
-                                      className="w-full text-left px-2.5 py-1.5 text-xs hover:bg-accent transition-colors text-foreground">{m.name}</button>
-                                  ))}
-                                  {techMembers.filter(m => m.name.toLowerCase().includes(editMemberSearch.toLowerCase())).length === 0 && (
-                                    <div className="px-2.5 py-1.5 text-[11px] text-muted-foreground">No members found</div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Category */}
-                          <div>
-                            <label className="block text-[11px] font-medium text-muted-foreground mb-1">Category</label>
-                            <select value={editForm.category} onChange={(e) => {
-                              const cat = e.target.value;
-                              const dur = DURATIONS[cat][0];
-                              setEditForm(prev => prev ? { ...prev, category: cat, duration: dur } : prev);
-                            }} className="w-full border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border outline-none focus:ring-2 focus:ring-primary/20">
-                              <option value="promotional">Promotional</option>
-                              <option value="wishes">Wishes</option>
-                              <option value="cinematic">Cinematic</option>
-                            </select>
-                          </div>
-
-                          {/* Duration */}
-                          <div>
-                            <label className="block text-[11px] font-medium text-muted-foreground mb-1">Duration</label>
-                            <select value={editForm.duration} onChange={(e) => setEditForm(prev => prev ? { ...prev, duration: e.target.value } : prev)}
-                              className="w-full border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border outline-none focus:ring-2 focus:ring-primary/20">
-                              {(DURATIONS[editForm.category] || []).map(d => <option key={d} value={d}>{d} ({getClipCount(d)} clips + {hasPoster(d) ? 'Poster ' : ''}{getEndCredits(d)}s EC)</option>)}
-                            </select>
-                          </div>
-
-                          {/* Business Name */}
-                          <div>
-                            <label className="block text-[11px] font-medium text-muted-foreground mb-1">Business Name</label>
-                            <input type="text" placeholder="e.g. Sharma Electronics" value={editForm.businessName}
-                              onChange={(e) => setEditForm(prev => prev ? { ...prev, businessName: e.target.value } : prev)}
-                              className="w-full border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/20" />
-                          </div>
-
-                          {/* Business WhatsApp */}
-                          <div>
-                            <label className="block text-[11px] font-medium text-muted-foreground mb-1">Business WhatsApp</label>
-                            <input type="text" placeholder="e.g. 9876543210" value={editForm.businessWhatsapp}
-                              onChange={(e) => setEditForm(prev => prev ? { ...prev, businessWhatsapp: e.target.value } : prev)}
-                              className="w-full border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/20" />
-                          </div>
-
-                          {/* Model */}
-                          <div>
-                            <label className="block text-[11px] font-medium text-muted-foreground mb-1">Model</label>
-                            <div className="grid grid-cols-2 gap-1.5">
-                              {[ModelGender.FEMALE, ModelGender.MALE].map(g => (
-                                <button key={g} type="button"
-                                  onClick={() => setEditForm(prev => {
-                                    if (!prev) return prev;
-                                    const allowed = ATTIRE_OPTIONS_BY_GENDER[g];
-                                    return { ...prev, modelGender: g, attireType: allowed.includes(prev.attireType) ? prev.attireType : AttireType.PROFESSIONAL };
-                                  })}
-                                  className={`px-2 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                                    editForm.modelGender === g ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-accent'
-                                  }`}>
-                                  {g === ModelGender.FEMALE ? '👩 Female' : '👨 Male'}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-                          {/* Attire */}
-                          <div>
-                            <label className="block text-[11px] font-medium text-muted-foreground mb-1">Attire</label>
-                            <select value={editForm.attireType} onChange={(e) => setEditForm(prev => prev ? { ...prev, attireType: e.target.value as AttireType } : prev)}
-                              className="w-full border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border outline-none focus:ring-2 focus:ring-primary/20">
-                              {ATTIRE_OPTIONS_BY_GENDER[editForm.modelGender].map(at => <option key={at} value={at}>{ATTIRE_LABELS[at]}</option>)}
-                            </select>
-                            {editForm.attireType === AttireType.CUSTOM && (
-                              <input type="text" placeholder="Describe the exact attire…" value={editForm.customAttire}
-                                onChange={(e) => setEditForm(prev => prev ? { ...prev, customAttire: e.target.value } : prev)}
-                                className="w-full mt-1.5 border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/20" />
-                            )}
-                          </div>
-
-                          {/* Aspect Ratio */}
-                          <div>
-                            <label className="block text-[11px] font-medium text-muted-foreground mb-1">Aspect Ratio</label>
-                            <div className="grid grid-cols-2 gap-1.5">
-                              {(['9:16', '16:9'] as const).map(r => (
-                                <button key={r} type="button" onClick={() => setEditForm(prev => prev ? { ...prev, aspectRatio: r } : prev)}
-                                  className={`px-2 py-1.5 rounded-lg text-xs font-mono font-medium border transition-colors ${
-                                    editForm.aspectRatio === r ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-accent'
-                                  }`}>
-                                  {r}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-                          {/* Language */}
-                          <div>
-                            <label className="block text-[11px] font-medium text-muted-foreground mb-1">Language</label>
-                            <select value={editForm.language} onChange={(e) => setEditForm(prev => prev ? { ...prev, language: e.target.value } : prev)}
-                              className="w-full border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border outline-none focus:ring-2 focus:ring-primary/20">
-                              {ASSIGNMENT_LANGUAGE_OPTIONS.map(l => <option key={l} value={l}>{l}</option>)}
-                            </select>
-                            {editForm.language === 'Custom' && (
-                              <input type="text" placeholder="Type the language…" value={editForm.customLanguage}
-                                onChange={(e) => setEditForm(prev => prev ? { ...prev, customLanguage: e.target.value } : prev)}
-                                className="w-full mt-1.5 border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/20" />
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="mt-3 pt-3 border-t border-border flex items-center justify-end gap-2">
-                          <button onClick={() => { setEditingId(null); setEditForm(null); setEditMemberSearch(''); }}
-                            className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-muted text-muted-foreground rounded-lg transition-colors hover:text-foreground">
-                            <X className="w-3 h-3" /><span>Cancel</span>
-                          </button>
-                          <button onClick={handleSaveEdit} disabled={!editForm.assignedTo}
-                            className="flex items-center gap-1 px-4 py-1.5 text-xs font-semibold bg-green-600 text-white rounded-lg transition-colors hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed">
-                            <Save className="w-3 h-3" /><span>Save Changes</span>
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex flex-wrap gap-x-3 md:gap-x-4 gap-y-1 text-xs md:text-sm text-muted-foreground">
-                          <span>Assigned to: <strong className="text-foreground">{getMemberName(a.assignedTo)}</strong></span>
-                          <span>Assigned: <strong className="text-foreground">{getAssignedStamp(a)}</strong></span>
-                          {(a.businessName || a.clientName) && <span>Business: <strong className="text-foreground">{a.businessName || a.clientName}</strong></span>}
-                          <span>Category: <strong className="capitalize text-foreground">{a.category}</strong></span>
-                          <span>{a.clipCount} clips + EC · {a.duration}</span>
-                          {a.totalDurationSeconds > 0 && <span>Time: {formatDuration(a.totalDurationSeconds)}</span>}
-                          <span className="font-mono text-[10px] md:text-xs">Code: {a.accessCode}</span>
-                        </div>
-                        {(a.modelGender || a.attireType || a.aspectRatio || a.language) && (
-                          <div className="flex flex-wrap gap-1.5 mt-1.5">
-                            {a.modelGender && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
-                                {a.modelGender === 'male' ? '👨 Male' : '👩 Female'}
-                              </span>
-                            )}
-                            {a.attireType && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
-                                {a.attireType === 'custom' && a.customAttire ? a.customAttire : ATTIRE_LABELS[a.attireType]}
-                              </span>
-                            )}
-                            {a.aspectRatio && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-mono bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{a.aspectRatio}</span>
-                            )}
-                            {a.language && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">{a.language}</span>
-                            )}
-                          </div>
-                        )}
-                        {a.businessWhatsapp && (
-                          <div className="flex items-center gap-2 mt-2">
-                            <a href={getWhatsAppUrl(a.businessWhatsapp)} target="_blank" rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 transition-colors text-xs font-medium">
-                              <MessageCircle className="w-3.5 h-3.5" />
-                              <span>{formatPhoneDisplay(a.businessWhatsapp)}</span>
-                            </a>
-                            <button
-                              onClick={() => { navigator.clipboard.writeText(a.businessWhatsapp!); setCopiedPhone(a.id); setTimeout(() => setCopiedPhone(null), 2000); }}
-                              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-accent text-xs transition-colors"
-                              title="Copy number">
-                              {copiedPhone === a.id ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
-                              <span>{copiedPhone === a.id ? 'Copied' : 'Copy'}</span>
-                            </button>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                  <div className="flex items-center flex-wrap gap-1.5 md:gap-2">
-                    {a.status === 'completed' && (
-                      <button onClick={() => handleVerify(a)}
-                        className="flex items-center space-x-1 px-2 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 rounded-lg transition-colors">
-                        <CheckCircle2 className="w-3 h-3 md:w-3.5 md:h-3.5" /><span>Verify</span>
-                      </button>
-                    )}
-                    {(a.status === 'completed' || a.status === 'verified') && (
-                      <button onClick={() => setConfirmAction({ type: 'sendback', id: a.id, assignedTo: a.assignedTo, title: a.businessName || a.displayTitle })}
-                        className="flex items-center space-x-1 px-2 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-medium bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:hover:bg-orange-900/50 rounded-lg transition-colors">
-                        <Edit3 className="w-3 h-3 md:w-3.5 md:h-3.5" /><span>Send Back</span>
-                      </button>
-                    )}
-                    {a.status === 'editing' && (
-                      <button onClick={() => handleUndoEditing(a.id)}
-                        className="flex items-center space-x-1 px-2 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-medium bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:hover:bg-purple-900/50 rounded-lg transition-colors">
-                        <Undo2 className="w-3 h-3 md:w-3.5 md:h-3.5" /><span>Undo</span>
-                      </button>
-                    )}
-                    {a.status !== 'verified' && editingId !== a.id && (
-                      <button onClick={() => handleStartEdit(a)}
-                        className="flex items-center space-x-1 px-2 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 rounded-lg transition-colors">
-                        <Pencil className="w-3 h-3 md:w-3.5 md:h-3.5" /><span>Edit</span>
-                      </button>
-                    )}
-                    <button onClick={() => setConfirmAction({ type: 'delete', id: a.id, title: a.businessName || a.displayTitle })}
-                      className="flex items-center space-x-1 px-2 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 rounded-lg transition-colors">
-                      <Trash2 className="w-3 h-3 md:w-3.5 md:h-3.5" /><span>Delete</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
     </div>
   );
 }

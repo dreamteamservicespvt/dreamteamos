@@ -16,6 +16,7 @@ import { db } from '@/services/firebase';
 import { useAuthStore } from '@/store/authStore';
 import type { WorkAssignment } from '@/types';
 import { useConfirm } from '@/hooks/useConfirm';
+import { clipLabel, clipRange, formatClipLine, formatClipScript, parseLabeledClips } from '@/utils/voiceOverFormat';
 
 interface AIPlatformAppProps {
   assignment?: WorkAssignment;
@@ -1026,19 +1027,51 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       </label>
                       {useCustomScript && (
                         <div className="mt-2">
+                          <div className={cn("mb-2 rounded-lg border px-3 py-2 text-[11px] leading-relaxed",
+                            isDark ? "bg-amber-900/20 border-amber-800/50 text-amber-200" : "bg-amber-50 border-amber-200 text-amber-800")}>
+                            <span className="font-semibold">Required format — one clip per line:</span>
+                            <pre className="mt-1 font-mono text-[11px] whitespace-pre-wrap">{`clip-1[0-8sec]: first spoken line
+clip-2[8-16sec]: second spoken line`}</pre>
+                            <span>Pasted this way, your script is used <b>word-for-word</b> in the Voice Over Script and Veo 3 prompts, and its clip count sets the ad length. Unlabelled text is auto-split instead.</span>
+                          </div>
                           <textarea
                             className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
                               isDark ? "bg-slate-700 border-slate-600 text-slate-200 placeholder-slate-500 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200"
-                            )} rows={6} placeholder="Paste the business's raw script here... It will be split into 8-second clips automatically and used for VEO prompts generation."
+                            )} rows={6} placeholder={"clip-1[0-8sec]: \nclip-2[8-16sec]: "}
                             value={customScript} onChange={(e) => setCustomScript(e.target.value)} />
                           {(() => {
+                            const labeledClips = parseLabeledClips(customScript);
+                            const isLabeled = labeledClips.length > 0;
                             const wordCount = customScript.trim().split(/\s+/).filter(Boolean).length;
                             const estSeconds = wordCount > 0 ? Math.round(wordCount / 2.3) : 0;
                             const estClips = wordCount > 0 ? Math.max(1, Math.ceil(estSeconds / 8)) : 0;
                             return (
-                              <div className={cn("mt-2 p-2.5 rounded-lg border text-xs space-y-1", isDark ? "bg-slate-600/50 border-slate-500" : "bg-blue-50 border-blue-200")}>
-                                {wordCount > 0 ? (
+                              <div className={cn("mt-2 p-2.5 rounded-lg border text-xs space-y-1",
+                                isLabeled
+                                  ? (isDark ? "bg-emerald-900/20 border-emerald-800/50" : "bg-emerald-50 border-emerald-200")
+                                  : (isDark ? "bg-slate-600/50 border-slate-500" : "bg-blue-50 border-blue-200"))}>
+                                {isLabeled ? (
                                   <>
+                                    <div className="flex items-center justify-between">
+                                      <span className={isDark ? "text-emerald-300" : "text-emerald-700"}>✓ Clip format detected — used exactly as written</span>
+                                      <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                                        {labeledClips.length} clips ({labeledClips.length * 8}s)
+                                      </span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-1 pt-1">
+                                      {labeledClips.map((_, i) => (
+                                        <span key={i} className={cn("px-1.5 py-0.5 rounded text-[10px] font-mono",
+                                          isDark ? "bg-emerald-900/40 text-emerald-300" : "bg-emerald-100 text-emerald-700")}>
+                                          {clipLabel(i)}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </>
+                                ) : wordCount > 0 ? (
+                                  <>
+                                    <div className={cn("font-medium", isDark ? "text-amber-300" : "text-amber-700")}>
+                                      No clip labels found — this text will be auto-split into clips.
+                                    </div>
                                     <div className="flex items-center justify-between">
                                       <span className={isDark ? "text-slate-300" : "text-slate-600"}>Estimated Duration:</span>
                                       <span className="font-bold text-primary">{estSeconds}s ({estClips} clips × 8s)</span>
@@ -1047,22 +1080,20 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                                       <span className={isDark ? "text-slate-300" : "text-slate-600"}>Word Count:</span>
                                       <span className="font-medium">{wordCount} words</span>
                                     </div>
-                                    {[16, 32, 48, 64].some(p => estSeconds <= p) && (
-                                      <div className="flex gap-1.5 mt-1">
-                                        {[16, 32, 48, 64].map(p => (
-                                          <span key={p} className={cn("px-1.5 py-0.5 rounded text-[10px] font-medium",
-                                            estSeconds <= p
-                                              ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                                              : "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
-                                          )}>
-                                            {p}s {estSeconds <= p ? '✓' : '✗'}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    )}
+                                    <div className="flex gap-1.5 mt-1">
+                                      {[16, 32, 48, 64].map(p => (
+                                        <span key={p} className={cn("px-1.5 py-0.5 rounded text-[10px] font-medium",
+                                          estSeconds <= p
+                                            ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                                            : "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
+                                        )}>
+                                          {p}s {estSeconds <= p ? '✓' : '✗'}
+                                        </span>
+                                      ))}
+                                    </div>
                                   </>
                                 ) : (
-                                  <span className={isDark ? "text-slate-400" : "text-slate-500"}>Paste a script to see duration estimate</span>
+                                  <span className={isDark ? "text-slate-400" : "text-slate-500"}>Paste a script in the clip-1[0-8sec] format above</span>
                                 )}
                               </div>
                             );
@@ -1180,14 +1211,18 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                   {creationMode === 'video' && outputs.voiceOverScript && (() => {
                       const voiceClips = parseVoiceOverClips(cleanPromptForClipboard(outputs.voiceOverScript));
                       const hasClips = voiceClips.length > 0;
+                      // Business-facing labels: `clip-1[0-8sec]`. The script is stored canonically
+                      // as `0-8: …` (see utils/voiceOverFormat) and relabelled only here, so both
+                      // the whole-script copy and the per-clip copies read the same way.
                       return (
                       <OutputSection title={`4. Voice Over Script (${formData.language || 'Telugu'})`} sectionKey="voiceOver"
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                         isDark={isDark}
-                        copyContent={hasClips ? undefined : outputs.voiceOverScript}
-                        quickCopyItems={hasClips ? voiceClips.map(c => `${c.label}: ${c.text}`) : undefined}
-                        quickCopyLabel="C" quickCopyNamespace="voice-over"
-                        quickCopyRanges={hasClips ? voiceClips.map(c => (/^\d+-\d+$/.test(c.label) ? c.label : '')) : undefined}>
+                        copyContent={hasClips ? formatClipScript(voiceClips.map(c => c.text)) : outputs.voiceOverScript}
+                        copyLabel="Copy Full Script"
+                        quickCopyItems={hasClips ? voiceClips.map((c, i) => formatClipLine(i, c.text)) : undefined}
+                        quickCopyLabel="clip-" quickCopyNamespace="voice-over"
+                        quickCopyRanges={hasClips ? voiceClips.map((_, i) => `[${clipRange(i)}sec]`) : undefined}>
                         <GeneratedCard title="Voice Over" content={outputs.voiceOverScript} sectionType="voiceOver"
                           showTransliteration showRefinement={true}
                           onRefine={(i) => handleRefineSection('voiceOver', i)} isRefining={refiningSection === 'voiceOver'} hideTitle />
@@ -1198,8 +1233,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                   {creationMode === 'video' && outputs.veoPrompts?.length > 0 && (
                       <OutputSection title="5. Veo 3 Video Prompts" sectionKey="veo"
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
-                        isDark={isDark} quickCopyItems={outputs.veoPrompts} quickCopyLabel="S" quickCopyNamespace="veo"
-                        quickCopyRanges={outputs.veoPrompts.map((_, i) => `${i * 8}-${(i + 1) * 8}`)}>
+                        isDark={isDark} quickCopyItems={outputs.veoPrompts} quickCopyLabel="clip-" quickCopyNamespace="veo"
+                        quickCopyRanges={outputs.veoPrompts.map((_, i) => `[${clipRange(i)}sec]`)}>
                         <GeneratedCard title="Veo" content={outputs.veoPrompts} variant="dropdown" sectionType="veo"
                           showRefinement={true} onRefine={(i) => handleRefineSection('veo', i)} isRefining={refiningSection === 'veo'} hideTitle />
                       </OutputSection>
@@ -1395,11 +1430,13 @@ const OutputSection: React.FC<{
   collapsedOutputs: Record<string, boolean>; toggleOutputSection: (s: string) => void;
   isDark: boolean;
   copyContent?: string;
+  /** Text on the whole-section copy button. Defaults to "Copy". */
+  copyLabel?: string;
   quickCopyItems?: string[];
   quickCopyLabel?: string;
   quickCopyNamespace?: string;
   quickCopyRanges?: string[];
-}> = ({ title, sectionKey, children, collapsedOutputs, toggleOutputSection, isDark, copyContent, quickCopyItems, quickCopyLabel, quickCopyNamespace, quickCopyRanges }) => {
+}> = ({ title, sectionKey, children, collapsedOutputs, toggleOutputSection, isDark, copyContent, copyLabel, quickCopyItems, quickCopyLabel, quickCopyNamespace, quickCopyRanges }) => {
   const [copied, setCopied] = useState(false);
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1436,7 +1473,7 @@ const OutputSection: React.FC<{
               )}
             >
               {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-              <span>{copied ? 'Copied' : 'Copy'}</span>
+              <span>{copied ? 'Copied' : (copyLabel ?? 'Copy')}</span>
             </span>
           )}
           <button
@@ -1530,7 +1567,7 @@ const QuickCopyActions: React.FC<{
             key={key}
             type="button"
             onClick={(event) => copyText(event, key, prompt)}
-            title={range ? `Copy ${frameLabel} · ${range}s` : `Copy ${frameLabel} prompt`}
+            title={range ? `Copy ${frameLabel}${range}` : `Copy ${frameLabel} prompt`}
             className={cn(
               "inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-semibold transition-all",
               isCopied

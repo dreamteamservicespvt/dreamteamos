@@ -62,7 +62,8 @@ import TeamLeaderWorkAssign from "@/pages/tech-team-leader/WorkAssign";
 import TeamLeaderMemberAssignments from "@/pages/tech-team-leader/MemberAssignments";
 import TeamAttendance from "@/pages/shared/TeamAttendance";
 import SendAgreement from "@/pages/shared/SendAgreement";
-import TechAdminTools from "@/pages/tech-admin/Tools";
+import Tools from "@/pages/shared/Tools";
+import WorkReports from "@/pages/shared/WorkReports";
 import CinematicAds from "@/pages/tech-admin/CinematicAds";
 import AccountsDashboard from "@/pages/accounts-admin/Dashboard";
 import RevenueSummary from "@/pages/accounts-admin/RevenueSummary";
@@ -134,9 +135,10 @@ const App = () => (
             <Route path="/tech-admin/salary" element={<MySalaryPage />} />
             <Route path="/tech-admin/work-assign" element={<WorkAssign />} />
             <Route path="/tech-admin/work-assign/:memberId" element={<MemberAssignments />} />
+            <Route path="/tech-admin/work-reports" element={<WorkReports />} />
             <Route path="/tech-admin/orders" element={<Orders />} />
             <Route path="/tech-admin/clients" element={<Clients />} />
-            <Route path="/tech-admin/tools" element={<TechAdminTools />} />
+            <Route path="/tech-admin/tools" element={<Tools />} />
             <Route path="/tech-admin/cinematic-ads" element={<CinematicAds />} />
             <Route path="/tech-admin/chat" element={<Chat />} />
             <Route path="/tech-admin/meeting" element={<Meeting />} />
@@ -210,9 +212,11 @@ const App = () => (
           <Route element={<AppLayout allowedRoles={["tech_team_leader"]} />}>
             <Route path="/team-leader/work-assign" element={<TeamLeaderWorkAssign />} />
             <Route path="/team-leader/work-assign/:memberId" element={<TeamLeaderMemberAssignments />} />
+            <Route path="/team-leader/work-reports" element={<WorkReports />} />
             <Route path="/team-leader/orders" element={<Orders />} />
             <Route path="/team-leader/attendance" element={<TeamAttendance />} />
             <Route path="/team-leader/agreements" element={<SendAgreement />} />
+            <Route path="/team-leader/tools" element={<Tools />} />
           </Route>
 
           <Route path="*" element={<NotFound />} />
