@@ -16,7 +16,7 @@ const tsMs = (y: number, m: number, d: number, h = 12) => new Date(y, m - 1, d, 
 
 function sale(amount: number, status: SaleDetail["verificationStatus"], y: number, m: number, d: number): SaleDetail {
   return { amount, verificationStatus: status, category: "promotional", packageKey: "x", submittedAt: tsAt(y, m, d) } as SaleDetail;
-}
+} 
 // Sale with an explicit verification moment (h = hour), used for the timestamp-cut tests.
 function verifiedSale(amount: number, y: number, m: number, d: number, h = 12): SaleDetail {
   return { amount, verificationStatus: "verified", category: "promotional", packageKey: "x", submittedAt: tsAt(y, m, d), verifiedAt: { seconds: Math.floor(tsMs(y, m, d, h) / 1000) } } as SaleDetail;
