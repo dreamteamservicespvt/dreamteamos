@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   ClipboardList, Plus, CheckCircle2, Loader2,
-  Search, ChevronRight, X, Users, History, Copy, Check, MessageCircle, Sparkles
+  Search, X, Users, History, Copy, Check, MessageCircle, Sparkles
 } from 'lucide-react';
 import { getWhatsAppUrl, normalizePhone } from '@/utils/phone';
 import { collection, addDoc, serverTimestamp, query, where, onSnapshot } from 'firebase/firestore';
@@ -19,6 +19,7 @@ import { format } from 'date-fns';
 import type { WorkAssignment, AppUser, DailyCheckin } from '@/types';
 import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from '@/types/aiPlatform';
 import { verifyAssignments, awaitingVerification } from '@/services/workVerify';
+import MemberWorkloadCard from '@/components/work/MemberWorkloadCard';
 
 /**
  * Work Assign — the control centre for work that still needs doing: search the team's live
@@ -113,7 +114,6 @@ export default function TeamLeaderWorkAssign() {
     language: 'Telugu' as string,
     customLanguage: '',
   });
-  const [copiedBusiness, setCopiedBusiness] = useState<string | null>(null);
   /** Requirements message to copy/send on WhatsApp, shown right after Create Assignment succeeds. */
   const [waReq, setWaReq] = useState<{ member: AppUser; message: string } | null>(null);
   const [waReqCopied, setWaReqCopied] = useState(false);
@@ -330,14 +330,6 @@ export default function TeamLeaderWorkAssign() {
       );
     });
   }, [memberWorkload, workloadSearch]);
-
-  const statusColors: Record<string, string> = {
-    assigned: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    in_progress: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-    completed: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-    verified: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
-    editing: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
-  };
 
   const getAssignedStamp = (assignment: WorkAssignment) => {
     const ts = assignment.assignedAt;
@@ -699,92 +691,16 @@ export default function TeamLeaderWorkAssign() {
             {workloadSearch.trim() ? 'No members match that search.' : 'No active work right now — everything is verified.'}
           </div>
         ) : (
-          <div className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {filteredWorkload.map(({ member, assignments: mAsgn }) => {
-              // name → best available whatsapp (prefer entries that have one)
-              const namePhoneMap = new Map<string, string | null>();
-              mAsgn.forEach(a => {
-                const name = a.businessName || a.clientName;
-                if (!name) return;
-                if (!namePhoneMap.has(name) || (!namePhoneMap.get(name) && a.businessWhatsapp))
-                  namePhoneMap.set(name, a.businessWhatsapp || null);
-              });
-              const businessEntries = [...namePhoneMap.entries()];
-              return (
-                <button key={member.uid}
-                  onClick={() => navigate(`/team-leader/work-assign/${member.uid}?status=all&day=all`)}
-                  className="bg-background border border-border rounded-xl p-3 hover:border-primary/40 hover:shadow-md transition-all text-left group"
-                >
-                  <div className="flex items-center gap-2.5 mb-2.5">
-                    <div className="w-9 h-9 rounded-lg bg-role-tech-member/15 flex items-center justify-center font-display font-bold text-role-tech-member text-sm shrink-0">
-                      {member.name?.charAt(0)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors">{member.name}</span>
-                        {(() => {
-                          const ci = todayCheckins.get(member.uid);
-                          if (!ci) return <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 shrink-0" title="Not checked in" />;
-                          if (ci.status === "pending_approval") return <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse shrink-0" title="Pending approval" />;
-                          if (ci.status === "approved") return <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" title="Approved" />;
-                          if (ci.status === "rejected") return <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" title="Rejected" />;
-                          if (ci.checkedOutAt) return <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" title="Checked out" />;
-                          return <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse shrink-0" title="Checked in" />;
-                        })()}
-                      </div>
-                      <span className="text-[10px] text-muted-foreground">
-                        {mAsgn.length} video{mAsgn.length !== 1 ? 's' : ''}
-                      </span>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0" />
-                  </div>
-                  {businessEntries.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mb-2">
-                      {businessEntries.slice(0, 3).map(([name, phone]) => {
-                        const key = `${member.uid}-${name}`;
-                        const copied = copiedBusiness === key;
-                        return (
-                          <button
-                            key={name}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (!phone) return;
-                              navigator.clipboard.writeText(phone);
-                              setCopiedBusiness(key);
-                              setTimeout(() => setCopiedBusiness(null), 2000);
-                            }}
-                            title={phone ? `Copy WhatsApp: ${phone}` : 'No WhatsApp number'}
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium truncate max-w-[140px] transition-colors ${
-                              copied
-                                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                                : phone
-                                  ? 'bg-primary/10 text-primary hover:bg-green-100 hover:text-green-700 dark:hover:bg-green-900/30 dark:hover:text-green-400 cursor-pointer'
-                                  : 'bg-primary/10 text-primary cursor-default'
-                            }`}
-                          >
-                            {copied ? <Check className="w-2.5 h-2.5 shrink-0" /> : phone ? <Copy className="w-2.5 h-2.5 shrink-0 opacity-50" /> : null}
-                            <span className="truncate">{name}</span>
-                          </button>
-                        );
-                      })}
-                      {businessEntries.length > 3 && (
-                        <span className="text-[10px] text-muted-foreground">+{businessEntries.length - 3} more</span>
-                      )}
-                    </div>
-                  )}
-                  <div className="flex flex-wrap gap-1">
-                    {mAsgn.slice(0, 5).map(a => (
-                      <span key={a.id} className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${statusColors[a.status]}`}>
-                        {a.uniqueId}
-                      </span>
-                    ))}
-                    {mAsgn.length > 5 && (
-                      <span className="text-[9px] text-muted-foreground">+{mAsgn.length - 5}</span>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
+          <div className="grid grid-cols-1 items-start gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+            {filteredWorkload.map(({ member, assignments: mAsgn }) => (
+              <MemberWorkloadCard
+                key={member.uid}
+                member={member}
+                assignments={mAsgn}
+                checkin={todayCheckins.get(member.uid)}
+                onOpen={() => navigate(`/team-leader/work-assign/${member.uid}?status=all&day=all`)}
+              />
+            ))}
           </div>
         )}
       </div>
