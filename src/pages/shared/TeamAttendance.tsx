@@ -290,7 +290,72 @@ export default function TeamAttendance() {
           <Search className="w-8 h-8 opacity-40" /> No members match “{search.trim()}”.
         </div>
       ) : (
-        <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <>
+        {/* Mobile: one card per member with a real month calendar (a 30-column table is unusable
+            on a phone). Same colour language and the same tap-to-override cells as desktop. */}
+        <div className="md:hidden space-y-3">
+          {filteredMembers.map((m) => {
+            const statuses = days.map((d) => statusFor(m, d));
+            const sum = summarize(statuses);
+            const emp = employmentOf(m.employmentType);
+            const firstDow = new Date(`${days[0]}T00:00:00`).getDay();
+            return (
+              <div key={m.uid} className="rounded-xl border border-border bg-card p-3">
+                <div className="flex items-start justify-between gap-2 mb-2.5">
+                  <div className="min-w-0">
+                    <div className="font-medium text-foreground truncate">{m.name}</div>
+                    <button onClick={() => toggleEmployment(m)}
+                      title="Tap to switch Full-Time / Part-Time"
+                      className={cn("mt-1 text-[10px] px-2 py-0.5 rounded-full border transition-colors",
+                        emp === "full_time"
+                          ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
+                          : "bg-violet-500/10 text-violet-600 border-violet-500/30")}>
+                      {EMPLOYMENT_LABELS[emp]} ⇄
+                    </button>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-[11px] whitespace-nowrap">
+                      <span className="text-emerald-600 font-semibold">{sum.full}P</span>{" "}
+                      <span className="text-amber-600 font-semibold">{sum.half}H</span>{" "}
+                      <span className="text-rose-600 font-semibold">{sum.absent}A</span>{" "}
+                      <span className="text-sky-600 font-semibold">{sum.leave}L</span>
+                    </div>
+                    <div className="text-[9px] text-muted-foreground mt-0.5">Leaves left: {sum.leavesLeft}</div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-7 gap-1">
+                  {["S", "M", "T", "W", "T", "F", "S"].map((w, i) => (
+                    <div key={i} className="text-center text-[9px] font-medium text-muted-foreground pb-0.5">{w}</div>
+                  ))}
+                  {Array.from({ length: firstDow }).map((_, i) => <div key={`blank-${i}`} />)}
+                  {days.map((d, i) => {
+                    const st = statuses[i];
+                    const isOverride = overrides.has(attendanceKey(m.uid, d));
+                    return (
+                      <button
+                        key={d}
+                        onClick={() => setEditing({ member: m, date: d, current: st })}
+                        title={`${format(new Date(d), "EEE dd MMM")}${st ? " · " + ATTENDANCE_META[st].label : ""}${isOverride ? " (manual)" : ""}`}
+                        className={cn(
+                          "aspect-square rounded-md flex flex-col items-center justify-center gap-0.5 border text-[11px] font-bold active:scale-95 transition-transform",
+                          st ? ATTENDANCE_META[st].tone : "bg-transparent text-muted-foreground/40 border-dashed border-border",
+                          isOverride && "ring-1 ring-primary/50",
+                          d === todayStr && "outline outline-1 outline-primary outline-offset-1",
+                        )}
+                      >
+                        <span className="text-[9px] font-medium leading-none opacity-70">{d.slice(-2)}</span>
+                        <span className="leading-none">{st ? ATTENDANCE_META[st].short : "·"}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Desktop: the full month-grid table. */}
+        <div className="hidden md:block rounded-xl border border-border bg-card overflow-hidden">
           {/* table-fixed + colgroup: the WHOLE month always fits the available width on desktop;
               min-w keeps cells usable on small screens (horizontal scroll only there). */}
           <div className="overflow-x-auto">
@@ -370,6 +435,7 @@ export default function TeamAttendance() {
             </table>
           </div>
         </div>
+        </>
       )}
 
       {/* Cell override editor */}

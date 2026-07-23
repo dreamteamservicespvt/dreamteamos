@@ -96,6 +96,8 @@ export async function upsertOrderForSale(params: {
     const snap = await getDoc(ref);
     if (snap.exists()) {
       const existing = snap.data() as Order;
+      // An order an admin permanently deleted stays deleted — never resurrect it from the sale.
+      if (existing.deleted || existing.status === "deleted") return;
       // Reactivate a previously-cancelled order (reject → re-verify); keep any active/assigned state.
       const statusPatch = existing.status === "cancelled" ? { status: "unassigned" as const } : {};
       // saleVerified only ever moves false → true — a later sale-time refresh must not un-verify it.
@@ -174,11 +176,12 @@ export async function cancelOrderForSale(params: {
     const snap = await getDoc(ref);
     if (!snap.exists()) return;
     const order = snap.data() as Order;
+    // A permanently-deleted order stays deleted — the sale going away doesn't revive it.
+    if (order.deleted || order.status === "deleted" || order.status === "cancelled") return;
     if (order.status === "unassigned") {
       await deleteDoc(ref);
       return;
     }
-    if (order.status === "cancelled") return;
     await updateDoc(ref, { status: "cancelled", updatedAt: serverTimestamp() });
     if (order.techAdminId) {
       await sendNotification({
@@ -196,7 +199,11 @@ export async function cancelOrderForSale(params: {
 /** Mark an order's work as completed by the member (before tech verification). Never throws. */
 export async function markOrderCompleted(orderId: string): Promise<void> {
   try {
-    await updateDoc(doc(db, "orders", orderId), {
+    const ref = doc(db, "orders", orderId);
+    const snap = await getDoc(ref);
+    // A deleted order stays deleted — completing its (orphaned) work must not resurrect it.
+    if (snap.exists() && ((snap.data() as Order).deleted || (snap.data() as Order).status === "deleted")) return;
+    await updateDoc(ref, {
       status: "completed",
       completedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -247,7 +254,8 @@ export async function revertOrderToUnassigned(orderId: string): Promise<void> {
     const snap = await getDoc(ref);
     if (!snap.exists()) return;
     const status = (snap.data() as Order).status;
-    if (status === "unassigned" || status === "cancelled" || status === "verified") return;
+    // "deleted" included: a purged order must never be flipped back into the queue.
+    if (status === "unassigned" || status === "cancelled" || status === "verified" || status === "deleted") return;
     await updateDoc(ref, {
       status: "unassigned",
       workAssignmentId: null,
@@ -310,14 +318,28 @@ export async function reconcileManualOrders(orders: Order[]): Promise<number> {
   return total;
 }
 
-/** Permanently delete orders by id, in batches. Returns how many were deleted. */
+/**
+ * Permanently delete orders by id, in batches. Returns how many were deleted.
+ *
+ * This is a *tombstone*, not a hard delete. A hard-deleted order left no trace, so the next time
+ * the sale was touched (a re-verify, an edit) `upsertOrderForSale` saw "no doc" and recreated it —
+ * the "ghost" orders that kept coming back. Marking the doc `deleted` instead means the order drops
+ * out of the active queue AND the recreation paths recognise it and leave it dead.
+ */
 export async function deleteOrders(orderIds: string[]): Promise<number> {
   const BATCH_LIMIT = 400;
   let batch = writeBatch(db);
   let n = 0;
   let total = 0;
   for (const id of orderIds) {
-    batch.delete(doc(db, "orders", id));
+    batch.update(doc(db, "orders", id), {
+      status: "deleted",
+      deleted: true,
+      deletedAt: serverTimestamp(),
+      // Cut the link so a deleted order's work can't later flip it back to a live status.
+      workAssignmentId: null,
+      updatedAt: serverTimestamp(),
+    });
     n += 1;
     total += 1;
     if (n >= BATCH_LIMIT) { await batch.commit(); batch = writeBatch(db); n = 0; }

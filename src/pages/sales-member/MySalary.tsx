@@ -11,6 +11,7 @@ import { formatCurrency } from "@/utils/formatters";
 import { downloadPayslip } from "@/utils/payslipPdf";
 import BankDetailsModal from "@/components/payroll/BankDetailsModal";
 import LeavePanel from "@/components/payroll/LeavePanel";
+import SalesEarningsCard from "@/components/sales/SalesEarningsCard";
 import type { EmployeeBank } from "@/types/payroll";
 
 /**
@@ -118,16 +119,7 @@ export default function SalesMySalary() {
       ) : (
         <>
           {/* Total pay */}
-          <section className="rounded-2xl border border-success/30 bg-gradient-to-br from-success/10 to-transparent p-5">
-            <p className="text-xs font-medium text-muted-foreground">Total earnings this period</p>
-            <p className="mt-1 font-display text-3xl font-bold tabular-nums text-foreground md:text-4xl">
-              {formatCurrency(totalEarnings)}
-            </p>
-            <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
-              <span>Salary <strong className="text-foreground">{formatCurrency(salaryPayable)}</strong></span>
-              <span>+ Commission <strong className="text-success">{formatCurrency(commission)}</strong></span>
-            </div>
-          </section>
+          <SalesEarningsCard totalEarnings={totalEarnings} salaryPayable={salaryPayable} commission={commission} />
 
           <section className="grid gap-4 lg:grid-cols-2">
             {/* Salary half */}

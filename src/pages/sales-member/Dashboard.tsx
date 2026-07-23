@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
@@ -9,6 +10,8 @@ import type { Lead } from "@/types";
 import { motion } from "framer-motion";
 import { Phone, CheckCircle, Clock, TrendingUp, AlertCircle, LogIn, LogOut, Loader2, Send } from "lucide-react";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
+import SalesEarningsCard from "@/components/sales/SalesEarningsCard";
+import { useSalesEarnings } from "@/hooks/useSalesEarnings";
 import {
   recordCheckIn, recordCheckOut, watchTodayCheckin, buildCheckInMessage, buildCheckOutReport,
   reportWhatsAppUrl, type SalesCheckin,
@@ -21,9 +24,18 @@ const statVariant = (i: number) => ({
 
 export default function SalesMemberDashboard() {
   const user = useAuthStore((s) => s.user);
+  const navigate = useNavigate();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+
+  // Total pay this cycle — salary + commission on verified sales, the same figure as My Salary.
+  // Shown here as day-to-day motivation, independent of the date filter above.
+  const earnings = useSalesEarnings({
+    memberId: user?.uid,
+    monthlySalary: user?.salary || 0,
+    earningsOption: user?.earningsOption,
+  });
 
   useEffect(() => {
     if (!user) return;
@@ -148,6 +160,19 @@ export default function SalesMemberDashboard() {
 
       {/* Daily check-in / check-out — drives monthly attendance */}
       {user && <CheckinCard user={{ uid: user.uid, name: user.name }} leads={leads} />}
+
+      {/* Total earnings this cycle — salary + commission, the same figure as My Salary. Tap to
+          open the full breakdown. */}
+      <SalesEarningsCard
+        loading={earnings.loading}
+        totalEarnings={earnings.totalEarnings}
+        salaryPayable={earnings.salaryPayable}
+        commission={earnings.commission}
+        subtitle={earnings.salary.period
+          ? `Cycle ${format(new Date(`${earnings.salary.period.start}T00:00:00`), "dd MMM")} – ${format(new Date(`${earnings.salary.period.end}T00:00:00`), "dd MMM")}`
+          : undefined}
+        onClick={() => navigate("/sales/salary")}
+      />
 
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
         {stats.map((s, i) => (

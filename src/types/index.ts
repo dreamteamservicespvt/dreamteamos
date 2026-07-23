@@ -215,7 +215,9 @@ export interface PromiseDeadline {
 // ─── Orders (sales → tech delivery queue) ───
 // Created when a sales admin VERIFIES a sale. Replaces the manual WhatsApp "sale" label:
 // the tech team picks orders from this queue and assigns them as work_assignments.
-export type OrderStatus = "unassigned" | "assigned" | "completed" | "verified" | "cancelled";
+// "deleted" is a permanent tombstone — an admin purged the order from the queue and it must never
+// be recreated by a later re-verify of the same sale (unlike "cancelled", which reactivates).
+export type OrderStatus = "unassigned" | "assigned" | "completed" | "verified" | "cancelled" | "deleted";
 
 export interface Order {
   id: string;
@@ -248,6 +250,9 @@ export interface Order {
   updateNotes?: OrderUpdateNote[];
   // Set when the cleanup sweep retired this order because matching work was already done manually.
   reconciledManually?: boolean;
+  // Permanently deleted by an admin — a tombstone that blocks the sale from recreating the order.
+  deleted?: boolean;
+  deletedAt?: any | null;
   // Lifecycle
   status: OrderStatus;
   workAssignmentId?: string | null;

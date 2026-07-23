@@ -240,8 +240,8 @@ export default function Orders() {
             <h3 className="text-center text-lg font-semibold text-foreground">Delete {selected.size} order{selected.size === 1 ? "" : "s"}?</h3>
             <p className="mt-2 text-center text-sm text-muted-foreground">
               {tab === "unassigned"
-                ? "These orders will be removed from the queue. This can't be undone."
-                : "These orders will be removed from the queue. Any work already assigned stays in Work Done & Reports — only the order entry is deleted. This can't be undone."}
+                ? "These orders will be permanently removed and won't come back — even if the sale is verified again. This can't be undone."
+                : "These orders will be permanently removed and won't come back, even if the sale is verified again. Any work already assigned stays in Work Done & Reports — only the order entry is deleted. This can't be undone."}
             </p>
             <div className="mt-5 flex items-center gap-2">
               <button onClick={() => setConfirmDelete(false)} disabled={deleting}
