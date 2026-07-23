@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { DateRange } from 'react-day-picker';
-import { addMonths, format } from 'date-fns';
+import { addMonths, format, isValid, startOfDay } from 'date-fns';
 import { BarChart3, ChevronLeft, ChevronRight, Trophy, Video, X } from 'lucide-react';
 import DashboardDateRangePicker from '@/components/dashboard/DateRangePicker';
 import { normalizeDateRange } from '@/utils/dateRange';
@@ -52,10 +52,12 @@ interface WorkDoneReportProps {
 export default function WorkDoneReport({
   assignments, members, showRevenue = true,
 }: WorkDoneReportProps) {
-  const [mode, setMode] = useState<'cycle' | 'range'>('cycle');
+  const [mode, setMode] = useState<'career' | 'cycle' | 'day' | 'range'>('cycle');
   /** How many 10→9 cycles back from the current one we're viewing. */
   const [cycleOffset, setCycleOffset] = useState(0);
   const [customRange, setCustomRange] = useState<DateRange | undefined>(undefined);
+  /** `yyyy-MM-dd` for single-day mode — defaults to today. */
+  const [day, setDay] = useState<string>(() => format(new Date(), 'yyyy-MM-dd'));
 
   const cycle = useMemo(
     () => cycleForDate(addMonths(new Date(), cycleOffset)),
@@ -64,9 +66,15 @@ export default function WorkDoneReport({
 
   const activeRange = useMemo(() => {
     if (mode === 'cycle') return cycle;
+    // Career = every day on record; bounds wide enough to contain the whole history.
+    if (mode === 'career') return { from: new Date(2000, 0, 1), to: new Date(2999, 11, 31) };
+    if (mode === 'day') {
+      const d = startOfDay(new Date(`${day}T00:00:00`));
+      return isValid(d) ? { from: d, to: d } : null;
+    }
     const normalized = normalizeDateRange(customRange);
     return normalized?.from ? { from: normalized.from, to: normalized.to ?? normalized.from } : null;
-  }, [mode, cycle, customRange]);
+  }, [mode, cycle, customRange, day]);
 
   /**
    * Per-member totals for the active range.
@@ -162,9 +170,13 @@ export default function WorkDoneReport({
   const topRevenue = Math.max(0, ...rows.map(r => r.revenue), 0);
   const topVideos = Math.max(0, ...rows.map(r => r.videos), 0);
 
-  const rangeLabel = activeRange
-    ? `${format(activeRange.from, 'dd MMM yyyy')} — ${format(activeRange.to, 'dd MMM yyyy')}`
-    : 'Pick a date range';
+  const rangeLabel = mode === 'career'
+    ? 'All time'
+    : activeRange
+      ? mode === 'day'
+        ? format(activeRange.from, 'dd MMM yyyy')
+        : `${format(activeRange.from, 'dd MMM yyyy')} — ${format(activeRange.to, 'dd MMM yyyy')}`
+      : 'Pick a date range';
 
   return (
     <div className="rounded-2xl border border-border/70 bg-card/80 p-3 md:p-4 shadow-sm backdrop-blur-sm space-y-4">
@@ -180,17 +192,32 @@ export default function WorkDoneReport({
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex rounded-lg border border-border overflow-hidden">
-            {(['cycle', 'range'] as const).map(m => (
-              <button key={m} onClick={() => setMode(m)}
+            {([
+              { key: 'career' as const, label: 'Career' },
+              { key: 'cycle' as const, label: 'Monthly (10–9)' },
+              { key: 'day' as const, label: 'Day' },
+              { key: 'range' as const, label: 'Custom Range' },
+            ]).map(({ key, label }) => (
+              <button key={key} onClick={() => setMode(key)}
                 className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                  mode === m ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-accent'
+                  mode === key ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-accent'
                 }`}>
-                {m === 'cycle' ? 'Monthly (10–9)' : 'Custom Range'}
+                {label}
               </button>
             ))}
           </div>
 
-          {mode === 'cycle' ? (
+          {mode === 'career' ? (
+            <span className="text-xs font-medium text-muted-foreground">All time</span>
+          ) : mode === 'day' ? (
+            <input
+              type="date"
+              value={day}
+              max={format(new Date(), 'yyyy-MM-dd')}
+              onChange={e => setDay(e.target.value)}
+              className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground outline-none focus:ring-2 focus:ring-primary/20"
+            />
+          ) : mode === 'cycle' ? (
             <div className="flex items-center gap-1">
               <button onClick={() => setCycleOffset(o => o - 1)} aria-label="Previous cycle"
                 className="p-1.5 rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors">

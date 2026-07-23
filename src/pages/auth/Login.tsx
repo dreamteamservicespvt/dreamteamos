@@ -4,7 +4,7 @@ import { doc, getDoc, setDoc, serverTimestamp, collection, addDoc } from "fireba
 import { auth, db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { useNavigate } from "react-router-dom";
-import { getDefaultRoute } from "@/utils/roleHelpers";
+import { defaultRouteForUser } from "@/utils/roleHelpers";
 import type { AppUser } from "@/types";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 
@@ -81,7 +81,7 @@ export default function Login() {
         duration: 0,
       });
 
-      navigate(getDefaultRoute(userData.role));
+      navigate(defaultRouteForUser(userData));
     } catch (err: any) {
       const msg = err.code === "auth/invalid-credential"
         ? "Invalid email or password."

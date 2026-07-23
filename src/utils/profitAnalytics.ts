@@ -133,7 +133,8 @@ export function computeProfit(input: ComputeProfitInput): ProfitBreakdown {
   }
 
   // ── Salary cost, prorated to the length of the period ─────────────────────
-  const activeUsers = users.filter(u => u.isActive !== false);
+  // External creators aren't staff — no salary, so excluded from the cost side of profit.
+  const activeUsers = users.filter(u => u.isActive !== false && !u.externalCreator);
   const techTeam = activeUsers.filter(u =>
     u.role === "tech_member" || u.role === "tech_team_leader");
   const salesTeam = activeUsers.filter(u => u.role === "sales_member");

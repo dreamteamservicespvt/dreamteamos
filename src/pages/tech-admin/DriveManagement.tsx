@@ -18,7 +18,7 @@ export default function DriveManagement() {
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "users"), (snap) => {
       const all = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser));
-      setMembers(all.filter((u) => u.role === "tech_member" && u.createdBy === currentUser?.uid && u.isActive !== false));
+      setMembers(all.filter((u) => u.role === "tech_member" && u.createdBy === currentUser?.uid && u.isActive !== false && !u.externalCreator));
       setLoading(false);
     });
     return unsub;

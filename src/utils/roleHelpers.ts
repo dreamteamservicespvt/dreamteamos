@@ -1,9 +1,9 @@
-import type { UserRole } from "@/types";
+import type { AppUser, UserRole } from "@/types";
 import {
   LayoutDashboard, Users, TrendingUp, Code, Phone, Clock, Wallet,
   Settings, BookOpen, FolderOpen, Target, User, BarChart3,
   ClipboardList, Briefcase, Wrench, FileCheck, MessageSquare, Video, Eye, Film, ScrollText, CalendarClock, Trophy, History,
-  ShoppingBag, Contact, Star, GraduationCap, LayoutGrid, PiggyBank, Banknote,
+  ShoppingBag, Contact, Star, GraduationCap, LayoutGrid, PiggyBank, Banknote, Wand2,
 } from "lucide-react";
 
 export interface NavItem {
@@ -37,11 +37,12 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "Payroll", path: "/tech-admin/payroll", icon: Wallet },
     { title: "My Team", path: "/tech-admin/team", icon: Users },
     { title: "Clients", path: "/tech-admin/clients", icon: Contact },
+    // Opened daily, so it sits in the top-level list rather than buried in the Manage dropdown.
+    { title: "Work Done & Reports", path: "/tech-admin/work-reports", icon: BarChart3 },
     {
       title: "Manage", icon: LayoutGrid,
       children: [
         { title: "Agreements", path: "/tech-admin/agreements", icon: FileCheck },
-        { title: "Work Done & Reports", path: "/tech-admin/work-reports", icon: BarChart3 },
         { title: "Profit & Loss", path: "/tech-admin/profit", icon: PiggyBank },
         { title: "Drive Management", path: "/tech-admin/drive", icon: FolderOpen },
         { title: "Training Modules", path: "/tech-admin/training", icon: BookOpen },
@@ -157,7 +158,20 @@ const NAV: Record<UserRole, NavItem[]> = {
   ],
 };
 
-export function getNavItems(role: UserRole): NavItem[] {
+/**
+ * An external creator uses the platform for one thing — creating their own ads — so their whole
+ * navigation is the ad-creation tool plus their profile. Everything team-related is hidden.
+ */
+export const EXTERNAL_CREATOR_NAV: NavItem[] = [
+  { title: "Create Ad", path: "/tech/create", icon: Wand2 },
+  { title: "My Profile", path: "/tech/profile", icon: User },
+];
+
+/** The routes an external creator is allowed to reach — everything else redirects to Create Ad. */
+export const EXTERNAL_CREATOR_ROUTES = ["/tech/create", "/tech/profile"];
+
+export function getNavItems(role: UserRole, user?: Pick<AppUser, "externalCreator"> | null): NavItem[] {
+  if (user?.externalCreator) return EXTERNAL_CREATOR_NAV;
   return NAV[role] || [];
 }
 
@@ -198,4 +212,10 @@ export function getDefaultRoute(role: UserRole): string {
     tech_team_leader: "/team-leader/work-assign",
   };
   return routes[role] || "/login";
+}
+
+/** Where a user lands by default — external creators go straight to the ad-creation tool. */
+export function defaultRouteForUser(user: Pick<AppUser, "role" | "externalCreator">): string {
+  if (user.externalCreator) return "/tech/create";
+  return getDefaultRoute(user.role);
 }

@@ -35,14 +35,14 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   // Auto-open the group holding the active route (e.g. after a deep link or refresh).
   useEffect(() => {
     if (!user) return;
-    const items = getNavItems(user.role);
+    const items = getNavItems(user.role, user);
     const activeGroup = items.find((i) => i.children && isChildActive(i));
     if (activeGroup) setOpenGroups((prev) => (prev[activeGroup.title] ? prev : { ...prev, [activeGroup.title]: true }));
   }, [location.pathname, user?.role]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!user) return null;
 
-  const navItems = getNavItems(user.role);
+  const navItems = getNavItems(user.role, user);
 
   const handleLogout = async () => {
     if (user) {

@@ -12,6 +12,8 @@ import { categoryLabel, categoryBilling } from "@/utils/serviceCatalog";
 import { activeOrdersQuery, notifyDueOrdersOnOpen, findReconcilableOrders, reconcileManualOrders, deleteOrders } from "@/services/orders";
 import { requirementSummary } from "@/utils/adRequirement";
 import { useToast } from "@/hooks/use-toast";
+import { useViewMode } from "@/hooks/useViewMode";
+import ViewToggle from "@/components/common/ViewToggle";
 import DeadlineChip from "@/components/work/DeadlineChip";
 import { format } from "date-fns";
 import type { Order, WorkAssignment } from "@/types";
@@ -38,6 +40,7 @@ export default function Orders() {
 
   const [tab, setTab] = useState<OrderTab>("unassigned");
   const [search, setSearch] = useState("");
+  const [view, setView] = useViewMode("orders");
 
   // Manual selection → delete, with a confirmation step. Selections are cleared whenever the
   // visible set changes (tab / search), so you can never delete something you can't see.
@@ -208,6 +211,7 @@ export default function Orders() {
             className="h-9 w-full rounded-xl border border-border/70 bg-background pl-9 pr-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20"
           />
         </div>
+        <ViewToggle mode={view} onChange={setView} />
       </div>
 
       {/* Selection toolbar — select all on screen, or pick individually, then delete. */}
@@ -258,10 +262,10 @@ export default function Orders() {
         </div>
       )}
 
-      {/* List */}
-      <div className="space-y-3">
+      {/* List / grid */}
+      <div className={view === "grid" ? "grid grid-cols-1 lg:grid-cols-2 gap-3" : "space-y-3"}>
         {visible.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
+          <div className="text-center py-12 text-muted-foreground lg:col-span-2">
             <ShoppingBag className="w-12 h-12 mx-auto mb-3 opacity-30" />
             <p className="text-lg font-medium">No {tab} orders</p>
           </div>

@@ -29,7 +29,7 @@ export default function MainAdminDashboard() {
     unsubs.push(onSnapshot(collection(db, "users"), (snap) => {
       allUsers = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser));
       setMembers(allUsers.filter((u) => u.isActive));
-      setTechMembers(allUsers.filter((u) => u.role === "tech_member" && u.isActive));
+      setTechMembers(allUsers.filter((u) => u.role === "tech_member" && u.isActive && !u.externalCreator));
       setSalesMembers(allUsers.filter((u) => u.role === "sales_member" && u.isActive));
     }));
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Outlet, Navigate, useNavigate } from "react-router-dom";
+import { Outlet, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useAuthStore } from "@/store/authStore";
 import { useSidebarStore } from "@/store/sidebarStore";
@@ -14,6 +14,7 @@ import MandatoryAgreementGate from "@/components/agreement/MandatoryAgreementGat
 import UpdatePopup from "@/components/layout/UpdatePopup";
 import { registerBackButton } from "@/services/capacitor-plugins";
 import { isNative } from "@/utils/platform";
+import { EXTERNAL_CREATOR_ROUTES } from "@/utils/roleHelpers";
 import type { UserRole } from "@/types";
 
 interface AppLayoutProps {
@@ -26,6 +27,7 @@ export default function AppLayout({ allowedRoles }: AppLayoutProps) {
   const collapsed = useSidebarStore((s) => s.collapsed);
   const fcmInitialized = useRef(false);
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     if (user && !fcmInitialized.current) {
@@ -62,6 +64,11 @@ export default function AppLayout({ allowedRoles }: AppLayoutProps) {
   if (allowedRoles && !allowedRoles.includes(user.role)) {
     return <Navigate to="/login" replace />;
   }
+  // External creators are confined to the ad-creation tool and their profile — any other route
+  // (typed in, deep-linked, or bookmarked) sends them back to Create Ad.
+  if (user.externalCreator && !EXTERNAL_CREATOR_ROUTES.includes(location.pathname)) {
+    return <Navigate to="/tech/create" replace />;
+  }
 
   return (
     <div className="h-full bg-background flex overflow-hidden">
@@ -75,7 +82,7 @@ export default function AppLayout({ allowedRoles }: AppLayoutProps) {
           <Outlet />
         </main>
         <VideoCallManager />
-        {user.role === "tech_member" && <DailyCheckinPrompt />}
+        {user.role === "tech_member" && !user.externalCreator && <DailyCheckinPrompt />}
         <MandatoryAgreementGate />
         <UpdatePopup />
       </div>

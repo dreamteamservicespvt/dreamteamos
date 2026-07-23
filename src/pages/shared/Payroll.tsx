@@ -38,7 +38,8 @@ export default function Payroll() {
   const { data: allUsers, loading: usersLoading } = useFirestoreCollection<AppUser>("users");
 
   const members = useMemo(() => {
-    const base = allUsers.filter(u => u.role === "tech_member" && u.isActive);
+    // External creators have no salary — never in payroll.
+    const base = allUsers.filter(u => u.role === "tech_member" && u.isActive && !u.externalCreator);
     return isTeamLeader ? base.filter(u => u.createdBy === user?.createdBy) : base;
   }, [allUsers, isTeamLeader, user?.createdBy]);
 

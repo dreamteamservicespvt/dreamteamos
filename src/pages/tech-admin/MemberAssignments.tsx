@@ -10,6 +10,8 @@ import { db } from '@/services/firebase';
 import { sendNotification } from '@/services/notifications';
 import { useAuthStore } from '@/store/authStore';
 import { useFirestoreCollection } from '@/hooks/useFirestore';
+import { useViewMode } from '@/hooks/useViewMode';
+import ViewToggle from '@/components/common/ViewToggle';
 import ReassignWork from '@/components/work/ReassignWork';
 import {
   DURATIONS, END_CREDITS_SECONDS, getClipCount, hasPoster, durationOptionsFor, priceForClips,
@@ -104,6 +106,7 @@ export default function MemberAssignments() {
   const { data: allAssignments, loading: assignmentsLoading } = useFirestoreCollection<WorkAssignment>('work_assignments');
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [view, setView] = useViewMode('member-assignments');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dayFilter, setDayFilter] = useState<string>('0');
   const [selectedRange, setSelectedRange] = useState<DateRange | undefined>(undefined);
@@ -531,15 +534,18 @@ export default function MemberAssignments() {
       </div>
 
       {/* Stats Row */}
-      <p className="text-xs text-muted-foreground">
-        {selectedRange?.from
-          ? `Showing assignments from ${formatDateRangeLabel(selectedRange)}`
-          : dayFilter === 'all'
-            ? 'Showing all assignments'
-            : dayFilter === '0'
-              ? 'Showing today\'s assignments + active items from past days'
-              : `Showing assignments from ${recentDays[parseInt(dayFilter)]?.label}`}
-      </p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground">
+          {selectedRange?.from
+            ? `Showing assignments from ${formatDateRangeLabel(selectedRange)}`
+            : dayFilter === 'all'
+              ? 'Showing all assignments'
+              : dayFilter === '0'
+                ? 'Showing today\'s assignments + active items from past days'
+                : `Showing assignments from ${recentDays[parseInt(dayFilter)]?.label}`}
+        </p>
+        <ViewToggle mode={view} onChange={setView} />
+      </div>
 
       <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
         {['assigned', 'in_progress', 'editing', 'completed', 'verified'].map(status => {
@@ -553,10 +559,10 @@ export default function MemberAssignments() {
         })}
       </div>
 
-      {/* Assignment Cards */}
-      <div className="space-y-3">
+      {/* Assignment Cards — list (single column) or grid */}
+      <div className={view === 'grid' ? 'grid grid-cols-1 xl:grid-cols-2 gap-3 items-start' : 'space-y-3'}>
         {filteredAssignments.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
+          <div className="text-center py-12 text-muted-foreground xl:col-span-2">
             <ClipboardList className="w-12 h-12 mx-auto mb-3 opacity-30" />
             <p className="text-lg font-medium">{searchQuery.trim() ? 'No matching assignments' : 'No active assignments'}</p>
           </div>
@@ -801,7 +807,7 @@ export default function MemberAssignments() {
                 )}
                 {a.status !== 'verified' && currentUser && (
                   <ReassignWork assignment={a} currentUser={{ uid: currentUser.uid, name: currentUser.name }}
-                    members={allUsers.filter(u => u.role === 'tech_member' && u.isActive !== false)} />
+                    members={allUsers.filter(u => u.role === 'tech_member' && u.isActive !== false && !u.externalCreator)} />
                 )}
                 <button onClick={() => setConfirmAction({ type: 'delete', id: a.id, title: a.businessName || a.clientName || a.displayTitle })}
                   className="flex items-center space-x-1 px-2.5 py-1 text-[10px] md:text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 rounded-lg transition-colors">

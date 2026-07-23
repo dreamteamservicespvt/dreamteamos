@@ -73,7 +73,7 @@ export default function SendAgreement() {
     if (!user || (user.role !== "tech_admin" && user.role !== "tech_team_leader")) return [] as string[];
     const teamAdminUid = user.role === "tech_team_leader" ? user.createdBy : user.uid;
     return allUsers
-      .filter((u) => (u.role === "tech_member" || u.role === "tech_team_leader") && u.createdBy === teamAdminUid)
+      .filter((u) => (u.role === "tech_member" || u.role === "tech_team_leader") && u.createdBy === teamAdminUid && !u.externalCreator)
       .map((u) => u.uid);
   }, [user, allUsers]);
 

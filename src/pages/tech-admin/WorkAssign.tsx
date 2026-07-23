@@ -46,7 +46,8 @@ export default function WorkAssign() {
   const { data: assignments, loading: assignmentsLoading } = useFirestoreCollection<WorkAssignment>('work_assignments');
   // `isActive !== false`, not `isActive`: member records created before the flag existed have no
   // `isActive` field at all, and a truthy test silently drops every one of them from the team.
-  const techMembers = useMemo(() => allUsers.filter(u => u.role === 'tech_member' && u.isActive !== false), [allUsers]);
+  // External creators aren't team members — they never get assigned work, so they're excluded here.
+  const techMembers = useMemo(() => allUsers.filter(u => u.role === 'tech_member' && u.isActive !== false && !u.externalCreator), [allUsers]);
 
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -99,7 +100,10 @@ export default function WorkAssign() {
   const [languages, setLanguages] = useState<string[]>(() => mergeAdLanguages(null));
   useEffect(() => watchAdLanguages(setLanguages), []);
   /** Requirements message to copy/send on WhatsApp, shown right after Create Assignment succeeds. */
+  // `waReq` holds the last requirements message; `waOpen` controls the popup. Keeping the content
+  // after the popup is dismissed lets the admin reopen it — the message would otherwise be lost.
   const [waReq, setWaReq] = useState<{ member: AppUser; message: string } | null>(null);
+  const [waOpen, setWaOpen] = useState(false);
   const [waReqCopied, setWaReqCopied] = useState(false);
 
   // Auto-open form with pre-selected member from query param
@@ -260,7 +264,7 @@ export default function WorkAssign() {
         `🚀 Let's create something amazing — good luck! 🔥`,
       ].filter((line): line is string => line !== null).join('\n');
 
-      if (assignedMember) setWaReq({ member: assignedMember, message });
+      if (assignedMember) { setWaReq({ member: assignedMember, message }); setWaOpen(true); }
 
       setShowForm(false);
       setSourceOrder(null);
@@ -405,16 +409,17 @@ export default function WorkAssign() {
         </div>
       )}
 
-      {/* WhatsApp requirements — shown right after Create Assignment succeeds */}
-      {waReq && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setWaReq(null)}>
+      {/* WhatsApp requirements — shown right after Create Assignment succeeds, and reopenable
+          afterwards from the "Share last requirements" button in the header. */}
+      {waOpen && waReq && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setWaOpen(false)}>
           <div className="w-full max-w-sm rounded-xl border border-border bg-card p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-1">
               <MessageCircle className="w-4 h-4 text-emerald-500" />
               <span className="font-semibold text-foreground">Share ad requirements</span>
             </div>
             <p className="text-xs text-muted-foreground mb-3">
-              Assignment created for <b>{waReq.member.name}</b>. Copy or send this requirements message so they generate exactly what you configured.
+              Assignment for <b>{waReq.member.name}</b>. Copy or send this requirements message so they generate exactly what you configured.
             </p>
             <textarea
               value={waReq.message}
@@ -428,7 +433,7 @@ export default function WorkAssign() {
               </p>
             )}
             <div className="flex gap-2">
-              <button onClick={() => setWaReq(null)}
+              <button onClick={() => setWaOpen(false)}
                 className="flex-1 py-2 rounded-lg text-sm font-medium border border-border bg-background hover:bg-accent text-foreground">
                 Done
               </button>
@@ -439,7 +444,7 @@ export default function WorkAssign() {
               </button>
               <button
                 disabled={!waReq.member.phone}
-                onClick={() => { window.open(getWhatsAppUrl(waReq.member.phone, waReq.message), "_blank"); setWaReq(null); }}
+                onClick={() => { window.open(getWhatsAppUrl(waReq.member.phone, waReq.message), "_blank"); setWaOpen(false); }}
                 className="flex-[1.4] py-2 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 inline-flex items-center justify-center gap-1.5">
                 <MessageCircle className="w-4 h-4" /> WhatsApp
               </button>
@@ -459,10 +464,20 @@ export default function WorkAssign() {
           <h1 className="text-xl md:text-2xl font-bold text-foreground">Work Assignments</h1>
           <p className="text-xs md:text-sm text-muted-foreground mt-1">Assign, track and verify AI ad generation work</p>
         </div>
-        <button onClick={() => { setShowForm(!showForm); if (showForm) setSourceOrder(null); }}
-          className="flex h-10 items-center justify-center space-x-2 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 w-full sm:w-auto">
-          <Plus className="w-4 h-4" /><span>{showForm ? 'Cancel' : 'New Assignment'}</span>
-        </button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          {/* Reopen the last requirements message — it's not lost when the popup is dismissed. */}
+          {waReq && !waOpen && (
+            <button onClick={() => setWaOpen(true)}
+              className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 text-sm font-medium text-emerald-600 transition-colors hover:bg-emerald-500/20 dark:text-emerald-400 w-full sm:w-auto"
+              title={`Reopen the requirements message for ${waReq.member.name}`}>
+              <MessageCircle className="w-4 h-4" /> Share requirements ({waReq.member.name})
+            </button>
+          )}
+          <button onClick={() => { setShowForm(!showForm); if (showForm) setSourceOrder(null); }}
+            className="flex h-10 items-center justify-center space-x-2 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 w-full sm:w-auto">
+            <Plus className="w-4 h-4" /><span>{showForm ? 'Cancel' : 'New Assignment'}</span>
+          </button>
+        </div>
         </div>
       </div>
 

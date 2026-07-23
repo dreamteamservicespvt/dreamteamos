@@ -80,7 +80,7 @@ export default function WorkReports() {
   const techMembers = useMemo(() => {
     // `isActive !== false`, not `isActive`: records predating the flag have no such field, and a
     // truthy test drops every one of those members off the report.
-    const base = allUsers.filter(u => u.role === 'tech_member' && u.isActive !== false);
+    const base = allUsers.filter(u => u.role === 'tech_member' && u.isActive !== false && !u.externalCreator);
     return isTeamLeader ? base.filter(u => u.createdBy === user?.createdBy) : base;
   }, [allUsers, isTeamLeader, user?.createdBy]);
 
@@ -104,7 +104,11 @@ export default function WorkReports() {
   const [verifyDialog, setVerifyDialog] = useState<{ mode: 'single' | 'all'; items: WorkAssignment[] } | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
-  const [showList, setShowList] = useState(true);
+  // The full record is heavy (thousands of rows), so it stays collapsed and paged — open it and
+  // load 10 at a time (or all) on demand rather than rendering everything up front.
+  const [showList, setShowList] = useState(false);
+  const RECORD_PAGE = 10;
+  const [recordLimit, setRecordLimit] = useState(RECORD_PAGE);
 
   // Deep links from the Work Assign page ("view this member's completed work") land here.
   useEffect(() => {
@@ -197,6 +201,11 @@ export default function WorkReports() {
     () => filteredAssignments.filter(a => a.status === 'completed'),
     [filteredAssignments]
   );
+
+  // A new filter (or collapsing the list) resets the page back to the first 10.
+  useEffect(() => { setRecordLimit(RECORD_PAGE); }, [statusFilter, searchQuery, dayFilter, selectedRange, showList]);
+
+  const visibleRecord = useMemo(() => filteredAssignments.slice(0, recordLimit), [filteredAssignments, recordLimit]);
 
   const handleConfirmVerify = async () => {
     if (!verifyDialog?.items.length || !user) return;
@@ -526,13 +535,14 @@ export default function WorkReports() {
         ))}
       </div>
 
-      {/* Assignment record */}
+      {/* Assignment record — collapsed by default; paged so the whole history never renders at once */}
       <div className="rounded-2xl border border-border/70 bg-card/80 px-3 md:px-4 py-2.5 md:py-3 shadow-sm backdrop-blur-sm">
         <button onClick={() => setShowList(v => !v)} className="w-full flex items-center gap-2">
           <ClipboardList className="w-4 h-4 text-muted-foreground" />
           <h3 className="font-semibold text-foreground text-sm">Assignment Record</h3>
           <span className="text-[10px] text-muted-foreground">{filteredAssignments.length} matching</span>
-          <ChevronDown className={`ml-auto w-4 h-4 text-muted-foreground transition-transform ${showList ? 'rotate-180' : ''}`} />
+          <span className="ml-auto text-[10px] text-muted-foreground">{showList ? 'Hide' : 'Show'}</span>
+          <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${showList ? 'rotate-180' : ''}`} />
         </button>
       </div>
 
@@ -543,7 +553,7 @@ export default function WorkReports() {
               <ClipboardList className="w-12 h-12 mx-auto mb-3 opacity-30" />
               <p className="text-lg font-medium">No assignments found</p>
             </div>
-          ) : filteredAssignments.map(a => (
+          ) : visibleRecord.map(a => (
             <div key={a.id} className="bg-card border rounded-xl p-3 md:p-4 shadow-sm hover:shadow-md transition-shadow">
               <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
                 <div className="flex-1 min-w-0">
@@ -805,6 +815,25 @@ export default function WorkReports() {
               </div>
             </div>
           ))}
+
+          {/* Load more — the record is capped at `recordLimit`; reveal the rest on demand. */}
+          {recordLimit < filteredAssignments.length && (
+            <div className="flex flex-col items-center gap-2 pt-1 sm:flex-row sm:justify-center">
+              <p className="text-xs text-muted-foreground">
+                Showing <strong className="text-foreground">{visibleRecord.length}</strong> of {filteredAssignments.length}
+              </p>
+              <div className="flex gap-2">
+                <button onClick={() => setRecordLimit(n => n + RECORD_PAGE)}
+                  className="h-9 rounded-xl border border-border bg-card px-4 text-xs font-medium text-foreground transition-colors hover:bg-accent">
+                  Load {Math.min(RECORD_PAGE, filteredAssignments.length - recordLimit)} more
+                </button>
+                <button onClick={() => setRecordLimit(filteredAssignments.length)}
+                  className="h-9 rounded-xl border border-border bg-card px-4 text-xs font-medium text-foreground transition-colors hover:bg-accent">
+                  Load all ({filteredAssignments.length})
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

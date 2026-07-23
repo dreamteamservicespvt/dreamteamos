@@ -31,6 +31,14 @@ export interface AppUser {
   /** Employment type — set/updated by Tech Admin or Tech Team Lead. Defaults to full_time when unset. */
   employmentType?: "full_time" | "part_time";
   /**
+   * An "external creator" is not a team member — an outside person given access to the platform
+   * only to generate their own business ads. They have no salary, no attendance, and appear in no
+   * team list, report, dashboard or workload; they live only in My Team (so the admin can manage
+   * their access) and see only the ad-creation tool. Their created ads are visible to the tech
+   * admin as history. A tech_member with this flag is excluded everywhere a "team member" is meant.
+   */
+  externalCreator?: boolean;
+  /**
    * Company employee ID (e.g. DTS-014), assigned by the Tech Admin from the Payroll page.
    * Purely a human-facing identifier for payslips and records — the uid remains the real key.
    */

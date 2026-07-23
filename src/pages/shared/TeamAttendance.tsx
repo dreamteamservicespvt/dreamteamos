@@ -96,7 +96,7 @@ export default function TeamAttendance() {
     if (!user) return [];
     const teamAdminUid = user.role === "tech_team_leader" ? user.createdBy : user.uid;
     return allUsers
-      .filter((u) => u.role === managedRole && u.createdBy === teamAdminUid && u.isActive !== false)
+      .filter((u) => u.role === managedRole && u.createdBy === teamAdminUid && u.isActive !== false && !u.externalCreator)
       .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   }, [allUsers, user, managedRole]);
 

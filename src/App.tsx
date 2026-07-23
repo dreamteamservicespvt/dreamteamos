@@ -6,7 +6,7 @@ import { ThemeProvider } from "next-themes";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useAuthStore } from "@/store/authStore";
-import { getDefaultRoute } from "@/utils/roleHelpers";
+import { defaultRouteForUser } from "@/utils/roleHelpers";
 import Login from "@/pages/auth/Login";
 import AppLayout from "@/components/layout/AppLayout";
 import MainAdminDashboard from "@/pages/main-admin/Dashboard";
@@ -18,6 +18,7 @@ import SessionHistory from "@/pages/main-admin/SessionHistory";
 import Accounts from "@/pages/main-admin/Accounts";
 import MainAdminSettings from "@/pages/main-admin/Settings";
 import TechMemberDashboard from "@/pages/tech-member/Dashboard";
+import CreateAd from "@/pages/tech-member/CreateAd";
 import TechMemberTraining from "@/pages/tech-member/Training";
 import TechMemberProfile from "@/pages/tech-member/MyProfile";
 import MyWork from "@/pages/tech-member/MyWork";
@@ -96,7 +97,7 @@ function RootRedirect() {
     );
   }
 
-  if (user) return <Navigate to={getDefaultRoute(user.role)} replace />;
+  if (user) return <Navigate to={defaultRouteForUser(user)} replace />;
   return <Navigate to="/login" replace />;
 }
 
@@ -191,6 +192,7 @@ const App = () => (
 
           {/* Tech Member */}
           <Route element={<AppLayout allowedRoles={["tech_member"]} />}>
+            <Route path="/tech/create" element={<CreateAd />} />
             <Route path="/tech/dashboard" element={<TechMemberDashboard />} />
             <Route path="/tech/my-work" element={<MyWork />} />
             <Route path="/tech/recent-ads" element={<RecentAds />} />

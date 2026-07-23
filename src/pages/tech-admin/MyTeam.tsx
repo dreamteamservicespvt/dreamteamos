@@ -7,10 +7,11 @@ import { useAuthStore } from "@/store/authStore";
 import { normalizePhone, formatPhoneDisplay, getWhatsAppUrl, getCallUrl } from "@/utils/phone";
 import type { AppUser, DailyCheckin, WorkAssignment } from "@/types";
 import { formatCurrency } from "@/utils/formatters";
-import { Users, Plus, X, Loader2, Eye, EyeOff, UserCheck, UserX, Trash2, Phone, MessageCircle, Pencil, Share2, Search, LogIn, LogOut, Sparkles, BarChart3 } from "lucide-react";
+import { Users, Plus, X, Loader2, Eye, EyeOff, UserCheck, UserX, Trash2, Phone, MessageCircle, Pencil, Share2, Search, LogIn, LogOut, Sparkles, BarChart3, Wand2, Film, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import EditMemberModal from "@/components/EditMemberModal";
+import AdsHistoryModal from "@/components/tech/AdsHistoryModal";
 import PeriodFilterBar from "@/components/dashboard/PeriodFilterBar";
 import { format } from "date-fns";
 import { defaultPeriodFilter, periodLabel, withinPeriod, type PeriodFilter } from "@/utils/periodFilter";
@@ -156,6 +157,30 @@ export default function TechAdminMyTeam() {
     }
   };
 
+  /**
+   * Flip a member between team member and "external creator" — an outside person who uses the
+   * platform only to create their own ads. Marking them removes them from every team list, report
+   * and payroll (they stay only here); they get access to just the ad-creation tool.
+   */
+  const toggleExternalCreator = async (member: AppUser) => {
+    const next = !member.externalCreator;
+    try {
+      await updateDoc(doc(db, "users", member.uid), { externalCreator: next, updatedAt: serverTimestamp() });
+      setMembers((prev) => prev.map((m) => m.uid === member.uid ? { ...m, externalCreator: next } : m));
+      toast({
+        title: next ? "Marked as external creator" : "Marked as team member",
+        description: next
+          ? `${member.name} now only creates ads — removed from all team lists and payroll.`
+          : `${member.name} is a full team member again.`,
+      });
+    } catch {
+      toast({ title: "Error", description: "Failed to update.", variant: "destructive" });
+    }
+  };
+
+  /** The external creator whose ad history is open. */
+  const [adsHistoryMember, setAdsHistoryMember] = useState<AppUser | null>(null);
+
   const handleDelete = async (member: AppUser) => {
     setDeletingId(member.uid);
     try {
@@ -276,7 +301,7 @@ export default function TechAdminMyTeam() {
       </div>
 
       {isMobile ? (
-        <MobileTechCards members={filteredMembers} loading={loading} onToggle={toggleActive} onDelete={(m) => setConfirmDelete(m)} onEdit={(m) => setEditingMember(m)} onClickMember={(m) => navigate(`/tech-admin/team/${m.uid}`)} onShare={handleShareCredentials} todayCheckins={todayCheckins} memberRevenue={memberRevenue} />
+        <MobileTechCards members={filteredMembers} loading={loading} onToggle={toggleActive} onDelete={(m) => setConfirmDelete(m)} onEdit={(m) => setEditingMember(m)} onClickMember={(m) => m.externalCreator ? setAdsHistoryMember(m) : navigate(`/tech-admin/team/${m.uid}`)} onShare={handleShareCredentials} onToggleExternal={toggleExternalCreator} onAdsHistory={(m) => setAdsHistoryMember(m)} todayCheckins={todayCheckins} memberRevenue={memberRevenue} />
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
           <table className="w-full text-sm">
@@ -305,14 +330,21 @@ export default function TechAdminMyTeam() {
                 </td></tr>
               ) : (
                 filteredMembers.map((m, i) => (
-                  <tr key={m.uid} onClick={() => navigate(`/tech-admin/team/${m.uid}`)} className={`border-b border-border/50 hover:bg-accent/30 transition-colors cursor-pointer ${i % 2 === 1 ? "bg-elevated/20" : ""}`}>
+                  <tr key={m.uid} onClick={() => m.externalCreator ? setAdsHistoryMember(m) : navigate(`/tech-admin/team/${m.uid}`)} className={`border-b border-border/50 hover:bg-accent/30 transition-colors cursor-pointer ${i % 2 === 1 ? "bg-elevated/20" : ""}`}>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-lg bg-role-tech-member/15 flex items-center justify-center font-display font-bold text-role-tech-member text-xs">
                           {m.name?.charAt(0)}
                         </div>
                         <div>
-                          <p className="font-medium text-foreground">{m.name}</p>
+                          <div className="flex items-center gap-1.5">
+                            <p className="font-medium text-foreground">{m.name}</p>
+                            {m.externalCreator && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400" title="External creator — ad access only, not a team member">
+                                <Wand2 size={9} /> External
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs text-muted-foreground">{m.email}</p>
                         </div>
                       </div>
@@ -348,10 +380,25 @@ export default function TechAdminMyTeam() {
                     </td>
                     <td className="px-4 py-3 text-center">
                        <div className="flex items-center gap-1 justify-center" onClick={(e) => e.stopPropagation()}>
-                        <button onClick={() => navigate(`/tech-admin/team/${m.uid}/analytics`)} title="Analytics"
-                          className="w-8 h-8 rounded-md inline-flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
-                          <BarChart3 size={15} />
-                        </button>
+                        {m.externalCreator && (
+                          <button onClick={() => setAdsHistoryMember(m)} title="Ads history"
+                            className="w-8 h-8 rounded-md inline-flex items-center justify-center text-muted-foreground hover:text-amber-600 hover:bg-amber-500/10 transition-colors">
+                            <Film size={15} />
+                          </button>
+                        )}
+                        {m.role === "tech_member" && (
+                          <button onClick={() => toggleExternalCreator(m)}
+                            title={m.externalCreator ? "Make a team member again" : "Mark as external creator (ad access only)"}
+                            className={`w-8 h-8 rounded-md inline-flex items-center justify-center transition-colors ${m.externalCreator ? "text-amber-600 hover:bg-amber-500/10" : "text-muted-foreground hover:text-amber-600 hover:bg-amber-500/10"}`}>
+                            <Wand2 size={15} />
+                          </button>
+                        )}
+                        {!m.externalCreator && (
+                          <button onClick={() => navigate(`/tech-admin/team/${m.uid}/analytics`)} title="Analytics"
+                            className="w-8 h-8 rounded-md inline-flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
+                            <BarChart3 size={15} />
+                          </button>
+                        )}
                         <button onClick={() => handleShareCredentials(m)} title="Share Credentials"
                           className="w-8 h-8 rounded-md inline-flex items-center justify-center text-muted-foreground hover:text-success hover:bg-success/10 transition-colors">
                           <Share2 size={15} />
@@ -470,13 +517,17 @@ export default function TechAdminMyTeam() {
           onUpdated={(updated) => setMembers((prev) => prev.map((m) => m.uid === updated.uid ? updated : m))}
         />
       )}
+
+      {adsHistoryMember && (
+        <AdsHistoryModal member={adsHistoryMember} onClose={() => setAdsHistoryMember(null)} />
+      )}
     </div>
   );
 }
 
 /* ─── Mobile Cards ─── */
-function MobileTechCards({ members, loading, onToggle, onDelete, onEdit, onClickMember, onShare, todayCheckins, memberRevenue }: {
-  members: AppUser[]; loading: boolean; onToggle: (m: AppUser) => void; onDelete: (m: AppUser) => void; onEdit: (m: AppUser) => void; onClickMember: (m: AppUser) => void; onShare: (m: AppUser) => void; todayCheckins: Map<string, DailyCheckin>; memberRevenue: Map<string, number>;
+function MobileTechCards({ members, loading, onToggle, onDelete, onEdit, onClickMember, onShare, onToggleExternal, onAdsHistory, todayCheckins, memberRevenue }: {
+  members: AppUser[]; loading: boolean; onToggle: (m: AppUser) => void; onDelete: (m: AppUser) => void; onEdit: (m: AppUser) => void; onClickMember: (m: AppUser) => void; onShare: (m: AppUser) => void; onToggleExternal: (m: AppUser) => void; onAdsHistory: (m: AppUser) => void; todayCheckins: Map<string, DailyCheckin>; memberRevenue: Map<string, number>;
 }) {
   if (loading) {
     return (
@@ -510,7 +561,14 @@ function MobileTechCards({ members, loading, onToggle, onDelete, onEdit, onClick
                 {m.name?.charAt(0)}
               </div>
               <div>
-                <p className="font-medium text-foreground text-sm">{m.name}</p>
+                <div className="flex items-center gap-1.5">
+                  <p className="font-medium text-foreground text-sm">{m.name}</p>
+                  {m.externalCreator && (
+                    <span className="inline-flex items-center gap-1 text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                      <Wand2 size={8} /> External
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-muted-foreground">{m.email}</p>
               </div>
             </div>
@@ -547,6 +605,19 @@ function MobileTechCards({ members, loading, onToggle, onDelete, onEdit, onClick
                   <MessageCircle size={12} /> WhatsApp
                 </a>
               </>
+            )}
+            {m.externalCreator && (
+              <button onClick={(e) => { e.stopPropagation(); onAdsHistory(m); }} title="Ads history"
+                className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-amber-600 hover:bg-amber-500/10 transition-colors border border-border">
+                <Film size={14} />
+              </button>
+            )}
+            {m.role === "tech_member" && (
+              <button onClick={(e) => { e.stopPropagation(); onToggleExternal(m); }}
+                title={m.externalCreator ? "Make a team member again" : "Mark as external creator"}
+                className={`h-8 w-8 rounded-lg flex items-center justify-center transition-colors border border-border ${m.externalCreator ? "text-amber-600 hover:bg-amber-500/10" : "text-muted-foreground hover:text-amber-600 hover:bg-amber-500/10"}`}>
+                <Wand2 size={14} />
+              </button>
             )}
             <button onClick={(e) => { e.stopPropagation(); onShare(m); }} title="Share Credentials"
               className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-success hover:bg-success/10 transition-colors border border-border">

@@ -16,6 +16,8 @@ import {
   type ClientBackfillResult, type ClientBackfillRecord,
 } from "@/services/clients";
 import PeriodFilterBar from "@/components/dashboard/PeriodFilterBar";
+import ViewToggle from "@/components/common/ViewToggle";
+import { useViewMode } from "@/hooks/useViewMode";
 import { clientTotal, workAmount } from "@/utils/clientValue";
 import { defaultPeriodFilter, periodLabel, withinPeriod, type PeriodFilter } from "@/utils/periodFilter";
 import { createReviewTask, fetchReviewTask, verifyFiveStar, rejectReview } from "@/services/reviews";
@@ -76,6 +78,9 @@ export default function Clients() {
   const [period, setPeriod] = useState<PeriodFilter>(defaultPeriodFilter);
   /** Newest delivery first by default — "who did we just finish for?" is the usual question. */
   const [sort, setSort] = useState<ClientSort>("new_old");
+  // List is the default view everywhere (per the brief); the toggle switches to the card grid,
+  // and the choice is remembered per viewer.
+  const [view, setView] = useViewMode("clients");
 
   const canManage = user?.role === "sales_admin" || user?.role === "main_admin";
   /** Tech side owns delivery, so they're the ones who can pull delivered work into Clients. */
@@ -259,9 +264,10 @@ export default function Clients() {
             {SORT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
           </select>
         </div>
+        <ViewToggle mode={view} onChange={setView} />
       </div>
 
-      {/* Grid */}
+      {/* Grid / list */}
       {visible.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground">
           <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
@@ -281,7 +287,7 @@ export default function Clients() {
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className={view === "grid" ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3" : "grid grid-cols-1 gap-2"}>
           {visible.map((c, i) => (
             <button key={c.phoneId} onClick={() => setActive(c)}
               className="text-left bg-card border border-border rounded-xl p-4 hover:border-primary/40 hover:shadow-md transition-all">

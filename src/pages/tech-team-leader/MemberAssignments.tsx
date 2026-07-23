@@ -666,7 +666,7 @@ export default function TeamLeaderMemberAssignments() {
                 )}
                 {a.status !== 'verified' && currentUser && (
                   <ReassignWork assignment={a} currentUser={{ uid: currentUser.uid, name: currentUser.name }}
-                    members={allUsers.filter(u => u.role === 'tech_member' && u.createdBy === currentUser.createdBy && u.isActive !== false)} />
+                    members={allUsers.filter(u => u.role === 'tech_member' && u.createdBy === currentUser.createdBy && u.isActive !== false && !u.externalCreator)} />
                 )}
                 <button onClick={() => setConfirmAction({ type: 'delete', id: a.id, title: a.businessName || a.displayTitle })}
                   className="flex items-center space-x-1 px-2 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 rounded-lg transition-colors">
