@@ -5,10 +5,10 @@ export type ViewMode = "list" | "grid";
 /**
  * A remembered list/grid preference for a page.
  *
- * Defaults to "list" (per the brief) and persists per key in localStorage, so a viewer's choice
- * sticks across visits without threading state through the app. Each page passes a stable key.
+ * Defaults to "grid" and persists per key in localStorage, so a viewer's choice sticks across
+ * visits without threading state through the app. Each page passes a stable key.
  */
-export function useViewMode(key: string, initial: ViewMode = "list"): [ViewMode, (m: ViewMode) => void] {
+export function useViewMode(key: string, initial: ViewMode = "grid"): [ViewMode, (m: ViewMode) => void] {
   const storageKey = `viewMode:${key}`;
   const [mode, setModeState] = useState<ViewMode>(() => {
     try {

@@ -78,8 +78,7 @@ export default function Clients() {
   const [period, setPeriod] = useState<PeriodFilter>(defaultPeriodFilter);
   /** Newest delivery first by default — "who did we just finish for?" is the usual question. */
   const [sort, setSort] = useState<ClientSort>("new_old");
-  // List is the default view everywhere (per the brief); the toggle switches to the card grid,
-  // and the choice is remembered per viewer.
+  // Grid is the default view; the toggle switches to a single-column list, remembered per viewer.
   const [view, setView] = useViewMode("clients");
 
   const canManage = user?.role === "sales_admin" || user?.role === "main_admin";

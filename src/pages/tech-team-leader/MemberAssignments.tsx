@@ -11,6 +11,10 @@ import { db } from '@/services/firebase';
 import { sendNotification } from '@/services/notifications';
 import { useAuthStore } from '@/store/authStore';
 import { useFirestoreCollection } from '@/hooks/useFirestore';
+import { useViewMode } from '@/hooks/useViewMode';
+import ViewToggle from '@/components/common/ViewToggle';
+import RequirementsShareModal from '@/components/work/RequirementsShareModal';
+import { buildAssignmentRequirementsMessage } from '@/utils/adRequirement';
 import ReassignWork from '@/components/work/ReassignWork';
 import {
   DURATIONS, END_CREDITS_SECONDS, getClipCount, hasPoster, durationOptionsFor, priceForClips,
@@ -56,6 +60,9 @@ export default function TeamLeaderMemberAssignments() {
   const { data: allAssignments, loading: assignmentsLoading } = useFirestoreCollection<WorkAssignment>('work_assignments');
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [view, setView] = useViewMode('member-assignments');
+  /** The assignment whose requirements message is open for re-sharing. */
+  const [shareAssignment, setShareAssignment] = useState<WorkAssignment | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dayFilter, setDayFilter] = useState<string>('0');
   const [selectedRange, setSelectedRange] = useState<DateRange | undefined>(undefined);
@@ -453,10 +460,15 @@ export default function TeamLeaderMemberAssignments() {
         })}
       </div>
 
-      {/* Assignment List — no pricing */}
-      <div className="space-y-3">
+      {/* View switch */}
+      <div className="flex items-center justify-end">
+        <ViewToggle mode={view} onChange={setView} />
+      </div>
+
+      {/* Assignment list / grid — no pricing */}
+      <div className={view === 'grid' ? 'grid grid-cols-1 xl:grid-cols-2 gap-3 items-start' : 'space-y-3'}>
         {filteredAssignments.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
+          <div className="text-center py-12 text-muted-foreground xl:col-span-2">
             <ClipboardList className="w-12 h-12 mx-auto mb-3 opacity-30" />
             <p className="text-lg font-medium">No assignments found</p>
           </div>
@@ -640,6 +652,11 @@ export default function TeamLeaderMemberAssignments() {
                 )}
               </div>
               <div className="flex items-center flex-wrap gap-1.5 md:gap-2">
+                {/* Re-share the requirements for this exact assignment, any time. */}
+                <button onClick={() => setShareAssignment(a)}
+                  className="flex items-center space-x-1 px-2 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50 rounded-lg transition-colors">
+                  <MessageCircle className="w-3 h-3 md:w-3.5 md:h-3.5" /><span>Share requirements</span>
+                </button>
                 {a.status === 'completed' && (
                   <button onClick={() => handleVerify(a)}
                     className="flex items-center space-x-1 px-2 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 rounded-lg transition-colors">
@@ -679,6 +696,15 @@ export default function TeamLeaderMemberAssignments() {
       </div>
 
       {memberId && <AgreementListForMember memberId={memberId} />}
+
+      {shareAssignment && (
+        <RequirementsShareModal
+          memberName={member?.name || 'this member'}
+          phone={member?.phone}
+          message={buildAssignmentRequirementsMessage(shareAssignment)}
+          onClose={() => setShareAssignment(null)}
+        />
+      )}
     </div>
   );
 }

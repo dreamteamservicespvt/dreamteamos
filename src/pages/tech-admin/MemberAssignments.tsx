@@ -12,6 +12,8 @@ import { useAuthStore } from '@/store/authStore';
 import { useFirestoreCollection } from '@/hooks/useFirestore';
 import { useViewMode } from '@/hooks/useViewMode';
 import ViewToggle from '@/components/common/ViewToggle';
+import RequirementsShareModal from '@/components/work/RequirementsShareModal';
+import { buildAssignmentRequirementsMessage } from '@/utils/adRequirement';
 import ReassignWork from '@/components/work/ReassignWork';
 import {
   DURATIONS, END_CREDITS_SECONDS, getClipCount, hasPoster, durationOptionsFor, priceForClips,
@@ -107,6 +109,8 @@ export default function MemberAssignments() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [view, setView] = useViewMode('member-assignments');
+  /** The assignment whose requirements message is open for re-sharing. */
+  const [shareAssignment, setShareAssignment] = useState<WorkAssignment | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dayFilter, setDayFilter] = useState<string>('0');
   const [selectedRange, setSelectedRange] = useState<DateRange | undefined>(undefined);
@@ -781,6 +785,11 @@ export default function MemberAssignments() {
             {/* Card Actions */}
             {editingId !== a.id && (
               <div className="px-4 py-2 border-t border-border/50 flex items-center flex-wrap gap-1.5">
+                {/* Re-share the requirements for this exact assignment, any time. */}
+                <button onClick={() => setShareAssignment(a)}
+                  className="flex items-center space-x-1 px-2.5 py-1 text-[10px] md:text-xs font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50 rounded-lg transition-colors">
+                  <MessageCircle className="w-3 h-3 md:w-3.5 md:h-3.5" /><span>Share requirements</span>
+                </button>
                 {a.status === 'completed' && (
                   <button onClick={() => handleVerify(a)}
                     className="flex items-center space-x-1 px-2.5 py-1 text-[10px] md:text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 rounded-lg transition-colors">
@@ -818,6 +827,15 @@ export default function MemberAssignments() {
           </div>
         ))}
       </div>
+
+      {shareAssignment && (
+        <RequirementsShareModal
+          memberName={member?.name || 'this member'}
+          phone={member?.phone}
+          message={buildAssignmentRequirementsMessage(shareAssignment)}
+          onClose={() => setShareAssignment(null)}
+        />
+      )}
     </div>
   );
 }

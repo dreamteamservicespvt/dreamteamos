@@ -25,6 +25,8 @@ import { verifyAssignments } from '@/services/workVerify';
 import { reassignWork } from '@/services/workReassign';
 import DeadlineChip from '@/components/work/DeadlineChip';
 import WorkDoneReport from '@/components/work/WorkDoneReport';
+import ViewToggle from '@/components/common/ViewToggle';
+import { useViewMode } from '@/hooks/useViewMode';
 
 /**
  * Work Done & Reports — everything that is about *looking back* at the team's work.
@@ -109,6 +111,7 @@ export default function WorkReports() {
   const [showList, setShowList] = useState(false);
   const RECORD_PAGE = 10;
   const [recordLimit, setRecordLimit] = useState(RECORD_PAGE);
+  const [view, setView] = useViewMode('work-reports');
 
   // Deep links from the Work Assign page ("view this member's completed work") land here.
   useEffect(() => {
@@ -546,10 +549,16 @@ export default function WorkReports() {
         </button>
       </div>
 
+      {showList && filteredAssignments.length > 0 && (
+        <div className="flex items-center justify-end">
+          <ViewToggle mode={view} onChange={setView} />
+        </div>
+      )}
+
       {showList && (
-        <div className="space-y-3">
+        <div className={view === 'grid' ? 'grid grid-cols-1 xl:grid-cols-2 gap-3 items-start' : 'space-y-3'}>
           {filteredAssignments.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
+            <div className="text-center py-12 text-muted-foreground xl:col-span-2">
               <ClipboardList className="w-12 h-12 mx-auto mb-3 opacity-30" />
               <p className="text-lg font-medium">No assignments found</p>
             </div>
@@ -818,7 +827,7 @@ export default function WorkReports() {
 
           {/* Load more — the record is capped at `recordLimit`; reveal the rest on demand. */}
           {recordLimit < filteredAssignments.length && (
-            <div className="flex flex-col items-center gap-2 pt-1 sm:flex-row sm:justify-center">
+            <div className="flex flex-col items-center gap-2 pt-1 sm:flex-row sm:justify-center xl:col-span-2">
               <p className="text-xs text-muted-foreground">
                 Showing <strong className="text-foreground">{visibleRecord.length}</strong> of {filteredAssignments.length}
               </p>

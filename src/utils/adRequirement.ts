@@ -9,8 +9,8 @@
  * the tech form can never drift apart.
  */
 import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from "@/types/aiPlatform";
-import { DURATIONS, getClipCount, priceForClips } from "./assignmentDuration";
-import { PACKAGES, isAdCategory } from "./serviceCatalog";
+import { DURATIONS, END_CREDITS_SECONDS, getClipCount, hasPoster, priceForClips } from "./assignmentDuration";
+import { PACKAGES, isAdCategory, categoryLabel } from "./serviceCatalog";
 import { PRICING } from "./pricing";
 import type { AdRequirement, Order } from "@/types";
 
@@ -148,6 +148,50 @@ export function assignmentFormFromOrder(order: Order, knownLanguages?: string[])
     customLanguage: known ? "" : r.language,
     requirementNotes: r.notes,
   };
+}
+
+/**
+ * The WhatsApp-ready requirements message for an assignment that already exists.
+ *
+ * The same block shown right after Create Assignment, but rebuilt from the saved assignment — so
+ * it can be re-shared at any time from the member's assignment list, long after that popup was
+ * dismissed. No price and no internal id: the member needs the spec and the access code.
+ */
+export function buildAssignmentRequirementsMessage(a: {
+  businessName?: string;
+  clientName?: string;
+  category: string;
+  duration: string;
+  clipCount: number;
+  modelGender?: string;
+  attireType?: string;
+  customAttire?: string;
+  aspectRatio?: string;
+  language?: string;
+  requirementNotes?: string;
+  accessCode?: string;
+}): string {
+  const business = (a.businessName || a.clientName || "").trim();
+  const notes = a.requirementNotes?.trim();
+  return [
+    `🎬✨ *NEW AD ASSIGNMENT* ✨🎬`,
+    ``,
+    business ? `🏢 *Business:* ${business}` : null,
+    `🎯 *Category:* ${categoryLabel(a.category)}`,
+    `⏱️ *Duration:* ${a.duration} (${a.clipCount} clips${hasPoster(a.duration) ? " + Poster" : ""} + ${END_CREDITS_SECONDS}s EC)`,
+    ``,
+    `📋 *AD SPECIFICATION*`,
+    a.modelGender ? `👤 *Model:* ${a.modelGender === "male" ? "Male" : "Female"}` : null,
+    a.attireType ? `👔 *Attire:* ${attireLabel(a.attireType, a.customAttire)}` : null,
+    a.aspectRatio ? `📐 *Ratio:* ${a.aspectRatio}` : null,
+    a.language ? `🗣️ *Language:* ${a.language}` : null,
+    notes ? `` : null,
+    notes ? `📝 *Client notes:* ${notes}` : null,
+    ``,
+    a.accessCode ? `🔑 *Access Code:* ${a.accessCode}` : null,
+    a.accessCode ? `` : null,
+    `🚀 Let's create something amazing — good luck! 🔥`,
+  ].filter((l): l is string => l !== null).join("\n");
 }
 
 /** One-line summary of a brief, for the Orders queue. */
