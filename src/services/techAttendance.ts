@@ -212,3 +212,63 @@ export function daysInMonth(month: string): string[] {
 export const todayMonth = () => format(new Date(), "yyyy-MM");
 export const todayDate = () => format(new Date(), "yyyy-MM-dd");
 export const attendanceKey = attendanceId;
+
+// ─── Date-range listeners ───────────────────────────────────────────────────
+// The salary cycle runs 10th → 9th, so it straddles two calendar months. These range-scoped
+// listeners replace the month-scoped ones wherever a pay period is involved.
+
+/** Live overrides between two dates (inclusive). Returns unsubscribe. */
+export function watchOverridesInRange(
+  startDate: string,
+  endDate: string,
+  cb: (byKey: Map<string, AttendanceStatus>) => void,
+): () => void {
+  const q = query(collection(db, "attendance"), where("date", ">=", startDate), where("date", "<=", endDate));
+  return onSnapshot(
+    q,
+    (snap) => {
+      const map = new Map<string, AttendanceStatus>();
+      snap.docs.forEach((d) => {
+        const a = d.data() as AttendanceOverride;
+        map.set(attendanceId(a.memberId, a.date), a.status);
+      });
+      cb(map);
+    },
+    () => cb(new Map()),
+  );
+}
+
+/** Live announced holidays between two dates (inclusive). Returns unsubscribe. */
+export function watchHolidaysInRange(
+  startDate: string,
+  endDate: string,
+  cb: (dates: Set<string>) => void,
+): () => void {
+  const q = query(collection(db, "holidays"), where("date", ">=", startDate), where("date", "<=", endDate));
+  return onSnapshot(
+    q,
+    (snap) => cb(new Set(snap.docs.map((d) => d.id))),
+    () => cb(new Set()),
+  );
+}
+
+/** Live member/day check-in keys between two dates (inclusive). Returns unsubscribe. */
+export function watchCheckedInDaysInRange(
+  startDate: string,
+  endDate: string,
+  cb: (set: Set<string>) => void,
+): () => void {
+  const q = query(collection(db, "daily_checkins"), where("date", ">=", startDate), where("date", "<=", endDate));
+  return onSnapshot(
+    q,
+    (snap) => {
+      const set = new Set<string>();
+      snap.docs.forEach((d) => {
+        const c = d.data() as { memberId?: string; date?: string };
+        if (c.memberId && c.date) set.add(attendanceId(c.memberId, c.date));
+      });
+      cb(set);
+    },
+    () => cb(new Set()),
+  );
+}

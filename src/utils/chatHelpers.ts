@@ -11,12 +11,16 @@ export function getChatRoomId(uid1: string, uid2: string): string {
  */
 export function getChatContactRoles(role: UserRole): UserRole[] {
   switch (role) {
+    // Admins talk to their own team *and* to each other — sales and tech constantly need to
+    // coordinate on orders, delivery and upsells, so they must not be siloed.
     case "tech_admin":
-      return ["tech_member"];
-    case "tech_member":
-      return ["tech_admin", "tech_member"];
+      return ["tech_member", "tech_team_leader", "sales_admin"];
     case "sales_admin":
-      return ["sales_member"];
+      return ["sales_member", "tech_admin"];
+    case "tech_team_leader":
+      return ["tech_member", "tech_admin"];
+    case "tech_member":
+      return ["tech_admin", "tech_team_leader", "tech_member"];
     case "sales_member":
       return ["sales_admin", "sales_member"];
     default:

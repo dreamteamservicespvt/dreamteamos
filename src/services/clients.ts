@@ -6,15 +6,28 @@
  * customer's whole history. Reads are scoped (sales admins see only their clients).
  */
 import {
-  collection, doc, getDoc, updateDoc, runTransaction, query, where,
-  serverTimestamp, Timestamp, type Query, type DocumentData,
+  collection, doc, getDoc, getDocs, onSnapshot, setDoc, updateDoc, runTransaction, query, where,
+  writeBatch, serverTimestamp, Timestamp, type Query, type DocumentData,
 } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import { adminAssignNumber } from "@/services/numberLock";
 import { categoryLabel, categoryBilling } from "@/utils/serviceCatalog";
-import { formatPhoneDisplay, phoneLockId } from "@/utils/phone";
+import { formatPhoneDisplay, normalizePhone, phoneLockId } from "@/utils/phone";
+import { deliveredAtMs } from "@/utils/workDates";
 import type { AppUser, Client, ClientWorkItem, Order, UserRole, WorkAssignment } from "@/types";
+
+/**
+ * When a delivered job goes on a client's record.
+ *
+ * Never "now": a client's last-work date is a fact about the job, not about when somebody
+ * happened to press Import. Stamping the import time is what made all 850 clients read
+ * "Last work 23 Jul 2026". Falls back to now only when the assignment carries no date at all.
+ */
+function deliveredAtStamp(a: WorkAssignment): Timestamp {
+  const ms = deliveredAtMs(a);
+  return ms ? Timestamp.fromMillis(ms) : Timestamp.now();
+}
 
 /**
  * On tech verification of an order-driven work assignment: append the delivered item to the client
@@ -52,7 +65,9 @@ export async function upsertClientOnWorkVerify(params: {
         deliveredBy: assignment.assignedTo,
         deliveredByName: deliveredByName || null,
         deliveredAmount: assignment.totalPrice || 0,
-        deliveredAt: Timestamp.now(), // serverTimestamp() is not allowed inside array elements
+        // serverTimestamp() is not allowed inside array elements, and "now" would be a lie —
+        // this is when the work was finished.
+        deliveredAt: deliveredAtStamp(assignment),
       };
 
       if (clientSnap.exists()) {
@@ -187,4 +202,362 @@ export async function assignUpsellLead(params: {
     reserved: "This number is still within another member's 24h reservation window.",
   };
   return { ok: false, message: blocked[result.kind] || "Could not assign this number." };
+}
+
+/**
+ * Register a delivered assignment as a client, on completion.
+ *
+ * Two gaps this closes:
+ *
+ *  1. Work created directly in Work Assign has no `orderId`, so it never reached the clients
+ *     list at all — those customers were invisible to the upsell pipeline.
+ *  2. Waiting for admin *verification* meant a delivered customer sat unreachable until someone
+ *     got round to approving the work. Completion is the moment the customer actually has
+ *     something, so that is when they become an upsell target.
+ *
+ * Order-sourced work still flows through `upsertClientOnWorkVerify` for the money side; this
+ * only ensures the client record exists. Both are idempotent on `workAssignmentId`.
+ */
+/**
+ * Every sales admin's uid.
+ *
+ * Used to give unattributed clients visibility to the whole sales side. Never throws — a failed
+ * lookup degrades to "no sales admin sees it yet", which the Import button can repair later.
+ */
+export async function fetchSalesAdminIds(): Promise<string[]> {
+  try {
+    const snap = await getDocs(query(collection(db, "users"), where("role", "==", "sales_admin")));
+    return snap.docs.map((d) => d.id);
+  } catch (err) {
+    console.error("[clients] could not load sales admins:", err);
+    return [];
+  }
+}
+
+/** A delivered assignment, as the entry that goes on its client's record. */
+function workItemFromAssignment(assignment: WorkAssignment, deliveredByName?: string | null): ClientWorkItem {
+  return {
+    orderId: assignment.orderId || `assignment_${assignment.id}`,
+    workAssignmentId: assignment.id,
+    category: assignment.category,
+    title: assignment.businessName
+      ? `${categoryLabel(assignment.category)} — ${assignment.businessName}`
+      : categoryLabel(assignment.category),
+    billing: categoryBilling(assignment.category),
+    soldBy: assignment.assignedBy || "",
+    soldByName: "",
+    saleAmount: assignment.totalPrice || 0,
+    fromAd: false,
+    deliveredBy: assignment.assignedTo,
+    deliveredByName: deliveredByName || null,
+    deliveredAmount: assignment.totalPrice || 0,
+    deliveredAt: deliveredAtStamp(assignment),
+  };
+}
+
+export async function upsertClientOnWorkComplete(params: {
+  assignment: WorkAssignment;
+  deliveredByName?: string | null;
+  /**
+   * Sales admins who should be able to see this client. Directly-assigned work has no sale and
+   * therefore no owning admin, so every sales admin gets visibility — otherwise the customer is
+   * invisible to the very people who run upsells. Pass it in to avoid a lookup per client.
+   */
+  salesAdminIds?: string[];
+}): Promise<void> {
+  const { assignment, deliveredByName } = params;
+  const salesAdminIds = params.salesAdminIds ?? await fetchSalesAdminIds();
+
+  const phone = assignment.businessWhatsapp ? normalizePhone(assignment.businessWhatsapp) : "";
+  // Without a number there is nobody to upsell to, so there is nothing useful to record.
+  if (!phone) return;
+
+  const phoneId = phone.replace(/\D/g, "");
+  if (!phoneId) return;
+
+  try {
+    const clientRef = doc(db, "clients", phoneId);
+
+    await runTransaction(db, async (tx) => {
+      const clientSnap = await tx.get(clientRef);
+      const item = workItemFromAssignment(assignment, deliveredByName);
+
+      if (clientSnap.exists()) {
+        const client = clientSnap.data() as Client;
+        // Idempotent: re-completing the same assignment must not double-count revenue.
+        if ((client.works || []).some((w) => w.workAssignmentId === assignment.id)) return;
+
+        tx.update(clientRef, {
+          works: [...(client.works || []), item],
+          totalDeliveredAmount: (client.totalDeliveredAmount || 0) + (item.deliveredAmount || 0),
+          workCount: (client.workCount || 0) + 1,
+          name: client.name || assignment.businessName || "",
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        tx.set(clientRef, {
+          phone,
+          phoneId,
+          name: assignment.businessName || assignment.clientName || "",
+          businessCategory: "",
+          email: null,
+          logoUrl: null,
+          visitingCardUrl: null,
+          googleBusinessUrl: null,
+          websiteUrl: null,
+          socialMedia: null,
+          works: [item],
+          // Direct assignments carry no sale record, so sale value stays 0 until an order links up.
+          totalSaleAmount: 0,
+          totalDeliveredAmount: item.deliveredAmount || 0,
+          workCount: 1,
+          // Unattributed delivery → visible to every sales admin, so the upsell can be picked up.
+          salesAdminIds,
+          firstSoldBy: assignment.assignedBy || "",
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+    });
+  } catch (err) {
+    console.error("[clients] upsertClientOnWorkComplete failed:", err);
+  }
+}
+
+// ─── Backfill ───────────────────────────────────────────────────────────────
+
+export interface ClientBackfillResult {
+  /** Delivered assignments examined. */
+  scanned: number;
+  /** Jobs newly written onto a client record. */
+  imported: number;
+  /** Already recorded and correct — a re-run does no work for these. */
+  alreadyPresent: number;
+  /** Already recorded, but with a wrong delivery date that this run corrected. */
+  repaired: number;
+  /** Delivered work with no WhatsApp number, so there is nobody to upsell. */
+  missingPhone: number;
+  /** Client documents actually written. */
+  clientsWritten: number;
+}
+
+/** A stamp is "the same" if it agrees to the minute — Firestore precision noise is not a change. */
+function sameStamp(a: unknown, b: Timestamp): boolean {
+  const seconds = (a as { seconds?: number } | undefined)?.seconds;
+  return typeof seconds === "number" && Math.abs(seconds - b.seconds) < 60;
+}
+
+/**
+ * Bring every already-delivered assignment into Clients, and repair what is already there.
+ *
+ * `upsertClientOnWorkComplete` only fires for work completed from now on, and before it existed
+ * clients were created solely on admin *verify* of order-sourced work. Everything else — every
+ * job assigned directly in Work Assign, and every job completed before that fix — never reached
+ * the upsell pipeline at all. This sweeps the whole history so the client list reflects every
+ * customer the team has actually delivered to.
+ *
+ * Two things it deliberately does *not* do, both of which it used to:
+ *
+ *  1. **Re-read every client, every run.** The whole clients collection is read once up front,
+ *     so a second run costs one collection read instead of one document read per delivered job.
+ *     A sweep over already-imported history now finishes in seconds and writes nothing.
+ *  2. **Write one job at a time.** Jobs are grouped by client and written in batches, so a client
+ *     with twenty ads is one write rather than twenty, and totals are recomputed from the merged
+ *     list rather than incremented (which is how a re-run could ever double-count).
+ *
+ * It also fixes records the old import damaged: a work item stamped with the import time instead
+ * of the delivery time gets its real `deliveredAt` back, which is what "Last work" reads.
+ */
+export async function backfillClientsFromDeliveredWork(
+  assignments: WorkAssignment[],
+  memberNameFor: (uid: string) => string,
+  onProgress?: (done: number, total: number) => void,
+): Promise<ClientBackfillResult> {
+  const delivered = assignments.filter(
+    (a) => a.status === "completed" || a.status === "verified",
+  );
+
+  const result: ClientBackfillResult = {
+    scanned: delivered.length,
+    imported: 0,
+    alreadyPresent: 0,
+    repaired: 0,
+    missingPhone: 0,
+    clientsWritten: 0,
+  };
+
+  // Group by client, oldest first, so a client's work history reads in the order it happened.
+  const ordered = [...delivered].sort((a, b) => (deliveredAtMs(a) ?? 0) - (deliveredAtMs(b) ?? 0));
+  const byPhoneId = new Map<string, WorkAssignment[]>();
+  for (const a of ordered) {
+    const phoneId = a.businessWhatsapp ? normalizePhone(a.businessWhatsapp).replace(/\D/g, "") : "";
+    if (!phoneId) {
+      result.missingPhone += 1;
+      continue;
+    }
+    const list = byPhoneId.get(phoneId);
+    if (list) list.push(a);
+    else byPhoneId.set(phoneId, [a]);
+  }
+
+  // Both fetched once for the whole sweep rather than per client.
+  const salesAdminIds = await fetchSalesAdminIds();
+  const existingClients = new Map<string, Client>();
+  try {
+    const snap = await getDocs(collection(db, "clients"));
+    snap.docs.forEach((d) => existingClients.set(d.id, d.data() as Client));
+  } catch (err) {
+    // Unreadable clients collection → treat everything as new. Writes stay idempotent per client
+    // because each one is merged from the doc we do hold, so the worst case is redundant work.
+    console.error("[clients] backfill could not preload clients:", err);
+  }
+
+  let batch = writeBatch(db);
+  let batched = 0;
+  const BATCH_LIMIT = 400; // Firestore caps a batch at 500 ops; leave headroom.
+  const flush = async () => {
+    if (batched === 0) return;
+    await batch.commit();
+    batch = writeBatch(db);
+    batched = 0;
+  };
+
+  let processed = 0;
+  for (const [phoneId, items] of byPhoneId) {
+    processed += 1;
+    onProgress?.(processed, byPhoneId.size);
+
+    const client = existingClients.get(phoneId);
+    const works: ClientWorkItem[] = [...(client?.works || [])];
+    const positionOf = new Map<string, number>();
+    works.forEach((w, i) => { if (w.workAssignmentId) positionOf.set(w.workAssignmentId, i); });
+
+    let changed = false;
+    for (const a of items) {
+      const item = workItemFromAssignment(a, memberNameFor(a.assignedTo));
+      const at = positionOf.get(a.id);
+
+      if (at === undefined) {
+        positionOf.set(a.id, works.length);
+        works.push(item);
+        result.imported += 1;
+        changed = true;
+        continue;
+      }
+
+      // Present already — but an import-time stamp needs correcting to the real delivery date.
+      if (!sameStamp(works[at].deliveredAt, item.deliveredAt)) {
+        works[at] = { ...works[at], deliveredAt: item.deliveredAt };
+        result.repaired += 1;
+        changed = true;
+      } else {
+        result.alreadyPresent += 1;
+      }
+    }
+
+    if (!changed) continue;
+
+    // Totals recomputed from the merged list, never incremented — a re-run can't drift.
+    const totalDeliveredAmount = works.reduce((sum, w) => sum + (w.deliveredAmount || 0), 0);
+    const first = items[0];
+
+    if (client) {
+      batch.update(doc(db, "clients", phoneId), {
+        works,
+        workCount: works.length,
+        totalDeliveredAmount,
+        name: client.name || first.businessName || first.clientName || "",
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      batch.set(doc(db, "clients", phoneId), {
+        phone: normalizePhone(first.businessWhatsapp!),
+        phoneId,
+        name: first.businessName || first.clientName || "",
+        businessCategory: "",
+        email: null,
+        logoUrl: null,
+        visitingCardUrl: null,
+        googleBusinessUrl: null,
+        websiteUrl: null,
+        socialMedia: null,
+        works,
+        // Direct assignments carry no sale record, so sale value stays 0 until an order links up.
+        totalSaleAmount: 0,
+        totalDeliveredAmount,
+        workCount: works.length,
+        // Unattributed delivery → visible to every sales admin, so the upsell can be picked up.
+        salesAdminIds,
+        firstSoldBy: first.assignedBy || "",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    result.clientsWritten += 1;
+    batched += 1;
+    if (batched >= BATCH_LIMIT) {
+      try {
+        await flush();
+      } catch (err) {
+        // One bad batch must not abort the sweep — log it and carry on with a fresh batch.
+        console.error("[clients] backfill batch failed:", err);
+        batch = writeBatch(db);
+        batched = 0;
+      }
+    }
+  }
+
+  try {
+    await flush();
+  } catch (err) {
+    console.error("[clients] backfill final batch failed:", err);
+  }
+
+  return result;
+}
+
+// ── One-time backfill record ────────────────────────────────────────────────
+
+/**
+ * Proof that the legacy import has been run.
+ *
+ * Delivered work flows into Clients automatically now (see upsertClientOnWorkComplete), so the
+ * "Import delivered work" sweep is a one-off for jobs finished before that existed. Recording it
+ * in Firestore rather than localStorage means the banner disappears for the whole company once
+ * anyone runs it, not just on the browser that did.
+ */
+export interface ClientBackfillRecord {
+  completedAt: unknown;
+  scanned: number;
+  imported: number;
+  /** Delivery dates corrected on records the first import stamped with the import time. */
+  repaired?: number;
+  byUid: string;
+  byName: string;
+}
+
+const BACKFILL_DOC = () => doc(db, "app_settings", "clients_backfill");
+
+export function watchClientBackfill(cb: (record: ClientBackfillRecord | null) => void): () => void {
+  return onSnapshot(
+    BACKFILL_DOC(),
+    (snap) => cb(snap.exists() ? (snap.data() as ClientBackfillRecord) : null),
+    // A missing doc and an unreadable one both mean "we don't know it ran" — show the banner.
+    () => cb(null),
+  );
+}
+
+export async function recordClientBackfill(
+  result: ClientBackfillResult,
+  by: { uid: string; name: string },
+): Promise<void> {
+  await setDoc(BACKFILL_DOC(), {
+    completedAt: serverTimestamp(),
+    scanned: result.scanned,
+    imported: result.imported,
+    repaired: result.repaired,
+    byUid: by.uid,
+    byName: by.name,
+  } satisfies ClientBackfillRecord);
 }

@@ -15,3 +15,17 @@ export async function setEmploymentType(uid: string, type: EmploymentType): Prom
 
 /** Normalises a possibly-undefined value to a concrete type (defaults to full_time). */
 export const employmentOf = (v?: string): EmploymentType => (v === "part_time" ? "part_time" : "full_time");
+
+/**
+ * Set a member's company employee ID (Tech Admin).
+ *
+ * Free-form on purpose — every company numbers its people differently, and forcing a scheme
+ * here would just mean fighting it later. Stored trimmed and upper-cased so the same ID typed
+ * two ways doesn't read as two people on a payslip.
+ */
+export async function setEmployeeId(uid: string, employeeId: string): Promise<void> {
+  await updateDoc(doc(db, "users", uid), {
+    employeeId: employeeId.trim().toUpperCase(),
+    updatedAt: serverTimestamp(),
+  });
+}

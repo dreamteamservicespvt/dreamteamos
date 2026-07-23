@@ -4,15 +4,14 @@ import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { formatCurrency } from "@/utils/formatters";
-import { format, subDays, startOfDay } from "date-fns";
-import type { DateRange } from "react-day-picker";
 import type { AppUser, WorkAssignment } from "@/types";
 import { Users, Video, CheckCircle, Clock, TrendingUp, ArrowDownUp, ClipboardList, Search, Sparkles } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
-import DashboardDateRangePicker from "@/components/dashboard/DateRangePicker";
-import { formatDateRangeLabel, isDateWithinRange, normalizeDateRange } from "@/utils/dateRange";
+import PeriodFilterBar from "@/components/dashboard/PeriodFilterBar";
+import { defaultPeriodFilter, periodLabel, withinPeriod, type PeriodFilter } from "@/utils/periodFilter";
+import { workCountsOn } from "@/utils/workDates";
 
 export default function TechAdminDashboard() {
   const currentUser = useAuthStore((s) => s.user);
@@ -20,29 +19,15 @@ export default function TechAdminDashboard() {
   const [members, setMembers] = useState<AppUser[]>([]);
   const [assignments, setAssignments] = useState<WorkAssignment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedRange, setSelectedRange] = useState<DateRange | undefined>(undefined);
-  const [dayFilter, setDayFilter] = useState<string>('all');
+  // The tech team's month is the 10th → 9th performance cycle their output and pay are measured
+  // on, so "This Month" here means exactly what it means on Work Done & Reports.
+  const [period, setPeriod] = useState<PeriodFilter>(() => defaultPeriodFilter("cycle"));
   const [sortOrder, setSortOrder] = useState<'high' | 'low'>(() => (localStorage.getItem('dash_sortOrder') as 'high' | 'low') || 'high');
   const [sortBy, setSortBy] = useState<'videos' | 'assigned'>(() => (localStorage.getItem('dash_sortBy') as 'videos' | 'assigned') || 'videos');
   const [memberSearch, setMemberSearch] = useState('');
 
   useEffect(() => { localStorage.setItem('dash_sortOrder', sortOrder); }, [sortOrder]);
   useEffect(() => { localStorage.setItem('dash_sortBy', sortBy); }, [sortBy]);
-
-  // Generate recent 5 days for dropdown
-  const recentDays = (() => {
-    const days: { date: Date; dateStr: string; label: string }[] = [];
-    for (let i = 0; i < 5; i++) {
-      const d = subDays(new Date(), i);
-      const today = startOfDay(new Date());
-      const target = startOfDay(d);
-      const diffMs = today.getTime() - target.getTime();
-      const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
-      const label = diffDays === 0 ? 'Today' : diffDays === 1 ? 'Yesterday' : `${diffDays} days ago`;
-      days.push({ date: startOfDay(d), dateStr: format(d, 'yyyy-MM-dd'), label });
-    }
-    return days;
-  })();
 
   useEffect(() => {
     const unsubs: (() => void)[] = [];
@@ -59,25 +44,15 @@ export default function TechAdminDashboard() {
 
   const memberIds = members.map((m) => m.uid);
 
-  // Filter assignments by team
-  const teamAssignments = assignments.filter((a) => memberIds.includes(a.assignedTo) && a.assignedBy === currentUser?.uid);
+  // The team's work, whoever handed it out. Filtering on `assignedBy === me` used to hide
+  // everything a team leader assigned, which is most of it.
+  const teamAssignments = assignments.filter((a) => memberIds.includes(a.assignedTo));
 
-  // Filter by selected date or day filter
-  const filteredAssignments = (() => {
-    if (selectedRange?.from) return teamAssignments.filter((a) => isDateWithinRange(a.date, selectedRange));
-    if (dayFilter !== 'all') {
-      const dayIndex = parseInt(dayFilter);
-      const dayDateStr = recentDays[dayIndex]?.dateStr;
-      if (dayDateStr) return teamAssignments.filter((a) => a.date === dayDateStr);
-    }
-    return teamAssignments;
-  })();
-
-  const filterLabel = selectedRange?.from
-    ? formatDateRangeLabel(selectedRange)
-    : dayFilter === 'all'
-      ? 'All Days'
-      : recentDays[parseInt(dayFilter)]?.label || 'All Days';
+  // Career / This Month / Day / Range — the same control used on every screen that shows money.
+  // Dated by when the work counts (delivery, for finished work) rather than when it was handed
+  // out, so work carried over from last month lands in the month it was actually delivered.
+  const filteredAssignments = teamAssignments.filter((a) => withinPeriod(workCountsOn(a), period));
+  const filterLabel = periodLabel(period);
 
   const verified = filteredAssignments.filter((a) => a.status === "verified");
   const pending = filteredAssignments.filter((a) => a.status === "assigned" || a.status === "in_progress");
@@ -144,26 +119,13 @@ export default function TechAdminDashboard() {
           </div>
           <h1 className="font-display text-xl md:text-2xl font-bold text-foreground">Tech Dashboard</h1>
           <p className="text-muted-foreground text-xs md:text-sm mt-1">
-            {selectedRange?.from ? `Showing data for ${formatDateRangeLabel(selectedRange)}` : dayFilter !== 'all' ? `Showing data for ${recentDays[parseInt(dayFilter)]?.label}` : "Overview of your team's work"}
+            Your team's work for {filterLabel.toLowerCase()}
           </p>
         </div>
-        <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:justify-end">
-          {!selectedRange?.from && (
-            <select value={dayFilter} onChange={(e) => setDayFilter(e.target.value)}
-              className="h-10 rounded-xl border border-border/70 bg-background/80 px-3 text-xs md:text-sm text-foreground shadow-sm outline-none focus:ring-2 focus:ring-primary/20">
-              <option value="all">All Days</option>
-              {recentDays.map((d, i) => (
-                <option key={d.dateStr} value={String(i)}>{d.label} ({format(d.date, "dd/MM")})</option>
-              ))}
-            </select>
-          )}
-          <DashboardDateRangePicker value={selectedRange} onSelect={(range) => { setSelectedRange(normalizeDateRange(range)); if (range?.from) setDayFilter('all'); }} />
-          {(selectedRange?.from || dayFilter !== 'all') && (
-            <button onClick={() => { setSelectedRange(undefined); setDayFilter('all'); }} className="h-10 rounded-xl border border-border/70 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground">
-              Clear
-            </button>
-          )}
         </div>
+
+        <div className="mt-4">
+          <PeriodFilterBar value={period} onChange={setPeriod} />
         </div>
       </div>
 

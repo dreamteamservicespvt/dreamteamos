@@ -2,12 +2,12 @@ import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   ClipboardList, Plus, CheckCircle2, Loader2,
-  Search, X, Users, History, Copy, Check, MessageCircle, Sparkles
+  Search, X, Users, History, Copy, Check, MessageCircle, Sparkles, ShoppingBag
 } from 'lucide-react';
 import { getWhatsAppUrl, normalizePhone } from '@/utils/phone';
-import { collection, addDoc, serverTimestamp, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/services/firebase';
-import { sendNotification, notifyTechTeamLeaders } from '@/services/notifications';
+import { notifyTechTeamLeaders } from '@/services/notifications';
 import { useAuthStore } from '@/store/authStore';
 import { useFirestoreCollection } from '@/hooks/useFirestore';
 import {
@@ -16,42 +16,27 @@ import {
 } from '@/utils/assignmentDuration';
 import { formatCurrency, formatDate, formatTime } from '@/utils/formatters';
 import { format } from 'date-fns';
-import type { WorkAssignment, AppUser, DailyCheckin } from '@/types';
+import type { WorkAssignment, AppUser, DailyCheckin, Order } from '@/types';
 import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from '@/types/aiPlatform';
+import { ATTIRE_LABELS, assignmentFormFromOrder, attireLabel } from '@/utils/adRequirement';
+import { watchAdLanguages, mergeAdLanguages, rememberAdLanguage } from '@/services/adLanguages';
+import { categoryLabel } from '@/utils/serviceCatalog';
+import { fetchOrder } from '@/services/orders';
+import { createWorkAssignment, nextWorkUniqueId } from '@/services/workAssign';
 import { verifyAssignments, awaitingVerification } from '@/services/workVerify';
 import MemberWorkloadCard from '@/components/work/MemberWorkloadCard';
+import { buildMemberWorkload, filterMemberWorkload } from '@/utils/memberWorkload';
 
 /**
  * Work Assign — the control centre for work that still needs doing: search the team's live
  * workload, assign new work, and approve what has been delivered. Reporting and the full
  * assignment history live on the Work Done & Reports page (pages/shared/WorkReports).
+ *
+ * Arriving with `?order=<id>` (the Assign button on the Orders queue) opens the form already
+ * filled in from the sale: category and duration from what the client bought, and the model,
+ * attire, ratio, language and notes from the brief the sales member captured. Everything stays
+ * editable — the point is that nothing has to be re-typed.
  */
-
-// Human-readable labels for each attire option (mirrors AIPlatformApp's ATTIRE_LABELS so the
-// requirement the admin sets here reads identically wherever it's shown).
-const ATTIRE_LABELS: Record<AttireType, string> = {
-  [AttireType.PROFESSIONAL]: 'Professional (Formal Suit)',
-  [AttireType.TRADITIONAL]: 'Traditional (Designer Saree)',
-  [AttireType.SHIRT_PANT]: 'Professional (In-shirt & Pant)',
-  [AttireType.CUSTOM]: 'Custom',
-};
-
-const ASSIGNMENT_LANGUAGE_OPTIONS = ['Telugu', 'English', 'Hindi', 'Kannada', 'Custom'] as const;
-
-function generateAccessCode(): string {
-  return String(Math.floor(1000 + Math.random() * 9000));
-}
-
-// Simple sequential ID: W001, P002, C003
-function generateSimpleId(category: string, existingAssignments: WorkAssignment[]): string {
-  const prefix = category === 'wishes' ? 'W' : category === 'promotional' ? 'P' : 'C';
-  const sameCategory = existingAssignments.filter(a => a.uniqueId?.startsWith(prefix));
-  const maxNum = sameCategory.reduce((max, a) => {
-    const num = parseInt(a.uniqueId?.slice(1) || '0');
-    return isNaN(num) ? max : Math.max(max, num);
-  }, 0);
-  return `${prefix}${String(maxNum + 1).padStart(3, '0')}`;
-}
 
 export default function WorkAssign() {
   const user = useAuthStore((s) => s.user);
@@ -59,7 +44,9 @@ export default function WorkAssign() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: allUsers, loading: usersLoading } = useFirestoreCollection<AppUser>('users');
   const { data: assignments, loading: assignmentsLoading } = useFirestoreCollection<WorkAssignment>('work_assignments');
-  const techMembers = useMemo(() => allUsers.filter(u => u.role === 'tech_member' && u.isActive), [allUsers]);
+  // `isActive !== false`, not `isActive`: member records created before the flag existed have no
+  // `isActive` field at all, and a truthy test silently drops every one of them from the team.
+  const techMembers = useMemo(() => allUsers.filter(u => u.role === 'tech_member' && u.isActive !== false), [allUsers]);
 
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -104,7 +91,13 @@ export default function WorkAssign() {
     aspectRatio: '9:16' as '9:16' | '16:9',
     language: 'Telugu' as string,
     customLanguage: '',
+    requirementNotes: '',
   });
+  /** The order being fulfilled, when the form was opened from the Orders queue. */
+  const [sourceOrder, setSourceOrder] = useState<Order | null>(null);
+  /** Shared language list — grows whenever anyone sells in a language that wasn't listed. */
+  const [languages, setLanguages] = useState<string[]>(() => mergeAdLanguages(null));
+  useEffect(() => watchAdLanguages(setLanguages), []);
   /** Requirements message to copy/send on WhatsApp, shown right after Create Assignment succeeds. */
   const [waReq, setWaReq] = useState<{ member: AppUser; message: string } | null>(null);
   const [waReqCopied, setWaReqCopied] = useState(false);
@@ -124,6 +117,28 @@ export default function WorkAssign() {
       }
     }
   }, [searchParams, techMembers]);
+
+  // Opened from the Orders queue → fill the form from the sale and its brief.
+  useEffect(() => {
+    const orderId = searchParams.get('order');
+    if (!orderId) return;
+    let cancelled = false;
+    (async () => {
+      const order = await fetchOrder(orderId);
+      if (cancelled || !order) return;
+      setSourceOrder(order);
+      setForm(prev => ({ ...prev, ...assignmentFormFromOrder(order, languages) }));
+      setCustomDuration(false);
+      setShowForm(true);
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('order');
+      setSearchParams(nextParams, { replace: true });
+    })();
+    return () => { cancelled = true; };
+    // `languages` is read for the custom-language fallback only; re-running on its arrival would
+    // overwrite edits the admin has already made to the pre-filled form.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // Auto-update price when category/duration changes
   const updateField = (field: string, value: any) => {
@@ -183,49 +198,34 @@ export default function WorkAssign() {
     if (!user || !form.assignedTo) return;
     setSubmitting(true);
     try {
-      const uniqueId = generateSimpleId(form.category, assignments);
-      const accessCode = generateAccessCode();
-      const today = format(new Date(), 'yyyy-MM-dd');
+      const uniqueId = nextWorkUniqueId(form.category, assignments);
       const clips = getClipCount(form.duration);
       const language = resolvedLanguage();
-      const attireLabel = form.attireType === AttireType.CUSTOM && form.customAttire.trim() ? form.customAttire.trim() : ATTIRE_LABELS[form.attireType];
+      const assignedMember = techMembers.find(m => m.uid === form.assignedTo);
+      const attire = attireLabel(form.attireType, form.customAttire);
 
-      await addDoc(collection(db, 'work_assignments'), {
+      const { accessCode } = await createWorkAssignment({
         assignedTo: form.assignedTo,
-        assignedBy: user.uid,
-        assignedAt: serverTimestamp(),
-        assignedAtIso: new Date().toISOString(),
+        assignedToName: assignedMember?.name,
+        assignerUid: user.uid,
         category: form.category,
-        clipCount: clips,
-        includesEndCredits: false,
         duration: form.duration,
+        clipCount: clips,
         pricePerUnit: form.pricePerUnit,
-        totalPrice: form.pricePerUnit,
         uniqueId,
-        accessCode,
-        businessName: form.businessName.trim(),
-        clientName: form.businessName.trim(),
-        ...(form.businessWhatsapp.trim() ? { businessWhatsapp: normalizePhone(form.businessWhatsapp.trim()) } : {}),
-        displayTitle: `${form.category.charAt(0).toUpperCase() + form.category.slice(1)} - ${uniqueId}`,
-        status: 'assigned',
-        sessions: [],
-        totalDurationSeconds: 0,
-        date: today,
+        businessName: form.businessName,
+        businessWhatsapp: form.businessWhatsapp,
         modelGender: form.modelGender,
         attireType: form.attireType,
-        ...(form.attireType === AttireType.CUSTOM && form.customAttire.trim() ? { customAttire: form.customAttire.trim() } : {}),
+        customAttire: form.customAttire,
         aspectRatio: form.aspectRatio,
         language,
+        requirementNotes: form.requirementNotes,
+        order: sourceOrder,
       });
 
-      // Send notification to the assignee
-      await sendNotification({
-        userId: form.assignedTo,
-        type: 'work_assigned',
-        title: 'New Work Assigned',
-        message: `You have been assigned a new ${form.category} work (${clips} clips, ${form.duration}). Access code: ${accessCode}`,
-        link: '/tech/my-work',
-      });
+      // A language typed in here joins the shared list, same as one entered at sale time.
+      if (form.language === 'Custom' && language) await rememberAdLanguage(language);
 
       // Keep the tech team leader(s) informed of new work on their team.
       await notifyTechTeamLeaders({
@@ -240,7 +240,6 @@ export default function WorkAssign() {
       // Build the WhatsApp-ready requirements message — every ad spec + configuration the
       // member needs, in one copy-paste-able, attention-grabbing block — and surface it for
       // the admin to send. No internal assignment ID or price — the member doesn't need either.
-      const assignedMember = techMembers.find(m => m.uid === form.assignedTo);
       const message = [
         `🎬✨ *NEW AD ASSIGNMENT* ✨🎬`,
         ``,
@@ -250,9 +249,11 @@ export default function WorkAssign() {
         ``,
         `📋 *AD SPECIFICATION*`,
         `👤 *Model:* ${form.modelGender === ModelGender.MALE ? 'Male' : 'Female'}`,
-        `👔 *Attire:* ${attireLabel}`,
+        `👔 *Attire:* ${attire}`,
         `📐 *Ratio:* ${form.aspectRatio}`,
         `🗣️ *Language:* ${language}`,
+        form.requirementNotes.trim() ? `` : null,
+        form.requirementNotes.trim() ? `📝 *Client notes:* ${form.requirementNotes.trim()}` : null,
         ``,
         `🔑 *Access Code:* ${accessCode}`,
         ``,
@@ -262,9 +263,11 @@ export default function WorkAssign() {
       if (assignedMember) setWaReq({ member: assignedMember, message });
 
       setShowForm(false);
+      setSourceOrder(null);
       setForm({
         assignedTo: '', category: 'promotional', duration: '16s', pricePerUnit: 499, clientName: '', businessName: '', businessWhatsapp: '',
         modelGender: ModelGender.FEMALE, attireType: AttireType.TRADITIONAL, customAttire: '', aspectRatio: '9:16', language: 'Telugu', customLanguage: '',
+        requirementNotes: '',
       });
       setCustomDuration(false);
       setMemberSearch('');
@@ -288,55 +291,27 @@ export default function WorkAssign() {
 
   const getMemberName = (uid: string) => allUsers.find(u => u.uid === uid)?.name || 'Unknown';
 
-  /**
-   * Live work only. This page is the control centre for what still needs doing — verified work
-   * has left the queue and belongs to Work Done & Reports.
-   */
-  const activeAssignments = useMemo(
-    () => assignments.filter(a => a.status !== 'verified'),
-    [assignments]
-  );
-
   /** Delivered work waiting on approval — the "approve work" queue. */
   const pendingApproval = useMemo(() => awaitingVerification(assignments), [assignments]);
 
-  // Active work grouped by member, most recently assigned team first
-  const memberWorkload = useMemo(() => {
-    return techMembers
-      .map(member => ({ member, assignments: activeAssignments.filter(a => a.assignedTo === member.uid) }))
-      .filter(entry => entry.assignments.length > 0)
-      .sort((a, b) => {
-        const latest = (items: WorkAssignment[]) => Math.max(...items.map(x => x.assignedAt?.seconds || 0));
-        return latest(b.assignments) - latest(a.assignments);
-      });
-  }, [activeAssignments, techMembers]);
-
   /**
-   * The page's one search box: matches a member by name or phone, or any of their live work by
-   * business name, title, ad ID, or the business's WhatsApp number.
+   * The whole team, every member, with their recent work at any status attached. See
+   * utils/memberWorkload for why nobody is filtered out and why verified work still shows.
    */
-  const filteredWorkload = useMemo(() => {
-    const rawQ = workloadSearch.trim();
-    if (!rawQ) return memberWorkload;
+  const memberWorkload = useMemo(
+    () => buildMemberWorkload(techMembers, assignments),
+    [assignments, techMembers]
+  );
 
-    const q = rawQ.toLowerCase();
-    const queryDigits = rawQ.replace(/\D/g, '');
-    const digitsMatch = (value?: string | null) => {
-      if (!queryDigits || !value) return false;
-      const d = normalizePhone(value).replace(/\D/g, '');
-      return d.includes(queryDigits) || queryDigits.includes(d);
-    };
+  const filteredWorkload = useMemo(
+    () => filterMemberWorkload(memberWorkload, workloadSearch, v => normalizePhone(v).replace(/\D/g, '')),
+    [memberWorkload, workloadSearch]
+  );
 
-    return memberWorkload.filter(({ member, assignments: mAsgn }) => {
-      if (member.name?.toLowerCase().includes(q) || digitsMatch(member.phone)) return true;
-      return mAsgn.some(a =>
-        (a.businessName || a.clientName || '').toLowerCase().includes(q) ||
-        (a.displayTitle || '').toLowerCase().includes(q) ||
-        (a.uniqueId || '').toLowerCase().includes(q) ||
-        digitsMatch(a.businessWhatsapp)
-      );
-    });
-  }, [memberWorkload, workloadSearch]);
+  const totalActive = useMemo(
+    () => memberWorkload.reduce((sum, w) => sum + w.activeCount, 0),
+    [memberWorkload]
+  );
 
   const getAssignedStamp = (assignment: WorkAssignment) => {
     const ts = assignment.assignedAt as any;
@@ -484,7 +459,7 @@ export default function WorkAssign() {
           <h1 className="text-xl md:text-2xl font-bold text-foreground">Work Assignments</h1>
           <p className="text-xs md:text-sm text-muted-foreground mt-1">Assign, track and verify AI ad generation work</p>
         </div>
-        <button onClick={() => setShowForm(!showForm)}
+        <button onClick={() => { setShowForm(!showForm); if (showForm) setSourceOrder(null); }}
           className="flex h-10 items-center justify-center space-x-2 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 w-full sm:w-auto">
           <Plus className="w-4 h-4" /><span>{showForm ? 'Cancel' : 'New Assignment'}</span>
         </button>
@@ -495,6 +470,27 @@ export default function WorkAssign() {
       {showForm && (
         <div className="bg-card border rounded-xl p-6 shadow-sm">
           <h3 className="font-semibold text-lg mb-4 text-card-foreground">Create New Assignment</h3>
+
+          {/* Pre-filled from a verified sale — say so, and say what was actually sold, so an
+              admin can see at a glance whether the derived category/duration are right. */}
+          {sourceOrder && (
+            <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
+              <span className="inline-flex items-center gap-1.5 font-semibold text-primary">
+                <ShoppingBag className="w-3.5 h-3.5" /> From order
+              </span>
+              <span className="text-muted-foreground">
+                {categoryLabel(sourceOrder.category)}
+                {sourceOrder.packageKey && sourceOrder.packageKey !== 'custom' ? ` · ${sourceOrder.packageKey}` : ''}
+                {` · ${formatCurrency(sourceOrder.amount)} · sold by ${sourceOrder.soldByName}`}
+              </span>
+              {sourceOrder.promise && <span className="text-muted-foreground">Promise: <strong className="text-foreground">{sourceOrder.promise.label}</strong></span>}
+              <button onClick={() => setSourceOrder(null)}
+                className="ml-auto text-[11px] font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+                Unlink
+              </button>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Member */}
             <div>
@@ -632,13 +628,25 @@ export default function WorkAssign() {
               <label className="block text-sm font-medium text-muted-foreground mb-1">Language</label>
               <select value={form.language} onChange={(e) => setForm(prev => ({ ...prev, language: e.target.value }))}
                 className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none">
-                {ASSIGNMENT_LANGUAGE_OPTIONS.map(l => <option key={l} value={l}>{l}</option>)}
+                {languages.map(l => <option key={l} value={l}>{l}</option>)}
+                <option value="Custom">Other language…</option>
               </select>
               {form.language === 'Custom' && (
                 <input type="text" placeholder="Type the language…" value={form.customLanguage}
                   onChange={(e) => setForm(prev => ({ ...prev, customLanguage: e.target.value }))}
                   className="w-full mt-1.5 border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none" />
               )}
+            </div>
+
+            {/* Client notes — whatever the client asked for beyond the spec above. */}
+            <div className="md:col-span-2 lg:col-span-3">
+              <label className="block text-sm font-medium text-muted-foreground mb-1">
+                Client notes <span className="text-[10px] text-muted-foreground/60">(optional — sent to the member)</span>
+              </label>
+              <textarea rows={2} value={form.requirementNotes}
+                onChange={(e) => setForm(prev => ({ ...prev, requirementNotes: e.target.value }))}
+                placeholder="Offers, tagline, colours, must-say lines…"
+                className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none resize-y" />
             </div>
           </div>
 
@@ -690,7 +698,7 @@ export default function WorkAssign() {
           <div className="flex items-center gap-2 mb-2">
             <Users className="w-4 h-4 text-muted-foreground" />
             <h3 className="font-semibold text-foreground text-sm">Team Workload</h3>
-            <span className="text-[10px] text-muted-foreground">{memberWorkload.reduce((s, m) => s + m.assignments.length, 0)} active across {memberWorkload.length} members</span>
+            <span className="text-[10px] text-muted-foreground">{totalActive} active across {memberWorkload.length} members</span>
             <button onClick={() => navigate('/tech-admin/work-reports')}
               className="ml-auto flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg border bg-background text-muted-foreground border-border hover:text-foreground hover:bg-accent/50 transition-colors">
               <History className="w-3.5 h-3.5" />
@@ -706,18 +714,21 @@ export default function WorkAssign() {
         </div>
         {filteredWorkload.length === 0 ? (
           <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-            {workloadSearch.trim() ? 'No members match that search.' : 'No active work right now — everything is verified.'}
+            {workloadSearch.trim() ? 'No members match that search.' : 'No tech members yet — add them from My Team.'}
           </div>
         ) : (
           <div className="grid grid-cols-1 items-start gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-            {filteredWorkload.map(({ member, assignments: mAsgn }) => (
+            {filteredWorkload.map(w => (
               <MemberWorkloadCard
-                key={member.uid}
-                member={member}
-                assignments={mAsgn}
-                checkin={todayCheckins.get(member.uid)}
+                key={w.member.uid}
+                member={w.member}
+                assignments={w.assignments}
+                activeCount={w.activeCount}
+                activeValue={w.activeValue}
+                totalCount={w.totalCount}
+                checkin={todayCheckins.get(w.member.uid)}
                 showPricing
-                onOpen={() => navigate(`/tech-admin/work-assign/${member.uid}?status=all&day=all`)}
+                onOpen={() => navigate(`/tech-admin/work-assign/${w.member.uid}?status=all&day=all`)}
               />
             ))}
           </div>

@@ -1,4 +1,7 @@
 import React, { useState, useMemo, useRef } from 'react';
+
+/** Recent ads load a page at a time; searching always looks at the full history. */
+const ADS_PAGE_SIZE = 10;
 import {
   Film, Clock, Loader2, CheckCircle2, Sparkles, Play, Edit3, Search, Copy, Check, ChevronRight,
 } from 'lucide-react';
@@ -49,6 +52,7 @@ export default function RecentAds() {
   const { data: assignments, loading } = useFirestoreQuery<WorkAssignment>(q, [user?.uid]);
 
   const [search, setSearch] = useState('');
+  const [shown, setShown] = useState(ADS_PAGE_SIZE);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [verifyingAssignment, setVerifyingAssignment] = useState<WorkAssignment | null>(null);
@@ -73,6 +77,23 @@ export default function RecentAds() {
     }
     return result;
   }, [sorted, search, statusFilter]);
+
+  /**
+   * Only the newest few are shown up front; the rest load on demand.
+   *
+   * Searching bypasses the page limit entirely — a search that only looked at the first ten rows
+   * would silently fail to find older ads, which is worse than no search at all.
+   */
+  const isSearching = search.trim().length > 0;
+  const visible = useMemo(
+    () => (isSearching ? filtered : filtered.slice(0, shown)),
+    [filtered, shown, isSearching],
+  );
+
+  // A new status filter starts a fresh page rather than carrying the previous expansion over.
+  React.useEffect(() => {
+    setShown(ADS_PAGE_SIZE);
+  }, [statusFilter]);
 
   React.useEffect(() => {
     if (openAssignment) {
@@ -208,7 +229,7 @@ export default function RecentAds() {
         </div>
       ) : (
         <div className="space-y-3">
-          {filtered.map((a) => {
+          {visible.map((a) => {
             const cfg = STATUS_CONFIG[a.status] ?? STATUS_CONFIG.assigned;
             const name = a.businessName || a.displayTitle || a.uniqueId;
 
@@ -280,6 +301,24 @@ export default function RecentAds() {
               </div>
             );
           })}
+
+          {!isSearching && filtered.length > visible.length && (
+            <button
+              onClick={() => setShown(n => n + ADS_PAGE_SIZE)}
+              className="w-full rounded-2xl border border-dashed border-border py-3 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-accent/40 hover:text-foreground"
+            >
+              Load {Math.min(ADS_PAGE_SIZE, filtered.length - visible.length)} more
+              <span className="ml-1 text-muted-foreground/60">
+                ({visible.length} of {filtered.length} shown)
+              </span>
+            </button>
+          )}
+
+          {isSearching && (
+            <p className="pt-1 text-center text-[11px] text-muted-foreground">
+              Showing all {filtered.length} match{filtered.length === 1 ? "" : "es"} across your full history
+            </p>
+          )}
         </div>
       )}
     </div>

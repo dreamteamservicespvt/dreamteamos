@@ -9,16 +9,15 @@
  * resolved when delivered). The queue subscribes to ACTIVE orders only via a scoped `in` query.
  */
 import {
-  collection, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, query, where,
-  serverTimestamp, type Query, type DocumentData,
+  collection, doc, getDoc, setDoc, updateDoc, deleteDoc, query, where, writeBatch,
+  serverTimestamp, Timestamp, arrayUnion, type Query, type DocumentData,
 } from "firebase/firestore";
-import { format } from "date-fns";
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import { normalizePhone, phoneLockId } from "@/utils/phone";
-import { isAdCategory, categoryLabel } from "@/utils/serviceCatalog";
+import { isAdCategory } from "@/utils/serviceCatalog";
 import { promiseDueMs, deadlineState } from "@/utils/promiseSla";
-import type { AppUser, Lead, Order, SaleDetail, WorkAssignment } from "@/types";
+import type { Lead, Order, OrderUpdateNote, SaleDetail, WorkAssignment } from "@/types";
 
 const ACTIVE_ORDER_STATUSES = ["unassigned", "assigned", "completed"] as const;
 
@@ -50,10 +49,6 @@ export function nextWorkUniqueId(category: string, existing: WorkAssignment[]): 
   return `${prefix}${String(max + 1).padStart(3, "0")}`;
 }
 
-function generateAccessCode(): string {
-  return String(Math.floor(1000 + Math.random() * 9000));
-}
-
 /**
  * Create (or refresh) the Order for a just-verified sale item. Idempotent: re-verifying the same
  * sale never duplicates, and an order that progressed past "unassigned" keeps its lifecycle.
@@ -63,10 +58,16 @@ export async function upsertOrderForSale(params: {
   lead: Lead;
   item: SaleDetail;
   itemIndex: number;
-  verifierUid: string;
   soldByName: string;
+  /** The sales admin who owns this order for client-visibility. Defaults to `verifierUid`. */
+  salesAdminId?: string | null;
+  /** The verifying sales admin, when this fires on approval. Absent when it fires at sale time. */
+  verifierUid?: string | null;
+  /** True when a sales admin has approved the sale. Sale-time creation passes false. */
+  saleVerified?: boolean;
 }): Promise<void> {
-  const { lead, item, itemIndex, verifierUid, soldByName } = params;
+  const { lead, item, itemIndex, soldByName } = params;
+  const salesAdminId = params.salesAdminId ?? params.verifierUid ?? null;
   try {
     const id = orderDocId(lead.id, item, itemIndex);
     const ref = doc(db, "orders", id);
@@ -85,21 +86,26 @@ export async function upsertOrderForSale(params: {
       soldBy: lead.assignedTo,
       soldByName,
       fromAd: isAdCategory(item.category),
-      salesAdminId: verifierUid,
+      salesAdminId,
       promise: item.promise ?? null,
+      // The client's ad brief, captured at sale time — pre-fills New Assignment for the tech team.
+      requirement: item.requirement ?? null,
       updatedAt: serverTimestamp(),
     };
 
     const snap = await getDoc(ref);
     if (snap.exists()) {
-      const status = (snap.data() as Order).status;
+      const existing = snap.data() as Order;
       // Reactivate a previously-cancelled order (reject → re-verify); keep any active/assigned state.
-      const statusPatch = status === "cancelled" ? { status: "unassigned" as const } : {};
-      await updateDoc(ref, { ...saleFields, ...statusPatch });
+      const statusPatch = existing.status === "cancelled" ? { status: "unassigned" as const } : {};
+      // saleVerified only ever moves false → true — a later sale-time refresh must not un-verify it.
+      const verifiedPatch = params.saleVerified || existing.saleVerified ? { saleVerified: true } : {};
+      await updateDoc(ref, { ...saleFields, ...statusPatch, ...verifiedPatch });
     } else {
       await setDoc(ref, {
         ...saleFields,
         status: "unassigned",
+        saleVerified: !!params.saleVerified,
         workAssignmentId: null,
         assignedTo: null,
         assignedToName: null,
@@ -113,6 +119,41 @@ export async function upsertOrderForSale(params: {
     }
   } catch (err) {
     console.error("[orders] upsertOrderForSale failed:", err);
+  }
+}
+
+/**
+ * Append a sales member's update note to an assigned order and tell the people doing the work.
+ *
+ * Once an order is assigned, work has started — the sale can no longer be edited or deleted freely,
+ * so this is how the sales member passes on a change the client asked for. Never throws.
+ */
+export async function addOrderUpdateNote(params: {
+  order: Order;
+  text: string;
+  byName: string;
+}): Promise<void> {
+  const { order, text, byName } = params;
+  const trimmed = text.trim();
+  if (!trimmed) return;
+  try {
+    const note: OrderUpdateNote = { at: Timestamp.now(), byName, text: trimmed };
+    await updateDoc(doc(db, "orders", order.id), {
+      updateNotes: arrayUnion(note),
+      updatedAt: serverTimestamp(),
+    });
+    const recipients = [order.assignedTo, order.techAdminId].filter((u): u is string => !!u);
+    for (const userId of Array.from(new Set(recipients))) {
+      await sendNotification({
+        userId,
+        type: "order_update_note",
+        title: "Client update on an order",
+        message: `${byName} added a note for "${order.businessName || "an order"}": ${trimmed}`,
+        link: "/tech/my-work",
+      });
+    }
+  } catch (err) {
+    console.error("[orders] addOrderUpdateNote failed:", err);
   }
 }
 
@@ -152,71 +193,6 @@ export async function cancelOrderForSale(params: {
   }
 }
 
-/**
- * Assign an order to a tech member: creates the `work_assignments` doc (business info + promise
- * carried from the order, nothing re-typed), links both ways, and notifies the member.
- * Returns the new work_assignment id.
- */
-export async function assignOrderToMember(params: {
-  order: Order;
-  member: AppUser;
-  assignerUid: string;
-  category: string;
-  duration: string;
-  clipCount: number;
-  pricePerUnit: number;
-  totalPrice: number;
-  uniqueId: string;
-}): Promise<string> {
-  const { order, member, assignerUid, category, duration, clipCount, pricePerUnit, totalPrice, uniqueId } = params;
-  const accessCode = generateAccessCode();
-  const today = format(new Date(), "yyyy-MM-dd");
-
-  const workRef = await addDoc(collection(db, "work_assignments"), {
-    assignedTo: member.uid,
-    assignedBy: assignerUid,
-    assignedAt: serverTimestamp(),
-    assignedAtIso: new Date().toISOString(),
-    category,
-    clipCount,
-    includesEndCredits: false,
-    duration,
-    pricePerUnit,
-    totalPrice,
-    uniqueId,
-    accessCode,
-    businessName: order.businessName,
-    clientName: order.businessName,
-    ...(order.clientPhone ? { businessWhatsapp: order.clientPhone } : {}),
-    displayTitle: `${categoryLabel(category)} - ${uniqueId}`,
-    status: "assigned",
-    sessions: [],
-    totalDurationSeconds: 0,
-    date: today,
-    orderId: order.id,
-    ...(order.promise ? { promise: order.promise } : {}),
-  });
-
-  await updateDoc(doc(db, "orders", order.id), {
-    status: "assigned",
-    workAssignmentId: workRef.id,
-    assignedTo: member.uid,
-    assignedToName: member.name,
-    techAdminId: assignerUid,
-    updatedAt: serverTimestamp(),
-  });
-
-  await sendNotification({
-    userId: member.uid,
-    type: "work_assigned",
-    title: "New Work Assigned",
-    message: `You've been assigned "${order.businessName || categoryLabel(category)}" (${uniqueId}).${order.promise ? ` Deliver within ${order.promise.label}.` : ""} Access code: ${accessCode}`,
-    link: "/tech/my-work",
-  });
-
-  return workRef.id;
-}
-
 /** Mark an order's work as completed by the member (before tech verification). Never throws. */
 export async function markOrderCompleted(orderId: string): Promise<void> {
   try {
@@ -247,6 +223,107 @@ export async function revertOrderToAssigned(orderId: string): Promise<void> {
   } catch (err) {
     console.error("[orders] revertOrderToAssigned failed:", err);
   }
+}
+
+/** One-off fetch of a single order — used when Work Assign opens from the Orders queue. */
+export async function fetchOrder(orderId: string): Promise<Order | null> {
+  try {
+    const snap = await getDoc(doc(db, "orders", orderId));
+    return snap.exists() ? ({ id: snap.id, ...snap.data() } as Order) : null;
+  } catch (err) {
+    console.error("[orders] fetchOrder failed:", err);
+    return null;
+  }
+}
+
+/**
+ * Send an assigned order back to the unassigned queue — the tech team deleted its work assignment,
+ * so the sale is un-delivered but not lost. Clears the assignment links; the order can be picked
+ * up again (or, once back in "unassigned", deleted by the sales member). Never throws.
+ */
+export async function revertOrderToUnassigned(orderId: string): Promise<void> {
+  try {
+    const ref = doc(db, "orders", orderId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return;
+    const status = (snap.data() as Order).status;
+    if (status === "unassigned" || status === "cancelled" || status === "verified") return;
+    await updateDoc(ref, {
+      status: "unassigned",
+      workAssignmentId: null,
+      assignedTo: null,
+      assignedToName: null,
+      techAdminId: null,
+      completedAt: null,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (err) {
+    console.error("[orders] revertOrderToUnassigned failed:", err);
+  }
+}
+
+/**
+ * The unassigned orders that are really duplicates of work the tech team already did by hand.
+ *
+ * Before the sales→orders pipeline existed, tech members were assigned ad work directly in Work
+ * Assign. Those sales still generate an order, so the queue fills with entries for jobs that are
+ * already being handled outside it. An order is "already handled" when a work assignment exists
+ * for the same client number and category that this order didn't create. Pure, so it can be
+ * previewed and tested before anything is written.
+ */
+export function findReconcilableOrders(orders: Order[], assignments: WorkAssignment[]): Order[] {
+  const digits = (v?: string | null) => (v ? normalizePhone(v).replace(/\D/g, "") : "");
+  // Manual/other work, indexed by "phone|category" for an O(1) lookup per order.
+  const workKeys = new Set<string>();
+  for (const a of assignments) {
+    const d = digits(a.businessWhatsapp);
+    if (d) workKeys.add(`${d}|${a.category}`);
+  }
+  return orders.filter((o) => {
+    if (o.status !== "unassigned" || o.workAssignmentId) return false;
+    const d = digits(o.clientPhone);
+    return !!d && workKeys.has(`${d}|${o.category}`);
+  });
+}
+
+/**
+ * Retire the reconcilable orders in one batched write — they leave the active queue (status
+ * "verified" drops out of `activeOrdersQuery`) and are flagged so a later re-verify won't revive
+ * them. Returns how many were retired.
+ */
+export async function reconcileManualOrders(orders: Order[]): Promise<number> {
+  const BATCH_LIMIT = 400;
+  let batch = writeBatch(db);
+  let n = 0;
+  let total = 0;
+  for (const o of orders) {
+    batch.update(doc(db, "orders", o.id), {
+      status: "verified",
+      reconciledManually: true,
+      updatedAt: serverTimestamp(),
+    });
+    n += 1;
+    total += 1;
+    if (n >= BATCH_LIMIT) { await batch.commit(); batch = writeBatch(db); n = 0; }
+  }
+  if (n > 0) await batch.commit();
+  return total;
+}
+
+/** Permanently delete orders by id, in batches. Returns how many were deleted. */
+export async function deleteOrders(orderIds: string[]): Promise<number> {
+  const BATCH_LIMIT = 400;
+  let batch = writeBatch(db);
+  let n = 0;
+  let total = 0;
+  for (const id of orderIds) {
+    batch.delete(doc(db, "orders", id));
+    n += 1;
+    total += 1;
+    if (n >= BATCH_LIMIT) { await batch.commit(); batch = writeBatch(db); n = 0; }
+  }
+  if (n > 0) await batch.commit();
+  return total;
 }
 
 /** Scoped query for the tech Orders queue — ACTIVE orders only (verified/cancelled drop out). */

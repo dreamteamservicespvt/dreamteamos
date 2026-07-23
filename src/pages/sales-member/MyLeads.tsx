@@ -13,16 +13,21 @@ import { formatCurrency, formatDuration } from "@/utils/formatters";
 import { normalizePhone, getCallUrl, getWhatsAppUrl, buildLeadGreeting } from "@/utils/phone";
 import { useNow } from "@/hooks/useNow";
 import { format, subDays, startOfDay } from "date-fns";
-import type { AppUser, Lead, LeadStatus, SaleDetail } from "@/types";
+import type { AppUser, Lead, LeadStatus, Order, SaleDetail, SaleEditEntry } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
 import NumberTimelineButton from "@/components/sales/NumberTimelineButton";
-import { SALE_CATEGORIES, PACKAGES, categoryLabel } from "@/utils/serviceCatalog";
+import { SALE_CATEGORIES, PACKAGES, categoryLabel, isAdCategory } from "@/utils/serviceCatalog";
 import { presetsForCategory, buildPromise, CUSTOM_PRESET_KEY } from "@/utils/promiseSla";
+import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from "@/types/aiPlatform";
+import { ATTIRE_LABELS, DEFAULT_REQUIREMENT, attireForGender, attireLabel, cleanRequirement, withRequirementDefaults } from "@/utils/adRequirement";
+import { watchAdLanguages, rememberAdLanguage, mergeAdLanguages } from "@/services/adLanguages";
+import { upsertOrderForSale, cancelOrderForSale, addOrderUpdateNote, orderDocId } from "@/services/orders";
+import { buildClientSaleMessage } from "@/utils/salesMessage";
 import {
   Search, Phone, MessageCircle, StickyNote, ChevronDown, ChevronUp, Clock,
-  Loader2, Check, Upload, ExternalLink, Plus, Trash2, ShoppingBag, X, Lock, AlertTriangle, Snowflake, FileText, RotateCcw,
+  Loader2, Check, Upload, ExternalLink, Plus, Trash2, ShoppingBag, X, Lock, AlertTriangle, Snowflake, FileText, RotateCcw, Clapperboard, Copy, Pencil, History, Send,
 } from "lucide-react";
 
 type TimestampLike = { toMillis?: () => number; seconds?: number } | null | undefined;
@@ -72,6 +77,7 @@ export default function MyLeads() {
   const user = useAuthStore((s) => s.user);
   const { toast } = useToast();
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -110,6 +116,16 @@ export default function MyLeads() {
     });
     return unsub;
   }, [user]);
+
+  // The member's own orders, so each sale row knows whether the tech team has started work on it
+  // (and must therefore be locked from edit/delete). `soldBy` is the selling member's uid.
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, "orders"), where("soldBy", "==", user.uid));
+    return onSnapshot(q, (snap) => setOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Order))), () => {});
+  }, [user]);
+
+  const ordersById = useMemo(() => new Map(orders.map((o) => [o.id, o])), [orders]);
 
   // Detect duplicates — numbers another member also holds (dispute flag).
   // IMPORTANT (quota): this does cross-member reads, so it runs ONCE per page mount, not on every
@@ -554,6 +570,7 @@ export default function MyLeads() {
                     setExpandedNotes={setExpandedNotes}
                     expandedSale={expandedSale}
                     setExpandedSale={setExpandedSale}
+                    ordersById={ordersById}
                   />
                 ))}
               </div>
@@ -688,6 +705,7 @@ export default function MyLeads() {
                     setExpandedNotes={setExpandedNotes}
                     expandedSale={expandedSale}
                     setExpandedSale={setExpandedSale}
+                    ordersById={ordersById}
                   />
                 ))}
               </div>
@@ -711,18 +729,29 @@ interface LeadCardProps {
   setExpandedNotes: (id: string | null) => void;
   expandedSale: string | null;
   setExpandedSale: (id: string | null) => void;
+  /** This member's orders, keyed by order-doc id, so each sale row knows its delivery status. */
+  ordersById: Map<string, Order>;
 }
 
-function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expandedNotes, setExpandedNotes, expandedSale, setExpandedSale }: LeadCardProps) {
+function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expandedNotes, setExpandedNotes, expandedSale, setExpandedSale, ordersById }: LeadCardProps) {
   const { toast } = useToast();
   const currentUser = useAuthStore((s) => s.user);
   const [notes, setNotes] = useState(lead.notes || "");
   const [saleDone, setSaleDone] = useState(lead.saleDone || false);
   const [showSalesList, setShowSalesList] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // Which sale row is being edited / has its edit-log or update-note composer open.
+  const [editingSaleIdx, setEditingSaleIdx] = useState<number | null>(null);
+  const [logOpenIdx, setLogOpenIdx] = useState<number | null>(null);
+  const [noteIdx, setNoteIdx] = useState<number | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   const allSaleItems = lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
+
+  /** The order this sale row produced (stable per sale via the deterministic order id). */
+  const orderFor = (item: SaleDetail, idx: number) => ordersById.get(orderDocId(lead.id, item, idx));
+  /** Assigned = the tech team has started work → the sale is locked from edit/delete. */
+  const isLocked = (order?: Order) => !!order && order.status !== "unassigned" && order.status !== "cancelled";
 
   // Sync from props
   useEffect(() => { setNotes(lead.notes || ""); }, [lead.notes]);
@@ -730,6 +759,11 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
 
   const handleDeleteSaleItem = async (itemIndex: number) => {
     const deletedItem = allSaleItems[itemIndex];
+    // Guard: once work has started, deletion is not the member's call — they send an update note.
+    if (isLocked(orderFor(deletedItem, itemIndex))) {
+      toast({ title: "Can't delete", description: "The tech team has started this work. Send an update note instead.", variant: "destructive" });
+      return;
+    }
     const items = [...allSaleItems];
     items.splice(itemIndex, 1);
     const updates: Record<string, any> = { saleItems: items };
@@ -741,6 +775,8 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
       Object.assign(updates, clearedLeadFreezeFields());
     }
     await updateLead(lead.id, updates);
+    // Remove the matching order across the platform so it never lingers in the tech Orders queue.
+    try { await cancelOrderForSale({ leadId: lead.id, item: deletedItem, itemIndex }); } catch { /* best-effort */ }
     if (noSalesLeft && currentUser) {
       try { await clearSaleFreeze({ phone: lead.phone, actor: { uid: currentUser.uid, name: currentUser.name } }); } catch { /* best-effort */ }
     }
@@ -759,7 +795,12 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
         },
       });
     }
-    toast({ title: "Deleted", description: "Sale item removed." });
+    toast({ title: "Deleted", description: "Sale removed — and cleared from the tech queue." });
+  };
+
+  const copyClientMessage = (item: SaleDetail) => {
+    navigator.clipboard.writeText(buildClientSaleMessage(lead, item));
+    toast({ title: "Copied", description: "Client confirmation copied — paste it in WhatsApp." });
   };
 
   const handleNotesChange = (val: string) => {
@@ -931,29 +972,93 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
         </div>
 
         {/* Show sales: always show if 0-1 items, collapsible if 2+ */}
-        {(allSaleItems.length < 2 || showSalesList) && allSaleItems.map((item, idx) => (
+        {(allSaleItems.length < 2 || showSalesList) && allSaleItems.map((item, idx) => {
+          const order = orderFor(item, idx);
+          const locked = isLocked(order);
+          const editing = editingSaleIdx === idx;
+          return (
           <div key={idx} className={`text-xs rounded-lg p-2 space-y-1.5 ${item.verificationStatus === "verified" ? "bg-success/10 border border-success/20" : "bg-warning/10 border border-warning/20"}`}>
             <div className="flex items-center justify-between">
-              <div>
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="font-medium text-foreground capitalize">{item.category?.replace(/_/g, " ")}</span>
                 {item.packageKey && item.packageKey !== "custom" && <span className="text-muted-foreground"> • {item.packageKey}</span>}
+                {!!item.editLog?.length && (
+                  <button onClick={() => setLogOpenIdx(logOpenIdx === idx ? null : idx)}
+                    className="inline-flex items-center gap-0.5 text-[9px] px-1 py-0.5 rounded bg-info/15 text-info hover:bg-info/25 transition-colors"
+                    title="See what changed">
+                    <History size={9} /> edited
+                  </button>
+                )}
+                {locked && (
+                  <span className="inline-flex items-center gap-0.5 text-[9px] px-1 py-0.5 rounded bg-blue-500/15 text-blue-600 dark:text-blue-400" title="The tech team has started this work">
+                    <Lock size={9} /> {order?.status === "completed" ? "Delivered" : order?.status === "verified" ? "Done" : "In production"}
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <span className="font-mono font-medium text-foreground">{formatCurrency(item.amount)}</span>
                 <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${item.verificationStatus === "verified" ? "bg-success/15 text-success" : "bg-warning/15 text-warning"}`}>
                   {item.verificationStatus === "verified" ? "✓" : "⏳"}
                 </span>
-                {item.verificationStatus === "pending" && (
-                  <button
-                    onClick={() => handleDeleteSaleItem(idx)}
-                    className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                    title="Delete sale"
-                  >
-                    <Trash2 size={11} />
-                  </button>
-                )}
               </div>
             </div>
+
+            {/* Edit-log — plain record of every change made after the sale was added */}
+            {logOpenIdx === idx && !!item.editLog?.length && (
+              <div className="rounded bg-background/70 border border-border p-1.5 space-y-1">
+                {item.editLog.map((e, i) => (
+                  <div key={i} className="text-[9px] text-muted-foreground">
+                    <span className="font-medium text-foreground">{fmtSaleTs(e.at) || "edited"}</span>
+                    {e.byName ? ` · ${e.byName}` : ""}
+                    <ul className="list-disc list-inside">{e.changes.map((c, j) => <li key={j}>{c}</li>)}</ul>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Action row — copy to client always; edit/delete only until work starts, then a note */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button onClick={() => copyClientMessage(item)}
+                className="inline-flex items-center gap-1 h-7 px-2 rounded-md bg-success/10 text-success text-[11px] font-medium hover:bg-success/20 transition-colors"
+                title="Copy an order confirmation to send the client">
+                <Copy size={11} /> Copy for client
+              </button>
+              <a href={getWhatsAppUrl(lead.phone, buildClientSaleMessage(lead, item))} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 h-7 px-2 rounded-md bg-success/10 text-success text-[11px] font-medium hover:bg-success/20 transition-colors"
+                title="Send the confirmation to the client on WhatsApp">
+                <MessageCircle size={11} /> Send
+              </a>
+              {!locked ? (
+                <>
+                  <button onClick={() => { setEditingSaleIdx(editing ? null : idx); setNoteIdx(null); }}
+                    className="inline-flex items-center gap-1 h-7 px-2 rounded-md bg-primary/10 text-primary text-[11px] font-medium hover:bg-primary/20 transition-colors">
+                    <Pencil size={11} /> {editing ? "Close" : "Edit"}
+                  </button>
+                  <button onClick={() => handleDeleteSaleItem(idx)}
+                    className="inline-flex items-center gap-1 h-7 px-2 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors text-[11px] font-medium"
+                    title="Delete sale">
+                    <Trash2 size={11} /> Delete
+                  </button>
+                </>
+              ) : (
+                <button onClick={() => { setNoteIdx(noteIdx === idx ? null : idx); setEditingSaleIdx(null); }}
+                  className="inline-flex items-center gap-1 h-7 px-2 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[11px] font-medium hover:bg-blue-500/20 transition-colors">
+                  <Send size={11} /> {noteIdx === idx ? "Close" : "Send update note"}
+                </button>
+              )}
+            </div>
+
+            {/* Update-note composer — the only way to change an order once work has started */}
+            {noteIdx === idx && order && (
+              <UpdateNoteComposer order={order} byName={currentUser?.name || ""} onDone={() => setNoteIdx(null)} />
+            )}
+
+            {/* Inline edit form — reuses the full sale form, in "edit this item" mode */}
+            {editing && !locked && (
+              <SaleForm lead={lead} updateLead={updateLead} onDone={() => setEditingSaleIdx(null)}
+                editItem={{ index: idx, item }} />
+            )}
+
             {item.paymentScreenshotUrl && (
               <a
                 href={item.paymentScreenshotUrl}
@@ -982,12 +1087,16 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
             )}
             <div className="flex flex-col gap-0.5 text-[9px] text-muted-foreground font-mono pt-0.5">
               {fmtSaleTs(item.submittedAt) && <span>Submitted: {fmtSaleTs(item.submittedAt)}</span>}
+              {item.editedAt && fmtSaleTs(item.editedAt) && (
+                <span className="text-info">Edited: {fmtSaleTs(item.editedAt)}</span>
+              )}
               {item.verificationStatus === "verified" && fmtSaleTs(item.verifiedAt) && (
                 <span className="text-success">Approved: {fmtSaleTs(item.verifiedAt)}</span>
               )}
             </div>
           </div>
-        ))}
+          );
+        })}
 
         {/* Freeze / extend an already-added number (available once a sale exists) */}
         {!frozen && allSaleItems.length > 0 && (
@@ -1160,27 +1269,153 @@ function WhatsAppButton({ phone, clientName, senderName, onActivity, disabled }:
   );
 }
 
+/* ─── Update-note composer (post-assignment) ─── */
+
+/** Once an order is assigned, the sales member can't edit it — they send the tech team a note. */
+function UpdateNoteComposer({ order, byName, onDone }: { order: Order; byName: string; onDone: () => void }) {
+  const { toast } = useToast();
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const send = async () => {
+    if (!text.trim()) return;
+    setSending(true);
+    try {
+      await addOrderUpdateNote({ order, text, byName });
+      toast({ title: "Update sent", description: "The tech team has been notified of your note." });
+      onDone();
+    } catch {
+      toast({ title: "Error", description: "Couldn't send the note.", variant: "destructive" });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="space-y-1.5 rounded-md border border-blue-500/25 bg-blue-500/5 p-2">
+      <p className="text-[10px] text-muted-foreground">Work has started — send a note instead of editing:</p>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        maxLength={500}
+        placeholder="e.g. Client wants the offer changed to 20% off, and the logo in the top-right."
+        className="w-full h-14 p-2 rounded-md bg-card border border-border text-foreground text-xs outline-none focus:border-primary resize-none"
+      />
+      <button
+        onClick={send}
+        disabled={sending || !text.trim()}
+        className="h-7 px-3 rounded-md bg-blue-600 text-white text-[11px] font-medium disabled:opacity-50 inline-flex items-center gap-1 hover:bg-blue-700 transition-colors"
+      >
+        {sending ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />} Send to tech team
+      </button>
+    </div>
+  );
+}
+
 /* ─── Sale Form ─── */
 
-function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: string, data: Record<string, any>) => Promise<void>; onDone: () => void }) {
+/** Sentinel for "the client wants a language that isn't in the list yet". */
+const LANGUAGE_CUSTOM = "__custom__";
+
+/**
+ * A human-readable list of what changed between two versions of a sale, for the edit log.
+ * Only fields a sales member can actually change are compared.
+ */
+function describeSaleChanges(prev: SaleDetail, next: SaleDetail): string[] {
+  const out: string[] = [];
+  const pkg = (i: SaleDetail) => (i.packageKey && i.packageKey !== "custom" ? i.packageKey : "Custom");
+  if (prev.category !== next.category) out.push(`Service: ${categoryLabel(prev.category)} → ${categoryLabel(next.category)}`);
+  if (pkg(prev) !== pkg(next)) out.push(`Package: ${pkg(prev)} → ${pkg(next)}`);
+  if ((prev.amount || 0) !== (next.amount || 0)) out.push(`Amount: ${formatCurrency(prev.amount || 0)} → ${formatCurrency(next.amount || 0)}`);
+  if ((prev.promise?.label || "") !== (next.promise?.label || "")) out.push(`Delivery: ${prev.promise?.label || "—"} → ${next.promise?.label || "—"}`);
+
+  const pr = prev.requirement || {};
+  const nr = next.requirement || {};
+  if ((pr.language || "") !== (nr.language || "")) out.push(`Language: ${pr.language || "—"} → ${nr.language || "—"}`);
+  const model = (v?: string) => (v === "male" ? "Male" : v === "female" ? "Female" : "—");
+  if ((pr.modelGender || "") !== (nr.modelGender || "")) out.push(`Model: ${model(pr.modelGender)} → ${model(nr.modelGender)}`);
+  const attire = (r: typeof pr) => (r.attireType ? attireLabel(r.attireType, r.customAttire) : "—");
+  if (attire(pr) !== attire(nr)) out.push(`Attire: ${attire(pr)} → ${attire(nr)}`);
+  if ((pr.aspectRatio || "") !== (nr.aspectRatio || "")) out.push(`Ratio: ${pr.aspectRatio || "—"} → ${nr.aspectRatio || "—"}`);
+  if ((pr.notes || "") !== (nr.notes || "")) out.push(`Notes updated`);
+  if ((pr.businessName || "") !== (nr.businessName || "")) out.push(`Business: ${pr.businessName || "—"} → ${nr.businessName || "—"}`);
+  return out;
+}
+
+function SaleForm({ lead, updateLead, onDone, editItem }: {
+  lead: Lead;
+  updateLead: (id: string, data: Record<string, any>) => Promise<void>;
+  onDone: () => void;
+  /** Present when editing an existing sale rather than adding a new one. */
+  editItem?: { index: number; item: SaleDetail };
+}) {
   const { toast } = useToast();
   const saleFormUser = useAuthStore((s) => s.user);
-  const [category, setCategory] = useState("wishes");
-  const [packageKey, setPackageKey] = useState("");
-  const [customAmount, setCustomAmount] = useState<number>(0);
-  const [screenshotUrl, setScreenshotUrl] = useState("");
+  const editing = !!editItem;
+  const ed = editItem?.item;
+  // Promotional is what the team sells most, so it's the default; the ₹999 "30 Seconds + Poster"
+  // package is pre-selected to match. When editing, everything starts from the saved sale.
+  const [category, setCategory] = useState(ed?.category || "promotional");
+  const [packageKey, setPackageKey] = useState(
+    ed ? (ed.packageKey && ed.packageKey !== "custom" ? ed.packageKey : "") : "30 Seconds + Poster",
+  );
+  const [customAmount, setCustomAmount] = useState<number>(ed?.amount || 0);
+  const [screenshotUrl, setScreenshotUrl] = useState(ed?.paymentScreenshotUrl || "");
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [freezeDays, setFreezeDays] = useState(1);
   // Duplicate-sale dispute: another member already sold this number → proof required.
   const [isDuplicate, setIsDuplicate] = useState(false);
-  const [dupChecking, setDupChecking] = useState(true);
-  const [proofUrl, setProofUrl] = useState("");
-  const [proofNote, setProofNote] = useState("");
+  const [dupChecking, setDupChecking] = useState(!editing);
+  const [proofUrl, setProofUrl] = useState(ed?.proofImageUrl || "");
+  const [proofNote, setProofNote] = useState(ed?.proofNote || "");
   const [proofUploading, setProofUploading] = useState(false);
   // Delivery promise / turnaround SLA the member promises the client (countdown starts at sale).
-  const [slaPreset, setSlaPreset] = useState<string>(CUSTOM_PRESET_KEY);
-  const [customDays, setCustomDays] = useState<number>(1);
+  const [slaPreset, setSlaPreset] = useState<string>(() => {
+    const p = ed?.promise;
+    if (p && (p.source === "custom" || p.presetKey === CUSTOM_PRESET_KEY)) return CUSTOM_PRESET_KEY;
+    if (p?.presetKey) return p.presetKey;
+    const opts = presetsForCategory(ed?.category || "promotional");
+    return opts.length > 0 ? opts[0].key : CUSTOM_PRESET_KEY;
+  });
+  const [customDays, setCustomDays] = useState<number>(() => {
+    const p = ed?.promise;
+    return p?.hours ? Math.max(1, Math.round(p.hours / 24)) : 1;
+  });
+
+  /**
+   * The client's ad brief. Captured here because the sales member is the only person who ever
+   * speaks to the client — it rides the sale into the tech Orders queue and pre-fills the
+   * assignment, so nobody re-types it and nothing is lost in a WhatsApp message.
+   * Category and duration are deliberately absent: both are derived from what was sold.
+   */
+  const [req, setReq] = useState(() => {
+    const r = withRequirementDefaults(ed?.requirement);
+    return {
+      businessName: r.businessName || lead.realName || lead.displayName || "",
+      businessWhatsapp: r.businessWhatsapp || normalizePhone(lead.phone),
+      language: r.language,
+      modelGender: r.modelGender as ModelGender,
+      attireType: r.attireType as AttireType,
+      customAttire: r.customAttire,
+      aspectRatio: r.aspectRatio as "9:16" | "16:9",
+      notes: r.notes,
+    };
+  });
+  const [languages, setLanguages] = useState<string[]>(() => mergeAdLanguages(null));
+  const [customLanguage, setCustomLanguage] = useState("");
+  useEffect(() => watchAdLanguages(setLanguages), []);
+
+  // Only ad deliverables (wishes / promotional / cinematic) have a model, attire and ratio.
+  const isAdSale = isAdCategory(category);
+  const usingCustomLanguage = req.language === LANGUAGE_CUSTOM;
+  const resolvedLanguage = usingCustomLanguage ? customLanguage.trim() : req.language;
+  const languageMissing = isAdSale && usingCustomLanguage && !resolvedLanguage;
+  // A saved language that isn't in the shared list yet stays selectable when editing.
+  const langOptions = useMemo(() => {
+    if (!req.language || req.language === LANGUAGE_CUSTOM) return languages;
+    return languages.some((l) => l.toLowerCase() === req.language.toLowerCase()) ? languages : [req.language, ...languages];
+  }, [languages, req.language]);
 
   const packages = PACKAGES[category] || [];
   const selectedPkg = packages.find((p) => p.label === packageKey);
@@ -1189,8 +1424,11 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
   const hasProof = !!proofUrl || !!proofNote.trim();
   const slaOptions = presetsForCategory(category);
 
-  // Default the promise to the category's first preset (or custom) whenever the category changes.
+  // Default the promise to the category's first preset (or custom) whenever the category changes —
+  // but not on the first render when editing, or it would overwrite the saved promise.
+  const slaSkipFirst = useRef(editing);
   useEffect(() => {
+    if (slaSkipFirst.current) { slaSkipFirst.current = false; return; }
     const opts = presetsForCategory(category);
     setSlaPreset(opts.length > 0 ? opts[0].key : CUSTOM_PRESET_KEY);
   }, [category]);
@@ -1200,6 +1438,8 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
   // SEPARATE sale — no proof needed (e.g. member A sold yesterday, the freeze ended, member B sells
   // a new ad today). The per-number lock is the source of truth and is always readable.
   useEffect(() => {
+    // Editing an existing sale is never a duplicate dispute — it's already this member's sale.
+    if (editing) { setDupChecking(false); return; }
     let cancelled = false;
     setDupChecking(true);
     (async () => {
@@ -1219,7 +1459,7 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
       setDupChecking(false);
     })();
     return () => { cancelled = true; };
-  }, [lead.phone, saleFormUser]);
+  }, [lead.phone, saleFormUser, editing]);
 
   const handleUpload = async (file: File) => {
     setUploading(true);
@@ -1264,12 +1504,78 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
       toast({ title: "Proof required", description: "This number was already sold by another member. Upload a call-record image or write a note as proof.", variant: "destructive" });
       return;
     }
+    if (languageMissing) {
+      toast({ title: "Language needed", description: "Type the custom language the client asked for.", variant: "destructive" });
+      return;
+    }
     setSaving(true);
     const promise = buildPromise({
       presetKey: slaPreset || CUSTOM_PRESET_KEY,
       customHours: slaPreset === CUSTOM_PRESET_KEY ? Math.max(1, Math.round(customDays * 24)) : undefined,
       startMs: Date.now(),
     });
+    // Ad brief — only ad deliverables have one, and only the fields actually filled in are stored.
+    const requirement = isAdSale
+      ? cleanRequirement({
+          businessName: req.businessName,
+          businessWhatsapp: req.businessWhatsapp.trim() ? normalizePhone(req.businessWhatsapp) : "",
+          language: resolvedLanguage,
+          modelGender: req.modelGender,
+          attireType: req.attireType,
+          customAttire: req.attireType === AttireType.CUSTOM ? req.customAttire : "",
+          aspectRatio: req.aspectRatio,
+          notes: req.notes,
+        })
+      : null;
+    // A language the client asked for that isn't in the list yet joins it for everyone.
+    if (isAdSale && usingCustomLanguage && resolvedLanguage) await rememberAdLanguage(resolvedLanguage);
+
+    const existingItems = lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
+
+    // ── Edit an existing sale ────────────────────────────────────────────────
+    if (editing && ed && editItem) {
+      const updatedItem: SaleDetail = {
+        ...ed,
+        category,
+        packageKey: packageKey || "custom",
+        customDescription: needsCustomAmount ? `Custom ${category}` : null,
+        amount,
+        paymentScreenshotUrl: screenshotUrl || null,
+        // submittedAt is kept, so the order's deterministic id stays stable.
+        promise,
+        requirement,
+      };
+      const changes = describeSaleChanges(ed, updatedItem);
+      if (changes.length === 0) { setSaving(false); onDone(); return; }
+      updatedItem.editedAt = Timestamp.now();
+      updatedItem.editLog = [
+        ...(ed.editLog || []),
+        { at: Timestamp.now(), byName: saleFormUser?.name || "", changes },
+      ];
+      const items = existingItems.map((it, i) => (i === editItem.index ? updatedItem : it));
+      await updateLead(lead.id, { saleItems: items, saleDetails: items[items.length - 1] });
+      // Reflect the change in the tech Orders queue (idempotent; keeps status/assignment).
+      try {
+        await upsertOrderForSale({
+          lead, item: updatedItem, itemIndex: editItem.index,
+          soldByName: saleFormUser?.name || lead.displayName || "",
+          salesAdminId: saleFormUser?.createdBy || null,
+        });
+      } catch { /* best-effort */ }
+      if (saleFormUser) {
+        await logActivity({
+          actorId: saleFormUser.uid, actorName: saleFormUser.name, actorRole: "sales_member",
+          adminId: saleFormUser.createdBy, action: "edited_sale_item",
+          details: { leadId: lead.id, leadName: lead.displayName, amount, category, changes },
+        });
+      }
+      setSaving(false);
+      toast({ title: "Sale updated", description: `${changes.length} change${changes.length === 1 ? "" : "s"} saved and logged.` });
+      onDone();
+      return;
+    }
+
+    // ── Add a new sale ───────────────────────────────────────────────────────
     const newItem: SaleDetail = {
       category,
       packageKey: packageKey || "custom",
@@ -1282,11 +1588,20 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
       proofImageUrl: proofUrl || null,
       proofNote: proofNote.trim() || null,
       promise,
+      requirement,
     };
-    // Append to existing saleItems array
-    const existingItems = lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
     const updatedItems = [...existingItems, newItem];
     await updateLead(lead.id, { saleDone: true, saleItems: updatedItems, saleDetails: newItem });
+    // Push straight to the tech Orders queue — approval is no longer a gate, so the tech team can
+    // start immediately. `saleVerified: false` marks it as awaiting the sales admin's sign-off.
+    try {
+      await upsertOrderForSale({
+        lead, item: newItem, itemIndex: updatedItems.length - 1,
+        soldByName: saleFormUser?.name || lead.displayName || "",
+        salesAdminId: saleFormUser?.createdBy || null,
+        saleVerified: false,
+      });
+    } catch { /* best-effort: the sale is recorded even if the order write fails */ }
     if (saleFormUser) {
       await logActivity({
         actorId: saleFormUser.uid,
@@ -1325,17 +1640,23 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
     toast({
       title: "Sale Added",
       description: froze
-        ? `Sale of ${formatCurrency(amount)} added. Client frozen for ${freezeDays} day${freezeDays > 1 ? "s" : ""} — protected from other members.`
-        : `Sale of ${formatCurrency(amount)} added.`,
+        ? `Sale of ${formatCurrency(amount)} added & sent to the tech team. Client frozen for ${freezeDays} day${freezeDays > 1 ? "s" : ""}.`
+        : `Sale of ${formatCurrency(amount)} added & sent to the tech team.`,
     });
     onDone();
   };
 
   return (
     <div className="space-y-3 bg-background border border-border rounded-lg p-3 mt-2">
-      <div className="bg-warning/10 border border-warning/30 text-warning text-xs rounded-md p-2 flex items-center gap-1.5">
-        <ExternalLink size={12} /> Verification needed — admin will review
-      </div>
+      {editing ? (
+        <div className="bg-info/10 border border-info/30 text-info text-xs rounded-md p-2 flex items-center gap-1.5">
+          <Pencil size={12} /> Editing sale — every change is logged and sent to the tech team
+        </div>
+      ) : (
+        <div className="bg-warning/10 border border-warning/30 text-warning text-xs rounded-md p-2 flex items-center gap-1.5">
+          <ExternalLink size={12} /> Sent to the tech team right away — admin will still verify
+        </div>
+      )}
 
       <select
         value={category}
@@ -1408,6 +1729,132 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
         </div>
       </div>
 
+      {/* Client's ad brief — travels with the sale into the tech Orders queue and pre-fills the
+          assignment, so the tech team never re-types what the client asked for. */}
+      {isAdSale && (
+        <div className="space-y-2.5 rounded-md border border-primary/25 bg-primary/5 p-2.5">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-primary">
+            <Clapperboard size={13} /> Client requirement
+            <span className="ml-auto text-[10px] font-normal text-muted-foreground">Goes straight to the tech team</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div>
+              <label className="text-[11px] text-muted-foreground">Business name</label>
+              <input
+                type="text"
+                value={req.businessName}
+                onChange={(e) => setReq((r) => ({ ...r, businessName: e.target.value }))}
+                placeholder="e.g. Sharma Electronics"
+                className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] text-muted-foreground">Business WhatsApp</label>
+              <input
+                type="text"
+                value={req.businessWhatsapp}
+                onChange={(e) => setReq((r) => ({ ...r, businessWhatsapp: e.target.value }))}
+                placeholder="e.g. 9876543210"
+                className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary font-mono"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div>
+              <label className="text-[11px] text-muted-foreground">Language</label>
+              <select
+                value={req.language}
+                onChange={(e) => setReq((r) => ({ ...r, language: e.target.value }))}
+                className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary"
+              >
+                {langOptions.map((l) => <option key={l} value={l}>{l}</option>)}
+                <option value={LANGUAGE_CUSTOM}>Other language…</option>
+              </select>
+              {usingCustomLanguage && (
+                <input
+                  type="text"
+                  value={customLanguage}
+                  onChange={(e) => setCustomLanguage(e.target.value)}
+                  placeholder="Type the language — it's saved for next time"
+                  className="w-full h-9 mt-1.5 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary"
+                />
+              )}
+            </div>
+            <div>
+              <label className="text-[11px] text-muted-foreground">Model</label>
+              <div className="grid grid-cols-2 gap-1.5">
+                {[ModelGender.FEMALE, ModelGender.MALE].map((g) => (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() => setReq((r) => ({ ...r, modelGender: g, attireType: attireForGender(g, r.attireType) }))}
+                    className={`h-9 rounded-md text-xs font-medium border transition-colors ${
+                      req.modelGender === g ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-muted-foreground hover:bg-accent"
+                    }`}
+                  >
+                    {g === ModelGender.FEMALE ? "👩 Female" : "👨 Male"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div>
+              <label className="text-[11px] text-muted-foreground">Model attire</label>
+              <select
+                value={req.attireType}
+                onChange={(e) => setReq((r) => ({ ...r, attireType: e.target.value as AttireType }))}
+                className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary"
+              >
+                {ATTIRE_OPTIONS_BY_GENDER[req.modelGender].map((a) => (
+                  <option key={a} value={a}>{ATTIRE_LABELS[a]}</option>
+                ))}
+              </select>
+              {req.attireType === AttireType.CUSTOM && (
+                <input
+                  type="text"
+                  value={req.customAttire}
+                  onChange={(e) => setReq((r) => ({ ...r, customAttire: e.target.value }))}
+                  placeholder="Describe the exact attire…"
+                  className="w-full h-9 mt-1.5 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary"
+                />
+              )}
+            </div>
+            <div>
+              <label className="text-[11px] text-muted-foreground">Aspect ratio</label>
+              <div className="grid grid-cols-2 gap-1.5">
+                {(["9:16", "16:9"] as const).map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setReq((prev) => ({ ...prev, aspectRatio: r }))}
+                    className={`h-9 rounded-md text-xs font-mono font-medium border transition-colors ${
+                      req.aspectRatio === r ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-muted-foreground hover:bg-accent"
+                    }`}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[11px] text-muted-foreground">Notes for the tech team</label>
+            <textarea
+              value={req.notes}
+              onChange={(e) => setReq((r) => ({ ...r, notes: e.target.value }))}
+              maxLength={1000}
+              placeholder="Anything else the client asked for — offers, tagline, colours, festival, must-say lines…"
+              className="w-full h-16 p-2 rounded-md bg-card border border-border text-foreground text-xs outline-none focus:border-primary resize-none"
+            />
+          </div>
+        </div>
+      )}
+
       <label className="block cursor-pointer">
         <div className={`border border-dashed rounded-md p-3 text-center transition-colors ${screenshotUrl ? "border-success/50" : "border-destructive/40 hover:border-primary/50"}`}>
           {uploading ? (
@@ -1460,25 +1907,28 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
         </div>
       )}
 
-      {/* Freeze duration — protect this sold client from other members */}
-      <div className="flex items-center justify-between gap-2 bg-success/5 border border-success/20 rounded-md px-3 h-9">
-        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Lock size={12} className="text-success" /> Freeze client for
-        </span>
-        <select
-          value={freezeDays}
-          onChange={(e) => setFreezeDays(Number(e.target.value))}
-          className="h-7 px-2 rounded-md bg-card border border-border text-foreground text-xs outline-none focus:border-primary"
-        >
-          {[1, 2, 3, 4, 5, 6, 7].map((d) => (
-            <option key={d} value={d}>{d} day{d > 1 ? "s" : ""}</option>
-          ))}
-        </select>
-      </div>
+      {/* Freeze duration — protect this sold client from other members. Only when adding: an edit
+          doesn't re-freeze (the client is already protected from the original sale). */}
+      {!editing && (
+        <div className="flex items-center justify-between gap-2 bg-success/5 border border-success/20 rounded-md px-3 h-9">
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Lock size={12} className="text-success" /> Freeze client for
+          </span>
+          <select
+            value={freezeDays}
+            onChange={(e) => setFreezeDays(Number(e.target.value))}
+            className="h-7 px-2 rounded-md bg-card border border-border text-foreground text-xs outline-none focus:border-primary"
+          >
+            {[1, 2, 3, 4, 5, 6, 7].map((d) => (
+              <option key={d} value={d}>{d} day{d > 1 ? "s" : ""}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <button
         onClick={handleSave}
-        disabled={saving || amount <= 0 || uploading || !screenshotUrl || dupChecking || proofUploading || (isDuplicate && !hasProof)}
+        disabled={saving || amount <= 0 || uploading || !screenshotUrl || dupChecking || proofUploading || (isDuplicate && !hasProof) || languageMissing}
         className="w-full h-9 rounded-lg bg-primary text-primary-foreground font-display font-semibold text-xs hover:bg-primary/90 disabled:opacity-40 transition-colors flex items-center justify-center gap-2"
       >
         {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
@@ -1492,7 +1942,11 @@ function SaleForm({ lead, updateLead, onDone }: { lead: Lead; updateLead: (id: s
                 ? "Checking…"
                 : isDuplicate && !hasProof
                   ? "Add proof to continue"
-                  : `Add Sale — ${formatCurrency(amount)}`}
+                  : languageMissing
+                    ? "Type the language to continue"
+                    : editing
+                      ? `Save changes — ${formatCurrency(amount)}`
+                      : `Add Sale — ${formatCurrency(amount)}`}
       </button>
     </div>
   );

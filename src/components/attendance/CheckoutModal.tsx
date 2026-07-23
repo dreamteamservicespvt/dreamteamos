@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { getTodayWorkStats, buildCheckoutMessage, ADMIN_WHATSAPP } from "@/utils/attendance";
 import { getWhatsAppUrl } from "@/utils/phone";
 import type { AppUser, DailyCheckin, WorkAssignment } from "@/types";
-import { Clock, LogOut, Loader2, User, Video } from "lucide-react";
+import { Clock, LogOut, Loader2, User, Video, UploadCloud, CheckCircle2, ExternalLink } from "lucide-react";
 
 interface CheckoutModalProps {
   user: AppUser;
@@ -24,6 +24,10 @@ export default function CheckoutModal({ user, todayCheckin, assignments, onClose
   // Everything except the note is fetched automatically — only the note is editable.
   const [note, setNote] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
+  // Checkout is two steps: the report, then a reminder to upload the day's work to the Drive.
+  const [step, setStep] = useState<"form" | "upload">("form");
+  const [waUrl, setWaUrl] = useState<string>("");
+  const [uploadOpened, setUploadOpened] = useState(false);
 
   const inMs = todayCheckin.checkedInAt?.toDate?.()?.getTime?.() || 0;
   const checkInTime = inMs ? format(todayCheckin.checkedInAt.toDate(), "hh:mm a") : "—";
@@ -52,7 +56,7 @@ export default function CheckoutModal({ user, todayCheckin, assignments, onClose
         link: `/tech-admin/team/${user.uid}`,
       });
 
-      const waUrl = getWhatsAppUrl(ADMIN_WHATSAPP, buildCheckoutMessage({
+      setWaUrl(getWhatsAppUrl(ADMIN_WHATSAPP, buildCheckoutMessage({
         name: user.name,
         dateStr: todayStr,
         checkInTime,
@@ -60,12 +64,11 @@ export default function CheckoutModal({ user, todayCheckin, assignments, onClose
         totalVideos: stats.completedToday,
         stats,
         note: note.trim(),
-      }));
+      })));
 
-      toast({ title: "Checked Out!", description: "Today's report saved. Opening WhatsApp..." });
-      onClose();
-      await new Promise((r) => setTimeout(r, 1500));
-      window.open(waUrl, "_blank");
+      toast({ title: "Checked Out!", description: "Today's report saved." });
+      // Don't leave yet — remind them to upload the day's work to the Drive first.
+      setStep("upload");
     } catch {
       toast({ title: "Error", description: "Failed to check out.", variant: "destructive" });
     } finally {
@@ -73,6 +76,58 @@ export default function CheckoutModal({ user, todayCheckin, assignments, onClose
     }
   };
 
+  /** Leave the flow: send the WhatsApp report to the admin (as before) and close. */
+  const finish = () => {
+    if (waUrl) window.open(waUrl, "_blank");
+    onClose();
+  };
+
+  // ── Step 2 · Upload reminder ────────────────────────────────────────────────
+  if (step === "upload") {
+    return (
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={finish}>
+        <div className="bg-card border border-border rounded-xl w-full max-w-sm p-5 space-y-4 text-center" onClick={(e) => e.stopPropagation()}>
+          <div className="mx-auto w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
+            <UploadCloud className="w-7 h-7 text-primary" />
+          </div>
+          <div>
+            <h3 className="font-display font-bold text-foreground text-lg">Upload today's work to the Drive</h3>
+            <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+              Before you leave, upload <b className="text-foreground">all the work you finished today</b> — and any earlier
+              work you haven't uploaded yet — to your Drive folder, so the admin can review it.
+            </p>
+          </div>
+
+          {user.googleDriveBaseUrl ? (
+            <a
+              href={user.googleDriveBaseUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => setUploadOpened(true)}
+              className="w-full h-11 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+            >
+              <UploadCloud size={16} /> Upload Here <ExternalLink size={13} className="opacity-70" />
+            </a>
+          ) : (
+            <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-600 text-xs px-3 py-2.5">
+              No Drive folder is set for you yet — please ask your admin to add it, then upload your work.
+            </div>
+          )}
+
+          <button
+            onClick={finish}
+            className="w-full h-10 rounded-lg bg-accent text-foreground text-sm font-medium border border-border hover:bg-accent/70 transition-colors flex items-center justify-center gap-1.5"
+          >
+            <CheckCircle2 size={14} className={uploadOpened ? "text-success" : "text-muted-foreground"} />
+            {uploadOpened ? "Done — I've uploaded my work" : "I'll upload it — finish check-out"}
+          </button>
+          <p className="text-[10px] text-muted-foreground">Your report is already saved. Finishing also sends it to the admin on WhatsApp.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Step 1 · Today's report ─────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => !submitting && onClose()}>
       <div className="bg-card border border-border rounded-xl w-full max-w-sm p-5 space-y-4" onClick={(e) => e.stopPropagation()}>

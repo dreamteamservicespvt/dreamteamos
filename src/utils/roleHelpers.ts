@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, TrendingUp, Code, Phone, Clock, Wallet,
   Settings, BookOpen, FolderOpen, Target, User, BarChart3,
   ClipboardList, Briefcase, Wrench, FileCheck, MessageSquare, Video, Eye, Film, ScrollText, CalendarClock, Trophy, History,
-  ShoppingBag, Contact, Star, GraduationCap,
+  ShoppingBag, Contact, Star, GraduationCap, LayoutGrid, PiggyBank, Banknote,
 } from "lucide-react";
 
 export interface NavItem {
@@ -26,45 +26,63 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "Clients", path: "/main-admin/clients", icon: Contact },
     { title: "Session History", path: "/main-admin/sessions", icon: Clock },
     { title: "Accounts", path: "/main-admin/accounts", icon: Wallet },
+    { title: "Profit & Loss", path: "/main-admin/profit", icon: PiggyBank },
     { title: "Settings", path: "/main-admin/settings", icon: Settings },
   ],
   tech_admin: [
     { title: "Dashboard", path: "/tech-admin/dashboard", icon: LayoutDashboard },
-    { title: "My Team", path: "/tech-admin/team", icon: Users },
-    { title: "Attendance", path: "/tech-admin/attendance", icon: CalendarClock },
-    { title: "Agreements", path: "/tech-admin/agreements", icon: FileCheck },
-    { title: "Orders", path: "/tech-admin/orders", icon: ShoppingBag },
     { title: "Work Assign", path: "/tech-admin/work-assign", icon: ClipboardList },
-    { title: "Work Done & Reports", path: "/tech-admin/work-reports", icon: BarChart3 },
+    { title: "Orders", path: "/tech-admin/orders", icon: ShoppingBag },
+    { title: "Attendance", path: "/tech-admin/attendance", icon: CalendarClock },
+    { title: "Payroll", path: "/tech-admin/payroll", icon: Wallet },
+    { title: "My Team", path: "/tech-admin/team", icon: Users },
     { title: "Clients", path: "/tech-admin/clients", icon: Contact },
-    { title: "Drive Management", path: "/tech-admin/drive", icon: FolderOpen },
-    { title: "Training Modules", path: "/tech-admin/training", icon: BookOpen },
-    { title: "Session History", path: "/tech-admin/sessions", icon: Clock },
-    { title: "Team Chat", path: "/tech-admin/chat", icon: MessageSquare },
-    { title: "Meetings", path: "/tech-admin/meeting", icon: Video },
-    { title: "Chat Monitor", path: "/tech-admin/chat-monitor", icon: Eye },
+    {
+      title: "Manage", icon: LayoutGrid,
+      children: [
+        { title: "Agreements", path: "/tech-admin/agreements", icon: FileCheck },
+        { title: "Work Done & Reports", path: "/tech-admin/work-reports", icon: BarChart3 },
+        { title: "Profit & Loss", path: "/tech-admin/profit", icon: PiggyBank },
+        { title: "Drive Management", path: "/tech-admin/drive", icon: FolderOpen },
+        { title: "Training Modules", path: "/tech-admin/training", icon: BookOpen },
+        { title: "Session History", path: "/tech-admin/sessions", icon: Clock },
+        { title: "Team Chat", path: "/tech-admin/chat", icon: MessageSquare },
+        { title: "Meetings", path: "/tech-admin/meeting", icon: Video },
+        { title: "Chat Monitor", path: "/tech-admin/chat-monitor", icon: Eye },
+      ],
+    },
     { title: "Tools", path: "/tech-admin/tools", icon: Wrench },
     { title: "Cinematic Ads", path: "/tech-admin/cinematic-ads", icon: Film },
     { title: "Settings", path: "/tech-admin/settings", icon: Settings },
   ],
   sales_admin: [
+    // Ordered by how often the sales admin actually opens each screen, not by module.
     { title: "Dashboard", path: "/sales-admin/dashboard", icon: LayoutDashboard },
     { title: "My Team", path: "/sales-admin/team", icon: Users },
-    { title: "Agreements", path: "/sales-admin/agreements", icon: FileCheck },
-    { title: "Leads Management", path: "/sales-admin/leads", icon: Phone },
-    { title: "Schedule Numbers", path: "/sales-admin/schedule-numbers", icon: CalendarClock },
-    { title: "Sales Approvals", path: "/sales-admin/approvals", icon: FileCheck },
-    { title: "Settlements", path: "/sales-admin/settlements", icon: Wallet },
     { title: "Leaderboard", path: "/sales-admin/leaderboard", icon: Trophy },
+    { title: "Sales Approvals", path: "/sales-admin/approvals", icon: FileCheck },
+    { title: "Clients", path: "/sales-admin/clients", icon: Contact },
+    { title: "Settlements", path: "/sales-admin/settlements", icon: Wallet },
+    { title: "Attendance", path: "/sales-admin/attendance", icon: CalendarClock },
+    { title: "Payroll", path: "/sales-admin/payroll", icon: Banknote },
+    {
+      // Two halves of the same job — finding numbers and working them — so they live together.
+      title: "Leads", icon: Phone,
+      children: [
+        { title: "Leads Management", path: "/sales-admin/leads", icon: Phone },
+        { title: "Schedule Numbers", path: "/sales-admin/schedule-numbers", icon: CalendarClock },
+      ],
+    },
+    { title: "Agreements", path: "/sales-admin/agreements", icon: FileCheck },
     {
       title: "Reports & History", icon: BarChart3,
       children: [
         { title: "Analytics", path: "/sales-admin/analytics", icon: BarChart3 },
+        { title: "Profit & Loss", path: "/sales-admin/profit", icon: PiggyBank },
         { title: "Activity History", path: "/sales-admin/history", icon: History },
         { title: "Session History", path: "/sales-admin/sessions", icon: Clock },
       ],
     },
-    { title: "Clients", path: "/sales-admin/clients", icon: Contact },
     {
       title: "Communication", icon: MessageSquare,
       children: [
@@ -92,10 +110,16 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "Dashboard", path: "/tech/dashboard", icon: LayoutDashboard },
     { title: "My Work", path: "/tech/my-work", icon: Briefcase },
     { title: "Recent Ads", path: "/tech/recent-ads", icon: Film },
-    { title: "My Analytics", path: "/tech/analytics", icon: BarChart3 },
-    { title: "Team Chat", path: "/tech/chat", icon: MessageSquare },
-    { title: "Meetings", path: "/tech/meeting", icon: Video },
-    { title: "Training", path: "/tech/training", icon: BookOpen },
+    { title: "My Salary", path: "/tech/salary", icon: Wallet },
+    {
+      title: "Workspace", icon: LayoutGrid,
+      children: [
+        { title: "My Analytics", path: "/tech/analytics", icon: BarChart3 },
+        { title: "Team Chat", path: "/tech/chat", icon: MessageSquare },
+        { title: "Meetings", path: "/tech/meeting", icon: Video },
+        { title: "Training", path: "/tech/training", icon: BookOpen },
+      ],
+    },
     { title: "My Profile", path: "/tech/profile", icon: User },
   ],
   sales_member: [
@@ -104,6 +128,7 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "My Reviews", path: "/sales/reviews", icon: Star },
     { title: "My Performance", path: "/sales/performance", icon: Target },
     { title: "Leaderboard", path: "/sales/leaderboard", icon: Trophy },
+    { title: "My Salary", path: "/sales/salary", icon: Wallet },
     { title: "Settlements", path: "/sales/settlements", icon: Wallet },
     { title: "My History", path: "/sales/history", icon: History },
     {

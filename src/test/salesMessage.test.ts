@@ -1,0 +1,54 @@
+import { describe, it, expect } from "vitest";
+import { buildClientSaleMessage } from "@/utils/salesMessage";
+import type { Lead, SaleDetail } from "@/types";
+
+/**
+ * The client confirmation the sales member sends on WhatsApp. It must carry the client's own
+ * order back to them accurately — business, service, delivery promise, and (for ads) the brief —
+ * without leaking anything internal.
+ */
+
+const lead = { id: "l1", phone: "+919876543210", displayName: "Ramesh", realName: "Sharma Electronics" } as Lead;
+
+describe("buildClientSaleMessage", () => {
+  it("confirms the core order facts", () => {
+    const item = {
+      category: "promotional", packageKey: "30 Seconds + Poster", amount: 999,
+      promise: { label: "24 hours" },
+    } as SaleDetail;
+    const msg = buildClientSaleMessage(lead, item);
+    expect(msg).toContain("Sharma Electronics");
+    expect(msg).toContain("Promotional Ad");
+    expect(msg).toContain("30 Seconds + Poster");
+    expect(msg).toContain("₹999");
+    expect(msg).toContain("within 24 hours");
+  });
+
+  it("spells out the ad brief in client-friendly terms", () => {
+    const item = {
+      category: "cinematic", packageKey: "custom", amount: 1999,
+      requirement: { modelGender: "female", attireType: "traditional", aspectRatio: "9:16", language: "Telugu", notes: "Diwali offer" },
+    } as SaleDetail;
+    const msg = buildClientSaleMessage(lead, item);
+    expect(msg).toContain("Female");
+    expect(msg).toContain("Traditional (Designer Saree)");
+    expect(msg).toContain("Reel / Story (9:16)");
+    expect(msg).toContain("Telugu");
+    expect(msg).toContain("Diwali offer");
+  });
+
+  it("omits the ad section for a non-ad service", () => {
+    const item = { category: "website", packageKey: "Website (Starting From)", amount: 4999 } as SaleDetail;
+    const msg = buildClientSaleMessage(lead, item);
+    expect(msg).toContain("Website Development");
+    expect(msg).not.toContain("Model:");
+    expect(msg).not.toContain("Attire:");
+  });
+
+  it("never leaks a custom package label or a zero amount", () => {
+    const item = { category: "promotional", packageKey: "custom", amount: 0 } as SaleDetail;
+    const msg = buildClientSaleMessage(lead, item);
+    expect(msg).not.toContain("custom");
+    expect(msg).not.toContain("₹0");
+  });
+});

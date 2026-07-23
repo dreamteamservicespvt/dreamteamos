@@ -10,6 +10,7 @@ import SalaryTimeline from "@/components/SalaryTimeline";
 import ThemeSelector from "@/components/ThemeSelector";
 import MyDayCalendar from "@/components/attendance/MyDayCalendar";
 import MemberAgreements from "@/components/agreement/MemberAgreements";
+import PayoutMethodsPanel from "@/components/payroll/PayoutMethodsPanel";
 import { EMPLOYMENT_LABELS, employmentOf } from "@/services/employment";
 
 export default function TechMemberProfile() {
@@ -136,6 +137,9 @@ export default function TechMemberProfile() {
 
       {/* Agreements to review & sign */}
       <MemberAgreements />
+
+      {/* Where salary gets sent */}
+      <PayoutMethodsPanel />
 
       {/* Salary History */}
       <div className="bg-card border border-border rounded-xl p-5">

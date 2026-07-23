@@ -14,7 +14,13 @@ export interface AppUser {
   role: UserRole;
   createdBy: string;
   isActive: boolean;
+  /**
+   * Gross monthly salary. Mirrored from the assigned salary package so every existing screen
+   * that reads `user.salary` keeps working — see services/payroll.assignSalaryPackage.
+   */
   salary: number;
+  /** Salary package this employee is on (`salary_packages/{id}`). Absent for unassigned staff. */
+  salaryPackageId?: string;
   target: number;
   dailyTarget?: number;
   monthlyTarget?: number;
@@ -24,6 +30,11 @@ export interface AppUser {
   earningsOption?: "stipend_plus_5" | "incentive_10";
   /** Employment type — set/updated by Tech Admin or Tech Team Lead. Defaults to full_time when unset. */
   employmentType?: "full_time" | "part_time";
+  /**
+   * Company employee ID (e.g. DTS-014), assigned by the Tech Admin from the Payroll page.
+   * Purely a human-facing identifier for payslips and records — the uid remains the real key.
+   */
+  employeeId?: string;
   createdAt: any;
   updatedAt: any;
 }
@@ -75,6 +86,8 @@ export interface WorkAssignment {
   customAttire?: string;
   aspectRatio?: "9:16" | "16:9";
   language?: string;
+  /** Free-text brief from the client, carried through from the sale. */
+  requirementNotes?: string;
 }
 
 export type LeadStatus = "not_called" | "answered" | "not_answered" | "call_later" | "not_interested";
@@ -155,6 +168,34 @@ export interface SaleDetail {
   proofNote?: string | null;      // text-note proof
   // Delivery promise / turnaround SLA chosen by the sales member at sale time
   promise?: PromiseDeadline;
+  // The client's ad brief, captured by the sales member at sale time (ad categories only).
+  requirement?: AdRequirement | null;
+  // Edit trail — set the first time the sales member changes a sale after adding it.
+  editedAt?: any;
+  editLog?: SaleEditEntry[];
+}
+
+/** One recorded edit of a sale, so a change is visible and accountable rather than silent. */
+export interface SaleEditEntry {
+  at: any;
+  byName: string;
+  /** Human-readable field changes, e.g. "Package: 30 Seconds → 45 Seconds". */
+  changes: string[];
+}
+
+// ─── Ad requirement (the client's brief, captured once at sale time) ───
+// The sales member is the only person who ever speaks to the client, so the spec is captured
+// there and travels sale → order → work assignment untouched. Category and duration are NOT
+// part of it: both are derived from what was actually sold.
+export interface AdRequirement {
+  businessName?: string;
+  businessWhatsapp?: string;
+  language?: string;                 // free text — the dropdown remembers custom entries
+  modelGender?: "male" | "female";
+  attireType?: "professional" | "traditional" | "shirt_pant" | "custom";
+  customAttire?: string;
+  aspectRatio?: "9:16" | "16:9";
+  notes?: string;                    // anything else the client asked for
 }
 
 // ─── Delivery Promise / Turnaround SLA ───
@@ -197,6 +238,16 @@ export interface Order {
   salesAdminId: string;         // verifying sales admin
   // SLA
   promise: PromiseDeadline | null;
+  // The client's ad brief from the sale — pre-fills New Assignment so tech never re-types it.
+  requirement?: AdRequirement | null;
+  // Whether the source sale has been approved by a sales admin yet. Orders now reach the tech
+  // queue at sale time (approval is not a gate), so the tech team can see which are still pending.
+  saleVerified?: boolean;
+  // Post-assignment update notes from the sales member — the only way to change an order once
+  // work has started (editing/deleting is locked). Surfaced to the assigned member and tech admin.
+  updateNotes?: OrderUpdateNote[];
+  // Set when the cleanup sweep retired this order because matching work was already done manually.
+  reconciledManually?: boolean;
   // Lifecycle
   status: OrderStatus;
   workAssignmentId?: string | null;
@@ -209,6 +260,13 @@ export interface Order {
   completedAt?: any | null;
   verifiedAt?: any | null;
   deliveredAmount?: number | null;
+}
+
+/** A note the sales member sends the tech team after an order is assigned (work already started). */
+export interface OrderUpdateNote {
+  at: any;
+  byName: string;
+  text: string;
 }
 
 // ─── Clients (single customer view) ───

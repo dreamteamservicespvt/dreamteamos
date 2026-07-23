@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo } from "react";
-import type { DateRange } from "react-day-picker";
 import { useNavigate } from "react-router-dom";
 import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, serverTimestamp, query, where } from "firebase/firestore";
 import { db } from "@/services/firebase";
@@ -12,9 +11,10 @@ import { Users, Plus, X, Loader2, Eye, EyeOff, UserCheck, UserX, Trash2, Phone, 
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import EditMemberModal from "@/components/EditMemberModal";
-import DashboardDateRangePicker from "@/components/dashboard/DateRangePicker";
-import { format, subDays, startOfDay } from "date-fns";
-import { formatDateRangeLabel, isDateWithinRange, normalizeDateRange } from "@/utils/dateRange";
+import PeriodFilterBar from "@/components/dashboard/PeriodFilterBar";
+import { format } from "date-fns";
+import { defaultPeriodFilter, periodLabel, withinPeriod, type PeriodFilter } from "@/utils/periodFilter";
+import { workCountsOn } from "@/utils/workDates";
 
 export default function TechAdminMyTeam() {
   const currentUser = useAuthStore((s) => s.user);
@@ -32,8 +32,9 @@ export default function TechAdminMyTeam() {
   const [assignments, setAssignments] = useState<WorkAssignment[]>([]);
   const [memberRevenue, setMemberRevenue] = useState<Map<string, number>>(new Map());
   const [revenueStatusFilter, setRevenueStatusFilter] = useState<"verified" | "completed_verified" | "all">("verified");
-  const [revenueDayFilter, setRevenueDayFilter] = useState<string>("all");
-  const [revenueDateRange, setRevenueDateRange] = useState<DateRange | undefined>(undefined);
+  // The tech team's month is the 10th → 9th performance cycle their output and pay are measured
+  // on, so "This Month" here means exactly what it means on the dashboard and Work Done & Reports.
+  const [period, setPeriod] = useState<PeriodFilter>(() => defaultPeriodFilter("cycle"));
   const [revenueSortOrder, setRevenueSortOrder] = useState<"none" | "high_to_low" | "low_to_high">("none");
 
   const todayStr = format(new Date(), "yyyy-MM-dd");
@@ -47,20 +48,6 @@ export default function TechAdminMyTeam() {
   const [formRole, setFormRole] = useState<"tech_member" | "tech_team_leader">("tech_member");
   const [showPw, setShowPw] = useState(false);
   const [creating, setCreating] = useState(false);
-
-  const recentDays = useMemo(() => {
-    const days: { date: Date; dateStr: string; label: string }[] = [];
-    for (let i = 0; i < 5; i++) {
-      const d = subDays(new Date(), i);
-      const today = startOfDay(new Date());
-      const target = startOfDay(d);
-      const diffMs = today.getTime() - target.getTime();
-      const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
-      const label = diffDays === 0 ? "Today" : diffDays === 1 ? "Yesterday" : `${diffDays} days ago`;
-      days.push({ date: startOfDay(d), dateStr: format(d, "yyyy-MM-dd"), label });
-    }
-    return days;
-  }, []);
 
   useEffect(() => {
     const unsubs: (() => void)[] = [];
@@ -91,7 +78,10 @@ export default function TechAdminMyTeam() {
 
   useEffect(() => {
     const memberIds = new Set(members.map((m) => m.uid));
-    let filtered = assignments.filter((a) => memberIds.has(a.assignedTo) && a.assignedBy === currentUser?.uid);
+    // Count all of a member's work, whoever handed it out. `members` is already scoped to this
+    // admin's team (createdBy === me), so filtering again on `assignedBy === me` only threw away
+    // everything a team leader assigned — which is most of it — and left the column reading ₹0.
+    let filtered = assignments.filter((a) => memberIds.has(a.assignedTo));
 
     if (revenueStatusFilter === "verified") {
       filtered = filtered.filter((a) => a.status === "verified");
@@ -99,20 +89,15 @@ export default function TechAdminMyTeam() {
       filtered = filtered.filter((a) => a.status === "completed" || a.status === "verified");
     }
 
-    if (revenueDateRange?.from) {
-      filtered = filtered.filter((a) => isDateWithinRange(a.date, revenueDateRange));
-    } else if (revenueDayFilter !== "all") {
-      const dayIndex = parseInt(revenueDayFilter);
-      const dayDateStr = recentDays[dayIndex]?.dateStr;
-      if (dayDateStr) filtered = filtered.filter((a) => a.date === dayDateStr);
-    }
+    // Career / This Month / Day / Range — the same control used everywhere money is shown.
+    filtered = filtered.filter((a) => withinPeriod(workCountsOn(a), period));
 
     const revMap = new Map<string, number>();
     filtered.forEach((a) => {
       revMap.set(a.assignedTo, (revMap.get(a.assignedTo) || 0) + (a.totalPrice || 0));
     });
     setMemberRevenue(revMap);
-  }, [assignments, members, currentUser?.uid, revenueStatusFilter, revenueDayFilter, revenueDateRange, recentDays]);
+  }, [assignments, members, currentUser?.uid, revenueStatusFilter, period]);
 
   const grandTotalRevenue = useMemo(
     () => Array.from(memberRevenue.values()).reduce((sum, revenue) => sum + revenue, 0),
@@ -267,25 +252,11 @@ export default function TechAdminMyTeam() {
             <option value="high_to_low">Revenue: High to Low</option>
             <option value="low_to_high">Revenue: Low to High</option>
           </select>
-          {!revenueDateRange?.from && (
-            <select
-              value={revenueDayFilter}
-              onChange={(e) => setRevenueDayFilter(e.target.value)}
-              className="h-10 rounded-xl border border-border/70 bg-background/80 px-3 text-xs md:text-sm text-foreground shadow-sm outline-none focus:ring-2 focus:ring-primary/20"
-            >
-              <option value="all">All Days</option>
-              {recentDays.map((d, i) => (
-                <option key={d.dateStr} value={String(i)}>{d.label} ({format(d.date, "dd/MM")})</option>
-              ))}
-            </select>
-          )}
-          <DashboardDateRangePicker value={revenueDateRange} onSelect={(range) => { setRevenueDateRange(normalizeDateRange(range)); if (range?.from) setRevenueDayFilter("all"); }} />
-          {(revenueDateRange?.from || revenueDayFilter !== "all") && (
-            <button onClick={() => { setRevenueDateRange(undefined); setRevenueDayFilter("all"); }} className="h-10 rounded-xl border border-border/70 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground">
-              Clear
-            </button>
-          )}
           </div>
+        </div>
+
+        <div className="mb-3">
+          <PeriodFilterBar value={period} onChange={setPeriod} />
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -299,13 +270,7 @@ export default function TechAdminMyTeam() {
           </div>
           <div className="rounded-lg border border-border bg-background px-3 py-2">
             <p className="text-[11px] text-muted-foreground">Current Scope</p>
-            <p className="font-medium text-foreground text-xs md:text-sm">
-              {revenueDateRange?.from
-                ? formatDateRangeLabel(revenueDateRange)
-                : revenueDayFilter === "all"
-                  ? "All Days"
-                  : (recentDays[parseInt(revenueDayFilter)]?.label || "All Days")}
-            </p>
+            <p className="font-medium text-foreground text-xs md:text-sm">{periodLabel(period)}</p>
           </div>
         </div>
       </div>

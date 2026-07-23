@@ -20,7 +20,7 @@ import DashboardDateRangePicker from '@/components/dashboard/DateRangePicker';
 import type { WorkAssignment, AppUser } from '@/types';
 import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from '@/types/aiPlatform';
 import { formatDateRangeLabel, isDateWithinRange, normalizeDateRange, parseQueryDate, parseQueryDateRange } from '@/utils/dateRange';
-import { revertOrderToAssigned, markOrderCompleted } from '@/services/orders';
+import { revertOrderToAssigned, markOrderCompleted, revertOrderToUnassigned } from '@/services/orders';
 import { verifyAssignments } from '@/services/workVerify';
 import { reassignWork } from '@/services/workReassign';
 import DeadlineChip from '@/components/work/DeadlineChip';
@@ -78,7 +78,9 @@ export default function WorkReports() {
   const routeBase = isTeamLeader ? '/team-leader' : '/tech-admin';
 
   const techMembers = useMemo(() => {
-    const base = allUsers.filter(u => u.role === 'tech_member' && u.isActive);
+    // `isActive !== false`, not `isActive`: records predating the flag have no such field, and a
+    // truthy test drops every one of those members off the report.
+    const base = allUsers.filter(u => u.role === 'tech_member' && u.isActive !== false);
     return isTeamLeader ? base.filter(u => u.createdBy === user?.createdBy) : base;
   }, [allUsers, isTeamLeader, user?.createdBy]);
 
@@ -239,7 +241,11 @@ export default function WorkReports() {
 
   const handleDelete = async (assignmentId: string) => {
     try {
+      // A deleted assignment that came from an order sends its order back to the unassigned queue,
+      // so the sale isn't silently lost — it can be reassigned, or the sales member can delete it.
+      const orderId = assignments.find(a => a.id === assignmentId)?.orderId;
       await deleteDoc(doc(db, 'work_assignments', assignmentId));
+      if (orderId) await revertOrderToUnassigned(orderId);
       setConfirmAction(null);
     } catch (error) {
       console.error('Failed to delete assignment:', error);
@@ -440,14 +446,13 @@ export default function WorkReports() {
         </div>
       </div>
 
-      {/* Work Done — 10→9 performance cycle, or any custom range */}
+      {/* Work Done — 10→9 performance cycle, or any custom range. Clicking a member opens a
+          day-by-day breakdown inside the component; the full assignment record is below. */}
       <WorkDoneReport
         assignments={assignments}
         members={techMembers}
-        onSelectMember={(uid) => {
-          const member = techMembers.find(m => m.uid === uid);
-          if (member) { setSearchQuery(member.name); setStatusFilter('all'); setShowList(true); }
-        }}
+        // A team leader manages output, not pay — they see video counts, never revenue or salary.
+        showRevenue={!isTeamLeader}
       />
 
       {/* Filters */}

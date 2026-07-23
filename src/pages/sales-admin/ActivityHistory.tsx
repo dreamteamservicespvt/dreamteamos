@@ -5,7 +5,7 @@ import { useAuthStore } from "@/store/authStore";
 import { formatCurrency } from "@/utils/formatters";
 import { format } from "date-fns";
 import type { ActivityAction } from "@/services/activityLog";
-import { History, CheckCircle, XCircle, RotateCcw, Trash2, Layers, ShoppingBag, Lock } from "lucide-react";
+import { History, CheckCircle, XCircle, RotateCcw, Trash2, Layers, ShoppingBag, Lock, Pencil } from "lucide-react";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
 
 interface ActivityLog {
@@ -27,6 +27,7 @@ const ACTION_META: Record<ActivityAction, { label: string; icon: any; color: str
   bulk_verified_sales: { label: "Bulk Verified", icon: Layers, color: "text-success", bgColor: "bg-success/10 border-success/20" },
   bulk_rejected_sales: { label: "Bulk Rejected", icon: Layers, color: "text-destructive", bgColor: "bg-destructive/10 border-destructive/20" },
   submitted_sale: { label: "Submitted Sale", icon: ShoppingBag, color: "text-primary", bgColor: "bg-primary/10 border-primary/20" },
+  edited_sale_item: { label: "Edited Sale", icon: Pencil, color: "text-info", bgColor: "bg-info/10 border-info/20" },
   deleted_sale_item: { label: "Deleted Sale Item", icon: Trash2, color: "text-destructive", bgColor: "bg-destructive/10 border-destructive/20" },
   deleted_lead: { label: "Deleted Lead", icon: Trash2, color: "text-destructive", bgColor: "bg-destructive/10 border-destructive/20" },
   resolved_duplicate_sale: { label: "Resolved Duplicate", icon: CheckCircle, color: "text-success", bgColor: "bg-success/10 border-success/20" },
@@ -51,6 +52,8 @@ function getActionDescription(log: ActivityLog): string {
       return `Submitted ${d.category?.replace(/_/g, " ")} sale of ${formatCurrency(d.amount || 0)} for "${d.leadName}"`;
     case "deleted_sale_item":
       return `Deleted their own ${d.category?.replace(/_/g, " ")} sale of ${formatCurrency(d.amount || 0)} for "${d.leadName}"`;
+    case "edited_sale_item":
+      return `Edited ${d.category?.replace(/_/g, " ")} sale for "${d.leadName}"${Array.isArray(d.changes) && d.changes.length ? ` — ${d.changes.join("; ")}` : ""}`;
     case "deleted_lead":
       return `Deleted custom lead "${d.leadName}"`;
     case "resolved_duplicate_sale":

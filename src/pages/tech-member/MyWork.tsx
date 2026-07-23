@@ -1,11 +1,12 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
-  Briefcase, Clock, Play, CheckCircle2, Loader2, AlertCircle, Sparkles, Edit3, Copy, Check, Undo2
+  Briefcase, Clock, Play, CheckCircle2, ChevronDown, Loader2, AlertCircle, Sparkles, Edit3, Copy, Check, Undo2
 } from 'lucide-react';
 import { collection, query, where, doc, updateDoc, deleteField, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/services/firebase';
 import { sendNotification, notifyTechTeamLeaders } from '@/services/notifications';
 import { markOrderCompleted, revertOrderToAssigned } from '@/services/orders';
+import { upsertClientOnWorkComplete } from '@/services/clients';
 import { useAuthStore } from '@/store/authStore';
 import { useFirestoreQuery } from '@/hooks/useFirestore';
 import { format, subDays, startOfDay } from 'date-fns';
@@ -15,6 +16,9 @@ import type { WorkAssignment } from '@/types';
 import CodeVerificationModal from '@/components/ai-platform/CodeVerificationModal';
 import AIPlatformApp from '@/components/ai-platform/AIPlatformApp';
 import { useConfirm } from '@/hooks/useConfirm';
+
+/** Completed work is paged so a long history never buries the active assignments above it. */
+const COMPLETED_PAGE_SIZE = 10;
 
 function getDayLabel(date: Date): string {
   const today = startOfDay(new Date());
@@ -136,6 +140,13 @@ export default function MyWork() {
         await markOrderCompleted(openAssignment.orderId);
       }
 
+      // The customer now has something delivered, so they become an upsell target immediately —
+      // including for work assigned directly (no order), which never reached Clients before.
+      await upsertClientOnWorkComplete({
+        assignment: openAssignment,
+        deliveredByName: user?.name,
+      });
+
       setOpenAssignment(null);
     } catch (error) {
       console.error('Failed to mark complete:', error);
@@ -218,6 +229,9 @@ export default function MyWork() {
     [assignments]
   );
 
+  const [completedOpen, setCompletedOpen] = useState(false);
+  const [completedShown, setCompletedShown] = useState(COMPLETED_PAGE_SIZE);
+
   // 5-day filter
   const recentDays = useMemo(() => {
     const days: { date: Date; dateStr: string; label: string }[] = [];
@@ -263,6 +277,17 @@ export default function MyWork() {
     }
     return result;
   }, [completedWork, selectedDate, dayFilter, recentDays]);
+
+  const visibleCompleted = useMemo(
+    () => filteredCompleted.slice(0, completedShown),
+    [filteredCompleted, completedShown],
+  );
+
+  // Changing the date filter starts a fresh page — otherwise a previously expanded list would
+  // keep showing more rows than the new filter warrants.
+  useEffect(() => {
+    setCompletedShown(COMPLETED_PAGE_SIZE);
+  }, [selectedDate, dayFilter]);
 
   // Show AI Platform when assignment is opened
   if (openAssignment) {
@@ -390,14 +415,23 @@ export default function MyWork() {
         </div>
       )}
 
-      {/* Completed Work */}
+      {/* Completed Work — collapsed by default and paged, so a long history never buries
+          the active work above it. */}
       {filteredCompleted.length > 0 && (
         <div>
-          <h2 className="text-lg font-semibold text-foreground mb-3 flex items-center space-x-2">
-            <CheckCircle2 className="w-5 h-5" /><span>Completed ({filteredCompleted.length})</span>
-          </h2>
+          <button
+            onClick={() => setCompletedOpen(o => !o)}
+            aria-expanded={completedOpen}
+            className="mb-3 flex w-full items-center gap-2 rounded-lg text-lg font-semibold text-foreground transition-colors hover:text-primary"
+          >
+            <CheckCircle2 className="h-5 w-5" />
+            <span>Completed ({filteredCompleted.length})</span>
+            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${completedOpen ? "rotate-180" : ""}`} />
+          </button>
+
+          {completedOpen && (
           <div className="space-y-2">
-            {filteredCompleted.map(a => {
+            {visibleCompleted.map(a => {
               const cfg = statusConfig[a.status];
               return (
                 <div key={a.id} className="bg-card border rounded-lg p-4 flex items-center justify-between">
@@ -424,7 +458,20 @@ export default function MyWork() {
                 </div>
               );
             })}
+
+            {filteredCompleted.length > visibleCompleted.length && (
+              <button
+                onClick={() => setCompletedShown(n => n + COMPLETED_PAGE_SIZE)}
+                className="w-full rounded-lg border border-dashed border-border py-2.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-accent/40 hover:text-foreground"
+              >
+                Load {Math.min(COMPLETED_PAGE_SIZE, filteredCompleted.length - visibleCompleted.length)} more
+                <span className="ml-1 text-muted-foreground/60">
+                  ({visibleCompleted.length} of {filteredCompleted.length} shown)
+                </span>
+              </button>
+            )}
           </div>
+          )}
         </div>
       )}
 

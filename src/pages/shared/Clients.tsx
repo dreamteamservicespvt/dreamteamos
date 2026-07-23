@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import {
   Users, Search, Loader2, MessageCircle, X, Save, Mail, Globe, MapPin, Image as ImageIcon,
-  CreditCard, Plus, Trash2, Contact, ShoppingBag, TrendingUp, Star, Gift, ExternalLink, CheckCircle2,
+  CreditCard, Plus, Trash2, Contact, ShoppingBag, TrendingUp, Star, Gift, ExternalLink, CheckCircle2, DownloadCloud, CalendarDays, ArrowDownUp, UserPlus,
 } from "lucide-react";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/services/firebase";
@@ -10,11 +10,18 @@ import { useFirestoreQuery } from "@/hooks/useFirestore";
 import { formatCurrency } from "@/utils/formatters";
 import { formatPhoneDisplay, getWhatsAppUrl } from "@/utils/phone";
 import { categoryLabel, gapCategories } from "@/utils/serviceCatalog";
-import { clientsQuery, updateClientProfile, assignUpsellLead } from "@/services/clients";
+import {
+  clientsQuery, updateClientProfile, assignUpsellLead, backfillClientsFromDeliveredWork,
+  recordClientBackfill, watchClientBackfill,
+  type ClientBackfillResult, type ClientBackfillRecord,
+} from "@/services/clients";
+import PeriodFilterBar from "@/components/dashboard/PeriodFilterBar";
+import { clientTotal, workAmount } from "@/utils/clientValue";
+import { defaultPeriodFilter, periodLabel, withinPeriod, type PeriodFilter } from "@/utils/periodFilter";
 import { createReviewTask, fetchReviewTask, verifyFiveStar, rejectReview } from "@/services/reviews";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import type { AppUser, Client, ClientSocialLink, ReviewTask } from "@/types";
+import type { AppUser, Client, ClientSocialLink, ReviewTask, WorkAssignment } from "@/types";
 
 function fmtTs(ts: any): string {
   const s = ts?.seconds ?? (typeof ts?.toMillis === "function" ? ts.toMillis() / 1000 : 0);
@@ -23,6 +30,42 @@ function fmtTs(ts: any): string {
 
 const isImageUrl = (u?: string | null) => !!u && /\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(u);
 
+/** Seconds of the most recent delivery, or 0 when nothing has been delivered yet. */
+function lastWorkSeconds(c: Client): number {
+  return (c.works || []).reduce((max, w) => {
+    const s = (w.deliveredAt as { seconds?: number } | undefined)?.seconds ?? 0;
+    return s > max ? s : max;
+  }, 0);
+}
+
+/** Seconds of a client's *first* delivery — where the old→new ordering starts. */
+function firstWorkSeconds(c: Client): number {
+  return (c.works || []).reduce((min, w) => {
+    const s = (w.deliveredAt as { seconds?: number } | undefined)?.seconds ?? 0;
+    if (!s) return min;
+    return min === 0 || s < min ? s : min;
+  }, 0);
+}
+
+
+type ClientSort = "new_old" | "old_new" | "name" | "value";
+
+const SORT_OPTIONS: { key: ClientSort; label: string }[] = [
+  { key: "new_old", label: "Newest work first" },
+  { key: "old_new", label: "Oldest work first" },
+  { key: "name", label: "Name (A–Z)" },
+  { key: "value", label: "Highest value" },
+];
+
+/** Whether this client had any work delivered inside the selected period. */
+function worksWithin(c: Client, filter: PeriodFilter): boolean {
+  if (filter.mode === "career") return true;
+  return (c.works || []).some((w) => {
+    const s = (w.deliveredAt as { seconds?: number } | undefined)?.seconds;
+    return s ? withinPeriod(format(new Date(s * 1000), "yyyy-MM-dd"), filter) : false;
+  });
+}
+
 export default function Clients() {
   const user = useAuthStore((s) => s.user);
   const { toast } = useToast();
@@ -30,8 +73,66 @@ export default function Clients() {
   const { data: clients, loading } = useFirestoreQuery<Client>(q, [user?.role, user?.uid]);
   const [search, setSearch] = useState("");
   const [active, setActive] = useState<Client | null>(null);
+  const [period, setPeriod] = useState<PeriodFilter>(defaultPeriodFilter);
+  /** Newest delivery first by default — "who did we just finish for?" is the usual question. */
+  const [sort, setSort] = useState<ClientSort>("new_old");
 
   const canManage = user?.role === "sales_admin" || user?.role === "main_admin";
+  /** Tech side owns delivery, so they're the ones who can pull delivered work into Clients. */
+  const canImport = user?.role === "tech_admin" || user?.role === "main_admin";
+
+  const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
+  const [importResult, setImportResult] = useState<ClientBackfillResult | null>(null);
+
+  /** Null until we know; a record means the one-time sweep has already been run. */
+  const [backfill, setBackfill] = useState<ClientBackfillRecord | null>(null);
+  useEffect(() => watchClientBackfill(setBackfill), []);
+
+  /**
+   * Sweep every delivered assignment into Clients. Idempotent, so re-running only picks up
+   * whatever is new — it never double-counts an existing client's work.
+   */
+  const handleImport = async () => {
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const [assignSnap, userSnap] = await Promise.all([
+        getDocs(collection(db, "work_assignments")),
+        getDocs(collection(db, "users")),
+      ]);
+
+      const names = new Map<string, string>();
+      userSnap.docs.forEach((d) => names.set(d.id, (d.data() as AppUser).name || ""));
+
+      const assignments = assignSnap.docs.map((d) => ({ id: d.id, ...d.data() } as WorkAssignment));
+      const result = await backfillClientsFromDeliveredWork(
+        assignments,
+        (uid) => names.get(uid) || "",
+        (done, total) => setImportProgress({ done, total }),
+      );
+
+      setImportResult(result);
+      // Remember it ran, so the banner stops nagging the whole company once it's done.
+      if (user) await recordClientBackfill(result, { uid: user.uid, name: user.name });
+      const changes = [
+        result.imported > 0 ? `${result.imported} job${result.imported === 1 ? "" : "s"} added` : null,
+        result.repaired > 0 ? `${result.repaired} delivery date${result.repaired === 1 ? "" : "s"} corrected` : null,
+      ].filter(Boolean);
+      toast({
+        title: changes.length > 0 ? "Clients updated" : "Already up to date",
+        description: changes.length > 0
+          ? `${changes.join(" · ")} across ${result.clientsWritten} client${result.clientsWritten === 1 ? "" : "s"}.`
+          : `All ${result.scanned} delivered jobs are already in Clients.`,
+      });
+    } catch (error) {
+      console.error("Client import failed:", error);
+      toast({ title: "Import failed", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setImporting(false);
+      setImportProgress(null);
+    }
+  };
 
   // Sales members this admin can assign upsell/review work to.
   const [salesMembers, setSalesMembers] = useState<AppUser[]>([]);
@@ -46,16 +147,31 @@ export default function Clients() {
   const visible = useMemo(() => {
     const s = search.trim().toLowerCase();
     const sDigits = s.replace(/\D/g, "");
-    return [...clients]
-      .filter((c) => {
-        if (!s) return true;
-        if (c.name?.toLowerCase().includes(s)) return true;
-        if (c.businessCategory?.toLowerCase().includes(s)) return true;
-        if (sDigits && c.phone?.replace(/\D/g, "").includes(sDigits)) return true;
-        return false;
-      })
-      .sort((a, b) => (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0));
-  }, [clients, search]);
+    const filtered = clients.filter((c) => {
+      // Period filter matches on delivery, not on when the record was last touched: "July"
+      // should mean "clients we did work for in July", not "clients whose row changed in July".
+      if (!worksWithin(c, period)) return false;
+      if (!s) return true;
+      if (c.name?.toLowerCase().includes(s)) return true;
+      if (c.businessCategory?.toLowerCase().includes(s)) return true;
+      if (sDigits && c.phone?.replace(/\D/g, "").includes(sDigits)) return true;
+      return false;
+    });
+
+    // Ordering is by real delivery dates. A client with no dated work falls back to when their
+    // record was last touched, so they still land somewhere stable rather than at the very top.
+    const newest = (c: Client) => lastWorkSeconds(c) || c.updatedAt?.seconds || 0;
+    const oldest = (c: Client) => firstWorkSeconds(c) || c.createdAt?.seconds || c.updatedAt?.seconds || 0;
+
+    const compare: Record<ClientSort, (a: Client, b: Client) => number> = {
+      new_old: (a, b) => newest(b) - newest(a),
+      old_new: (a, b) => oldest(a) - oldest(b),
+      name: (a, b) => (a.name || "").localeCompare(b.name || ""),
+      value: (a, b) => clientTotal(b) - clientTotal(a) || newest(b) - newest(a),
+    };
+
+    return [...filtered].sort(compare[sort]);
+  }, [clients, search, period, sort]);
 
   if (loading) {
     return (
@@ -76,26 +192,104 @@ export default function Clients() {
         <p className="text-xs md:text-sm text-muted-foreground mt-1">Every customer we've delivered to — what they bought, what they're missing, and their reviews.</p>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <input type="text" placeholder="Search clients by name, category, phone…" value={search} onChange={(e) => setSearch(e.target.value)}
-          className="h-10 w-full rounded-xl border border-border/70 bg-background pl-9 pr-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20" />
+      {/* Import delivered work — a one-off sweep for jobs finished before clients were recorded
+          automatically. Once it's been run the prompt collapses to a quiet line, because from
+          here on every verified job lands in Clients by itself. */}
+      {canImport && !backfill && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3">
+          <DownloadCloud className="h-4 w-4 shrink-0 text-primary" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-foreground">Import delivered work</p>
+            <p className="text-xs text-muted-foreground">
+              {importResult
+                ? `Scanned ${importResult.scanned} delivered jobs · ${importResult.imported} added · ${importResult.repaired} dates corrected · ${importResult.alreadyPresent} already here${importResult.missingPhone ? ` · ${importResult.missingPhone} skipped (no WhatsApp number)` : ""}`
+                : "A one-time catch-up for work delivered before Clients existed. New work arrives here automatically."}
+            </p>
+          </div>
+          <button
+            onClick={handleImport}
+            disabled={importing}
+            className="flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-primary px-4 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+          >
+            {importing
+              ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />{importProgress ? `${importProgress.done}/${importProgress.total} clients` : "Importing..."}</>
+              : <>Import clients</>}
+          </button>
+        </div>
+      )}
+
+      {canImport && backfill && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-success/25 bg-success/5 px-4 py-2.5">
+          <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-success" />
+          <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+            Delivered work imported {fmtTs(backfill.completedAt)}
+            {backfill.byName ? ` by ${backfill.byName}` : ""} · every verified job is added here automatically now.
+          </p>
+          <button
+            onClick={handleImport}
+            disabled={importing}
+            className="shrink-0 text-xs font-medium text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline disabled:opacity-60"
+          >
+            {importing
+              ? (importProgress ? `${importProgress.done}/${importProgress.total} clients` : "Re-syncing…")
+              : "Re-sync"}
+          </button>
+        </div>
+      )}
+
+      {/* Period filter — the same Career / Month / Day / Range control used across the app. */}
+      <PeriodFilterBar value={period} onChange={setPeriod}>
+        <span className="text-xs font-semibold text-foreground">
+          {visible.length} {visible.length === 1 ? "client" : "clients"}
+          <span className="ml-1 font-normal text-muted-foreground">· {periodLabel(period)}</span>
+        </span>
+      </PeriodFilterBar>
+
+      {/* Search + ordering */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <input type="text" placeholder="Search clients by name, category, phone…" value={search} onChange={(e) => setSearch(e.target.value)}
+            className="h-10 w-full rounded-xl border border-border/70 bg-background pl-9 pr-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20" />
+        </div>
+        <div className="relative shrink-0">
+          <ArrowDownUp className="pointer-events-none absolute left-3 top-1/2 w-3.5 h-3.5 -translate-y-1/2 text-muted-foreground" />
+          <select value={sort} onChange={(e) => setSort(e.target.value as ClientSort)} aria-label="Sort clients"
+            className="h-10 w-full rounded-xl border border-border/70 bg-background pl-8 pr-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20 sm:w-48">
+            {SORT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+          </select>
+        </div>
       </div>
 
       {/* Grid */}
       {visible.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground">
           <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
-          <p className="text-lg font-medium">No clients yet</p>
-          <p className="text-sm">Clients appear here once their work is delivered and verified.</p>
+          {clients.length === 0 ? (
+            <>
+              <p className="text-lg font-medium">No clients yet</p>
+              <p className="text-sm">Clients appear here once their work is delivered and verified.</p>
+            </>
+          ) : (
+            // There *are* clients — the filter just excluded them. Say so, or this reads as data loss.
+            <>
+              <p className="text-lg font-medium">No clients in {periodLabel(period)}</p>
+              <p className="text-sm">
+                Switch to Career to see all {clients.length} client{clients.length === 1 ? "" : "s"}.
+              </p>
+            </>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {visible.map((c) => (
+          {visible.map((c, i) => (
             <button key={c.phoneId} onClick={() => setActive(c)}
               className="text-left bg-card border border-border rounded-xl p-4 hover:border-primary/40 hover:shadow-md transition-all">
               <div className="flex items-center gap-3 mb-3">
+                {/* Serial number — makes the running total legible without counting cards. */}
+                <span className="shrink-0 font-mono text-[11px] font-semibold tabular-nums text-muted-foreground/70">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
                 {isImageUrl(c.logoUrl) ? (
                   <img src={c.logoUrl!} alt="" className="w-10 h-10 rounded-lg object-cover" />
                 ) : (
@@ -108,8 +302,23 @@ export default function Clients() {
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">{c.workCount} {c.workCount === 1 ? "service" : "services"}</span>
-                <span className="font-semibold text-primary">{formatCurrency(c.totalSaleAmount || 0)}</span>
+                <span className="font-semibold text-primary">{formatCurrency(clientTotal(c))}</span>
               </div>
+              {/* Client since (first job) + last job — together they say how long this customer
+                  has been with us and whether we've worked for them recently, without opening the
+                  card. "Client since" is the date we first delivered anything for them. */}
+              {firstWorkSeconds(c) > 0 && (
+                <p className="mt-1.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+                  <UserPlus size={10} className="shrink-0" />
+                  Client since {format(new Date(firstWorkSeconds(c) * 1000), "dd MMM yyyy")}
+                </p>
+              )}
+              {lastWorkSeconds(c) > 0 && (
+                <p className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+                  <CalendarDays size={10} className="shrink-0" />
+                  Last work {format(new Date(lastWorkSeconds(c) * 1000), "dd MMM yyyy")}
+                </p>
+              )}
               {(c.loyaltyDiscountPercent || gapCategories((c.works || []).map((w) => w.category)).length > 0) && (
                 <div className="flex flex-wrap gap-1 mt-2">
                   {!!c.loyaltyDiscountPercent && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 inline-flex items-center gap-0.5"><Star size={9} /> {c.loyaltyDiscountPercent}% loyalty</span>}
@@ -424,15 +633,15 @@ function ClientDetail({ client, salesMembers, canManage, admin, onClose, onSaved
                       {w.fromAd && <span className="ml-1 text-[9px] px-1 rounded bg-info/15 text-info">Ad</span>}
                       <span className="block text-[10px] text-muted-foreground">{fmtTs(w.deliveredAt)}</span>
                     </span>
-                    <span className="col-span-2 text-right font-medium text-primary">{formatCurrency(w.saleAmount)}</span>
-                    <span className="col-span-2 truncate text-muted-foreground" title={w.soldByName}>{w.soldByName}</span>
+                    <span className="col-span-2 text-right font-medium text-primary">{formatCurrency(workAmount(w))}</span>
+                    <span className="col-span-2 truncate text-muted-foreground" title={w.soldByName}>{w.soldByName || "—"}</span>
                     <span className="col-span-3 truncate text-muted-foreground" title={w.deliveredByName || ""}>{w.deliveredByName || "—"}</span>
                   </div>
                 ))}
               </div>
               <div className="grid grid-cols-12 gap-2 px-3 py-2.5 bg-muted/30 text-xs font-semibold text-foreground">
                 <span className="col-span-5">Total</span>
-                <span className="col-span-2 text-right text-primary">{formatCurrency(client.totalSaleAmount || 0)}</span>
+                <span className="col-span-2 text-right text-primary">{formatCurrency(clientTotal(client))}</span>
                 <span className="col-span-5" />
               </div>
             </div>

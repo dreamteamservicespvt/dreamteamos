@@ -9,6 +9,7 @@ export type ActivityAction =
   | "bulk_verified_sales"
   | "bulk_rejected_sales"
   | "submitted_sale"
+  | "edited_sale_item"
   | "deleted_sale_item"
   | "deleted_lead"
   | "resolved_duplicate_sale";

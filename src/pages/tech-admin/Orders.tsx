@@ -1,20 +1,20 @@
 import { useState, useMemo, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import {
-  ClipboardList, Loader2, Search, MessageCircle, UserPlus, X, Clock, ShoppingBag, CheckCircle2, Sparkles,
+  ClipboardList, Loader2, Search, MessageCircle, UserPlus, Clock, ShoppingBag, CheckCircle2, Sparkles, StickyNote, Hourglass, Sparkle, Trash2, CheckSquare, Square,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
-import { useFirestoreCollection, useFirestoreQuery } from "@/hooks/useFirestore";
+import { useFirestoreQuery, useFirestoreCollection } from "@/hooks/useFirestore";
 import { useNow } from "@/hooks/useNow";
 import { formatCurrency } from "@/utils/formatters";
-import { formatPhoneDisplay, getWhatsAppUrl, normalizePhone } from "@/utils/phone";
-import { categoryLabel, isAdCategory, categoryBilling } from "@/utils/serviceCatalog";
-import { activeOrdersQuery, assignOrderToMember, nextWorkUniqueId, notifyDueOrdersOnOpen } from "@/services/orders";
-import { PRICING } from "@/utils/pricing";
-import DeadlineChip from "@/components/work/DeadlineChip";
+import { formatPhoneDisplay, getWhatsAppUrl } from "@/utils/phone";
+import { categoryLabel, categoryBilling } from "@/utils/serviceCatalog";
+import { activeOrdersQuery, notifyDueOrdersOnOpen, findReconcilableOrders, reconcileManualOrders, deleteOrders } from "@/services/orders";
+import { requirementSummary } from "@/utils/adRequirement";
 import { useToast } from "@/hooks/use-toast";
+import DeadlineChip from "@/components/work/DeadlineChip";
 import { format } from "date-fns";
-import type { AppUser, Order, WorkAssignment } from "@/types";
-import { DURATIONS, getClipCount } from "@/utils/assignmentDuration";
+import type { Order, WorkAssignment } from "@/types";
 
 type OrderTab = "unassigned" | "assigned" | "completed";
 
@@ -25,22 +25,49 @@ function fmtTs(ts: any): string {
 
 export default function Orders() {
   const user = useAuthStore((s) => s.user);
+  const navigate = useNavigate();
   const { toast } = useToast();
   const ordersQuery = useMemo(() => activeOrdersQuery(), []);
   const { data: orders, loading } = useFirestoreQuery<Order>(ordersQuery, []);
-  const { data: allUsers } = useFirestoreCollection<AppUser>("users");
-  const { data: allAssignments } = useFirestoreCollection<WorkAssignment>("work_assignments");
+  const { data: assignments } = useFirestoreCollection<WorkAssignment>("work_assignments");
   useNow(30000); // keep deadline chips ticking
 
-  // Tech members: all active for a tech_admin; team-scoped (same creating admin) for a team leader.
-  const techMembers = useMemo(() => {
-    const base = allUsers.filter((u) => u.role === "tech_member" && u.isActive);
-    if (user?.role === "tech_team_leader") return base.filter((u) => u.createdBy === user.createdBy);
-    return base;
-  }, [allUsers, user]);
+  // Assigning happens on Work Assign, where the sales member's brief pre-fills the whole form —
+  // an admin can adjust anything before it goes out instead of re-typing it into a second modal.
+  const workAssignBase = user?.role === "tech_team_leader" ? "/team-leader/work-assign" : "/tech-admin/work-assign";
 
   const [tab, setTab] = useState<OrderTab>("unassigned");
   const [search, setSearch] = useState("");
+
+  // Manual selection → delete, with a confirmation step. Selections are cleared whenever the
+  // visible set changes (tab / search), so you can never delete something you can't see.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  useEffect(() => { setSelected(new Set()); }, [tab, search]);
+  const toggleOne = (id: string) => setSelected((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
+  // Orders that duplicate work the team already did by hand — offered as a one-click cleanup so the
+  // queue reflects what's actually outstanding, not the backlog of already-delivered manual jobs.
+  const reconcilable = useMemo(() => findReconcilableOrders(orders, assignments), [orders, assignments]);
+  const [cleaning, setCleaning] = useState(false);
+  const [confirmClean, setConfirmClean] = useState(false);
+  const runCleanup = async () => {
+    setCleaning(true);
+    try {
+      const n = await reconcileManualOrders(reconcilable);
+      toast({ title: "Queue cleaned up", description: `${n} order${n === 1 ? "" : "s"} already handled manually were cleared.` });
+      setConfirmClean(false);
+    } catch {
+      toast({ title: "Error", description: "Couldn't clean up the queue. Try again.", variant: "destructive" });
+    } finally {
+      setCleaning(false);
+    }
+  };
 
   // One-time deadline sweep when the queue first loads.
   const sweptRef = useRef(false);
@@ -72,67 +99,30 @@ export default function Orders() {
       .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
   }, [orders, tab, search]);
 
-  // ── Assign modal ──────────────────────────────────────────────────────────
-  const [assignTarget, setAssignTarget] = useState<Order | null>(null);
-  const [memberSearch, setMemberSearch] = useState("");
-  const [selectedMember, setSelectedMember] = useState<AppUser | null>(null);
-  const [duration, setDuration] = useState("");
-  const [price, setPrice] = useState(0);
-  const [assigning, setAssigning] = useState(false);
-
-  const openAssign = (order: Order) => {
-    setAssignTarget(order);
-    setSelectedMember(null);
-    setMemberSearch("");
-    if (isAdCategory(order.category)) {
-      const durs = DURATIONS[order.category] || [];
-      const firstDur = durs[0] || "";
-      setDuration(firstDur);
-      setPrice(PRICING[order.category]?.[firstDur] ?? order.amount ?? 0);
-    } else {
-      setDuration("");
-      setPrice(order.amount ?? 0);
+  // Select-all operates on exactly what's on screen (current tab + search).
+  const visibleIds = useMemo(() => visible.map((o) => o.id), [visible]);
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
+  const toggleAll = () => setSelected((prev) => {
+    if (visibleIds.every((id) => prev.has(id))) {
+      const next = new Set(prev);
+      visibleIds.forEach((id) => next.delete(id));
+      return next;
     }
-  };
+    return new Set([...prev, ...visibleIds]);
+  });
 
-  const filteredMembers = useMemo(() => {
-    const q = memberSearch.trim().toLowerCase();
-    if (!q) return techMembers;
-    const qDigits = q.replace(/\D/g, "");
-    return techMembers.filter((m) => {
-      if (m.name.toLowerCase().includes(q)) return true;
-      if (qDigits && m.phone) {
-        const pd = normalizePhone(m.phone).replace(/\D/g, "");
-        if (pd.includes(qDigits)) return true;
-      }
-      return false;
-    });
-  }, [techMembers, memberSearch]);
-
-  const confirmAssign = async () => {
-    if (!assignTarget || !selectedMember || !user) return;
-    setAssigning(true);
+  const runDelete = async () => {
+    setDeleting(true);
     try {
-      const ad = isAdCategory(assignTarget.category);
-      const clipCount = ad ? getClipCount(duration) : 0;
-      const uniqueId = nextWorkUniqueId(assignTarget.category, allAssignments);
-      await assignOrderToMember({
-        order: assignTarget,
-        member: selectedMember,
-        assignerUid: user.uid,
-        category: assignTarget.category,
-        duration: ad ? duration : "—",
-        clipCount,
-        pricePerUnit: price,
-        totalPrice: price,
-        uniqueId,
-      });
-      toast({ title: "Assigned", description: `Order assigned to ${selectedMember.name}.` });
-      setAssignTarget(null);
+      const ids = [...selected];
+      const n = await deleteOrders(ids);
+      toast({ title: "Deleted", description: `${n} order${n === 1 ? "" : "s"} removed from the queue.` });
+      setSelected(new Set());
+      setConfirmDelete(false);
     } catch {
-      toast({ title: "Error", description: "Failed to assign order.", variant: "destructive" });
+      toast({ title: "Error", description: "Couldn't delete the selected orders. Try again.", variant: "destructive" });
     } finally {
-      setAssigning(false);
+      setDeleting(false);
     }
   };
 
@@ -144,18 +134,57 @@ export default function Orders() {
     );
   }
 
-  const memberName = (uid?: string | null) => techMembers.find((m) => m.uid === uid)?.name || allUsers.find((u) => u.uid === uid)?.name || "—";
-
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-accent/20 p-4 md:p-5 shadow-sm">
-        <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-medium text-primary">
-          <Sparkles className="w-3 h-3" /> Verified sales → delivery
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-medium text-primary">
+              <Sparkles className="w-3 h-3" /> Sales → delivery
+            </div>
+            <h1 className="text-xl md:text-2xl font-bold text-foreground">Orders</h1>
+            <p className="text-xs md:text-sm text-muted-foreground mt-1">Every sale lands here to be assigned and delivered — no approval needed to start.</p>
+          </div>
+          {/* One-click cleanup for orders that duplicate manually-done work. */}
+          {reconcilable.length > 0 && (
+            <button
+              onClick={() => setConfirmClean(true)}
+              className="flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 text-xs font-medium text-amber-600 transition-colors hover:bg-amber-500/20 dark:text-amber-400"
+              title="Remove unassigned orders that already have matching work done in Work Assign">
+              <Sparkle className="w-3.5 h-3.5" /> Clean up already-done ({reconcilable.length})
+            </button>
+          )}
         </div>
-        <h1 className="text-xl md:text-2xl font-bold text-foreground">Orders</h1>
-        <p className="text-xs md:text-sm text-muted-foreground mt-1">Approved sales waiting to be assigned and delivered by the tech team.</p>
       </div>
+
+      {/* Cleanup confirmation */}
+      {confirmClean && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => !cleaning && setConfirmClean(false)}>
+          <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-amber-500/15">
+              <Sparkle className="h-5 w-5 text-amber-500" />
+            </div>
+            <h3 className="text-center text-lg font-semibold text-foreground">Clean up the queue?</h3>
+            <p className="mt-2 text-center text-sm text-muted-foreground">
+              <strong className="text-foreground">{reconcilable.length}</strong> unassigned order{reconcilable.length === 1 ? "" : "s"} already
+              {" "}have matching work in Work Assign — the tech team did them by hand before the Orders queue existed.
+              They'll be marked done and removed from here. Nothing else is affected.
+            </p>
+            <div className="mt-5 flex items-center gap-2">
+              <button onClick={() => setConfirmClean(false)} disabled={cleaning}
+                className="flex-1 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50">
+                Cancel
+              </button>
+              <button onClick={runCleanup} disabled={cleaning}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-amber-700 disabled:opacity-50">
+                {cleaning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkle className="h-4 w-4" />}
+                {cleaning ? "Cleaning…" : `Remove ${reconcilable.length}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex flex-wrap items-center gap-2">
@@ -181,6 +210,54 @@ export default function Orders() {
         </div>
       </div>
 
+      {/* Selection toolbar — select all on screen, or pick individually, then delete. */}
+      {visible.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={toggleAll}
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border border-border bg-card text-xs md:text-sm font-medium text-foreground transition-colors hover:bg-accent/50">
+            {allVisibleSelected ? <CheckSquare className="w-4 h-4 text-primary" /> : <Square className="w-4 h-4 text-muted-foreground" />}
+            {allVisibleSelected ? "Clear selection" : `Select all (${visible.length})`}
+          </button>
+          {selected.size > 0 && (
+            <>
+              <span className="text-xs text-muted-foreground">{selected.size} selected</span>
+              <button onClick={() => setConfirmDelete(true)}
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border border-destructive/40 bg-destructive/10 text-xs md:text-sm font-medium text-destructive transition-colors hover:bg-destructive/20">
+                <Trash2 className="w-3.5 h-3.5" /> Delete selected ({selected.size})
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Delete confirmation */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => !deleting && setConfirmDelete(false)}>
+          <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-destructive/15">
+              <Trash2 className="h-5 w-5 text-destructive" />
+            </div>
+            <h3 className="text-center text-lg font-semibold text-foreground">Delete {selected.size} order{selected.size === 1 ? "" : "s"}?</h3>
+            <p className="mt-2 text-center text-sm text-muted-foreground">
+              {tab === "unassigned"
+                ? "These orders will be removed from the queue. This can't be undone."
+                : "These orders will be removed from the queue. Any work already assigned stays in Work Done & Reports — only the order entry is deleted. This can't be undone."}
+            </p>
+            <div className="mt-5 flex items-center gap-2">
+              <button onClick={() => setConfirmDelete(false)} disabled={deleting}
+                className="flex-1 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50">
+                Cancel
+              </button>
+              <button onClick={runDelete} disabled={deleting}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-destructive px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-destructive/90 disabled:opacity-50">
+                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                {deleting ? "Deleting…" : `Delete ${selected.size}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* List */}
       <div className="space-y-3">
         {visible.length === 0 ? (
@@ -189,14 +266,27 @@ export default function Orders() {
             <p className="text-lg font-medium">No {tab} orders</p>
           </div>
         ) : visible.map((o) => (
-          <div key={o.id} className="bg-card border rounded-xl p-3 md:p-4 shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+          <div key={o.id} className={`bg-card border rounded-xl p-3 md:p-4 shadow-sm hover:shadow-md transition-shadow ${selected.has(o.id) ? "border-primary/60 ring-1 ring-primary/30" : ""}`}>
+            <div className="flex items-start gap-3">
+              {/* Per-order select checkbox */}
+              <button onClick={() => toggleOne(o.id)} aria-label={selected.has(o.id) ? "Deselect order" : "Select order"}
+                className="mt-0.5 shrink-0 text-muted-foreground hover:text-primary transition-colors">
+                {selected.has(o.id) ? <CheckSquare className="w-5 h-5 text-primary" /> : <Square className="w-5 h-5" />}
+              </button>
+              <div className="flex flex-1 min-w-0 flex-col md:flex-row md:items-start md:justify-between gap-3">
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap items-center gap-2 mb-2">
                   <h3 className="font-semibold text-card-foreground text-sm md:text-base truncate">{o.businessName || "Unnamed client"}</h3>
                   <span className="text-[10px] md:text-xs font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary">{categoryLabel(o.category)}</span>
                   {categoryBilling(o.category) === "monthly" && (
                     <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-500">Monthly</span>
+                  )}
+                  {/* Approval isn't a gate anymore, but the tech team should still see which sales
+                      the sales admin hasn't signed off on yet. */}
+                  {o.saleVerified === false && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400" title="The sales admin hasn't verified this sale yet">
+                      <Hourglass size={9} /> Pending approval
+                    </span>
                   )}
                   <DeadlineChip promise={o.promise} />
                 </div>
@@ -207,8 +297,39 @@ export default function Orders() {
                   {o.fromAd && <span className="text-info">From ad</span>}
                   <span>Sold: <strong className="text-foreground">{fmtTs(o.createdAt)}</strong></span>
                   {o.promise && <span className="inline-flex items-center gap-1"><Clock size={11} /> Promise: <strong className="text-foreground">{o.promise.label}</strong></span>}
-                  {o.status !== "unassigned" && <span>Assigned to: <strong className="text-foreground">{o.assignedToName || memberName(o.assignedTo)}</strong></span>}
+                  {o.status !== "unassigned" && o.assignedToName && <span>Assigned to: <strong className="text-foreground">{o.assignedToName}</strong></span>}
                 </div>
+
+                {/* The client's brief, exactly as the sales member captured it. */}
+                {requirementSummary(o.requirement).length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {requirementSummary(o.requirement).map((chip) => (
+                      <span key={chip} className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">{chip}</span>
+                    ))}
+                  </div>
+                )}
+                {o.requirement?.notes && (
+                  <p className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
+                    <StickyNote size={11} className="mt-0.5 shrink-0" />
+                    <span className="whitespace-pre-wrap">{o.requirement.notes}</span>
+                  </p>
+                )}
+
+                {/* Update notes the sales member sent after the order was assigned. */}
+                {!!o.updateNotes?.length && (
+                  <div className="mt-2 space-y-1 rounded-lg border border-blue-500/25 bg-blue-500/5 p-2">
+                    <p className="flex items-center gap-1 text-[10px] font-semibold text-blue-600 dark:text-blue-400">
+                      <MessageCircle size={10} /> Client updates ({o.updateNotes.length})
+                    </p>
+                    {o.updateNotes.map((n, i) => (
+                      <p key={i} className="text-xs text-foreground">
+                        <span className="whitespace-pre-wrap">{n.text}</span>
+                        <span className="ml-1 text-[10px] text-muted-foreground">— {n.byName || "sales"} · {fmtTs(n.at)}</span>
+                      </p>
+                    ))}
+                  </div>
+                )}
+
                 {o.clientPhone && (
                   <div className="mt-2">
                     <a href={getWhatsAppUrl(o.clientPhone)} target="_blank" rel="noopener noreferrer"
@@ -220,7 +341,7 @@ export default function Orders() {
               </div>
               <div className="flex items-center gap-2">
                 {o.status === "unassigned" && (
-                  <button onClick={() => openAssign(o)}
+                  <button onClick={() => navigate(`${workAssignBase}?order=${encodeURIComponent(o.id)}`)}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-xs md:text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
                     <UserPlus className="w-3.5 h-3.5" /> Assign
                   </button>
@@ -236,75 +357,12 @@ export default function Orders() {
                   </span>
                 )}
               </div>
+              </div>
             </div>
           </div>
         ))}
       </div>
 
-      {/* Assign modal */}
-      {assignTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => !assigning && setAssignTarget(null)}>
-          <div className="bg-card border border-border rounded-xl p-5 shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-semibold text-foreground">Assign order</h3>
-                <p className="text-sm text-muted-foreground mt-0.5">{assignTarget.businessName || "Unnamed client"} · {categoryLabel(assignTarget.category)} · {formatCurrency(assignTarget.amount)}</p>
-              </div>
-              <button onClick={() => setAssignTarget(null)} disabled={assigning} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-50"><X className="w-4 h-4" /></button>
-            </div>
-
-            {/* Member picker */}
-            <label className="block text-sm font-medium text-muted-foreground mb-1">Assign to</label>
-            {selectedMember ? (
-              <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2 mb-3">
-                <span className="text-sm text-foreground">✓ {selectedMember.name}</span>
-                <button onClick={() => setSelectedMember(null)} className="text-xs text-muted-foreground hover:text-foreground">Change</button>
-              </div>
-            ) : (
-              <div className="relative mb-3">
-                <input type="text" placeholder="Search member…" value={memberSearch} onChange={(e) => setMemberSearch(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border outline-none focus:ring-2 focus:ring-primary/20" />
-                {memberSearch && (
-                  <div className="absolute z-10 w-full mt-1 bg-card border border-border rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                    {filteredMembers.length === 0 ? (
-                      <div className="p-3 text-xs text-muted-foreground">No members found</div>
-                    ) : filteredMembers.map((m) => (
-                      <button key={m.uid} type="button" onClick={() => { setSelectedMember(m); setMemberSearch(""); }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors text-foreground">{m.name}</button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Duration (ad categories only) */}
-            {isAdCategory(assignTarget.category) && (
-              <div className="mb-3">
-                <label className="block text-sm font-medium text-muted-foreground mb-1">Duration</label>
-                <select value={duration} onChange={(e) => { setDuration(e.target.value); setPrice(PRICING[assignTarget.category]?.[e.target.value] ?? price); }}
-                  className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border outline-none focus:ring-2 focus:ring-primary/20">
-                  {(DURATIONS[assignTarget.category] || []).map((d) => (
-                    <option key={d} value={d}>{d} ({getClipCount(d)} clips)</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {/* Price */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-muted-foreground mb-1">Tech price (₹)</label>
-              <input type="number" min={0} value={price} onChange={(e) => setPrice(parseInt(e.target.value) || 0)}
-                className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border outline-none focus:ring-2 focus:ring-primary/20" />
-            </div>
-
-            <button onClick={confirmAssign} disabled={assigning || !selectedMember}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-              {assigning ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
-              <span>{assigning ? "Assigning…" : "Assign & notify member"}</span>
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -64,6 +64,10 @@ import TeamAttendance from "@/pages/shared/TeamAttendance";
 import SendAgreement from "@/pages/shared/SendAgreement";
 import Tools from "@/pages/shared/Tools";
 import WorkReports from "@/pages/shared/WorkReports";
+import Payroll from "@/pages/shared/Payroll";
+import Profit from "@/pages/shared/Profit";
+import SalesPayroll from "@/pages/sales-admin/Payroll";
+import SalesMySalary from "@/pages/sales-member/MySalary";
 import CinematicAds from "@/pages/tech-admin/CinematicAds";
 import AccountsDashboard from "@/pages/accounts-admin/Dashboard";
 import RevenueSummary from "@/pages/accounts-admin/RevenueSummary";
@@ -71,6 +75,7 @@ import DailyExpenses from "@/pages/accounts-admin/DailyExpenses";
 import SalaryManagement from "@/pages/accounts-admin/SalaryManagement";
 import PlaceholderPage from "@/pages/PlaceholderPage";
 import MySalaryPage from "@/pages/shared/MySalary";
+import MySalaryDashboard from "@/pages/tech-member/MySalaryDashboard";
 import NotFound from "@/pages/NotFound";
 import Chat from "@/pages/shared/Chat";
 import Meeting from "@/pages/shared/Meeting";
@@ -115,6 +120,7 @@ const App = () => (
             <Route path="/main-admin/sales" element={<SalesDepartment />} />
             <Route path="/main-admin/sessions" element={<SessionHistory />} />
             <Route path="/main-admin/accounts" element={<Accounts />} />
+            <Route path="/main-admin/profit" element={<Profit />} />
             <Route path="/main-admin/settings" element={<MainAdminSettings />} />
             <Route path="/main-admin/salary" element={<MySalaryPage />} />
             <Route path="/main-admin/clients" element={<Clients />} />
@@ -136,6 +142,8 @@ const App = () => (
             <Route path="/tech-admin/work-assign" element={<WorkAssign />} />
             <Route path="/tech-admin/work-assign/:memberId" element={<MemberAssignments />} />
             <Route path="/tech-admin/work-reports" element={<WorkReports />} />
+            <Route path="/tech-admin/payroll" element={<Payroll />} />
+            <Route path="/tech-admin/profit" element={<Profit />} />
             <Route path="/tech-admin/orders" element={<Orders />} />
             <Route path="/tech-admin/clients" element={<Clients />} />
             <Route path="/tech-admin/tools" element={<Tools />} />
@@ -155,6 +163,9 @@ const App = () => (
             <Route path="/sales-admin/schedule-numbers" element={<ScheduleNumbers />} />
             <Route path="/sales-admin/approvals" element={<SalesApprovals />} />
             <Route path="/sales-admin/settlements" element={<Settlements />} />
+            <Route path="/sales-admin/payroll" element={<SalesPayroll />} />
+            <Route path="/sales-admin/attendance" element={<TeamAttendance />} />
+            <Route path="/sales-admin/profit" element={<Profit />} />
             <Route path="/sales-admin/analytics" element={<SalesAnalytics />} />
             <Route path="/sales-admin/training" element={<SalesTrainingModules />} />
             <Route path="/sales-admin/scripts" element={<SalesScripts />} />
@@ -188,7 +199,8 @@ const App = () => (
             <Route path="/tech/profile" element={<TechMemberProfile />} />
             <Route path="/tech/chat" element={<Chat />} />
             <Route path="/tech/meeting" element={<Meeting />} />
-            <Route path="/tech/salary" element={<MySalaryPage />} />
+            <Route path="/tech/salary" element={<MySalaryDashboard />} />
+            <Route path="/tech/salary/receipts" element={<MySalaryPage />} />
           </Route>
 
           {/* Sales Member */}
@@ -205,7 +217,8 @@ const App = () => (
             <Route path="/sales/history" element={<SalesMemberActivityHistory />} />
             <Route path="/sales/chat" element={<Chat />} />
             <Route path="/sales/meeting" element={<Meeting />} />
-            <Route path="/sales/salary" element={<MySalaryPage />} />
+            <Route path="/sales/salary" element={<SalesMySalary />} />
+            <Route path="/sales/salary/receipts" element={<MySalaryPage />} />
           </Route>
 
           {/* Tech Team Leader */}

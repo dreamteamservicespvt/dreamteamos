@@ -5,7 +5,7 @@ import { useAuthStore } from "@/store/authStore";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
-import { CalendarDays, ChevronLeft, ChevronRight, PartyPopper, Trash2, Users, X, CheckCircle2, User, CalendarClock, Clock3, UserCheck } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, PartyPopper, Trash2, Users, X, CheckCircle2, User, CalendarClock, Clock3, UserCheck, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { AppUser } from "@/types";
 import {
@@ -29,7 +29,8 @@ import {
 } from "@/services/techAttendance";
 import { EMPLOYMENT_LABELS, employmentOf, setEmploymentType } from "@/services/employment";
 import { sendNotification } from "@/services/notifications";
-import { getWhatsAppUrl } from "@/utils/phone";
+import { getWhatsAppUrl, normalizePhone } from "@/utils/phone";
+import LeaveApprovalsPanel from "@/components/payroll/LeaveApprovalsPanel";
 import { MessageCircle } from "lucide-react";
 
 const shiftMonth = (month: string, delta: number): string => {
@@ -58,6 +59,7 @@ export default function TeamAttendance() {
   const [holidayDate, setHolidayDate] = useState<string>(todayDate());
   const [holidayLabel, setHolidayLabel] = useState<string>("");
   const [savingHoliday, setSavingHoliday] = useState(false);
+  const [search, setSearch] = useState("");
 
   const todayStr = todayDate();
 
@@ -77,14 +79,45 @@ export default function TeamAttendance() {
     return () => unsubs.forEach((u) => u());
   }, [month]);
 
-  // Members whose attendance this admin / lead manages: tech members on their team.
+  /**
+   * Sales runs the same grid as tech, with one difference: sales attendance is whole days only.
+   * A sales member's day isn't split across jobs the way a tech member's is, so a half day has
+   * nothing to mean — offering it would only invite inconsistent marking.
+   */
+  const isSalesSide = user?.role === "sales_admin";
+  const managedRole = isSalesSide ? "sales_member" : "tech_member";
+  const statusOptions = useMemo(
+    () => (isSalesSide ? STATUS_ORDER.filter((s) => s !== "half") : STATUS_ORDER),
+    [isSalesSide],
+  );
+
+  // Members whose attendance this admin / lead manages.
   const members = useMemo(() => {
     if (!user) return [];
     const teamAdminUid = user.role === "tech_team_leader" ? user.createdBy : user.uid;
     return allUsers
-      .filter((u) => u.role === "tech_member" && u.createdBy === teamAdminUid && u.isActive !== false)
+      .filter((u) => u.role === managedRole && u.createdBy === teamAdminUid && u.isActive !== false)
       .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-  }, [allUsers, user]);
+  }, [allUsers, user, managedRole]);
+
+  /** Leave approvals are scoped to exactly the members this person manages (never the search). */
+  const visibleMemberIds = useMemo(() => new Set(members.map(m => m.uid)), [members]);
+
+  // The grid narrows to whoever matches the search — by name or phone. Leave approvals above stay
+  // scoped to the full team, since a search is about finding a row, not changing who's managed.
+  const filteredMembers = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return members;
+    const qDigits = q.replace(/\D/g, "");
+    return members.filter((m) => {
+      if (m.name?.toLowerCase().includes(q)) return true;
+      if (qDigits && m.phone) {
+        const pd = normalizePhone(m.phone).replace(/\D/g, "");
+        if (pd.includes(qDigits)) return true;
+      }
+      return false;
+    });
+  }, [members, search]);
 
   // The COMPLETE month, day 1 → last day, always.
   const days = useMemo(() => daysInMonth(month), [month]);
@@ -191,6 +224,7 @@ export default function TeamAttendance() {
           </h1>
           <p className="text-muted-foreground text-xs md:text-sm mt-1">
             Auto-marked from daily check-ins — Full Day on check-in, Absent otherwise. Click any cell to override.
+            {isSalesSide && " Sales attendance is whole days only."}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -207,9 +241,15 @@ export default function TeamAttendance() {
         </div>
       </div>
 
+      {/* Leave awaiting a decision — approving writes `leave` onto the grid below and moves
+          the member's salary, so it lives right next to the attendance it changes. */}
+      <div className="mb-4">
+        <LeaveApprovalsPanel visibleMemberIds={visibleMemberIds} />
+      </div>
+
       {/* Legend + announced holidays */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
-        {STATUS_ORDER.map((s) => (
+        {statusOptions.map((s) => (
           <span key={s} className={cn("text-[11px] px-2 py-0.5 rounded-full border", ATTENDANCE_META[s].tone)}>
             {ATTENDANCE_META[s].short} · {ATTENDANCE_META[s].label}
           </span>
@@ -221,9 +261,33 @@ export default function TeamAttendance() {
         ))}
       </div>
 
+      {/* Member search — narrows the grid to a single person on a big team. */}
+      {members.length > 0 && (
+        <div className="relative mb-4 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search member by name or phone…"
+            className="h-9 w-full rounded-xl border border-border/70 bg-background pl-9 pr-8 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20"
+          />
+          {search && (
+            <button onClick={() => setSearch("")} aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      )}
+
       {members.length === 0 ? (
         <div className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground text-sm flex flex-col items-center gap-2">
           <Users className="w-8 h-8 opacity-40" /> No team members yet.
+        </div>
+      ) : filteredMembers.length === 0 ? (
+        <div className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground text-sm flex flex-col items-center gap-2">
+          <Search className="w-8 h-8 opacity-40" /> No members match “{search.trim()}”.
         </div>
       ) : (
         <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -254,7 +318,7 @@ export default function TeamAttendance() {
                 </tr>
               </thead>
               <tbody>
-                {members.map((m) => {
+                {filteredMembers.map((m) => {
                   const statuses = days.map((d) => statusFor(m, d));
                   const sum = summarize(statuses);
                   const emp = employmentOf(m.employmentType);
@@ -315,7 +379,7 @@ export default function TeamAttendance() {
             <div className="mb-1 font-semibold text-foreground">{editing.member.name}</div>
             <div className="mb-3 text-xs text-muted-foreground">{format(new Date(editing.date), "EEEE, dd MMM yyyy")}</div>
             <div className="grid grid-cols-2 gap-2">
-              {STATUS_ORDER.map((s) => (
+              {statusOptions.map((s) => (
                 <button key={s} onClick={() => applyStatus(editing.member, editing.date, s)}
                   className={cn("px-3 py-2 rounded-lg text-xs font-medium border text-left", ATTENDANCE_META[s].tone,
                     editing.current === s && "ring-2 ring-primary")}>

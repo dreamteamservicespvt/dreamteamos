@@ -1,30 +1,21 @@
 import { useMemo, useState } from 'react';
 import { Check, ChevronRight, Copy } from 'lucide-react';
 import { formatCurrency } from '@/utils/formatters';
+import { assignedAtMs, isVerified } from '@/utils/memberWorkload';
 import type { AppUser, DailyCheckin, WorkAssignment } from '@/types';
 
 /**
- * One member's live workload, as a card in the Team Workload wall.
+ * One member's workload, as a card in the Team Workload wall.
  *
- * Shows as many of the member's businesses as will reasonably fit — most recently assigned
- * first — because "who is this person working for right now" is the question this wall exists to
- * answer. The caps below are safety valves for an outlier member, not a display budget: with real
- * workloads every business and ad ID is visible without interaction.
+ * The card answers one question — "who is this person working for right now?" — with the five
+ * most recent businesses, each a tap-to-copy WhatsApp number. It deliberately shows nothing else:
+ * a longer list, and the ad-ID chips that used to sit underneath, made the wall dense enough that
+ * the one thing anybody came here to do (grab a number) got lost in it. The full record is one
+ * click away on the member's own page.
  */
 
-/** Beyond this many chips the card would dominate the wall, so the rest collapse into a "+N". */
-const MAX_BUSINESS_CHIPS = 10;
-const MAX_AD_CHIPS = 12;
-
-const statusColors: Record<string, string> = {
-  assigned: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-  in_progress: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-  completed: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-  verified: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
-  editing: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
-};
-
-const assignedSeconds = (a: WorkAssignment) => a.assignedAt?.seconds || 0;
+/** How many businesses a card shows before the rest collapse into a "+N". */
+const MAX_BUSINESS_CHIPS = 5;
 
 /** Attendance dot: colour + tooltip for today's check-in state. */
 function checkinDot(checkin?: DailyCheckin) {
@@ -38,8 +29,14 @@ function checkinDot(checkin?: DailyCheckin) {
 
 interface MemberWorkloadCardProps {
   member: AppUser;
-  /** This member's live assignments (any order — the card sorts them newest-first). */
+  /** This member's recent assignments, any status (any order — the card sorts them newest-first). */
   assignments: WorkAssignment[];
+  /** How many are still live. Defaults to counting the list, which is right when it isn't capped. */
+  activeCount?: number;
+  /** Rupee value of the live work. Defaults to the value of the assignments passed in. */
+  activeValue?: number;
+  /** Everything on record for the member, so the "+N" can account for work beyond the cap. */
+  totalCount?: number;
   checkin?: DailyCheckin;
   /** Tech admins see the workload's value; team leaders do not. */
   showPricing?: boolean;
@@ -47,15 +44,22 @@ interface MemberWorkloadCardProps {
 }
 
 export default function MemberWorkloadCard({
-  member, assignments, checkin, showPricing = false, onOpen,
+  member, assignments, activeCount, activeValue, totalCount, checkin, showPricing = false, onOpen,
 }: MemberWorkloadCardProps) {
   const [copiedBusiness, setCopiedBusiness] = useState<string | null>(null);
 
   /** Newest work first, so the businesses a member is on *right now* lead the card. */
   const recentFirst = useMemo(
-    () => [...assignments].sort((a, b) => assignedSeconds(b) - assignedSeconds(a)),
+    () => [...assignments].sort((a, b) => assignedAtMs(b) - assignedAtMs(a)),
     [assignments]
   );
+
+  // The counts are supplied by the caller, which sees the member's whole history; falling back to
+  // the passed list keeps the card usable standalone.
+  const live = activeCount ?? recentFirst.filter(a => !isVerified(a)).length;
+  const liveValue = activeValue
+    ?? recentFirst.filter(a => !isVerified(a)).reduce((sum, a) => sum + (a.totalPrice || 0), 0);
+  const total = totalCount ?? recentFirst.length;
 
   /**
    * One chip per business, newest first. A business can span several ads, so we keep the first
@@ -76,10 +80,7 @@ export default function MemberWorkloadCard({
 
   const visibleBusinesses = businesses.slice(0, MAX_BUSINESS_CHIPS);
   const hiddenBusinesses = businesses.length - visibleBusinesses.length;
-  const visibleAds = recentFirst.slice(0, MAX_AD_CHIPS);
-  const hiddenAds = recentFirst.length - visibleAds.length;
 
-  const totalPrice = recentFirst.reduce((sum, a) => sum + (a.totalPrice || 0), 0);
   const dot = checkinDot(checkin);
 
   const copyPhone = (name: string, phone: string) => {
@@ -91,7 +92,11 @@ export default function MemberWorkloadCard({
   return (
     // A plain container, not a <button>: the chips inside are themselves buttons, and a button
     // may not contain a button. The header row below is the real, keyboard-reachable control.
-    <div className="group flex flex-col rounded-xl border border-border bg-background transition-all hover:border-primary/40 hover:shadow-md focus-within:border-primary/60">
+    // A member with nothing live is dimmed rather than hidden — they stay on the wall precisely
+    // so the admin can see at a glance who is free to take the next assignment.
+    <div className={`group flex flex-col rounded-xl border bg-background transition-all hover:border-primary/40 hover:shadow-md focus-within:border-primary/60 ${
+      live > 0 ? 'border-border' : 'border-dashed border-border/70'
+    }`}>
       {/* Header — the card's primary action */}
       <button
         type="button"
@@ -109,12 +114,21 @@ export default function MemberWorkloadCard({
             </span>
             <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot.className}`} title={dot.label} />
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-muted-foreground">
-              {recentFirst.length} video{recentFirst.length !== 1 ? 's' : ''}
+          <div className="flex flex-wrap items-center gap-x-2">
+            {/* Lead with live work — that's what this page is for — but never at the cost of
+                hiding that the member has finished work behind it. */}
+            <span className={`text-[11px] ${live > 0 ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>
+              {live > 0
+                ? `${live} active`
+                : total > 0 ? 'No active work' : 'No work yet'}
             </span>
-            {showPricing && (
-              <span className="font-mono text-[11px] font-medium text-primary">{formatCurrency(totalPrice)}</span>
+            {total > 0 && (
+              <span className="text-[11px] text-muted-foreground">
+                · {total} video{total !== 1 ? 's' : ''}
+              </span>
+            )}
+            {showPricing && liveValue > 0 && (
+              <span className="font-mono text-[11px] font-medium text-primary">{formatCurrency(liveValue)}</span>
             )}
           </div>
         </div>
@@ -160,21 +174,10 @@ export default function MemberWorkloadCard({
         </div>
       )}
 
-      {/* Ad IDs, colour-coded by status */}
-      {visibleAds.length > 0 && (
-        <div className="flex flex-wrap gap-1 border-t border-border/60 px-3 py-2">
-          {visibleAds.map(a => (
-            <span
-              key={a.id}
-              title={`${a.uniqueId} — ${a.status.replace('_', ' ')}`}
-              className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${statusColors[a.status] || ''}`}
-            >
-              {a.uniqueId}
-            </span>
-          ))}
-          {hiddenAds > 0 && (
-            <span className="px-1 py-0.5 text-[10px] text-muted-foreground">+{hiddenAds}</span>
-          )}
+      {/* The answer to "who can take this next?" — stated, not left as an empty card. */}
+      {live === 0 && (
+        <div className="border-t border-border/60 px-3 py-1.5">
+          <span className="text-[10px] text-muted-foreground">Free to take new work</span>
         </div>
       )}
     </div>
