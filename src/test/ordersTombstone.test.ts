@@ -33,8 +33,15 @@ vi.mock("firebase/firestore", () => {
         commit: async () => { ops.forEach((op) => op()); ops.length = 0; },
       };
     },
-    query: (...args: unknown[]) => args,
-    where: (...args: unknown[]) => args,
+    // Enough query support for findUnassignedOrderForPhone: equality constraints over the store.
+    where: (field: string, _op: string, value: unknown) => ({ field, value }),
+    query: (_coll: unknown, ...constraints: { field: string; value: unknown }[]) => ({ constraints }),
+    getDocs: async (q: { constraints: { field: string; value: unknown }[] }) => {
+      const docs = [...store.entries()]
+        .filter(([, data]) => q.constraints.every((c) => data?.[c.field] === c.value))
+        .map(([id, data]) => ({ id, data: () => data }));
+      return { docs, empty: docs.length === 0 };
+    },
     serverTimestamp: () => ({ __server: true }),
     Timestamp: { now: () => ({ seconds: 1_800_000_000 }) },
     arrayUnion: (...items: unknown[]) => ({ __arrayUnion: items }),
@@ -44,7 +51,7 @@ vi.mock("firebase/firestore", () => {
 vi.mock("@/services/firebase", () => ({ db: {} }));
 vi.mock("@/services/notifications", () => ({ sendNotification: async () => undefined }));
 
-const { upsertOrderForSale, deleteOrders, cancelOrderForSale, revertOrderToUnassigned, markOrderCompleted, orderDocId } =
+const { upsertOrderForSale, deleteOrders, cancelOrderForSale, revertOrderToUnassigned, markOrderCompleted, orderDocId, findUnassignedOrderForPhone } =
   await import("@/services/orders");
 
 const item: SaleDetail = {
@@ -53,6 +60,45 @@ const item: SaleDetail = {
 } as SaleDetail;
 const lead = { id: "lead1", phone: "+919876543210", displayName: "Ramesh", realName: "Sharma" } as Lead;
 const id = orderDocId(lead.id, item, 0);
+
+describe("the order carries the business the ad is FOR", () => {
+  beforeEach(() => store.clear());
+
+  it("uses the business name typed on the sale, not the client's name", async () => {
+    const withBusiness = { ...item, requirement: { businessName: "Gupta Electronics" } } as SaleDetail;
+    await upsertOrderForSale({ lead, item: withBusiness, itemIndex: 0, soldByName: "Anita" });
+    const o = store.get(orderDocId(lead.id, withBusiness, 0)) as Order;
+    expect(o.businessName).toBe("Gupta Electronics");
+    // The client is kept alongside — one client can order ads for several businesses.
+    expect(o.clientName).toBe("Sharma");
+  });
+
+  it("falls back to the client's name when no business was given", async () => {
+    await upsertOrderForSale({ lead, item, itemIndex: 0, soldByName: "Anita" });
+    expect((store.get(id) as Order).businessName).toBe("Sharma");
+  });
+});
+
+describe("findUnassignedOrderForPhone (manual assignment adopts a waiting order)", () => {
+  beforeEach(() => store.clear());
+
+  it("finds the unassigned order for that client's number", async () => {
+    await upsertOrderForSale({ lead, item, itemIndex: 0, soldByName: "Anita" });
+    const found = await findUnassignedOrderForPhone("+91 98765 43210", "promotional");
+    expect(found?.id).toBe(id);
+  });
+
+  it("ignores orders that are already assigned or deleted", async () => {
+    await upsertOrderForSale({ lead, item, itemIndex: 0, soldByName: "Anita" });
+    await deleteOrders([id]);
+    expect(await findUnassignedOrderForPhone("+919876543210", "promotional")).toBeNull();
+  });
+
+  it("returns null for a number with no waiting order", async () => {
+    await upsertOrderForSale({ lead, item, itemIndex: 0, soldByName: "Anita" });
+    expect(await findUnassignedOrderForPhone("+919999999999")).toBeNull();
+  });
+});
 
 beforeEach(() => store.clear());
 

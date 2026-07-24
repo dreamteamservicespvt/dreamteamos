@@ -297,6 +297,9 @@ export default function Orders() {
                 <div className="flex flex-wrap gap-x-3 md:gap-x-4 gap-y-1 text-xs md:text-sm text-muted-foreground">
                   <span>Amount: <strong className="text-foreground">{formatCurrency(o.amount)}</strong></span>
                   {o.packageKey && o.packageKey !== "custom" && <span>Package: <strong className="text-foreground">{o.packageKey}</strong></span>}
+                  {o.clientName && o.clientName !== o.businessName && (
+                    <span>Client: <strong className="text-foreground">{o.clientName}</strong></span>
+                  )}
                   <span>Sold by: <strong className="text-foreground">{o.soldByName}</strong></span>
                   {o.fromAd && <span className="text-info">From ad</span>}
                   <span>Sold: <strong className="text-foreground">{fmtTs(o.createdAt)}</strong></span>

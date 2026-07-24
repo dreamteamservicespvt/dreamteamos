@@ -232,7 +232,8 @@ export interface Order {
   // Client identity (normalized phone is the join key end-to-end)
   clientPhone: string;          // "+91..."
   clientPhoneId: string;        // digits-only (phoneLockId) — also the Client doc id
-  businessName: string;         // carried from the lead so tech never re-types it
+  businessName: string;         // the business this ad is FOR (from the sale's requirement)
+  clientName?: string;          // the client who bought it — one client can have many businesses
   category: string;             // original sales category (richer than WorkAssignment.category)
   packageKey: string;
   amount: number;               // sale amount

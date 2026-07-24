@@ -13,6 +13,7 @@ import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import { normalizePhone } from "@/utils/phone";
 import { categoryLabel } from "@/utils/serviceCatalog";
+import { findUnassignedOrderForPhone } from "@/services/orders";
 import type { Order } from "@/types";
 
 /** Sequential, readable work id (W001 / P002 / C003 / O004) — defined with the Orders pipeline. */
@@ -58,6 +59,13 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
   const business = (businessName || "").trim();
   const phone = (businessWhatsapp || "").trim();
 
+  /**
+   * Work assigned straight from Work Assign (rather than from the Orders queue) still belongs to
+   * a sale if one exists for that client's number — so it adopts the waiting order instead of
+   * leaving it stuck in "unassigned" while the work is already being done.
+   */
+  const linkedOrder = order ?? (phone ? await findUnassignedOrderForPhone(phone, category) : null);
+
   const ref = await addDoc(collection(db, "work_assignments"), {
     assignedTo,
     assignedBy: assignerUid,
@@ -85,12 +93,12 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
     ...(aspectRatio ? { aspectRatio } : {}),
     ...(language ? { language } : {}),
     ...(requirementNotes?.trim() ? { requirementNotes: requirementNotes.trim() } : {}),
-    ...(order ? { orderId: order.id } : {}),
-    ...(order?.promise ? { promise: order.promise } : {}),
+    ...(linkedOrder ? { orderId: linkedOrder.id } : {}),
+    ...(linkedOrder?.promise ? { promise: linkedOrder.promise } : {}),
   });
 
-  if (order) {
-    await updateDoc(doc(db, "orders", order.id), {
+  if (linkedOrder) {
+    await updateDoc(doc(db, "orders", linkedOrder.id), {
       status: "assigned",
       workAssignmentId: ref.id,
       assignedTo,
@@ -105,7 +113,7 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
     type: "work_assigned",
     title: "New Work Assigned",
     message: `You have been assigned a new ${category} work (${clipCount} clips, ${duration}).${
-      order?.promise ? ` Deliver within ${order.promise.label}.` : ""
+      linkedOrder?.promise ? ` Deliver within ${linkedOrder.promise.label}.` : ""
     } Access code: ${accessCode}`,
     link: memberLink,
   });

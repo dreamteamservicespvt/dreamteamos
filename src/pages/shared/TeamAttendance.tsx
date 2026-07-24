@@ -356,9 +356,11 @@ export default function TeamAttendance() {
 
         {/* Desktop: the full month-grid table. */}
         <div className="hidden md:block rounded-xl border border-border bg-card overflow-hidden">
-          {/* table-fixed + colgroup: the WHOLE month always fits the available width on desktop;
-              min-w keeps cells usable on small screens (horizontal scroll only there). */}
-          <div className="overflow-x-auto">
+          {/* table-fixed + colgroup: the WHOLE month always fits the available width on desktop.
+              The wrapper is capped and scrolls in BOTH axes so the date header can stick to its
+              top — with the page as the scrollport the header scrolled away, which made marking
+              attendance for a member far down the list guesswork. */}
+          <div className="max-h-[70vh] overflow-auto">
             <table className="w-full min-w-[860px] table-fixed text-sm border-collapse">
               <colgroup>
                 <col style={{ width: 150 }} />
@@ -367,13 +369,14 @@ export default function TeamAttendance() {
               </colgroup>
               <thead>
                 <tr className="bg-muted/50">
-                  <th className="sticky left-0 z-10 bg-muted/50 text-left px-3 py-2 font-semibold text-foreground">Member</th>
-                  <th className="px-1 py-2 font-semibold text-foreground text-center">Summary</th>
+                  {/* z-30 on the corner cell so it stays above both the sticky row and column. */}
+                  <th className="sticky left-0 top-0 z-30 bg-muted text-left px-3 py-2 font-semibold text-foreground">Member</th>
+                  <th className="sticky top-0 z-20 bg-muted px-1 py-2 font-semibold text-foreground text-center">Summary</th>
                   {days.map((d) => {
                     const sun = isSunday(d);
                     const fest = holidays.has(d);
                     return (
-                      <th key={d} className={cn("px-0 py-1.5 font-medium text-center",
+                      <th key={d} className={cn("sticky top-0 z-20 bg-muted px-0 py-1.5 font-medium text-center",
                         d === todayStr ? "text-primary" : sun || fest ? "text-amber-500/80" : "text-muted-foreground")}>
                         <div className="text-[9px] leading-tight">{format(new Date(d), "EEE")[0]}</div>
                         <div className="text-[11px]">{d.slice(-2)}</div>

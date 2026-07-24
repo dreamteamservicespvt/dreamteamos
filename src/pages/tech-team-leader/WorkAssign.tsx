@@ -25,6 +25,7 @@ import { createWorkAssignment, nextWorkUniqueId } from '@/services/workAssign';
 import { verifyAssignments, awaitingVerification } from '@/services/workVerify';
 import MemberWorkloadCard from '@/components/work/MemberWorkloadCard';
 import { buildMemberWorkload, filterMemberWorkload } from '@/utils/memberWorkload';
+import { buildMemberPickerOptions, filterMemberPickerOptions } from '@/utils/memberPicker';
 
 /**
  * Work Assign — the control centre for work that still needs doing: search the team's live
@@ -61,6 +62,7 @@ export default function TeamLeaderWorkAssign() {
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [memberSearch, setMemberSearch] = useState('');
+  const [memberPickerOpen, setMemberPickerOpen] = useState(false);
   /** Duration entered as a free clip count instead of a standard package. */
   const [customDuration, setCustomDuration] = useState(false);
   const [customClips, setCustomClips] = useState(3);
@@ -183,20 +185,16 @@ export default function TeamLeaderWorkAssign() {
     }));
   };
 
-  const filteredMembers = useMemo(() => {
-    const qRaw = memberSearch.trim();
-    if (!qRaw) return techMembers;
-    const q = qRaw.toLowerCase();
-    const qDigits = qRaw.replace(/\D/g, '');
-    return techMembers.filter(m => {
-      if (m.name.toLowerCase().includes(q)) return true;
-      if (qDigits && m.phone) {
-        const pd = normalizePhone(m.phone).replace(/\D/g, '');
-        if (pd.includes(qDigits) || qDigits.includes(pd)) return true;
-      }
-      return false;
-    });
-  }, [techMembers, memberSearch]);
+  // Ranked "who should take this next": checked-in and most vacant first. Only a suggestion —
+  // the whole team stays listed and searchable, and the lead can pick anyone.
+  const memberOptions = useMemo(
+    () => buildMemberPickerOptions(techMembers, assignments, todayCheckins),
+    [techMembers, assignments, todayCheckins],
+  );
+  const filteredMembers = useMemo(
+    () => filterMemberPickerOptions(memberOptions, memberSearch, v => normalizePhone(v).replace(/\D/g, '')),
+    [memberOptions, memberSearch],
+  );
 
   const resolvedLanguage = () => (form.language === 'Custom' ? (form.customLanguage.trim() || 'Custom') : form.language);
 
@@ -501,22 +499,35 @@ export default function TeamLeaderWorkAssign() {
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">Assign To</label>
               <div className="relative">
-                <input type="text" placeholder="Search member..." value={memberSearch}
-                  onChange={(e) => { setMemberSearch(e.target.value); if (form.assignedTo) updateField('assignedTo', ''); }}
+                <input type="text" placeholder="Search or pick a member…" value={memberSearch}
+                  onFocus={() => setMemberPickerOpen(true)}
+                  onBlur={() => setTimeout(() => setMemberPickerOpen(false), 150)}
+                  onChange={(e) => { setMemberSearch(e.target.value); setMemberPickerOpen(true); if (form.assignedTo) updateField('assignedTo', ''); }}
                   className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none" />
                 {form.assignedTo && (
                   <div className="mt-1 text-xs text-green-500">✓ {techMembers.find(m => m.uid === form.assignedTo)?.name}</div>
                 )}
-                {!form.assignedTo && memberSearch && filteredMembers.length > 0 && (
-                  <div className="absolute z-10 w-full mt-1 bg-card border border-border rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                    {filteredMembers.map(m => (
-                      <button key={m.uid} type="button" onClick={() => { updateField('assignedTo', m.uid); setMemberSearch(m.name); }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors text-foreground">{m.name}</button>
+                {/* Opens on focus — no need to type first. Checked-in and most vacant lead the
+                    list, but anyone can be picked. */}
+                {!form.assignedTo && memberPickerOpen && filteredMembers.length > 0 && (
+                  <div className="absolute z-20 w-full mt-1 bg-card border border-border rounded-lg shadow-lg max-h-56 overflow-y-auto">
+                    {filteredMembers.map(({ member: m, activeCount, checkedIn }) => (
+                      <button key={m.uid} type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => { updateField('assignedTo', m.uid); setMemberSearch(m.name); setMemberPickerOpen(false); }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent transition-colors text-foreground">
+                        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${checkedIn ? 'bg-green-500' : 'bg-muted-foreground/40'}`} />
+                        <span className="truncate">{m.name}</span>
+                        <span className={`ml-auto shrink-0 text-[10px] ${checkedIn ? 'text-green-500' : 'text-muted-foreground'}`}>
+                          {checkedIn ? 'active' : 'inactive'}
+                          {activeCount > 0 ? ` · ${activeCount} ad${activeCount === 1 ? '' : 's'}` : ' · free'}
+                        </span>
+                      </button>
                     ))}
                   </div>
                 )}
-                {!form.assignedTo && memberSearch && filteredMembers.length === 0 && (
-                  <div className="absolute z-10 w-full mt-1 bg-card border border-border rounded-lg shadow-lg p-3 text-xs text-muted-foreground">No members found</div>
+                {!form.assignedTo && memberPickerOpen && filteredMembers.length === 0 && (
+                  <div className="absolute z-20 w-full mt-1 bg-card border border-border rounded-lg shadow-lg p-3 text-xs text-muted-foreground">No members found</div>
                 )}
               </div>
             </div>

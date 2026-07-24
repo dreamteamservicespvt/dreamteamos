@@ -9,7 +9,7 @@
  * resolved when delivered). The queue subscribes to ACTIVE orders only via a scoped `in` query.
  */
 import {
-  collection, doc, getDoc, setDoc, updateDoc, deleteDoc, query, where, writeBatch,
+  collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, query, where, writeBatch,
   serverTimestamp, Timestamp, arrayUnion, type Query, type DocumentData,
 } from "firebase/firestore";
 import { db } from "@/services/firebase";
@@ -75,7 +75,12 @@ export async function upsertOrderForSale(params: {
     const saleFields = {
       clientPhone: phone,
       clientPhoneId: phoneLockId(lead.phone),
-      businessName: lead.realName || lead.displayName || "",
+      // The business this ad is FOR — taken from what the sales member typed on this sale, not
+      // from the lead. The lead name is the *client*, and one client can order ads for several
+      // different businesses, so only the per-sale business name is meaningful to the tech team.
+      businessName: item.requirement?.businessName?.trim() || lead.realName || lead.displayName || "",
+      // The client behind the sale, kept alongside so the queue can show both when they differ.
+      clientName: lead.realName || lead.displayName || "",
       category: item.category,
       packageKey: item.packageKey || "custom",
       amount: item.amount || 0,
@@ -229,6 +234,36 @@ export async function revertOrderToAssigned(orderId: string): Promise<void> {
     await updateDoc(ref, { status: "assigned", completedAt: null, updatedAt: serverTimestamp() });
   } catch (err) {
     console.error("[orders] revertOrderToAssigned failed:", err);
+  }
+}
+
+/**
+ * The unassigned order for a client's number, if one is waiting.
+ *
+ * The tech team often assigns work straight from Work Assign instead of picking the order out of
+ * the queue. Without this, the sale's order sat in "unassigned" forever while the work was already
+ * being done. Matching on the client's phone number lets a manual assignment adopt its order, so
+ * both sides stay in step. Prefers an order of the same category; otherwise takes the oldest one.
+ * Never throws.
+ */
+export async function findUnassignedOrderForPhone(phone: string, category?: string): Promise<Order | null> {
+  const phoneId = phoneLockId(phone);
+  if (!phoneId) return null;
+  try {
+    const snap = await getDocs(query(
+      collection(db, "orders"),
+      where("clientPhoneId", "==", phoneId),
+      where("status", "==", "unassigned"),
+    ));
+    const candidates = snap.docs
+      .map((d) => ({ id: d.id, ...d.data() } as Order))
+      .filter((o) => !o.deleted && !o.workAssignmentId)
+      .sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
+    if (candidates.length === 0) return null;
+    return candidates.find((o) => o.category === category) ?? candidates[0];
+  } catch (err) {
+    console.error("[orders] findUnassignedOrderForPhone failed:", err);
+    return null;
   }
 }
 
