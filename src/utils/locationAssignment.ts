@@ -31,35 +31,60 @@ export interface LocationPhoto {
 export interface ClipLocation {
   /** 0-based clip number. */
   clip: number;
-  /** Position in the uploaded file list, or null when there are no usable photos at all. */
+  /** Position in the uploaded file list, or null when this clip's location must be generated. */
   photoIndex: number | null;
-  /** True when every photo was already used and this one had to come round again. */
-  reused: boolean;
 }
 
 /**
- * Assigns a photo to each clip: every usable photo is used once before any is used twice.
+ * Assigns at most one photo to each clip: every usable photo is used exactly once, and any clip
+ * left over has its location generated instead.
  *
- * With more photos than clips the extras simply go unused — better an unused photo than a
- * repeated backdrop. With fewer photos than clips the list cycles, and the reused flag lets the
- * prompt ask for a different camera angle so the repeat doesn't read as the same shot twice.
+ * This deliberately does NOT cycle back to the start when there are fewer photos than clips. A
+ * client who sends one photo for a two-clip ad should get that photo behind clip 1 and a generated
+ * — but real-looking — zone of the same business behind clip 2. Showing the same photograph twice
+ * reads as a stalled ad, and it also puts the member in the impossible position of attaching one
+ * file to two different prompts and wondering whether they got it wrong.
  */
 export function assignPhotosToClips(clipCount: number, photos: LocationPhoto[]): ClipLocation[] {
+  if (clipCount <= 0) return [];
   const usable = photos.filter((p) => p.usable);
 
-  if (clipCount <= 0) return [];
-  if (usable.length === 0) {
-    return Array.from({ length: clipCount }, (_, clip) => ({ clip, photoIndex: null, reused: false }));
-  }
+  return Array.from({ length: clipCount }, (_, clip) => ({
+    clip,
+    photoIndex: clip < usable.length ? usable[clip].index : null,
+  }));
+}
 
-  return Array.from({ length: clipCount }, (_, clip) => {
-    const pass = Math.floor(clip / usable.length);
-    return {
-      clip,
-      photoIndex: usable[clip % usable.length].index,
-      reused: pass > 0,
-    };
-  });
+/**
+ * The one line a member has to read before they can act: attach photo N, or attach nothing.
+ *
+ * This is written by code rather than left to the model because it is the instruction the whole
+ * hand-off depends on — the member is holding several photos from the client and has to know which
+ * one belongs to the prompt in front of them. `photoNumber` is 1-based to match the order the files
+ * appear in the Store / Office Image list.
+ */
+export function attachmentDirective(
+  location: ClipLocation,
+  photos: LocationPhoto[] = [],
+): string {
+  if (location.photoIndex === null) {
+    return "🎨 ATTACH NOTHING — no client photo for this clip. The location below is generated.";
+  }
+  const zone = photos.find((p) => p.index === location.photoIndex)?.zone;
+  return `📎 ATTACH STORE/OFFICE IMAGE #${location.photoIndex + 1}${zone ? ` — the ${zone}` : ""}`;
+}
+
+/**
+ * Splits a stamped prompt back into its directive and its body — the inverse of the above, kept
+ * beside it so the two can never disagree about the shape.
+ *
+ * The directive is an instruction to the MEMBER, so the UI shows it as a banner and hands the image
+ * generator the body alone; a stray "ATTACH IMAGE #2" in the prompt is noise the generator may try
+ * to render as text.
+ */
+export function splitAttachmentDirective(text: string): { directive: string | null; body: string } {
+  const match = text.match(/^\s*((?:📎|🎨)[^\n]*)\n+([\s\S]*)$/);
+  return match ? { directive: match[1].trim(), body: match[2] } : { directive: null, body: text };
 }
 
 /**
@@ -72,8 +97,12 @@ export function describeClipLocations(
 ): string {
   const byIndex = new Map(photos.map((p) => [p.index, p]));
 
-  const lines = assignments.map(({ clip, photoIndex, reused }) => {
-    if (photoIndex === null) return `  Clip ${clip + 1}: no client photograph — build this location from the business profile.`;
+  const lines = assignments.map(({ clip, photoIndex }) => {
+    if (photoIndex === null) {
+      return `  Clip ${clip + 1}: NO PHOTOGRAPH — the client sent none for this clip. Build a real-looking `
+        + `zone of this same business, chosen to match this clip's line, matching the lighting and `
+        + `finish of the photographs above so it belongs to the same premises.`;
+    }
     const photo = byIndex.get(photoIndex);
     const bits = [
       `zone: ${photo?.zone || "business interior"}`,
@@ -81,18 +110,16 @@ export function describeClipLocations(
       photo?.lighting ? `lighting: ${photo.lighting}` : null,
       photo?.bestFor ? `best for: ${photo.bestFor}` : null,
     ].filter(Boolean).join(" · ");
-    const repeat = reused
-      ? " (this photograph is used again — frame it from a clearly different angle and distance so it does not read as the same shot)"
-      : "";
-    return `  Clip ${clip + 1}: PHOTOGRAPH #${photoIndex + 1} — ${bits}${repeat}`;
+    return `  Clip ${clip + 1}: PHOTOGRAPH #${photoIndex + 1} — ${bits}`;
   });
 
   return `===== PHOTOGRAPH ASSIGNED TO EACH CLIP =====
 
 ${lines.join("\n")}
 
-You may swap a clip to a DIFFERENT attached photograph if that one clearly proves that clip's line
-better. You may NOT put the same photograph behind two clips while any other photograph is unused.`;
+This assignment is FIXED — the member attaches exactly this photograph to this clip's prompt, so do
+not tell a clip to use a different photograph, and never put the same photograph behind two clips.
+Each prompt must open by naming its own photograph exactly as listed above.`;
 }
 
 /**

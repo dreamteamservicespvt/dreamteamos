@@ -66,8 +66,8 @@ const promotionalBeats = (segmentCount: number, first: string, second: string): 
   }
 
   const beats = [
-    `Clip 1 — HOOK: ${first} raises the customer's real question or problem. ${second}'s answer NAMES `
-    + `THE BUSINESS and says plainly what it does.`,
+    `Clip 1 — ARRIVAL / HOOK: they have just walked in. ${first} reacts to what he sees or raises the `
+    + `customer's real question about it. ${second}'s answer NAMES THE BUSINESS and says plainly what it does.`,
   ];
   for (let i = 2; i < segmentCount; i++) {
     beats.push(
@@ -76,7 +76,8 @@ const promotionalBeats = (segmentCount: number, first: string, second: string): 
     );
   }
   beats.push(
-    `Clip ${segmentCount} — CLOSE: ${second} gives the reason to act now and delivers the call to action.`,
+    `Clip ${segmentCount} — CLOSE: ${second} gives the reason to act now and delivers the call to action, `
+    + `inviting the viewer to come to the business the way the two of them just did.`,
   );
   return beats.join("\n");
 };
@@ -118,9 +119,27 @@ line must actually ANSWER what ${first.name} just said.
 
 ===== THIS IS A PROMOTIONAL AD FOR ONE SPECIFIC BUSINESS =====
 
-The characters are the delivery, not the subject. This ad sells the business described in the
-BUSINESS INFORMATION you are given — it is not a comedy sketch, and it is not a general chat about
-advertising, marketing, offers or "promotion". The humour exists only to carry the sell.
+THE SITUATION, AND IT NEVER CHANGES: ${first.name} and ${second.name} have come to this client's
+business to show it to people. They are standing in the real premises, seeing the real thing, and
+telling the viewer why it is worth coming to. Write it as that visit — two friends who turned up at
+a good place and want everyone to know about it — never as a studio announcement, never as an
+advert read aloud, never as a comedy sketch with a tagline bolted on the end.
+
+The characters are the DELIVERY, not the subject. This ad sells the business described in the
+BUSINESS INFORMATION you are given — it is not a general chat about advertising, marketing, offers
+or "promotion". The humour exists only to carry the sell. Every line must sound like natural
+${lang} speech between the two of them, not like a written slogan.
+
+===== THE NAMES ARE NOT THE PRODUCT (STRICT) =====
+
+Across the ENTIRE script — all ${segmentCount} clips together — a character's name may be spoken
+AT MOST ONCE, in total. Not once per clip: once in the whole ad.
+
+We are promoting the business, not the characters. Every second spent saying "${first.name}" or
+"${second.name}" is a second not spent saying what the client does. The viewer can see who is
+talking; they cannot see the business's name unless it is said. So use that one allowance early if
+it helps the first line sound natural, then never again — after that they simply talk to each
+other. The BUSINESS's name is the name that must be repeated instead.
 
 CLIP-BY-CLIP STRUCTURE:
 
@@ -210,6 +229,7 @@ NON-NEGOTIABLE CONTRACT:
 • Each line is one complete sentence ending in . ! or ?
 • Output format exactly: \`<start>-<end>|${first.key}: <line>\` then \`<start>-<end>|${second.key}: <line>\`
 • Keep the original meaning and the business facts — change only what is broken
+• Across ALL ${segmentCount} clips together, a character's name may be spoken AT MOST ONCE in total — we are promoting the business, not the characters
 • Total duration is ${duration} seconds; never add or remove clips${spellings.length > 0
   ? `\n• A spoken character name is written EXACTLY as: ${spellings.map((s) => `${s.name} → ${s.spelling}`).join(", ")}`
   : ""}
@@ -241,6 +261,118 @@ export interface CharacterFramePromptInput {
   businessContext?: string;
 }
 
+/**
+ * The director's shot plan — one designed shot per clip, in the order a real commercial moves.
+ *
+ * The standard human-model pipeline has had this from the start (services/prompts.ts) and it is the
+ * single biggest reason its frames look art-directed rather than generic: each clip arrives with a
+ * stated purpose, zone, camera and staging instead of "write a nice frame". The character version
+ * had none of it and the prompts came out flat and interchangeable. Same idea, restaged for two
+ * cartoon characters who walk a customer through a business.
+ */
+const SHOT_DESIGNS = [
+  {
+    name: "ARRIVAL / ESTABLISHING SHOT",
+    zone: "the entrance, shopfront or main reception — where a real customer would walk in",
+    camera: "wide enough to establish the place, both characters full-figure, the business clearly readable behind them",
+    staging: "the two have just arrived and are taking the place in — open, welcoming body language turned towards camera",
+    purpose: "establish WHERE we are and WHOSE business this is, in one glance",
+  },
+  {
+    name: "THE PROOF SHOT",
+    zone: "the working heart of the business — the counter, shelves, machines, stock or work area this clip's line is about",
+    camera: "medium two-shot, closer in, with the real equipment or stock filling the space behind and beside them",
+    staging: "one character gesturing towards the real thing being talked about while the other reacts to it",
+    purpose: "show the actual proof of what is being claimed — the viewer must see the thing, not just hear about it",
+  },
+  {
+    name: "THE SERVICE / TRUST SHOT",
+    zone: "the customer-facing zone — billing counter, consultation desk, service point or display the client is proud of",
+    camera: "medium two-shot at eye level, warmer and closer, with the business's own branding naturally in frame",
+    staging: "engaged mid-conversation, relaxed and confident, as if a staff member is just out of frame",
+    purpose: "build trust — this is a real, running business that looks after its customers",
+  },
+  {
+    name: "THE DETAIL / DEPTH SHOT",
+    zone: "a different zone not shown yet — a specialised area, secondary display, storage, or the back-of-house work area",
+    camera: "a fresh angle with real depth, using the room's own lines and fixtures to frame the pair",
+    staging: "actively exploring — leaning in, pointing something out, discovering it with the viewer",
+    purpose: "prove the place is bigger than one corner and add visual variety",
+  },
+  {
+    name: "THE CLOSING INVITATION",
+    zone: "back at the entrance, main counter or the most inviting spot in the premises — full circle",
+    camera: "clean, warm, slightly wider composition with the business unmistakable around them",
+    staging: "both turned to camera, openly inviting the viewer in — the final impression",
+    purpose: "end on 'come and visit' — the call to action needs a welcoming frame behind it",
+  },
+] as const;
+
+/**
+ * Picks the shots for this ad's length. Every ad opens on the arrival and ends on the invitation;
+ * the middle is filled with the proof/trust/detail beats, so a 2-clip ad is arrival + close and a
+ * long one still never repeats a zone.
+ */
+function shotsForClipCount(segmentCount: number): typeof SHOT_DESIGNS[number][] {
+  if (segmentCount <= 0) return [];
+  if (segmentCount === 1) return [SHOT_DESIGNS[0]];
+
+  const [arrival, ...rest] = SHOT_DESIGNS;
+  const closing = SHOT_DESIGNS[SHOT_DESIGNS.length - 1];
+  const middlePool = rest.slice(0, rest.length - 1);
+  const middle = Array.from(
+    { length: Math.max(0, segmentCount - 2) },
+    (_, i) => middlePool[i % middlePool.length],
+  );
+  return [arrival, ...middle, closing];
+}
+
+/**
+ * Clip 1 is written in full; every later clip is a CONTINUATION that must not re-describe anything
+ * already locked. That split is the other half of what the standard pipeline does — a continuation
+ * frame that redescribes its subject gets a different-looking subject back from the generator.
+ */
+function clipShotPlan(
+  segmentCount: number,
+  clipSummaries: string[],
+  shots: typeof SHOT_DESIGNS[number][],
+  hasLogo: boolean,
+  aspectRatio: string,
+  orientation: string,
+): string {
+  return shots.map((shot, i) => {
+    const n = i + 1;
+    const line = clipSummaries[i] ? `\n   🗣️ THIS CLIP'S LINE: ${clipSummaries[i]}` : "";
+    const head = `**CLIP ${n} — ${shot.name}**
+   📍 ZONE: ${shot.zone}
+   🎥 CAMERA: ${shot.camera}
+   🎭 STAGING: ${shot.staging}
+   🎯 PURPOSE: ${shot.purpose}${line}`;
+
+    if (n === 1) {
+      return `${head}
+
+   Write a COMPLETE standalone prompt for this frame, about 90–120 words, as one flowing paragraph.
+   Open by naming the photograph or generated zone this clip uses, then the two characters by name
+   only, then the real fixtures and stock actually visible around them, then the light in that
+   space, then the ${aspectRatio} ${orientation} framing.${hasLogo ? " Place the attached logo where it would really be installed in this zone." : ""}
+   This frame sets the look for the whole ad — the grade, the light and the finish that every later
+   clip has to match.`;
+    }
+
+    return `${head}
+
+   ⚠️ CONTINUATION FRAME — clip 1's frame is attached as the reference. Do NOT re-describe the
+   characters, the style, the grade or the business identity: they are LOCKED by that reference.
+   Write ONE line referring to it — "the same Motu and Patlu exactly as in the attached reference
+   frame, unchanged" — and then spend the rest of the prompt ONLY on what genuinely changes:
+   the new zone and the real objects in it, the new staging and gestures, the new camera angle,
+   and how the light differs in this part of the premises.
+   Keep it SHORT: 60–90 words. Anything you re-describe is something the generator is free to
+   redraw differently, which is exactly how the characters drift between clips.`;
+  }).join("\n\n");
+}
+
 export const CHARACTER_MULTI_FRAME_SYSTEM_PROMPT = (
   pack: CharacterPack,
   input: CharacterFramePromptInput,
@@ -251,6 +383,7 @@ export const CHARACTER_MULTI_FRAME_SYSTEM_PROMPT = (
   } = input;
   const clipContext = clipSummaries.map((s, i) => `  Clip ${i + 1}: ${s}`).join("\n");
   const orientation = aspectRatio === "16:9" ? "horizontal (landscape)" : "vertical (portrait)";
+  const shots = shotsForClipCount(segmentCount);
 
   /**
    * The logo is ATTACHED, so the model can see it. Describing it is worse than useless: the words
@@ -331,16 +464,20 @@ the background must prove the line.
 • BOTH characters visible in every frame, clearly separated, neither hidden or cropped.
 • Stage them mid-conversation, angled slightly towards each other but open to camera — the classic
   two-hander. The one who is speaking is the more animated of the two.
-• Keep their height difference honest and constant, and keep both in scale with the real room.
 • They must be the focus, but the business must be unmistakable behind them.
+• Say nothing about their build, size or how tall either one is. They are the real characters —
+  their proportions come with them. Writing it down only invites the generator to redraw them.
+
+===== THE SHOT PLAN — WRITE THESE ${segmentCount} PROMPTS =====
+
+${clipShotPlan(segmentCount, clipSummaries, shots, hasLogo, aspectRatio, orientation)}
 
 ===== OUTPUT FORMAT =====
 
-Write ${segmentCount} prompts separated by ###CLIP###.
-Each prompt is ONE short paragraph — about 60 to 90 words — naming the two characters, the specific
-business zone for that clip, the lighting, the staging, the camera framing and the ${aspectRatio}
-${orientation} canvas. Never describe what the characters look like${hasLogo ? ", and never describe the attached logo" : ""} — naming them is
-enough. Do NOT number them, add headings, or explain.
+Write ${segmentCount} prompts separated by ###CLIP### on its own line, in clip order, nothing else.
+Each prompt is plain flowing English — no headings, no numbering, no bullet lists, no commentary,
+and no negative list. Follow the per-clip word budgets above. Never describe what the characters
+look like${hasLogo ? ", and never describe the attached logo" : ""} — naming them is enough.
 
 ${characterNegativesBlock(pack)}
 
@@ -372,27 +509,27 @@ YOUR TASK: Generate ${segmentCount} copy-paste-ready Veo 3 prompts, one per ${CL
 
 INPUT PROVIDED: each clip's two-line dialogue (${first.name} first, then ${second.name}) and the location it plays in.
 
-ORDERED FORMAT: ${aspectRatio} ${orientation} video. Every prompt must state it.
-
 You must output each clip in this EXACT FORMAT:
 
-${aspectRatio} ${orientation} video. ${cast}, the real original characters from ${pack.franchise}, in \${location for this clip}. \${lighting and camera framing, one short phrase}.
+${aspectRatio} ${orientation} video. ${cast} from ${pack.franchise}, in \${location for this clip}.
 
-${first.name} says, in a ${first.voice} voice: "\${${first.name}'s line}"
-Then ${second.name} replies, in a ${second.voice} voice: "\${${second.name}'s line}"
+${first.name} says, in his own original ${first.name} voice from the show: "\${${first.name}'s line}"
+Then ${second.name} replies, in his own original ${second.name} voice from the show: "\${${second.name}'s line}"
 
-Only the speaking character's mouth moves; the other listens and reacts. Single continuous shot, no cuts.
+Only the speaking character's mouth moves; the other listens and reacts. Single continuous shot.
 
 Negative prompt:
 No text on the screen, no subtitles, no watermark
 No background music, pure studio type voice over, crystal clear voice, no echos
+No new or different voices, no narrator, no dubbing accent
 Do not restyle the location into a cartoon, no extra characters, no character morphing
 
 RULES:
-• Keep each prompt SHORT — the shape above and nothing more. No paragraphs of description.
-• These must be the REAL ${cast} from ${pack.franchise} — not look-alikes, not a new cartoon duo.
-• NEVER describe what ${cast} look like. Their names are enough; describing them makes the model draw the wrong characters.
-• Use the dialogue lines EXACTLY as provided — do not rewrite, translate or shorten them.
+• Keep each prompt SHORT — the shape above, nothing more. No added sentences or paragraphs.
+• VOICES ARE STRICT: only the original ${cast} voices from the show — ${first.name} ${first.voice}, ${second.name} ${second.voice}. Never a narrator, a new voice actor, or a different accent.
+• These must be the REAL ${cast} from ${pack.franchise} — not look-alikes, not a new duo.
+• NEVER describe how they look or how tall they are — their names are enough.
+• Use the dialogue lines EXACTLY as given — do not rewrite, translate or shorten them.
 • Only the location and the dialogue change between clips.
 
 OUTPUT FORMAT:

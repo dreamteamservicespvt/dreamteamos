@@ -39,11 +39,14 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   };
   const [internalFiles, setInternalFiles] = useState<File[]>(getFilesFromValue);
   const files = value !== undefined ? getFilesFromValue() : internalFiles;
+  /** Set when the member just tried to upload a PDF — explains what to do instead. */
+  const [pdfNotice, setPdfNotice] = useState<string | null>(null);
 
   const hasReachedMax = maxFiles !== undefined && files.length >= maxFiles;
 
   // Image preview thumbnails (object URLs), cleaned up when files change/unmount
   const isImageFile = (f: File) => f.type.startsWith('image/');
+  const isPdf = (f: File) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
   const previewUrls = useMemo(
     () => files.map((f) => (isImageFile(f) ? URL.createObjectURL(f) : null)),
     [files]
@@ -54,8 +57,17 @@ export const FileUpload: React.FC<FileUploadProps> = ({
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      const incoming = Array.from(e.target.files);
-      
+      const all = Array.from(e.target.files);
+      // PDFs are refused everywhere: the pipeline reads images and plain text, so a PDF silently
+      // contributed nothing to the ad. Rejecting it loudly, with the two things that DO work, beats
+      // letting the member believe the client's brochure was used.
+      const incoming = all.filter((f) => !isPdf(f));
+      const rejected = all.length - incoming.length;
+      setPdfNotice(rejected > 0
+        ? `PDF${rejected === 1 ? '' : 's'} can't be used here. Take a screenshot of the pages you need and upload those as images, or copy the text out and paste it into the text box.`
+        : null);
+      if (incoming.length === 0) { e.target.value = ''; appendModeRef.current = false; return; }
+
       if (appendModeRef.current && canAddMore) {
         // Append mode: add new files to existing list
         let merged = [...files, ...incoming];
@@ -104,6 +116,23 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     return <ImageIcon className="w-8 h-8 text-green-500" />;
   };
 
+  const PdfNotice = () => pdfNotice ? (
+    <div
+      data-test="pdf-notice"
+      className={cn("mt-2 flex items-start gap-2 rounded-lg border px-3 py-2 text-xs leading-relaxed",
+        isDark ? "border-amber-600/60 bg-amber-950/30 text-amber-200" : "border-amber-400 bg-amber-50 text-amber-800")}
+    >
+      <span className="shrink-0">⚠️</span>
+      <span>{pdfNotice}</span>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setPdfNotice(null); }}
+        className="ml-auto shrink-0 opacity-60 hover:opacity-100"
+        aria-label="Dismiss"
+      ><X className="w-3.5 h-3.5" /></button>
+    </div>
+  ) : null;
+
   return (
     <div className="mb-4">
       {label && (
@@ -125,6 +154,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
           <div className="mb-2">{getIcon()}</div>
           <p className={cn("text-sm font-medium", isDark ? "text-slate-300" : "text-slate-500")}>Click to upload or drag & drop</p>
           <p className={cn("text-xs mt-1", isDark ? "text-slate-500" : "text-slate-400")}>{helperText || accept}</p>
+          <PdfNotice />
         </div>
       ) : (
         <div className="space-y-2">
@@ -180,6 +210,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
               Change file
             </button>
           )}
+          <PdfNotice />
         </div>
       )}
     </div>

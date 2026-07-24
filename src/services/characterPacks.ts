@@ -95,7 +95,7 @@ const MOTU_PATLU: CharacterPack = {
       key: "patlu",
       name: "Patlu",
       nativeNames: {
-        telugu: { spelling: "పతలూ", variants: ["పట్లూ", "పట్లు", "పత్లూ", "పత్లు", "పాట్లూ", "పాట్లు", "పతలు"] },
+        telugu: { spelling: "పట్లు", variants: ["పతలూ", "పట్లూ", "పత్లూ", "పత్లు", "పాట్లూ", "పాట్లు", "పతలు"] },
       },
       voice: "calm, measured, clear and unhurried",
       persona: "logical, well-informed, patient, quietly witty, the one who always has the answer; speaks slower than Motu",
@@ -105,16 +105,20 @@ const MOTU_PATLU: CharacterPack = {
     },
   ],
   // Describes the COMPOSITE, not the characters — how the cartoon sits inside the photograph.
+  // Says nothing about their build or relative size: that is part of who they already are, and
+  // stating it invites the generator to redraw them to the words instead of using the real pair.
   styleDirective:
     "2D cartoon characters composited into a PHOTOREAL live-action environment. The characters stay "
-    + "cartoon; the location stays photographic and is never restyled. They stand on the actual floor at "
-    + "believable scale, in correct perspective, casting soft contact shadows that match the scene's light.",
+    + "cartoon; the location stays photographic and is never restyled. They stand on the actual floor in "
+    + "correct perspective, casting soft contact shadows that match the scene's light.",
   dialogueRhythm:
     "Motu speaks first and sets up the question or reaction; Patlu answers with the business value. "
     + "This order never reverses. Both characters speak in every single clip.",
   negatives: [
     "Do NOT restyle the environment into a cartoon — the location must stay photoreal",
-    "Do NOT change either character's proportions, colours, or clothing between clips",
+    // Says "the real ones" rather than naming proportions or heights: describing their build is
+    // what let the generator draw two same-sized men who merely resembled them.
+    "Do NOT redraw, restyle or re-proportion the characters — use the real ones, identical in every clip",
     "No additional cartoon characters anywhere in frame",
     "No on-screen text, captions, subtitles, logos-as-text, or watermarks",
     "No floating characters — both must contact the ground with matching shadows",

@@ -4,6 +4,7 @@ import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
 import { transliterateToEnglish } from '@/services/geminiService';
 import { clipLabel, formatClipLine, formatClipScript, parseLabeledClips } from '@/utils/voiceOverFormat';
+import { splitAttachmentDirective } from '@/utils/locationAssignment';
 
 interface GeneratedCardProps {
   title: string;
@@ -28,6 +29,12 @@ const cleanCodeBlocks = (text: string): string => {
 };
 
 export type VoiceClip = { label: string; text: string };
+
+/**
+ * Splits a character-ad frame prompt into its "attach this photo" banner and the prompt itself.
+ * Re-exported from utils/locationAssignment, which also writes the directive.
+ */
+export const stripAttachmentDirective = splitAttachmentDirective;
 
 /**
  * Splits a voice-over script into its clips. Accepts every header shape the app can produce or
@@ -104,6 +111,9 @@ export const GeneratedCard: React.FC<GeneratedCardProps> = ({
   const handleCopy = () => {
     let copyText = textToDisplay;
     if (sectionType === 'mainFrame' || sectionType === 'header') copyText = cleanCodeBlocks(copyText);
+    // The attachment directive is an instruction to the MEMBER, not to the image generator — it is
+    // shown as a banner above the prompt and left out of what gets pasted.
+    copyText = stripAttachmentDirective(copyText).body;
     // Voice-over copies always leave in the business-facing `clip-1[0-8sec]: …` shape,
     // never the canonical `0-8: …` storage form.
     if (voiceOverClips.length > 0) copyText = formatClipScript(voiceOverClips.map(c => c.text));
@@ -254,11 +264,28 @@ export const GeneratedCard: React.FC<GeneratedCardProps> = ({
               );
             })}
           </div>
-        ) : (
-          <div className={cn("text-sm whitespace-pre-wrap leading-relaxed", isDark ? "text-slate-300" : "text-slate-700")}>
-            {textToDisplay}
-          </div>
-        )}
+        ) : (() => {
+          // A character-ad frame prompt arrives with an "attach this photo" line on top. It is
+          // shown as a banner — the member has to act on it BEFORE pasting — and never mixed into
+          // the prompt body, which is what they hand to the image generator.
+          const { directive, body } = stripAttachmentDirective(String(textToDisplay ?? ''));
+          const needsPhoto = directive?.startsWith('📎');
+          return (
+            <>
+              {directive && (
+                <div className={cn("mb-3 rounded-lg border px-3 py-2 text-sm font-semibold flex items-start gap-2",
+                  needsPhoto
+                    ? (isDark ? "border-amber-600/60 bg-amber-950/30 text-amber-200" : "border-amber-400 bg-amber-50 text-amber-800")
+                    : (isDark ? "border-slate-600 bg-slate-700/40 text-slate-300" : "border-slate-300 bg-slate-50 text-slate-600"))}>
+                  <span>{directive}</span>
+                </div>
+              )}
+              <div className={cn("text-sm whitespace-pre-wrap leading-relaxed", isDark ? "text-slate-300" : "text-slate-700")}>
+                {body}
+              </div>
+            </>
+          );
+        })()}
       </div>
     </div>
   );

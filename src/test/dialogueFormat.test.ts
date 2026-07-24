@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   formatCanonicalDialogue, formatDialogueScript, parseDialogueClips,
-  validateDialogueClips, countSpokenWords, applyNameSpellings,
+  validateDialogueClips, countSpokenWords, applyNameSpellings, countNameMentions,
   WORDS_PER_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE,
   type DialogueClip,
 } from "@/utils/dialogueFormat";
@@ -261,7 +261,9 @@ describe("character pack registry", () => {
   it("keeps the location photoreal and the characters consistent, as hard negatives", () => {
     const negatives = pack.negatives.join(" ").toLowerCase();
     expect(negatives).toContain("photoreal");
-    expect(negatives).toContain("proportions");
+    // Phrased as "use the real ones" rather than by naming proportions — describing their build is
+    // what let the generator draw two same-sized men who merely resembled them.
+    expect(negatives).toContain("use the real ones, identical in every clip");
     expect(negatives).toContain("on-screen text");
   });
 
@@ -287,9 +289,17 @@ describe("fixed spoken name spellings", () => {
   const motu = telugu.find(s => s.name === "Motu")!;
   const patlu = telugu.find(s => s.name === "Patlu")!;
 
-  it("fixes Motu as మోటూ and Patlu as పతలూ in Telugu", () => {
+  it("fixes Motu as మోటూ and Patlu as పట్లు in Telugu", () => {
     expect(motu.spelling).toBe("మోటూ");
-    expect(patlu.spelling).toBe("పతలూ");
+    expect(patlu.spelling).toBe("పట్లు");
+  });
+
+  // The spelling this replaced must now be rewritten INTO the current one, or scripts generated
+  // before the change would keep their old spelling on a re-run.
+  it("rewrites the previously-fixed spelling into the current one", () => {
+    expect(patlu.variants).toContain("పతలూ");
+    const clips: DialogueClip[] = [[{ speaker: "motu", text: "పతలూ, ఎలా?" }]];
+    expect(applyNameSpellings(clips, telugu)[0][0].text).toBe("పట్లు, ఎలా?");
   });
 
   it("is case- and space-insensitive about the language name", () => {
@@ -307,14 +317,14 @@ describe("fixed spoken name spellings", () => {
       { speaker: "patlu", text: "ప్రచారం చాలా సులువు కదా, మోటు." },
     ]];
     const out = applyNameSpellings(clips, telugu);
-    expect(out[0][0].text).toContain("పతలూ");
+    expect(out[0][0].text).toContain("పట్లు");
     expect(out[0][0].text).not.toContain("పట్లూ");
     expect(out[0][1].text).toContain("మోటూ");
   });
 
   it("keeps the rest of the line untouched", () => {
     const clips: DialogueClip[] = [[{ speaker: "motu", text: "పట్లూ, ఎలా చేయగలము?" }]];
-    expect(applyNameSpellings(clips, telugu)[0][0].text).toBe("పతలూ, ఎలా చేయగలము?");
+    expect(applyNameSpellings(clips, telugu)[0][0].text).toBe("పట్లు, ఎలా చేయగలము?");
   });
 
   it("leaves a line with no name in it alone", () => {
@@ -324,8 +334,8 @@ describe("fixed spoken name spellings", () => {
   });
 
   it("is idempotent — the correct spelling survives a second pass", () => {
-    const clips: DialogueClip[] = [[{ speaker: "motu", text: "పతలూ మరియు మోటూ." }]];
-    expect(applyNameSpellings(applyNameSpellings(clips, telugu), telugu)[0][0].text).toBe("పతలూ మరియు మోటూ.");
+    const clips: DialogueClip[] = [[{ speaker: "motu", text: "పట్లు మరియు మోటూ." }]];
+    expect(applyNameSpellings(applyNameSpellings(clips, telugu), telugu)[0][0].text).toBe("పట్లు మరియు మోటూ.");
   });
 
   // The two-speaker contract is keyed on the Latin labels; rewriting them would break parsing.
@@ -338,5 +348,53 @@ describe("fixed spoken name spellings", () => {
   it("does nothing when the language has no fixed spellings", () => {
     const clips: DialogueClip[] = [[{ speaker: "motu", text: "పట్లూ, ఎలా?" }]];
     expect(applyNameSpellings(clips, [])[0][0].text).toBe("పట్లూ, ఎలా?");
+  });
+});
+
+/**
+ * The ad sells the client, not the cast. A 16-word clip that spends four of them on "Motu" and
+ * "Patlu" is four words the business did not get, so the whole script is allowed ONE mention.
+ */
+describe("name mentions are capped across the whole script", () => {
+  const tokens = ["Motu", "Patlu", "మోటూ", "పట్లు"];
+  const say = (...texts: string[]): DialogueClip[] =>
+    texts.map(t => [{ speaker: "motu", text: t }, { speaker: "patlu", text: "ok." }]);
+
+  it("counts spoken mentions across every clip, in either script", () => {
+    expect(countNameMentions(say("పట్లు, ఇది బాగుంది.", "మోటూ చూడు."), tokens)).toBe(2);
+    expect(countNameMentions(say("Motu and Patlu are here."), tokens)).toBe(2);
+  });
+
+  it("is case-insensitive and counts repeats inside one line", () => {
+    expect(countNameMentions(say("motu, MOTU, Motu!"), tokens)).toBe(3);
+  });
+
+  it("counts nothing when no name is spoken", () => {
+    expect(countNameMentions(say("ఇక్కడ ధరలు చాలా మంచివి."), tokens)).toBe(0);
+    expect(countNameMentions(say("anything"), [])).toBe(0);
+  });
+
+  it("accepts a script that names a character once", () => {
+    const clips = [clipOf(8, 8, "Patlu"), clipOf(8, 8, "beta")];
+    expect(validateDialogueClips(clips, 2, speakers, { nameTokens: tokens })).toEqual([]);
+  });
+
+  it("flags a script that keeps saying the names", () => {
+    const clips = [clipOf(8, 8, "Patlu"), clipOf(8, 8, "Motu")];
+    const issues = validateDialogueClips(clips, 2, speakers, { nameTokens: tokens });
+    expect(issues.some(i => i.includes("names are spoken 2 times"))).toBe(true);
+    expect(issues.some(i => i.includes("use the words for the business instead"))).toBe(true);
+  });
+
+  // The [Motu]: / [Patlu]: labels are structure, not dialogue — counting them would fail every script.
+  it("ignores the speaker labels and counts only what is said", () => {
+    const clips = [clipOf(8, 8, "alpha"), clipOf(8, 8, "beta")];
+    expect(countNameMentions(clips, tokens)).toBe(0);
+    expect(validateDialogueClips(clips, 2, speakers, { nameTokens: tokens })).toEqual([]);
+  });
+
+  it("skips the check entirely when no tokens are supplied", () => {
+    const clips = [clipOf(8, 8, "Motu"), clipOf(8, 8, "Motu")];
+    expect(validateDialogueClips(clips, 2, speakers).some(i => i.includes("names are spoken"))).toBe(false);
   });
 });

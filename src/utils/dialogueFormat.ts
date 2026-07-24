@@ -227,6 +227,37 @@ export interface DialogueValidationOptions {
   wordsPerClip?: number;
   minWordsPerLine?: number;
   maxWordsPerLine?: number;
+  /**
+   * Every spelling of a character's name that counts as "saying the name" — the Latin name plus
+   * whatever native spellings the pack fixes. Leave empty to skip the check entirely.
+   */
+  nameTokens?: string[];
+  /** How many times a name may be spoken across the WHOLE script. Default 1. */
+  maxNameMentions?: number;
+}
+
+/**
+ * How many times any character's name is spoken across the entire script.
+ *
+ * Counted on the spoken text only — the `[Motu]:` labels are structure, not dialogue. Matching is
+ * plain substring and case-insensitive, which is right for Telugu (no word boundaries to rely on)
+ * and good enough for Latin names inside a sentence.
+ */
+export function countNameMentions(clips: DialogueClip[], nameTokens: string[]): number {
+  const tokens = nameTokens.filter(Boolean).map((t) => t.toLowerCase());
+  if (tokens.length === 0) return 0;
+
+  let total = 0;
+  for (const clip of clips) {
+    for (const line of clip) {
+      const text = line.text.toLowerCase();
+      for (const token of tokens) {
+        // split().length - 1 counts non-overlapping occurrences without a regex escape dance.
+        total += text.split(token).length - 1;
+      }
+    }
+  }
+  return total;
 }
 
 /**
@@ -247,9 +278,23 @@ export function validateDialogueClips(
     wordsPerClip = WORDS_PER_CLIP,
     minWordsPerLine = MIN_WORDS_PER_LINE,
     maxWordsPerLine = MAX_WORDS_PER_LINE,
+    nameTokens = [],
+    maxNameMentions = 1,
   } = options;
 
   const issues: string[] = [];
+
+  // The ad sells the business, not the cast. A script that keeps saying "Motu" and "Patlu" spends
+  // its 16-word clips on the characters instead of on the client.
+  if (nameTokens.length > 0) {
+    const mentions = countNameMentions(clips, nameTokens);
+    if (mentions > maxNameMentions) {
+      issues.push(
+        `The characters' names are spoken ${mentions} times across the script — the limit is `
+        + `${maxNameMentions} in total. Remove the extra mentions and use the words for the business instead.`,
+      );
+    }
+  }
   const nameOf = new Map(speakers.map((s) => [s.key, s.name]));
   const label = (key: string) => nameOf.get(key) ?? key;
   const seenClips = new Map<string, number>();

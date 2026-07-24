@@ -7,7 +7,7 @@ import {
 import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
 import { FileUpload } from './FileUpload';
-import { GeneratedCard, parseVoiceOverClips } from './GeneratedCard';
+import { GeneratedCard, parseVoiceOverClips, stripAttachmentDirective } from './GeneratedCard';
 import { SavedItems, SavedGeneration } from './SavedItems';
 import { AdFormData, AdType, AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER, FileStore, GeneratedOutputs, GenerationStatus, LocationMode } from '@/types/aiPlatform';
 import { characterPackOptions, getCharacterPack } from '@/services/characterPacks';
@@ -720,7 +720,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     { key: 'productImages' as const, label: 'Product Images', content: (
                       <FileUpload label="" accept="image/*" multiple value={files.productImages} onChange={(f) => setFiles(prev => ({ ...prev, productImages: f as File[] }))} helperText="Will appear in main frame & footer" />
                     )},
-                    { key: 'flyersPosters' as const, label: 'Flyers / Offer Posters', content: <FileUpload label="" accept="image/*,application/pdf" multiple value={files.flyersPosters} onChange={(f) => setFiles(prev => ({ ...prev, flyersPosters: f as File[] }))} helperText="Upload existing promotional materials" /> },
+                    { key: 'flyersPosters' as const, label: 'Flyers / Offer Posters', content: <FileUpload label="" accept="image/*" multiple value={files.flyersPosters} onChange={(f) => setFiles(prev => ({ ...prev, flyersPosters: f as File[] }))} helperText="Images only — screenshot a PDF flyer instead" /> },
                     { key: 'voiceInstructions' as const, label: 'Voice Instructions', content: <FileUpload label="" accept="audio/*" multiple value={files.voiceRecording} onChange={(f) => setFiles(prev => ({ ...prev, voiceRecording: (f ? (Array.isArray(f) ? f : [f]) : []) as File[] }))} helperText="Record your requirements" /> },
                   ].map(({ key, label, content: sectionContent }) => (
                     <div key={key} className={cn("border rounded-lg overflow-hidden", isDark ? "border-slate-600" : "border-slate-200")}>
@@ -750,7 +750,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                         isDark ? "bg-slate-700 border-slate-600 text-slate-200 placeholder-slate-500 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200"
                       )} rows={4} placeholder="Paste business messages, requirements, offers..."
                       value={formData.textInstructions} onChange={(e) => setFormData(prev => ({ ...prev, textInstructions: e.target.value }))} />
-                    <FileUpload label="" accept=".txt,.pdf,.doc,.docx" multiple value={files.textInstructionsFile} onChange={(f) => setFiles(prev => ({ ...prev, textInstructionsFile: (f ? (Array.isArray(f) ? f : [f]) : []) as File[] }))} helperText="Or upload a text/PDF file" />
+                    <FileUpload label="" accept=".txt,.doc,.docx" multiple value={files.textInstructionsFile} onChange={(f) => setFiles(prev => ({ ...prev, textInstructionsFile: (f ? (Array.isArray(f) ? f : [f]) : []) as File[] }))} helperText="Or upload a text file — for a PDF, paste its text above" />
                   </div>
                 </div>
               </div>
@@ -1291,7 +1291,7 @@ clip-2[8-16sec]: second spoken line`}</pre>
                   {creationMode === 'video' && outputs.mainFramePrompts?.length > 0 && (
                       <OutputSection title={`1. Main Frame Prompts (${outputs.mainFramePrompts.length} Clips)`} sectionKey="mainFrame"
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
-                        isDark={isDark} quickCopyItems={outputs.mainFramePrompts}>
+                        isDark={isDark} quickCopyItems={outputs.mainFramePrompts.map(p => stripAttachmentDirective(p).body)}>
                         <GeneratedCard title="Main Frame" content={outputs.mainFramePrompts} variant="dropdown" sectionType="mainFrame"
                           showRefinement={true} onRefine={(i) => handleRefineSection('mainFrame', i)} isRefining={refiningSection === 'mainFrame'} hideTitle />
                       </OutputSection>

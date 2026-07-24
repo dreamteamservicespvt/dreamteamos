@@ -10,7 +10,8 @@ import {
 import { getCharacterPack } from "@/services/characterPacks";
 import { WORDS_PER_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE } from "@/utils/dialogueFormat";
 import {
-  assignPhotosToClips, describeClipLocations, parseLocationIndex, type LocationPhoto,
+  assignPhotosToClips, describeClipLocations, attachmentDirective, splitAttachmentDirective,
+  parseLocationIndex, type LocationPhoto,
 } from "@/utils/locationAssignment";
 
 const pack = getCharacterPack("motu_patlu")!;
@@ -148,15 +149,74 @@ describe("main-frame prompt", () => {
     expect(p).toContain("Clip 2: Motu asks about range");
   });
 
-  it("stages both characters, visible and in scale, every frame", () => {
+  it("stages both characters, visible and separated, every frame", () => {
     const p = frame();
     expect(p).toContain("BOTH characters visible in every frame");
-    expect(p).toContain("height difference honest and constant");
+    expect(p).toContain("the classic");
   });
 
   it("emits one prompt per clip with the expected separator", () => {
     expect(frame({ segmentCount: 5, clipSummaries: ["a", "b", "c", "d", "e"] }))
       .toContain("Write 5 prompts separated by ###CLIP###");
+  });
+
+  /**
+   * The frames were flat and interchangeable because every clip got the same instruction. The
+   * standard human-model pipeline has always shipped a per-clip shot design; this is that.
+   */
+  describe("director's shot plan", () => {
+    it("designs each clip with a zone, camera, staging and purpose", () => {
+      const p = frame({ segmentCount: 4, clipSummaries: ["a", "b", "c", "d"] });
+      expect(p).toContain("THE SHOT PLAN");
+      for (const n of [1, 2, 3, 4]) expect(p).toContain(`**CLIP ${n} —`);
+      expect(p).toContain("📍 ZONE:");
+      expect(p).toContain("🎥 CAMERA:");
+      expect(p).toContain("🎭 STAGING:");
+      expect(p).toContain("🎯 PURPOSE:");
+    });
+
+    it("always opens on the arrival and closes on the invitation", () => {
+      const p = frame({ segmentCount: 4, clipSummaries: ["a", "b", "c", "d"] });
+      expect(p).toContain("CLIP 1 — ARRIVAL / ESTABLISHING SHOT");
+      expect(p).toContain("CLIP 4 — THE CLOSING INVITATION");
+    });
+
+    it("collapses a two-clip ad to arrival then close", () => {
+      const p = frame({ segmentCount: 2 });
+      expect(p).toContain("CLIP 1 — ARRIVAL / ESTABLISHING SHOT");
+      expect(p).toContain("CLIP 2 — THE CLOSING INVITATION");
+      expect(p).not.toContain("CLIP 3");
+    });
+
+    it("gives every clip its own line to build the frame around", () => {
+      const p = frame();
+      expect(p).toContain("🗣️ THIS CLIP'S LINE: Motu asks about prices");
+    });
+
+    it("writes clip 1 in full and every later clip as a continuation", () => {
+      const p = frame({ segmentCount: 3, clipSummaries: ["a", "b", "c"] });
+      expect(p).toContain("COMPLETE standalone prompt");
+      expect(p).toContain("90–120 words");
+      expect(p).toMatch(/CONTINUATION FRAME/);
+      expect(p).toContain("clip 1's frame is attached as the reference");
+      expect(p).toContain("60–90 words");
+    });
+
+    it("stops a continuation frame from re-describing what is already locked", () => {
+      const p = frame({ segmentCount: 2 });
+      expect(p).toMatch(/Do NOT re-describe the\s*\n?\s*characters/);
+      expect(p).toMatch(/Anything you re-describe is something the generator is free to/);
+    });
+  });
+
+  // Their build comes with them; writing it down invites the generator to redraw them, which is
+  // how two same-sized cartoon men kept coming back instead of the real pair.
+  it("never mentions height or relative size", () => {
+    const p = frame().toLowerCase();
+    for (const banned of ["height", "taller", "shorter", "height difference"]) {
+      expect(p).not.toContain(banned);
+    }
+    expect(frame()).toContain("Say nothing about their build, size or how tall either one is");
   });
 
   /**
@@ -174,7 +234,8 @@ describe("main-frame prompt", () => {
     it("states a horizontal canvas instead when that was ordered", () => {
       const p = frame({ aspectRatio: "16:9" });
       expect(p).toContain("Aspect ratio: 16:9 horizontal (landscape)");
-      expect(p).toContain("16:9\nhorizontal (landscape) canvas");
+      expect(p).toContain("the 16:9 horizontal (landscape) framing");
+      expect(p).not.toContain("9:16");
     });
 
     it("names the clip count and the ad type", () => {
@@ -218,13 +279,13 @@ describe("voice-over prompt — promotional grounding", () => {
 
   it("states plainly that this sells one specific business", () => {
     expect(p(4)).toContain("THIS IS A PROMOTIONAL AD FOR ONE SPECIFIC BUSINESS");
-    expect(p(4)).toMatch(/not a comedy sketch/i);
-    expect(p(4)).toMatch(/not a general chat about\s*\n?advertising/i);
+    expect(p(4)).toMatch(/never as a comedy sketch/i);
+    expect(p(4)).toMatch(/not a general chat about advertising/i);
   });
 
   it("lays out hook → proof → close beats across the clips", () => {
     const four = p(4);
-    expect(four).toContain("Clip 1 — HOOK");
+    expect(four).toContain("Clip 1 — ARRIVAL / HOOK");
     expect(four).toContain("Clip 2 — PROOF");
     expect(four).toContain("Clip 3 — PROOF");
     expect(four).toContain("Clip 4 — CLOSE");
@@ -249,15 +310,51 @@ describe("voice-over prompt — promotional grounding", () => {
   it("blocks the failure that actually happened — an ad about advertising", () => {
     expect(p(4)).toMatch(/Never talk about advertising, videos, promotion or marketing unless that IS/);
   });
+
+  // They are not presenting from a studio: they walked into the client's premises and are showing
+  // it to the viewer. That framing is what makes the dialogue sound natural instead of read out.
+  it("frames the ad as the two of them visiting the business", () => {
+    const four = p(4);
+    expect(four).toMatch(/have come to this client's\s*\n?business/);
+    expect(four).toContain("standing in the real premises");
+    expect(four).toContain("two friends who turned up at");
+    expect(four).toContain("Clip 1 — ARRIVAL / HOOK");
+  });
+
+  /**
+   * Every second spent saying the characters' names is a second not spent on the client. The
+   * prompt asks for at most one mention in the whole ad; the validator enforces it.
+   */
+  it("allows the characters' names to be spoken only once in the whole ad", () => {
+    const four = p(4);
+    expect(four).toContain("THE NAMES ARE NOT THE PRODUCT");
+    expect(four).toMatch(/AT MOST ONCE, in total/);
+    expect(four).toMatch(/Not once per clip: once in the whole ad/);
+    expect(four).toContain("We are promoting the business, not the characters");
+  });
+
+  it("restates the one-name limit in the repair contract so a fix cannot undo it", () => {
+    const repair = CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT(pack, 32, 4, "Telugu");
+    expect(repair).toMatch(/name may be spoken AT MOST ONCE in total/);
+  });
 });
 
 describe("veo prompt", () => {
   const p = CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT(pack, 4);
 
   it("attributes each line to the right character for lip-sync", () => {
-    expect(p).toContain("Motu says, in a");
-    expect(p).toContain("Then Patlu replies, in a");
+    expect(p).toContain("Motu says, in his own original Motu voice from the show");
+    expect(p).toContain("Then Patlu replies, in his own original Patlu voice from the show");
     expect(p).toContain("Only the speaking character's mouth moves");
+  });
+
+  // A generic narrator or a fresh voice actor breaks the whole premise — these are characters the
+  // audience already knows by ear as much as by sight.
+  it("demands the original voices and bans substitutes", () => {
+    expect(p).toContain("VOICES ARE STRICT");
+    expect(p).toMatch(/only the original Motu and Patlu voices from the show/);
+    expect(p).toContain("Never a narrator, a new voice actor, or a different accent");
+    expect(p).toContain("No new or different voices, no narrator, no dubbing accent");
   });
 
   it("keeps the listener alive in frame", () => {
@@ -282,8 +379,8 @@ describe("veo prompt", () => {
    * The first version asked for scene, both characters in full, exchange, performance direction and
    * camera work, and produced prompts too long for a member to read. These two hold the shape.
    */
-  it("forbids describing the characters", () => {
-    expect(p.toLowerCase()).toContain("never describe what motu and patlu look like");
+  it("forbids describing the characters, including how tall they are", () => {
+    expect(p.toLowerCase()).toContain("never describe how they look or how tall they are");
     for (const banned of ["kurta", "dhoti", "spectacles", "moustache"]) {
       expect(p.toLowerCase()).not.toContain(banned);
     }
@@ -299,16 +396,23 @@ describe("veo prompt", () => {
 describe("location index + photo assignment", () => {
   const photo = (index: number, zone: string, usable = true): LocationPhoto => ({ index, zone, usable });
 
-  it("uses every photo once before repeating any", () => {
+  it("uses every photo once", () => {
     const out = assignPhotosToClips(3, [photo(0, "entrance"), photo(1, "counter"), photo(2, "shelves")]);
     expect(out.map(a => a.photoIndex)).toEqual([0, 1, 2]);
-    expect(out.every(a => !a.reused)).toBe(true);
   });
 
-  it("cycles and flags the repeat when there are fewer photos than clips", () => {
+  /**
+   * A client who sends one photo for a two-clip ad gets that photo behind clip 1 and a generated
+   * zone behind clip 2. Cycling back would show the same photograph twice AND leave the member
+   * attaching one file to two prompts, unsure whether they had misread the instruction.
+   */
+  it("generates the extra clips instead of showing a photo twice", () => {
     const out = assignPhotosToClips(4, [photo(0, "entrance"), photo(1, "counter")]);
-    expect(out.map(a => a.photoIndex)).toEqual([0, 1, 0, 1]);
-    expect(out.map(a => a.reused)).toEqual([false, false, true, true]);
+    expect(out.map(a => a.photoIndex)).toEqual([0, 1, null, null]);
+  });
+
+  it("gives the one-photo two-clip case a photo then a generated zone", () => {
+    expect(assignPhotosToClips(2, [photo(0, "shopfront")]).map(a => a.photoIndex)).toEqual([0, null]);
   });
 
   it("leaves spare photos unused rather than repeating one", () => {
@@ -326,18 +430,76 @@ describe("location index + photo assignment", () => {
     expect(out.map(a => a.photoIndex)).toEqual([null, null]);
   });
 
-  it("briefs each clip with its photo, and asks for a new angle on a repeat", () => {
+  it("briefs each clip with its photo, and asks for a built zone where there is none", () => {
     const photos = [{ index: 0, zone: "entrance", lighting: "warm", bestFor: "welcome", usable: true }];
     const text = describeClipLocations(assignPhotosToClips(2, photos), photos);
     expect(text).toContain("Clip 1: PHOTOGRAPH #1");
     expect(text).toContain("zone: entrance");
-    expect(text).toContain("clearly different angle");
-    expect(text).toContain("may NOT put the same photograph behind two clips");
+    expect(text).toContain("Clip 2: NO PHOTOGRAPH");
+    expect(text).toContain("never put the same photograph behind two clips");
   });
 
   it("tells the model to build the location when a clip has no photo", () => {
     const text = describeClipLocations(assignPhotosToClips(1, []), []);
-    expect(text).toContain("no client photograph");
+    expect(text).toContain("NO PHOTOGRAPH");
+  });
+
+  /**
+   * The member is holding several photos from the client and a list of near-identical prompts.
+   * This line is the only thing that tells them which goes with which.
+   */
+  describe("attachment directive", () => {
+    const photos = [photo(0, "shopfront"), photo(1, "billing counter")];
+
+    it("names the exact upload slot, 1-based, with the zone", () => {
+      const plan = assignPhotosToClips(2, photos);
+      expect(attachmentDirective(plan[0], photos)).toBe("📎 ATTACH STORE/OFFICE IMAGE #1 — the shopfront");
+      expect(attachmentDirective(plan[1], photos)).toBe("📎 ATTACH STORE/OFFICE IMAGE #2 — the billing counter");
+    });
+
+    it("says to attach nothing when the clip's location is generated", () => {
+      const plan = assignPhotosToClips(2, [photo(0, "shopfront")]);
+      expect(attachmentDirective(plan[1], photos)).toMatch(/^🎨 ATTACH NOTHING/);
+      expect(attachmentDirective(plan[1], photos)).toContain("generated");
+    });
+
+    it("still names the slot when the scout gave no zone", () => {
+      expect(attachmentDirective({ clip: 0, photoIndex: 2 }, [])).toBe("📎 ATTACH STORE/OFFICE IMAGE #3");
+    });
+
+    /**
+     * The directive is for the member, not the image generator — the card shows it as a banner and
+     * copies only the body, so an "ATTACH IMAGE #2" line never reaches the generator to be rendered
+     * as on-screen text.
+     */
+    describe("splitting it back off for the UI", () => {
+      const prompt = "📎 ATTACH STORE/OFFICE IMAGE #1 — the shopfront\n\nMotu and Patlu at the entrance.";
+
+      it("round-trips: what is stamped on is what comes back off", () => {
+        const plan = assignPhotosToClips(1, photos);
+        const directive = attachmentDirective(plan[0], photos);
+        const split = splitAttachmentDirective(`${directive}\n\nBody text here.`);
+        expect(split.directive).toBe(directive);
+        expect(split.body).toBe("Body text here.");
+      });
+
+      it("keeps the directive out of the copied prompt", () => {
+        expect(splitAttachmentDirective(prompt).body).toBe("Motu and Patlu at the entrance.");
+        expect(splitAttachmentDirective(prompt).body).not.toContain("ATTACH");
+      });
+
+      it("handles the attach-nothing form too", () => {
+        const split = splitAttachmentDirective("🎨 ATTACH NOTHING — generated.\n\nBody.");
+        expect(split.directive).toBe("🎨 ATTACH NOTHING — generated.");
+        expect(split.body).toBe("Body.");
+      });
+
+      // A normal human-model ad carries no directive and must pass through untouched.
+      it("leaves an unstamped prompt exactly as it is", () => {
+        const plain = "A premium portrait of the brand ambassador.";
+        expect(splitAttachmentDirective(plain)).toEqual({ directive: null, body: plain });
+      });
+    });
   });
 
   it("parses the scout's JSON, including fenced output", () => {

@@ -35,7 +35,8 @@ import {
   type DialogueClip,
 } from "@/utils/dialogueFormat";
 import {
-  assignPhotosToClips, describeClipLocations, parseLocationIndex, type LocationPhoto,
+  assignPhotosToClips, describeClipLocations, attachmentDirective, parseLocationIndex,
+  type LocationPhoto,
 } from "@/utils/locationAssignment";
 import { fileToBase64, readFileAsText } from "@/utils/fileHelpers";
 import { CLIP_SECONDS, clipLabel, formatClipScript, parseLabeledClips } from "@/utils/voiceOverFormat";
@@ -1301,6 +1302,17 @@ export const generateAdAssets = async (
      * same character is never called two different things, whatever the source.
      */
     const fixNames = (clips: DialogueClip[]) => applyNameSpellings(clips, packNameSpellings(pack, formData.language));
+    /**
+     * Every spelling that counts as saying a character's name — the Latin names plus the pack's
+     * fixed native spellings — so the "one mention in the whole ad" rule is enforced, not merely
+     * requested. The ad is selling the client, not the cast.
+     */
+    const nameTokens = [
+      ...packSpeakerList.map(s => s.name),
+      ...packNameSpellings(pack, formData.language).map(s => s.spelling),
+    ];
+    const checkDialogue = (clips: DialogueClip[]) =>
+      validateDialogueClips(clips, segmentCount, packSpeakerList, { nameTokens });
 
     // A pasted script already in two-speaker form is authoritative — honour it verbatim.
     const pasted = customScript?.trim() ? parseDialogueClips(customScript, aliases) : [];
@@ -1322,7 +1334,7 @@ export const generateAdAssets = async (
     }));
 
     let clips = fixNames(parseDialogueClips(response.text || '', aliases));
-    let issues = validateDialogueClips(clips, segmentCount, packSpeakerList);
+    let issues = checkDialogue(clips);
 
     for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES && issues.length > 0; pass++) {
       const repairPrompt = `Repair this cartoon dialogue script using only verified business facts.
@@ -1348,7 +1360,7 @@ Return only the repaired ${segmentCount} clips.`;
 
       const next = fixNames(parseDialogueClips(repaired.text || '', aliases));
       // Only accept a repair that genuinely improves things — a worse rewrite is discarded.
-      const nextIssues = validateDialogueClips(next, segmentCount, packSpeakerList);
+      const nextIssues = checkDialogue(next);
       if (next.length > 0 && nextIssues.length < issues.length) {
         clips = next;
         issues = nextIssues;
@@ -1560,6 +1572,17 @@ Segment 2: <text>
 
   const clientLocations = await scoutClientLocations();
 
+  /**
+   * Which uploaded photo backs which clip — decided ONCE, here, and reused by the art-direction
+   * prompt and by the directive stamped onto each finished prompt.
+   *
+   * Deciding it in one place is the point. The member is holding a handful of photos the client
+   * sent and has to attach the right one to the right prompt; if the plan were derived twice, the
+   * prompt could describe photo 2 while the instruction said attach photo 3.
+   */
+  const usingClientPhotos = !!pack && formData.locationMode === 'real_provided' && clientLocations.length > 0;
+  const clipPhotoPlan = usingClientPhotos ? assignPhotosToClips(segmentCount, clientLocations) : [];
+
   // --- Steps 3-6 run CONCURRENTLY: Main Frame, Header (local), Poster, Veo ---
   onProgress("Generating Main Frame, Poster & Video prompts...", 45);
 
@@ -1589,8 +1612,8 @@ Segment 2: <text>
         segmentCount,
         clipSummaries: parsedSegments,
         locationMode: formData.locationMode === 'real_provided' ? 'real_provided' : 'ai_generated',
-        locationPlan: formData.locationMode === 'real_provided' && clientLocations.length > 0
-          ? describeClipLocations(assignPhotosToClips(segmentCount, clientLocations), clientLocations)
+        locationPlan: usingClientPhotos
+          ? describeClipLocations(clipPhotoPlan, clientLocations)
           : resolvedLocationPlan,
         aspectRatio: formData.aspectRatio === '16:9' ? '16:9' : '9:16',
         adType: formData.adType,
@@ -1846,6 +1869,22 @@ ${maleCastingOverride}${commercialMainFramePriorityNote}
     }
   }
 
+    /**
+     * Stamp each prompt with the one thing the member cannot work out for themselves: WHICH of the
+     * client's photos to attach to this particular prompt.
+     *
+     * They are holding several photos and a list of near-identical prompts, and until now nothing
+     * connected the two — so the natural move was to attach whatever seemed closest, or the same
+     * photo to everything. The mapping is already decided in `clipPhotoPlan`, so this just says it
+     * out loud, in code rather than trusting the model to have repeated it.
+     */
+    if (pack && clipPhotoPlan.length > 0) {
+      mainFramePrompts = mainFramePrompts.map((prompt, i) => {
+        const plan = clipPhotoPlan[i];
+        return plan ? `${attachmentDirective(plan, clientLocations)}\n\n${prompt}` : prompt;
+      });
+    }
+
     emitPartial({ mainFramePrompts });
     return mainFramePrompts;
   })();
@@ -1934,8 +1973,8 @@ ${dialogueClips.map((clip, i) => {
     }).join('\n\n')}
 
 SCENE FOR EACH CLIP:
-${formData.locationMode === 'real_provided' && clientLocations.length > 0
-      ? describeClipLocations(assignPhotosToClips(segmentCount, clientLocations), clientLocations)
+${usingClientPhotos
+      ? describeClipLocations(clipPhotoPlan, clientLocations)
       : 'Build a believable location for this business, a different area of it for every clip.'}
 
 Generate ${segmentCount} complete Veo 3 prompts now.`
