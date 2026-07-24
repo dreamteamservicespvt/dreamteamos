@@ -564,7 +564,9 @@ export default function WorkReports() {
             </div>
           ) : visibleRecord.map(a => (
             <div key={a.id} className="bg-card border rounded-xl p-3 md:p-4 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+              {/* Grid cards are half-width, so the actions stack below the details there — the
+                  `md:` breakpoint measures the viewport, not the card, and squeezed the text. */}
+              <div className={`flex gap-3 ${view === 'grid' ? 'flex-col' : 'flex-col md:flex-row md:items-start md:justify-between'}`}>
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2 mb-2">
                     <h3 className="font-semibold text-card-foreground text-sm md:text-base">{a.businessName || a.displayTitle}</h3>
@@ -791,7 +793,7 @@ export default function WorkReports() {
                     </>
                   )}
                 </div>
-                <div className="flex items-center flex-wrap gap-1.5 md:gap-2">
+                <div className={`flex flex-wrap items-center gap-1.5 md:gap-2 ${view === 'grid' ? 'w-full' : ''}`}>
                   {a.status === 'completed' && (
                     <button onClick={() => setVerifyDialog({ mode: 'single', items: [a] })}
                       className="flex items-center space-x-1 px-2 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 rounded-lg transition-colors">

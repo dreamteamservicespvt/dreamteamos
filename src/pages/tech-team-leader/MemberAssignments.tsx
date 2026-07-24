@@ -475,8 +475,11 @@ export default function TeamLeaderMemberAssignments() {
           </div>
         ) : filteredAssignments.map(a => (
           <div key={a.id} className="bg-card border rounded-xl p-3 md:p-4 shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
-              <div className="flex-1 min-w-0">
+            {/* In grid mode a card is only half the viewport wide, so the action row must sit
+                BELOW the details — side by side it squeezed the text into a vertical sliver.
+                The `md:` breakpoint can't see that, hence keying off the view instead. */}
+            <div className={`flex gap-3 ${view === 'grid' ? 'flex-col' : 'flex-col md:flex-row md:items-start md:justify-between'}`}>
+              <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2 mb-2">
                   <h3 className="font-semibold text-card-foreground text-sm md:text-base">{a.businessName || a.displayTitle}</h3>
                   <span className={`text-[10px] md:text-xs font-medium px-2 py-0.5 rounded-full ${statusColors[a.status]}`}>
@@ -653,7 +656,7 @@ export default function TeamLeaderMemberAssignments() {
                   </>
                 )}
               </div>
-              <div className="flex items-center flex-wrap gap-1.5 md:gap-2">
+              <div className={`flex flex-wrap items-center gap-1.5 md:gap-2 ${view === 'grid' ? 'w-full' : ''}`}>
                 {/* Re-share the requirements for this exact assignment, any time. */}
                 <button onClick={() => setShareAssignment(a)}
                   className="flex items-center space-x-1 px-2 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50 rounded-lg transition-colors">

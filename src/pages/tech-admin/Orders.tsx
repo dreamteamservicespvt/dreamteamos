@@ -281,7 +281,8 @@ export default function Orders() {
                 className="mt-0.5 shrink-0 text-muted-foreground hover:text-primary transition-colors">
                 {selected.has(o.id) ? <CheckSquare className="w-5 h-5 text-primary" /> : <Square className="w-5 h-5" />}
               </button>
-              <div className="flex flex-1 min-w-0 flex-col md:flex-row md:items-start md:justify-between gap-3">
+              {/* Grid cards are half-width, so the Assign button stacks below the details there. */}
+              <div className={`flex min-w-0 flex-1 gap-3 ${view === "grid" ? "flex-col" : "flex-col md:flex-row md:items-start md:justify-between"}`}>
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap items-center gap-2 mb-2">
                   <h3 className="font-semibold text-card-foreground text-sm md:text-base truncate">{o.businessName || "Unnamed client"}</h3>
@@ -350,7 +351,7 @@ export default function Orders() {
                   </div>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className={`flex flex-wrap items-center gap-2 ${view === "grid" ? "w-full" : ""}`}>
                 {o.status === "unassigned" && (
                   <button onClick={() => navigate(`${workAssignBase}?order=${encodeURIComponent(o.id)}`)}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-xs md:text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
