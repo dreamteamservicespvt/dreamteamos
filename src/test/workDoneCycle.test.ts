@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { format } from "date-fns";
-import { cycleForDate, CYCLE_START_DAY, DONE_STATUSES, completionDate } from "@/utils/performanceCycle";
+import { cycleForDate, CYCLE_START_DAY, DONE_STATUSES, workDayOf } from "@/utils/performanceCycle";
 import type { WorkAssignment } from "@/types";
 
 const label = (d: Date) => format(d, "yyyy-MM-dd");
@@ -67,25 +67,34 @@ describe("DONE_STATUSES", () => {
   });
 });
 
-describe("completionDate", () => {
+describe("workDayOf", () => {
   const make = (fields: Partial<WorkAssignment>) => fields as WorkAssignment;
 
-  it("prefers the recorded completedDate", () => {
-    expect(label(completionDate(make({ completedDate: "2026-07-15" }))!)).toBe("2026-07-15");
+  it("uses the assigned day — a member works that day's ads and only that day's", () => {
+    expect(label(workDayOf(make({ date: "2026-07-15" }))!)).toBe("2026-07-15");
   });
 
-  it("falls back to the completedAt timestamp", () => {
-    const seconds = new Date(2026, 6, 15, 13, 30).getTime() / 1000;
-    expect(label(completionDate(make({ completedAt: { seconds } }))!)).toBe("2026-07-15");
+  it("NEVER counts work on the day it was approved — approval can be days later", () => {
+    const verifiedAt = { seconds: new Date(2026, 6, 16, 9, 0).getTime() / 1000 };
+    expect(label(workDayOf(make({ date: "2026-07-15", verifiedAt }))!)).toBe("2026-07-15");
   });
 
-  it("falls back to verifiedAt when nothing else is recorded", () => {
-    const seconds = new Date(2026, 6, 16, 9, 0).getTime() / 1000;
-    expect(label(completionDate(make({ verifiedAt: { seconds } }))!)).toBe("2026-07-16");
+  it("ignores completion stamps — tapping 'complete' next morning must not move it", () => {
+    const completedAt = { seconds: new Date(2026, 6, 16, 9, 0).getTime() / 1000 };
+    expect(label(workDayOf(make({ date: "2026-07-15", completedDate: "2026-07-16" }))!)).toBe("2026-07-15");
+    expect(label(workDayOf(make({ date: "2026-07-15", completedAt }))!)).toBe("2026-07-15");
   });
 
-  it("returns null rather than guessing when no timestamp is usable", () => {
-    expect(completionDate(make({}))).toBeNull();
-    expect(completionDate(make({ completedDate: "not-a-date" }))).toBeNull();
+  it("falls back through assignedAt then assignedAtIso for older records", () => {
+    const assignedAt = { seconds: new Date(2026, 6, 15, 20, 11).getTime() / 1000 };
+    expect(label(workDayOf(make({ assignedAt }))!)).toBe("2026-07-15");
+    expect(label(workDayOf(make({ assignedAtIso: "2026-07-15T20:11:06.000Z" }))!)).toBe("2026-07-15");
+  });
+
+  it("returns null only when the record carries no assignment date at all", () => {
+    expect(workDayOf(make({}))).toBeNull();
+    expect(workDayOf(make({ date: "not-a-date" }))).toBeNull();
+    // A completion stamp alone is not enough — it is deliberately not consulted.
+    expect(workDayOf(make({ completedDate: "2026-07-15" }))).toBeNull();
   });
 });

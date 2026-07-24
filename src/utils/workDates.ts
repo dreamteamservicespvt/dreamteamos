@@ -2,27 +2,21 @@ import { format } from "date-fns";
 import type { WorkAssignment } from "@/types";
 
 /**
- * Which day a piece of work counts on.
+ * Which day a piece of work counts on: **the day it was assigned**.
  *
- * Work assigned on 30 June and delivered on 2 July is July's output, not June's — the team did
- * it in July and expects to see it in July. Bucketing everything by `date` (the *assigned* day)
- * made a month whose work was all carried over from the previous month read as zero.
+ * A tech member works that day's ads and only that day's, so a job belongs to the day it was
+ * handed out — whatever status it later reaches. Completion and approval stamps are deliberately
+ * ignored: tapping "complete" the next morning, or an admin approving days later, are clerical
+ * moments that must not shift a job into another day's column.
  *
- * So: finished work counts on the day it was finished, unfinished work on the day it was
- * assigned. Falls back through completedDate → completedAt → verifiedAt → assigned date, because
- * older records were written before completedDate existed.
+ * This is the same rule as `workDayOf` in utils/performanceCycle, so the dashboards, My Team and
+ * Work Done & Reports all bucket a job on exactly the same day.
  */
 export function workCountsOn(a: WorkAssignment): string | undefined {
-  const done = a.status === "verified" || a.status === "completed";
-  if (!done) return a.date || undefined;
-
-  if (a.completedDate) return a.completedDate;
-
-  const seconds = (a.completedAt as { seconds?: number } | undefined)?.seconds
-    ?? (a.verifiedAt as { seconds?: number } | undefined)?.seconds;
+  if (a.date) return a.date;
+  const seconds = (a.assignedAt as { seconds?: number } | undefined)?.seconds;
   if (seconds) return format(new Date(seconds * 1000), "yyyy-MM-dd");
-
-  return a.date || undefined;
+  return a.assignedAtIso ? a.assignedAtIso.slice(0, 10) : undefined;
 }
 
 /**

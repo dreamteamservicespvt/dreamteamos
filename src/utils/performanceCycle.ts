@@ -22,19 +22,32 @@ export function cycleForDate(date: Date): { from: Date; to: Date } {
 /** An assignment counts as a delivered video once it reaches one of these states. */
 export const DONE_STATUSES: ReadonlySet<WorkAssignment['status']> = new Set(['completed', 'verified']);
 
+const dayToDate = (day?: string | null): Date | null => {
+  if (!day) return null;
+  const parsed = new Date(`${day}T00:00:00`);
+  return isValid(parsed) ? parsed : null;
+};
+
+const stampToDate = (ts: any): Date | null => {
+  const parsed: Date | null = ts?.toDate?.() ?? (typeof ts?.seconds === 'number' ? new Date(ts.seconds * 1000) : null);
+  return parsed && isValid(parsed) ? parsed : null;
+};
+
 /**
- * The day an assignment counts on: when the member marked it complete, falling back to when it
- * was verified. Returns null when neither timestamp is usable, so it can't land in a bucket by
- * accident.
+ * The day a piece of work counts on: **the day it was assigned**.
+ *
+ * A tech member works that day's ads and only that day's — work handed out on the 15th is the
+ * 15th's output, full stop. Completion and approval stamps are deliberately ignored: the member
+ * may tap "complete" the next morning and an admin may approve days later, and neither of those
+ * clerical moments should move a job into a different day's column. That drift is exactly what
+ * made the daily figures disagree with what the team actually did.
+ *
+ * Falls back through `date` → `assignedAt` → `assignedAtIso`, since records were written by
+ * different versions of the app; null only when the record carries no assignment date at all.
  */
-export function completionDate(a: WorkAssignment): Date | null {
-  if (a.completedDate) {
-    const parsed = new Date(`${a.completedDate}T00:00:00`);
-    if (isValid(parsed)) return startOfDay(parsed);
-  }
-  for (const ts of [a.completedAt, a.verifiedAt]) {
-    const parsed: Date | null = ts?.toDate?.() ?? (typeof ts?.seconds === 'number' ? new Date(ts.seconds * 1000) : null);
-    if (parsed && isValid(parsed)) return startOfDay(parsed);
-  }
-  return null;
+export function workDayOf(a: WorkAssignment): Date | null {
+  const assigned = dayToDate(a.date)
+    ?? stampToDate(a.assignedAt)
+    ?? (a.assignedAtIso ? dayToDate(a.assignedAtIso.slice(0, 10)) : null);
+  return assigned ? startOfDay(assigned) : null;
 }

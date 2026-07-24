@@ -6,7 +6,7 @@ import { BarChart3, ChevronLeft, ChevronRight, Trophy, Video, X } from 'lucide-r
 import DashboardDateRangePicker from '@/components/dashboard/DateRangePicker';
 import { normalizeDateRange } from '@/utils/dateRange';
 import { formatCurrency } from '@/utils/formatters';
-import { DONE_STATUSES, completionDate, cycleForDate } from '@/utils/performanceCycle';
+import { DONE_STATUSES, workDayOf, cycleForDate } from '@/utils/performanceCycle';
 import { categoryLabel } from '@/utils/serviceCatalog';
 import type { AppUser, WorkAssignment } from '@/types';
 
@@ -90,7 +90,7 @@ export default function WorkDoneReport({
 
     for (const a of assignments) {
       if (!DONE_STATUSES.has(a.status)) continue;
-      const done = completionDate(a);
+      const done = workDayOf(a);
       if (!done || done < activeRange.from || done > activeRange.to) continue;
       const list = byMember.get(a.assignedTo);
       if (list) list.push(a);
@@ -146,7 +146,7 @@ export default function WorkDoneReport({
     if (!detailUid) return [];
     const byDay = new Map<string, WorkAssignment[]>();
     for (const a of doneByMember.get(detailUid) || []) {
-      const day = format(completionDate(a)!, 'yyyy-MM-dd');
+      const day = format(workDayOf(a)!, 'yyyy-MM-dd');
       const list = byDay.get(day);
       if (list) list.push(a);
       else byDay.set(day, [a]);

@@ -3,10 +3,11 @@ import { workCountsOn, deliveryDate } from "@/utils/workDates";
 import type { WorkAssignment } from "@/types";
 
 /**
- * Which month a piece of work lands in.
+ * Which day a piece of work lands on.
  *
- * The bug these guard against: the tech dashboard bucketed everything by the *assigned* date, so
- * a month whose output was all carried over from the previous month read as zero videos.
+ * The rule: a tech member works that day's ads and only that day's, so a job counts on the day it
+ * was ASSIGNED. Completion and approval stamps are clerical and must never move it — approving
+ * yesterday's work this morning used to push it into today's column.
  */
 
 const make = (over: Partial<WorkAssignment>): WorkAssignment => ({
@@ -33,47 +34,40 @@ const make = (over: Partial<WorkAssignment>): WorkAssignment => ({
 const ts = (iso: string) => ({ seconds: Math.floor(new Date(iso).getTime() / 1000) });
 
 describe("workCountsOn", () => {
-  it("dates unfinished work by the day it was assigned", () => {
+  it("dates work by the day it was assigned, whatever its status", () => {
     expect(workCountsOn(make({ status: "assigned" }))).toBe("2026-06-30");
     expect(workCountsOn(make({ status: "in_progress" }))).toBe("2026-06-30");
-  });
-
-  it("dates finished work by the day it was delivered, not assigned", () => {
-    const a = make({ status: "verified", date: "2026-06-30", completedDate: "2026-07-02" });
-    expect(workCountsOn(a)).toBe("2026-07-02");
-  });
-
-  it("counts completed work the same way as verified work", () => {
-    const a = make({ status: "completed", date: "2026-06-30", completedDate: "2026-07-02" });
-    expect(workCountsOn(a)).toBe("2026-07-02");
-  });
-
-  it("falls back to completedAt when completedDate was never written", () => {
-    const a = make({ status: "verified", date: "2026-06-30", completedAt: ts("2026-07-03T10:00:00") });
-    expect(workCountsOn(a)).toBe("2026-07-03");
-  });
-
-  it("falls back to verifiedAt when there is no completion stamp at all", () => {
-    const a = make({ status: "verified", date: "2026-06-30", verifiedAt: ts("2026-07-04T10:00:00") });
-    expect(workCountsOn(a)).toBe("2026-07-04");
-  });
-
-  it("falls back to the assigned date for legacy records with no stamps", () => {
+    expect(workCountsOn(make({ status: "completed" }))).toBe("2026-06-30");
     expect(workCountsOn(make({ status: "verified" }))).toBe("2026-06-30");
+  });
+
+  it("ignores completedDate — marking it done later must not move the work", () => {
+    const a = make({ status: "verified", date: "2026-06-30", completedDate: "2026-07-02" });
+    expect(workCountsOn(a)).toBe("2026-06-30");
+  });
+
+  it("ignores completedAt and verifiedAt too — approval never sets the day", () => {
+    const a = make({
+      status: "verified",
+      date: "2026-06-30",
+      completedAt: ts("2026-07-03T10:00:00"),
+      verifiedAt: ts("2026-07-04T10:00:00"),
+    });
+    expect(workCountsOn(a)).toBe("2026-06-30");
+  });
+
+  it("falls back to the assignedAt stamp when no date string was written", () => {
+    const a = make({ status: "verified", date: "", assignedAt: ts("2026-06-30T20:11:00") });
+    expect(workCountsOn(a)).toBe("2026-06-30");
+  });
+
+  it("falls back to assignedAtIso as a last resort", () => {
+    const a = make({ status: "verified", date: "", assignedAt: null, assignedAtIso: "2026-06-30T20:11:06.000Z" });
+    expect(workCountsOn(a)).toBe("2026-06-30");
   });
 
   it("returns undefined rather than an empty string when nothing is dated", () => {
     expect(workCountsOn(make({ status: "assigned", date: "" }))).toBeUndefined();
-  });
-
-  it("prefers completedDate over the timestamps", () => {
-    const a = make({
-      status: "verified",
-      completedDate: "2026-07-02",
-      completedAt: ts("2026-07-09T10:00:00"),
-      verifiedAt: ts("2026-07-10T10:00:00"),
-    });
-    expect(workCountsOn(a)).toBe("2026-07-02");
   });
 });
 
