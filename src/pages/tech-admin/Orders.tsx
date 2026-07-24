@@ -36,7 +36,11 @@ export default function Orders() {
 
   // Assigning happens on Work Assign, where the sales member's brief pre-fills the whole form —
   // an admin can adjust anything before it goes out instead of re-typing it into a second modal.
-  const workAssignBase = user?.role === "tech_team_leader" ? "/team-leader/work-assign" : "/tech-admin/work-assign";
+  // A team leader manages delivery, not the commercials — same rule as Work Done & Reports, so
+  // the sale amount and who sold it stay with the tech admin.
+  const isTeamLeader = user?.role === "tech_team_leader";
+  const showSalesInfo = !isTeamLeader;
+  const workAssignBase = isTeamLeader ? "/team-leader/work-assign" : "/tech-admin/work-assign";
 
   const [tab, setTab] = useState<OrderTab>("unassigned");
   const [search, setSearch] = useState("");
@@ -205,7 +209,7 @@ export default function Orders() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Search business, category, seller, phone…"
+            placeholder={showSalesInfo ? "Search business, category, seller, phone…" : "Search business, category, phone…"}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="h-9 w-full rounded-xl border border-border/70 bg-background pl-9 pr-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20"
@@ -295,12 +299,12 @@ export default function Orders() {
                   <DeadlineChip promise={o.promise} />
                 </div>
                 <div className="flex flex-wrap gap-x-3 md:gap-x-4 gap-y-1 text-xs md:text-sm text-muted-foreground">
-                  <span>Amount: <strong className="text-foreground">{formatCurrency(o.amount)}</strong></span>
+                  {showSalesInfo && <span>Amount: <strong className="text-foreground">{formatCurrency(o.amount)}</strong></span>}
                   {o.packageKey && o.packageKey !== "custom" && <span>Package: <strong className="text-foreground">{o.packageKey}</strong></span>}
                   {o.clientName && o.clientName !== o.businessName && (
                     <span>Client: <strong className="text-foreground">{o.clientName}</strong></span>
                   )}
-                  <span>Sold by: <strong className="text-foreground">{o.soldByName}</strong></span>
+                  {showSalesInfo && <span>Sold by: <strong className="text-foreground">{o.soldByName}</strong></span>}
                   {o.fromAd && <span className="text-info">From ad</span>}
                   <span>Sold: <strong className="text-foreground">{fmtTs(o.createdAt)}</strong></span>
                   {o.promise && <span className="inline-flex items-center gap-1"><Clock size={11} /> Promise: <strong className="text-foreground">{o.promise.label}</strong></span>}
