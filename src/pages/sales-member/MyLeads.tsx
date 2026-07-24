@@ -759,11 +759,15 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
 
   const handleDeleteSaleItem = async (itemIndex: number) => {
     const deletedItem = allSaleItems[itemIndex];
-    // Guard: once work has started, deletion is not the member's call — they send an update note.
-    if (isLocked(orderFor(deletedItem, itemIndex))) {
-      toast({ title: "Can't delete", description: "The tech team has started this work. Send an update note instead.", variant: "destructive" });
-      return;
-    }
+    // Once work is out with a member, deleting is still allowed — but it can't be silent, so the
+    // member confirms and the tech side is told the sale was deleted (see cancelOrderForSale).
+    const started = isLocked(orderFor(deletedItem, itemIndex));
+    if (started && !window.confirm(
+      "The tech team has already started this work.\n\n"
+      + "Deleting the sale will cancel the order and tell them it was deleted by you, so they stop.\n\n"
+      + "Delete it anyway?"
+    )) return;
+
     const items = [...allSaleItems];
     items.splice(itemIndex, 1);
     const updates: Record<string, any> = { saleItems: items };
@@ -776,7 +780,11 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
     }
     await updateLead(lead.id, updates);
     // Remove the matching order across the platform so it never lingers in the tech Orders queue.
-    try { await cancelOrderForSale({ leadId: lead.id, item: deletedItem, itemIndex }); } catch { /* best-effort */ }
+    // Passing the member's name flags already-assigned work as "sale deleted" rather than
+    // letting the job quietly disappear from under whoever is building it.
+    try {
+      await cancelOrderForSale({ leadId: lead.id, item: deletedItem, itemIndex, deletedByName: currentUser?.name || null });
+    } catch { /* best-effort */ }
     if (noSalesLeft && currentUser) {
       try { await clearSaleFreeze({ phone: lead.phone, actor: { uid: currentUser.uid, name: currentUser.name } }); } catch { /* best-effort */ }
     }
@@ -795,7 +803,12 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
         },
       });
     }
-    toast({ title: "Deleted", description: "Sale removed — and cleared from the tech queue." });
+    toast({
+      title: "Deleted",
+      description: started
+        ? "Sale removed. The tech team has been told it was deleted so they stop the work."
+        : "Sale removed — and cleared from the tech queue.",
+    });
   };
 
   const copyClientMessage = (item: SaleDetail) => {

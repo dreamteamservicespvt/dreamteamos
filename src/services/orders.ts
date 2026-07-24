@@ -173,27 +173,57 @@ export async function cancelOrderForSale(params: {
   leadId: string;
   item: SaleDetail;
   itemIndex: number;
+  /**
+   * Set when a sales member deleted the sale outright (rather than an admin rejecting it). Work
+   * already assigned is flagged instead of disappearing, so the tech side finds out.
+   */
+  deletedByName?: string | null;
 }): Promise<void> {
-  const { leadId, item, itemIndex } = params;
+  const { leadId, item, itemIndex, deletedByName } = params;
   try {
     const id = orderDocId(leadId, item, itemIndex);
     const ref = doc(db, "orders", id);
     const snap = await getDoc(ref);
     if (!snap.exists()) return;
-    const order = snap.data() as Order;
+    const order = { id: snap.id, ...snap.data() } as Order;
     // A permanently-deleted order stays deleted — the sale going away doesn't revive it.
     if (order.deleted || order.status === "deleted" || order.status === "cancelled") return;
+
+    // Nothing has started yet: the order can simply go.
     if (order.status === "unassigned") {
       await deleteDoc(ref);
       return;
     }
-    await updateDoc(ref, { status: "cancelled", updatedAt: serverTimestamp() });
-    if (order.techAdminId) {
+
+    // Work is already out with a member. Cancel the order, but make the reason loud: flag the
+    // work assignment itself and tell the people holding it, so nobody keeps building a dead ad.
+    await updateDoc(ref, {
+      status: "cancelled",
+      ...(deletedByName ? { saleDeleted: true, saleDeletedByName: deletedByName, saleDeletedAt: Timestamp.now() } : {}),
+      updatedAt: serverTimestamp(),
+    });
+
+    if (order.workAssignmentId && deletedByName) {
+      try {
+        await updateDoc(doc(db, "work_assignments", order.workAssignmentId), {
+          saleDeleted: true,
+          saleDeletedByName: deletedByName,
+          saleDeletedAt: Timestamp.now(),
+        });
+      } catch { /* the order is already flagged; a missing work doc is not fatal */ }
+    }
+
+    const business = order.businessName || "a client";
+    const recipients = [order.assignedTo, order.techAdminId].filter((u): u is string => !!u);
+    for (const userId of Array.from(new Set(recipients))) {
       await sendNotification({
-        userId: order.techAdminId,
+        userId,
         type: "order_cancelled",
-        title: "Order Cancelled",
-        message: `The sale for "${order.businessName || "a client"}" was reverted — its order/work was cancelled.`,
+        title: deletedByName ? "Sale deleted — stop this work" : "Order Cancelled",
+        message: deletedByName
+          ? `${deletedByName} deleted the sale for "${business}". The work assigned for it is no longer needed — check before continuing.`
+          : `The sale for "${business}" was reverted — its order/work was cancelled.`,
+        link: "/tech/my-work",
       });
     }
   } catch (err) {

@@ -696,7 +696,11 @@ export default function WorkAssign() {
       )}
 
       {/* How many ads landed in a period and where each one has got to. */}
-      <AdsStatusBoard assignments={assignments} orders={orders} members={techMembers} showPricing />
+      <AdsStatusBoard
+        assignments={assignments} orders={orders} members={techMembers} showPricing
+        onAssignOrder={(orderId) => navigate(`/tech-admin/work-assign?order=${encodeURIComponent(orderId)}`)}
+        onOpenMember={(uid) => navigate(`/tech-admin/work-assign/${uid}?status=all&day=all`)}
+      />
 
       {/* Approve work — everything the team has delivered and is waiting on a decision */}
       <div className="rounded-2xl border border-border/70 bg-card/80 p-3 md:p-4 shadow-sm backdrop-blur-sm">

@@ -96,6 +96,13 @@ export interface WorkAssignment {
   language?: string;
   /** Free-text brief from the client, carried through from the sale. */
   requirementNotes?: string;
+  /**
+   * The sales member deleted the sale behind this work after it was already assigned. The work
+   * itself is left alone — the tech team must be told, not silently have a job vanish mid-flight.
+   */
+  saleDeleted?: boolean;
+  saleDeletedByName?: string | null;
+  saleDeletedAt?: any;
 }
 
 export type LeadStatus = "not_called" | "answered" | "not_answered" | "call_later" | "not_interested";

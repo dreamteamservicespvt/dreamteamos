@@ -15,6 +15,7 @@ import DashboardDayPicker from '@/components/dashboard/DayPicker';
 import type { WorkAssignment } from '@/types';
 import CodeVerificationModal from '@/components/ai-platform/CodeVerificationModal';
 import AIPlatformApp from '@/components/ai-platform/AIPlatformApp';
+import SaleDeletedBanner from '@/components/work/SaleDeletedBanner';
 import { useConfirm } from '@/hooks/useConfirm';
 
 /** Completed work is paged so a long history never buries the active assignments above it. */
@@ -384,7 +385,8 @@ export default function MyWork() {
                     </div>
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${cfg.color}`}>{a.status.replace('_', ' ')}</span>
                   </div>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground mb-3">
+                  <SaleDeletedBanner assignment={a} />
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground mb-3">
                     <span className="capitalize">{a.category}</span>
                     <span>{a.clipCount} clips + EC</span>
                     <span>{a.duration}</span>

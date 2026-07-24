@@ -14,6 +14,7 @@ import { useFirestoreCollection } from '@/hooks/useFirestore';
 import { useViewMode } from '@/hooks/useViewMode';
 import ViewToggle from '@/components/common/ViewToggle';
 import RequirementsShareModal from '@/components/work/RequirementsShareModal';
+import SaleDeletedBanner from '@/components/work/SaleDeletedBanner';
 import { buildAssignmentRequirementsMessage } from '@/utils/adRequirement';
 import ReassignWork from '@/components/work/ReassignWork';
 import {
@@ -483,6 +484,7 @@ export default function TeamLeaderMemberAssignments() {
                   </span>
                   <span className="text-[10px] md:text-xs font-mono text-muted-foreground">{a.uniqueId}</span>
                 </div>
+                <SaleDeletedBanner assignment={a} />
 
                 {/* Inline edit — full labeled grid (no price for leads) */}
                 {editingId === a.id && editForm ? (

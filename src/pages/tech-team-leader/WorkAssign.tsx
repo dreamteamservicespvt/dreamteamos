@@ -677,7 +677,11 @@ export default function TeamLeaderWorkAssign() {
       )}
 
       {/* How many ads landed in a period and where each one has got to. No pricing for a lead. */}
-      <AdsStatusBoard assignments={assignments} orders={orders} members={techMembers} showPricing={false} />
+      <AdsStatusBoard
+        assignments={assignments} orders={orders} members={techMembers} showPricing={false}
+        onAssignOrder={(orderId) => navigate(`/team-leader/work-assign?order=${encodeURIComponent(orderId)}`)}
+        onOpenMember={(uid) => navigate(`/team-leader/work-assign/${uid}?status=all&day=all`)}
+      />
 
       {/* Approve work — everything the team has delivered and is waiting on a decision */}
       <div className="rounded-2xl border border-border/70 bg-card/80 p-3 md:p-4 shadow-sm backdrop-blur-sm">

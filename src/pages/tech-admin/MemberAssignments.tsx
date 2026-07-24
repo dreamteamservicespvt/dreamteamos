@@ -13,6 +13,7 @@ import { useFirestoreCollection } from '@/hooks/useFirestore';
 import { useViewMode } from '@/hooks/useViewMode';
 import ViewToggle from '@/components/common/ViewToggle';
 import RequirementsShareModal from '@/components/work/RequirementsShareModal';
+import SaleDeletedBanner from '@/components/work/SaleDeletedBanner';
 import { buildAssignmentRequirementsMessage } from '@/utils/adRequirement';
 import ReassignWork from '@/components/work/ReassignWork';
 import {
@@ -588,6 +589,7 @@ export default function MemberAssignments() {
 
             {/* Card Body */}
             <div className="px-4 py-3">
+              <SaleDeletedBanner assignment={a} />
               {editingId === a.id && editForm ? (
                 <div className="rounded-xl border border-border bg-background/60 p-3 md:p-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
