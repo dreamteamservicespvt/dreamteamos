@@ -1303,16 +1303,20 @@ export const generateAdAssets = async (
      */
     const fixNames = (clips: DialogueClip[]) => applyNameSpellings(clips, packNameSpellings(pack, formData.language));
     /**
-     * Every spelling that counts as saying a character's name — the Latin names plus the pack's
-     * fixed native spellings — so the "one mention in the whole ad" rule is enforced, not merely
-     * requested. The ad is selling the client, not the cast.
+     * Each character's name and every spelling of it, so "both names, each exactly once" is
+     * enforced per character rather than merely requested. A single total would let a script say
+     * one name twice and the other never and still look compliant.
      */
-    const nameTokens = [
-      ...packSpeakerList.map(s => s.name),
-      ...packNameSpellings(pack, formData.language).map(s => s.spelling),
-    ];
+    const spellings = packNameSpellings(pack, formData.language);
+    const characterNames = packSpeakerList.map(speaker => ({
+      name: speaker.name,
+      tokens: [
+        speaker.name,
+        ...spellings.filter(s => s.name === speaker.name).map(s => s.spelling),
+      ],
+    }));
     const checkDialogue = (clips: DialogueClip[]) =>
-      validateDialogueClips(clips, segmentCount, packSpeakerList, { nameTokens });
+      validateDialogueClips(clips, segmentCount, packSpeakerList, { characterNames });
 
     // A pasted script already in two-speaker form is authoritative — honour it verbatim.
     const pasted = customScript?.trim() ? parseDialogueClips(customScript, aliases) : [];

@@ -369,8 +369,13 @@ describe("fixed spoken name spellings", () => {
  * premise is lost on anyone half-listening — and after that, every further mention is a word the
  * client paid for and did not get.
  */
-describe("name mentions must be exactly one across the whole script", () => {
+describe("both names, each spoken exactly once across the whole script", () => {
   const tokens = ["Motu", "Patlu", "మోటూ", "పట్లు"];
+  /** Per-character spellings, the shape the validator counts against. */
+  const characterNames = [
+    { name: "Motu", tokens: ["Motu", "మోటూ"] },
+    { name: "Patlu", tokens: ["Patlu", "పట్లు"] },
+  ];
   const say = (...texts: string[]): DialogueClip[] =>
     texts.map(t => [{ speaker: "motu", text: t }, { speaker: "patlu", text: "ok." }]);
 
@@ -388,23 +393,53 @@ describe("name mentions must be exactly one across the whole script", () => {
     expect(countNameMentions(say("anything"), [])).toBe(0);
   });
 
-  it("accepts a script that names a character once", () => {
-    const clips = [clipOf(9, 9, "Patlu"), clipOf(9, 9, "beta")];
-    expect(validateDialogueClips(clips, 2, speakers, { nameTokens: tokens })).toEqual([]);
+  /** Both names in clip 1 — the greeting — and neither again. This is the shape we want. */
+  it("accepts a script that names each character exactly once", () => {
+    const clips = [
+      [{ speaker: "motu", text: `Patlu ${words(8)}?` }, { speaker: "patlu", text: `Motu ${words(8)}.` }],
+      clipOf(9, 9, "beta"),
+    ];
+    expect(validateDialogueClips(clips, 2, speakers, { characterNames })).toEqual([]);
   });
 
-  it("flags a script that keeps saying the names", () => {
-    const clips = [clipOf(9, 9, "Patlu"), clipOf(9, 9, "Motu")];
-    const issues = validateDialogueClips(clips, 2, speakers, { nameTokens: tokens });
-    expect(issues.some(i => i.includes("spoken 2 times across the whole script"))).toBe(true);
+  it("flags a name said more than once", () => {
+    const clips = [
+      [{ speaker: "motu", text: `Patlu ${words(8)}?` }, { speaker: "patlu", text: `Motu ${words(8)}.` }],
+      [{ speaker: "motu", text: `Patlu ${words(8)}?` }, { speaker: "patlu", text: `${words(9)}.` }],
+    ];
+    const issues = validateDialogueClips(clips, 2, speakers, { characterNames });
+    expect(issues.some(i => i.includes("Patlu's name is spoken 2 times"))).toBe(true);
     expect(issues.some(i => i.includes("use those words for the business instead"))).toBe(true);
   });
 
-  it("flags a script that never names them at all", () => {
+  /**
+   * The failure a single total would hide: "Motu" twice and "Patlu" never still sums to two.
+   * Counting per character catches both halves.
+   */
+  it("flags one name said twice while the other is never said", () => {
+    const clips = [
+      [{ speaker: "motu", text: `Motu ${words(8)}?` }, { speaker: "patlu", text: `Motu ${words(8)}.` }],
+      clipOf(9, 9, "beta"),
+    ];
+    const issues = validateDialogueClips(clips, 2, speakers, { characterNames });
+    expect(issues.some(i => i.includes("Motu's name is spoken 2 times"))).toBe(true);
+    expect(issues.some(i => i.includes("Patlu's name is never spoken"))).toBe(true);
+  });
+
+  it("flags a script that names neither of them", () => {
     const clips = [clipOf(9, 9, "alpha"), clipOf(9, 9, "beta")];
-    const issues = validateDialogueClips(clips, 2, speakers, { nameTokens: tokens });
-    expect(issues.some(i => i.includes("names are never spoken"))).toBe(true);
+    const issues = validateDialogueClips(clips, 2, speakers, { characterNames });
+    expect(issues.some(i => i.includes("Motu's name is never spoken"))).toBe(true);
+    expect(issues.some(i => i.includes("Patlu's name is never spoken"))).toBe(true);
     expect(issues.some(i => i.includes("most naturally in clip 1"))).toBe(true);
+  });
+
+  it("counts the fixed Telugu spellings as saying the name", () => {
+    const clips = [
+      [{ speaker: "motu", text: `పట్లు ${words(8)}?` }, { speaker: "patlu", text: `మోటూ ${words(8)}.` }],
+      clipOf(9, 9, "beta"),
+    ];
+    expect(validateDialogueClips(clips, 2, speakers, { characterNames })).toEqual([]);
   });
 
   // The [Motu]: / [Patlu]: labels are structure, not dialogue — counting them would make every
@@ -414,7 +449,7 @@ describe("name mentions must be exactly one across the whole script", () => {
     expect(countNameMentions([clipOf(9, 9, "Patlu")], tokens)).toBe(1);
   });
 
-  it("skips the check entirely when no tokens are supplied", () => {
+  it("skips the check entirely when no characters are supplied", () => {
     const clips = [clipOf(9, 9, "Motu"), clipOf(9, 9, "Motu")];
     const issues = validateDialogueClips(clips, 2, speakers);
     expect(issues.some(i => i.includes("spoken") || i.includes("never spoken"))).toBe(false);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Wand2, Sparkles, Layout, Type, Rocket, AlertCircle,
   Loader2, Save, Check, Camera, Video, PenTool, ChevronDown, Copy,
@@ -8,6 +8,7 @@ import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
 import { FileUpload } from './FileUpload';
 import { GeneratedCard, parseVoiceOverClips, stripAttachmentDirective } from './GeneratedCard';
+import { buildPromptAttachments, type PromptAttachment } from '@/utils/promptAttachments';
 import { SavedItems, SavedGeneration } from './SavedItems';
 import { AdFormData, AdType, AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER, FileStore, GeneratedOutputs, GenerationStatus, LocationMode } from '@/types/aiPlatform';
 import { characterPackOptions, getCharacterPack } from '@/services/characterPacks';
@@ -187,6 +188,27 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   const adTypeLocked = !!assignment;
   /** The selected cartoon duo, or null for a normal human-model ad. */
   const activePack = getCharacterPack(formData.characterPack);
+
+  /**
+   * Previews of the client's uploaded location photos, so the "attach this one" instruction can
+   * show the actual picture instead of a number the member has to count out against their files.
+   * Revoked when the file list changes so the blobs do not accumulate across generations.
+   */
+  const storeImageUrls = useMemo(
+    () => files.storeImage.map(file => URL.createObjectURL(file)),
+    [files.storeImage],
+  );
+  useEffect(() => () => { storeImageUrls.forEach(URL.revokeObjectURL); }, [storeImageUrls]);
+
+  /** Each main-frame prompt's attachment, resolved to the real photo it points at. */
+  const mainFrameAttachments = useMemo(
+    () => buildPromptAttachments(
+      outputs?.mainFramePrompts || [],
+      storeImageUrls,
+      files.storeImage.map(f => f.name),
+    ),
+    [outputs?.mainFramePrompts, storeImageUrls, files.storeImage],
+  );
   /**
    * The special category was sold, not chosen here. The member still answers the location question
    * — photos can arrive (or fail to) after the sale — but they cannot turn a Motu & Patlu ad into
@@ -1294,8 +1316,9 @@ clip-2[8-16sec]: second spoken line`}</pre>
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                         isDark={isDark}
                         quickCopyItems={outputs.mainFramePrompts.map(p => stripAttachmentDirective(p).body)}
-                        quickCopyAttachments={outputs.mainFramePrompts.map(p => stripAttachmentDirective(p).directive)}>
+                        quickCopyAttachments={mainFrameAttachments}>
                         <GeneratedCard title="Main Frame" content={outputs.mainFramePrompts} variant="dropdown" sectionType="mainFrame"
+                          attachments={mainFrameAttachments}
                           showRefinement={true} onRefine={(i) => handleRefineSection('mainFrame', i)} isRefining={refiningSection === 'mainFrame'} hideTitle />
                       </OutputSection>
                   )}
@@ -1546,8 +1569,8 @@ const OutputSection: React.FC<{
   quickCopyLabel?: string;
   quickCopyNamespace?: string;
   quickCopyRanges?: string[];
-  /** Per-item "attach this photo" directive, surfaced on the quick-copy chips. */
-  quickCopyAttachments?: (string | null)[];
+  /** Per-item "attach this photo", surfaced on the quick-copy chips as the photo itself. */
+  quickCopyAttachments?: (PromptAttachment | null)[];
 }> = ({ title, sectionKey, children, collapsedOutputs, toggleOutputSection, isDark, copyContent, copyLabel, quickCopyItems, quickCopyLabel, quickCopyNamespace, quickCopyRanges, quickCopyAttachments }) => {
   const [copied, setCopied] = useState(false);
   const handleCopy = (e: React.MouseEvent) => {
@@ -1613,11 +1636,12 @@ const QuickCopyActions: React.FC<{
   namespace?: string;
   ranges?: string[];
   /**
-   * Per-prompt attachment directive, when the prompt carries one. These chips are the ONLY thing
-   * most members touch — they copy from the collapsed header and go straight to the generator
-   * without ever expanding the section — so which photo to attach has to be legible right here.
+   * Per-prompt attachment, when the prompt carries one. These chips are the ONLY thing most
+   * members touch — they copy from the collapsed header and go straight to the generator without
+   * ever expanding the section — so the photo to attach is shown ON the chip, as a thumbnail of
+   * the real image rather than a number they would have to count out.
    */
-  attachments?: (string | null)[];
+  attachments?: (PromptAttachment | null)[];
 }> = ({ prompts, isDark, labelPrefix = 'F', namespace = 'main-frame', ranges, attachments }) => {
   const { toast } = useToast();
   const promptFingerprint = prompts
@@ -1651,7 +1675,14 @@ const QuickCopyActions: React.FC<{
     // leave the page, so the attachment instruction follows them out.
     const attachment = attachments?.[index];
     if (attachment) {
-      toast({ title: `${labelPrefix}${index + 1} copied`, description: attachment });
+      toast({
+        title: attachment.photoNumber === null
+          ? `${labelPrefix}${index + 1} copied — nothing to attach`
+          : `${labelPrefix}${index + 1} copied — now attach photo ${attachment.photoNumber}`,
+        description: attachment.photoNumber === null
+          ? "This clip's location is generated from the prompt."
+          : `Store/Office Image #${attachment.photoNumber}${attachment.zone ? ` — ${attachment.zone}` : ''}${attachment.fileName ? ` (${attachment.fileName})` : ''}`,
+      });
     }
   };
 
@@ -1687,17 +1718,17 @@ const QuickCopyActions: React.FC<{
         const frameLabel = `${labelPrefix}${index + 1}`;
         const range = ranges?.[index];
         const attachment = attachments?.[index];
-        // "📎 2" — attach Store/Office Image #2 — or "🎨" when this clip's location is generated.
-        const photoNumber = attachment?.match(/IMAGE #(\d+)/)?.[1] ?? null;
+        const photoNumber = attachment?.photoNumber ?? null;
 
         return (
           <button
             key={key}
             type="button"
             onClick={(event) => copyText(event, key, prompt, index)}
-            // The `u` flag matters: without it the emoji are surrogate pairs and the strip fails.
             title={attachment
-              ? `Copy ${frameLabel} — ${attachment.replace(/^(?:📎|🎨)\s*/u, '')}`
+              ? (photoNumber === null
+                ? `Copy ${frameLabel} — nothing to attach, the location is generated`
+                : `Copy ${frameLabel} — then attach Store/Office Image #${photoNumber}${attachment.zone ? ` (${attachment.zone})` : ''}`)
               : range ? `Copy ${frameLabel}${range}` : `Copy ${frameLabel} prompt`}
             className={cn(
               "inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-semibold transition-all",
@@ -1709,17 +1740,30 @@ const QuickCopyActions: React.FC<{
             {isCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3 opacity-70" />}
             <span>{frameLabel}</span>
             {range && <span className="font-normal opacity-60">{range}</span>}
-            {attachment && (
+            {/* The photo itself, right on the chip — no number to decode, no list to count. */}
+            {attachment && (photoNumber === null ? (
               <span
                 data-test={`attach-badge-${index}`}
                 className={cn("ml-0.5 rounded px-1 py-0.5 text-[10px] font-bold leading-none",
-                  photoNumber
-                    ? "bg-amber-400 text-amber-950"
-                    : isDark ? "bg-slate-600 text-slate-200" : "bg-slate-200 text-slate-600")}
+                  isDark ? "bg-slate-600 text-slate-200" : "bg-slate-200 text-slate-600")}
               >
-                {photoNumber ? `📎 ${photoNumber}` : '🎨'}
+                no photo
               </span>
-            )}
+            ) : attachment.url ? (
+              <img
+                src={attachment.url}
+                alt={`Attach image ${photoNumber}`}
+                data-test={`attach-badge-${index}`}
+                className="ml-0.5 h-5 w-5 rounded object-cover ring-2 ring-amber-400"
+              />
+            ) : (
+              <span
+                data-test={`attach-badge-${index}`}
+                className="ml-0.5 rounded bg-amber-400 px-1 py-0.5 text-[10px] font-bold leading-none text-amber-950"
+              >
+                📎 {photoNumber}
+              </span>
+            ))}
           </button>
         );
       })}

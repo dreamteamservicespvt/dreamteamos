@@ -327,25 +327,26 @@ describe("voice-over prompt — promotional grounding", () => {
    * Exactly one, in every ad whatever its length. Zero is wrong too — the audience has to register
    * who these two are once, or the premise is lost on anyone half-listening.
    */
-  it("requires the characters' names exactly once in the whole ad", () => {
+  it("requires BOTH names, each exactly once in the whole ad", () => {
     const four = p(4);
-    expect(four).toContain("THE NAMES: EXACTLY ONCE, NEVER TWICE");
-    expect(four).toMatch(/must be spoken\s*\n?EXACTLY ONE TIME/);
-    expect(four).toMatch(/Not once per clip: once in the whole ad/);
-    expect(four).toContain("It MUST appear once");
-    expect(four).toContain("It must NEVER appear again");
+    expect(four).toContain("BOTH NAMES, EACH EXACTLY ONCE");
+    expect(four).toMatch(/BOTH characters must be named in the ad/);
+    expect(four).toMatch(/"Motu" appears once. "Patlu" appears\s*\n?once/);
+    expect(four).toContain("BOTH MUST APPEAR");
+    expect(four).toContain("NEITHER MAY APPEAR AGAIN");
     expect(four).toContain("We are promoting the business, not the characters");
   });
 
-  it("puts that one mention in the opening line, whatever the ad's length", () => {
-    expect(p(2)).toMatch(/a 2-clip ad and an 8-clip ad each get exactly one/);
-    expect(p(8)).toMatch(/a 2-clip ad and an 8-clip ad each get exactly one/);
-    expect(p(4)).toMatch(/the very first line\s*\n?\s*should have Motu greet or address Patlu by name/);
+  it("puts both mentions in clip 1's greeting, whatever the ad's length", () => {
+    expect(p(2)).toMatch(/a 2-clip ad and an 8-clip ad each get exactly one of each/);
+    expect(p(8)).toMatch(/a 2-clip ad and an 8-clip ad each get exactly one of each/);
+    expect(p(4)).toMatch(/Motu opens by addressing Patlu by name/);
+    expect(p(4)).toContain("This clip carries the one and");
   });
 
-  it("restates the one-name rule in the repair contract so a fix cannot undo it", () => {
+  it("restates the both-names rule in the repair contract so a fix cannot undo it", () => {
     const repair = CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT(pack, 32, 4, "Telugu");
-    expect(repair).toMatch(/name is spoken EXACTLY ONCE in total/);
+    expect(repair).toMatch(/"Motu" is spoken exactly once and "Patlu" exactly once/);
   });
 });
 

@@ -236,15 +236,22 @@ export interface DialogueValidationOptions {
   minWordsPerLine?: number;
   maxWordsPerLine?: number;
   /**
-   * Every spelling of a character's name that counts as "saying the name" — the Latin name plus
-   * whatever native spellings the pack fixes. Leave empty to skip the check entirely.
+   * The characters whose names are counted, each with every spelling that counts as saying it —
+   * the Latin name plus whatever native spellings the pack fixes. Leave empty to skip the check.
    */
-  nameTokens?: string[];
+  characterNames?: CharacterNameTokens[];
   /**
-   * How many times a character's name must be spoken across the WHOLE script — exactly this many,
-   * not "up to". One mention grounds who is talking; a second is a word the business did not get.
+   * How many times EACH character's name must be spoken across the WHOLE script — exactly this
+   * many, not "up to". One grounds who is on screen; a second is a word the business did not get.
    */
-  nameMentions?: number;
+  mentionsPerName?: number;
+}
+
+/** One character's name and every spelling of it that counts as a spoken mention. */
+export interface CharacterNameTokens {
+  /** Display name, for the message a repair pass reads. */
+  name: string;
+  tokens: string[];
 }
 
 /**
@@ -290,31 +297,32 @@ export function validateDialogueClips(
     maxWordsPerClip = MAX_WORDS_PER_CLIP,
     minWordsPerLine = MIN_WORDS_PER_LINE,
     maxWordsPerLine = MAX_WORDS_PER_LINE,
-    nameTokens = [],
-    nameMentions = 1,
+    characterNames = [],
+    mentionsPerName = 1,
   } = options;
 
   const issues: string[] = [];
 
   /**
-   * Exactly one mention, in any ad of any length.
+   * BOTH names, each exactly once, in an ad of any length.
    *
-   * Zero is wrong too, not just too many: the audience has to hear who these two are at least once
-   * or the whole premise is lost on anyone half-listening. One does that. Two or more starts
-   * spending the client's seconds on the cast.
+   * Counted per character rather than as one total, because the two failures are different and a
+   * total would hide them: saying "Motu" twice and "Patlu" never still sums to two. Zero is a
+   * failure as much as three — the audience has to hear who each of them is once, and every
+   * further mention is a word the client paid for and did not get.
    */
-  if (nameTokens.length > 0) {
-    const mentions = countNameMentions(clips, nameTokens);
-    if (mentions > nameMentions) {
+  for (const character of characterNames) {
+    const mentions = countNameMentions(clips, character.tokens);
+    if (mentions > mentionsPerName) {
       issues.push(
-        `The characters' names are spoken ${mentions} times across the whole script — it must be `
-        + `exactly ${nameMentions}. Remove the extra mention${mentions - nameMentions === 1 ? "" : "s"} `
+        `${character.name}'s name is spoken ${mentions} times across the whole script — it must be `
+        + `exactly ${mentionsPerName}. Remove the extra mention${mentions - mentionsPerName === 1 ? "" : "s"} `
         + `and use those words for the business instead.`,
       );
-    } else if (mentions < nameMentions) {
+    } else if (mentions < mentionsPerName) {
       issues.push(
-        `The characters' names are never spoken — the script must name one of them exactly `
-        + `${nameMentions} time, most naturally in clip 1 where one greets or addresses the other.`,
+        `${character.name}'s name is never spoken — every ad must name ${character.name} exactly `
+        + `${mentionsPerName} time, most naturally in clip 1 where the two greet or address each other.`,
       );
     }
   }

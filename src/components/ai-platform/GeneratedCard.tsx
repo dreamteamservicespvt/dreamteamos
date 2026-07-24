@@ -5,6 +5,8 @@ import { cn } from '@/lib/utils';
 import { transliterateToEnglish } from '@/services/geminiService';
 import { clipLabel, formatClipLine, formatClipScript, parseLabeledClips } from '@/utils/voiceOverFormat';
 import { splitAttachmentDirective } from '@/utils/locationAssignment';
+import AttachmentBanner from './AttachmentBanner';
+import type { PromptAttachment } from '@/utils/promptAttachments';
 
 interface GeneratedCardProps {
   title: string;
@@ -17,6 +19,8 @@ interface GeneratedCardProps {
   isRefining?: boolean;
   sectionType?: 'mainFrame' | 'header' | 'poster' | 'voiceOver' | 'veo';
   hideTitle?: boolean;
+  /** Per-clip "attach this photo", resolved to the real uploaded image. Indexed like `content`. */
+  attachments?: (PromptAttachment | null)[];
 }
 
 const cleanCodeBlocks = (text: string): string => {
@@ -55,7 +59,7 @@ export const parseVoiceOverClips = (text: string): VoiceClip[] => {
 
 export const GeneratedCard: React.FC<GeneratedCardProps> = ({ 
   title, content, isJson, variant = 'default', showTransliteration = false,
-  showRefinement = false, onRefine, isRefining = false, sectionType, hideTitle = false
+  showRefinement = false, onRefine, isRefining = false, sectionType, hideTitle = false, attachments
 }) => {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
@@ -268,18 +272,11 @@ export const GeneratedCard: React.FC<GeneratedCardProps> = ({
           // A character-ad frame prompt arrives with an "attach this photo" line on top. It is
           // shown as a banner — the member has to act on it BEFORE pasting — and never mixed into
           // the prompt body, which is what they hand to the image generator.
-          const { directive, body } = stripAttachmentDirective(String(textToDisplay ?? ''));
-          const needsPhoto = directive?.startsWith('📎');
+          const { body } = stripAttachmentDirective(String(textToDisplay ?? ''));
+          const attachment = attachments?.[selectedIndex] ?? null;
           return (
             <>
-              {directive && (
-                <div className={cn("mb-3 rounded-lg border px-3 py-2 text-sm font-semibold flex items-start gap-2",
-                  needsPhoto
-                    ? (isDark ? "border-amber-600/60 bg-amber-950/30 text-amber-200" : "border-amber-400 bg-amber-50 text-amber-800")
-                    : (isDark ? "border-slate-600 bg-slate-700/40 text-slate-300" : "border-slate-300 bg-slate-50 text-slate-600"))}>
-                  <span>{directive}</span>
-                </div>
-              )}
+              {attachment && <AttachmentBanner attachment={attachment} isDark={isDark} />}
               <div className={cn("text-sm whitespace-pre-wrap leading-relaxed", isDark ? "text-slate-300" : "text-slate-700")}>
                 {body}
               </div>

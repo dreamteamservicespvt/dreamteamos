@@ -68,8 +68,10 @@ const promotionalBeats = (segmentCount: number, first: string, second: string): 
   }
 
   const beats = [
-    `Clip 1 — ARRIVAL / HOOK: they have just walked in. ${first} reacts to what he sees or raises the `
-    + `customer's real question about it. ${second}'s answer NAMES THE BUSINESS and says plainly what it does.`,
+    `Clip 1 — ARRIVAL / HOOK: they have just walked in. ${first} addresses ${second} BY NAME and `
+    + `reacts to what he sees, or raises the customer's real question about it. ${second} answers with `
+    + `"${first}" and NAMES THE BUSINESS, saying plainly what it does. This clip carries the one and `
+    + `only mention of each name — no clip after this one may use either name again.`,
   ];
   for (let i = 2; i < segmentCount; i++) {
     beats.push(
@@ -132,21 +134,23 @@ BUSINESS INFORMATION you are given — it is not a general chat about advertisin
 or "promotion". The humour exists only to carry the sell. Every line must sound like natural
 ${lang} speech between the two of them, not like a written slogan.
 
-===== THE NAMES: EXACTLY ONCE, NEVER TWICE (STRICT) =====
+===== BOTH NAMES, EACH EXACTLY ONCE (STRICT) =====
 
-Across the ENTIRE script — all ${segmentCount} clips together — a character's name must be spoken
-EXACTLY ONE TIME. Not once per clip: once in the whole ad. This is the same in every ad, whatever
-its length: a 2-clip ad and an 8-clip ad each get exactly one.
+BOTH characters must be named in the ad, and each name is spoken EXACTLY ONE TIME across the ENTIRE
+script — all ${segmentCount} clips together. "${first.name}" appears once. "${second.name}" appears
+once. That is two name-words in the whole ad, and no more. It is the same in every ad whatever its
+length: a 2-clip ad and an 8-clip ad each get exactly one of each.
 
-• It MUST appear once. The audience has to register who these two are, so the very first line
-  should have ${first.name} greet or address ${second.name} by name — that is the one mention, and
-  it is the natural place for it.
-• It must NEVER appear again. Not in clip 2, not in the closing line, not once more anywhere.
-  After that opening they simply talk to each other, with no names at all.
+• BOTH MUST APPEAR. The audience has to register who these two are. The natural way is CLIP 1,
+  where they greet each other: ${first.name} opens by addressing ${second.name} by name, and
+  ${second.name}'s reply comes back with "${first.name}". One line each, done.
+• NEITHER MAY APPEAR AGAIN. Not in clip 2, not in the closing line, not anywhere after clip 1.
+  From then on they simply talk to each other, with no names at all.
 
-We are promoting the business, not the characters. Every word spent on "${first.name}" or
-"${second.name}" is a word the client did not get. The viewer can SEE who is talking; they cannot
-know the business unless it is said. So the BUSINESS's name is the one that gets repeated.
+We are promoting the business, not the characters. Beyond that one introduction, every word spent
+on "${first.name}" or "${second.name}" is a word the client did not get. The viewer can SEE who is
+talking; they cannot know the business unless it is said. So the BUSINESS's name is the one that
+gets repeated.
 
 CLIP-BY-CLIP STRUCTURE:
 
@@ -236,7 +240,7 @@ NON-NEGOTIABLE CONTRACT:
 • Each line is one complete sentence ending in . ! or ?
 • Output format exactly: \`<start>-<end>|${first.key}: <line>\` then \`<start>-<end>|${second.key}: <line>\`
 • Keep the original meaning and the business facts — change only what is broken
-• Across ALL ${segmentCount} clips together, a character's name is spoken EXACTLY ONCE in total — once in the opening line, never again anywhere
+• Across ALL ${segmentCount} clips together, "${first.name}" is spoken exactly once and "${second.name}" exactly once — both in clip 1 where they greet each other, and never again anywhere
 • Total duration is ${duration} seconds; never add or remove clips${spellings.length > 0
   ? `\n• A spoken character name is written EXACTLY as: ${spellings.map((s) => `${s.name} → ${s.spelling}`).join(", ")}`
   : ""}
