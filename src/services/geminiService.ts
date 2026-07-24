@@ -22,6 +22,21 @@ import {
   getRealisticLogoPlacementGuidance,
   getModelProfile
 } from "./prompts";
+import {
+  CHARACTER_VOICEOVER_SYSTEM_PROMPT,
+  CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT,
+  CHARACTER_MULTI_FRAME_SYSTEM_PROMPT,
+  CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT,
+  LOCATION_INDEX_SYSTEM_PROMPT,
+} from "./prompts/characterAd";
+import { getCharacterPack, packSpeakers, packSpeakerAliases, packNameSpellings } from "./characterPacks";
+import {
+  parseDialogueClips, validateDialogueClips, formatDialogueScript, applyNameSpellings,
+  type DialogueClip,
+} from "@/utils/dialogueFormat";
+import {
+  assignPhotosToClips, describeClipLocations, parseLocationIndex, type LocationPhoto,
+} from "@/utils/locationAssignment";
 import { fileToBase64, readFileAsText } from "@/utils/fileHelpers";
 import { CLIP_SECONDS, clipLabel, formatClipScript, parseLabeledClips } from "@/utils/voiceOverFormat";
 
@@ -1269,6 +1284,81 @@ export const generateAdAssets = async (
   let voiceOverScript: string;
   let parsedSegments: string[];
 
+  // ── Special-category (cartoon duo) ad ───────────────────────────────────────────────────────
+  // A pack swaps in the two-character script/frame/video prompts. When no pack is selected this
+  // is null and every line below behaves exactly as it always has.
+  const pack = getCharacterPack(formData.characterPack);
+  const packSpeakerList = pack ? packSpeakers(pack) : [];
+  let dialogueClips: DialogueClip[] = [];
+
+  /** Generate → validate → repair, for the two-character script. Mirrors the standard loop. */
+  const generateCharacterDialogue = async (): Promise<DialogueClip[]> => {
+    if (!pack) return [];
+    const aliases = packSpeakerAliases(pack);
+    /**
+     * The characters' names have one fixed spelling in the spoken language. Applied to every
+     * script that enters here — generated, repaired, or pasted — because the point is that the
+     * same character is never called two different things, whatever the source.
+     */
+    const fixNames = (clips: DialogueClip[]) => applyNameSpellings(clips, packNameSpellings(pack, formData.language));
+
+    // A pasted script already in two-speaker form is authoritative — honour it verbatim.
+    const pasted = customScript?.trim() ? parseDialogueClips(customScript, aliases) : [];
+    if (pasted.length === segmentCount) return fixNames(pasted);
+
+    const systemPrompt = CHARACTER_VOICEOVER_SYSTEM_PROMPT(
+      pack, effectiveDuration, segmentCount, formData.adType, formData.festivalName, formData.language,
+    );
+    const userPrompt = `Write the ${segmentCount}-clip cartoon dialogue script for:
+  BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
+  AD TYPE: ${formData.adType}
+  ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName}` : ''}
+  DURATION: ${effectiveDuration} seconds (${segmentCount} clips of ${CLIP_SECONDS} seconds)`;
+
+    const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
+      model,
+      contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+      config: { systemInstruction: systemPrompt },
+    }));
+
+    let clips = fixNames(parseDialogueClips(response.text || '', aliases));
+    let issues = validateDialogueClips(clips, segmentCount, packSpeakerList);
+
+    for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES && issues.length > 0; pass++) {
+      const repairPrompt = `Repair this cartoon dialogue script using only verified business facts.
+
+BUSINESS INFORMATION:
+${JSON.stringify(businessInfo, null, 2)}
+
+CURRENT SCRIPT:
+${formatDialogueScript(clips, packSpeakerList)}
+
+VALIDATION ISSUES:
+${issues.map(issue => `- ${issue}`).join('\n')}
+
+Return only the repaired ${segmentCount} clips.`;
+
+      const repaired = await callWithFallback(async (ai, model) => ai.models.generateContent({
+        model,
+        contents: [{ role: 'user', parts: [{ text: repairPrompt }] }],
+        config: {
+          systemInstruction: CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT(pack, effectiveDuration, segmentCount, formData.language),
+        },
+      }));
+
+      const next = fixNames(parseDialogueClips(repaired.text || '', aliases));
+      // Only accept a repair that genuinely improves things — a worse rewrite is discarded.
+      const nextIssues = validateDialogueClips(next, segmentCount, packSpeakerList);
+      if (next.length > 0 && nextIssues.length < issues.length) {
+        clips = next;
+        issues = nextIssues;
+      } else break;
+    }
+
+    if (issues.length > 0) console.warn('Character dialogue issues remain after repair:', issues);
+    return clips;
+  };
+
   const applyVoiceOverRepairIfNeeded = async (candidateScript: string) => {
     let normalizedVoiceOver = normalizeAndFormatVoiceOver(candidateScript, segmentCount);
     let voiceOverIssues = validateVoiceOverSegments(normalizedVoiceOver.rawScript, normalizedVoiceOver.segments, segmentCount, formData.language);
@@ -1353,7 +1443,17 @@ Review it now and return the JSON verdict.` }] }],
     return reviewed;
   };
 
-  if (preSplitCustomClips.length > 0) {
+  if (pack) {
+    // Two characters share every 8-second clip, so the script is an exchange rather than a line.
+    dialogueClips = await generateCharacterDialogue();
+    voiceOverScript = formatDialogueScript(dialogueClips, packSpeakerList);
+    // Downstream (main frame, Veo, stock images) consumes one string per clip — give it the whole
+    // exchange, speaker-labelled, so every later prompt knows who says what.
+    const nameOf = new Map(packSpeakerList.map(s => [s.key, s.name]));
+    parsedSegments = dialogueClips.map(clip =>
+      clip.map(line => `${nameOf.get(line.speaker) ?? line.speaker}: ${line.text}`).join(' ')
+    );
+  } else if (preSplitCustomClips.length > 0) {
     // The business already split the script into `clip-N[…sec]:` lines — honour it exactly.
     // No AI re-segmentation, no word-count repair, no quality rewrite: the wording the business
     // supplied is what ships, so it appears unchanged in both the Voice Over Script and the
@@ -1427,6 +1527,39 @@ Segment 2: <text>
   // Emit partial result: voiceOver ready
   emitPartial({ voiceOverScript });
 
+  /**
+   * Location scouting for a character-pack ad built on the client's own photographs.
+   *
+   * Reading the photos once, up front, is what lets each clip be matched to the RIGHT backdrop
+   * instead of simply taking them in upload order. If the scout call fails we fall back to a
+   * plain positional assignment rather than losing the photos altogether.
+   */
+  const scoutClientLocations = async (): Promise<LocationPhoto[]> => {
+    const photos = files.storeImage || [];
+    if (!pack || formData.locationMode !== 'real_provided' || photos.length === 0) return [];
+    try {
+      onProgress("Reviewing the client's location photos...", 40);
+      const parts: any[] = [];
+      for (let i = 0; i < photos.length; i++) {
+        parts.push({ inlineData: { mimeType: photos[i].type, data: await fileToBase64(photos[i]) } });
+        parts.push({ text: `Photograph index ${i}.` });
+      }
+      const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
+        model,
+        contents: [{ role: 'user', parts }],
+        config: { systemInstruction: LOCATION_INDEX_SYSTEM_PROMPT, responseMimeType: "application/json" },
+      }));
+      const indexed = parseLocationIndex(response.text || '', photos.length);
+      if (indexed.length > 0) return indexed;
+    } catch (err) {
+      console.warn('Location scouting failed; falling back to positional photo assignment.', err);
+    }
+    // Unscouted but still usable — better a plain assignment than ignoring the client's photos.
+    return photos.map((_, index) => ({ index, zone: `photograph ${index + 1}`, usable: true }));
+  };
+
+  const clientLocations = await scoutClientLocations();
+
   // --- Steps 3-6 run CONCURRENTLY: Main Frame, Header (local), Poster, Veo ---
   onProgress("Generating Main Frame, Poster & Video prompts...", 45);
 
@@ -1447,7 +1580,25 @@ Segment 2: <text>
   const maleCastingOverride = p.isMale
     ? `  MODEL GENDER OVERRIDE (ABSOLUTE — HIGHEST PRIORITY): The brand ambassador for THIS campaign is a MALE — a handsome, premium, believable, mature Indian MAN (age 30–35). Wherever ANY rule below says "woman", "girl", "she", "her", "female", "saree", "blouse", "bindi", "bangles", or any female jewellery/makeup, IGNORE the female specifics and render THIS MALE model instead — with sharp masculine grooming (clean-shaven or a neatly trimmed beard), a neat men's haircut, and NO bindi, NO saree, NO blouse, NO necklace/earrings/bangles, NO feminine makeup. Male accessories are limited to a wristwatch and an optional slim ring. Keep the same man consistent across all clips.\n`
     : '';
-  const multiFrameSystemPrompt = buildRatioDirective(formData) + buildNameBoardDirective(formData, businessInfo) + MULTI_FRAME_SYSTEM_PROMPT(
+  // A character-pack ad stages two cartoon characters in the client's real premises, so it uses
+  // an entirely different art-direction prompt — the human-model rules below never apply to it.
+  // No buildRatioDirective for a pack: the ratio is part of its AD CONFIGURATION block, stated
+  // once as a positive instruction rather than bolted on as an override of rules it never carries.
+  const multiFrameSystemPrompt = pack
+    ? CHARACTER_MULTI_FRAME_SYSTEM_PROMPT(pack, {
+        segmentCount,
+        clipSummaries: parsedSegments,
+        locationMode: formData.locationMode === 'real_provided' ? 'real_provided' : 'ai_generated',
+        locationPlan: formData.locationMode === 'real_provided' && clientLocations.length > 0
+          ? describeClipLocations(assignPhotosToClips(segmentCount, clientLocations), clientLocations)
+          : resolvedLocationPlan,
+        aspectRatio: formData.aspectRatio === '16:9' ? '16:9' : '9:16',
+        adType: formData.adType,
+        festivalName: formData.festivalName,
+        hasLogo: !!files.logo,
+        businessContext: serializedBusinessInfo,
+      })
+    : buildRatioDirective(formData) + buildNameBoardDirective(formData, businessInfo) + MULTI_FRAME_SYSTEM_PROMPT(
     formData.attireType,
     formData.adType,
     formData.festivalName,
@@ -1511,7 +1662,36 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
       
     : '';
   
-  const mainFrameUserPrompt = `Generate ${segmentCount} unique Main Frame image prompts (one per 8-second clip) for:
+  /**
+   * A character-pack ad has no model, no attire and no casting — so it gets its own user prompt
+   * rather than the human-model one below.
+   *
+   * Sharing that prompt was a real bug: a Motu & Patlu request was also being told "MODEL GENDER:
+   * Female", the designer-saree rule, the beauty-casting rules, and "you MUST describe this logo
+   * placement in every clip prompt" — instructions that contradict the character system prompt and
+   * that produced the logo descriptions in the generated frames.
+   */
+  const packMainFrameUserPrompt = pack ? `Generate ${segmentCount} Main Frame image prompts (one per ${CLIP_SECONDS}-second clip) for this two-character cartoon ad.
+
+  BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
+
+  AD CONFIGURATION (as ordered by the client):
+  • Aspect ratio: ${formData.aspectRatio === '16:9' ? '16:9 horizontal (landscape)' : '9:16 vertical (portrait)'}
+  • Clips: ${segmentCount} × ${CLIP_SECONDS} seconds (${effectiveDuration}s total)
+  • Ad type: ${formData.adType}${formData.adType === 'festival' ? ` — festival: ${formData.festivalName}` : ''}
+  • Spoken language: ${formData.language || 'Telugu'}
+  • Location: ${formData.locationMode === 'real_provided' ? "the client's own photographs, attached" : 'built from the business profile'}
+  • Logo: ${files.logo ? 'attached — place it as-is, never describe it' : 'none provided'}
+  ${hasProductImages ? `• Product images: ${productImageCount} attached — show them unchanged on real shelves, counters or display cases behind the characters.` : ''}
+  SPECIAL CLIENT INSTRUCTIONS: ${businessInfo.specialRequirements?.customInstructions || 'None'}
+
+  WHAT IS SAID IN EACH CLIP (the backdrop must prove that clip's line):
+  ${parsedSegments.map((s, i) => `Clip ${i + 1}: ${s}`).join('\n  ')}
+
+  Generate ${segmentCount} complete, unique prompts now, separated by ###CLIP### on its own line.
+  You MUST output EXACTLY ${segmentCount} prompts. Do NOT combine clips into one block.` : '';
+
+  const humanModelMainFrameUserPrompt = `Generate ${segmentCount} unique Main Frame image prompts (one per 8-second clip) for:
 ${maleCastingOverride}${commercialMainFramePriorityNote}
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
   AD TYPE: ${formData.adType}
@@ -1541,6 +1721,8 @@ ${maleCastingOverride}${commercialMainFramePriorityNote}
   You MUST output EXACTLY ${segmentCount} prompts. Each prompt must be separated by ###CLIP### (on its own line, nothing else on that line).
   Do NOT combine multiple clips into one block. Each clip gets its own complete prompt.${productImageMainFrameNote}`;
 
+  const mainFrameUserPrompt = pack ? packMainFrameUserPrompt : humanModelMainFrameUserPrompt;
+
   // Build main frame parts including product images and logo
   const mainFrameParts: any[] = [{ text: mainFrameUserPrompt }];
 
@@ -1552,7 +1734,13 @@ ${maleCastingOverride}${commercialMainFramePriorityNote}
         data: await fileToBase64(files.logo)
       }
     });
-    mainFrameParts.push({ text: `This is the EXACT BUSINESS LOGO. You MUST describe this logo placement in every clip prompt so it appears as REAL PHYSICAL SIGNAGE installed on believable architectural surfaces for that zone. Prioritize these surface types: ${realisticLogoPlacementGuidance}. The logo must be reproduced PIXEL-PERFECT — do NOT redesign, reimagine, alter, crop, block, blur, tilt, stretch, partially hide, or paste it like a floating overlay in any way. The full logo must remain completely visible in one piece in every clip. Even though it sits in the background, keep the logo perfectly SHARP and in focus — never softened by depth-of-field blur — so every letter and all text on the logo is crisp and clearly readable.` });
+    mainFrameParts.push({
+      text: pack
+        // The logo is right here as an image. Asking for it to be DESCRIBED makes the generator
+        // redraw an approximation of the words instead of reproducing the file.
+        ? `This is the client's business logo. Place it in every clip as real signage already installed in that zone, reproduced from this attached image pixel-for-pixel — never redesigned, recoloured, cropped, blurred, tilted or pasted like a floating overlay. Refer to it in your prompts only as "the attached logo": do NOT describe its text, colours, shape or icon. It is the only text anywhere in the frame.`
+        : `This is the EXACT BUSINESS LOGO. You MUST describe this logo placement in every clip prompt so it appears as REAL PHYSICAL SIGNAGE installed on believable architectural surfaces for that zone. Prioritize these surface types: ${realisticLogoPlacementGuidance}. The logo must be reproduced PIXEL-PERFECT — do NOT redesign, reimagine, alter, crop, block, blur, tilt, stretch, partially hide, or paste it like a floating overlay in any way. The full logo must remain completely visible in one piece in every clip. Even though it sits in the background, keep the logo perfectly SHARP and in focus — never softened by depth-of-field blur — so every letter and all text on the logo is crisp and clearly readable.`
+    });
   }
 
   if (hasProductImages) {
@@ -1596,7 +1784,9 @@ ${maleCastingOverride}${commercialMainFramePriorityNote}
     console.warn(`Final clip count: ${rawClipPrompts.length}/${segmentCount}. Padding remaining clips.`);
   }
 
-  if (isCommercialMainFrame) {
+  // Skipped for character packs: this repair pass polices human-model art direction (casting,
+  // attire, model beauty tier) which has no meaning when the subjects are two cartoon characters.
+  if (isCommercialMainFrame && !pack) {
     let mainFrameValidationIssues = getMainFramePromptValidationIssues(
       mainFramePrompts,
       detectedBusinessType,
@@ -1728,8 +1918,28 @@ ${maleCastingOverride}${commercialMainFramePriorityNote}
 
   // --- Step 6: Veo 3 Segment Prompts — runs concurrently ---
   const veoPromise = (async (): Promise<string[]> => {
-  const veoSystemPrompt = VEO_SEGMENT_SYSTEM_PROMPT(segmentCount, formData.gender || 'female');
-  const veoUserPrompt = `Generate Veo 3 prompts for all segments.
+  const veoSystemPrompt = pack
+    ? CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT(pack, segmentCount, formData.aspectRatio === '16:9' ? '16:9' : '9:16')
+    : VEO_SEGMENT_SYSTEM_PROMPT(segmentCount, formData.gender || 'female');
+
+  // For a pack the model needs both lines of each clip attributed to the right character, plus
+  // the scene that clip is set in, so the video prompt can direct the exchange and the lip-sync.
+  const veoUserPrompt = pack
+    ? `Generate Veo 3 prompts for all ${segmentCount} clips of this two-character cartoon ad.
+
+${dialogueClips.map((clip, i) => {
+      const nameOf = new Map(packSpeakerList.map(s => [s.key, s.name]));
+      const lines = clip.map(l => `  ${nameOf.get(l.speaker) ?? l.speaker}: "${l.text}"`).join('\n');
+      return `CLIP ${i + 1} (${i * CLIP_SECONDS}-${(i + 1) * CLIP_SECONDS}s)\n${lines}`;
+    }).join('\n\n')}
+
+SCENE FOR EACH CLIP:
+${formData.locationMode === 'real_provided' && clientLocations.length > 0
+      ? describeClipLocations(assignPhotosToClips(segmentCount, clientLocations), clientLocations)
+      : 'Build a believable location for this business, a different area of it for every clip.'}
+
+Generate ${segmentCount} complete Veo 3 prompts now.`
+    : `Generate Veo 3 prompts for all segments.
   VOICE-OVER SEGMENTS: ${parsedSegments.map((s, i) => `Segment ${i+1}: ${s}`).join('\n')}
   Generate ${segmentCount} complete Veo 3 prompts now.`;
 

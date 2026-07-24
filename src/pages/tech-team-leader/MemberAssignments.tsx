@@ -16,6 +16,8 @@ import ViewToggle from '@/components/common/ViewToggle';
 import RequirementsShareModal from '@/components/work/RequirementsShareModal';
 import SaleDeletedBanner from '@/components/work/SaleDeletedBanner';
 import { buildAssignmentRequirementsMessage } from '@/utils/adRequirement';
+import { getCharacterPack } from '@/services/characterPacks';
+import SpecialCategoryFields from '@/components/work/SpecialCategoryFields';
 import ReassignWork from '@/components/work/ReassignWork';
 import {
   DURATIONS, END_CREDITS_SECONDS, getClipCount, hasPoster, durationOptionsFor, priceForClips,
@@ -71,6 +73,7 @@ export default function TeamLeaderMemberAssignments() {
   const [editForm, setEditForm] = useState<{
     category: string; duration: string; businessName: string; businessWhatsapp: string;
     modelGender: ModelGender; attireType: AttireType; customAttire: string; aspectRatio: '9:16' | '16:9'; language: string; customLanguage: string;
+    characterPack: string; realLocationProvided: boolean;
   } | null>(null);
   const [confirmAction, setConfirmAction] = useState<{ type: 'delete' | 'sendback'; id: string; assignedTo?: string; title: string } | null>(null);
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
@@ -245,6 +248,8 @@ export default function TeamLeaderMemberAssignments() {
       aspectRatio: a.aspectRatio || '9:16',
       language: a.language ? (isPresetLanguage ? a.language : 'Custom') : 'Telugu',
       customLanguage: a.language && !isPresetLanguage ? a.language : '',
+      characterPack: a.characterPack || '',
+      realLocationProvided: a.realLocationProvided === true,
     });
   };
 
@@ -267,6 +272,10 @@ export default function TeamLeaderMemberAssignments() {
         customAttire: editForm.attireType === AttireType.CUSTOM ? editForm.customAttire.trim() : '',
         aspectRatio: editForm.aspectRatio,
         language,
+        // Written unconditionally so clearing the special category actually clears it — a spread
+        // that omits the field would leave the old duo on the job while the form showed none.
+        characterPack: editForm.characterPack,
+        realLocationProvided: !!editForm.characterPack && editForm.realLocationProvided,
       });
       setEditingId(null);
       setEditForm(null);
@@ -532,7 +541,14 @@ export default function TeamLeaderMemberAssignments() {
                           className="w-full border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/20" />
                       </div>
 
-                      {/* Model */}
+                      <SpecialCategoryFields
+                        characterPack={editForm.characterPack}
+                        realLocationProvided={editForm.realLocationProvided}
+                        onChange={(patch) => setEditForm(prev => prev ? { ...prev, ...patch } : prev)}
+                      />
+
+                      {/* Model — a character pack replaces the human model, so it drops out entirely. */}
+                      {!editForm.characterPack && (
                       <div>
                         <label className="block text-[11px] font-medium text-muted-foreground mb-1">Model</label>
                         <div className="grid grid-cols-2 gap-1.5">
@@ -551,8 +567,10 @@ export default function TeamLeaderMemberAssignments() {
                           ))}
                         </div>
                       </div>
+                      )}
 
                       {/* Attire */}
+                      {!editForm.characterPack && (
                       <div>
                         <label className="block text-[11px] font-medium text-muted-foreground mb-1">Attire</label>
                         <select value={editForm.attireType} onChange={(e) => setEditForm(prev => prev ? { ...prev, attireType: e.target.value as AttireType } : prev)}
@@ -565,6 +583,7 @@ export default function TeamLeaderMemberAssignments() {
                             className="w-full mt-1.5 border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/20" />
                         )}
                       </div>
+                      )}
 
                       {/* Aspect Ratio */}
                       <div>
@@ -617,8 +636,21 @@ export default function TeamLeaderMemberAssignments() {
                       {a.totalDurationSeconds > 0 && <span>Time: {formatDuration(a.totalDurationSeconds)}</span>}
                       <span className="font-mono text-[10px] md:text-xs">Code: {a.accessCode}</span>
                     </div>
-                    {(a.modelGender || a.attireType || a.aspectRatio || a.language) && (
+                    {(a.modelGender || a.attireType || a.aspectRatio || a.language || a.characterPack) && (
                       <div className="flex flex-wrap gap-1.5 mt-1.5">
+                        {/* A pack ad has no human model, so its two chips replace the model/attire
+                            pair rather than describing someone who never appears. */}
+                        {getCharacterPack(a.characterPack) ? (
+                          <>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+                              🎭 {getCharacterPack(a.characterPack)!.label}
+                            </span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+                              {a.realLocationProvided ? "📷 Client's photos" : '🏙️ Location created'}
+                            </span>
+                          </>
+                        ) : (
+                        <>
                         {a.modelGender && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
                             {a.modelGender === 'male' ? '👨 Male' : '👩 Female'}
@@ -628,6 +660,8 @@ export default function TeamLeaderMemberAssignments() {
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
                             {a.attireType === 'custom' && a.customAttire ? a.customAttire : ATTIRE_LABELS[a.attireType]}
                           </span>
+                        )}
+                        </>
                         )}
                         {a.aspectRatio && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full font-mono bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{a.aspectRatio}</span>

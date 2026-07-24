@@ -22,6 +22,7 @@ import { SALE_CATEGORIES, PACKAGES, categoryLabel, isAdCategory } from "@/utils/
 import { presetsForCategory, buildPromise, CUSTOM_PRESET_KEY } from "@/utils/promiseSla";
 import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from "@/types/aiPlatform";
 import { ATTIRE_LABELS, DEFAULT_REQUIREMENT, attireForGender, attireLabel, cleanRequirement, withRequirementDefaults } from "@/utils/adRequirement";
+import { characterPackOptions, getCharacterPack } from "@/services/characterPacks";
 import { watchAdLanguages, rememberAdLanguage, mergeAdLanguages } from "@/services/adLanguages";
 import { upsertOrderForSale, cancelOrderForSale, addOrderUpdateNote, orderDocId } from "@/services/orders";
 import { buildClientSaleMessage } from "@/utils/salesMessage";
@@ -1352,6 +1353,12 @@ function describeSaleChanges(prev: SaleDetail, next: SaleDetail): string[] {
   if ((pr.aspectRatio || "") !== (nr.aspectRatio || "")) out.push(`Ratio: ${pr.aspectRatio || "—"} → ${nr.aspectRatio || "—"}`);
   if ((pr.notes || "") !== (nr.notes || "")) out.push(`Notes updated`);
   if ((pr.businessName || "") !== (nr.businessName || "")) out.push(`Business: ${pr.businessName || "—"} → ${nr.businessName || "—"}`);
+  // Switching the special category or the location source changes what the tech team must produce,
+  // so both are logged by name rather than folded into a generic "requirement updated".
+  const special = (r: typeof pr) => getCharacterPack(r.specialCategory)?.label || "Normal ad";
+  if (special(pr) !== special(nr)) out.push(`Special category: ${special(pr)} → ${special(nr)}`);
+  const loc = (r: typeof pr) => (r.realLocationProvided ? "Client's photos" : "Location created");
+  if (!!pr.specialCategory && !!nr.specialCategory && loc(pr) !== loc(nr)) out.push(`Location: ${loc(pr)} → ${loc(nr)}`);
   return out;
 }
 
@@ -1413,6 +1420,8 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
       customAttire: r.customAttire,
       aspectRatio: r.aspectRatio as "9:16" | "16:9",
       notes: r.notes,
+      specialCategory: r.specialCategory,
+      realLocationProvided: r.realLocationProvided,
     };
   });
   const [languages, setLanguages] = useState<string[]>(() => mergeAdLanguages(null));
@@ -1421,6 +1430,12 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
 
   // Only ad deliverables (wishes / promotional / cinematic) have a model, attire and ratio.
   const isAdSale = isAdCategory(category);
+  /**
+   * A special category replaces the human model outright — the cartoon duo IS the cast — so while
+   * one is selected the model and attire pickers come down instead of collecting a spec that the
+   * generator will ignore. Priced identically to a normal ad of the same length.
+   */
+  const salePack = isAdSale ? getCharacterPack(req.specialCategory) : null;
   const usingCustomLanguage = req.language === LANGUAGE_CUSTOM;
   const resolvedLanguage = usingCustomLanguage ? customLanguage.trim() : req.language;
   const languageMissing = isAdSale && usingCustomLanguage && !resolvedLanguage;
@@ -1538,6 +1553,10 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
           customAttire: req.attireType === AttireType.CUSTOM ? req.customAttire : "",
           aspectRatio: req.aspectRatio,
           notes: req.notes,
+          specialCategory: req.specialCategory,
+          // Only carried alongside a pack — on a normal ad "no real location" is not a fact about
+          // the sale, and storing it would put a meaningless flag on every ordinary order.
+          realLocationProvided: req.specialCategory ? req.realLocationProvided : undefined,
         })
       : null;
     // A language the client asked for that isn't in the list yet joins it for everyone.
@@ -1796,25 +1815,80 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
               )}
             </div>
             <div>
-              <label className="text-[11px] text-muted-foreground">Model</label>
-              <div className="grid grid-cols-2 gap-1.5">
-                {[ModelGender.FEMALE, ModelGender.MALE].map((g) => (
-                  <button
-                    key={g}
-                    type="button"
-                    onClick={() => setReq((r) => ({ ...r, modelGender: g, attireType: attireForGender(g, r.attireType) }))}
-                    className={`h-9 rounded-md text-xs font-medium border transition-colors ${
-                      req.modelGender === g ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-muted-foreground hover:bg-accent"
-                    }`}
-                  >
-                    {g === ModelGender.FEMALE ? "👩 Female" : "👨 Male"}
-                  </button>
-                ))}
-              </div>
+              <label className="text-[11px] text-muted-foreground">Special category</label>
+              <select
+                value={req.specialCategory}
+                onChange={(e) => setReq((r) => ({ ...r, specialCategory: e.target.value }))}
+                className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary"
+              >
+                <option value="">Normal ad (with a model)</option>
+                {characterPackOptions().map((o) => <option key={o.id} value={o.id}>🎭 {o.label}</option>)}
+              </select>
             </div>
           </div>
 
+          {/* Where a cartoon-duo ad is set. The tech member cannot start a "client's photos" job
+              until those photos arrive, so this is asked while the client is still on the call. */}
+          {salePack && (
+            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 space-y-2">
+              <p className="text-[11px] text-amber-700 dark:text-amber-300">
+                <b>{salePack.label}</b> — {salePack.tagline}. Both characters speak in every clip. Same price as a normal ad.
+              </p>
+              <div>
+                <label className="text-[11px] text-muted-foreground">Is the client sending photos of their shop / office?</label>
+                <div className="grid grid-cols-2 gap-1.5 mt-1">
+                  {([
+                    { v: true, label: "✅ Yes — they'll send" },
+                    { v: false, label: "🏙️ No — we create it" },
+                  ] as const).map(({ v, label }) => (
+                    <button
+                      key={String(v)}
+                      type="button"
+                      onClick={() => setReq((r) => ({ ...r, realLocationProvided: v }))}
+                      className={`h-9 rounded-md text-xs font-medium border transition-colors ${
+                        req.realLocationProvided === v
+                          ? "border-amber-500 bg-amber-500/20 text-amber-700 dark:text-amber-300"
+                          : "border-border bg-card text-muted-foreground hover:bg-accent"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {req.realLocationProvided && (
+                <p className="text-[10px] text-amber-700 dark:text-amber-300 leading-relaxed">
+                  Collect every angle they can send — inside, outside, counter, product shelf. Each clip is set in a
+                  different one of their photos, so more photos means a better ad.
+                </p>
+              )}
+            </div>
+          )}
+
+          {!salePack && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div>
+            <label className="text-[11px] text-muted-foreground">Model</label>
+            <div className="grid grid-cols-2 gap-1.5">
+              {[ModelGender.FEMALE, ModelGender.MALE].map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  onClick={() => setReq((r) => ({ ...r, modelGender: g, attireType: attireForGender(g, r.attireType) }))}
+                  className={`h-9 rounded-md text-xs font-medium border transition-colors ${
+                    req.modelGender === g ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-muted-foreground hover:bg-accent"
+                  }`}
+                >
+                  {g === ModelGender.FEMALE ? "👩 Female" : "👨 Male"}
+                </button>
+              ))}
+            </div>
+            </div>
+          </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {!salePack && (
             <div>
               <label className="text-[11px] text-muted-foreground">Model attire</label>
               <select
@@ -1836,6 +1910,7 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
                 />
               )}
             </div>
+            )}
             <div>
               <label className="text-[11px] text-muted-foreground">Aspect ratio</label>
               <div className="grid grid-cols-2 gap-1.5">

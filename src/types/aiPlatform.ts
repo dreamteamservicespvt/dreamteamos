@@ -54,7 +54,21 @@ export interface AdFormData {
   noLogo?: boolean;
   /** Business name (forced UPPERCASE) used as a physical name board when noLogo is true. */
   logoNameText?: string;
+  /**
+   * Special-category treatment: the id of a cartoon duo from services/characterPacks (e.g.
+   * `motu_patlu`). Undefined/empty means a normal human-model ad and the standard pipeline runs
+   * completely untouched.
+   */
+  characterPack?: string;
+  /**
+   * Where a character-pack ad is set. `real_provided` builds every clip from the client's own
+   * photographs (uploaded into the Store/Office Image slot); `ai_generated` builds the location
+   * from the business profile. Ignored when no pack is selected.
+   */
+  locationMode?: LocationMode;
 }
+
+export type LocationMode = 'real_provided' | 'ai_generated';
 
 export interface FileStore {
   logo: File | null;

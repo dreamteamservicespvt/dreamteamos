@@ -97,6 +97,13 @@ export interface WorkAssignment {
   /** Free-text brief from the client, carried through from the sale. */
   requirementNotes?: string;
   /**
+   * Special-category cartoon duo (a services/characterPacks id) sold for this job. Carried from the
+   * sale so the member's AI Platform opens on the right treatment instead of them having to know.
+   */
+  characterPack?: string;
+  /** Whether the client supplied real photos of their premises for that special-category ad. */
+  realLocationProvided?: boolean;
+  /**
    * The sales member deleted the sale behind this work after it was already assigned. The work
    * itself is left alone — the tech team must be told, not silently have a job vanish mid-flight.
    */
@@ -211,6 +218,18 @@ export interface AdRequirement {
   customAttire?: string;
   aspectRatio?: "9:16" | "16:9";
   notes?: string;                    // anything else the client asked for
+  /**
+   * Special-category treatment: the id of a cartoon duo from services/characterPacks (e.g.
+   * "motu_patlu"). Absent means a normal ad fronted by a human model. When it IS set the model and
+   * attire above are moot — the cast is the duo — so the sales form stops asking for them.
+   */
+  specialCategory?: string;
+  /**
+   * Special-category ads only. True when the client is sending photographs of their own premises
+   * (the tech member must upload them), false when the tech team builds the location from the
+   * business profile. Meaningless without `specialCategory`, so it is only stored alongside it.
+   */
+  realLocationProvided?: boolean;
 }
 
 // ─── Delivery Promise / Turnaround SLA ───

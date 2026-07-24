@@ -17,13 +17,14 @@ import { formatDate, formatTime } from '@/utils/formatters';
 import { format } from 'date-fns';
 import type { WorkAssignment, AppUser, DailyCheckin, Order } from '@/types';
 import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from '@/types/aiPlatform';
-import { ATTIRE_LABELS, assignmentFormFromOrder, attireLabel } from '@/utils/adRequirement';
+import { ATTIRE_LABELS, assignmentFormFromOrder, buildAssignmentRequirementsMessage } from '@/utils/adRequirement';
 import { watchAdLanguages, mergeAdLanguages, rememberAdLanguage } from '@/services/adLanguages';
 import { categoryLabel } from '@/utils/serviceCatalog';
 import { fetchOrder, activeOrdersQuery } from '@/services/orders';
 import { createWorkAssignment, nextWorkUniqueId } from '@/services/workAssign';
 import { verifyAssignments, awaitingVerification } from '@/services/workVerify';
 import MemberWorkloadCard from '@/components/work/MemberWorkloadCard';
+import SpecialCategoryFields from '@/components/work/SpecialCategoryFields';
 import AdsStatusBoard from '@/components/work/AdsStatusBoard';
 import { buildMemberWorkload, filterMemberWorkload } from '@/utils/memberWorkload';
 import { buildMemberPickerOptions, filterMemberPickerOptions } from '@/utils/memberPicker';
@@ -106,6 +107,8 @@ export default function TeamLeaderWorkAssign() {
     language: 'Telugu' as string,
     customLanguage: '',
     requirementNotes: '',
+    characterPack: '',
+    realLocationProvided: false,
   });
   /** The order being fulfilled, when the form was opened from the Orders queue. */
   const [sourceOrder, setSourceOrder] = useState<Order | null>(null);
@@ -210,7 +213,6 @@ export default function TeamLeaderWorkAssign() {
       const clips = getClipCount(form.duration);
       const language = resolvedLanguage();
       const assignedMember = techMembers.find(m => m.uid === form.assignedTo);
-      const attire = attireLabel(form.attireType, form.customAttire);
 
       const { accessCode } = await createWorkAssignment({
         assignedTo: form.assignedTo,
@@ -229,34 +231,32 @@ export default function TeamLeaderWorkAssign() {
         aspectRatio: form.aspectRatio,
         language,
         requirementNotes: form.requirementNotes,
+        characterPack: form.characterPack,
+        realLocationProvided: form.realLocationProvided,
         order: sourceOrder,
       });
 
       // A language typed in here joins the shared list, same as one entered at sale time.
       if (form.language === 'Custom' && language) await rememberAdLanguage(language);
 
-      // Build the WhatsApp-ready requirements message (no price — leads don't see pricing;
-      // no internal assignment ID — the member doesn't need it) and surface it for the lead
-      // to copy/send, attention-grabbing.
-      const message = [
-        `🎬✨ *NEW AD ASSIGNMENT* ✨🎬`,
-        ``,
-        form.businessName.trim() ? `🏢 *Business:* ${form.businessName.trim()}` : null,
-        `🎯 *Category:* ${form.category.charAt(0).toUpperCase() + form.category.slice(1)}`,
-        `⏱️ *Duration:* ${form.duration} (${clips} clips${hasPoster(form.duration) ? ' + Poster' : ''} + ${END_CREDITS_SECONDS}s EC)`,
-        ``,
-        `📋 *AD SPECIFICATION*`,
-        `👤 *Model:* ${form.modelGender === ModelGender.MALE ? 'Male' : 'Female'}`,
-        `👔 *Attire:* ${attire}`,
-        `📐 *Ratio:* ${form.aspectRatio}`,
-        `🗣️ *Language:* ${language}`,
-        form.requirementNotes.trim() ? `` : null,
-        form.requirementNotes.trim() ? `📝 *Client notes:* ${form.requirementNotes.trim()}` : null,
-        ``,
-        `🔑 *Access Code:* ${accessCode}`,
-        ``,
-        `🚀 Let's create something amazing — good luck! 🔥`,
-      ].filter((line): line is string => line !== null).join('\n');
+      // The WhatsApp-ready requirements message (no price — leads don't see pricing; no internal
+      // assignment ID — the member doesn't need it), from the shared builder so this page and the
+      // tech admin's send exactly the same brief.
+      const message = buildAssignmentRequirementsMessage({
+        businessName: form.businessName,
+        category: form.category,
+        duration: form.duration,
+        clipCount: clips,
+        modelGender: form.modelGender,
+        attireType: form.attireType,
+        customAttire: form.customAttire,
+        aspectRatio: form.aspectRatio,
+        language,
+        requirementNotes: form.requirementNotes,
+        characterPack: form.characterPack,
+        realLocationProvided: form.realLocationProvided,
+        accessCode,
+      });
 
       if (assignedMember) { setWaReq({ member: assignedMember, message }); setWaOpen(true); }
 
@@ -265,7 +265,7 @@ export default function TeamLeaderWorkAssign() {
       setForm({
         assignedTo: '', category: 'promotional', duration: '16s', pricePerUnit: 499, clientName: '', businessName: '', businessWhatsapp: '',
         modelGender: ModelGender.FEMALE, attireType: AttireType.TRADITIONAL, customAttire: '', aspectRatio: '9:16', language: 'Telugu', customLanguage: '',
-        requirementNotes: '',
+        requirementNotes: '', characterPack: '', realLocationProvided: false,
       });
       setCustomDuration(false);
       setMemberSearch('');
@@ -584,7 +584,14 @@ export default function TeamLeaderWorkAssign() {
                 className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none" />
             </div>
 
-            {/* Model Gender */}
+            <SpecialCategoryFields
+              characterPack={form.characterPack}
+              realLocationProvided={form.realLocationProvided}
+              onChange={(patch) => setForm(prev => ({ ...prev, ...patch }))}
+            />
+
+            {/* Model Gender — a character pack replaces the human model, so it drops out entirely. */}
+            {!form.characterPack && (
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">Model</label>
               <div className="grid grid-cols-2 gap-2">
@@ -603,8 +610,10 @@ export default function TeamLeaderWorkAssign() {
                 ))}
               </div>
             </div>
+            )}
 
             {/* Attire */}
+            {!form.characterPack && (
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">Attire</label>
               <select value={form.attireType} onChange={(e) => setForm(prev => ({ ...prev, attireType: e.target.value as AttireType }))}
@@ -619,6 +628,7 @@ export default function TeamLeaderWorkAssign() {
                   className="w-full mt-1.5 border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none" />
               )}
             </div>
+            )}
 
             {/* Aspect Ratio */}
             <div>

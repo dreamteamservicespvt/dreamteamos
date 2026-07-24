@@ -34,6 +34,10 @@ export interface SavedGeneration {
   customAttire?: string;
   duration: number;
   creationMode?: string;
+  /** Special-category cartoon duo (services/characterPacks id), when this was a pack ad. */
+  characterPack?: string | null;
+  /** Whether that pack ad used the client's real photos or a generated location. */
+  locationMode?: string | null;
   aspectRatio?: string;
   language?: string;
   noLogo?: boolean;

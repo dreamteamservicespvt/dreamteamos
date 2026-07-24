@@ -246,7 +246,8 @@ export const GeneratedCard: React.FC<GeneratedCardProps> = ({
                       <span>{isClipCopied ? 'Copied' : 'Copy'}</span>
                     </button>
                   </div>
-                  <p className={cn("px-3 py-2.5 text-sm leading-relaxed", isDark ? "text-slate-300" : "text-slate-700")}>
+                  {/* pre-wrap so a two-speaker clip keeps its [Motu]/[Patlu] lines apart. */}
+                  <p className={cn("px-3 py-2.5 text-sm leading-relaxed whitespace-pre-wrap", isDark ? "text-slate-300" : "text-slate-700")}>
                     {clip.text}
                   </p>
                 </div>

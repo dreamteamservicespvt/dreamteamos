@@ -9,7 +9,8 @@ import { cn } from '@/lib/utils';
 import { FileUpload } from './FileUpload';
 import { GeneratedCard, parseVoiceOverClips } from './GeneratedCard';
 import { SavedItems, SavedGeneration } from './SavedItems';
-import { AdFormData, AdType, AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER, FileStore, GeneratedOutputs, GenerationStatus } from '@/types/aiPlatform';
+import { AdFormData, AdType, AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER, FileStore, GeneratedOutputs, GenerationStatus, LocationMode } from '@/types/aiPlatform';
+import { characterPackOptions, getCharacterPack } from '@/services/characterPacks';
 import { generateAdAssets, extractBusinessOnly, generateStockImagePrompts, refineStockImagePrompt, generateOverlayTexts, refineSection, regenerateVeoFromVoiceOver, SectionType, extractBusinessNameFromInfo } from '@/services/geminiService';
 import { collection, addDoc, getDocs, getDoc, query, where, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/services/firebase';
@@ -161,6 +162,12 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       ...(assignment.attireType === AttireType.CUSTOM && assignment.customAttire ? { customAttire: assignment.customAttire } : {}),
       ...(assignment.aspectRatio ? { aspectRatio: assignment.aspectRatio } : {}),
       ...(assignment.language ? { language: assignment.language } : {}),
+      // A special category was sold, not chosen here — the member opens straight on the right
+      // treatment rather than having to know that this particular job is a cartoon-duo ad.
+      ...(assignment.characterPack ? {
+        characterPack: assignment.characterPack,
+        locationMode: (assignment.realLocationProvided ? 'real_provided' : 'ai_generated') as LocationMode,
+      } : {}),
     }));
   }, [assignment?.id]);
 
@@ -177,6 +184,14 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   const aspectRatioLocked = !!assignment?.aspectRatio;
   const languageLocked = !!assignment?.language;
   const adTypeLocked = !!assignment;
+  /** The selected cartoon duo, or null for a normal human-model ad. */
+  const activePack = getCharacterPack(formData.characterPack);
+  /**
+   * The special category was sold, not chosen here. The member still answers the location question
+   * — photos can arrive (or fail to) after the sale — but they cannot turn a Motu & Patlu ad into
+   * an ordinary one, because that is what the client paid for.
+   */
+  const packLocked = !!assignment?.characterPack && !!activePack;
 
   // Extract business name whenever outputs change
   useEffect(() => {
@@ -217,6 +232,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
           ...prev,
           adType: item.adType as AdType,
           festivalName: item.festivalName || '',
+          characterPack: item.characterPack || undefined,
+          locationMode: item.locationMode === 'real_provided' || item.locationMode === 'ai_generated' ? item.locationMode : undefined,
           attireType: item.attireType as AttireType,
           ...(item.gender ? { gender: item.gender as ModelGender } : {}),
           ...(item.customAttire !== undefined ? { customAttire: item.customAttire } : {}),
@@ -272,6 +289,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
         overlayTexts: outputs.overlayTexts || null,
         adType: formData.adType,
         festivalName: formData.festivalName,
+        characterPack: formData.characterPack || null,
+        locationMode: formData.locationMode || null,
         gender: formData.gender || ModelGender.FEMALE,
         attireType: formData.attireType,
         customAttire: formData.customAttire || '',
@@ -323,6 +342,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       ...prev,
       adType: item.adType as AdType,
       festivalName: item.festivalName || '',
+      characterPack: item.characterPack || undefined,
+      locationMode: item.locationMode === 'real_provided' || item.locationMode === 'ai_generated' ? item.locationMode : undefined,
       attireType: item.attireType as AttireType,
       ...(item.gender ? { gender: item.gender as ModelGender } : {}),
       ...(item.customAttire !== undefined ? { customAttire: item.customAttire } : {}),
@@ -400,6 +421,16 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       await showAlert({ title: "Missing Festival", description: "Please select a festival or enter a custom festival name.", confirmText: "OK" });
       return;
     }
+    // "Use their photos" with no photos attached would silently fall back to an invented
+    // location — the opposite of what was promised to the client, so stop and say so.
+    if (activePack && formData.locationMode === 'real_provided' && files.storeImage.length === 0) {
+      await showAlert({
+        title: "Location photos missing",
+        description: `You chose to use the client's real location for this ${activePack.label} ad, but no photos are attached. Upload them into "Store / Office Image", or switch to "No — create the location".`,
+        confirmText: "OK",
+      });
+      return;
+    }
     abortControllerRef.current = new AbortController();
     setErrorModalDismissed(false);
     setStatus({ step: 'Initializing...', isProcessing: true, error: null, progress: 0 });
@@ -445,6 +476,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
             overlayTexts: generatedResult.overlayTexts || null,
             adType: formData.adType,
             festivalName: formData.festivalName,
+            characterPack: formData.characterPack || null,
+            locationMode: formData.locationMode || null,
             gender: formData.gender || ModelGender.FEMALE,
             attireType: formData.attireType,
             customAttire: formData.customAttire || '',
@@ -854,6 +887,79 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     )}
                   </div>
 
+                  {/* Special Category — cartoon duo instead of a human model.
+                      Off by default, so a normal ad is completely unaffected. */}
+                  <div>
+                    <label className={cn("block text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>
+                      Special Category Ad
+                    </label>
+                    {packLocked ? (
+                      <div className={cn("flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm",
+                        isDark ? "bg-slate-700/60 border-slate-600 text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
+                        <span className="font-semibold truncate">🎭 {activePack?.label}</span>
+                        <span className={cn("shrink-0 ml-2 text-[11px] px-2 py-0.5 rounded-full", isDark ? "bg-blue-900/40 text-blue-300" : "bg-blue-100 text-blue-700")}>🔒 Sold as this</span>
+                      </div>
+                    ) : (
+                    <select
+                      value={formData.characterPack || ''}
+                      onChange={(e) => setFormData(prev => ({
+                        ...prev,
+                        characterPack: e.target.value || undefined,
+                        // Default to using the client's photos — that is the whole point of the format.
+                        locationMode: e.target.value ? (prev.locationMode || 'real_provided') : undefined,
+                      }))}
+                      className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
+                        isDark ? "bg-slate-700 border-slate-600 text-slate-200 focus:ring-amber-800" : "bg-white border-slate-300 text-slate-700 focus:ring-amber-200")}
+                    >
+                      <option value="">No — normal ad with a model</option>
+                      {characterPackOptions().map(o => (
+                        <option key={o.id} value={o.id}>{o.label}</option>
+                      ))}
+                    </select>
+                    )}
+
+                    {activePack && (
+                      <div className={cn("mt-3 rounded-lg border p-3 space-y-3",
+                        isDark ? "border-amber-700/50 bg-amber-950/20" : "border-amber-300 bg-amber-50")}>
+                        <p className={cn("text-xs", isDark ? "text-amber-200" : "text-amber-800")}>
+                          <b>{activePack.label}</b> — {activePack.tagline}. Both characters speak in every clip.
+                        </p>
+
+                        <div>
+                          <label className={cn("block text-xs font-semibold mb-1.5", isDark ? "text-slate-300" : "text-slate-700")}>
+                            Has the client sent photos of their location?
+                          </label>
+                          <div className="grid grid-cols-2 gap-2">
+                            {([
+                              { key: 'real_provided' as const, label: 'Yes — use their photos' },
+                              { key: 'ai_generated' as const, label: 'No — create the location' },
+                            ]).map(({ key, label }) => (
+                              <button key={key} type="button"
+                                onClick={() => setFormData(prev => ({ ...prev, locationMode: key }))}
+                                className={cn("px-3 py-2 rounded-lg text-xs font-medium border transition-all",
+                                  formData.locationMode === key
+                                    ? (isDark ? "border-amber-500 bg-amber-900/40 text-amber-300" : "border-amber-500 bg-amber-100 text-amber-800")
+                                    : (isDark ? "border-slate-600 text-slate-400 hover:border-slate-500" : "border-slate-300 text-slate-600 hover:border-slate-400"))}>
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {formData.locationMode === 'real_provided' && (
+                          <p className={cn("text-[11px] leading-relaxed",
+                            files.storeImage.length > 0
+                              ? (isDark ? "text-emerald-300" : "text-emerald-700")
+                              : (isDark ? "text-amber-300" : "text-amber-700"))}>
+                            {files.storeImage.length > 0
+                              ? `✓ ${files.storeImage.length} location photo${files.storeImage.length === 1 ? '' : 's'} attached — each clip will use a different one.`
+                              : "Upload the client's photos into “Store / Office Image” below. Send every angle they gave you — each clip uses a different one."}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
                   {/* Festival Name */}
                   {formData.adType === AdType.FESTIVAL && (
                     <div>
@@ -897,8 +1003,9 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     </div>
                   )}
 
-                  {/* Model Gender — Video only */}
-                  {creationMode === 'video' && (
+                  {/* Model Gender — Video only, and only when a human is on screen: a character
+                      pack IS the cast, so dressing a model that never appears is meaningless. */}
+                  {creationMode === 'video' && !activePack && (
                     <div>
                       <label className={cn("block text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>Model Gender</label>
                       {genderLocked ? (
@@ -930,8 +1037,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     </div>
                   )}
 
-                  {/* Attire — Video only (adapts to gender) */}
-                  {creationMode === 'video' && (
+                  {/* Attire — Video only (adapts to gender), hidden for a character pack. */}
+                  {creationMode === 'video' && !activePack && (
                     <div>
                       <label className={cn("block text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>Model Attire</label>
                       {attireLocked ? (

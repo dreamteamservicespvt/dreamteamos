@@ -50,6 +50,15 @@ export function formatClipScript(texts: string[], clipSeconds: number = CLIP_SEC
 const CLIP_HEADER_PATTERN =
   /^\s*(?:clip\s*-?\s*\d+\s*(?:\[[^\]]*\])?|\d+\s*-\s*\d+\s*(?:sec|s)?|segment\s*\d+)\s*[:\-–]\s*(.*)$/i;
 
+/**
+ * `[Motu]: …` — a labelled speaker turn.
+ *
+ * A clip used to be a single spoken line, so any line under a header was a wrap of the one above
+ * and joining with a space was right. A character-pack clip is a two-speaker exchange, and its
+ * second line is a new turn — flattening it would run both characters together on one line.
+ */
+const SPEAKER_TURN_PATTERN = /^\[[^\]]+\]\s*:/;
+
 /** True when a line opens a clip (any accepted header shape). */
 export function isClipHeaderLine(line: string): boolean {
   return CLIP_HEADER_PATTERN.test(line.trim());
@@ -78,7 +87,8 @@ export function parseLabeledClips(text: string): string[] {
     }
 
     if (!line || current === null) continue;
-    current = current ? `${current} ${line}` : line;
+    if (!current) { current = line; continue; }
+    current = `${current}${SPEAKER_TURN_PATTERN.test(line) ? "\n" : " "}${line}`;
   }
 
   if (current !== null && current.trim()) clips.push(current.trim());

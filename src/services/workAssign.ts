@@ -41,6 +41,10 @@ export interface CreateWorkAssignmentInput {
   aspectRatio?: "9:16" | "16:9";
   language?: string;
   requirementNotes?: string;
+  /** Special-category cartoon duo (a services/characterPacks id), when one was sold. */
+  characterPack?: string;
+  /** For a pack job: whether the client is supplying photos of their own premises. */
+  realLocationProvided?: boolean;
   /** The order this fulfils, when it came from the Orders queue. */
   order?: Order | null;
   /** Shown in the assignee's notification. */
@@ -52,7 +56,8 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
   const {
     assignedTo, assignedToName, assignerUid, category, duration, clipCount, pricePerUnit, uniqueId,
     businessName, businessWhatsapp, modelGender, attireType, customAttire, aspectRatio,
-    language, requirementNotes, order, memberLink = "/tech/my-work",
+    language, requirementNotes, characterPack, realLocationProvided,
+    order, memberLink = "/tech/my-work",
   } = input;
 
   const accessCode = generateAccessCode();
@@ -93,6 +98,9 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
     ...(aspectRatio ? { aspectRatio } : {}),
     ...(language ? { language } : {}),
     ...(requirementNotes?.trim() ? { requirementNotes: requirementNotes.trim() } : {}),
+    // The location flag only means something next to a pack, so the two are written together —
+    // a lone `realLocationProvided` on an ordinary job would be noise the member has to interpret.
+    ...(characterPack ? { characterPack, realLocationProvided: realLocationProvided === true } : {}),
     ...(linkedOrder ? { orderId: linkedOrder.id } : {}),
     ...(linkedOrder?.promise ? { promise: linkedOrder.promise } : {}),
   });

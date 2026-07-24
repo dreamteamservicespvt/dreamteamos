@@ -12,6 +12,7 @@ import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from "@/types/aiPla
 import { DURATIONS, END_CREDITS_SECONDS, getClipCount, hasPoster, priceForClips } from "./assignmentDuration";
 import { PACKAGES, isAdCategory, categoryLabel } from "./serviceCatalog";
 import { PRICING } from "./pricing";
+import { getCharacterPack } from "@/services/characterPacks";
 import type { AdRequirement, Order } from "@/types";
 
 /** Human-readable label for each attire option — the one copy used everywhere. */
@@ -87,6 +88,10 @@ export function withRequirementDefaults(requirement?: AdRequirement | null) {
     customAttire: requirement?.customAttire?.trim() || "",
     aspectRatio: (requirement?.aspectRatio || DEFAULT_REQUIREMENT.aspectRatio) as "9:16" | "16:9",
     notes: requirement?.notes?.trim() || "",
+    specialCategory: requirement?.specialCategory?.trim() || "",
+    // Only meaningful for a special-category sale, and there the sales member always answers it —
+    // so an unanswered flag means "no photos coming", which is the safe assumption to build on.
+    realLocationProvided: requirement?.realLocationProvided === true,
   };
 }
 
@@ -111,6 +116,10 @@ export interface AssignmentFormSpec {
   language: string;
   customLanguage: string;
   requirementNotes: string;
+  /** Special-category cartoon duo sold for this job ("" for a normal human-model ad). */
+  characterPack: string;
+  /** For a pack ad: whether the client is sending photos of their own premises. */
+  realLocationProvided: boolean;
 }
 
 /**
@@ -147,6 +156,10 @@ export function assignmentFormFromOrder(order: Order, knownLanguages?: string[])
     language: known ? r.language : "Custom",
     customLanguage: known ? "" : r.language,
     requirementNotes: r.notes,
+    // A pack id sold before that duo was retired would otherwise open the form on a treatment the
+    // generator no longer knows; resolving it here degrades to a normal ad instead of failing later.
+    characterPack: getCharacterPack(r.specialCategory) ? r.specialCategory : "",
+    realLocationProvided: r.realLocationProvided,
   };
 }
 
@@ -170,9 +183,12 @@ export function buildAssignmentRequirementsMessage(a: {
   language?: string;
   requirementNotes?: string;
   accessCode?: string;
+  characterPack?: string;
+  realLocationProvided?: boolean;
 }): string {
   const business = (a.businessName || a.clientName || "").trim();
   const notes = a.requirementNotes?.trim();
+  const pack = getCharacterPack(a.characterPack);
   return [
     `🎬✨ *NEW AD ASSIGNMENT* ✨🎬`,
     ``,
@@ -181,8 +197,14 @@ export function buildAssignmentRequirementsMessage(a: {
     `⏱️ *Duration:* ${a.duration} (${a.clipCount} clips${hasPoster(a.duration) ? " + Poster" : ""} + ${END_CREDITS_SECONDS}s EC)`,
     ``,
     `📋 *AD SPECIFICATION*`,
-    a.modelGender ? `👤 *Model:* ${a.modelGender === "male" ? "Male" : "Female"}` : null,
-    a.attireType ? `👔 *Attire:* ${attireLabel(a.attireType, a.customAttire)}` : null,
+    // A pack ad has no model and no attire to brief — what the member needs instead is who is on
+    // screen and whether they must chase the client's location photos before they can start.
+    pack ? `🎭 *Special category:* ${pack.label} — both characters speak in every clip` : null,
+    pack ? (a.realLocationProvided
+      ? `📷 *Location:* the client's own photos — upload every photo they sent`
+      : `🏙️ *Location:* build it from the business (client sent no photos)`) : null,
+    !pack && a.modelGender ? `👤 *Model:* ${a.modelGender === "male" ? "Male" : "Female"}` : null,
+    !pack && a.attireType ? `👔 *Attire:* ${attireLabel(a.attireType, a.customAttire)}` : null,
     a.aspectRatio ? `📐 *Ratio:* ${a.aspectRatio}` : null,
     a.language ? `🗣️ *Language:* ${a.language}` : null,
     notes ? `` : null,
@@ -194,14 +216,23 @@ export function buildAssignmentRequirementsMessage(a: {
   ].filter((l): l is string => l !== null).join("\n");
 }
 
-/** One-line summary of a brief, for the Orders queue. */
+/**
+ * One-line summary of a brief, for the Orders queue.
+ *
+ * A special-category ad has no human model, so the two slots that would describe one are reused to
+ * say who IS on screen and where the location comes from — showing "👩 Female · Designer Saree"
+ * beside a cartoon duo would describe a person who never appears.
+ */
 export function requirementSummary(requirement?: AdRequirement | null): string[] {
   const r = requirement;
   if (!r) return [];
+  const pack = getCharacterPack(r.specialCategory);
   return [
     r.language,
-    r.modelGender === "male" ? "👨 Male" : r.modelGender === "female" ? "👩 Female" : null,
-    r.attireType ? attireLabel(r.attireType, r.customAttire) : null,
+    pack ? `🎭 ${pack.label}`
+      : r.modelGender === "male" ? "👨 Male" : r.modelGender === "female" ? "👩 Female" : null,
+    pack ? (r.realLocationProvided ? "📷 Client's photos" : "🏙️ Location created")
+      : r.attireType ? attireLabel(r.attireType, r.customAttire) : null,
     r.aspectRatio,
   ].filter((v): v is string => !!v);
 }
