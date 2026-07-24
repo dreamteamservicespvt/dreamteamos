@@ -70,7 +70,9 @@ export function attachmentDirective(
   if (location.photoIndex === null) {
     return "🎨 ATTACH NOTHING — no client photo for this clip. The location below is generated.";
   }
-  const zone = photos.find((p) => p.index === location.photoIndex)?.zone;
+  // The scout sometimes returns "entrance" and sometimes "the entrance"; strip its article so the
+  // directive never reads "the the entrance".
+  const zone = photos.find((p) => p.index === location.photoIndex)?.zone?.replace(/^the\s+/i, "").trim();
   return `📎 ATTACH STORE/OFFICE IMAGE #${location.photoIndex + 1}${zone ? ` — the ${zone}` : ""}`;
 }
 

@@ -8,7 +8,9 @@ import {
   characterCastBlock,
 } from "@/services/prompts/characterAd";
 import { getCharacterPack } from "@/services/characterPacks";
-import { WORDS_PER_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE } from "@/utils/dialogueFormat";
+import {
+  MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE,
+} from "@/utils/dialogueFormat";
 import {
   assignPhotosToClips, describeClipLocations, attachmentDirective, splitAttachmentDirective,
   parseLocationIndex, type LocationPhoto,
@@ -82,7 +84,7 @@ describe("voice-over prompt — the two-hander contract", () => {
   });
 
   it("states the word budget the validator will enforce", () => {
-    expect(prompt).toContain(`EXACTLY ${WORDS_PER_CLIP} spoken words`);
+    expect(prompt).toContain(`between ${MIN_WORDS_PER_CLIP} and ${MAX_WORDS_PER_CLIP} spoken words`);
     expect(prompt).toContain(`between ${MIN_WORDS_PER_LINE} and ${MAX_WORDS_PER_LINE} words`);
   });
 
@@ -112,7 +114,7 @@ describe("voice-over prompt — the two-hander contract", () => {
   it("repair prompt restates the same contract so a fix cannot drift", () => {
     const repair = CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT(pack, 32, 4, "Telugu");
     expect(repair).toContain("EXACTLY 4 clips");
-    expect(repair).toContain(`EXACTLY ${WORDS_PER_CLIP} spoken words per clip`);
+    expect(repair).toContain(`${MIN_WORDS_PER_CLIP}-${MAX_WORDS_PER_CLIP} spoken words per clip`);
     expect(repair).toContain("Motu speaks first");
     expect(repair).toContain("never add or remove clips");
   });
@@ -322,20 +324,28 @@ describe("voice-over prompt — promotional grounding", () => {
   });
 
   /**
-   * Every second spent saying the characters' names is a second not spent on the client. The
-   * prompt asks for at most one mention in the whole ad; the validator enforces it.
+   * Exactly one, in every ad whatever its length. Zero is wrong too — the audience has to register
+   * who these two are once, or the premise is lost on anyone half-listening.
    */
-  it("allows the characters' names to be spoken only once in the whole ad", () => {
+  it("requires the characters' names exactly once in the whole ad", () => {
     const four = p(4);
-    expect(four).toContain("THE NAMES ARE NOT THE PRODUCT");
-    expect(four).toMatch(/AT MOST ONCE, in total/);
+    expect(four).toContain("THE NAMES: EXACTLY ONCE, NEVER TWICE");
+    expect(four).toMatch(/must be spoken\s*\n?EXACTLY ONE TIME/);
     expect(four).toMatch(/Not once per clip: once in the whole ad/);
+    expect(four).toContain("It MUST appear once");
+    expect(four).toContain("It must NEVER appear again");
     expect(four).toContain("We are promoting the business, not the characters");
   });
 
-  it("restates the one-name limit in the repair contract so a fix cannot undo it", () => {
+  it("puts that one mention in the opening line, whatever the ad's length", () => {
+    expect(p(2)).toMatch(/a 2-clip ad and an 8-clip ad each get exactly one/);
+    expect(p(8)).toMatch(/a 2-clip ad and an 8-clip ad each get exactly one/);
+    expect(p(4)).toMatch(/the very first line\s*\n?\s*should have Motu greet or address Patlu by name/);
+  });
+
+  it("restates the one-name rule in the repair contract so a fix cannot undo it", () => {
     const repair = CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT(pack, 32, 4, "Telugu");
-    expect(repair).toMatch(/name may be spoken AT MOST ONCE in total/);
+    expect(repair).toMatch(/name is spoken EXACTLY ONCE in total/);
   });
 });
 
@@ -361,14 +371,33 @@ describe("veo prompt", () => {
     expect(p).toContain("the other listens and reacts");
   });
 
-  it("locks continuity across independently generated clips", () => {
-    expect(p).toContain("Only the location and the dialogue change between clips");
+  /**
+   * The frame image is attached, so the scene already exists. Re-describing it gave Veo a second,
+   * vaguer version of the picture to reconcile against — and gave the member a paragraph of
+   * redundant text to read past.
+   */
+  it("says animate the attached frame instead of describing the scene", () => {
+    expect(p).toContain("EACH CLIP'S FRAME IMAGE IS ATTACHED");
+    expect(p).toContain("Animate the attached frame, keeping it exactly as it is");
+    expect(p).toContain("Write what MOVES and what is HEARD — nothing else");
+  });
+
+  it("forbids describing the location or composition at all", () => {
+    expect(p).toContain("NEVER describe the location, characters, lighting or composition");
+    expect(p).toContain("the attached frame IS all of that");
+    // The old shape asked for a location phrase in the output template; it must be gone.
+    expect(p).not.toContain("${location for this clip}");
+  });
+
+  it("locks the frame against drift, and changes only the dialogue between clips", () => {
+    expect(p).toContain("Only the dialogue changes between clips");
+    expect(p).toContain("No change to the characters, location or framing from the attached image");
   });
 
   it("carries the negatives that stop the usual failures", () => {
     expect(p).toContain("###SEGMENT###");
-    expect(p).toContain("Do not restyle the location into a cartoon");
-    expect(p).toContain("no character morphing");
+    expect(p).toContain("Camera holds steady, single continuous shot");
+    expect(p).toContain("no watermark");
   });
 
   it("passes the dialogue through untouched", () => {
@@ -379,10 +408,10 @@ describe("veo prompt", () => {
    * The first version asked for scene, both characters in full, exchange, performance direction and
    * camera work, and produced prompts too long for a member to read. These two hold the shape.
    */
-  it("forbids describing the characters, including how tall they are", () => {
-    expect(p.toLowerCase()).toContain("never describe how they look or how tall they are");
-    for (const banned of ["kurta", "dhoti", "spectacles", "moustache"]) {
-      expect(p.toLowerCase()).not.toContain(banned);
+  it("never leaks a physical description of the characters", () => {
+    // Whole words only: "round" lives inside "background", which is legitimate here.
+    for (const banned of ["kurta", "dhoti", "spectacles", "moustache", "tall", "round", "thin"]) {
+      expect(p.toLowerCase()).not.toMatch(new RegExp(`\\b${banned}\\b`));
     }
   });
 
@@ -465,6 +494,13 @@ describe("location index + photo assignment", () => {
 
     it("still names the slot when the scout gave no zone", () => {
       expect(attachmentDirective({ clip: 0, photoIndex: 2 }, [])).toBe("📎 ATTACH STORE/OFFICE IMAGE #3");
+    });
+
+    // The scout returns "entrance" sometimes and "the entrance" other times.
+    it("never doubles the article when the scout's zone already has one", () => {
+      const withArticle = [{ index: 0, zone: "the entrance", usable: true }];
+      expect(attachmentDirective({ clip: 0, photoIndex: 0 }, withArticle))
+        .toBe("📎 ATTACH STORE/OFFICE IMAGE #1 — the entrance");
     });
 
     /**

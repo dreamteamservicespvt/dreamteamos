@@ -30,11 +30,18 @@ import { CLIP_SECONDS, clipLabel } from "./voiceOverFormat";
  * Platform showed every clip crammed into clip-1's card.
  */
 
-/** Exact spoken words per clip, shared across both characters. See the budget note above. */
-export const WORDS_PER_CLIP = 16;
-/** A single character's share of the clip. The two must still total WORDS_PER_CLIP. */
-export const MIN_WORDS_PER_LINE = 7;
-export const MAX_WORDS_PER_LINE = 9;
+/**
+ * Spoken words per clip, shared across both characters — a range, not a single number.
+ *
+ * An exact count forced the writer to pad or amputate a line that was otherwise right, and a padded
+ * Telugu sentence is immediately audible. A narrow band lands on the same 8 seconds while letting
+ * the sentence end where it naturally ends.
+ */
+export const MIN_WORDS_PER_CLIP = 18;
+export const MAX_WORDS_PER_CLIP = 20;
+/** A single character's share. The two lines must still total inside the clip band above. */
+export const MIN_WORDS_PER_LINE = 8;
+export const MAX_WORDS_PER_LINE = 12;
 
 export interface DialogueLine {
   /** Character key, e.g. `motu`. */
@@ -224,7 +231,8 @@ export function countSpokenWords(text: string): number {
 }
 
 export interface DialogueValidationOptions {
-  wordsPerClip?: number;
+  minWordsPerClip?: number;
+  maxWordsPerClip?: number;
   minWordsPerLine?: number;
   maxWordsPerLine?: number;
   /**
@@ -232,8 +240,11 @@ export interface DialogueValidationOptions {
    * whatever native spellings the pack fixes. Leave empty to skip the check entirely.
    */
   nameTokens?: string[];
-  /** How many times a name may be spoken across the WHOLE script. Default 1. */
-  maxNameMentions?: number;
+  /**
+   * How many times a character's name must be spoken across the WHOLE script — exactly this many,
+   * not "up to". One mention grounds who is talking; a second is a word the business did not get.
+   */
+  nameMentions?: number;
 }
 
 /**
@@ -275,23 +286,35 @@ export function validateDialogueClips(
   options: DialogueValidationOptions = {},
 ): string[] {
   const {
-    wordsPerClip = WORDS_PER_CLIP,
+    minWordsPerClip = MIN_WORDS_PER_CLIP,
+    maxWordsPerClip = MAX_WORDS_PER_CLIP,
     minWordsPerLine = MIN_WORDS_PER_LINE,
     maxWordsPerLine = MAX_WORDS_PER_LINE,
     nameTokens = [],
-    maxNameMentions = 1,
+    nameMentions = 1,
   } = options;
 
   const issues: string[] = [];
 
-  // The ad sells the business, not the cast. A script that keeps saying "Motu" and "Patlu" spends
-  // its 16-word clips on the characters instead of on the client.
+  /**
+   * Exactly one mention, in any ad of any length.
+   *
+   * Zero is wrong too, not just too many: the audience has to hear who these two are at least once
+   * or the whole premise is lost on anyone half-listening. One does that. Two or more starts
+   * spending the client's seconds on the cast.
+   */
   if (nameTokens.length > 0) {
     const mentions = countNameMentions(clips, nameTokens);
-    if (mentions > maxNameMentions) {
+    if (mentions > nameMentions) {
       issues.push(
-        `The characters' names are spoken ${mentions} times across the script — the limit is `
-        + `${maxNameMentions} in total. Remove the extra mentions and use the words for the business instead.`,
+        `The characters' names are spoken ${mentions} times across the whole script — it must be `
+        + `exactly ${nameMentions}. Remove the extra mention${mentions - nameMentions === 1 ? "" : "s"} `
+        + `and use those words for the business instead.`,
+      );
+    } else if (mentions < nameMentions) {
+      issues.push(
+        `The characters' names are never spoken — the script must name one of them exactly `
+        + `${nameMentions} time, most naturally in clip 1 where one greets or addresses the other.`,
       );
     }
   }
@@ -347,8 +370,11 @@ export function validateDialogueClips(
       }
     }
 
-    if (clip.length > 0 && total !== wordsPerClip) {
-      issues.push(`Clip ${n} must contain exactly ${wordsPerClip} spoken words across both characters, but has ${total}.`);
+    if (clip.length > 0 && (total < minWordsPerClip || total > maxWordsPerClip)) {
+      issues.push(
+        `Clip ${n} must contain ${minWordsPerClip}-${maxWordsPerClip} spoken words across both `
+        + `characters, but has ${total}.`,
+      );
     }
 
     // Two characters saying the same thing reads as a generation fault, not dialogue.

@@ -1961,21 +1961,21 @@ ${maleCastingOverride}${commercialMainFramePriorityNote}
     ? CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT(pack, segmentCount, formData.aspectRatio === '16:9' ? '16:9' : '9:16')
     : VEO_SEGMENT_SYSTEM_PROMPT(segmentCount, formData.gender || 'female');
 
-  // For a pack the model needs both lines of each clip attributed to the right character, plus
-  // the scene that clip is set in, so the video prompt can direct the exchange and the lip-sync.
+  /**
+   * A pack clip is animated FROM its main-frame image, which the member attaches alongside the
+   * prompt — so the scene is already fixed and visible. The model is given the dialogue and
+   * nothing else: describing the location here only produced a paragraph re-stating the picture,
+   * which the member had to read past and Veo had to reconcile against the real frame.
+   */
   const veoUserPrompt = pack
     ? `Generate Veo 3 prompts for all ${segmentCount} clips of this two-character cartoon ad.
+Each clip's frame image is attached separately by the member, so write motion and speech only.
 
 ${dialogueClips.map((clip, i) => {
       const nameOf = new Map(packSpeakerList.map(s => [s.key, s.name]));
       const lines = clip.map(l => `  ${nameOf.get(l.speaker) ?? l.speaker}: "${l.text}"`).join('\n');
       return `CLIP ${i + 1} (${i * CLIP_SECONDS}-${(i + 1) * CLIP_SECONDS}s)\n${lines}`;
     }).join('\n\n')}
-
-SCENE FOR EACH CLIP:
-${usingClientPhotos
-      ? describeClipLocations(clipPhotoPlan, clientLocations)
-      : 'Build a believable location for this business, a different area of it for every clip.'}
 
 Generate ${segmentCount} complete Veo 3 prompts now.`
     : `Generate Veo 3 prompts for all segments.

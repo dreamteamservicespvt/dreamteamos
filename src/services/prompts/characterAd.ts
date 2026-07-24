@@ -1,5 +1,7 @@
 import { packNameSpellings, type CharacterPack } from "@/services/characterPacks";
-import { WORDS_PER_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE } from "@/utils/dialogueFormat";
+import {
+  MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE,
+} from "@/utils/dialogueFormat";
 import { CLIP_SECONDS } from "@/utils/voiceOverFormat";
 
 /**
@@ -130,16 +132,21 @@ BUSINESS INFORMATION you are given — it is not a general chat about advertisin
 or "promotion". The humour exists only to carry the sell. Every line must sound like natural
 ${lang} speech between the two of them, not like a written slogan.
 
-===== THE NAMES ARE NOT THE PRODUCT (STRICT) =====
+===== THE NAMES: EXACTLY ONCE, NEVER TWICE (STRICT) =====
 
-Across the ENTIRE script — all ${segmentCount} clips together — a character's name may be spoken
-AT MOST ONCE, in total. Not once per clip: once in the whole ad.
+Across the ENTIRE script — all ${segmentCount} clips together — a character's name must be spoken
+EXACTLY ONE TIME. Not once per clip: once in the whole ad. This is the same in every ad, whatever
+its length: a 2-clip ad and an 8-clip ad each get exactly one.
 
-We are promoting the business, not the characters. Every second spent saying "${first.name}" or
-"${second.name}" is a second not spent saying what the client does. The viewer can see who is
-talking; they cannot see the business's name unless it is said. So use that one allowance early if
-it helps the first line sound natural, then never again — after that they simply talk to each
-other. The BUSINESS's name is the name that must be repeated instead.
+• It MUST appear once. The audience has to register who these two are, so the very first line
+  should have ${first.name} greet or address ${second.name} by name — that is the one mention, and
+  it is the natural place for it.
+• It must NEVER appear again. Not in clip 2, not in the closing line, not once more anywhere.
+  After that opening they simply talk to each other, with no names at all.
+
+We are promoting the business, not the characters. Every word spent on "${first.name}" or
+"${second.name}" is a word the client did not get. The viewer can SEE who is talking; they cannot
+know the business unless it is said. So the BUSINESS's name is the one that gets repeated.
 
 CLIP-BY-CLIP STRUCTURE:
 
@@ -164,8 +171,8 @@ ${contract}
 
 3. WORD BUDGET (this is a timing rule, not a style preference): each clip is
    ${CLIP_SECONDS} seconds shared by two speakers with a short hand-off pause between
-   them. Each clip must total EXACTLY ${WORDS_PER_CLIP} spoken words, and each character's single
-   line must be between ${MIN_WORDS_PER_LINE} and ${MAX_WORDS_PER_LINE} words. Count carefully.
+   them. Each clip must total between ${MIN_WORDS_PER_CLIP} and ${MAX_WORDS_PER_CLIP} spoken words across both characters — never fewer, never more.
+   Each character's single line must be between ${MIN_WORDS_PER_LINE} and ${MAX_WORDS_PER_LINE} words. Count every clip carefully before you output it.
 4. Each line is ONE complete spoken sentence ending in . ! or ?
 5. Do NOT output a FULL SCRIPT section. Do NOT repeat the same line twice anywhere.
 
@@ -225,11 +232,11 @@ list of validation problems. Fix ONLY those problems and return the corrected sc
 NON-NEGOTIABLE CONTRACT:
 • EXACTLY ${segmentCount} clips, each with EXACTLY 2 lines
 • ${first.name} speaks first in every clip, ${second.name} answers
-• EXACTLY ${WORDS_PER_CLIP} spoken words per clip; each line ${MIN_WORDS_PER_LINE}-${MAX_WORDS_PER_LINE} words
+• ${MIN_WORDS_PER_CLIP}-${MAX_WORDS_PER_CLIP} spoken words per clip; each line ${MIN_WORDS_PER_LINE}-${MAX_WORDS_PER_LINE} words
 • Each line is one complete sentence ending in . ! or ?
 • Output format exactly: \`<start>-<end>|${first.key}: <line>\` then \`<start>-<end>|${second.key}: <line>\`
 • Keep the original meaning and the business facts — change only what is broken
-• Across ALL ${segmentCount} clips together, a character's name may be spoken AT MOST ONCE in total — we are promoting the business, not the characters
+• Across ALL ${segmentCount} clips together, a character's name is spoken EXACTLY ONCE in total — once in the opening line, never again anywhere
 • Total duration is ${duration} seconds; never add or remove clips${spellings.length > 0
   ? `\n• A spoken character name is written EXACTLY as: ${spellings.map((s) => `${s.name} → ${s.spelling}`).join(", ")}`
   : ""}
@@ -506,33 +513,34 @@ export const CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT = (
   return `You are an expert at formatting video generation prompts for Veo 3.
 
 YOUR TASK: Generate ${segmentCount} copy-paste-ready Veo 3 prompts, one per ${CLIP_SECONDS}-second clip.
+INPUT: each clip's two-line dialogue, ${first.name} first, then ${second.name}.
 
-INPUT PROVIDED: each clip's two-line dialogue (${first.name} first, then ${second.name}) and the location it plays in.
+EACH CLIP'S FRAME IMAGE IS ATTACHED. Veo animates that image, so the characters, the location and
+the light already exist. Describing them back only gives the model a vaguer second version to drift
+towards. Write what MOVES and what is HEARD — nothing else.
 
-You must output each clip in this EXACT FORMAT:
+Output each clip in this EXACT FORMAT:
 
-${aspectRatio} ${orientation} video. ${cast} from ${pack.franchise}, in \${location for this clip}.
+${aspectRatio} ${orientation} video. Animate the attached frame, keeping it exactly as it is.
 
 ${first.name} says, in his own original ${first.name} voice from the show: "\${${first.name}'s line}"
 Then ${second.name} replies, in his own original ${second.name} voice from the show: "\${${second.name}'s line}"
 
-Only the speaking character's mouth moves; the other listens and reacts. Single continuous shot.
+Only the speaking character's mouth moves; the other listens and reacts. Camera holds steady, single continuous shot.
 
 Negative prompt:
 No text on the screen, no subtitles, no watermark
-No background music, pure studio type voice over, crystal clear voice, no echos
+No background music, pure studio voice over, crystal clear voice, no echos
 No new or different voices, no narrator, no dubbing accent
-Do not restyle the location into a cartoon, no extra characters, no character morphing
+No change to the characters, location or framing from the attached image
 
 RULES:
-• Keep each prompt SHORT — the shape above, nothing more. No added sentences or paragraphs.
+• NEVER describe the location, characters, lighting or composition — the attached frame IS all of that. Most important rule here.
+• Keep each prompt SHORT — the shape above, nothing more.
 • VOICES ARE STRICT: only the original ${cast} voices from the show — ${first.name} ${first.voice}, ${second.name} ${second.voice}. Never a narrator, a new voice actor, or a different accent.
-• These must be the REAL ${cast} from ${pack.franchise} — not look-alikes, not a new duo.
-• NEVER describe how they look or how tall they are — their names are enough.
 • Use the dialogue lines EXACTLY as given — do not rewrite, translate or shorten them.
-• Only the location and the dialogue change between clips.
+• Only the dialogue changes between clips; every clip has its own attached frame.
 
-OUTPUT FORMAT:
 Provide ONLY the prompts. Separator between segments: "###SEGMENT###"`;
 };
 

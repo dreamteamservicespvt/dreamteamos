@@ -17,6 +17,7 @@ import { db } from '@/services/firebase';
 import { useAuthStore } from '@/store/authStore';
 import type { WorkAssignment } from '@/types';
 import { useConfirm } from '@/hooks/useConfirm';
+import { useToast } from '@/hooks/use-toast';
 import { clipLabel, clipRange, formatClipLine, formatClipScript, parseLabeledClips } from '@/utils/voiceOverFormat';
 
 interface AIPlatformAppProps {
@@ -1291,7 +1292,9 @@ clip-2[8-16sec]: second spoken line`}</pre>
                   {creationMode === 'video' && outputs.mainFramePrompts?.length > 0 && (
                       <OutputSection title={`1. Main Frame Prompts (${outputs.mainFramePrompts.length} Clips)`} sectionKey="mainFrame"
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
-                        isDark={isDark} quickCopyItems={outputs.mainFramePrompts.map(p => stripAttachmentDirective(p).body)}>
+                        isDark={isDark}
+                        quickCopyItems={outputs.mainFramePrompts.map(p => stripAttachmentDirective(p).body)}
+                        quickCopyAttachments={outputs.mainFramePrompts.map(p => stripAttachmentDirective(p).directive)}>
                         <GeneratedCard title="Main Frame" content={outputs.mainFramePrompts} variant="dropdown" sectionType="mainFrame"
                           showRefinement={true} onRefine={(i) => handleRefineSection('mainFrame', i)} isRefining={refiningSection === 'mainFrame'} hideTitle />
                       </OutputSection>
@@ -1543,7 +1546,9 @@ const OutputSection: React.FC<{
   quickCopyLabel?: string;
   quickCopyNamespace?: string;
   quickCopyRanges?: string[];
-}> = ({ title, sectionKey, children, collapsedOutputs, toggleOutputSection, isDark, copyContent, copyLabel, quickCopyItems, quickCopyLabel, quickCopyNamespace, quickCopyRanges }) => {
+  /** Per-item "attach this photo" directive, surfaced on the quick-copy chips. */
+  quickCopyAttachments?: (string | null)[];
+}> = ({ title, sectionKey, children, collapsedOutputs, toggleOutputSection, isDark, copyContent, copyLabel, quickCopyItems, quickCopyLabel, quickCopyNamespace, quickCopyRanges, quickCopyAttachments }) => {
   const [copied, setCopied] = useState(false);
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1567,7 +1572,7 @@ const OutputSection: React.FC<{
           {quickCopyItems && quickCopyItems.length > 0 && (
             <QuickCopyActions prompts={quickCopyItems} isDark={isDark}
               labelPrefix={quickCopyLabel ?? 'F'} namespace={quickCopyNamespace ?? 'main-frame'}
-              ranges={quickCopyRanges} />
+              ranges={quickCopyRanges} attachments={quickCopyAttachments} />
           )}
           {copyContent && (
             <span
@@ -1607,7 +1612,14 @@ const QuickCopyActions: React.FC<{
   labelPrefix?: string;
   namespace?: string;
   ranges?: string[];
-}> = ({ prompts, isDark, labelPrefix = 'F', namespace = 'main-frame', ranges }) => {
+  /**
+   * Per-prompt attachment directive, when the prompt carries one. These chips are the ONLY thing
+   * most members touch — they copy from the collapsed header and go straight to the generator
+   * without ever expanding the section — so which photo to attach has to be legible right here.
+   */
+  attachments?: (string | null)[];
+}> = ({ prompts, isDark, labelPrefix = 'F', namespace = 'main-frame', ranges, attachments }) => {
+  const { toast } = useToast();
   const promptFingerprint = prompts
     .map((prompt) => cleanPromptForClipboard(prompt))
     .join('||');
@@ -1631,10 +1643,16 @@ const QuickCopyActions: React.FC<{
     window.localStorage.removeItem(storageKey);
   }, [copiedKey, storageKey]);
 
-  const copyText = (event: React.MouseEvent, key: string, content: string) => {
+  const copyText = (event: React.MouseEvent, key: string, content: string, index: number) => {
     event.stopPropagation();
     navigator.clipboard.writeText(cleanPromptForClipboard(content));
     setCopiedKey(key);
+    // Second line of defence behind the chip badge: the member has just copied and is about to
+    // leave the page, so the attachment instruction follows them out.
+    const attachment = attachments?.[index];
+    if (attachment) {
+      toast({ title: `${labelPrefix}${index + 1} copied`, description: attachment });
+    }
   };
 
   const copiedIndex = copiedKey?.startsWith('clip-') ? Number(copiedKey.replace('clip-', '')) : null;
@@ -1668,13 +1686,19 @@ const QuickCopyActions: React.FC<{
         const isCopied = copiedKey === key;
         const frameLabel = `${labelPrefix}${index + 1}`;
         const range = ranges?.[index];
+        const attachment = attachments?.[index];
+        // "📎 2" — attach Store/Office Image #2 — or "🎨" when this clip's location is generated.
+        const photoNumber = attachment?.match(/IMAGE #(\d+)/)?.[1] ?? null;
 
         return (
           <button
             key={key}
             type="button"
-            onClick={(event) => copyText(event, key, prompt)}
-            title={range ? `Copy ${frameLabel}${range}` : `Copy ${frameLabel} prompt`}
+            onClick={(event) => copyText(event, key, prompt, index)}
+            // The `u` flag matters: without it the emoji are surrogate pairs and the strip fails.
+            title={attachment
+              ? `Copy ${frameLabel} — ${attachment.replace(/^(?:📎|🎨)\s*/u, '')}`
+              : range ? `Copy ${frameLabel}${range}` : `Copy ${frameLabel} prompt`}
             className={cn(
               "inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-semibold transition-all",
               isCopied
@@ -1685,6 +1709,17 @@ const QuickCopyActions: React.FC<{
             {isCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3 opacity-70" />}
             <span>{frameLabel}</span>
             {range && <span className="font-normal opacity-60">{range}</span>}
+            {attachment && (
+              <span
+                data-test={`attach-badge-${index}`}
+                className={cn("ml-0.5 rounded px-1 py-0.5 text-[10px] font-bold leading-none",
+                  photoNumber
+                    ? "bg-amber-400 text-amber-950"
+                    : isDark ? "bg-slate-600 text-slate-200" : "bg-slate-200 text-slate-600")}
+              >
+                {photoNumber ? `📎 ${photoNumber}` : '🎨'}
+              </span>
+            )}
           </button>
         );
       })}
