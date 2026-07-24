@@ -316,17 +316,53 @@ export async function revertOrderToUnassigned(orderId: string): Promise<void> {
  */
 export function findReconcilableOrders(orders: Order[], assignments: WorkAssignment[]): Order[] {
   const digits = (v?: string | null) => (v ? normalizePhone(v).replace(/\D/g, "") : "");
-  // Manual/other work, indexed by "phone|category" for an O(1) lookup per order.
-  const workKeys = new Set<string>();
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  /** Work can predate its order slightly (the sale was recorded after the job went out). */
+  const GRACE_MS = 7 * DAY_MS;
+
+  const assignedMs = (a: WorkAssignment): number => {
+    const stamp = (a.assignedAt as { seconds?: number } | undefined)?.seconds;
+    if (stamp) return stamp * 1000;
+    const day = a.date || a.assignedAtIso?.slice(0, 10);
+    const parsed = day ? Date.parse(`${day}T12:00:00`) : NaN;
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  // Candidate work, grouped by "phone|category" and oldest first, each usable only once.
+  const pool = new Map<string, { ms: number; used: boolean }[]>();
   for (const a of assignments) {
     const d = digits(a.businessWhatsapp);
-    if (d) workKeys.add(`${d}|${a.category}`);
+    if (!d) continue;
+    const key = `${d}|${a.category}`;
+    const list = pool.get(key);
+    const entry = { ms: assignedMs(a), used: false };
+    if (list) list.push(entry);
+    else pool.set(key, [entry]);
   }
-  return orders.filter((o) => {
-    if (o.status !== "unassigned" || o.workAssignmentId) return false;
-    const d = digits(o.clientPhone);
-    return !!d && workKeys.has(`${d}|${o.category}`);
-  });
+  for (const list of pool.values()) list.sort((x, y) => x.ms - y.ms);
+
+  return orders
+    .filter((o) => o.status === "unassigned" && !o.workAssignmentId && !o.deleted)
+    // Oldest order first, so the oldest matching job is claimed by the oldest order.
+    .sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0))
+    .filter((o) => {
+      const d = digits(o.clientPhone);
+      if (!d) return false;
+      const list = pool.get(`${d}|${o.category}`);
+      if (!list) return false;
+
+      // The job must plausibly BE this sale's job: not one from long before the sale existed.
+      // Without this, a repeat client's brand-new order matched the ad we did for them months
+      // ago and was swept out of the queue as "already done".
+      const orderMs = (o.createdAt?.seconds || 0) * 1000;
+      const earliest = orderMs ? orderMs - GRACE_MS : Number.NEGATIVE_INFINITY;
+
+      // One job can only account for one order — two sales need two jobs.
+      const match = list.find((w) => !w.used && w.ms >= earliest);
+      if (!match) return false;
+      match.used = true;
+      return true;
+    });
 }
 
 /**

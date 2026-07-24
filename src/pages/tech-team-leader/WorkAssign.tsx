@@ -8,7 +8,7 @@ import { getWhatsAppUrl, normalizePhone } from '@/utils/phone';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/services/firebase';
 import { useAuthStore } from '@/store/authStore';
-import { useFirestoreCollection } from '@/hooks/useFirestore';
+import { useFirestoreCollection, useFirestoreQuery } from '@/hooks/useFirestore';
 import {
   DURATIONS, END_CREDITS_SECONDS,
   getClipCount, hasPoster, durationForClips, normalizeClipCount, priceForClips,
@@ -20,10 +20,11 @@ import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from '@/types/aiPla
 import { ATTIRE_LABELS, assignmentFormFromOrder, attireLabel } from '@/utils/adRequirement';
 import { watchAdLanguages, mergeAdLanguages, rememberAdLanguage } from '@/services/adLanguages';
 import { categoryLabel } from '@/utils/serviceCatalog';
-import { fetchOrder } from '@/services/orders';
+import { fetchOrder, activeOrdersQuery } from '@/services/orders';
 import { createWorkAssignment, nextWorkUniqueId } from '@/services/workAssign';
 import { verifyAssignments, awaitingVerification } from '@/services/workVerify';
 import MemberWorkloadCard from '@/components/work/MemberWorkloadCard';
+import AdsStatusBoard from '@/components/work/AdsStatusBoard';
 import { buildMemberWorkload, filterMemberWorkload } from '@/utils/memberWorkload';
 import { buildMemberPickerOptions, filterMemberPickerOptions } from '@/utils/memberPicker';
 
@@ -43,6 +44,9 @@ export default function TeamLeaderWorkAssign() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: allUsers, loading: usersLoading } = useFirestoreCollection<AppUser>('users');
   const { data: allAssignments, loading: assignmentsLoading } = useFirestoreCollection<WorkAssignment>('work_assignments');
+  // Live orders — the "not assigned" side of the ads-status board.
+  const ordersQuery = useMemo(() => activeOrdersQuery(), []);
+  const { data: orders } = useFirestoreQuery<Order>(ordersQuery, []);
 
   // Team leader sees tech_members created by the same tech_admin that created them.
   // `isActive !== false`, not `isActive`: member records created before the flag existed have no
@@ -671,6 +675,9 @@ export default function TeamLeaderWorkAssign() {
           </div>
         </div>
       )}
+
+      {/* How many ads landed in a period and where each one has got to. No pricing for a lead. */}
+      <AdsStatusBoard assignments={assignments} orders={orders} members={techMembers} showPricing={false} />
 
       {/* Approve work — everything the team has delivered and is waiting on a decision */}
       <div className="rounded-2xl border border-border/70 bg-card/80 p-3 md:p-4 shadow-sm backdrop-blur-sm">

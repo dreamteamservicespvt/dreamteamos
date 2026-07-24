@@ -41,17 +41,21 @@ describe("nextWorkUniqueId", () => {
 });
 
 describe("findReconcilableOrders (queue cleanup)", () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const at = (ms: number) => ({ seconds: Math.floor(ms / 1000) });
+  const NOW = Date.parse("2026-07-24T10:00:00Z");
+
   const order = (f: Partial<Order>): Order => ({
     id: "o1", clientPhone: "+919876543210", category: "promotional", status: "unassigned",
-    workAssignmentId: null, ...f,
+    workAssignmentId: null, createdAt: at(NOW), ...f,
   } as Order);
-  const work = (phone: string, category = "promotional"): WorkAssignment =>
-    ({ businessWhatsapp: phone, category } as WorkAssignment);
+  // By default the job is same-day as the order, i.e. plausibly that sale's work.
+  const work = (phone: string, category = "promotional", ms = NOW): WorkAssignment =>
+    ({ businessWhatsapp: phone, category, assignedAt: at(ms) } as WorkAssignment);
 
-  it("flags an unassigned order whose client+category already has manual work", () => {
+  it("flags an unassigned order whose client+category already has matching work", () => {
     const orders = [order({ clientPhone: "+919876543210", category: "promotional" })];
-    const found = findReconcilableOrders(orders, [work("9876543210", "promotional")]);
-    expect(found).toHaveLength(1);
+    expect(findReconcilableOrders(orders, [work("9876543210", "promotional")])).toHaveLength(1);
   });
 
   it("matches regardless of phone formatting", () => {
@@ -70,8 +74,37 @@ describe("findReconcilableOrders (queue cleanup)", () => {
     expect(findReconcilableOrders([order({ workAssignmentId: "w1" })], assignments)).toHaveLength(0);
   });
 
-  it("leaves an order with no matching manual work alone", () => {
+  it("leaves an order with no matching work alone", () => {
     const orders = [order({ clientPhone: "+919999999999" })];
     expect(findReconcilableOrders(orders, [work("9876543210")])).toHaveLength(0);
+  });
+
+  // ── The repeat-client bug: a new sale must not be retired by an OLD ad ──
+  it("does NOT retire a repeat client's new order using an ad done months earlier", () => {
+    const newOrder = order({ id: "new", createdAt: at(NOW) });
+    const oldAd = work("9876543210", "promotional", NOW - 90 * DAY);
+    expect(findReconcilableOrders([newOrder], [oldAd])).toHaveLength(0);
+  });
+
+  it("still retires an order whose job was done around the same time (the legacy backlog)", () => {
+    const o = order({ createdAt: at(NOW) });
+    // Job went out three days before the sale was recorded — inside the grace window.
+    expect(findReconcilableOrders([o], [work("9876543210", "promotional", NOW - 3 * DAY)])).toHaveLength(1);
+  });
+
+  it("uses each job only once — two sales for one client need two jobs", () => {
+    const o1 = order({ id: "o1", createdAt: at(NOW) });
+    const o2 = order({ id: "o2", createdAt: at(NOW + DAY) });
+    const single = [work("9876543210", "promotional", NOW)];
+    // Only the first order can claim the single job.
+    expect(findReconcilableOrders([o1, o2], single).map(o => o.id)).toEqual(["o1"]);
+    // With a job each, both are accounted for.
+    const two = [work("9876543210", "promotional", NOW), work("9876543210", "promotional", NOW + DAY)];
+    expect(findReconcilableOrders([o1, o2], two).map(o => o.id).sort()).toEqual(["o1", "o2"]);
+  });
+
+  it("keeps working for legacy orders that carry no createdAt", () => {
+    const legacy = order({ createdAt: undefined });
+    expect(findReconcilableOrders([legacy], [work("9876543210", "promotional", NOW - 365 * DAY)])).toHaveLength(1);
   });
 });
