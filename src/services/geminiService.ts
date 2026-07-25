@@ -335,19 +335,42 @@ export const refineSection = async (
   let systemPrompt: string;
   let userPrompt: string;
 
+  /**
+   * Refining a special-category ad used to hand the content to the HUMAN-MODEL prompts, which
+   * describe a single presenter in a saree. The editor was therefore being told the script it was
+   * looking at should be one voice — so it dutifully flattened the `[Motu]:` / `[Patlu]:` exchange
+   * into a normal voice-over, and the frame and video prompts lost the characters the same way.
+   *
+   * Every branch below now picks the pack's own prompt when there is one, so an edit can only ever
+   * change what was asked for and never the format underneath it.
+   */
+  const pack = getCharacterPack(formData.characterPack);
+  const packSpeakerList = pack ? packSpeakers(pack) : [];
+
   switch (sectionType) {
     case 'mainFrame':
-      systemPrompt = REFINE_EDIT_DIRECTIVE + buildRatioDirective(formData) + buildNameBoardDirective(formData, businessInfo) + MAIN_FRAME_SYSTEM_PROMPT(
-        formData.attireType,
-        formData.adType,
-        formData.festivalName,
-        formData.aspectRatio,
-        JSON.stringify(businessInfo),
-        formData.gender || 'female',
-        formData.customAttire || '',
-        formData.noLogo || false,
-        resolveNameBoardText(formData, businessInfo)
-      );
+      systemPrompt = REFINE_EDIT_DIRECTIVE + (pack
+        ? CHARACTER_MULTI_FRAME_SYSTEM_PROMPT(pack, {
+            segmentCount: Math.ceil(formData.duration / 8),
+            clipSummaries: [],
+            locationMode: formData.locationMode === 'real_provided' ? 'real_provided' : 'ai_generated',
+            locationPlan: '',
+            aspectRatio: formData.aspectRatio === '16:9' ? '16:9' : '9:16',
+            adType: formData.adType,
+            festivalName: formData.festivalName,
+            businessContext: JSON.stringify(businessInfo),
+          })
+        : buildRatioDirective(formData) + buildNameBoardDirective(formData, businessInfo) + MAIN_FRAME_SYSTEM_PROMPT(
+            formData.attireType,
+            formData.adType,
+            formData.festivalName,
+            formData.aspectRatio,
+            JSON.stringify(businessInfo),
+            formData.gender || 'female',
+            formData.customAttire || '',
+            formData.noLogo || false,
+            resolveNameBoardText(formData, businessInfo)
+          ));
       userPrompt = `You previously generated these Main Frame prompts (one per clip, separated by ###CLIP###):
 
 ---CURRENT PROMPTS---
@@ -361,7 +384,9 @@ IMPORTANT:
 - Apply ONLY the requested changes to ALL existing clip prompts
 - Maintain the ###CLIP### separator between each clip's prompt
 - Keep visual continuity between clips (same character, environment, lighting)
-- Clips after the first must still start with "Continuing from the previous frame…"
+${pack
+  ? `- These are ${pack.label} frames. Keep both characters named and never describe how they look; keep each clip's "ATTACH"/photograph reference and its business zone exactly as they are.`
+  : `- Clips after the first must still start with "Continuing from the previous frame…"`}
 - Keep all other aspects exactly the same
 - Output ONLY the refined prompts separated by ###CLIP###, no explanations
 - Do NOT wrap in markdown code blocks
@@ -405,9 +430,11 @@ IMPORTANT:
 - Output ONLY the refined plain-text prompt, no explanations`;
       break;
 
-    case 'voiceOver':
+    case 'voiceOver': {
       const segmentCount = Math.ceil(formData.duration / 8);
-      systemPrompt = REFINE_EDIT_DIRECTIVE + buildLanguageDirective(formData) + VOICEOVER_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName, formData.language, formData.gender || 'female');
+      systemPrompt = REFINE_EDIT_DIRECTIVE + buildLanguageDirective(formData) + (pack
+        ? CHARACTER_VOICEOVER_SYSTEM_PROMPT(pack, formData.duration, segmentCount, formData.adType, formData.festivalName, formData.language)
+        : VOICEOVER_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName, formData.language, formData.gender || 'female'));
       userPrompt = `You previously generated this Voice Over script:
 
 ---CURRENT SCRIPT---
@@ -421,12 +448,20 @@ IMPORTANT:
 - Apply ONLY the requested changes to the existing script
 - Keep the same structure and duration
 - Maintain the ${formData.language || 'Telugu'} language
+${pack ? `- This is a ${pack.label} two-character script. KEEP the exchange exactly as it is built:
+  every clip has ${packSpeakerList.length} lines, ${packSpeakerList[0]?.name} first and ${packSpeakerList[1]?.name} second,
+  each line labelled. NEVER merge them into one voice, never drop a character, never reorder them.
+- Return it in the SAME shape you were given: a "clip-N[start-endsec]:" header, then one labelled
+  line per character underneath it.` : ''}
 - Output ONLY the refined script, no explanations`;
       break;
+    }
 
-    case 'veo':
+    case 'veo': {
       const segCount = Math.ceil(formData.duration / 8);
-      systemPrompt = REFINE_EDIT_DIRECTIVE + VEO_SEGMENT_SYSTEM_PROMPT(segCount, formData.gender || 'female');
+      systemPrompt = REFINE_EDIT_DIRECTIVE + (pack
+        ? CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT(pack, segCount, formData.aspectRatio === '16:9' ? '16:9' : '9:16')
+        : VEO_SEGMENT_SYSTEM_PROMPT(segCount, formData.gender || 'female'));
       userPrompt = `You previously generated these Veo prompts:
 
 ---CURRENT PROMPTS---
@@ -439,9 +474,11 @@ The user wants the following changes/additions:
 IMPORTANT:
 - Apply ONLY the requested changes to the existing prompts
 - Keep the same structure and segment count
+${pack ? `- These are ${pack.label} clips. Keep both characters and their attributed lines exactly as they are, and keep every prompt animating its attached frame — do NOT turn them into descriptions of a scene or a human presenter.` : ''}
 - Output ONLY the refined prompts, no explanations
 - Use ###SEGMENT### separator between segments`;
       break;
+    }
 
     default:
       throw new Error(`Unknown section type: ${sectionType}`);
@@ -459,7 +496,31 @@ IMPORTANT:
     });
   });
 
-  return response.text || currentContent;
+  const refined = response.text || currentContent;
+
+  /**
+   * Put a refined pack script back into the exact shape the rest of the app reads.
+   *
+   * The editor is asked to preserve the two-speaker layout, but "asked" is not "guaranteed" — it
+   * may come back with the labels spaced differently or the clip header missing its colon, and that
+   * colon is what the AI Platform's clip splitter needs to break the script into cards at all.
+   * Re-parsing and re-formatting makes the output canonical no matter how it was written, and
+   * re-applies the fixed name spellings while we are at it.
+   *
+   * If it comes back unparseable we keep the model's text rather than throwing away the member's
+   * edit — a script that reads oddly is recoverable; a lost edit is not.
+   */
+  if (sectionType === 'voiceOver' && pack) {
+    const clips = parseDialogueClips(refined, packSpeakerAliases(pack));
+    if (clips.length > 0 && clips.every(c => c.length === packSpeakerList.length)) {
+      return formatDialogueScript(
+        applyNameSpellings(clips, packNameSpellings(pack, formData.language)),
+        packSpeakerList,
+      );
+    }
+  }
+
+  return refined;
 };
 
 const HOME_INTERIOR_MARKERS = [

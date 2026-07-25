@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  ClipboardList, Loader2, Search, MessageCircle, UserPlus, Clock, ShoppingBag, CheckCircle2, Sparkles, StickyNote, Hourglass, Sparkle, Trash2, CheckSquare, Square,
+  ClipboardList, Loader2, Search, MessageCircle, UserPlus, Clock, ShoppingBag, CheckCircle2, Sparkles, StickyNote, Hourglass, Sparkle, Trash2, CheckSquare, Square, Undo2,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useFirestoreQuery, useFirestoreCollection } from "@/hooks/useFirestore";
@@ -9,18 +9,23 @@ import { useNow } from "@/hooks/useNow";
 import { formatCurrency } from "@/utils/formatters";
 import { formatPhoneDisplay, getWhatsAppUrl } from "@/utils/phone";
 import { categoryLabel, categoryBilling } from "@/utils/serviceCatalog";
-import { activeOrdersQuery, notifyDueOrdersOnOpen, findReconcilableOrders, reconcileManualOrders, deleteOrders } from "@/services/orders";
+import { activeOrdersQuery, notifyDueOrdersOnOpen, findReconcilableOrders, reconcileManualOrders, deleteOrders, revertOrderToUnassigned } from "@/services/orders";
 import { requirementSummary } from "@/utils/adRequirement";
 import { useToast } from "@/hooks/use-toast";
 import { useViewMode } from "@/hooks/useViewMode";
 import ViewToggle from "@/components/common/ViewToggle";
 import DeadlineChip from "@/components/work/DeadlineChip";
 import { format } from "date-fns";
-import type { Order, WorkAssignment } from "@/types";
+import type { AppUser, Order, WorkAssignment } from "@/types";
 
 import { sortOrders, countOverdue, ORDER_SORT_OPTIONS, type OrderSortMode } from "@/utils/orderSort";
 
-type OrderTab = "unassigned" | "assigned" | "completed";
+import {
+  ORDER_QUEUE_TABS, assignmentsByOrderId, orderAssignee, orderQueueStatus, type OrderQueueStatus,
+} from "@/utils/orderQueue";
+import { unassignWork } from "@/services/workAssign";
+
+type OrderTab = OrderQueueStatus;
 
 function fmtTs(ts: any): string {
   const s = ts?.seconds ?? (typeof ts?.toMillis === "function" ? ts.toMillis() / 1000 : 0);
@@ -34,6 +39,7 @@ export default function Orders() {
   const ordersQuery = useMemo(() => activeOrdersQuery(), []);
   const { data: orders, loading } = useFirestoreQuery<Order>(ordersQuery, []);
   const { data: assignments } = useFirestoreCollection<WorkAssignment>("work_assignments");
+  const { data: allUsers } = useFirestoreCollection<AppUser>("users");
   useNow(30000); // keep deadline chips ticking
 
   // Assigning happens on Work Assign, where the sales member's brief pre-fills the whole form —
@@ -88,17 +94,28 @@ export default function Orders() {
     notifyDueOrdersOnOpen(orders);
   }, [loading, orders]);
 
-  const counts = useMemo(() => ({
-    unassigned: orders.filter((o) => o.status === "unassigned").length,
-    assigned: orders.filter((o) => o.status === "assigned").length,
-    completed: orders.filter((o) => o.status === "completed").length,
-  }), [orders]);
+  /** Orders joined to the work fulfilling them — the source of the "in progress" column. */
+  const byOrderId = useMemo(() => assignmentsByOrderId(assignments), [assignments]);
+  const queueStatusOf = useMemo(
+    () => (o: Order) => orderQueueStatus(o, byOrderId),
+    [byOrderId],
+  );
+  const memberNameOf = useMemo(() => {
+    const map = new Map(allUsers.map((u) => [u.uid, u.name]));
+    return (uid?: string | null) => (uid ? map.get(uid) || null : null);
+  }, [allUsers]);
+
+  const counts = useMemo(() => {
+    const out: Record<OrderTab, number> = { unassigned: 0, assigned: 0, in_progress: 0, completed: 0 };
+    for (const o of orders) out[queueStatusOf(o)] += 1;
+    return out;
+  }, [orders, queueStatusOf]);
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     const qDigits = q.replace(/\D/g, "");
     const filtered = orders
-      .filter((o) => o.status === tab)
+      .filter((o) => queueStatusOf(o) === tab)
       .filter((o) => {
         if (!q) return true;
         if (o.businessName?.toLowerCase().includes(q)) return true;
@@ -108,12 +125,12 @@ export default function Orders() {
         return false;
       });
     return sortOrders(filtered, sortMode);
-  }, [orders, tab, search, sortMode]);
+  }, [orders, tab, search, sortMode, queueStatusOf]);
 
   /** Overdue count for the tab in view, so the sort option can say how many are waiting. */
   const overdueInTab = useMemo(
-    () => countOverdue(orders.filter((o) => o.status === tab)),
-    [orders, tab],
+    () => countOverdue(orders.filter((o) => queueStatusOf(o) === tab)),
+    [orders, tab, queueStatusOf],
   );
 
   // Select-all operates on exactly what's on screen (current tab + search).
@@ -127,6 +144,44 @@ export default function Orders() {
     }
     return new Set([...prev, ...visibleIds]);
   });
+
+  /**
+   * Take work back off a member and return this order to the queue.
+   *
+   * The order goes to "unassigned", which is also what re-opens it for the sales member to edit —
+   * the sale is theirs again until someone picks it up. Handled here as well as on the member's own
+   * page because the Orders queue is where an admin notices the wrong person has it.
+   */
+  const [confirmUnassign, setConfirmUnassign] = useState<Order | null>(null);
+  const [unassigning, setUnassigning] = useState(false);
+  const runUnassign = async () => {
+    if (!confirmUnassign) return;
+    const order = confirmUnassign;
+    const work = byOrderId.get(order.id);
+    setUnassigning(true);
+    try {
+      if (work) {
+        await unassignWork({
+          assignmentId: work.id,
+          assignedTo: work.assignedTo,
+          orderId: order.id,
+          title: order.businessName || order.clientName,
+        });
+      } else {
+        // No assignment left to remove — just put the order back where it belongs.
+        await revertOrderToUnassigned(order.id);
+      }
+      toast({
+        title: "Back in the queue",
+        description: `"${order.businessName || "This order"}" is not assigned any more — assign it to someone else, or let the sales member edit it.`,
+      });
+      setConfirmUnassign(null);
+    } catch {
+      toast({ title: "Error", description: "Couldn't unassign this order. Try again.", variant: "destructive" });
+    } finally {
+      setUnassigning(false);
+    }
+  };
 
   const runDelete = async () => {
     setDeleting(true);
@@ -205,13 +260,13 @@ export default function Orders() {
 
       {/* Tabs */}
       <div className="flex flex-wrap items-center gap-2">
-        {(["unassigned", "assigned", "completed"] as OrderTab[]).map((t) => (
+        {ORDER_QUEUE_TABS.map(({ key: t, label }) => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={`flex items-center gap-1.5 h-9 px-3 rounded-xl text-xs md:text-sm font-medium border transition-colors ${tab === t ? "bg-primary text-primary-foreground border-primary" : "bg-card text-muted-foreground border-border hover:text-foreground hover:bg-accent/50"}`}
           >
-            <span className="capitalize">{t}</span>
+            <span>{label}</span>
             <span className={`px-1.5 rounded-full text-[10px] ${tab === t ? "bg-primary-foreground/20" : "bg-muted"}`}>{counts[t]}</span>
           </button>
         ))}
@@ -288,6 +343,33 @@ export default function Orders() {
         </div>
       )}
 
+      {confirmUnassign && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => !unassigning && setConfirmUnassign(null)}>
+          <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-amber-500/15">
+              <Undo2 className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            </div>
+            <h3 className="text-center text-lg font-semibold text-foreground">Unassign this order?</h3>
+            <p className="mt-2 text-center text-sm text-muted-foreground">
+              <strong className="text-foreground">{confirmUnassign.businessName || "This order"}</strong> goes back to{" "}
+              <strong className="text-foreground">Not assigned</strong>, so it can be given to someone else. The member is
+              told it was removed, and the sales member can edit the sale again until it is picked up.
+            </p>
+            <div className="mt-5 flex items-center gap-2">
+              <button onClick={() => setConfirmUnassign(null)} disabled={unassigning}
+                className="flex-1 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50">
+                Cancel
+              </button>
+              <button onClick={runUnassign} disabled={unassigning}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-amber-700 disabled:opacity-50">
+                {unassigning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Undo2 className="h-4 w-4" />}
+                {unassigning ? "Unassigning…" : "Unassign"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* List / grid */}
       <div className={view === "grid" ? "grid grid-cols-1 lg:grid-cols-2 gap-3" : "space-y-3"}>
         {visible.length === 0 ? (
@@ -335,7 +417,30 @@ export default function Orders() {
                     <Clock size={11} /> Taken: <strong className="text-foreground">{fmtTs(o.createdAt)}</strong>
                   </span>
                   {o.promise && <span className="inline-flex items-center gap-1"><Clock size={11} /> Promise: <strong className="text-foreground">{o.promise.label}</strong></span>}
-                  {o.status !== "unassigned" && o.assignedToName && <span>Assigned to: <strong className="text-foreground">{o.assignedToName}</strong></span>}
+                  {/* Who has it. A button, not text: the next question after "who?" is always
+                      "what else are they on?", and that answer lives on their own page. */}
+                  {(() => {
+                    const who = orderAssignee(o, byOrderId, memberNameOf);
+                    if (queueStatusOf(o) === "unassigned" || !who.name) return null;
+                    return (
+                      <span className="inline-flex items-center gap-1">
+                        Assigned to:{" "}
+                        {who.uid ? (
+                          <button
+                            type="button"
+                            data-test="order-member"
+                            onClick={() => navigate(`${workAssignBase}/${who.uid}`)}
+                            title={`Open ${who.name}'s work`}
+                            className="font-semibold text-primary underline-offset-2 hover:underline"
+                          >
+                            {who.name}
+                          </button>
+                        ) : (
+                          <strong className="text-foreground">{who.name}</strong>
+                        )}
+                      </span>
+                    );
+                  })()}
                 </div>
 
                 {/* The client's brief, exactly as the sales member captured it. */}
@@ -384,12 +489,27 @@ export default function Orders() {
                     <UserPlus className="w-3.5 h-3.5" /> Assign
                   </button>
                 )}
-                {o.status === "assigned" && (
+                {queueStatusOf(o) === "assigned" && (
                   <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 rounded-lg">
-                    <ClipboardList className="w-3.5 h-3.5" /> In progress
+                    <ClipboardList className="w-3.5 h-3.5" /> Assigned
                   </span>
                 )}
-                {o.status === "completed" && (
+                {queueStatusOf(o) === "in_progress" && (
+                  <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 rounded-lg">
+                    <Clock className="w-3.5 h-3.5" /> In progress
+                  </span>
+                )}
+                {/* Pull it back to the queue. Only while work is in flight — taking back finished
+                    work would throw away what the member delivered. */}
+                {(queueStatusOf(o) === "assigned" || queueStatusOf(o) === "in_progress") && (
+                  <button
+                    data-test="order-unassign"
+                    onClick={() => setConfirmUnassign(o)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs md:text-sm font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:hover:bg-amber-900/50 rounded-lg transition-colors">
+                    <Undo2 className="w-3.5 h-3.5" /> Unassign
+                  </button>
+                )}
+                {queueStatusOf(o) === "completed" && (
                   <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded-lg">
                     <CheckCircle2 className="w-3.5 h-3.5" /> Awaiting verify
                   </span>
