@@ -46,11 +46,46 @@ describe("calendar month basis is unchanged", () => {
     expect(periodBounds(calendar("2026-02"))).toEqual({ from: "2026-02-01", to: "2026-02-28" });
   });
 
-  it("still labels by month name, and is the default", () => {
+  it("still labels by month name when a screen asks for it", () => {
     expect(periodLabel(calendar("2026-07"))).toBe("July 2026");
-    expect(defaultPeriodFilter().monthBasis).toBe("calendar");
+  });
+
+  /**
+   * A filter built by hand with no basis is still read as a calendar month, so nothing that
+   * constructs one literally changed meaning underneath itself.
+   */
+  it("is what an explicitly basis-less filter still means", () => {
     expect(periodBounds({ mode: "month", month: "2026-07", day: "2026-07-23" })).toEqual({
       from: "2026-07-01", to: "2026-07-31",
     });
+  });
+});
+
+/**
+ * The business runs 10th → 9th — output, salary and targets are all measured on it — so "This
+ * Month" has to mean the same thing on every screen and for every role. It used to default to the
+ * calendar with only two screens opting in, so the same question asked on two pages gave two
+ * different answers and nobody could tell which was right.
+ */
+describe("the 10–9 cycle is what every screen gets by default", () => {
+  it("defaults to the cycle, not the calendar", () => {
+    expect(defaultPeriodFilter().monthBasis).toBe("cycle");
+  });
+
+  it("still lets a screen ask for calendar months deliberately", () => {
+    expect(defaultPeriodFilter("calendar").monthBasis).toBe("calendar");
+  });
+
+  it("starts on the cycle containing today, so its bounds are a real 10→9 span", () => {
+    const bounds = periodBounds(defaultPeriodFilter())!;
+    expect(bounds.from.endsWith("-10")).toBe(true);
+    expect(bounds.to.endsWith("-09")).toBe(true);
+  });
+
+  // React calls a lazy `useState(defaultPeriodFilter)` initialiser with no arguments — several
+  // screens pass it that way, and it must still land on the cycle.
+  it("survives being used as a bare useState initialiser", () => {
+    const asInitialiser: () => ReturnType<typeof defaultPeriodFilter> = defaultPeriodFilter;
+    expect(asInitialiser().monthBasis).toBe("cycle");
   });
 });

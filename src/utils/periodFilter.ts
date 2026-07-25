@@ -42,7 +42,18 @@ export const currentDay = (): string => format(new Date(), "yyyy-MM-dd");
 /** The month the 10→9 cycle containing today starts in. */
 export const currentCycleMonth = (): string => format(cycleForDate(new Date()).from, "yyyy-MM");
 
-export const defaultPeriodFilter = (basis: MonthBasis = "calendar"): PeriodFilter => ({
+/**
+ * The default basis is the 10th → 9th CYCLE, not the calendar.
+ *
+ * The business runs on that cycle — output, salary and targets are all measured 10th to 9th — so
+ * "This Month" has to mean the same thing on every screen and for every role. It used to default
+ * to the calendar and only two screens opted into the cycle, which meant the same question asked
+ * on two pages gave two different answers and nobody could tell which was right.
+ *
+ * Defaulting to the cycle makes the correct behaviour the one you get for free; a screen that
+ * genuinely needs calendar months has to say so.
+ */
+export const defaultPeriodFilter = (basis: MonthBasis = "cycle"): PeriodFilter => ({
   // Defaults to the current month, per the brief — career totals are opt-in.
   mode: "month",
   month: basis === "cycle" ? currentCycleMonth() : currentMonth(),

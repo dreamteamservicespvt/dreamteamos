@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "@/services/firebase";
+import { cycleForDate } from "@/utils/performanceCycle";
 import type { AppUser, DailyCheckin, WorkAssignment } from "@/types";
 import type { DateRange } from "react-day-picker";
 import {
-  format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subWeeks, subMonths,
+  format, subDays, startOfWeek, endOfWeek, subWeeks, subMonths,
 } from "date-fns";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -44,8 +45,14 @@ function presetToRange(key: PresetKey): { from: string; to: string } | null {
     case "this_week": return { from: fmt(startOfWeek(now, { weekStartsOn: 1 })), to: fmt(now) };
     case "last_week": { const lw = subWeeks(now, 1); return { from: fmt(startOfWeek(lw, { weekStartsOn: 1 })), to: fmt(endOfWeek(lw, { weekStartsOn: 1 })) }; }
     case "last_2_weeks": return { from: fmt(subWeeks(now, 2)), to: fmt(now) };
-    case "this_month": return { from: fmt(startOfMonth(now)), to: fmt(now) };
-    case "last_month": { const lm = subMonths(now, 1); return { from: fmt(startOfMonth(lm)), to: fmt(endOfMonth(lm)) }; }
+    // The business month runs 10th → 9th, not 1st → end. Using the calendar here made this
+    // screen disagree with every other "This Month" in the app for the first nine days of it.
+    case "this_month": return { from: fmt(cycleForDate(now).from), to: fmt(now) };
+    case "last_month": {
+      // The cycle containing the day before this one started.
+      const last = cycleForDate(subDays(cycleForDate(now).from, 1));
+      return { from: fmt(last.from), to: fmt(last.to) };
+    }
     case "last_3_months": return { from: fmt(subMonths(now, 3)), to: fmt(now) };
     case "all": return null;
   }

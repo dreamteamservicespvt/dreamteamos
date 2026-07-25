@@ -2,8 +2,9 @@ import { useState, useEffect, useMemo } from "react";
 import { fetchTeamMembers, subscribeTeamLeads } from "@/services/teamLeads";
 import { useAuthStore } from "@/store/authStore";
 import { formatCurrency } from "@/utils/formatters";
+import { cycleForDate } from "@/utils/performanceCycle";
 import {
-  format, startOfDay, startOfWeek, startOfMonth, isAfter,
+  format, startOfDay, startOfWeek, isAfter,
 } from "date-fns";
 import type { AppUser } from "@/types";
 import {
@@ -86,7 +87,8 @@ export default function SalesAnalytics() {
     const now = new Date();
     if (period === "today") return startOfDay(now);
     if (period === "week") return startOfWeek(now, { weekStartsOn: 1 });
-    if (period === "month") return startOfMonth(now);
+    // The business month is the 10th → 9th cycle, the same as everywhere else in the app.
+    if (period === "month") return cycleForDate(now).from;
     return null;
   }, [period]);
 

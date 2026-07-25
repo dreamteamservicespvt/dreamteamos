@@ -55,6 +55,21 @@ export default function WorkAssign() {
   // External creators aren't team members — they never get assigned work, so they're excluded here.
   const techMembers = useMemo(() => allUsers.filter(u => u.role === 'tech_member' && u.isActive !== false && !u.externalCreator), [allUsers]);
 
+  /**
+   * What the status board counts: work belonging to people who are still on the team.
+   *
+   * `assignments` is every assignment ever written, including work left on members who have since
+   * been deactivated or turned into external creators. Those jobs will never move again, so
+   * counting them as "in progress" inflated the pending figure permanently — and it was why this
+   * board and the team leader's disagreed, since the leader's page has always scoped to its own
+   * members. Both now count the same thing: real work owed by real members.
+   */
+  const boardMemberUids = useMemo(() => new Set(techMembers.map(m => m.uid)), [techMembers]);
+  const boardAssignments = useMemo(
+    () => assignments.filter(a => boardMemberUids.has(a.assignedTo)),
+    [assignments, boardMemberUids],
+  );
+
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [memberSearch, setMemberSearch] = useState('');
@@ -713,7 +728,7 @@ export default function WorkAssign() {
 
       {/* How many ads landed in a period and where each one has got to. */}
       <AdsStatusBoard
-        assignments={assignments} orders={orders} members={techMembers} showPricing
+        assignments={boardAssignments} orders={orders} members={techMembers} showPricing
         onAssignOrder={(orderId) => navigate(`/tech-admin/work-assign?order=${encodeURIComponent(orderId)}`)}
         onOpenMember={(uid) => navigate(`/tech-admin/work-assign/${uid}?status=all&day=all`)}
       />
