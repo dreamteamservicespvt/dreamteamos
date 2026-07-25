@@ -5,7 +5,7 @@ import {
   MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE,
   type DialogueClip,
 } from "@/utils/dialogueFormat";
-import { getCharacterPack, packSpeakers, packSpeakerAliases, packNameSpellings } from "@/services/characterPacks";
+import { getCharacterPack, packSpeakers, packSpeakerAliases, packNameSpellings, packHighlight } from "@/services/characterPacks";
 import { isClipHeaderLine, parseLabeledClips } from "@/utils/voiceOverFormat";
 
 /**
@@ -287,6 +287,27 @@ describe("character pack registry", () => {
   it("exposes aliases so a parser accepts keys and names alike", () => {
     expect(aliases).toContain("motu");
     expect(aliases).toContain("patlu");
+  });
+
+  /**
+   * Colour markers for WhatsApp. A member skimming a thread of near-identical assignment messages
+   * on a phone will miss bold text; they will not miss a coloured dot.
+   */
+  describe("packHighlight", () => {
+    it("marks each character with their own colour, bold and upper-case", () => {
+      expect(packHighlight(pack)).toBe("🟠 *MOTU* & 🔵 *PATLU*");
+    });
+
+    it("uses the show's own colours — orange for Motu, blue for Patlu", () => {
+      expect(pack.characters.find(c => c.key === "motu")?.emoji).toBe("🟠");
+      expect(pack.characters.find(c => c.key === "patlu")?.emoji).toBe("🔵");
+    });
+
+    // A future duo added without emoji must still render, just without the markers.
+    it("degrades to plain bold names when a pack has no emoji", () => {
+      const plain = { ...pack, characters: pack.characters.map(c => ({ ...c, emoji: undefined })) };
+      expect(packHighlight(plain)).toBe("*MOTU* & *PATLU*");
+    });
   });
 });
 

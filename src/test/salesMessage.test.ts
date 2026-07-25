@@ -67,10 +67,12 @@ describe("buildClientSaleMessage", () => {
       },
     } as unknown as SaleDetail);
 
-    it("tells the client who is actually in their ad", () => {
+    // Colour-marked and bold: on a phone this is the line the client is excited about, and the
+    // one the member wants to be sure landed.
+    it("tells the client who is actually in their ad, highlighted", () => {
       const msg = buildClientSaleMessage(lead, packSale(true));
-      expect(msg).toContain("Motu & Patlu");
-      expect(msg).toContain("both characters speak in every clip");
+      expect(msg).toContain("🟠 *MOTU* & 🔵 *PATLU*");
+      expect(msg).toMatch(/Both characters speak in every clip/i);
     });
 
     it("never describes a human model that will not appear", () => {

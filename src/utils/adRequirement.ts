@@ -12,7 +12,7 @@ import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from "@/types/aiPla
 import { DURATIONS, END_CREDITS_SECONDS, getClipCount, hasPoster, priceForClips } from "./assignmentDuration";
 import { PACKAGES, isAdCategory, categoryLabel } from "./serviceCatalog";
 import { PRICING } from "./pricing";
-import { getCharacterPack } from "@/services/characterPacks";
+import { getCharacterPack, packHighlight } from "@/services/characterPacks";
 import type { AdRequirement, Order } from "@/types";
 
 /** Human-readable label for each attire option — the one copy used everywhere. */
@@ -199,7 +199,11 @@ export function buildAssignmentRequirementsMessage(a: {
     `📋 *AD SPECIFICATION*`,
     // A pack ad has no model and no attire to brief — what the member needs instead is who is on
     // screen and whether they must chase the client's location photos before they can start.
-    pack ? `🎭 *Special category:* ${pack.label} — both characters speak in every clip` : null,
+    // Given its own highlighted block: this job is made differently, and that has to be the first
+    // thing the member notices in a thread of near-identical assignment messages.
+    pack ? `🎭✨ *SPECIAL CATEGORY* ✨🎭` : null,
+    pack ? `${packHighlight(pack)}` : null,
+    pack ? `💬 Both characters speak in every clip` : null,
     pack ? (a.realLocationProvided
       ? `📷 *Location:* the client's own photos — upload every photo they sent`
       : `🏙️ *Location:* build it from the business (client sent no photos)`) : null,

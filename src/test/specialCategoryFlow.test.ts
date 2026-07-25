@@ -114,10 +114,16 @@ describe("requirementSummary — the Orders queue chips", () => {
 describe("buildAssignmentRequirementsMessage — special category", () => {
   const base = { category: "promotional", duration: "32s", clipCount: 4, businessName: "Sharma Electronics" };
 
-  it("tells the member which duo and that both characters speak", () => {
+  /**
+   * A special-category job is worked differently from an ordinary one, so it has to be the first
+   * thing the member notices in a thread of near-identical assignment messages — hence the
+   * colour markers, which survive a phone skim where bold text alone does not.
+   */
+  it("tells the member which duo and that both characters speak, highlighted", () => {
     const msg = buildAssignmentRequirementsMessage({ ...base, characterPack: "motu_patlu", realLocationProvided: true });
-    expect(msg).toContain("Motu & Patlu");
-    expect(msg).toContain("both characters speak in every clip");
+    expect(msg).toContain("*SPECIAL CATEGORY*");
+    expect(msg).toContain("🟠 *MOTU* & 🔵 *PATLU*");
+    expect(msg).toMatch(/Both characters speak in every clip/i);
   });
 
   it("tells the member to upload the photos the client sent", () => {

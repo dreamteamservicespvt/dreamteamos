@@ -8,7 +8,7 @@
  */
 import { categoryLabel } from "@/utils/serviceCatalog";
 import { attireLabel } from "@/utils/adRequirement";
-import { getCharacterPack } from "@/services/characterPacks";
+import { getCharacterPack, packHighlight } from "@/services/characterPacks";
 import { formatCurrency } from "@/utils/formatters";
 import type { Lead, SaleDetail } from "@/types";
 
@@ -36,7 +36,10 @@ export function buildClientSaleMessage(lead: Lead, item: SaleDetail): string {
     lines.push(
       ``,
       `📋 *Your ad details*`,
-      pack ? `🎭 *Starring:* ${pack.label} — both characters speak in every clip` : null,
+      // Highlighted for the client too — this is the part of the order they are excited about,
+      // and it is what makes the confirmation feel like the ad they actually bought.
+      pack ? `🎭 *Starring:* ${packHighlight(pack)} 🎭` : null,
+      pack ? `   ✨ Both characters speak in every clip` : null,
       pack ? (r.realLocationProvided
         ? `📷 *Setting:* your own business background, from the photos you send us`
         : `🏙️ *Setting:* a custom AI background built for your business`) : null,

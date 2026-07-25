@@ -43,6 +43,13 @@ export interface PackCharacter {
   name: string;
   /** Fixed spoken spellings, keyed by lower-case language name. Languages absent here are free. */
   nativeNames?: Record<string, NativeName>;
+  /**
+   * A single emoji that stands for this character in WhatsApp messages.
+   *
+   * Purely for legibility: a member skimming a wall of assignment messages on their phone needs
+   * the special ones to jump out, and a coloured marker does that where bold text alone does not.
+   */
+  emoji?: string;
   /** How the voice-over should sound for this character. */
   voice: string;
   /** Personality, for writing dialogue that sounds like them. */
@@ -81,6 +88,8 @@ const MOTU_PATLU: CharacterPack = {
     {
       key: "motu",
       name: "Motu",
+      // Orange for Motu, blue for Patlu — their own colours in the show.
+      emoji: "🟠",
       nativeNames: {
         telugu: { spelling: "మోటూ", variants: ["మోటు", "మొటూ", "మొటు", "మోతూ", "మోతు"] },
       },
@@ -94,6 +103,7 @@ const MOTU_PATLU: CharacterPack = {
     {
       key: "patlu",
       name: "Patlu",
+      emoji: "🔵",
       nativeNames: {
         telugu: { spelling: "పట్లు", variants: ["పతలూ", "పట్లూ", "పత్లూ", "పత్లు", "పాట్లూ", "పాట్లు", "పతలు"] },
       },
@@ -146,6 +156,19 @@ export function characterPackOptions(): { id: string; label: string; tagline: st
 /** The speaker list a script must follow, in speaking order. */
 export function packSpeakers(pack: CharacterPack): { key: string; name: string }[] {
   return pack.characters.map(({ key, name }) => ({ key, name }));
+}
+
+/**
+ * The pack's cast, written to stand out in a WhatsApp message: `🟠 *MOTU* & 🔵 *PATLU*`.
+ *
+ * A special-category job is worked differently from an ordinary one, so the member has to notice
+ * it in a thread of near-identical assignment messages. Bold alone doesn't survive that skim;
+ * colour does. `*…*` is WhatsApp's bold, which is what these messages are written for.
+ */
+export function packHighlight(pack: CharacterPack): string {
+  return pack.characters
+    .map((c) => `${c.emoji ? `${c.emoji} ` : ""}*${c.name.toUpperCase()}*`)
+    .join(" & ");
 }
 
 /** Every name/key a parser should recognise for this pack (case-insensitive matching). */
