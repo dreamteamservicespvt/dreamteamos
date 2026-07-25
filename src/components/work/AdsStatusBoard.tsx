@@ -5,6 +5,7 @@ import { Activity, ClipboardList, Clock, CheckCircle2, ShieldCheck, Inbox, X, Us
 import PeriodFilterBar from '@/components/dashboard/PeriodFilterBar';
 import { defaultPeriodFilter, periodLabel, withinPeriod, type PeriodFilter } from '@/utils/periodFilter';
 import { workCountsOn, assignedAtMs } from '@/utils/workDates';
+import { buildAdPipeline, standaloneCount } from '@/utils/adPipeline';
 import { categoryLabel } from '@/utils/serviceCatalog';
 import { formatCurrency } from '@/utils/formatters';
 import type { AppUser, Order, WorkAssignment } from '@/types';
@@ -65,6 +66,8 @@ interface BucketItem {
   when?: string;
   /** When it arrived, to the minute — shown in the drill-down so old work is obvious at a glance. */
   takenAtMs?: number;
+  /** No sale behind it — the Orders queue cannot show this one. Marked so a tile can be reconciled. */
+  standalone?: boolean;
 }
 
 interface AdsStatusBoardProps {
@@ -102,47 +105,48 @@ export default function AdsStatusBoard({
     },
   ];
 
+  /** Every ad, exactly once — the shared definition the Orders queue also counts from. */
+  const pipeline = useMemo(() => buildAdPipeline(orders, assignments), [orders, assignments]);
+  /** Work with no sale behind it: the one honest reason this board and Orders can differ. */
+  const standalone = useMemo(() => standaloneCount(pipeline), [pipeline]);
+
   const buckets = useMemo(() => {
     const out: Record<StatusKey, BucketItem[]> = {
       unassigned: [], assigned: [], in_progress: [], completed: [], verified: [],
     };
 
-    for (const a of assignments) {
-      const key = (a.status === 'editing' ? 'in_progress' : a.status) as StatusKey;
+    // Built from utils/adPipeline so every ad is counted exactly once and each stage means the
+    // same thing here as it does on the Orders queue — the two used to count different
+    // populations and label both "Assigned".
+    for (const rec of pipeline) {
+      const key = rec.stage as StatusKey;
       if (!(key in out)) continue;
-      // Still-owed tiles ignore the date; finished tiles are what the date is for.
-      if (SCOPE_OF.get(key) === 'period' && !withinPeriod(workCountsOn(a), period)) continue;
-      const day = workCountsOn(a);
-      out[key].push({
-        id: a.id,
-        business: a.businessName || a.clientName || a.displayTitle,
-        category: a.category,
-        memberName: nameOf(a.assignedTo),
-        memberUid: a.assignedTo,
-        statusKey: key,
-        uniqueId: a.uniqueId,
-        price: a.totalPrice,
-        when: day,
-        takenAtMs: assignedAtMs(a) ?? (day ? new Date(`${day}T00:00:00`).getTime() : undefined),
-      });
-    }
 
-    // Orders still waiting. Never date-filtered: one nobody has picked up is owed work whatever
-    // day it arrived, and it is the single thing that must not go unnoticed.
-    for (const o of orders) {
-      if (o.status !== 'unassigned' || o.deleted) continue;
-      const ms = o.createdAt?.seconds ? o.createdAt.seconds * 1000 : undefined;
-      const day = ms ? format(new Date(ms), 'yyyy-MM-dd') : undefined;
-      out.unassigned.push({
-        id: o.id,
-        business: o.businessName || 'Unnamed client',
-        category: o.category,
-        memberName: null,
-        orderId: o.id,
-        statusKey: 'unassigned',
-        price: o.amount,
+      const a = rec.assignment;
+      const o = rec.order;
+      // An ad is dated by when the work went out; one nobody has picked up, by when the sale came.
+      const orderMs = o?.createdAt?.seconds ? o.createdAt.seconds * 1000 : undefined;
+      const day = a ? workCountsOn(a) : orderMs ? format(new Date(orderMs), 'yyyy-MM-dd') : undefined;
+
+      // Still-owed tiles ignore the date; finished tiles are what the date is for.
+      if (SCOPE_OF.get(key) === 'period' && !withinPeriod(day, period)) continue;
+
+      out[key].push({
+        id: rec.id,
+        business: a?.businessName || a?.clientName || a?.displayTitle || o?.businessName || 'Unnamed client',
+        category: a?.category || o?.category || '',
+        memberName: nameOf(rec.memberUid),
+        memberUid: rec.memberUid,
+        // Only a waiting order offers the Assign shortcut — everything else already has someone.
+        orderId: key === 'unassigned' && o ? o.id : undefined,
+        statusKey: key,
+        uniqueId: a?.uniqueId,
+        price: a?.totalPrice ?? o?.amount,
         when: day,
-        takenAtMs: ms,
+        takenAtMs: a
+          ? assignedAtMs(a) ?? (day ? new Date(`${day}T00:00:00`).getTime() : undefined)
+          : orderMs,
+        standalone: rec.standalone,
       });
     }
 
@@ -152,7 +156,7 @@ export default function AdsStatusBoard({
     }
 
     return out;
-  }, [assignments, orders, period, nameOf]);
+  }, [pipeline, period, nameOf]);
 
   const counts = useMemo(
     () => Object.fromEntries(BUCKETS.map(b => [b.key, buckets[b.key].length])) as Record<StatusKey, number>,
@@ -212,6 +216,18 @@ export default function AdsStatusBoard({
         <span className="font-medium text-amber-600 dark:text-amber-400">Assigned</span> and{' '}
         <span className="font-medium text-amber-600 dark:text-amber-400">In progress</span> show
         everything still pending, so nothing from an earlier day is missed.
+        {/* The only way these tiles can differ from the Orders queue, said out loud so the gap is
+            never a mystery someone has to reverse-engineer. */}
+        {standalone > 0 && (
+          <>
+            {' '}
+            <span data-test="standalone-note" className="text-foreground">
+              {standalone} {standalone === 1 ? 'ad was' : 'ads were'} created straight from Work Assign with no
+              sale behind {standalone === 1 ? 'it' : 'them'}, so {standalone === 1 ? 'it does' : 'they do'} not
+              appear in Orders.
+            </span>
+          </>
+        )}
       </p>
 
       {/* Totals — every tile opens the list behind it. */}
@@ -287,6 +303,18 @@ export default function AdsStatusBoard({
                         {item.business}
                       </span>
                       {item.uniqueId && <span className="hidden shrink-0 font-mono text-[10px] text-muted-foreground sm:inline">{item.uniqueId}</span>}
+                      {/* Exactly the rows the Orders queue cannot show. Marking them is what lets
+                          any tile be reconciled against Orders line by line, rather than leaving
+                          someone to work out a difference from two totals. */}
+                      {item.standalone && (
+                        <span
+                          data-test="standalone-row"
+                          title="Created straight from Work Assign — there is no sale behind it, so it is not in Orders"
+                          className="shrink-0 rounded-full border border-border px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground"
+                        >
+                          no order
+                        </span>
+                      )}
                       {/* When it arrived. Without this a list of outstanding work gives no clue
                           which entries have been sitting for days. */}
                       {item.takenAtMs && (

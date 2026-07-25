@@ -24,6 +24,7 @@ import {
   ORDER_QUEUE_TABS, assignmentsByOrderId, orderAssignee, orderQueueStatus, type OrderQueueStatus,
 } from "@/utils/orderQueue";
 import { unassignWork } from "@/services/workAssign";
+import { buildAdPipeline, orderBacked } from "@/utils/adPipeline";
 
 type OrderTab = OrderQueueStatus;
 
@@ -105,11 +106,21 @@ export default function Orders() {
     return (uid?: string | null) => (uid ? map.get(uid) || null : null);
   }, [allUsers]);
 
+  /**
+   * Counted through utils/adPipeline — the same definition the Work Assign status board uses.
+   *
+   * These two screens both showed a number called "Assigned" and the two disagreed, because each
+   * counted a different population. Reading from one shared classifier is what makes them
+   * reconcilable: the only remaining difference is work created with no sale behind it, which the
+   * board names on screen and this queue cannot show at all.
+   */
   const counts = useMemo(() => {
     const out: Record<OrderTab, number> = { unassigned: 0, assigned: 0, in_progress: 0, completed: 0 };
-    for (const o of orders) out[queueStatusOf(o)] += 1;
+    for (const rec of orderBacked(buildAdPipeline(orders, assignments))) {
+      if (rec.stage in out) out[rec.stage as OrderTab] += 1;
+    }
     return out;
-  }, [orders, queueStatusOf]);
+  }, [orders, assignments]);
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
