@@ -238,10 +238,16 @@ export default function WorkAssign() {
       if (form.language === 'Custom' && language) await rememberAdLanguage(language);
 
       // Keep the tech team leader(s) informed of new work on their team.
+      //
+      // `team_work_assigned`, NOT `work_assigned`: the type is what decides whether a notification
+      // takes over the screen (see layout/UpdatePopup). "You have new work" is the member's own job
+      // and deserves a popup; "someone else was given work" is an FYI, and popping it up meant a
+      // team leader had their screen blocked every single time the admin assigned anything.
+      // The bell still carries it, so nothing is lost — it just waits to be read.
       await notifyTechTeamLeaders({
         teamAdminUid: user.uid,
         excludeUserId: form.assignedTo,
-        type: 'work_assigned',
+        type: 'team_work_assigned',
         title: 'New Team Work Assigned',
         message: `${getMemberName(form.assignedTo)} was assigned a new ${form.category} work (${clips} clips, ${form.duration}).`,
         link: `/team-leader/work-assign/${form.assignedTo}`,

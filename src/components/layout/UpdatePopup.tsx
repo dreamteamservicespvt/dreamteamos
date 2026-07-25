@@ -6,10 +6,14 @@ import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { ClipboardList, CalendarCheck2, ExternalLink, BellRing, CheckCircle2, HelpCircle } from "lucide-react";
 import { ATTENDANCE_META, AttendanceStatus } from "@/services/techAttendance";
+import { isPopupNotification } from "@/utils/notificationRouting";
 
 const MEMBER_ROLES = new Set(["tech_member", "sales_member", "tech_team_leader"]);
 
-/** Notification types that deserve a centered popup (agreements have their own mandatory gate). */
+/**
+ * How each popup-worthy notification is dressed. WHICH types pop up at all is decided in
+ * utils/notificationRouting — see the note there on why a team-wide FYI must never be one.
+ */
 const POPUP_TYPES: Record<string, { icon: typeof ClipboardList; accent: string }> = {
   work_assigned: { icon: ClipboardList, accent: "text-primary bg-primary/15" },
   work_editing: { icon: ClipboardList, accent: "text-amber-500 bg-amber-500/15" },
@@ -64,7 +68,7 @@ export default function UpdatePopup() {
     const dismissed = readDismissed();
     const cutoff = Date.now() / 1000 - 24 * 3600; // only recent updates pop up
     return unread
-      .filter((n) => POPUP_TYPES[n.type] && !dismissed.has(n.id) && (n.createdAt?.seconds || 0) > cutoff)
+      .filter((n) => isPopupNotification(n.type) && POPUP_TYPES[n.type] && !dismissed.has(n.id) && (n.createdAt?.seconds || 0) > cutoff)
       .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))[0];
   }, [unread, dismissedTick]);
 

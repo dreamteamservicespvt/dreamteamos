@@ -90,9 +90,11 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
       if (r === "sales_member") return "/sales/leads";
       if (r === "sales_admin") return "/sales-admin/approvals";
     }
-    if (type === "work_assigned" || type === "work_completed" || type === "work_verified" || type === "work_editing" || type === "project_assigned") {
+    if (type === "work_assigned" || type === "team_work_assigned" || type === "work_completed" || type === "work_verified" || type === "work_editing" || type === "project_assigned") {
       if (r === "tech_admin" || r === "main_admin") return "/tech-admin/work-assign";
       if (r === "tech_member") return "/tech/my-work";
+      // Team-wide FYIs land on a leader; without this they fell through to the dashboard.
+      if (r === "tech_team_leader") return "/team-leader/work-assign";
     }
     return "/";
   };
