@@ -1,4 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
+// A value import, not a type-only one: `resize` is typed as the KeyboardResize enum, and a bare
+// string is not assignable to a string enum however identical the text.
+import { KeyboardResize } from '@capacitor/keyboard';
 
 const config: CapacitorConfig = {
   appId: 'com.dreamteam.app',
@@ -10,17 +13,17 @@ const config: CapacitorConfig = {
   plugins: {
     PushNotifications: {
       presentationOptions: ['badge', 'sound', 'alert'],
-      smallIcon: 'ic_notification',
-      iconColor: '#FFFFFF',
     },
-    SplashScreen: { 
+    SplashScreen: {
       launchShowDuration: 2000,
       launchAutoHide: true,
       backgroundColor: '#000000',
       showSpinner: false,
     },
     Keyboard: {
-      resize: 'none',
+      // Neither the app nor the web view is resized when the keyboard opens — the layout handles
+      // it itself, so letting Capacitor also resize would fight it.
+      resize: KeyboardResize.None,
       resizeOnFullScreen: false,
     },
   },
