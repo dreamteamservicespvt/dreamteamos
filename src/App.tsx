@@ -82,6 +82,7 @@ import Chat from "@/pages/shared/Chat";
 import Meeting from "@/pages/shared/Meeting";
 import AdminChatMonitor from "@/pages/shared/AdminChatMonitor";
 import { Loader2 } from "lucide-react";
+import AppUpdateBanner from "@/components/layout/AppUpdateBanner";
 
 const queryClient = new QueryClient();
 
@@ -108,6 +109,9 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        {/* Inside the router so it can tell the login screen (safe to update instantly) from a
+            page where someone may have unsaved work. */}
+        <AppUpdateBanner />
         <Routes>
           <Route path="/" element={<RootRedirect />} />
           <Route path="/login" element={<Login />} />

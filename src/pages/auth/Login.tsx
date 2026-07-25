@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { signInWithEmailAndPassword, signOut } from "firebase/auth";
-import { doc, getDoc, setDoc, serverTimestamp, collection, addDoc } from "firebase/firestore";
+import { doc, getDoc, getDocFromServer, setDoc, serverTimestamp, collection, addDoc } from "firebase/firestore";
 import { auth, db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { useNavigate } from "react-router-dom";
 import { defaultRouteForUser } from "@/utils/roleHelpers";
 import type { AppUser } from "@/types";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2, RefreshCw } from "lucide-react";
+import { reportCacheTrouble, repairLocalCaches } from "@/services/localCacheRecovery";
 
 const PARTICLES = Array.from({ length: 8 }, (_, i) => ({
   id: i,
@@ -23,6 +24,8 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  /** Auth succeeded but the profile could not be read — offer the repair rather than a dead end. */
+  const [profileFailed, setProfileFailed] = useState(false);
   const navigate = useNavigate();
   const setUser = useAuthStore((s) => s.setUser);
 
@@ -33,7 +36,13 @@ export default function Login() {
 
     try {
       const cred = await signInWithEmailAndPassword(auth, email, password);
-      const userDoc = await getDoc(doc(db, "users", cred.user.uid));
+      // Straight from the server. `getDoc` will answer from the IndexedDB cache when it can, and a
+      // cold or damaged cache answering "no such user" is what produced the "correct password
+      // rejected" reports. Identity has just been proven by Auth; the profile lookup must not be
+      // allowed to contradict it on stale local data. Falls back to the cached copy only if the
+      // server is unreachable, so a genuinely offline login still works.
+      const userDoc = await getDocFromServer(doc(db, "users", cred.user.uid))
+        .catch(() => getDoc(doc(db, "users", cred.user.uid)));
 
       let userData: AppUser;
 
@@ -73,22 +82,37 @@ export default function Login() {
 
       setUser(userData);
 
-      // Track session
-      await addDoc(collection(db, "sessions"), {
+      // Session tracking is bookkeeping, not part of signing in. Awaiting it meant a Firestore
+      // write failing — offline, rules, a broken local cache — threw into the catch below and told
+      // someone who was already authenticated that their login had failed.
+      void addDoc(collection(db, "sessions"), {
         userId: cred.user.uid,
         loginAt: serverTimestamp(),
         logoutAt: null,
         duration: 0,
-      });
+      }).catch(() => { /* a missing session row is not worth blocking a login for */ });
 
       navigate(defaultRouteForUser(userData));
     } catch (err: any) {
-      const msg = err.code === "auth/invalid-credential"
-        ? "Invalid email or password."
-        : err.code === "auth/too-many-requests"
-        ? "Too many attempts. Please wait."
-        : "Login failed. Please try again.";
-      setError(msg);
+      // Only Auth can say the credentials were wrong. Everything else is us failing to load the
+      // profile, and saying "invalid password" for that sends the member off to re-type a password
+      // that was right all along — which is precisely how this bug stayed hidden for so long.
+      const code: string = err?.code || "";
+      if (code.startsWith("auth/")) {
+        setError(
+          code === "auth/invalid-credential" || code === "auth/wrong-password" || code === "auth/user-not-found"
+            ? "Invalid email or password."
+            : code === "auth/too-many-requests"
+            ? "Too many attempts. Please wait."
+            : code === "auth/network-request-failed"
+            ? "No connection. Check your internet and try again."
+            : "Could not sign you in. Please try again.",
+        );
+      } else {
+        reportCacheTrouble("login-profile-read-failed");
+        setError("Signed in, but your profile could not be loaded. Check your connection and try again.");
+        setProfileFailed(true);
+      }
     } finally {
       setLoading(false);
     }
@@ -179,7 +203,21 @@ export default function Login() {
             </div>
 
             {error && (
-              <p className="text-destructive text-sm bg-destructive/10 px-4 py-2.5 rounded-lg">{error}</p>
+              <div className="text-destructive text-sm bg-destructive/10 px-4 py-2.5 rounded-lg space-y-2">
+                <p>{error}</p>
+                {/* The password was right; the device's stored data is the problem. This does what
+                    "clear your browser cache" used to do, without a member needing to know how. */}
+                {profileFailed && (
+                  <button
+                    type="button"
+                    onClick={() => { void repairLocalCaches("login-manual-repair"); }}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/40 px-2.5 py-1.5 text-xs font-medium hover:bg-destructive/10 transition-colors"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Reset this device's saved data and retry
+                  </button>
+                )}
+              </div>
             )}
 
             <button

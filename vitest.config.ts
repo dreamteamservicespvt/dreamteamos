@@ -4,6 +4,11 @@ import path from "path";
 
 export default defineConfig({
   plugins: [react()],
+  // Mirrors the build-time define in vite.config.ts. Without it the update checker sees no build
+  // id, decides it is running in dev, and skips the very check under test.
+  define: {
+    __BUILD_ID__: JSON.stringify("test-build"),
+  },
   test: {
     environment: "jsdom",
     globals: true,

@@ -11,7 +11,13 @@ initCapacitorPlugins();
 // permission — register it up-front too (same URL + scope, so the later call is a no-op).
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/firebase-messaging-sw.js").catch(() => {});
+    // `updateViaCache: "none"` makes the browser revalidate the worker script itself on every
+    // check. Without it the browser may serve the worker from its own HTTP cache, so a new worker
+    // is never even discovered — one of the reasons installed apps stayed on old code.
+    navigator.serviceWorker
+      .register("/firebase-messaging-sw.js", { updateViaCache: "none" })
+      .then((reg) => { void reg.update().catch(() => {}); })
+      .catch(() => {});
   });
 }
 

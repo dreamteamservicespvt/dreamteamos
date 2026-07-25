@@ -49,3 +49,33 @@ self.addEventListener("notificationclick", (event) => {
     event.waitUntil(clients.openWindow("/"));
   }
 });
+
+// ─── Updating ────────────────────────────────────────────────────────────────────────────────
+// By default a new worker installs and then WAITS, indefinitely, until every tab running the old
+// one has been closed. An installed PWA is rarely "closed" — it is left open on a phone for weeks —
+// so the replacement never took over and members were reinstalling the app to get new versions.
+//
+// This worker caches nothing, so there is no risk in swapping it immediately: taking control at
+// once simply means the newest code is the code that runs.
+self.addEventListener("install", () => {
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil((async () => {
+    // Drop anything a previous version of this worker may have cached. A stale app shell left
+    // behind by an older build is exactly what kept serving old code.
+    try {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+    } catch {
+      // Cache Storage unavailable — nothing cached, nothing to clear.
+    }
+    await self.clients.claim();
+  })());
+});
+
+// Lets the page ask this worker to step aside the moment a new one is ready.
+self.addEventListener("message", (event) => {
+  if (event.data === "SKIP_WAITING") self.skipWaiting();
+});
