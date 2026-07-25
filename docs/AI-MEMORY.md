@@ -3,7 +3,7 @@
 Read this first at the start of every session so past work is never repeated or undone.
 
 ## Project shape (AI ads flow)
-- Live app is `src/` (Vite + React + TS + shadcn, Google Gemini via `@google/genai`). 
+- Live app is `src/` (Vite + React + TS + shadcn, Google Gemini via `@google/genai`).  
 - `aiadsdts/` is an **unreferenced standalone copy** — do NOT edit it; changes there have no effect on the live app.
 - Ad-generation flow: `src/components/ai-platform/AIPlatformApp.tsx` → `src/services/geminiService.ts` → `src/services/prompts.ts`.
   - `prompts.ts` holds all system prompts (frame, multi-frame/continuation, voice-over, VEO, overlay, poster, header).
