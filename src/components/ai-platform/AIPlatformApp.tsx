@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Wand2, Sparkles, Layout, Type, Rocket, AlertCircle,
   Loader2, Save, Check, Camera, Video, PenTool, ChevronDown, Copy,
@@ -18,6 +18,10 @@ import { db } from '@/services/firebase';
 import { useAuthStore } from '@/store/authStore';
 import type { WorkAssignment } from '@/types';
 import { useConfirm } from '@/hooks/useConfirm';
+import SpecUpdateDialog from './SpecUpdateDialog';
+import {
+  describeSpecChanges, specOf, specSignature, type AssignmentSpec, type SpecChange,
+} from '@/utils/assignmentSpecDiff';
 import { useToast } from '@/hooks/use-toast';
 import { clipLabel, clipRange, formatClipLine, formatClipScript, parseLabeledClips } from '@/utils/voiceOverFormat';
 
@@ -141,45 +145,92 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     if (user) loadSavedItems();
   }, [user]);
 
-  // #2 — Prefill & lock Video Duration from the assignment's clip count (clips × 8s),
-  // so the member generates exactly what the admin/leader assigned.
-  useEffect(() => {
-    if (!assignment) return;
-    const clips = assignment.clipCount || Math.max(1, Math.floor((parseInt(assignment.duration) || 16) / 8));
+  /**
+   * Applies the whole assignment spec to the form: duration, ad type, model, attire, ratio,
+   * language and the special category. One function so a live update can never refresh some fields
+   * and leave others on the old job.
+   */
+  const applyAssignmentSpec = useCallback((a: WorkAssignment) => {
+    const clips = a.clipCount || Math.max(1, Math.floor((parseInt(a.duration) || 16) / 8));
     const seconds = Math.min(120, Math.max(8, clips * 8));
     const isPreset = [16, 32, 48, 64].includes(seconds);
-    setFormData(prev => ({ ...prev, duration: seconds, durationMode: isPreset ? 'preset' : 'custom' }));
-  }, [assignment?.id]);
 
-  // Prefill & lock the ad specification (model gender, attire, aspect ratio, language) set by
-  // the admin/team leader at assignment time — each field locks independently only when the
-  // assignment actually specifies it, so older assignments created before this feature existed
-  // stay fully editable exactly as before.
-  useEffect(() => {
-    if (!assignment) return;
     setFormData(prev => ({
       ...prev,
-      ...(assignment.modelGender ? { gender: assignment.modelGender as ModelGender } : {}),
-      ...(assignment.attireType ? { attireType: assignment.attireType as AttireType } : {}),
-      ...(assignment.attireType === AttireType.CUSTOM && assignment.customAttire ? { customAttire: assignment.customAttire } : {}),
-      ...(assignment.aspectRatio ? { aspectRatio: assignment.aspectRatio } : {}),
-      ...(assignment.language ? { language: assignment.language } : {}),
+      duration: seconds,
+      durationMode: isPreset ? 'preset' : 'custom',
+      // Ad type is always implied by the category — the admin already decided Wishes vs Promotional.
+      adType: a.category === 'wishes' ? AdType.FESTIVAL : AdType.COMMERCIAL,
+      // Each of these applies only when the assignment actually specifies it, so an older
+      // assignment created before these fields existed stays fully editable exactly as before.
+      ...(a.modelGender ? { gender: a.modelGender as ModelGender } : {}),
+      ...(a.attireType ? { attireType: a.attireType as AttireType } : {}),
+      ...(a.attireType === AttireType.CUSTOM && a.customAttire ? { customAttire: a.customAttire } : {}),
+      ...(a.aspectRatio ? { aspectRatio: a.aspectRatio } : {}),
+      ...(a.language ? { language: a.language } : {}),
       // A special category was sold, not chosen here — the member opens straight on the right
       // treatment rather than having to know that this particular job is a cartoon-duo ad.
-      ...(assignment.characterPack ? {
-        characterPack: assignment.characterPack,
-        locationMode: (assignment.realLocationProvided ? 'real_provided' : 'ai_generated') as LocationMode,
-      } : {}),
+      ...(a.characterPack
+        ? {
+            characterPack: a.characterPack,
+            locationMode: (a.realLocationProvided ? 'real_provided' : 'ai_generated') as LocationMode,
+          }
+        : { characterPack: undefined, locationMode: undefined }),
     }));
-  }, [assignment?.id]);
+  }, []);
 
-  // Ad Type is always implied by the assignment's category (every assignment has one) — the
-  // admin/lead already decided "Wishes" (festival) vs "Promotional"/"Cinematic" (commercial),
-  // so this is unconditionally locked, unlike the optional ad-spec fields above.
+  /**
+   * Keeping the member on the CURRENT spec, not the one they were handed when they opened it.
+   *
+   * These effects used to key on the assignment's id alone, so an admin correcting a job that was
+   * already out — wrong attire, the client wanted 16:9, the duration was sold short — changed
+   * nothing on the member's screen. They carried on to the generator with the original spec and
+   * produced the wrong ad, and it was only caught on delivery.
+   *
+   * Now the SPEC is watched. The first one seen is applied silently, because that is simply the
+   * job opening. Any later change raises a dialog the member has to read and accept — fields that
+   * rearrange themselves under someone's cursor are worse than no update at all, and this is the
+   * moment they need to know their half-finished work is now against the wrong brief.
+   */
+  /** The spec currently reflected in the form, so a change can be described against it. */
+  const appliedSpecRef = useRef<{ id: string; spec: AssignmentSpec } | null>(null);
+  const [pendingSpec, setPendingSpec] = useState<{ assignment: WorkAssignment; changes: SpecChange[] } | null>(null);
+  // Derived from the spec fields only: every Firestore snapshot replaces the assignment object,
+  // and a moving session timer or a status flip must never interrupt anyone.
+  const assignmentSpecKey = assignment ? specSignature(specOf(assignment)) : null;
+
   useEffect(() => {
     if (!assignment) return;
-    setFormData(prev => ({ ...prev, adType: assignment.category === 'wishes' ? AdType.FESTIVAL : AdType.COMMERCIAL }));
-  }, [assignment?.id, assignment?.category]);
+    const spec = specOf(assignment);
+    const applied = appliedSpecRef.current;
+
+    // First sight of this job — or a different job entirely. Nothing to announce.
+    if (!applied || applied.id !== assignment.id) {
+      appliedSpecRef.current = { id: assignment.id, spec };
+      applyAssignmentSpec(assignment);
+      return;
+    }
+
+    if (specSignature(applied.spec) === specSignature(spec)) return;
+
+    const changes = describeSpecChanges(applied.spec, spec);
+    if (changes.length === 0) {
+      // Something moved that the member does not need to be stopped for — apply it and move on.
+      appliedSpecRef.current = { id: assignment.id, spec };
+      applyAssignmentSpec(assignment);
+      return;
+    }
+    setPendingSpec({ assignment, changes });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assignmentSpecKey, assignment?.id, applyAssignmentSpec]);
+
+  /** The member has read the change — put the form on the new spec and carry on. */
+  const acknowledgeSpecUpdate = () => {
+    if (!pendingSpec) return;
+    appliedSpecRef.current = { id: pendingSpec.assignment.id, spec: specOf(pendingSpec.assignment) };
+    applyAssignmentSpec(pendingSpec.assignment);
+    setPendingSpec(null);
+  };
 
   const genderLocked = !!assignment?.modelGender;
   const attireLocked = !!assignment?.attireType;
@@ -592,6 +643,17 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background overflow-hidden">
       {ConfirmDialog}
+
+      {/* The admin changed this job while the member is holding it. Must be read before they
+          carry on — otherwise the next half hour produces an ad to the previous brief. */}
+      {pendingSpec && (
+        <SpecUpdateDialog
+          changes={pendingSpec.changes}
+          hasExistingOutputs={!!outputs}
+          isDark={isDark}
+          onAcknowledge={acknowledgeSpecUpdate}
+        />
+      )}
 
       {/* Generation-failed popup — centered so the user can't miss it */}
       {status.error && status.error !== 'Generation stopped.' && !errorModalDismissed && (

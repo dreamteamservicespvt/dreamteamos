@@ -38,6 +38,19 @@ export default function MyWork() {
 
   const [verifyingAssignment, setVerifyingAssignment] = useState<WorkAssignment | null>(null);
   const [openAssignment, setOpenAssignment] = useState<WorkAssignment | null>(null);
+
+  /**
+   * The open job, as it stands RIGHT NOW rather than as it was when it was opened.
+   *
+   * `openAssignment` is a snapshot taken at the moment of clicking, so an admin correcting the spec
+   * of a job already in someone's hands changed nothing on their screen — they carried on to the
+   * generator with the original brief. `assignments` is a live subscription, so re-reading the job
+   * from it is what makes an edit reach the person doing the work.
+   */
+  const liveOpenAssignment = useMemo(
+    () => (openAssignment ? assignments.find(a => a.id === openAssignment.id) ?? openAssignment : null),
+    [assignments, openAssignment],
+  );
   const sessionStartRef = useRef<Date | null>(null);
   const [dayFilter, setDayFilter] = useState<string>('all');
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
@@ -291,11 +304,11 @@ export default function MyWork() {
   }, [selectedDate, dayFilter]);
 
   // Show AI Platform when assignment is opened
-  if (openAssignment) {
+  if (openAssignment && liveOpenAssignment) {
     return (
       <AIPlatformApp
-        assignment={openAssignment}
-        assignmentId={openAssignment.id}
+        assignment={liveOpenAssignment}
+        assignmentId={liveOpenAssignment.id}
         onBusinessNameExtracted={handleBusinessNameExtracted}
         onClose={handleClose}
         onComplete={handleComplete}

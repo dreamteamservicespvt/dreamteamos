@@ -368,6 +368,18 @@ export default function MemberAssignments() {
         characterPack: editForm.characterPack,
         realLocationProvided: !!editForm.characterPack && editForm.realLocationProvided,
       });
+      // Tell the member their brief moved. The AI Platform shows them exactly what changed if they
+      // have it open; this is for when they do not, so a spec change is never silent.
+      const edited = memberAssignments.find(a => a.id === editingId);
+      if (edited?.assignedTo) {
+        await sendNotification({
+          userId: edited.assignedTo,
+          type: 'work_editing',
+          title: 'Ad specification updated',
+          message: `The spec for "${editForm.businessName.trim() || 'your assigned ad'}" was changed. Open it to see what is different before you carry on.`,
+          link: '/tech/my-work',
+        });
+      }
       setEditingId(null);
       setEditForm(null);
     } catch (error) {

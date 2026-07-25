@@ -57,6 +57,16 @@ export default function RecentAds() {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [verifyingAssignment, setVerifyingAssignment] = useState<WorkAssignment | null>(null);
   const [openAssignment, setOpenAssignment] = useState<WorkAssignment | null>(null);
+
+  /**
+   * The open job as it stands right now. `openAssignment` is a snapshot taken when it was clicked,
+   * so a spec the admin corrected afterwards would never reach the person doing the work — see the
+   * same note in MyWork.
+   */
+  const liveOpenAssignment = useMemo(
+    () => (openAssignment ? assignments.find(a => a.id === openAssignment.id) ?? openAssignment : null),
+    [assignments, openAssignment],
+  );
   const sessionStartRef = useRef<Date | null>(null);
 
   const sorted = useMemo(
@@ -124,11 +134,11 @@ export default function RecentAds() {
     } catch {}
   };
 
-  if (openAssignment) {
+  if (openAssignment && liveOpenAssignment) {
     return (
       <AIPlatformApp
-        assignment={openAssignment}
-        assignmentId={openAssignment.id}
+        assignment={liveOpenAssignment}
+        assignmentId={liveOpenAssignment.id}
         onBusinessNameExtracted={handleBusinessNameExtracted}
         onClose={() => setOpenAssignment(null)}
       />
