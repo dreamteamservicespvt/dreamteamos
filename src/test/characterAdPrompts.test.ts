@@ -9,7 +9,7 @@ import {
 } from "@/services/prompts/characterAd";
 import { getCharacterPack } from "@/services/characterPacks";
 import {
-  MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE,
+  MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE, countSpokenWords,
 } from "@/utils/dialogueFormat";
 import {
   assignPhotosToClips, describeClipLocations, attachmentDirective, splitAttachmentDirective,
@@ -287,7 +287,7 @@ describe("voice-over prompt — promotional grounding", () => {
 
   it("lays out hook → proof → close beats across the clips", () => {
     const four = p(4);
-    expect(four).toContain("Clip 1 — ARRIVAL / HOOK");
+    expect(four).toContain("Clip 1 — THE HOOK");
     expect(four).toContain("Clip 2 — PROOF");
     expect(four).toContain("Clip 3 — PROOF");
     expect(four).toContain("Clip 4 — CLOSE");
@@ -313,6 +313,113 @@ describe("voice-over prompt — promotional grounding", () => {
     expect(p(4)).toMatch(/Never talk about advertising, videos, promotion or marketing unless that IS/);
   });
 
+  /**
+   * An ad is skipped in the first two seconds or not at all, so the opening line is the whole
+   * game. Scripts were arriving that opened by explaining rather than provoking.
+   */
+  describe("the opening hook", () => {
+    it("gives the writer concrete hook types to choose from", () => {
+      const four = p(4);
+      expect(four).toContain("THE FIRST LINE DECIDES WHETHER ANYONE WATCHES THE REST");
+      expect(four).toContain("SURPRISE");
+      expect(four).toContain("CURIOSITY GAP");
+      expect(four).toContain("THE CUSTOMER'S OWN PROBLEM");
+      expect(four).toContain("DISBELIEF");
+      expect(four).toMatch(/It must PROVOKE, never explain/);
+    });
+
+    it("bans the flat openings that get an ad skipped", () => {
+      const four = p(4);
+      expect(four).toMatch(/Hello friends/);
+      expect(four).toMatch(/Today we will tell you about/);
+      expect(four).toMatch(/Welcome to/);
+      expect(four).toMatch(/These two are TALKING TO EACH OTHER, never to a camera/);
+    });
+
+    it("refuses a hook that would fit any business", () => {
+      expect(p(4)).toMatch(/a hook that would suit any shop is not a hook/);
+    });
+  });
+
+  /**
+   * The two ways the scripts were failing: half-sentences, and an ending that simply stopped.
+   */
+  describe("completeness", () => {
+    it("forbids splitting a thought across a line or a clip", () => {
+      const four = p(4);
+      expect(four).toContain("EVERY LINE MUST BE COMPLETE, AND THE AD MUST FINISH");
+      expect(four).toMatch(/write a SHORTER thought — never half of a longer one/);
+    });
+
+    it("requires the last clip to end the ad rather than stop", () => {
+      expect(p(4)).toMatch(/It has to feel ended, not interrupted/);
+    });
+
+    it("sets the test the finished script has to pass", () => {
+      expect(p(4)).toMatch(/knowing WHO the business is, WHAT it sells, WHY it is better, and WHAT to do next/);
+    });
+  });
+
+  /**
+   * The worked example is the strongest lever on quality — and the most dangerous thing to get
+   * wrong, because a model shown an example that breaks the stated rules will follow the example.
+   */
+  describe("the worked example", () => {
+    const example = () => {
+      const four = p(4);
+      return four.slice(four.indexOf("A WORKED EXAMPLE"), four.indexOf("Notice:"));
+    };
+
+    it("demonstrates hook, proof, distinct proof, then close", () => {
+      const ex = example();
+      expect(ex).toContain("clip-1 (the hook");
+      expect(ex).toContain("clip-2 (proof");
+      expect(ex).toContain("clip-3 (proof — a DIFFERENT one");
+      expect(ex).toContain("clip-4 (close");
+    });
+
+    it("says plainly that the shape is the lesson, not the language", () => {
+      expect(example()).toMatch(/COPY THE SHAPE, NOT THE WORDS/);
+      expect(example()).toMatch(/Write yours in Telugu/);
+    });
+
+    /** If the word band ever moves, this catches an example that quietly contradicts it. */
+    it("obeys the very word budget it is teaching", () => {
+      const lines = [...example().matchAll(/"([^"]+)"\s*\((\d+) words\)/g)];
+      expect(lines).toHaveLength(8);
+
+      for (const [, text, claimed] of lines) {
+        expect(countSpokenWords(text)).toBe(Number(claimed));
+        expect(Number(claimed)).toBeGreaterThanOrEqual(MIN_WORDS_PER_LINE);
+        expect(Number(claimed)).toBeLessThanOrEqual(MAX_WORDS_PER_LINE);
+      }
+
+      // And each clip's pair totals inside the per-clip band.
+      for (let i = 0; i < lines.length; i += 2) {
+        const clipTotal = Number(lines[i][2]) + Number(lines[i + 1][2]);
+        expect(clipTotal).toBeGreaterThanOrEqual(MIN_WORDS_PER_CLIP);
+        expect(clipTotal).toBeLessThanOrEqual(MAX_WORDS_PER_CLIP);
+      }
+    });
+
+    // Both names, once each, in clip 1 — the example must model the rule it sits beside.
+    it("uses each character's name exactly once, both in clip 1", () => {
+      const ex = example();
+      const spoken = [...ex.matchAll(/"([^"]+)"/g)].map(m => m[1]);
+      expect(spoken.filter(l => l.includes("Motu")).length).toBe(1);
+      expect(spoken.filter(l => l.includes("Patlu")).length).toBe(1);
+      expect(spoken[0]).toContain("Patlu");
+      expect(spoken[1]).toContain("Motu");
+    });
+  });
+
+  it("carries the completeness bar into the repair pass too", () => {
+    const repair = CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT(pack, 32, 4, "Telugu");
+    expect(repair).toMatch(/NEVER fix a word count by cutting a sentence in half/);
+    expect(repair).toMatch(/must still be a hook that provokes/);
+    expect(repair).toMatch(/must still FINISH the ad/);
+  });
+
   // They are not presenting from a studio: they walked into the client's premises and are showing
   // it to the viewer. That framing is what makes the dialogue sound natural instead of read out.
   it("frames the ad as the two of them visiting the business", () => {
@@ -320,7 +427,7 @@ describe("voice-over prompt — promotional grounding", () => {
     expect(four).toMatch(/have come to this client's\s*\n?business/);
     expect(four).toContain("standing in the real premises");
     expect(four).toContain("two friends who turned up at");
-    expect(four).toContain("Clip 1 — ARRIVAL / HOOK");
+    expect(four).toContain("Clip 1 — THE HOOK");
   });
 
   /**

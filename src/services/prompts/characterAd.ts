@@ -68,10 +68,10 @@ const promotionalBeats = (segmentCount: number, first: string, second: string): 
   }
 
   const beats = [
-    `Clip 1 — ARRIVAL / HOOK: they have just walked in. ${first} addresses ${second} BY NAME and `
-    + `reacts to what he sees, or raises the customer's real question about it. ${second} answers with `
-    + `"${first}" and NAMES THE BUSINESS, saying plainly what it does. This clip carries the one and `
-    + `only mention of each name — no clip after this one may use either name again.`,
+    `Clip 1 — THE HOOK: ${first}'s first line must STOP someone who is scrolling past. He addresses `
+    + `${second} BY NAME and reacts to something striking — see THE HOOK below for how. `
+    + `${second} answers with "${first}" and NAMES THE BUSINESS, saying plainly what it does. `
+    + `This clip carries the one and only mention of each name — no clip after this may use either again.`,
   ];
   for (let i = 2; i < segmentCount; i++) {
     beats.push(
@@ -155,6 +155,65 @@ gets repeated.
 CLIP-BY-CLIP STRUCTURE:
 
 ${promotionalBeats(segmentCount, first.name, second.name)}
+
+===== THE HOOK: THE FIRST LINE DECIDES WHETHER ANYONE WATCHES THE REST =====
+
+An ad is skipped in the first two seconds or not at all, so ${first.name}'s opening line has ONE
+job: make a person stop. It must PROVOKE, never explain. Pick whichever of these fits the business
+and open with it:
+
+• SURPRISE — he reacts to something striking in front of him. "Look at the size of that shelf!"
+• CURIOSITY GAP — something unexplained that demands an answer. "Why is there a queue outside?"
+• THE CUSTOMER'S OWN PROBLEM — the exact pain that brings people to this business. "My phone died again!"
+• DISBELIEF — he challenges a claim as too good to be true. "At that price? I don't believe it."
+
+The opening must sound like ${first.name}: loud, excited, saying what everyone else is thinking.
+And it must be about THIS business — a hook that would suit any shop is not a hook.
+
+NEVER open with any of these. They are why an ad gets skipped:
+✗ A greeting — "Hello friends", "Namaste", "Hi everyone"
+✗ An announcement — "Today we will tell you about…", "Let me introduce…"
+✗ A welcome — "Welcome to…", "Come to…"
+✗ Anything a narrator would say. These two are TALKING TO EACH OTHER, never to a camera.
+
+===== EVERY LINE MUST BE COMPLETE, AND THE AD MUST FINISH =====
+
+The scripts that fail do so in the same two ways — half-sentences, and an ending that just stops.
+
+1. Each line is ONE complete sentence that makes full sense on its own. Never let a sentence run
+   from one character into the other's line, or from one clip into the next. If a thought does not
+   fit the word budget, write a SHORTER thought — never half of a longer one.
+2. Every line must say something. A line that carries no fact, no reaction and no reason to buy is
+   wasted airtime, even when it is grammatically fine.
+3. The final clip must FINISH the ad. It has to feel ended, not interrupted — the last thing heard
+   is a clear instruction to act.
+4. Test the whole script by itself: someone who hears only this, once, with no picture, must come
+   away knowing WHO the business is, WHAT it sells, WHY it is better, and WHAT to do next. If any
+   of those four is missing, the script has failed and you must rewrite it.
+
+===== A WORKED EXAMPLE — COPY THE SHAPE, NOT THE WORDS =====
+
+This is shown in English so the STRUCTURE is unmistakable. Write yours in ${lang}, about the real
+business you were given. Word counts are marked to show how a complete thought fits the budget.
+
+clip-1 (the hook — curiosity gap, then the business is named)
+  ${first.name}:  "${second.name}! Why is there a queue outside this shop?"            (9 words)
+  ${second.name}: "That is Sharma Electronics, ${first.name} — the whole town buys here."   (10 words)
+
+clip-2 (proof — a real, specific offering)
+  ${first.name}:  "But do they keep the latest washing machines too?"          (9 words)
+  ${second.name}: "Every brand, every model, and free home delivery included."  (9 words)
+
+clip-3 (proof — a DIFFERENT one, never a repeat)
+  ${first.name}:  "Repairs must cost a fortune at a big showroom."             (9 words)
+  ${second.name}: "One full year of service is free with every purchase."      (10 words)
+
+clip-4 (close — it ends, and it tells you what to do)
+  ${first.name}:  "Then what are we waiting for, let us go!"                   (9 words)
+  ${second.name}: "Visit Sharma Electronics today and see the festival offers yourself." (10 words)
+
+Notice: the first line provokes, the business is named immediately, every line is a whole sentence,
+each clip adds something new, and the last line tells the viewer exactly what to do.
 
 GROUND EVERY SINGLE LINE IN THE DATA YOU WERE GIVEN:
 1. Say the business's REAL NAME out loud in the ad, early — a viewer must know who this is.
@@ -240,6 +299,9 @@ NON-NEGOTIABLE CONTRACT:
 • Each line is one complete sentence ending in . ! or ?
 • Output format exactly: \`<start>-<end>|${first.key}: <line>\` then \`<start>-<end>|${second.key}: <line>\`
 • Keep the original meaning and the business facts — change only what is broken
+• NEVER fix a word count by cutting a sentence in half. Shorten the THOUGHT instead: every line must still be one complete sentence that makes sense on its own
+• Clip 1's first line must still be a hook that provokes — a surprise, an unanswered question, the customer's own problem, or disbelief. Never a greeting, a welcome, or an announcement
+• The final clip must still FINISH the ad with a clear instruction to act — it must feel ended, not interrupted
 • Across ALL ${segmentCount} clips together, "${first.name}" is spoken exactly once and "${second.name}" exactly once — both in clip 1 where they greet each other, and never again anywhere
 • Total duration is ${duration} seconds; never add or remove clips${spellings.length > 0
   ? `\n• A spoken character name is written EXACTLY as: ${spellings.map((s) => `${s.name} → ${s.spelling}`).join(", ")}`
