@@ -38,6 +38,25 @@ export function deliveryDate(a: WorkAssignment): string | null {
  * when the record says nothing about being finished — the caller must not invent a date, which
  * is exactly the bug that made every client's "last work" read as the day of the import.
  */
+/**
+ * When the work was handed out, to the minute.
+ *
+ * The same source of truth `workCountsOn` uses, kept precise instead of truncated to a day, so a
+ * queue can show "2 days ago, 4:15 pm" — the difference between an order that arrived this morning
+ * and one that has been sitting since Tuesday. Falls back to midday of the assigned day when only
+ * a date is on record, so it still sorts sensibly against precise stamps.
+ */
+export function assignedAtMs(a: WorkAssignment): number | null {
+  const seconds = (a.assignedAt as { seconds?: number } | undefined)?.seconds;
+  if (seconds) return seconds * 1000;
+
+  const iso = a.assignedAtIso ? Date.parse(a.assignedAtIso) : NaN;
+  if (Number.isFinite(iso)) return iso;
+
+  const parsed = a.date ? Date.parse(`${a.date}T12:00:00`) : NaN;
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export function deliveredAtMs(a: WorkAssignment): number | null {
   const seconds = (a.completedAt as { seconds?: number } | undefined)?.seconds
     ?? (a.verifiedAt as { seconds?: number } | undefined)?.seconds;

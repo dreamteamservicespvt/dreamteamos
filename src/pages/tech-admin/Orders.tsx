@@ -18,6 +18,8 @@ import DeadlineChip from "@/components/work/DeadlineChip";
 import { format } from "date-fns";
 import type { Order, WorkAssignment } from "@/types";
 
+import { sortOrders, countOverdue, ORDER_SORT_OPTIONS, type OrderSortMode } from "@/utils/orderSort";
+
 type OrderTab = "unassigned" | "assigned" | "completed";
 
 function fmtTs(ts: any): string {
@@ -44,6 +46,8 @@ export default function Orders() {
 
   const [tab, setTab] = useState<OrderTab>("unassigned");
   const [search, setSearch] = useState("");
+  /** First-come-first-served by default: whoever has waited longest is served first. */
+  const [sortMode, setSortMode] = useState<OrderSortMode>("fcfs");
   const [view, setView] = useViewMode("orders");
 
   // Manual selection → delete, with a confirmation step. Selections are cleared whenever the
@@ -93,7 +97,7 @@ export default function Orders() {
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     const qDigits = q.replace(/\D/g, "");
-    return orders
+    const filtered = orders
       .filter((o) => o.status === tab)
       .filter((o) => {
         if (!q) return true;
@@ -102,9 +106,15 @@ export default function Orders() {
         if (o.soldByName?.toLowerCase().includes(q)) return true;
         if (qDigits && o.clientPhone?.replace(/\D/g, "").includes(qDigits)) return true;
         return false;
-      })
-      .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-  }, [orders, tab, search]);
+      });
+    return sortOrders(filtered, sortMode);
+  }, [orders, tab, search, sortMode]);
+
+  /** Overdue count for the tab in view, so the sort option can say how many are waiting. */
+  const overdueInTab = useMemo(
+    () => countOverdue(orders.filter((o) => o.status === tab)),
+    [orders, tab],
+  );
 
   // Select-all operates on exactly what's on screen (current tab + search).
   const visibleIds = useMemo(() => visible.map((o) => o.id), [visible]);
@@ -215,6 +225,18 @@ export default function Orders() {
             className="h-9 w-full rounded-xl border border-border/70 bg-background pl-9 pr-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20"
           />
         </div>
+        <select
+          value={sortMode}
+          onChange={(e) => setSortMode(e.target.value as OrderSortMode)}
+          title="Order of the queue"
+          className="h-9 rounded-xl border border-border/70 bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20"
+        >
+          {ORDER_SORT_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}{o.value === "overdue" && overdueInTab > 0 ? ` (${overdueInTab})` : ""}
+            </option>
+          ))}
+        </select>
         <ViewToggle mode={view} onChange={setView} />
       </div>
 
@@ -307,7 +329,11 @@ export default function Orders() {
                   )}
                   {showSalesInfo && <span>Sold by: <strong className="text-foreground">{o.soldByName}</strong></span>}
                   {o.fromAd && <span className="text-info">From ad</span>}
-                  <span>Sold: <strong className="text-foreground">{fmtTs(o.createdAt)}</strong></span>
+                  {/* When the sale was taken — the thing first-come-first-served is ordered by,
+                      so it has to be readable on every card, not only in the sort. */}
+                  <span className="inline-flex items-center gap-1" title="When this ad was taken">
+                    <Clock size={11} /> Taken: <strong className="text-foreground">{fmtTs(o.createdAt)}</strong>
+                  </span>
                   {o.promise && <span className="inline-flex items-center gap-1"><Clock size={11} /> Promise: <strong className="text-foreground">{o.promise.label}</strong></span>}
                   {o.status !== "unassigned" && o.assignedToName && <span>Assigned to: <strong className="text-foreground">{o.assignedToName}</strong></span>}
                 </div>

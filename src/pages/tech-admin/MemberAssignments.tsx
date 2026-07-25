@@ -16,6 +16,8 @@ import RequirementsShareModal from '@/components/work/RequirementsShareModal';
 import SaleDeletedBanner from '@/components/work/SaleDeletedBanner';
 import { buildAssignmentRequirementsMessage } from '@/utils/adRequirement';
 import { getCharacterPack } from '@/services/characterPacks';
+import { unassignWork } from '@/services/workAssign';
+import { useToast } from '@/hooks/use-toast';
 import SpecialCategoryFields from '@/components/work/SpecialCategoryFields';
 import ReassignWork from '@/components/work/ReassignWork';
 import {
@@ -123,10 +125,12 @@ export default function MemberAssignments() {
     modelGender: ModelGender; attireType: AttireType; customAttire: string; aspectRatio: '9:16' | '16:9'; language: string; customLanguage: string;
     characterPack: string; realLocationProvided: boolean;
   } | null>(null);
-  const [confirmAction, setConfirmAction] = useState<{ type: 'delete' | 'sendback'; id: string; assignedTo?: string; title: string } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ type: 'delete' | 'sendback' | 'unassign'; id: string; assignedTo?: string; title: string; orderId?: string | null } | null>(null);
+  const [unassigning, setUnassigning] = useState(false);
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
   const [verifyingAll, setVerifyingAll] = useState(false);
   const [verifyDialog, setVerifyDialog] = useState<{ mode: 'single' | 'all'; items: WorkAssignment[] } | null>(null);
+  const { toast } = useToast();
 
   const member = useMemo(() => allUsers.find(u => u.uid === memberId), [allUsers, memberId]);
 
@@ -299,6 +303,31 @@ export default function MemberAssignments() {
     }
   };
 
+  /** Takes the work back off this member and returns it to the Orders queue for someone else. */
+  const handleUnassign = async (action: NonNullable<typeof confirmAction>) => {
+    setUnassigning(true);
+    try {
+      const { returnedToQueue } = await unassignWork({
+        assignmentId: action.id,
+        assignedTo: action.assignedTo!,
+        orderId: action.orderId,
+        title: action.title,
+      });
+      setConfirmAction(null);
+      toast({
+        title: 'Unassigned',
+        description: returnedToQueue
+          ? `"${action.title}" is back in Orders — assign it to another member from there.`
+          : `"${action.title}" was removed from this member. It had no order behind it, so there was nothing to return to the queue.`,
+      });
+    } catch (error) {
+      console.error('Failed to unassign:', error);
+      toast({ title: 'Could not unassign', description: 'Please try again.', variant: 'destructive' });
+    } finally {
+      setUnassigning(false);
+    }
+  };
+
   const handleStartEdit = (a: WorkAssignment) => {
     setEditingId(a.id);
     const gender = (a.modelGender as ModelGender) || ModelGender.FEMALE;
@@ -388,17 +417,26 @@ export default function MemberAssignments() {
       {confirmAction && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setConfirmAction(null)}>
           <div className="bg-card border border-border rounded-xl p-6 shadow-2xl max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
-            <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 ${confirmAction.type === 'delete' ? 'bg-red-100 dark:bg-red-900/30' : 'bg-orange-100 dark:bg-orange-900/30'}`}>
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 ${
+              confirmAction.type === 'delete' ? 'bg-red-100 dark:bg-red-900/30'
+                : confirmAction.type === 'unassign' ? 'bg-amber-100 dark:bg-amber-900/30'
+                : 'bg-orange-100 dark:bg-orange-900/30'}`}>
               {confirmAction.type === 'delete'
                 ? <Trash2 className="w-6 h-6 text-red-600 dark:text-red-400" />
+                : confirmAction.type === 'unassign'
+                ? <Undo2 className="w-6 h-6 text-amber-600 dark:text-amber-400" />
                 : <Edit3 className="w-6 h-6 text-orange-600 dark:text-orange-400" />}
             </div>
             <h3 className="text-lg font-semibold text-center text-foreground mb-2">
-              {confirmAction.type === 'delete' ? 'Delete Assignment' : 'Send Back for Edits'}
+              {confirmAction.type === 'delete' ? 'Delete Assignment'
+                : confirmAction.type === 'unassign' ? 'Unassign & Return to Orders'
+                : 'Send Back for Edits'}
             </h3>
             <p className="text-sm text-muted-foreground text-center mb-6">
               {confirmAction.type === 'delete'
                 ? <>Are you sure you want to delete <strong className="text-foreground">{confirmAction.title}</strong>? This action cannot be undone.</>
+                : confirmAction.type === 'unassign'
+                ? <>Take <strong className="text-foreground">{confirmAction.title}</strong> off this member{confirmAction.orderId ? <> and put it back in <strong className="text-foreground">Orders</strong>, so it can be assigned to someone else</> : <>. This job has no order behind it, so there is nothing to return it to</>}. The member is told it was removed.</>
                 : <>Send <strong className="text-foreground">{confirmAction.title}</strong> back to the member for edits?</>}
             </p>
             <div className="flex items-center space-x-3">
@@ -406,9 +444,18 @@ export default function MemberAssignments() {
                 className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-border text-foreground hover:bg-muted transition-colors">
                 Cancel
               </button>
-              <button onClick={() => confirmAction.type === 'delete' ? handleDelete(confirmAction.id) : handleSetEditing(confirmAction.id, confirmAction.assignedTo!)}
-                className={`flex-1 px-4 py-2.5 text-sm font-medium rounded-lg text-white transition-colors ${confirmAction.type === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-orange-600 hover:bg-orange-700'}`}>
-                {confirmAction.type === 'delete' ? 'Delete' : 'Send Back'}
+              <button
+                disabled={unassigning}
+                onClick={() => confirmAction.type === 'delete' ? handleDelete(confirmAction.id)
+                  : confirmAction.type === 'unassign' ? handleUnassign(confirmAction)
+                  : handleSetEditing(confirmAction.id, confirmAction.assignedTo!)}
+                className={`flex-1 px-4 py-2.5 text-sm font-medium rounded-lg text-white transition-colors disabled:opacity-60 ${
+                  confirmAction.type === 'delete' ? 'bg-red-600 hover:bg-red-700'
+                    : confirmAction.type === 'unassign' ? 'bg-amber-600 hover:bg-amber-700'
+                    : 'bg-orange-600 hover:bg-orange-700'}`}>
+                {confirmAction.type === 'delete' ? 'Delete'
+                  : confirmAction.type === 'unassign' ? (unassigning ? 'Unassigning…' : 'Unassign')
+                  : 'Send Back'}
               </button>
             </div>
           </div>
@@ -853,6 +900,14 @@ export default function MemberAssignments() {
                 {a.status !== 'verified' && currentUser && (
                   <ReassignWork assignment={a} currentUser={{ uid: currentUser.uid, name: currentUser.name }}
                     members={allUsers.filter(u => u.role === 'tech_member' && u.isActive !== false && !u.externalCreator)} />
+                )}
+                {/* Work that is still in flight can be pulled back to the queue; finished work
+                    cannot, because unassigning it would throw away what the member delivered. */}
+                {(a.status === 'assigned' || a.status === 'in_progress' || a.status === 'editing') && (
+                  <button onClick={() => setConfirmAction({ type: 'unassign', id: a.id, assignedTo: a.assignedTo, title: a.businessName || a.clientName || a.displayTitle, orderId: a.orderId })}
+                    className="flex items-center space-x-1 px-2.5 py-1 text-[10px] md:text-xs font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:hover:bg-amber-900/50 rounded-lg transition-colors">
+                    <Undo2 className="w-3 h-3 md:w-3.5 md:h-3.5" /><span>Unassign</span>
+                  </button>
                 )}
                 <button onClick={() => setConfirmAction({ type: 'delete', id: a.id, title: a.businessName || a.clientName || a.displayTitle })}
                   className="flex items-center space-x-1 px-2.5 py-1 text-[10px] md:text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 rounded-lg transition-colors">

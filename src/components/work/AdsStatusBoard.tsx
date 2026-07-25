@@ -4,7 +4,7 @@ import { format, subDays } from 'date-fns';
 import { Activity, ClipboardList, Clock, CheckCircle2, ShieldCheck, Inbox, X, UserPlus } from 'lucide-react';
 import PeriodFilterBar from '@/components/dashboard/PeriodFilterBar';
 import { defaultPeriodFilter, periodLabel, withinPeriod, type PeriodFilter } from '@/utils/periodFilter';
-import { workCountsOn } from '@/utils/workDates';
+import { workCountsOn, assignedAtMs } from '@/utils/workDates';
 import { categoryLabel } from '@/utils/serviceCatalog';
 import { formatCurrency } from '@/utils/formatters';
 import type { AppUser, Order, WorkAssignment } from '@/types';
@@ -26,9 +26,9 @@ type StatusKey = 'unassigned' | 'assigned' | 'in_progress' | 'completed' | 'veri
 type BucketKey = StatusKey | 'all';
 
 const BUCKETS: { key: StatusKey; label: string; hint: string; icon: any; tone: string }[] = [
-  { key: 'unassigned', label: 'Not assigned', hint: 'Waiting in Orders — nobody is on them yet', icon: Inbox, tone: 'text-amber-500 border-amber-500/30 bg-amber-500/10' },
-  { key: 'assigned', label: 'Assigned', hint: 'Handed out, not started', icon: ClipboardList, tone: 'text-blue-500 border-blue-500/30 bg-blue-500/10' },
-  { key: 'in_progress', label: 'In progress', hint: 'Being worked on right now', icon: Clock, tone: 'text-yellow-500 border-yellow-500/30 bg-yellow-500/10' },
+  { key: 'unassigned', label: 'Not assigned', hint: 'Waiting in Orders — nobody is on them yet. Shows ALL outstanding, not just this period.', icon: Inbox, tone: 'text-amber-500 border-amber-500/30 bg-amber-500/10' },
+  { key: 'assigned', label: 'Assigned', hint: 'Handed out, not started. Shows ALL outstanding, not just this period.', icon: ClipboardList, tone: 'text-blue-500 border-blue-500/30 bg-blue-500/10' },
+  { key: 'in_progress', label: 'In progress', hint: 'Being worked on right now. Shows ALL outstanding, not just this period.', icon: Clock, tone: 'text-yellow-500 border-yellow-500/30 bg-yellow-500/10' },
   { key: 'completed', label: 'Completed', hint: 'Delivered, awaiting your approval', icon: CheckCircle2, tone: 'text-green-500 border-green-500/30 bg-green-500/10' },
   { key: 'verified', label: 'Verified', hint: 'Approved and closed', icon: ShieldCheck, tone: 'text-emerald-500 border-emerald-500/30 bg-emerald-500/10' },
 ];
@@ -47,7 +47,19 @@ interface BucketItem {
   uniqueId?: string;
   price?: number;
   when?: string;
+  /** When it arrived, to the minute — shown in the drill-down so old work is obvious at a glance. */
+  takenAtMs?: number;
 }
+
+/**
+ * The buckets that are WORK STILL OWED, and therefore never date-filtered.
+ *
+ * A date filter answers "what happened on this day", which is right for finished work. Applied to
+ * pending work it does the opposite of what the team needs: yesterday's unassigned order vanishes
+ * from today's view and nobody chases it. These three always show everything outstanding, whatever
+ * the period says, so nothing can quietly fall off the bottom of the list.
+ */
+const ALWAYS_ALL: StatusKey[] = ['unassigned', 'assigned', 'in_progress'];
 
 interface AdsStatusBoardProps {
   assignments: WorkAssignment[];
@@ -90,9 +102,11 @@ export default function AdsStatusBoard({
     };
 
     for (const a of assignments) {
-      if (!withinPeriod(workCountsOn(a), period)) continue;
       const key = (a.status === 'editing' ? 'in_progress' : a.status) as StatusKey;
       if (!(key in out)) continue;
+      // Outstanding work is shown whatever the period; finished work is what the period is for.
+      if (!ALWAYS_ALL.includes(key) && !withinPeriod(workCountsOn(a), period)) continue;
+      const day = workCountsOn(a);
       out[key].push({
         id: a.id,
         business: a.businessName || a.clientName || a.displayTitle,
@@ -102,15 +116,16 @@ export default function AdsStatusBoard({
         statusKey: key,
         uniqueId: a.uniqueId,
         price: a.totalPrice,
-        when: workCountsOn(a),
+        when: day,
+        takenAtMs: assignedAtMs(a) ?? (day ? new Date(`${day}T00:00:00`).getTime() : undefined),
       });
     }
 
-    // Orders still waiting — counted on the day the sale arrived.
+    // Orders still waiting. Never date-filtered: an order nobody has picked up is owed work no
+    // matter which day it came in on, and it is exactly the thing that must not be missed.
     for (const o of orders) {
       if (o.status !== 'unassigned' || o.deleted) continue;
-      const day = o.createdAt?.seconds ? format(new Date(o.createdAt.seconds * 1000), 'yyyy-MM-dd') : undefined;
-      if (!withinPeriod(day, period)) continue;
+      const ms = o.createdAt?.seconds ? o.createdAt.seconds * 1000 : undefined;
       out.unassigned.push({
         id: o.id,
         business: o.businessName || 'Unnamed client',
@@ -119,8 +134,14 @@ export default function AdsStatusBoard({
         orderId: o.id,
         statusKey: 'unassigned',
         price: o.amount,
-        when: day,
+        when: ms ? format(new Date(ms), 'yyyy-MM-dd') : undefined,
+        takenAtMs: ms,
       });
+    }
+
+    // Oldest first inside every bucket — the thing waiting longest is the thing to do next.
+    for (const key of Object.keys(out) as StatusKey[]) {
+      out[key].sort((x, y) => (x.takenAtMs ?? 0) - (y.takenAtMs ?? 0));
     }
 
     return out;
@@ -164,6 +185,15 @@ export default function AdsStatusBoard({
 
       {/* The same Career / Month / Day / Range control used everywhere else. */}
       <PeriodFilterBar value={period} onChange={setPeriod} />
+
+      {/* Said plainly, because a count that ignores the filter above it looks like a bug until
+          you know why. Pending work must never hide behind a date. */}
+      <p className="text-[11px] text-muted-foreground">
+        <span className="font-medium text-foreground">Not assigned</span>, <span className="font-medium text-foreground">Assigned</span> and{' '}
+        <span className="font-medium text-foreground">In progress</span> always show <b>everything still pending</b>, whatever date is chosen —
+        so nothing from an earlier day is missed. <span className="font-medium text-foreground">Completed</span> and{' '}
+        <span className="font-medium text-foreground">Verified</span> follow the period.
+      </p>
 
       {/* Totals — every tile opens the list behind it. */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
@@ -238,6 +268,13 @@ export default function AdsStatusBoard({
                         {item.business}
                       </span>
                       {item.uniqueId && <span className="hidden shrink-0 font-mono text-[10px] text-muted-foreground sm:inline">{item.uniqueId}</span>}
+                      {/* When it arrived. Without this a list of outstanding work gives no clue
+                          which entries have been sitting for days. */}
+                      {item.takenAtMs && (
+                        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground" title={`Taken ${format(new Date(item.takenAtMs), 'dd MMM yyyy, hh:mm a')}`}>
+                          {format(new Date(item.takenAtMs), 'dd MMM, hh:mm a')}
+                        </span>
+                      )}
                       <span className="shrink-0 text-[11px] text-muted-foreground">
                         {item.memberName ?? 'Not assigned'}
                       </span>

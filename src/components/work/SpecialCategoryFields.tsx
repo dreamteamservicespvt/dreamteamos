@@ -42,8 +42,8 @@ export default function SpecialCategoryFields({ characterPack, realLocationProvi
             <label className="block text-[11px] text-muted-foreground mb-1">Did the client send photos of their location?</label>
             <div className="grid grid-cols-2 gap-2">
               {([
-                { v: true, label: '📷 Yes — use their photos' },
-                { v: false, label: '🏙️ No — create the location' },
+                { v: true, label: '📷 Yes — use their business background' },
+                { v: false, label: '🏙️ No — create AI background' },
               ] as const).map(({ v, label }) => (
                 <button
                   key={String(v)}

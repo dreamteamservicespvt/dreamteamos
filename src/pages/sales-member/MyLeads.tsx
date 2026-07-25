@@ -1838,8 +1838,8 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
                 <label className="text-[11px] text-muted-foreground">Is the client sending photos of their shop / office?</label>
                 <div className="grid grid-cols-2 gap-1.5 mt-1">
                   {([
-                    { v: true, label: "✅ Yes — they'll send" },
-                    { v: false, label: "🏙️ No — we create it" },
+                    { v: true, label: "📷 Yes — use their business background" },
+                    { v: false, label: "🏙️ No — create AI background" },
                   ] as const).map(({ v, label }) => (
                     <button
                       key={String(v)}

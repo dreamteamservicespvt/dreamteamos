@@ -8,6 +8,7 @@
  */
 import { categoryLabel } from "@/utils/serviceCatalog";
 import { attireLabel } from "@/utils/adRequirement";
+import { getCharacterPack } from "@/services/characterPacks";
 import { formatCurrency } from "@/utils/formatters";
 import type { Lead, SaleDetail } from "@/types";
 
@@ -28,15 +29,30 @@ export function buildClientSaleMessage(lead: Lead, item: SaleDetail): string {
   ];
 
   if (isAd && r) {
+    // A special-category ad has no human model, so the client is told who IS in their ad and
+    // whether we are using their own photos — telling them "Model: Female" would describe someone
+    // who never appears, and it is the client's own confirmation.
+    const pack = getCharacterPack(r.specialCategory);
     lines.push(
       ``,
       `📋 *Your ad details*`,
-      r.modelGender ? `👤 *Model:* ${r.modelGender === "male" ? "Male" : "Female"}` : null,
-      r.attireType ? `👔 *Attire:* ${attireLabel(r.attireType, r.customAttire)}` : null,
+      pack ? `🎭 *Starring:* ${pack.label} — both characters speak in every clip` : null,
+      pack ? (r.realLocationProvided
+        ? `📷 *Setting:* your own business background, from the photos you send us`
+        : `🏙️ *Setting:* a custom AI background built for your business`) : null,
+      !pack && r.modelGender ? `👤 *Model:* ${r.modelGender === "male" ? "Male" : "Female"}` : null,
+      !pack && r.attireType ? `👔 *Attire:* ${attireLabel(r.attireType, r.customAttire)}` : null,
       r.aspectRatio ? `📐 *Format:* ${r.aspectRatio === "9:16" ? "Reel / Story (9:16)" : "Landscape (16:9)"}` : null,
       r.language ? `🗣️ *Language:* ${r.language}` : null,
       r.notes ? `📝 *Your notes:* ${r.notes}` : null,
     );
+    // The one thing the client has to DO. Without it the job stalls and nobody knows why.
+    if (pack && r.realLocationProvided) {
+      lines.push(
+        ``,
+        `📸 *One small thing:* please send us photos of your shop / office — inside, outside, counter, product area. The more angles you send, the better your ad looks.`,
+      );
+    }
   }
 
   if (item.promise?.label) {

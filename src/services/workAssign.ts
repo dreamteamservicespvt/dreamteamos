@@ -7,13 +7,13 @@
  * pass the spec, optionally pass the order it came from, and the order is linked, flipped to
  * "assigned" and the member notified as part of the same call.
  */
-import { collection, addDoc, doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, doc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import { format } from "date-fns";
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import { normalizePhone } from "@/utils/phone";
 import { categoryLabel } from "@/utils/serviceCatalog";
-import { findUnassignedOrderForPhone } from "@/services/orders";
+import { findUnassignedOrderForPhone, revertOrderToUnassigned } from "@/services/orders";
 import type { Order } from "@/types";
 
 /** Sequential, readable work id (W001 / P002 / C003 / O004) — defined with the Orders pipeline. */
@@ -127,4 +127,46 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
   });
 
   return { id: ref.id, accessCode };
+}
+
+export interface UnassignWorkInput {
+  assignmentId: string;
+  /** The member losing the work — they are told, rather than finding it gone. */
+  assignedTo: string;
+  /** The order this fulfilled, when it came from the Orders queue. */
+  orderId?: string | null;
+  /** Business/display name, for the member's notification. */
+  title?: string;
+}
+
+/**
+ * Takes work back off a member and returns it to the Orders queue.
+ *
+ * The counterpart to createWorkAssignment, and the missing half of the pipeline: once work was
+ * assigned there was no way to undo it, so a job given to the wrong member — or to someone who
+ * turned out to be on leave — could only be deleted, which quietly destroyed the sale's link to
+ * the tech side. Now the assignment is removed and the order flips back to "unassigned", where
+ * anyone can pick it up and assign it to someone else.
+ *
+ * `returnedToQueue` is false for a job created directly in Work Assign with no order behind it:
+ * there is nothing to return it to, and inventing an order would put a job in the sales pipeline
+ * that nobody sold. The caller tells the user which of the two happened.
+ */
+export async function unassignWork(input: UnassignWorkInput): Promise<{ returnedToQueue: boolean }> {
+  const { assignmentId, assignedTo, orderId, title } = input;
+
+  // Order first: if this throws, the assignment is still on the member and the state stays
+  // consistent. Deleting first could strand the order as "assigned" to work that no longer exists.
+  if (orderId) await revertOrderToUnassigned(orderId);
+  await deleteDoc(doc(db, "work_assignments", assignmentId));
+
+  await sendNotification({
+    userId: assignedTo,
+    type: "work_unassigned",
+    title: "Work Removed",
+    message: `${title ? `"${title}" has` : "A job has"} been taken off your list and returned to the queue. Nothing further is needed from you.`,
+    link: "/tech/my-work",
+  });
+
+  return { returnedToQueue: !!orderId };
 }

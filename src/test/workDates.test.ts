@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { workCountsOn, deliveryDate } from "@/utils/workDates";
+import { workCountsOn, deliveryDate, assignedAtMs } from "@/utils/workDates";
 import type { WorkAssignment } from "@/types";
 
 /**
@@ -83,5 +83,36 @@ describe("deliveryDate", () => {
 
   it("never falls back to the assigned date — undelivered work has no delivery date", () => {
     expect(deliveryDate(make({ status: "verified", date: "2026-06-30" }))).toBeNull();
+  });
+});
+
+/**
+ * The Ads status board needs the assigned moment, not just the day: "2 days ago, 4:15 pm" is what
+ * tells a lead an order has been sitting since Tuesday rather than arriving this morning.
+ */
+describe("assignedAtMs", () => {
+  it("prefers the precise Firestore stamp", () => {
+    const ms = Date.UTC(2026, 6, 20, 9, 30);
+    expect(assignedAtMs({ assignedAt: { seconds: ms / 1000 } } as unknown as WorkAssignment)).toBe(ms);
+  });
+
+  it("falls back to the ISO stamp", () => {
+    const iso = "2026-07-20T09:30:00.000Z";
+    expect(assignedAtMs({ assignedAtIso: iso } as unknown as WorkAssignment)).toBe(Date.parse(iso));
+  });
+
+  // Midday, so a date-only record still sorts sensibly against precise stamps either side of it.
+  it("places a date-only record at midday", () => {
+    expect(assignedAtMs({ date: "2026-07-20" } as unknown as WorkAssignment)).toBe(Date.parse("2026-07-20T12:00:00"));
+  });
+
+  it("returns null when the record says nothing about being assigned", () => {
+    expect(assignedAtMs({} as WorkAssignment)).toBeNull();
+  });
+
+  it("agrees with workCountsOn about which day the work belongs to", () => {
+    const a = { assignedAt: { seconds: Date.UTC(2026, 6, 20, 9, 30) / 1000 }, assignedAtIso: "2026-07-20T09:30:00.000Z" } as unknown as WorkAssignment;
+    const day = new Date(assignedAtMs(a)!).toISOString().slice(0, 10);
+    expect(day).toBe(workCountsOn(a));
   });
 });

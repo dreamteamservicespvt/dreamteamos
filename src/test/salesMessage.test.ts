@@ -51,4 +51,63 @@ describe("buildClientSaleMessage", () => {
     expect(msg).not.toContain("custom");
     expect(msg).not.toContain("₹0");
   });
+
+  /**
+   * A special-category sale was confirming "Model: Female — Attire: Designer Saree" back to a
+   * client who had bought a cartoon-duo ad: a description of someone who never appears, in the
+   * client's own receipt.
+   */
+  describe("special-category sale", () => {
+    const packSale = (realLocationProvided: boolean) => ({
+      category: "promotional", packageKey: "30 Seconds", amount: 999,
+      requirement: {
+        specialCategory: "motu_patlu", realLocationProvided,
+        modelGender: "female", attireType: "traditional",
+        aspectRatio: "9:16", language: "Telugu",
+      },
+    } as unknown as SaleDetail);
+
+    it("tells the client who is actually in their ad", () => {
+      const msg = buildClientSaleMessage(lead, packSale(true));
+      expect(msg).toContain("Motu & Patlu");
+      expect(msg).toContain("both characters speak in every clip");
+    });
+
+    it("never describes a human model that will not appear", () => {
+      const msg = buildClientSaleMessage(lead, packSale(true));
+      expect(msg).not.toContain("*Model:*");
+      expect(msg).not.toContain("*Attire:*");
+      expect(msg).not.toContain("Designer Saree");
+    });
+
+    it("confirms their own background when they are sending photos, and asks for them", () => {
+      const msg = buildClientSaleMessage(lead, packSale(true));
+      expect(msg).toContain("your own business background");
+      expect(msg).toMatch(/please send us photos of your shop \/ office/i);
+    });
+
+    it("confirms an AI background when they are not, and does not ask for photos", () => {
+      const msg = buildClientSaleMessage(lead, packSale(false));
+      expect(msg).toContain("a custom AI background built for your business");
+      expect(msg).not.toMatch(/please send us photos/i);
+    });
+
+    it("still carries the shared details a pack ad does have", () => {
+      const msg = buildClientSaleMessage(lead, packSale(false));
+      expect(msg).toContain("Reel / Story (9:16)");
+      expect(msg).toContain("Telugu");
+    });
+
+    // The canary: an ordinary ad's confirmation must read exactly as it always did.
+    it("leaves a normal ad's confirmation untouched", () => {
+      const item = {
+        category: "promotional", packageKey: "30 Seconds", amount: 999,
+        requirement: { modelGender: "female", attireType: "traditional", aspectRatio: "9:16", language: "Telugu" },
+      } as SaleDetail;
+      const msg = buildClientSaleMessage(lead, item);
+      expect(msg).toContain("*Model:* Female");
+      expect(msg).toContain("Traditional (Designer Saree)");
+      expect(msg).not.toMatch(/motu|patlu|starring/i);
+    });
+  });
 });

@@ -449,7 +449,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     if (activePack && formData.locationMode === 'real_provided' && files.storeImage.length === 0) {
       await showAlert({
         title: "Location photos missing",
-        description: `You chose to use the client's real location for this ${activePack.label} ad, but no photos are attached. Upload them into "Store / Office Image", or switch to "No — create the location".`,
+        description: `You chose to use the client's real location for this ${activePack.label} ad, but no photos are attached. Upload them into "Store / Office Image", or switch to "No — create AI background".`,
         confirmText: "OK",
       });
       return;
@@ -954,8 +954,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                           </label>
                           <div className="grid grid-cols-2 gap-2">
                             {([
-                              { key: 'real_provided' as const, label: 'Yes — use their photos' },
-                              { key: 'ai_generated' as const, label: 'No — create the location' },
+                              { key: 'real_provided' as const, label: 'Yes — use their business background' },
+                              { key: 'ai_generated' as const, label: 'No — create AI background' },
                             ]).map(({ key, label }) => (
                               <button key={key} type="button"
                                 onClick={() => setFormData(prev => ({ ...prev, locationMode: key }))}
