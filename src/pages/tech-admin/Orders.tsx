@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  ClipboardList, Loader2, Search, MessageCircle, UserPlus, Clock, ShoppingBag, CheckCircle2, Sparkles, StickyNote, Hourglass, Sparkle, Trash2, CheckSquare, Square, Undo2,
+  ClipboardList, Loader2, Search, MessageCircle, UserPlus, Clock, ShoppingBag, CheckCircle2, Sparkles, StickyNote, Hourglass, Sparkle, Trash2, CheckSquare, Square, Undo2, Copy, Check,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useFirestoreQuery, useFirestoreCollection } from "@/hooks/useFirestore";
@@ -163,6 +163,19 @@ export default function Orders() {
    * the sale is theirs again until someone picks it up. Handled here as well as on the member's own
    * page because the Orders queue is where an admin notices the wrong person has it.
    */
+  /**
+   * Copy the client's number, with the tick that confirms it landed.
+   *
+   * Copied raw rather than as the formatted display text: what gets pasted is dialled or looked up,
+   * and "+91 98765 43210" with its spaces is not the same string as the number itself.
+   */
+  const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
+  const copyPhone = (orderId: string, phone: string) => {
+    navigator.clipboard.writeText(phone);
+    setCopiedPhone(orderId);
+    setTimeout(() => setCopiedPhone((current) => (current === orderId ? null : current)), 2000);
+  };
+
   const [confirmUnassign, setConfirmUnassign] = useState<Order | null>(null);
   const [unassigning, setUnassigning] = useState(false);
   const runUnassign = async () => {
@@ -485,11 +498,24 @@ export default function Orders() {
                 )}
 
                 {o.clientPhone && (
-                  <div className="mt-2">
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
                     <a href={getWhatsAppUrl(o.clientPhone)} target="_blank" rel="noopener noreferrer"
                       className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 transition-colors text-xs font-medium">
                       <MessageCircle className="w-3.5 h-3.5" /> {formatPhoneDisplay(o.clientPhone)}
                     </a>
+                    {/* WhatsApp is not the only way this number gets used — it goes into a dialer,
+                        a handover message, a spreadsheet. Same control as the member's assignment
+                        card, so the two screens behave identically. */}
+                    <button
+                      type="button"
+                      data-test="copy-client-phone"
+                      onClick={() => copyPhone(o.id, o.clientPhone)}
+                      title="Copy contact number"
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-accent text-xs transition-colors"
+                    >
+                      {copiedPhone === o.id ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedPhone === o.id ? 'Copied' : 'Copy'}</span>
+                    </button>
                   </div>
                 )}
               </div>
