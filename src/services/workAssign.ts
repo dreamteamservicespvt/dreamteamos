@@ -124,6 +124,8 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
       linkedOrder?.promise ? ` Deliver within ${linkedOrder.promise.label}.` : ""
     } Access code: ${accessCode}`,
     link: memberLink,
+    // One assignment is one "you have new work" notification for that member.
+    dedupeKey: `work_assigned_${ref.id}_${assignedTo}`,
   });
 
   return { id: ref.id, accessCode };

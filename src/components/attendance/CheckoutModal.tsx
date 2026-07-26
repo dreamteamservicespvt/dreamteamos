@@ -54,6 +54,9 @@ export default function CheckoutModal({ user, todayCheckin, assignments, onClose
         title: "Work Submitted for Approval",
         message: `${user.name} checked out — ${stats.completedToday} videos done, ${stats.pending} pending. Tap to review & approve.`,
         link: `/tech-admin/team/${user.uid}`,
+        // One check-out is one notification. The button is already disabled while this runs, but a
+        // fast double-tap can beat a state flag to the next paint; the key makes that harmless.
+        dedupeKey: `check_out_${todayCheckin.id}`,
       });
 
       setWaUrl(getWhatsAppUrl(ADMIN_WHATSAPP, buildCheckoutMessage({

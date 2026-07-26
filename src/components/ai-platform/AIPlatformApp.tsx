@@ -31,6 +31,8 @@ interface AIPlatformAppProps {
   onBusinessNameExtracted?: (name: string) => void;
   onClose: () => void;
   onComplete?: () => void;
+  /** True while the completion is being written — disables the button and shows progress. */
+  completing?: boolean;
 }
 
 // Human-readable labels for each attire option (shown in the attire dropdown, filtered by gender).
@@ -56,7 +58,7 @@ const BRAND_GRADIENT_HOVER = 'hover:from-violet-500 hover:via-blue-500 hover:to-
 const BRAND_TEXT = 'bg-clip-text text-transparent bg-gradient-to-r from-violet-500 via-blue-500 to-cyan-400';
 
 const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
-  assignment, assignmentId, onBusinessNameExtracted, onClose, onComplete
+  assignment, assignmentId, onBusinessNameExtracted, onClose, onComplete, completing = false
 }) => {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
@@ -730,9 +732,17 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
 
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {onComplete && (
-            <button onClick={onComplete}
-              className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold px-3 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-600/20 transition-all active:scale-[0.98]">
-              <CheckCircle2 className="w-4 h-4" /><span className="hidden sm:inline">Mark Complete</span><span className="sm:hidden">Done</span>
+            // Disabled and visibly busy while submitting. Submitting does several writes and can
+            // take seconds on mobile data; a button that looked unchanged the whole time is what
+            // led members to tap it repeatedly and fire a round of notifications each time.
+            <button
+              onClick={onComplete}
+              disabled={completing}
+              data-test="mark-complete"
+              className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold px-3 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-600/20 transition-all active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100">
+              {completing
+                ? <><Loader2 className="w-4 h-4 animate-spin" /><span>Submitting…</span></>
+                : <><CheckCircle2 className="w-4 h-4" /><span className="hidden sm:inline">Mark Complete</span><span className="sm:hidden">Done</span></>}
             </button>
           )}
           <button onClick={onClose}

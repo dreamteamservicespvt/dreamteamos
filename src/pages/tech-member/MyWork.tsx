@@ -17,6 +17,7 @@ import CodeVerificationModal from '@/components/ai-platform/CodeVerificationModa
 import AIPlatformApp from '@/components/ai-platform/AIPlatformApp';
 import SaleDeletedBanner from '@/components/work/SaleDeletedBanner';
 import { useConfirm } from '@/hooks/useConfirm';
+import { useToast } from '@/hooks/use-toast';
 
 /** Completed work is paged so a long history never buries the active assignments above it. */
 const COMPLETED_PAGE_SIZE = 10;
@@ -56,6 +57,7 @@ export default function MyWork() {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const { confirm, ConfirmDialog } = useConfirm();
+  const { toast } = useToast();
 
   // Track session duration
   useEffect(() => {
@@ -99,8 +101,30 @@ export default function MyWork() {
     setOpenAssignment(null);
   };
 
+  /**
+   * Submitting is slow and the button used to look identical the whole time it ran.
+   *
+   * `handleComplete` does five sequential writes — the assignment, a notification, a fan-out to
+   * every team leader, the order, the client record — which on mobile data takes seconds with
+   * nothing changing on screen. So members tapped again, and again, and each tap sent another
+   * round of notifications: that is where seven to ten identical alerts came from.
+   *
+   * A ref, not state: two taps in the same tick would both read a stale `false` from state and
+   * both proceed. The ref is set synchronously, so the second tap sees it immediately.
+   */
+  const completingRef = useRef(false);
+  const [completing, setCompleting] = useState(false);
+
   const handleComplete = async () => {
     if (!openAssignment) return;
+    if (completingRef.current) return;
+    // Already submitted — a stale render or a back-navigation must not send the whole round again.
+    if (openAssignment.status === 'completed' || openAssignment.status === 'verified') {
+      setOpenAssignment(null);
+      return;
+    }
+    completingRef.current = true;
+    setCompleting(true);
     try {
       // Save final session
       if (sessionStartRef.current) {
@@ -124,7 +148,8 @@ export default function MyWork() {
         });
       }
 
-      // Notify whoever assigned the work (admin or team leader)
+      // Notify whoever assigned the work (admin or team leader). Keyed on the job and the
+      // recipient, so "this work was completed" is one notification no matter how it is re-sent.
       if (openAssignment.assignedBy) {
         await sendNotification({
           userId: openAssignment.assignedBy,
@@ -132,6 +157,7 @@ export default function MyWork() {
           title: 'Work Completed',
           message: `${user?.name || 'A member'} has completed work: ${openAssignment.businessName || openAssignment.displayTitle}`,
           link: `/tech-admin/work-assign/${user.uid}?verify=${openAssignment.id}`,
+          dedupeKey: `work_completed_${openAssignment.id}_${openAssignment.assignedBy}`,
         });
       }
 
@@ -146,6 +172,7 @@ export default function MyWork() {
           title: 'Team Work Completed',
           message: `${user?.name || 'A team member'} completed work: ${openAssignment.businessName || openAssignment.displayTitle}`,
           link: `/team-leader/work-assign/${user.uid}?verify=${openAssignment.id}`,
+          dedupeKey: `work_completed_${openAssignment.id}`,
         });
       }
 
@@ -164,6 +191,14 @@ export default function MyWork() {
       setOpenAssignment(null);
     } catch (error) {
       console.error('Failed to mark complete:', error);
+      toast({
+        title: "Couldn't submit",
+        description: 'Your work was not submitted. Check your connection and try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      completingRef.current = false;
+      setCompleting(false);
     }
   };
 
@@ -309,6 +344,7 @@ export default function MyWork() {
       <AIPlatformApp
         assignment={liveOpenAssignment}
         assignmentId={liveOpenAssignment.id}
+        completing={completing}
         onBusinessNameExtracted={handleBusinessNameExtracted}
         onClose={handleClose}
         onComplete={handleComplete}

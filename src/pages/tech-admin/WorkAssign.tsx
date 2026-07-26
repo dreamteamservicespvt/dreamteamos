@@ -266,6 +266,8 @@ export default function WorkAssign() {
         title: 'New Team Work Assigned',
         message: `${getMemberName(form.assignedTo)} was assigned a new ${form.category} work (${clips} clips, ${form.duration}).`,
         link: `/team-leader/work-assign/${form.assignedTo}`,
+        // The fan-out appends each leader's uid, so one assignment is one notification per leader.
+        dedupeKey: `team_work_assigned_${uniqueId}`,
       });
 
       // The WhatsApp-ready requirements message — every ad spec the member needs, in one

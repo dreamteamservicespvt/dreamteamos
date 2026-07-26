@@ -1,4 +1,4 @@
-import { addDoc, collection, getDocs, query, serverTimestamp, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDocs, query, serverTimestamp, setDoc, where } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { isNative } from "@/utils/platform";
 
@@ -12,6 +12,24 @@ interface SendNotificationParams {
   /** Optional structured payload (e.g. { status, date } for an attendance update) so a
    *  consumer like UpdatePopup can render a rich UI without parsing the message string. */
   meta?: Record<string, unknown>;
+  /**
+   * Makes this notification idempotent: the same key always writes to the same document, so
+   * sending it twice updates one row instead of creating a second.
+   *
+   * Use it for anything that describes an EVENT rather than a message — "work completed", "spec
+   * updated". A tech member submitting work from a phone was producing seven to ten identical
+   * notifications, because the submit button fired on every tap while five slow writes ran and
+   * each call did an unconditional `addDoc`. The button no longer allows that, but a key here
+   * means no future caller can recreate the problem either.
+   *
+   * Build it from the event, never from the clock: `work_completed_<assignmentId>_<recipient>`.
+   */
+  dedupeKey?: string;
+}
+
+/** Firestore ids cannot contain `/` and must be non-empty; keep keys boring and predictable. */
+function safeDocId(key: string): string {
+  return key.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 1500);
 }
 
 /**
@@ -24,9 +42,9 @@ const API_BASE = isNative() ? "https://dreamteamos.vercel.app" : "";
  * Creates a Firestore notification document and triggers a web push notification.
  * The push call is fire-and-forget — it never blocks the main action.
  */
-export async function sendNotification({ userId, type, title, message, link, callDocId, meta }: SendNotificationParams): Promise<void> {
+export async function sendNotification({ userId, type, title, message, link, callDocId, meta, dedupeKey }: SendNotificationParams): Promise<void> {
   // 1. Write the in-app notification to Firestore (this powers the existing bell + sound system)
-  await addDoc(collection(db, "notifications"), {
+  const payload = {
     userId,
     type,
     title,
@@ -35,7 +53,14 @@ export async function sendNotification({ userId, type, title, message, link, cal
     ...(link ? { link } : {}),
     ...(meta ? { meta } : {}),
     createdAt: serverTimestamp(),
-  });
+  };
+
+  if (dedupeKey) {
+    // Same event, same document — a repeat refreshes the row rather than stacking another one.
+    await setDoc(doc(db, "notifications", safeDocId(dedupeKey)), payload);
+  } else {
+    await addDoc(collection(db, "notifications"), payload);
+  }
 
   // 2. Fire-and-forget: trigger web push via the serverless API
   try {
@@ -71,8 +96,13 @@ export async function notifyTechTeamLeaders(params: {
   title: string;
   message: string;
   link?: string;
+  /**
+   * Idempotency key for the fan-out. The recipient's uid is appended per leader, so one event
+   * yields exactly one notification per leader however many times this is called.
+   */
+  dedupeKey?: string;
 }): Promise<void> {
-  const { teamAdminUid, excludeUserId, type, title, message, link } = params;
+  const { teamAdminUid, excludeUserId, type, title, message, link, dedupeKey } = params;
   if (!teamAdminUid) return;
   try {
     const snap = await getDocs(
@@ -85,7 +115,11 @@ export async function notifyTechTeamLeaders(params: {
     await Promise.all(
       snap.docs
         .filter((d) => d.id !== excludeUserId)
-        .map((d) => sendNotification({ userId: d.id, type, title, message, ...(link ? { link } : {}) })),
+        .map((d) => sendNotification({
+          userId: d.id, type, title, message,
+          ...(link ? { link } : {}),
+          ...(dedupeKey ? { dedupeKey: `${dedupeKey}_${d.id}` } : {}),
+        })),
     );
   } catch (err) {
     console.error("[Notify] tech team-leader fan-out failed:", err);

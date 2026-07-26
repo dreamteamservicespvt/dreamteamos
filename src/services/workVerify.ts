@@ -32,6 +32,8 @@ export async function verifyAssignments(
         type: "work_verified",
         title: "Work Verified!",
         message: `Your ${assignment.category} work (${assignment.displayTitle}) has been verified and approved.`,
+        // Verifying the same job twice — a re-run, a retry, two admins at once — is one notification.
+        dedupeKey: `work_verified_${assignment.id}`,
       });
 
       // Order-driven work → record the delivery on the client (single customer view).
