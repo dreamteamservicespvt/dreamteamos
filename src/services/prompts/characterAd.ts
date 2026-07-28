@@ -61,16 +61,20 @@ export const characterNegativesBlock = (pack: CharacterPack): string =>
  * The beats scale with the package: every ad gets a hook and a close, and the clips in between
  * each carry one distinct, real reason to choose this business.
  */
-const promotionalBeats = (segmentCount: number, first: string, second: string): string => {
+const promotionalBeats = (segmentCount: number, first: string, second: string, place: string): string => {
+  const placeAndName = place
+    ? `NAMES THE BUSINESS **and says it is in ${place}**, saying plainly what it does`
+    : `NAMES THE BUSINESS, saying plainly what it does`;
+
   if (segmentCount <= 1) {
-    return `The single clip must name the business, give one real reason to choose it, and end with `
-      + `${second} delivering the call to action.`;
+    return `The single clip must name the business${place ? ` and the town it is in (${place})` : ""}, give one `
+      + `real reason to choose it, and end with ${second} delivering the call to action.`;
   }
 
   const beats = [
     `Clip 1 — THE HOOK: ${first}'s first line must STOP someone who is scrolling past. He addresses `
     + `${second} BY NAME and reacts to something striking — see THE HOOK below for how. `
-    + `${second} answers with "${first}" and NAMES THE BUSINESS, saying plainly what it does. `
+    + `${second} answers with "${first}" and ${placeAndName}. `
     + `This clip carries the one and only mention of each name — no clip after this may use either again.`,
   ];
   for (let i = 2; i < segmentCount; i++) {
@@ -93,8 +97,11 @@ export const CHARACTER_VOICEOVER_SYSTEM_PROMPT = (
   adType: string,
   festivalName: string,
   language: string = "Telugu",
+  /** The town / village the business is in. Empty when unknown — then no place is mentioned. */
+  placeName: string = "",
 ): string => {
   const lang = (language || "Telugu").trim() || "Telugu";
+  const place = (placeName || "").trim();
   const isLatin = lang.toLowerCase() === "english";
   const [first, second] = pack.characters;
   const spellings = packNameSpellings(pack, lang);
@@ -154,7 +161,35 @@ gets repeated.
 
 CLIP-BY-CLIP STRUCTURE:
 
-${promotionalBeats(segmentCount, first.name, second.name)}
+${promotionalBeats(segmentCount, first.name, second.name, place)}
+
+${place
+  ? `===== SAY WHERE THIS BUSINESS IS (MANDATORY) =====
+
+THE TOWN IS: ${place}
+
+This ad is watched by people who live near this shop, and "near" is the entire reason they stop
+scrolling. So the ad must SAY the place out loud. A viewer who hears the ad once must come away
+knowing the business is in ${place} — not a nice-sounding shop somewhere in the state.
+
+• "${place}" is spoken EXACTLY ONCE, in CLIP 1, in ${second.name}'s line, joined to the business's
+  name in the same breath — the way a person says it: "that is <business> here in ${place}".
+• Frame it as the two of them having COME there today. They have travelled to ${place} and walked
+  into this business, and they are telling the viewer about the place they are standing in.
+• Say the town, not a whole address. Never a door number, street, district, state or pincode —
+  those are read on screen, never spoken.
+• Never repeat "${place}" in any later clip. Once is what a listener needs; twice is a word the
+  business did not get.
+• SPELL IT EXACTLY AS "${place}" — that spelling and no other. A town whose name is written two
+  different ways in two runs is a town the client does not recognise as theirs.
+
+A script that never says "${place}" has FAILED, however good the rest of it is. Check before you
+output: does clip 1 contain the town's name? If not, rewrite clip 1.`
+  : `===== NO TOWN WAS PROVIDED =====
+
+The business information does not say which town or village this business is in, so DO NOT mention
+a place anywhere in the script. Never invent one, never guess from the business name, and never
+substitute a vague phrase like "our town" or "your area". Sell the business on what it does.`}
 
 ===== THE HOOK: THE FIRST LINE DECIDES WHETHER ANYONE WATCHES THE REST =====
 
@@ -196,9 +231,11 @@ The scripts that fail do so in the same two ways — half-sentences, and an endi
 This is shown in English so the STRUCTURE is unmistakable. Write yours in ${lang}, about the real
 business you were given. Word counts are marked to show how a complete thought fits the budget.
 
-clip-1 (the hook — curiosity gap, then the business is named)
+clip-1 (the hook — curiosity gap, then the business and its town are named)
   ${first.name}:  "${second.name}! Why is there a queue outside this shop?"            (9 words)
-  ${second.name}: "That is Sharma Electronics, ${first.name} — the whole town buys here."   (10 words)
+  ${second.name}: ${place
+    ? `"That is Sharma Electronics here in ${place}, ${first.name} — everyone buys here."   (11 words)`
+    : `"That is Sharma Electronics, ${first.name} — the whole town buys here."   (10 words)`}
 
 clip-2 (proof — a real, specific offering)
   ${first.name}:  "But do they keep the latest washing machines too?"          (9 words)
@@ -212,11 +249,13 @@ clip-4 (close — it ends, and it tells you what to do)
   ${first.name}:  "Then what are we waiting for, let us go!"                   (9 words)
   ${second.name}: "Visit Sharma Electronics today and see the festival offers yourself." (10 words)
 
-Notice: the first line provokes, the business is named immediately, every line is a whole sentence,
-each clip adds something new, and the last line tells the viewer exactly what to do.
+Notice: the first line provokes, the business${place ? " and its town are" : " is"} named immediately, every line is a
+whole sentence, each clip adds something new, and the last line tells the viewer exactly what to do.
 
 GROUND EVERY SINGLE LINE IN THE DATA YOU WERE GIVEN:
-1. Say the business's REAL NAME out loud in the ad, early — a viewer must know who this is.
+1. Say the business's REAL NAME out loud in the ad, early — a viewer must know who this is.${place
+  ? `\n1b. Say "${place}" out loud in clip 1 alongside that name — a viewer must know where this is.`
+  : ""}
 2. Use its REAL services, products, specialities, and selling points, exactly as provided.
 3. THE GENERIC TEST — apply it to every line you write: if the line would fit any other business
    in any other industry, it is WRONG. Delete it and write one that only this business could say.
@@ -286,9 +325,11 @@ export const CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT = (
   duration: number,
   segmentCount: number,
   language: string = "Telugu",
+  placeName: string = "",
 ): string => {
   const [first, second] = pack.characters;
   const spellings = packNameSpellings(pack, language);
+  const place = (placeName || "").trim();
   return `You repair ${language} cartoon two-character ad scripts. You will be given a script and a
 list of validation problems. Fix ONLY those problems and return the corrected script.
 
@@ -302,7 +343,9 @@ NON-NEGOTIABLE CONTRACT:
 • NEVER fix a word count by cutting a sentence in half. Shorten the THOUGHT instead: every line must still be one complete sentence that makes sense on its own
 • Clip 1's first line must still be a hook that provokes — a surprise, an unanswered question, the customer's own problem, or disbelief. Never a greeting, a welcome, or an announcement
 • The final clip must still FINISH the ad with a clear instruction to act — it must feel ended, not interrupted
-• Across ALL ${segmentCount} clips together, "${first.name}" is spoken exactly once and "${second.name}" exactly once — both in clip 1 where they greet each other, and never again anywhere
+• Across ALL ${segmentCount} clips together, "${first.name}" is spoken exactly once and "${second.name}" exactly once — both in clip 1 where they greet each other, and never again anywhere${place
+  ? `\n• The town "${place}" is spoken exactly ONCE, in clip 1, in ${second.name}'s line, next to the business's name — written in ${language}. If it is missing, put it back; if it appears in a later clip, remove it there. Never a street, district, state or pincode`
+  : `\n• No town, village, street or address is spoken anywhere — none was provided, so none may be invented`}
 • Total duration is ${duration} seconds; never add or remove clips${spellings.length > 0
   ? `\n• A spoken character name is written EXACTLY as: ${spellings.map((s) => `${s.name} → ${s.spelling}`).join(", ")}`
   : ""}

@@ -27,6 +27,27 @@ export async function reassignWork(
     reassignedAt: serverTimestamp(),
   });
 
+  /**
+   * The order keeps its own copy of who is doing the work, and it used to be left behind here.
+   *
+   * Anything that reads the order rather than the assignment then addressed the wrong person —
+   * most visibly the delivery-deadline sweep, which sent "your delivery is overdue" to a member
+   * who had not held that job since it moved. Writing both keeps the two in step at the moment
+   * they diverge, rather than teaching every reader to distrust the order.
+   */
+  if (assignment.orderId) {
+    try {
+      await updateDoc(doc(db, "orders", assignment.orderId), {
+        assignedTo: newMember.uid,
+        assignedToName: newMember.name,
+        updatedAt: serverTimestamp(),
+      });
+    } catch (err) {
+      // A missing or deleted order must never block the reassignment itself.
+      console.error("[reassign] could not move the order to the new member:", err);
+    }
+  }
+
   const title = assignment.businessName || assignment.clientName || assignment.displayTitle || "work";
 
   await sendNotification({

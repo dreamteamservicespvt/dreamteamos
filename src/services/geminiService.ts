@@ -38,6 +38,7 @@ import {
   assignPhotosToClips, describeClipLocations, attachmentDirective, parseLocationIndex,
   type LocationPhoto,
 } from "@/utils/locationAssignment";
+import { resolvePlaceName } from "@/utils/businessPlace";
 import { fileToBase64, readFileAsText } from "@/utils/fileHelpers";
 import { CLIP_SECONDS, clipLabel, formatClipScript, parseLabeledClips } from "@/utils/voiceOverFormat";
 
@@ -433,7 +434,7 @@ IMPORTANT:
     case 'voiceOver': {
       const segmentCount = Math.ceil(formData.duration / 8);
       systemPrompt = REFINE_EDIT_DIRECTIVE + buildLanguageDirective(formData) + (pack
-        ? CHARACTER_VOICEOVER_SYSTEM_PROMPT(pack, formData.duration, segmentCount, formData.adType, formData.festivalName, formData.language)
+        ? CHARACTER_VOICEOVER_SYSTEM_PROMPT(pack, formData.duration, segmentCount, formData.adType, formData.festivalName, formData.language, resolvePlaceName(businessInfo))
         : VOICEOVER_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName, formData.language, formData.gender || 'female'));
       userPrompt = `You previously generated this Voice Over script:
 
@@ -1353,6 +1354,44 @@ export const generateAdAssets = async (
   const packSpeakerList = pack ? packSpeakers(pack) : [];
   let dialogueClips: DialogueClip[] = [];
 
+  /**
+   * The town this business is in — the one thing that makes a local ad feel local.
+   *
+   * Resolved once, from the profile the extractor already produced, and threaded through the script
+   * prompt, its repair pass and its validation. Empty when the profile genuinely doesn't say where
+   * the business is, in which case no place is mentioned anywhere rather than invented.
+   */
+  const placeName = pack ? resolvePlaceName(businessInfo) : "";
+
+  /**
+   * That town written the way it will actually be SPOKEN.
+   *
+   * The script is in Telugu script and the profile holds "Bodhan" in Latin, so neither the prompt
+   * nor a validity check can work from the Latin form alone: the model transliterates it a
+   * different way each run (బోధన్ / బోదన్ / బోధన), which is the same drift that made the characters'
+   * own names unstable. Fixing the spelling up front makes the instruction exact and the check
+   * possible. A failure here is not fatal — the Latin form still goes into the prompt.
+   */
+  const resolveSpokenPlace = async (): Promise<string> => {
+    const lang = (formData.language || "Telugu").trim();
+    if (!placeName || !lang || lang.toLowerCase() === "english") return "";
+    try {
+      const res = await callWithFallback(async (ai, model) => ai.models.generateContent({
+        model,
+        contents: [{ role: "user", parts: [{ text:
+          `Write the Indian place name "${placeName}" in ${lang} script, exactly as a local person `
+          + `pronounces it. Reply with the name only — no explanation, no punctuation, no Latin letters.` }] }],
+      }));
+      const first = (res.text || "").trim().split(/\r?\n/)[0] || "";
+      const cleaned = first.replace(/["'`.,:;!?()\[\]]/g, "").trim();
+      // A reply that came back in Latin letters is the model refusing to transliterate, not a
+      // spelling — using it would put English letters into a Telugu script.
+      return cleaned && !/[A-Za-z]/.test(cleaned) ? cleaned : "";
+    } catch {
+      return "";
+    }
+  };
+
   /** Generate → validate → repair, for the two-character script. Mirrors the standard loop. */
   const generateCharacterDialogue = async (): Promise<DialogueClip[]> => {
     if (!pack) return [];
@@ -1376,20 +1415,40 @@ export const generateAdAssets = async (
         ...spellings.filter(s => s.name === speaker.name).map(s => s.spelling),
       ],
     }));
-    const checkDialogue = (clips: DialogueClip[]) =>
-      validateDialogueClips(clips, segmentCount, packSpeakerList, { characterNames });
-
-    // A pasted script already in two-speaker form is authoritative — honour it verbatim.
+    // A pasted script already in two-speaker form is authoritative — honour it verbatim. Checked
+    // before the town is resolved so a member's own words never pay for a model call.
     const pasted = customScript?.trim() ? parseDialogueClips(customScript, aliases) : [];
     if (pasted.length === segmentCount) return fixNames(pasted);
 
+    const spokenPlace = await resolveSpokenPlace();
+    /**
+     * The town has to be SAID, so it is validated rather than merely asked for. Both spellings
+     * count: the native one is what the script should contain, and the Latin one catches a script
+     * that named the place but ignored the transliteration.
+     */
+    const requiredPhrases = placeName
+      ? [{
+          label: `The town "${placeName}"`,
+          tokens: [placeName, spokenPlace].filter(Boolean),
+          clip: 1,
+          hint: `Put it in ${packSpeakerList[1]?.name ?? "the second character"}'s line, beside the `
+            + `business's name${spokenPlace ? `, spelled exactly "${spokenPlace}"` : ""}, and nowhere else.`,
+        }]
+      : [];
+    const checkDialogue = (clips: DialogueClip[]) =>
+      validateDialogueClips(clips, segmentCount, packSpeakerList, { characterNames, requiredPhrases });
+
+    // The spelling the script must use: the native form when we could get one, else the Latin name.
+    const promptPlace = spokenPlace || placeName;
+
     const systemPrompt = CHARACTER_VOICEOVER_SYSTEM_PROMPT(
-      pack, effectiveDuration, segmentCount, formData.adType, formData.festivalName, formData.language,
+      pack, effectiveDuration, segmentCount, formData.adType, formData.festivalName, formData.language, promptPlace,
     );
     const userPrompt = `Write the ${segmentCount}-clip cartoon dialogue script for:
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
   AD TYPE: ${formData.adType}
   ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName}` : ''}
+  ${placeName ? `TOWN / VILLAGE (must be spoken once, in clip 1): ${placeName}` : ''}
   DURATION: ${effectiveDuration} seconds (${segmentCount} clips of ${CLIP_SECONDS} seconds)`;
 
     const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
@@ -1419,7 +1478,7 @@ Return only the repaired ${segmentCount} clips.`;
         model,
         contents: [{ role: 'user', parts: [{ text: repairPrompt }] }],
         config: {
-          systemInstruction: CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT(pack, effectiveDuration, segmentCount, formData.language),
+          systemInstruction: CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT(pack, effectiveDuration, segmentCount, formData.language, promptPlace),
         },
       }));
 

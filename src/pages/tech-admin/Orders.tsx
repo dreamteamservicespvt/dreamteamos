@@ -87,13 +87,14 @@ export default function Orders() {
     }
   };
 
-  // One-time deadline sweep when the queue first loads.
+  // One-time deadline sweep when the queue first loads. Waits for the assignments too: without
+  // them the sweep cannot tell delivered work from outstanding work, nor who is holding it now.
   const sweptRef = useRef(false);
   useEffect(() => {
-    if (loading || sweptRef.current || orders.length === 0) return;
+    if (loading || sweptRef.current || orders.length === 0 || assignments.length === 0) return;
     sweptRef.current = true;
-    notifyDueOrdersOnOpen(orders);
-  }, [loading, orders]);
+    notifyDueOrdersOnOpen(orders, assignments);
+  }, [loading, orders, assignments]);
 
   /** Orders joined to the work fulfilling them — the source of the "in progress" column. */
   const byOrderId = useMemo(() => assignmentsByOrderId(assignments), [assignments]);

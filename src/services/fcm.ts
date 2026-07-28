@@ -14,6 +14,68 @@ function getMessagingInstance() {
   return messagingInstance;
 }
 
+/**
+ * A stable id for this install.
+ *
+ * FCM tokens are not stable: they rotate, and a browser that clears storage or a PWA that is
+ * reinstalled issues a brand new one. Every one of those was stored as another row for the same
+ * person, and the push API sends to every row it finds — so ONE event arrived on ONE phone two or
+ * three times. (The old token is often still deliverable, so it is not cleaned up as invalid.)
+ *
+ * Tagging each token with the device it came from lets a new token replace its predecessor instead
+ * of joining it. Best-effort: a browser with storage blocked returns "" and simply keeps the old
+ * behaviour rather than failing to register at all.
+ */
+const DEVICE_ID_KEY = "dts_device_id";
+
+function deviceId(): string {
+  try {
+    const existing = localStorage.getItem(DEVICE_ID_KEY);
+    if (existing) return existing;
+    const created = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    localStorage.setItem(DEVICE_ID_KEY, created);
+    return created;
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Store this token and retire any earlier token this same device holds for this same user.
+ *
+ * Filtered in memory rather than with a second `where`: a user's token set is a handful of rows,
+ * and one equality query needs no composite index to exist first.
+ */
+async function saveToken(
+  userId: string,
+  token: string,
+  platform: "web" | "android",
+  extra: Record<string, string> = {},
+): Promise<void> {
+  const device = deviceId();
+  await setDoc(doc(db, "fcmTokens", token), {
+    userId,
+    token,
+    platform,
+    ...(device ? { deviceId: device } : {}),
+    createdAt: new Date().toISOString(),
+    ...extra,
+  });
+
+  if (!device) return;
+  try {
+    const snap = await getDocs(query(collection(db, "fcmTokens"), where("userId", "==", userId)));
+    await Promise.all(
+      snap.docs
+        .filter((d) => d.id !== token && (d.data() as { deviceId?: string }).deviceId === device)
+        .map((d) => deleteDoc(doc(db, "fcmTokens", d.id))),
+    );
+  } catch (err) {
+    // A cleanup failure must never stop the new token from being usable.
+    console.error("Stale FCM token cleanup failed:", err);
+  }
+}
+
 // ══════════════════════════════════════════════════
 // NATIVE (Android) push notification helpers
 // ══════════════════════════════════════════════════
@@ -37,12 +99,7 @@ async function initFCMNative(userId: string): Promise<void> {
     PushNotifications.addListener("registration", async (tokenResult) => {
       const token = tokenResult.value;
       if (!token) return;
-      await setDoc(doc(db, "fcmTokens", token), {
-        userId,
-        token,
-        platform: "android",
-        createdAt: new Date().toISOString(),
-      });
+      await saveToken(userId, token, "android");
     });
 
     PushNotifications.addListener("registrationError", (err) => {
@@ -158,13 +215,7 @@ async function initFCMWeb(userId: string): Promise<void> {
 
   if (!token) return;
 
-  await setDoc(doc(db, "fcmTokens", token), {
-    userId,
-    token,
-    platform: "web",
-    createdAt: new Date().toISOString(),
-    userAgent: navigator.userAgent,
-  });
+  await saveToken(userId, token, "web", { userAgent: navigator.userAgent });
 }
 
 async function deleteFCMWeb(userId: string): Promise<void> {

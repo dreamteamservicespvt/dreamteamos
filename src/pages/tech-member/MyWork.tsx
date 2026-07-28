@@ -9,7 +9,8 @@ import { markOrderCompleted, revertOrderToAssigned } from '@/services/orders';
 import { upsertClientOnWorkComplete } from '@/services/clients';
 import { useAuthStore } from '@/store/authStore';
 import { useFirestoreQuery } from '@/hooks/useFirestore';
-import { format, subDays, startOfDay } from 'date-fns';
+import { format, subDays, subMonths, startOfDay } from 'date-fns';
+import { cycleForDate } from '@/utils/performanceCycle';
 import { formatDate, formatTime } from '@/utils/formatters';
 import DashboardDayPicker from '@/components/dashboard/DayPicker';
 import type { WorkAssignment } from '@/types';
@@ -21,6 +22,12 @@ import { useToast } from '@/hooks/use-toast';
 
 /** Completed work is paged so a long history never buries the active assignments above it. */
 const COMPLETED_PAGE_SIZE = 10;
+
+/** How many past performance months the filter offers. Half a year is as far back as anyone looks. */
+const CYCLE_OPTIONS = 6;
+
+/** Filter values that select a whole 10th → 9th month, e.g. `cycle:2026-07`. */
+const CYCLE_PREFIX = 'cycle:';
 
 function getDayLabel(date: Date): string {
   const today = startOfDay(new Date());
@@ -291,6 +298,40 @@ export default function MyWork() {
     return days;
   }, []);
 
+  /**
+   * The team's real months: 10th → 9th, newest first.
+   *
+   * A tech member's output, targets and salary are all counted over that cycle (see
+   * utils/performanceCycle), so "this month's work" here has to mean the same span it means on
+   * every other screen. The last five days answer "what am I doing now"; this answers "what did I
+   * do this month", which until now could only be reached one day at a time.
+   */
+  const cycles = useMemo(() => {
+    const today = startOfDay(new Date());
+    return Array.from({ length: CYCLE_OPTIONS }, (_, i) => {
+      const { from, to } = cycleForDate(subMonths(today, i));
+      return {
+        value: `${CYCLE_PREFIX}${format(from, 'yyyy-MM')}`,
+        // Spelled out in full: calling 10 Jul → 09 Aug "July" is the exact confusion to avoid.
+        label: `${format(from, 'dd MMM')} – ${format(to, 'dd MMM yyyy')}${i === 0 ? ' (this month)' : ''}`,
+        from: format(from, 'yyyy-MM-dd'),
+        to: format(to, 'yyyy-MM-dd'),
+      };
+    });
+  }, []);
+
+  const activeCycle = useMemo(
+    () => (dayFilter.startsWith(CYCLE_PREFIX) ? cycles.find(c => c.value === dayFilter) ?? null : null),
+    [dayFilter, cycles],
+  );
+
+  /** The day window in force, or null when everything is shown. Assignment dates are `yyyy-MM-dd`. */
+  const inWindow = (a: WorkAssignment): boolean => {
+    if (!a.date) return false;
+    if (activeCycle) return a.date >= activeCycle.from && a.date <= activeCycle.to;
+    return a.date === recentDays[parseInt(dayFilter)]?.dateStr;
+  };
+
   // Filter by date
   const filteredActive = useMemo(() => {
     let result = activeWork;
@@ -298,19 +339,18 @@ export default function MyWork() {
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
       result = result.filter(a => a.date === dateStr);
     } else if (dayFilter !== 'all') {
-      const dayIndex = parseInt(dayFilter);
-      const dayDateStr = recentDays[dayIndex]?.dateStr;
-      if (dayIndex === 0) {
+      if (dayFilter === '0') {
         // Today: show today's + any assigned (incoming) from past
-        const todayTasks = result.filter(a => a.date === dayDateStr);
-        const incomingPast = result.filter(a => a.date !== dayDateStr && a.status === 'assigned');
+        const todayTasks = result.filter(inWindow);
+        const incomingPast = result.filter(a => !inWindow(a) && a.status === 'assigned');
         result = [...todayTasks, ...incomingPast];
       } else {
-        result = result.filter(a => a.date === dayDateStr);
+        result = result.filter(inWindow);
       }
     }
     return result;
-  }, [activeWork, selectedDate, dayFilter, recentDays]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWork, selectedDate, dayFilter, recentDays, activeCycle]);
 
   const filteredCompleted = useMemo(() => {
     // Bucketed by the ASSIGNED date, not when it was marked complete/submitted — a video
@@ -320,17 +360,40 @@ export default function MyWork() {
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
       result = result.filter(a => a.date === dateStr);
     } else if (dayFilter !== 'all') {
-      const dayIndex = parseInt(dayFilter);
-      const dayDateStr = recentDays[dayIndex]?.dateStr;
-      result = result.filter(a => a.date === dayDateStr);
+      result = result.filter(inWindow);
     }
     return result;
-  }, [completedWork, selectedDate, dayFilter, recentDays]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [completedWork, selectedDate, dayFilter, recentDays, activeCycle]);
 
   const visibleCompleted = useMemo(
     () => filteredCompleted.slice(0, completedShown),
     [filteredCompleted, completedShown],
   );
+
+  /**
+   * The assignments the stat tiles count.
+   *
+   * They used to count everything the member had ever been given, whatever the filter said — which
+   * reads as a bug the moment a month is selected: pick 10 Jun – 09 Jul and "Completed" still shows
+   * a career total. The tiles now answer the question the filter asked.
+   */
+  const windowAssignments = useMemo(() => {
+    if (selectedDate) {
+      const dateStr = format(selectedDate, 'yyyy-MM-dd');
+      return assignments.filter(a => a.date === dateStr);
+    }
+    if (dayFilter === 'all') return assignments;
+    return assignments.filter(inWindow);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assignments, selectedDate, dayFilter, recentDays, activeCycle]);
+
+  const windowStats = useMemo(() => ({
+    active: windowAssignments.filter(a => ['assigned', 'in_progress', 'editing'].includes(a.status)).length,
+    completed: windowAssignments.filter(a => ['completed', 'verified'].includes(a.status)).length,
+    verified: windowAssignments.filter(a => a.status === 'verified').length,
+    seconds: windowAssignments.reduce((sum, a) => sum + (a.totalDurationSeconds || 0), 0),
+  }), [windowAssignments]);
 
   // Changing the date filter starts a fresh page — otherwise a previously expanded list would
   // keep showing more rows than the new filter warrants.
@@ -382,7 +445,12 @@ export default function MyWork() {
       <div className="flex flex-wrap items-center gap-3">
         <select value={selectedDate ? 'custom' : dayFilter} onChange={e => { setSelectedDate(undefined); setDayFilter(e.target.value); }}
           className="border rounded-lg px-3 py-2 text-sm bg-card text-card-foreground">
-          {recentDays.map((d, i) => <option key={i} value={String(i)}>{d.label}</option>)}
+          <optgroup label="Days">
+            {recentDays.map((d, i) => <option key={i} value={String(i)}>{d.label}</option>)}
+          </optgroup>
+          <optgroup label="Months (10th – 9th)">
+            {cycles.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+          </optgroup>
           <option value="all">All Days</option>
         </select>
         <DashboardDayPicker selectedDate={selectedDate} onSelect={(d) => { setSelectedDate(d); if (d) setDayFilter('custom'); }} />
@@ -390,28 +458,28 @@ export default function MyWork() {
           <button onClick={() => { setSelectedDate(undefined); setDayFilter('0'); }} className="text-xs text-muted-foreground hover:text-foreground">Clear date</button>
         )}
         <span className="text-xs text-muted-foreground ml-auto">
-          {selectedDate ? format(selectedDate, 'MMM d, yyyy') : recentDays[parseInt(dayFilter)]?.label || 'All Days'}
+          {selectedDate
+            ? format(selectedDate, 'MMM d, yyyy')
+            : activeCycle?.label || recentDays[parseInt(dayFilter)]?.label || 'All Days'}
         </span>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="bg-card border rounded-lg p-4 text-center">
-          <p className="text-2xl font-bold text-card-foreground">{activeWork.length}</p>
+          <p className="text-2xl font-bold text-card-foreground">{windowStats.active}</p>
           <p className="text-xs text-muted-foreground">Active</p>
         </div>
         <div className="bg-card border rounded-lg p-4 text-center">
-          <p className="text-2xl font-bold text-card-foreground">{completedWork.length}</p>
+          <p className="text-2xl font-bold text-card-foreground">{windowStats.completed}</p>
           <p className="text-xs text-muted-foreground">Completed</p>
         </div>
         <div className="bg-card border rounded-lg p-4 text-center">
-          <p className="text-2xl font-bold text-card-foreground">{assignments.filter(a => a.status === 'verified').length}</p>
+          <p className="text-2xl font-bold text-card-foreground">{windowStats.verified}</p>
           <p className="text-xs text-muted-foreground">Verified</p>
         </div>
         <div className="bg-card border rounded-lg p-4 text-center">
-          <p className="text-2xl font-bold text-card-foreground">
-            {formatDuration(assignments.reduce((sum, a) => sum + (a.totalDurationSeconds || 0), 0))}
-          </p>
+          <p className="text-2xl font-bold text-card-foreground">{formatDuration(windowStats.seconds)}</p>
           <p className="text-xs text-muted-foreground">Total Time</p>
         </div>
       </div>
@@ -526,11 +594,28 @@ export default function MyWork() {
         </div>
       )}
 
-      {assignments.length === 0 && (
+      {/* Nothing to show. Says WHY: an empty month reads as a broken page unless the filter that
+          emptied it is named. */}
+      {filteredActive.length === 0 && filteredCompleted.length === 0 && (
         <div className="text-center py-16 text-muted-foreground">
           <Briefcase className="w-16 h-16 mx-auto mb-4 opacity-20" />
-          <p className="text-lg font-medium">No assignments yet</p>
-          <p className="text-sm mt-1">Your work assignments will appear here</p>
+          {assignments.length === 0 ? (
+            <>
+              <p className="text-lg font-medium">No assignments yet</p>
+              <p className="text-sm mt-1">Your work assignments will appear here</p>
+            </>
+          ) : (
+            <>
+              <p className="text-lg font-medium">No work in this period</p>
+              <p className="text-sm mt-1">
+                Nothing was assigned to you in{' '}
+                {selectedDate
+                  ? format(selectedDate, 'MMM d, yyyy')
+                  : activeCycle?.label.replace(' (this month)', '') || recentDays[parseInt(dayFilter)]?.label || 'this period'}
+                . Try another day or month.
+              </p>
+            </>
+          )}
         </div>
       )}
     </div>

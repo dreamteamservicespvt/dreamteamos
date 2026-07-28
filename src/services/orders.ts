@@ -455,24 +455,58 @@ export function activeOrdersQuery(): Query<DocumentData> {
 }
 
 /**
- * On-open deadline sweep (no Blaze cron in Phase 1): from the already-loaded orders, notify the
- * assigned member for each ASSIGNED order that is near/overdue and hasn't been notified in the
- * last window. Throttled via `lastDeadlineNotifiedAt`. Fire-and-forget.
+ * On-open deadline sweep (no Blaze cron in Phase 1): from the already-loaded orders, notify whoever
+ * is CURRENTLY doing each still-outstanding order that is near/overdue. Throttled via
+ * `lastDeadlineNotifiedAt`. Fire-and-forget.
+ *
+ * ── Why this needs the work assignments, not just the orders ──────────────────────────────────
+ * An order carries its own copy of who it went to and whether it is done, and both copies go stale:
+ *
+ *   • `assignedTo` is written once when the order is handed out and is NOT rewritten when an admin
+ *     moves the job to someone else. Reading it sent "your delivery is overdue" to a member who had
+ *     not had that job for days, while the person actually doing it heard nothing. (utils/orderQueue
+ *     already knew this — `orderAssignee` prefers the assignment for exactly this reason.)
+ *   • `status` stays "assigned" whenever `markOrderCompleted` could not run — the work had no order
+ *     linked to it when it was completed, or the write failed. The work is finished; the order does
+ *     not know, and keeps chasing it.
+ *
+ * The work assignment is the truth on both counts, so the sweep now joins to it: no alert is ever
+ * sent for work that is already delivered, and the one that is sent goes to the person holding it.
  */
-export async function notifyDueOrdersOnOpen(orders: Order[], now: number = Date.now()): Promise<void> {
+export async function notifyDueOrdersOnOpen(
+  orders: Order[],
+  assignments: WorkAssignment[] = [],
+  now: number = Date.now(),
+): Promise<void> {
   const THROTTLE_MS = 6 * 60 * 60 * 1000;
+  const byOrderId = new Map<string, WorkAssignment>();
+  for (const a of assignments) if (a.orderId) byOrderId.set(a.orderId, a);
+
   for (const order of orders) {
-    if (order.status !== "assigned" || !order.assignedTo || !order.promise) continue;
+    if (order.status !== "assigned" || !order.promise) continue;
+
+    const work = byOrderId.get(order.id);
+    // Delivered work is never late, whatever the order still says.
+    if (work && (work.status === "completed" || work.status === "verified")) continue;
+
+    // The member holding it now. The assignment wins; the order's copy is only a fallback for
+    // orders whose work record hasn't loaded (or predates the link).
+    const assignee = work?.assignedTo || order.assignedTo;
+    if (!assignee) continue;
+
     const state = deadlineState(promiseDueMs(order.promise), now);
     if (state === "ok") continue;
     const lastMs = tsToMs(order.lastDeadlineNotifiedAt);
     if (lastMs && now - lastMs < THROTTLE_MS) continue;
     try {
       await sendNotification({
-        userId: order.assignedTo,
+        userId: assignee,
         type: "work_deadline",
         title: state === "overdue" ? "Delivery overdue" : "Delivery due soon",
         message: `"${order.businessName || "Client work"}" is ${state === "overdue" ? "past its" : "near its"} ${order.promise.label} promise. Please deliver.`,
+        // One alert per order per state per recipient: whoever opens the queue next re-runs this
+        // sweep, and without a key every admin who opened the page added another row.
+        dedupeKey: `work_deadline_${order.id}_${state}_${assignee}`,
       });
       await updateDoc(doc(db, "orders", order.id), { lastDeadlineNotifiedAt: serverTimestamp() });
     } catch (err) {

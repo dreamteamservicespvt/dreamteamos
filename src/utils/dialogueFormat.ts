@@ -245,6 +245,26 @@ export interface DialogueValidationOptions {
    * many, not "up to". One grounds who is on screen; a second is a word the business did not get.
    */
   mentionsPerName?: number;
+  /** Phrases the script is required to contain, e.g. the town the business is in. */
+  requiredPhrases?: RequiredPhrase[];
+}
+
+/**
+ * Something the ad MUST say, and where.
+ *
+ * Built for the town / village name: a local ad that never says where the shop is has lost the one
+ * thing that makes a viewer stop, so its absence is a validation failure that the repair pass fixes
+ * — not a suggestion in the prompt that a model may quietly drop.
+ */
+export interface RequiredPhrase {
+  /** What this is, for the repair message: "the town Bodhan". */
+  label: string;
+  /** Every spelling that counts as having said it (Latin plus the native-script form). */
+  tokens: string[];
+  /** 1-based clip it must appear in. Omit to accept it anywhere in the script. */
+  clip?: number;
+  /** Instruction appended to the repair message, e.g. where to put it. */
+  hint?: string;
 }
 
 /** One character's name and every spelling of it that counts as a spoken mention. */
@@ -299,9 +319,29 @@ export function validateDialogueClips(
     maxWordsPerLine = MAX_WORDS_PER_LINE,
     characterNames = [],
     mentionsPerName = 1,
+    requiredPhrases = [],
   } = options;
 
   const issues: string[] = [];
+
+  /**
+   * The things the ad has to say out loud — currently the town it is set in.
+   *
+   * Checked against a specific clip when one is given, because "somewhere in the script" is not the
+   * requirement: the place belongs in clip 1, next to the business's name, where a viewer decides
+   * whether this ad is about anywhere near them.
+   */
+  for (const phrase of requiredPhrases) {
+    const scope = typeof phrase.clip === "number" ? clips.slice(phrase.clip - 1, phrase.clip) : clips;
+    const said = countNameMentions(scope, phrase.tokens) > 0;
+    if (!said) {
+      const where = typeof phrase.clip === "number" ? `clip ${phrase.clip}` : "the script";
+      issues.push(
+        `${phrase.label} is never spoken in ${where}. Rewrite ${where} so it is said out loud, `
+        + `exactly once.${phrase.hint ? ` ${phrase.hint}` : ""}`,
+      );
+    }
+  }
 
   /**
    * BOTH names, each exactly once, in an ad of any length.

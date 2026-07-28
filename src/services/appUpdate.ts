@@ -15,8 +15,24 @@
  * they return" would destroy work at exactly the wrong moment.
  *
  * The update is therefore always OFFERED, never forced — except where there is provably nothing to
- * lose, which is the login screen. Detection is automatic; the moment of applying it is the
- * member's.
+ * lose. Detection is automatic; the moment of applying it is the member's.
+ *
+ * ── What "provably nothing to lose" has to cover ──────────────────────────────────────────────
+ * It used to mean only the login screen, and that turned out to be almost nobody: sign-in persists,
+ * so a member who installed the app months ago never sees the login screen again. Their only route
+ * to a new version was the banner — and dismissing it silenced it permanently, so one stray tap on
+ * the X left that phone on an old build for weeks. That is the "the app isn't updating" report.
+ *
+ * So there are now two safe moments instead of one, and dismissing is a snooze rather than a mute:
+ *
+ *   1. The login screen, as before.
+ *   2. Coming back to an app that has been in the background long enough that nothing on screen is
+ *      still being worked on — and only when nothing has ASKED to be left alone.
+ *
+ * `holdUpdates` is that asking. A screen holding work in memory rather than in the DOM — the ad
+ * generator above all — registers a hold for as long as it is open, and no automatic reload happens
+ * while any hold is live. `safeToAutoApply` adds a generic guard on top for everything else: a
+ * dirty form field or an open dialog also means someone is mid-task.
  */
 
 /** Compiled in by vite.config.ts. */
@@ -33,6 +49,50 @@ let listeners: UpdateListener[] = [];
 let pending: string | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
 let started = false;
+
+/** Live reasons not to reload on our own. A screen registers one while it holds unsaved work. */
+const holds = new Set<symbol>();
+
+/**
+ * "Do not reload underneath me." Returns the release; call it when the work is no longer at risk.
+ *
+ * Used by screens whose state lives in memory rather than in form fields, where the generic
+ * dirty-input check below cannot see it. The ad generator is the reason this exists: forty minutes
+ * of generated prompts sit in React state and would vanish on a reload without a trace.
+ */
+export function holdUpdates(): () => void {
+  const token = Symbol("update-hold");
+  holds.add(token);
+  return () => { holds.delete(token); };
+}
+
+/** Whether anything has asked not to be reloaded. */
+export function updatesHeld(): boolean {
+  return holds.size > 0;
+}
+
+/**
+ * Whether reloading right now would provably lose nothing.
+ *
+ * Deliberately generic rather than a list of screens: a dirty input, a half-typed textarea or an
+ * open dialog all mean someone is mid-task, whatever page they are on. A new screen added later
+ * inherits the protection without anyone remembering to opt in.
+ */
+export function safeToAutoApply(): boolean {
+  if (updatesHeld()) return false;
+  if (typeof document === "undefined") return true;
+
+  // An open dialog is a task in progress — a modal is never idle furniture.
+  if (document.querySelector('[role="dialog"], dialog[open]')) return false;
+
+  const fields = document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input, textarea");
+  for (const field of Array.from(fields)) {
+    if (field.type === "hidden" || field.disabled || field.readOnly) continue;
+    // Typed into and not yet what it started as: unsaved.
+    if (field.value && field.value !== field.defaultValue) return false;
+  }
+  return true;
+}
 
 /** The newer build id, once one has been seen. Null while we are up to date. */
 export function pendingBuildId(): string | null {
@@ -141,4 +201,5 @@ export function __resetUpdateStateForTests(): void {
   if (timer) clearInterval(timer);
   timer = null;
   started = false;
+  holds.clear();
 }

@@ -26,6 +26,7 @@ import { characterPackOptions, getCharacterPack } from "@/services/characterPack
 import { watchAdLanguages, rememberAdLanguage, mergeAdLanguages } from "@/services/adLanguages";
 import { upsertOrderForSale, cancelOrderForSale, addOrderUpdateNote, orderDocId } from "@/services/orders";
 import { buildClientSaleMessage } from "@/utils/salesMessage";
+import { dayRevenue, saleDay, type DayRevenue } from "@/utils/salesRevenue";
 import {
   Search, Phone, MessageCircle, StickyNote, ChevronDown, ChevronUp, Clock,
   Loader2, Check, Upload, ExternalLink, Plus, Trash2, ShoppingBag, X, Lock, AlertTriangle, Snowflake, FileText, RotateCcw, Clapperboard, Copy, Pencil, History, Send,
@@ -49,13 +50,6 @@ const STATUS_OPTIONS: { value: LeadStatus; label: string; color: string }[] = [
 
 // Sale categories + packages now live in the canonical DTS catalog (single source of truth,
 // shared with Orders and the Clients "Our Works" breakdown): src/utils/serviceCatalog.ts
-
-function getSaleDate(item: SaleDetail, lead: Lead): string | null {
-  const ts = (item.submittedAt as any)?.seconds;
-  if (ts) return format(new Date(ts * 1000), "yyyy-MM-dd");
-  if (lead.createdAt?.seconds) return format(new Date(lead.createdAt.seconds * 1000), "yyyy-MM-dd");
-  return null;
-}
 
 function fmtSaleTs(ts: any): string | null {
   const s = ts?.seconds;
@@ -216,7 +210,7 @@ export default function MyLeads() {
           if (item.verificationStatus !== salesStatus) return false;
         }
         if (salesDay !== "all") {
-          const d = getSaleDate(item, lead);
+          const d = saleDay(item, lead);
           const dayDateStr = recentDays[parseInt(salesDay)]?.dateStr;
           if (!d || d !== dayDateStr) return false;
         }
@@ -274,6 +268,21 @@ export default function MyLeads() {
 
   const activeDayLeads = applyDayWindow(filtered);            // what's displayed
   const dayWindowLeads = applyDayWindow(searchFiltered);      // counts/stats — independent of status filter
+
+  /**
+   * The money this member actually brought in over the selected window.
+   *
+   * Counted from the SALES, not from the leads showing above — see utils/salesRevenue for why the
+   * two give different answers and which one is right.
+   */
+  const revenue = useMemo(() => {
+    if (selectedDate) return dayRevenue(leads, new Set([format(selectedDate, "yyyy-MM-dd")]));
+    if (dayFilter === "all") return dayRevenue(leads, null);
+    const day = recentDays[parseInt(dayFilter)]?.dateStr;
+    return dayRevenue(leads, new Set(day ? [day] : []));
+  }, [leads, selectedDate, dayFilter, recentDays]);
+
+  const [showRevenueBreakdown, setShowRevenueBreakdown] = useState(false);
 
   // Status counts for dropdown — from the day window WITHOUT the status filter applied
   const statusCounts = useMemo(() => {
@@ -454,11 +463,6 @@ export default function MyLeads() {
           const items = l.saleItems || (l.saleDetails ? [l.saleDetails] : []);
           return items.some((i: any) => i.verificationStatus === "pending");
         }).length;
-        const vItems = dayLeads.flatMap((l) => {
-          const items = l.saleItems || (l.saleDetails ? [l.saleDetails] : []);
-          return items.filter((i: any) => i.verificationStatus === "verified");
-        });
-        const rev = vItems.reduce((s: number, i: any) => s + (i.amount || 0), 0);
         return (
           <div className="grid grid-cols-3 md:grid-cols-5 gap-2 md:gap-3">
             {[
@@ -466,16 +470,50 @@ export default function MyLeads() {
               { label: "Called", value: calledCount, color: "text-info" },
               { label: "Verif. Pending", value: pendingVerif, color: "text-warning" },
               { label: "Sale Done", value: saleDone, color: "text-success" },
-              { label: "Revenue", value: formatCurrency(rev), color: "text-primary" },
             ].map((s) => (
               <div key={s.label} className="bg-card border border-border rounded-xl p-2.5 md:p-4">
                 <p className="text-[10px] md:text-xs text-muted-foreground">{s.label}</p>
                 <p className={`font-display font-bold text-base md:text-xl ${s.color}`}>{s.value}</p>
               </div>
             ))}
+            {/* Revenue opens its own split — "how many 499, how many 999" is the question a member
+                asks the moment they see the total. */}
+            <button
+              type="button"
+              data-test="revenue-card"
+              onClick={() => setShowRevenueBreakdown(true)}
+              className="bg-card border border-border rounded-xl p-2.5 md:p-4 text-left transition-colors hover:border-primary/40 hover:bg-accent/40"
+            >
+              <p className="text-[10px] md:text-xs text-muted-foreground flex items-center gap-1">
+                Revenue <ChevronDown size={10} className="opacity-50 -rotate-90" />
+              </p>
+              <p className="font-display font-bold text-base md:text-xl text-primary">{formatCurrency(revenue.total)}</p>
+              <p className="text-[9px] md:text-[10px] text-muted-foreground mt-0.5 truncate">
+                {revenue.count === 0
+                  ? "No sales yet"
+                  : revenue.pending > 0
+                    ? `${formatCurrency(revenue.verified)} verified`
+                    : `${revenue.count} sale${revenue.count === 1 ? "" : "s"}`}
+              </p>
+            </button>
           </div>
         );
       })()}
+
+      {/* Revenue breakdown */}
+      {showRevenueBreakdown && (
+        <RevenueBreakdownModal
+          revenue={revenue}
+          periodLabel={
+            selectedDate
+              ? format(selectedDate, "dd MMM yyyy")
+              : dayFilter === "all"
+                ? "All days"
+                : `${recentDays[parseInt(dayFilter)]?.label ?? ""} (${recentDays[parseInt(dayFilter)] ? format(recentDays[parseInt(dayFilter)].date, "dd MMM") : ""})`
+          }
+          onClose={() => setShowRevenueBreakdown(false)}
+        />
+      )}
 
       {/* View Toggle */}
       <div className="flex gap-1.5">
@@ -732,6 +770,78 @@ interface LeadCardProps {
   setExpandedSale: (id: string | null) => void;
   /** This member's orders, keyed by order-doc id, so each sale row knows its delivery status. */
   ordersById: Map<string, Order>;
+}
+
+/**
+ * The day's money, split by ticket price.
+ *
+ * "How much did I make today" is immediately followed by "made up of what" — three 499s and a 999
+ * is a different day from one 1,999, and the member is the one who has to know which. Grouping by
+ * price rather than package is deliberate: that is the number they quote on the phone.
+ */
+function RevenueBreakdownModal({
+  revenue, periodLabel, onClose,
+}: { revenue: DayRevenue; periodLabel: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 p-0 md:p-4" onClick={onClose}>
+      <motion.div
+        initial={{ opacity: 0, y: 24 }}
+        animate={{ opacity: 1, y: 0 }}
+        role="dialog"
+        aria-label="Revenue breakdown"
+        data-test="revenue-breakdown"
+        onClick={(e) => e.stopPropagation()}
+        className="w-full md:max-w-md bg-card border border-border rounded-t-2xl md:rounded-2xl p-5 space-y-4 max-h-[85vh] overflow-y-auto"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="font-display font-bold text-foreground text-lg">Revenue</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">{periodLabel}</p>
+          </div>
+          <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground transition-colors">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="rounded-xl bg-primary/10 border border-primary/20 p-4">
+          <p className="font-display font-bold text-2xl text-primary">{formatCurrency(revenue.total)}</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {revenue.count} sale{revenue.count === 1 ? "" : "s"}
+            {revenue.pending > 0 && (
+              <> · <span className="text-success">{formatCurrency(revenue.verified)} verified</span>
+                {" · "}<span className="text-warning">{formatCurrency(revenue.pending)} awaiting approval</span></>
+            )}
+          </p>
+        </div>
+
+        {revenue.breakdown.length === 0 ? (
+          <div className="text-center py-8">
+            <ShoppingBag size={28} className="mx-auto text-muted-foreground/30 mb-2" />
+            <p className="text-sm text-muted-foreground">No sales in this period yet.</p>
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">By package price</p>
+            {revenue.breakdown.map((row) => (
+              <div key={row.amount} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="font-mono font-semibold text-foreground text-sm">
+                    {formatCurrency(row.amount)} <span className="text-muted-foreground font-sans font-normal">× {row.count}</span>
+                  </p>
+                  {row.categories.length > 0 && (
+                    <p className="text-[10px] text-muted-foreground truncate mt-0.5">
+                      {row.categories.join(", ")}
+                    </p>
+                  )}
+                </div>
+                <p className="font-display font-bold text-primary shrink-0">{formatCurrency(row.amount * row.count)}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </motion.div>
+    </div>
+  );
 }
 
 function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expandedNotes, setExpandedNotes, expandedSale, setExpandedSale, ordersById }: LeadCardProps) {

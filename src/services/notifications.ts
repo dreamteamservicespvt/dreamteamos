@@ -1,4 +1,4 @@
-import { addDoc, collection, doc, getDocs, query, serverTimestamp, setDoc, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs, query, serverTimestamp, setDoc, where } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { isNative } from "@/utils/platform";
 
@@ -33,6 +33,53 @@ function safeDocId(key: string): string {
 }
 
 /**
+ * How long the same keyed notification counts as ONE occurrence.
+ *
+ * The dedupe key made the in-app row single, but the push was still fired on every call — so a
+ * member submitting work from a phone left one row in the bell and a burst of phone alerts for the
+ * admin and the team leader, which is what people actually complain about.
+ *
+ * A window rather than "never send twice", because some keyed events genuinely happen again: work
+ * sent back for edits and resubmitted an hour later IS a second completion and must be announced.
+ * Ten minutes is far longer than any burst of taps or repeated page sweep, and far shorter than a
+ * real second occurrence.
+ */
+const COLLAPSE_WINDOW_MS = 10 * 60 * 1000;
+
+function tsToMs(value: unknown): number {
+  const ts = value as { toMillis?: () => number; seconds?: number } | null | undefined;
+  if (!ts) return 0;
+  if (typeof ts.toMillis === "function") return ts.toMillis();
+  if (typeof ts.seconds === "number") return ts.seconds * 1000;
+  return 0;
+}
+
+/**
+ * Whether this keyed notification was already delivered a moment ago.
+ *
+ * Same recipient, same words, written inside the window — that is a repeat of one event, not a new
+ * one. A read failure answers "no": telling someone twice is a nuisance, but never telling them is
+ * a job nobody hears about.
+ */
+async function alreadyDelivered(
+  id: string,
+  next: { userId: string; title: string; message: string },
+): Promise<boolean> {
+  try {
+    const snap = await getDoc(doc(db, "notifications", id));
+    if (!snap.exists()) return false;
+    const prev = snap.data() as { userId?: string; title?: string; message?: string; createdAt?: unknown };
+    if (prev.userId !== next.userId || prev.title !== next.title || prev.message !== next.message) return false;
+    const writtenMs = tsToMs(prev.createdAt);
+    // A row whose serverTimestamp hasn't resolved yet is a write from seconds ago — the burst case.
+    if (!writtenMs) return true;
+    return Date.now() - writtenMs < COLLAPSE_WINDOW_MS;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * On native (Capacitor), fetch("/api/...") hits https://localhost which doesn't exist.
  * We must use the absolute Vercel URL so the serverless function is reachable.
  */
@@ -56,8 +103,12 @@ export async function sendNotification({ userId, type, title, message, link, cal
   };
 
   if (dedupeKey) {
+    const id = safeDocId(dedupeKey);
+    // Already told them, moments ago. Writing again would only re-alert their phone for something
+    // they have already been alerted about, which is the whole complaint.
+    if (await alreadyDelivered(id, { userId, title, message })) return;
     // Same event, same document — a repeat refreshes the row rather than stacking another one.
-    await setDoc(doc(db, "notifications", safeDocId(dedupeKey)), payload);
+    await setDoc(doc(db, "notifications", id), payload);
   } else {
     await addDoc(collection(db, "notifications"), payload);
   }

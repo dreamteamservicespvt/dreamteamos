@@ -2702,6 +2702,7 @@ EXTRACT THE FOLLOWING (mark as "Not provided" if not available):
 
 2. CONTACT INFORMATION (EXTRACT ALL — every phone number, every email):
    - Full Address (COMPLETE as printed on visiting card):
+   - City / Town / Village (JUST the place name on its own, e.g. "Bodhan", "Nizamabad" — no door number, no street, no district/state/pincode. Take it from the address if it is only written there. If no place is stated anywhere, write "Not provided" — never guess one):
    - Phone Number(s) (ALL numbers — mobile, landline, WhatsApp):
    - Email (ALL email addresses):
    - Website:

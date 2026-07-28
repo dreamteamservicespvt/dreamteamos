@@ -18,6 +18,7 @@ import { db } from '@/services/firebase';
 import { useAuthStore } from '@/store/authStore';
 import type { WorkAssignment } from '@/types';
 import { useConfirm } from '@/hooks/useConfirm';
+import { holdUpdates } from '@/services/appUpdate';
 import SpecUpdateDialog from './SpecUpdateDialog';
 import {
   describeSpecChanges, specOf, specSignature, type AssignmentSpec, type SpecChange,
@@ -64,6 +65,17 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   const isDark = resolvedTheme === 'dark';
   const user = useAuthStore((s) => s.user);
   const { confirm: showAlert, ConfirmDialog } = useConfirm();
+
+  /**
+   * No automatic reload while this screen is open.
+   *
+   * Everything here — the uploads, the generated prompts, the refinements — lives in React state,
+   * so a reload loses it silently and there is nothing to recover it from. The app may take a new
+   * version by itself once a member has plainly moved on (see components/layout/AppUpdateBanner);
+   * this is how the one screen that can't afford it says so. The banner still appears, so the
+   * member can take the update themselves whenever they are ready.
+   */
+  useEffect(() => holdUpdates(), []);
 
   const [formData, setFormData] = useState<AdFormData>({
     adType: AdType.COMMERCIAL,

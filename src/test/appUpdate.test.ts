@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { checkForUpdate, onUpdateAvailable, pendingBuildId, RUNNING_BUILD_ID, __resetUpdateStateForTests } from "@/services/appUpdate";
+import {
+  checkForUpdate, holdUpdates, onUpdateAvailable, pendingBuildId, RUNNING_BUILD_ID,
+  safeToAutoApply, updatesHeld, __resetUpdateStateForTests,
+} from "@/services/appUpdate";
 
 /**
  * An installed PWA is not a page that gets reloaded — it is an app left open on a phone for weeks.
@@ -100,5 +103,59 @@ describe("onUpdateAvailable", () => {
     mockVersionEndpoint({ buildId: "build-200" });
     await checkForUpdate();
     expect(seen).toEqual([]);
+  });
+});
+
+/**
+ * A member who is signed in never passes the login screen, so the app has to be able to take a new
+ * version on its own — but only when nothing on screen is still being worked on. These pin the
+ * guard that decides that.
+ */
+describe("safeToAutoApply", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("is safe on an idle page", () => {
+    expect(safeToAutoApply()).toBe(true);
+  });
+
+  it("refuses while a screen is holding work in memory", () => {
+    const release = holdUpdates();
+    expect(updatesHeld()).toBe(true);
+    expect(safeToAutoApply()).toBe(false);
+    release();
+    expect(safeToAutoApply()).toBe(true);
+  });
+
+  it("counts every hold, so one screen releasing does not free another", () => {
+    const a = holdUpdates();
+    const b = holdUpdates();
+    a();
+    expect(safeToAutoApply()).toBe(false);
+    b();
+    expect(safeToAutoApply()).toBe(true);
+  });
+
+  it("refuses while a dialog is open", () => {
+    document.body.innerHTML = '<div role="dialog">Add Sale</div>';
+    expect(safeToAutoApply()).toBe(false);
+  });
+
+  it("refuses while a field has been typed into", () => {
+    document.body.innerHTML = '<input type="text" />';
+    (document.querySelector("input") as HTMLInputElement).value = "half a phone number";
+    expect(safeToAutoApply()).toBe(false);
+  });
+
+  it("ignores a field still showing what it started with", () => {
+    document.body.innerHTML = '<input type="text" value="Telugu" />';
+    expect(safeToAutoApply()).toBe(true);
+  });
+
+  it("ignores hidden, disabled and read-only fields", () => {
+    document.body.innerHTML = '<input type="hidden" /><input disabled /><input readonly />';
+    for (const el of Array.from(document.querySelectorAll("input"))) el.value = "x";
+    expect(safeToAutoApply()).toBe(true);
   });
 });
