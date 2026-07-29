@@ -7,6 +7,7 @@ import { logActivity } from "@/services/activityLog";
 import { upsertOrderForSale, cancelOrderForSale } from "@/services/orders";
 import { useAuthStore } from "@/store/authStore";
 import { formatCurrency, formatDuration } from "@/utils/formatters";
+import { discountEditLabel } from "@/utils/bulkDiscount";
 import { useNow } from "@/hooks/useNow";
 import { applySaleFreeze, adminReleaseLock, buildLeadFreezeFields, clearedLeadFreezeFields, clearSaleFreeze } from "@/services/numberLock";
 import { format, subDays, startOfDay } from "date-fns";
@@ -871,6 +872,37 @@ export default function SalesApprovals() {
                     <span className="text-muted-foreground">Package:</span>{" "}
                     <span className="text-foreground font-medium">{li.item.packageKey || "—"}</span>
                   </div>
+                  {/* A bulk order's price is quantity × unit × discount. Approving it means
+                      approving that arithmetic, so all three are on the card rather than a total. */}
+                  {!!li.item.quantity && li.item.quantity > 1 && (
+                    <div>
+                      <span className="text-muted-foreground">Quantity:</span>{" "}
+                      <span className="text-foreground font-medium">
+                        {li.item.quantity} × {formatCurrency(li.item.unitAmount || 0)}
+                        {li.item.discountPercent ? ` − ${li.item.discountPercent}%` : ""}
+                      </span>
+                    </div>
+                  )}
+                  {li.item.discountEdited && (
+                    <div className="col-span-2">
+                      <span data-test="approval-discount-edited"
+                        className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                        <AlertTriangle size={9} />
+                        {discountEditLabel(li.item.suggestedDiscountPercent || 0, li.item.discountPercent || 0)}
+                      </span>
+                    </div>
+                  )}
+                  {/* Charged to the client for changes beyond the brief. Shown here so the admin
+                      knows why the client owes more than the sale — and it is deliberately not
+                      added to the sale amount, so it never reaches the member's commission. */}
+                  {!!li.item.penaltyTotal && (
+                    <div className="col-span-2">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-medium text-destructive">
+                        <AlertTriangle size={9} /> Penalty {formatCurrency(li.item.penaltyTotal)}
+                        {li.item.penaltyClips ? ` · ${li.item.penaltyClips} clip${li.item.penaltyClips === 1 ? "" : "s"}` : ""} — not sales revenue
+                      </span>
+                    </div>
+                  )}
                   <div>
                     <span className="text-muted-foreground">Sold by:</span>{" "}
                     <span className="text-foreground font-medium">{getMemberName(li.lead.assignedTo)}</span>

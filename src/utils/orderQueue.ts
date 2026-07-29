@@ -19,14 +19,44 @@ export const ORDER_QUEUE_TABS: { key: OrderQueueStatus; label: string }[] = [
   { key: "completed", label: "Completed" },
 ];
 
-/** The assignments that fulfil orders, keyed by the order they belong to. */
-export function assignmentsByOrderId(assignments: WorkAssignment[]): Map<string, WorkAssignment> {
-  const map = new Map<string, WorkAssignment>();
+/**
+ * All the assignments that fulfil orders, keyed by the order they belong to.
+ *
+ * This was one assignment per order, which held right up until a social-media month could be split
+ * three ways — ad creation to one member, uploading and marketing to another. So it is a list now,
+ * and `assignmentsByOrderId` below keeps returning a single assignment for the many call sites
+ * that only ever want "who has this".
+ */
+export function allAssignmentsByOrderId(assignments: WorkAssignment[]): Map<string, WorkAssignment[]> {
+  const map = new Map<string, WorkAssignment[]>();
   for (const a of assignments) {
-    if (a.orderId) map.set(a.orderId, a);
+    if (!a.orderId) continue;
+    const list = map.get(a.orderId);
+    if (list) list.push(a);
+    else map.set(a.orderId, [a]);
   }
   return map;
 }
+
+/**
+ * The single assignment that best represents an order's state.
+ *
+ * For a split order that is the one furthest from finished — a month is not "completed" because
+ * the ad creator is done while the uploads have not started. Picking the least-advanced assignment
+ * is what stops a partly-done month from disappearing out of the active queue.
+ */
+export function assignmentsByOrderId(assignments: WorkAssignment[]): Map<string, WorkAssignment> {
+  const map = new Map<string, WorkAssignment>();
+  for (const [orderId, list] of allAssignmentsByOrderId(assignments)) {
+    map.set(orderId, list.reduce((least, a) => (WORK_RANK[a.status] < WORK_RANK[least.status] ? a : least)));
+  }
+  return map;
+}
+
+/** How far along a work status is. Lower is less advanced, so the minimum is the laggard. */
+const WORK_RANK: Record<WorkAssignment["status"], number> = {
+  assigned: 0, editing: 1, in_progress: 2, completed: 3, verified: 4,
+};
 
 /**
  * The column this order belongs in.

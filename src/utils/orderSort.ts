@@ -11,6 +11,7 @@
  *   overdue  — past the promised delivery time, worst first. What you sort by when catching up.
  */
 import { promiseDueMs } from "./promiseSla";
+import { isPinnedOrder } from "./orderProgress";
 import type { Order } from "@/types";
 
 export type OrderSortMode = "fcfs" | "newest" | "overdue";
@@ -37,16 +38,16 @@ export function orderTakenMs(order: Order): number {
  * Overdue mode puts everything past its promise first, most overdue at the top; everything still
  * within time follows in first-come order, and orders with no promise at all come last rather than
  * being treated as infinitely late.
+ *
+ * Ahead of all three modes sits a pin: an unfinished social-media month or bulk order stays at the
+ * top until every counter is met. Those two run over days while single ads land and clear around
+ * them, so on any ordinary sort they sink out of sight while still owing the client work.
  */
 export function sortOrders(orders: Order[], mode: OrderSortMode, nowMs: number = Date.now()): Order[] {
-  const list = [...orders];
+  const within = (a: Order, b: Order): number => {
+    if (mode === "newest") return orderTakenMs(b) - orderTakenMs(a);
 
-  if (mode === "newest") {
-    return list.sort((a, b) => orderTakenMs(b) - orderTakenMs(a));
-  }
-
-  if (mode === "overdue") {
-    return list.sort((a, b) => {
+    if (mode === "overdue") {
       const dueA = promiseDueMs(a.promise);
       const dueB = promiseDueMs(b.promise);
       const lateA = dueA > 0 && nowMs >= dueA;
@@ -58,10 +59,17 @@ export function sortOrders(orders: Order[], mode: OrderSortMode, nowMs: number =
       if ((dueA > 0) !== (dueB > 0)) return dueA > 0 ? -1 : 1;
       if (dueA > 0 && dueB > 0) return dueA - dueB;
       return orderTakenMs(a) - orderTakenMs(b);
-    });
-  }
+    }
 
-  return list.sort((a, b) => orderTakenMs(a) - orderTakenMs(b));
+    return orderTakenMs(a) - orderTakenMs(b);
+  };
+
+  return [...orders].sort((a, b) => {
+    const pinA = isPinnedOrder(a);
+    const pinB = isPinnedOrder(b);
+    if (pinA !== pinB) return pinA ? -1 : 1;
+    return within(a, b);
+  });
 }
 
 /** How many of these orders are past their promised delivery time — for the dropdown's badge. */

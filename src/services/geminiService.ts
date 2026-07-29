@@ -20,7 +20,9 @@ import {
   getEnvironmentNegativeRules,
   getProfessionalSuitPaletteForBusiness,
   getRealisticLogoPlacementGuidance,
-  getModelProfile
+  getModelProfile,
+  buildBrandMarkDirective,
+  type BrandSurface
 } from "./prompts";
 import {
   CHARACTER_VOICEOVER_SYSTEM_PROMPT,
@@ -303,14 +305,19 @@ const resolveNameBoardText = (formData: AdFormData, businessInfo?: Record<string
   return (typed || fallback).toUpperCase();
 };
 
-const buildNameBoardDirective = (formData: AdFormData, businessInfo?: Record<string, unknown>): string => {
-  if (!formData.noLogo) return '';
-  const name = resolveNameBoardText(formData, businessInfo);
-  const exact = name
-    ? `showing EXACTLY this business name in clean bold UPPERCASE letters: "${name}"`
-    : `showing the business's EXACT name in clean, correctly-spelled bold UPPERCASE letters`;
-  return `NO-LOGO / NAME-BOARD MODE (MANDATORY): There is NO logo file. Instead, render a realistic, premium NAME BOARD / wall signage behind the model ${exact}. This name board REPLACES the logo — wherever this prompt says "the logo" or "the attached logo", render this name board instead. It must be present in the frame background, fully visible, correctly spelled, upright, realistically mounted on the wall, sharp/in-focus, and never distorted. Do NOT ask for or reference any attached logo file, and do NOT invent any other text.\n\n`;
-};
+/**
+ * The "there is no logo" preamble for this generation, if it needs one.
+ *
+ * The copy lives in services/prompts (with the rest of the prompt text); this only resolves WHICH
+ * name to put in it and which surface it is going on — a photographed scene gets a wall board, a
+ * designed header or poster gets a wordmark.
+ */
+const buildNameBoardDirective = (
+  formData: AdFormData,
+  businessInfo?: Record<string, unknown>,
+  surface: BrandSurface = 'scene',
+): string =>
+  buildBrandMarkDirective(!!formData.noLogo, resolveNameBoardText(formData, businessInfo), surface);
 
 const buildLanguageDirective = (formData: AdFormData): string => {
   const lang = (formData.language || 'Telugu').trim();
@@ -395,7 +402,9 @@ ${pack
       break;
 
     case 'header':
-      systemPrompt = REFINE_EDIT_DIRECTIVE + buildRatioDirective(formData) + buildNameBoardDirective(formData, businessInfo) + HEADER_SYSTEM_PROMPT(formData.adType, formData.festivalName);
+      systemPrompt = REFINE_EDIT_DIRECTIVE + buildRatioDirective(formData)
+        + buildNameBoardDirective(formData, businessInfo, 'layout')
+        + HEADER_SYSTEM_PROMPT(formData.adType, formData.festivalName, formData.noLogo || false, resolveNameBoardText(formData, businessInfo));
       userPrompt = `You previously generated this Header prompt:
 
 ---CURRENT PROMPT---
@@ -414,7 +423,9 @@ IMPORTANT:
       break;
 
     case 'poster':
-      systemPrompt = REFINE_EDIT_DIRECTIVE + buildRatioDirective(formData) + buildNameBoardDirective(formData, businessInfo) + POSTER_SYSTEM_PROMPT(formData.adType, formData.festivalName);
+      systemPrompt = REFINE_EDIT_DIRECTIVE + buildRatioDirective(formData)
+        + buildNameBoardDirective(formData, businessInfo, 'layout')
+        + POSTER_SYSTEM_PROMPT(formData.adType, formData.festivalName, formData.noLogo || false, resolveNameBoardText(formData, businessInfo));
       userPrompt = `You previously generated this Poster design prompt:
 
 ---CURRENT PROMPT---
@@ -2015,13 +2026,20 @@ ${maleCastingOverride}${commercialMainFramePriorityNote}
 
   // --- Step 4: Header Prompt (local — no API call) ---
 
-  const headerSystemPrompt = buildRatioDirective(formData) + buildNameBoardDirective(formData) + HEADER_SYSTEM_PROMPT(formData.adType, formData.festivalName);
+  const headerNameBoardText = resolveNameBoardText(formData, businessInfo);
+  const headerSystemPrompt = buildRatioDirective(formData)
+    + buildNameBoardDirective(formData, businessInfo, 'layout')
+    + HEADER_SYSTEM_PROMPT(formData.adType, formData.festivalName, formData.noLogo || false, headerNameBoardText);
   // Extract ONLY logo/name/contacts/address — never dump the full business JSON or any other data.
   const headerBusinessName = extractBusinessNameFromInfo(businessInfo);
   const headerContacts = extractContactsFromInfo(businessInfo).slice(0, 2);
   const headerAddress = resolveRealAddress(businessInfo, headerBusinessName);
   const headerValueLines = [
-    'LOGO = use the attached logo image exactly as provided, unchanged',
+    // This block is the literal text the member copies into the image generator, so a "LOGO ="
+    // line here asked for a logo file that was never uploaded however the rules above were worded.
+    formData.noLogo
+      ? `BRAND MARK = the business name set as a typographic wordmark${headerNameBoardText ? `, reading exactly "${headerNameBoardText}"` : ''} — nothing is attached, and nothing needs to be`
+      : 'LOGO = use the attached logo image exactly as provided, unchanged',
     headerBusinessName ? `NAME = ${headerBusinessName}` : '',
     headerContacts[0] ? `CONTACT 1 = ${headerContacts[0]}` : '',
     headerContacts[1] ? `CONTACT 2 = ${headerContacts[1]}` : '',
@@ -2044,7 +2062,9 @@ ${maleCastingOverride}${commercialMainFramePriorityNote}
 
   // --- Step 5: Poster Design Prompt (JSON) — runs concurrently ---
   const posterPromise = (async (): Promise<string> => {
-  const posterSystemPrompt = buildRatioDirective(formData) + buildNameBoardDirective(formData) + POSTER_SYSTEM_PROMPT(formData.adType, formData.festivalName);
+  const posterSystemPrompt = buildRatioDirective(formData)
+    + buildNameBoardDirective(formData, businessInfo, 'layout')
+    + POSTER_SYSTEM_PROMPT(formData.adType, formData.festivalName, formData.noLogo || false, resolveNameBoardText(formData, businessInfo));
   const posterContacts = extractContactsFromInfo(businessInfo).slice(0, 2);
   const posterContactRule = posterContacts.length
     ? `CONTACT NUMBER(S) — use ONLY these exact number(s), at most two, digit-for-digit; NEVER alter, complete, reorder, merge, or invent any number: ${posterContacts.join('  |  ')}`

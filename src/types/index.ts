@@ -62,7 +62,11 @@ export interface WorkAssignment {
   assignedBy: string;
   assignedAt: any;
   assignedAtIso?: string;
-  category: "wishes" | "promotional" | "cinematic";
+  /**
+   * The catalog key of what is being made. Was the three ad types only; social-media months and
+   * bulk ads are now assigned the same way, so they appear here too.
+   */
+  category: "wishes" | "promotional" | "cinematic" | "bulk_ads" | "social_media_management";
   clipCount: number;
   includesEndCredits: boolean;
   duration: string;
@@ -87,6 +91,12 @@ export interface WorkAssignment {
   promise?: PromiseDeadline;
   // Link back to the originating Order (set when assigned from the Orders queue)
   orderId?: string;
+  /**
+   * Which parts of a multi-deliverable order this member owns (social media month / bulk ads).
+   * A member holding two tracks gets ONE assignment listing both, not two cards to keep straight.
+   * Absent on ordinary single-ad work, which has no tracks to divide.
+   */
+  tracks?: OrderTrack[];
   // Ad specification set by the admin/team leader at assignment time — pre-fills and locks
   // the matching field in the assigned member's AI Platform tool (see AIPlatformApp.tsx).
   modelGender?: "male" | "female";
@@ -178,8 +188,38 @@ export interface NumberLock {
 export interface SaleDetail {
   category: string;
   packageKey: string;
+  /**
+   * What was actually sold, in the member's own words. Only meaningful for categories with no
+   * fixed package list (Custom, Software) — for everything else the packageKey already says it.
+   */
   customDescription?: string | null;
+  /**
+   * Final money for this sale line. For a bulk order this is already the discounted total, so every
+   * revenue reader keeps working untouched. NEVER includes penalties — see `penaltyTotal`.
+   */
   amount: number;
+  // ── Bulk ads (quantity × package, with a volume discount) ──────────────────
+  /** How many ads were sold on this line. Absent (or 1) for an ordinary single-ad sale. */
+  quantity?: number;
+  /** Per-ad price before any discount — kept so the discount stays auditable after the fact. */
+  unitAmount?: number;
+  /** What the volume ladder offered at this quantity. */
+  suggestedDiscountPercent?: number;
+  /** What was actually applied. May be 0 — the discount is the member's to give or withhold. */
+  discountPercent?: number;
+  /**
+   * The member overrode the suggested discount. Surfaced to the tech admin and the sales admin,
+   * who are the two people entitled to ask why the price moved.
+   */
+  discountEdited?: boolean;
+  // ── Penalty (changes beyond what was committed) ────────────────────────────
+  /**
+   * Mirror of the order's penalty total, so the sales member's own screens can show it without a
+   * second read. Deliberately NOT added into `amount`: a penalty is not the member's revenue and
+   * must never reach their commission. The canonical list lives on the order.
+   */
+  penaltyTotal?: number;
+  penaltyClips?: number;
   verificationStatus: "pending" | "verified" | "rejected";
   paymentScreenshotUrl?: string | null;
   submittedAt?: any;        // when the member recorded the sale
@@ -246,6 +286,84 @@ export interface PromiseDeadline {
   dueAt: any;          // startAt + hours, precomputed for cheap compares/queries
 }
 
+// ─── Multi-deliverable progress (Social Media Monthly & Bulk Ads) ───
+// Most orders are one ad: assigned, made, done. These two are not — a Pro social-media month is 8
+// ads, 8 posters, 8 uploads and 8 campaigns, and a bulk order is N ads. "Assigned" says nothing
+// useful about either, so the order carries what is still outstanding.
+//
+// It lives on the ORDER rather than in its own collection because the tech admin, the team leader
+// and every assigned member already subscribe to orders. A separate collection would mean a second
+// read on every one of those screens.
+
+/** The three jobs a social-media month splits into. Bulk orders only ever use `ad_creation`. */
+export type OrderTrack = "ad_creation" | "social_upload" | "digital_marketing";
+
+export const ORDER_TRACKS: { key: OrderTrack; label: string }[] = [
+  { key: "ad_creation", label: "Ad creation" },
+  { key: "social_upload", label: "Social media uploading" },
+  { key: "digital_marketing", label: "Digital marketing" },
+];
+
+/** The four things counted. `campaigns` is "ads run" — the digital-marketing side. */
+export interface OrderProgressCounts {
+  ads: number;
+  posters: number;
+  posted: number;
+  campaigns: number;
+}
+
+export type OrderProgressField = keyof OrderProgressCounts;
+
+export interface OrderTrackAssignee {
+  uid: string;
+  name: string;
+}
+
+/** One recorded change, so a counter that jumped is answerable to a person. */
+export interface OrderProgressEntry {
+  at: any;
+  byName: string;
+  /** A counter change, or a track being marked done. */
+  field: OrderProgressField | OrderTrack;
+  from: number | null;
+  to: number | null;
+}
+
+export interface OrderProgress {
+  kind: "smm" | "bulk";
+  targets: OrderProgressCounts;
+  done: OrderProgressCounts;
+  /**
+   * Who owns each job. One member can hold all three, or three members can hold one each —
+   * whichever the team leader chooses at assignment time.
+   */
+  tracks: Partial<Record<OrderTrack, OrderTrackAssignee>>;
+  /** Tracks someone has marked finished. Visible to everyone on the order, not just its owner. */
+  completedTracks: OrderTrack[];
+  log: OrderProgressEntry[];
+  completedAt?: any | null;
+}
+
+// ─── Penalty (changes beyond what was committed) ───
+// Charged when the client asks for changes past the agreed brief, or after the ad is already made.
+// Recorded on the order by either the sales member or the tech admin.
+export type PenaltyClipType = "promotional" | "wishes" | "cinematic";
+
+export interface PenaltyEntry {
+  id: string;
+  clips: number;
+  /** Editable — the standard rate is a default, not a rule. */
+  ratePerClip: number;
+  /** clips × ratePerClip, stored so a later rate change never rewrites history. */
+  amount: number;
+  clipType: PenaltyClipType;
+  reason?: string | null;
+  byId: string;
+  byName: string;
+  byRole: UserRole;
+  at: any;
+}
+
 // ─── Orders (sales → tech delivery queue) ───
 // Created when a sales admin VERIFIES a sale. Replaces the manual WhatsApp "sale" label:
 // the tech team picks orders from this queue and assigns them as work_assignments.
@@ -262,7 +380,27 @@ export interface Order {
   clientName?: string;          // the client who bought it — one client can have many businesses
   category: string;             // original sales category (richer than WorkAssignment.category)
   packageKey: string;
-  amount: number;               // sale amount
+  /** What was sold, when the category has no fixed package list. Carried from the sale. */
+  customDescription?: string | null;
+  amount: number;               // sale amount (already discounted; never includes penalties)
+  // Bulk ads — carried from the sale so the tech side knows it is N ads, not one.
+  quantity?: number;
+  unitAmount?: number;
+  suggestedDiscountPercent?: number;
+  discountPercent?: number;
+  discountEdited?: boolean;
+  /**
+   * What is still outstanding on a multi-deliverable order (social media month / bulk ads).
+   * Absent on ordinary single-ad orders, which are done when their one assignment is done.
+   */
+  progress?: OrderProgress | null;
+  /**
+   * Penalties charged on this order. Canonical here — the sale carries only a mirrored total,
+   * because either side can add one and the order is the doc both sides can write.
+   */
+  penalties?: PenaltyEntry[];
+  penaltyTotal?: number;
+  penaltyClips?: number;
   // Link back to the originating sale
   leadId: string;
   saleItemIndex: number;

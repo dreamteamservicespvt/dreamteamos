@@ -11,6 +11,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useFirestoreQuery } from '@/hooks/useFirestore';
 import { formatDate, formatTime } from '@/utils/formatters';
 import type { WorkAssignment } from '@/types';
+import { useCompleteWork } from '@/hooks/useCompleteWork';
 import CodeVerificationModal from '@/components/ai-platform/CodeVerificationModal';
 import AIPlatformApp from '@/components/ai-platform/AIPlatformApp';
 
@@ -26,6 +27,11 @@ const STATUS_CONFIG: Record<string, {
   verified:    { icon: <CheckCircle2 className="w-3 h-3" />, label: 'Verified',       badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300', accent: 'bg-emerald-500' },
   editing:     { icon: <Edit3 className="w-3 h-3" />,        label: 'Edits Required', badge: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300', accent: 'bg-orange-500' },
 };
+
+/** Work that still has something to hand in. A delivered job is opened to look at, not to submit. */
+function isSubmittable(a: WorkAssignment): boolean {
+  return a.status !== 'completed' && a.status !== 'verified';
+}
 
 function getAssignedSeconds(a: WorkAssignment): number {
   const ts = a.assignedAt as any;
@@ -134,13 +140,34 @@ export default function RecentAds() {
     } catch {}
   };
 
+  /**
+   * Finishing a job started from here.
+   *
+   * This page opens the same generator as My Work and even moves the job to "in progress" the
+   * moment it is opened — but it passed no `onComplete`, so the Submit button never rendered and a
+   * member who worked here had to go and find the job on the other page to hand it in. Same hook,
+   * so the two pages cannot drift on what "submitted" means.
+   */
+  const { completing, complete } = useCompleteWork();
+
+  const handleComplete = async () => {
+    const submitted = await complete(liveOpenAssignment, { sessionStart: sessionStartRef.current });
+    if (submitted) {
+      // Already written into the final update; clearing it stops the unmount handler double-billing.
+      sessionStartRef.current = null;
+      setOpenAssignment(null);
+    }
+  };
+
   if (openAssignment && liveOpenAssignment) {
     return (
       <AIPlatformApp
         assignment={liveOpenAssignment}
         assignmentId={liveOpenAssignment.id}
+        completing={completing}
         onBusinessNameExtracted={handleBusinessNameExtracted}
         onClose={() => setOpenAssignment(null)}
+        onComplete={isSubmittable(liveOpenAssignment) ? handleComplete : undefined}
       />
     );
   }

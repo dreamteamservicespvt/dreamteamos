@@ -18,7 +18,12 @@ import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
 import NumberTimelineButton from "@/components/sales/NumberTimelineButton";
-import { SALE_CATEGORIES, PACKAGES, categoryLabel, isAdCategory } from "@/utils/serviceCatalog";
+import PenaltyDialog from "@/components/work/PenaltyDialog";
+import {
+  SALE_CATEGORIES, PACKAGES, categoryLabel, isAdCategory, isBulkCategory, needsDescription,
+  packageOptionLabel,
+} from "@/utils/serviceCatalog";
+import { quoteBulk, suggestedDiscountPercent, MAX_BULK_DISCOUNT_PERCENT } from "@/utils/bulkDiscount";
 import { presetsForCategory, buildPromise, CUSTOM_PRESET_KEY } from "@/utils/promiseSla";
 import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from "@/types/aiPlatform";
 import { ATTIRE_LABELS, DEFAULT_REQUIREMENT, attireForGender, attireLabel, cleanRequirement, withRequirementDefaults } from "@/utils/adRequirement";
@@ -29,7 +34,7 @@ import { buildClientSaleMessage } from "@/utils/salesMessage";
 import { dayRevenue, saleDay, type DayRevenue } from "@/utils/salesRevenue";
 import {
   Search, Phone, MessageCircle, StickyNote, ChevronDown, ChevronUp, Clock,
-  Loader2, Check, Upload, ExternalLink, Plus, Trash2, ShoppingBag, X, Lock, AlertTriangle, Snowflake, FileText, RotateCcw, Clapperboard, Copy, Pencil, History, Send,
+  Loader2, Check, Upload, ExternalLink, Plus, Trash2, ShoppingBag, X, Lock, AlertTriangle, Snowflake, FileText, RotateCcw, Clapperboard, Copy, Pencil, History, Send, Layers,
 } from "lucide-react";
 
 type TimestampLike = { toMillis?: () => number; seconds?: number } | null | undefined;
@@ -855,6 +860,8 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
   const [editingSaleIdx, setEditingSaleIdx] = useState<number | null>(null);
   const [logOpenIdx, setLogOpenIdx] = useState<number | null>(null);
   const [noteIdx, setNoteIdx] = useState<number | null>(null);
+  /** The sale row whose penalty dialog is open. Keyed by order, since that is where it is stored. */
+  const [penaltyFor, setPenaltyFor] = useState<{ order: Order; idx: number } | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   const allSaleItems = lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
@@ -1106,6 +1113,22 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="font-medium text-foreground capitalize">{item.category?.replace(/_/g, " ")}</span>
                 {item.packageKey && item.packageKey !== "custom" && <span className="text-muted-foreground"> • {item.packageKey}</span>}
+                {/* For a bulk order the count is the sale — "₹7,592" alone says nothing. */}
+                {!!item.quantity && item.quantity > 1 && (
+                  <span className="text-[9px] px-1 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                    ×{item.quantity}{item.discountPercent ? ` · ${item.discountPercent}% off` : ""}
+                  </span>
+                )}
+                {item.customDescription && <span className="text-muted-foreground"> • {item.customDescription}</span>}
+                {/* A penalty is the client's, not the member's — shown so they know it was raised,
+                    and deliberately outside the sale amount so it never enters their commission. */}
+                {!!item.penaltyTotal && (
+                  <span className="inline-flex items-center gap-0.5 text-[9px] px-1 py-0.5 rounded bg-destructive/15 text-destructive"
+                    title="Penalty for changes beyond the committed brief — not part of your sale value">
+                    <AlertTriangle size={9} /> Penalty {formatCurrency(item.penaltyTotal)}
+                    {item.penaltyClips ? ` · ${item.penaltyClips} clip${item.penaltyClips === 1 ? "" : "s"}` : ""}
+                  </span>
+                )}
                 {!!item.editLog?.length && (
                   <button onClick={() => setLogOpenIdx(logOpenIdx === idx ? null : idx)}
                     className="inline-flex items-center gap-0.5 text-[9px] px-1 py-0.5 rounded bg-info/15 text-info hover:bg-info/25 transition-colors"
@@ -1168,6 +1191,18 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
                 <button onClick={() => { setNoteIdx(noteIdx === idx ? null : idx); setEditingSaleIdx(null); }}
                   className="inline-flex items-center gap-1 h-7 px-2 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[11px] font-medium hover:bg-blue-500/20 transition-colors">
                   <Send size={11} /> {noteIdx === idx ? "Close" : "Send update note"}
+                </button>
+              )}
+              {/* The member is the one on the call when a client asks for changes past the brief,
+                  so they can raise the charge there and then rather than relaying it to tech.
+                  It needs an order to hang off — that is where penalties are recorded. */}
+              {order && (
+                <button
+                  data-test="sale-add-penalty"
+                  onClick={() => setPenaltyFor({ order, idx })}
+                  title="Charge for changes beyond what was committed"
+                  className="inline-flex items-center gap-1 h-7 px-2 rounded-md bg-destructive/10 text-destructive text-[11px] font-medium hover:bg-destructive/20 transition-colors">
+                  <AlertTriangle size={11} /> Penalty
                 </button>
               )}
             </div>
@@ -1236,6 +1271,10 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
           )}
         </AnimatePresence>
       </div>
+
+      {penaltyFor && currentUser && (
+        <PenaltyDialog order={penaltyFor.order} actor={currentUser} onClose={() => setPenaltyFor(null)} />
+      )}
     </div>
   );
 }
@@ -1450,6 +1489,15 @@ function describeSaleChanges(prev: SaleDetail, next: SaleDetail): string[] {
   const pkg = (i: SaleDetail) => (i.packageKey && i.packageKey !== "custom" ? i.packageKey : "Custom");
   if (prev.category !== next.category) out.push(`Service: ${categoryLabel(prev.category)} → ${categoryLabel(next.category)}`);
   if (pkg(prev) !== pkg(next)) out.push(`Package: ${pkg(prev)} → ${pkg(next)}`);
+  if ((prev.customDescription || "") !== (next.customDescription || "")) {
+    out.push(`Description: ${prev.customDescription || "—"} → ${next.customDescription || "—"}`);
+  }
+  // Quantity and discount are the two levers on a bulk price, so a changed total is only half the
+  // story — the log has to say which of them moved.
+  if ((prev.quantity || 0) !== (next.quantity || 0)) out.push(`Quantity: ${prev.quantity || 0} → ${next.quantity || 0} ads`);
+  if ((prev.discountPercent || 0) !== (next.discountPercent || 0)) {
+    out.push(`Discount: ${prev.discountPercent || 0}% → ${next.discountPercent || 0}%`);
+  }
   if ((prev.amount || 0) !== (next.amount || 0)) out.push(`Amount: ${formatCurrency(prev.amount || 0)} → ${formatCurrency(next.amount || 0)}`);
   if ((prev.promise?.label || "") !== (next.promise?.label || "")) out.push(`Delivery: ${prev.promise?.label || "—"} → ${next.promise?.label || "—"}`);
 
@@ -1490,6 +1538,15 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
     ed ? (ed.packageKey && ed.packageKey !== "custom" ? ed.packageKey : "") : "30 Seconds + Poster",
   );
   const [customAmount, setCustomAmount] = useState<number>(ed?.amount || 0);
+  /**
+   * What was sold, for the categories that have no package list to say it. Without this a Custom
+   * sale reached the tech team as the string "Custom custom" and somebody had to ring back to ask.
+   */
+  const [description, setDescription] = useState(ed?.customDescription || "");
+  // Bulk ads: how many, and the discount given. The ladder suggests; the member decides.
+  const [quantity, setQuantity] = useState<number>(ed?.quantity || 5);
+  const [discountPercent, setDiscountPercent] = useState<number>(ed?.discountPercent ?? 0);
+  const [discountTouched, setDiscountTouched] = useState(false);
   const [screenshotUrl, setScreenshotUrl] = useState(ed?.paymentScreenshotUrl || "");
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1557,10 +1614,39 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
 
   const packages = PACKAGES[category] || [];
   const selectedPkg = packages.find((p) => p.label === packageKey);
-  const amount = selectedPkg?.amount || customAmount;
-  const needsCustomAmount = packages.length === 0 || (selectedPkg && selectedPkg.amount === 0);
+  const isBulk = isBulkCategory(category);
+
+  /**
+   * A bulk order is priced from the quantity, so the amount is computed rather than picked. The
+   * quote also reports whether the applied discount left the ladder — that flag is what the tech
+   * admin and the sales admin see, and it has to be derived here rather than trusted from a box.
+   */
+  const bulkQuote = useMemo(
+    () => (isBulk ? quoteBulk(quantity, selectedPkg?.amount || 0, discountPercent) : null),
+    [isBulk, quantity, selectedPkg?.amount, discountPercent],
+  );
+
+  const amount = isBulk ? (bulkQuote?.amount ?? 0) : (selectedPkg?.amount || customAmount);
+  const needsCustomAmount = !isBulk && (packages.length === 0 || (selectedPkg && selectedPkg.amount === 0));
+  /** Categories with no package list (Custom, Software), plus any explicit "custom quote" tier. */
+  const showDescription = needsDescription(category) || (!!selectedPkg && selectedPkg.amount === 0);
+  const descriptionRequired = needsDescription(category);
+  const descriptionMissing = descriptionRequired && !description.trim();
   const hasProof = !!proofUrl || !!proofNote.trim();
   const slaOptions = presetsForCategory(category);
+
+  /**
+   * Keep the discount box on the ladder while the member is still choosing a quantity, and stop
+   * the moment they type their own number — after that it is their figure, not ours, and silently
+   * resetting it when they adjusted the count would undo a decision they had already made.
+   */
+  const bulkSkipFirst = useRef(editing);
+  useEffect(() => {
+    if (!isBulk) return;
+    if (bulkSkipFirst.current) { bulkSkipFirst.current = false; return; }
+    if (discountTouched) return;
+    setDiscountPercent(suggestedDiscountPercent(quantity));
+  }, [isBulk, quantity, discountTouched]);
 
   // Default the promise to the category's first preset (or custom) whenever the category changes —
   // but not on the first render when editing, or it would overwrite the saved promise.
@@ -1630,6 +1716,14 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
       toast({ title: "Error", description: "Please enter a valid amount.", variant: "destructive" });
       return;
     }
+    if (descriptionMissing) {
+      toast({ title: "Say what was sold", description: `Type what this ${categoryLabel(category)} sale is for — the tech team has no package name to go on.`, variant: "destructive" });
+      return;
+    }
+    if (isBulk && quantity < 2) {
+      toast({ title: "How many ads?", description: "A bulk order is two ads or more. For a single ad, use Promotional Ad.", variant: "destructive" });
+      return;
+    }
     if (uploading) {
       toast({ title: "Hold on", description: "Wait for the payment screenshot to finish uploading.", variant: "destructive" });
       return;
@@ -1672,6 +1766,24 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
     // A language the client asked for that isn't in the list yet joins it for everyone.
     if (isAdSale && usingCustomLanguage && resolvedLanguage) await rememberAdLanguage(resolvedLanguage);
 
+    /**
+     * What was sold beyond the package name, and — for a bulk order — the arithmetic behind the
+     * price. The quantity and unit price are kept alongside the total so the discount stays
+     * auditable: without them, "₹7,592" is a number nobody can check a year later.
+     */
+    const saleShape = {
+      customDescription: showDescription ? description.trim() || null : null,
+      ...(isBulk && bulkQuote
+        ? {
+            quantity: bulkQuote.quantity,
+            unitAmount: bulkQuote.unitAmount,
+            suggestedDiscountPercent: bulkQuote.suggestedPercent,
+            discountPercent: bulkQuote.discountPercent,
+            discountEdited: bulkQuote.edited,
+          }
+        : {}),
+    };
+
     const existingItems = lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
 
     // ── Edit an existing sale ────────────────────────────────────────────────
@@ -1680,7 +1792,7 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
         ...ed,
         category,
         packageKey: packageKey || "custom",
-        customDescription: needsCustomAmount ? `Custom ${category}` : null,
+        ...saleShape,
         amount,
         paymentScreenshotUrl: screenshotUrl || null,
         // submittedAt is kept, so the order's deterministic id stays stable.
@@ -1721,7 +1833,7 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
     const newItem: SaleDetail = {
       category,
       packageKey: packageKey || "custom",
-      customDescription: needsCustomAmount ? `Custom ${category}` : null,
+      ...saleShape,
       amount,
       verificationStatus: "pending",
       paymentScreenshotUrl: screenshotUrl || null,
@@ -1822,11 +1934,78 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
         >
           <option value="">Select package</option>
           {packages.map((p) => (
-            <option key={p.label} value={p.label}>
-              {p.label} {p.amount > 0 ? `— ${formatCurrency(p.amount)}` : ""}
-            </option>
+            /* The monthly quota rides in the option text — a member quoting a package on a live
+               call should not have to remember that Pro means eight of everything. */
+            <option key={p.label} value={p.label}>{packageOptionLabel(p)}</option>
           ))}
         </select>
+      )}
+
+      {/* Bulk ads — quantity drives the price, and the ladder suggests a discount the member may
+          keep, change or withhold. Whatever they choose, the change is recorded. */}
+      {isBulk && bulkQuote && (
+        <div className="space-y-2.5 rounded-md border border-amber-500/30 bg-amber-500/5 p-2.5">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+            <Layers size={13} /> Bulk order
+          </div>
+          <div className="flex gap-2">
+            <div className="flex-1 space-y-1">
+              <label className="text-[11px] text-muted-foreground">How many ads</label>
+              <input
+                type="number"
+                min={2}
+                data-test="bulk-quantity"
+                value={quantity || ""}
+                onChange={(e) => setQuantity(Number(e.target.value) || 0)}
+                className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary font-mono"
+              />
+            </div>
+            <div className="flex-1 space-y-1">
+              <label className="text-[11px] text-muted-foreground">Discount %</label>
+              <input
+                type="number"
+                min={0}
+                max={MAX_BULK_DISCOUNT_PERCENT}
+                data-test="bulk-discount"
+                value={discountPercent || ""}
+                onChange={(e) => { setDiscountTouched(true); setDiscountPercent(Number(e.target.value) || 0); }}
+                className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary font-mono"
+              />
+            </div>
+          </div>
+
+          {bulkQuote.suggestedPercent > 0 && !bulkQuote.edited && (
+            <p className="text-[11px] text-muted-foreground">
+              {quantity} ads qualifies for <strong className="text-foreground">{bulkQuote.suggestedPercent}%</strong> off. You can change or remove it.
+            </p>
+          )}
+          {bulkQuote.edited && (
+            <p className="flex items-start gap-1.5 text-[11px] text-amber-600 dark:text-amber-400">
+              <AlertTriangle size={11} className="mt-0.5 shrink-0" />
+              Suggested {bulkQuote.suggestedPercent}%, you set {bulkQuote.discountPercent}% — the tech admin and sales admin will see this.
+            </p>
+          )}
+          {quantity > 0 && quantity < 5 && (
+            <p className="text-[11px] text-muted-foreground">Discounts start at 5 ads.</p>
+          )}
+
+          <div className="space-y-0.5 border-t border-amber-500/20 pt-2 text-xs">
+            <div className="flex justify-between text-muted-foreground">
+              <span>{bulkQuote.quantity} × {formatCurrency(bulkQuote.unitAmount)}</span>
+              <span className="font-mono">{formatCurrency(bulkQuote.grossAmount)}</span>
+            </div>
+            {bulkQuote.discountAmount > 0 && (
+              <div className="flex justify-between text-green-600 dark:text-green-400">
+                <span>Discount {bulkQuote.discountPercent}%</span>
+                <span className="font-mono">− {formatCurrency(bulkQuote.discountAmount)}</span>
+              </div>
+            )}
+            <div className="flex justify-between font-semibold text-foreground">
+              <span>Client pays</span>
+              <span className="font-mono" data-test="bulk-total">{formatCurrency(bulkQuote.amount)}</span>
+            </div>
+          </div>
+        </div>
       )}
 
       {needsCustomAmount && (
@@ -1838,6 +2017,24 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
           placeholder="Amount (₹)"
           className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary font-mono"
         />
+      )}
+
+      {/* There is no package name to describe this sale, so the member has to. Without it the
+          order reaches the tech team saying only "Custom" and somebody has to ring back and ask. */}
+      {showDescription && (
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">
+            What was sold{descriptionRequired ? "" : " (optional)"}
+          </label>
+          <textarea
+            rows={2}
+            data-test="sale-description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder={`e.g. Two-day event shoot with edited highlights`}
+            className={`w-full px-3 py-2 rounded-md bg-card border text-foreground text-sm outline-none focus:border-primary resize-none ${descriptionMissing ? "border-destructive/60" : "border-border"}`}
+          />
+        </div>
       )}
 
       {/* Delivery promise / turnaround SLA — countdown starts at sale, shown to the tech team */}
@@ -2126,7 +2323,7 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
 
       <button
         onClick={handleSave}
-        disabled={saving || amount <= 0 || uploading || !screenshotUrl || dupChecking || proofUploading || (isDuplicate && !hasProof) || languageMissing}
+        disabled={saving || amount <= 0 || uploading || !screenshotUrl || dupChecking || proofUploading || (isDuplicate && !hasProof) || languageMissing || descriptionMissing}
         className="w-full h-9 rounded-lg bg-primary text-primary-foreground font-display font-semibold text-xs hover:bg-primary/90 disabled:opacity-40 transition-colors flex items-center justify-center gap-2"
       >
         {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}

@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  ClipboardList, Loader2, Search, MessageCircle, UserPlus, Clock, ShoppingBag, CheckCircle2, Sparkles, StickyNote, Hourglass, Sparkle, Trash2, CheckSquare, Square, Undo2, Copy, Check,
+  ClipboardList, Loader2, Search, MessageCircle, UserPlus, Clock, ShoppingBag, CheckCircle2, Sparkles, StickyNote, Hourglass, Sparkle, Trash2, CheckSquare, Square, Undo2, Copy, Check, Pin, Split, AlertTriangle, Layers, X,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useFirestoreQuery, useFirestoreCollection } from "@/hooks/useFirestore";
@@ -25,8 +25,16 @@ import {
 } from "@/utils/orderQueue";
 import { unassignWork } from "@/services/workAssign";
 import { buildAdPipeline, orderBacked } from "@/utils/adPipeline";
+import { isPinnedOrder, progressSummary } from "@/utils/orderProgress";
+import { ordersWithPenalties, totalPenalties } from "@/utils/penalty";
+import { removeOrderPenalty } from "@/services/orders";
+import { discountEditLabel } from "@/utils/bulkDiscount";
+import OrderProgressPanel from "@/components/work/OrderProgressPanel";
+import PenaltyDialog from "@/components/work/PenaltyDialog";
+import AssignTracksDialog from "@/components/work/AssignTracksDialog";
 
-type OrderTab = OrderQueueStatus;
+/** The queue's four delivery columns, plus the money-changes ledger that hangs off them. */
+type OrderTab = OrderQueueStatus | "changes";
 
 function fmtTs(ts: any): string {
   const s = ts?.seconds ?? (typeof ts?.toMillis === "function" ? ts.toMillis() / 1000 : 0);
@@ -51,7 +59,17 @@ export default function Orders() {
   const showSalesInfo = !isTeamLeader;
   const workAssignBase = isTeamLeader ? "/team-leader/work-assign" : "/tech-admin/work-assign";
 
+  /**
+   * A team leader manages delivery, not money. They see that a client was charged for changes and
+   * how many clips it cost the team — never the rupee figure, and they cannot raise one. Same rule
+   * that already keeps the sale amount off their copy of this page.
+   */
+  const canChargePenalty = !isTeamLeader;
+  const penalisedOrders = useMemo(() => ordersWithPenalties(orders), [orders]);
+
   const [tab, setTab] = useState<OrderTab>("unassigned");
+  const [penaltyFor, setPenaltyFor] = useState<Order | null>(null);
+  const [splitFor, setSplitFor] = useState<Order | null>(null);
   const [search, setSearch] = useState("");
   /** First-come-first-served by default: whoever has waited longest is served first. */
   const [sortMode, setSortMode] = useState<OrderSortMode>("fcfs");
@@ -108,6 +126,17 @@ export default function Orders() {
   }, [allUsers]);
 
   /**
+   * Who can be given a job. External creators are outside people with tool access only — they are
+   * not on the team and must never appear in a work picker (see AppUser.externalCreator).
+   */
+  const assignableMembers = useMemo(
+    () => allUsers
+      .filter((u) => u.role === "tech_member" && u.isActive !== false && !u.externalCreator)
+      .sort((a, b) => (a.name || "").localeCompare(b.name || "")),
+    [allUsers],
+  );
+
+  /**
    * Counted through utils/adPipeline — the same definition the Work Assign status board uses.
    *
    * These two screens both showed a number called "Assigned" and the two disagreed, because each
@@ -116,18 +145,18 @@ export default function Orders() {
    * board names on screen and this queue cannot show at all.
    */
   const counts = useMemo(() => {
-    const out: Record<OrderTab, number> = { unassigned: 0, assigned: 0, in_progress: 0, completed: 0 };
+    const out: Record<OrderTab, number> = { unassigned: 0, assigned: 0, in_progress: 0, completed: 0, changes: 0 };
     for (const rec of orderBacked(buildAdPipeline(orders, assignments))) {
       if (rec.stage in out) out[rec.stage as OrderTab] += 1;
     }
+    out.changes = penalisedOrders.length;
     return out;
-  }, [orders, assignments]);
+  }, [orders, assignments, penalisedOrders]);
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     const qDigits = q.replace(/\D/g, "");
-    const filtered = orders
-      .filter((o) => queueStatusOf(o) === tab)
+    const filtered = (tab === "changes" ? penalisedOrders : orders.filter((o) => queueStatusOf(o) === tab))
       .filter((o) => {
         if (!q) return true;
         if (o.businessName?.toLowerCase().includes(q)) return true;
@@ -137,7 +166,7 @@ export default function Orders() {
         return false;
       });
     return sortOrders(filtered, sortMode);
-  }, [orders, tab, search, sortMode, queueStatusOf]);
+  }, [orders, penalisedOrders, tab, search, sortMode, queueStatusOf]);
 
   /** Overdue count for the tab in view, so the sort option can say how many are waiting. */
   const overdueInTab = useMemo(
@@ -283,13 +312,14 @@ export default function Orders() {
         </div>
       )}
 
-      {/* Tabs */}
+      {/* Tabs — the four delivery columns, plus Changes when anything has been charged for. */}
       <div className="flex flex-wrap items-center gap-2">
-        {ORDER_QUEUE_TABS.map(({ key: t, label }) => (
+        {[...ORDER_QUEUE_TABS, ...(penalisedOrders.length > 0 ? [{ key: "changes" as const, label: "Changes" }] : [])].map(({ key: t, label }) => (
           <button
             key={t}
+            data-test={`orders-tab-${t}`}
             onClick={() => setTab(t)}
-            className={`flex items-center gap-1.5 h-9 px-3 rounded-xl text-xs md:text-sm font-medium border transition-colors ${tab === t ? "bg-primary text-primary-foreground border-primary" : "bg-card text-muted-foreground border-border hover:text-foreground hover:bg-accent/50"}`}
+            className={`flex items-center gap-1.5 h-9 px-3 rounded-xl text-xs md:text-sm font-medium border transition-colors ${tab === t ? "bg-primary text-primary-foreground border-primary" : t === "changes" ? "bg-card text-destructive border-destructive/40 hover:bg-destructive/10" : "bg-card text-muted-foreground border-border hover:text-foreground hover:bg-accent/50"}`}
           >
             <span>{label}</span>
             <span className={`px-1.5 rounded-full text-[10px] ${tab === t ? "bg-primary-foreground/20" : "bg-muted"}`}>{counts[t]}</span>
@@ -400,7 +430,9 @@ export default function Orders() {
         {visible.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground lg:col-span-2">
             <ShoppingBag className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p className="text-lg font-medium">No {tab} orders</p>
+            <p className="text-lg font-medium">
+              {tab === "changes" ? "Nothing charged for changes" : `No ${tab.replace(/_/g, " ")} orders`}
+            </p>
           </div>
         ) : visible.map((o) => (
           <div key={o.id} className={`bg-card border rounded-xl p-3 md:p-4 shadow-sm hover:shadow-md transition-shadow ${selected.has(o.id) ? "border-primary/60 ring-1 ring-primary/30" : ""}`}>
@@ -418,6 +450,33 @@ export default function Orders() {
                   <span className="text-[10px] md:text-xs font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary">{categoryLabel(o.category)}</span>
                   {categoryBilling(o.category) === "monthly" && (
                     <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-500">Monthly</span>
+                  )}
+                  {/* Says why this one is sitting at the top of the list rather than in date order. */}
+                  {isPinnedOrder(o) && (
+                    <span data-test="order-pinned" title={progressSummary(o.progress)}
+                      className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-600 dark:text-purple-400">
+                      <Pin size={9} /> Pinned until delivered
+                    </span>
+                  )}
+                  {!!o.quantity && o.quantity > 1 && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                      <Layers size={9} /> {o.quantity} ads
+                    </span>
+                  )}
+                  {/* A price that left the discount ladder. The tech admin is one of the two people
+                      entitled to ask why, so it is on the card rather than buried in the sale. */}
+                  {showSalesInfo && o.discountEdited && (
+                    <span data-test="order-discount-edited"
+                      className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                      <AlertTriangle size={9} /> {discountEditLabel(o.suggestedDiscountPercent || 0, o.discountPercent || 0)}
+                    </span>
+                  )}
+                  {!!o.penaltyClips && (
+                    <span data-test="order-penalty-chip"
+                      className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-destructive/15 text-destructive">
+                      <AlertTriangle size={9} /> {o.penaltyClips} clip{o.penaltyClips === 1 ? "" : "s"} charged
+                      {showSalesInfo && o.penaltyTotal ? ` · ${formatCurrency(o.penaltyTotal)}` : ""}
+                    </span>
                   )}
                   {/* Approval isn't a gate anymore, but the tech team should still see which sales
                       the sales admin hasn't signed off on yet. */}
@@ -467,6 +526,52 @@ export default function Orders() {
                     );
                   })()}
                 </div>
+
+                {/* What a month or a bulk order still owes. Editable here by the admin and the
+                    team leader, who are the two people fielding "where is it?" from the client. */}
+                {o.progress && (
+                  <div className="mt-2">
+                    <OrderProgressPanel order={o} user={user} />
+                  </div>
+                )}
+
+                {/* The changes ledger. The clip count is the delivery fact a team leader needs;
+                    the money is the tech admin's, so only they see the rupees. */}
+                {!!o.penalties?.length && (
+                  <div className="mt-2 space-y-1 rounded-lg border border-destructive/25 bg-destructive/5 p-2" data-test="order-penalties">
+                    <p className="flex items-center justify-between text-[10px] font-semibold text-destructive">
+                      <span className="flex items-center gap-1"><AlertTriangle size={10} /> Changes charged</span>
+                      <span>
+                        {totalPenalties(o.penalties).clips} clip{totalPenalties(o.penalties).clips === 1 ? "" : "s"}
+                        {showSalesInfo ? ` · ${formatCurrency(totalPenalties(o.penalties).total)}` : ""}
+                      </span>
+                    </p>
+                    {o.penalties.map((p) => (
+                      <div key={p.id} className="flex items-start justify-between gap-2 text-xs text-foreground">
+                        <span className="min-w-0">
+                          {p.clips} {p.clipType} clip{p.clips === 1 ? "" : "s"}
+                          {showSalesInfo ? ` × ${formatCurrency(p.ratePerClip)}` : ""}
+                          {p.reason ? <span className="text-muted-foreground"> — {p.reason}</span> : null}
+                          <span className="ml-1 text-[10px] text-muted-foreground">by {p.byName} · {fmtTs(p.at)}</span>
+                        </span>
+                        <span className="flex shrink-0 items-center gap-1.5">
+                          {showSalesInfo && <span className="font-mono font-medium text-destructive">{formatCurrency(p.amount)}</span>}
+                          {canChargePenalty && (
+                            <button
+                              data-test="penalty-remove"
+                              title="Remove this penalty"
+                              onClick={() => removeOrderPenalty({ order: o, penaltyId: p.id })}
+                              className="text-muted-foreground transition-colors hover:text-destructive"
+                            >
+                              <X size={12} />
+                            </button>
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                    <p className="text-[10px] text-muted-foreground">Charged to the client — not counted as sales revenue.</p>
+                  </div>
+                )}
 
                 {/* The client's brief, exactly as the sales member captured it. */}
                 {requirementSummary(o.requirement).length > 0 && (
@@ -521,10 +626,31 @@ export default function Orders() {
                 )}
               </div>
               <div className={`flex flex-wrap items-center gap-2 ${view === "grid" ? "w-full" : ""}`}>
-                {o.status === "unassigned" && (
+                {/* A month splits three ways, so it gets its own assigner rather than the single-
+                    member form — that form can only hand the whole thing to one person. */}
+                {o.status === "unassigned" && o.progress ? (
+                  <button data-test="order-split-assign" onClick={() => setSplitFor(o)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs md:text-sm font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+                    <Split className="w-3.5 h-3.5" /> Assign jobs
+                  </button>
+                ) : o.status === "unassigned" && (
                   <button onClick={() => navigate(`${workAssignBase}?order=${encodeURIComponent(o.id)}`)}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-xs md:text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
                     <UserPlus className="w-3.5 h-3.5" /> Assign
+                  </button>
+                )}
+                {/* Re-splitting a month that is already out — people move off jobs mid-month. */}
+                {o.progress && o.status !== "unassigned" && (
+                  <button data-test="order-resplit" onClick={() => setSplitFor(o)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border text-muted-foreground rounded-lg hover:bg-accent hover:text-foreground transition-colors">
+                    <Split className="w-3.5 h-3.5" /> Re-assign jobs
+                  </button>
+                )}
+                {canChargePenalty && (
+                  <button data-test="order-add-penalty" onClick={() => setPenaltyFor(o)}
+                    title="Charge for changes beyond the committed brief"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-destructive/40 bg-destructive/5 text-destructive rounded-lg hover:bg-destructive/15 transition-colors">
+                    <AlertTriangle className="w-3.5 h-3.5" /> Penalty
                   </button>
                 )}
                 {queueStatusOf(o) === "assigned" && (
@@ -559,6 +685,19 @@ export default function Orders() {
         ))}
       </div>
 
+      {penaltyFor && user && (
+        <PenaltyDialog order={penaltyFor} actor={user} onClose={() => setPenaltyFor(null)} />
+      )}
+
+      {splitFor && user && (
+        <AssignTracksDialog
+          order={splitFor}
+          members={assignableMembers}
+          assignments={assignments}
+          assignerUid={user.uid}
+          onClose={() => setSplitFor(null)}
+        />
+      )}
     </div>
   );
 }

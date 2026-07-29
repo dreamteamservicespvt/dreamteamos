@@ -958,31 +958,95 @@ export const getModelProfile = (gender: string = 'female'): ModelProfile => {
 };
 
 export interface BrandMark {
-  /** true when there is NO logo file and we render a physical name board instead. */
+  /** true when there is NO logo file and the business name is rendered instead. */
   isNameBoard: boolean;
   /** noun phrase used in place of "the attached logo", e.g. "the business name board". */
   ref: string;
-  /** UPPERCASE business name to render on the name board (empty when a logo is used). */
+  /** UPPERCASE business name to render (empty when a logo is used). */
   name: string;
 }
 
 /**
- * Resolves how the brand is shown on the wall. With a logo it stays "the attached logo".
- * Without a logo it becomes a realistic premium NAME BOARD carrying the business name, so
- * the prompt never tells the generator to "attach a logo" that does not exist (tasks 2 & 3).
+ * WHERE the brand mark is being placed, which decides what replaces a missing logo.
+ *
+ * `scene`  — inside a photographed room (the main frame). A business with no logo file still has a
+ *            board on its wall, so that is what the model is asked for.
+ * `layout` — inside a designed graphic (the header strip, the poster). There is no wall here and
+ *            asking for "a realistic wall sign" produces a photograph pasted into a layout; what a
+ *            designer actually draws is a typographic WORDMARK.
+ *
+ * The distinction is not cosmetic. Both surfaces used to share the scene wording, so a no-logo
+ * header came out asking for signage that made no sense in a flat brand strip.
  */
-export const getBrandMark = (noLogo: boolean = false, logoName: string = ''): BrandMark => {
+export type BrandSurface = 'scene' | 'layout';
+
+/**
+ * Resolves how the brand is shown. With a logo it stays "the attached logo".
+ * Without a logo it becomes the business name — as a physical NAME BOARD in a photographed scene,
+ * or as a designed WORDMARK in a graphic layout — so no prompt ever tells the generator to use an
+ * attached logo that does not exist.
+ */
+export const getBrandMark = (
+  noLogo: boolean = false,
+  logoName: string = '',
+  surface: BrandSurface = 'scene',
+): BrandMark => {
   const name = (logoName || '').trim().toUpperCase();
   if (noLogo) {
+    const reads = name
+      ? `reading exactly "${name}"`
+      : `showing the business's exact name`;
     return {
       isNameBoard: true,
-      ref: name
-        ? `the business NAME BOARD (a realistic premium wall sign, board, or fascia that reads exactly "${name}" in clean, correctly-spelled bold UPPERCASE letters)`
-        : 'the business NAME BOARD (a realistic premium wall sign, board, or fascia showing the exact business name in clean, correctly-spelled bold UPPERCASE letters)',
+      ref: surface === 'layout'
+        ? `the business NAME WORDMARK (the business name set as the brand lockup in premium, clean, `
+          + `correctly-spelled bold UPPERCASE typography, ${reads})`
+        : `the business NAME BOARD (a realistic premium wall sign, board, or fascia ${reads} in clean, `
+          + `correctly-spelled bold UPPERCASE letters)`,
       name,
     };
   }
   return { isNameBoard: false, ref: 'the attached logo', name: '' };
+};
+
+/**
+ * The "there is no logo" preamble that leads a prompt built in no-logo mode.
+ *
+ * Lives here with the rest of the prompt copy because for the HEADER it is not a hidden system
+ * instruction — the header prompt is assembled locally and copied into the image generator whole,
+ * so this text is part of the deliverable.
+ *
+ * Note what it carefully does NOT say. An earlier version spelled out "never ask for the attached
+ * logo", and a generator reading that still had the phrase "the attached logo" sitting in its
+ * context; negations are the weakest instruction there is. The wording below never names the thing
+ * it is ruling out.
+ */
+export const buildBrandMarkDirective = (
+  noLogo: boolean,
+  logoName: string = '',
+  surface: BrandSurface = 'scene',
+): string => {
+  if (!noLogo) return '';
+  const name = (logoName || '').trim().toUpperCase();
+  const exact = name
+    ? `EXACTLY this business name in clean bold UPPERCASE letters: "${name}"`
+    : `the business's EXACT name in clean, correctly-spelled bold UPPERCASE letters`;
+
+  if (surface === 'layout') {
+    return `NO-LOGO / WORDMARK MODE (MANDATORY): This business has no brand image file, and none will `
+      + `be supplied. The brand mark in this design is the BUSINESS NAME ITSELF, set as a typographic `
+      + `wordmark showing ${exact}. Treat that wordmark as the brand mark everywhere this design calls `
+      + `for one. Do not request, expect, or reserve space for any brand image, do not leave a blank `
+      + `brand box, placeholder or frame, and never invent an emblem, icon, monogram, badge or symbol `
+      + `to stand in for it. The written business name is the entire brand mark.\n\n`;
+  }
+
+  return `NO-LOGO / NAME-BOARD MODE (MANDATORY): This business has no brand image file. Instead, render `
+    + `a realistic, premium NAME BOARD / wall signage behind the model showing ${exact}. Treat that name `
+    + `board as the brand mark everywhere this scene calls for one. It must be present in the frame `
+    + `background, fully visible, correctly spelled, upright, realistically mounted on the wall, `
+    + `sharp/in-focus, and never distorted. Do not request or expect any brand image file, and do not `
+    + `invent any other text.\n\n`;
 };
 
 /** Male grooming description (hair + face + no-makeup) that mirrors the female HAIR/FACE blocks. */
@@ -2018,20 +2082,49 @@ Clip 3 – Main Frame Prompt (${shotDesigns[2 % shotDesigns.length].name})
 Do NOT wrap individual prompts in code blocks — output them as plain text separated by ###CLIP###.`;
 };
 
-export const HEADER_SYSTEM_PROMPT = (_adType: string, _festivalName: string) => {
+export const HEADER_SYSTEM_PROMPT = (
+  _adType: string,
+  _festivalName: string,
+  noLogo: boolean = false,
+  logoName: string = '',
+) => {
+    // The header is a designed graphic, so a missing logo becomes a typographic wordmark rather
+    // than a wall sign. Every "logo" reference below is written through this, because a blanket
+    // "wherever it says logo, do something else" note left the literal words in the prompt the
+    // member copies — which is exactly what kept asking for a logo that was never uploaded.
+    const brand = getBrandMark(noLogo, logoName, 'layout');
+    const markSlot = brand.isNameBoard
+      ? `a rounded-square BRAND container holding ${brand.ref}, set in premium typography that matches the design`
+      : `a square / rounded-square LOGO container holding ${brand.ref} (used exactly as provided, unchanged)`;
+    const markBox = brand.isNameBoard
+      ? `BRAND container: premium with subtle depth, fully inside the frame, never clipped, never a plain white box. It holds the business-name wordmark — NOT an image file, NOT a placeholder, and NEVER an empty logo box.`
+      : `LOGO container: premium with subtle depth, fully inside the frame, never clipped, never a plain white box.`;
+    const colourSource = brand.isNameBoard
+      ? `Use the business's own brand colours (from the brand palette provided) as the base.`
+      : `Use the brand / logo colours as the base.`;
+    const elementList = brand.isNameBoard
+      ? `the business-name wordmark, the business name, the contact number(s), and a real address`
+      : `the logo, the business name, the contact number(s), and a real address`;
+    const nothingBeyond = brand.isNameBoard
+      ? `nothing beyond the wordmark, name, contacts, and a real address`
+      : `nothing beyond logo, name, contacts, and a real address`;
+    const noLogoRule = brand.isNameBoard
+      ? `\n- THIS BUSINESS HAS NO BRAND IMAGE FILE, and none will be supplied. Do NOT ask for one, expect one, or leave room for one, and never draw an empty brand box, a placeholder mark, a generic emblem, or an invented symbol. The business name IS the brand mark here.`
+      : '';
+
     return `Design a PREMIUM, BUSINESS-THEMED HEADER for a 9:16 vertical advertisement.
 
 CANVAS & SIZE (FULL-BLEED TOP STRIP — NO OUTER PADDING):
-- 9:16 vertical frame. The ENTIRE header — logo row AND the address bar together — is ONE compact band that FILLS the top of the frame COMPLETELY: it spans the FULL WIDTH from the left edge to the right edge and starts flush at the very TOP edge, filling about the top 7% as a slim strip. Everything below the header stays empty / blank.
+- 9:16 vertical frame. The ENTIRE header — brand row AND the address bar together — is ONE compact band that FILLS the top of the frame COMPLETELY: it spans the FULL WIDTH from the left edge to the right edge and starts flush at the very TOP edge, filling about the top 7% as a slim strip. Everything below the header stays empty / blank.
 - FULL-BLEED (IMPORTANT): there must be NO outer margin, NO padding, and NO gap around the header band, and it must NOT look like a floating rounded card with empty space around it. The band reaches the TOP, LEFT, and RIGHT edges of the canvas; do NOT round the top-left or top-right outer corners (only the bottom edge of the band may be softly finished).
-- Inside the band, the LOGO box, NAME container, and CONTACT pills keep their rounded premium shapes, with comfortable INNER spacing so no element is clipped or cramped — elements are padded INSIDE the full-bleed band, while the band itself has no outer padding.
+- Inside the band, the BRAND box, NAME container, and CONTACT pills keep their rounded premium shapes, with comfortable INNER spacing so no element is clipped or cramped — elements are padded INSIDE the full-bleed band, while the band itself has no outer padding.
 
 EXACT LAYOUT (keep this structure — do not move or change it):
-- LEFT: a square / rounded-square LOGO container holding the attached logo (used exactly as provided, unchanged).
+- LEFT: ${markSlot}.
 - CENTRE: a large rounded-rectangle container with the BUSINESS NAME as the hero element.
 - RIGHT: the contact number(s) as premium pill / button(s), stacked vertically.
 - BOTTOM: a SLIM full-width ADDRESS bar, tightly attached under the row above as part of the SAME header unit (NOT a separate thick band), with the address text CENTER-aligned.
-- The LOGO box, the NAME container, and the CONTACT pills must share the SAME height and baseline and align evenly in one neat row.
+- The BRAND box, the NAME container, and the CONTACT pills must share the SAME height and baseline and align evenly in one neat row.
 
 ADAPTIVE RULES (IMPORTANT):
 - Contacts: if TWO numbers are given, show two evenly-stacked pills that fill the right side neatly. If only ONE number is given, show a single comfortably-sized pill centered on the right with balanced spacing and NO empty glow panel and NO blank gap. If NO number is given, remove the contact area entirely and let the BUSINESS NAME grow larger / wider to fill that space. Show AT MOST TWO contact numbers and reproduce each number EXACTLY as provided, digit-for-digit — NEVER change, swap, add, drop, reorder, or invent any digit, and never make up a number.
@@ -2049,18 +2142,18 @@ BUSINESS-THEMED GRAPHIC DESIGN (MANDATORY — this was missing before):
 - Place these themed graphics as soft decorative accents (in the corners, behind the name, or as a faint watermark pattern) that clearly signal the business type while keeping all text fully readable.
 
 PREMIUM FINISH:
-- Use the brand / logo colours as the base. Add rich gradients, premium soft shadows, tasteful glassmorphism, subtle metallic / gold highlights, and gentle depth and lighting so it feels dimensional — never a flat band, wireframe, form, dashboard, or plain bordered boxes.
-- LOGO container: premium with subtle depth, fully inside the frame, never clipped, never a plain white box.
+- ${colourSource} Add rich gradients, premium soft shadows, tasteful glassmorphism, subtle metallic / gold highlights, and gentle depth and lighting so it feels dimensional — never a flat band, wireframe, form, dashboard, or plain bordered boxes.
+- ${markBox}
 - BUSINESS NAME: the visual hero — premium typography, elegant treatment, strong hierarchy, perfectly spelled and readable.
 - CONTACT pills: premium gradient / glass buttons with a small phone icon and a soft shadow.
 - ADDRESS bar: slim and integrated, with a subtle gradient / glass treatment and a small location-pin icon — never a thick separate rectangle. The address text stays on ONE single line always (shrink the text to fit), never wrapped onto a second line.
 
 CONTENT RULES (STRICT):
-- Place ONLY these elements: the logo, the business name, the contact number(s), and a real address — using EXACTLY the values provided to you.
+- Place ONLY these elements: ${elementList} — using EXACTLY the values provided to you.
 - Use ONLY the values that are provided. If a value is not provided, simply leave that element out — do NOT draw an empty box and do NOT write words like "not provided", "N/A", or any placeholder.
 - NEVER invent, guess, autocomplete, or fabricate any value — especially NEVER make up an address, street, area, city, pincode, or phone number. If the address (or a contact number) is not given to you, that element does NOT exist: do NOT draw its bar / pill and do NOT place any text for it. A field that is missing must be completely absent, not faked.
-- No taglines, no offers, no services, no extra text — nothing beyond logo, name, contacts, and a real address.
-- All text must be crisp, perfectly spelled, and clearly readable.`;
+- No taglines, no offers, no services, no extra text — ${nothingBeyond}.
+- All text must be crisp, perfectly spelled, and clearly readable.${noLogoRule}`;
 };
 export const getToneForAdType = (adType: string) =>
   adType === AdType.FESTIVAL
@@ -2504,7 +2597,27 @@ Separator between segments: "###SEGMENT###"
 `;
 };
 
-export const POSTER_SYSTEM_PROMPT = (adType: string, festivalName: string) => `You are a world-class poster designer and prompt writer for AI image generators. Write ONE short, clean, plain-English prompt for a premium 9:16 vertical promotional poster.
+export const POSTER_SYSTEM_PROMPT = (
+  adType: string,
+  festivalName: string,
+  noLogo: boolean = false,
+  logoName: string = '',
+) => {
+  // Same reasoning as the header: a poster is a designed layout, so with no logo file the brand
+  // mark is a typographic wordmark. The rules below are written through this rather than saying
+  // "the attached logo" and hoping a prefixed note overrides it.
+  const brand = getBrandMark(noLogo, logoName, 'layout');
+  const markPlacement = brand.isNameBoard
+    ? `where the BUSINESS-NAME WORDMARK goes (top centre) — ${brand.ref}`
+    : `where the logo goes (top centre, unchanged)`;
+  const colourSource = brand.isNameBoard
+    ? `background and colours (derived from the business's own brand palette)`
+    : `background and colours (derived from the logo / brand)`;
+  const markRule = brand.isNameBoard
+    ? `- THIS BUSINESS HAS NO BRAND IMAGE FILE, and none will be supplied. The brand mark at the top centre is the BUSINESS NAME itself, set in premium bold UPPERCASE typography and spelled exactly as provided. Do not request one, do not reserve a space for one, and never invent an emblem, icon, monogram, or symbol to stand in for it.`
+    : `- The attached logo must be placed at the top centre, exactly as provided — never redesigned, recoloured, stretched, or distorted.`;
+
+  return `You are a world-class poster designer and prompt writer for AI image generators. Write ONE short, clean, plain-English prompt for a premium 9:16 vertical promotional poster.
 
 GOAL: a genuinely PREMIUM, modern, award-level professional poster design${adType === 'festival' ? ` for a ${festivalName} greeting` : ''} that looks like a top international design studio (Behance / Dribbble featured) created it — intentional, polished, and visually RICH. It must NEVER look boring, empty, plain, flat, cramped, template-like, or amateur.
 
@@ -2513,16 +2626,17 @@ STRICT RULES:
 - Keep it SHORT and clean: about 150-220 words, in a few simple sentences or short lines.
 - GRAPHIC-DESIGN QUALITY (MOST IMPORTANT): make the design genuinely world-class and visually rich — strong visual hierarchy, a bold hero focal area, layered depth, tasteful brand-colour gradients, soft shadows and highlights, premium modern typography, and a confident, dynamic, well-art-directed composition. The canvas must feel intentionally FILLED and designed (not empty or sparse), yet balanced and breathable — rich but never cluttered.
 - BUSINESS-RELEVANT DESIGN ELEMENTS (CRITICAL — this is what makes it stop looking boring): weave in tasteful graphic elements, icons, illustrations, motifs, patterns, or product/service imagery that directly represent THIS specific business and industry (e.g. medical → clean health/care icons & equipment imagery; education → learning/campus motifs; food → appetising food imagery; jewellery → elegant sparkle & gold accents). These accents must feel custom-designed for this brand, integrated into the composition with depth — never generic clip-art, never random shapes.
-- Describe only: overall style and mood, background and colours (derived from the logo / brand), where the logo goes (top centre, unchanged), the main hero visual, the business-relevant graphic elements, and a polished, well-composed layout.
+- Describe only: overall style and mood, ${colourSource}, ${markPlacement}, the main hero visual, the business-relevant graphic elements, and a polished, well-composed layout.
 - MINIMAL TEXT IN THE POSTER: keep text minimal and clean — the business name, the contact number(s), and the address (when an address is provided it MUST be included, on ONE clean single line), plus optionally one short tagline. Do NOT fill the poster with paragraphs, service lists, or long copy.
 - Use ONLY real business details from the provided info. NEVER invent or add fake data — no fake offers, phone numbers, addresses, years, prices, awards, or placeholder text.
 - CONTACT NUMBERS: show ONLY the real contact number(s) given to you, AT MOST TWO (the first two), exactly as provided digit-for-digit. NEVER alter, complete, reorder, merge, or invent a phone number. If no contact number is given, show NO contact number at all.
 - Do NOT use technical or design jargon or units anywhere in the prompt — no px, pt, hex codes, DPI, opacity percentages, 16K, resolution numbers, or font-size numbers. Use plain words like small, large, centred, soft, bold.
-- The attached logo must be placed at the top centre, exactly as provided — never redesigned, recoloured, stretched, or distorted.
+${markRule}
 - Keep it elegant and premium with clear visual hierarchy and intentional spacing — rich and fully designed, but never cluttered or text-heavy. Empty, bare, or boring layouts are NOT acceptable.
 ${adType === 'festival' ? `- Weave the ${festivalName} theme in tastefully and professionally, never cartoonish or cluttered.` : `- Keep it clean, corporate, modern, and persuasive.`}
 
 OUTPUT: Return ONLY the short plain-English poster prompt. No JSON, no headings, no explanations.`;
+};
 export const STOCK_IMAGE_SYSTEM_PROMPT = `You are a WORLD-CLASS CREATIVE DIRECTOR working for a TOP INTERNATIONAL ADVERTISING AGENCY. You curate and create PREMIUM visual content that wins AWARDS and gets featured on Behance, Dribbble, and in international design magazines.
 
 YOUR TASK: Analyze the voice-over script and generate WORLD-CLASS stock image prompts that would be used in a PREMIUM BRAND CAMPAIGN.

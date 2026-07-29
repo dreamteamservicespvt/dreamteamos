@@ -14,7 +14,8 @@ import { sendNotification } from "@/services/notifications";
 import { normalizePhone } from "@/utils/phone";
 import { categoryLabel } from "@/utils/serviceCatalog";
 import { findUnassignedOrderForPhone, revertOrderToUnassigned } from "@/services/orders";
-import type { Order } from "@/types";
+import { ORDER_TRACKS } from "@/types";
+import type { Order, OrderTrack } from "@/types";
 
 /** Sequential, readable work id (W001 / P002 / C003 / O004) — defined with the Orders pipeline. */
 export { nextWorkUniqueId } from "@/services/orders";
@@ -47,6 +48,11 @@ export interface CreateWorkAssignmentInput {
   realLocationProvided?: boolean;
   /** The order this fulfils, when it came from the Orders queue. */
   order?: Order | null;
+  /**
+   * Which parts of a split social-media month this member owns. A member holding two of the three
+   * jobs gets ONE assignment naming both, rather than two cards for the same month.
+   */
+  tracks?: OrderTrack[];
   /** Shown in the assignee's notification. */
   memberLink?: string;
 }
@@ -57,7 +63,7 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
     assignedTo, assignedToName, assignerUid, category, duration, clipCount, pricePerUnit, uniqueId,
     businessName, businessWhatsapp, modelGender, attireType, customAttire, aspectRatio,
     language, requirementNotes, characterPack, realLocationProvided,
-    order, memberLink = "/tech/my-work",
+    order, tracks, memberLink = "/tech/my-work",
   } = input;
 
   const accessCode = generateAccessCode();
@@ -103,6 +109,7 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
     ...(characterPack ? { characterPack, realLocationProvided: realLocationProvided === true } : {}),
     ...(linkedOrder ? { orderId: linkedOrder.id } : {}),
     ...(linkedOrder?.promise ? { promise: linkedOrder.promise } : {}),
+    ...(tracks?.length ? { tracks } : {}),
   });
 
   if (linkedOrder) {
@@ -116,11 +123,20 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
     });
   }
 
+  // A split month reads as the jobs handed over, not as "N clips" — the member needs to know
+  // whether they are making the ads or running the campaigns, which the clip count cannot say.
+  const trackNames = (tracks || [])
+    .map((t) => ORDER_TRACKS.find((x) => x.key === t)?.label || t)
+    .join(" + ");
+  const what = trackNames
+    ? `${trackNames} on ${business || categoryLabel(category)}`
+    : `a new ${category} work (${clipCount} clips, ${duration})`;
+
   await sendNotification({
     userId: assignedTo,
     type: "work_assigned",
     title: "New Work Assigned",
-    message: `You have been assigned a new ${category} work (${clipCount} clips, ${duration}).${
+    message: `You have been assigned ${what}.${
       linkedOrder?.promise ? ` Deliver within ${linkedOrder.promise.label}.` : ""
     } Access code: ${accessCode}`,
     link: memberLink,

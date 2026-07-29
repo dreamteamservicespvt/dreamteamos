@@ -17,7 +17,12 @@ import { sendNotification } from "@/services/notifications";
 import { normalizePhone, phoneLockId } from "@/utils/phone";
 import { isAdCategory } from "@/utils/serviceCatalog";
 import { promiseDueMs, deadlineState } from "@/utils/promiseSla";
-import type { Lead, Order, OrderUpdateNote, SaleDetail, WorkAssignment } from "@/types";
+import { initialProgress, isProgressComplete, isTrackComplete, TRACK_FIELDS } from "@/utils/orderProgress";
+import { penaltyAmount, totalPenalties } from "@/utils/penalty";
+import type {
+  AppUser, Lead, Order, OrderProgress, OrderProgressField, OrderTrack, OrderUpdateNote,
+  PenaltyClipType, PenaltyEntry, SaleDetail, WorkAssignment,
+} from "@/types";
 
 const ACTIVE_ORDER_STATUSES = ["unassigned", "assigned", "completed"] as const;
 
@@ -83,7 +88,15 @@ export async function upsertOrderForSale(params: {
       clientName: lead.realName || lead.displayName || "",
       category: item.category,
       packageKey: item.packageKey || "custom",
+      customDescription: item.customDescription ?? null,
       amount: item.amount || 0,
+      // Bulk ads — how many, at what unit price, and whether the member moved the discount. The
+      // tech side needs the count to know the job is N ads; the two admins need the rest.
+      quantity: item.quantity ?? null,
+      unitAmount: item.unitAmount ?? null,
+      suggestedDiscountPercent: item.suggestedDiscountPercent ?? null,
+      discountPercent: item.discountPercent ?? null,
+      discountEdited: item.discountEdited ?? false,
       leadId: lead.id,
       saleItemIndex: itemIndex,
       saleItemKey: `${lead.id}__${itemIndex}`,
@@ -98,6 +111,13 @@ export async function upsertOrderForSale(params: {
       updatedAt: serverTimestamp(),
     };
 
+    // What this order still owes, for the two kinds that owe more than a single ad.
+    const progress = initialProgress({
+      category: item.category,
+      packageKey: item.packageKey,
+      quantity: item.quantity,
+    });
+
     const snap = await getDoc(ref);
     if (snap.exists()) {
       const existing = snap.data() as Order;
@@ -107,12 +127,23 @@ export async function upsertOrderForSale(params: {
       const statusPatch = existing.status === "cancelled" ? { status: "unassigned" as const } : {};
       // saleVerified only ever moves false → true — a later sale-time refresh must not un-verify it.
       const verifiedPatch = params.saleVerified || existing.saleVerified ? { saleVerified: true } : {};
-      await updateDoc(ref, { ...saleFields, ...statusPatch, ...verifiedPatch });
+      /**
+       * Progress is seeded, never re-seeded. This runs again on every sale edit, and rewriting it
+       * would reset counters the tech team had spent a fortnight filling in — so an order that
+       * already has progress keeps exactly what it has, and only one that has none (a sale edited
+       * INTO a bulk or monthly category) gets it now.
+       */
+      const progressPatch = !existing.progress && progress ? { progress } : {};
+      await updateDoc(ref, { ...saleFields, ...statusPatch, ...verifiedPatch, ...progressPatch });
     } else {
       await setDoc(ref, {
         ...saleFields,
         status: "unassigned",
         saleVerified: !!params.saleVerified,
+        progress,
+        penalties: [],
+        penaltyTotal: 0,
+        penaltyClips: 0,
         workAssignmentId: null,
         assignedTo: null,
         assignedToName: null,
@@ -512,5 +543,243 @@ export async function notifyDueOrdersOnOpen(
     } catch (err) {
       console.error("[orders] deadline notify failed:", err);
     }
+  }
+}
+
+// ─── Multi-deliverable progress (social media month / bulk ads) ───────────────────────────────
+
+/** Everyone who should hear about a change on this order, deduped, minus whoever made it. */
+function progressAudience(order: Order, actorUid: string): string[] {
+  const tracked = Object.values(order.progress?.tracks || {}).map((a) => a?.uid);
+  return Array.from(new Set([...tracked, order.assignedTo, order.techAdminId]))
+    .filter((u): u is string => !!u && u !== actorUid);
+}
+
+/**
+ * Move one counter on an order.
+ *
+ * Written as an absolute value rather than an increment because two people can be looking at the
+ * same month at once, and "set it to 5" from a screen showing 4 is a mistake that corrects itself
+ * on the next render — whereas two "+1"s from the same stale 4 silently becomes 6.
+ *
+ * The whole progress object is rewritten in one update so `done`, the log and the completion stamp
+ * can never disagree with each other.
+ */
+export async function updateOrderProgress(params: {
+  order: Order;
+  field: OrderProgressField;
+  value: number;
+  actor: Pick<AppUser, "uid" | "name">;
+}): Promise<void> {
+  const { order, field, value, actor } = params;
+  const progress = order.progress;
+  if (!progress) return;
+
+  const target = progress.targets[field] || 0;
+  // Clamped to the quota: a month owes eight ads, and "12 of 8 delivered" is a typo, not news.
+  const next = Math.max(0, Math.min(target, Math.floor(Number(value) || 0)));
+  const from = progress.done[field] || 0;
+  if (next === from) return;
+
+  const done = { ...progress.done, [field]: next };
+  const updated: OrderProgress = {
+    ...progress,
+    done,
+    log: [...(progress.log || []), { at: Timestamp.now(), byName: actor.name, field, from, to: next }].slice(-100),
+  };
+  const nowComplete = isProgressComplete(updated);
+  updated.completedAt = nowComplete ? (progress.completedAt ?? Timestamp.now()) : null;
+
+  await updateDoc(doc(db, "orders", order.id), { progress: updated, updatedAt: serverTimestamp() });
+
+  // Tell the rest of the team, so a split job's other members see the shared count move.
+  const label = order.businessName || "an order";
+  for (const userId of progressAudience(order, actor.uid)) {
+    await sendNotification({
+      userId,
+      type: nowComplete ? "order_progress_complete" : "order_progress",
+      title: nowComplete ? "Order fully delivered" : "Progress updated",
+      message: nowComplete
+        ? `Everything on "${label}" is now delivered.`
+        : `${actor.name} updated "${label}": ${next} of ${target} ${field}.`,
+      link: "/tech/my-work",
+      // One notification per order per counter per value — re-saving the same number is not news.
+      dedupeKey: `order_progress_${order.id}_${field}_${next}_${userId}`,
+    });
+  }
+}
+
+/**
+ * Mark one of the three jobs finished (or re-open it).
+ *
+ * Marking done also fills that job's counters to their target: a member saying "uploading is
+ * finished" while the posted count sits at 3 of 8 leaves the order in a state nobody can read.
+ * The two statements mean the same thing, so they are written together.
+ */
+export async function setOrderTrackComplete(params: {
+  order: Order;
+  track: OrderTrack;
+  complete: boolean;
+  actor: Pick<AppUser, "uid" | "name">;
+}): Promise<void> {
+  const { order, track, complete, actor } = params;
+  const progress = order.progress;
+  if (!progress) return;
+
+  const completedTracks = complete
+    ? Array.from(new Set([...(progress.completedTracks || []), track]))
+    : (progress.completedTracks || []).filter((t) => t !== track);
+
+  const done = { ...progress.done };
+  if (complete) {
+    for (const f of TRACK_FIELDS[track]) {
+      if ((progress.targets[f] || 0) > 0) done[f] = progress.targets[f];
+    }
+  }
+
+  const updated: OrderProgress = {
+    ...progress,
+    done,
+    completedTracks,
+    log: [
+      ...(progress.log || []),
+      { at: Timestamp.now(), byName: actor.name, field: track, from: null, to: complete ? 1 : 0 },
+    ].slice(-100),
+  };
+  const nowComplete = isProgressComplete(updated);
+  updated.completedAt = nowComplete ? (progress.completedAt ?? Timestamp.now()) : null;
+
+  await updateDoc(doc(db, "orders", order.id), { progress: updated, updatedAt: serverTimestamp() });
+
+  const label = order.businessName || "an order";
+  const jobName = track.replace(/_/g, " ");
+  for (const userId of progressAudience(order, actor.uid)) {
+    await sendNotification({
+      userId,
+      type: "order_track_complete",
+      title: complete ? "A job is finished" : "A job was re-opened",
+      message: complete
+        ? `${actor.name} marked ${jobName} complete on "${label}".`
+        : `${actor.name} re-opened ${jobName} on "${label}".`,
+      link: "/tech/my-work",
+      dedupeKey: `order_track_${order.id}_${track}_${complete ? "done" : "open"}_${userId}`,
+    });
+  }
+}
+
+/** Put each job on a member. Recorded on the order; the work assignments are created separately. */
+export async function setOrderTracks(params: {
+  order: Order;
+  tracks: Partial<Record<OrderTrack, { uid: string; name: string }>>;
+}): Promise<void> {
+  const { order, tracks } = params;
+  if (!order.progress) return;
+  await updateDoc(doc(db, "orders", order.id), {
+    progress: { ...order.progress, tracks },
+    updatedAt: serverTimestamp(),
+  });
+}
+
+// ─── Penalties ───────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Charge a penalty for changes beyond what was committed.
+ *
+ * Recorded on the ORDER because both sides can add one — the sales member from the sale and the
+ * tech admin from the queue — and the order is the document both roles already read and write.
+ * A compact total is mirrored back onto the lead's sale item so the sales member's own screens
+ * show it without paying for a second read.
+ *
+ * The penalty is never added to `order.amount` or the sale's `amount`. That is the whole point:
+ * every revenue reader sums `amount`, so none of them can accidentally pay commission on a fine.
+ */
+export async function addOrderPenalty(params: {
+  order: Order;
+  clips: number;
+  ratePerClip: number;
+  clipType: PenaltyClipType;
+  reason?: string | null;
+  actor: Pick<AppUser, "uid" | "name" | "role">;
+}): Promise<PenaltyEntry> {
+  const { order, clips, ratePerClip, clipType, reason, actor } = params;
+
+  const entry: PenaltyEntry = {
+    id: `pen_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+    clips: Math.max(1, Math.floor(Number(clips) || 0)),
+    ratePerClip: Math.max(0, Number(ratePerClip) || 0),
+    amount: penaltyAmount(clips, ratePerClip),
+    clipType,
+    reason: reason?.trim() || null,
+    byId: actor.uid,
+    byName: actor.name,
+    byRole: actor.role,
+    at: Timestamp.now(),
+  };
+
+  const totals = totalPenalties([...(order.penalties || []), entry]);
+  await updateDoc(doc(db, "orders", order.id), {
+    penalties: arrayUnion(entry),
+    penaltyTotal: totals.total,
+    penaltyClips: totals.clips,
+    updatedAt: serverTimestamp(),
+  });
+
+  await mirrorPenaltyToSale(order, totals.total, totals.clips);
+
+  // The tech admin decides what happens to the job; the sales member owns the client conversation.
+  // Both need to know a charge was raised, whichever of them raised it.
+  const recipients = Array.from(new Set([order.techAdminId, order.soldBy, order.assignedTo]))
+    .filter((u): u is string => !!u && u !== actor.uid);
+  for (const userId of recipients) {
+    await sendNotification({
+      userId,
+      type: "order_penalty",
+      title: "Penalty added",
+      message: `${actor.name} added a penalty of ${entry.clips} clip${entry.clips === 1 ? "" : "s"} on "${order.businessName || "an order"}".`,
+      link: "/tech-admin/orders",
+      dedupeKey: `order_penalty_${entry.id}_${userId}`,
+    });
+  }
+
+  return entry;
+}
+
+/** Remove a penalty raised in error. Totals are recomputed from what is left. */
+export async function removeOrderPenalty(params: { order: Order; penaltyId: string }): Promise<void> {
+  const { order, penaltyId } = params;
+  const existing = order.penalties || [];
+  const remaining = existing.filter((p) => p.id !== penaltyId);
+  if (remaining.length === existing.length) return;
+
+  const totals = totalPenalties(remaining);
+  await updateDoc(doc(db, "orders", order.id), {
+    penalties: remaining,
+    penaltyTotal: totals.total,
+    penaltyClips: totals.clips,
+    updatedAt: serverTimestamp(),
+  });
+  await mirrorPenaltyToSale(order, totals.total, totals.clips);
+}
+
+/**
+ * Copy the penalty total onto the originating sale line.
+ *
+ * Best-effort and deliberately non-fatal: the order is the record that matters, and a sale whose
+ * lead has since been deleted must not stop a tech admin from charging for wasted work.
+ */
+async function mirrorPenaltyToSale(order: Order, penaltyTotal: number, penaltyClips: number): Promise<void> {
+  if (!order.leadId) return;
+  try {
+    const leadRef = doc(db, "leads", order.leadId);
+    const snap = await getDoc(leadRef);
+    if (!snap.exists()) return;
+    const lead = snap.data() as Lead;
+    const items = lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
+    const index = order.saleItemIndex;
+    if (index == null || !items[index]) return;
+    const updated = items.map((it, i) => (i === index ? { ...it, penaltyTotal, penaltyClips } : it));
+    await updateDoc(leadRef, { saleItems: updated, saleDetails: updated[updated.length - 1] });
+  } catch (err) {
+    console.error("[orders] mirrorPenaltyToSale failed:", err);
   }
 }

@@ -4,16 +4,19 @@ import {
 } from 'lucide-react';
 import { collection, query, where, doc, updateDoc, deleteField, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/services/firebase';
-import { sendNotification, notifyTechTeamLeaders } from '@/services/notifications';
-import { markOrderCompleted, revertOrderToAssigned } from '@/services/orders';
-import { upsertClientOnWorkComplete } from '@/services/clients';
+import { revertOrderToAssigned } from '@/services/orders';
+import { useCompleteWork } from '@/hooks/useCompleteWork';
 import { useAuthStore } from '@/store/authStore';
 import { useFirestoreQuery } from '@/hooks/useFirestore';
 import { format, subDays, subMonths, startOfDay } from 'date-fns';
 import { cycleForDate } from '@/utils/performanceCycle';
 import { formatDate, formatTime } from '@/utils/formatters';
 import DashboardDayPicker from '@/components/dashboard/DayPicker';
-import type { WorkAssignment } from '@/types';
+import { ORDER_TRACKS } from '@/types';
+import type { Order, WorkAssignment } from '@/types';
+import { useOrdersByIds } from '@/hooks/useOrdersByIds';
+import { isPinnedOrder } from '@/utils/orderProgress';
+import OrderProgressPanel from '@/components/work/OrderProgressPanel';
 import CodeVerificationModal from '@/components/ai-platform/CodeVerificationModal';
 import AIPlatformApp from '@/components/ai-platform/AIPlatformApp';
 import SaleDeletedBanner from '@/components/work/SaleDeletedBanner';
@@ -111,101 +114,20 @@ export default function MyWork() {
   /**
    * Submitting is slow and the button used to look identical the whole time it ran.
    *
-   * `handleComplete` does five sequential writes — the assignment, a notification, a fan-out to
-   * every team leader, the order, the client record — which on mobile data takes seconds with
-   * nothing changing on screen. So members tapped again, and again, and each tap sent another
-   * round of notifications: that is where seven to ten identical alerts came from.
-   *
-   * A ref, not state: two taps in the same tick would both read a stale `false` from state and
-   * both proceed. The ref is set synchronously, so the second tap sees it immediately.
+   * The handler does five sequential writes — the assignment, a notification, a fan-out to every
+   * team leader, the order, the client record — which on mobile data takes seconds with nothing
+   * changing on screen. So members tapped again, and again, and each tap sent another round of
+   * notifications. The guard, the busy state and the notification keys all live in the shared hook
+   * now (hooks/useCompleteWork), because Recent Ads submits the same way.
    */
-  const completingRef = useRef(false);
-  const [completing, setCompleting] = useState(false);
+  const { completing, complete } = useCompleteWork();
 
   const handleComplete = async () => {
-    if (!openAssignment) return;
-    if (completingRef.current) return;
-    // Already submitted — a stale render or a back-navigation must not send the whole round again.
-    if (openAssignment.status === 'completed' || openAssignment.status === 'verified') {
+    const submitted = await complete(openAssignment, { sessionStart: sessionStartRef.current });
+    if (submitted) {
+      // Counted by the hook's final write; leaving it set would bill the time twice on unmount.
+      sessionStartRef.current = null;
       setOpenAssignment(null);
-      return;
-    }
-    completingRef.current = true;
-    setCompleting(true);
-    try {
-      // Save final session
-      if (sessionStartRef.current) {
-        const durationSeconds = Math.round((Date.now() - sessionStartRef.current.getTime()) / 1000);
-        const newSession = { openedAt: sessionStartRef.current.toISOString(), closedAt: new Date().toISOString(), durationSeconds };
-        const prevSessions = openAssignment.sessions || [];
-        const prevTotal = openAssignment.totalDurationSeconds || 0;
-        await updateDoc(doc(db, 'work_assignments', openAssignment.id), {
-          status: 'completed',
-          completedAt: serverTimestamp(),
-          completedDate: format(new Date(), 'yyyy-MM-dd'),
-          sessions: [...prevSessions, newSession],
-          totalDurationSeconds: prevTotal + durationSeconds,
-        });
-        sessionStartRef.current = null;
-      } else {
-        await updateDoc(doc(db, 'work_assignments', openAssignment.id), {
-          status: 'completed',
-          completedAt: serverTimestamp(),
-          completedDate: format(new Date(), 'yyyy-MM-dd'),
-        });
-      }
-
-      // Notify whoever assigned the work (admin or team leader). Keyed on the job and the
-      // recipient, so "this work was completed" is one notification no matter how it is re-sent.
-      if (openAssignment.assignedBy) {
-        await sendNotification({
-          userId: openAssignment.assignedBy,
-          type: 'work_completed',
-          title: 'Work Completed',
-          message: `${user?.name || 'A member'} has completed work: ${openAssignment.businessName || openAssignment.displayTitle}`,
-          link: `/tech-admin/work-assign/${user.uid}?verify=${openAssignment.id}`,
-          dedupeKey: `work_completed_${openAssignment.id}_${openAssignment.assignedBy}`,
-        });
-      }
-
-      // Keep the member's tech team leader(s) in the loop on completions, even when the admin
-      // assigned the work directly. Skip the assigner so a team leader who assigned it isn't
-      // notified twice.
-      if (user?.createdBy) {
-        await notifyTechTeamLeaders({
-          teamAdminUid: user.createdBy,
-          excludeUserId: openAssignment.assignedBy,
-          type: 'work_completed',
-          title: 'Team Work Completed',
-          message: `${user?.name || 'A team member'} completed work: ${openAssignment.businessName || openAssignment.displayTitle}`,
-          link: `/team-leader/work-assign/${user.uid}?verify=${openAssignment.id}`,
-          dedupeKey: `work_completed_${openAssignment.id}`,
-        });
-      }
-
-      // Order-driven work → reflect completion on the order (queue shows "Awaiting verify").
-      if (openAssignment.orderId) {
-        await markOrderCompleted(openAssignment.orderId);
-      }
-
-      // The customer now has something delivered, so they become an upsell target immediately —
-      // including for work assigned directly (no order), which never reached Clients before.
-      await upsertClientOnWorkComplete({
-        assignment: openAssignment,
-        deliveredByName: user?.name,
-      });
-
-      setOpenAssignment(null);
-    } catch (error) {
-      console.error('Failed to mark complete:', error);
-      toast({
-        title: "Couldn't submit",
-        description: 'Your work was not submitted. Check your connection and try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      completingRef.current = false;
-      setCompleting(false);
     }
   };
 
@@ -272,9 +194,39 @@ export default function MyWork() {
     const ts = a.assignedAt as any;
     return ts?.seconds || (a.assignedAtIso ? Math.floor(new Date(a.assignedAtIso).getTime() / 1000) : 0);
   };
+  /**
+   * The orders behind this member's multi-deliverable work — a social-media month or a bulk order.
+   * Fetched by id rather than by subscribing to the whole collection: only work that carries tracks
+   * needs one, so a member doing ordinary single ads pays for nothing here.
+   */
+  const trackedOrderIds = useMemo(
+    () => assignments.filter(a => a.tracks?.length && a.orderId).map(a => a.orderId!),
+    [assignments],
+  );
+  const trackedOrders = useOrdersByIds(trackedOrderIds);
+  const orderFor = (a: WorkAssignment): Order | null => (a.orderId ? trackedOrders.get(a.orderId) ?? null : null);
+  /** Ordinary work has no order to pin by, and work whose order hasn't loaded yet does not jump. */
+  const isPinned = (a: WorkAssignment): boolean => {
+    const o = orderFor(a);
+    return !!o && isPinnedOrder(o);
+  };
+
+  /**
+   * Active work, with unfinished months and bulk orders held at the top.
+   *
+   * Those run over days while single ads land and clear around them, so on plain newest-first they
+   * sink below a fortnight of finished ads while still owing the client work.
+   */
   const activeWork = useMemo(
-    () => assignments.filter(a => ['assigned', 'in_progress', 'editing'].includes(a.status)).sort((a, b) => assignedSeconds(b) - assignedSeconds(a)),
-    [assignments]
+    () => assignments
+      .filter(a => ['assigned', 'in_progress', 'editing'].includes(a.status))
+      .sort((a, b) => {
+        const pinA = isPinned(a);
+        const pinB = isPinned(b);
+        if (pinA !== pinB) return pinA ? -1 : 1;
+        return assignedSeconds(b) - assignedSeconds(a);
+      }),
+    [assignments, trackedOrders]
   );
   const completedWork = useMemo(
     () => assignments.filter(a => ['completed', 'verified'].includes(a.status)).sort((a, b) => {
@@ -493,8 +445,11 @@ export default function MyWork() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredActive.map(a => {
               const cfg = statusConfig[a.status];
+              const order = orderFor(a);
+              const pinned = isPinned(a);
               return (
-                <div key={a.id} className="bg-card border rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow">
+                <div key={a.id} data-test="my-work-card"
+                  className={`bg-card border rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow ${pinned ? "border-purple-500/40 ring-1 ring-purple-500/20" : ""}`}>
                   <div className="flex items-start justify-between mb-3">
                     <div>
                       <h3 className="font-semibold text-card-foreground">{a.businessName || a.displayTitle}</h3>
@@ -504,14 +459,30 @@ export default function MyWork() {
                   </div>
                   <SaleDeletedBanner assignment={a} />
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground mb-3">
-                    <span className="capitalize">{a.category}</span>
-                    <span>{a.clipCount} clips + EC</span>
+                    <span className="capitalize">{a.category.replace(/_/g, ' ')}</span>
+                    {/* Ordinary ad work is counted in clips; a month is counted in jobs, and
+                        "8 clips + EC" would be a lie about what this person was actually given. */}
+                    {a.tracks?.length ? (
+                      <span className="text-purple-600 dark:text-purple-400">
+                        {a.tracks.map(t => ORDER_TRACKS.find(x => x.key === t)?.label || t).join(' + ')}
+                      </span>
+                    ) : (
+                      <span>{a.clipCount} clips + EC</span>
+                    )}
                     <span>{a.duration}</span>
                     <span>Assigned: {getAssignedStamp(a)}</span>
                     {a.totalDurationSeconds > 0 && (
                       <span className="flex items-center space-x-1"><Clock className="w-3 h-3" /><span>{formatDuration(a.totalDurationSeconds)}</span></span>
                     )}
                   </div>
+
+                  {/* The shared counters. Written to the order, so the other members on a split
+                      month see this person's progress without anyone having to message anyone. */}
+                  {order?.progress && (
+                    <div className="mb-3">
+                      <OrderProgressPanel order={order} user={user} />
+                    </div>
+                  )}
 
                   <div className="flex items-center justify-between mb-4 bg-muted/50 rounded-lg px-3 py-2">
                     <span className="text-xs text-muted-foreground">Access Code:</span>
