@@ -62,6 +62,7 @@ import MemberAssignments from "@/pages/tech-admin/MemberAssignments";
 import TeamLeaderWorkAssign from "@/pages/tech-team-leader/WorkAssign";
 import TeamLeaderMemberAssignments from "@/pages/tech-team-leader/MemberAssignments";
 import TeamAttendance from "@/pages/shared/TeamAttendance";
+import MemberProfileDetail from "@/pages/shared/MemberProfileDetail";
 import SendAgreement from "@/pages/shared/SendAgreement";
 import Tools from "@/pages/shared/Tools";
 import WorkReports from "@/pages/shared/WorkReports";
@@ -135,6 +136,8 @@ const App = () => (
           <Route element={<AppLayout allowedRoles={["tech_admin"]} />}>
             <Route path="/tech-admin/dashboard" element={<TechAdminDashboard />} />
             <Route path="/tech-admin/team" element={<TechAdminMyTeam />} />
+            {/* The full member record — account, employment, KYC, documents, probation, assets, exit */}
+            <Route path="/tech-admin/team/:memberId/profile" element={<MemberProfileDetail />} />
             <Route path="/tech-admin/team/:memberId" element={<TechAdminMemberHistory />} />
             <Route path="/tech-admin/team/:memberId/analytics" element={<TechAdminMemberAnalytics />} />
             <Route path="/tech-admin/attendance" element={<TeamAttendance />} />
@@ -162,6 +165,8 @@ const App = () => (
           <Route element={<AppLayout allowedRoles={["sales_admin"]} />}>
             <Route path="/sales-admin/dashboard" element={<SalesAdminDashboard />} />
             <Route path="/sales-admin/team" element={<SalesAdminMyTeam />} />
+            {/* The full member record — account, employment, KYC, documents, probation, assets, exit */}
+            <Route path="/sales-admin/team/:memberId/profile" element={<MemberProfileDetail />} />
             <Route path="/sales-admin/team/:memberId" element={<MemberSalesHistory />} />
             <Route path="/sales-admin/leads" element={<LeadsManagement />} />
             <Route path="/sales-admin/leads/:memberId" element={<MemberLeadsDetail />} />
@@ -235,6 +240,8 @@ const App = () => (
             <Route path="/team-leader/orders" element={<Orders />} />
             <Route path="/team-leader/attendance" element={<TeamAttendance />} />
             <Route path="/team-leader/agreements" element={<SendAgreement />} />
+            {/* A team leader is an employee too — they have HR documents of their own to sign. */}
+            <Route path="/team-leader/profile" element={<TechMemberProfile />} />
             <Route path="/team-leader/tools" element={<Tools />} />
           </Route>
 

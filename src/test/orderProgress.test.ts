@@ -34,6 +34,20 @@ describe("initialProgress", () => {
     expect(p.targets).toEqual({ ads: 8, posters: 8, posted: 0, campaigns: 0 });
   });
 
+  it("counts posters on a bulk cinematic order, which ships them", () => {
+    const p = initialProgress({ category: "bulk_ads", quantity: 6, bulkAdType: "cinematic" })!;
+    expect(p.targets).toEqual({ ads: 6, posters: 6, posted: 0, campaigns: 0 });
+  });
+
+  it("counts no posters on a bulk wishes order, which ships none", () => {
+    // A wishes package is plain seconds — no poster was sold, so a poster counter could never be
+    // filled and the order would sit half-done for ever.
+    const p = initialProgress({ category: "bulk_ads", quantity: 6, bulkAdType: "wishes" })!;
+    expect(p.targets).toEqual({ ads: 6, posters: 0, posted: 0, campaigns: 0 });
+    expect(activeFields(p)).toEqual(["ads"]);
+    expect(isProgressComplete({ ...p, done: { ads: 6, posters: 0, posted: 0, campaigns: 0 } })).toBe(true);
+  });
+
   it("gives an ordinary single ad nothing to count", () => {
     expect(initialProgress({ category: "promotional", packageKey: "30 Seconds + Poster" })).toBeNull();
     expect(initialProgress({ category: "logo", packageKey: "Basic" })).toBeNull();

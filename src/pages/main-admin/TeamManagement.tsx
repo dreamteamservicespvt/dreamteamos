@@ -12,11 +12,13 @@ import { normalizePhone, formatPhoneDisplay, getWhatsAppUrl, getCallUrl } from "
 import type { AppUser, UserRole } from "@/types";
 import {
   Users, Search, Shield, ShieldOff, RotateCcw,
-  Loader2, Check, X, UserPlus, Eye, EyeOff, Trash2, Phone, MessageCircle, Share2,
+  Loader2, Check, X, UserPlus, Eye, EyeOff, Trash2, Phone, MessageCircle, Share2, KeyRound,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
+import MemberPasswordModal from "@/components/MemberPasswordModal";
+import { saveMemberPassword, deleteMemberPassword, fetchMemberPassword, buildCredentialsMessage } from "@/services/memberCredentials";
 
 const ADMIN_ROLES: { value: UserRole; label: string }[] = [
   { value: "tech_admin", label: "Tech Admin" },
@@ -40,6 +42,8 @@ export default function TeamManagement() {
   const [showCreate, setShowCreate] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<AppUser | null>(null);
+  /** The member whose stored login the admin is looking up. */
+  const [passwordMember, setPasswordMember] = useState<AppUser | null>(null);
   const currentUser = useAuthStore((s) => s.user);
   const { toast } = useToast();
   const isMobile = useIsMobile();
@@ -84,6 +88,8 @@ export default function TeamManagement() {
     setDeletingId(member.uid);
     try {
       await deleteDoc(doc(db, "users", member.uid));
+      // A departed member's password has nobody left to send it to.
+      await deleteMemberPassword(member.uid);
       setMembers((prev) => prev.filter((m) => m.uid !== member.uid));
       toast({ title: "Deleted", description: `${member.name} has been removed.` });
     } catch {
@@ -109,15 +115,21 @@ export default function TeamManagement() {
     return creator?.name || "Admin";
   };
 
-  const handleShareCredentials = (member: AppUser) => {
+  /**
+   * Send the member their login on WhatsApp — with the real password when one was stored. The
+   * message used to claim the password was the same as the email, which was true for nobody whose
+   * password had been set to anything else.
+   */
+  const handleShareCredentials = async (member: AppUser) => {
     if (!member.phone) {
       toast({ title: "Error", description: "Member does not have a phone number.", variant: "destructive" });
       return;
     }
-    const loginLink = window.location.origin;
-    const message = `🌐 *Website Login*\n\n📧 *Your Email:* ${member.email}\npassword and email both are same\n🔗 *Login here:* ${loginLink}\n\nIf you forgot your password, please contact your admin.`;
-    const url = getWhatsAppUrl(member.phone, message);
-    window.open(url, "_blank", "noopener,noreferrer");
+    const password = await fetchMemberPassword(member.uid);
+    const message = buildCredentialsMessage({
+      email: member.email, password, loginUrl: window.location.origin,
+    });
+    window.open(getWhatsAppUrl(member.phone, message), "_blank", "noopener,noreferrer");
   };
 
   return (
@@ -176,6 +188,7 @@ export default function TeamManagement() {
           onDelete={(m) => setConfirmDelete(m)}
           deletingId={deletingId}
           onShare={handleShareCredentials}
+          onPassword={setPasswordMember}
         />
       </div>
 
@@ -190,6 +203,7 @@ export default function TeamManagement() {
           onDelete={(m) => setConfirmDelete(m)}
           deletingId={deletingId}
           onShare={handleShareCredentials}
+          onPassword={setPasswordMember}
         />
       </div>
 
@@ -240,6 +254,11 @@ export default function TeamManagement() {
           />
         )}
       </AnimatePresence>
+
+      {/* The member forgot their password: look it up, copy it, or send it straight to them. */}
+      {passwordMember && (
+        <MemberPasswordModal member={passwordMember} onClose={() => setPasswordMember(null)} />
+      )}
     </div>
   );
 }
@@ -254,9 +273,10 @@ interface TableProps {
   onDelete: (m: AppUser) => void;
   deletingId: string | null;
   onShare: (m: AppUser) => void;
+  onPassword: (m: AppUser) => void;
 }
 
-function DesktopTable({ members, loading, getCreatorName, onToggleActive, onResetPassword, onDelete, onShare }: TableProps) {
+function DesktopTable({ members, loading, getCreatorName, onToggleActive, onResetPassword, onDelete, onShare, onPassword }: TableProps) {
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden">
       <div className="overflow-x-auto">
@@ -338,6 +358,10 @@ function DesktopTable({ members, loading, getCreatorName, onToggleActive, onRese
                         className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-success hover:bg-success/10 transition-colors">
                         <Share2 size={15} />
                       </button>
+                      <button onClick={() => onPassword(m)} title="Login details"
+                        className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
+                        <KeyRound size={15} />
+                      </button>
                       <button onClick={() => onToggleActive(m)} title={m.isActive ? "Deactivate" : "Activate"}
                         className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
                         {m.isActive ? <ShieldOff size={15} /> : <Shield size={15} />}
@@ -366,7 +390,7 @@ function DesktopTable({ members, loading, getCreatorName, onToggleActive, onRese
 }
 
 /* ─── Mobile Cards ─── */
-function MobileCards({ members, loading, getCreatorName, onToggleActive, onResetPassword, onDelete, onShare }: TableProps) {
+function MobileCards({ members, loading, getCreatorName, onToggleActive, onResetPassword, onDelete, onShare, onPassword }: TableProps) {
   if (loading) {
     return (
       <div className="space-y-3">
@@ -447,6 +471,10 @@ function MobileCards({ members, loading, getCreatorName, onToggleActive, onReset
               className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-success hover:bg-success/10 transition-colors border border-border">
               <Share2 size={14} />
             </button>
+            <button onClick={() => onPassword(m)} title="Login details"
+              className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors border border-border">
+              <KeyRound size={14} />
+            </button>
             <button onClick={() => onToggleActive(m)} title={m.isActive ? "Deactivate" : "Activate"}
               className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors border border-border">
               {m.isActive ? <ShieldOff size={14} /> : <Shield size={14} />}
@@ -524,6 +552,11 @@ function CreateAdminModal({ onClose, onCreated, currentUserId }: CreateModalProp
         target: 0,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
+      });
+
+      // Keep the password, so it can be sent back if this admin forgets it.
+      await saveMemberPassword({
+        uid: cred.user.uid, email: trimmedEmail, password: trimmedPassword, setBy: currentUserId,
       });
 
       setSuccess({ email: trimmedEmail, password: trimmedPassword });

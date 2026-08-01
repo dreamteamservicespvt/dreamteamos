@@ -20,7 +20,7 @@ import type { WorkAssignment, AppUser, DailyCheckin, Order } from '@/types';
 import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from '@/types/aiPlatform';
 import { ATTIRE_LABELS, assignmentFormFromOrder, buildAssignmentRequirementsMessage } from '@/utils/adRequirement';
 import { watchAdLanguages, mergeAdLanguages, rememberAdLanguage } from '@/services/adLanguages';
-import { categoryLabel } from '@/utils/serviceCatalog';
+import { bulkCategoryLabel } from '@/utils/serviceCatalog';
 import { fetchOrder, activeOrdersQuery } from '@/services/orders';
 import { createWorkAssignment, nextWorkUniqueId } from '@/services/workAssign';
 import { verifyAssignments, awaitingVerification } from '@/services/workVerify';
@@ -519,7 +519,10 @@ export default function WorkAssign() {
                 <ShoppingBag className="w-3.5 h-3.5" /> From order
               </span>
               <span className="text-muted-foreground">
-                {categoryLabel(sourceOrder.category)}
+                {/* A bulk order names its kind, because that is what the form below was filled in
+                    from — "Bulk Videos" alone would not explain a cinematic duration and price. */}
+                {bulkCategoryLabel(sourceOrder.category, sourceOrder.bulkAdType)}
+                {sourceOrder.quantity && sourceOrder.quantity > 1 ? ` × ${sourceOrder.quantity}` : ''}
                 {sourceOrder.packageKey && sourceOrder.packageKey !== 'custom' ? ` · ${sourceOrder.packageKey}` : ''}
                 {` · ${formatCurrency(sourceOrder.amount)} · sold by ${sourceOrder.soldByName}`}
               </span>

@@ -1,15 +1,23 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { createUserWithoutSignOut } from "@/services/secondaryAuth";
+import { saveMemberPassword, deleteMemberPassword, fetchMemberPassword, buildCredentialsMessage } from "@/services/memberCredentials";
 import { useAuthStore } from "@/store/authStore";
 import { normalizePhone, formatPhoneDisplay, getWhatsAppUrl, getCallUrl } from "@/utils/phone";
 import type { AppUser } from "@/types";
-import { Users, Plus, X, Loader2, Eye, EyeOff, UserCheck, UserX, Trash2, Phone, MessageCircle, Pencil, Share2 } from "lucide-react";
+import { Users, Plus, X, Loader2, Eye, EyeOff, UserCheck, UserX, Trash2, Phone, MessageCircle, Pencil, Share2, KeyRound, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import EditMemberModal from "@/components/EditMemberModal";
+import MemberPasswordModal from "@/components/MemberPasswordModal";
+import MemberGridCard from "@/components/team/MemberGridCard";
+import ViewToggle from "@/components/common/ViewToggle";
+import { useViewMode } from "@/hooks/useViewMode";
+import { watchTeamProfiles } from "@/services/hr";
+import type { EmployeeProfile } from "@/types/hr";
+import { formatCurrency } from "@/utils/formatters";
 
 export default function MyTeam() {
   const currentUser = useAuthStore((s) => s.user);
@@ -21,7 +29,15 @@ export default function MyTeam() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<AppUser | null>(null);
   const [editingMember, setEditingMember] = useState<AppUser | null>(null);
+  /** The member whose stored login the admin is looking up. */
+  const [passwordMember, setPasswordMember] = useState<AppUser | null>(null);
   const isMobile = useIsMobile();
+  const [searchQuery, setSearchQuery] = useState("");
+  // Grid by default: a member is a person, and a card shows who they are — name, photo, stage —
+  // where a table row shows only what they cost. The table stays one click away.
+  const [view, setView] = useViewMode("salesTeam");
+  /** HR records for the team, so the grid can show who is on probation or serving notice. */
+  const [hrProfiles, setHrProfiles] = useState<Map<string, EmployeeProfile>>(new Map());
 
   const [formName, setFormName] = useState("");
   const [formEmail, setFormEmail] = useState("");
@@ -42,6 +58,27 @@ export default function MyTeam() {
     });
     return unsub;
   }, [currentUser?.uid]);
+
+  // One document read per member — the same cost as listing them — so the grid can show where
+  // each person is in their employment without a subscription per card.
+  const memberUidKey = members.map((m) => m.uid).sort().join(",");
+  useEffect(() => {
+    const uids = memberUidKey ? memberUidKey.split(",") : [];
+    if (uids.length === 0) { setHrProfiles(new Map()); return; }
+    return watchTeamProfiles(uids, "sales", setHrProfiles);
+  }, [memberUidKey]);
+
+  const openMember = (uid: string) => navigate(`/sales-admin/team/${uid}/profile`);
+
+  const filteredMembers = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return members;
+    return members.filter((m) =>
+      m.name?.toLowerCase().includes(q)
+      || m.email?.toLowerCase().includes(q)
+      || (m.phone || "").includes(q)
+      || formatPhoneDisplay(m.phone || "").includes(q));
+  }, [members, searchQuery]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,6 +111,11 @@ export default function MyTeam() {
         updatedAt: serverTimestamp(),
       };
       await setDoc(doc(db, "users", uid), newUser);
+      // Keep the password, so this admin can send it back when the member forgets it.
+      await saveMemberPassword({
+        uid, email: formEmail.trim(), password: formPassword,
+        setBy: currentUser?.uid || "", setByName: currentUser?.name || "",
+      });
       setMembers((prev) => [...prev, { ...newUser, createdAt: new Date(), updatedAt: new Date() }]);
       setShowModal(false);
       resetForm();
@@ -100,6 +142,8 @@ export default function MyTeam() {
     setDeletingId(member.uid);
     try {
       await deleteDoc(doc(db, "users", member.uid));
+      // A departed member's password has nobody left to send it to.
+      await deleteMemberPassword(member.uid);
       setMembers((prev) => prev.filter((m) => m.uid !== member.uid));
       toast({ title: "Deleted", description: `${member.name} has been removed.` });
     } catch {
@@ -115,15 +159,21 @@ export default function MyTeam() {
     setFormSalary(0); setFormTarget(10000); setFormDailyTarget(10000); setFormMonthlyTarget(0); setShowPw(false);
   };
 
-  const handleShareCredentials = (member: AppUser) => {
+  /**
+   * Send the member their login on WhatsApp — with the real password when one was stored. The
+   * message used to claim the password was the same as the email, which was true for nobody whose
+   * password had been set to anything else.
+   */
+  const handleShareCredentials = async (member: AppUser) => {
     if (!member.phone) {
       toast({ title: "Error", description: "Member does not have a phone number.", variant: "destructive" });
       return;
     }
-    const loginLink = window.location.origin;
-    const message = `🌐 *Website Login*\n\n📧 *Your Email:* ${member.email}\npassword and email both are same\n🔗 *Login here:* ${loginLink}\n\nIf you forgot your password, please contact your admin.`;
-    const url = getWhatsAppUrl(member.phone, message);
-    window.open(url, "_blank", "noopener,noreferrer");
+    const password = await fetchMemberPassword(member.uid);
+    const message = buildCredentialsMessage({
+      email: member.email, password, loginUrl: window.location.origin,
+    });
+    window.open(getWhatsAppUrl(member.phone, message), "_blank", "noopener,noreferrer");
   };
 
   return (
@@ -133,15 +183,86 @@ export default function MyTeam() {
           <h1 className="font-display text-xl md:text-2xl font-bold text-foreground">My Team</h1>
           <p className="text-muted-foreground text-xs md:text-sm mt-1">Manage your sales team members</p>
         </div>
-        <button onClick={() => { resetForm(); setShowModal(true); }}
-          className="h-9 px-3 md:px-4 rounded-lg bg-primary text-primary-foreground font-display font-semibold text-xs md:text-sm flex items-center gap-2 hover:bg-primary/90 transition-colors">
-          <Plus size={14} /> <span className="hidden sm:inline">Add Member</span><span className="sm:hidden">Add</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <ViewToggle mode={view} onChange={setView} />
+          <button onClick={() => { resetForm(); setShowModal(true); }}
+            className="h-9 px-3 md:px-4 rounded-lg bg-primary text-primary-foreground font-display font-semibold text-xs md:text-sm flex items-center gap-2 hover:bg-primary/90 transition-colors">
+            <Plus size={14} /> <span className="hidden sm:inline">Add Member</span><span className="sm:hidden">Add</span>
+          </button>
+        </div>
       </div>
 
-      {/* Desktop Table / Mobile Cards */}
-      {isMobile ? (
-        <MobileTeamCards members={members} loading={loading} onToggle={toggleActive} onDelete={(m) => setConfirmDelete(m)} onEdit={(m) => setEditingMember(m)} deletingId={deletingId} onClickMember={(uid) => navigate(`/sales-admin/team/${uid}`)} onShare={handleShareCredentials} />
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <input type="text" placeholder="Search by name, email or phone..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none" />
+      </div>
+
+      {/* Grid of member cards / Desktop Table / Mobile Cards */}
+      {view === "grid" ? (
+        loading ? (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="h-52 animate-pulse rounded-xl border border-border bg-card" />
+            ))}
+          </div>
+        ) : filteredMembers.length === 0 ? (
+          <div className="rounded-xl border border-border bg-card p-10 text-center">
+            <Users size={32} className="mx-auto mb-2 text-muted-foreground/30" />
+            <p className="text-sm text-muted-foreground">
+              {searchQuery ? "No members match your search." : 'No members yet. Click "Add Member" to get started.'}
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" data-test="member-grid">
+            {filteredMembers.map((m) => (
+              <MemberGridCard
+                key={m.uid}
+                member={m}
+                profile={hrProfiles.get(m.uid)}
+                onOpen={() => openMember(m.uid)}
+                stats={[
+                  { label: "Salary", value: formatCurrency(m.salary || 0) },
+                  { label: "Monthly target", value: formatCurrency(m.monthlyTarget || m.target || 0), tone: "primary" },
+                  { label: "Daily target", value: formatCurrency(m.dailyTarget || 0), tone: "muted" },
+                  {
+                    label: "Earnings plan",
+                    value: m.earningsOption === "stipend_plus_5" ? "Stipend + 5%"
+                      : m.earningsOption === "incentive_10" ? "10% incentive" : "Not set",
+                    tone: "muted",
+                  },
+                ]}
+                actions={
+                  <>
+                    <button onClick={() => handleShareCredentials(m)} title="Share credentials"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-success/10 hover:text-success">
+                      <Share2 size={13} />
+                    </button>
+                    <button onClick={() => setPasswordMember(m)} title="Login details"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-primary/10 hover:text-primary">
+                      <KeyRound size={13} />
+                    </button>
+                    <button onClick={() => setEditingMember(m)} title="Edit"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-primary/10 hover:text-primary">
+                      <Pencil size={13} />
+                    </button>
+                    <button onClick={() => toggleActive(m)} title={m.isActive ? "Deactivate" : "Activate"}
+                      className={`flex h-8 w-8 items-center justify-center rounded-lg border border-border ${m.isActive ? "text-destructive hover:bg-destructive/10" : "text-success hover:bg-success/10"}`}>
+                      {m.isActive ? <UserX size={13} /> : <UserCheck size={13} />}
+                    </button>
+                    <button onClick={() => setConfirmDelete(m)} title="Delete"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
+                      <Trash2 size={13} />
+                    </button>
+                  </>
+                }
+              />
+            ))}
+          </div>
+        )
+      ) : isMobile ? (
+        <MobileTeamCards members={filteredMembers} loading={loading} onToggle={toggleActive} onDelete={(m) => setConfirmDelete(m)} onEdit={(m) => setEditingMember(m)} deletingId={deletingId} onClickMember={openMember} onShare={handleShareCredentials} onPassword={setPasswordMember} />
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
           <table className="w-full text-sm">
@@ -164,14 +285,14 @@ export default function MyTeam() {
                     ))}
                   </tr>
                 ))
-              ) : members.length === 0 ? (
+              ) : filteredMembers.length === 0 ? (
                 <tr><td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
                   <Users size={32} className="mx-auto mb-2 opacity-30" />
-                  <p>No members yet. Click "Add Member" to get started.</p>
+                  <p>{searchQuery ? "No members match your search." : 'No members yet. Click "Add Member" to get started.'}</p>
                 </td></tr>
               ) : (
-                members.map((m, i) => (
-                  <tr key={m.uid} onClick={() => navigate(`/sales-admin/team/${m.uid}`)} className={`border-b border-border/50 hover:bg-accent/30 transition-colors cursor-pointer ${i % 2 === 1 ? "bg-elevated/20" : ""}`}>
+                filteredMembers.map((m, i) => (
+                  <tr key={m.uid} onClick={() => openMember(m.uid)} className={`border-b border-border/50 hover:bg-accent/30 transition-colors cursor-pointer ${i % 2 === 1 ? "bg-elevated/20" : ""}`}>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-lg bg-role-sales-member/15 flex items-center justify-center font-display font-bold text-role-sales-member text-xs">
@@ -206,6 +327,10 @@ export default function MyTeam() {
                         <button onClick={() => handleShareCredentials(m)} title="Share Credentials"
                           className="w-8 h-8 rounded-md inline-flex items-center justify-center text-muted-foreground hover:text-success hover:bg-success/10 transition-colors">
                           <Share2 size={15} />
+                        </button>
+                        <button onClick={() => setPasswordMember(m)} title="Login details" data-test="member-password-btn"
+                          className="w-8 h-8 rounded-md inline-flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
+                          <KeyRound size={15} />
                         </button>
                         <button onClick={() => setEditingMember(m)} title="Edit"
                           className="w-8 h-8 rounded-md inline-flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
@@ -327,15 +452,21 @@ export default function MyTeam() {
           onUpdated={(updated) => setMembers((prev) => prev.map((m) => m.uid === updated.uid ? updated : m))}
         />
       )}
+
+      {/* The member forgot their password: look it up, copy it, or send it straight to them. */}
+      {passwordMember && (
+        <MemberPasswordModal member={passwordMember} onClose={() => setPasswordMember(null)} />
+      )}
     </div>
   );
 }
 
 /* ─── Mobile Team Cards ─── */
-function MobileTeamCards({ members, loading, onToggle, onDelete, onEdit, deletingId, onClickMember, onShare }: {
+function MobileTeamCards({ members, loading, onToggle, onDelete, onEdit, deletingId, onClickMember, onShare, onPassword }: {
   members: AppUser[]; loading: boolean; onToggle: (m: AppUser) => void;
   onDelete: (m: AppUser) => void; onEdit: (m: AppUser) => void; deletingId: string | null; onClickMember: (uid: string) => void;
   onShare: (m: AppUser) => void;
+  onPassword: (m: AppUser) => void;
 }) {
   if (loading) {
     return (
@@ -401,6 +532,10 @@ function MobileTeamCards({ members, loading, onToggle, onDelete, onEdit, deletin
             <button onClick={(e) => { e.stopPropagation(); onShare(m); }} title="Share Credentials"
               className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-success hover:bg-success/10 transition-colors border border-border">
               <Share2 size={14} />
+            </button>
+            <button onClick={(e) => { e.stopPropagation(); onPassword(m); }} title="Login details"
+              className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors border border-border">
+              <KeyRound size={14} />
             </button>
             <button onClick={(e) => { e.stopPropagation(); onEdit(m); }} title="Edit"
               className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors border border-border">

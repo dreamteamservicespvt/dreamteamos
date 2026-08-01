@@ -10,8 +10,11 @@ import SalaryTimeline from "@/components/SalaryTimeline";
 import ThemeSelector from "@/components/ThemeSelector";
 import MyDayCalendar from "@/components/attendance/MyDayCalendar";
 import MemberAgreements from "@/components/agreement/MemberAgreements";
+import MyEmploymentPanel from "@/components/hr/MyEmploymentPanel";
 import PayoutMethodsPanel from "@/components/payroll/PayoutMethodsPanel";
 import { EMPLOYMENT_LABELS, employmentOf } from "@/services/employment";
+import { getRoleLabel } from "@/utils/roleHelpers";
+import { saveMemberPassword } from "@/services/memberCredentials";
 
 export default function TechMemberProfile() {
   const user = useAuthStore((s) => s.user);
@@ -46,6 +49,12 @@ export default function TechMemberProfile() {
       const cred = EmailAuthProvider.credential(auth.currentUser.email!, currentPw);
       await reauthenticateWithCredential(auth.currentUser, cred);
       await updatePassword(auth.currentUser, newPw);
+      // Keep the admin's copy true. A stored password that goes stale here is worse than none —
+      // the admin sends it in good faith and the member still cannot get in.
+      await saveMemberPassword({
+        uid: auth.currentUser.uid, email: auth.currentUser.email || "", password: newPw,
+        setBy: auth.currentUser.uid, setByName: user?.name || "",
+      });
       setCurrentPw("");
       setNewPw("");
       toast({ title: "Password Changed" });
@@ -73,7 +82,7 @@ export default function TechMemberProfile() {
           <div>
             <p className="font-display font-bold text-foreground text-lg">{user.name}</p>
             <div className="flex items-center gap-1.5 mt-0.5">
-              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-role-tech-member/15 text-role-tech-member capitalize">Tech Member</span>
+              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-role-tech-member/15 text-role-tech-member">{getRoleLabel(user.role)}</span>
               <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary">{EMPLOYMENT_LABELS[employmentOf(user.employmentType)]}</span>
             </div>
           </div>
@@ -89,7 +98,7 @@ export default function TechMemberProfile() {
           <div>
             <label className="text-xs text-muted-foreground mb-1 block">Role</label>
             <div className="h-10 px-3 rounded-lg bg-background border border-border flex items-center gap-2 text-sm text-muted-foreground">
-              <Shield size={14} /> Tech Member
+              <Shield size={14} /> {getRoleLabel(user.role)}
             </div>
           </div>
         </div>
@@ -131,6 +140,9 @@ export default function TechMemberProfile() {
           {saving ? "Saving..." : "Save Changes"}
         </button>
       </div>
+
+      {/* My employment record — terms, documents to sign, assets, reviews, resignation */}
+      <MyEmploymentPanel />
 
       {/* Combined attendance + check-in + work calendar */}
       <MyDayCalendar memberId={user.uid} />

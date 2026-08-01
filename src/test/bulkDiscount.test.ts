@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   suggestedDiscountPercent, clampDiscountPercent, quoteBulk, MAX_BULK_DISCOUNT_PERCENT,
+  maxDiscountAmount, discountSummary,
 } from "@/utils/bulkDiscount";
 
 describe("suggested discount ladder", () => {
@@ -80,5 +81,67 @@ describe("quoteBulk", () => {
     const q = quoteBulk(0, 999);
     expect(q.amount).toBe(0);
     expect(q.grossAmount).toBe(0);
+  });
+});
+
+describe("quoteBulk in rupees", () => {
+  it("takes a flat discount and reports what it is worth as a percent", () => {
+    const q = quoteBulk(10, 1000, 1500, "amount");
+    expect(q.grossAmount).toBe(10000);
+    expect(q.discountAmount).toBe(1500);
+    expect(q.discountPercent).toBe(15);
+    expect(q.amount).toBe(8500);
+    expect(q.discountMode).toBe("amount");
+  });
+
+  it("holds the 20% ceiling however many rupees are typed", () => {
+    const q = quoteBulk(10, 1000, 9000, "amount");
+    expect(q.discountAmount).toBe(maxDiscountAmount(10000));
+    expect(q.discountAmount).toBe(2000);
+    expect(q.discountPercent).toBe(MAX_BULK_DISCOUNT_PERCENT);
+    expect(q.amount).toBe(8000);
+  });
+
+  it("does not flag a member who typed the exact rupee value of the ladder's offer", () => {
+    // 10 × ₹1,000 suggests 10% = ₹1,000. Typing that in rupees is the same decision, not a change.
+    const q = quoteBulk(10, 1000, 1000, "amount");
+    expect(q.suggestedAmount).toBe(1000);
+    expect(q.edited).toBe(false);
+  });
+
+  it("flags a flat discount that departs from the ladder", () => {
+    const q = quoteBulk(10, 1000, 1500, "amount");
+    expect(q.edited).toBe(true);
+  });
+
+  it("gross minus discount reconciles in rupee mode too", () => {
+    for (const value of [0, 137, 999, 5000]) {
+      const q = quoteBulk(13, 1499, value, "amount");
+      expect(q.grossAmount - q.discountAmount).toBe(q.amount);
+    }
+  });
+
+  it("survives a blank box and a zero-priced order", () => {
+    expect(quoteBulk(10, 1000, NaN, "amount").discountAmount).toBe(0);
+    const empty = quoteBulk(0, 0, 500, "amount");
+    expect(empty.discountAmount).toBe(0);
+    expect(empty.discountPercent).toBe(0);
+    expect(empty.amount).toBe(0);
+  });
+});
+
+describe("discountSummary", () => {
+  it("shows the discount in the unit it was given in", () => {
+    expect(discountSummary({ discountMode: "amount", discountAmount: 2000, discountPercent: 20 }))
+      .toBe(" · ₹2,000 off");
+    expect(discountSummary({ discountMode: "percent", discountAmount: 2000, discountPercent: 20 }))
+      .toBe(" · 20% off");
+  });
+
+  it("says nothing when no discount was given", () => {
+    expect(discountSummary({ discountPercent: 0 })).toBe("");
+    expect(discountSummary({})).toBe("");
+    // A legacy sale predates the mode field and is a percentage by definition.
+    expect(discountSummary({ discountPercent: 10 })).toBe(" · 10% off");
   });
 });

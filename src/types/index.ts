@@ -43,6 +43,20 @@ export interface AppUser {
    * Purely a human-facing identifier for payslips and records — the uid remains the real key.
    */
   employeeId?: string;
+  /**
+   * The signatory's own signature, uploaded once from their settings and reused on every HR
+   * document their department issues (tech admin signs technical papers, sales head signs sales
+   * ones — see utils/hrPolicy.SIGNATORY_ROLE).
+   *
+   * Deliberately on the user doc rather than in its own collection: half the app already
+   * subscribes to `users`, so the image a generated letter needs is in memory the moment it is
+   * needed, with no extra read and no loading state on a document preview. It is a signature
+   * image, not a secret — unlike a password, which is exactly why that lives elsewhere.
+   */
+  signatureUrl?: string | null;
+  signatureUpdatedAt?: any;
+  /** Printed under the signature on issued documents, e.g. "Technical Head". */
+  designation?: string;
   createdAt: any;
   updatedAt: any;
 }
@@ -198,13 +212,23 @@ export interface SaleDetail {
    * revenue reader keeps working untouched. NEVER includes penalties — see `penaltyTotal`.
    */
   amount: number;
-  // ── Bulk ads (quantity × package, with a volume discount) ──────────────────
-  /** How many ads were sold on this line. Absent (or 1) for an ordinary single-ad sale. */
+  // ── Bulk videos (quantity × package, with a volume discount) ───────────────
+  /** How many videos were sold on this line. Absent (or 1) for an ordinary single-ad sale. */
   quantity?: number;
-  /** Per-ad price before any discount — kept so the discount stays auditable after the fact. */
+  /**
+   * Which kind of video a bulk order is made of — wishes, promotional or cinematic. Only set on a
+   * bulk sale; absent on one recorded before the picker existed, which always meant promotional
+   * (see utils/serviceCatalog.effectiveAdCategory).
+   */
+  bulkAdType?: string;
+  /** Per-video price before any discount — kept so the discount stays auditable after the fact. */
   unitAmount?: number;
   /** What the volume ladder offered at this quantity. */
   suggestedDiscountPercent?: number;
+  /** Whether the member gave the discount as a percentage or as a flat rupee figure. */
+  discountMode?: "percent" | "amount";
+  /** The discount in rupees. Always stored, whichever unit was typed. */
+  discountAmount?: number;
   /** What was actually applied. May be 0 — the discount is the member's to give or withhold. */
   discountPercent?: number;
   /**
@@ -383,10 +407,14 @@ export interface Order {
   /** What was sold, when the category has no fixed package list. Carried from the sale. */
   customDescription?: string | null;
   amount: number;               // sale amount (already discounted; never includes penalties)
-  // Bulk ads — carried from the sale so the tech side knows it is N ads, not one.
+  // Bulk videos — carried from the sale so the tech side knows it is N videos, not one, and
+  // which kind of video they are (the category alone only says "bulk").
   quantity?: number;
+  bulkAdType?: string | null;
   unitAmount?: number;
   suggestedDiscountPercent?: number;
+  discountMode?: "percent" | "amount" | null;
+  discountAmount?: number | null;
   discountPercent?: number;
   discountEdited?: boolean;
   /**

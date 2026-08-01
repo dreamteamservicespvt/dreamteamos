@@ -21,9 +21,12 @@ import NumberTimelineButton from "@/components/sales/NumberTimelineButton";
 import PenaltyDialog from "@/components/work/PenaltyDialog";
 import {
   SALE_CATEGORIES, PACKAGES, categoryLabel, isAdCategory, isBulkCategory, needsDescription,
-  packageOptionLabel,
+  packageOptionLabel, bulkTypesFor, effectiveAdCategory, bulkCategoryLabel,
 } from "@/utils/serviceCatalog";
-import { quoteBulk, suggestedDiscountPercent, MAX_BULK_DISCOUNT_PERCENT } from "@/utils/bulkDiscount";
+import {
+  quoteBulk, suggestedDiscountPercent, maxDiscountAmount, discountSummary,
+  MAX_BULK_DISCOUNT_PERCENT, type DiscountMode,
+} from "@/utils/bulkDiscount";
 import { presetsForCategory, buildPromise, CUSTOM_PRESET_KEY } from "@/utils/promiseSla";
 import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from "@/types/aiPlatform";
 import { ATTIRE_LABELS, DEFAULT_REQUIREMENT, attireForGender, attireLabel, cleanRequirement, withRequirementDefaults } from "@/utils/adRequirement";
@@ -1111,12 +1114,13 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
           <div key={idx} className={`text-xs rounded-lg p-2 space-y-1.5 ${item.verificationStatus === "verified" ? "bg-success/10 border border-success/20" : "bg-warning/10 border border-warning/20"}`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="font-medium text-foreground capitalize">{item.category?.replace(/_/g, " ")}</span>
+                {/* A bulk line says which kind of video it is — "bulk ads" alone does not. */}
+                <span className="font-medium text-foreground">{bulkCategoryLabel(item.category, item.bulkAdType)}</span>
                 {item.packageKey && item.packageKey !== "custom" && <span className="text-muted-foreground"> • {item.packageKey}</span>}
                 {/* For a bulk order the count is the sale — "₹7,592" alone says nothing. */}
                 {!!item.quantity && item.quantity > 1 && (
                   <span className="text-[9px] px-1 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400">
-                    ×{item.quantity}{item.discountPercent ? ` · ${item.discountPercent}% off` : ""}
+                    ×{item.quantity}{discountSummary(item)}
                   </span>
                 )}
                 {item.customDescription && <span className="text-muted-foreground"> • {item.customDescription}</span>}
@@ -1481,6 +1485,19 @@ function UpdateNoteComposer({ order, byName, onDone }: { order: Order; byName: s
 const LANGUAGE_CUSTOM = "__custom__";
 
 /**
+ * The same sale with every trace of a bulk order removed — for one that has just been edited into
+ * an ordinary single-video category, where a leftover quantity or discount would keep describing a
+ * price that no longer exists.
+ */
+function withoutBulkFields(item: SaleDetail): SaleDetail {
+  const {
+    quantity, bulkAdType, unitAmount, suggestedDiscountPercent,
+    discountMode, discountAmount, discountPercent, discountEdited, ...rest
+  } = item;
+  return rest;
+}
+
+/**
  * A human-readable list of what changed between two versions of a sale, for the edit log.
  * Only fields a sales member can actually change are compared.
  */
@@ -1488,15 +1505,21 @@ function describeSaleChanges(prev: SaleDetail, next: SaleDetail): string[] {
   const out: string[] = [];
   const pkg = (i: SaleDetail) => (i.packageKey && i.packageKey !== "custom" ? i.packageKey : "Custom");
   if (prev.category !== next.category) out.push(`Service: ${categoryLabel(prev.category)} → ${categoryLabel(next.category)}`);
+  // The kind of video is what the tech team builds, so switching it is a bigger change than the
+  // package and has to be named — a bulk order that turned cinematic costs twice as much to make.
+  if (isBulkCategory(next.category) && effectiveAdCategory(prev.category, prev.bulkAdType) !== effectiveAdCategory(next.category, next.bulkAdType)) {
+    out.push(`Video type: ${categoryLabel(effectiveAdCategory(prev.category, prev.bulkAdType))} → ${categoryLabel(effectiveAdCategory(next.category, next.bulkAdType))}`);
+  }
   if (pkg(prev) !== pkg(next)) out.push(`Package: ${pkg(prev)} → ${pkg(next)}`);
   if ((prev.customDescription || "") !== (next.customDescription || "")) {
     out.push(`Description: ${prev.customDescription || "—"} → ${next.customDescription || "—"}`);
   }
   // Quantity and discount are the two levers on a bulk price, so a changed total is only half the
   // story — the log has to say which of them moved.
-  if ((prev.quantity || 0) !== (next.quantity || 0)) out.push(`Quantity: ${prev.quantity || 0} → ${next.quantity || 0} ads`);
-  if ((prev.discountPercent || 0) !== (next.discountPercent || 0)) {
-    out.push(`Discount: ${prev.discountPercent || 0}% → ${next.discountPercent || 0}%`);
+  if ((prev.quantity || 0) !== (next.quantity || 0)) out.push(`Quantity: ${prev.quantity || 0} → ${next.quantity || 0} videos`);
+  if ((prev.discountPercent || 0) !== (next.discountPercent || 0) || (prev.discountAmount || 0) !== (next.discountAmount || 0)) {
+    const shown = (i: SaleDetail) => (discountSummary(i).replace(" · ", "").replace(" off", "") || "none");
+    out.push(`Discount: ${shown(prev)} → ${shown(next)}`);
   }
   if ((prev.amount || 0) !== (next.amount || 0)) out.push(`Amount: ${formatCurrency(prev.amount || 0)} → ${formatCurrency(next.amount || 0)}`);
   if ((prev.promise?.label || "") !== (next.promise?.label || "")) out.push(`Delivery: ${prev.promise?.label || "—"} → ${next.promise?.label || "—"}`);
@@ -1543,9 +1566,20 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
    * sale reached the tech team as the string "Custom custom" and somebody had to ring back to ask.
    */
   const [description, setDescription] = useState(ed?.customDescription || "");
-  // Bulk ads: how many, and the discount given. The ladder suggests; the member decides.
+  /**
+   * Bulk videos: which kind, how many, and the discount given. The kind is chosen first because
+   * it decides the price list — a bulk order of cinematic ads is priced as cinematic ads.
+   */
+  const [bulkAdType, setBulkAdType] = useState<string>(
+    () => effectiveAdCategory("bulk_ads", ed?.bulkAdType),
+  );
   const [quantity, setQuantity] = useState<number>(ed?.quantity || 5);
-  const [discountPercent, setDiscountPercent] = useState<number>(ed?.discountPercent ?? 0);
+  const [discountMode, setDiscountMode] = useState<DiscountMode>(ed?.discountMode || "percent");
+  // One box, read in whichever unit the toggle is on. Kept as a single value so switching units
+  // cannot leave a stale figure behind in the box the member is no longer looking at.
+  const [discountValue, setDiscountValue] = useState<number>(
+    () => (ed?.discountMode === "amount" ? ed?.discountAmount ?? 0 : ed?.discountPercent ?? 0),
+  );
   const [discountTouched, setDiscountTouched] = useState(false);
   const [screenshotUrl, setScreenshotUrl] = useState(ed?.paymentScreenshotUrl || "");
   const [uploading, setUploading] = useState(false);
@@ -1562,7 +1596,7 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
     const p = ed?.promise;
     if (p && (p.source === "custom" || p.presetKey === CUSTOM_PRESET_KEY)) return CUSTOM_PRESET_KEY;
     if (p?.presetKey) return p.presetKey;
-    const opts = presetsForCategory(ed?.category || "promotional");
+    const opts = presetsForCategory(effectiveAdCategory(ed?.category || "promotional", ed?.bulkAdType));
     return opts.length > 0 ? opts[0].key : CUSTOM_PRESET_KEY;
   });
   const [customDays, setCustomDays] = useState<number>(() => {
@@ -1612,9 +1646,15 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
     return languages.some((l) => l.toLowerCase() === req.language.toLowerCase()) ? languages : [req.language, ...languages];
   }, [languages, req.language]);
 
-  const packages = PACKAGES[category] || [];
-  const selectedPkg = packages.find((p) => p.label === packageKey);
   const isBulk = isBulkCategory(category);
+  /**
+   * What is really being sold. A bulk order is N videos of one of the three ad kinds, and every
+   * rule that follows — the price list, the delivery presets, the brief — belongs to that kind,
+   * not to "bulk".
+   */
+  const adCategory = effectiveAdCategory(category, isBulk ? bulkAdType : undefined);
+  const packages = PACKAGES[adCategory] || [];
+  const selectedPkg = packages.find((p) => p.label === packageKey);
 
   /**
    * A bulk order is priced from the quantity, so the amount is computed rather than picked. The
@@ -1622,8 +1662,8 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
    * admin and the sales admin see, and it has to be derived here rather than trusted from a box.
    */
   const bulkQuote = useMemo(
-    () => (isBulk ? quoteBulk(quantity, selectedPkg?.amount || 0, discountPercent) : null),
-    [isBulk, quantity, selectedPkg?.amount, discountPercent],
+    () => (isBulk ? quoteBulk(quantity, selectedPkg?.amount || 0, discountValue, discountMode) : null),
+    [isBulk, quantity, selectedPkg?.amount, discountValue, discountMode],
   );
 
   const amount = isBulk ? (bulkQuote?.amount ?? 0) : (selectedPkg?.amount || customAmount);
@@ -1633,29 +1673,36 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
   const descriptionRequired = needsDescription(category);
   const descriptionMissing = descriptionRequired && !description.trim();
   const hasProof = !!proofUrl || !!proofNote.trim();
-  const slaOptions = presetsForCategory(category);
+  const slaOptions = presetsForCategory(adCategory);
 
   /**
    * Keep the discount box on the ladder while the member is still choosing a quantity, and stop
    * the moment they type their own number — after that it is their figure, not ours, and silently
    * resetting it when they adjusted the count would undo a decision they had already made.
+   *
+   * The suggestion follows the box's unit: a member working in rupees is offered the ladder in
+   * rupees, so the figure in front of them is always the one they would actually quote.
    */
   const bulkSkipFirst = useRef(editing);
+  const suggestedForBox = discountMode === "amount"
+    ? Math.round(((selectedPkg?.amount || 0) * quantity * suggestedDiscountPercent(quantity)) / 100)
+    : suggestedDiscountPercent(quantity);
   useEffect(() => {
     if (!isBulk) return;
     if (bulkSkipFirst.current) { bulkSkipFirst.current = false; return; }
     if (discountTouched) return;
-    setDiscountPercent(suggestedDiscountPercent(quantity));
-  }, [isBulk, quantity, discountTouched]);
+    setDiscountValue(suggestedForBox);
+  }, [isBulk, suggestedForBox, discountTouched]);
 
   // Default the promise to the category's first preset (or custom) whenever the category changes —
-  // but not on the first render when editing, or it would overwrite the saved promise.
+  // but not on the first render when editing, or it would overwrite the saved promise. A bulk order
+  // takes its kind's presets: bulk cinematic promises days, not the promotional 24 hours.
   const slaSkipFirst = useRef(editing);
   useEffect(() => {
     if (slaSkipFirst.current) { slaSkipFirst.current = false; return; }
-    const opts = presetsForCategory(category);
+    const opts = presetsForCategory(adCategory);
     setSlaPreset(opts.length > 0 ? opts[0].key : CUSTOM_PRESET_KEY);
-  }, [category]);
+  }, [adCategory]);
 
   // A "duplicate dispute" (proof required) exists ONLY while another member's sale is still inside
   // its freeze/validity window. Once that validity has expired, a new sale by anyone is a legitimate
@@ -1721,7 +1768,7 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
       return;
     }
     if (isBulk && quantity < 2) {
-      toast({ title: "How many ads?", description: "A bulk order is two ads or more. For a single ad, use Promotional Ad.", variant: "destructive" });
+      toast({ title: "How many videos?", description: `A bulk order is two videos or more. For a single one, use ${categoryLabel(adCategory)}.`, variant: "destructive" });
       return;
     }
     if (uploading) {
@@ -1775,9 +1822,14 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
       customDescription: showDescription ? description.trim() || null : null,
       ...(isBulk && bulkQuote
         ? {
+            // The kind of video travels with the sale: without it the tech side only knows the
+            // order is "bulk", and every price, duration and deadline downstream is keyed by kind.
+            bulkAdType,
             quantity: bulkQuote.quantity,
             unitAmount: bulkQuote.unitAmount,
             suggestedDiscountPercent: bulkQuote.suggestedPercent,
+            discountMode: bulkQuote.discountMode,
+            discountAmount: bulkQuote.discountAmount,
             discountPercent: bulkQuote.discountPercent,
             discountEdited: bulkQuote.edited,
           }
@@ -1789,7 +1841,10 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
     // ── Edit an existing sale ────────────────────────────────────────────────
     if (editing && ed && editItem) {
       const updatedItem: SaleDetail = {
-        ...ed,
+        // A sale edited OUT of bulk keeps none of the bulk arithmetic. Spreading the old item
+        // wholesale left the quantity and discount behind on what is now a single ad, so the
+        // order still announced itself as "×10" and the price no longer reconciled with it.
+        ...(isBulk ? ed : withoutBulkFields(ed)),
         category,
         packageKey: packageKey || "custom",
         ...saleShape,
@@ -1914,6 +1969,7 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
 
       <select
         value={category}
+        data-test="sale-category"
         onChange={(e) => { setCategory(e.target.value); setPackageKey(""); }}
         className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary"
       >
@@ -1922,9 +1978,32 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
         ))}
       </select>
 
+      {/* Which kind of video the bulk order is made of. Asked BEFORE the package because it is
+          what decides the price list — bulk cinematic is priced as cinematic, not as promotional. */}
+      {isBulk && (
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">Which videos?</label>
+          <select
+            value={bulkAdType}
+            data-test="bulk-type"
+            onChange={(e) => {
+              setBulkAdType(e.target.value);
+              // The new kind has its own package list, so the old selection means nothing here.
+              setPackageKey("");
+            }}
+            className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary"
+          >
+            {bulkTypesFor(category).map((t) => (
+              <option key={t} value={t}>{categoryLabel(t)}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {packages.length > 0 && (
         <select
           value={packageKey}
+          data-test="sale-package"
           onChange={(e) => {
             setPackageKey(e.target.value);
             const pkg = packages.find((p) => p.label === e.target.value);
@@ -1941,16 +2020,16 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
         </select>
       )}
 
-      {/* Bulk ads — quantity drives the price, and the ladder suggests a discount the member may
-          keep, change or withhold. Whatever they choose, the change is recorded. */}
+      {/* Bulk videos — quantity drives the price, and the ladder suggests a discount the member may
+          keep, change or withhold, in percent or in rupees. Whatever they choose is recorded. */}
       {isBulk && bulkQuote && (
         <div className="space-y-2.5 rounded-md border border-amber-500/30 bg-amber-500/5 p-2.5">
           <div className="flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400">
-            <Layers size={13} /> Bulk order
+            <Layers size={13} /> Bulk {categoryLabel(adCategory)} order
           </div>
           <div className="flex gap-2">
             <div className="flex-1 space-y-1">
-              <label className="text-[11px] text-muted-foreground">How many ads</label>
+              <label className="text-[11px] text-muted-foreground">How many videos</label>
               <input
                 type="number"
                 min={2}
@@ -1961,14 +2040,37 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
               />
             </div>
             <div className="flex-1 space-y-1">
-              <label className="text-[11px] text-muted-foreground">Discount %</label>
+              <div className="flex items-center justify-between gap-1">
+                <label className="text-[11px] text-muted-foreground">Discount</label>
+                {/* The unit the client was quoted in. Switching converts what is already typed, so
+                    the price on screen never jumps because the member changed how they say it. */}
+                <div className="flex rounded-md border border-border overflow-hidden">
+                  {(["percent", "amount"] as DiscountMode[]).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      data-test={`bulk-discount-mode-${m}`}
+                      onClick={() => {
+                        if (m === discountMode) return;
+                        setDiscountValue(m === "amount" ? bulkQuote.discountAmount : bulkQuote.discountPercent);
+                        setDiscountMode(m);
+                      }}
+                      className={`px-2 h-5 text-[10px] font-medium transition-colors ${
+                        discountMode === m ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:bg-accent"
+                      }`}
+                    >
+                      {m === "percent" ? "%" : "₹"}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <input
                 type="number"
                 min={0}
-                max={MAX_BULK_DISCOUNT_PERCENT}
+                max={discountMode === "amount" ? maxDiscountAmount(bulkQuote.grossAmount) : MAX_BULK_DISCOUNT_PERCENT}
                 data-test="bulk-discount"
-                value={discountPercent || ""}
-                onChange={(e) => { setDiscountTouched(true); setDiscountPercent(Number(e.target.value) || 0); }}
+                value={discountValue || ""}
+                onChange={(e) => { setDiscountTouched(true); setDiscountValue(Number(e.target.value) || 0); }}
                 className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary font-mono"
               />
             </div>
@@ -1976,17 +2078,24 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
 
           {bulkQuote.suggestedPercent > 0 && !bulkQuote.edited && (
             <p className="text-[11px] text-muted-foreground">
-              {quantity} ads qualifies for <strong className="text-foreground">{bulkQuote.suggestedPercent}%</strong> off. You can change or remove it.
+              {quantity} videos qualifies for <strong className="text-foreground">{bulkQuote.suggestedPercent}%</strong>
+              {" "}({formatCurrency(bulkQuote.suggestedAmount)}) off. You can change or remove it.
             </p>
           )}
           {bulkQuote.edited && (
             <p className="flex items-start gap-1.5 text-[11px] text-amber-600 dark:text-amber-400">
               <AlertTriangle size={11} className="mt-0.5 shrink-0" />
-              Suggested {bulkQuote.suggestedPercent}%, you set {bulkQuote.discountPercent}% — the tech admin and sales admin will see this.
+              Suggested {bulkQuote.suggestedPercent}% ({formatCurrency(bulkQuote.suggestedAmount)}), you set{" "}
+              {bulkQuote.discountPercent}% ({formatCurrency(bulkQuote.discountAmount)}) — the tech admin and sales admin will see this.
+            </p>
+          )}
+          {discountMode === "amount" && discountValue > maxDiscountAmount(bulkQuote.grossAmount) && (
+            <p className="text-[11px] text-amber-600 dark:text-amber-400">
+              Capped at {formatCurrency(maxDiscountAmount(bulkQuote.grossAmount))} — a bulk discount cannot exceed {MAX_BULK_DISCOUNT_PERCENT}%.
             </p>
           )}
           {quantity > 0 && quantity < 5 && (
-            <p className="text-[11px] text-muted-foreground">Discounts start at 5 ads.</p>
+            <p className="text-[11px] text-muted-foreground">Discounts start at 5 videos.</p>
           )}
 
           <div className="space-y-0.5 border-t border-amber-500/20 pt-2 text-xs">

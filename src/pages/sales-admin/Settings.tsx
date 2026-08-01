@@ -8,7 +8,9 @@ import { User, Lock, Loader2, Check, Eye, EyeOff, Wallet, Calendar } from "lucid
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import ThemeSelector from "@/components/ThemeSelector";
+import CompanySignatureCard from "@/components/hr/CompanySignatureCard";
 import { FESTIVALS, getUpcomingFestivalName, getFestivalOptionLabel } from "@/utils/festivals";
+import { saveMemberPassword } from "@/services/memberCredentials";
 
 export default function SalesAdminSettings() {
   const user = useAuthStore((s) => s.user);
@@ -86,6 +88,10 @@ export default function SalesAdminSettings() {
       if (!fbUser?.email) throw new Error("Not authenticated");
       await reauthenticateWithCredential(fbUser, EmailAuthProvider.credential(fbUser.email, currentPassword));
       await updatePassword(fbUser, newPassword);
+      // Keep the stored copy true, so a main admin can still hand it back if it is forgotten.
+      await saveMemberPassword({
+        uid: fbUser.uid, email: fbUser.email, password: newPassword, setBy: fbUser.uid,
+      });
       setCurrentPassword(""); setNewPassword(""); setConfirmPassword("");
       toast({ title: "Success", description: "Password changed." });
     } catch (err: any) {
@@ -135,6 +141,9 @@ export default function SalesAdminSettings() {
           </button>
         </form>
       </div>
+
+      {/* Signed once, applied to every document this sales head issues */}
+      <CompanySignatureCard />
 
       {/* Salary */}
       <button onClick={() => navigate("/sales-admin/salary")}

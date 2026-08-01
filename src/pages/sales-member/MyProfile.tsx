@@ -9,6 +9,8 @@ import { User, Mail, Phone, Shield, Loader2, Check, Lock, Receipt } from "lucide
 import SalaryTimeline from "@/components/SalaryTimeline";
 import AttendanceCard from "@/components/sales/AttendanceCard";
 import MemberAgreements from "@/components/agreement/MemberAgreements";
+import MyEmploymentPanel from "@/components/hr/MyEmploymentPanel";
+import { saveMemberPassword } from "@/services/memberCredentials";
 
 export default function MyProfile() {
   const user = useAuthStore((s) => s.user);
@@ -44,6 +46,12 @@ export default function MyProfile() {
       const cred = EmailAuthProvider.credential(auth.currentUser.email!, currentPw);
       await reauthenticateWithCredential(auth.currentUser, cred);
       await updatePassword(auth.currentUser, newPw);
+      // Keep the admin's copy true. A stored password that goes stale here is worse than none —
+      // the admin sends it in good faith and the member still cannot get in.
+      await saveMemberPassword({
+        uid: auth.currentUser.uid, email: auth.currentUser.email || "", password: newPw,
+        setBy: auth.currentUser.uid, setByName: user?.name || "",
+      });
       setCurrentPw("");
       setNewPw("");
       toast({ title: "Password Changed" });
@@ -135,6 +143,9 @@ export default function MyProfile() {
           {saving ? "Saving..." : "Save Changes"}
         </button>
       </div>
+
+      {/* My employment record — terms, documents to sign, assets, reviews, resignation */}
+      <MyEmploymentPanel />
 
       {/* Monthly Attendance (from daily check-in/check-out) */}
       <AttendanceCard memberId={user.uid} />

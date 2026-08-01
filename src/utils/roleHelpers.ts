@@ -155,6 +155,8 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "Attendance", path: "/team-leader/attendance", icon: CalendarClock },
     { title: "Agreements", path: "/team-leader/agreements", icon: FileCheck },
     { title: "Tools", path: "/team-leader/tools", icon: Wrench },
+    // A team leader is an employee too: their own employment record and documents to sign.
+    { title: "My Profile", path: "/team-leader/profile", icon: User },
   ],
 };
 

@@ -12,6 +12,7 @@
  * so all of them exclude penalties without knowing penalties exist. There is nothing to remember
  * and no second place to keep in step.
  */
+import { effectiveAdCategory } from "@/utils/serviceCatalog";
 import type { Order, PenaltyClipType, PenaltyEntry, SaleDetail } from "@/types";
 
 /** Standard rate per clip. A default the person recording the penalty may override, not a rule. */
@@ -28,18 +29,20 @@ export const PENALTY_CLIP_TYPES: { key: PenaltyClipType; label: string; rate: nu
 ];
 
 /**
- * The clip type to charge at, guessed from what was sold. Bulk ads are promotional ads bought in
- * quantity, so they carry the promotional rate; anything unrecognised falls to the lower of the
- * two rates rather than over-charging by default.
+ * The clip type to charge at, guessed from what was sold. A bulk order is charged at the rate of
+ * the kind of video it is made of — ten cinematic ads cost the same to re-do as one, per clip —
+ * and anything unrecognised falls to the lower of the two rates rather than over-charging by
+ * default.
  */
-export function defaultClipType(category: string | undefined): PenaltyClipType {
-  if (category === "cinematic") return "cinematic";
-  if (category === "wishes") return "wishes";
+export function defaultClipType(category: string | undefined, bulkAdType?: string | null): PenaltyClipType {
+  const resolved = effectiveAdCategory(category || "", bulkAdType);
+  if (resolved === "cinematic") return "cinematic";
+  if (resolved === "wishes") return "wishes";
   return "promotional";
 }
 
-export function defaultRateFor(category: string | undefined): number {
-  return PENALTY_RATES[defaultClipType(category)];
+export function defaultRateFor(category: string | undefined, bulkAdType?: string | null): number {
+  return PENALTY_RATES[defaultClipType(category, bulkAdType)];
 }
 
 /** clips × ratePerClip, floored at zero. Stored on the entry so a later rate change cannot rewrite it. */

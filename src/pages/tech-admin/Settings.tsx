@@ -8,6 +8,8 @@ import { User, Lock, Loader2, Check, Eye, EyeOff, Wallet } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import ThemeSelector from "@/components/ThemeSelector";
+import CompanySignatureCard from "@/components/hr/CompanySignatureCard";
+import { saveMemberPassword } from "@/services/memberCredentials";
 
 export default function TechAdminSettings() {
   const user = useAuthStore((s) => s.user);
@@ -51,6 +53,10 @@ export default function TechAdminSettings() {
       if (!fbUser?.email) throw new Error("Not authenticated");
       await reauthenticateWithCredential(fbUser, EmailAuthProvider.credential(fbUser.email, currentPassword));
       await updatePassword(fbUser, newPassword);
+      // Keep the stored copy true, so a main admin can still hand it back if it is forgotten.
+      await saveMemberPassword({
+        uid: fbUser.uid, email: fbUser.email, password: newPassword, setBy: fbUser.uid,
+      });
       setCurrentPassword(""); setNewPassword(""); setConfirmPassword("");
       toast({ title: "Success", description: "Password changed." });
     } catch (err: any) {
@@ -102,6 +108,9 @@ export default function TechAdminSettings() {
           </button>
         </form>
       </div>
+
+      {/* Signed once, applied to every document this technical head issues */}
+      <CompanySignatureCard />
 
       <button onClick={() => navigate("/tech-admin/salary")}
         className="w-full bg-card border border-border rounded-xl p-5 flex items-center gap-4 hover:bg-accent/30 transition-colors text-left">

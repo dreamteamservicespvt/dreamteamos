@@ -73,6 +73,27 @@ describe("assignmentFormFromOrder", () => {
     expect(form.pricePerUnit).toBe(3999);
   });
 
+  it("assigns a bulk order as the kind of video it is made of", () => {
+    // Without this the form opened on the "bulk_ads" category, which production knows nothing
+    // about: no duration, and a ₹0 unit price for whoever had to assign the job.
+    const form = assignmentFormFromOrder(order({
+      category: "bulk_ads", bulkAdType: "cinematic", packageKey: "45 Seconds + Poster",
+      quantity: 10, amount: 26991,
+    }));
+    expect(form.category).toBe("cinematic");
+    expect(form.duration).toBe("48s");
+    expect(form.pricePerUnit).toBe(2999);
+  });
+
+  it("assigns a bulk order recorded before the kind existed as promotional", () => {
+    const form = assignmentFormFromOrder(order({
+      category: "bulk_ads", packageKey: "30 Seconds + Poster", quantity: 8, amount: 7592,
+    }));
+    expect(form.category).toBe("promotional");
+    expect(form.duration).toBe("32s");
+    expect(form.pricePerUnit).toBe(999);
+  });
+
   it("carries the sales member's brief through untouched", () => {
     const form = assignmentFormFromOrder(order({
       requirement: {

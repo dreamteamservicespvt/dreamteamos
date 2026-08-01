@@ -6,8 +6,15 @@ import { normalizeSignatureFile } from "@/utils/signatureImage";
 /**
  * Signature capture: draw on-screen (finger/mouse) OR upload / take a photo of a signature.
  * Calls `onSave(file)` with a PNG (draw) or the chosen image file (upload).
+ *
+ * `saveLabel` exists because the same pad now serves two jobs: an employee signing a document,
+ * and a signatory storing the signature that will be applied to every document they issue.
  */
-export default function SignaturePad({ onSave, saving }: { onSave: (file: File) => void; saving?: boolean }) {
+export default function SignaturePad({ onSave, saving, saveLabel }: {
+  onSave: (file: File) => void;
+  saving?: boolean;
+  saveLabel?: string;
+}) {
   const [mode, setMode] = useState<"draw" | "upload">("draw");
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
@@ -144,7 +151,7 @@ export default function SignaturePad({ onSave, saving }: { onSave: (file: File) 
         disabled={!canSave || saving}
         className={cn("mt-3 w-full py-2.5 rounded-lg text-sm font-semibold text-white transition-colors",
           canSave && !saving ? "bg-primary hover:opacity-90" : "bg-muted text-muted-foreground cursor-not-allowed")}>
-        {saving ? "Saving…" : "Save Signature & Sign Agreement"}
+        {saving ? "Saving…" : saveLabel || "Save Signature & Sign Agreement"}
       </button>
     </div>
   );

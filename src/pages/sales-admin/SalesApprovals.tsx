@@ -7,7 +7,8 @@ import { logActivity } from "@/services/activityLog";
 import { upsertOrderForSale, cancelOrderForSale } from "@/services/orders";
 import { useAuthStore } from "@/store/authStore";
 import { formatCurrency, formatDuration } from "@/utils/formatters";
-import { discountEditLabel } from "@/utils/bulkDiscount";
+import { discountEditLabel, discountSummary } from "@/utils/bulkDiscount";
+import { bulkCategoryLabel } from "@/utils/serviceCatalog";
 import { useNow } from "@/hooks/useNow";
 import { applySaleFreeze, adminReleaseLock, buildLeadFreezeFields, clearedLeadFreezeFields, clearSaleFreeze } from "@/services/numberLock";
 import { format, subDays, startOfDay } from "date-fns";
@@ -866,20 +867,23 @@ export default function SalesApprovals() {
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>
                     <span className="text-muted-foreground">Category:</span>{" "}
-                    <span className="text-foreground font-medium capitalize">{li.item.category?.replace(/_/g, " ") || "—"}</span>
+                    <span data-test="approval-category" className="text-foreground font-medium">
+                      {li.item.category ? bulkCategoryLabel(li.item.category, li.item.bulkAdType) : "—"}
+                    </span>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Package:</span>{" "}
                     <span className="text-foreground font-medium">{li.item.packageKey || "—"}</span>
                   </div>
                   {/* A bulk order's price is quantity × unit × discount. Approving it means
-                      approving that arithmetic, so all three are on the card rather than a total. */}
+                      approving that arithmetic, so all three are on the card rather than a total.
+                      The discount is shown in the unit the member gave it in. */}
                   {!!li.item.quantity && li.item.quantity > 1 && (
                     <div>
                       <span className="text-muted-foreground">Quantity:</span>{" "}
                       <span className="text-foreground font-medium">
                         {li.item.quantity} × {formatCurrency(li.item.unitAmount || 0)}
-                        {li.item.discountPercent ? ` − ${li.item.discountPercent}%` : ""}
+                        {discountSummary(li.item).replace(" · ", " − ").replace(" off", "")}
                       </span>
                     </div>
                   )}

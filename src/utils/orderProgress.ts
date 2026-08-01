@@ -7,7 +7,7 @@
  * carries running counts, so anyone looking at it can see 3 of 8 rather than a status that has
  * been true for a fortnight.
  */
-import { packageDeliverables } from "@/utils/serviceCatalog";
+import { packageDeliverables, isBulkCategory, effectiveAdCategory } from "@/utils/serviceCatalog";
 import type {
   Order, OrderProgress, OrderProgressCounts, OrderProgressField, OrderTrack, WorkAssignment,
 } from "@/types";
@@ -32,15 +32,18 @@ export const PROGRESS_FIELD_LABELS: Record<OrderProgressField, string> = {
  * The progress a freshly-created order should carry, or `null` for the ordinary single-ad orders
  * that have nothing to count.
  *
- * Bulk orders track ads and their posters (every promotional ad ships with one); they have no
- * uploading or marketing leg, so those targets stay at zero and never appear on screen.
+ * Bulk orders track the videos and their posters; they have no uploading or marketing leg, so those
+ * targets stay at zero and never appear on screen. Wishes videos ship WITHOUT a poster — every
+ * wishes package is plain seconds — so a bulk wishes order counts videos only. Counting posters
+ * nobody agreed to make would leave the order permanently stuck at "8 of 8 ads · 0 of 8 posters".
  */
 export function initialProgress(input: {
   category: string;
   packageKey?: string;
   quantity?: number;
+  bulkAdType?: string | null;
 }): OrderProgress | null {
-  const { category, packageKey, quantity } = input;
+  const { category, packageKey, quantity, bulkAdType } = input;
 
   if (category === "social_media_management") {
     const quota = packageKey ? packageDeliverables(category, packageKey) : undefined;
@@ -48,10 +51,11 @@ export function initialProgress(input: {
     return blankProgress("smm", { ...quota });
   }
 
-  if (category === "bulk_ads") {
+  if (isBulkCategory(category)) {
     const n = Math.max(0, Math.floor(Number(quantity) || 0));
     if (n <= 0) return null;
-    return blankProgress("bulk", { ...ZERO, ads: n, posters: n });
+    const posters = effectiveAdCategory(category, bulkAdType) === "wishes" ? 0 : n;
+    return blankProgress("bulk", { ...ZERO, ads: n, posters });
   }
 
   return null;

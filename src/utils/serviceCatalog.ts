@@ -46,6 +46,12 @@ export interface ServiceCategory {
    * See utils/bulkDiscount.
    */
   bulk?: boolean;
+  /**
+   * A bulk category sells several of ANOTHER category's videos at once, so it has no price list of
+   * its own — the member picks which kind first and the packages come from there. Listing the keys
+   * here rather than hard-coding one kind is what lets bulk wishes and bulk cinematic exist.
+   */
+  bulkTypes?: string[];
   /** Free-text describing what was sold, because there is no package list to say it. */
   needsDescription?: boolean;
 }
@@ -123,20 +129,18 @@ export const SERVICE_CATALOG: ServiceCategory[] = [
   },
   {
     /**
-     * Several promotional ads bought at once, at a volume discount. Only the ₹999-and-above
-     * promotional packages qualify — the ₹499 15-second ad is already the entry price and is not
-     * discounted further.
+     * Several videos of ONE kind bought at once, at a volume discount. The kind is chosen on the
+     * sale form — wishes, promotional or cinematic — and the packages and prices are that kind's
+     * own, unchanged. There is deliberately no separate bulk price list: a bulk cinematic ad is a
+     * cinematic ad, and two price lists for the same thing is how they drift apart.
      */
     key: "bulk_ads",
-    label: "Bulk Ads (Promotional)",
+    label: "Bulk Videos",
     billing: "one_time",
     fromAd: true,
     bulk: true,
-    packages: [
-      { label: "30 Seconds + Poster", amount: 999 },
-      { label: "45 Seconds + Poster", amount: 1499 },
-      { label: "1 Minute + Poster", amount: 1999 },
-    ],
+    bulkTypes: ["wishes", "promotional", "cinematic"],
+    packages: [],
   },
   {
     key: "website",
@@ -228,9 +232,44 @@ export function categoryBilling(key: string): Billing {
   return CATEGORY_BY_KEY[key]?.billing ?? "one_time";
 }
 
-/** Sold by quantity, with a volume discount — currently only Bulk Ads. */
+/** Sold by quantity, with a volume discount — currently only Bulk Videos. */
 export function isBulkCategory(key: string): boolean {
   return CATEGORY_BY_KEY[key]?.bulk === true;
+}
+
+/**
+ * The kind of video a bulk order is made of, when the category sells other categories in quantity.
+ *
+ * `"promotional"` is the fallback rather than an arbitrary first choice: every bulk sale recorded
+ * before the picker existed WAS a promotional bulk order (the category was literally called "Bulk
+ * Ads (Promotional)"), so an old sale with no `bulkAdType` reads correctly instead of needing a
+ * migration.
+ */
+export const DEFAULT_BULK_AD_TYPE = "promotional";
+
+/** The video kinds a bulk category can be made of. Empty for everything else. */
+export function bulkTypesFor(key: string): string[] {
+  return CATEGORY_BY_KEY[key]?.bulkTypes ?? [];
+}
+
+/**
+ * The category that actually describes the work: a bulk order resolves to the kind of video it is
+ * made of, everything else is itself.
+ *
+ * This is the single point that keeps `bulk_ads` from leaking into the production side, where
+ * durations, prices, penalty rates and delivery promises are all keyed by the three real ad
+ * categories and a fourth key silently produces an empty duration and a ₹0 price.
+ */
+export function effectiveAdCategory(category: string, bulkAdType?: string | null): string {
+  if (!isBulkCategory(category)) return category;
+  const type = bulkAdType?.trim();
+  return type && CATEGORY_BY_KEY[type] ? type : DEFAULT_BULK_AD_TYPE;
+}
+
+/** "Bulk Videos — Cinematic Ad", for a queue card that must say both. */
+export function bulkCategoryLabel(category: string, bulkAdType?: string | null): string {
+  if (!isBulkCategory(category)) return categoryLabel(category);
+  return `${categoryLabel(category)} — ${categoryLabel(effectiveAdCategory(category, bulkAdType))}`;
 }
 
 /** Has no package list, so the member has to type what was actually sold (Custom, Software). */

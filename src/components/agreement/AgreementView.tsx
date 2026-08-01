@@ -8,6 +8,18 @@ export interface AgreementViewData {
   signatureUrl?: string;
   signedName?: string;
   signedDate?: string;
+  /**
+   * The company side of the document.
+   *
+   * An HR letter is signed by the company the moment it is issued — the signatory's stored
+   * signature is applied automatically — and by the employee when they accept it. So a document
+   * can carry two signatures, and each signature line in the text says which side it belongs to.
+   * Agreements that pass none of these are unaffected: they render exactly as before.
+   */
+  companySignatureUrl?: string | null;
+  companySignedName?: string;
+  companyDesignation?: string;
+  companySignedDate?: string;
 }
 
 /** Fill the common "____" placeholders from the member's details + sign date. */
@@ -25,13 +37,30 @@ const isSignatureLine = (l: string) => /signature\s*:/i.test(l);
 const isSectionHeading = (l: string) => /^\s*\d+\.\s+\S/.test(l);
 const isAllCaps = (l: string) => l.length > 2 && l === l.toUpperCase() && /[A-Z]/.test(l);
 
+/**
+ * Which side a signature line belongs to.
+ *
+ * "Employee Signature:" — or a bare "Signature:" — is the employee's. A line that names the
+ * company as signer ("For Dream Team Services — Authorised Signatory Signature:", "Employer
+ * Signature:", "HR Signature:") is the company's. Anything else — a witness line, say — gets a
+ * blank ruled box, which is exactly what it got before two-sided signing existed.
+ */
+const signatureSide = (l: string): "employee" | "company" | "other" => {
+  if (/employee/i.test(l)) return "employee";
+  if (/authoris|authoriz|\bcompany\b|employer|signatory|\bhr\b/i.test(l)) return "company";
+  return /^signature\s*:/i.test(l.trim()) ? "employee" : "other";
+};
+
+/** The `Name:` / `Designation:` / `Date:` lines that belong to the signature block above them. */
+const META_LINE = /^(Name|Designation|Date)\s*:\s*(.*)$/i;
+
 /** Employee-detail labels whose filled values get the highlight treatment. */
-const HIGHLIGHT_LABEL = /^(Employee Name|Mobile Number|Date)\s*:/i;
+const HIGHLIGHT_LABEL = /^(Employee Name|Employee ID|Mobile Number|Date)\s*:/i;
 
 /**
  * Renders pasted agreement text as a clean, print-ready A4-ish document.
  * A plain white "paper" look (theme-independent) so the on-screen preview matches the PDF.
- * The member's auto-filled details (name, mobile, date) and the signature block are highlighted.
+ * The member's auto-filled details (name, mobile, date) and the signature blocks are highlighted.
  */
 const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function AgreementView(data, ref) {
   const filled = fillAgreementText(data.bodyText, data);
@@ -47,7 +76,24 @@ const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function Agr
   }
   const body = lines.slice(i);
 
+  // Pull the Name/Designation/Date lines that follow a signature line INTO that signature block,
+  // so a signature reads as one boxed unit instead of a box followed by three stray labels.
+  const signatureMeta = new Map<number, Record<string, string>>();
+  const absorbed = new Set<number>();
+  body.forEach((raw, idx) => {
+    if (!isSignatureLine(raw.trim())) return;
+    const meta: Record<string, string> = {};
+    for (let j = idx + 1; j < body.length; j++) {
+      const match = body[j].trim().match(META_LINE);
+      if (!match) break;
+      meta[match[1].toLowerCase()] = match[2].trim();
+      absorbed.add(j);
+    }
+    signatureMeta.set(idx, meta);
+  });
+
   const signedDateLabel = data.signedDate ? format(new Date(data.signedDate), "dd MMM yyyy") : "";
+  const companyDateLabel = data.companySignedDate ? format(new Date(data.companySignedDate), "dd MMM yyyy") : "";
 
   return (
     <div
@@ -67,24 +113,41 @@ const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function Agr
 
       <div data-pdf="body" className="space-y-2.5 text-[13px] md:text-[14px] leading-relaxed">
         {body.map((raw, idx) => {
+          if (absorbed.has(idx)) return null;
           const l = raw.trim();
           if (l === "") return <div key={idx} className="h-1.5" />;
 
           if (isSignatureLine(l)) {
             const label = l.split(":")[0];
-            const isEmployee = /employee/i.test(l);
+            const side = signatureSide(l);
+            const meta = signatureMeta.get(idx) || {};
+            const isCompany = side === "company";
+            const imageUrl = side === "company" ? data.companySignatureUrl
+              : side === "employee" ? data.signatureUrl
+              : null;
+            const name = isCompany
+              ? (data.companySignedName || meta.name || "")
+              : side === "employee" ? (data.signedName || meta.name || data.memberName)
+              : meta.name || "";
+            const dateLabel = isCompany
+              ? (companyDateLabel || meta.date || "")
+              : (signedDateLabel || meta.date || "");
+            const designation = isCompany ? (data.companyDesignation || meta.designation || "") : "";
+
             return (
               <div key={idx} className="mt-5">
-                <div className="inline-block rounded-lg border border-amber-300 bg-amber-50 px-4 pt-2 pb-1.5">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-amber-700 mb-1">{label}</div>
-                  {isEmployee && data.signatureUrl ? (
+                <div className={`inline-block rounded-lg border px-4 pt-2 pb-1.5 ${isCompany ? "border-sky-300 bg-sky-50" : "border-amber-300 bg-amber-50"}`}>
+                  <div className={`text-[11px] font-semibold uppercase tracking-wide mb-1 ${isCompany ? "text-sky-700" : "text-amber-700"}`}>
+                    {label}
+                  </div>
+                  {imageUrl ? (
                     <div>
                       <div className="flex items-end min-h-[72px]">
                         {/* mix-blend-multiply drops whitish photo backgrounds into the white paper,
                             so uploaded photo signatures print as cleanly as drawn ones. */}
                         <img
                           data-signature="true"
-                          src={data.signatureUrl}
+                          src={imageUrl}
                           alt="signature"
                           crossOrigin="anonymous"
                           className="h-[68px] object-contain object-left-bottom mix-blend-multiply"
@@ -92,13 +155,22 @@ const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function Agr
                         />
                       </div>
                       <div className="border-t border-slate-500 mt-1 pt-1 min-w-[220px]">
-                        <span className="text-[11px] font-semibold text-slate-700">{data.signedName || data.memberName}</span>
-                        {signedDateLabel && <span className="text-[11px] text-slate-500"> · {signedDateLabel}</span>}
+                        <span className="text-[11px] font-semibold text-slate-700">{name}</span>
+                        {designation && <span className="text-[11px] text-slate-500"> · {designation}</span>}
+                        {dateLabel && <span className="text-[11px] text-slate-500"> · {dateLabel}</span>}
                       </div>
                     </div>
                   ) : (
-                    <div className="h-14 min-w-[220px] border-b border-slate-500 flex items-end pb-1">
-                      <span className="text-[10px] text-slate-400 italic">{isEmployee ? "Awaiting signature" : ""}</span>
+                    <div>
+                      <div className="h-14 min-w-[220px] border-b border-slate-500 flex items-end pb-1">
+                        <span className="text-[10px] text-slate-400 italic">Awaiting signature</span>
+                      </div>
+                      {(name || designation) && (
+                        <div className="pt-1 min-w-[220px]">
+                          <span className="text-[11px] font-semibold text-slate-700">{name}</span>
+                          {designation && <span className="text-[11px] text-slate-500"> · {designation}</span>}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -106,7 +178,7 @@ const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function Agr
             );
           }
 
-          // Highlight the auto-filled employee details (Name / Mobile / Date).
+          // Highlight the auto-filled employee details (Name / Employee ID / Mobile / Date).
           const hl = l.match(HIGHLIGHT_LABEL);
           if (hl) {
             const label = hl[1];

@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   SALE_CATEGORIES, PACKAGES, categoryLabel, isAdCategory, categoryBilling, gapCategories, GAP_ELIGIBLE_CATEGORIES,
-  isBulkCategory, needsDescription, packageOptionLabel,
+  isBulkCategory, needsDescription, packageOptionLabel, bulkTypesFor, effectiveAdCategory,
+  bulkCategoryLabel,
 } from "@/utils/serviceCatalog";
 
 describe("service catalog integrity", () => {
@@ -41,10 +42,20 @@ describe("service catalog integrity", () => {
     }
   });
 
-  it("bulk ads only offers promotional packages of ₹999 and above", () => {
-    expect(PACKAGES["bulk_ads"].map((p) => p.amount)).toEqual([999, 1499, 1999]);
+  it("bulk videos have no price list of their own — they borrow the chosen kind's", () => {
+    expect(PACKAGES["bulk_ads"]).toEqual([]);
     expect(isBulkCategory("bulk_ads")).toBe(true);
     expect(isBulkCategory("promotional")).toBe(false);
+    expect(bulkTypesFor("bulk_ads")).toEqual(["wishes", "promotional", "cinematic"]);
+    expect(bulkTypesFor("promotional")).toEqual([]);
+  });
+
+  it("a bulk order is priced from the kind of video it is made of", () => {
+    for (const type of bulkTypesFor("bulk_ads")) {
+      expect(PACKAGES[effectiveAdCategory("bulk_ads", type)]).toBe(PACKAGES[type]);
+    }
+    expect(PACKAGES[effectiveAdCategory("bulk_ads", "cinematic")].map((p) => p.amount))
+      .toEqual([999, 1999, 2999, 3999]);
   });
 
   it("needsDescription only where there is no package list to say what was sold", () => {
@@ -82,6 +93,36 @@ describe("category helpers", () => {
   it("categoryLabel maps google_listing to the friendly name", () => {
     expect(categoryLabel("google_listing")).toBe("Google Business Profile");
     expect(categoryLabel("website")).toBe("Website Development");
+  });
+});
+
+describe("effectiveAdCategory (what a bulk order is really made of)", () => {
+  it("resolves a bulk order to its chosen kind", () => {
+    expect(effectiveAdCategory("bulk_ads", "cinematic")).toBe("cinematic");
+    expect(effectiveAdCategory("bulk_ads", "wishes")).toBe("wishes");
+  });
+
+  it("reads a bulk sale recorded before the picker existed as promotional", () => {
+    // Those sales were literally sold from a category called "Bulk Ads (Promotional)", so this is
+    // the historically correct reading — not an arbitrary default — and needs no migration.
+    expect(effectiveAdCategory("bulk_ads", undefined)).toBe("promotional");
+    expect(effectiveAdCategory("bulk_ads", null)).toBe("promotional");
+    expect(effectiveAdCategory("bulk_ads", "")).toBe("promotional");
+  });
+
+  it("ignores a kind that is not a real category", () => {
+    expect(effectiveAdCategory("bulk_ads", "nonsense")).toBe("promotional");
+  });
+
+  it("leaves every non-bulk category alone, whatever is passed alongside", () => {
+    expect(effectiveAdCategory("cinematic", "wishes")).toBe("cinematic");
+    expect(effectiveAdCategory("website")).toBe("website");
+  });
+
+  it("bulkCategoryLabel names both the bulk and the kind", () => {
+    expect(bulkCategoryLabel("bulk_ads", "cinematic")).toBe("Bulk Videos — Cinematic Ad");
+    expect(bulkCategoryLabel("bulk_ads")).toBe("Bulk Videos — Promotional Ad");
+    expect(bulkCategoryLabel("promotional")).toBe("Promotional Ad");
   });
 });
 

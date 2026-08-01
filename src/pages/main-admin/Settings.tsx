@@ -8,6 +8,7 @@ import { Settings as SettingsIcon, User, Lock, Loader2, Check, Eye, EyeOff, Wall
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import ThemeSelector from "@/components/ThemeSelector";
+import { saveMemberPassword } from "@/services/memberCredentials";
 
 export default function Settings() {
   const user = useAuthStore((s) => s.user);
@@ -70,6 +71,11 @@ export default function Settings() {
       const credential = EmailAuthProvider.credential(fbUser.email, currentPassword);
       await reauthenticateWithCredential(fbUser, credential);
       await updatePassword(fbUser, newPassword);
+      // Keep the stored copy true, so the login details screen never shows a password that has
+      // since been changed.
+      await saveMemberPassword({
+        uid: fbUser.uid, email: fbUser.email, password: newPassword, setBy: fbUser.uid,
+      });
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");

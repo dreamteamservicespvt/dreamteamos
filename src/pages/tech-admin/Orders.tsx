@@ -8,7 +8,7 @@ import { useFirestoreQuery, useFirestoreCollection } from "@/hooks/useFirestore"
 import { useNow } from "@/hooks/useNow";
 import { formatCurrency } from "@/utils/formatters";
 import { formatPhoneDisplay, getWhatsAppUrl } from "@/utils/phone";
-import { categoryLabel, categoryBilling } from "@/utils/serviceCatalog";
+import { categoryBilling, bulkCategoryLabel } from "@/utils/serviceCatalog";
 import { activeOrdersQuery, notifyDueOrdersOnOpen, findReconcilableOrders, reconcileManualOrders, deleteOrders, revertOrderToUnassigned } from "@/services/orders";
 import { requirementSummary } from "@/utils/adRequirement";
 import { useToast } from "@/hooks/use-toast";
@@ -160,7 +160,8 @@ export default function Orders() {
       .filter((o) => {
         if (!q) return true;
         if (o.businessName?.toLowerCase().includes(q)) return true;
-        if (categoryLabel(o.category).toLowerCase().includes(q)) return true;
+        // Searching "cinematic" must find a bulk cinematic order, whose own category is "bulk".
+        if (bulkCategoryLabel(o.category, o.bulkAdType).toLowerCase().includes(q)) return true;
         if (o.soldByName?.toLowerCase().includes(q)) return true;
         if (qDigits && o.clientPhone?.replace(/\D/g, "").includes(qDigits)) return true;
         return false;
@@ -447,7 +448,9 @@ export default function Orders() {
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap items-center gap-2 mb-2">
                   <h3 className="font-semibold text-card-foreground text-sm md:text-base truncate">{o.businessName || "Unnamed client"}</h3>
-                  <span className="text-[10px] md:text-xs font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary">{categoryLabel(o.category)}</span>
+                  {/* A bulk order names the kind of video too: "Bulk Videos" alone does not tell
+                      whoever assigns it whether this is a 24-hour wishes job or a cinematic one. */}
+                  <span data-test="order-category" className="text-[10px] md:text-xs font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary">{bulkCategoryLabel(o.category, o.bulkAdType)}</span>
                   {categoryBilling(o.category) === "monthly" && (
                     <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-500">Monthly</span>
                   )}
@@ -460,7 +463,7 @@ export default function Orders() {
                   )}
                   {!!o.quantity && o.quantity > 1 && (
                     <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
-                      <Layers size={9} /> {o.quantity} ads
+                      <Layers size={9} /> {o.quantity} videos
                     </span>
                   )}
                   {/* A price that left the discount ladder. The tech admin is one of the two people

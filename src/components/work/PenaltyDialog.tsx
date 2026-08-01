@@ -23,9 +23,9 @@ export default function PenaltyDialog({ order, actor, onClose }: {
   onClose: () => void;
 }) {
   const { toast } = useToast();
-  const [clipType, setClipType] = useState<PenaltyClipType>(defaultClipType(order.category));
+  const [clipType, setClipType] = useState<PenaltyClipType>(defaultClipType(order.category, order.bulkAdType));
   const [clips, setClips] = useState(1);
-  const [ratePerClip, setRatePerClip] = useState(PENALTY_RATES[defaultClipType(order.category)]);
+  const [ratePerClip, setRatePerClip] = useState(PENALTY_RATES[defaultClipType(order.category, order.bulkAdType)]);
   const [rateTouched, setRateTouched] = useState(false);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);

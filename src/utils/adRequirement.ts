@@ -10,7 +10,7 @@
  */
 import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from "@/types/aiPlatform";
 import { DURATIONS, END_CREDITS_SECONDS, getClipCount, hasPoster, priceForClips } from "./assignmentDuration";
-import { PACKAGES, isAdCategory, categoryLabel } from "./serviceCatalog";
+import { PACKAGES, isAdCategory, categoryLabel, effectiveAdCategory } from "./serviceCatalog";
 import { PRICING } from "./pricing";
 import { getCharacterPack, packHighlight } from "@/services/characterPacks";
 import type { AdRequirement, Order } from "@/types";
@@ -131,9 +131,14 @@ export interface AssignmentFormSpec {
  *
  * A non-ad order (website, logo…) has no ad category to map to, so it opens on `promotional` for
  * the admin to correct — the page shows the original service alongside it so nothing is hidden.
+ *
+ * A BULK order resolves to the kind of video it is made of. Passing `bulk_ads` through unchanged
+ * (which it used to, since it counts as an ad category) left the form with no duration and a ₹0
+ * unit price, because production speaks in the three real ad categories and knows no fourth.
  */
 export function assignmentFormFromOrder(order: Order, knownLanguages?: string[]): AssignmentFormSpec {
-  const category = (isAdCategory(order.category) ? order.category : "promotional") as AssignmentFormSpec["category"];
+  const resolved = effectiveAdCategory(order.category, order.bulkAdType);
+  const category = (isAdCategory(resolved) ? resolved : "promotional") as AssignmentFormSpec["category"];
   const duration = durationForSale(category, order.packageKey, order.amount);
   const r = withRequirementDefaults(order.requirement);
 

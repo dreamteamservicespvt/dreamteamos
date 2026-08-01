@@ -90,11 +90,15 @@ export async function upsertOrderForSale(params: {
       packageKey: item.packageKey || "custom",
       customDescription: item.customDescription ?? null,
       amount: item.amount || 0,
-      // Bulk ads — how many, at what unit price, and whether the member moved the discount. The
-      // tech side needs the count to know the job is N ads; the two admins need the rest.
+      // Bulk videos — which kind, how many, at what unit price, and whether the member moved the
+      // discount. The tech side needs the kind and the count to know what the job actually is;
+      // the two admins need the rest.
       quantity: item.quantity ?? null,
+      bulkAdType: item.bulkAdType ?? null,
       unitAmount: item.unitAmount ?? null,
       suggestedDiscountPercent: item.suggestedDiscountPercent ?? null,
+      discountMode: item.discountMode ?? null,
+      discountAmount: item.discountAmount ?? null,
       discountPercent: item.discountPercent ?? null,
       discountEdited: item.discountEdited ?? false,
       leadId: lead.id,
@@ -116,6 +120,7 @@ export async function upsertOrderForSale(params: {
       category: item.category,
       packageKey: item.packageKey,
       quantity: item.quantity,
+      bulkAdType: item.bulkAdType,
     });
 
     const snap = await getDoc(ref);

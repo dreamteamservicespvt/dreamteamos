@@ -3,15 +3,22 @@ import { useNavigate } from "react-router-dom";
 import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, serverTimestamp, query, where } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { createUserWithoutSignOut } from "@/services/secondaryAuth";
+import { saveMemberPassword, deleteMemberPassword, fetchMemberPassword, buildCredentialsMessage } from "@/services/memberCredentials";
 import { useAuthStore } from "@/store/authStore";
 import { normalizePhone, formatPhoneDisplay, getWhatsAppUrl, getCallUrl } from "@/utils/phone";
 import type { AppUser, DailyCheckin, WorkAssignment } from "@/types";
 import { formatCurrency } from "@/utils/formatters";
-import { Users, Plus, X, Loader2, Eye, EyeOff, UserCheck, UserX, Trash2, Phone, MessageCircle, Pencil, Share2, Search, LogIn, LogOut, Sparkles, BarChart3, Wand2, Film, ExternalLink } from "lucide-react";
+import { Users, Plus, X, Loader2, Eye, EyeOff, UserCheck, UserX, Trash2, Phone, MessageCircle, Pencil, Share2, Search, LogIn, LogOut, Sparkles, BarChart3, Wand2, Film, ExternalLink, KeyRound } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import EditMemberModal from "@/components/EditMemberModal";
+import MemberPasswordModal from "@/components/MemberPasswordModal";
 import AdsHistoryModal from "@/components/tech/AdsHistoryModal";
+import MemberGridCard from "@/components/team/MemberGridCard";
+import ViewToggle from "@/components/common/ViewToggle";
+import { useViewMode } from "@/hooks/useViewMode";
+import { watchTeamProfiles } from "@/services/hr";
+import type { EmployeeProfile } from "@/types/hr";
 import PeriodFilterBar from "@/components/dashboard/PeriodFilterBar";
 import { format } from "date-fns";
 import { defaultPeriodFilter, periodLabel, withinPeriod, type PeriodFilter } from "@/utils/periodFilter";
@@ -27,8 +34,15 @@ export default function TechAdminMyTeam() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<AppUser | null>(null);
   const [editingMember, setEditingMember] = useState<AppUser | null>(null);
+  /** The member whose stored login the admin is looking up. */
+  const [passwordMember, setPasswordMember] = useState<AppUser | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const isMobile = useIsMobile();
+  // Grid by default: a member is a person, and a card shows who they are — name, photo, stage —
+  // where a table row shows only what they cost. The table stays one click away.
+  const [view, setView] = useViewMode("techTeam");
+  /** HR records for the team, so the grid can show who is on probation or serving notice. */
+  const [hrProfiles, setHrProfiles] = useState<Map<string, EmployeeProfile>>(new Map());
   const [todayCheckins, setTodayCheckins] = useState<Map<string, DailyCheckin>>(new Map());
   const [assignments, setAssignments] = useState<WorkAssignment[]>([]);
   const [memberRevenue, setMemberRevenue] = useState<Map<string, number>>(new Map());
@@ -76,6 +90,15 @@ export default function TechAdminMyTeam() {
     ));
     return () => unsubs.forEach((u) => u());
   }, [currentUser?.uid, todayStr]);
+
+  // One document read per member — the same cost as listing them — so the grid can show where
+  // each person is in their employment without a subscription per card.
+  const memberUidKey = members.map((m) => m.uid).sort().join(",");
+  useEffect(() => {
+    const uids = memberUidKey ? memberUidKey.split(",") : [];
+    if (uids.length === 0) { setHrProfiles(new Map()); return; }
+    return watchTeamProfiles(uids, "tech", setHrProfiles);
+  }, [memberUidKey]);
 
   useEffect(() => {
     const memberIds = new Set(members.map((m) => m.uid));
@@ -135,6 +158,11 @@ export default function TechAdminMyTeam() {
       };
       if (formDriveUrl.trim()) newUser.googleDriveBaseUrl = formDriveUrl.trim();
       await setDoc(doc(db, "users", uid), newUser);
+      // Keep the password, so this admin can send it back when the member forgets it.
+      await saveMemberPassword({
+        uid, email: formEmail.trim(), password: formPassword,
+        setBy: currentUser?.uid || "", setByName: currentUser?.name || "",
+      });
       setMembers((prev) => [...prev, { ...newUser, createdAt: new Date(), updatedAt: new Date() } as AppUser]);
       setShowModal(false);
       resetForm();
@@ -185,6 +213,8 @@ export default function TechAdminMyTeam() {
     setDeletingId(member.uid);
     try {
       await deleteDoc(doc(db, "users", member.uid));
+      // A departed member's password has nobody left to send it to.
+      await deleteMemberPassword(member.uid);
       setMembers((prev) => prev.filter((m) => m.uid !== member.uid));
       toast({ title: "Deleted", description: `${member.name} has been removed.` });
     } catch {
@@ -200,16 +230,29 @@ export default function TechAdminMyTeam() {
     setFormSalary(0); setFormDriveUrl(""); setFormRole("tech_member"); setShowPw(false);
   };
 
-  const handleShareCredentials = (member: AppUser) => {
+  /**
+   * Send the member their login on WhatsApp — with the real password when one was stored. The
+   * message used to claim the password was the same as the email, which was true for nobody whose
+   * password had been set to anything else.
+   */
+  const handleShareCredentials = async (member: AppUser) => {
     if (!member.phone) {
       toast({ title: "Error", description: "Member does not have a phone number.", variant: "destructive" });
       return;
     }
-    const loginLink = window.location.origin;
-    const message = `🌐 *Website Login*\n\n📧 *Your Email:* ${member.email}\npassword and email both are same\n🔗 *Login here:* ${loginLink}\n\nIf you forgot your password, please contact your admin.`;
-    const url = getWhatsAppUrl(member.phone, message);
-    window.open(url, "_blank", "noopener,noreferrer");
+    const password = await fetchMemberPassword(member.uid);
+    const message = buildCredentialsMessage({
+      email: member.email, password, loginUrl: window.location.origin,
+    });
+    window.open(getWhatsAppUrl(member.phone, message), "_blank", "noopener,noreferrer");
   };
+
+  /**
+   * Clicking a member opens their full record. An external creator has no employment record —
+   * they are not a team member — so for them the click still opens their ad history.
+   */
+  const openMember = (m: AppUser) =>
+    m.externalCreator ? setAdsHistoryMember(m) : navigate(`/tech-admin/team/${m.uid}/profile`);
 
   const filteredMembers = useMemo(() => {
     const base = members.filter((m) => {
@@ -235,10 +278,13 @@ export default function TechAdminMyTeam() {
           <h1 className="font-display text-xl md:text-2xl font-bold text-foreground">My Team</h1>
           <p className="text-muted-foreground text-xs md:text-sm mt-1">Manage your tech team members</p>
         </div>
-        <button onClick={() => { resetForm(); setShowModal(true); }}
-          className="h-9 px-3 md:px-4 rounded-lg bg-primary text-primary-foreground font-display font-semibold text-xs md:text-sm flex items-center gap-2 hover:bg-primary/90 transition-colors">
-          <Plus size={14} /> <span className="hidden sm:inline">Add Member</span><span className="sm:hidden">Add</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <ViewToggle mode={view} onChange={setView} />
+          <button onClick={() => { resetForm(); setShowModal(true); }}
+            className="h-9 px-3 md:px-4 rounded-lg bg-primary text-primary-foreground font-display font-semibold text-xs md:text-sm flex items-center gap-2 hover:bg-primary/90 transition-colors">
+            <Plus size={14} /> <span className="hidden sm:inline">Add Member</span><span className="sm:hidden">Add</span>
+          </button>
+        </div>
       </div>
 
       {/* Search */}
@@ -300,8 +346,89 @@ export default function TechAdminMyTeam() {
         </div>
       </div>
 
-      {isMobile ? (
-        <MobileTechCards members={filteredMembers} loading={loading} onToggle={toggleActive} onDelete={(m) => setConfirmDelete(m)} onEdit={(m) => setEditingMember(m)} onClickMember={(m) => m.externalCreator ? setAdsHistoryMember(m) : navigate(`/tech-admin/team/${m.uid}`)} onShare={handleShareCredentials} onToggleExternal={toggleExternalCreator} onAdsHistory={(m) => setAdsHistoryMember(m)} todayCheckins={todayCheckins} memberRevenue={memberRevenue} />
+      {view === "grid" ? (
+        loading ? (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="h-52 animate-pulse rounded-xl border border-border bg-card" />
+            ))}
+          </div>
+        ) : filteredMembers.length === 0 ? (
+          <div className="rounded-xl border border-border bg-card p-10 text-center">
+            <Users size={32} className="mx-auto mb-2 text-muted-foreground/30" />
+            <p className="text-sm text-muted-foreground">
+              {searchQuery ? "No members match your search." : 'No members yet. Click "Add Member" to get started.'}
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" data-test="member-grid">
+            {filteredMembers.map((m) => {
+              const ci = todayCheckins.get(m.uid);
+              const checkin = !ci ? "Not in"
+                : ci.status === "approved" ? "Approved"
+                  : ci.status === "rejected" ? "Rejected"
+                    : ci.status === "pending_approval" ? "Pending"
+                      : ci.checkedOutAt ? "Checked out" : "Checked in";
+              return (
+                <MemberGridCard
+                  key={m.uid}
+                  member={m}
+                  profile={hrProfiles.get(m.uid)}
+                  onOpen={() => openMember(m)}
+                  badges={m.externalCreator ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                      <Wand2 size={9} /> External
+                    </span>
+                  ) : null}
+                  stats={[
+                    { label: "Salary", value: `₹${m.salary?.toLocaleString() || 0}` },
+                    { label: "Revenue", value: formatCurrency(memberRevenue.get(m.uid) || 0), tone: "primary" },
+                    { label: "Today", value: checkin, tone: "muted" },
+                    { label: "Role", value: m.role === "tech_team_leader" ? "Team Leader" : "Tech Member", tone: "muted" },
+                  ]}
+                  actions={
+                    <>
+                      {m.externalCreator && (
+                        <button onClick={() => setAdsHistoryMember(m)} title="Ads history"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-amber-500/10 hover:text-amber-600">
+                          <Film size={13} />
+                        </button>
+                      )}
+                      {!m.externalCreator && (
+                        <button onClick={() => navigate(`/tech-admin/team/${m.uid}/analytics`)} title="Analytics"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-primary/10 hover:text-primary">
+                          <BarChart3 size={13} />
+                        </button>
+                      )}
+                      <button onClick={() => handleShareCredentials(m)} title="Share credentials"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-success/10 hover:text-success">
+                        <Share2 size={13} />
+                      </button>
+                      <button onClick={() => setPasswordMember(m)} title="Login details"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-primary/10 hover:text-primary">
+                        <KeyRound size={13} />
+                      </button>
+                      <button onClick={() => setEditingMember(m)} title="Edit"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-primary/10 hover:text-primary">
+                        <Pencil size={13} />
+                      </button>
+                      <button onClick={() => toggleActive(m)} title={m.isActive ? "Deactivate" : "Activate"}
+                        className={`flex h-8 w-8 items-center justify-center rounded-lg border border-border ${m.isActive ? "text-destructive hover:bg-destructive/10" : "text-success hover:bg-success/10"}`}>
+                        {m.isActive ? <UserX size={13} /> : <UserCheck size={13} />}
+                      </button>
+                      <button onClick={() => setConfirmDelete(m)} title="Delete"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
+                        <Trash2 size={13} />
+                      </button>
+                    </>
+                  }
+                />
+              );
+            })}
+          </div>
+        )
+      ) : isMobile ? (
+        <MobileTechCards members={filteredMembers} loading={loading} onToggle={toggleActive} onDelete={(m) => setConfirmDelete(m)} onEdit={(m) => setEditingMember(m)} onClickMember={openMember} onShare={handleShareCredentials} onPassword={setPasswordMember} onToggleExternal={toggleExternalCreator} onAdsHistory={(m) => setAdsHistoryMember(m)} todayCheckins={todayCheckins} memberRevenue={memberRevenue} />
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
           <table className="w-full text-sm">
@@ -330,7 +457,7 @@ export default function TechAdminMyTeam() {
                 </td></tr>
               ) : (
                 filteredMembers.map((m, i) => (
-                  <tr key={m.uid} onClick={() => m.externalCreator ? setAdsHistoryMember(m) : navigate(`/tech-admin/team/${m.uid}`)} className={`border-b border-border/50 hover:bg-accent/30 transition-colors cursor-pointer ${i % 2 === 1 ? "bg-elevated/20" : ""}`}>
+                  <tr key={m.uid} onClick={() => openMember(m)} className={`border-b border-border/50 hover:bg-accent/30 transition-colors cursor-pointer ${i % 2 === 1 ? "bg-elevated/20" : ""}`}>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-lg bg-role-tech-member/15 flex items-center justify-center font-display font-bold text-role-tech-member text-xs">
@@ -402,6 +529,10 @@ export default function TechAdminMyTeam() {
                         <button onClick={() => handleShareCredentials(m)} title="Share Credentials"
                           className="w-8 h-8 rounded-md inline-flex items-center justify-center text-muted-foreground hover:text-success hover:bg-success/10 transition-colors">
                           <Share2 size={15} />
+                        </button>
+                        <button onClick={() => setPasswordMember(m)} title="Login details" data-test="member-password-btn"
+                          className="w-8 h-8 rounded-md inline-flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
+                          <KeyRound size={15} />
                         </button>
                         <button onClick={() => setEditingMember(m)} title="Edit"
                           className="w-8 h-8 rounded-md inline-flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
@@ -521,13 +652,18 @@ export default function TechAdminMyTeam() {
       {adsHistoryMember && (
         <AdsHistoryModal member={adsHistoryMember} onClose={() => setAdsHistoryMember(null)} />
       )}
+
+      {/* The member forgot their password: look it up, copy it, or send it straight to them. */}
+      {passwordMember && (
+        <MemberPasswordModal member={passwordMember} onClose={() => setPasswordMember(null)} />
+      )}
     </div>
   );
 }
 
 /* ─── Mobile Cards ─── */
-function MobileTechCards({ members, loading, onToggle, onDelete, onEdit, onClickMember, onShare, onToggleExternal, onAdsHistory, todayCheckins, memberRevenue }: {
-  members: AppUser[]; loading: boolean; onToggle: (m: AppUser) => void; onDelete: (m: AppUser) => void; onEdit: (m: AppUser) => void; onClickMember: (m: AppUser) => void; onShare: (m: AppUser) => void; onToggleExternal: (m: AppUser) => void; onAdsHistory: (m: AppUser) => void; todayCheckins: Map<string, DailyCheckin>; memberRevenue: Map<string, number>;
+function MobileTechCards({ members, loading, onToggle, onDelete, onEdit, onClickMember, onShare, onPassword, onToggleExternal, onAdsHistory, todayCheckins, memberRevenue }: {
+  members: AppUser[]; loading: boolean; onToggle: (m: AppUser) => void; onDelete: (m: AppUser) => void; onEdit: (m: AppUser) => void; onClickMember: (m: AppUser) => void; onShare: (m: AppUser) => void; onPassword: (m: AppUser) => void; onToggleExternal: (m: AppUser) => void; onAdsHistory: (m: AppUser) => void; todayCheckins: Map<string, DailyCheckin>; memberRevenue: Map<string, number>;
 }) {
   if (loading) {
     return (
@@ -622,6 +758,10 @@ function MobileTechCards({ members, loading, onToggle, onDelete, onEdit, onClick
             <button onClick={(e) => { e.stopPropagation(); onShare(m); }} title="Share Credentials"
               className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-success hover:bg-success/10 transition-colors border border-border">
               <Share2 size={14} />
+            </button>
+            <button onClick={(e) => { e.stopPropagation(); onPassword(m); }} title="Login details"
+              className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors border border-border">
+              <KeyRound size={14} />
             </button>
             <button onClick={(e) => { e.stopPropagation(); onEdit(m); }} title="Edit"
               className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors border border-border">

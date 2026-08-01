@@ -21,8 +21,15 @@ describe("penalty rates", () => {
     expect(defaultClipType("cinematic")).toBe("cinematic");
     expect(defaultClipType("wishes")).toBe("wishes");
     expect(defaultClipType("promotional")).toBe("promotional");
-    // Bulk ads are promotional ads bought in quantity.
+    // A bulk order recorded before the kind was captured was a promotional one.
     expect(defaultClipType("bulk_ads")).toBe("promotional");
+  });
+
+  it("charges a bulk order at the rate of the videos it is made of", () => {
+    expect(defaultClipType("bulk_ads", "cinematic")).toBe("cinematic");
+    expect(defaultRateFor("bulk_ads", "cinematic")).toBe(500);
+    expect(defaultClipType("bulk_ads", "wishes")).toBe("wishes");
+    expect(defaultRateFor("bulk_ads", "promotional")).toBe(250);
   });
 
   it("falls to the lower rate for anything unrecognised rather than over-charging", () => {
