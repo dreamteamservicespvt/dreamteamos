@@ -297,6 +297,21 @@ export interface EmployeeProfile {
   /** Set only when this person's contract genuinely differs from policy. */
   noticeDaysOverride?: number | null;
 
+  /**
+   * The employee entered their own employment terms and no admin has confirmed them yet.
+   *
+   * Employees fill this in themselves — they know their own joining date and what they were
+   * offered, and waiting on an admin leaves the record empty. But these same fields are what the
+   * offer letter and the appointment letter print, under the company's signature, so a figure
+   * nobody at the company has agreed to must not silently become a signed document. The flag is
+   * what lets both be true: the employee fills it, the admin confirms it, and issuing a document
+   * on unconfirmed terms warns first.
+   */
+  termsSelfDeclared?: boolean;
+  termsSelfDeclaredOn?: string | null;
+  termsConfirmedByName?: string | null;
+  termsConfirmedOn?: string | null;
+
   // Offer
   offerIssuedOn?: string | null;
   offerAcceptedOn?: string | null;

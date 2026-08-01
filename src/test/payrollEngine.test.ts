@@ -3,6 +3,7 @@ import {
   computeSalary, countSundays, monthDayCount, monthDates, isSundayDate,
   dayCreditFactor, nextPayDay, formulaText, deductionsFor,
   payPeriodForMonth, payPeriodForDate, periodDates, countSundaysInPeriod,
+  currentPayMonth, shiftPayMonth, payPeriodLabel,
 } from "@/utils/payrollEngine";
 import { amountInWords } from "@/utils/company";
 import { DEFAULT_PAYROLL_CONFIG, type ResolvedDay } from "@/types/payroll";
@@ -557,6 +558,63 @@ describe("pay period — the 10th → 9th cycle", () => {
     const period = payPeriodForMonth("2026-07", 10);
     // Sundays in 10 Jul – 9 Aug: 12, 19, 26 Jul + 2, 9 Aug = 5
     expect(countSundaysInPeriod(period)).toBe(5);
+  });
+});
+
+/**
+ * The bug that emptied the sales team's commission every month.
+ *
+ * Screens asked the clock for "this month" and got the CALENDAR month. For the first nine days of
+ * any month that names a period which has not started, so salary, commission, targets and the
+ * leaderboard all pointed at a window containing nothing. These pin the correct answer.
+ */
+describe("currentPayMonth — which period is today in", () => {
+  it("names LAST month's cycle before the 10th, because that is the one still running", () => {
+    // 1 August: we are 22 days into the cycle that began on 10 July.
+    expect(currentPayMonth(10, new Date(2026, 7, 1))).toBe("2026-07");
+    expect(currentPayMonth(10, new Date(2026, 7, 9))).toBe("2026-07");
+  });
+
+  it("moves to the new cycle on the 10th itself", () => {
+    expect(currentPayMonth(10, new Date(2026, 7, 10))).toBe("2026-08");
+    expect(currentPayMonth(10, new Date(2026, 7, 31))).toBe("2026-08");
+  });
+
+  it("covers today — whatever today is, the period it names actually contains it", () => {
+    for (const day of [1, 5, 9, 10, 11, 20, 28]) {
+      const today = new Date(2026, 7, day);
+      const period = payPeriodForMonth(currentPayMonth(10, today), 10);
+      const todayStr = `2026-08-${String(day).padStart(2, "0")}`;
+      expect(todayStr >= period.start && todayStr <= period.end).toBe(true);
+    }
+  });
+
+  it("rolls back across a year boundary", () => {
+    expect(currentPayMonth(10, new Date(2026, 0, 3))).toBe("2025-12");
+  });
+
+  it("collapses to the calendar month for a company that pays on the 1st", () => {
+    expect(currentPayMonth(1, new Date(2026, 7, 1))).toBe("2026-08");
+  });
+});
+
+describe("shiftPayMonth", () => {
+  it("steps whole months and crosses years", () => {
+    expect(shiftPayMonth("2026-07", -1)).toBe("2026-06");
+    expect(shiftPayMonth("2026-07", 1)).toBe("2026-08");
+    expect(shiftPayMonth("2026-01", -1)).toBe("2025-12");
+    expect(shiftPayMonth("2026-12", 1)).toBe("2027-01");
+  });
+});
+
+describe("payPeriodLabel", () => {
+  it("spells the span out, so nobody reads it as the calendar month", () => {
+    expect(payPeriodLabel("2026-07", 10)).toBe("July 2026 (10 Jul – 09 Aug)");
+    expect(payPeriodLabel("2026-12", 10)).toBe("December 2026 (10 Dec – 09 Jan)");
+  });
+
+  it("drops the bracket when the cycle IS the calendar month", () => {
+    expect(payPeriodLabel("2026-07", 1)).toBe("July 2026");
   });
 });
 

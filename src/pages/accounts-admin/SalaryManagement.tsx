@@ -12,6 +12,7 @@ import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useConfirm } from "@/hooks/useConfirm";
+import { currentPayMonth, payPeriodLabel } from "@/utils/payrollEngine";
 
 export default function SalaryManagement() {
   const currentUser = useAuthStore((s) => s.user);
@@ -28,10 +29,9 @@ export default function SalaryManagement() {
   // Receipt modal state
   const [receiptMember, setReceiptMember] = useState<AppUser | null>(null);
   const [receiptAmount, setReceiptAmount] = useState<number>(0);
-  const [receiptMonth, setReceiptMonth] = useState(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  });
+  // The salary period being receipted — the 10th→9th cycle we are in, not the calendar month.
+  // A receipt raised on the 1st used to be filed against a period that had not started.
+  const [receiptMonth, setReceiptMonth] = useState(() => currentPayMonth());
   const [receiptNote, setReceiptNote] = useState("");
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -87,8 +87,7 @@ export default function SalaryManagement() {
     setReceiptNote("");
     setReceiptFile(null);
     setUploadProgress(0);
-    const now = new Date();
-    setReceiptMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
+    setReceiptMonth(currentPayMonth());
   };
 
   const handleSendReceipt = async () => {
@@ -105,7 +104,8 @@ export default function SalaryManagement() {
       // Upload file to Cloudinary
       const fileUrl = await uploadToCloudinary(receiptFile, (pct) => setUploadProgress(pct));
       
-      const monthLabel = new Date(receiptMonth + "-01").toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+      // Names the days the salary covers, so a receipt for 10 Jul → 9 Aug never reads as "August".
+      const monthLabel = payPeriodLabel(receiptMonth);
       await addDoc(collection(db, "salary_receipts"), {
         userId: receiptMember.uid,
         amount: receiptAmount,

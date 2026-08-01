@@ -7,7 +7,7 @@ import { useConfirm } from "@/hooks/useConfirm";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import { addKycDocument, removeKycDocument, saveEmployeeProfile } from "@/services/hr";
 import type { Actor } from "@/services/hr";
-import { kycCompletion, maskIdentifier } from "@/utils/hrPolicy";
+import { cleanId, formatAadhaar, isValidAadhaar, isValidPan, kycCompletion, maskIdentifier } from "@/utils/hrPolicy";
 import { KYC_DOC_LABELS } from "@/types/hr";
 import type { EmployeeProfile, KycDocKind } from "@/types/hr";
 import { EmptyState, Field, Input, SectionCard, Select, Textarea } from "./ui";
@@ -41,7 +41,18 @@ export default function KycPanel({ profile, actor, readOnly }: {
   const set = <K extends keyof EmployeeProfile>(key: K, v: EmployeeProfile[K]) =>
     setForm((prev) => ({ ...prev, [key]: v }));
 
+  // A blank identifier is fine — not everyone's papers arrive on day one. A wrong one is not:
+  // it is discovered when payroll or a statutory filing needs it, which is far too late.
+  const panError = form.pan?.trim() && !isValidPan(form.pan) ? "PAN should look like ABCDE1234F." : "";
+  const aadhaarError = form.aadhaar?.trim() && !isValidAadhaar(form.aadhaar)
+    ? "That is not a valid Aadhaar number — check the 12 digits."
+    : "";
+
   const handleSave = async () => {
+    if (panError || aadhaarError) {
+      toast({ title: "Check the ID numbers", description: panError || aadhaarError, variant: "destructive" });
+      return;
+    }
     setSaving(true);
     try {
       await saveEmployeeProfile(profile.uid, {
@@ -51,8 +62,8 @@ export default function KycPanel({ profile, actor, readOnly }: {
         bloodGroup: form.bloodGroup?.trim() || null,
         currentAddress: form.currentAddress?.trim() || null,
         permanentAddress: form.permanentAddress?.trim() || null,
-        pan: form.pan?.trim().toUpperCase() || null,
-        aadhaar: form.aadhaar?.replace(/\s+/g, "") || null,
+        pan: cleanId(form.pan) || null,
+        aadhaar: cleanId(form.aadhaar) || null,
         emergencyContact: form.emergencyContact?.phone
           ? {
             name: form.emergencyContact.name?.trim() || "",
@@ -68,6 +79,17 @@ export default function KycPanel({ profile, actor, readOnly }: {
     } finally {
       setSaving(false);
     }
+  };
+
+  /**
+   * Clear the input's value after handling it. Without this, re-picking the SAME file — which is
+   * exactly what someone does after a failed upload — fires no change event at all and the button
+   * looks dead.
+   */
+  const consume = (e: React.ChangeEvent<HTMLInputElement>): File | undefined => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    return file;
   };
 
   const handlePhoto = async (file?: File) => {
@@ -168,7 +190,8 @@ export default function KycPanel({ profile, actor, readOnly }: {
             {!readOnly && (
               <>
                 <input ref={photoInput} type="file" accept="image/*" className="hidden"
-                  onChange={(e) => handlePhoto(e.target.files?.[0])} />
+                  data-test="photo-input"
+                  onChange={(e) => handlePhoto(consume(e))} />
                 <button onClick={() => photoInput.current?.click()} disabled={uploading === "photo"}
                   className="mt-1.5 inline-flex h-7 w-20 items-center justify-center gap-1 rounded-lg border border-border text-[10px] font-medium text-muted-foreground hover:bg-accent disabled:opacity-50">
                   {uploading === "photo" ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />} Photo
@@ -184,8 +207,16 @@ export default function KycPanel({ profile, actor, readOnly }: {
                 <Input label="Blood group" value={form.bloodGroup || ""} placeholder="O+" onChange={(e) => set("bloodGroup", e.target.value)} />
                 <Input label="Personal email" type="email" value={form.personalEmail || ""} onChange={(e) => set("personalEmail", e.target.value)} />
                 <Input label="Alternate phone" value={form.altPhone || ""} onChange={(e) => set("altPhone", e.target.value)} />
-                <Input label="PAN" value={form.pan || ""} placeholder="ABCDE1234F" onChange={(e) => set("pan", e.target.value)} data-test="kyc-pan" />
-                <Input label="Aadhaar" value={form.aadhaar || ""} placeholder="1111 2222 3333" onChange={(e) => set("aadhaar", e.target.value)} />
+                <div>
+                  <Input label="PAN" value={form.pan || ""} placeholder="ABCDE1234F"
+                    onChange={(e) => set("pan", e.target.value.toUpperCase())} data-test="kyc-pan" />
+                  {panError && <p className="mt-1 text-[11px] text-destructive" data-test="pan-error">{panError}</p>}
+                </div>
+                <div>
+                  <Input label="Aadhaar" value={form.aadhaar || ""} placeholder="1111 2222 3333"
+                    inputMode="numeric" onChange={(e) => set("aadhaar", e.target.value)} data-test="kyc-aadhaar" />
+                  {aadhaarError && <p className="mt-1 text-[11px] text-destructive" data-test="aadhaar-error">{aadhaarError}</p>}
+                </div>
                 <Textarea label="Current address" rows={2} value={form.currentAddress || ""} onChange={(e) => set("currentAddress", e.target.value)} className="sm:col-span-2" />
                 <Textarea label="Permanent address" rows={2} value={form.permanentAddress || ""} onChange={(e) => set("permanentAddress", e.target.value)} className="sm:col-span-2" />
                 <Input label="Emergency contact name" value={form.emergencyContact?.name || ""}
@@ -214,7 +245,7 @@ export default function KycPanel({ profile, actor, readOnly }: {
                   label="Aadhaar"
                   value={profile.aadhaar ? (
                     <span className="inline-flex items-center gap-1.5 font-mono">
-                      {revealed ? profile.aadhaar : maskIdentifier(profile.aadhaar)}
+                      {revealed ? formatAadhaar(profile.aadhaar) : maskIdentifier(profile.aadhaar)}
                     </span>
                   ) : null}
                 />
@@ -249,7 +280,8 @@ export default function KycPanel({ profile, actor, readOnly }: {
               ))}
             </select>
             <input ref={docInput} type="file" accept="image/*,application/pdf" className="hidden"
-              onChange={(e) => handleDocument(e.target.files?.[0])} />
+              data-test="kyc-doc-input"
+              onChange={(e) => handleDocument(consume(e))} />
             <button onClick={() => docInput.current?.click()} disabled={uploading === "document"}
               className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
               {uploading === "document" ? <Loader2 size={13} className="animate-spin" /> : <FileUp size={13} />} Upload

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { addMonths, format, parse } from "date-fns";
+import { format, parse } from "date-fns";
+import { currentPayMonth, payPeriodLabel, shiftPayMonth } from "@/utils/payrollEngine";
 import {
   AlertCircle, Banknote, CalendarClock, CheckCircle2, ChevronLeft, ChevronRight,
   Clock, Download, IndianRupee, ShieldCheck, TrendingUp, Wallet,
@@ -25,7 +26,9 @@ export default function SalesMySalary() {
   const user = useAuthStore(s => s.user);
 
   const [monthOffset, setMonthOffset] = useState(0);
-  const month = format(addMonths(new Date(), monthOffset), "yyyy-MM");
+  // The period we are IN, stepped by the ‹ › buttons. Reading the calendar month here is what
+  // showed every sales member ₹0 for the first nine days of each month — see currentPayMonth.
+  const month = shiftPayMonth(currentPayMonth(), monthOffset);
 
   const [bank, setBank] = useState<EmployeeBank | null>(null);
   const [bankLoaded, setBankLoaded] = useState(false);
@@ -52,7 +55,9 @@ export default function SalesMySalary() {
     if (bankLoaded && !bankComplete && !bankDeferred) setBankModalOpen(true);
   }, [bankLoaded, bankComplete, bankDeferred]);
 
-  const monthLabel = format(parse(month, "yyyy-MM", new Date()), "MMMM yyyy");
+  // "July 2026 (10 Jul – 09 Aug)" — the span is spelled out because calling 10 Jul → 9 Aug "July"
+  // with no dates is what made the team think a month of their commission had gone missing.
+  const monthLabel = payPeriodLabel(month, salary.config.payDayOfMonth);
   const day = (d: string) => format(parse(d, "yyyy-MM-dd", new Date()), "dd MMM");
 
   const handlePayslip = () => {
@@ -90,7 +95,7 @@ export default function SalesMySalary() {
               className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <span className="min-w-[8.5rem] text-center text-sm font-semibold text-foreground">{monthLabel}</span>
+            <span data-test="salary-period" className="min-w-[13rem] text-center text-sm font-semibold text-foreground">{monthLabel}</span>
             <button onClick={() => setMonthOffset(o => Math.min(0, o + 1))} disabled={monthOffset >= 0}
               aria-label="Next month"
               className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40">
@@ -119,7 +124,10 @@ export default function SalesMySalary() {
       ) : (
         <>
           {/* Total pay */}
-          <SalesEarningsCard totalEarnings={totalEarnings} salaryPayable={salaryPayable} commission={commission} />
+          {/* The total is always attributed to a named span — "this period" on its own is what
+              let a member read July's pay as August's and conclude it had gone missing. */}
+          <SalesEarningsCard totalEarnings={totalEarnings} salaryPayable={salaryPayable}
+            commission={commission} subtitle={monthLabel} />
 
           <section className="grid gap-4 lg:grid-cols-2">
             {/* Salary half */}

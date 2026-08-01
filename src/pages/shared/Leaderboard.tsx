@@ -8,17 +8,22 @@ import { useNavigate } from "react-router-dom";
 import type { AppUser, Lead, SaleDetail } from "@/types";
 import { Trophy, Medal, Crown, ChevronDown, ExternalLink, ChevronLeft, ChevronRight, CalendarRange } from "lucide-react";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
+import { currentPayMonth, payPeriodForMonth, shiftPayMonth } from "@/utils/payrollEngine";
 
 /** Granularity for the "Career Sales" / "Career Commission" columns — Month is the default and
  *  the only option sales members ever see; Career (true all-time totals) is admin-only, since
  *  it exposes company-wide lifetime revenue. */
 type Granularity = "career" | "month";
 
-const todayMonth = () => format(new Date(), "yyyy-MM");
-const shiftMonth = (month: string, delta: number): string => {
-  const [y, m] = month.split("-").map(Number);
-  return format(new Date(y, m - 1 + delta, 1), "yyyy-MM");
-};
+/**
+ * The cycle we are IN — 10th to 9th, labelled by the month it starts in.
+ *
+ * This board used to open on the CALENDAR month, which between the 1st and the 9th is a cycle that
+ * has not begun: on 1 August it showed 10 Aug → 9 Sep, so every member's month sales and commission
+ * read ₹0 and the rows fell back to whatever order Firestore happened to return them in. That is
+ * the "my commission has vanished" report, and the "sorted alphabetically" one, from one cause.
+ */
+const todayMonth = () => currentPayMonth();
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -90,12 +95,13 @@ export default function Leaderboard() {
   const [rangeTo, setRangeTo] = useState<string>("");
   const customRangeActive = granularity === "month" && !!rangeFrom && !!rangeTo && rangeFrom <= rangeTo;
 
-  // The business "month" runs on a 10th-to-9th pay cycle, not the calendar month:
-  // selecting June means 10 Jun → 9 Jul. (Custom range above overrides this when set.)
-  const cycleStart = `${selectedMonth}-10`;
-  const cycleEnd = `${shiftMonth(selectedMonth, 1)}-09`;
-  const periodStart = customRangeActive ? rangeFrom : cycleStart;
-  const periodEnd = customRangeActive ? rangeTo : cycleEnd;
+  // The business "month" runs on a 10th-to-9th pay cycle, not the calendar month: selecting June
+  // means 10 Jun → 9 Jul. Derived from the one pay-period function rather than string-built here,
+  // so this board and the salary screens can never disagree about where a month begins.
+  // (The custom range above overrides it when set.)
+  const cycle = payPeriodForMonth(selectedMonth);
+  const periodStart = customRangeActive ? rangeFrom : cycle.start;
+  const periodEnd = customRangeActive ? rangeTo : cycle.end;
 
   // Effective date: calendar takes priority over quick dropdown
   const effectiveDateStr = calendarDate
@@ -202,11 +208,29 @@ export default function Leaderboard() {
   const secondarySales = (s: MemberStats) => (granularity === "career" ? s.careerSales : s.monthSales);
   const secondaryComm = (s: MemberStats) => (granularity === "career" ? s.commCareer : s.commMonth);
 
+  /**
+   * A leaderboard is ranked by money, always — and every rank has to be decided by money too.
+   *
+   * The chosen column alone is not enough: when it ties (early in a cycle it is ₹0 for everyone)
+   * a comparator returning 0 leaves the rows in whatever order Firestore handed them over in,
+   * which is why the board read as an arbitrary, alphabetical-looking list rather than a ranking.
+   * So every metric is tried in turn, and only a member who has sold *exactly* the same as another
+   * on all four falls back to their name — a stable, explainable order rather than an accident.
+   */
+  const sortMetrics: Record<SortKey, (s: MemberStats) => number> = {
+    career: secondarySales,
+    daySales: (s) => s.daySales,
+    commCareer: secondaryComm,
+    commDay: (s) => s.commDay,
+  };
+  const tieBreakOrder: SortKey[] = ["career", "daySales", "commCareer", "commDay"];
+
   const sorted = [...stats].sort((a, b) => {
-    if (sortBy === "daySales") return b.daySales - a.daySales;
-    if (sortBy === "commDay") return b.commDay - a.commDay;
-    if (sortBy === "commCareer") return secondaryComm(b) - secondaryComm(a);
-    return secondarySales(b) - secondarySales(a); // default: career/month
+    for (const key of [sortBy, ...tieBreakOrder.filter((k) => k !== sortBy)]) {
+      const diff = sortMetrics[key](b) - sortMetrics[key](a);
+      if (diff !== 0) return diff;
+    }
+    return (a.member.name || "").localeCompare(b.member.name || "");
   });
 
   const totalDaySales = stats.reduce((s, m) => s + m.daySales, 0);
@@ -321,13 +345,13 @@ export default function Leaderboard() {
         {granularity === "month" && (
           <>
             <div className={`flex items-center gap-1 rounded-lg border border-border bg-card px-1 ${customRangeActive ? "opacity-40" : ""}`}>
-              <button onClick={() => setSelectedMonth((m) => shiftMonth(m, -1))} className="p-1.5 hover:bg-accent rounded-md">
+              <button onClick={() => setSelectedMonth((m) => shiftPayMonth(m,-1))} className="p-1.5 hover:bg-accent rounded-md">
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              <span className="text-sm font-semibold text-foreground px-1 min-w-[92px] text-center inline-flex items-center justify-center gap-1">
+              <span data-test="leaderboard-cycle" className="text-sm font-semibold text-foreground px-1 min-w-[92px] text-center inline-flex items-center justify-center gap-1">
                 <CalendarRange className="w-3.5 h-3.5 text-muted-foreground" /> {format(new Date(`${selectedMonth}-01`), "MMM yyyy")}
               </span>
-              <button onClick={() => setSelectedMonth((m) => shiftMonth(m, 1))} disabled={selectedMonth >= todayMonth()}
+              <button onClick={() => setSelectedMonth((m) => shiftPayMonth(m,1))} disabled={selectedMonth >= todayMonth()}
                 className="p-1.5 hover:bg-accent rounded-md disabled:opacity-30">
                 <ChevronRight className="w-4 h-4" />
               </button>

@@ -12,6 +12,7 @@ import { Phone, CheckCircle, Clock, TrendingUp, AlertCircle, LogIn, LogOut, Load
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
 import SalesEarningsCard from "@/components/sales/SalesEarningsCard";
 import { useSalesEarnings } from "@/hooks/useSalesEarnings";
+import { payPeriodForDate, payPeriodLabel, currentPayMonth } from "@/utils/payrollEngine";
 import {
   recordCheckIn, recordCheckOut, watchTodayCheckin, buildCheckInMessage, buildCheckOutReport,
   reportWhatsAppUrl, type SalesCheckin,
@@ -86,14 +87,10 @@ export default function SalesMemberDashboard() {
   const monthlyTarget = user?.monthlyTarget || user?.target || 0;
   const dailyTarget = user?.dailyTarget || 0;
 
-  // Monthly target runs on the business pay cycle — 10th → 9th of next month (same cycle
-  // the leaderboard uses), NOT all-time and NOT the calendar month. The current cycle is
-  // the one containing today: on/after the 10th it started this month, before it started
-  // last month.
-  const now = new Date();
-  const cycleAnchor = now.getDate() >= 10 ? now : new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const cycleStart = format(new Date(cycleAnchor.getFullYear(), cycleAnchor.getMonth(), 10), "yyyy-MM-dd");
-  const cycleEnd = format(new Date(cycleAnchor.getFullYear(), cycleAnchor.getMonth() + 1, 9), "yyyy-MM-dd");
+  // Monthly target runs on the business pay cycle — 10th → 9th of next month (the same cycle the
+  // leaderboard and every salary screen use), NOT all-time and NOT the calendar month. Taken from
+  // the one pay-period function rather than rebuilt here, so it cannot drift from the rest.
+  const { start: cycleStart, end: cycleEnd } = payPeriodForDate(new Date());
   const cycleRevenue = allSaleItems
     .filter(({ item, lead }) => {
       const d = saleItemDate(item, lead);
@@ -210,7 +207,10 @@ export default function SalesMemberDashboard() {
           {monthlyTarget > 0 && (
             <div className="bg-card border border-border rounded-xl p-4">
               <div className="flex items-center justify-between mb-2">
-                <h2 className="font-display font-semibold text-foreground text-sm">Monthly Target</h2>
+                {/* Named by the period it measures, so nobody reads it as 1st–31st. */}
+                <h2 data-test="monthly-target-heading" className="font-display font-semibold text-foreground text-sm">
+                  Monthly Target · {payPeriodLabel(currentPayMonth())}
+                </h2>
                 <span className="text-xs text-muted-foreground font-mono">
                   {formatCurrency(cycleRevenue)} / {formatCurrency(monthlyTarget)}
                 </span>

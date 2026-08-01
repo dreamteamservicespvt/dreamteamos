@@ -290,7 +290,7 @@ export default function MemberProfileDetail() {
       {/* ── Panels ───────────────────────────────────────────────────────── */}
       {tab === "overview" && (
         <div className="space-y-4">
-          <EmploymentTermsCard profile={profile} actor={actor} />
+          <EmploymentTermsCard profile={profile} actor={actor} mode="admin" />
 
           <div className="grid gap-4 lg:grid-cols-2">
             <SectionCard title="Account" icon={<UserIcon size={15} className="text-primary" />}>

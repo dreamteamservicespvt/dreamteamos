@@ -5,17 +5,16 @@ import {
 import { useAuthStore } from "@/store/authStore";
 import { watchEmployeeProfile } from "@/services/hr";
 import { watchMemberDocuments } from "@/services/hrDocuments";
-import { departmentOfRole, kycCompletion, lifecycleSteps, noticePeriodFor, probationEndDate } from "@/utils/hrPolicy";
-import { formatCurrency } from "@/utils/formatters";
-import { ENGAGEMENT_LABELS } from "@/types/hr";
+import { departmentOfRole, kycCompletion, lifecycleSteps } from "@/utils/hrPolicy";
 import type { EmployeeProfile, HrDocument } from "@/types/hr";
 import LifecycleTracker from "./LifecycleTracker";
 import DocumentsPanel from "./DocumentsPanel";
+import EmploymentTermsCard from "./EmploymentTermsCard";
 import KycPanel from "./KycPanel";
 import AssetsPanel from "./AssetsPanel";
 import ProbationPanel from "./ProbationPanel";
 import SeparationPanel from "./SeparationPanel";
-import { EngagementChip, Field, SectionCard, StageChip } from "./ui";
+import { EngagementChip, StageChip } from "./ui";
 
 /**
  * The employee's own view of their employment — the same record their admin sees, minus the
@@ -72,9 +71,7 @@ export default function MyEmploymentPanel() {
   }
 
   const actor = { uid: user.uid, name: user.name };
-  const notice = noticePeriodFor(profile);
   const kyc = kycCompletion(profile);
-  const probationEnd = probationEndDate(profile);
   const pendingSignatures = documents.filter((d) => d.requiresEmployeeSignature && d.status === "issued").length;
   const unacknowledged = (profile.assets || []).filter((a) => !a.returnedOn && !a.acknowledgedAt).length;
 
@@ -108,49 +105,27 @@ export default function MyEmploymentPanel() {
 
       {tab === "employment" && (
         <div className="space-y-4">
-          <SectionCard
-            title="My employment"
-            icon={<Briefcase size={15} className="text-primary" />}
-            action={
-              <div className="flex items-center gap-1.5">
-                {hasHrRecord ? (
-                  <>
-                    <StageChip stage={profile.stage} engagement={profile.engagementType} />
-                    <EngagementChip engagement={profile.engagementType} />
-                  </>
-                ) : (
-                  <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
-                    Not set up yet
-                  </span>
-                )}
-              </div>
-            }
-          >
-            {!hasHrRecord && (
-              <p className="mb-3 rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
-                Your admin has not filled in your employment record yet. Documents sent to you will
-                still appear under <b className="text-foreground">Documents</b>, and anything issued
-                to you under <b className="text-foreground">Assets</b>.
-              </p>
+          {/* The employee fills their own employment record in — see EmploymentTermsCard for why
+              their entries stay marked self-declared until an admin confirms them. */}
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            {hasHrRecord ? (
+              <>
+                <StageChip stage={profile.stage} engagement={profile.engagementType} />
+                <EngagementChip engagement={profile.engagementType} />
+              </>
+            ) : (
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                Not set up yet
+              </span>
             )}
-            <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
-              <Field label="Designation" value={profile.designation} />
-              <Field label="Engagement" value={profile.engagementType ? ENGAGEMENT_LABELS[profile.engagementType] : null} />
-              <Field label="Employee ID" value={user.employeeId} mono />
-              <Field label="Joining date" value={profile.joiningDate} />
-              <Field label="Probation" value={profile.probationMonths ? `${profile.probationMonths} month(s)` : "None"} />
-              <Field
-                label={profile.confirmedOn ? "Confirmed on" : "Probation ends"}
-                value={profile.confirmedOn || probationEnd}
-              />
-              <Field label="Reporting to" value={profile.reportingToName} />
-              <Field label="Work location" value={profile.workLocation} />
-              <Field label="Gross monthly salary" value={profile.ctcMonthly ? formatCurrency(profile.ctcMonthly) : null} mono />
-              <Field label="Working hours" value={profile.workingHours} />
-              <Field label="Working days" value={profile.workingDays} />
-              <Field label="My notice period" value={`${notice.days} days · ${notice.label}`} />
-            </div>
-          </SectionCard>
+          </div>
+
+          <EmploymentTermsCard
+            profile={profile}
+            actor={actor}
+            mode="employee"
+            employeeId={user.employeeId}
+          />
 
           <LifecycleTracker steps={steps} />
 

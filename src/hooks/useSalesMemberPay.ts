@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
-import { format } from "date-fns";
 import { db } from "@/services/firebase";
 import {
   attendanceKey, resolveStatus, todayDate,
@@ -11,7 +10,7 @@ import { watchAllEmployeeBanks, watchPayrollConfig } from "@/services/payroll";
 import { watchPayrollLines } from "@/services/payrollRun";
 import { commissionRate } from "@/services/settlements";
 import {
-  computeSalary, deductionsFor, nextPayDay, payPeriodForMonth, periodDates,
+  computeSalary, currentPayMonth, deductionsFor, nextPayDay, payPeriodForMonth, periodDates,
   type PayDayInfo, type PayPeriod,
 } from "@/utils/payrollEngine";
 import {
@@ -70,7 +69,6 @@ const saleDateOf = (item: SaleDetail, lead: Lead): string | null => {
 };
 
 export function useSalesMemberPay(members: AppUser[], month?: string): SalesMemberPayState {
-  const targetMonth = month ?? format(new Date(), "yyyy-MM");
   const todayStr = todayDate();
 
   const [overrides, setOverrides] = useState<Map<string, AttendanceStatus>>(new Map());
@@ -81,6 +79,10 @@ export function useSalesMemberPay(members: AppUser[], month?: string): SalesMemb
   const [banks, setBanks] = useState<Map<string, EmployeeBank>>(new Map());
   const [leads, setLeads] = useState<Lead[]>([]);
   const [ready, setReady] = useState(false);
+
+  // The period we are actually IN. Taking the calendar month instead put every sales member's
+  // commission in a period that had not started yet for the first nine days of every month.
+  const targetMonth = month ?? currentPayMonth(config.payDayOfMonth);
 
   const period = useMemo(
     () => payPeriodForMonth(targetMonth, config.payDayOfMonth),

@@ -259,6 +259,67 @@ export function kycCompletion(profile: EmployeeProfile): KycCompletion {
   };
 }
 
+// ─── Government identifiers ─────────────────────────────────────────────────
+
+/** Strip the spaces and dashes people type, and upper-case. */
+export const cleanId = (value?: string | null): string =>
+  (value || "").replace(/[\s-]/g, "").toUpperCase();
+
+/**
+ * PAN: five letters, four digits, one letter — e.g. ABCDE1234F.
+ * The fourth letter encodes the holder type and the fifth the surname initial, but those are not
+ * enforced here: a valid-shaped PAN that fails a stricter rule is still the number on the card.
+ */
+export function isValidPan(value?: string | null): boolean {
+  return /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(cleanId(value));
+}
+
+// Verhoeff checksum tables — the dihedral-group multiplication, permutation and inverse tables.
+const VERHOEFF_D = [
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+  [1, 2, 3, 4, 0, 6, 7, 8, 9, 5],
+  [2, 3, 4, 0, 1, 7, 8, 9, 5, 6],
+  [3, 4, 0, 1, 2, 8, 9, 5, 6, 7],
+  [4, 0, 1, 2, 3, 9, 5, 6, 7, 8],
+  [5, 9, 8, 7, 6, 0, 4, 3, 2, 1],
+  [6, 5, 9, 8, 7, 1, 0, 4, 3, 2],
+  [7, 6, 5, 9, 8, 2, 1, 0, 4, 3],
+  [8, 7, 6, 5, 9, 3, 2, 1, 0, 4],
+  [9, 8, 7, 6, 5, 4, 3, 2, 1, 0],
+];
+const VERHOEFF_P = [
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+  [1, 5, 7, 6, 2, 8, 3, 0, 9, 4],
+  [5, 8, 0, 3, 7, 9, 6, 1, 4, 2],
+  [8, 9, 1, 6, 0, 4, 3, 5, 2, 7],
+  [9, 4, 5, 3, 1, 2, 6, 8, 7, 0],
+  [4, 2, 8, 6, 5, 7, 3, 9, 0, 1],
+  [2, 7, 9, 3, 8, 0, 6, 4, 1, 5],
+  [7, 0, 4, 6, 9, 1, 3, 2, 5, 8],
+];
+
+/**
+ * Aadhaar: twelve digits, not starting 0 or 1, whose last digit is the Verhoeff check digit.
+ *
+ * The checksum is the point. Twelve digits alone accepts a transposed or mistyped number, and an
+ * Aadhaar mis-keyed into a payroll record is discovered at exactly the wrong moment. Verhoeff
+ * catches every single-digit error and every adjacent transposition, which is what typing errors
+ * actually are.
+ */
+export function isValidAadhaar(value?: string | null): boolean {
+  const digits = cleanId(value);
+  if (!/^[2-9][0-9]{11}$/.test(digits)) return false;
+  let c = 0;
+  [...digits].reverse().forEach((ch, i) => {
+    c = VERHOEFF_D[c][VERHOEFF_P[i % 8][Number(ch)]];
+  });
+  return c === 0;
+}
+
+/** `111122223333` → `1111 2222 3333`, the way it is printed on the card. */
+export const formatAadhaar = (value?: string | null): string =>
+  cleanId(value).replace(/(.{4})/g, "$1 ").trim();
+
 /**
  * Show a government identifier without putting it on screen in full.
  * Everything but the last four characters becomes a bullet, spaced in fours so it still reads

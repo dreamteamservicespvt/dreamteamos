@@ -91,6 +91,66 @@ export function payPeriodForDate(
   return payPeriodForMonth(`${anchor.getFullYear()}-${pad(anchor.getMonth() + 1)}`, cycleStartDay);
 }
 
+/**
+ * The pay period label (`yyyy-MM`) that TODAY falls inside.
+ *
+ * ── Why this exists, and why `format(new Date(), "yyyy-MM")` is a bug ─────────────────────────
+ * A period is labelled by the month it STARTS in, and it starts on the 10th. So for the first nine
+ * days of any month, today's calendar month names a period that has not begun yet: on 1 August the
+ * calendar says "2026-08", which is 10 Aug → 9 Sep — a window in the future containing no sales, no
+ * attendance and no work.
+ *
+ * That is exactly what emptied the sales team's commission every month between the 1st and the 9th:
+ * every screen defaulted to the calendar month, so a member who had sold all through July opened
+ * their salary page on 1 August and saw ₹0. The money was never missing; the screens were pointed at
+ * the wrong fortnight.
+ *
+ * Every screen that needs "the current month" must ask this, never the clock's calendar month.
+ */
+export function currentPayMonth(
+  cycleStartDay: number = DEFAULT_PAYROLL_CONFIG.payDayOfMonth,
+  today: Date = new Date(),
+): string {
+  return payPeriodForDate(today, cycleStartDay).month;
+}
+
+/** Step a pay-period label by whole months, e.g. the ‹ › buttons on a salary screen. */
+export function shiftPayMonth(month: string, delta: number): string {
+  const [y, m] = month.split("-").map(Number);
+  const next = new Date(y, m - 1 + delta, 1);
+  return `${next.getFullYear()}-${pad(next.getMonth() + 1)}`;
+}
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+const SHORT_MONTHS = MONTH_NAMES.map((m) => m.slice(0, 3));
+
+/**
+ * "July 2026 (10 Jul – 09 Aug)" — how a pay period must always be written on screen.
+ *
+ * Naming the period "August" while it runs 10 Jul → 9 Aug is the confusion that made the team
+ * think their money had disappeared, so the span is never left implicit: the month name says which
+ * period it is, and the dates in brackets say exactly which days it counts.
+ */
+export function payPeriodLabel(
+  month: string,
+  cycleStartDay: number = DEFAULT_PAYROLL_CONFIG.payDayOfMonth,
+): string {
+  const [y, m] = month.split("-").map(Number);
+  const name = `${MONTH_NAMES[m - 1] ?? month} ${y}`;
+  if (cycleStartDay <= 1) return name; // a calendar-month company needs no bracket
+  const { start, end } = payPeriodForMonth(month, cycleStartDay);
+  return `${name} (${shortDay(start)} – ${shortDay(end)})`;
+}
+
+/** "10 Jul" from a `yyyy-MM-dd`. */
+function shortDay(date: string): string {
+  const [, m, d] = date.split("-").map(Number);
+  return `${pad(d)} ${SHORT_MONTHS[m - 1] ?? ""}`.trim();
+}
+
 /** Every `yyyy-MM-dd` in a period, in order. */
 export function periodDates(period: PayPeriod): string[] {
   const out: string[] = [];

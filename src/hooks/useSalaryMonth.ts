@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { format } from "date-fns";
 import {
   attendanceKey, resolveStatus, todayDate,
   watchCheckedInDaysInRange, watchHolidaysInRange, watchOverridesInRange,
@@ -7,7 +6,7 @@ import {
 } from "@/services/techAttendance";
 import { watchPayrollConfig } from "@/services/payroll";
 import {
-  computeSalary, nextPayDay, payPeriodForMonth, periodDates,
+  computeSalary, currentPayMonth, nextPayDay, payPeriodForMonth, periodDates,
   type PayDayInfo, type PayPeriod,
 } from "@/utils/payrollEngine";
 import { DEFAULT_PAYROLL_CONFIG, type PayrollConfig, type ResolvedDay, type SalaryComputation } from "@/types/payroll";
@@ -46,13 +45,17 @@ export interface UseSalaryMonthOptions {
 }
 
 export function useSalaryMonth({ memberId, monthlySalary, month }: UseSalaryMonthOptions): SalaryMonthState {
-  const targetMonth = month ?? format(new Date(), "yyyy-MM");
   const todayStr = todayDate();
 
   const [overrides, setOverrides] = useState<Map<string, AttendanceStatus>>(new Map());
   const [holidays, setHolidays] = useState<Set<string>>(new Set());
   const [checkedIn, setCheckedIn] = useState<Set<string>>(new Set());
   const [config, setConfig] = useState<PayrollConfig>(DEFAULT_PAYROLL_CONFIG);
+
+  // The period we are actually IN, not the calendar month. Between the 1st and the 9th those are
+  // different periods, and taking the calendar month pointed every figure at a fortnight that had
+  // not started yet — see payrollEngine.currentPayMonth.
+  const targetMonth = month ?? currentPayMonth(config.payDayOfMonth);
 
   // Each source is tracked separately so a slow one never blocks the others from rendering.
   const [ready, setReady] = useState({ overrides: false, holidays: false, checkins: false, config: false });

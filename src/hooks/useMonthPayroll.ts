@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { format } from "date-fns";
 import {
   attendanceKey, resolveStatus, todayDate,
   watchCheckedInDaysInRange, watchHolidaysInRange, watchOverridesInRange,
@@ -8,7 +7,7 @@ import {
 import { watchAllEmployeeBanks, watchPayrollConfig } from "@/services/payroll";
 import { watchPayrollLines, watchPayrollRun } from "@/services/payrollRun";
 import {
-  computeSalary, nextPayDay, payPeriodForMonth, periodDates,
+  computeSalary, currentPayMonth, nextPayDay, payPeriodForMonth, periodDates,
   type PayDayInfo, type PayPeriod,
 } from "@/utils/payrollEngine";
 import {
@@ -65,7 +64,6 @@ export interface MonthPayrollState {
 const FROZEN_STAGES = new Set(["locked", "processing", "paid", "completed"]);
 
 export function useMonthPayroll(members: AppUser[], month?: string): MonthPayrollState {
-  const targetMonth = month ?? format(new Date(), "yyyy-MM");
   const todayStr = todayDate();
 
   const [overrides, setOverrides] = useState<Map<string, AttendanceStatus>>(new Map());
@@ -76,6 +74,10 @@ export function useMonthPayroll(members: AppUser[], month?: string): MonthPayrol
   const [lines, setLines] = useState<Map<string, PayrollLine>>(new Map());
   const [banks, setBanks] = useState<Map<string, EmployeeBank>>(new Map());
   const [ready, setReady] = useState(false);
+
+  // The period we are actually IN — never the calendar month, which for the first nine days of
+  // any month names a period that has not begun.
+  const targetMonth = month ?? currentPayMonth(config.payDayOfMonth);
 
   const period = useMemo(
     () => payPeriodForMonth(targetMonth, config.payDayOfMonth),

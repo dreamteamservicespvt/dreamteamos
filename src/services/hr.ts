@@ -153,13 +153,30 @@ export async function saveEmployeeProfile(
  * `users/{uid}.employmentType` predates this module and still drives the bulk-agreement category
  * and parts of payroll. Interns and contractors have no equivalent there, so those engagements
  * leave it untouched rather than being flattened into a lie.
+ *
+ * `bySelf` records which side filled it in. An employee entering their own terms leaves them
+ * marked self-declared until an admin confirms; an admin saving is itself the confirmation, so
+ * the flag clears. See EmployeeProfile.termsSelfDeclared for why that distinction earns its keep.
  */
 export async function saveEmploymentTerms(
   uid: string,
   terms: Partial<EmployeeProfile>,
   actor: Actor,
+  opts: { bySelf?: boolean } = {},
 ): Promise<void> {
-  await saveEmployeeProfile(uid, terms, actor);
+  const provenance: Partial<EmployeeProfile> = opts.bySelf
+    ? {
+      termsSelfDeclared: true,
+      termsSelfDeclaredOn: todayIso(),
+      termsConfirmedByName: null,
+      termsConfirmedOn: null,
+    }
+    : {
+      termsSelfDeclared: false,
+      termsConfirmedByName: actor.name,
+      termsConfirmedOn: todayIso(),
+    };
+  await saveEmployeeProfile(uid, { ...terms, ...provenance }, actor);
   const engagement = terms.engagementType;
   if (engagement === "full_time" || engagement === "part_time") {
     try {
@@ -168,6 +185,21 @@ export async function saveEmploymentTerms(
       // The HR record is the source of truth; a failed mirror must not fail the save.
     }
   }
+}
+
+/**
+ * The admin agrees the terms the employee entered are what the company actually offered.
+ *
+ * Separate from editing them, because confirming without changing anything is the common case —
+ * the employee usually gets their own joining date and salary right, and making the admin re-type
+ * correct values to bless them would guarantee nobody ever does it.
+ */
+export async function confirmEmploymentTerms(uid: string, actor: Actor): Promise<void> {
+  await saveEmployeeProfile(uid, {
+    termsSelfDeclared: false,
+    termsConfirmedByName: actor.name,
+    termsConfirmedOn: todayIso(),
+  }, actor);
 }
 
 /** Move someone to a new lifecycle stage explicitly (an admin decision, never inferred silently). */

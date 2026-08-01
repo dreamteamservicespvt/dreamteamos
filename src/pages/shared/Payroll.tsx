@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { addMonths, format, parse } from "date-fns";
+import { format, parse } from "date-fns";
 import {
   AlertTriangle, BadgeCheck, Banknote, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight,
   Download, ExternalLink, FileText, IndianRupee, Loader2, Search, ShieldCheck, Undo2, Upload, Users, Wallet,
@@ -15,7 +15,7 @@ import { isBankComplete, payoutSummary, verifyEmployeeBank } from "@/services/pa
 import { setEmployeeId } from "@/services/employment";
 import { markSalaryPaid, undoSalaryPayment } from "@/services/payrollRun";
 import { downloadPayslip } from "@/utils/payslipPdf";
-import { deductionsFor } from "@/utils/payrollEngine";
+import { currentPayMonth, deductionsFor, payPeriodLabel, shiftPayMonth } from "@/utils/payrollEngine";
 import type { AppUser } from "@/types";
 
 /**
@@ -44,8 +44,10 @@ export default function Payroll() {
   }, [allUsers, isTeamLeader, user?.createdBy]);
 
   const [monthOffset, setMonthOffset] = useState(0);
-  const month = format(addMonths(new Date(), monthOffset), "yyyy-MM");
-  const monthLabel = format(parse(month, "yyyy-MM", new Date()), "MMMM yyyy");
+  // The pay period we are IN, stepped by the ‹ › buttons. The calendar month names a period that
+  // has not started for the first nine days of every month — see payrollEngine.currentPayMonth.
+  const month = shiftPayMonth(currentPayMonth(), monthOffset);
+  const monthLabel = payPeriodLabel(month);
 
   const [search, setSearch] = useState("");
   const [showUnpaidOnly, setShowUnpaidOnly] = useState(false);

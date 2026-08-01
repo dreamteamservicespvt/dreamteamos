@@ -7,6 +7,8 @@ import { formatCurrency } from "@/utils/formatters";
 import { format, addDays, parseISO } from "date-fns";
 import type { Lead, SaleDetail, CommissionSettlement } from "@/types";
 import { commissionRate, computeCommissionInRange, earliestVerifiedSaleDate, paidThrough, totalPaid, memberSettlementsQuery } from "@/services/settlements";
+import { payPeriodForDate, payPeriodLabel, currentPayMonth } from "@/utils/payrollEngine";
+import { saleDay } from "@/utils/salesRevenue";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { TrendingUp, Target, Award, Zap, IndianRupee, Wallet, History, CheckCircle2 } from "lucide-react";
 import AttendanceCard from "@/components/sales/AttendanceCard";
@@ -50,14 +52,24 @@ export default function MyPerformance() {
 
   const target = user?.monthlyTarget || user?.target || 0;
 
-  // Current-month revenue for earnings calculation
-  const currentMonthStr = format(new Date(), "yyyy-MM");
-  const monthlyLeads = leads.filter((l) => {
-    if (!l.createdAt?.seconds) return false;
-    return format(new Date(l.createdAt.seconds * 1000), "yyyy-MM") === currentMonthStr;
-  });
-  const monthlyVerifiedRevenue = monthlyLeads.reduce((sum, l) =>
-    sum + getSaleItems(l).filter((i) => i.verificationStatus === "verified").reduce((s, i) => s + (i.amount || 0), 0), 0);
+  /**
+   * This cycle's verified revenue — the figure the earnings estimate below is built on.
+   *
+   * Two things used to be wrong here, and together they emptied the estimate. It bucketed by the
+   * day the LEAD was created rather than the day the SALE was made, so a sale closed this month on
+   * an older number counted for nothing; and it used the calendar month, which for the first nine
+   * days of any month is not the period we are in at all. A member who had sold all through July
+   * opened this page on 1 August and was told they had earned nothing.
+   */
+  const cycle = payPeriodForDate(new Date());
+  const monthlyVerifiedRevenue = leads.reduce((sum, lead) =>
+    sum + getSaleItems(lead)
+      .filter((i) => {
+        if (i.verificationStatus !== "verified") return false;
+        const day = saleDay(i, lead);
+        return !!day && day >= cycle.start && day <= cycle.end;
+      })
+      .reduce((s, i) => s + (i.amount || 0), 0), 0);
 
   // Earnings calculations
   const MONTHLY_TARGET = 30000;
@@ -209,8 +221,9 @@ export default function MyPerformance() {
               <IndianRupee size={16} className="text-primary" />
               <h2 className="font-display font-semibold text-foreground">My Earnings This Month</h2>
             </div>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Based on {formatCurrency(monthlyVerifiedRevenue)} verified revenue in {format(new Date(), "MMMM yyyy")}
+            {/* Names the exact period, so "this month" can never be read as 1st–31st. */}
+            <p data-test="earnings-period" className="text-xs text-muted-foreground mt-0.5">
+              Based on {formatCurrency(monthlyVerifiedRevenue)} verified revenue in {payPeriodLabel(currentPayMonth())}
             </p>
           </div>
           {assignedOption && (

@@ -101,12 +101,12 @@ export default function SignaturePad({ onSave, saving, saveLabel }: {
   return (
     <div className="rounded-xl border border-border bg-card p-4">
       <div className="flex items-center gap-2 mb-3">
-        <button onClick={() => setMode("draw")}
+        <button onClick={() => setMode("draw")} data-test="signature-mode-draw"
           className={cn("inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border",
             mode === "draw" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground")}>
           <PenLine className="w-3.5 h-3.5" /> Draw
         </button>
-        <button onClick={() => setMode("upload")}
+        <button onClick={() => setMode("upload")} data-test="signature-mode-upload"
           className={cn("inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border",
             mode === "upload" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground")}>
           <Camera className="w-3.5 h-3.5" /> Upload / Photo
@@ -141,13 +141,15 @@ export default function SignaturePad({ onSave, saving, saveLabel }: {
                 <Upload className="w-6 h-6" /> Tap to upload or take a photo of your signature
               </span>
             )}
-            <input type="file" accept="image/*" capture="environment" className="hidden" onChange={onPickFile} />
+            <input type="file" accept="image/*" capture="environment" className="hidden"
+              data-test="signature-file" onChange={onPickFile} />
           </label>
         </div>
       )}
 
       <button
         onClick={handleSave}
+        data-test="signature-save"
         disabled={!canSave || saving}
         className={cn("mt-3 w-full py-2.5 rounded-lg text-sm font-semibold text-white transition-colors",
           canSave && !saving ? "bg-primary hover:opacity-90" : "bg-muted text-muted-foreground cursor-not-allowed")}>

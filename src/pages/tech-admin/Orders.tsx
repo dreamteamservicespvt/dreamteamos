@@ -8,7 +8,7 @@ import { useFirestoreQuery, useFirestoreCollection } from "@/hooks/useFirestore"
 import { useNow } from "@/hooks/useNow";
 import { formatCurrency } from "@/utils/formatters";
 import { formatPhoneDisplay, getWhatsAppUrl } from "@/utils/phone";
-import { categoryBilling, bulkCategoryLabel } from "@/utils/serviceCatalog";
+import { categoryBilling, bulkCategoryLabel, categoryLabel } from "@/utils/serviceCatalog";
 import { activeOrdersQuery, notifyDueOrdersOnOpen, findReconcilableOrders, reconcileManualOrders, deleteOrders, revertOrderToUnassigned } from "@/services/orders";
 import { requirementSummary } from "@/utils/adRequirement";
 import { useToast } from "@/hooks/use-toast";
@@ -29,6 +29,10 @@ import { isPinnedOrder, progressSummary } from "@/utils/orderProgress";
 import { ordersWithPenalties, totalPenalties } from "@/utils/penalty";
 import { removeOrderPenalty } from "@/services/orders";
 import { discountEditLabel } from "@/utils/bulkDiscount";
+import {
+  ALL_ORDER_CATEGORIES, DEFAULT_ORDER_CATEGORY, matchesOrderCategory, orderCategoryOptionLabel,
+  orderCategoryOptions,
+} from "@/utils/orderCategoryFilter";
 import OrderProgressPanel from "@/components/work/OrderProgressPanel";
 import PenaltyDialog from "@/components/work/PenaltyDialog";
 import AssignTracksDialog from "@/components/work/AssignTracksDialog";
@@ -71,6 +75,12 @@ export default function Orders() {
   const [penaltyFor, setPenaltyFor] = useState<Order | null>(null);
   const [splitFor, setSplitFor] = useState<Order | null>(null);
   const [search, setSearch] = useState("");
+  /**
+   * Which kind of work is being looked at. Deliberately ONE piece of state for the whole page:
+   * pick "Cinematic" on Not assigned and it stays picked on Assigned, In progress and Changes, so
+   * following one kind of job through the queue is a matter of clicking tabs, not re-filtering.
+   */
+  const [category, setCategory] = useState<string>(DEFAULT_ORDER_CATEGORY);
   /** First-come-first-served by default: whoever has waited longest is served first. */
   const [sortMode, setSortMode] = useState<OrderSortMode>("fcfs");
   const [view, setView] = useViewMode("orders");
@@ -80,7 +90,7 @@ export default function Orders() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  useEffect(() => { setSelected(new Set()); }, [tab, search]);
+  useEffect(() => { setSelected(new Set()); }, [tab, search, category]);
   const toggleOne = (id: string) => setSelected((prev) => {
     const next = new Set(prev);
     next.has(id) ? next.delete(id) : next.add(id);
@@ -147,16 +157,20 @@ export default function Orders() {
   const counts = useMemo(() => {
     const out: Record<OrderTab, number> = { unassigned: 0, assigned: 0, in_progress: 0, completed: 0, changes: 0 };
     for (const rec of orderBacked(buildAdPipeline(orders, assignments))) {
+      // The tab badges count what the filter would actually show. Leaving them on the unfiltered
+      // total made every tab claim more work than it listed the moment a filter was on.
+      if (rec.order && !matchesOrderCategory(rec.order, category)) continue;
       if (rec.stage in out) out[rec.stage as OrderTab] += 1;
     }
-    out.changes = penalisedOrders.length;
+    out.changes = penalisedOrders.filter((o) => matchesOrderCategory(o, category)).length;
     return out;
-  }, [orders, assignments, penalisedOrders]);
+  }, [orders, assignments, penalisedOrders, category]);
 
-  const visible = useMemo(() => {
+  /** This tab's orders, past the search box — before the category filter, which is built from them. */
+  const inTab = useMemo(() => {
     const q = search.trim().toLowerCase();
     const qDigits = q.replace(/\D/g, "");
-    const filtered = (tab === "changes" ? penalisedOrders : orders.filter((o) => queueStatusOf(o) === tab))
+    return (tab === "changes" ? penalisedOrders : orders.filter((o) => queueStatusOf(o) === tab))
       .filter((o) => {
         if (!q) return true;
         if (o.businessName?.toLowerCase().includes(q)) return true;
@@ -166,13 +180,28 @@ export default function Orders() {
         if (qDigits && o.clientPhone?.replace(/\D/g, "").includes(qDigits)) return true;
         return false;
       });
-    return sortOrders(filtered, sortMode);
-  }, [orders, penalisedOrders, tab, search, sortMode, queueStatusOf]);
+  }, [orders, penalisedOrders, tab, search, queueStatusOf]);
 
-  /** Overdue count for the tab in view, so the sort option can say how many are waiting. */
+  /**
+   * What the dropdown offers, and how many of each are in front of you right now.
+   *
+   * Counted from `inTab` — before the category filter is applied — so picking one category does not
+   * collapse every other option to zero and strand you on it.
+   */
+  const categoryOptions = useMemo(
+    () => orderCategoryOptions(inTab, category),
+    [inTab, category],
+  );
+
+  const visible = useMemo(
+    () => sortOrders(inTab.filter((o) => matchesOrderCategory(o, category)), sortMode),
+    [inTab, category, sortMode],
+  );
+
+  /** Overdue count for what's in view, so the sort option can say how many are waiting. */
   const overdueInTab = useMemo(
-    () => countOverdue(orders.filter((o) => queueStatusOf(o) === tab)),
-    [orders, tab, queueStatusOf],
+    () => countOverdue(orders.filter((o) => queueStatusOf(o) === tab && matchesOrderCategory(o, category))),
+    [orders, tab, queueStatusOf, category],
   );
 
   // Select-all operates on exactly what's on screen (current tab + search).
@@ -336,6 +365,23 @@ export default function Orders() {
             className="h-9 w-full rounded-xl border border-border/70 bg-background pl-9 pr-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20"
           />
         </div>
+        {/* Kind of work. Stays put as you move between tabs, so one job type can be followed all
+            the way through the queue; the count on each option is how many are in THIS tab. */}
+        <select
+          value={category}
+          data-test="orders-category-filter"
+          onChange={(e) => setCategory(e.target.value)}
+          title="Show only one kind of work"
+          className={`h-9 rounded-xl border px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20 ${
+            category === ALL_ORDER_CATEGORIES
+              ? "border-border/70 bg-background text-foreground"
+              : "border-primary/50 bg-primary/10 text-primary font-medium"
+          }`}
+        >
+          {categoryOptions.map((o) => (
+            <option key={o.key} value={o.key}>{orderCategoryOptionLabel(o)}</option>
+          ))}
+        </select>
         <select
           value={sortMode}
           onChange={(e) => setSortMode(e.target.value as OrderSortMode)}
@@ -433,7 +479,16 @@ export default function Orders() {
             <ShoppingBag className="w-12 h-12 mx-auto mb-3 opacity-30" />
             <p className="text-lg font-medium">
               {tab === "changes" ? "Nothing charged for changes" : `No ${tab.replace(/_/g, " ")} orders`}
+              {/* An empty tab with a filter on is almost always the filter, not an empty queue —
+                  say which one is hiding things and offer the way out in the same breath. */}
+              {category !== ALL_ORDER_CATEGORIES && ` in ${categoryLabel(category)}`}
             </p>
+            {category !== ALL_ORDER_CATEGORIES && (
+              <button onClick={() => setCategory(ALL_ORDER_CATEGORIES)}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent/50">
+                <X className="h-3.5 w-3.5" /> Show all services
+              </button>
+            )}
           </div>
         ) : visible.map((o) => (
           <div key={o.id} className={`bg-card border rounded-xl p-3 md:p-4 shadow-sm hover:shadow-md transition-shadow ${selected.has(o.id) ? "border-primary/60 ring-1 ring-primary/30" : ""}`}>

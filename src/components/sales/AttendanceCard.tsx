@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
-import { format, getDate, parseISO } from "date-fns";
+import { useEffect, useMemo, useState } from "react";
+import { format, parseISO } from "date-fns";
 import { CalendarCheck, Loader2 } from "lucide-react";
-import { fetchMonthCheckins, type SalesCheckin } from "@/services/salesCheckin";
+import { fetchCycleCheckins, type SalesCheckin } from "@/services/salesCheckin";
+import { currentPayMonth, payPeriodForDate, payPeriodLabel, periodDates } from "@/utils/payrollEngine";
 
 function fmtTs(ts: any): string {
   const s = ts?.seconds;
@@ -9,33 +10,40 @@ function fmtTs(ts: any): string {
 }
 
 /**
- * Monthly attendance for a sales member, derived from the daily check-in/check-out records.
+ * This pay cycle's attendance for a sales member, from the daily check-in/check-out records.
  * A day counts as present when the member checked in. Shown in My Profile and My Performance.
+ *
+ * Measured over the 10th → 9th cycle, not the calendar month, because attendance is what the
+ * salary engine deducts from and the two must cover the same days. On the calendar it showed
+ * "0 / 1 days" on the 1st of a month while the member had been at work for three weeks.
  */
 export default function AttendanceCard({ memberId }: { memberId: string }) {
   const [checkins, setCheckins] = useState<SalesCheckin[]>([]);
   const [loading, setLoading] = useState(true);
-  const month = format(new Date(), "yyyy-MM");
+  const cycle = useMemo(() => payPeriodForDate(new Date()), []);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetchMonthCheckins(memberId, month)
+    fetchCycleCheckins(memberId, cycle.start, cycle.end)
       .then((list) => { if (!cancelled) setCheckins(list); })
       .catch(() => { if (!cancelled) setCheckins([]); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [memberId, month]);
+  }, [memberId, cycle.start, cycle.end]);
 
   const presentDays = checkins.filter((c) => c.checkInAt).length;
-  const daysElapsed = getDate(new Date());
+  // Days of the cycle that have actually happened — the cycle runs past today, and dividing by
+  // its full length would report everyone as behind on attendance for the whole month.
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const daysElapsed = periodDates(cycle).filter((d) => d <= todayStr).length;
   const pct = daysElapsed > 0 ? Math.round((presentDays / daysElapsed) * 100) : 0;
 
   return (
     <div className="bg-card border border-border rounded-xl p-5">
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-display font-semibold text-foreground flex items-center gap-2">
-          <CalendarCheck size={16} className="text-success" /> Attendance — {format(new Date(), "MMMM yyyy")}
+          <CalendarCheck size={16} className="text-success" /> Attendance — {payPeriodLabel(currentPayMonth())}
         </h2>
         {!loading && (
           <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
@@ -52,7 +60,7 @@ export default function AttendanceCard({ memberId }: { memberId: string }) {
         </div>
       ) : checkins.length === 0 ? (
         <p className="text-sm text-muted-foreground text-center py-4">
-          No check-ins this month yet. Check in from the Dashboard to mark attendance.
+          No check-ins this cycle yet. Check in from the Dashboard to mark attendance.
         </p>
       ) : (
         <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">

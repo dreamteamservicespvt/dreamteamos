@@ -85,6 +85,27 @@ export async function fetchMonthCheckins(memberId: string, month: string): Promi
     .sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
+/**
+ * A member's check-ins between two `yyyy-MM-dd` dates, inclusive — the shape a pay cycle needs,
+ * since 10 Jul → 9 Aug straddles two calendar months.
+ *
+ * Deliberately built from the existing month-equality query rather than a range query on `date`:
+ * equality + range across two fields needs a composite index that this project does not have, and
+ * a cycle never spans more than two months, so two indexed reads answer it with no new index.
+ */
+export async function fetchCycleCheckins(
+  memberId: string,
+  start: string,
+  end: string,
+): Promise<SalesCheckin[]> {
+  const months = Array.from(new Set([start.slice(0, 7), end.slice(0, 7)]));
+  const batches = await Promise.all(months.map((m) => fetchMonthCheckins(memberId, m)));
+  return batches
+    .flat()
+    .filter((c) => c.date >= start && c.date <= end)
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+}
+
 /* ─── Report message builders ─── */
 
 export function buildCheckInMessage(name: string): string {

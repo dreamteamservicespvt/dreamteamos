@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   NOTICE_DAYS, addDaysIso, daysBetween, defaultProbationMonths, departmentOfRole, deriveStage,
-  documentTypesForStage, isUnderProbation, kycCompletion, lastWorkingDayFor, lifecycleSteps,
-  maskIdentifier, milestoneDueDate, noticePeriodFor, probationDaysRemaining, probationEndDate,
-  probationSchedule, requiresEmployeeSignature,
+  documentTypesForStage, formatAadhaar, isUnderProbation, isValidAadhaar, isValidPan, kycCompletion,
+  lastWorkingDayFor, lifecycleSteps, maskIdentifier, milestoneDueDate, noticePeriodFor,
+  probationDaysRemaining, probationEndDate, probationSchedule, requiresEmployeeSignature,
 } from "@/utils/hrPolicy";
 import type { EmployeeProfile, HrDocument, HrDocumentType, ProbationReview } from "@/types/hr";
 
@@ -188,6 +188,51 @@ describe("KYC completeness", () => {
     }));
     expect(k.complete).toBe(true);
     expect(k.percent).toBe(100);
+  });
+});
+
+describe("government identifiers", () => {
+  it("accepts a well-formed PAN, however it was typed", () => {
+    expect(isValidPan("ABCDE1234F")).toBe(true);
+    expect(isValidPan("abcde1234f")).toBe(true);
+    expect(isValidPan(" ABCDE 1234 F ")).toBe(true);
+  });
+
+  it("rejects a PAN of the wrong shape", () => {
+    expect(isValidPan("ABCD1234F")).toBe(false);    // four letters
+    expect(isValidPan("ABCDE12345")).toBe(false);   // trailing digit
+    expect(isValidPan("ABCDE1234")).toBe(false);    // too short
+    expect(isValidPan("")).toBe(false);
+    expect(isValidPan(null)).toBe(false);
+  });
+
+  it("accepts an Aadhaar whose Verhoeff check digit is right", () => {
+    expect(isValidAadhaar("234567890124")).toBe(true);
+    expect(isValidAadhaar("2345 6789 0124")).toBe(true);
+    expect(isValidAadhaar("999888777669")).toBe(true);
+  });
+
+  it("rejects one that is the right length but fails the checksum", () => {
+    // This is the case a bare length check lets through — a single mistyped digit.
+    expect(isValidAadhaar("234567890123")).toBe(false);
+    expect(isValidAadhaar("234567890125")).toBe(false);
+  });
+
+  it("catches a transposition, which is what mistyping actually looks like", () => {
+    expect(isValidAadhaar("234567890124")).toBe(true);
+    expect(isValidAadhaar("235467890124")).toBe(false);  // 4 and 5 swapped
+  });
+
+  it("rejects Aadhaar numbers that cannot exist", () => {
+    expect(isValidAadhaar("012345678901")).toBe(false);  // never starts 0
+    expect(isValidAadhaar("112345678901")).toBe(false);  // never starts 1
+    expect(isValidAadhaar("23456789012")).toBe(false);   // eleven digits
+    expect(isValidAadhaar("")).toBe(false);
+  });
+
+  it("prints an Aadhaar the way it appears on the card", () => {
+    expect(formatAadhaar("234567890124")).toBe("2345 6789 0124");
+    expect(formatAadhaar("2345 6789 0124")).toBe("2345 6789 0124");
   });
 });
 

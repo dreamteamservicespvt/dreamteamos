@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { addMonths, format, parse } from "date-fns";
+import { format, parse } from "date-fns";
 import {
   AlertCircle, Banknote, CalendarClock, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight,
   Clock, Coffee, Download, IndianRupee, PiggyBank, ShieldCheck, Wallet,
@@ -13,7 +13,7 @@ import { ATTENDANCE_META, type AttendanceStatus } from "@/services/techAttendanc
 import BankDetailsModal from "@/components/payroll/BankDetailsModal";
 import LeavePanel from "@/components/payroll/LeavePanel";
 import { downloadPayslip } from "@/utils/payslipPdf";
-import { deductionsFor } from "@/utils/payrollEngine";
+import { currentPayMonth, deductionsFor, payPeriodLabel, shiftPayMonth } from "@/utils/payrollEngine";
 import type { EmployeeBank } from "@/types/payroll";
 
 /**
@@ -39,7 +39,9 @@ export default function MySalaryDashboard() {
   const navigate = useNavigate();
 
   const [monthOffset, setMonthOffset] = useState(0);
-  const month = format(addMonths(new Date(), monthOffset), "yyyy-MM");
+  // The pay period we are IN, stepped by the ‹ › buttons — not the calendar month, which for the
+  // first nine days of any month names a period that has not started (see currentPayMonth).
+  const month = shiftPayMonth(currentPayMonth(), monthOffset);
 
   const [bank, setBank] = useState<EmployeeBank | null>(null);
   const [bankLoaded, setBankLoaded] = useState(false);
@@ -68,7 +70,8 @@ export default function MySalaryDashboard() {
     if (bankLoaded && !bankComplete && !bankPromptDeferred) setBankModalOpen(true);
   }, [bankLoaded, bankComplete, bankPromptDeferred]);
 
-  const monthLabel = format(parse(month, "yyyy-MM", new Date()), "MMMM yyyy");
+  // The span is spelled out: "July 2026" alone reads as 1–31 July to everyone who sees it.
+  const monthLabel = payPeriodLabel(month, config.payDayOfMonth);
 
   /** Leading blanks so the period's first day lands under its real weekday. */
   const leadingBlanks = useMemo(
@@ -148,7 +151,7 @@ export default function MySalaryDashboard() {
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <span className="min-w-[8.5rem] text-center text-sm font-semibold text-foreground">{monthLabel}</span>
+            <span data-test="salary-period" className="min-w-[13rem] text-center text-sm font-semibold text-foreground">{monthLabel}</span>
             <button
               onClick={() => setMonthOffset(o => Math.min(0, o + 1))}
               disabled={monthOffset >= 0}

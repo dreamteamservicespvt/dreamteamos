@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Eye, FileSignature, Loader2, PenTool, Send, X } from "lucide-react";
+import { Eye, FileSignature, Loader2, PenTool, Send, ShieldQuestion, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { HR_DOCUMENT_LABELS } from "@/types/hr";
 import type { AppUser } from "@/types";
@@ -152,6 +152,19 @@ export default function IssueDocumentDialog({ member, profile, signatory, settin
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X size={18} /></button>
         </div>
+
+        {profile.termsSelfDeclared && (
+          <div className="mb-4 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5" data-test="unconfirmed-terms-warning">
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-warning">
+              <ShieldQuestion size={13} /> These terms were entered by {member.name}, not confirmed by you
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+              The salary, designation and joining date below came from the employee's own profile.
+              This letter prints them under your signature — check them on the Employment tab and
+              press Confirm there first if they are right.
+            </p>
+          </div>
+        )}
 
         {!hasSignature && (
           <div className="mb-4 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5" data-test="no-signature-warning">
