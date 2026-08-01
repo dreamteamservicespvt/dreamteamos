@@ -154,6 +154,14 @@ describe("Add Sale — bulk videos", () => {
     }
   });
 
+  it("asks which festival a bulk WISHES order is for", () => {
+    // Ten Diwali videos are still ten Diwali videos — the occasion decides what gets built.
+    openBulkForm();
+    expect(screen.queryByTestId("sale-festival")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByTestId("bulk-type"), { target: { value: "wishes" } });
+    expect(screen.getByTestId("sale-festival")).toBeInTheDocument();
+  });
+
   it("converts what is already typed when the unit is switched", () => {
     openBulkForm();
     fireEvent.change(screen.getByTestId("sale-package"), { target: { value: "30 Seconds + Poster" } });

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { MessageCircle, Phone, User as UserIcon } from "lucide-react";
+import { MessageCircle, Phone } from "lucide-react";
+import MemberAvatar from "@/components/MemberAvatar";
 import { formatPhoneDisplay, getCallUrl, getWhatsAppUrl } from "@/utils/phone";
 import type { AppUser } from "@/types";
 import type { EmployeeProfile } from "@/types/hr";
@@ -34,15 +35,9 @@ export default function MemberGridCard({ member, profile, stats, badges, actions
       className="group flex cursor-pointer flex-col rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-accent/20"
     >
       <div className="flex items-start gap-3">
-        <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-primary/10">
-          {profile?.photoUrl ? (
-            <img src={profile.photoUrl} alt={member.name} className="h-full w-full object-cover" />
-          ) : (
-            <div className="font-display flex h-full w-full items-center justify-center text-lg font-bold text-primary">
-              {member.name?.charAt(0) || <UserIcon size={18} />}
-            </div>
-          )}
-        </div>
+        {/* The photo the member uploaded themselves wins over the one filed in their HR record:
+            it is the one they chose, and the one every other screen is already showing. */}
+        <MemberAvatar name={member.name} avatar={member.avatar || profile?.photoUrl} size={48} />
 
         <div className="min-w-0 flex-1">
           <p className="truncate font-display font-semibold text-foreground group-hover:text-primary">

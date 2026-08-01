@@ -94,6 +94,8 @@ describe("Orders queue — filter by kind of work", () => {
       "Cinematic Ad (2)",
       "Promotional Ad (2)",
       "Social Media Management (Monthly) (1)",
+      // Always offered even at zero — a filter you can only use in festival season is no filter.
+      "Wishes (0)",
     ]);
   });
 

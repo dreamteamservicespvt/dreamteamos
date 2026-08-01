@@ -20,6 +20,7 @@ import type { WorkAssignment, AppUser, DailyCheckin, Order } from '@/types';
 import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from '@/types/aiPlatform';
 import { ATTIRE_LABELS, assignmentFormFromOrder, buildAssignmentRequirementsMessage } from '@/utils/adRequirement';
 import { watchAdLanguages, mergeAdLanguages, rememberAdLanguage } from '@/services/adLanguages';
+import { WISHES_FESTIVALS } from '@/utils/festivals';
 import { bulkCategoryLabel } from '@/utils/serviceCatalog';
 import { fetchOrder, activeOrdersQuery } from '@/services/orders';
 import { createWorkAssignment, nextWorkUniqueId } from '@/services/workAssign';
@@ -114,6 +115,7 @@ export default function WorkAssign() {
     aspectRatio: '9:16' as '9:16' | '16:9',
     language: 'Telugu' as string,
     customLanguage: '',
+    festival: '',
     requirementNotes: '',
     characterPack: '',
     realLocationProvided: false,
@@ -243,6 +245,7 @@ export default function WorkAssign() {
         customAttire: form.customAttire,
         aspectRatio: form.aspectRatio,
         language,
+        festival: form.festival,
         requirementNotes: form.requirementNotes,
         characterPack: form.characterPack,
         realLocationProvided: form.realLocationProvided,
@@ -283,6 +286,7 @@ export default function WorkAssign() {
         customAttire: form.customAttire,
         aspectRatio: form.aspectRatio,
         language,
+        festival: form.festival,
         requirementNotes: form.requirementNotes,
         characterPack: form.characterPack,
         realLocationProvided: form.realLocationProvided,
@@ -296,7 +300,7 @@ export default function WorkAssign() {
       setForm({
         assignedTo: '', category: 'promotional', duration: '16s', pricePerUnit: 499, clientName: '', businessName: '', businessWhatsapp: '',
         modelGender: ModelGender.FEMALE, attireType: AttireType.TRADITIONAL, customAttire: '', aspectRatio: '9:16', language: 'Telugu', customLanguage: '',
-        requirementNotes: '', characterPack: '', realLocationProvided: false,
+        festival: '', requirementNotes: '', characterPack: '', realLocationProvided: false,
       });
       setCustomDuration(false);
       setMemberSearch('');
@@ -703,6 +707,26 @@ export default function WorkAssign() {
                   className="w-full mt-1.5 border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none" />
               )}
             </div>
+
+            {/* The occasion, for a greeting video. Carried from the sale when there was one; a job
+                created here by hand still needs it, because the generator themes the ad from it. */}
+            {form.category === 'wishes' && (
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Festival / occasion</label>
+                <select value={WISHES_FESTIVALS.includes(form.festival) || !form.festival ? form.festival : '__typed__'}
+                  onChange={(e) => setForm(prev => ({ ...prev, festival: e.target.value === '__typed__' ? '' : e.target.value }))}
+                  className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none">
+                  <option value="">Not specified</option>
+                  {WISHES_FESTIVALS.map(f => <option key={f} value={f}>{f}</option>)}
+                  <option value="__typed__">Other occasion…</option>
+                </select>
+                {!!form.festival && !WISHES_FESTIVALS.includes(form.festival) && (
+                  <input type="text" placeholder="Type the occasion…" value={form.festival}
+                    onChange={(e) => setForm(prev => ({ ...prev, festival: e.target.value }))}
+                    className="w-full mt-1.5 border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none" />
+                )}
+              </div>
+            )}
 
             {/* Client notes — whatever the client asked for beyond the spec above. */}
             <div className="md:col-span-2 lg:col-span-3">

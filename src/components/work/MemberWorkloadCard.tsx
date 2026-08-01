@@ -3,6 +3,7 @@ import { Check, ChevronRight, Copy } from 'lucide-react';
 import { formatCurrency } from '@/utils/formatters';
 import { assignedAtMs, isVerified } from '@/utils/memberWorkload';
 import type { AppUser, DailyCheckin, WorkAssignment } from '@/types';
+import MemberAvatar from '@/components/MemberAvatar';
 
 /**
  * One member's workload, as a card in the Team Workload wall.
@@ -104,9 +105,7 @@ export default function MemberWorkloadCard({
         aria-label={`Open ${member.name}'s assignments`}
         className="flex w-full items-center gap-2.5 rounded-t-xl p-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
       >
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-role-tech-member/15 font-display text-sm font-bold text-role-tech-member">
-          {member.name?.charAt(0)?.toUpperCase() || '?'}
-        </div>
+        <MemberAvatar name={member.name} avatar={member.avatar} size={36} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <span className="truncate text-sm font-semibold text-foreground transition-colors group-hover:text-primary">

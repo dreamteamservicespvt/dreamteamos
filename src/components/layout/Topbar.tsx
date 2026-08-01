@@ -10,6 +10,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { playClickSound } from "@/utils/audio";
+import MemberAvatar from "@/components/MemberAvatar";
 
 interface TopbarProps {
   onMenuClick?: () => void;
@@ -204,9 +205,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
 
         {user && (
           <div className="flex items-center gap-2 pl-2 md:pl-3 border-l border-border">
-            <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-primary/20 flex items-center justify-center font-display font-bold text-primary text-xs">
-              {user.name?.charAt(0) || "U"}
-            </div>
+            <MemberAvatar name={user.name} avatar={user.avatar} size={30} />
             <div className="hidden md:block">
               <p className="text-sm font-medium text-foreground leading-tight">{user.name}</p>
               <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${getRoleColor(user.role)}`}>

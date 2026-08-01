@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import EditMemberModal from "@/components/EditMemberModal";
 import MemberPasswordModal from "@/components/MemberPasswordModal";
+import MemberAvatar from "@/components/MemberAvatar";
 import MemberGridCard from "@/components/team/MemberGridCard";
 import ViewToggle from "@/components/common/ViewToggle";
 import { useViewMode } from "@/hooks/useViewMode";
@@ -295,9 +296,7 @@ export default function MyTeam() {
                   <tr key={m.uid} onClick={() => openMember(m.uid)} className={`border-b border-border/50 hover:bg-accent/30 transition-colors cursor-pointer ${i % 2 === 1 ? "bg-elevated/20" : ""}`}>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-role-sales-member/15 flex items-center justify-center font-display font-bold text-role-sales-member text-xs">
-                          {m.name?.charAt(0)}
-                        </div>
+                        <MemberAvatar name={m.name} avatar={m.avatar} size={32} />
                         <div>
                           <p className="font-medium text-foreground">{m.name}</p>
                           <p className="text-xs text-muted-foreground">{m.email}</p>
@@ -496,9 +495,7 @@ function MobileTeamCards({ members, loading, onToggle, onDelete, onEdit, deletin
         <div key={m.uid} onClick={() => onClickMember(m.uid)} className="bg-card border border-border rounded-xl p-4 cursor-pointer hover:bg-accent/30 transition-colors">
           <div className="flex items-start justify-between mb-3">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-role-sales-member/15 flex items-center justify-center font-display font-bold text-role-sales-member text-sm shrink-0">
-                {m.name?.charAt(0)}
-              </div>
+              <MemberAvatar name={m.name} avatar={m.avatar} size={40} />
               <div>
                 <p className="font-medium text-foreground text-sm">{m.name}</p>
                 <p className="text-xs text-muted-foreground">{m.email}</p>

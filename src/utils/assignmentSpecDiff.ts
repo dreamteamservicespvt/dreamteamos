@@ -34,6 +34,8 @@ export interface AssignmentSpec {
   customAttire?: string;
   aspectRatio?: string;
   language?: string;
+  /** The occasion a wishes video is for — changing it changes the entire ad. */
+  festival?: string;
   requirementNotes?: string;
   characterPack?: string;
   realLocationProvided?: boolean;
@@ -52,6 +54,7 @@ export function specOf(a: WorkAssignment | null | undefined): AssignmentSpec {
     customAttire: a.customAttire,
     aspectRatio: a.aspectRatio,
     language: a.language,
+    festival: a.festival,
     requirementNotes: a.requirementNotes,
     characterPack: a.characterPack,
     realLocationProvided: a.realLocationProvided,
@@ -69,7 +72,7 @@ export function specSignature(spec: AssignmentSpec): string {
   return JSON.stringify([
     spec.category ?? "", spec.duration ?? "", spec.clipCount ?? 0, spec.businessName ?? "",
     spec.modelGender ?? "", spec.attireType ?? "", spec.customAttire ?? "",
-    spec.aspectRatio ?? "", spec.language ?? "", spec.requirementNotes ?? "",
+    spec.aspectRatio ?? "", spec.language ?? "", spec.festival ?? "", spec.requirementNotes ?? "",
     spec.characterPack ?? "", spec.realLocationProvided === true,
   ]);
 }
@@ -124,6 +127,9 @@ export function describeSpecChanges(prev: AssignmentSpec, next: AssignmentSpec):
 
   add("Aspect ratio", plain(prev.aspectRatio), plain(next.aspectRatio));
   add("Language", plain(prev.language), plain(next.language));
+  // Worth interrupting for above almost anything else: a member half-way through a Diwali ad whose
+  // job has become a Ugadi one has to start the look again, not find out on delivery.
+  add("Occasion", plain(prev.festival), plain(next.festival));
   add("Client notes", plain(prev.requirementNotes), plain(next.requirementNotes));
 
   return changes;

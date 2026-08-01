@@ -41,6 +41,8 @@ export interface CreateWorkAssignmentInput {
   customAttire?: string;
   aspectRatio?: "9:16" | "16:9";
   language?: string;
+  /** The occasion a wishes video is for, carried from the sale. */
+  festival?: string;
   requirementNotes?: string;
   /** Special-category cartoon duo (a services/characterPacks id), when one was sold. */
   characterPack?: string;
@@ -62,7 +64,7 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
   const {
     assignedTo, assignedToName, assignerUid, category, duration, clipCount, pricePerUnit, uniqueId,
     businessName, businessWhatsapp, modelGender, attireType, customAttire, aspectRatio,
-    language, requirementNotes, characterPack, realLocationProvided,
+    language, festival, requirementNotes, characterPack, realLocationProvided,
     order, tracks, memberLink = "/tech/my-work",
   } = input;
 
@@ -103,6 +105,9 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
     ...(attireType === "custom" && customAttire?.trim() ? { customAttire: customAttire.trim() } : {}),
     ...(aspectRatio ? { aspectRatio } : {}),
     ...(language ? { language } : {}),
+    // Only ever on a wishes job — the category decides whether an occasion means anything, and a
+    // festival left on a promotional ad would theme one that nobody sold.
+    ...(category === "wishes" && festival?.trim() ? { festival: festival.trim() } : {}),
     ...(requirementNotes?.trim() ? { requirementNotes: requirementNotes.trim() } : {}),
     // The location flag only means something next to a pack, so the two are written together —
     // a lone `realLocationProvided` on an ordinary job would be noise the member has to interpret.

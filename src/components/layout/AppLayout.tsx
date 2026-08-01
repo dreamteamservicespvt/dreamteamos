@@ -12,6 +12,7 @@ import VideoCallManager from "@/components/chat/VideoCallManager";
 import DailyCheckinPrompt from "@/components/attendance/DailyCheckinPrompt";
 import MandatoryAgreementGate from "@/components/agreement/MandatoryAgreementGate";
 import UpdatePopup from "@/components/layout/UpdatePopup";
+import BirthdayGreeting from "@/components/BirthdayGreeting";
 import { registerBackButton } from "@/services/capacitor-plugins";
 import { isNative } from "@/utils/platform";
 import { EXTERNAL_CREATOR_ROUTES } from "@/utils/roleHelpers";
@@ -79,6 +80,9 @@ export default function AppLayout({ allowedRoles }: AppLayoutProps) {
       >
         <Topbar onMenuClick={() => setMobileOpen(true)} />
         <main className="flex-1 p-4 md:p-6 overflow-x-hidden overflow-y-auto">
+          {/* Above the page, not inside it: a birthday belongs to the whole company, so it shows
+              wherever someone happens to be working. External creators are not colleagues. */}
+          {!user.externalCreator && <BirthdayGreeting />}
           <Outlet />
         </main>
         <VideoCallManager />

@@ -109,3 +109,38 @@ export function getUpcomingFestivalName(): string {
 export function findFestival(name: string): Festival | undefined {
   return FESTIVALS.find((f) => f.name.toLowerCase() === name.toLowerCase());
 }
+
+// ─── The occasions a wishes video is sold for ─────────────────────────────────────────────────
+//
+// Deliberately NOT the calendar above. `FESTIVALS` is the company's holiday calendar — every dated
+// observance of 2026, under its formal name. This is the shorter list of occasions clients actually
+// buy greeting videos for, under the names the generator's theme system recognises
+// (services/prompts.getFestivalTheme has hand-written treatments for Diwali, Navaratri, Holi,
+// Bathukamma and the rest; anything else falls to a generic theme).
+//
+// It lives here, shared, because the sales member picking the occasion and the tech member
+// generating the video must be naming the same thing. Two lists meant a sale saying "Sankranthi"
+// and a generator tuned for "Makar Sankranti", and the mismatch is invisible until the ad is wrong.
+
+export const WISHES_FESTIVALS: string[] = [
+  "Ugadi", "Sankranthi", "Maha Shivaratri", "Holi", "Sri Rama Navami", "Hanuman Jayanti",
+  "Good Friday", "Easter", "Akshaya Tritiya", "Buddha Purnima", "Eid ul-Fitr", "Bakrid",
+  "Muharram", "Raksha Bandhan", "Krishna Janmashtami", "Ganesh Chaturthi", "Onam",
+  "Bathukamma", "Navaratri", "Dasara", "Dussehra", "Diwali", "Karthika Pournami",
+  "Christmas", "New Year", "Republic Day", "Independence Day", "Gandhi Jayanti",
+];
+
+/**
+ * The "it isn't in the list" option.
+ *
+ * Every wishes video is for SOME occasion — a birthday, an anniversary, a shop's opening day, a
+ * festival nobody thought to list. The dropdown exists to save typing, never to limit what can be
+ * sold, so there is always a way to type the real thing.
+ */
+export const CUSTOM_FESTIVAL_OPTION = "__custom_festival__";
+
+/** True when this occasion is one the dropdown offers, rather than something typed in. */
+export function isListedFestival(name: string | undefined | null): boolean {
+  const v = name?.trim().toLowerCase();
+  return !!v && WISHES_FESTIVALS.some((f) => f.toLowerCase() === v);
+}

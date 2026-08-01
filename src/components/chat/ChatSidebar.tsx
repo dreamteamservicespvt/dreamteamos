@@ -4,6 +4,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { Search } from "lucide-react";
 import { useState } from "react";
+import { useAuthStore } from "@/store/authStore";
+import {
+  CHAT_SECTIONS, defaultChatSection, inChatSection, type ChatSectionKey,
+} from "@/utils/chatHelpers";
+import { getRoleLabel } from "@/utils/roleHelpers";
 import type { ChatContact } from "@/hooks/useChat";
 
 interface Props {
@@ -25,11 +30,28 @@ function timeAgo(ts: any): string {
 }
 
 export default function ChatSidebar({ contacts, activeContactUid, onSelect, loading }: Props) {
+  const user = useAuthStore((s) => s.user);
   const [search, setSearch] = useState("");
+  /**
+   * Which part of the company is listed. Opens on the reader's own section — the people they
+   * message every day — with everyone else one choice away rather than one rule away.
+   */
+  const [section, setSection] = useState<ChatSectionKey>(() => defaultChatSection(user?.role));
 
-  const filtered = contacts.filter((c) =>
-    c.name.toLowerCase().includes(search.toLowerCase()),
-  );
+  const sectionCounts = CHAT_SECTIONS.map((s) => ({
+    ...s,
+    count: contacts.filter((c) => inChatSection(c.role, s.key)).length,
+  }));
+
+  const filtered = contacts
+    .filter((c) => inChatSection(c.role, section))
+    // Searching is for finding a person, so it looks across the whole company, not just the
+    // section on screen — otherwise you have to know where someone sits to find them.
+    .filter((c) => c.name.toLowerCase().includes(search.toLowerCase()));
+
+  const searchHitsElsewhere = search.trim()
+    ? contacts.filter((c) => c.name.toLowerCase().includes(search.toLowerCase()) && !inChatSection(c.role, section)).length
+    : 0;
 
   // Sort: unread first, then by last message time
   const sorted = [...filtered].sort((a, b) => {
@@ -42,24 +64,44 @@ export default function ChatSidebar({ contacts, activeContactUid, onSelect, load
 
   return (
     <div className="flex flex-col flex-1 min-h-0 bg-background">
-      <div className="p-3 border-b border-border shrink-0">
+      <div className="p-3 border-b border-border shrink-0 space-y-2">
         <div className="relative">
           <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Search contacts…"
+            placeholder="Search everyone…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
+        <select
+          value={section}
+          data-test="chat-section"
+          onChange={(e) => setSection(e.target.value as ChatSectionKey)}
+          className="w-full h-9 px-2 text-sm rounded-lg border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+        >
+          {sectionCounts.map((s) => (
+            <option key={s.key} value={s.key}>{s.label} ({s.count})</option>
+          ))}
+        </select>
       </div>
 
       <ScrollArea className="flex-1">
         {loading ? (
           <div className="p-6 text-center text-muted-foreground text-sm">Loading…</div>
         ) : sorted.length === 0 ? (
-          <div className="p-6 text-center text-muted-foreground text-sm">No contacts found</div>
+          <div className="p-6 text-center text-muted-foreground text-sm">
+            {/* Almost always the section, not the company — say so rather than "no contacts". */}
+            {searchHitsElsewhere > 0 ? (
+              <>
+                Nobody here matches “{search}”.
+                <button onClick={() => setSection("all")} className="mt-2 block w-full text-primary hover:underline">
+                  {searchHitsElsewhere} match{searchHitsElsewhere === 1 ? "" : "es"} in other sections — show everyone
+                </button>
+              </>
+            ) : "No contacts found"}
+          </div>
         ) : (
           sorted.map((c) => (
             <button
@@ -88,7 +130,9 @@ export default function ChatSidebar({ contacts, activeContactUid, onSelect, load
                 </div>
                 <div className="flex items-center justify-between mt-0.5">
                   <span className="text-xs text-muted-foreground truncate max-w-[160px]">
-                    {c.lastMessage ?? "No messages yet"}
+                    {/* With the whole company listed, "who is this?" matters more than "no messages
+                        yet" — so an untouched conversation shows their role instead. */}
+                    {c.lastMessage ?? getRoleLabel(c.role as never)}
                   </span>
                   {c.unreadCount > 0 && (
                     <Badge

@@ -145,6 +145,22 @@ export async function saveEmployeeProfile(
     },
     { merge: true },
   );
+
+  // The HR record holds PAN, Aadhaar and addresses, so it is read only by the person it belongs to
+  // and their admin — rightly. But everyone needs to know whose birthday it is, and reading the
+  // whole team's HR records to work that out would be both a privacy leak and, on the free tier,
+  // a read budget nobody has. So the date of birth alone is mirrored onto the user document, which
+  // every screen already loads. Nothing else from the KYC section goes with it.
+  if ("dob" in patch) await mirrorDobToUser(uid, patch.dob ?? null);
+}
+
+/** Best-effort: the HR record is the truth, and a failed mirror must not lose a saved profile. */
+async function mirrorDobToUser(uid: string, dob: string | null): Promise<void> {
+  try {
+    await setDoc(doc(db, "users", uid), { dob, updatedAt: serverTimestamp() }, { merge: true });
+  } catch (err) {
+    console.error("[hr] could not mirror date of birth to the user record:", err);
+  }
 }
 
 /**

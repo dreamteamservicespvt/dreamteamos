@@ -88,6 +88,9 @@ export function withRequirementDefaults(requirement?: AdRequirement | null) {
     customAttire: requirement?.customAttire?.trim() || "",
     aspectRatio: (requirement?.aspectRatio || DEFAULT_REQUIREMENT.aspectRatio) as "9:16" | "16:9",
     notes: requirement?.notes?.trim() || "",
+    // Blank unless a wishes video was sold; there is deliberately no default occasion, because a
+    // greeting video themed for the wrong festival is worse than one nobody has themed yet.
+    festival: requirement?.festival?.trim() || "",
     specialCategory: requirement?.specialCategory?.trim() || "",
     // Only meaningful for a special-category sale, and there the sales member always answers it —
     // so an unanswered flag means "no photos coming", which is the safe assumption to build on.
@@ -116,6 +119,8 @@ export interface AssignmentFormSpec {
   language: string;
   customLanguage: string;
   requirementNotes: string;
+  /** The occasion a wishes video is for, as sold ("" for the other categories). */
+  festival: string;
   /** Special-category cartoon duo sold for this job ("" for a normal human-model ad). */
   characterPack: string;
   /** For a pack ad: whether the client is sending photos of their own premises. */
@@ -161,6 +166,9 @@ export function assignmentFormFromOrder(order: Order, knownLanguages?: string[])
     language: known ? r.language : "Custom",
     customLanguage: known ? "" : r.language,
     requirementNotes: r.notes,
+    // Only a wishes video has an occasion. Carrying one onto a promotional ad would theme it for a
+    // festival nobody bought, so a category change at assignment time drops it.
+    festival: category === "wishes" ? r.festival : "",
     // A pack id sold before that duo was retired would otherwise open the form on a treatment the
     // generator no longer knows; resolving it here degrades to a normal ad instead of failing later.
     characterPack: getCharacterPack(r.specialCategory) ? r.specialCategory : "",
@@ -190,15 +198,20 @@ export function buildAssignmentRequirementsMessage(a: {
   accessCode?: string;
   characterPack?: string;
   realLocationProvided?: boolean;
+  festival?: string;
 }): string {
   const business = (a.businessName || a.clientName || "").trim();
   const notes = a.requirementNotes?.trim();
   const pack = getCharacterPack(a.characterPack);
+  const festival = a.festival?.trim();
   return [
     `🎬✨ *NEW AD ASSIGNMENT* ✨🎬`,
     ``,
     business ? `🏢 *Business:* ${business}` : null,
     `🎯 *Category:* ${categoryLabel(a.category)}`,
+    // The occasion decides the entire look of a greeting video, so it sits with the category
+    // rather than down in the spec — it is what this job IS, not a detail of how to make it.
+    festival ? `🎊 *Occasion:* ${festival}` : null,
     `⏱️ *Duration:* ${a.duration} (${a.clipCount} clips${hasPoster(a.duration) ? " + Poster" : ""} + ${END_CREDITS_SECONDS}s EC)`,
     ``,
     `📋 *AD SPECIFICATION*`,
@@ -237,6 +250,8 @@ export function requirementSummary(requirement?: AdRequirement | null): string[]
   if (!r) return [];
   const pack = getCharacterPack(r.specialCategory);
   return [
+    // First, because on a wishes order it is the thing the tech team needs to see at a glance.
+    r.festival?.trim() ? `🎊 ${r.festival.trim()}` : null,
     r.language,
     pack ? `🎭 ${pack.label}`
       : r.modelGender === "male" ? "👨 Male" : r.modelGender === "female" ? "👩 Female" : null,

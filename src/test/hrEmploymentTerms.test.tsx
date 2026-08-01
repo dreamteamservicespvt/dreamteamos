@@ -40,60 +40,41 @@ configure({ testIdAttribute: "data-test" });
 beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
 
-describe("the employee filling in their own record", () => {
-  it("is invited to fill it in rather than told to wait for an admin", () => {
+describe("the employee looking at their own record", () => {
+  it("cannot edit it — these are the company's terms, not a form to fill in", () => {
+    // Letting one party to an agreement type the salary, designation and joining date, then print
+    // them on a letter under the company's signature, made the admin an auditor of a form rather
+    // than the person setting the term.
     render(<EmploymentTermsCard profile={blank()} actor={actor} mode="employee" />);
-    expect(screen.getByTestId("fill-in-hint")).toHaveTextContent(/Press Fill in to enter your role/i);
-    expect(screen.getByTestId("edit-terms")).toHaveTextContent("Fill in");
+    expect(screen.queryByTestId("edit-terms")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("save-terms")).not.toBeInTheDocument();
   });
 
-  it("saves what they entered, marked as self-declared", async () => {
+  it("is told who sets it and who to go to, rather than shown a dead screen", () => {
     render(<EmploymentTermsCard profile={blank()} actor={actor} mode="employee" />);
-    fireEvent.click(screen.getByTestId("edit-terms"));
-
-    fireEvent.change(screen.getByTestId("terms-designation"), { target: { value: "Video Editor" } });
-    fireEvent.change(screen.getByTestId("terms-joining"), { target: { value: "2026-02-01" } });
-    fireEvent.change(screen.getByTestId("terms-salary"), { target: { value: "22000" } });
-    fireEvent.click(screen.getByTestId("save-terms"));
-
-    await waitFor(() => expect(saveEmploymentTerms).toHaveBeenCalledTimes(1));
-    const [uid, terms, who, opts] = saveEmploymentTerms.mock.calls[0];
-    expect(uid).toBe("m1");
-    expect(terms.designation).toBe("Video Editor");
-    expect(terms.joiningDate).toBe("2026-02-01");
-    expect(terms.ctcMonthly).toBe(22000);
-    expect(who).toBe(actor);
-    expect(opts).toEqual({ bySelf: true });
+    expect(screen.getByTestId("terms-admin-only")).toHaveTextContent(/admin hasn't set your employment terms/i);
   });
 
-  it("is never offered the levers that decide its own notice period", () => {
+  it("says the same thing once the terms are actually set", () => {
     render(<EmploymentTermsCard profile={filled()} actor={actor} mode="employee" />);
-    fireEvent.click(screen.getByTestId("edit-terms"));
-
-    expect(screen.queryByLabelText(/notice period override/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/critical senior role/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/offer issued on/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/set by your admin/i)).toBeInTheDocument();
+    expect(screen.getByTestId("terms-admin-only")).toHaveTextContent(/Set by your admin/i);
   });
 
-  it("does not send those company terms even if they were already on the record", async () => {
-    render(<EmploymentTermsCard actor={actor} mode="employee"
-      profile={filled({ seniorRole: true, noticeDaysOverride: 60, offerIssuedOn: "2025-12-01" })} />);
-    fireEvent.click(screen.getByTestId("edit-terms"));
-    fireEvent.click(screen.getByTestId("save-terms"));
-
-    await waitFor(() => expect(saveEmploymentTerms).toHaveBeenCalled());
-    const [, terms] = saveEmploymentTerms.mock.calls[0];
-    expect(terms).not.toHaveProperty("seniorRole");
-    expect(terms).not.toHaveProperty("noticeDaysOverride");
-    expect(terms).not.toHaveProperty("offerIssuedOn");
-  });
-
-  it("tells them their entry is awaiting confirmation, and offers them no Confirm button", () => {
+  it("is never offered the Confirm button — confirming is the admin's act", () => {
     render(<EmploymentTermsCard actor={actor} mode="employee"
       profile={filled({ termsSelfDeclared: true, termsSelfDeclaredOn: "2026-02-01" })} />);
-    expect(screen.getByTestId("self-declared-banner")).toHaveTextContent(/Your admin will check and confirm/i);
     expect(screen.queryByTestId("confirm-terms")).not.toBeInTheDocument();
+  });
+
+  it("still sees an unconfirmed record explained, from records entered before the lock", () => {
+    render(<EmploymentTermsCard actor={actor} mode="employee"
+      profile={filled({ termsSelfDeclared: true, termsSelfDeclaredOn: "2026-02-01" })} />);
+    expect(screen.getByTestId("self-declared-banner")).toHaveTextContent(/not confirmed yet/i);
+  });
+
+  it("can read their notice period, which is theirs to know and not to set", () => {
+    render(<EmploymentTermsCard profile={filled()} actor={actor} mode="employee" />);
+    expect(screen.getByTestId("notice-period")).toBeInTheDocument();
   });
 
   it("shows them their employee ID, which lives outside the HR record", () => {
@@ -138,6 +119,38 @@ describe("the admin reviewing it", () => {
     render(<EmploymentTermsCard profile={filled()} actor={actor} mode="admin" />);
     fireEvent.click(screen.getByTestId("edit-terms"));
     expect(screen.getByText(/critical senior role/i)).toBeInTheDocument();
+  });
+
+  it("can set a notice period for one member, whatever the policy says", async () => {
+    render(<EmploymentTermsCard profile={filled()} actor={actor} mode="admin" />);
+    fireEvent.click(screen.getByTestId("edit-terms"));
+    fireEvent.change(screen.getByTestId("terms-notice-days"), { target: { value: "45" } });
+    fireEvent.click(screen.getByTestId("save-terms"));
+
+    await waitFor(() => expect(saveEmploymentTerms).toHaveBeenCalled());
+    expect(saveEmploymentTerms.mock.calls[0][1].noticeDaysOverride).toBe(45);
+  });
+
+  it("clearing the box hands the member back to company policy", async () => {
+    render(<EmploymentTermsCard profile={filled({ noticeDaysOverride: 45 })} actor={actor} mode="admin" />);
+    fireEvent.click(screen.getByTestId("edit-terms"));
+    fireEvent.change(screen.getByTestId("terms-notice-days"), { target: { value: "" } });
+    fireEvent.click(screen.getByTestId("save-terms"));
+
+    await waitFor(() => expect(saveEmploymentTerms).toHaveBeenCalled());
+    expect(saveEmploymentTerms.mock.calls[0][1].noticeDaysOverride).toBeNull();
+  });
+
+  it("says when a notice period was set for this person rather than derived", () => {
+    // An admin checking the figure needs to know which of the two it is.
+    render(<EmploymentTermsCard profile={filled({ noticeDaysOverride: 45 })} actor={actor} mode="admin" />);
+    expect(screen.getByTestId("notice-period")).toHaveTextContent("45 days");
+    expect(screen.getByTestId("notice-period")).toHaveTextContent(/Set for this member/i);
+  });
+
+  it("says nothing of the sort when the policy produced it", () => {
+    render(<EmploymentTermsCard profile={filled()} actor={actor} mode="admin" />);
+    expect(screen.getByTestId("notice-period")).not.toHaveTextContent(/Set for this member/i);
   });
 });
 

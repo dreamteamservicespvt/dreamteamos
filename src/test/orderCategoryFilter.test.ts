@@ -47,11 +47,18 @@ describe("orderCategoryOptions", () => {
     o("social_media_management"),
   ];
 
-  it("offers only what is actually in the queue", () => {
+  it("offers what is in the queue, plus the three kinds the team always produces", () => {
     const keys = orderCategoryOptions(queue).map((x) => x.key);
-    expect(keys).toEqual([ALL_ORDER_CATEGORIES, "promotional", "cinematic", "social_media_management"]);
-    // Never a fixed catalog: nothing was sold as a website, so it is not offered.
+    expect(keys).toEqual([
+      ALL_ORDER_CATEGORIES, "promotional", "cinematic", "social_media_management", "wishes",
+    ]);
+    // Never the whole catalog: nothing was sold as a website, so it is not offered.
     expect(keys).not.toContain("website");
+  });
+
+  it("always offers Wishes, so the filter can be relied on outside festival season", () => {
+    const wishes = orderCategoryOptions(queue).find((x) => x.key === "wishes");
+    expect(wishes).toEqual({ key: "wishes", label: "Wishes", count: 0 });
   });
 
   it("counts each kind, with bulk folded into its own", () => {
@@ -75,9 +82,12 @@ describe("orderCategoryOptions", () => {
     expect(cinematic!.count).toBe(0);
   });
 
-  it("survives an empty queue", () => {
+  it("survives an empty queue, still offering the three video kinds", () => {
     expect(orderCategoryOptions([])).toEqual([
       { key: ALL_ORDER_CATEGORIES, label: "All services", count: 0 },
+      { key: "cinematic", label: "Cinematic Ad", count: 0 },
+      { key: "promotional", label: "Promotional Ad", count: 0 },
+      { key: "wishes", label: "Wishes", count: 0 },
     ]);
   });
 

@@ -5,27 +5,54 @@ export function getChatRoomId(uid1: string, uid2: string): string {
   return [uid1, uid2].sort().join("_");
 }
 
+/** Everyone who works here. Ordered so the section list reads top-down by seniority. */
+export const CHATTABLE_ROLES: UserRole[] = [
+  "main_admin", "tech_admin", "sales_admin", "accounts_admin",
+  "tech_team_leader", "tech_member", "sales_member",
+];
+
 /**
- * Returns all roles a given role can chat with.
- * Admins see their members; members see their admin + fellow members.
+ * Who a person can chat with: everybody.
+ *
+ * It used to be a per-role allow-list, and every line of it was a rule nobody had asked for — a
+ * sales member could not message the tech member building their client's ad, a team leader could
+ * not reach the sales admin whose order they were querying. The people doing the work know who they
+ * need; the platform's job is to not be in the way.
+ *
+ * The list is kept navigable instead: the sidebar groups contacts by section and opens on the
+ * reader's own, which is who they talk to most — see CHAT_SECTIONS.
  */
-export function getChatContactRoles(role: UserRole): UserRole[] {
-  switch (role) {
-    // Admins talk to their own team *and* to each other — sales and tech constantly need to
-    // coordinate on orders, delivery and upsells, so they must not be siloed.
-    case "tech_admin":
-      return ["tech_member", "tech_team_leader", "sales_admin"];
-    case "sales_admin":
-      return ["sales_member", "tech_admin"];
-    case "tech_team_leader":
-      return ["tech_member", "tech_admin"];
-    case "tech_member":
-      return ["tech_admin", "tech_team_leader", "tech_member"];
-    case "sales_member":
-      return ["sales_admin", "sales_member"];
-    default:
-      return [];
-  }
+export function getChatContactRoles(_role: UserRole): UserRole[] {
+  return CHATTABLE_ROLES;
+}
+
+/** The groups the contact list is split into, in the order they are offered. */
+export type ChatSectionKey = "all" | "sales" | "tech" | "admins";
+
+export const CHAT_SECTIONS: { key: ChatSectionKey; label: string; roles: UserRole[] }[] = [
+  { key: "all", label: "Everyone", roles: CHATTABLE_ROLES },
+  { key: "sales", label: "Sales team", roles: ["sales_admin", "sales_member"] },
+  { key: "tech", label: "Tech team", roles: ["tech_admin", "tech_team_leader", "tech_member"] },
+  { key: "admins", label: "Admins", roles: ["main_admin", "tech_admin", "sales_admin", "accounts_admin"] },
+];
+
+/**
+ * The section the contact list opens on: the reader's own.
+ *
+ * A sales member's day is mostly other sales people, so that is what they should see first —
+ * without it, opening the list on "Everyone" buries the five people they actually message under
+ * the whole company.
+ */
+export function defaultChatSection(role: UserRole | undefined): ChatSectionKey {
+  if (role === "sales_admin" || role === "sales_member") return "sales";
+  if (role === "tech_admin" || role === "tech_team_leader" || role === "tech_member") return "tech";
+  return "all";
+}
+
+/** Whether a contact belongs in a section. */
+export function inChatSection(role: string | undefined, section: ChatSectionKey): boolean {
+  const found = CHAT_SECTIONS.find((s) => s.key === section);
+  return !!found && !!role && found.roles.includes(role as UserRole);
 }
 
 /** @deprecated use getChatContactRoles */

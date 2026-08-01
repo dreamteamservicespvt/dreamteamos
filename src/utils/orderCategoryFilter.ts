@@ -7,9 +7,11 @@
  *
  * Two decisions worth stating:
  *
- *  • The options are built from what is actually in the queue, never from a fixed list. The catalog
- *    grows, and a filter offering "Poster Development (0)" for a team that has never sold one is
- *    noise; a filter that silently omits a category somebody DID sell is worse.
+ *  • The options are built from what is actually in the queue, plus the three video kinds the team
+ *    produces day in and day out. The catalog grows, and a filter offering "Poster Development (0)"
+ *    for a team that has never sold one is noise — but wishes, promotional and cinematic are the
+ *    work itself, and a filter that offers them only on the days somebody happened to sell one is
+ *    a filter nobody can rely on.
  *
  *  • A bulk order counts as the kind of video it is made of. Ten cinematic ads bought at once are
  *    cinematic work — someone filtering for Cinematic to plan the week's shoots needs them in the
@@ -32,6 +34,13 @@ export const ALL_ORDER_CATEGORIES = "all services";
  * tab with no promotional work says so by name and offers one click back to everything.
  */
 export const DEFAULT_ORDER_CATEGORY = "promotional";
+
+/**
+ * The three kinds of video the team produces, always offered whether or not any are in the queue
+ * today. These are the buckets the tech side plans and staffs around — "show me the wishes videos"
+ * has to be answerable on a quiet Tuesday as well as the week before Diwali.
+ */
+export const ALWAYS_OFFERED_CATEGORIES = ["wishes", "promotional", "cinematic"] as const;
 
 export interface OrderCategoryOption {
   key: string;
@@ -65,7 +74,7 @@ export function orderCategoryOptions(
   orders: Pick<Order, "category" | "bulkAdType">[],
   selected: string = ALL_ORDER_CATEGORIES,
 ): OrderCategoryOption[] {
-  const counts = new Map<string, number>();
+  const counts = new Map<string, number>(ALWAYS_OFFERED_CATEGORIES.map((k) => [k, 0]));
   for (const order of orders) {
     const key = orderCategoryKey(order);
     if (!key) continue;

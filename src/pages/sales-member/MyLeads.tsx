@@ -37,8 +37,9 @@ import { buildClientSaleMessage } from "@/utils/salesMessage";
 import { dayRevenue, saleDay, type DayRevenue } from "@/utils/salesRevenue";
 import {
   Search, Phone, MessageCircle, StickyNote, ChevronDown, ChevronUp, Clock,
-  Loader2, Check, Upload, ExternalLink, Plus, Trash2, ShoppingBag, X, Lock, AlertTriangle, Snowflake, FileText, RotateCcw, Clapperboard, Copy, Pencil, History, Send, Layers,
+  Loader2, Check, Upload, ExternalLink, Plus, Trash2, ShoppingBag, X, Lock, AlertTriangle, Snowflake, FileText, RotateCcw, Clapperboard, Copy, Pencil, History, Send, Layers, PartyPopper,
 } from "lucide-react";
+import { CUSTOM_FESTIVAL_OPTION, WISHES_FESTIVALS, isListedFestival } from "@/utils/festivals";
 
 type TimestampLike = { toMillis?: () => number; seconds?: number } | null | undefined;
 function tsToMs(ts: TimestampLike): number {
@@ -1527,6 +1528,9 @@ function describeSaleChanges(prev: SaleDetail, next: SaleDetail): string[] {
   const pr = prev.requirement || {};
   const nr = next.requirement || {};
   if ((pr.language || "") !== (nr.language || "")) out.push(`Language: ${pr.language || "—"} → ${nr.language || "—"}`);
+  // Changing the occasion changes the whole video, so it is logged by name rather than folded into
+  // a generic "requirement updated" — a member already building a Diwali ad has to hear about it.
+  if ((pr.festival || "") !== (nr.festival || "")) out.push(`Occasion: ${pr.festival || "—"} → ${nr.festival || "—"}`);
   const model = (v?: string) => (v === "male" ? "Male" : v === "female" ? "Female" : "—");
   if ((pr.modelGender || "") !== (nr.modelGender || "")) out.push(`Model: ${model(pr.modelGender)} → ${model(nr.modelGender)}`);
   const attire = (r: typeof pr) => (r.attireType ? attireLabel(r.attireType, r.customAttire) : "—");
@@ -1621,6 +1625,7 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
       customAttire: r.customAttire,
       aspectRatio: r.aspectRatio as "9:16" | "16:9",
       notes: r.notes,
+      festival: r.festival,
       specialCategory: r.specialCategory,
       realLocationProvided: r.realLocationProvided,
     };
@@ -1628,6 +1633,19 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
   const [languages, setLanguages] = useState<string[]>(() => mergeAdLanguages(null));
   const [customLanguage, setCustomLanguage] = useState("");
   useEffect(() => watchAdLanguages(setLanguages), []);
+
+  /**
+   * The occasion a wishes video is for. Offered as a list because the same twenty-odd festivals
+   * come up all year and typing them invites spelling that the generator's theme lookup will not
+   * recognise — with a free-text escape, because a client can want a video for their shop's
+   * anniversary and no list will ever cover that.
+   */
+  const [festivalChoice, setFestivalChoice] = useState<string>(
+    () => (isListedFestival(req.festival) ? req.festival : req.festival ? CUSTOM_FESTIVAL_OPTION : ""),
+  );
+  const [customFestival, setCustomFestival] = useState(
+    () => (req.festival && !isListedFestival(req.festival) ? req.festival : ""),
+  );
 
   // Only ad deliverables (wishes / promotional / cinematic) have a model, attire and ratio.
   const isAdSale = isAdCategory(category);
@@ -1655,6 +1673,16 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
   const adCategory = effectiveAdCategory(category, isBulk ? bulkAdType : undefined);
   const packages = PACKAGES[adCategory] || [];
   const selectedPkg = packages.find((p) => p.label === packageKey);
+
+  /**
+   * Only a greeting video has an occasion — and it must have one, because the generator themes the
+   * entire ad from it. A wishes sale with the festival left blank reaches the tech team as "make a
+   * wishes video" and someone has to ring the client back to ask what for. Bulk wishes counts too:
+   * ten Diwali videos are still ten Diwali videos.
+   */
+  const isWishesSale = adCategory === "wishes";
+  const resolvedFestival = (festivalChoice === CUSTOM_FESTIVAL_OPTION ? customFestival : festivalChoice).trim();
+  const festivalMissing = isWishesSale && !resolvedFestival;
 
   /**
    * A bulk order is priced from the quantity, so the amount is computed rather than picked. The
@@ -1787,6 +1815,10 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
       toast({ title: "Language needed", description: "Type the custom language the client asked for.", variant: "destructive" });
       return;
     }
+    if (festivalMissing) {
+      toast({ title: "Which occasion?", description: "Pick the festival this wishes video is for — the tech team themes the whole ad from it.", variant: "destructive" });
+      return;
+    }
     setSaving(true);
     const promise = buildPromise({
       presetKey: slaPreset || CUSTOM_PRESET_KEY,
@@ -1804,6 +1836,9 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
           customAttire: req.attireType === AttireType.CUSTOM ? req.customAttire : "",
           aspectRatio: req.aspectRatio,
           notes: req.notes,
+          // Only a greeting video has an occasion. Storing one on a promotional ad would follow it
+          // into the generator and theme an ad nobody asked to be themed.
+          festival: isWishesSale ? resolvedFestival : "",
           specialCategory: req.specialCategory,
           // Only carried alongside a pack — on a normal ad "no real location" is not a fact about
           // the sale, and storing it would put a meaningless flag on every ordinary order.
@@ -2186,6 +2221,41 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
             <span className="ml-auto text-[10px] font-normal text-muted-foreground">Goes straight to the tech team</span>
           </div>
 
+          {/* The occasion comes first on a greeting video, because it is what the video IS — the
+              generator themes the wardrobe, the decorations, the colours and the script from it. */}
+          {isWishesSale && (
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-2.5 space-y-1.5">
+              <label className="flex items-center gap-1.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                <PartyPopper size={12} /> Which festival or occasion? *
+              </label>
+              <select
+                value={festivalChoice}
+                data-test="sale-festival"
+                onChange={(e) => setFestivalChoice(e.target.value)}
+                className={`w-full h-9 px-3 rounded-md bg-card border text-foreground text-sm outline-none focus:border-primary ${festivalMissing ? "border-destructive/60" : "border-border"}`}
+              >
+                <option value="">Select the occasion…</option>
+                {WISHES_FESTIVALS.map((f) => <option key={f} value={f}>{f}</option>)}
+                {/* A client can want a video for their own anniversary or shop opening — the list
+                    is there to save typing, never to limit what can be sold. */}
+                <option value={CUSTOM_FESTIVAL_OPTION}>Other occasion…</option>
+              </select>
+              {festivalChoice === CUSTOM_FESTIVAL_OPTION && (
+                <input
+                  type="text"
+                  data-test="sale-festival-custom"
+                  value={customFestival}
+                  onChange={(e) => setCustomFestival(e.target.value)}
+                  placeholder="e.g. Shop 5th anniversary, Birthday wishes…"
+                  className={`w-full h-9 px-3 rounded-md bg-card border text-foreground text-sm outline-none focus:border-primary ${festivalMissing ? "border-destructive/60" : "border-border"}`}
+                />
+              )}
+              <p className="text-[10px] text-muted-foreground">
+                The tech team themes the whole video from this — ask the client if you're not sure.
+              </p>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
               <label className="text-[11px] text-muted-foreground">Business name</label>
@@ -2448,9 +2518,11 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
                   ? "Add proof to continue"
                   : languageMissing
                     ? "Type the language to continue"
-                    : editing
-                      ? `Save changes — ${formatCurrency(amount)}`
-                      : `Add Sale — ${formatCurrency(amount)}`}
+                    : festivalMissing
+                      ? "Pick the occasion to continue"
+                      : editing
+                        ? `Save changes — ${formatCurrency(amount)}`
+                        : `Add Sale — ${formatCurrency(amount)}`}
       </button>
     </div>
   );

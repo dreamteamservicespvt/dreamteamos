@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { deleteFCMToken } from "@/services/fcm";
 import InstallAppButton from "@/components/layout/InstallAppButton";
+import MemberAvatar from "@/components/MemberAvatar";
 
 interface SidebarProps {
   mobileOpen: boolean;
@@ -153,9 +154,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               <div className="border-t border-border p-3 shrink-0 space-y-2">
                 <InstallAppButton />
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-primary/20 flex items-center justify-center font-display font-bold text-primary text-sm shrink-0">
-                    {user.name?.charAt(0) || "U"}
-                  </div>
+                  <MemberAvatar name={user.name} avatar={user.avatar} size={36} />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-foreground truncate">{user.name}</p>
                     <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${getRoleColor(user.role)}`}>{getRoleLabel(user.role)}</span>
@@ -261,7 +260,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         <InstallAppButton collapsed={collapsed} />
         {!collapsed ? (
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-primary/20 flex items-center justify-center font-display font-bold text-primary text-sm shrink-0">{user.name?.charAt(0) || "U"}</div>
+            <MemberAvatar name={user.name} avatar={user.avatar} size={36} />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-foreground truncate">{user.name}</p>
               <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${getRoleColor(user.role)}`}>{getRoleLabel(user.role)}</span>

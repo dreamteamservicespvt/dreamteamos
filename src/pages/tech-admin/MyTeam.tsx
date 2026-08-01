@@ -23,6 +23,7 @@ import PeriodFilterBar from "@/components/dashboard/PeriodFilterBar";
 import { format } from "date-fns";
 import { defaultPeriodFilter, periodLabel, withinPeriod, type PeriodFilter } from "@/utils/periodFilter";
 import { workCountsOn } from "@/utils/workDates";
+import MemberAvatar from "@/components/MemberAvatar";
 
 export default function TechAdminMyTeam() {
   const currentUser = useAuthStore((s) => s.user);
@@ -460,9 +461,7 @@ export default function TechAdminMyTeam() {
                   <tr key={m.uid} onClick={() => openMember(m)} className={`border-b border-border/50 hover:bg-accent/30 transition-colors cursor-pointer ${i % 2 === 1 ? "bg-elevated/20" : ""}`}>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-role-tech-member/15 flex items-center justify-center font-display font-bold text-role-tech-member text-xs">
-                          {m.name?.charAt(0)}
-                        </div>
+                        <MemberAvatar name={m.name} avatar={m.avatar} size={32} />
                         <div>
                           <div className="flex items-center gap-1.5">
                             <p className="font-medium text-foreground">{m.name}</p>
@@ -693,9 +692,7 @@ function MobileTechCards({ members, loading, onToggle, onDelete, onEdit, onClick
         <div key={m.uid} onClick={() => onClickMember(m)} className="bg-card border border-border rounded-xl p-4 cursor-pointer hover:bg-accent/30 transition-colors">
           <div className="flex items-start justify-between mb-3">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-role-tech-member/15 flex items-center justify-center font-display font-bold text-role-tech-member text-sm shrink-0">
-                {m.name?.charAt(0)}
-              </div>
+              <MemberAvatar name={m.name} avatar={m.avatar} size={40} />
               <div>
                 <div className="flex items-center gap-1.5">
                   <p className="font-medium text-foreground text-sm">{m.name}</p>

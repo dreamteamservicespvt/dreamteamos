@@ -15,6 +15,7 @@ import PayoutMethodsPanel from "@/components/payroll/PayoutMethodsPanel";
 import { EMPLOYMENT_LABELS, employmentOf } from "@/services/employment";
 import { getRoleLabel } from "@/utils/roleHelpers";
 import { saveMemberPassword } from "@/services/memberCredentials";
+import ProfilePhotoUpload from "@/components/ProfilePhotoUpload";
 
 export default function TechMemberProfile() {
   const user = useAuthStore((s) => s.user);
@@ -75,10 +76,9 @@ export default function TechMemberProfile() {
       </div>
 
       <div className="bg-card border border-border rounded-xl p-5">
-        <div className="flex items-center gap-4 mb-6">
-          <div className="w-14 h-14 rounded-full bg-role-tech-member/15 text-role-tech-member flex items-center justify-center">
-            <User size={24} />
-          </div>
+        <div className="flex flex-wrap items-center gap-4 mb-6">
+          {/* One upload, and the photo follows them into chat, calls and every team list. */}
+          <ProfilePhotoUpload uid={user.uid} name={user.name} avatar={user.avatar} />
           <div>
             <p className="font-display font-bold text-foreground text-lg">{user.name}</p>
             <div className="flex items-center gap-1.5 mt-0.5">

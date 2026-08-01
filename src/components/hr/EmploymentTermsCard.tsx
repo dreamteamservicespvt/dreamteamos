@@ -15,17 +15,19 @@ import { Field, Input, SectionCard, Select } from "./ui";
  * The employment terms — the same set that the offer letter and the appointment letter are built
  * from, which is exactly why they are edited in one place rather than typed into each letter.
  *
- * Both sides fill this in. The employee knows their own joining date, role and what they were
- * offered, and a record that stays empty until an admin gets round to it is no record at all — so
- * they enter it from their own profile. What they enter is marked self-declared until an admin
- * confirms it, because these fields print on a letter carrying the company's signature.
+ * ── Only the admin writes these ───────────────────────────────────────────────────────────────
+ * Employees used to fill their own in, marked "self-declared" until an admin confirmed. It reads
+ * fairly and works badly: these are the terms of an agreement between two parties, and letting one
+ * party type the salary, the designation and the joining date — then print them on a letter under
+ * the company's signature — puts the admin in the position of auditing a form instead of setting a
+ * term. So the record is now the company's: a sales member's terms are set by their sales admin, a
+ * tech member's by their tech admin, and the employee sees exactly what has been agreed.
  *
- * The policy levers — senior-role flag, notice-period override, offer dates — stay with the admin
- * in every case. They change what notice an employee owes, and that is the company's term to set,
- * not one to be self-selected.
+ * Employees keep everything that genuinely IS theirs — their own KYC details, signing what they are
+ * sent, acknowledging assets, resigning. This card is not one of them.
  *
- * The notice period itself is shown but never entered: it is derived from engagement, stage and
- * seniority by policy.
+ * Notice period is derived from engagement, stage and seniority, unless the admin sets a number for
+ * this specific person — which overrides the policy for them alone.
  */
 export default function EmploymentTermsCard({
   profile, actor, readOnly, mode = "admin", title, employeeId,
@@ -47,6 +49,8 @@ export default function EmploymentTermsCard({
   const [form, setForm] = useState(profile);
 
   const isAdmin = mode === "admin";
+  /** An employee reads their terms; only their admin writes them. */
+  const canEdit = isAdmin && !readOnly;
   const notice = noticePeriodFor(profile);
   const probationEnd = probationEndDate(profile);
   const daysLeft = probationDaysRemaining(profile);
@@ -120,7 +124,7 @@ export default function EmploymentTermsCard({
     <SectionCard
       title={title || (isAdmin ? "Employment terms" : "My employment")}
       icon={<Briefcase size={15} className="text-primary" />}
-      action={readOnly ? null : editing ? (
+      action={!canEdit ? null : editing ? (
         <div className="flex gap-2">
           <button onClick={() => setEditing(false)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-border px-2.5 text-xs font-medium text-muted-foreground hover:bg-accent">
             <X size={13} /> Cancel
@@ -160,8 +164,8 @@ export default function EmploymentTermsCard({
               </>
             ) : (
               <>
-                You filled these in yourself. Your admin will check and confirm them — until then they
-                are your own record of what was agreed, not the company's.
+                These were entered before your admin took over this record, so they are not confirmed
+                yet. Your admin will check and confirm them.
               </>
             )}
           </p>
@@ -174,11 +178,14 @@ export default function EmploymentTermsCard({
           {profile.termsConfirmedOn ? ` on ${profile.termsConfirmedOn}` : ""}.
         </p>
       )}
-      {!isAdmin && blank && !editing && (
+      {/* An employee's copy is a statement of what has been agreed, so it says who sets it and who
+          to go to — an unexplained read-only screen just looks broken. */}
+      {!isAdmin && (
         <p className="mb-3 rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground"
-          data-test="fill-in-hint">
-          Nothing here yet. Press <b className="text-foreground">Fill in</b> to enter your role, joining
-          date and the terms you were offered — your admin will confirm them.
+          data-test="terms-admin-only">
+          {blank
+            ? "Your admin hasn't set your employment terms yet. Ask them to fill this in — these are the details your offer and appointment letters are printed from."
+            : "Set by your admin. If anything here is wrong, tell them and they'll correct it — these are the details your letters are printed from."}
         </p>
       )}
 
@@ -216,9 +223,12 @@ export default function EmploymentTermsCard({
                 onChange={(e) => set("offerIssuedOn", e.target.value)} />
               <Input label="Offer accepted on" type="date" value={form.offerAcceptedOn || ""}
                 onChange={(e) => set("offerAcceptedOn", e.target.value)} />
-              <Input label="Notice period override (days)" type="number" min={0} value={form.noticeDaysOverride ?? ""}
+              {/* The per-person lever. Policy covers the normal cases; this is for the ones that
+                  were actually negotiated, and it wins over everything else for this employee. */}
+              <Input label="Notice period for this member (days)" type="number" min={0}
+                value={form.noticeDaysOverride ?? ""} data-test="terms-notice-days"
                 onChange={(e) => set("noticeDaysOverride", e.target.value === "" ? null : Number(e.target.value))}
-                hint="Leave blank to follow company policy" />
+                hint={`Blank = company policy (${noticePeriodFor({ ...form, noticeDaysOverride: null }).days} days for this person)`} />
               <label className="flex items-center gap-2 self-end pb-2 sm:col-span-2">
                 <input type="checkbox" checked={!!form.seniorRole} onChange={(e) => set("seniorRole", e.target.checked)}
                   className="rounded border-border" />
@@ -254,9 +264,20 @@ export default function EmploymentTermsCard({
           <Field label="Working days" value={profile.workingDays} />
           {/* An empty record has no notice period to state — saying "15 days · During probation"
               next to "Probation: —" was two fields disagreeing about the same person. */}
+          {/* Says where the number came from: a figure set for this person alone reads differently
+              from one the policy produced, and an admin checking it needs to know which it is. */}
           <Field
             label={isAdmin ? "Notice period" : "My notice period"}
-            value={blank ? null : <span data-test="notice-period">{notice.days} days · {notice.label}</span>}
+            value={blank ? null : (
+              <span data-test="notice-period">
+                {notice.days} days · {notice.label}
+                {notice.basis === "override" && (
+                  <span className="ml-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                    Set for this member
+                  </span>
+                )}
+              </span>
+            )}
           />
           {isAdmin && (
             <Field label="Offer" value={profile.offerIssuedOn ? `Issued ${profile.offerIssuedOn}${profile.offerAcceptedOn ? ` · accepted ${profile.offerAcceptedOn}` : ""}` : null} />

@@ -26,7 +26,19 @@ export interface AppUser {
   monthlyTarget?: number;
   googleDriveBaseUrl?: string;
   phone: string;
+  /**
+   * Profile photo (a Cloudinary URL). Shown wherever this person appears — chat, calls, team lists,
+   * the leaderboard, workload cards and their own topbar — so one upload changes all of them.
+   */
   avatar?: string;
+  /**
+   * `yyyy-MM-dd`, mirrored from the HR record's KYC section (services/hr.saveEmployeeProfile).
+   *
+   * The HR record itself holds PAN, Aadhaar and addresses and is readable only by its owner and
+   * their admin. The birthday is the one field the whole team needs, so it — and nothing else —
+   * is copied here, where every screen already has it.
+   */
+  dob?: string | null;
   earningsOption?: "stipend_plus_5" | "incentive_10";
   /** Employment type — set/updated by Tech Admin or Tech Team Lead. Defaults to full_time when unset. */
   employmentType?: "full_time" | "part_time";
@@ -118,6 +130,12 @@ export interface WorkAssignment {
   customAttire?: string;
   aspectRatio?: "9:16" | "16:9";
   language?: string;
+  /**
+   * The occasion a wishes video is for, carried from the sale. Pre-fills and locks the AI
+   * Platform's festival picker, which themes the entire ad from it — the member never has to
+   * guess, and can never quietly build a Diwali ad for a Ugadi sale.
+   */
+  festival?: string;
   /** Free-text brief from the client, carried through from the sale. */
   requirementNotes?: string;
   /**
@@ -282,6 +300,16 @@ export interface AdRequirement {
   customAttire?: string;
   aspectRatio?: "9:16" | "16:9";
   notes?: string;                    // anything else the client asked for
+  /**
+   * Which occasion a WISHES video is for — "Diwali", "Ganesh Chaturthi", or anything the client
+   * named that isn't on the list. Meaningless for the other categories, so it is only collected
+   * and only shown for wishes.
+   *
+   * It is the single most important fact about a greeting video: the generator themes the whole
+   * ad from it (services/prompts.getFestivalTheme). Captured on the call, where the client says
+   * it, rather than guessed by the tech member days later.
+   */
+  festival?: string;
   /**
    * Special-category treatment: the id of a cartoon duo from services/characterPacks (e.g.
    * "motu_patlu"). Absent means a normal ad fronted by a human model. When it IS set the model and

@@ -25,6 +25,7 @@ import {
 } from '@/utils/assignmentSpecDiff';
 import { useToast } from '@/hooks/use-toast';
 import { clipLabel, clipRange, formatClipLine, formatClipScript, parseLabeledClips } from '@/utils/voiceOverFormat';
+import { CUSTOM_FESTIVAL_OPTION, WISHES_FESTIVALS } from '@/utils/festivals';
 
 interface AIPlatformAppProps {
   assignment?: WorkAssignment;
@@ -145,15 +146,10 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   // #2 — Video Duration is fixed by the assignment's clip count when launched from an assignment
   const durationLocked = !!assignment;
 
-  const CUSTOM_FESTIVAL_OPTION = '__custom_festival__';
-
-  const upcomingFestivals = [
-    'Ugadi', 'Sankranthi', 'Maha Shivaratri', 'Holi', 'Sri Rama Navami', 'Hanuman Jayanti',
-    'Good Friday', 'Easter', 'Akshaya Tritiya', 'Buddha Purnima', 'Eid ul-Fitr', 'Bakrid',
-    'Muharram', 'Raksha Bandhan', 'Krishna Janmashtami', 'Ganesh Chaturthi', 'Onam',
-    'Bathukamma', 'Navaratri', 'Dasara', 'Dussehra', 'Diwali', 'Karthika Pournami',
-    'Christmas', 'New Year', 'Republic Day', 'Independence Day', 'Gandhi Jayanti'
-  ];
+  // The occasion list is shared with the sales side (utils/festivals): the member who SELLS a
+  // wishes video and the member who GENERATES it have to be naming the same festival, or the sale
+  // says one thing and the generator themes another.
+  const upcomingFestivals = WISHES_FESTIVALS;
 
   useEffect(() => {
     if (user) loadSavedItems();
@@ -165,6 +161,13 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
    * and leave others on the old job.
    */
   const applyAssignmentSpec = useCallback((a: WorkAssignment) => {
+    // The festival picker is two pieces of state (the dropdown and the "other" box), so it is set
+    // here alongside the form rather than left on whatever the member last looked at.
+    if (a.festival) {
+      const listed = WISHES_FESTIVALS.includes(a.festival);
+      setSelectedFestivalOption(listed ? a.festival : CUSTOM_FESTIVAL_OPTION);
+      setCustomFestivalName(listed ? '' : a.festival);
+    }
     const clips = a.clipCount || Math.max(1, Math.floor((parseInt(a.duration) || 16) / 8));
     const seconds = Math.min(120, Math.max(8, clips * 8));
     const isPreset = [16, 32, 48, 64].includes(seconds);
@@ -182,6 +185,9 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       ...(a.attireType === AttireType.CUSTOM && a.customAttire ? { customAttire: a.customAttire } : {}),
       ...(a.aspectRatio ? { aspectRatio: a.aspectRatio } : {}),
       ...(a.language ? { language: a.language } : {}),
+      // The occasion was agreed with the client at sale time and themes the entire ad, so the
+      // member opens on it rather than choosing a festival nobody bought.
+      ...(a.festival ? { festivalName: a.festival } : {}),
       // A special category was sold, not chosen here — the member opens straight on the right
       // treatment rather than having to know that this particular job is a cartoon-duo ad.
       ...(a.characterPack
