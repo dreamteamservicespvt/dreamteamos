@@ -61,7 +61,7 @@ export default function MainAdminDashboard() {
       allLeads.filter((l: any) => l.saleDone && l.saleDetails).forEach((l: any) => {
         const member = allUsers.find((u) => u.uid === l.assignedTo);
         saleActivities.push({
-          text: `${member?.name || "Sales Member"} closed sale — ${formatCurrency(l.saleDetails?.amount || 0)}`,
+          text: `${member?.name || "Sales Executive"} closed sale — ${formatCurrency(l.saleDetails?.amount || 0)}`,
           time: l.lastUpdated?.toDate?.() ? timeAgo(l.lastUpdated.toDate()) : "recently",
           type: "sale",
         });
@@ -246,7 +246,7 @@ export default function MainAdminDashboard() {
               </thead>
               <tbody>
                 {salesTableData.length === 0 ? (
-                  <tr><td colSpan={4} className="py-6 text-center text-muted-foreground text-xs">No sales members yet</td></tr>
+                  <tr><td colSpan={4} className="py-6 text-center text-muted-foreground text-xs">No sales executives yet</td></tr>
                 ) : (
                   salesTableData.map((m, i) => {
                     const pct = Math.min((m.revenue / m.target) * 100, 100);

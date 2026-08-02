@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
-import { getRoleLabel, getRoleColor } from "@/utils/roleHelpers";
+import { getRoleLabel, getRoleColor, getProfileRoute } from "@/utils/roleHelpers";
 import { Bell, Menu, Check, Trash2 } from "lucide-react";
 import { formatTime } from "@/utils/formatters";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -203,17 +203,35 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
           </AnimatePresence>
         </div>
 
-        {user && (
-          <div className="flex items-center gap-2 pl-2 md:pl-3 border-l border-border">
-            <MemberAvatar name={user.name} avatar={user.avatar} size={30} />
-            <div className="hidden md:block">
-              <p className="text-sm font-medium text-foreground leading-tight">{user.name}</p>
-              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${getRoleColor(user.role)}`}>
-                {getRoleLabel(user.role)}
-              </span>
-            </div>
-          </div>
-        )}
+        {user && (() => {
+          const body = (
+            <>
+              <MemberAvatar name={user.name} avatar={user.avatar} size={30} />
+              <div className="hidden md:block text-left">
+                <p className="text-sm font-medium text-foreground leading-tight">{user.name}</p>
+                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${getRoleColor(user.role)}`}>
+                  {getRoleLabel(user.role)}
+                </span>
+              </div>
+            </>
+          );
+          const profileRoute = getProfileRoute(user.role);
+          // Your own face and name is the thing everybody clicks expecting their profile — so it
+          // goes there. An accounts admin has no such page, and gets plain text rather than a
+          // link that does nothing.
+          return profileRoute ? (
+            <Link
+              to={profileRoute}
+              title="My Profile"
+              data-test="topbar-profile"
+              className="flex items-center gap-2 rounded-lg pl-2 md:pl-3 py-1 pr-1 border-l border-border transition-colors hover:bg-accent"
+            >
+              {body}
+            </Link>
+          ) : (
+            <div className="flex items-center gap-2 pl-2 md:pl-3 border-l border-border">{body}</div>
+          );
+        })()}
       </div>
     </header>
   );

@@ -6,6 +6,7 @@ import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { useCallStore } from "@/store/callStore";
 import type { CallType } from "@/store/callStore";
+import { getRoleLabel } from "@/utils/roleHelpers";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -1075,7 +1076,7 @@ export default function VideoCallManager() {
                     </Avatar>
                     <div className="text-left flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{c.name}</p>
-                      <p className="text-[11px] text-white/50 capitalize">{c.role.replace("_", " ")}</p>
+                      <p className="text-[11px] text-white/50">{getRoleLabel(c.role as never)}</p>
                     </div>
                     {addingMember && <Loader2 className="w-4 h-4 animate-spin text-white/60" />}
                   </button>

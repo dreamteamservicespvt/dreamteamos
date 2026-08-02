@@ -9,6 +9,7 @@ import { addKycDocument, removeKycDocument, saveEmployeeProfile } from "@/servic
 import type { Actor } from "@/services/hr";
 import { cleanId, formatAadhaar, isValidAadhaar, isValidPan, kycCompletion, maskIdentifier } from "@/utils/hrPolicy";
 import { KYC_DOC_LABELS } from "@/types/hr";
+import type { AppUser } from "@/types";
 import type { EmployeeProfile, KycDocKind } from "@/types/hr";
 import { EmptyState, Field, Input, SectionCard, Select, Textarea } from "./ui";
 
@@ -20,9 +21,11 @@ import { EmptyState, Field, Input, SectionCard, Select, Textarea } from "./ui";
  * default and revealed on an explicit click, because a page that shows them by default gets
  * screenshotted, shoulder-read and shared without anyone deciding to.
  */
-export default function KycPanel({ profile, actor, readOnly }: {
+export default function KycPanel({ profile, actor, user, readOnly }: {
   profile: EmployeeProfile;
   actor: Actor;
+  /** The account this record belongs to. Lets an existing avatar count as the photograph. */
+  user?: AppUser | null;
   readOnly?: boolean;
 }) {
   const { toast } = useToast();
@@ -36,7 +39,7 @@ export default function KycPanel({ profile, actor, readOnly }: {
   const photoInput = useRef<HTMLInputElement>(null);
   const docInput = useRef<HTMLInputElement>(null);
 
-  const kyc = kycCompletion(profile);
+  const kyc = kycCompletion(profile, user);
 
   const set = <K extends keyof EmployeeProfile>(key: K, v: EmployeeProfile[K]) =>
     setForm((prev) => ({ ...prev, [key]: v }));
@@ -56,6 +59,7 @@ export default function KycPanel({ profile, actor, readOnly }: {
     setSaving(true);
     try {
       await saveEmployeeProfile(profile.uid, {
+        surname: form.surname?.trim() || null,
         dob: form.dob || null,
         personalEmail: form.personalEmail?.trim() || null,
         altPhone: form.altPhone?.trim() || null,
@@ -203,6 +207,8 @@ export default function KycPanel({ profile, actor, readOnly }: {
           <div className="min-w-[240px] flex-1">
             {editing ? (
               <div className="grid gap-3 sm:grid-cols-2">
+                <Input label="Surname" value={form.surname || ""} placeholder="Family name"
+                  onChange={(e) => set("surname", e.target.value)} data-test="kyc-surname" />
                 <Input label="Date of birth" type="date" value={form.dob || ""} onChange={(e) => set("dob", e.target.value)} data-test="kyc-dob" />
                 <Input label="Blood group" value={form.bloodGroup || ""} placeholder="O+" onChange={(e) => set("bloodGroup", e.target.value)} />
                 <Input label="Personal email" type="email" value={form.personalEmail || ""} onChange={(e) => set("personalEmail", e.target.value)} />
@@ -229,6 +235,7 @@ export default function KycPanel({ profile, actor, readOnly }: {
               </div>
             ) : (
               <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+                <Field label="Surname" value={profile.surname} />
                 <Field label="Date of birth" value={profile.dob} />
                 <Field label="Blood group" value={profile.bloodGroup} />
                 <Field label="Personal email" value={profile.personalEmail} />

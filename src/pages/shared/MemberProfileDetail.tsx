@@ -3,8 +3,9 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { doc, onSnapshot } from "firebase/firestore";
 import { format } from "date-fns";
 import {
-  ArrowLeft, BarChart3, Banknote, Boxes, Briefcase, Check, ClipboardCheck, DoorOpen, ExternalLink,
-  FileSignature, IdCard, Loader2, MessageCircle, Pencil, Phone, ShoppingBag, User as UserIcon, X,
+  ArrowLeft, BarChart3, Banknote, Boxes, Briefcase, Cake, Check, ClipboardCheck, DoorOpen,
+  ExternalLink, FileSignature, IdCard, Loader2, MessageCircle, Pencil, Phone, ShoppingBag,
+  User as UserIcon, X,
 } from "lucide-react";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
@@ -29,6 +30,8 @@ import ProbationPanel from "@/components/hr/ProbationPanel";
 import AssetsPanel from "@/components/hr/AssetsPanel";
 import SeparationPanel from "@/components/hr/SeparationPanel";
 import IssueDocumentDialog from "@/components/hr/IssueDocumentDialog";
+import IdCardModal from "@/components/hr/IdCardModal";
+import BirthdayPreviewModal from "@/components/birthday/BirthdayPreviewModal";
 import { EngagementChip, Field, SectionCard, StageChip } from "@/components/hr/ui";
 
 /**
@@ -82,6 +85,8 @@ export default function MemberProfileDetail() {
   const [tab, setTab] = useState<TabKey>("overview");
   const [editing, setEditing] = useState(false);
   const [issueType, setIssueType] = useState<HrDocumentType | null>(null);
+  const [showIdCard, setShowIdCard] = useState(false);
+  const [showBirthday, setShowBirthday] = useState(false);
   const [empIdDraft, setEmpIdDraft] = useState<string | null>(null);
   const [savingEmpId, setSavingEmpId] = useState(false);
 
@@ -153,7 +158,7 @@ export default function MemberProfileDetail() {
   };
 
   const notice = noticePeriodFor(profile);
-  const kyc = kycCompletion(profile);
+  const kyc = kycCompletion(profile, member);
   const pendingSignatures = documents.filter((d) => d.requiresEmployeeSignature && d.status === "issued").length;
   const primaryAccount = (bank?.accounts || []).find((a) => a.isPrimary) || (bank?.accounts || [])[0] || null;
   const createdAt = (member.createdAt as { seconds?: number } | null)?.seconds;
@@ -225,6 +230,17 @@ export default function MemberProfileDetail() {
                   </a>
                 </>
               )}
+              {/* A birthday fires once a year; this is how anyone checks it before then. */}
+              <button onClick={() => setShowBirthday(true)} data-test="preview-birthday"
+                title="Preview their birthday greeting"
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium text-foreground hover:bg-accent">
+                <Cake size={13} /> Birthday
+              </button>
+              {/* Every member has a card, with or without an HR record — see utils/idCard. */}
+              <button onClick={() => setShowIdCard(true)} data-test="view-id-card"
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium text-foreground hover:bg-accent">
+                <IdCard size={13} /> ID card
+              </button>
               <button onClick={() => setEditing(true)} data-test="edit-account"
                 className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium text-foreground hover:bg-accent">
                 <Pencil size={13} /> Edit account
@@ -384,7 +400,7 @@ export default function MemberProfileDetail() {
         </div>
       )}
 
-      {tab === "kyc" && <KycPanel profile={profile} actor={actor} />}
+      {tab === "kyc" && <KycPanel profile={profile} actor={actor} user={member} />}
 
       {tab === "documents" && (
         <DocumentsPanel
@@ -438,6 +454,19 @@ export default function MemberProfileDetail() {
           defaultType={issueType}
           memberLink={memberProfileLink(member.role)}
           onClose={() => setIssueType(null)}
+        />
+      )}
+
+      {showIdCard && (
+        <IdCardModal member={member} profile={profile} onClose={() => setShowIdCard(false)} />
+      )}
+
+      {showBirthday && (
+        <BirthdayPreviewModal
+          member={member}
+          profile={profile}
+          viewerName={currentUser?.name}
+          onClose={() => setShowBirthday(false)}
         />
       )}
     </div>

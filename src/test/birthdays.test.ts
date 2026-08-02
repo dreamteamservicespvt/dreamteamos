@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
-  birthdayGreeting, birthdayNoticeMessage, birthdaySeenKey, birthdaysOn, isBirthdayOn, isoDay,
-  monthDay, namesSentence, turningAge,
+  birthdayGreeting, birthdayNoticeMessage, birthdaySeenKey, birthdayWishMessage, birthdaysOn,
+  isBirthdayOn, isoDay, monthDay, namesSentence, prettyBirthday, turningAge,
 } from "@/utils/birthdays";
+import { getWhatsAppUrl } from "@/utils/phone";
 
 const on = (iso: string) => new Date(`${iso}T09:00:00`);
 
@@ -105,5 +106,41 @@ describe("the greeting the birthday person sees", () => {
     // A plain "seen" flag would silently retire the feature for everyone who has used it once.
     expect(birthdaySeenKey("u1", on("2026-08-02"))).not.toBe(birthdaySeenKey("u1", on("2027-08-02")));
     expect(birthdaySeenKey("u1", on("2026-08-02"))).toBe(birthdaySeenKey("u1", on("2026-08-02")));
+  });
+});
+
+describe("the wish a teammate sends", () => {
+  it("greets them by first name and signs off with the sender's", () => {
+    const msg = birthdayWishMessage("Asha Devi", "Ravi Kumar");
+    expect(msg).toContain("Happy Birthday, Asha!");
+    expect(msg).toContain("— Ravi Kumar, Dream Team Services");
+  });
+
+  it("still signs off when the sender is unknown", () => {
+    // A message that arrives unsigned reads like a system notification, which is worse than none.
+    expect(birthdayWishMessage("Asha", null)).toContain("— Dream Team Services");
+    expect(birthdayWishMessage("Asha", "  ")).toContain("— Dream Team Services");
+  });
+
+  it("survives an empty name rather than wishing 'undefined'", () => {
+    expect(birthdayWishMessage("", "Ravi")).toContain("Happy Birthday, there!");
+  });
+
+  it("comes out of getWhatsAppUrl intact and encoded", () => {
+    const url = getWhatsAppUrl("+919876543210", birthdayWishMessage("Asha", "Ravi"));
+    expect(url.startsWith("https://wa.me/919876543210?text=")).toBe(true);
+    expect(decodeURIComponent(url.split("?text=")[1])).toContain("Happy Birthday, Asha!");
+  });
+});
+
+describe("the birthday date, shown to colleagues", () => {
+  it("names the day without publishing the year", () => {
+    expect(prettyBirthday("1996-03-14")).toBe("14 March");
+    expect(prettyBirthday("2000-02-29")).toBe("29 February");
+  });
+
+  it("returns nothing usable rather than half a date", () => {
+    expect(prettyBirthday(null)).toBe("");
+    expect(prettyBirthday("1996-03")).toBe("");
   });
 });

@@ -9,6 +9,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import ThemeSelector from "@/components/ThemeSelector";
 import CompanySignatureCard from "@/components/hr/CompanySignatureCard";
+import ProfilePhotoUpload from "@/components/ProfilePhotoUpload";
+import MyIdCardCard from "@/components/MyIdCardCard";
 import { FESTIVALS, getUpcomingFestivalName, getFestivalOptionLabel } from "@/utils/festivals";
 import { saveMemberPassword } from "@/services/memberCredentials";
 
@@ -41,7 +43,7 @@ export default function SalesAdminSettings() {
         updatedAt: serverTimestamp(),
       }, { merge: true });
       setFestivalSaved(true);
-      toast({ title: "Festival updated", description: `Active festival set to "${activeFestival}" for all sales members.` });
+      toast({ title: "Festival updated", description: `Active festival set to "${activeFestival}" for all sales executives.` });
       setTimeout(() => setFestivalSaved(false), 2000);
     } catch {
       toast({ title: "Error", description: "Failed to save festival.", variant: "destructive" });
@@ -113,10 +115,9 @@ export default function SalesAdminSettings() {
       </div>
 
       <div className="bg-card border border-border rounded-xl p-4 md:p-6">
-        <div className="flex items-center gap-3 md:gap-4 mb-4 md:mb-6">
-          <div className="w-10 h-10 md:w-14 md:h-14 rounded-xl bg-role-sales-admin/15 flex items-center justify-center font-display font-bold text-role-sales-admin text-base md:text-xl shrink-0">
-            {user.name?.charAt(0) || "S"}
-          </div>
+        <div className="flex flex-wrap items-center gap-3 md:gap-4 mb-4 md:mb-6">
+          {/* One upload, and the photo follows them into chat, calls and every team list. */}
+          <ProfilePhotoUpload uid={user.uid} name={user.name} avatar={user.avatar} size={56} />
           <div className="min-w-0">
             <p className="font-display font-bold text-base md:text-lg text-foreground truncate">{user.name}</p>
             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
@@ -144,6 +145,8 @@ export default function SalesAdminSettings() {
 
       {/* Signed once, applied to every document this sales head issues */}
       <CompanySignatureCard />
+
+      <MyIdCardCard />
 
       {/* Salary */}
       <button onClick={() => navigate("/sales-admin/salary")}
@@ -198,7 +201,7 @@ export default function SalesAdminSettings() {
           <Calendar size={14} /> Active Festival for Sales Scripts
         </div>
         <p className="text-xs text-muted-foreground mb-4">
-          Select the current/upcoming festival — all sales members will see this as the default in their call scripts.
+          Select the current/upcoming festival — all sales executives will see this as the default in their call scripts.
         </p>
         <div className="space-y-3">
           <div>

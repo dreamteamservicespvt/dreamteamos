@@ -10,6 +10,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { initFCM, onForegroundMessage } from "@/services/fcm";
 import VideoCallManager from "@/components/chat/VideoCallManager";
 import DailyCheckinPrompt from "@/components/attendance/DailyCheckinPrompt";
+import ProfileCompletionPrompt from "@/components/profile/ProfileCompletionPrompt";
 import MandatoryAgreementGate from "@/components/agreement/MandatoryAgreementGate";
 import UpdatePopup from "@/components/layout/UpdatePopup";
 import BirthdayGreeting from "@/components/BirthdayGreeting";
@@ -87,6 +88,9 @@ export default function AppLayout({ allowedRoles }: AppLayoutProps) {
         </main>
         <VideoCallManager />
         {user.role === "tech_member" && !user.externalCreator && <DailyCheckinPrompt />}
+        {/* Asks employees once a day for whatever the company still needs from them, until it
+            has it all. Decides for itself who it applies to — see utils/profileCompletion. */}
+        <ProfileCompletionPrompt />
         <MandatoryAgreementGate />
         <UpdatePopup />
       </div>

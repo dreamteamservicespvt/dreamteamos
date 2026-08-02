@@ -4,6 +4,9 @@
  * Written straight to `users/{uid}.avatar`, which is the copy every screen in the app already
  * reads — so the picture appears in chat, on calls, in team lists, on the leaderboard and in the
  * topbar the moment it saves, with nothing else to update and no second place to keep in step.
+ *
+ * The photo is squared off before it is uploaded, not after: every avatar in the app is a circle,
+ * so the person who owns the face is the right one to say which square of it is them.
  */
 import { useRef, useState } from "react";
 import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
@@ -13,6 +16,7 @@ import { uploadToCloudinary } from "@/services/cloudinary";
 import { useAuthStore } from "@/store/authStore";
 import { useToast } from "@/hooks/use-toast";
 import MemberAvatar from "@/components/MemberAvatar";
+import ImageCropper from "@/components/ImageCropper";
 
 /** Big enough that a phone photo is rejected before it is uploaded, not after. */
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -31,6 +35,8 @@ export default function ProfilePhotoUpload({
   const storeUser = useAuthStore((s) => s.user);
   const setStoreUser = useAuthStore((s) => s.setUser);
   const [busy, setBusy] = useState(false);
+  /** The picked file, waiting to be squared off. Nothing is uploaded until the crop is confirmed. */
+  const [pending, setPending] = useState<File | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   /** Keeps the topbar and everything else reading the store in step, without a round trip. */
@@ -44,7 +50,9 @@ export default function ProfilePhotoUpload({
     onChange?.(url);
   };
 
-  const handleFile = async (file: File) => {
+  /** Picking a file only opens the cropper — the checks happen here so a bad file is refused fast. */
+  const handlePick = (file: File) => {
+    if (inputRef.current) inputRef.current.value = "";
     if (!file.type.startsWith("image/")) {
       toast({ title: "Pick an image", description: "A profile photo has to be an image file.", variant: "destructive" });
       return;
@@ -53,6 +61,12 @@ export default function ProfilePhotoUpload({
       toast({ title: "Too large", description: "Please choose a photo under 5 MB.", variant: "destructive" });
       return;
     }
+    setPending(file);
+  };
+
+  /** The cropped square, on its way to Cloudinary. */
+  const handleCropped = async (file: File) => {
+    setPending(null);
     setBusy(true);
     try {
       const url = await uploadToCloudinary(file);
@@ -62,7 +76,6 @@ export default function ProfilePhotoUpload({
       toast({ title: "Upload failed", description: "Could not save the photo. Try again.", variant: "destructive" });
     } finally {
       setBusy(false);
-      if (inputRef.current) inputRef.current.value = "";
     }
   };
 
@@ -103,11 +116,20 @@ export default function ProfilePhotoUpload({
           )}
         </div>
         <p className="text-[11px] text-muted-foreground">
-          Shows on chat, calls, the leaderboard and every team list. JPG or PNG, under 5 MB.
+          Shows on chat, calls, the leaderboard and every team list. You crop it to a square before
+          it saves. JPG or PNG, under 5 MB.
         </p>
       </div>
       <input ref={inputRef} type="file" accept="image/*" className="hidden"
-        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) handlePick(f); }} />
+
+      {pending && (
+        <ImageCropper
+          file={pending}
+          onCancel={() => setPending(null)}
+          onCropped={handleCropped}
+        />
+      )}
     </div>
   );
 }

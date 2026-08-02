@@ -65,7 +65,7 @@ export default function SalesDepartment() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-        <StatBox icon={Users} label="Sales Members" value={salesMembers.length} color="text-role-sales-member" />
+        <StatBox icon={Users} label="Sales Executives" value={salesMembers.length} color="text-role-sales-member" />
         <StatBox icon={Phone} label="Total Leads" value={totalLeads} color="text-info" />
         <StatBox icon={ShoppingBag} label="Sales Closed" value={salesDone.length} color="text-success" />
         <StatBox icon={TrendingUp} label="Total Revenue" value={formatCurrency(totalSalesRevenue)} color="text-primary" />
@@ -97,7 +97,7 @@ export default function SalesDepartment() {
       {/* Sales Members */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
         <div className="px-4 md:px-5 py-4 border-b border-border">
-          <h3 className="font-display font-semibold text-foreground">Sales Members</h3>
+          <h3 className="font-display font-semibold text-foreground">Sales Executives</h3>
         </div>
 
         {/* Desktop Table */}
@@ -116,7 +116,7 @@ export default function SalesDepartment() {
             </thead>
             <tbody>
               {memberData.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground text-sm">No sales members yet</td></tr>
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground text-sm">No sales executives yet</td></tr>
               ) : (
                 memberData.map((m, i) => {
                   const pct = Math.min((m.revenue / m.target) * 100, 100);
@@ -159,7 +159,7 @@ export default function SalesDepartment() {
         {/* Mobile Cards */}
         <div className="md:hidden divide-y divide-border/50">
           {memberData.length === 0 ? (
-            <p className="px-4 py-8 text-center text-muted-foreground text-sm">No sales members yet</p>
+            <p className="px-4 py-8 text-center text-muted-foreground text-sm">No sales executives yet</p>
           ) : (
             memberData.map((m) => {
               const pct = Math.min((m.revenue / m.target) * 100, 100);

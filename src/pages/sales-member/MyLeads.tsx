@@ -732,7 +732,7 @@ export default function MyLeads() {
           <div className="space-y-4">
             <div className="flex items-start gap-1.5 rounded-md bg-destructive/10 border border-destructive/30 text-destructive text-xs p-2.5">
               <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-              <span>These numbers are also held by another sales member. If you both record a sale, you'll be asked to upload proof (call-record image or note) so the admin can decide who made the sale.</span>
+              <span>These numbers are also held by another sales executive. If you both record a sale, you'll be asked to upload proof (call-record image or note) so the admin can decide who made the sale.</span>
             </div>
             {dupLeads.length === 0 ? (
               <div className="bg-card border border-border rounded-xl p-12 text-center">

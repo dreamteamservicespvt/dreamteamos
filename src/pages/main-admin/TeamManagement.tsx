@@ -31,7 +31,7 @@ const ALL_ROLES: { value: UserRole; label: string }[] = [
   { value: "sales_admin", label: "Sales Admin" },
   { value: "accounts_admin", label: "Accounts Admin" },
   { value: "tech_member", label: "Tech Member" },
-  { value: "sales_member", label: "Sales Member" },
+  { value: "sales_member", label: "Sales Executive" },
 ];
 
 export default function TeamManagement() {

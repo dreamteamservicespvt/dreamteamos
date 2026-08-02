@@ -172,6 +172,26 @@ export const EXTERNAL_CREATOR_NAV: NavItem[] = [
 /** The routes an external creator is allowed to reach — everything else redirects to Create Ad. */
 export const EXTERNAL_CREATOR_ROUTES = ["/tech/create", "/tech/profile"];
 
+/**
+ * Where "my profile" lives for this person.
+ *
+ * Employees have a My Profile page; admins have Settings, which is the same thing under another
+ * name — their account, their photo, their password. Accounts admins have neither yet, so they
+ * get "" and whatever is showing their name simply is not a link, rather than a link that lands
+ * them somewhere that is not theirs.
+ */
+export function getProfileRoute(role?: UserRole | null): string {
+  switch (role) {
+    case "sales_member": return "/sales/profile";
+    case "tech_member": return "/tech/profile";
+    case "tech_team_leader": return "/team-leader/profile";
+    case "main_admin": return "/main-admin/settings";
+    case "tech_admin": return "/tech-admin/settings";
+    case "sales_admin": return "/sales-admin/settings";
+    default: return "";
+  }
+}
+
 export function getNavItems(role: UserRole, user?: Pick<AppUser, "externalCreator"> | null): NavItem[] {
   if (user?.externalCreator) return EXTERNAL_CREATOR_NAV;
   return NAV[role] || [];
@@ -184,7 +204,7 @@ export function getRoleLabel(role: UserRole): string {
     sales_admin: "Sales Admin",
     accounts_admin: "Accounts Admin",
     tech_member: "Tech Member",
-    sales_member: "Sales Member",
+    sales_member: "Sales Executive",
     tech_team_leader: "Tech Team Leader",
   };
   return labels[role] || role;

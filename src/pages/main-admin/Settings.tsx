@@ -8,6 +8,8 @@ import { Settings as SettingsIcon, User, Lock, Loader2, Check, Eye, EyeOff, Wall
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import ThemeSelector from "@/components/ThemeSelector";
+import ProfilePhotoUpload from "@/components/ProfilePhotoUpload";
+import MyIdCardCard from "@/components/MyIdCardCard";
 import { saveMemberPassword } from "@/services/memberCredentials";
 
 export default function Settings() {
@@ -101,10 +103,9 @@ export default function Settings() {
 
       {/* Profile Card */}
       <div className="bg-card border border-border rounded-xl p-6">
-        <div className="flex items-center gap-4 mb-6">
-          <div className="w-14 h-14 rounded-xl bg-primary/15 flex items-center justify-center font-display font-bold text-primary text-xl">
-            {user.name?.charAt(0) || "A"}
-          </div>
+        <div className="flex flex-wrap items-center gap-4 mb-6">
+          {/* One upload, and the photo follows them into chat, calls and every team list. */}
+          <ProfilePhotoUpload uid={user.uid} name={user.name} avatar={user.avatar} size={56} />
           <div>
             <p className="font-display font-bold text-lg text-foreground">{user.name}</p>
             <div className="flex items-center gap-2 mt-0.5">
@@ -221,6 +222,7 @@ export default function Settings() {
           </button>
         </form>
       </div>
+      <MyIdCardCard />
       <ThemeSelector />
     </div>
   );

@@ -268,6 +268,15 @@ export interface EmployeeProfile {
 
   // Personal / KYC — collected on joining day, kept current afterwards
   photoUrl?: string | null;
+  /**
+   * Family name, recorded separately from `users.name`.
+   *
+   * The account only ever held one free-text name, which is fine for a chat list and useless for
+   * a payslip: nothing could say where the given name ended. Storing the surname explicitly makes
+   * the split the employee's own decision rather than a guess at the last word — which guesses
+   * wrong for a two-word surname, a patronymic, or an initial written first.
+   */
+  surname?: string | null;
   dob?: string | null;             // yyyy-MM-dd
   personalEmail?: string | null;
   altPhone?: string | null;

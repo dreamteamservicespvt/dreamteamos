@@ -5,6 +5,7 @@ import { auth, db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/utils/formatters";
+import { getRoleLabel } from "@/utils/roleHelpers";
 import { User, Mail, Phone, Shield, Loader2, Check, Lock, Receipt } from "lucide-react";
 import SalaryTimeline from "@/components/SalaryTimeline";
 import AttendanceCard from "@/components/sales/AttendanceCard";
@@ -79,8 +80,9 @@ export default function MyProfile() {
           <ProfilePhotoUpload uid={user.uid} name={user.name} avatar={user.avatar} />
           <div>
             <p className="font-display font-bold text-foreground text-lg">{user.name}</p>
-            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-role-sales-member/15 text-role-sales-member capitalize">
-              Sales Member
+            {/* Read from the one place roles are named, so a rename never leaves this behind. */}
+            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-role-sales-member/15 text-role-sales-member">
+              {getRoleLabel(user.role)}
             </span>
           </div>
         </div>
@@ -95,7 +97,7 @@ export default function MyProfile() {
           <div>
             <label className="text-xs text-muted-foreground mb-1 block">Role</label>
             <div className="h-10 px-3 rounded-lg bg-background border border-border flex items-center gap-2 text-sm text-muted-foreground">
-              <Shield size={14} /> Sales Member
+              <Shield size={14} /> {getRoleLabel(user.role)}
             </div>
           </div>
         </div>

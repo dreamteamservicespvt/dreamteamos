@@ -1,4 +1,4 @@
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import MemberAvatar from "@/components/MemberAvatar";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
@@ -112,12 +112,9 @@ export default function ChatSidebar({ contacts, activeContactUid, onSelect, load
                 activeContactUid === c.uid && "bg-accent",
               )}
             >
-              <Avatar className="h-10 w-10 shrink-0">
-                <AvatarImage src={c.avatar} />
-                <AvatarFallback className="text-xs font-semibold bg-primary/10 text-primary">
-                  {c.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
+              {/* The one avatar component the whole app uses — a photo uploaded once shows here,
+                  and a deleted Cloudinary URL falls back to initials instead of a broken image. */}
+              <MemberAvatar name={c.name} avatar={c.avatar} size={40} />
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">

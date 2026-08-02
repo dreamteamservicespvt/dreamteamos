@@ -201,7 +201,7 @@ export default function SalaryManagement() {
           <option value="sales_admin">Sales Admin</option>
           <option value="accounts_admin">Accounts Admin</option>
           <option value="tech_member">Tech Member</option>
-          <option value="sales_member">Sales Member</option>
+          <option value="sales_member">Sales Executive</option>
         </select>
         <span className="ml-auto text-xs text-muted-foreground font-mono">{filtered.length} staff</span>
       </div>

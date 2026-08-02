@@ -378,7 +378,7 @@ export default function MyTeam() {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-card border border-border rounded-xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="font-display font-bold text-lg text-foreground">Add Sales Member</h3>
+              <h3 className="font-display font-bold text-lg text-foreground">Add Sales Executive</h3>
               <button onClick={() => setShowModal(false)} className="text-muted-foreground hover:text-foreground"><X size={18} /></button>
             </div>
             <form onSubmit={handleCreate} className="space-y-3">

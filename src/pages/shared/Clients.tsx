@@ -413,7 +413,7 @@ function ClientDetail({ client, salesMembers, canManage, admin, onClose, onSaved
 
   const doUpsell = async (categoryKey: string) => {
     const member = salesMembers.find((m) => m.uid === upsellMemberId);
-    if (!member || !admin) { toast({ title: "Pick a member", description: "Select a sales member first.", variant: "destructive" }); return; }
+    if (!member || !admin) { toast({ title: "Pick a member", description: "Select a sales executive first.", variant: "destructive" }); return; }
     setBusyGap(categoryKey);
     try {
       const res = await assignUpsellLead({ client, member, admin, categoryKey });
@@ -427,7 +427,7 @@ function ClientDetail({ client, salesMembers, canManage, admin, onClose, onSaved
 
   const requestReview = async () => {
     const member = salesMembers.find((m) => m.uid === reviewMemberId);
-    if (!member || !admin) { toast({ title: "Pick a member", description: "Select a sales member first.", variant: "destructive" }); return; }
+    if (!member || !admin) { toast({ title: "Pick a member", description: "Select a sales executive first.", variant: "destructive" }); return; }
     setReviewBusy(true);
     try {
       const id = await createReviewTask({ client, member, admin });
@@ -479,7 +479,7 @@ function ClientDetail({ client, salesMembers, canManage, admin, onClose, onSaved
   const memberSelect = (value: string, onChange: (v: string) => void) => (
     <select value={value} onChange={(e) => onChange(e.target.value)}
       className="h-9 px-3 rounded-md bg-background border border-border text-foreground text-sm outline-none focus:border-primary">
-      <option value="">Select sales member…</option>
+      <option value="">Select sales executive…</option>
       {salesMembers.map((m) => <option key={m.uid} value={m.uid}>{m.name}</option>)}
     </select>
   );
@@ -554,7 +554,7 @@ function ClientDetail({ client, salesMembers, canManage, admin, onClose, onSaved
               <p className="text-xs text-muted-foreground">Owns all core services 🎉</p>
             ) : canManage ? (
               <div className="space-y-2">
-                <p className="text-xs text-muted-foreground">Not there yet — assign a sales member to pitch:</p>
+                <p className="text-xs text-muted-foreground">Not there yet — assign a sales executive to pitch:</p>
                 {memberSelect(upsellMemberId, setUpsellMemberId)}
                 <div className="flex flex-wrap gap-2">
                   {gaps.map((g) => (

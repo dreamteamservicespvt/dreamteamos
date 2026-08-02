@@ -9,6 +9,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import ThemeSelector from "@/components/ThemeSelector";
 import CompanySignatureCard from "@/components/hr/CompanySignatureCard";
+import ProfilePhotoUpload from "@/components/ProfilePhotoUpload";
+import MyIdCardCard from "@/components/MyIdCardCard";
 import { saveMemberPassword } from "@/services/memberCredentials";
 
 export default function TechAdminSettings() {
@@ -78,10 +80,9 @@ export default function TechAdminSettings() {
       </div>
 
       <div className="bg-card border border-border rounded-xl p-4 md:p-6">
-        <div className="flex items-center gap-3 md:gap-4 mb-4 md:mb-6">
-          <div className="w-10 h-10 md:w-14 md:h-14 rounded-xl bg-role-tech-admin/15 flex items-center justify-center font-display font-bold text-role-tech-admin text-base md:text-xl shrink-0">
-            {user.name?.charAt(0) || "T"}
-          </div>
+        <div className="flex flex-wrap items-center gap-3 md:gap-4 mb-4 md:mb-6">
+          {/* One upload, and the photo follows them into chat, calls and every team list. */}
+          <ProfilePhotoUpload uid={user.uid} name={user.name} avatar={user.avatar} size={56} />
           <div className="min-w-0">
             <p className="font-display font-bold text-base md:text-lg text-foreground truncate">{user.name}</p>
             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
@@ -111,6 +112,8 @@ export default function TechAdminSettings() {
 
       {/* Signed once, applied to every document this technical head issues */}
       <CompanySignatureCard />
+
+      <MyIdCardCard />
 
       <button onClick={() => navigate("/tech-admin/salary")}
         className="w-full bg-card border border-border rounded-xl p-5 flex items-center gap-4 hover:bg-accent/30 transition-colors text-left">

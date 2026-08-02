@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Boxes, Briefcase, ClipboardCheck, DoorOpen, FileSignature, IdCard, Loader2,
+  BadgeCheck, Boxes, Briefcase, ClipboardCheck, DoorOpen, FileSignature, IdCard, Loader2,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { watchEmployeeProfile } from "@/services/hr";
@@ -14,7 +14,8 @@ import KycPanel from "./KycPanel";
 import AssetsPanel from "./AssetsPanel";
 import ProbationPanel from "./ProbationPanel";
 import SeparationPanel from "./SeparationPanel";
-import { EngagementChip, StageChip } from "./ui";
+import IdCardPanel from "./IdCardPanel";
+import { EngagementChip, SectionCard, StageChip } from "./ui";
 
 /**
  * The employee's own view of their employment — the same record their admin sees, minus the
@@ -26,12 +27,13 @@ import { EngagementChip, StageChip } from "./ui";
  * you is not feedback.
  */
 
-type TabKey = "employment" | "details" | "documents" | "assets" | "exit";
+type TabKey = "employment" | "details" | "documents" | "idcard" | "assets" | "exit";
 
 const TABS: { key: TabKey; label: string; Icon: typeof Briefcase }[] = [
   { key: "employment", label: "My employment", Icon: Briefcase },
   { key: "details", label: "My details", Icon: IdCard },
   { key: "documents", label: "Documents", Icon: FileSignature },
+  { key: "idcard", label: "ID card", Icon: BadgeCheck },
   { key: "assets", label: "Assets", Icon: Boxes },
   { key: "exit", label: "Resignation", Icon: DoorOpen },
 ];
@@ -71,7 +73,8 @@ export default function MyEmploymentPanel() {
   }
 
   const actor = { uid: user.uid, name: user.name };
-  const kyc = kycCompletion(profile);
+  // The user too, so an avatar uploaded before the HR record existed counts as the photograph.
+  const kyc = kycCompletion(profile, user);
   const pendingSignatures = documents.filter((d) => d.requiresEmployeeSignature && d.status === "issued").length;
   const unacknowledged = (profile.assets || []).filter((a) => !a.returnedOn && !a.acknowledgedAt).length;
 
@@ -134,7 +137,7 @@ export default function MyEmploymentPanel() {
         </div>
       )}
 
-      {tab === "details" && <KycPanel profile={profile} actor={actor} />}
+      {tab === "details" && <KycPanel profile={profile} actor={actor} user={user} />}
 
       {tab === "documents" && (
         <DocumentsPanel
@@ -144,6 +147,20 @@ export default function MyEmploymentPanel() {
           readOnly
           canSign
         />
+      )}
+
+      {tab === "idcard" && (
+        <SectionCard
+          title="My ID card"
+          icon={<BadgeCheck size={15} className="text-primary" />}
+        >
+          <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
+            Your card is generated from your employment record, so it stays correct on its own —
+            change your photo or your details and the card follows. Download the PNG to send it to
+            anyone, or the PDF to print it at real card size.
+          </p>
+          <IdCardPanel member={user} profile={profile} />
+        </SectionCard>
       )}
 
       {tab === "assets" && (

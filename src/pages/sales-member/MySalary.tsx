@@ -66,7 +66,7 @@ export default function SalesMySalary() {
       month,
       employeeName: user.name,
       employeeId: user.employeeId,
-      role: "Sales Member",
+      role: "Sales Executive",
       computation: c,
       netPayable: totalEarnings,
       paymentMethod: bank ? payoutSummary(bank) : undefined,

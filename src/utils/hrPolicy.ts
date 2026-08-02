@@ -1,5 +1,6 @@
 import { addDays, addMonths, differenceInCalendarDays, format, isValid, parseISO } from "date-fns";
-import type { UserRole } from "@/types";
+import { PROFILE_STEPS } from "@/utils/profileCompletion";
+import type { AppUser, UserRole } from "@/types";
 import type {
   Department, EmployeeProfile, EmploymentStage, EngagementType, HrDocument, HrDocumentType,
   ProbationMilestone, SeparationType,
@@ -229,15 +230,6 @@ export function probationDaysRemaining(
 
 // ─── KYC completeness ───────────────────────────────────────────────────────
 
-const KYC_REQUIRED: { key: string; label: string; has: (p: EmployeeProfile) => boolean }[] = [
-  { key: "photo", label: "Photograph", has: (p) => !!p.photoUrl },
-  { key: "dob", label: "Date of birth", has: (p) => !!p.dob },
-  { key: "address", label: "Current address", has: (p) => !!p.currentAddress },
-  { key: "emergency", label: "Emergency contact", has: (p) => !!p.emergencyContact?.phone },
-  { key: "pan", label: "PAN", has: (p) => !!p.pan },
-  { key: "aadhaar", label: "Aadhaar", has: (p) => !!p.aadhaar },
-];
-
 export interface KycCompletion {
   done: number;
   total: number;
@@ -246,14 +238,23 @@ export interface KycCompletion {
   complete: boolean;
 }
 
-/** How much of the joining-day information pack is actually on file. */
-export function kycCompletion(profile: EmployeeProfile): KycCompletion {
-  const missing = KYC_REQUIRED.filter((f) => !f.has(profile)).map((f) => f.label);
-  const done = KYC_REQUIRED.length - missing.length;
+/**
+ * How much of the joining-day information pack is actually on file.
+ *
+ * The list itself lives in utils/profileCompletion, because the daily prompt that asks for these
+ * things and this progress bar must never disagree about what "complete" means — a member told
+ * they are finished in one place and 8 of 10 in another stops believing either.
+ *
+ * `user` is optional: pass it wherever the reader is known, so an avatar uploaded before the HR
+ * record existed counts as the photograph instead of being asked for twice.
+ */
+export function kycCompletion(profile: EmployeeProfile, user?: AppUser | null): KycCompletion {
+  const missing = PROFILE_STEPS.filter((f) => !f.has(profile, user)).map((f) => f.label);
+  const done = PROFILE_STEPS.length - missing.length;
   return {
     done,
-    total: KYC_REQUIRED.length,
-    percent: Math.round((done / KYC_REQUIRED.length) * 100),
+    total: PROFILE_STEPS.length,
+    percent: Math.round((done / PROFILE_STEPS.length) * 100),
     missing,
     complete: missing.length === 0,
   };

@@ -5,13 +5,14 @@ import { collection, query, where, getDocs, updateDoc, doc, serverTimestamp } fr
 import { auth, db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { useSidebarStore } from "@/store/sidebarStore";
-import { getNavItems, getRoleLabel, getRoleColor, type NavItem } from "@/utils/roleHelpers";
+import { getNavItems, getRoleLabel, getRoleColor, getProfileRoute, type NavItem } from "@/utils/roleHelpers";
 import { ChevronLeft, ChevronDown, LogOut, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { deleteFCMToken } from "@/services/fcm";
 import InstallAppButton from "@/components/layout/InstallAppButton";
 import MemberAvatar from "@/components/MemberAvatar";
+import type { AppUser } from "@/types";
 
 interface SidebarProps {
   mobileOpen: boolean;
@@ -154,11 +155,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               <div className="border-t border-border p-3 shrink-0 space-y-2">
                 <InstallAppButton />
                 <div className="flex items-center gap-3">
-                  <MemberAvatar name={user.name} avatar={user.avatar} size={36} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{user.name}</p>
-                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${getRoleColor(user.role)}`}>{getRoleLabel(user.role)}</span>
-                  </div>
+                  <UserBlock user={user} onNavigate={handleNavClick} />
                   <button onClick={handleLogout} className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors" title="Logout">
                     <LogOut size={16} />
                   </button>
@@ -260,11 +257,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         <InstallAppButton collapsed={collapsed} />
         {!collapsed ? (
           <div className="flex items-center gap-3">
-            <MemberAvatar name={user.name} avatar={user.avatar} size={36} />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-foreground truncate">{user.name}</p>
-              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${getRoleColor(user.role)}`}>{getRoleLabel(user.role)}</span>
-            </div>
+            <UserBlock user={user} />
             <button onClick={handleLogout} className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors" title="Logout">
               <LogOut size={16} />
             </button>
@@ -276,5 +269,44 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         )}
       </div>
     </motion.aside>
+  );
+}
+
+/**
+ * The signed-in person, at the foot of the sidebar — and a way into their own profile.
+ *
+ * Their name and face is the thing everybody clicks expecting to find their account, so it goes
+ * there rather than being decoration next to a logout button. An accounts admin has no profile
+ * page yet and gets plain text instead of a link that leads nowhere.
+ */
+function UserBlock({ user, onNavigate }: {
+  user: AppUser;
+  onNavigate?: () => void;
+}) {
+  const body = (
+    <>
+      <MemberAvatar name={user.name} avatar={user.avatar} size={36} />
+      <div className="flex-1 min-w-0 text-left">
+        <p className="text-sm font-medium text-foreground truncate">{user.name}</p>
+        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${getRoleColor(user.role)}`}>
+          {getRoleLabel(user.role)}
+        </span>
+      </div>
+    </>
+  );
+
+  const profileRoute = getProfileRoute(user.role);
+  if (!profileRoute) return <div className="flex flex-1 items-center gap-3 min-w-0">{body}</div>;
+
+  return (
+    <Link
+      to={profileRoute}
+      onClick={onNavigate}
+      title="My Profile"
+      data-test="sidebar-profile"
+      className="flex flex-1 items-center gap-3 min-w-0 rounded-lg p-1 -m-1 transition-colors hover:bg-accent"
+    >
+      {body}
+    </Link>
   );
 }

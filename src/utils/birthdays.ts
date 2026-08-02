@@ -61,6 +61,24 @@ export function birthdaysOn<T extends BirthdayPerson>(people: T[], today: Date):
     .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 }
 
+/**
+ * "14 March" — the day their birthday falls, without the year.
+ *
+ * Year-less on purpose: this is shown to colleagues, and a birthday is a date to remember, not an
+ * age to publish. Returns "" for anything unusable rather than a half-parsed string.
+ */
+export function prettyBirthday(dob: string | null | undefined): string {
+  const md = monthDay(dob);
+  if (!md) return "";
+  const [month, day] = md.split("-").map(Number);
+  const names = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+  ];
+  const name = names[month - 1];
+  return name && day >= 1 && day <= 31 ? `${day} ${name}` : "";
+}
+
 /** How old they are turning, when the year of birth is known and plausible. */
 export function turningAge(dob: string | null | undefined, today: Date): number | null {
   const year = Number(dob?.slice(0, 4));
@@ -104,6 +122,28 @@ export function birthdayGreeting(name: string, today: Date, dob?: string | null)
       : `Wishing you a wonderful year ahead. Thank you for everything you bring to the team — have a brilliant day!`,
     age,
   };
+}
+
+/**
+ * The message a teammate sends on WhatsApp, prefilled.
+ *
+ * Prefilled, not sent: `wa.me?text=` only opens the chat with the words already typed, and the
+ * sender can change every one of them before pressing send. That is the point — the platform
+ * removes the friction of starting the message, and the wish stays the sender's own.
+ *
+ * Signed with the sender's name because a message that arrives reading like a system notification
+ * is worse than no message; the person receiving it should know who thought of them.
+ */
+export function birthdayWishMessage(recipientName: string, senderName?: string | null): string {
+  const first = (recipientName || "").trim().split(/\s+/)[0] || "there";
+  const from = (senderName || "").trim();
+  return [
+    `🎉 Happy Birthday, ${first}! 🎂`,
+    ``,
+    `Wishing you a fantastic year ahead — good health, great work and plenty to celebrate.`,
+    `Have a wonderful day!`,
+    from ? `\n— ${from}, Dream Team Services` : `\n— Dream Team Services`,
+  ].join("\n");
 }
 
 /**

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { formatCurrency } from "@/utils/formatters";
+import { getRoleLabel } from "@/utils/roleHelpers";
 import type { AppUser } from "@/types";
 import { Wallet, TrendingUp, TrendingDown, Users, PieChart } from "lucide-react";
 import {
@@ -142,7 +143,7 @@ export default function AccountsDashboard() {
           {Object.entries(roleCounts).map(([role, count]) => (
             <div key={role} className="bg-background border border-border rounded-lg px-4 py-3 text-center min-w-[120px]">
               <p className="font-display text-lg font-bold text-foreground">{count}</p>
-              <p className="text-xs text-muted-foreground capitalize">{role.replace(/_/g, " ")}</p>
+              <p className="text-xs text-muted-foreground">{getRoleLabel(role as never)}</p>
             </div>
           ))}
         </div>

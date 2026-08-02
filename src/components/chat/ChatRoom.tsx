@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from "react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import MemberAvatar from "@/components/MemberAvatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,6 +9,7 @@ import {
 import { useAuthStore } from "@/store/authStore";
 import { useCallStore } from "@/store/callStore";
 import { cn } from "@/lib/utils";
+import { getRoleLabel } from "@/utils/roleHelpers";
 import { format } from "date-fns";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import type { ChatMessage, ChatContact } from "@/hooks/useChat";
@@ -292,7 +293,9 @@ export default function ChatRoom({ contact, messages, loading, onSend, onSendFil
 
   const formatRecordTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 
-  const initials = contact.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+  /** Width reserved beside every bubble so a run of messages stays aligned whether or not it
+   *  carries the avatar — otherwise bubbles shift sideways as a conversation grows. */
+  const AVATAR = 26;
 
   // Group messages by date
   let lastDateStr = "";
@@ -306,13 +309,11 @@ export default function ChatRoom({ contact, messages, loading, onSend, onSendFil
             <ArrowLeft className="w-5 h-5" />
           </Button>
         )}
-        <Avatar className="h-9 w-9">
-          <AvatarImage src={contact.avatar} />
-          <AvatarFallback className="text-xs font-semibold bg-primary/10 text-primary">{initials}</AvatarFallback>
-        </Avatar>
+        <MemberAvatar name={contact.name} avatar={contact.avatar} size={36} />
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-sm truncate">{contact.name}</p>
-          <p className="text-[11px] text-muted-foreground capitalize">{contact.role.replace("_", " ")}</p>
+          {/* The role's real name, not a prettified key — otherwise a rename never reaches here. */}
+          <p className="text-[11px] text-muted-foreground">{getRoleLabel(contact.role as never)}</p>
         </div>
         <Button
           variant="ghost"
@@ -347,7 +348,7 @@ export default function ChatRoom({ contact, messages, loading, onSend, onSendFil
           </div>
         ) : (
           <div className="py-4 space-y-1">
-            {messages.map((msg) => {
+            {messages.map((msg, i) => {
               const isMine = msg.senderId === user?.uid;
               const d = toDate(msg.createdAt);
               const dateStr = d ? format(d, "MMM d, yyyy") : "";
@@ -356,6 +357,11 @@ export default function ChatRoom({ contact, messages, loading, onSend, onSendFil
 
               const isDeleted = !!msg.deletedAt;
               const isEdited = !!msg.editedAt;
+
+              // One photo per run of messages, at the foot of it — repeating it on every bubble
+              // turns a burst of five messages into five copies of the same face.
+              const next = messages[i + 1];
+              const endsRun = !next || next.senderId !== msg.senderId;
 
               return (
                 <div key={msg.id}>
@@ -366,7 +372,12 @@ export default function ChatRoom({ contact, messages, loading, onSend, onSendFil
                       </span>
                     </div>
                   )}
-                  <div className={cn("flex", isMine ? "justify-end" : "justify-start")}>
+                  <div className={cn("flex items-end gap-2", isMine ? "justify-end" : "justify-start")}>
+                    {!isMine && (
+                      endsRun
+                        ? <MemberAvatar name={contact.name} avatar={contact.avatar} size={AVATAR} className="mb-0.5" />
+                        : <span className="shrink-0" style={{ width: AVATAR }} />
+                    )}
                     <div
                       className={cn(
                         "max-w-[75%] px-3 py-2 rounded-2xl text-sm break-words relative group",
@@ -464,10 +475,19 @@ export default function ChatRoom({ contact, messages, loading, onSend, onSendFil
                         </button>
                       )}
                     </div>
+                    {isMine && (
+                      endsRun
+                        ? <MemberAvatar name={user?.name} avatar={user?.avatar} size={AVATAR} className="mb-0.5" />
+                        : <span className="shrink-0" style={{ width: AVATAR }} />
+                    )}
                   </div>
                   {/* Edit history popover */}
                   {showHistoryFor === msg.id && msg.editHistory && msg.editHistory.length > 0 && (
-                    <div className={cn("flex", isMine ? "justify-end" : "justify-start")}>
+                    <div
+                      className={cn("flex", isMine ? "justify-end" : "justify-start")}
+                      // Line the history up under the bubble, past the avatar gutter.
+                      style={{ [isMine ? "paddingRight" : "paddingLeft"]: AVATAR + 8 }}
+                    >
                       <div className="max-w-[70%] mt-1 p-2 rounded-lg border border-border bg-popover text-popover-foreground text-xs shadow-md">
                         <p className="font-medium mb-1 text-[10px] text-muted-foreground">Edit history</p>
                         {msg.editHistory.map((oldText, i) => (

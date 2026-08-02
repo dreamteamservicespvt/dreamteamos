@@ -136,7 +136,7 @@ export default function SalesPayroll() {
       month,
       employeeName: row.member.name,
       employeeId: row.member.employeeId,
-      role: "Sales Member",
+      role: "Sales Executive",
       computation: row.computation,
       netPayable: row.totalEarnings,
       paymentMethod: payoutSummary(row.bank),
@@ -257,7 +257,7 @@ export default function SalesPayroll() {
         <div className="rounded-2xl border border-dashed border-border py-16 text-center">
           <Users className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" />
           <p className="text-sm font-medium text-muted-foreground">
-            {rows.length === 0 ? "No sales members to pay" : "No members match this filter"}
+            {rows.length === 0 ? "No sales executives to pay" : "No members match this filter"}
           </p>
         </div>
       ) : (

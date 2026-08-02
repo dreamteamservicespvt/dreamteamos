@@ -175,19 +175,33 @@ describe("KYC completeness", () => {
     const k = kycCompletion(profile({ photoUrl: "u", dob: "2000-01-01" }));
     expect(k.complete).toBe(false);
     expect(k.done).toBe(2);
-    expect(k.total).toBe(6);
-    expect(k.missing).toContain("PAN");
-    expect(k.missing).toContain("Aadhaar");
+    expect(k.total).toBe(12);
+    expect(k.missing).toContain("PAN number");
+    expect(k.missing).toContain("Aadhaar number");
   });
 
   it("is complete only when every required item is on file", () => {
     const k = kycCompletion(profile({
       photoUrl: "u", dob: "2000-01-01", currentAddress: "Kakinada",
+      surname: "Rao", permanentAddress: "Rajahmundry",
+      personalEmail: "a@b.com", bloodGroup: "O+",
       emergencyContact: { name: "A", relation: "Father", phone: "+919999999999" },
       pan: "ABCDE1234F", aadhaar: "111122223333",
+      kycDocuments: [
+        { id: "1", kind: "pan", label: "pan.jpg", url: "https://cdn/pan.jpg", uploadedAt: null as never, uploadedByName: "A" },
+        { id: "2", kind: "aadhaar", label: "aadhaar.jpg", url: "https://cdn/aadhaar.jpg", uploadedAt: null as never, uploadedByName: "A" },
+      ],
     }));
     expect(k.complete).toBe(true);
     expect(k.percent).toBe(100);
+  });
+
+  it("counts an avatar as the photograph when the reader is known", () => {
+    // Anyone who uploaded a profile picture before the HR record existed must not be asked for
+    // the same face a second time.
+    const p = profile({ dob: "2000-01-01" });
+    expect(kycCompletion(p).missing).toContain("Profile photo");
+    expect(kycCompletion(p, { avatar: "https://cdn/a.jpg" } as never).missing).not.toContain("Profile photo");
   });
 });
 
