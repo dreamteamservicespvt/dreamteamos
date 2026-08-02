@@ -58,14 +58,38 @@ describe("HEADER_SYSTEM_PROMPT", () => {
     expect(noLogo).not.toMatch(ASKS_FOR_A_LOGO);
   });
 
-  it("puts the business name in the brand slot instead", () => {
-    expect(noLogo).toContain(NAME);
-    expect(noLogo).toMatch(/BRAND container/);
+  /**
+   * The header already has the business name as its hero element. Filling the empty logo slot
+   * with a "name wordmark" therefore printed the same name twice, in two boxes side by side —
+   * which is what members saw and reported. A header with no logo has one box FEWER.
+   */
+  it("drops the brand box entirely rather than filling it with the name again", () => {
+    expect(noLogo).not.toMatch(/BRAND container|LOGO container/);
+    expect(noLogo).not.toMatch(/NAME WORDMARK/);
+    expect(noLogo).toMatch(/NO brand box/);
   });
 
-  it("forbids an empty brand box or an invented emblem", () => {
+  it("says the name goes in exactly one place", () => {
+    expect(noLogo).toMatch(/must appear EXACTLY ONCE/);
+  });
+
+  it("gives the freed space to the business name instead of leaving a gap", () => {
+    expect(noLogo).toMatch(/LEFT \+ CENTRE/);
+    expect(noLogo).toMatch(/flush against the left inner edge/);
+    // Nothing is left aligning against a box that no longer exists.
+    expect(noLogo).not.toMatch(/The (LOGO|BRAND) box, the NAME container/);
+  });
+
+  it("still forbids inventing an emblem to fill the space", () => {
     expect(noLogo).toMatch(/THIS BUSINESS HAS NO BRAND IMAGE FILE/);
-    expect(noLogo).toMatch(/never draw an empty brand box/i);
+    expect(noLogo).toMatch(/never invent an emblem, icon, monogram or symbol/i);
+  });
+
+  it("keeps the logo box, and its alignment, when a logo does exist", () => {
+    expect(withLogo).toMatch(/LOGO container/);
+    expect(withLogo).toMatch(/- LEFT: a square \/ rounded-square LOGO container/);
+    expect(withLogo).toMatch(/The LOGO box, the NAME container, and the CONTACT pills/);
+    expect(withLogo).toMatch(/- CENTRE: a large rounded-rectangle container/);
   });
 
   it("keeps the layout, the adaptive rules and the no-fabrication rules intact", () => {
@@ -132,6 +156,19 @@ describe("buildBrandMarkDirective", () => {
     expect(buildBrandMarkDirective(true, NAME, "scene")).toMatch(/NAME-BOARD MODE/);
   });
 
+  it("gives the header no substitute mark at all — it already shows the name", () => {
+    const header = buildBrandMarkDirective(true, NAME, "header");
+    expect(header).toMatch(/NO brand box at all/);
+    expect(header).toMatch(/EXACTLY ONCE/);
+    // A wordmark here is what produced the duplicate, so this surface must never ask for one.
+    expect(header).not.toMatch(/WORDMARK MODE/);
+    expect(header).not.toMatch(ASKS_FOR_A_LOGO);
+  });
+
+  it("says nothing for a header that does have a logo", () => {
+    expect(buildBrandMarkDirective(false, NAME, "header")).toBe("");
+  });
+
   it("carries the exact business name through", () => {
     expect(buildBrandMarkDirective(true, NAME, "layout")).toContain(NAME);
   });
@@ -143,8 +180,15 @@ describe("buildBrandMarkDirective", () => {
  * clean, which is the composition this checks.
  */
 describe("the assembled header prompt", () => {
+  /** Directive + design rules + the content block, exactly as geminiService joins them. */
   const assembled = (noLogo: boolean) =>
-    buildBrandMarkDirective(noLogo, NAME, "layout") + HEADER_SYSTEM_PROMPT("commercial", "", noLogo, NAME);
+    buildBrandMarkDirective(noLogo, NAME, "header")
+    + HEADER_SYSTEM_PROMPT("commercial", "", noLogo, NAME)
+    + "\n\nREAL CONTENT TO PLACE:\n"
+    + (noLogo
+      ? "NO BRAND IMAGE — this header has no logo box and no brand tile; the NAME below is the only branding, and it appears exactly once"
+      : "LOGO = use the attached logo image exactly as provided, unchanged")
+    + `\nNAME = ${NAME}`;
 
   it("carries no request for a logo anywhere in no-logo mode", () => {
     expect(assembled(true)).not.toMatch(ASKS_FOR_A_LOGO);
@@ -152,6 +196,20 @@ describe("the assembled header prompt", () => {
 
   it("still asks for one normally", () => {
     expect(assembled(false)).toMatch(ASKS_FOR_A_LOGO);
+  });
+
+  /**
+   * The bug, in one assertion. The member copies this whole string into an image generator, and
+   * it used to hand over the business name twice — once as "BRAND MARK = <name>" and again as
+   * "NAME = <name>" — which is why the finished header showed it in two boxes.
+   */
+  it("hands the business name to the generator exactly once", () => {
+    expect((assembled(true).match(new RegExp(NAME, "g")) || []).length).toBe(1);
+  });
+
+  it("does not describe a brand mark at all when there is no logo", () => {
+    expect(assembled(true)).not.toMatch(/BRAND MARK =/);
+    expect(assembled(true)).toMatch(/NO BRAND IMAGE/);
   });
 });
 

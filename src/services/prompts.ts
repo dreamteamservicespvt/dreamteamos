@@ -971,14 +971,18 @@ export interface BrandMark {
  *
  * `scene`  — inside a photographed room (the main frame). A business with no logo file still has a
  *            board on its wall, so that is what the model is asked for.
- * `layout` — inside a designed graphic (the header strip, the poster). There is no wall here and
- *            asking for "a realistic wall sign" produces a photograph pasted into a layout; what a
- *            designer actually draws is a typographic WORDMARK.
+ * `layout` — inside a designed graphic (the poster). There is no wall here and asking for "a
+ *            realistic wall sign" produces a photograph pasted into a layout; what a designer
+ *            actually draws is a typographic WORDMARK.
+ * `header` — the header strip specifically. A header ALREADY carries the business name as its
+ *            hero element, so giving it a wordmark as well printed that name TWICE, side by side,
+ *            in two separate boxes — which is exactly what members saw. Here a missing logo means
+ *            one element fewer, not a substitute one: the name container takes the freed space.
  *
- * The distinction is not cosmetic. Both surfaces used to share the scene wording, so a no-logo
- * header came out asking for signage that made no sense in a flat brand strip.
+ * The distinction is not cosmetic. All three used to share the scene wording, so a no-logo header
+ * came out asking for signage that made no sense in a flat brand strip.
  */
-export type BrandSurface = 'scene' | 'layout';
+export type BrandSurface = 'scene' | 'layout' | 'header';
 
 /**
  * Resolves how the brand is shown. With a logo it stays "the attached logo".
@@ -1031,6 +1035,19 @@ export const buildBrandMarkDirective = (
   const exact = name
     ? `EXACTLY this business name in clean bold UPPERCASE letters: "${name}"`
     : `the business's EXACT name in clean, correctly-spelled bold UPPERCASE letters`;
+
+  if (surface === 'header') {
+    // Stated as a layout instruction rather than a prohibition: the header has one fewer box, and
+    // the name container grows into the space. Told only what NOT to draw, generators kept
+    // producing a brand tile anyway — and filled it with the business name, twice over.
+    return `NO-LOGO MODE (MANDATORY): This business has no brand image file, and none will be `
+      + `supplied. This header therefore has NO brand box at all: the BUSINESS NAME container IS `
+      + `the branding, and it starts flush at the left inner edge and takes the space a brand box `
+      + `would have used. The business name must appear EXACTLY ONCE in the whole header — never `
+      + `repeat it in a second box, tile, badge, wordmark panel or watermark, never place a `
+      + `separate brand container beside it, and never invent an emblem, icon, monogram or symbol `
+      + `to stand in for one. One name, one container.\n\n`;
+  }
 
   if (surface === 'layout') {
     return `NO-LOGO / WORDMARK MODE (MANDATORY): This business has no brand image file, and none will `
@@ -2088,28 +2105,42 @@ export const HEADER_SYSTEM_PROMPT = (
   noLogo: boolean = false,
   logoName: string = '',
 ) => {
-    // The header is a designed graphic, so a missing logo becomes a typographic wordmark rather
-    // than a wall sign. Every "logo" reference below is written through this, because a blanket
-    // "wherever it says logo, do something else" note left the literal words in the prompt the
-    // member copies — which is exactly what kept asking for a logo that was never uploaded.
+    /**
+     * A header without a logo has ONE box fewer — it does not swap in a substitute.
+     *
+     * It used to: a missing logo became a "NAME WORDMARK" in the left brand container, while the
+     * centre container already held the BUSINESS NAME as its hero. The result printed the same
+     * business name twice, side by side, in two boxes. What a designer actually does with no logo
+     * is drop the mark and let the name run wider — which is also the only arrangement in which
+     * the name is unambiguously the hero.
+     */
     const brand = getBrandMark(noLogo, logoName, 'layout');
-    const markSlot = brand.isNameBoard
-      ? `a rounded-square BRAND container holding ${brand.ref}, set in premium typography that matches the design`
-      : `a square / rounded-square LOGO container holding ${brand.ref} (used exactly as provided, unchanged)`;
-    const markBox = brand.isNameBoard
-      ? `BRAND container: premium with subtle depth, fully inside the frame, never clipped, never a plain white box. It holds the business-name wordmark — NOT an image file, NOT a placeholder, and NEVER an empty logo box.`
-      : `LOGO container: premium with subtle depth, fully inside the frame, never clipped, never a plain white box.`;
-    const colourSource = brand.isNameBoard
+    const markSlot = noLogo
+      ? ''
+      : `\n- LEFT: a square / rounded-square LOGO container holding ${brand.ref} (used exactly as provided, unchanged).`;
+    const nameSlot = noLogo
+      ? `- LEFT + CENTRE: ONE wide rounded-rectangle container holding the BUSINESS NAME as the hero element. It starts flush against the left inner edge of the band and runs across to the contact pills, taking the full left side — this design has NO brand box, so the name occupies that space instead.`
+      : `- CENTRE: a large rounded-rectangle container with the BUSINESS NAME as the hero element.`;
+    const rowAlign = noLogo
+      ? `The NAME container and the CONTACT pills must share the SAME height and baseline and align evenly in one neat row.`
+      : `The LOGO box, the NAME container, and the CONTACT pills must share the SAME height and baseline and align evenly in one neat row.`;
+    const insideBand = noLogo
+      ? `the NAME container and CONTACT pills keep their rounded premium shapes`
+      : `the LOGO box, NAME container, and CONTACT pills keep their rounded premium shapes`;
+    const markBox = noLogo
+      ? ''
+      : `\n- LOGO container: premium with subtle depth, fully inside the frame, never clipped, never a plain white box.`;
+    const colourSource = noLogo
       ? `Use the business's own brand colours (from the brand palette provided) as the base.`
       : `Use the brand / logo colours as the base.`;
-    const elementList = brand.isNameBoard
-      ? `the business-name wordmark, the business name, the contact number(s), and a real address`
+    const elementList = noLogo
+      ? `the business name, the contact number(s), and a real address`
       : `the logo, the business name, the contact number(s), and a real address`;
-    const nothingBeyond = brand.isNameBoard
-      ? `nothing beyond the wordmark, name, contacts, and a real address`
+    const nothingBeyond = noLogo
+      ? `nothing beyond the business name, contacts, and a real address`
       : `nothing beyond logo, name, contacts, and a real address`;
-    const noLogoRule = brand.isNameBoard
-      ? `\n- THIS BUSINESS HAS NO BRAND IMAGE FILE, and none will be supplied. Do NOT ask for one, expect one, or leave room for one, and never draw an empty brand box, a placeholder mark, a generic emblem, or an invented symbol. The business name IS the brand mark here.`
+    const noLogoRule = noLogo
+      ? `\n- THIS BUSINESS HAS NO BRAND IMAGE FILE, and none will be supplied. This header has NO brand box, brand tile, wordmark panel or badge of any kind — do NOT draw one, do NOT leave room for one, and never invent an emblem, icon, monogram or symbol to fill one. The BUSINESS NAME container is the entire branding, and the business name must appear EXACTLY ONCE in the whole header: never repeat it in a second container, beside the name, as a watermark, or inside the address bar.`
       : '';
 
     return `Design a PREMIUM, BUSINESS-THEMED HEADER for a 9:16 vertical advertisement.
@@ -2117,14 +2148,13 @@ export const HEADER_SYSTEM_PROMPT = (
 CANVAS & SIZE (FULL-BLEED TOP STRIP — NO OUTER PADDING):
 - 9:16 vertical frame. The ENTIRE header — brand row AND the address bar together — is ONE compact band that FILLS the top of the frame COMPLETELY: it spans the FULL WIDTH from the left edge to the right edge and starts flush at the very TOP edge, filling about the top 7% as a slim strip. Everything below the header stays empty / blank.
 - FULL-BLEED (IMPORTANT): there must be NO outer margin, NO padding, and NO gap around the header band, and it must NOT look like a floating rounded card with empty space around it. The band reaches the TOP, LEFT, and RIGHT edges of the canvas; do NOT round the top-left or top-right outer corners (only the bottom edge of the band may be softly finished).
-- Inside the band, the BRAND box, NAME container, and CONTACT pills keep their rounded premium shapes, with comfortable INNER spacing so no element is clipped or cramped — elements are padded INSIDE the full-bleed band, while the band itself has no outer padding.
+- Inside the band, ${insideBand}, with comfortable INNER spacing so no element is clipped or cramped — elements are padded INSIDE the full-bleed band, while the band itself has no outer padding.
 
-EXACT LAYOUT (keep this structure — do not move or change it):
-- LEFT: ${markSlot}.
-- CENTRE: a large rounded-rectangle container with the BUSINESS NAME as the hero element.
+EXACT LAYOUT (keep this structure — do not move or change it):${markSlot}
+${nameSlot}
 - RIGHT: the contact number(s) as premium pill / button(s), stacked vertically.
 - BOTTOM: a SLIM full-width ADDRESS bar, tightly attached under the row above as part of the SAME header unit (NOT a separate thick band), with the address text CENTER-aligned.
-- The BRAND box, the NAME container, and the CONTACT pills must share the SAME height and baseline and align evenly in one neat row.
+- ${rowAlign}
 
 ADAPTIVE RULES (IMPORTANT):
 - Contacts: if TWO numbers are given, show two evenly-stacked pills that fill the right side neatly. If only ONE number is given, show a single comfortably-sized pill centered on the right with balanced spacing and NO empty glow panel and NO blank gap. If NO number is given, remove the contact area entirely and let the BUSINESS NAME grow larger / wider to fill that space. Show AT MOST TWO contact numbers and reproduce each number EXACTLY as provided, digit-for-digit — NEVER change, swap, add, drop, reorder, or invent any digit, and never make up a number.
@@ -2142,8 +2172,7 @@ BUSINESS-THEMED GRAPHIC DESIGN (MANDATORY — this was missing before):
 - Place these themed graphics as soft decorative accents (in the corners, behind the name, or as a faint watermark pattern) that clearly signal the business type while keeping all text fully readable.
 
 PREMIUM FINISH:
-- ${colourSource} Add rich gradients, premium soft shadows, tasteful glassmorphism, subtle metallic / gold highlights, and gentle depth and lighting so it feels dimensional — never a flat band, wireframe, form, dashboard, or plain bordered boxes.
-- ${markBox}
+- ${colourSource} Add rich gradients, premium soft shadows, tasteful glassmorphism, subtle metallic / gold highlights, and gentle depth and lighting so it feels dimensional — never a flat band, wireframe, form, dashboard, or plain bordered boxes.${markBox}
 - BUSINESS NAME: the visual hero — premium typography, elegant treatment, strong hierarchy, perfectly spelled and readable.
 - CONTACT pills: premium gradient / glass buttons with a small phone icon and a soft shadow.
 - ADDRESS bar: slim and integrated, with a subtle gradient / glass treatment and a small location-pin icon — never a thick separate rectangle. The address text stays on ONE single line always (shrink the text to fit), never wrapped onto a second line.

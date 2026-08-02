@@ -403,7 +403,7 @@ ${pack
 
     case 'header':
       systemPrompt = REFINE_EDIT_DIRECTIVE + buildRatioDirective(formData)
-        + buildNameBoardDirective(formData, businessInfo, 'layout')
+        + buildNameBoardDirective(formData, businessInfo, 'header')
         + HEADER_SYSTEM_PROMPT(formData.adType, formData.festivalName, formData.noLogo || false, resolveNameBoardText(formData, businessInfo));
       userPrompt = `You previously generated this Header prompt:
 
@@ -2028,7 +2028,7 @@ ${maleCastingOverride}${commercialMainFramePriorityNote}
 
   const headerNameBoardText = resolveNameBoardText(formData, businessInfo);
   const headerSystemPrompt = buildRatioDirective(formData)
-    + buildNameBoardDirective(formData, businessInfo, 'layout')
+    + buildNameBoardDirective(formData, businessInfo, 'header')
     + HEADER_SYSTEM_PROMPT(formData.adType, formData.festivalName, formData.noLogo || false, headerNameBoardText);
   // Extract ONLY logo/name/contacts/address — never dump the full business JSON or any other data.
   const headerBusinessName = extractBusinessNameFromInfo(businessInfo);
@@ -2037,8 +2037,10 @@ ${maleCastingOverride}${commercialMainFramePriorityNote}
   const headerValueLines = [
     // This block is the literal text the member copies into the image generator, so a "LOGO ="
     // line here asked for a logo file that was never uploaded however the rules above were worded.
+    // In no-logo mode there is no brand line AT ALL: a "BRAND MARK = <business name>" line sitting
+    // above "NAME = <business name>" is what put the same name in two boxes in the finished header.
     formData.noLogo
-      ? `BRAND MARK = the business name set as a typographic wordmark${headerNameBoardText ? `, reading exactly "${headerNameBoardText}"` : ''} — nothing is attached, and nothing needs to be`
+      ? 'NO BRAND IMAGE — this header has no logo box and no brand tile; the NAME below is the only branding, and it appears exactly once'
       : 'LOGO = use the attached logo image exactly as provided, unchanged',
     headerBusinessName ? `NAME = ${headerBusinessName}` : '',
     headerContacts[0] ? `CONTACT 1 = ${headerContacts[0]}` : '',
