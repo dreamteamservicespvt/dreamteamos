@@ -80,16 +80,15 @@ export default function TechAdminSettings() {
       </div>
 
       <div className="bg-card border border-border rounded-xl p-4 md:p-6">
-        <div className="flex flex-wrap items-center gap-3 md:gap-4 mb-4 md:mb-6">
+        <div className="mb-4 md:mb-6">
           {/* One upload, and the photo follows them into chat, calls and every team list. */}
-          <ProfilePhotoUpload uid={user.uid} name={user.name} avatar={user.avatar} size={56} />
-          <div className="min-w-0">
+          <ProfilePhotoUpload uid={user.uid} name={user.name} avatar={user.avatar} size={56}>
             <p className="font-display font-bold text-base md:text-lg text-foreground truncate">{user.name}</p>
-            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
               <span className={`text-[10px] md:text-[11px] font-medium px-2 py-0.5 rounded-full ${getRoleColor(user.role)}`}>{getRoleLabel(user.role)}</span>
               <span className="text-[10px] md:text-xs text-muted-foreground truncate">{user.email}</span>
             </div>
-          </div>
+          </ProfilePhotoUpload>
         </div>
         <form onSubmit={handleSaveProfile} className="space-y-4">
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-2"><User size={14} /> Profile</div>

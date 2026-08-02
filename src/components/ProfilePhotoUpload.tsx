@@ -22,7 +22,7 @@ import ImageCropper from "@/components/ImageCropper";
 const MAX_BYTES = 5 * 1024 * 1024;
 
 export default function ProfilePhotoUpload({
-  uid, name, avatar, size = 72, onChange,
+  uid, name, avatar, size = 72, onChange, children,
 }: {
   uid: string;
   name?: string | null;
@@ -30,6 +30,11 @@ export default function ProfilePhotoUpload({
   size?: number;
   /** Told the new URL (or null) so the surrounding page can update without a re-read. */
   onChange?: (url: string | null) => void;
+  /**
+   * Who this is — name, role chips. Rendered beside the face rather than left to the caller's
+   * own flex row, which is what let it wrap away onto a line of its own on a narrow screen.
+   */
+  children?: React.ReactNode;
 }) {
   const { toast } = useToast();
   const storeUser = useAuthStore((s) => s.user);
@@ -92,34 +97,41 @@ export default function ProfilePhotoUpload({
   };
 
   return (
-    <div className="flex items-center gap-3">
-      <div className="relative">
-        <MemberAvatar name={name} avatar={avatar} size={size} />
-        {busy && (
-          <span className="absolute inset-0 flex items-center justify-center rounded-full bg-background/70">
-            <Loader2 className="h-4 w-4 animate-spin text-primary" />
-          </span>
-        )}
-      </div>
-      <div className="space-y-1.5">
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={() => inputRef.current?.click()} disabled={busy}
-            data-test="upload-photo"
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50">
-            <Camera size={13} /> {avatar ? "Change photo" : "Upload photo"}
-          </button>
-          {avatar && (
-            <button type="button" onClick={handleRemove} disabled={busy} data-test="remove-photo"
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:border-destructive/40 hover:text-destructive disabled:opacity-50">
-              <Trash2 size={13} />
-            </button>
+    <div className="w-full">
+      {/* Face and name together, always on one line. They used to be separate flex children of
+          the caller's row, so on a phone the name wrapped BELOW the help paragraph — the two
+          halves of a person's identity split apart by a note about file sizes. */}
+      <div className="flex items-center gap-3">
+        <div className="relative shrink-0">
+          <MemberAvatar name={name} avatar={avatar} size={size} />
+          {busy && (
+            <span className="absolute inset-0 flex items-center justify-center rounded-full bg-background/70">
+              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            </span>
           )}
         </div>
-        <p className="text-[11px] text-muted-foreground">
-          Shows on chat, calls, the leaderboard and every team list. You crop it to a square before
-          it saves. JPG or PNG, under 5 MB.
+        {children && <div className="min-w-0 flex-1">{children}</div>}
+      </div>
+
+      {/* Controls and the note run full width underneath, where they have room to breathe. */}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button type="button" onClick={() => inputRef.current?.click()} disabled={busy}
+          data-test="upload-photo"
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50">
+          <Camera size={13} /> {avatar ? "Change photo" : "Upload photo"}
+        </button>
+        {avatar && (
+          <button type="button" onClick={handleRemove} disabled={busy} data-test="remove-photo"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:border-destructive/40 hover:text-destructive disabled:opacity-50">
+            <Trash2 size={13} />
+          </button>
+        )}
+        <p className="w-full text-[11px] leading-snug text-muted-foreground sm:w-auto sm:flex-1">
+          Shows on chat, calls and every team list. You crop it square before it saves — JPG or PNG,
+          under 5&nbsp;MB.
         </p>
       </div>
+
       <input ref={inputRef} type="file" accept="image/*" className="hidden"
         onChange={(e) => { const f = e.target.files?.[0]; if (f) handlePick(f); }} />
 

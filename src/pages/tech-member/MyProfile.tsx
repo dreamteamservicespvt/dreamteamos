@@ -76,16 +76,16 @@ export default function TechMemberProfile() {
       </div>
 
       <div className="bg-card border border-border rounded-xl p-5">
-        <div className="flex flex-wrap items-center gap-4 mb-6">
-          {/* One upload, and the photo follows them into chat, calls and every team list. */}
-          <ProfilePhotoUpload uid={user.uid} name={user.name} avatar={user.avatar} />
-          <div>
-            <p className="font-display font-bold text-foreground text-lg">{user.name}</p>
-            <div className="flex items-center gap-1.5 mt-0.5">
+        <div className="mb-6">
+          {/* One upload, and the photo follows them into chat, calls and every team list. The
+              name sits inside it so the face and the name never split across two lines. */}
+          <ProfilePhotoUpload uid={user.uid} name={user.name} avatar={user.avatar}>
+            <p className="font-display font-bold text-foreground text-base sm:text-lg truncate">{user.name}</p>
+            <div className="flex flex-wrap items-center gap-1.5 mt-1">
               <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-role-tech-member/15 text-role-tech-member">{getRoleLabel(user.role)}</span>
               <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary">{EMPLOYMENT_LABELS[employmentOf(user.employmentType)]}</span>
             </div>
-          </div>
+          </ProfilePhotoUpload>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">

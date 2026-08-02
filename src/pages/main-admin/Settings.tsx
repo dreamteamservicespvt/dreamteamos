@@ -103,18 +103,17 @@ export default function Settings() {
 
       {/* Profile Card */}
       <div className="bg-card border border-border rounded-xl p-6">
-        <div className="flex flex-wrap items-center gap-4 mb-6">
+        <div className="mb-6">
           {/* One upload, and the photo follows them into chat, calls and every team list. */}
-          <ProfilePhotoUpload uid={user.uid} name={user.name} avatar={user.avatar} size={56} />
-          <div>
-            <p className="font-display font-bold text-lg text-foreground">{user.name}</p>
-            <div className="flex items-center gap-2 mt-0.5">
+          <ProfilePhotoUpload uid={user.uid} name={user.name} avatar={user.avatar} size={56}>
+            <p className="font-display font-bold text-base sm:text-lg text-foreground truncate">{user.name}</p>
+            <div className="flex flex-wrap items-center gap-2 mt-1">
               <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${getRoleColor(user.role)}`}>
                 {getRoleLabel(user.role)}
               </span>
-              <span className="text-xs text-muted-foreground">{user.email}</span>
+              <span className="text-xs text-muted-foreground truncate">{user.email}</span>
             </div>
-          </div>
+          </ProfilePhotoUpload>
         </div>
 
         <form onSubmit={handleSaveProfile} className="space-y-4">

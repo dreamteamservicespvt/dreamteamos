@@ -75,16 +75,16 @@ export default function MyProfile() {
 
       {/* Info Card */}
       <div className="bg-card border border-border rounded-xl p-5">
-        <div className="flex flex-wrap items-center gap-4 mb-6">
-          {/* One upload, and the photo follows them into chat, calls and every team list. */}
-          <ProfilePhotoUpload uid={user.uid} name={user.name} avatar={user.avatar} />
-          <div>
-            <p className="font-display font-bold text-foreground text-lg">{user.name}</p>
+        <div className="mb-6">
+          {/* One upload, and the photo follows them into chat, calls and every team list. The
+              name sits inside it so the face and the name never split across two lines. */}
+          <ProfilePhotoUpload uid={user.uid} name={user.name} avatar={user.avatar}>
+            <p className="font-display font-bold text-foreground text-base sm:text-lg truncate">{user.name}</p>
             {/* Read from the one place roles are named, so a rename never leaves this behind. */}
-            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-role-sales-member/15 text-role-sales-member">
+            <span className="mt-1 inline-block text-[10px] font-medium px-2 py-0.5 rounded-full bg-role-sales-member/15 text-role-sales-member">
               {getRoleLabel(user.role)}
             </span>
-          </div>
+          </ProfilePhotoUpload>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">

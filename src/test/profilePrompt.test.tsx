@@ -12,10 +12,12 @@ import { cleanup, configure, fireEvent, render, screen, waitFor } from "@testing
  */
 
 const {
-  saveEmployeeProfile, addKycDocument, uploadToCloudinary, watchEmployeeProfile, updateDoc, setUser, state,
+  saveEmployeeProfile, addKycDocument, removeKycDocument, uploadToCloudinary, watchEmployeeProfile,
+  updateDoc, setUser, state,
 } = vi.hoisted(() => ({
   saveEmployeeProfile: vi.fn().mockResolvedValue(undefined),
   addKycDocument: vi.fn().mockResolvedValue(undefined),
+  removeKycDocument: vi.fn().mockResolvedValue(undefined),
   uploadToCloudinary: vi.fn().mockResolvedValue("https://cdn.test/file.jpg"),
   watchEmployeeProfile: vi.fn(),
   updateDoc: vi.fn().mockResolvedValue(undefined),
@@ -23,7 +25,7 @@ const {
   state: { user: {} as Record<string, unknown> },
 }));
 
-vi.mock("@/services/hr", () => ({ saveEmployeeProfile, addKycDocument, watchEmployeeProfile }));
+vi.mock("@/services/hr", () => ({ saveEmployeeProfile, addKycDocument, removeKycDocument, watchEmployeeProfile }));
 vi.mock("@/services/cloudinary", () => ({ uploadToCloudinary }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock("@/store/authStore", () => ({
@@ -58,6 +60,23 @@ const FULL: Partial<EmployeeProfile> = {
     { id: "2", kind: "aadhaar", label: "a.jpg", url: "https://cdn/a.jpg", uploadedAt: null as never, uploadedByName: "A" },
   ],
 };
+
+/**
+ * A watcher whose snapshots can be pushed later, the way Firestore delivers them — the only way
+ * to reproduce "upload a file and the form resets", which happens on the snapshot that follows.
+ */
+const watchable = () => {
+  let push!: (p: Partial<EmployeeProfile>) => void;
+  watchEmployeeProfile.mockImplementation((_uid: string, dept: string, cb: (p: unknown, e: boolean) => void) => {
+    push = (p) => cb({ uid: "u1", department: dept, stage: "probation", ...p }, true);
+    push({});
+    return () => {};
+  });
+  return (p: Partial<EmployeeProfile>) => push(p);
+};
+
+const aDoc = (kind: string, label: string, url: string, id = "1") =>
+  ({ id, kind, label, url, uploadedAt: null, uploadedByName: "A" });
 
 /** Drive the profile watcher with a fixed record. */
 const withProfile = (patch: Partial<EmployeeProfile> = {}) => {
@@ -265,6 +284,79 @@ describe("filling it in", () => {
     await waitFor(() => expect(addKycDocument).toHaveBeenCalledTimes(1));
     expect(addKycDocument.mock.calls[0][1].kind).toBe("aadhaar");
     expect(addKycDocument.mock.calls[0][1].url).toBe("https://cdn.test/file.jpg");
+  });
+});
+
+describe("uploading a card without losing your place", () => {
+  /**
+   * The bug members hit: type an address, upload the Aadhaar, and everything typed vanished.
+   * The upload wrote to Firestore, the snapshot came straight back, and the form re-seeded itself
+   * from the stored record — wiping the boxes that had not been saved yet.
+   */
+  it("keeps everything already typed when a file is uploaded", async () => {
+    const push = watchable();
+    render(<ProfileCompletionPrompt />);
+
+    fireEvent.change(screen.getByTestId("prompt-address"), { target: { value: "Flat 4, MG Road" } });
+    fireEvent.change(screen.getByTestId("prompt-emergency-phone"), { target: { value: "+919000000000" } });
+
+    // Upload a card — and let the snapshot land, exactly as Firestore delivers it.
+    const input = screen.getByTestId("prompt-step-aadhaarCard").querySelector("input[type=file]")!;
+    fireEvent.change(input, { target: { files: [new File(["x"], "aadhaar.jpg", { type: "image/jpeg" })] } });
+    await waitFor(() => expect(addKycDocument).toHaveBeenCalled());
+    push({ kycDocuments: [{ id: "1", kind: "aadhaar", label: "aadhaar.jpg", url: "https://cdn/a.jpg", uploadedAt: null, uploadedByName: "A" }] as never });
+
+    await waitFor(() =>
+      expect((screen.getByTestId("prompt-address") as HTMLTextAreaElement).value).toBe("Flat 4, MG Road"));
+    expect((screen.getByTestId("prompt-emergency-phone") as HTMLInputElement).value).toBe("+919000000000");
+  });
+
+  it("keeps the row on screen after upload, with a way to see and change the file", async () => {
+    // It used to disappear the moment the file landed — no way to check it, no way to swap it.
+    const push = watchable();
+    render(<ProfileCompletionPrompt />);
+
+    const input = screen.getByTestId("prompt-step-aadhaarCard").querySelector("input[type=file]")!;
+    fireEvent.change(input, { target: { files: [new File(["x"], "aadhaar.jpg", { type: "image/jpeg" })] } });
+    await waitFor(() => expect(addKycDocument).toHaveBeenCalled());
+    push({ kycDocuments: [aDoc("aadhaar", "aadhaar.jpg", "https://cdn/a.jpg")] as never });
+
+    await waitFor(() => expect(screen.getByTestId("prompt-uploaded-aadhaarCard")).toHaveTextContent("aadhaar.jpg"));
+    expect(screen.getByTestId("prompt-step-aadhaarCard")).toBeInTheDocument();
+    expect(screen.getByTestId("prompt-view-aadhaarCard")).toHaveAttribute("href", "https://cdn/a.jpg");
+    expect(screen.getByTestId("prompt-replace-aadhaarCard")).toBeInTheDocument();
+    expect(screen.getByTestId("prompt-done-aadhaarCard")).toBeInTheDocument();
+    // The one that has no file yet is still asking for it.
+    expect(screen.getByTestId("prompt-upload-panCard")).toBeInTheDocument();
+  });
+
+  it("can take a wrong file back off the record", async () => {
+    const push = watchable();
+    render(<ProfileCompletionPrompt />);
+    push({ kycDocuments: [aDoc("pan", "wrong.jpg", "https://cdn/w.jpg", "doc-1")] as never });
+
+    await waitFor(() => expect(screen.getByTestId("prompt-remove-panCard")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("prompt-remove-panCard"));
+    await waitFor(() => expect(removeKycDocument).toHaveBeenCalledTimes(1));
+    expect(removeKycDocument.mock.calls[0][1]).toBe("doc-1");
+  });
+
+  it("does not re-ask for things that were already complete before it opened", () => {
+    // Freezing the question list must not turn it back into a twelve-field form.
+    withProfile({ personalEmail: "asha@example.com", dob: "1996-08-02", bloodGroup: "O+" });
+    render(<ProfileCompletionPrompt />);
+    expect(screen.queryByTestId("prompt-step-personalEmail")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("prompt-step-dob")).not.toBeInTheDocument();
+  });
+});
+
+describe("knowing whether it is saved", () => {
+  it("warns while there is typing that has not been saved", async () => {
+    render(<ProfileCompletionPrompt />);
+    expect(screen.queryByTestId("prompt-unsaved")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByTestId("prompt-address"), { target: { value: "Flat 4" } });
+    expect(screen.getByTestId("prompt-unsaved")).toBeInTheDocument();
   });
 });
 

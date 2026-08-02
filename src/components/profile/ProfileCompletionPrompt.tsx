@@ -12,26 +12,33 @@
  * 9am. "I'll do it later" is honoured for the rest of the day and the prompt returns tomorrow, so
  * the nagging is real but never costs anyone a morning.
  *
- * ── Why it asks only what is missing ──────────────────────────────────────────────────────────
- * Somebody who has given eight of ten things should see two fields, not a ten-field form with
- * eight already filled. The list rebuilds itself from what is on file, so it shrinks as they go
- * and vanishes for good on the last one.
+ * ── Why it asks only what is missing, but does not shrink while you use it ────────────────────
+ * Somebody who has given eight of twelve things should see four fields, not a twelve-field form
+ * with eight already filled — so the questions are chosen from what is outstanding when the
+ * dialog opens. They are then FIXED for the session. Rebuilding the list live looked tidy and was
+ * awful to use: uploading an Aadhaar made its row disappear mid-interaction, with no way to see
+ * what had gone up or to swap the wrong file. Now each answered row stays, ticked, with View /
+ * Replace / Remove on the ones that hold a file.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  AlertCircle, Camera, Check, CheckCircle2, ClipboardList, FileUp, Loader2,
+  AlertCircle, Camera, Check, CheckCircle2, ClipboardList, Eye, FileText, FileUp, Loader2,
+  RefreshCw, Trash2,
 } from "lucide-react";
 import { collection, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { useToast } from "@/hooks/use-toast";
 import { uploadToCloudinary } from "@/services/cloudinary";
-import { addKycDocument, saveEmployeeProfile, watchEmployeeProfile } from "@/services/hr";
+import {
+  addKycDocument, removeKycDocument, saveEmployeeProfile, watchEmployeeProfile,
+} from "@/services/hr";
 import { cleanId, departmentOfRole, isValidAadhaar, isValidPan } from "@/utils/hrPolicy";
 import {
-  joinName, needsProfilePrompt, profileCompletion, profilePromptDismissedKey, splitName,
+  PROFILE_STEPS, joinName, needsProfilePrompt, profileCompletion, profilePromptDismissedKey,
+  splitName,
 } from "@/utils/profileCompletion";
 import type { ProfileStep, ProfileStepKey } from "@/utils/profileCompletion";
 import type { EmployeeProfile } from "@/types/hr";
@@ -61,6 +68,25 @@ const EMPTY_DRAFT: Draft = {
   currentAddress: "", permanentAddress: "",
   emergencyName: "", emergencyRelation: "", emergencyPhone: "", pan: "", aadhaar: "",
 };
+
+/** The draft as it stands on the server — used both to seed the form and to spot unsaved edits. */
+function draftFromProfile(name: string | undefined, profile: EmployeeProfile): Draft {
+  const { given, surname } = splitName(name, profile.surname);
+  return {
+    givenName: given,
+    surname,
+    personalEmail: profile.personalEmail || "",
+    dob: profile.dob || "",
+    bloodGroup: profile.bloodGroup || "",
+    currentAddress: profile.currentAddress || "",
+    permanentAddress: profile.permanentAddress || "",
+    emergencyName: profile.emergencyContact?.name || "",
+    emergencyRelation: profile.emergencyContact?.relation || "",
+    emergencyPhone: profile.emergencyContact?.phone || "",
+    pan: profile.pan || "",
+    aadhaar: profile.aadhaar || "",
+  };
+}
 
 function readFlag(key: string): boolean {
   try { return localStorage.getItem(key) === "1"; } catch { return false; }
@@ -137,29 +163,56 @@ export default function ProfileCompletionPrompt() {
 
   const completion = useMemo(() => profileCompletion(user, profile), [user, profile]);
 
-  // Seed the draft from whatever is already stored, so a half-filled emergency contact is not
-  // silently wiped by saving the other half.
+  /**
+   * The draft is seeded ONCE, from the first snapshot, and never again.
+   *
+   * It used to re-seed on every snapshot. Uploading a PAN card writes to Firestore, the snapshot
+   * comes straight back, and the effect overwrote the draft with the stored record — silently
+   * wiping the address, the emergency contact and everything else the member had typed but not
+   * yet pressed Save on. They then had to type it all a second time. Anything arriving from the
+   * server after this point is already reflected in `profile`; the draft belongs to the person
+   * typing into it.
+   */
+  const seeded = useRef(false);
   useEffect(() => {
-    if (!profile) return;
-    const { given, surname } = splitName(user?.name, profile.surname);
-    setDraft({
-      givenName: given,
-      surname,
-      personalEmail: profile.personalEmail || "",
-      dob: profile.dob || "",
-      bloodGroup: profile.bloodGroup || "",
-      currentAddress: profile.currentAddress || "",
-      permanentAddress: profile.permanentAddress || "",
-      emergencyName: profile.emergencyContact?.name || "",
-      emergencyRelation: profile.emergencyContact?.relation || "",
-      emergencyPhone: profile.emergencyContact?.phone || "",
-      pan: profile.pan || "",
-      aadhaar: profile.aadhaar || "",
-    });
-    // The name comes off the account, which the photo step also rewrites — but re-seeding on
-    // every user change would discard what they are halfway through typing.
+    if (!profile || seeded.current) return;
+    seeded.current = true;
+    setDraft(draftFromProfile(user?.name, profile));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile]);
+
+  /**
+   * Whether anything typed is not yet on the server.
+   *
+   * Files and the photo save the instant they are picked; the text boxes wait for Save. That
+   * split is not obvious from looking at the form, so it is said out loud rather than left for
+   * someone to discover by closing the dialog and losing an address.
+   */
+  const dirty = useMemo(() => {
+    if (!profile) return false;
+    const stored = draftFromProfile(user?.name, profile);
+    return (Object.keys(stored) as (keyof Draft)[]).some((k) => draft[k].trim() !== stored[k].trim());
+  }, [draft, profile, user?.name]);
+
+  /**
+   * Which questions this session asks — fixed when the prompt opens.
+   *
+   * Rendering "whatever is missing right now" meant a field vanished the instant it was answered:
+   * upload the Aadhaar and the row disappeared mid-interaction, with no way to check what had
+   * gone up or to swap the wrong file. Freezing the list at open keeps every answered item on
+   * screen with a tick beside it — visible, viewable and replaceable — while items that were
+   * already complete before opening stay hidden, which is the whole point of a short form.
+   */
+  const [sessionKeys, setSessionKeys] = useState<ProfileStepKey[] | null>(null);
+  useEffect(() => {
+    if (!profile || sessionKeys) return;
+    setSessionKeys(completion.missing.map((s) => s.key));
+  }, [profile, sessionKeys, completion.missing]);
+
+  const sessionSteps = useMemo(
+    () => (sessionKeys ? PROFILE_STEPS.filter((s) => sessionKeys.includes(s.key)) : []),
+    [sessionKeys],
+  );
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((prev) => ({ ...prev, [key]: value }));
@@ -206,6 +259,33 @@ export default function ProfileCompletionPrompt() {
       toast({ title: "Photo saved", description: "It now shows everywhere you appear." });
     } catch {
       toast({ title: "Upload failed", description: "Could not save the photo. Try again.", variant: "destructive" });
+    } finally {
+      setUploading(null);
+    }
+  };
+
+  /** The file already on record for an upload step, if any. */
+  const uploadedFor = (step: ProfileStep) =>
+    step.docKind
+      ? (profile?.kycDocuments || []).filter((d) => d.kind === step.docKind).slice(-1)[0]
+      : undefined;
+
+  /**
+   * Take a wrong file back off the record.
+   *
+   * There was no way to do this before: once a file went up the row disappeared, so a member who
+   * photographed the wrong side of their Aadhaar had no route back short of asking an admin.
+   */
+  const handleRemoveUpload = async (step: ProfileStep) => {
+    const current = profileRef.current || profile;
+    const existing = uploadedFor(step);
+    if (!current || !existing || uploading) return;
+    setUploading(step.key);
+    try {
+      await removeKycDocument(current, existing.id, actor);
+      toast({ title: "Removed", description: `${step.label} taken off your record.` });
+    } catch {
+      toast({ title: "Error", description: "Could not remove the file. Try again.", variant: "destructive" });
     } finally {
       setUploading(null);
     }
@@ -306,8 +386,14 @@ export default function ProfileCompletionPrompt() {
   if (dismissed) return null;
   if (completion.complete && !justFinished) return null;
 
-  const show = (key: ProfileStepKey) => completion.missing.some((s) => s.key === key);
-  const stepOf = (key: ProfileStepKey) => completion.missing.find((s) => s.key === key)!;
+  // Asked this session — answered or not. See sessionKeys for why it is not "missing right now".
+  const show = (key: ProfileStepKey) => sessionSteps.some((s) => s.key === key);
+  const stepOf = (key: ProfileStepKey) => sessionSteps.find((s) => s.key === key)!;
+  /** Live state of one asked question, for the tick beside its label. */
+  const isDone = (key: ProfileStepKey) => {
+    const step = PROFILE_STEPS.find((s) => s.key === key);
+    return !!(step && profile && step.has(profile, user));
+  };
 
   return (
     <AnimatePresence>
@@ -370,7 +456,7 @@ export default function ProfileCompletionPrompt() {
             ) : (
               <>
                 {show("fullName") && (
-                  <Row step={stepOf("fullName")}>
+                  <Row step={stepOf("fullName")} done={isDone("fullName")}>
                     <div className="grid gap-2 sm:grid-cols-2">
                       <Text
                         value={draft.givenName} placeholder="Name" onChange={(v) => set("givenName", v)}
@@ -394,7 +480,7 @@ export default function ProfileCompletionPrompt() {
                 )}
 
                 {show("photo") && (
-                  <Row step={stepOf("photo")}>
+                  <Row step={stepOf("photo")} done={isDone("photo")}>
                     <div className="flex items-center gap-3">
                       <MemberAvatar name={user.name} avatar={user.avatar} size={52} />
                       <button
@@ -418,7 +504,7 @@ export default function ProfileCompletionPrompt() {
                 )}
 
                 {show("personalEmail") && (
-                  <Row step={stepOf("personalEmail")}>
+                  <Row step={stepOf("personalEmail")} done={isDone("personalEmail")}>
                     <Text
                       type="email" value={draft.personalEmail} placeholder={stepOf("personalEmail").placeholder}
                       onChange={(v) => set("personalEmail", v)} test="prompt-personal-email"
@@ -427,13 +513,13 @@ export default function ProfileCompletionPrompt() {
                 )}
 
                 {show("dob") && (
-                  <Row step={stepOf("dob")}>
+                  <Row step={stepOf("dob")} done={isDone("dob")}>
                     <Text type="date" value={draft.dob} onChange={(v) => set("dob", v)} test="prompt-dob" />
                   </Row>
                 )}
 
                 {show("bloodGroup") && (
-                  <Row step={stepOf("bloodGroup")}>
+                  <Row step={stepOf("bloodGroup")} done={isDone("bloodGroup")}>
                     <Text
                       value={draft.bloodGroup} placeholder={stepOf("bloodGroup").placeholder}
                       onChange={(v) => set("bloodGroup", v.toUpperCase())} test="prompt-blood-group"
@@ -442,7 +528,7 @@ export default function ProfileCompletionPrompt() {
                 )}
 
                 {show("currentAddress") && (
-                  <Row step={stepOf("currentAddress")}>
+                  <Row step={stepOf("currentAddress")} done={isDone("currentAddress")}>
                     <textarea
                       value={draft.currentAddress}
                       onChange={(e) => set("currentAddress", e.target.value)}
@@ -455,7 +541,7 @@ export default function ProfileCompletionPrompt() {
                 )}
 
                 {show("permanentAddress") && (
-                  <Row step={stepOf("permanentAddress")}>
+                  <Row step={stepOf("permanentAddress")} done={isDone("permanentAddress")}>
                     <textarea
                       value={draft.permanentAddress}
                       onChange={(e) => set("permanentAddress", e.target.value)}
@@ -486,7 +572,7 @@ export default function ProfileCompletionPrompt() {
                 )}
 
                 {show("emergencyContact") && (
-                  <Row step={stepOf("emergencyContact")}>
+                  <Row step={stepOf("emergencyContact")} done={isDone("emergencyContact")}>
                     <div className="grid gap-2 sm:grid-cols-2">
                       <Text value={draft.emergencyName} placeholder="Name" onChange={(v) => set("emergencyName", v)} test="prompt-emergency-name" />
                       <Text value={draft.emergencyRelation} placeholder="Relationship (Father)" onChange={(v) => set("emergencyRelation", v)} />
@@ -499,7 +585,7 @@ export default function ProfileCompletionPrompt() {
                 )}
 
                 {show("pan") && (
-                  <Row step={stepOf("pan")} error={panError}>
+                  <Row step={stepOf("pan")} done={isDone("pan")} error={panError}>
                     <Text
                       value={draft.pan} placeholder={stepOf("pan").placeholder}
                       onChange={(v) => set("pan", v.toUpperCase())} test="prompt-pan"
@@ -508,7 +594,7 @@ export default function ProfileCompletionPrompt() {
                 )}
 
                 {show("aadhaar") && (
-                  <Row step={stepOf("aadhaar")} error={aadhaarError}>
+                  <Row step={stepOf("aadhaar")} done={isDone("aadhaar")} error={aadhaarError}>
                     <Text
                       value={draft.aadhaar} placeholder={stepOf("aadhaar").placeholder} inputMode="numeric"
                       onChange={(v) => set("aadhaar", v)} test="prompt-aadhaar"
@@ -518,20 +604,54 @@ export default function ProfileCompletionPrompt() {
 
                 {(["panCard", "aadhaarCard"] as ProfileStepKey[]).filter(show).map((key) => {
                   const step = stepOf(key);
+                  const existing = uploadedFor(step);
+                  const busy = uploading === key;
                   return (
-                    <Row key={key} step={step}>
-                      <button
-                        type="button"
-                        onClick={() => inputFor[key].current?.click()}
-                        disabled={uploading === key}
-                        data-test={`prompt-upload-${key}`}
-                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium text-foreground hover:bg-accent disabled:opacity-50"
-                      >
-                        {uploading === key
-                          ? <Loader2 size={13} className="animate-spin" />
-                          : <FileUp size={13} />}
-                        {uploading === key ? "Uploading…" : "Choose file"}
-                      </button>
+                    <Row key={key} step={step} done={isDone(key)}>
+                      {existing ? (
+                        // What went up, with a way to check it and a way to undo it — the two
+                        // things missing before, when the row simply vanished on upload.
+                        <div
+                          className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-background px-2.5 py-2"
+                          data-test={`prompt-uploaded-${key}`}
+                        >
+                          <FileText size={14} className="shrink-0 text-primary" />
+                          <span className="min-w-0 flex-1 truncate text-xs text-foreground">{existing.label}</span>
+                          <a
+                            href={existing.url} target="_blank" rel="noopener noreferrer"
+                            data-test={`prompt-view-${key}`}
+                            className="inline-flex h-7 items-center gap-1 rounded-md border border-border px-2 text-[11px] font-medium text-foreground hover:bg-accent"
+                          >
+                            <Eye size={11} /> View
+                          </a>
+                          <button
+                            type="button" onClick={() => inputFor[key].current?.click()} disabled={busy}
+                            data-test={`prompt-replace-${key}`}
+                            className="inline-flex h-7 items-center gap-1 rounded-md border border-border px-2 text-[11px] font-medium text-foreground hover:bg-accent disabled:opacity-50"
+                          >
+                            {busy ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />} Replace
+                          </button>
+                          <button
+                            type="button" onClick={() => handleRemoveUpload(step)} disabled={busy}
+                            title="Remove this file"
+                            data-test={`prompt-remove-${key}`}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:border-destructive/40 hover:text-destructive disabled:opacity-50"
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => inputFor[key].current?.click()}
+                          disabled={busy}
+                          data-test={`prompt-upload-${key}`}
+                          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium text-foreground hover:bg-accent disabled:opacity-50"
+                        >
+                          {busy ? <Loader2 size={13} className="animate-spin" /> : <FileUp size={13} />}
+                          {busy ? "Uploading…" : "Choose file"}
+                        </button>
+                      )}
                       <input
                         ref={inputFor[key]} type="file" accept="image/*,application/pdf" className="hidden"
                         onChange={(e) => {
@@ -550,10 +670,20 @@ export default function ProfileCompletionPrompt() {
           {/* Actions */}
           <div className="shrink-0 border-t border-border px-5 py-3">
             {!completion.complete && (
-              <p className="mb-2.5 text-[11px] leading-relaxed text-muted-foreground">
-                Files and photos save as soon as you pick them. Everything else saves when you
-                press Save. We will ask again tomorrow until it is all here.
-              </p>
+              dirty ? (
+                <p
+                  className="mb-2.5 flex items-center gap-1.5 rounded-lg border border-warning/40 bg-warning/10 px-2.5 py-2 text-[11px] font-medium leading-relaxed text-warning"
+                  data-test="prompt-unsaved"
+                >
+                  <AlertCircle size={12} className="shrink-0" />
+                  You have typed things that are not saved yet — press Save to keep them.
+                </p>
+              ) : (
+                <p className="mb-2.5 text-[11px] leading-relaxed text-muted-foreground">
+                  Files and photos save as soon as you pick them; everything you type saves when you
+                  press Save. Nothing you have entered is lost when you upload a file.
+                </p>
+              )
             )}
             <div className="flex gap-2">
               <button
@@ -592,16 +722,21 @@ export default function ProfileCompletionPrompt() {
   );
 }
 
-/** One outstanding item: what it is, why it is wanted, and the control that answers it. */
-function Row({ step, error, children }: {
+/** One asked item: what it is, why it is wanted, whether it is answered, and the control. */
+function Row({ step, error, done, children }: {
   step: ProfileStep;
   error?: string;
+  /** Ticked once it is on file. The row stays put either way — see sessionKeys. */
+  done?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <div data-test={`prompt-step-${step.key}`}>
+    <div data-test={`prompt-step-${step.key}`} data-done={done ? "yes" : "no"}>
       <div className="mb-1.5">
-        <label className="text-xs font-semibold text-foreground">{step.label}</label>
+        <label className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+          {done && <CheckCircle2 size={13} className="shrink-0 text-success" data-test={`prompt-done-${step.key}`} />}
+          {step.label}
+        </label>
         <p className="text-[11px] leading-snug text-muted-foreground">{step.hint}</p>
       </div>
       {children}
