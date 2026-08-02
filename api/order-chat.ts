@@ -61,13 +61,46 @@ async function alertUser(opts: {
   }
 }
 
+/**
+ * Only our own pages may call this from a browser.
+ *
+ * Reflecting whatever `Origin` arrives would let any site on the internet script this endpoint from
+ * a visitor's browser — which for `notify` means ringing a member's phone. Preview deployments are
+ * matched by name rather than listed, since their hostnames change with every push.
+ */
+function allowedOrigin(origin: string): string | null {
+  if (!origin) return null;
+  if (origin === "https://dreamteamos.vercel.app") return origin;
+  if (origin === "https://localhost") return origin;            // the Capacitor shell
+  if (/^https:\/\/dreamteamos-[a-z0-9-]+\.vercel\.app$/.test(origin)) return origin;
+  if (/^http:\/\/localhost(:\d+)?$/.test(origin)) return origin; // vite dev
+  return null;
+}
+
+/**
+ * Proves the caller is the customer who already passed the code for THIS chat.
+ *
+ * `join` is authorised by the four digits; everything after it is authorised by the token those
+ * digits bought. Without this, anyone who came by a chat link — or guessed at one — could post
+ * `notify` in a loop and ring the assigned member's phone until they turned the app off.
+ */
+async function isGuestOf(chatId: string, authHeader: string | undefined): Promise<boolean> {
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  if (!token) return false;
+  try {
+    const decoded = await admin.auth().verifyIdToken(token);
+    return decoded.orderChat === chatId;
+  } catch {
+    return false;
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const origin = req.headers.origin || "";
-  // The client opens this page in an ordinary browser, so any origin may legitimately call it;
-  // nothing here is authorised by origin — `join` is authorised by the code, `notify` by the room.
-  res.setHeader("Access-Control-Allow-Origin", origin || "*");
+  const origin = allowedOrigin(req.headers.origin || "");
+  if (origin) res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
   if (req.method === "OPTIONS") return res.status(204).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -81,7 +114,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const roomRef = adminDb.collection("order_chats").doc(chatId);
     const roomSnap = await roomRef.get();
     if (!roomSnap.exists) return res.status(404).json({ error: "not_found" });
-    const room = roomSnap.data() as Record<string, any>;
+    const room = (roomSnap.data() || {}) as {
+      accessCode?: string | number;
+      businessName?: string;
+      clientName?: string;
+      uniqueId?: string;
+      memberUid?: string;
+      memberName?: string;
+      status?: string;
+      participants?: string[];
+      activeUsers?: string[];
+      failedAttempts?: number;
+      lockedUntil?: number;
+    };
 
     // ── Prove the code and hand back a token for this one room ──────────────────────────────────
     if (action === "join") {
@@ -127,6 +172,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // ── Tell the team the client wants them ─────────────────────────────────────────────────────
     if (action === "notify") {
+      if (!(await isGuestOf(chatId, req.headers.authorization))) {
+        return res.status(403).json({ error: "forbidden" });
+      }
+
       const kind = String(req.body.kind || "message"); // "message" | "call"
       const preview = String(req.body.preview || "").slice(0, 120);
       const callDocId = req.body.callDocId ? String(req.body.callDocId) : undefined;

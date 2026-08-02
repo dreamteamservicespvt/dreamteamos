@@ -139,8 +139,12 @@ async function devFallbackJoin(chatId: string, code: string): Promise<JoinResult
 }
 
 /**
- * Asks the server to alert the team. Fire-and-forget: a customer's message must land in the room
- * whether or not the notification behind it got out.
+ * Asks the server to alert the team.
+ *
+ * Sends the guest's own token: the server will only ring a member for someone who has already
+ * proved the code for that chat, so a stray link cannot be turned into a way of making a phone
+ * ring on demand. Fire-and-forget either way — a customer's message must land in the room whether
+ * or not the notification behind it got out.
  */
 export function alertTeam(body: {
   chatId: string;
@@ -149,9 +153,15 @@ export function alertTeam(body: {
   callDocId?: string;
   callType?: "voice" | "video";
 }): void {
-  fetch(`${API_BASE}/api/order-chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action: "notify", ...body }),
-  }).catch(() => { /* no API server (dev) or offline — the message itself already went through */ });
+  const { auth } = guestApp();
+  Promise.resolve(auth.currentUser?.getIdToken())
+    .then((token) => fetch(`${API_BASE}/api/order-chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ action: "notify", ...body }),
+    }))
+    .catch(() => { /* no API server (dev) or offline — the message itself already went through */ });
 }
