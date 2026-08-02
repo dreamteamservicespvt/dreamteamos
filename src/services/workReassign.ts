@@ -1,6 +1,7 @@
 import { deleteField, doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
+import { reopenOrderChat } from "@/services/orderChat";
 import type { WorkAssignment } from "@/types";
 
 /**
@@ -47,6 +48,15 @@ export async function reassignWork(
       console.error("[reassign] could not move the order to the new member:", err);
     }
   }
+
+  /**
+   * The client chat moves with the work.
+   *
+   * Re-opened even if it had been closed by a completion, because work coming back to a new member
+   * means the client has something more to say — and calls follow `memberUid`, so this is also what
+   * stops the customer ringing the person who no longer holds the job.
+   */
+  await reopenOrderChat(assignment.id, { uid: newMember.uid, name: newMember.name });
 
   const title = assignment.businessName || assignment.clientName || assignment.displayTitle || "work";
 

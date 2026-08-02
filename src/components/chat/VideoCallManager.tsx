@@ -3,6 +3,7 @@ import {
   collection, doc, addDoc, setDoc, updateDoc, onSnapshot, query, where, serverTimestamp, deleteDoc, getDocs,
 } from "firebase/firestore";
 import { db } from "@/services/firebase";
+import { ICE_SERVERS } from "@/services/webrtcConfig";
 import { useAuthStore } from "@/store/authStore";
 import { useCallStore } from "@/store/callStore";
 import type { CallType } from "@/store/callStore";
@@ -22,33 +23,6 @@ import { useNavigate } from "react-router-dom";
 import { isNative } from "@/utils/platform";
 import AudioRoute from "@/services/audio-route";
 import { KeepAwake } from "@capacitor-community/keep-awake";
-
-const ICE_SERVERS: RTCConfiguration = {
-  iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun.relay.metered.ca:80" },
-    {
-      urls: "turn:global.relay.metered.ca:80",
-      username: "38b64099e7bb8c35280b6472",
-      credential: "SqYYS9/l+2/dw0MP",
-    },
-    {
-      urls: "turn:global.relay.metered.ca:80?transport=tcp",
-      username: "38b64099e7bb8c35280b6472",
-      credential: "SqYYS9/l+2/dw0MP",
-    },
-    {
-      urls: "turn:global.relay.metered.ca:443",
-      username: "38b64099e7bb8c35280b6472",
-      credential: "SqYYS9/l+2/dw0MP",
-    },
-    {
-      urls: "turns:global.relay.metered.ca:443?transport=tcp",
-      username: "38b64099e7bb8c35280b6472",
-      credential: "SqYYS9/l+2/dw0MP",
-    },
-  ],
-};
 
 type CallPhase = "idle" | "outgoing" | "incoming" | "active";
 
@@ -607,6 +581,21 @@ export default function VideoCallManager() {
       snap.docChanges().forEach((change) => {
         if (change.type === "added" && phase === "idle") {
           const data = { id: change.doc.id, ...change.doc.data() } as VideoCallDoc;
+
+          /**
+           * Ignore a call that has been ringing since before we opened the app.
+           *
+           * A caller who closes their browser mid-ring leaves the document in "ringing" forever,
+           * and this listener matches on status alone — so the next sign-in was answering calls
+           * that had ended long ago. Only really possible since clients gained calling, because a
+           * customer's tab closing is an ordinary thing rather than an app being force-quit.
+           */
+          const startedMs = (data.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0;
+          if (startedMs && Date.now() - startedMs > 60_000) {
+            updateDoc(doc(db, "calls", data.id), { status: "ended" }).catch(() => {});
+            return;
+          }
+
           incomingDocRef.current = data;
           setPeerName(data.callerName);
           setPeerAvatar(data.callerAvatar);

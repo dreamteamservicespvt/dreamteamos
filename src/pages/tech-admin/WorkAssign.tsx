@@ -2,8 +2,9 @@ import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   ClipboardList, Plus, CheckCircle2, Loader2,
-  Search, X, Users, History, Copy, Check, MessageCircle, Sparkles, ShoppingBag
+  Search, X, Users, History, Copy, Check, MessageCircle, MessagesSquare, Sparkles, ShoppingBag
 } from 'lucide-react';
+import ShareChatModal from '@/components/order-chat/ShareChatModal';
 import { getWhatsAppUrl, normalizePhone } from '@/utils/phone';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/services/firebase';
@@ -131,6 +132,27 @@ export default function WorkAssign() {
   const [waReq, setWaReq] = useState<{ member: AppUser; message: string } | null>(null);
   const [waOpen, setWaOpen] = useState(false);
   const [waReqCopied, setWaReqCopied] = useState(false);
+  /**
+   * The client chat created with the last assignment, and whether its share sheet is open.
+   *
+   * Offered straight after the requirements message rather than alongside it — two popups at once
+   * is how a leader ends up dismissing both and sending neither. It stays available in the header
+   * afterwards, because the client is often messaged later in the day.
+   */
+  const [clientChat, setClientChat] = useState<{
+    chatId: string; accessCode: string; businessName: string; uniqueId: string;
+    memberName?: string; clientPhone?: string;
+  } | null>(null);
+  const [clientChatOpen, setClientChatOpen] = useState(false);
+  const [clientChatOffered, setClientChatOffered] = useState(true);
+
+  // The moment the requirements popup is out of the way, offer the client's chat link — once.
+  useEffect(() => {
+    if (!waOpen && clientChat && !clientChatOffered) {
+      setClientChatOffered(true);
+      setClientChatOpen(true);
+    }
+  }, [waOpen, clientChat, clientChatOffered]);
 
   // Auto-open form with pre-selected member from query param
   useEffect(() => {
@@ -229,10 +251,12 @@ export default function WorkAssign() {
       const language = resolvedLanguage();
       const assignedMember = techMembers.find(m => m.uid === form.assignedTo);
 
-      const { accessCode } = await createWorkAssignment({
+      const { id: assignmentId, accessCode } = await createWorkAssignment({
         assignedTo: form.assignedTo,
         assignedToName: assignedMember?.name,
         assignerUid: user.uid,
+        assignerName: user.name,
+        techAdminUid: user.uid,
         category: form.category,
         duration: form.duration,
         clipCount: clips,
@@ -294,6 +318,16 @@ export default function WorkAssign() {
       });
 
       if (assignedMember) { setWaReq({ member: assignedMember, message }); setWaOpen(true); }
+
+      setClientChat({
+        chatId: assignmentId,
+        accessCode,
+        businessName: form.businessName,
+        uniqueId,
+        memberName: assignedMember?.name,
+        clientPhone: form.businessWhatsapp,
+      });
+      setClientChatOffered(false);
 
       setShowForm(false);
       setSourceOrder(null);
@@ -482,6 +516,18 @@ export default function WorkAssign() {
         </div>
       )}
 
+      {clientChatOpen && clientChat && (
+        <ShareChatModal
+          chatId={clientChat.chatId}
+          accessCode={clientChat.accessCode}
+          businessName={clientChat.businessName}
+          uniqueId={clientChat.uniqueId}
+          memberName={clientChat.memberName}
+          clientPhone={clientChat.clientPhone}
+          onClose={() => setClientChatOpen(false)}
+        />
+      )}
+
       {/* Header */}
       <div className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-accent/20 p-4 md:p-5 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -500,6 +546,14 @@ export default function WorkAssign() {
               className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 text-sm font-medium text-emerald-600 transition-colors hover:bg-emerald-500/20 dark:text-emerald-400 w-full sm:w-auto"
               title={`Reopen the requirements message for ${waReq.member.name}`}>
               <MessageCircle className="w-4 h-4" /> Share requirements ({waReq.member.name})
+            </button>
+          )}
+          {/* The client's side of the same assignment — their link and code. */}
+          {clientChat && !clientChatOpen && (
+            <button onClick={() => setClientChatOpen(true)}
+              className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-sky-500/40 bg-sky-500/10 px-4 text-sm font-medium text-sky-600 transition-colors hover:bg-sky-500/20 dark:text-sky-400 w-full sm:w-auto"
+              title="Send the client their chat link and code">
+              <MessagesSquare className="w-4 h-4" /> Chat link ({clientChat.businessName || 'client'})
             </button>
           )}
           <button onClick={() => { setShowForm(!showForm); if (showForm) setSourceOrder(null); }}

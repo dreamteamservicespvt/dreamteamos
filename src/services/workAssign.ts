@@ -14,6 +14,7 @@ import { sendNotification } from "@/services/notifications";
 import { normalizePhone } from "@/utils/phone";
 import { categoryLabel } from "@/utils/serviceCatalog";
 import { findUnassignedOrderForPhone, revertOrderToUnassigned } from "@/services/orders";
+import { createOrderChat, lockOrderChat, deleteOrderChat } from "@/services/orderChat";
 import { ORDER_TRACKS } from "@/types";
 import type { Order, OrderTrack } from "@/types";
 
@@ -57,6 +58,14 @@ export interface CreateWorkAssignmentInput {
   tracks?: OrderTrack[];
   /** Shown in the assignee's notification. */
   memberLink?: string;
+  /** The assigner's display name, for the client chat this creates. */
+  assignerName?: string;
+  /**
+   * The tech admin over this team, so they can open the client chat too. The assigner is already
+   * on it; when a team leader assigns, their admin would otherwise be locked out of a conversation
+   * they are answerable for.
+   */
+  techAdminUid?: string | null;
 }
 
 /** Creates the assignment, links + advances any originating order, and notifies the member. */
@@ -65,7 +74,7 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
     assignedTo, assignedToName, assignerUid, category, duration, clipCount, pricePerUnit, uniqueId,
     businessName, businessWhatsapp, modelGender, attireType, customAttire, aspectRatio,
     language, festival, requirementNotes, characterPack, realLocationProvided,
-    order, tracks, memberLink = "/tech/my-work",
+    order, tracks, memberLink = "/tech/my-work", assignerName, techAdminUid,
   } = input;
 
   const accessCode = generateAccessCode();
@@ -115,6 +124,27 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
     ...(linkedOrder ? { orderId: linkedOrder.id } : {}),
     ...(linkedOrder?.promise ? { promise: linkedOrder.promise } : {}),
     ...(tracks?.length ? { tracks } : {}),
+  });
+
+  /**
+   * The client's chat room, opened with the work.
+   *
+   * Created here rather than on first use so the leader can hand the link over in the same breath
+   * as assigning the job — the whole point is that nobody has to go and build a WhatsApp group
+   * before the client can send their logo.
+   */
+  await createOrderChat({
+    assignmentId: ref.id,
+    accessCode,
+    uniqueId,
+    businessName: business,
+    clientPhone: phone ? normalizePhone(phone) : undefined,
+    memberUid: assignedTo,
+    memberName: assignedToName,
+    assignerUid,
+    assignerName,
+    techAdminUid,
+    orderId: linkedOrder?.id ?? null,
   });
 
   if (linkedOrder) {
@@ -182,6 +212,13 @@ export async function unassignWork(input: UnassignWorkInput): Promise<{ returned
   // consistent. Deleting first could strand the order as "assigned" to work that no longer exists.
   if (orderId) await revertOrderToUnassigned(orderId);
   await deleteDoc(doc(db, "work_assignments", assignmentId));
+  /**
+   * The room closes with the assignment, but is not destroyed: the client keeps everything that
+   * was said and sent. Work picked back up out of the queue becomes a NEW assignment with its own
+   * room and its own link, which is what the leader shares — the alternative, silently reviving a
+   * conversation the customer was told had ended, is worse than one more link.
+   */
+  await lockOrderChat(assignmentId, "This job has been returned to the team queue. This chat is now closed.");
 
   await sendNotification({
     userId: assignedTo,

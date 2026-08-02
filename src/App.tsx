@@ -79,6 +79,7 @@ import PlaceholderPage from "@/pages/PlaceholderPage";
 import MySalaryPage from "@/pages/shared/MySalary";
 import MySalaryDashboard from "@/pages/tech-member/MySalaryDashboard";
 import NotFound from "@/pages/NotFound";
+import ClientChat from "@/pages/client/ClientChat";
 import Chat from "@/pages/shared/Chat";
 import Meeting from "@/pages/shared/Meeting";
 import AdminChatMonitor from "@/pages/shared/AdminChatMonitor";
@@ -116,6 +117,11 @@ const App = () => (
         <Routes>
           <Route path="/" element={<RootRedirect />} />
           <Route path="/login" element={<Login />} />
+
+          {/* The client's chat for one order. Public by design: the customer has no account, holds
+              a link and a 4-digit code, and must never be asked to sign in to answer a question
+              about their own ad. Kept short so it survives being pasted into WhatsApp. */}
+          <Route path="/c/:chatId" element={<ClientChat />} />
 
           {/* Main Admin */}
           <Route element={<AppLayout allowedRoles={["main_admin"]} />}>

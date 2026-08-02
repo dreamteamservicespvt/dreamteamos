@@ -2,8 +2,9 @@ import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   ClipboardList, Plus, CheckCircle2, Loader2,
-  Search, X, Users, History, Copy, Check, MessageCircle, Sparkles, ShoppingBag
+  Search, X, Users, History, Copy, Check, MessageCircle, MessagesSquare, Sparkles, ShoppingBag
 } from 'lucide-react';
+import ShareChatModal from '@/components/order-chat/ShareChatModal';
 import { getWhatsAppUrl, normalizePhone } from '@/utils/phone';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/services/firebase';
@@ -123,6 +124,23 @@ export default function TeamLeaderWorkAssign() {
   const [waReq, setWaReq] = useState<{ member: AppUser; message: string } | null>(null);
   const [waOpen, setWaOpen] = useState(false);
   const [waReqCopied, setWaReqCopied] = useState(false);
+  /**
+   * The client chat created with the last assignment. Offered after the requirements message
+   * rather than beside it — two popups at once is how both get dismissed and neither gets sent.
+   */
+  const [clientChat, setClientChat] = useState<{
+    chatId: string; accessCode: string; businessName: string; uniqueId: string;
+    memberName?: string; clientPhone?: string;
+  } | null>(null);
+  const [clientChatOpen, setClientChatOpen] = useState(false);
+  const [clientChatOffered, setClientChatOffered] = useState(true);
+
+  useEffect(() => {
+    if (!waOpen && clientChat && !clientChatOffered) {
+      setClientChatOffered(true);
+      setClientChatOpen(true);
+    }
+  }, [waOpen, clientChat, clientChatOffered]);
 
   useEffect(() => {
     const memberUid = searchParams.get('member');
@@ -216,10 +234,13 @@ export default function TeamLeaderWorkAssign() {
       const language = resolvedLanguage();
       const assignedMember = techMembers.find(m => m.uid === form.assignedTo);
 
-      const { accessCode } = await createWorkAssignment({
+      const { id: assignmentId, accessCode } = await createWorkAssignment({
         assignedTo: form.assignedTo,
         assignedToName: assignedMember?.name,
         assignerUid: user.uid,
+        assignerName: user.name,
+        // A leader's own tech admin, so the admin can open the client chat their team is running.
+        techAdminUid: user.createdBy,
         category: form.category,
         duration: form.duration,
         clipCount: clips,
@@ -263,6 +284,16 @@ export default function TeamLeaderWorkAssign() {
       });
 
       if (assignedMember) { setWaReq({ member: assignedMember, message }); setWaOpen(true); }
+
+      setClientChat({
+        chatId: assignmentId,
+        accessCode,
+        businessName: form.businessName,
+        uniqueId,
+        memberName: assignedMember?.name,
+        clientPhone: form.businessWhatsapp,
+      });
+      setClientChatOffered(false);
 
       setShowForm(false);
       setSourceOrder(null);
@@ -405,6 +436,18 @@ export default function TeamLeaderWorkAssign() {
         </div>
       )}
 
+      {clientChatOpen && clientChat && (
+        <ShareChatModal
+          chatId={clientChat.chatId}
+          accessCode={clientChat.accessCode}
+          businessName={clientChat.businessName}
+          uniqueId={clientChat.uniqueId}
+          memberName={clientChat.memberName}
+          clientPhone={clientChat.clientPhone}
+          onClose={() => setClientChatOpen(false)}
+        />
+      )}
+
       {/* WhatsApp requirements — shown after Create Assignment, and reopenable from the header. */}
       {waOpen && waReq && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setWaOpen(false)}>
@@ -466,6 +509,14 @@ export default function TeamLeaderWorkAssign() {
                 className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 text-sm font-medium text-emerald-600 transition-colors hover:bg-emerald-500/20 dark:text-emerald-400 w-full sm:w-auto"
                 title={`Reopen the requirements message for ${waReq.member.name}`}>
                 <MessageCircle className="w-4 h-4" /> Share requirements ({waReq.member.name})
+              </button>
+            )}
+            {/* The client's side of the same assignment — their link and code. */}
+            {clientChat && !clientChatOpen && (
+              <button onClick={() => setClientChatOpen(true)}
+                className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-sky-500/40 bg-sky-500/10 px-4 text-sm font-medium text-sky-600 transition-colors hover:bg-sky-500/20 dark:text-sky-400 w-full sm:w-auto"
+                title="Send the client their chat link and code">
+                <MessagesSquare className="w-4 h-4" /> Chat link ({clientChat.businessName || 'client'})
               </button>
             )}
             <button onClick={() => { setShowForm(!showForm); if (showForm) setSourceOrder(null); }}

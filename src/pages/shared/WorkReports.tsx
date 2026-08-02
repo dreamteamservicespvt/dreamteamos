@@ -21,6 +21,7 @@ import type { WorkAssignment, AppUser } from '@/types';
 import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from '@/types/aiPlatform';
 import { formatDateRangeLabel, isDateWithinRange, normalizeDateRange, parseQueryDate, parseQueryDateRange } from '@/utils/dateRange';
 import { revertOrderToAssigned, markOrderCompleted, revertOrderToUnassigned } from '@/services/orders';
+import { deleteOrderChat, lockOrderChat, reopenOrderChat } from '@/services/orderChat';
 import { verifyAssignments } from '@/services/workVerify';
 import { reassignWork } from '@/services/workReassign';
 import DeadlineChip from '@/components/work/DeadlineChip';
@@ -227,6 +228,8 @@ export default function WorkReports() {
       // Sent back for edits → order returns to the active queue.
       const orderId = assignments.find(a => a.id === assignmentId)?.orderId;
       if (orderId) await revertOrderToAssigned(orderId);
+      // Work still in progress means the client may still need to say something about it.
+      await reopenOrderChat(assignmentId, undefined, "The team is making changes — this chat is open again.");
       await sendNotification({
         userId: assignedTo,
         type: 'work_editing',
@@ -246,6 +249,7 @@ export default function WorkReports() {
       // Undo edits → work is completed again, so the order is awaiting verify.
       const orderId = assignments.find(a => a.id === assignmentId)?.orderId;
       if (orderId) await markOrderCompleted(orderId);
+      await lockOrderChat(assignmentId);
     } catch (error) {
       console.error('Failed to undo editing:', error);
     }
@@ -257,6 +261,8 @@ export default function WorkReports() {
       // so the sale isn't silently lost — it can be reassigned, or the sales member can delete it.
       const orderId = assignments.find(a => a.id === assignmentId)?.orderId;
       await deleteDoc(doc(db, 'work_assignments', assignmentId));
+      // The job never existed, so neither should the client's chat about it.
+      await deleteOrderChat(assignmentId);
       if (orderId) await revertOrderToUnassigned(orderId);
       setConfirmAction(null);
     } catch (error) {

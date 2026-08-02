@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import { db } from "@/services/firebase";
 import { sendNotification, notifyTechTeamLeaders } from "@/services/notifications";
 import { markOrderCompleted } from "@/services/orders";
+import { lockOrderChat } from "@/services/orderChat";
 import { upsertClientOnWorkComplete } from "@/services/clients";
 import { useAuthStore } from "@/store/authStore";
 import { useToast } from "@/hooks/use-toast";
@@ -101,6 +102,10 @@ export function useCompleteWork() {
 
       // Order-driven work → reflect completion on the order (queue shows "Awaiting verify").
       if (assignment.orderId) await markOrderCompleted(assignment.orderId);
+
+      // The client chat goes read-only. Delivered work should not leave a live channel open for
+      // "one more small change" — but the customer keeps every file that was sent through it.
+      await lockOrderChat(assignment.id);
 
       // The customer now has something delivered, so they become an upsell target immediately —
       // including for work assigned directly (no order), which never reached Clients before.

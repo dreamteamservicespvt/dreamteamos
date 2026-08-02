@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
-  Briefcase, Clock, Play, CheckCircle2, ChevronDown, Loader2, AlertCircle, Sparkles, Edit3, Copy, Check, Undo2
+  Briefcase, Clock, Play, CheckCircle2, ChevronDown, Loader2, AlertCircle, Sparkles, Edit3, Copy, Check, Undo2,
+  MessagesSquare
 } from 'lucide-react';
 import { collection, query, where, doc, updateDoc, deleteField, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/services/firebase';
@@ -20,6 +21,9 @@ import OrderProgressPanel from '@/components/work/OrderProgressPanel';
 import CodeVerificationModal from '@/components/ai-platform/CodeVerificationModal';
 import AIPlatformApp from '@/components/ai-platform/AIPlatformApp';
 import SaleDeletedBanner from '@/components/work/SaleDeletedBanner';
+import StaffOrderChat from '@/components/order-chat/StaffOrderChat';
+import { useOrderChatUnread } from '@/hooks/useOrderChat';
+import { reopenOrderChat } from '@/services/orderChat';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useToast } from '@/hooks/use-toast';
 
@@ -48,7 +52,14 @@ export default function MyWork() {
   const { data: assignments, loading } = useFirestoreQuery<WorkAssignment>(q, [user?.uid]);
 
   const [verifyingAssignment, setVerifyingAssignment] = useState<WorkAssignment | null>(null);
+  /**
+   * What the code is being typed for. The client chat is behind the same four digits as the
+   * generator — one code per job, whichever door you are opening with it.
+   */
+  const [verifyPurpose, setVerifyPurpose] = useState<'work' | 'chat'>('work');
   const [openAssignment, setOpenAssignment] = useState<WorkAssignment | null>(null);
+  const [openChatFor, setOpenChatFor] = useState<WorkAssignment | null>(null);
+  const chatState = useOrderChatUnread(user?.uid);
 
   /**
    * The open job, as it stands RIGHT NOW rather than as it was when it was opened.
@@ -97,14 +108,20 @@ export default function MyWork() {
   }, [openAssignment?.id]);
 
   const handleOpenWork = (assignment: WorkAssignment) => {
+    setVerifyPurpose('work');
+    setVerifyingAssignment(assignment);
+  };
+
+  const handleOpenChat = (assignment: WorkAssignment) => {
+    setVerifyPurpose('chat');
     setVerifyingAssignment(assignment);
   };
 
   const handleVerified = () => {
-    if (verifyingAssignment) {
-      setOpenAssignment(verifyingAssignment);
-      setVerifyingAssignment(null);
-    }
+    if (!verifyingAssignment) return;
+    if (verifyPurpose === 'chat') setOpenChatFor(verifyingAssignment);
+    else setOpenAssignment(verifyingAssignment);
+    setVerifyingAssignment(null);
   };
 
   const handleClose = () => {
@@ -142,6 +159,8 @@ export default function MyWork() {
       });
       // Order-driven work → put the order back in the active queue (resumes deadline alerts).
       if (assignment.orderId) await revertOrderToAssigned(assignment.orderId);
+      // Back in progress means the client can talk to their member again.
+      await reopenOrderChat(assignment.id, undefined, 'The team is still working on this — chat is open again.');
     } catch (error) {
       console.error('Failed to undo complete:', error);
     }
@@ -387,6 +406,14 @@ export default function MyWork() {
         />
       )}
 
+      {openChatFor && (
+        <StaffOrderChat
+          assignment={openChatFor}
+          memberName={user?.name}
+          onClose={() => setOpenChatFor(null)}
+        />
+      )}
+
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-foreground">My Work</h1>
@@ -494,10 +521,22 @@ export default function MyWork() {
                       </button>
                     </div>
                   </div>
-                  <button onClick={() => handleOpenWork(a)}
-                    className="w-full flex items-center justify-center space-x-2 py-2.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium">
-                    {cfg.icon}<span>{cfg.label}</span><span className="text-[10px] opacity-60 font-mono ml-1">{a.uniqueId}</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => handleOpenWork(a)}
+                      className="flex flex-1 items-center justify-center space-x-2 py-2.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium">
+                      {cfg.icon}<span>{cfg.label}</span><span className="text-[10px] opacity-60 font-mono ml-1">{a.uniqueId}</span>
+                    </button>
+                    {/* Talk to the client about this exact job — same code as the generator. */}
+                    <button onClick={() => handleOpenChat(a)} title="Chat with the client"
+                      className="relative shrink-0 rounded-lg border border-border bg-background p-2.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+                      <MessagesSquare className="h-5 w-5" />
+                      {chatState[a.id]?.unread > 0 && (
+                        <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                          {chatState[a.id].unread}
+                        </span>
+                      )}
+                    </button>
+                  </div>
                 </div>
               );
             })}

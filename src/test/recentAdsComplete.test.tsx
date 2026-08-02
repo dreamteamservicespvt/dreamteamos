@@ -25,6 +25,10 @@ vi.mock("@/services/firebase", () => ({ db: {} }));
 vi.mock("firebase/firestore", () => ({
   collection: vi.fn(), query: vi.fn(), where: vi.fn(), doc: (_db: unknown, _c: string, id: string) => ({ id }),
   updateDoc, serverTimestamp: () => "TS", deleteField: vi.fn(),
+  // The page carries an unread badge for each job's client chat, which listens for its own rooms.
+  onSnapshot: vi.fn(() => () => undefined),
+  getDoc: vi.fn(async () => ({ exists: () => false })), setDoc: vi.fn(), addDoc: vi.fn(), deleteDoc: vi.fn(),
+  orderBy: vi.fn(), increment: vi.fn(), arrayUnion: vi.fn(), arrayRemove: vi.fn(),
 }));
 vi.mock("@/hooks/useFirestore", () => ({ useFirestoreQuery: () => ({ data: assignments, loading: false }) }));
 const AUTH = { user: { uid: "u1", name: "Jyothika", createdBy: "admin1" } };

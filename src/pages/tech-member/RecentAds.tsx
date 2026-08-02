@@ -4,6 +4,7 @@ import React, { useState, useMemo, useRef } from 'react';
 const ADS_PAGE_SIZE = 10;
 import {
   Film, Clock, Loader2, CheckCircle2, Sparkles, Play, Edit3, Search, Copy, Check, ChevronRight,
+  MessagesSquare,
 } from 'lucide-react';
 import { collection, query, where, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/services/firebase';
@@ -14,6 +15,8 @@ import type { WorkAssignment } from '@/types';
 import { useCompleteWork } from '@/hooks/useCompleteWork';
 import CodeVerificationModal from '@/components/ai-platform/CodeVerificationModal';
 import AIPlatformApp from '@/components/ai-platform/AIPlatformApp';
+import StaffOrderChat from '@/components/order-chat/StaffOrderChat';
+import { useOrderChatUnread } from '@/hooks/useOrderChat';
 
 const STATUS_CONFIG: Record<string, {
   icon: React.ReactNode;
@@ -63,6 +66,10 @@ export default function RecentAds() {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [verifyingAssignment, setVerifyingAssignment] = useState<WorkAssignment | null>(null);
   const [openAssignment, setOpenAssignment] = useState<WorkAssignment | null>(null);
+  /** Which door the code opens: the generator, or the client chat for the same job. */
+  const [verifyPurpose, setVerifyPurpose] = useState<'work' | 'chat'>('work');
+  const [openChatFor, setOpenChatFor] = useState<WorkAssignment | null>(null);
+  const chatState = useOrderChatUnread(user?.uid);
 
   /**
    * The open job as it stands right now. `openAssignment` is a snapshot taken when it was clicked,
@@ -190,8 +197,20 @@ export default function RecentAds() {
       {verifyingAssignment && (
         <CodeVerificationModal
           accessCode={verifyingAssignment.accessCode}
-          onVerified={() => { setOpenAssignment(verifyingAssignment); setVerifyingAssignment(null); }}
+          onVerified={() => {
+            if (verifyPurpose === 'chat') setOpenChatFor(verifyingAssignment);
+            else setOpenAssignment(verifyingAssignment);
+            setVerifyingAssignment(null);
+          }}
           onClose={() => setVerifyingAssignment(null)}
+        />
+      )}
+
+      {openChatFor && (
+        <StaffOrderChat
+          assignment={openChatFor}
+          memberName={user?.name}
+          onClose={() => setOpenChatFor(null)}
         />
       )}
 
@@ -325,9 +344,23 @@ export default function RecentAds() {
                         </button>
                       </div>
 
+                      {/* Talk to the client about this job — same code as the generator. */}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setVerifyPurpose('chat'); setVerifyingAssignment(a); }}
+                        title="Chat with the client"
+                        className="relative rounded-xl border border-border bg-background p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                      >
+                        <MessagesSquare className="w-4 h-4" />
+                        {chatState[a.id]?.unread > 0 && (
+                          <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+                            {chatState[a.id].unread}
+                          </span>
+                        )}
+                      </button>
+
                       {/* Open button — standalone, always visible */}
                       <button
-                        onClick={() => setVerifyingAssignment(a)}
+                        onClick={() => { setVerifyPurpose('work'); setVerifyingAssignment(a); }}
                         className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 active:scale-95 transition-all shadow-sm shadow-primary/20"
                       >
                         Open <ChevronRight className="w-4 h-4" />

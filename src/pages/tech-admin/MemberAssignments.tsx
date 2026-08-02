@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import type { DateRange } from 'react-day-picker';
 import {
   ArrowLeft, ClipboardList, Trash2, CheckCircle2, Edit3, Loader2,
-  Pencil, X, Save, Undo2, Search, Copy, Check, MessageCircle
+  Pencil, X, Save, Undo2, Search, Copy, Check, MessageCircle, MessagesSquare
 } from 'lucide-react';
 import { doc, updateDoc, deleteDoc, addDoc, collection, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/services/firebase';
@@ -13,7 +13,11 @@ import { useFirestoreCollection } from '@/hooks/useFirestore';
 import { useViewMode } from '@/hooks/useViewMode';
 import ViewToggle from '@/components/common/ViewToggle';
 import RequirementsShareModal from '@/components/work/RequirementsShareModal';
+import ShareChatModal from '@/components/order-chat/ShareChatModal';
+import StaffOrderChat from '@/components/order-chat/StaffOrderChat';
 import SaleDeletedBanner from '@/components/work/SaleDeletedBanner';
+import { deleteOrderChat, ensureOrderChat, lockOrderChat, reopenOrderChat } from '@/services/orderChat';
+import { useOrderChatUnread } from '@/hooks/useOrderChat';
 import { buildAssignmentRequirementsMessage } from '@/utils/adRequirement';
 import { getCharacterPack } from '@/services/characterPacks';
 import { unassignWork } from '@/services/workAssign';
@@ -116,6 +120,10 @@ export default function MemberAssignments() {
   const [view, setView] = useViewMode('member-assignments');
   /** The assignment whose requirements message is open for re-sharing. */
   const [shareAssignment, setShareAssignment] = useState<WorkAssignment | null>(null);
+  /** The client chat being handed over, and the one being read. */
+  const [shareChatFor, setShareChatFor] = useState<WorkAssignment | null>(null);
+  const [openChatFor, setOpenChatFor] = useState<WorkAssignment | null>(null);
+  const chatState = useOrderChatUnread(currentUser?.uid);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dayFilter, setDayFilter] = useState<string>('0');
   const [selectedRange, setSelectedRange] = useState<DateRange | undefined>(undefined);
@@ -273,6 +281,8 @@ export default function MemberAssignments() {
   const handleSetEditing = async (assignmentId: string, assignedTo: string) => {
     try {
       await updateDoc(doc(db, 'work_assignments', assignmentId), { status: 'editing' });
+      // Work still in progress means the client may still need to say something about it.
+      await reopenOrderChat(assignmentId, undefined, 'The team is making changes — this chat is open again.');
       await sendNotification({
         userId: assignedTo,
         type: 'work_editing',
@@ -289,14 +299,34 @@ export default function MemberAssignments() {
   const handleUndoEditing = async (assignmentId: string) => {
     try {
       await updateDoc(doc(db, 'work_assignments', assignmentId), { status: 'completed' });
+      await lockOrderChat(assignmentId);
     } catch (error) {
       console.error('Failed to undo editing:', error);
     }
   };
 
+  /**
+   * Opens the share sheet, creating the room first if this job predates client chats — otherwise
+   * the link would be handed to a customer who lands on "this chat is no longer available".
+   */
+  const handleShareChat = async (a: WorkAssignment) => {
+    if (currentUser) {
+      await ensureOrderChat({
+        assignment: a,
+        memberName: member?.name,
+        actorUid: currentUser.uid,
+        actorName: currentUser.name,
+        techAdminUid: currentUser.uid,
+      });
+    }
+    setShareChatFor(a);
+  };
+
   const handleDelete = async (assignmentId: string) => {
     try {
       await deleteDoc(doc(db, 'work_assignments', assignmentId));
+      // The job never existed, so neither should the client's chat about it.
+      await deleteOrderChat(assignmentId);
       setConfirmAction(null);
     } catch (error) {
       console.error('Failed to delete assignment:', error);
@@ -885,6 +915,16 @@ export default function MemberAssignments() {
                   className="flex items-center space-x-1 px-2.5 py-1 text-[10px] md:text-xs font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50 rounded-lg transition-colors">
                   <MessageCircle className="w-3 h-3 md:w-3.5 md:h-3.5" /><span>Share requirements</span>
                 </button>
+                {/* The client's chat: hand over the link, or read what has been said in it. */}
+                <button onClick={() => handleShareChat(a)}
+                  className="relative flex items-center space-x-1 px-2.5 py-1 text-[10px] md:text-xs font-medium bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/30 dark:text-sky-400 dark:hover:bg-sky-900/50 rounded-lg transition-colors">
+                  <MessagesSquare className="w-3 h-3 md:w-3.5 md:h-3.5" /><span>Chat with client</span>
+                  {chatState[a.id]?.unread > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+                      {chatState[a.id].unread}
+                    </span>
+                  )}
+                </button>
                 {a.status === 'completed' && (
                   <button onClick={() => handleVerify(a)}
                     className="flex items-center space-x-1 px-2.5 py-1 text-[10px] md:text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 rounded-lg transition-colors">
@@ -937,6 +977,28 @@ export default function MemberAssignments() {
           phone={member?.phone}
           message={buildAssignmentRequirementsMessage(shareAssignment)}
           onClose={() => setShareAssignment(null)}
+        />
+      )}
+
+      {shareChatFor && (
+        <ShareChatModal
+          chatId={shareChatFor.id}
+          accessCode={shareChatFor.accessCode}
+          businessName={shareChatFor.businessName || shareChatFor.clientName}
+          uniqueId={shareChatFor.uniqueId}
+          memberName={member?.name}
+          clientPhone={shareChatFor.businessWhatsapp}
+          onOpenChat={() => setOpenChatFor(shareChatFor)}
+          onClose={() => setShareChatFor(null)}
+        />
+      )}
+
+      {openChatFor && (
+        <StaffOrderChat
+          assignment={openChatFor}
+          memberName={member?.name}
+          canShare
+          onClose={() => setOpenChatFor(null)}
         />
       )}
     </div>
