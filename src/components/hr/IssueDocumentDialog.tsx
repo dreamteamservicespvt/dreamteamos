@@ -1,7 +1,9 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Eye, FileSignature, Loader2, PenTool, Send, ShieldQuestion, X } from "lucide-react";
+import { Check, Download, Eye, FileSignature, Loader2, PenTool, Send, ShieldQuestion, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useCompanyLogo } from "@/hooks/useCompanyLogo";
+import { downloadAgreementPdf } from "@/utils/agreementPdf";
 import { HR_DOCUMENT_LABELS } from "@/types/hr";
 import type { AppUser } from "@/types";
 import type { EmployeeProfile, HrDocumentType } from "@/types/hr";
@@ -26,9 +28,13 @@ import { Input, Select, Textarea } from "./ui";
  * their settings. Without one the letter would go out with an empty signature line, so issuing is
  * held until they have added it — once, ever.
  */
-export default function IssueDocumentDialog({ member, profile, signatory, settingsPath, defaultType, memberLink, onClose, onIssued }: {
+export default function IssueDocumentDialog({
+  member, profile, signatory, settingsPath, defaultType, memberLink, issuedTypes, onClose, onIssued,
+}: {
   member: AppUser;
   profile: EmployeeProfile;
+  /** What this member already holds, so the same letter is never issued to them twice by mistake. */
+  issuedTypes?: HrDocumentType[];
   /** The admin issuing it — their stored signature signs the document. */
   signatory: AppUser;
   /** Where they go to add a signature if they have none yet. */
@@ -51,6 +57,10 @@ export default function IssueDocumentDialog({ member, profile, signatory, settin
   const [issuedOn, setIssuedOn] = useState(todayIso());
   const [showPreview, setShowPreview] = useState(false);
   const [sending, setSending] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const paperRef = useRef<HTMLDivElement>(null);
+  const logo = useCompanyLogo();
+  const already = new Set(issuedTypes || []);
 
   const designation = signatory.designation
     || SIGNATORY_TITLE[profile.department]
@@ -87,6 +97,30 @@ export default function IssueDocumentDialog({ member, profile, signatory, settin
       ...prev,
       [key]: EXTRA_FIELD_KIND[key] === "number" ? (value === "" ? null : Number(value)) : value,
     }));
+
+  /**
+   * Take the letter away before anyone commits to it.
+   *
+   * An admin sending an offer wants to read it properly, or show it to whoever approves salaries,
+   * and "issue it and then download it" is the wrong order for a document that lands in somebody's
+   * account the moment it exists. The preview has to be open, because the PDF is captured from the
+   * rendered paper — so opening it is part of downloading it.
+   */
+  const handleDownload = async () => {
+    if (downloading) return;
+    setShowPreview(true);
+    setDownloading(true);
+    try {
+      // Let the preview paint before html2canvas reads it.
+      await new Promise((r) => setTimeout(r, 250));
+      if (!paperRef.current) throw new Error("preview not ready");
+      await downloadAgreementPdf(paperRef.current, `${built.title.replace(/[^\w]+/g, "_")}_${member.name.replace(/[^\w]+/g, "_")}.pdf`);
+    } catch {
+      toast({ title: "Error", description: "Could not generate the PDF.", variant: "destructive" });
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const handleIssue = async () => {
     if (!hasSignature) return;
@@ -153,6 +187,18 @@ export default function IssueDocumentDialog({ member, profile, signatory, settin
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X size={18} /></button>
         </div>
 
+        {already.has(type) && (
+          <div className="mb-4 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5" data-test="already-issued-warning">
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-warning">
+              <Check size={13} /> {member.name} already has a {HR_DOCUMENT_LABELS[type].toLowerCase()}
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+              Issuing another one does not replace it — they will hold two, and both count as issued
+              by you. Do it only if the first was wrong.
+            </p>
+          </div>
+        )}
+
         {profile.termsSelfDeclared && (
           <div className="mb-4 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5" data-test="unconfirmed-terms-warning">
             <p className="flex items-center gap-1.5 text-xs font-semibold text-warning">
@@ -187,7 +233,9 @@ export default function IssueDocumentDialog({ member, profile, signatory, settin
         <div className="grid gap-3 sm:grid-cols-2">
           <Select label="Document" value={type} onChange={(e) => { setType(e.target.value as HrDocumentType); setExtras({}); setShowPreview(false); }} data-test="document-type">
             {available.map((t) => (
-              <option key={t} value={t}>{HR_DOCUMENT_LABELS[t]}</option>
+              <option key={t} value={t}>
+                {HR_DOCUMENT_LABELS[t]}{already.has(t) ? " — already issued" : ""}
+              </option>
             ))}
           </Select>
           <Input label="Dated" type="date" value={issuedOn} onChange={(e) => setIssuedOn(e.target.value)} />
@@ -243,6 +291,15 @@ export default function IssueDocumentDialog({ member, profile, signatory, settin
             <Eye size={15} /> {showPreview ? "Hide preview" : "Preview"}
           </button>
           <button
+            onClick={handleDownload}
+            disabled={downloading}
+            data-test="download-before-issue"
+            className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-accent disabled:opacity-50"
+          >
+            {downloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+            {downloading ? "Preparing…" : "Download PDF"}
+          </button>
+          <button
             onClick={handleIssue}
             disabled={sending || !hasSignature}
             data-test="issue-document-submit"
@@ -261,6 +318,9 @@ export default function IssueDocumentDialog({ member, profile, signatory, settin
         {showPreview && (
           <div className="mt-4 overflow-x-auto rounded-lg bg-slate-200 p-2 md:p-4">
             <AgreementView
+              ref={paperRef}
+              letterhead
+              logoUrl={logo}
               bodyText={built.bodyText}
               memberName={member.name}
               memberPhone={member.phone}

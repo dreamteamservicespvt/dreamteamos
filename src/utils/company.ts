@@ -10,6 +10,18 @@ export const COMPANY = {
   website: "thedreamteamservices.com",
   email: "thedreamteamservicespvt@gmail.com",
   gstin: "37FWQPR6939Q1ZY",
+  /**
+   * The registered address, as it should read on a letter.
+   *
+   * Empty until someone fills it in, and everything that prints it leaves the line out entirely
+   * rather than showing a placeholder — a letterhead carrying an invented address is worse than a
+   * letterhead carrying none, because only one of the two is a lie a bank might act on.
+   *
+   * Lines are printed in order; keep it to building, street, area, city, district, state, PIN.
+   */
+  address: [] as readonly string[],
+  /** Printed beside the email on letters and on the back of an ID card. Blank hides it. */
+  phone: "",
 } as const;
 
 const ONES = [

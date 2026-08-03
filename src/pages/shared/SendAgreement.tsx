@@ -15,6 +15,11 @@ import { formatAgreementWithAI } from "@/services/geminiService";
 import { employmentOf, EMPLOYMENT_LABELS, EmploymentType } from "@/services/employment";
 import AgreementView from "@/components/agreement/AgreementView";
 import { downloadAgreementPdf } from "@/utils/agreementPdf";
+import MissingLettersPanel, { findMissingLetters } from "@/components/hr/MissingLettersPanel";
+import { watchTeamProfiles } from "@/services/hr";
+import { watchTeamDocuments } from "@/services/hrDocuments";
+import { departmentOfRole } from "@/utils/hrPolicy";
+import type { EmployeeProfile, HrDocument } from "@/types/hr";
 
 const memberProfileLink = (role: string): string =>
   role === "sales_member" ? "/sales/profile" : role === "tech_member" ? "/tech/profile" : "";
@@ -42,6 +47,9 @@ export default function SendAgreement() {
   const [viewOpen, setViewOpen] = useState<Agreement | null>(null);
   const [downloading, setDownloading] = useState(false);
   const paperRef = useRef<HTMLDivElement>(null);
+  /** The HR side of this page: who is still missing the letters everyone should hold. */
+  const [profiles, setProfiles] = useState<Map<string, EmployeeProfile>>(new Map());
+  const [hrDocs, setHrDocs] = useState<HrDocument[]>([]);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "users"), (snap) => setAllUsers(snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser))));
@@ -106,6 +114,27 @@ export default function SendAgreement() {
   const categoryMembers = useMemo(
     () => members.filter((m) => employmentOf(m.employmentType) === category),
     [members, category],
+  );
+
+  /**
+   * The HR records behind those members, and every letter already issued to them.
+   *
+   * Keyed on the uid list rather than the array, so this does not re-subscribe on every render of
+   * a page that re-renders whenever anything is typed into the agreement box.
+   */
+  const memberUidKey = members.map((m) => m.uid).sort().join(",");
+  const department = departmentOfRole(user?.role) || "tech";
+  useEffect(() => {
+    const uids = memberUidKey ? memberUidKey.split(",") : [];
+    if (uids.length === 0) { setProfiles(new Map()); setHrDocs([]); return; }
+    const stopProfiles = watchTeamProfiles(uids, department, setProfiles);
+    const stopDocs = watchTeamDocuments(uids, setHrDocs);
+    return () => { stopProfiles(); stopDocs(); };
+  }, [memberUidKey, department]);
+
+  const missingLetters = useMemo(
+    () => findMissingLetters(members, profiles, hrDocs),
+    [members, profiles, hrDocs],
   );
 
   // Pre-tick everyone in the category when the category / member list changes.
@@ -257,6 +286,19 @@ export default function SendAgreement() {
           Paste any agreement text, auto-fill each member's details, preview, and send for signature — individually or in bulk.
         </p>
       </div>
+
+      {/* The company's own letters come first: the team's missing offer and appointment letters
+          are a bigger gap than any agreement waiting to be pasted. */}
+      {user && (
+        <div className="mb-5">
+          <MissingLettersPanel
+            rows={missingLetters}
+            signatory={user}
+            settingsPath={user.role === "sales_admin" ? "/sales-admin/settings" : "/tech-admin/settings"}
+            memberLink={(m) => memberProfileLink(m.role)}
+          />
+        </div>
+      )}
 
       <div className="rounded-xl border border-border bg-card p-4 md:p-5 space-y-4">
         {/* Mode toggle */}

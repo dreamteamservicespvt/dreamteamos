@@ -13,10 +13,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Download, FileImage, FileText, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { buildIdCard, CARD_HEIGHT, CARD_WIDTH } from "@/utils/idCard";
+import { buildIdCard, idCardVerifyUrl, CARD_HEIGHT, CARD_WIDTH } from "@/utils/idCard";
 import { downloadIdCardPdf, downloadIdCardPng, inlineImage } from "@/utils/idCardExport";
 import type { AppUser } from "@/types";
 import type { EmployeeProfile } from "@/types/hr";
+import QRCode from "qrcode";
 import { IdCardBack, IdCardFront } from "./IdCardView";
 
 export default function IdCardPanel({ member, profile, provisionalHint }: {
@@ -33,6 +34,9 @@ export default function IdCardPanel({ member, profile, provisionalHint }: {
   /** Photo and logo as data URLs — see idCardExport.inlineImage for why this must happen first. */
   const [photo, setPhoto] = useState<string | null>(null);
   const [logo, setLogo] = useState<string | null>(null);
+  const [signature, setSignature] = useState<string | null>(null);
+  /** The verification QR, drawn locally — no network, so it exports with the rest of the card. */
+  const [qr, setQr] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
 
   const base = buildIdCard(member, profile);
@@ -41,17 +45,31 @@ export default function IdCardPanel({ member, profile, provisionalHint }: {
     let cancelled = false;
     setReady(false);
     (async () => {
-      const [p, l] = await Promise.all([inlineImage(base.photoUrl), inlineImage("/dts-logo-full.png")]);
+      const [p, l, sig, code] = await Promise.all([
+        inlineImage(base.photoUrl),
+        inlineImage("/dts-logo-full.png"),
+        inlineImage(base.signatureUrl),
+        // Deep navy on white: a QR needs contrast far more than it needs to match the brand, and
+        // a mid-blue code is the one that phones fail to read in a badge holder under strip lights.
+        QRCode.toDataURL(idCardVerifyUrl(base.uid), {
+          margin: 1,
+          width: 240,
+          errorCorrectionLevel: "M",
+          color: { dark: "#0b1f5cff", light: "#ffffffff" },
+        }).catch(() => null),
+      ]);
       if (cancelled) return;
       setPhoto(p);
       setLogo(l);
+      setSignature(sig);
+      setQr(code);
       setReady(true);
     })();
     return () => { cancelled = true; };
-  }, [base.photoUrl]);
+  }, [base.photoUrl, base.signatureUrl, base.uid]);
 
   // If the photo could not be inlined, drop it rather than exporting a card with a blank hole.
-  const data = { ...base, photoUrl: photo };
+  const data = { ...base, photoUrl: photo, signatureUrl: signature };
 
   const run = async (kind: "png" | "pdf") => {
     if (!frontRef.current || busy) return;
@@ -86,8 +104,8 @@ export default function IdCardPanel({ member, profile, provisionalHint }: {
         <div className="mx-auto flex w-max gap-6">
           {ready ? (
             <>
-              <IdCardFront ref={frontRef} data={data} logoUrl={logo} />
-              <IdCardBack ref={backRef} data={data} />
+              <IdCardFront ref={frontRef} data={data} logoUrl={logo} qrUrl={qr} />
+              <IdCardBack ref={backRef} data={data} qrUrl={qr} />
             </>
           ) : (
             <div
@@ -122,6 +140,10 @@ export default function IdCardPanel({ member, profile, provisionalHint }: {
         <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
           <Download size={11} /> PNG to send · PDF prints at real card size (54 × 86 mm)
         </span>
+        <p className="w-full text-[11px] leading-relaxed text-muted-foreground">
+          The QR opens this card's verification page, so anyone can check the badge is genuine
+          without calling the office.
+        </p>
       </div>
     </div>
   );

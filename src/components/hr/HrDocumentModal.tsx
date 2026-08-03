@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { format } from "date-fns";
 import { Download, Loader2, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useCompanyLogo } from "@/hooks/useCompanyLogo";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import { declineDocument, signDocument } from "@/services/hrDocuments";
 import { downloadAgreementPdf } from "@/utils/agreementPdf";
@@ -26,6 +27,7 @@ export default function HrDocumentModal({ document, canSign, signerName, onClose
 }) {
   const { toast } = useToast();
   const paperRef = useRef<HTMLDivElement>(null);
+  const logo = useCompanyLogo();
   const [doc, setDoc] = useState<HrDocument>(document);
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -107,6 +109,8 @@ export default function HrDocumentModal({ document, canSign, signerName, onClose
         <div className="overflow-hidden rounded-lg">
           <AgreementView
             ref={paperRef}
+            letterhead
+            logoUrl={logo}
             bodyText={doc.bodyText}
             memberName={doc.memberName}
             memberPhone={doc.memberPhone}

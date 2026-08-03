@@ -8,6 +8,7 @@ import { normalizePhone } from "@/utils/phone";
 import { getWhatsAppUrl } from "@/utils/phone";
 import { COMPANY } from "@/utils/company";
 import { todayIso, addDaysIso, SIGNATORY_TITLE, NOTICE_DAYS, defaultProbationMonths } from "@/utils/hrPolicy";
+import { nextEmployeeId } from "@/utils/employeeId";
 import { buildInviteLetters, draftProbationEnd, suggestOfferNumber } from "@/utils/onboardingLetters";
 import { buildInviteMessage, createInvite, nextOfferSequence, type CreatedInvite } from "@/services/onboarding";
 import AgreementView from "@/components/agreement/AgreementView";
@@ -27,7 +28,9 @@ import type { InviteDraft } from "@/types/onboarding";
  * Creating the link is blocked without a stored signature, for the same reason the Issue Document
  * dialog blocks: a letter with an empty signature line is worse than no letter.
  */
-export default function OnboardInviteModal({ department, signatory, roleOptions, settingsPath, onClose, onCreated }: {
+export default function OnboardInviteModal({
+  department, signatory, roleOptions, settingsPath, existingEmployeeIds, onClose, onCreated,
+}: {
   department: Department;
   /** The admin doing the hiring — their signature signs both letters. */
   signatory: AppUser;
@@ -35,6 +38,8 @@ export default function OnboardInviteModal({ department, signatory, roleOptions,
   roleOptions: { value: UserRole; label: string }[];
   /** Where they go to add a signature if they have none. */
   settingsPath: string;
+  /** Every employee number already issued, so the next one is proposed rather than invented. */
+  existingEmployeeIds?: (string | null | undefined)[];
   onClose: () => void;
   onCreated?: (invite: CreatedInvite) => void;
 }) {
@@ -50,7 +55,11 @@ export default function OnboardInviteModal({ department, signatory, roleOptions,
 
   const [jobTitle, setJobTitle] = useState("");
   const [engagementType, setEngagementType] = useState<EngagementType>("full_time");
-  const [employeeId, setEmployeeId] = useState("");
+  /**
+   * Proposed, not blank. Typing this by hand is how two people end up sharing a number — and the
+   * person onboarding a joiner has no way of knowing what the last one was.
+   */
+  const [employeeId, setEmployeeId] = useState(() => nextEmployeeId(existingEmployeeIds || []));
   const [reportingToName, setReportingToName] = useState(signatory.name);
   const [workLocation, setWorkLocation] = useState("Kakinada, Andhra Pradesh");
 
@@ -299,7 +308,8 @@ export default function OnboardInviteModal({ department, signatory, roleOptions,
           <option value="intern">Intern</option>
           <option value="contract">Contract</option>
         </Select>
-        <Input label="Employee ID" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} placeholder="DTS-014" />
+        <Input label="Employee ID" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}
+          placeholder={nextEmployeeId([])} data-test="employee-id" />
         <Input label="Reporting to" value={reportingToName} onChange={(e) => setReportingToName(e.target.value)} />
         <Input label="Work location *" value={workLocation} onChange={(e) => setWorkLocation(e.target.value)}
           className="sm:col-span-2" />

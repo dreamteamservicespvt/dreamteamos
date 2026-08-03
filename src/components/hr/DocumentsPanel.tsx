@@ -165,6 +165,7 @@ export default function DocumentsPanel({ member, profile, documents, signatory, 
 
       {issuing && signatory && (
         <IssueDocumentDialog
+          issuedTypes={documents.map((d) => d.type)}
           member={member}
           profile={profile}
           signatory={signatory}

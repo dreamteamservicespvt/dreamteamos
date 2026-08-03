@@ -26,6 +26,8 @@ export const CARD_MM = { width: 53.98, height: 85.6 };
 
 export interface IdCardData {
   name: string;
+  /** Who this card belongs to — what the verification QR resolves to. */
+  uid: string;
   /** The company's own number where one has been set — otherwise a stable stand-in. See below. */
   employeeId: string;
   /** True when `employeeId` was derived rather than assigned, so the admin can be told. */
@@ -40,6 +42,24 @@ export interface IdCardData {
   emergencyContact: string | null;
   /** Set only for someone serving notice — a card that outlives the job is the point of an expiry. */
   validUntil: string | null;
+  /** The holder's own signature, photographed off paper. Printed where they would have signed. */
+  signatureUrl: string | null;
+}
+
+/**
+ * Where the card's QR points.
+ *
+ * A printed badge proves nothing on its own — anyone can laminate a rectangle. The QR resolves to
+ * a page served by the company that says whether this person is currently employed here, which is
+ * the question somebody scanning a badge is actually asking.
+ *
+ * Always the production origin: a card is printed once and carried for years, and a QR baked
+ * against `localhost` on the day it was generated is a dead square of ink forever.
+ */
+export const ID_VERIFY_ORIGIN = "https://dreamteamos.vercel.app";
+
+export function idCardVerifyUrl(uid: string): string {
+  return `${ID_VERIFY_ORIGIN}/verify/${uid}`;
 }
 
 const DEPARTMENT_LABELS: Record<string, string> = {
@@ -76,6 +96,7 @@ export function buildIdCard(member: AppUser, profile?: EmployeeProfile | null): 
 
   return {
     name: (member.name || "").trim() || "—",
+    uid: member.uid,
     employeeId: assigned || provisionalEmployeeId(member.uid),
     employeeIdIsProvisional: !assigned,
     // A designation is what a card is read for, so the role is a better fallback than a blank.
@@ -91,5 +112,6 @@ export function buildIdCard(member: AppUser, profile?: EmployeeProfile | null): 
       ? `${emergency.name}${emergency.relation ? ` (${emergency.relation})` : ""} · ${emergency.phone}`
       : null,
     validUntil: prettyDate(profile?.separation?.lastWorkingDay),
+    signatureUrl: profile?.signatureUrl || null,
   };
 }

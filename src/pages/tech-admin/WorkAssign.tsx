@@ -141,7 +141,7 @@ export default function WorkAssign() {
    */
   const [clientChat, setClientChat] = useState<{
     chatId: string; accessCode: string; businessName: string; uniqueId: string;
-    memberName?: string; clientPhone?: string;
+    category?: string; clientPhone?: string;
   } | null>(null);
   const [clientChatOpen, setClientChatOpen] = useState(false);
   const [clientChatOffered, setClientChatOffered] = useState(true);
@@ -324,7 +324,7 @@ export default function WorkAssign() {
         accessCode,
         businessName: form.businessName,
         uniqueId,
-        memberName: assignedMember?.name,
+        category: form.category,
         clientPhone: form.businessWhatsapp,
       });
       setClientChatOffered(false);
@@ -522,7 +522,7 @@ export default function WorkAssign() {
           accessCode={clientChat.accessCode}
           businessName={clientChat.businessName}
           uniqueId={clientChat.uniqueId}
-          memberName={clientChat.memberName}
+          category={clientChat.category}
           clientPhone={clientChat.clientPhone}
           onClose={() => setClientChatOpen(false)}
         />

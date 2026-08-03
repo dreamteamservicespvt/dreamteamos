@@ -46,6 +46,8 @@ export interface OrderChatDoc {
   orderId?: string | null;
   /** The readable job id (P001 / W002) — what the client is told the chat is about. */
   uniqueId: string;
+  /** The catalog key of what was ordered, so the client's message can name it. */
+  category?: string;
   businessName: string;
   clientName?: string;
   /** Normalised WhatsApp number, used to pre-fill the share message. Never shown to the member. */

@@ -10,6 +10,7 @@ import {
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { useToast } from "@/hooks/use-toast";
+import MemberAvatar from "@/components/MemberAvatar";
 import { setEmployeeId } from "@/services/employment";
 import { watchEmployeeProfile } from "@/services/hr";
 import { watchMemberDocuments } from "@/services/hrDocuments";
@@ -180,8 +181,14 @@ export default function MemberProfileDetail() {
         <div className="rounded-xl border border-border bg-card p-4 md:p-5">
           <div className="flex flex-wrap items-start gap-4">
             <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-primary/10">
-              {profile.photoUrl ? (
-                <img src={profile.photoUrl} alt={member.name} className="h-full w-full object-cover" />
+              {profile.photoUrl || member.avatar ? (
+                <MemberAvatar
+                  name={member.name}
+                  avatar={profile.photoUrl || member.avatar}
+                  size={64}
+                  viewable
+                  className="!rounded-xl"
+                />
               ) : (
                 <div className="font-display flex h-full w-full items-center justify-center text-2xl font-bold text-primary">
                   {member.name?.charAt(0)}
@@ -452,6 +459,7 @@ export default function MemberProfileDetail() {
           signatory={currentUser}
           settingsPath={`${adminBase}/settings`}
           defaultType={issueType}
+          issuedTypes={documents.map((d) => d.type)}
           memberLink={memberProfileLink(member.role)}
           onClose={() => setIssueType(null)}
         />

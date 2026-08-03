@@ -155,13 +155,21 @@ describe("what the client is sent", () => {
       uniqueId: "P001",
       chatId: "abc123",
       accessCode: "4821",
-      memberName: "Hasini",
+      category: "promotional",
     });
     expect(message).toContain("/c/abc123");
     expect(message).toContain("4821");
     expect(message).toContain("Sharma Electronics");
-    expect(message).toContain("Hasini");
     expect(message).toMatch(/no app or sign-up/i);
+    // Names what was bought...
+    expect(message).toContain("Promotional Ad");
+    // ...says what the chat is for...
+    expect(message).toMatch(/preview/i);
+    expect(message).toMatch(/final ad/i);
+    // ...and never names the member. A client who asks for one person by name is stranded the day
+    // that job moves to somebody else.
+    expect(message).not.toMatch(/Hasini/);
+    expect(message).toMatch(/our team/i);
   });
 
   it("still reads properly for a job with no business name saved", () => {

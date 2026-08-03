@@ -37,7 +37,7 @@ export default function MemberGridCard({ member, profile, stats, badges, actions
       <div className="flex items-start gap-3">
         {/* The photo the member uploaded themselves wins over the one filed in their HR record:
             it is the one they chose, and the one every other screen is already showing. */}
-        <MemberAvatar name={member.name} avatar={member.avatar || profile?.photoUrl} size={48} />
+        <MemberAvatar name={member.name} avatar={member.avatar || profile?.photoUrl} size={48} viewable />
 
         <div className="min-w-0 flex-1">
           <p className="truncate font-display font-semibold text-foreground group-hover:text-primary">

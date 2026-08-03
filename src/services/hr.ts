@@ -156,16 +156,22 @@ export async function saveEmployeeProfile(
 }
 
 /**
- * One face, wherever it was uploaded.
+ * The first photo fills both places; after that they are separate pictures.
  *
- * There are two places to put a photo — My Profile, and the KYC section of the employee record —
- * and they wrote to two different documents, so a member who set their picture in one place still
- * appeared blank in the other and had to do it twice. Whichever one is used now updates both:
- * this mirrors the HR photograph onto the avatar every screen reads, and
- * `mirrorAvatarToProfile` carries a change made in My Profile back the other way.
+ * There are two of them for two different purposes — the avatar the team sees in chat and on
+ * calls, and the photograph printed on the ID card — and asking a new member to upload the same
+ * face twice on their first day is the kind of small stupidity people remember. So the first
+ * upload, whichever screen it happened on, fills the empty one too.
+ *
+ * After that neither touches the other. Somebody who deliberately puts a formal photograph on
+ * their ID card and a casual one on their profile has said exactly what they want, and a mirror
+ * that kept overwriting one with the other would be the app arguing with them.
  */
 async function mirrorPhotoToUser(uid: string, url: string | null): Promise<void> {
+  if (!url) return; // Clearing the ID photograph is not a reason to remove someone's avatar.
   try {
+    const snap = await getDoc(doc(db, "users", uid));
+    if ((snap.data()?.avatar || "").trim()) return; // They already have one — leave it alone.
     await setDoc(doc(db, "users", uid), { avatar: url, updatedAt: serverTimestamp() }, { merge: true });
   } catch (err) {
     console.error("[hr] could not mirror the photo to the user record:", err);
@@ -173,14 +179,18 @@ async function mirrorPhotoToUser(uid: string, url: string | null): Promise<void>
 }
 
 /**
- * The other direction: a photo set in My Profile lands on the HR record too.
+ * The other direction: the first photo set in My Profile also becomes the ID card photograph.
  *
  * `updateDoc`, deliberately — it fails when there is no HR record, and that failure is the correct
  * outcome. Admins have no employment record, and creating an empty one just because they changed
  * their avatar would put people into HR who do not belong there.
  */
 export async function mirrorAvatarToProfile(uid: string, url: string | null): Promise<void> {
+  if (!url) return;
   try {
+    const snap = await getDoc(doc(db, COLLECTION, uid));
+    if (!snap.exists()) return;
+    if ((snap.data()?.photoUrl || "").trim()) return;
     await updateDoc(doc(db, COLLECTION, uid), { photoUrl: url, updatedAt: serverTimestamp() });
   } catch {
     /* no employment record for this person — nothing to keep in step */

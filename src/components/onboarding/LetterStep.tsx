@@ -4,6 +4,7 @@ import { useToast } from "@/hooks/use-toast";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import { downloadAgreementPdf } from "@/utils/agreementPdf";
 import AgreementView from "@/components/agreement/AgreementView";
+import { useCompanyLogo } from "@/hooks/useCompanyLogo";
 import SignaturePad from "@/components/agreement/SignaturePad";
 import type { FrozenLetter } from "@/types/onboarding";
 
@@ -41,6 +42,7 @@ export default function LetterStep({
 }) {
   const { toast } = useToast();
   const paperRef = useRef<HTMLDivElement>(null);
+  const logo = useCompanyLogo();
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [showDecline, setShowDecline] = useState(false);
@@ -90,6 +92,8 @@ export default function LetterStep({
       <div className="overflow-x-auto rounded-xl bg-slate-200 p-2 md:p-4">
         <AgreementView
           ref={paperRef}
+          letterhead
+          logoUrl={logo}
           bodyText={letter.bodyText}
           memberName={candidateName}
           memberPhone={candidatePhone}

@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import {
-  Check, Eye, EyeOff, FileUp, IdCard, Loader2, Paperclip, Pencil, Trash2, Upload, X,
+  Check, Eye, EyeOff, FileUp, IdCard, Loader2, Paperclip, Pencil, PenTool, Trash2, Upload, X,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirm } from "@/hooks/useConfirm";
@@ -34,9 +34,10 @@ export default function KycPanel({ profile, actor, user, readOnly }: {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(profile);
   const [revealed, setRevealed] = useState(false);
-  const [uploading, setUploading] = useState<"photo" | "document" | null>(null);
+  const [uploading, setUploading] = useState<"photo" | "signature" | "document" | null>(null);
   const [docKind, setDocKind] = useState<KycDocKind>("aadhaar");
   const photoInput = useRef<HTMLInputElement>(null);
+  const signatureInput = useRef<HTMLInputElement>(null);
   const docInput = useRef<HTMLInputElement>(null);
 
   const kyc = kycCompletion(profile, user);
@@ -94,6 +95,24 @@ export default function KycPanel({ profile, actor, user, readOnly }: {
     const file = e.target.files?.[0];
     e.target.value = "";
     return file;
+  };
+
+  const handleSignature = async (file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Pick an image", description: "Upload a photo or screenshot of the signature.", variant: "destructive" });
+      return;
+    }
+    setUploading("signature");
+    try {
+      const url = await uploadToCloudinary(file);
+      await saveEmployeeProfile(profile.uid, { signatureUrl: url }, actor);
+      toast({ title: "Signature saved", description: "It will appear on this employee's ID card and letters." });
+    } catch {
+      toast({ title: "Error", description: "Could not upload the signature.", variant: "destructive" });
+    } finally {
+      setUploading(null);
+    }
   };
 
   const handlePhoto = async (file?: File) => {
@@ -200,10 +219,14 @@ export default function KycPanel({ profile, actor, user, readOnly }: {
                   className="mt-1.5 inline-flex h-7 w-20 items-center justify-center gap-1 rounded-lg border border-border text-[10px] font-medium text-muted-foreground hover:bg-accent disabled:opacity-50">
                   {uploading === "photo" ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />} Photo
                 </button>
+                {/* Two photos exist for two purposes, and nobody can guess which is which. */}
+                <p className="mt-1 w-20 text-[9px] leading-snug text-muted-foreground">
+                  Printed on the ID card
+                </p>
               </>
             )}
 
-            {/* The signature the member photographed off paper, if they have given it yet. */}
+            {/* The signature, photographed off paper — the same one the daily prompt asks for. */}
             <div className="mt-3 w-20">
               <p className="mb-1 text-[10px] font-medium text-muted-foreground">Signature</p>
               {profile.signatureUrl ? (
@@ -216,6 +239,22 @@ export default function KycPanel({ profile, actor, user, readOnly }: {
                 <p className="rounded-md border border-dashed border-border px-1.5 py-2 text-center text-[10px] text-muted-foreground">
                   Not given
                 </p>
+              )}
+              {!readOnly && (
+                <>
+                  <input ref={signatureInput} type="file" accept="image/*" className="hidden"
+                    data-test="signature-input"
+                    onChange={(e) => handleSignature(consume(e))} />
+                  <button onClick={() => signatureInput.current?.click()} disabled={uploading === "signature"}
+                    data-test="upload-signature"
+                    className="mt-1.5 inline-flex h-7 w-20 items-center justify-center gap-1 rounded-lg border border-border text-[10px] font-medium text-muted-foreground hover:bg-accent disabled:opacity-50">
+                    {uploading === "signature" ? <Loader2 size={11} className="animate-spin" /> : <PenTool size={11} />}
+                    {profile.signatureUrl ? "Replace" : "Signature"}
+                  </button>
+                  <p className="mt-1 w-20 text-[9px] leading-snug text-muted-foreground">
+                    Signed on paper, photographed
+                  </p>
+                </>
               )}
             </div>
           </div>

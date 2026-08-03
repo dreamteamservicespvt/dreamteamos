@@ -108,7 +108,7 @@ export default function ProfilePhotoUpload({
           halves of a person's identity split apart by a note about file sizes. */}
       <div className="flex items-center gap-3">
         <div className="relative shrink-0">
-          <MemberAvatar name={name} avatar={avatar} size={size} />
+          <MemberAvatar name={name} avatar={avatar} size={size} viewable />
           {busy && (
             <span className="absolute inset-0 flex items-center justify-center rounded-full bg-background/70">
               <Loader2 className="h-4 w-4 animate-spin text-primary" />
@@ -132,8 +132,9 @@ export default function ProfilePhotoUpload({
           </button>
         )}
         <p className="w-full text-[11px] leading-snug text-muted-foreground sm:w-auto sm:flex-1">
-          Shows on chat, calls and every team list. You crop it square before it saves — JPG or PNG,
-          under 5&nbsp;MB.
+          This is the photo the team sees — chat, calls, every team list. Your first upload is also
+          used as the photograph on your ID card; after that the two are separate, and the ID card
+          one is changed under My&nbsp;details. JPG or PNG, under 5&nbsp;MB.
         </p>
       </div>
 

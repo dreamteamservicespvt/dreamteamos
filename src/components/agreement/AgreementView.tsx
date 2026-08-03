@@ -1,8 +1,19 @@
 import { forwardRef } from "react";
 import { format } from "date-fns";
+import { LetterheadFoot, LetterheadTop } from "@/components/agreement/Letterhead";
 
 export interface AgreementViewData {
   bodyText: string;
+  /**
+   * Print the company letterhead around the text.
+   *
+   * Off for the pasted-in bulk agreements, which are somebody else's document reproduced verbatim;
+   * on for everything this company issues itself, where the header is part of what makes it a
+   * document rather than a note.
+   */
+  letterhead?: boolean;
+  /** The logo, already inlined as a data URL when this is heading for a PDF. */
+  logoUrl?: string | null;
   memberName: string;
   memberPhone?: string;
   signatureUrl?: string;
@@ -101,6 +112,8 @@ const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function Agr
       style={{ colorScheme: "light" }}
       className="mx-auto w-full max-w-[820px] bg-white text-slate-800 px-7 py-8 md:px-12 md:py-12 shadow-sm"
     >
+      {data.letterhead && <LetterheadTop logoUrl={data.logoUrl} />}
+
       {titleLines.length > 0 && (
         <div data-pdf="title" className="text-center mb-6 pb-4 border-b-2 border-slate-200">
           {titleLines.map((t, idx) => (
@@ -207,6 +220,8 @@ const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function Agr
           {signedDateLabel ? ` on ${signedDateLabel}` : ""}.
         </div>
       )}
+
+      {data.letterhead && <LetterheadFoot />}
     </div>
   );
 });

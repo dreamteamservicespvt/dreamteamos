@@ -137,6 +137,7 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
     assignmentId: ref.id,
     accessCode,
     uniqueId,
+    category,
     businessName: business,
     clientPhone: phone ? normalizePhone(phone) : undefined,
     memberUid: assignedTo,

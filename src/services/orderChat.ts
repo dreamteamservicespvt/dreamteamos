@@ -12,6 +12,8 @@ import {
 } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { isNative } from "@/utils/platform";
+import { COMPANY } from "@/utils/company";
+import { categoryLabel } from "@/utils/serviceCatalog";
 import { CLIENT_SENDER_ID } from "@/types/orderChat";
 import type { OrderChatDoc, OrderChatMessageType } from "@/types/orderChat";
 
@@ -32,27 +34,40 @@ export function orderChatLink(chatId: string): string {
   return `${origin}/c/${chatId}`;
 }
 
-/** The message a leader or admin sends the client. Plain, and it explains the code. */
+/**
+ * The message a leader or admin sends the client.
+ *
+ * Says what was bought, not who is making it. Naming the member turned a company into one
+ * person — the client starts asking for "Aasritha" by name, and the day that job moves to
+ * somebody else the client believes they have been dropped. They are talking to the team.
+ *
+ * It also says what the chat is FOR, in the order the client will use it: send us your material,
+ * see the preview here, collect the finished ad here. A link with no promise attached is a link
+ * nobody opens.
+ */
 export function buildClientChatMessage(input: {
   businessName?: string;
   uniqueId?: string;
   chatId: string;
   accessCode: string;
-  memberName?: string;
+  /** The work's catalog key, so the message can name what was actually ordered. */
+  category?: string;
 }): string {
-  const { businessName, uniqueId, chatId, accessCode, memberName } = input;
+  const { businessName, uniqueId, chatId, accessCode, category } = input;
+  const what = category ? categoryLabel(category) : "ad";
   return [
     `Hello${businessName ? ` ${businessName}` : ""}! 👋`,
     ``,
-    `Your ad work${uniqueId ? ` (${uniqueId})` : ""} has started${memberName ? ` with ${memberName}` : ""}.`,
-    `Use this private chat to share photos, videos, logos and any details — and to call the team directly.`,
+    `Your ${what}${uniqueId ? ` (${uniqueId})` : ""} has started.`,
+    `Come here to chat with our team — share your photos, videos, logo and any details, and see`,
+    `your preview and the final ad in the same place. You can call the team from here too.`,
     ``,
     `🔗 Chat link: ${orderChatLink(chatId)}`,
     `🔑 Code: ${accessCode}`,
     ``,
     `Just open the link and enter the 4-digit code. No app or sign-up needed.`,
     ``,
-    `— Dream Team Services`,
+    `— ${COMPANY.name}`,
   ].join("\n");
 }
 
@@ -60,6 +75,8 @@ export interface CreateOrderChatInput {
   assignmentId: string;
   accessCode: string;
   uniqueId: string;
+  /** What was ordered — a promotional ad, a wishes video — for the client's message. */
+  category?: string;
   businessName?: string;
   clientName?: string;
   clientPhone?: string;
@@ -81,7 +98,7 @@ export interface CreateOrderChatInput {
  */
 export async function createOrderChat(input: CreateOrderChatInput): Promise<void> {
   const {
-    assignmentId, accessCode, uniqueId, businessName, clientName, clientPhone,
+    assignmentId, accessCode, uniqueId, category, businessName, clientName, clientPhone,
     memberUid, memberName, assignerUid, assignerName, techAdminUid, orderId,
   } = input;
 
@@ -95,6 +112,7 @@ export async function createOrderChat(input: CreateOrderChatInput): Promise<void
       assignmentId,
       ...(orderId ? { orderId } : {}),
       uniqueId,
+      ...(category ? { category } : {}),
       businessName: businessName || "",
       ...(clientName ? { clientName } : {}),
       ...(clientPhone ? { clientPhone } : {}),
@@ -128,7 +146,8 @@ export async function createOrderChat(input: CreateOrderChatInput): Promise<void
 export async function ensureOrderChat(input: {
   assignment: {
     id: string; accessCode: string; uniqueId: string; assignedTo: string; assignedBy?: string;
-    businessName?: string; clientName?: string; businessWhatsapp?: string; orderId?: string;
+    category?: string; businessName?: string; clientName?: string; businessWhatsapp?: string;
+    orderId?: string;
   };
   memberName?: string;
   /** Whoever is opening it — added to the room so they can read it. */
@@ -153,6 +172,7 @@ export async function ensureOrderChat(input: {
       assignmentId: a.id,
       accessCode: a.accessCode,
       uniqueId: a.uniqueId,
+      category: a.category,
       businessName: a.businessName || a.clientName,
       clientPhone: a.businessWhatsapp,
       memberUid: a.assignedTo,

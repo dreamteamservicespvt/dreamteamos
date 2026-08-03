@@ -9,6 +9,7 @@
  * deleted would otherwise render as a broken-image icon, which looks worse than no photo at all.
  */
 import { useEffect, useState } from "react";
+import ImageLightbox from "@/components/common/ImageLightbox";
 
 /** "Asha Devi" → "AD"; "Ravi" → "RA". Never more than two letters. */
 export function initialsOf(name: string | undefined | null): string {
@@ -19,7 +20,7 @@ export function initialsOf(name: string | undefined | null): string {
 }
 
 export default function MemberAvatar({
-  name, avatar, size = 32, className = "", title,
+  name, avatar, size = 32, className = "", title, viewable = false,
 }: {
   name?: string | null;
   avatar?: string | null;
@@ -27,8 +28,18 @@ export default function MemberAvatar({
   size?: number;
   className?: string;
   title?: string;
+  /**
+   * Whether tapping the photo opens it full screen.
+   *
+   * Off by default, and deliberately so: most avatars sit inside something that is itself
+   * clickable — a chat contact, a team card, the topbar menu — and swallowing that tap to show a
+   * picture would break the thing the person was actually trying to do. Turned on where the photo
+   * IS the subject: profile headers, the employee record, the ID card.
+   */
+  viewable?: boolean;
 }) {
   const [failed, setFailed] = useState(false);
+  const [zoomed, setZoomed] = useState(false);
   // A member who uploads a new photo must not keep showing the broken one they replaced.
   useEffect(() => { setFailed(false); }, [avatar]);
 
@@ -36,16 +47,28 @@ export default function MemberAvatar({
   const shared = `shrink-0 rounded-full object-cover ${className}`;
 
   if (avatar && !failed) {
+    const canZoom = viewable;
     return (
-      <img
-        src={avatar}
-        alt={name || "Team member"}
-        title={title || name || undefined}
-        style={style}
-        onError={() => setFailed(true)}
-        className={shared}
-        data-test="member-avatar"
-      />
+      <>
+        <img
+          src={avatar}
+          alt={name || "Team member"}
+          title={title || (canZoom ? `${name || "Photo"} — tap to view` : name) || undefined}
+          style={style}
+          onError={() => setFailed(true)}
+          onClick={canZoom ? (e) => { e.stopPropagation(); setZoomed(true); } : undefined}
+          className={`${shared}${canZoom ? " cursor-zoom-in" : ""}`}
+          data-test="member-avatar"
+        />
+        {zoomed && (
+          <ImageLightbox
+            src={avatar}
+            alt={name || "Team member"}
+            caption={name || undefined}
+            onClose={() => setZoomed(false)}
+          />
+        )}
+      </>
     );
   }
 

@@ -986,7 +986,7 @@ export default function MemberAssignments() {
           accessCode={shareChatFor.accessCode}
           businessName={shareChatFor.businessName || shareChatFor.clientName}
           uniqueId={shareChatFor.uniqueId}
-          memberName={member?.name}
+          category={shareChatFor.category}
           clientPhone={shareChatFor.businessWhatsapp}
           onOpenChat={() => setOpenChatFor(shareChatFor)}
           onClose={() => setShareChatFor(null)}

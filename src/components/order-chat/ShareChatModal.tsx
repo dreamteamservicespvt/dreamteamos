@@ -16,7 +16,8 @@ interface Props {
   accessCode: string;
   businessName?: string;
   uniqueId?: string;
-  memberName?: string;
+  /** What was ordered. The message names the work, never the member making it. */
+  category?: string;
   /** The client's WhatsApp number, from the assignment. */
   clientPhone?: string;
   onOpenChat?: () => void;
@@ -24,10 +25,10 @@ interface Props {
 }
 
 export default function ShareChatModal({
-  chatId, accessCode, businessName, uniqueId, memberName, clientPhone, onOpenChat, onClose,
+  chatId, accessCode, businessName, uniqueId, category, clientPhone, onOpenChat, onClose,
 }: Props) {
   const [message, setMessage] = useState(() =>
-    buildClientChatMessage({ businessName, uniqueId, chatId, accessCode, memberName }));
+    buildClientChatMessage({ businessName, uniqueId, chatId, accessCode, category }));
   const [copied, setCopied] = useState<"message" | "link" | null>(null);
 
   const copy = (what: "message" | "link") => {

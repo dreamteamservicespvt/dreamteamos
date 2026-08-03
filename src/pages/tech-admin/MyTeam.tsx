@@ -587,6 +587,7 @@ export default function TechAdminMyTeam() {
       {/* Hiring: the letters are written here, the account is created when they sign the second one. */}
       {showOnboard && currentUser && (
         <OnboardInviteModal
+          existingEmployeeIds={members.map(m => m.employeeId)}
           department="tech"
           signatory={currentUser}
           roleOptions={[

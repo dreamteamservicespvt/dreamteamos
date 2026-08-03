@@ -80,6 +80,7 @@ import MySalaryPage from "@/pages/shared/MySalary";
 import MySalaryDashboard from "@/pages/tech-member/MySalaryDashboard";
 import NotFound from "@/pages/NotFound";
 import ClientChat from "@/pages/client/ClientChat";
+import VerifyEmployee from "@/pages/public/VerifyEmployee";
 import JoinOnboarding from "@/pages/onboarding/JoinOnboarding";
 import Chat from "@/pages/shared/Chat";
 import Meeting from "@/pages/shared/Meeting";
@@ -123,6 +124,10 @@ const App = () => (
               a link and a 4-digit code, and must never be asked to sign in to answer a question
               about their own ad. Kept short so it survives being pasted into WhatsApp. */}
           <Route path="/c/:chatId" element={<ClientChat />} />
+
+          {/* Where an ID card's QR lands. Public because the people who check a badge — a client's
+              security desk, a landlord, a bank — are by definition outside the company. */}
+          <Route path="/verify/:uid" element={<VerifyEmployee />} />
 
           {/* Becoming an employee. Public by design and for the same reason: the person reading it
               has no account, because the account is what they get for signing. Offer letter, then
