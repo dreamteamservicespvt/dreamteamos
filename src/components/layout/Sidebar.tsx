@@ -12,6 +12,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { deleteFCMToken } from "@/services/fcm";
 import InstallAppButton from "@/components/layout/InstallAppButton";
 import MemberAvatar from "@/components/MemberAvatar";
+import BrandLogo from "@/components/common/BrandLogo";
 import type { AppUser } from "@/types";
 
 interface SidebarProps {
@@ -105,7 +106,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
             >
               <div className="h-14 flex items-center px-4 border-b border-border justify-between shrink-0">
-                <img src="/dts-logo-wide.png" alt="DTS — Dream Team Services" className="h-5 w-auto rounded-sm" />
+                <BrandLogo className="h-9 w-auto" />
                 <button onClick={onMobileClose} className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
                   <X size={18} />
                 </button>
@@ -179,12 +180,14 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         <AnimatePresence mode="wait">
           {!collapsed ? (
             <motion.div key="full" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <img src="/dts-logo-wide.png" alt="DTS — Dream Team Services" className="h-5 w-auto rounded-sm" />
+              <BrandLogo className="h-9 w-auto" />
             </motion.div>
           ) : (
             <motion.button key="icon" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               onClick={toggle} title="Expand sidebar" className="mx-auto rounded-lg transition-transform hover:scale-105">
-              <img src="/dts-logo-mark.png" alt="DTS" className="w-9 h-9 rounded-lg ring-1 ring-border shadow-sm" />
+              {/* 64px of sidebar: the letters only, and no tile — the mark carries its own
+                  transparent background, so a framed box around it would be decoration. */}
+              <BrandLogo variant="mark" alt="DTS" className="h-5 w-auto" />
             </motion.button>
           )}
         </AnimatePresence>

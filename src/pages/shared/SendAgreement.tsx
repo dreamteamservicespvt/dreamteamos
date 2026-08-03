@@ -22,9 +22,11 @@ import { printAgreementElement } from "@/utils/agreementPrint";
 import { awaitRendered } from "@/utils/awaitRendered";
 import MissingLettersPanel, { findMissingLetters } from "@/components/hr/MissingLettersPanel";
 import { watchTeamProfiles } from "@/services/hr";
-import { watchTeamDocuments } from "@/services/hrDocuments";
-import { departmentOfRole, resolveSignatories, SIGNATORY_TITLE } from "@/utils/hrPolicy";
-import { buildDocument } from "@/utils/hrTemplates";
+import { allocateReference, issueDocument, watchTeamDocuments } from "@/services/hrDocuments";
+import {
+  canIssue, departmentOfRole, requiresEmployeeSignature, resolveSignatories, SIGNATORY_TITLE,
+} from "@/utils/hrPolicy";
+import { buildDocument, withReference } from "@/utils/hrTemplates";
 import {
   AGREEMENT_TOKENS, fillTokens, tokenizeForBulk, tokensUsed, untokenizedPersonalValues,
 } from "@/utils/agreementTokens";
@@ -71,6 +73,8 @@ export default function SendAgreement({ embedded }: { embedded?: boolean } = {})
   const [templateType, setTemplateType] = useState<HrDocumentType | "">("");
   /** Who signs it, resolved when the template was loaded and frozen onto every copy sent. */
   const [templateSignatories, setTemplateSignatories] = useState<IssuedSignatory[]>([]);
+  /** The formal title the generator gave this letter, so the register names it the same way. */
+  const [templateTitle, setTemplateTitle] = useState<string>("");
   const { company, assets: marks, officer } = useCompany();
   const logo = useCompanyLogo();
   const [showPreview, setShowPreview] = useState(false);
@@ -201,11 +205,20 @@ export default function SendAgreement({ embedded }: { embedded?: boolean } = {})
     return () => { cancelled = true; };
   }, [mode, category, user?.uid]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /**
+   * Whether this person has already had this out of the company, and whether it came back signed.
+   *
+   * Reads both registers, because both are things that were sent from this box: a company letter
+   * is filed as an HR document and a pasted agreement is not. Narrowed to the loaded template
+   * where there is one — "already sent" is a useful warning about the offer letter and a useless
+   * one about some unrelated document from March.
+   */
   const agreementFlag = (memberId: string): "signed" | "sent" | null => {
-    const mine = allSent.filter((a) => a.memberId === memberId);
+    const mine = templateType
+      ? hrDocs.filter((d) => d.memberId === memberId && d.type === templateType)
+      : allSent.filter((a) => a.memberId === memberId);
     if (mine.some((a) => a.status === "signed")) return "signed";
-    if (mine.length > 0) return "sent";
-    return null;
+    return mine.length > 0 ? "sent" : null;
   };
 
   // Every individual who has at least one agreement on record — derived from the sent list
@@ -254,6 +267,7 @@ export default function SendAgreement({ embedded }: { embedded?: boolean } = {})
   const loadTemplate = (type: HrDocumentType | "") => {
     setTemplateType(type);
     setTemplateSignatories([]);
+    setTemplateTitle("");
     if (!type) { setShowPreview(false); return; }
     /*
       Show the letter the moment it is loaded, and leave it showing.
@@ -307,6 +321,7 @@ export default function SendAgreement({ embedded }: { embedded?: boolean } = {})
       : tokenizeForBulk(built.bodyText, { member: base, profile });
     setBody(text);
     setTemplateSignatories(signatories);
+    setTemplateTitle(built.title);
     toast({
       title: `${HR_DOCUMENT_LABELS[type]} loaded`,
       description: mode === "individual"
@@ -334,10 +349,61 @@ export default function SendAgreement({ embedded }: { embedded?: boolean } = {})
       return next;
     });
 
+  /**
+   * Send one copy.
+   *
+   * ── Why a company letter takes a different road ───────────────────────────────────────────────
+   * Two things can leave this box, and they are not the same object. One is a letter this company
+   * generates from its own records — an offer, an appointment, a warning — which belongs in the
+   * document register: numbered, listed under "All documents", showing on the recipient's profile
+   * beside every other letter they hold, deletable from either place, and counted by the lifecycle
+   * strip that says whether somebody has been properly onboarded. The other is somebody else's
+   * agreement pasted in verbatim, which is none of those things.
+   *
+   * They used to go to the same place, and the consequence was the bug worth naming: an offer
+   * letter sent from here never appeared on the employee's Documents tab, so the tab said "no
+   * documents issued yet" about a person who was holding one.
+   */
   const sendTo = async (member: AppUser) => {
     if (!user) return;
     // Resolved per recipient, so one edited document becomes each person's own copy.
     const text = textFor(member).trim();
+    const issuedOn = format(new Date(), "yyyy-MM-dd");
+
+    if (templateType) {
+      const profile = profiles.get(member.uid);
+      // The number is taken first, then printed onto the letter, so the reference on the page is
+      // the one in the register.
+      const referenceNo = await allocateReference(company.name, templateType, issuedOn);
+      await issueDocument({
+        document: {
+          memberId: member.uid,
+          memberName: member.name,
+          memberPhone: member.phone || "",
+          memberRole: member.role,
+          department: profile?.department || departmentOfRole(member.role) || "tech",
+          type: templateType,
+          title: templateTitle || `${HR_DOCUMENT_LABELS[templateType]} — ${member.name}`,
+          bodyText: withReference(text, referenceNo),
+          issuedById: user.uid,
+          issuedByName: user.name,
+          issuedByDesignation: user.designation
+            || SIGNATORY_TITLE[departmentOfRole(user.role) || "tech"]
+            || "Authorised Signatory",
+          signatories: templateSignatories,
+          referenceNo,
+          companyStampUrl: marks.stampUrl || null,
+          // Kept in step with the first signatory, for anything still reading the older
+          // single-signature field.
+          companySignatureUrl: templateSignatories[0]?.signatureUrl || null,
+          issuedOn,
+          requiresEmployeeSignature: requiresEmployeeSignature(templateType),
+        },
+        memberLink: memberProfileLink(member.role),
+      });
+      return;
+    }
+
     await sendAgreement(
       {
         memberId: member.uid,
@@ -349,17 +415,6 @@ export default function SendAgreement({ embedded }: { embedded?: boolean } = {})
         sentByRole: user.role,
         title: extractTitle(text),
         bodyText: text,
-        // A generated letter goes out on the letterhead and under the company's signature; a
-        // pasted one carries neither, exactly as it always did.
-        ...(templateType
-          ? {
-            letterhead: true,
-            templateType,
-            companySignatories: templateSignatories,
-            companyStampUrl: marks.stampUrl || null,
-            companySignedDate: format(new Date(), "yyyy-MM-dd"),
-          }
-          : {}),
       },
       memberProfileLink(member.role),
     );
@@ -438,6 +493,17 @@ export default function SendAgreement({ embedded }: { embedded?: boolean } = {})
       toast({ title: "No recipients", description: mode === "individual" ? "Select a member." : "Tick at least one member.", variant: "destructive" });
       return;
     }
+    // A company letter goes out under the company's signature. Without one it would reach somebody
+    // with an empty ruled box under "For Dream Team Services", which is a letter the company
+    // appears not to have signed — the same bar the Issue dialog holds documents to.
+    if (templateType && !canIssue(templateSignatories, templateType)) {
+      toast({
+        title: "Nobody can sign this yet",
+        description: "Upload the CEO's signature under Company Documents in Settings, then send it.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSending(true);
     try {
       let done = 0;
@@ -446,14 +512,20 @@ export default function SendAgreement({ embedded }: { embedded?: boolean } = {})
         await sendTo(m);
         done++;
       }
-      if (mode !== "individual") await saveAgreementTemplate(user.uid, category, body.trim());
+      // Only a pasted agreement is worth remembering as a template — a company letter is
+      // regenerated from the record every time, which is the point of having a generator.
+      if (mode !== "individual" && !templateType) await saveAgreementTemplate(user.uid, category, body.trim());
       toast({
-        title: targets.length > 1 ? `Sent to ${targets.length} members` : "Agreement sent",
+        title: targets.length > 1
+          ? `Sent to ${targets.length} members`
+          : templateType ? "Document issued" : "Agreement sent",
         description: targets.length > 1
           ? "Everyone got their own copy, with their own details filled in."
-          : `${targets[0].name} will see it in their profile to sign.`,
+          : templateType
+            ? `${targets[0].name} has it on their profile, and it is filed under All documents.`
+            : `${targets[0].name} will see it in their profile to sign.`,
       });
-      if (mode === "individual") { setBody(""); setSelectedId(""); setTemplateType(""); }
+      if (mode === "individual") { setBody(""); setSelectedId(""); setTemplateType(""); setTemplateTitle(""); }
       setShowPreview(false);
     } catch {
       toast({ title: "Error", description: "Could not send the agreement.", variant: "destructive" });
@@ -600,6 +672,15 @@ export default function SendAgreement({ embedded }: { embedded?: boolean } = {})
               ? "Written from the selected employee's own record, straight into the box below — change any wording you like before sending."
               : "Personal details come through as {{tokens}}, so one edited document becomes each person's own copy."}
           </p>
+          {/* Where it ends up, said plainly: this is the one thing that differs between the two
+              kinds of thing this box can send, and it decides whether the lifecycle counts it. */}
+          {templateType && (
+            <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground" data-test="filed-as-document">
+              Filed as a company document — numbered, listed under <b className="text-foreground">All
+              documents</b>, and on each recipient's own Documents tab, where either of you can
+              delete it.
+            </p>
+          )}
         </div>
 
         <div>

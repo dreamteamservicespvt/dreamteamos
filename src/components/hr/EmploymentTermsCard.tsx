@@ -492,6 +492,22 @@ export default function EmploymentTermsCard({
               : null)}
           />
           <Field label="Gross monthly salary" value={profile.ctcMonthly ? rupees(profile.ctcMonthly) : null} mono />
+          {/* The annual figure, stated rather than left to be worked out.
+              It is the number an employee is asked for by a bank, a landlord and every form they
+              fill in, and the one the offer letter prints — so it belongs on the record they read,
+              not only in the hint under the box their admin types the monthly one into. */}
+          <Field
+            label="Annual CTC"
+            mono
+            value={profile.ctcMonthly ? (
+              <span data-test="annual-ctc">
+                {rupees(profile.ctcMonthly * 12)}
+                {(profile.trainingMonths ?? 0) > 0 && typeof profile.trainingSalaryMonthly === "number" && (
+                  <span className="ml-1 text-[11px] text-muted-foreground">· after training</span>
+                )}
+              </span>
+            ) : null}
+          />
           <Field label="Work location" value={profile.workLocation} />
           <Field label="Work arrangement" value={profile.workArrangement ? WORK_ARRANGEMENT_LABELS[profile.workArrangement] : null} />
           <Field label="Working hours" value={profile.workingHours} />

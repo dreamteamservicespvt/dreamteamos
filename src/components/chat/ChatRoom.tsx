@@ -309,7 +309,10 @@ export default function ChatRoom({ contact, messages, loading, onSend, onSendFil
             <ArrowLeft className="w-5 h-5" />
           </Button>
         )}
-        <MemberAvatar name={contact.name} avatar={contact.avatar} size={36} />
+        {/* Tapping the face opens it properly. At 36px it is a marker for who you are talking to;
+            people want to actually look at a colleague's photo, and this is the only place in a
+            conversation where that photo is the subject rather than a label. */}
+        <MemberAvatar name={contact.name} avatar={contact.avatar} size={36} viewable />
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-sm truncate">{contact.name}</p>
           {/* The role's real name, not a prettified key — otherwise a rename never reaches here. */}

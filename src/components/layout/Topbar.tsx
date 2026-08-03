@@ -11,6 +11,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { playClickSound } from "@/utils/audio";
 import MemberAvatar from "@/components/MemberAvatar";
+import BrandLogo from "@/components/common/BrandLogo";
 
 interface TopbarProps {
   onMenuClick?: () => void;
@@ -110,7 +111,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
               className="w-9 h-9 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
               <Menu size={20} />
             </button>
-            <img src="/dts-logo-mark.png" alt="DTS" className="w-7 h-7 rounded-md ring-1 ring-border shadow-sm shrink-0" />
+            <BrandLogo variant="mark" alt="DTS" className="h-5 w-auto shrink-0" />
           </>
         )}
         <div className="flex items-center gap-2 text-sm">

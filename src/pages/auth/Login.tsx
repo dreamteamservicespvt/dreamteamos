@@ -8,6 +8,7 @@ import { defaultRouteForUser } from "@/utils/roleHelpers";
 import type { AppUser } from "@/types";
 import { Eye, EyeOff, Loader2, RefreshCw } from "lucide-react";
 import { reportCacheTrouble, repairLocalCaches } from "@/services/localCacheRecovery";
+import BrandLogo from "@/components/common/BrandLogo";
 
 const PARTICLES = Array.from({ length: 8 }, (_, i) => ({
   id: i,
@@ -143,8 +144,10 @@ export default function Login() {
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-primary/10" />
 
         <div className="relative z-10 text-center px-12">
+          {/* The tile stays black whatever the theme is, so the logo on it is always the white
+              one — asking the theme here would blank it out half the time. */}
           <div className="inline-block rounded-2xl bg-black px-8 py-6 shadow-2xl shadow-black/40 ring-1 ring-white/10 mb-5">
-            <img src="/dts-logo-full.png" alt="DTS — Dream Team Services" className="w-72 max-w-full h-auto" />
+            <BrandLogo on="dark" className="w-72 max-w-full h-auto" />
           </div>
           <p className="text-muted-foreground text-sm">Command Center</p>
 
@@ -161,7 +164,7 @@ export default function Login() {
           {/* Mobile logo */}
           <div className="lg:hidden flex justify-center mb-10">
             <div className="rounded-xl bg-black px-5 py-4 shadow-xl shadow-black/30 ring-1 ring-white/10">
-              <img src="/dts-logo-full.png" alt="DTS — Dream Team Services" className="w-48 h-auto" />
+              <BrandLogo on="dark" className="w-48 h-auto" />
             </div>
           </div>
 

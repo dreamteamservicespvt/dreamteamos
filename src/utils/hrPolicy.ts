@@ -655,11 +655,20 @@ export function lifecycleSteps(
   const coreSigned = CORE_EMPLOYMENT_DOCS.filter((t) => signed.has(t));
 
   const raw: { key: string; label: string; detail: string; done: boolean; skip?: boolean }[] = [
+    /*
+      Two sources, and the step says which one it is standing on.
+
+      A date on the employment record and a letter in the register are different facts: the hiring
+      flow writes both, an admin recording an offer sent by email writes only the first. Reading
+      "Offer letter issued ✓" beside a Documents tab that says nothing has ever been issued looks
+      like a bug, and the reader has no way to tell which half is true — so where the date is all
+      there is, the step says so rather than implying a letter exists.
+    */
     {
       key: "offer",
       label: "Offer letter issued",
       detail: profile.offerIssuedOn
-        ? `Issued ${profile.offerIssuedOn}`
+        ? `Issued ${profile.offerIssuedOn}${issued.has("offer_letter") ? "" : " · recorded, no letter on file"}`
         : issued.has("offer_letter") ? "Issued" : "Role, salary, joining date and conditions in writing",
       done: !!profile.offerIssuedOn || issued.has("offer_letter"),
     },
@@ -667,7 +676,7 @@ export function lifecycleSteps(
       key: "offer_accepted",
       label: "Offer accepted",
       detail: profile.offerAcceptedOn
-        ? `Accepted ${profile.offerAcceptedOn}`
+        ? `Accepted ${profile.offerAcceptedOn}${signed.has("offer_letter") ? "" : " · recorded, no signed letter on file"}`
         : signed.has("offer_letter") ? "Signed by the candidate" : "Awaiting the candidate's signature",
       done: !!profile.offerAcceptedOn || signed.has("offer_letter"),
     },

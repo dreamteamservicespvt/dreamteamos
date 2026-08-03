@@ -113,8 +113,10 @@ export default function ChatSidebar({ contacts, activeContactUid, onSelect, load
               )}
             >
               {/* The one avatar component the whole app uses — a photo uploaded once shows here,
-                  and a deleted Cloudinary URL falls back to initials instead of a broken image. */}
-              <MemberAvatar name={c.name} avatar={c.avatar} size={40} />
+                  and a deleted Cloudinary URL falls back to initials instead of a broken image.
+                  Tapping the photo views it; tapping anywhere else in the row opens the chat, and
+                  closing the viewer does not open one — see ImageLightbox for how. */}
+              <MemberAvatar name={c.name} avatar={c.avatar} size={40} viewable />
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">

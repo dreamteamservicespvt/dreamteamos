@@ -67,9 +67,12 @@ describe("previewing a document before it is sent", () => {
     expect(issueDocument).not.toHaveBeenCalled();
   });
 
-  it("keeps the letter hidden until the admin asks to see it", () => {
+  it("keeps the rendered letter hidden until the admin asks to see it", () => {
     open();
-    expect(screen.queryByText(/Asha Devi/)).not.toBeNull();      // the "To …" line in the header
+    // The text of the letter is in the editable box from the start — that is the composer. What
+    // waits for Preview is the letter as PAPER: letterhead, signature block, the thing that gets
+    // captured to PDF.
+    expect((screen.getByTestId("issue-document-body") as HTMLTextAreaElement).value).toContain("Asha Devi");
     expect(document.querySelector('[data-pdf="body"]')).toBeNull();
 
     fireEvent.click(screen.getByText("Preview"));
@@ -106,6 +109,69 @@ describe("previewing a document before it is sent", () => {
     const doc = issueDocument.mock.calls[0][0].document;
     expect(doc.type).toBe("warning_letter");
     expect(doc.bodyText).toContain("Left a client call unanswered for three days.");
+  });
+
+  /**
+   * The letter is the admin's to rewrite.
+   *
+   * The generator gets a letter most of the way there and cannot know the clause that was actually
+   * negotiated. What matters is that a hand-edited paragraph is the thing that gets stored and
+   * shown — an editable box whose contents were quietly replaced at issue time would be worse than
+   * no box at all.
+   */
+  describe("editing the letter by hand", () => {
+    const typeInto = (text: string) =>
+      fireEvent.change(screen.getByTestId("issue-document-body"), { target: { value: text } });
+
+    it("issues the admin's own wording, not the generated letter", async () => {
+      open();
+      typeInto("OFFER OF EMPLOYMENT\n\nDate: 05 January 2026\n\nWe are pleased to offer you the moon.");
+
+      fireEvent.click(screen.getByTestId("issue-document-submit"));
+      await waitFor(() => expect(issueDocument).toHaveBeenCalledTimes(1));
+
+      const doc = issueDocument.mock.calls[0][0].document;
+      expect(doc.bodyText).toContain("We are pleased to offer you the moon.");
+      expect(doc.bodyText).not.toContain("Working Hours");
+    });
+
+    it("previews what was typed, so the paper and the stored copy cannot diverge", () => {
+      open();
+      typeInto("A LETTER\n\nEntirely rewritten by hand.");
+      fireEvent.click(screen.getByText("Preview"));
+      expect(document.querySelector('[data-pdf="body"]')?.textContent || "")
+        .toContain("Entirely rewritten by hand.");
+    });
+
+    it("still numbers a hand-written letter from the register", async () => {
+      open();
+      typeInto("OFFER OF EMPLOYMENT\n\nDate: 05 January 2026\n\nShort and to the point.");
+
+      fireEvent.click(screen.getByTestId("issue-document-submit"));
+      await waitFor(() => expect(issueDocument).toHaveBeenCalledTimes(1));
+
+      const doc = issueDocument.mock.calls[0][0].document;
+      expect(doc.referenceNo).toBe("DTS/OFR/2026/0007");
+      // Printed above the date, where a reader of a business letter looks for it.
+      expect(doc.bodyText).toContain("Ref: DTS/OFR/2026/0007\nDate: 05 January 2026");
+    });
+
+    it("puts the generated letter back when the edit was a mistake", () => {
+      open();
+      typeInto("Scrapped.");
+      fireEvent.click(screen.getByTestId("reset-letter"));
+      expect((screen.getByTestId("issue-document-body") as HTMLTextAreaElement).value)
+        .toContain("Sales Executive");
+    });
+
+    it("drops the edits when the admin switches to a different letter", () => {
+      open();
+      typeInto("Notes about the offer letter.");
+      fireEvent.change(screen.getByTestId("document-type"), { target: { value: "warning_letter" } });
+      const box = screen.getByTestId("issue-document-body") as HTMLTextAreaElement;
+      expect(box.value).not.toContain("Notes about the offer letter.");
+      expect(box.value).toContain("WARNING");
+    });
   });
 
   it("will not send a letter whose facts are still missing", () => {

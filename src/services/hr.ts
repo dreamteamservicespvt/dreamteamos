@@ -259,6 +259,22 @@ export async function saveEmploymentTerms(
 }
 
 /**
+ * Forget that an offer was ever issued or accepted.
+ *
+ * Called when the last offer letter is deleted — see `deleteDocument`. Written straight rather
+ * than through `saveEmploymentTerms`, because withdrawing a letter is not the admin re-agreeing
+ * anybody's terms and must not stamp "confirmed by" across the record.
+ */
+export async function clearOfferDates(uid: string): Promise<void> {
+  if (!uid) return;
+  await updateDoc(doc(db, COLLECTION, uid), {
+    offerIssuedOn: null,
+    offerAcceptedOn: null,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
  * The admin agrees the terms the employee entered are what the company actually offered.
  *
  * Separate from editing them, because confirming without changing anything is the common case —

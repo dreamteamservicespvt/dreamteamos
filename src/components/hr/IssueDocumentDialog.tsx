@@ -1,7 +1,11 @@
 import { useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Check, Download, Eye, FileSignature, Loader2, PenTool, Printer, Send, ShieldQuestion, X } from "lucide-react";
+import {
+  Check, Download, Eye, FileSignature, Loader2, PenTool, Printer, RotateCcw, Send, ShieldQuestion,
+  Sparkles, X,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { formatAgreementWithAI } from "@/services/geminiService";
 import { useCompany } from "@/hooks/useCompany";
 import { useCompanyLogo } from "@/hooks/useCompanyLogo";
 import { downloadAgreementPdf } from "@/utils/agreementPdf";
@@ -18,6 +22,7 @@ import {
 } from "@/utils/hrPolicy";
 import {
   EXTRA_FIELDS, EXTRA_FIELD_KIND, EXTRA_FIELD_LABELS, EXTRA_FIELD_REQUIRED, buildDocument,
+  withReference,
 } from "@/utils/hrTemplates";
 import type { HrDocumentExtras } from "@/utils/hrTemplates";
 import AgreementView from "@/components/agreement/AgreementView";
@@ -30,6 +35,15 @@ import { Input, Textarea } from "./ui";
  * salary, working hours — so the admin fills in only what the profile cannot know (a warning's
  * facts, an increment's new figure, an exit's last working day). What they preview is exactly
  * what is stored and exactly what the employee will see.
+ *
+ * ── The text is editable ──────────────────────────────────────────────────────────────────────
+ * The generator gets a letter 95% right and cannot know the fifth per cent: the clause that was
+ * negotiated, the sentence somebody's manager promised, the line this particular college wants.
+ * An admin faced with a letter they cannot touch writes it somewhere else and pastes it back in,
+ * which is how a company ends up with its offer letters in a word processor. So this box behaves
+ * exactly like the composer in HR & Documents — start from the generated letter, change anything,
+ * hand it to the AI to tidy up, put it back if the edit was a mistake — with the one difference
+ * that it goes to this employee and nobody else.
  *
  * The company's signature is applied here automatically, and it is the *company's* — the CEO's, or
  * on an NDA the CEO's and the CTO's, from Settings → Company Documents. It is not whoever happened
@@ -70,6 +84,16 @@ export default function IssueDocumentDialog({
   const [sending, setSending] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const [formatting, setFormatting] = useState(false);
+  /**
+   * The admin's own wording, or null to follow the generated letter.
+   *
+   * Null rather than a copy-plus-dirty-flag on purpose: while it is null the letter keeps tracking
+   * everything above it — change the date, the salary, the document type, and the text follows.
+   * The moment somebody types, it stops tracking, because an edited paragraph must not be wiped
+   * out by a stray change to a date field. "Reset" is then simply putting it back to null.
+   */
+  const [draft, setDraft] = useState<string | null>(null);
   /**
    * Whether a taken-away copy carries the marks.
    *
@@ -141,6 +165,10 @@ export default function IssueDocumentDialog({
     [type, member, profile, signatories, issuedOn, extras, company],
   );
 
+  /** What will actually be issued: the admin's wording where they have written any. */
+  const bodyText = draft ?? built.bodyText;
+  const edited = draft !== null && draft !== built.bodyText;
+
   const hasSignature = canIssue(signatories, type);
 
   const setExtra = (key: keyof HrDocumentExtras, value: string) =>
@@ -190,6 +218,26 @@ export default function IssueDocumentDialog({
     }
   };
 
+  /**
+   * Hand the letter to the AI to tidy up.
+   *
+   * The result lands in the box as an edit like any other, so it can be read, changed again, or
+   * thrown away with Reset — an AI pass that overwrote the letter irreversibly would be a worse
+   * offer than not having the button.
+   */
+  const handleFormatAI = async () => {
+    if (formatting || !bodyText.trim()) return;
+    setFormatting(true);
+    try {
+      setDraft(await formatAgreementWithAI(bodyText));
+      toast({ title: "Formatted with AI", description: "Structure cleaned up — read it before issuing." });
+    } catch {
+      toast({ title: "Error", description: "AI formatting failed. Try again.", variant: "destructive" });
+    } finally {
+      setFormatting(false);
+    }
+  };
+
   const handleIssue = async () => {
     if (!hasSignature) return;
     if (missing.length > 0) {
@@ -202,23 +250,10 @@ export default function IssueDocumentDialog({
     }
     setSending(true);
     try {
-      // The number is taken first, then baked into the text, so the reference printed on the page
-      // is the reference in the register — not one added to the record afterwards.
+      // The number is taken first, then printed onto the text, so the reference on the page is the
+      // reference in the register — not one added to the record afterwards. Printed rather than
+      // rebuilt, because the letter in the box may be the admin's own wording by now.
       const referenceNo = await allocateReference(company.name, type, issuedOn);
-      const final = referenceNo
-        ? buildDocument({
-          type,
-          subject: {
-            name: member.name, phone: member.phone, email: member.email, employeeId: member.employeeId,
-          },
-          profile,
-          signatory: signatories,
-          issuedOn,
-          extras,
-          company,
-          referenceNo,
-        })
-        : built;
 
       const id = await issueDocument({
         document: {
@@ -228,8 +263,8 @@ export default function IssueDocumentDialog({
           memberRole: member.role,
           department: profile.department,
           type,
-          title: final.title,
-          bodyText: final.bodyText,
+          title: built.title,
+          bodyText: withReference(bodyText, referenceNo),
           issuedById: signatory.uid,
           issuedByName: signatory.name,
           issuedByDesignation: designation,
@@ -360,6 +395,9 @@ export default function IssueDocumentDialog({
                 setExtras(next === "promotion_letter" && promotion
                   ? { newDesignation: promotion.title, newCtcMonthly: promotion.monthlySalary }
                   : {});
+                // A different letter is a different letter — nobody wants their edits to the
+                // warning carried over onto the offer.
+                setDraft(null);
                 setShowPreview(false);
               }}
               data-test="document-type"
@@ -436,6 +474,53 @@ export default function IssueDocumentDialog({
           className="mt-3"
         />
 
+        {/* The letter itself, open to be rewritten. Everything above writes into this box; from
+            the moment anyone types in it, the box is the letter. */}
+        <div className="mt-3">
+          <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+            <label className="block text-sm font-medium text-foreground">
+              Letter text
+              <span className="ml-1.5 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                {edited ? "Edited by you" : `${HR_DOCUMENT_LABELS[type]} — edit freely`}
+              </span>
+            </label>
+            <div className="flex items-center gap-1.5">
+              {edited && (
+                <button
+                  onClick={() => setDraft(null)}
+                  data-test="reset-letter"
+                  title="Throw away your edits and go back to the generated letter"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+                >
+                  <RotateCcw size={13} /> Reset
+                </button>
+              )}
+              <button
+                onClick={handleFormatAI}
+                disabled={formatting || !bodyText.trim()}
+                data-test="format-letter-ai"
+                title="AI tidies the structure: title, numbered sections, spacing"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/40 bg-violet-500/10 px-2.5 py-1.5 text-xs font-semibold text-violet-500 hover:bg-violet-500/20 disabled:opacity-40"
+              >
+                {formatting ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                {formatting ? "Formatting…" : "Format with AI"}
+              </button>
+            </div>
+          </div>
+          <textarea
+            value={bodyText}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={14}
+            data-test="issue-document-body"
+            className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm leading-relaxed text-foreground outline-none focus:ring-2 focus:ring-primary/20"
+          />
+          <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+            {edited
+              ? "This is your wording, and it has stopped following the fields above — Reset puts the generated letter back."
+              : `Written from ${member.name}'s record. Change anything you like; the preview below follows every keystroke.`}
+          </p>
+        </div>
+
         <p className="mt-3 rounded-lg bg-accent/40 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
           These templates are a professional baseline for an Indian employer, not legal advice.
           Have them reviewed once by an employment/labour-law professional for your state — the
@@ -499,7 +584,7 @@ export default function IssueDocumentDialog({
               ref={paperRef}
               letterhead
               logoUrl={logo}
-              bodyText={built.bodyText}
+              bodyText={bodyText}
               memberName={member.name}
               memberPhone={member.phone}
               companySignatories={signatories}

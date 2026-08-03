@@ -375,11 +375,24 @@ export default function MemberProfileDetail() {
               </div>
             </SectionCard>
 
-            <SectionCard title="Pay & targets" icon={<Banknote size={15} className="text-primary" />}>
+            {/* Targets belong to the people who carry them. A technical member is not sold a
+                number, so this card is simply "Pay" for them — a "Target ₹0" row said nothing
+                except that something had been left blank. The annual CTC is stated either way:
+                it is the figure on the offer letter and the one anybody is ever asked for. */}
+            <SectionCard
+              title={department === "sales" ? "Pay & targets" : "Pay"}
+              icon={<Banknote size={15} className="text-primary" />}
+            >
               <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
                 <Field label="Salary on record" value={formatCurrency(member.salary || 0)} mono />
                 <Field label="Agreed monthly CTC" value={profile.ctcMonthly ? formatCurrency(profile.ctcMonthly) : null} mono />
-                {department === "sales" ? (
+                <Field
+                  label="Annual CTC"
+                  value={profile.ctcMonthly ? formatCurrency(profile.ctcMonthly * 12) : null}
+                  mono
+                  className={department === "sales" ? "" : "sm:col-span-2"}
+                />
+                {department === "sales" && (
                   <>
                     <Field label="Daily target" value={formatCurrency(member.dailyTarget || 0)} mono />
                     <Field label="Monthly target" value={formatCurrency(member.monthlyTarget || member.target || 0)} mono />
@@ -390,8 +403,6 @@ export default function MemberProfileDetail() {
                       className="sm:col-span-2"
                     />
                   </>
-                ) : (
-                  <Field label="Target" value={formatCurrency(member.target || 0)} mono />
                 )}
                 <Field
                   label="Salary is paid to"

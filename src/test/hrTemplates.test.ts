@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   EXTRA_FIELDS, EXTRA_FIELD_REQUIRED, buildDocument, engagementDescription, longDate, rupees,
+  withReference,
 } from "@/utils/hrTemplates";
 import type { BuildDocumentInput } from "@/utils/hrTemplates";
 import { HR_DOCUMENT_ORDER } from "@/types/hr";
@@ -249,5 +250,49 @@ describe("formatting helpers", () => {
     expect(engagementDescription(profile({ engagementType: "part_time", probationMonths: 3 }))).toBe("Part-Time Employee (3-month probation)");
     expect(engagementDescription(profile({ engagementType: "intern" }))).toMatch(/^Intern/);
     expect(engagementDescription(profile({ probationMonths: 0 }))).toBe("Full-Time Employee");
+  });
+});
+
+/**
+ * Numbering a letter that has already been written.
+ *
+ * The register number is allocated at the moment of issue, but by then an admin may have rewritten
+ * the letter by hand — so it is printed onto the text rather than baked in by regenerating it,
+ * which would throw those edits away. What has to hold is that the number lands where a reader
+ * looks for it, and that a letter which already carries one is left alone.
+ */
+describe("printing a reference onto a written letter", () => {
+  const letter = [
+    "OFFER OF EMPLOYMENT",
+    "DREAM TEAM SERVICES",
+    "",
+    "Date: 05 Jan 2026",
+    "",
+    "Employee Name: Asha Devi",
+  ].join("\n");
+
+  it("puts the number immediately above the date", () => {
+    expect(withReference(letter, "DTS/OFR/2026/0007"))
+      .toContain("DREAM TEAM SERVICES\n\nRef: DTS/OFR/2026/0007\nDate: 05 Jan 2026");
+  });
+
+  it("matches where the generator would have put it", () => {
+    const generated = buildDocument(input("offer_letter", { referenceNo: "DTS/OFR/2026/0007" }));
+    const printed = withReference(
+      buildDocument(input("offer_letter", { referenceNo: null })).bodyText,
+      "DTS/OFR/2026/0007",
+    );
+    expect(printed).toBe(generated.bodyText);
+  });
+
+  it("never gives a letter a second reference", () => {
+    const already = "OFFER\n\nRef: DTS/OFR/2026/0001\nDate: 05 Jan 2026";
+    expect(withReference(already, "DTS/OFR/2026/0007")).toBe(already);
+  });
+
+  it("leaves the text alone when there is no number, and when there is nowhere to put one", () => {
+    expect(withReference(letter, null)).toBe(letter);
+    expect(withReference(letter, "   ")).toBe(letter);
+    expect(withReference("Rewritten from scratch.", "DTS/OFR/2026/0007")).toBe("Rewritten from scratch.");
   });
 });

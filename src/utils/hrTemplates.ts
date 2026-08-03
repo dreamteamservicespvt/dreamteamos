@@ -1211,6 +1211,30 @@ export function buildDocument(input: BuildDocumentInput): BuiltDocument {
 }
 
 /**
+ * Print the allocated reference number onto a letter that has already been written.
+ *
+ * The number is taken at the moment of issue — that is what makes it a register entry rather than
+ * a guess — but by then the letter may have been edited by hand, so rebuilding it from the profile
+ * to bake the number in would silently throw those edits away. This puts the line where
+ * `letterHead` would have put it: immediately above the date, which is where a reader of an Indian
+ * business letter looks for it.
+ *
+ * Leaves the text alone when it already carries a reference (an offer letter with one typed in),
+ * and when there is no date line to anchor to — a letter that has been rewritten past recognition
+ * still gets its number, in the register, where the search box can find it.
+ */
+export function withReference(bodyText: string, referenceNo?: string | null): string {
+  const ref = (referenceNo || "").trim();
+  if (!ref) return bodyText;
+  const lines = bodyText.split("\n");
+  if (lines.some((l) => /^\s*Ref:\s*\S/i.test(l))) return bodyText;
+  const dateAt = lines.findIndex((l) => /^\s*Date:\s*\S/i.test(l));
+  if (dateAt < 0) return bodyText;
+  lines.splice(dateAt, 0, `Ref: ${ref}`);
+  return lines.join("\n");
+}
+
+/**
  * The facts a document type needs beyond the standing profile, so the issue form can ask for
  * exactly those and nothing more.
  */

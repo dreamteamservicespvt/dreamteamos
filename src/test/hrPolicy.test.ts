@@ -303,6 +303,30 @@ describe("lifecycle tracker", () => {
     expect(steps.find((s) => s.key === "kyc")?.status).toBe("current");
   });
 
+  /**
+   * A date on the record and a letter in the register are two different facts.
+   *
+   * The strip reads "Offer letter issued ✓" off either of them, which is right — an offer sent by
+   * email and recorded by hand really was issued. What was wrong was saying it the same way in
+   * both cases: an admin looking at a green tick beside a Documents tab reading "No documents
+   * issued yet" has no way to tell which half of the screen is lying to them.
+   */
+  it("says when the offer step is standing on a date with no letter behind it", () => {
+    const steps = lifecycleSteps(profile({ offerIssuedOn: "2025-12-01", offerAcceptedOn: "2025-12-05" }), []);
+    expect(steps.find((s) => s.key === "offer")?.status).toBe("done");
+    expect(steps.find((s) => s.key === "offer")?.detail).toContain("no letter on file");
+    expect(steps.find((s) => s.key === "offer_accepted")?.detail).toContain("no signed letter on file");
+  });
+
+  it("says nothing of the sort once the letter is actually there", () => {
+    const steps = lifecycleSteps(
+      profile({ offerIssuedOn: "2025-12-01", offerAcceptedOn: "2025-12-05" }),
+      [issued("offer_letter")],
+    );
+    expect(steps.find((s) => s.key === "offer")?.detail).not.toContain("no letter on file");
+    expect(steps.find((s) => s.key === "offer_accepted")?.detail).not.toContain("no signed letter on file");
+  });
+
   it("counts the employment documents as done only when all three are signed", () => {
     const partial = lifecycleSteps(profile(), [issued("appointment_letter"), issued("nda")]);
     expect(partial.find((s) => s.key === "documents")?.status).not.toBe("done");

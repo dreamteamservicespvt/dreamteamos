@@ -81,7 +81,7 @@ export default function AllDocumentsPanel({ documents, canSign, viewerId, canDel
     if (!confirmed || !doc.id) return;
     setDeleting(doc.id);
     try {
-      await deleteDocument(doc.id);
+      await deleteDocument(doc);
       toast({ title: "Document deleted", description: `${HR_DOCUMENT_LABELS[doc.type]} for ${doc.memberName} was withdrawn.` });
     } catch {
       toast({ title: "Error", description: "Could not delete the document.", variant: "destructive" });

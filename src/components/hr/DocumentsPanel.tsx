@@ -56,7 +56,7 @@ export default function DocumentsPanel({ member, profile, documents, signatory, 
     });
     if (!confirmed || !doc.id) return;
     try {
-      await deleteDocument(doc.id);
+      await deleteDocument(doc);
       toast({ title: "Deleted", description: `${doc.title} was removed.` });
     } catch {
       toast({ title: "Error", description: "Could not delete the document.", variant: "destructive" });

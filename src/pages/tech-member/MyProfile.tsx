@@ -14,12 +14,23 @@ import MyEmploymentPanel from "@/components/hr/MyEmploymentPanel";
 import PayoutMethodsPanel from "@/components/payroll/PayoutMethodsPanel";
 import { EMPLOYMENT_LABELS, employmentOf } from "@/services/employment";
 import { getRoleLabel } from "@/utils/roleHelpers";
+import { useEmployeeProfile } from "@/hooks/useEmployeeProfile";
 import { saveMemberPassword } from "@/services/memberCredentials";
 import ProfilePhotoUpload from "@/components/ProfilePhotoUpload";
 
 export default function TechMemberProfile() {
   const user = useAuthStore((s) => s.user);
   const { toast } = useToast();
+  /**
+   * Their designation, which is what a person actually calls their job.
+   *
+   * "Tech Member" is the permission the account holds, not the role they were hired into — showing
+   * it back to an Associate AI Software Engineer as their role tells them nothing they agreed to.
+   * The role label stays as the fallback, for anyone whose terms have not been filled in yet.
+   */
+  const profile = useEmployeeProfile(user?.uid, "tech");
+  const designation = profile?.designation || getRoleLabel(user?.role as never);
+  const annualCtc = profile?.ctcMonthly ? profile.ctcMonthly * 12 : 0;
   const [name, setName] = useState(user?.name || "");
   const [phone, setPhone] = useState(user?.phone || "");
   const [saving, setSaving] = useState(false);
@@ -82,7 +93,8 @@ export default function TechMemberProfile() {
           <ProfilePhotoUpload uid={user.uid} name={user.name} avatar={user.avatar}>
             <p className="font-display font-bold text-foreground text-base sm:text-lg truncate">{user.name}</p>
             <div className="flex flex-wrap items-center gap-1.5 mt-1">
-              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-role-tech-member/15 text-role-tech-member">{getRoleLabel(user.role)}</span>
+              <span title={getRoleLabel(user.role)} data-test="my-designation-chip"
+                className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-role-tech-member/15 text-role-tech-member">{designation}</span>
               <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary">{EMPLOYMENT_LABELS[employmentOf(user.employmentType)]}</span>
             </div>
           </ProfilePhotoUpload>
@@ -96,9 +108,10 @@ export default function TechMemberProfile() {
             </div>
           </div>
           <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Role</label>
-            <div className="h-10 px-3 rounded-lg bg-background border border-border flex items-center gap-2 text-sm text-muted-foreground">
-              <Shield size={14} /> {getRoleLabel(user.role)}
+            <label className="text-xs text-muted-foreground mb-1 block">Designation</label>
+            <div data-test="my-designation"
+              className="h-10 px-3 rounded-lg bg-background border border-border flex items-center gap-2 text-sm text-muted-foreground">
+              <Shield size={14} /> {designation}
             </div>
           </div>
         </div>
@@ -116,14 +129,19 @@ export default function TechMemberProfile() {
           </div>
         </div>
 
+        {/* Pay, and no target: an engineer is not sold a number, so a "Target ₹0" tile said
+            nothing except that something was missing. The annual figure sits beside the monthly
+            one because that is the number anybody is asked for — by a bank, a landlord, a form. */}
         <div className="grid grid-cols-2 gap-4 mb-6">
           <div className="bg-background border border-border rounded-lg p-3">
-            <span className="text-xs text-muted-foreground">Salary</span>
+            <span className="text-xs text-muted-foreground">Monthly salary</span>
             <p className="font-display font-bold text-foreground">{formatCurrency(user.salary || 0)}</p>
           </div>
-          <div className="bg-background border border-border rounded-lg p-3">
-            <span className="text-xs text-muted-foreground">Target</span>
-            <p className="font-display font-bold text-foreground">{formatCurrency(user.target || 0)}</p>
+          <div className="bg-background border border-border rounded-lg p-3" data-test="my-annual-ctc">
+            <span className="text-xs text-muted-foreground">Annual CTC</span>
+            <p className="font-display font-bold text-foreground">
+              {annualCtc ? formatCurrency(annualCtc) : "—"}
+            </p>
           </div>
         </div>
 

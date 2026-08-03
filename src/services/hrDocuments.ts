@@ -1,8 +1,9 @@
 import {
-  addDoc, collection, deleteDoc, doc, increment, onSnapshot, query, runTransaction,
+  addDoc, collection, deleteDoc, doc, getDocs, increment, onSnapshot, query, runTransaction,
   serverTimestamp, updateDoc, where,
 } from "firebase/firestore";
 import { db } from "@/services/firebase";
+import { clearOfferDates } from "@/services/hr";
 import { sendNotification } from "@/services/notifications";
 import { formatDocumentRef, refCounterDocId, refYear } from "@/utils/documentRef";
 import { HR_DOCUMENT_LABELS } from "@/types/hr";
@@ -145,9 +146,37 @@ export async function declineDocument(document: HrDocument, reason: string): Pro
   } catch { /* notification is best-effort */ }
 }
 
-/** Delete an issued document. Signed ones carry a stronger warning in the UI before this runs. */
-export async function deleteDocument(id: string): Promise<void> {
+/**
+ * Delete an issued document. Signed ones carry a stronger warning in the UI before this runs.
+ *
+ * ── Why this also touches the employment record ───────────────────────────────────────────────
+ * "Offer letter issued" and "Offer accepted" are two facts kept in two places: the letter itself,
+ * and a pair of dates on the employment record that the hiring flow writes at the same moment it
+ * writes the letter. Delete the letter and only half the fact goes — the lifecycle strip carries
+ * on saying the offer was issued and accepted while the Documents tab says nothing was ever
+ * issued, and there is no way to tell which of the two is lying.
+ *
+ * So the dates go with the last offer letter, and only the last one: an admin who withdraws one of
+ * two offer letters has not un-hired anybody. An admin who did mean to keep the date can type it
+ * back into Employment terms, where it is theirs to set.
+ */
+export async function deleteDocument(document: HrDocument | string): Promise<void> {
+  const id = typeof document === "string" ? document : document.id;
+  if (!id) return;
   await deleteDoc(doc(db, COLLECTION, id));
+
+  if (typeof document === "string" || document.type !== "offer_letter" || !document.memberId) return;
+  try {
+    const remaining = await getDocs(query(
+      collection(db, COLLECTION),
+      where("memberId", "==", document.memberId),
+      where("type", "==", "offer_letter"),
+    ));
+    if (remaining.empty) await clearOfferDates(document.memberId);
+  } catch {
+    // The letter is gone either way. A record left with a stale date is a smaller wrong than a
+    // delete that appears to have failed.
+  }
 }
 
 /**

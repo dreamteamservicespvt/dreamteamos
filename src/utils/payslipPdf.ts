@@ -63,7 +63,8 @@ const rupees = (n: number) =>
  */
 async function loadLogo(): Promise<string | null> {
   try {
-    const res = await fetch("/dts-logo-full.png");
+    // The black mark: a payslip is a white page, printed or on screen.
+    const res = await fetch("/black_logo.png");
     if (!res.ok) return null;
     const blob = await res.blob();
     return await new Promise<string | null>((resolve) => {

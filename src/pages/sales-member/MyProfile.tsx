@@ -6,6 +6,7 @@ import { useAuthStore } from "@/store/authStore";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/utils/formatters";
 import { getRoleLabel } from "@/utils/roleHelpers";
+import { useEmployeeProfile } from "@/hooks/useEmployeeProfile";
 import { User, Mail, Phone, Shield, Loader2, Check, Lock, Receipt } from "lucide-react";
 import SalaryTimeline from "@/components/SalaryTimeline";
 import AttendanceCard from "@/components/sales/AttendanceCard";
@@ -24,6 +25,9 @@ export default function MyProfile() {
   const [currentPw, setCurrentPw] = useState("");
   const [newPw, setNewPw] = useState("");
   const [changingPw, setChangingPw] = useState(false);
+  /** The job they were hired into, rather than the permission their account holds. */
+  const profile = useEmployeeProfile(user?.uid, "sales");
+  const designation = profile?.designation || getRoleLabel(user?.role as never);
 
   const handleSave = async () => {
     if (!user) return;
@@ -80,9 +84,10 @@ export default function MyProfile() {
               name sits inside it so the face and the name never split across two lines. */}
           <ProfilePhotoUpload uid={user.uid} name={user.name} avatar={user.avatar}>
             <p className="font-display font-bold text-foreground text-base sm:text-lg truncate">{user.name}</p>
-            {/* Read from the one place roles are named, so a rename never leaves this behind. */}
-            <span className="mt-1 inline-block text-[10px] font-medium px-2 py-0.5 rounded-full bg-role-sales-member/15 text-role-sales-member">
-              {getRoleLabel(user.role)}
+            {/* Their designation, falling back to the role label until their terms are set. */}
+            <span title={getRoleLabel(user.role)} data-test="my-designation-chip"
+              className="mt-1 inline-block text-[10px] font-medium px-2 py-0.5 rounded-full bg-role-sales-member/15 text-role-sales-member">
+              {designation}
             </span>
           </ProfilePhotoUpload>
         </div>
@@ -95,9 +100,10 @@ export default function MyProfile() {
             </div>
           </div>
           <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Role</label>
-            <div className="h-10 px-3 rounded-lg bg-background border border-border flex items-center gap-2 text-sm text-muted-foreground">
-              <Shield size={14} /> {getRoleLabel(user.role)}
+            <label className="text-xs text-muted-foreground mb-1 block">Designation</label>
+            <div data-test="my-designation"
+              className="h-10 px-3 rounded-lg bg-background border border-border flex items-center gap-2 text-sm text-muted-foreground">
+              <Shield size={14} /> {designation}
             </div>
           </div>
         </div>
