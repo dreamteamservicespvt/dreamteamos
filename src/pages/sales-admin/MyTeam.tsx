@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/services/firebase";
+import { syncPublicBadge } from "@/services/publicBadge";
 import { createUserWithoutSignOut } from "@/services/secondaryAuth";
 import { saveMemberPassword, deleteMemberPassword, fetchMemberPassword, buildCredentialsMessage } from "@/services/memberCredentials";
 import { useAuthStore } from "@/store/authStore";
@@ -137,6 +138,8 @@ export default function MyTeam() {
   const toggleActive = async (member: AppUser) => {
     try {
       await updateDoc(doc(db, "users", member.uid), { isActive: !member.isActive, updatedAt: serverTimestamp() });
+      // A card scanned after this must say so, which is the entire reason the QR exists.
+      await syncPublicBadge(member.uid);
       setMembers((prev) => prev.map((m) => m.uid === member.uid ? { ...m, isActive: !m.isActive } : m));
       toast({ title: member.isActive ? "Deactivated" : "Activated", description: `${member.name} has been ${member.isActive ? "deactivated" : "activated"}.` });
     } catch {

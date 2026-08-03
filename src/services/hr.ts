@@ -3,6 +3,7 @@ import {
   Timestamp,
 } from "firebase/firestore";
 import { db } from "@/services/firebase";
+import { syncPublicBadge } from "@/services/publicBadge";
 import { sendNotification } from "@/services/notifications";
 import { deriveStage, noticePeriodFor, lastWorkingDayFor, todayIso } from "@/utils/hrPolicy";
 import type {
@@ -153,7 +154,18 @@ export async function saveEmployeeProfile(
   // every screen already loads. Nothing else from the KYC section goes with it.
   if ("dob" in patch) await mirrorDobToUser(uid, patch.dob ?? null);
   if ("photoUrl" in patch) await mirrorPhotoToUser(uid, patch.photoUrl ?? null);
+
+  /**
+   * Keep the public badge in step.
+   *
+   * Only the fields printed on the ID card are published, and only when one of them could have
+   * changed — a saved address or PAN must not cost a write to a document the whole internet reads.
+   */
+  if (BADGE_FIELDS.some((f) => f in patch)) await syncPublicBadge(uid);
 }
+
+/** The parts of the HR record that appear on the ID card, and therefore on the public badge. */
+const BADGE_FIELDS = ["designation", "department", "photoUrl", "joiningDate", "stage", "separation"] as const;
 
 /**
  * The first photo fills both places; after that they are separate pictures.

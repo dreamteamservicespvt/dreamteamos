@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/services/firebase";
+import { syncPublicBadge } from "@/services/publicBadge";
 import { normalizePhone, formatPhoneDisplay } from "@/utils/phone";
 import type { AppUser } from "@/types";
 import { X, Loader2, Save } from "lucide-react";
@@ -53,6 +54,8 @@ export default function EditMemberModal({ member, onClose, onUpdated, variant }:
       }
 
       await updateDoc(doc(db, "users", member.uid), updates);
+      // The name and employee number are printed on the ID card, so the public badge follows.
+      await syncPublicBadge(member.uid);
 
       const updated: AppUser = {
         ...member,

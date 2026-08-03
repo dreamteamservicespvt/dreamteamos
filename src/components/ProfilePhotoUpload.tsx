@@ -16,6 +16,7 @@ import { Camera, Loader2, Trash2 } from "lucide-react";
 import { db } from "@/services/firebase";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import { mirrorAvatarToProfile } from "@/services/hr";
+import { syncPublicBadge } from "@/services/publicBadge";
 import { useAuthStore } from "@/store/authStore";
 import { useToast } from "@/hooks/use-toast";
 import MemberAvatar from "@/components/MemberAvatar";
@@ -56,6 +57,7 @@ export default function ProfilePhotoUpload({
     await updateDoc(doc(db, "users", uid), { avatar: url, updatedAt: serverTimestamp() });
     // Best effort, and after the avatar: the employment record is a mirror here, not the truth.
     await mirrorAvatarToProfile(uid, url);
+    await syncPublicBadge(uid);
     syncStore(url);
     onChange?.(url);
   };

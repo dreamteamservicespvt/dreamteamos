@@ -12,7 +12,10 @@
  * are, on the one class of document where that is expensive.
  */
 import { useEffect, useState } from "react";
-import { Building2, Check, Loader2, Stamp, Upload, Trash2 } from "lucide-react";
+import { collection, getDocs } from "firebase/firestore";
+import { Building2, Check, Loader2, RefreshCw, Stamp, Upload, Trash2 } from "lucide-react";
+import { db } from "@/services/firebase";
+import { syncPublicBadge } from "@/services/publicBadge";
 import { useAuthStore } from "@/store/authStore";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirm } from "@/hooks/useConfirm";
@@ -30,6 +33,8 @@ export default function CompanyMarksCard() {
   const [busy, setBusy] = useState<"ceo" | "stamp" | null>(null);
   const [ceoName, setCeoName] = useState("");
   const [savingName, setSavingName] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [published, setPublished] = useState(0);
 
   useEffect(() => watchCompanyAssets((a) => {
     setAssets(a);
@@ -86,6 +91,33 @@ export default function CompanyMarksCard() {
     }
   };
 
+  /**
+   * Rebuild every active member's public badge.
+   *
+   * Needed once because the badges did not exist when these people were hired, and useful
+   * afterwards as the "why is this card not scanning" button — the projection is kept current by
+   * the writes that change it, but a rebuild is cheap and removes all doubt.
+   */
+  const publishBadges = async () => {
+    setPublishing(true);
+    setPublished(0);
+    try {
+      const snap = await getDocs(collection(db, "users"));
+      const uids = snap.docs
+        .filter((d) => d.data().isActive !== false && !d.data().externalCreator)
+        .map((d) => d.id);
+      for (const uid of uids) {
+        await syncPublicBadge(uid);
+        setPublished((n) => n + 1);
+      }
+      toast({ title: "Badges published", description: `${uids.length} ID cards will now verify.` });
+    } catch {
+      toast({ title: "Error", description: "Could not publish the badges.", variant: "destructive" });
+    } finally {
+      setPublishing(false);
+    }
+  };
+
   const saveCeoName = async () => {
     setSavingName(true);
     try {
@@ -130,6 +162,27 @@ export default function CompanyMarksCard() {
           onPick={(f) => upload("stamp", f)}
           onClear={() => clear("stamp")}
         />
+      </div>
+
+      {/* Badge publishing lives here because this card is already "the company's own settings",
+          and because the person who uploads the CEO signature is the person who cares that every
+          card scans. */}
+      <div className="mt-4 rounded-lg border border-border p-3">
+        <p className="text-xs font-semibold text-foreground">ID card verification</p>
+        <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+          Each card's QR opens a page confirming the holder works here. That page reads a small
+          public record — name, employee ID, designation, department, photo — kept in step
+          automatically. Republish if a card ever scans as unverified.
+        </p>
+        <button
+          onClick={publishBadges}
+          disabled={publishing}
+          data-test="publish-badges"
+          className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-semibold text-foreground hover:bg-accent disabled:opacity-50"
+        >
+          {publishing ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+          {publishing ? `Publishing… ${published}` : "Republish all badges"}
+        </button>
       </div>
 
       <div className="mt-4">

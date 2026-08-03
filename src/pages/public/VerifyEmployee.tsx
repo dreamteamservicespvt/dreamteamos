@@ -5,9 +5,11 @@
  * page has one job: say plainly whether this person works here, today. It is public and account-free
  * for the same reason the client chat is: the people who check a badge are outside the company.
  *
- * It shows only what is already printed on the card that was handed over — name, employee number,
- * designation, department, joining date, photo. Nothing about pay, nothing about documents, no
- * address, no personal phone number. The card is the disclosure; this only confirms it.
+ * It reads ONE document — `public_badges/{uid}` — holding only what is already printed on the card
+ * that was handed over. It deliberately does not touch `employee_profiles`: that record holds PAN,
+ * Aadhaar, addresses and salary, and a public page that reads it would mean leaving all of that
+ * world-readable in order to answer "does this person work here". The badge is a projection of the
+ * card, and the card is the disclosure; this only confirms it.
  */
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -16,7 +18,7 @@ import { BadgeCheck, Loader2, ShieldAlert, ShieldX } from "lucide-react";
 import { db } from "@/services/firebase";
 import { COMPANY } from "@/utils/company";
 import { prettyDate, provisionalEmployeeId } from "@/utils/idCard";
-import { getRoleLabel } from "@/utils/roleHelpers";
+import { PUBLIC_BADGES, type PublicBadge } from "@/services/publicBadge";
 import MemberAvatar from "@/components/MemberAvatar";
 
 type Status = "loading" | "employed" | "left" | "unknown";
@@ -31,8 +33,6 @@ interface Verified {
   leftOn: string | null;
 }
 
-const DEPARTMENTS: Record<string, string> = { tech: "Technology", sales: "Sales" };
-
 export default function VerifyEmployee() {
   const { uid = "" } = useParams();
   const [status, setStatus] = useState<Status>("loading");
@@ -42,32 +42,21 @@ export default function VerifyEmployee() {
     let alive = true;
     (async () => {
       try {
-        // The user record answers "is this person still with us"; the HR record adds the formal
-        // photograph and joining date. A member with no HR record still verifies.
-        const [userSnap, profileSnap] = await Promise.all([
-          getDoc(doc(db, "users", uid)),
-          getDoc(doc(db, "employee_profiles", uid)).catch(() => null),
-        ]);
+        const snap = await getDoc(doc(db, PUBLIC_BADGES, uid));
         if (!alive) return;
+        if (!snap.exists()) { setStatus("unknown"); return; }
 
-        if (!userSnap.exists()) { setStatus("unknown"); return; }
-        const u = userSnap.data() as Record<string, unknown>;
-        const p = (profileSnap?.exists() ? profileSnap.data() : {}) as Record<string, unknown>;
-
-        const separation = p.separation as { lastWorkingDay?: string } | undefined;
-        const active = u.isActive !== false && p.stage !== "exited";
-
+        const b = snap.data() as PublicBadge;
         setPerson({
-          name: String(u.name || "").trim() || "—",
-          employeeId: String(u.employeeId || "").trim() || provisionalEmployeeId(uid),
-          designation: String(p.designation || "").trim() || getRoleLabel(String(u.role || "") as never),
-          department: DEPARTMENTS[String(p.department || "")]
-            || (String(u.role || "").startsWith("sales") ? "Sales" : "Technology"),
-          photoUrl: (p.photoUrl as string) || (u.avatar as string) || null,
-          joinedOn: prettyDate(p.joiningDate as string),
-          leftOn: prettyDate(separation?.lastWorkingDay),
+          name: b.name || "—",
+          employeeId: b.employeeId || provisionalEmployeeId(uid),
+          designation: b.designation || "Employee",
+          department: b.department || "",
+          photoUrl: b.photoUrl || null,
+          joinedOn: prettyDate(b.joiningDate),
+          leftOn: prettyDate(b.lastWorkingDay),
         });
-        setStatus(active ? "employed" : "left");
+        setStatus(b.active ? "employed" : "left");
       } catch {
         if (alive) setStatus("unknown");
       }

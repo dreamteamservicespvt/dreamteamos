@@ -5,6 +5,7 @@ import {
 import { sendPasswordResetEmail } from "firebase/auth";
 import { auth, db } from "@/services/firebase";
 import { createUserWithoutSignOut } from "@/services/secondaryAuth";
+import { syncPublicBadge } from "@/services/publicBadge";
 import { useAuthStore } from "@/store/authStore";
 import { getRoleLabel, getRoleColor } from "@/utils/roleHelpers";
 import { formatDate } from "@/utils/formatters";
@@ -72,6 +73,8 @@ export default function TeamManagement() {
         isActive: !member.isActive,
         updatedAt: serverTimestamp(),
       });
+      // A card scanned after this must say so, which is the entire reason the QR exists.
+      await syncPublicBadge(member.uid);
       setMembers((prev) =>
         prev.map((m) => (m.uid === member.uid ? { ...m, isActive: !m.isActive } : m))
       );
