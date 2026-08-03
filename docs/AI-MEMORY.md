@@ -310,3 +310,32 @@ Added to `letterHead()` in `hrTemplates`, so every one of the 14 types gets them
 - **Real browser in the dark theme, 18/18, 0 console errors**, with the exported PDF decoded and its pixels measured: all three pages carry real ink; training period and both salaries stated; annual CTC is the post-training figure; marks toggle on and off; internship title, duration line and both clauses present.
 
 **Still not done:** the CTC *breakup* annexure (Basic / HRA / allowances / PF / gratuity). Needs the company's salary-structure percentages — inventing them would print fabricated figures under the company's signature.
+
+## Session — 2026-08-04c (Print rebuilt on the paginator; both officers sign)
+
+**Print was fundamentally broken and the approach had to go.** It laid the document out as one long flow with the letterhead `position: fixed` so it would repeat, padding the flow by the measured band heights. CSS can reserve space for a fixed band at the **start of a flow and nowhere else** — so the title printed underneath the letterhead and the last line of *every* sheet printed underneath the footer. No amount of tuning fixes that.
+
+Pagination moved into **`utils/documentPages.ts`** (`paginateDocument(paperEl) → { pages, stage }`), now shared:
+- `agreementPdf` rasterizes each sheet into jsPDF.
+- `agreementPrint` moves the sheets into the print root, sets `break-after: page` on all but the last, and prints them as real text.
+
+A printed copy and a downloaded one therefore break in identical places, because they are the same pages. `@page { margin: 0 }` — the sheets carry their own margins, as they do in the PDF; a second margin insets them again.
+
+**Do not reintroduce a fixed running header.** The `.print-running-head` / `.print-running-foot` machinery and the `--print-head-h` measurement are gone deliberately.
+
+**Both officers sign everything.** `DOCUMENT_SIGNATORIES` is `BOTH_OFFICERS` (`["ceo","cto"]`) for all 14 types, by the company's instruction — including the policy acknowledgement, now countersigned as received. `resolveSignatories` still degrades to whichever office has a signature on file, then to the issuing admin.
+
+**The seal** was 82px squeezed over the signature — unreadable *and* sitting on the name. It now has its own column (`paddingRight: 150`, `minWidth: 430` when a stamp is present) at 132px, roughly a real 40 mm stamp against 13.5pt text. A browser check asserts zero pixel overlap with the name/date.
+
+**Full-time offers gained a Performance Review and Salary Revision section** — reviews at 3, 6 and 12 months and annually, with the explicit caveat that a review is not an automatic increase. **Full-time only**: promising a year of reviews to an intern on a fixed three-month term states a term the engagement cannot outlive. This is why `internshipLetters.test.ts` no longer asserts "intern gains exactly one section" — the intern gains the internship block and loses this one.
+
+**ID card:** `/white_logo.png` (the band is black; the full-colour logo carried its own dark box), logo 28 → 46px, and a shared `SignaturePair` on **both faces** — holder left, company right, captioned `CEO · Authorised signatory`.
+
+**`utils/awaitRendered.ts`** replaces the fixed `setTimeout(250)` before capturing a forced-open preview: polls animation frames until the ref has laid out. Used by the composer and the Issue dialog.
+
+### Could not reproduce
+The report that the composer preview and download ignore edits. A faithful replica of its state loop (load template → open preview → type → download) was built in the harness and **the edit propagated to both**. The fixed-delay race above was the one real defect in that path and is fixed; if it recurs after a redeploy, it needs a fresh reproduction.
+
+### How this was verified
+- `npx vitest run` — **1375/1375**. Clean typecheck and build, no new lint errors.
+- **Browser, dark theme, 21/21 + 11/11, 0 console errors.** Documents: both signatures on all three sampled types, seal 132px with zero overlap, review clause present, composer edit reaching preview *and* download, exported pages all carrying real ink. Print: **4 sheets, each with its own letterhead and foot rule**, no stray fixed bands, `break-after` page/page/page/auto, `overflow: visible`, ink colour `rgb(30,41,59)`, content on every sheet, page restored afterwards.

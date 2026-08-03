@@ -206,12 +206,19 @@ html.native-app body {
 ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground)); }
 
 /* ── Printing a document ──────────────────────────────────────────────────────
-   Driven by `utils/agreementPrint.ts`, which clones the rendered document into
-   `.agreement-print-root` and puts `printing-agreement` on the body.
+   Driven by `utils/agreementPrint.ts`, which lays the document out into real A4
+   sheets (the same ones the PDF export builds), moves them into
+   `.agreement-print-root`, and puts `printing-agreement` on the body.
 
-   The clone exists because the app shell above is `height: 100%; overflow: hidden`
-   — printed in place, that clips the output to exactly one sheet however long the
-   letter is. Undoing it for the duration of the print is what makes page 2 exist. */
+   Each sheet carries its own letterhead and foot rule and breaks after itself.
+   That replaced a `position: fixed` running header, which could only reserve
+   space at the START of the flow — so the title printed under the letterhead and
+   the last line of every page printed under the footer.
+
+   The clone exists because the app shell is `height: 100%; overflow: hidden`
+   — printed in place, that clips the output to exactly one sheet however long
+   the letter is. Undoing it for the duration of the print is what makes page 2
+   exist. */
 
 .agreement-print-root { display: none; }
 
@@ -232,60 +239,30 @@ html.native-app body {
     background: #ffffff !important;
   }
 
-  /* The letterhead and foot rule are pinned to the sheet, so they repeat on every
-     printed page exactly as they do in the exported PDF. The flow is padded by
-     their measured heights — set as custom properties by the print helper — so no
-     paragraph ever runs underneath them. */
-  body.printing-agreement .print-running-head {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    background: #ffffff;
-  }
-
-  body.printing-agreement .print-running-foot {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: #ffffff;
-  }
-
-  body.printing-agreement .print-flow {
-    padding-top: var(--print-head-h, 0px);
-    padding-bottom: var(--print-foot-h, 0px);
-  }
-
-  body.printing-agreement .print-flow > * {
+  /* One sheet, already complete. Its own inline styles carry the ink colour and
+     the page break; all that is needed here is to stop the screen chrome. */
+  body.printing-agreement [data-document-page] {
     box-shadow: none !important;
+    border-radius: 0 !important;
     max-width: none !important;
-    width: 100% !important;
-    /* The paper's own screen padding would double up with the @page margin. */
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-    padding-top: 0 !important;
-    padding-bottom: 0 !important;
   }
 
-  /* Keep the letterhead rule, the seal and the highlight tones — a letterhead that
-     prints as grey text on white is not a letterhead. */
+  /* Keep the letterhead rule, the seal and the signature tones — a letterhead
+     that prints as grey text on white is not a letterhead. */
   body.printing-agreement .agreement-print-root,
   body.printing-agreement .agreement-print-root * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
-  /* A signature split across two sheets is not a signature; a heading stranded at
-     the foot of one is the classic printing fault. */
+  /* A signature split across two sheets is not a signature. */
   body.printing-agreement img { break-inside: avoid; page-break-inside: avoid; }
   body.printing-agreement [data-pdf="signature"] { break-inside: avoid; page-break-inside: avoid; }
-  body.printing-agreement [data-pdf="heading"] { break-after: avoid; page-break-after: avoid; }
-  body.printing-agreement [data-pdf="header-block"] { break-inside: avoid; page-break-inside: avoid; }
-  body.printing-agreement [data-pdf="title"] { break-after: avoid; page-break-after: avoid; }
 
   @page {
     size: A4;
-    margin: 14mm 16mm;
+    /* The sheets carry their own margins, as they do in the PDF. A second margin
+       here would inset them again and shrink every page. */
+    margin: 0;
   }
 }

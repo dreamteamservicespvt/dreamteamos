@@ -310,7 +310,9 @@ const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function Agr
 
             return (
               <div key={idx} data-pdf="signature" style={{ marginTop: 26, breakInside: "avoid" }}>
-                <div style={{ position: "relative", display: "inline-block", minWidth: 260 }}>
+                {/* Wide enough that the seal has its own column to sit in. A stamp squeezed against
+                    the signature had nowhere to go but on top of the name under it. */}
+                <div style={{ position: "relative", display: "inline-block", minWidth: stamp ? 430 : 260, paddingRight: stamp ? 150 : 0 }}>
                   {/* The seal sits across the signature, as it would on paper — semi-transparent so
                       it never hides the name underneath it. */}
                   {stamp && (
@@ -320,11 +322,16 @@ const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function Agr
                       alt=""
                       crossOrigin="anonymous"
                       style={{
-                        // Below the office label and across the signature, which is where a stamp
-                        // lands on paper — and, with the office now named in full, the only place
-                        // it does not sit on top of the words.
-                        position: "absolute", right: -20, top: 20, height: 82, width: 82,
-                        objectFit: "contain", opacity: 0.75, pointerEvents: "none",
+                        /*
+                          In its own column to the right of the signature, at the size a real
+                          rubber stamp actually is.
+                          A company seal is roughly 40 mm across; at 82px squeezed over the
+                          signature it was both too small to read and sitting on the name and the
+                          date beneath it. Here it is 132px — about the right proportion against
+                          13.5pt text — with the block padded to make room, so it overlaps nothing.
+                        */
+                        position: "absolute", right: 0, top: 8, height: 132, width: 132,
+                        objectFit: "contain", opacity: 0.85, pointerEvents: "none",
                         mixBlendMode: "multiply",
                       }}
                     />

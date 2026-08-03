@@ -6,6 +6,7 @@ import { useCompany } from "@/hooks/useCompany";
 import { useCompanyLogo } from "@/hooks/useCompanyLogo";
 import { downloadAgreementPdf } from "@/utils/agreementPdf";
 import { printAgreementElement } from "@/utils/agreementPrint";
+import { awaitRendered } from "@/utils/awaitRendered";
 import { HR_DOCUMENT_GROUPS, HR_DOCUMENT_LABELS } from "@/types/hr";
 import type { AppUser } from "@/types";
 import type { EmployeeProfile, HrDocumentType } from "@/types/hr";
@@ -155,10 +156,9 @@ export default function IssueDocumentDialog({
     setShowPreview(true);
     setDownloading(true);
     try {
-      // Let the preview paint before html2canvas reads it.
-      await new Promise((r) => setTimeout(r, 250));
-      if (!paperRef.current) throw new Error("preview not ready");
-      await downloadAgreementPdf(paperRef.current, `${built.title.replace(/[^\w]+/g, "_")}_${member.name.replace(/[^\w]+/g, "_")}.pdf`);
+      // Wait for the preview to be painted, rather than guessing at a delay.
+      const paper = await awaitRendered(paperRef);
+      await downloadAgreementPdf(paper, `${built.title.replace(/[^\w]+/g, "_")}_${member.name.replace(/[^\w]+/g, "_")}.pdf`);
     } catch {
       toast({ title: "Error", description: "Could not generate the PDF.", variant: "destructive" });
     } finally {
@@ -176,9 +176,7 @@ export default function IssueDocumentDialog({
     setShowPreview(true);
     setPrinting(true);
     try {
-      await new Promise((r) => setTimeout(r, 250));
-      if (!paperRef.current) throw new Error("preview not ready");
-      await printAgreementElement(paperRef.current);
+      await printAgreementElement(await awaitRendered(paperRef));
     } catch {
       toast({ title: "Error", description: "Could not open the print dialog.", variant: "destructive" });
     } finally {

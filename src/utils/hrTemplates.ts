@@ -432,6 +432,22 @@ function offerLetter(i: BuildDocumentInput): string {
           p.shiftDetails ? `Shift: ${p.shiftDetails}` : null,
         ],
       },
+      /*
+        Full-time only, and deliberately so.
+        A review cycle is a commitment about a career, and it belongs on the letter of somebody
+        building one here. Promising it to an intern on a fixed three-month term, or to a
+        part-timer, would be stating a term the engagement cannot outlive.
+      */
+      p.engagementType === "full_time"
+        ? {
+          title: "Performance Review and Salary Revision",
+          lines: [
+            "Your performance will be reviewed at three months, six months and one year from your date of joining, and annually thereafter.",
+            "A salary revision may be granted at any of these reviews on the basis of your performance, your contribution and the company's requirements. Any revision will be communicated to you in writing.",
+            "A review is an assessment, not an automatic increase; the amount and the timing of any revision remain at the company's discretion.",
+          ],
+        }
+        : null,
       {
         title: "Leave",
         lines: ["You will be entitled to leave in accordance with the company's leave policy as applicable to you from time to time. Leave is applied for and approved in advance through the company's system, except in an emergency, when it must be intimated at the earliest opportunity. The full policy will be shared with you on joining."],

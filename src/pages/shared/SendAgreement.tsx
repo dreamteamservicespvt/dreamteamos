@@ -19,6 +19,7 @@ import { useCompanyLogo } from "@/hooks/useCompanyLogo";
 import { usePrintDocument } from "@/hooks/usePrintDocument";
 import { downloadAgreementPdf } from "@/utils/agreementPdf";
 import { printAgreementElement } from "@/utils/agreementPrint";
+import { awaitRendered } from "@/utils/awaitRendered";
 import MissingLettersPanel, { findMissingLetters } from "@/components/hr/MissingLettersPanel";
 import { watchTeamProfiles } from "@/services/hr";
 import { watchTeamDocuments } from "@/services/hrDocuments";
@@ -369,14 +370,13 @@ export default function SendAgreement({ embedded }: { embedded?: boolean } = {})
     setShowPreview(true);
     setComposerBusy(job);
     try {
-      await new Promise((r) => setTimeout(r, 250));
-      if (!composerRef.current) throw new Error("preview not ready");
+      const paper = await awaitRendered(composerRef);
       if (job === "print") {
-        await printAgreementElement(composerRef.current);
+        await printAgreementElement(paper);
       } else {
         const name = templateType ? HR_DOCUMENT_LABELS[templateType] : extractTitle(body);
         await downloadAgreementPdf(
-          composerRef.current,
+          paper,
           `${name.replace(/[^\w]+/g, "_")}_${previewMember.name.replace(/[^\w]+/g, "_")}.pdf`,
         );
       }

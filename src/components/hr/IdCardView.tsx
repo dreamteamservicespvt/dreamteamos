@@ -75,6 +75,63 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+/**
+ * The two signatures a card carries, side by side: the holder on the left, the company on the
+ * right. Printed on both faces, because a card can be checked either way up and whoever is
+ * checking wants both — the company's to know the badge is genuine, the holder's to compare
+ * against what the person in front of them writes.
+ *
+ * The company's side is labelled by the office that signs it rather than the generic "Authorised
+ * Signatory": the name under a signature means much more when the reader can see it is the CEO's.
+ */
+function SignaturePair({ holderSignatureUrl, holderName, ceoSignatureUrl, ceoName }: {
+  holderSignatureUrl?: string | null;
+  holderName?: string | null;
+  ceoSignatureUrl?: string | null;
+  ceoName?: string | null;
+}) {
+  const cell = (
+    url: string | null | undefined,
+    name: string | null | undefined,
+    caption: string,
+    align: "left" | "right",
+  ) => (
+    <div style={{ flex: 1, minWidth: 0, textAlign: align }}>
+      {url ? (
+        <img
+          src={url}
+          alt=""
+          crossOrigin="anonymous"
+          style={{
+            height: 26, maxWidth: "100%", objectFit: "contain",
+            objectPosition: `${align} bottom`, display: "block",
+            margin: align === "right" ? "0 0 2px auto" : "0 auto 2px 0",
+          }}
+        />
+      ) : (
+        <div style={{ height: 26 }} />
+      )}
+      <div style={{ borderTop: `1px solid ${RULE}`, paddingTop: 3 }}>
+        {name && (
+          <p style={{ margin: "0 0 1px", fontSize: 7.5, fontWeight: 700, color: INK, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {name}
+          </p>
+        )}
+        <span style={{ fontSize: 6.5, letterSpacing: 0.5, textTransform: "uppercase", color: MUTED }}>
+          {caption}
+        </span>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ display: "flex", gap: 16, alignItems: "flex-end", padding: "0 18px", width: "100%" }}>
+      {cell(holderSignatureUrl, holderName, "Signature of holder", "left")}
+      {cell(ceoSignatureUrl, ceoName, "CEO · Authorised signatory", "right")}
+    </div>
+  );
+}
+
 export const IdCardFront = forwardRef<
   HTMLDivElement,
   {
@@ -102,7 +159,9 @@ export const IdCardFront = forwardRef<
         }}
       >
         {logoUrl ? (
-          <img src={logoUrl} alt="" crossOrigin="anonymous" style={{ height: 28, width: "auto", display: "block" }} />
+          /* Sized by height, generously. The mark is the first thing anyone looks at on a badge and it
+             was set smaller than the company name beside it. */
+          <img src={logoUrl} alt="" crossOrigin="anonymous" style={{ height: 46, width: "auto", maxWidth: 150, objectFit: "contain", display: "block" }} />
         ) : (
           <span style={{ fontSize: 15, fontWeight: 800, color: "#ffffff", letterSpacing: 1 }}>DTS</span>
         )}
@@ -229,29 +288,16 @@ export const IdCardFront = forwardRef<
           )}
         </div>
 
-        {/* The company signs the front. A card is issued BY someone — that is what separates a
-            credential from a laminated printout, and it is the signature a person checking the
-            badge is looking for. The holder's own signature is on the back, where they sign it. */}
-        <div style={{ display: "flex", justifyContent: "center" }}>
-          <div style={{ minWidth: 160, textAlign: "center" }}>
-            {ceoSignatureUrl && (
-              <img
-                src={ceoSignatureUrl}
-                alt=""
-                crossOrigin="anonymous"
-                style={{ height: 30, maxWidth: 150, objectFit: "contain", display: "block", margin: "0 auto 2px" }}
-              />
-            )}
-            <div style={{ borderTop: `1px solid ${RULE}`, paddingTop: 3 }}>
-              {ceoName && (
-                <p style={{ margin: "0 0 1px", fontSize: 8, fontWeight: 700, color: INK }}>{ceoName}</p>
-              )}
-              <span style={{ fontSize: 7, letterSpacing: 0.5, textTransform: "uppercase", color: MUTED }}>
-                Authorised Signatory
-              </span>
-            </div>
-          </div>
-        </div>
+        {/* Both signatures, on both sides: the holder's on the left and the company's on the right.
+            A card is issued BY someone and held BY someone, and anyone checking it is looking for
+            both — the company's to know it is genuine, the holder's to compare against what the
+            person in front of them writes. */}
+        <SignaturePair
+          holderSignatureUrl={data.signatureUrl}
+          holderName={data.name}
+          ceoSignatureUrl={ceoSignatureUrl}
+          ceoName={ceoName}
+        />
       </div>
 
       <div style={{ height: 8, background: RULE_BAR, flexShrink: 0 }} />
@@ -259,8 +305,11 @@ export const IdCardFront = forwardRef<
   );
 });
 
-export const IdCardBack = forwardRef<HTMLDivElement, { data: IdCardData; qrUrl?: string | null }>(
-  function IdCardBack({ data, qrUrl }, ref) {
+export const IdCardBack = forwardRef<
+  HTMLDivElement,
+  { data: IdCardData; qrUrl?: string | null; ceoSignatureUrl?: string | null; ceoName?: string | null }
+>(
+  function IdCardBack({ data, qrUrl, ceoSignatureUrl, ceoName }, ref) {
     // Only what is actually known. An empty "Blood group: —" row on a card is worse than no row.
     const rows: { label: string; value: string }[] = [
       { label: "Employee ID", value: data.employeeId },
@@ -287,25 +336,16 @@ export const IdCardBack = forwardRef<HTMLDivElement, { data: IdCardData; qrUrl?:
           </div>
         </div>
 
-        {/* The holder's own signature, where they would otherwise have signed by hand. */}
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "8px 18px 0" }}>
-          <div style={{ textAlign: "center", minWidth: 150 }}>
-            {data.signatureUrl ? (
-              <img
-                src={data.signatureUrl}
-                alt=""
-                crossOrigin="anonymous"
-                style={{ height: 34, maxWidth: 150, objectFit: "contain", display: "block", margin: "0 auto 2px" }}
-              />
-            ) : (
-              <div style={{ height: 34 }} />
-            )}
-            <div style={{ borderTop: `1px solid ${RULE}`, paddingTop: 3 }}>
-              <span style={{ fontSize: 7, letterSpacing: 0.5, textTransform: "uppercase", color: MUTED }}>
-                Signature of holder
-              </span>
-            </div>
-          </div>
+        {/* The same pair as the front, so whichever way up the card is read it can be checked.
+            The bottom padding keeps it clear of the property notice underneath — without it the
+            captions and the small print ran together into one grey band. */}
+        <div style={{ flex: 1, display: "flex", alignItems: "flex-end", padding: "8px 0 12px" }}>
+          <SignaturePair
+            holderSignatureUrl={data.signatureUrl}
+            holderName={data.name}
+            ceoSignatureUrl={ceoSignatureUrl}
+            ceoName={ceoName}
+          />
         </div>
 
         <div style={{ padding: "0 18px 12px", flexShrink: 0, display: "flex", gap: 10, alignItems: "flex-end" }}>

@@ -138,9 +138,17 @@ describe("section numbering survives an optional block", () => {
       expect(ns).toEqual(ns.map((_, idx) => idx + 1));
     });
 
-    it(`${type} gains exactly one section when the employee is an intern`, () => {
-      expect(numbersIn(letter(type, intern())).length)
-        .toBe(numbersIn(letter(type, employee())).length + 1);
+    it(`${type} swaps the internship section in for the ones an intern does not get`, () => {
+      // An intern gains "Internship, Training and Supervision" and loses the performance-review
+      // section, which is full-time only. What matters is that both letters stay correctly
+      // numbered — the counts themselves are free to differ.
+      const asIntern = letter(type, intern());
+      const asEmployee = letter(type, employee());
+      expect(asIntern).toMatch(/Internship, Training and Supervision/);
+      expect(asEmployee).not.toMatch(/Internship, Training and Supervision/);
+      for (const ns of [numbersIn(asIntern), numbersIn(asEmployee)]) {
+        expect(ns).toEqual(ns.map((_, idx) => idx + 1));
+      }
     });
   }
 });

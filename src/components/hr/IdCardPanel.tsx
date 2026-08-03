@@ -53,7 +53,9 @@ export default function IdCardPanel({ member, profile, provisionalHint }: {
     (async () => {
       const [p, l, sig, ceo, code] = await Promise.all([
         inlineImage(base.photoUrl),
-        inlineImage("/dts-logo-full.png"),
+        // The white mark, because the header band it sits on is black. The full-colour logo carried
+        // its own dark box and printed as a rectangle inside a rectangle.
+        inlineImage("/white_logo.png"),
         inlineImage(base.signatureUrl),
         inlineImage(marks.ceoSignatureUrl || null),
         // Deep navy on white: a QR needs contrast far more than it needs to match the brand, and
@@ -120,7 +122,13 @@ export default function IdCardPanel({ member, profile, provisionalHint }: {
                 ceoSignatureUrl={ceoSignature}
                 ceoName={marks.ceoName}
               />
-              <IdCardBack ref={backRef} data={data} qrUrl={qr} />
+              <IdCardBack
+                ref={backRef}
+                data={data}
+                qrUrl={qr}
+                ceoSignatureUrl={ceoSignature}
+                ceoName={marks.ceoName}
+              />
             </>
           ) : (
             <div

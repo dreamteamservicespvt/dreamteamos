@@ -50,22 +50,17 @@ const build = (type: Parameters<typeof buildDocument>[0]["type"], a: CompanyAsse
   });
 
 describe("which office signs which letter", () => {
-  it("puts the CEO on an offer letter, whoever generated it", () => {
+  it("puts BOTH officers on every document the company issues", () => {
+    for (const type of HR_DOCUMENT_ORDER) {
+      expect(resolveSignatories(type, officers(assets), issuer).map((s) => s.key), type)
+        .toEqual(["ceo", "cto"]);
+    }
+  });
+
+  it("names them in a fixed order, so two letters never disagree about who signs first", () => {
     const signers = resolveSignatories("offer_letter", officers(assets), issuer);
-    expect(signers.map((s) => s.key)).toEqual(["ceo"]);
     expect(signers[0].name).toBe("G. Govardhan");
-  });
-
-  it("puts BOTH the CEO and the CTO on the NDA", () => {
-    const signers = resolveSignatories("nda", officers(assets), issuer);
-    expect(signers.map((s) => s.key)).toEqual(["ceo", "cto"]);
-  });
-
-  it("leaves the policy acknowledgement unsigned by the company — it is the employee's statement", () => {
-    expect(DOCUMENT_SIGNATORIES.policy_acknowledgement).toEqual([]);
-    expect(resolveSignatories("policy_acknowledgement", officers(assets), issuer)).toEqual([]);
-    // …and that must not block it from being issued.
-    expect(canIssue([], "policy_acknowledgement")).toBe(true);
+    expect(signers[1].name).toBe("Asha Rao");
   });
 
   it("falls back to the issuing admin when no office has a signature on file", () => {
@@ -75,7 +70,7 @@ describe("which office signs which letter", () => {
     }]);
   });
 
-  it("uses the CEO alone for an NDA when only the CEO is configured", () => {
+  it("signs with whoever IS configured when only one office has a signature on file", () => {
     const ceoOnly = { ...assets, ctoName: null, ctoSignatureUrl: null };
     expect(resolveSignatories("nda", officers(ceoOnly), issuer).map((s) => s.key)).toEqual(["ceo"]);
   });
@@ -85,9 +80,15 @@ describe("which office signs which letter", () => {
     expect(canIssue(nobody, "offer_letter")).toBe(false);
   });
 
+  it("issues once at least one office can sign", () => {
+    const ceoOnly = { ...assets, ctoName: null, ctoSignatureUrl: null };
+    expect(canIssue(resolveSignatories("offer_letter", officers(ceoOnly), issuer), "offer_letter")).toBe(true);
+  });
+
   it("names an office for every document type, so none can be issued unsigned by accident", () => {
     for (const type of HR_DOCUMENT_ORDER) {
       expect(DOCUMENT_SIGNATORIES[type], type).toBeDefined();
+      expect(DOCUMENT_SIGNATORIES[type].length, type).toBeGreaterThan(0);
     }
   });
 });
@@ -114,7 +115,7 @@ describe("the signature actually landing on the page", () => {
     const signatures = screen.getAllByAltText("signature") as HTMLImageElement[];
     expect(signatures.map((i) => i.src)).toContain("https://cdn.test/ceo.png");
     // Exactly one ruled box is expected — the employee has not signed yet. The bug this pins
-    // produced a second one, where the company's signature should have been.
+    // produced extra ones, where the company's signatures should have been.
     expect(screen.getAllByText(/Awaiting signature/)).toHaveLength(1);
   });
 
