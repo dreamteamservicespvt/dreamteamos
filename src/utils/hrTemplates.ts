@@ -154,25 +154,46 @@ const signatoriesOf = (i: BuildDocumentInput): IssuedSignatory[] =>
  */
 const COMPANY_SIGNATURE_BLOCKS = (i: BuildDocumentInput): (string | null)[] => {
   const co = companyOf(i);
-  return signatoriesOf(i).flatMap((s) => [
+  return [
+    // The complimentary close, once, however many offices sign below it. A letter that goes
+    // straight from its last clause into a signature box reads as a form; this is the line that
+    // makes it correspondence.
     "",
-    `For ${co.name} — ${s.designation || "Authorised Signatory"} Signature:`,
-    `Name: ${s.name}`,
-    `Designation: ${s.designation}`,
-    `Date: ${longDate(i.issuedOn)}`,
-  ]);
+    "Yours sincerely,",
+    ...signatoriesOf(i).flatMap((s) => [
+      "",
+      `For ${co.name} — ${s.designation || "Authorised Signatory"} Signature:`,
+      `Name: ${s.name}`,
+      `Designation: ${s.designation}`,
+      `Date: ${longDate(i.issuedOn)}`,
+    ]),
+  ];
 };
 
-/** The header block every letter opens with — who it is from, who it is to, and when. */
+/**
+ * The header block every letter opens with — who it is from, who it is to, and when.
+ *
+ * Ordered the way a corporate letter is ordered: reference and date, the recipient, the
+ * confidentiality marking, then the subject. Two conventions here are the ones that most make a
+ * letter read as a company's rather than a form's —
+ *
+ * **Private & Confidential.** Every serious offer, appointment and exit letter carries it. It sits
+ * below the recipient block, where a reader meets it before the subject.
+ *
+ * **A subject line.** The centred title says what kind of letter this is; the subject says what it
+ * is *about* — the role, in this case. Naming the position there is what lets somebody find the
+ * right letter in a file of forty.
+ */
 const letterHead = (
   i: BuildDocumentInput,
   title: string,
-  opts: { ref?: string | null; address?: string | null } = {},
+  opts: { ref?: string | null; address?: string | null; subject?: string | null } = {},
 ): (string | null)[] => {
   const { subject } = i;
   // An explicit per-letter reference (the offer letter has one) wins over the allocated series
   // number, so an admin who types their own reference still sees exactly that on the page.
   const ref = (opts.ref || "").trim() || (i.referenceNo || "").trim();
+  const subjectLine = (opts.subject || "").trim();
   return [
     title.toUpperCase(),
     companyOf(i).name.toUpperCase(),
@@ -186,7 +207,19 @@ const letterHead = (
     subject.email ? `Email: ${subject.email}` : null,
     opts.address?.trim() ? `Address: ${opts.address.trim()}` : null,
     "",
+    // ALL-CAPS, so the renderer sets it as a marking rather than as body text. It has to come
+    // after the fields above: a non-`Label: value` line is what closes the reference block.
+    "PRIVATE & CONFIDENTIAL",
+    subjectLine ? "" : null,
+    subjectLine ? `Subject: ${subjectLine}` : null,
+    "",
   ];
+};
+
+/** "Offer of Employment — Associate AI Software Engineer", where a role is on record. */
+const subjectWithRole = (base: string, p: EmployeeProfile): string => {
+  const role = (p.designation || "").trim();
+  return role ? `${base} — ${role}` : base;
 };
 
 const engagementLabel = (p: EmployeeProfile): string =>
@@ -295,11 +328,13 @@ const internshipBlock = (
 function offerLetter(i: BuildDocumentInput): string {
   const { profile: p, subject, extras } = i;
   const co = companyOf(i);
+  const intern = isInternship(p);
   const probationEnds = probationEndDate(p);
   return compose([
     ...letterHead(i, "Offer of Employment", {
       ref: extras?.offerLetterNumber,
       address: extras?.candidateAddress,
+      subject: subjectWithRole(intern ? "Offer of Internship" : "Offer of Employment", p),
     }),
     `Dear ${subject.name},`,
     "",
@@ -387,7 +422,9 @@ function appointmentLetter(i: BuildDocumentInput): string {
   const notice = noticePeriodFor(p);
   const intern = isInternship(p);
   return compose([
-    ...letterHead(i, intern ? "Internship Appointment Letter and Agreement" : "Appointment Letter and Employment Agreement"),
+    ...letterHead(i, intern ? "Internship Appointment Letter and Agreement" : "Appointment Letter and Employment Agreement", {
+      subject: subjectWithRole(intern ? "Appointment as Intern" : "Appointment and Terms of Employment", p),
+    }),
     `Dear ${subject.name},`,
     "",
     intern
@@ -522,7 +559,9 @@ function nda(i: BuildDocumentInput): string {
   const { subject, extras } = i;
   const co = companyOf(i);
   return compose([
-    ...letterHead(i, "Non-Disclosure, Confidentiality and Intellectual Property Agreement"),
+    ...letterHead(i, "Non-Disclosure, Confidentiality and Intellectual Property Agreement", {
+      subject: "Confidentiality and intellectual property undertaking",
+    }),
     `This agreement is entered into between ${co.name} ("the Company") and ${subject.name} ("the Employee") in connection with the Employee's employment with the Company.`,
     "",
     "1. Confidential Information",
@@ -560,7 +599,9 @@ function policyAcknowledgement(i: BuildDocumentInput): string {
   const { subject, extras } = i;
   const co = companyOf(i);
   return compose([
-    ...letterHead(i, "Acknowledgement of Company Policies"),
+    ...letterHead(i, "Acknowledgement of Company Policies", {
+      subject: "Acknowledgement of company policies",
+    }),
     `I confirm that the following policies of ${co.name} have been made available to me, that I have read and understood them, and that I agree to comply with them.`,
     "",
     "1. Code of Conduct and Professional Behaviour",
@@ -592,7 +633,7 @@ function confirmationLetter(i: BuildDocumentInput): string {
   const { profile: p, subject, extras } = i;
   const co = companyOf(i);
   return compose([
-    ...letterHead(i, "Confirmation of Employment"),
+    ...letterHead(i, "Confirmation of Employment", { subject: subjectWithRole("Confirmation of Employment", p) }),
     `Dear ${subject.name},`,
     "",
     `We are pleased to inform you that you have successfully completed your probation period at ${co.name}.`,
@@ -618,7 +659,7 @@ function confirmationLetter(i: BuildDocumentInput): string {
 function probationExtension(i: BuildDocumentInput): string {
   const { profile: p, subject, extras } = i;
   return compose([
-    ...letterHead(i, "Extension of Probation Period"),
+    ...letterHead(i, "Extension of Probation Period", { subject: subjectWithRole("Extension of Probation Period", p) }),
     `Dear ${subject.name},`,
     "",
     `This letter is with reference to the probation period under your Appointment Letter dated ${longDate(p.joiningDate)}.`,
@@ -649,7 +690,7 @@ function probationExtension(i: BuildDocumentInput): string {
 function incrementLetter(i: BuildDocumentInput): string {
   const { profile: p, subject, extras } = i;
   return compose([
-    ...letterHead(i, "Revision of Remuneration"),
+    ...letterHead(i, "Revision of Remuneration", { subject: subjectWithRole("Revision of Remuneration", p) }),
     `Dear ${subject.name},`,
     "",
     "In recognition of your performance and contribution, we are pleased to inform you of the following revision to your remuneration.",
@@ -680,7 +721,7 @@ function promotionLetter(i: BuildDocumentInput): string {
   const { profile: p, subject, extras } = i;
   const revised = typeof extras?.newCtcMonthly === "number";
   return compose([
-    ...letterHead(i, "Promotion Letter"),
+    ...letterHead(i, "Promotion Letter", { subject: `Promotion to ${value(extras?.newDesignation)}` }),
     `Dear ${subject.name},`,
     "",
     "In recognition of your performance, your growing contribution and the responsibility you have taken on, we are pleased to inform you of your promotion as set out below.",
@@ -719,7 +760,7 @@ function showCauseNotice(i: BuildDocumentInput): string {
   const { subject, extras } = i;
   const by = extras?.responseByDate;
   return compose([
-    ...letterHead(i, "Show Cause Notice"),
+    ...letterHead(i, "Show Cause Notice", { subject: "Notice to show cause" }),
     `Dear ${subject.name},`,
     "",
     "This notice is issued to bring to your attention the matter recorded below and to give you an opportunity to explain it before the company takes any view on it. Nothing has been decided, and no conclusion has been drawn against you at this stage.",
@@ -754,7 +795,7 @@ function showCauseNotice(i: BuildDocumentInput): string {
 function warningLetter(i: BuildDocumentInput): string {
   const { subject, extras } = i;
   return compose([
-    ...letterHead(i, "Warning Letter"),
+    ...letterHead(i, "Warning Letter", { subject: "Written warning" }),
     `Dear ${subject.name},`,
     "",
     "This letter is issued to formally record a concern with your conduct or performance and to give you an opportunity to respond and to correct it.",
@@ -799,7 +840,7 @@ function resignationAcceptance(i: BuildDocumentInput): string {
   const early = sep?.earlyRelease;
   const waived = sep?.waivedDays ?? 0;
   return compose([
-    ...letterHead(i, "Acceptance of Resignation"),
+    ...letterHead(i, "Acceptance of Resignation", { subject: "Acceptance of your resignation" }),
     `Dear ${subject.name},`,
     "",
     `We acknowledge receipt of your resignation dated ${longDate(submitted)}, and write to confirm that it has been accepted.`,
@@ -847,7 +888,7 @@ function fullFinalSettlement(i: BuildDocumentInput): string {
     ? extras.settlementAmount
     : sep?.finalSettlementAmount ?? null;
   return compose([
-    ...letterHead(i, "Full and Final Settlement"),
+    ...letterHead(i, "Full and Final Settlement", { subject: "Full and final settlement of dues" }),
     `Dear ${subject.name},`,
     "",
     `This letter sets out the full and final settlement of your dues consequent to the cessation of your employment with effect from ${longDate(lwd)}.`,
@@ -890,7 +931,7 @@ function relievingLetter(i: BuildDocumentInput): string {
   const sep = p.separation;
   const lwd = extras?.lastWorkingDay || sep?.lastWorkingDay || null;
   return compose([
-    ...letterHead(i, "Relieving Letter"),
+    ...letterHead(i, "Relieving Letter", { subject: subjectWithRole("Relieving from services", p) }),
     "TO WHOMSOEVER IT MAY CONCERN",
     "",
     `This is to certify that ${subject.name}${subject.employeeId ? ` (Employee ID: ${subject.employeeId})` : ""} was employed with ${co.name} as ${value(p.designation)} from ${longDate(p.joiningDate)} to ${longDate(lwd)}.`,
@@ -921,7 +962,7 @@ function experienceLetter(i: BuildDocumentInput): string {
   const co = companyOf(i);
   const lwd = extras?.lastWorkingDay || p.separation?.lastWorkingDay || null;
   return compose([
-    ...letterHead(i, "Experience Certificate"),
+    ...letterHead(i, "Experience Certificate", { subject: subjectWithRole("Certificate of experience", p) }),
     "TO WHOMSOEVER IT MAY CONCERN",
     "",
     `This is to certify that ${subject.name}${subject.employeeId ? ` (Employee ID: ${subject.employeeId})` : ""} was employed with ${co.name} from ${longDate(p.joiningDate)} to ${longDate(lwd)}.`,

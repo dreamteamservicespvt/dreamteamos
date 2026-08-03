@@ -27,6 +27,16 @@ const PAGE_H = 1123; // A4 height in CSS px @ 96dpi
 /** Breathing room under the footer so a descender never touches the page-number line. */
 const FOOT_GAP = 14;
 
+/**
+ * Clear space kept between the last line on a page and the foot rule.
+ *
+ * Taken off the flowing column by pushing the footer down, NOT by relaxing the overflow test.
+ * `scrollHeight` is defined as at least `clientHeight`, so `scrollHeight > clientHeight - safety`
+ * is true even for an empty column — that version broke every block onto its own page and turned a
+ * three-page letter into thirty-seven.
+ */
+const BOTTOM_SAFETY = 18;
+
 async function waitForImages(root: HTMLElement): Promise<void> {
   const imgs = Array.from(root.querySelectorAll("img"));
   await Promise.all(
@@ -150,7 +160,7 @@ export async function downloadAgreementPdf(paperEl: HTMLElement, filename: strin
       if (letterfoot) {
         const foot = letterfoot.cloneNode(true) as HTMLElement;
         foot.style.flex = "0 0 auto";
-        foot.style.marginTop = "0";
+        foot.style.marginTop = `${BOTTOM_SAFETY}px`;
         foot.style.paddingBottom = `${FOOT_GAP}px`;
         page.appendChild(foot);
       }

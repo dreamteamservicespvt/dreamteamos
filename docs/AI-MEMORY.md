@@ -267,3 +267,24 @@ Also added **keep-with-next** in the exporter: a `data-pdf="heading"` block (or 
 - `npx vitest run` — 1340/1340. Clean typecheck and build, no new lint errors.
 - **Real browser, 19/19, 0 console errors:** logo 76px tall / 207px wide and taller than the company name, fallback tile readable; print builds the root, marks the body, pins exactly one running head and one running foot, measures both heights non-zero, carries the whole letter and the signature, restores the page afterwards and leaves no second root behind; and the print stylesheet is asserted to release the fixed shell, hide the app, keep colours, avoid splitting a signature, and set A4.
 - `window.print()` blocks headless Chromium, so it is stubbed with a probe that captures what the stylesheet is about to apply to — the DOM the browser would print is checked, not the paper.
+
+## Session — 2026-08-04 (Corporate letter conventions)
+
+**Asked whether numbered/point-wise sections are what an MNC actually does.** They are, for the *terms* — corporate offer and appointment letters are drafted as numbered clauses precisely so a term can be cited later ("as per clause 9"). Do **not** convert the clauses to prose. What was missing was the correspondence *around* them, which is where a generated document gives itself away.
+
+Added to `letterHead()` in `hrTemplates`, so every one of the 14 types gets them:
+- **`PRIVATE & CONFIDENTIAL`** — ALL-CAPS so `AgreementView` sets it as a marking. It must sit **after** the `Label: value` reference fields: the header block ends at the first non-matching line, so putting the marking above it would cut Ref/Date/Name out of the table the renderer builds.
+- **A subject line** naming the role — `Subject: Offer of Employment — Associate AI Software Engineer`, via `subjectWithRole()`. Degrades to the base text when no designation is on record (never `— ` trailing).
+- **`Yours sincerely,`** before the signature, emitted **once** in `COMPANY_SIGNATURE_BLOCKS` however many offices sign below it.
+
+`letterConventions.test.ts` pins all three across `HR_DOCUMENT_ORDER`, plus the ordering (reference → marking → subject → salutation) and the single sign-off on a two-signatory NDA.
+
+**Download + Print in the composer.** `SendAgreement` gained `composerRef` on the preview and a shared `withComposerPaper("download" | "print")` — the preview is forced open first, because the paper does not exist until it is rendered (the same trick `IssueDocumentDialog` uses). One `composerBusy` flag for both.
+
+**A bug I introduced and caught in the PDF.** To keep the last line clear of the foot rule I relaxed the break test to `scrollHeight > clientHeight - SAFETY`. `scrollHeight` is defined as *at least* `clientHeight`, so that is true for an empty column — every block broke onto its own page and a 3-page letter exported as **37**. The clearance is taken off the column by giving the cloned footer `margin-top: BOTTOM_SAFETY` instead; the test stays a strict `>`. **Never relax that comparison.**
+
+### How this was verified
+- `npx vitest run` — **1349/1349** (9 new). Clean typecheck and build, no new lint errors.
+- **Real browser, 8/8, 0 console errors**, and the PDF decoded page by page: marking rendered bold, subject naming the role, `Yours sincerely,` above the signature, the reference block still a table, correct ordering, all 14 types carrying the conventions with no `undefined`/`NaN`, and the page count back to 3 with section 4 moved whole to page 2 rather than crammed onto the foot rule.
+
+**Still not done, deliberately:** a **CTC breakup annexure** (Basic / HRA / allowances / PF / gratuity → gross → CTC), which is the one remaining thing every MNC offer letter has and this one does not. `EmployeeProfile` stores a single `ctcMonthly` and nothing else, so any breakup would be invented figures printed under the company's signature. It needs the salary-structure percentages from the user before it can be built honestly.

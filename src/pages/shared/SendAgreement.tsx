@@ -18,6 +18,7 @@ import AgreementView, { companySideOf } from "@/components/agreement/AgreementVi
 import { useCompanyLogo } from "@/hooks/useCompanyLogo";
 import { usePrintDocument } from "@/hooks/usePrintDocument";
 import { downloadAgreementPdf } from "@/utils/agreementPdf";
+import { printAgreementElement } from "@/utils/agreementPrint";
 import MissingLettersPanel, { findMissingLetters } from "@/components/hr/MissingLettersPanel";
 import { watchTeamProfiles } from "@/services/hr";
 import { watchTeamDocuments } from "@/services/hrDocuments";
@@ -82,6 +83,9 @@ export default function SendAgreement({ embedded }: { embedded?: boolean } = {})
   const [viewOpen, setViewOpen] = useState<Agreement | null>(null);
   const [downloading, setDownloading] = useState(false);
   const paperRef = useRef<HTMLDivElement>(null);
+  /** The letter being composed, as opposed to a sent one being viewed. */
+  const composerRef = useRef<HTMLDivElement>(null);
+  const [composerBusy, setComposerBusy] = useState<"download" | "print" | null>(null);
   const { printing, print } = usePrintDocument(paperRef);
   /** The HR side of this page: who is still missing the letters everyone should hold. */
   const [profiles, setProfiles] = useState<Map<string, EmployeeProfile>>(new Map());
@@ -350,6 +354,43 @@ export default function SendAgreement({ embedded }: { embedded?: boolean } = {})
       memberProfileLink(member.role),
     );
   };
+
+  /**
+   * Download or print the letter being composed, for the person it would go to first.
+   *
+   * The preview has to be open, because the paper only exists once it is rendered — so opening it
+   * is part of taking a copy, exactly as it is in the Issue dialog. One busy flag for both, since
+   * neither should be startable while the other is running.
+   */
+  const withComposerPaper = async (job: "download" | "print") => {
+    if (composerBusy || !previewMember) return;
+    setShowPreview(true);
+    setComposerBusy(job);
+    try {
+      await new Promise((r) => setTimeout(r, 250));
+      if (!composerRef.current) throw new Error("preview not ready");
+      if (job === "print") {
+        await printAgreementElement(composerRef.current);
+      } else {
+        const name = templateType ? HR_DOCUMENT_LABELS[templateType] : extractTitle(body);
+        await downloadAgreementPdf(
+          composerRef.current,
+          `${name.replace(/[^\w]+/g, "_")}_${previewMember.name.replace(/[^\w]+/g, "_")}.pdf`,
+        );
+      }
+    } catch {
+      toast({
+        title: "Error",
+        description: job === "print" ? "Could not open the print dialog." : "Could not generate the PDF.",
+        variant: "destructive",
+      });
+    } finally {
+      setComposerBusy(null);
+    }
+  };
+
+  const handleComposerDownload = () => withComposerPaper("download");
+  const handleComposerPrint = () => withComposerPaper("print");
 
   const handleFormatAI = async () => {
     if (!body.trim() || formatting) return;
@@ -631,6 +672,26 @@ export default function SendAgreement({ embedded }: { embedded?: boolean } = {})
                 ? "Send for signature"
                 : `Send to ${tickedMembers.length} member${tickedMembers.length === 1 ? "" : "s"}`}
           </button>
+          {/*
+            Take the letter away without sending it.
+
+            Not every document is signed in the app: an offer is sometimes printed and handed over,
+            or emailed as a PDF, or filed. Without these the only way to get a copy out of this
+            screen was to send it to somebody first — which is the wrong order for a letter that
+            lands in their account the moment it exists.
+          */}
+          <button onClick={handleComposerDownload} disabled={composerBusy !== null || !body.trim() || !previewMember}
+            data-test="composer-download"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-border bg-background hover:bg-accent text-foreground disabled:opacity-40">
+            {composerBusy === "download" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            {composerBusy === "download" ? "Preparing…" : "Download PDF"}
+          </button>
+          <button onClick={handleComposerPrint} disabled={composerBusy !== null || !body.trim() || !previewMember}
+            data-test="composer-print"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-border bg-background hover:bg-accent text-foreground disabled:opacity-40">
+            {composerBusy === "print" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+            {composerBusy === "print" ? "Preparing…" : "Print"}
+          </button>
           {mode === "individual" && selected && (
             <span className="text-xs text-muted-foreground">Auto-fills: {selected.name}{selected.phone ? ` · ${selected.phone}` : ""}</span>
           )}
@@ -646,6 +707,7 @@ export default function SendAgreement({ embedded }: { embedded?: boolean } = {})
             {/* Tokens resolved, so what is on screen is what that person will actually receive —
                 a preview showing raw {{tokens}} would be a preview of the template, not the letter. */}
             <AgreementView
+              ref={composerRef}
               bodyText={textFor(previewMember)}
               memberName={previewMember.name}
               memberPhone={previewMember.phone}
