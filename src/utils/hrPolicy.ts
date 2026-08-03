@@ -659,10 +659,10 @@ export function lifecycleSteps(
       Two sources, and the step says which one it is standing on.
 
       A date on the employment record and a letter in the register are different facts: the hiring
-      flow writes both, an admin recording an offer sent by email writes only the first. Reading
-      "Offer letter issued ✓" beside a Documents tab that says nothing has ever been issued looks
-      like a bug, and the reader has no way to tell which half is true — so where the date is all
-      there is, the step says so rather than implying a letter exists.
+      flow writes both, an admin recording an offer sent by email writes only the first. Either is
+      enough to call the offer issued — but reading "Offer letter issued ✓" beside a Documents tab
+      that says nothing has ever been issued looks like a bug, and the reader has no way to tell
+      which half is true. So where the date is all there is, the step says so.
     */
     {
       key: "offer",

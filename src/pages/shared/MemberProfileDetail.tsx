@@ -357,7 +357,22 @@ export default function MemberProfileDetail() {
                     </span>
                   )}
                 />
-                <Field label="Role" value={getRoleLabel(member.role)} />
+                {/* The job, not the permission — "Tech Member" is what the account can reach, and
+                    nobody's role is "Tech Member". The access level still has to be visible to an
+                    admin reading this card, so it stays alongside as a chip rather than instead. */}
+                <Field
+                  label="Role"
+                  value={
+                    <span className="inline-flex flex-wrap items-center gap-1.5" data-test="member-role">
+                      {profile.designation || getRoleLabel(member.role)}
+                      {profile.designation && (
+                        <span className="rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                          {getRoleLabel(member.role)} access
+                        </span>
+                      )}
+                    </span>
+                  }
+                />
                 <Field label="Account created" value={createdAt ? format(new Date(createdAt * 1000), "dd MMM yyyy") : null} />
                 <Field label="Status" value={member.isActive ? "Active" : "Deactivated"} />
                 {member.googleDriveBaseUrl && (

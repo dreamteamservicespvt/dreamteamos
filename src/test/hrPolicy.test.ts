@@ -307,9 +307,9 @@ describe("lifecycle tracker", () => {
    * A date on the record and a letter in the register are two different facts.
    *
    * The strip reads "Offer letter issued ✓" off either of them, which is right — an offer sent by
-   * email and recorded by hand really was issued. What was wrong was saying it the same way in
-   * both cases: an admin looking at a green tick beside a Documents tab reading "No documents
-   * issued yet" has no way to tell which half of the screen is lying to them.
+   * email and recorded in Employment terms really was issued. What was wrong was saying it the
+   * same way in both cases: an admin looking at a green tick beside a Documents tab reading "No
+   * documents issued yet" has no way to tell which half of the screen is lying to them.
    */
   it("says when the offer step is standing on a date with no letter behind it", () => {
     const steps = lifecycleSteps(profile({ offerIssuedOn: "2025-12-01", offerAcceptedOn: "2025-12-05" }), []);

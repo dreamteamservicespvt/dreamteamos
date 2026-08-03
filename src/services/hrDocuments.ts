@@ -152,9 +152,9 @@ export async function declineDocument(document: HrDocument, reason: string): Pro
  * ── Why this also touches the employment record ───────────────────────────────────────────────
  * "Offer letter issued" and "Offer accepted" are two facts kept in two places: the letter itself,
  * and a pair of dates on the employment record that the hiring flow writes at the same moment it
- * writes the letter. Delete the letter and only half the fact goes — the lifecycle strip carries
- * on saying the offer was issued and accepted while the Documents tab says nothing was ever
- * issued, and there is no way to tell which of the two is lying.
+ * writes the letter. The lifecycle strip reads either. Delete the letter and only half the fact
+ * goes — the strip carries on saying the offer was issued and accepted while the Documents tab
+ * says nothing was ever issued, and there is no way to tell which of the two is lying.
  *
  * So the dates go with the last offer letter, and only the last one: an admin who withdraws one of
  * two offer letters has not un-hired anybody. An admin who did mean to keep the date can type it
