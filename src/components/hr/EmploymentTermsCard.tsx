@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { BadgeCheck, Briefcase, Check, Loader2, Pencil, ShieldQuestion, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { confirmEmploymentTerms, saveEmploymentTerms } from "@/services/hr";
@@ -9,7 +9,11 @@ import {
 import { ENGAGEMENT_LABELS } from "@/types/hr";
 import type { EmployeeProfile, EngagementType } from "@/types/hr";
 import { rupees } from "@/utils/hrTemplates";
-import { Field, Input, SectionCard, Select } from "./ui";
+import {
+  DAY_OPTIONS, EMPLOYMENT_DEFAULTS, TIME_OPTIONS, applyEmploymentDefaults, formatDays, formatHours,
+  matchDayOption, matchTimeOption, splitRange,
+} from "@/utils/employmentDefaults";
+import { Field, Input, SectionCard, Select, Textarea } from "./ui";
 
 /**
  * The employment terms — the same set that the offer letter and the appointment letter are built
@@ -58,7 +62,27 @@ export default function EmploymentTermsCard({
   const blank = !profile.engagementType && !profile.joiningDate && !profile.designation;
   const needsConfirming = !!profile.termsSelfDeclared;
 
-  const startEdit = () => { setForm(profile); setEditing(true); };
+  /**
+   * Open the form with the blanks already filled in.
+   *
+   * Applied on entering edit rather than on save, so the admin SEES what will be stored and can
+   * change any of it. Filling silently at save time would put a designation on somebody's letter
+   * that nobody chose.
+   */
+  const startEdit = () => {
+    setForm(applyEmploymentDefaults(profile, profile.engagementType) as EmployeeProfile);
+    setEditing(true);
+  };
+
+  const hours = useMemo(() => {
+    const { from, to } = splitRange(form.workingHours);
+    return { from: matchTimeOption(from), to: matchTimeOption(to) };
+  }, [form.workingHours]);
+
+  const days = useMemo(() => {
+    const { from, to } = splitRange(form.workingDays);
+    return { from: matchDayOption(from), to: matchDayOption(to) };
+  }, [form.workingDays]);
 
   const set = <K extends keyof EmployeeProfile>(key: K, v: EmployeeProfile[K]) =>
     setForm((prev) => ({ ...prev, [key]: v }));
@@ -66,6 +90,7 @@ export default function EmploymentTermsCard({
   const handleEngagement = (engagement: EngagementType) =>
     setForm((prev) => ({
       ...prev,
+      ...applyEmploymentDefaults(prev, engagement),
       engagementType: engagement,
       // Switching to an internship or a contract should not leave a stale 3-month probation behind.
       probationMonths: prev.probationMonths === null || prev.probationMonths === undefined
@@ -86,6 +111,8 @@ export default function EmploymentTermsCard({
         ctcMonthly: form.ctcMonthly ?? null,
         workingHours: form.workingHours?.trim() || null,
         workingDays: form.workingDays?.trim() || null,
+        internshipEndDate: form.engagementType === "intern" ? (form.internshipEndDate || null) : null,
+        internshipFocus: form.engagementType === "intern" ? (form.internshipFocus?.trim() || null) : null,
         // Company terms — only an admin may set these, so an employee's save leaves them untouched.
         ...(isAdmin ? {
           seniorRole: !!form.seniorRole,
@@ -197,11 +224,11 @@ export default function EmploymentTermsCard({
               <option key={k} value={k}>{ENGAGEMENT_LABELS[k]}</option>
             ))}
           </Select>
-          <Input label="Designation" value={form.designation || ""} placeholder="Software Developer"
+          <Input label="Designation" value={form.designation || ""} placeholder={EMPLOYMENT_DEFAULTS.designation}
             onChange={(e) => set("designation", e.target.value)} data-test="terms-designation" />
           <Input label="Work location" value={form.workLocation || ""} placeholder="Kakinada, Andhra Pradesh"
             onChange={(e) => set("workLocation", e.target.value)} />
-          <Input label="Reporting to" value={form.reportingToName || ""}
+          <Input label="Reporting to" value={form.reportingToName || ""} placeholder={EMPLOYMENT_DEFAULTS.reportingToName}
             onChange={(e) => set("reportingToName", e.target.value)} />
           <Input label="Joining date" type="date" value={form.joiningDate || ""}
             onChange={(e) => set("joiningDate", e.target.value)} data-test="terms-joining" />
@@ -212,10 +239,72 @@ export default function EmploymentTermsCard({
             onChange={(e) => set("ctcMonthly", e.target.value === "" ? null : Number(e.target.value))}
             data-test="terms-salary"
             hint={isAdmin ? undefined : "What you were offered — your admin will confirm it"} />
-          <Input label="Working hours" value={form.workingHours || ""} placeholder="10:00 AM – 7:00 PM"
-            onChange={(e) => set("workingHours", e.target.value)} />
-          <Input label="Working days" value={form.workingDays || ""} placeholder="Monday to Saturday"
-            onChange={(e) => set("workingDays", e.target.value)} />
+          {/* Pickers rather than free text: the same shift typed by three people produced "10-7",
+              "10:00-7:00" and "10 AM to 7 PM" across three employees' letters. */}
+          <div>
+            <span className="mb-1 block text-xs font-medium text-muted-foreground">Working hours</span>
+            <div className="flex items-center gap-1.5">
+              <select
+                value={hours.from} data-test="terms-hours-from"
+                onChange={(e) => set("workingHours", formatHours(e.target.value, hours.to) || e.target.value)}
+                className="h-10 min-w-0 flex-1 rounded-lg border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-primary"
+              >
+                <option value="">Start</option>
+                {TIME_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <span className="shrink-0 text-xs text-muted-foreground">to</span>
+              <select
+                value={hours.to} data-test="terms-hours-to"
+                onChange={(e) => set("workingHours", formatHours(hours.from, e.target.value) || e.target.value)}
+                className="h-10 min-w-0 flex-1 rounded-lg border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-primary"
+              >
+                <option value="">End</option>
+                {TIME_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <span className="mb-1 block text-xs font-medium text-muted-foreground">Working days</span>
+            <div className="flex items-center gap-1.5">
+              <select
+                value={days.from} data-test="terms-days-from"
+                onChange={(e) => set("workingDays", formatDays(e.target.value, days.to) || e.target.value)}
+                className="h-10 min-w-0 flex-1 rounded-lg border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-primary"
+              >
+                <option value="">From</option>
+                {DAY_OPTIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+              <span className="shrink-0 text-xs text-muted-foreground">to</span>
+              <select
+                value={days.to} data-test="terms-days-to"
+                onChange={(e) => set("workingDays", formatDays(days.from, e.target.value) || e.target.value)}
+                className="h-10 min-w-0 flex-1 rounded-lg border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-primary"
+              >
+                <option value="">To</option>
+                {DAY_OPTIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* An intern's college needs the end date and the training list in writing, so both are
+              asked for here rather than at the point a letter is issued — they are standing facts
+              about the engagement, and a letter that had to ask each time would print a different
+              answer each time somebody forgot. */}
+          {form.engagementType === "intern" && (
+            <>
+              <Input label="Internship ends on" type="date" value={form.internshipEndDate || ""}
+                data-test="terms-internship-end"
+                onChange={(e) => set("internshipEndDate", e.target.value)}
+                hint="Printed on the offer and joining letters the college reads" />
+              <Textarea label="What this intern is trained on" rows={3}
+                value={form.internshipFocus || ""}
+                data-test="terms-internship-focus"
+                onChange={(e) => set("internshipFocus", e.target.value)}
+                className="sm:col-span-2"
+                hint="One per line. Leave blank to print the standard list for their department." />
+            </>
+          )}
 
           {isAdmin && (
             <>

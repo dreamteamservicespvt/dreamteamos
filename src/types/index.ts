@@ -647,6 +647,17 @@ export interface DailyCheckin {
   completedTodayAuto?: number;
   pendingTasks?: number;
   inProgressTasks?: number;
+  /**
+   * The member declared, at check-out, that the day's work is in the Drive.
+   *
+   * A declaration rather than a verified upload — the app cannot see inside somebody's Drive, and
+   * people legitimately upload from another device. Recording it means an admin reviewing the day
+   * can see the claim was made, and which folder it was made about, without having to ask.
+   */
+  workUploadedConfirmed?: boolean;
+  workUploadedAt?: any;
+  /** The folder trail shown at the time, e.g. `["Hemawathi", "August", "Day 3"]`. */
+  workUploadedPath?: string[];
 }
 
 // Chat System

@@ -3,22 +3,29 @@ import html2canvas from "html2canvas";
 import { normalizeSignatureUrl } from "@/utils/signatureImage";
 
 /**
- * Multi-page agreement PDF export with REAL pagination.
+ * Multi-page document export with real pagination and a real letterhead.
  *
- * Instead of screenshotting one tall element and slicing it blindly (which cuts lines of
- * text in half at page boundaries), the agreement is re-laid-out into true A4 page shells:
- * its blocks (title, each paragraph/heading, the signature box, footer) are distributed
- * page by page, and a block that would cross a page boundary moves to the next page whole.
- * Every page is rendered to canvas individually, so every page of the PDF is complete and
- * nothing is ever clipped mid-line — regardless of agreement length.
+ * Instead of screenshotting one tall element and slicing it blindly (which cuts lines of text in
+ * half at page boundaries), the document is re-laid-out into true A4 page shells: its blocks
+ * (title, reference block, each paragraph/heading, each signature, the footer) are distributed
+ * page by page, and a block that would cross a boundary moves to the next page whole.
  *
- * Signatures: before rendering, each signature image is re-fetched with CORS and
- * normalized (whitish photo background → transparent), so even legacy raw-photo
- * signatures come out clean in the PDF.
+ * **Every page gets the letterhead and the foot rule.** This used to be the single worst thing
+ * about the downloaded file: the letterhead node was never collected into any page shell, so a
+ * letter that looked properly headed on screen arrived as bare text with no company name, no
+ * address and no GSTIN on it — page one included. A letter nobody can tell the origin of is not a
+ * letter. Page two onwards gets the same header for the same reason: a bank looking at page 3 of
+ * an offer letter has to be able to see whose page 3 it is.
+ *
+ * Signatures: before rendering, each signature image is re-fetched with CORS and normalized
+ * (whitish photo background → transparent), so even legacy raw-photo signatures come out clean.
  */
 
 const PAGE_W = 794;  // A4 width in CSS px @ 96dpi
 const PAGE_H = 1123; // A4 height in CSS px @ 96dpi
+
+/** Breathing room under the footer so a descender never touches the page-number line. */
+const FOOT_GAP = 14;
 
 async function waitForImages(root: HTMLElement): Promise<void> {
   const imgs = Array.from(root.querySelectorAll("img"));
@@ -64,7 +71,7 @@ function stampPageNumber(pdf: jsPDF, page: number, total: number, pdfW: number, 
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(8);
   pdf.setTextColor(130, 138, 150);
-  pdf.text(`Page ${page} of ${total}`, pdfW / 2, pdfH - 18, { align: "center" });
+  pdf.text(`Page ${page} of ${total}`, pdfW / 2, pdfH - 16, { align: "center" });
 }
 
 export async function downloadAgreementPdf(paperEl: HTMLElement, filename: string): Promise<void> {
@@ -85,12 +92,17 @@ export async function downloadAgreementPdf(paperEl: HTMLElement, filename: strin
     await normalizeSignatureImgs(src);
     await waitForImages(src);
 
-    // 2) Collect the paginatable blocks (marked by AgreementView).
+    // 2) The furniture that repeats on every page, and the blocks that flow between them.
+    const letterhead = src.querySelector<HTMLElement>('[data-pdf="letterhead"]');
+    const letterfoot = src.querySelector<HTMLElement>('[data-pdf="letterfoot"]');
     const title = src.querySelector<HTMLElement>('[data-pdf="title"]');
+    const headerBlock = src.querySelector<HTMLElement>('[data-pdf="header-block"]');
     const bodyEl = src.querySelector<HTMLElement>('[data-pdf="body"]');
     const footer = src.querySelector<HTMLElement>('[data-pdf="footer"]');
+
     const blocks: HTMLElement[] = [];
     if (title) blocks.push(title);
+    if (headerBlock) blocks.push(headerBlock);
     if (bodyEl) blocks.push(...(Array.from(bodyEl.children) as HTMLElement[]));
     if (footer) blocks.push(footer);
     if (blocks.length === 0) blocks.push(src); // fallback: whole paper as one block
@@ -100,26 +112,84 @@ export async function downloadAgreementPdf(paperEl: HTMLElement, filename: strin
       .replace("max-w-[820px]", "")
       .replace("mx-auto", "")
       .replace("shadow-sm", "");
+
     const pages: HTMLElement[] = [];
+    /**
+     * A page: letterhead pinned at the top, foot rule pinned at the bottom, content between.
+     *
+     * Flex column with the content flexing, so `inner.scrollHeight` overflowing its own box is the
+     * signal to break — measured against the space actually left after the furniture, not against
+     * the whole sheet. That is what stopped a page ending mid-clause with white space below it.
+     */
     const newPage = (): HTMLElement => {
       const page = document.createElement("div");
       page.className = paperClasses;
-      page.style.cssText = `width:${PAGE_W}px;height:${PAGE_H}px;overflow:hidden;box-shadow:none;color-scheme:light;`;
+      page.style.cssText = [
+        `width:${PAGE_W}px`, `height:${PAGE_H}px`,
+        "overflow:hidden", "box-shadow:none", "color-scheme:light",
+        "display:flex", "flex-direction:column",
+      ].join(";");
+
+      if (letterhead) {
+        const head = letterhead.cloneNode(true) as HTMLElement;
+        head.style.flex = "0 0 auto";
+        page.appendChild(head);
+      }
+
       const inner = document.createElement("div");
       inner.className = bodyEl?.className || "";
+      inner.style.cssText = "flex:1 1 auto;min-height:0;";
+      if (bodyEl) {
+        // Carry the body's own type settings onto the flowing column, so a paragraph reads the
+        // same on page 3 as it did on page 1.
+        inner.style.fontSize = bodyEl.style.fontSize;
+        inner.style.lineHeight = bodyEl.style.lineHeight;
+      }
       page.appendChild(inner);
+
+      if (letterfoot) {
+        const foot = letterfoot.cloneNode(true) as HTMLElement;
+        foot.style.flex = "0 0 auto";
+        foot.style.marginTop = "0";
+        foot.style.paddingBottom = `${FOOT_GAP}px`;
+        page.appendChild(foot);
+      }
+
       stage.appendChild(page);
       pages.push(page);
       return inner;
     };
+
+    /**
+     * Blocks that must not be the last thing on a page.
+     *
+     * A heading stranded at the foot of a sheet with its clause overleaf is the classic printing
+     * fault, and it reads as carelessness on a document somebody is about to sign. Blank spacers
+     * count too: a page ending in whitespace has simply wasted the room the next paragraph needed.
+     */
+    const keepWithNext = (el: Element | null): boolean => {
+      if (!el) return false;
+      if (el.getAttribute("data-pdf") === "heading") return true;
+      return (el.textContent || "").trim() === "";
+    };
+
     let inner = newPage();
     for (const block of blocks) {
       inner.appendChild(block);
-      const page = pages[pages.length - 1];
-      // If this block overflows the page (and it isn't the only block), move it whole
-      // to a fresh page so no line of text is ever cut in half.
-      if (page.scrollHeight > PAGE_H && inner.children.length > 1) {
+      // Overflowing its own flex box — not the sheet — is what "this block does not fit" means
+      // once a header and a footer are taking up part of every page.
+      if (inner.scrollHeight > inner.clientHeight && inner.children.length > 1) {
+        const previous = inner;
+        previous.removeChild(block);
+
+        // Drag any heading (and trailing blank space) across with the block it introduces.
+        const carried: Element[] = [];
+        while (previous.children.length > 1 && keepWithNext(previous.lastElementChild)) {
+          carried.unshift(previous.removeChild(previous.lastElementChild!));
+        }
+
         inner = newPage();
+        carried.forEach((el) => inner.appendChild(el));
         inner.appendChild(block);
       }
     }

@@ -1,10 +1,14 @@
 /**
- * The company's letterhead, printed at the top and foot of every document it issues.
+ * The company's letterhead, printed at the top and foot of every page it issues.
  *
  * A letter on blank paper is a note; a letter on a letterhead is a document. Offer letters,
  * appointment letters, confirmations and relieving letters all get shown to somebody outside this
- * company — a bank, a landlord, the next employer — and the first thing any of them looks for is
- * who issued it and how to reach them.
+ * company — a bank, a landlord, a college admissions office, the next employer — and the first
+ * thing any of them looks for is who issued it and how to reach them.
+ *
+ * Laid out as a flex row with the logo given a fixed box: the name and address column then wraps
+ * against a known edge instead of against whatever width the logo file happened to have, which is
+ * what previously let a wide logo squash the address into three ragged lines.
  *
  * Fixed hex colours rather than theme variables, and no dark-mode variants: this is captured to
  * PDF by html2canvas, which resolves computed styles at capture time, so a letterhead built from
@@ -21,14 +25,11 @@ import { useCompany } from "@/hooks/useCompany";
 const NAVY = "#0b1f5c";
 const BRAND = "#1d4ed8";
 const MUTED = "#64748b";
+const INK = "#334155";
 
 export function LetterheadTop({ logoUrl }: { logoUrl?: string | null }) {
   const { company: COMPANY } = useCompany();
-  const contact = [
-    COMPANY.phone,
-    COMPANY.email,
-    COMPANY.website,
-  ].filter(Boolean);
+  const contact = [COMPANY.phone, COMPANY.email, COMPANY.website].filter(Boolean);
 
   /* GSTIN and MSME share a line: both are registration numbers a reader scans for in the same
      glance, and two near-identical lines under an address read as clutter. */
@@ -38,22 +39,23 @@ export function LetterheadTop({ logoUrl }: { logoUrl?: string | null }) {
   ].filter(Boolean);
 
   return (
-    <div data-pdf="letterhead" style={{ marginBottom: 22 }}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
-        <div style={{ flexShrink: 0 }}>
+    <div data-pdf="letterhead" style={{ marginBottom: 26 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+        {/* A fixed box, so the text column starts at the same x whatever shape the logo is. */}
+        <div
+          style={{
+            flex: "0 0 auto", width: 62, height: 62, display: "flex",
+            alignItems: "center", justifyContent: "center",
+          }}
+        >
           {logoUrl ? (
-            <img
-              src={logoUrl}
-              alt=""
-              crossOrigin="anonymous"
-              style={{ height: 44, width: "auto", display: "block" }}
-            />
+            <img src={logoUrl} alt="" crossOrigin="anonymous" style={{ maxHeight: 62, maxWidth: 62, objectFit: "contain", display: "block" }} />
           ) : (
             <div
               style={{
                 display: "flex", alignItems: "center", justifyContent: "center",
-                height: 44, width: 44, borderRadius: 8, backgroundColor: NAVY,
-                color: "#ffffff", fontWeight: 800, fontSize: 16, letterSpacing: 1,
+                height: 52, width: 52, borderRadius: 10, backgroundColor: NAVY,
+                color: "#ffffff", fontWeight: 800, fontSize: 17, letterSpacing: 1,
               }}
             >
               DTS
@@ -62,21 +64,21 @@ export function LetterheadTop({ logoUrl }: { logoUrl?: string | null }) {
         </div>
 
         <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ margin: 0, fontSize: 19, fontWeight: 800, color: NAVY, letterSpacing: 0.2, lineHeight: 1.2 }}>
+          <p style={{ margin: 0, fontSize: 21, fontWeight: 800, color: NAVY, letterSpacing: 0.2, lineHeight: 1.15 }}>
             {COMPANY.name}
           </p>
           {COMPANY.address.length > 0 && (
-            <p style={{ margin: "3px 0 0", fontSize: 10.5, color: MUTED, lineHeight: 1.5 }}>
+            <p style={{ margin: "4px 0 0", fontSize: 10.5, color: MUTED, lineHeight: 1.55 }}>
               {COMPANY.address.join(", ")}
             </p>
           )}
           {contact.length > 0 && (
-            <p style={{ margin: "2px 0 0", fontSize: 10.5, color: MUTED, lineHeight: 1.5 }}>
+            <p style={{ margin: "1px 0 0", fontSize: 10.5, color: MUTED, lineHeight: 1.55 }}>
               {contact.join("  ·  ")}
             </p>
           )}
           {registrations.length > 0 && (
-            <p style={{ margin: "2px 0 0", fontSize: 10, color: "#334155", fontWeight: 600, letterSpacing: 0.3 }}>
+            <p style={{ margin: "2px 0 0", fontSize: 9.5, color: INK, fontWeight: 600, letterSpacing: 0.2 }}>
               {registrations.join("  ·  ")}
             </p>
           )}
@@ -84,7 +86,7 @@ export function LetterheadTop({ logoUrl }: { logoUrl?: string | null }) {
       </div>
 
       {/* The rule under a letterhead is what makes the rest of the page read as the letter. */}
-      <div style={{ marginTop: 12, height: 3, background: `linear-gradient(90deg, ${NAVY} 0%, ${BRAND} 60%, #93c5fd 100%)`, borderRadius: 2 }} />
+      <div style={{ marginTop: 12, height: 2.5, background: `linear-gradient(90deg, ${NAVY} 0%, ${BRAND} 55%, #bfdbfe 100%)`, borderRadius: 2 }} />
     </div>
   );
 }
@@ -95,16 +97,14 @@ export function LetterheadFoot() {
   return (
     <div
       data-pdf="letterfoot"
-      style={{ marginTop: 28, paddingTop: 10, borderTop: "1px solid #e2e8f0", textAlign: "center" }}
+      style={{ marginTop: 30, paddingTop: 9, borderTop: "1px solid #e2e8f0", textAlign: "center" }}
     >
-      <p style={{ margin: 0, fontSize: 9.5, color: MUTED, lineHeight: 1.6 }}>
+      <p style={{ margin: 0, fontSize: 9, color: MUTED, lineHeight: 1.55 }}>
         {COMPANY.name}
         {COMPANY.address.length > 0 ? ` · ${COMPANY.address.join(", ")}` : ""}
       </p>
-      {line && (
-        <p style={{ margin: "1px 0 0", fontSize: 9.5, color: MUTED }}>{line}</p>
-      )}
-      <p style={{ margin: "4px 0 0", fontSize: 8.5, color: "#94a3b8" }}>
+      {line && <p style={{ margin: "1px 0 0", fontSize: 9, color: MUTED }}>{line}</p>}
+      <p style={{ margin: "3px 0 0", fontSize: 8, color: "#94a3b8" }}>
         This is a computer-generated document issued by {COMPANY.name}.
       </p>
     </div>

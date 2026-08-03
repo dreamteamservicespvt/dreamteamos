@@ -16,8 +16,11 @@
 import { useMemo, useState } from "react";
 import { format } from "date-fns";
 import {
-  CheckCircle2, ChevronLeft, ChevronRight, Clock, FileText, Filter, Search, XCircle,
+  CheckCircle2, ChevronLeft, ChevronRight, Clock, FileText, Filter, Search, Trash2, XCircle,
 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/hooks/useConfirm";
+import { deleteDocument } from "@/services/hrDocuments";
 import { HR_DOCUMENT_GROUPS, HR_DOCUMENT_LABELS } from "@/types/hr";
 import type { HrDocument, HrDocumentStatus, HrDocumentType } from "@/types/hr";
 import HrDocumentModal from "./HrDocumentModal";
@@ -43,17 +46,49 @@ const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
 
 const seconds = (d: HrDocument): number => (d.createdAt as { seconds?: number } | null)?.seconds ?? 0;
 
-export default function AllDocumentsPanel({ documents, canSign, viewerId }: {
+export default function AllDocumentsPanel({ documents, canSign, viewerId, canDelete }: {
   documents: HrDocument[];
   /** The viewer is the employee these belong to — enables signing and records that they read it. */
   canSign?: boolean;
   viewerId?: string;
+  /**
+   * The viewer may withdraw a document.
+   *
+   * Issuing is instant and lands in somebody's account immediately, so the wrong letter — wrong
+   * person, wrong salary, wrong type — needs an undo that does not involve asking a developer.
+   * Admins only, and a signed document warns harder before it goes.
+   */
+  canDelete?: boolean;
 }) {
+  const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [search, setSearch] = useState("");
   const [type, setType] = useState<HrDocumentType | "all">("all");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [page, setPage] = useState(0);
   const [open, setOpen] = useState<HrDocument | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  const handleDelete = async (doc: HrDocument) => {
+    const { confirmed } = await confirm({
+      title: doc.status === "signed" ? "Delete a SIGNED document?" : "Delete this document?",
+      description: doc.status === "signed"
+        ? `"${doc.title}" has been signed by ${doc.memberName}. Deleting it destroys the signed record permanently — open it and download the PDF first if you need a copy.`
+        : `"${doc.title}" will disappear from ${doc.memberName}'s profile as well as this list. Its reference number is not reused.`,
+      confirmText: "Delete",
+      variant: "destructive",
+    });
+    if (!confirmed || !doc.id) return;
+    setDeleting(doc.id);
+    try {
+      await deleteDocument(doc.id);
+      toast({ title: "Document deleted", description: `${HR_DOCUMENT_LABELS[doc.type]} for ${doc.memberName} was withdrawn.` });
+    } catch {
+      toast({ title: "Error", description: "Could not delete the document.", variant: "destructive" });
+    } finally {
+      setDeleting(null);
+    }
+  };
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -81,6 +116,7 @@ export default function AllDocumentsPanel({ documents, canSign, viewerId }: {
 
   return (
     <div data-test="all-documents-panel">
+      {ConfirmDialog}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="relative min-w-[200px] flex-1">
           <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -144,13 +180,8 @@ export default function AllDocumentsPanel({ documents, canSign, viewerId }: {
             {rows.map((d) => {
               const chip = STATUS_CHIP[d.status] || STATUS_CHIP.issued;
               return (
-                <button
-                  key={d.id}
-                  onClick={() => setOpen(d)}
-                  data-test="document-row"
-                  className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-accent/50"
-                >
-                  <div className="min-w-0">
+                <div key={d.id} className="flex items-center gap-2 px-4 py-3 hover:bg-accent/50" data-test="document-row">
+                  <button onClick={() => setOpen(d)} className="min-w-0 flex-1 text-left">
                     <p className="truncate text-sm font-medium text-foreground">
                       {HR_DOCUMENT_LABELS[d.type]}
                       <span className="text-muted-foreground"> · {d.memberName}</span>
@@ -161,11 +192,23 @@ export default function AllDocumentsPanel({ documents, canSign, viewerId }: {
                       {d.issuedByName ? ` · issued by ${d.issuedByName}` : ""}
                       {d.lastDownloadedAt ? " · downloaded" : d.firstViewedAt ? " · read" : ""}
                     </p>
-                  </div>
+                  </button>
                   <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${chip.className}`}>
                     <chip.Icon size={12} /> {chip.label}
                   </span>
-                </button>
+                  {canDelete && (
+                    <button
+                      onClick={() => handleDelete(d)}
+                      disabled={deleting === d.id}
+                      title="Delete this document"
+                      aria-label={`Delete ${HR_DOCUMENT_LABELS[d.type]} for ${d.memberName}`}
+                      data-test="document-delete"
+                      className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
               );
             })}
           </div>

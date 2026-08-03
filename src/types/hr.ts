@@ -320,6 +320,24 @@ export interface EmployeeProfile {
   workingDays?: string | null;
   /** Named shift, where the role has one ("General shift", "2 PM – 11 PM"). Most roles have none. */
   shiftDetails?: string | null;
+
+  /**
+   * When a fixed-term internship ends.
+   *
+   * A standing fact about the engagement rather than a per-letter question, for the same reason
+   * `salaryPayDay` is: a letter that had to be told it every time would print a different answer
+   * each time somebody forgot. It matters more than most fields here because an intern's college
+   * asks for the dates in writing before granting permission to attend.
+   */
+  internshipEndDate?: string | null;
+  /**
+   * What this intern will actually be trained on, where it differs from the department default.
+   *
+   * Interns hand their offer and joining letters to a college to get permission to attend, and
+   * what that college is looking for is evidence of structured learning — not a salary figure.
+   * Left blank, the letters print the department's standard training list.
+   */
+  internshipFocus?: string | null;
   /** Team lead or other critical senior role — attracts the longer notice period. */
   seniorRole?: boolean;
   /** Set only when this person's contract genuinely differs from policy. */

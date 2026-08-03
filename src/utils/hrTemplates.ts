@@ -1,7 +1,9 @@
 import { format } from "date-fns";
 import { COMPANY_DEFAULTS, resolveCompany, type ResolvedCompany } from "@/utils/company";
 import { formatPhoneDisplay } from "@/utils/phone";
-import { parseDate, probationEndDate, noticePeriodFor } from "@/utils/hrPolicy";
+import {
+  internshipSkillsFor, isInternship, noticePeriodFor, parseDate, probationEndDate,
+} from "@/utils/hrPolicy";
 import { ENGAGEMENT_LABELS, HR_DOCUMENT_LABELS } from "@/types/hr";
 import type { EmployeeProfile, HrDocumentType, IssuedSignatory } from "@/types/hr";
 
@@ -212,6 +214,78 @@ const additional = (extras?: HrDocumentExtras, startingAt = 90): (string | null)
     ? ["", `${startingAt}. Additional Terms`, extras.additionalTerms.trim()]
     : [];
 
+/**
+ * A numbered section, or `null` for one that does not apply to this employee.
+ *
+ * Sections are numbered by their position among the ones that survive, so adding a block that only
+ * appears for interns cannot leave a letter reading "5. Probation … 7. Leave". Hand-numbered
+ * headings had exactly that bug waiting in them, and it is the kind nobody notices until it is on
+ * paper in somebody's hand.
+ */
+type Section = { title: string; lines: (string | null)[] } | null;
+
+const numbered = (sections: Section[]): (string | null)[] => {
+  const out: (string | null)[] = [];
+  let n = 0;
+  for (const s of sections) {
+    if (!s) continue;
+    n += 1;
+    out.push("", `${n}. ${s.title}`, ...s.lines);
+  }
+  return out;
+};
+
+/** The trailing "Additional Terms" section, as a `Section` so it numbers itself like the rest. */
+const additionalSection = (extras?: HrDocumentExtras): Section =>
+  extras?.additionalTerms?.trim()
+    ? { title: "Additional Terms", lines: [extras.additionalTerms.trim()] }
+    : null;
+
+/**
+ * The internship block — the part a college actually reads.
+ *
+ * An intern hands these letters to their institution to be granted permission to attend, and the
+ * person deciding is not looking for the stipend. They are looking for: is this a real, structured
+ * training programme, who is supervising it, how long does it run, what will the student learn,
+ * and will there be something on paper at the end. A letter that states the designation and the
+ * money and stops gets the permission refused, and the student loses the placement.
+ *
+ * So this states all six, in that order, and says in as many words that the letter may be
+ * submitted to the institution — because the next question the college asks is whether the company
+ * minds it being forwarded.
+ *
+ * Returns nothing at all for a non-internship engagement.
+ */
+const internshipBlock = (
+  p: EmployeeProfile,
+  opts: { certificate?: boolean } = {},
+): (string | null)[] => {
+  if (!isInternship(p)) return [];
+  const skills = internshipSkillsFor(p);
+  const ends = p.internshipEndDate;
+  const duration = ends && p.joiningDate
+    ? `The internship runs from ${longDate(p.joiningDate)} to ${longDate(ends)}.`
+    : ends
+      ? `The internship concludes on ${longDate(ends)}.`
+      : "The internship is for a fixed term, as communicated to you and to your institution.";
+
+  return [
+    "This is a structured, supervised internship. You will be trained on the job and given real work under guidance, rather than being left to observe.",
+    duration,
+    p.reportingToName
+      ? `You will be mentored and supervised by ${p.reportingToName}, who will review your work and your progress through the internship.`
+      : "You will be mentored and supervised by an assigned member of the team, who will review your work and your progress through the internship.",
+    "",
+    "During the internship you will be trained in:",
+    ...skills.map((s, n) => `  ${n + 1}. ${s}`),
+    "",
+    opts.certificate
+      ? "On successful completion — satisfactory attendance, conduct and work — the company will issue an Internship Completion Certificate and, on request, an experience letter stating the period served and the work carried out."
+      : "On successful completion the company will issue an Internship Completion Certificate stating the period served and the work carried out.",
+    "This letter may be submitted to your college, university or institution for their records and for the grant of permission to undertake this internship. The company has no objection to it being forwarded for that purpose, and will respond to a reasonable verification request from your institution.",
+  ];
+};
+
 // ─── The templates ──────────────────────────────────────────────────────────
 
 function offerLetter(i: BuildDocumentInput): string {
@@ -226,47 +300,70 @@ function offerLetter(i: BuildDocumentInput): string {
     `Dear ${subject.name},`,
     "",
     `We are pleased to offer you the position described below at ${co.name}. This letter sets out the principal terms of the offer. Your employment will additionally be governed by the Appointment Letter / Employment Agreement and the company policies you will be asked to acknowledge on or before joining.`,
-    "",
-    "1. Position and Engagement",
-    `Designation: ${value(p.designation)}`,
-    `Engagement: ${engagementDescription(p)}`,
-    `Department: ${p.department === "tech" ? "Technical" : "Sales"}`,
-    p.reportingToName ? `Reporting to: ${p.reportingToName}` : null,
-    "",
-    "2. Work Location",
-    value(p.workLocation),
-    "",
-    "3. Date of Joining",
-    `You are expected to join on ${longDate(p.joiningDate)}.`,
-    "",
-    "4. Remuneration",
-    `Gross monthly salary (CTC): ${rupees(p.ctcMonthly)}`,
-    ordinalDay(p.salaryPayDay)
-      ? `Salary is payable monthly, on or about the ${ordinalDay(p.salaryPayDay)} of each month, subject to statutory deductions as applicable.`
-      : "Salary is payable monthly, subject to statutory deductions as applicable.",
-    "",
-    "5. Probation",
-    (p.probationMonths ?? 0) > 0
-      ? `You will be on probation for ${p.probationMonths} month(s) from your date of joining${probationEnds ? `, ending on ${longDate(probationEnds)}` : ""}. Your performance will be evaluated during this period, and your employment will be confirmed in writing on successful completion.`
-      : "This engagement does not carry a probation period.",
-    "",
-    "6. Working Hours and Days",
-    `Working hours: ${value(p.workingHours)}`,
-    `Working days: ${value(p.workingDays)}`,
-    p.shiftDetails ? `Shift: ${p.shiftDetails}` : null,
-    "",
-    "7. Leave",
-    "You will be entitled to leave in accordance with the company's leave policy as applicable to you from time to time. Leave is applied for and approved in advance through the company's system, except in an emergency, when it must be intimated at the earliest opportunity. The full policy will be shared with you on joining.",
-    "",
-    "8. Confidentiality",
-    "During the recruitment process and at all times afterwards, you shall keep confidential the terms of this offer and any information about the company, its clients and its work that is not in the public domain. On joining you will be asked to accept the confidentiality and intellectual property terms in full.",
-    "",
-    "9. Conditions of this Offer",
-    "This offer is subject to verification of the information and documents you provide, and to your signing the Appointment Letter / Employment Agreement, the Non-Disclosure and Intellectual Property terms, and the acknowledgement of company policies.",
-    extras?.offerValidUntil
-      ? `Please confirm your acceptance on or before ${longDate(extras.offerValidUntil)}. This offer stands withdrawn if it is not accepted by that date.`
-      : "Please confirm your acceptance by signing below.",
-    ...additional(extras, 10),
+    ...numbered([
+      {
+        title: "Position and Engagement",
+        lines: [
+          `Designation: ${value(p.designation)}`,
+          `Engagement: ${engagementDescription(p)}`,
+          `Department: ${p.department === "tech" ? "Technical" : "Sales"}`,
+          p.reportingToName ? `Reporting to: ${p.reportingToName}` : null,
+        ],
+      },
+      { title: "Work Location", lines: [value(p.workLocation)] },
+      { title: "Date of Joining", lines: [`You are expected to join on ${longDate(p.joiningDate)}.`] },
+      {
+        title: isInternship(p) ? "Stipend" : "Remuneration",
+        lines: [
+          isInternship(p)
+            ? `Monthly stipend: ${rupees(p.ctcMonthly)}`
+            : `Gross monthly salary (CTC): ${rupees(p.ctcMonthly)}`,
+          ordinalDay(p.salaryPayDay)
+            ? `Payable monthly, on or about the ${ordinalDay(p.salaryPayDay)} of each month, subject to statutory deductions as applicable.`
+            : "Payable monthly, subject to statutory deductions as applicable.",
+        ],
+      },
+      {
+        title: "Probation",
+        lines: [
+          (p.probationMonths ?? 0) > 0
+            ? `You will be on probation for ${p.probationMonths} month(s) from your date of joining${probationEnds ? `, ending on ${longDate(probationEnds)}` : ""}. Your performance will be evaluated during this period, and your employment will be confirmed in writing on successful completion.`
+            : isInternship(p)
+              ? "This is a fixed-term internship and does not carry a probation period."
+              : "This engagement does not carry a probation period.",
+        ],
+      },
+      // Only for an intern — and numbered by position, so the sections below renumber themselves.
+      isInternship(p)
+        ? { title: "Internship, Training and Supervision", lines: internshipBlock(p) }
+        : null,
+      {
+        title: "Working Hours and Days",
+        lines: [
+          `Working hours: ${value(p.workingHours)}`,
+          `Working days: ${value(p.workingDays)}`,
+          p.shiftDetails ? `Shift: ${p.shiftDetails}` : null,
+        ],
+      },
+      {
+        title: "Leave",
+        lines: ["You will be entitled to leave in accordance with the company's leave policy as applicable to you from time to time. Leave is applied for and approved in advance through the company's system, except in an emergency, when it must be intimated at the earliest opportunity. The full policy will be shared with you on joining."],
+      },
+      {
+        title: "Confidentiality",
+        lines: ["During the recruitment process and at all times afterwards, you shall keep confidential the terms of this offer and any information about the company, its clients and its work that is not in the public domain. On joining you will be asked to accept the confidentiality and intellectual property terms in full."],
+      },
+      {
+        title: "Conditions of this Offer",
+        lines: [
+          "This offer is subject to verification of the information and documents you provide, and to your signing the Appointment Letter / Employment Agreement, the Non-Disclosure and Intellectual Property terms, and the acknowledgement of company policies.",
+          extras?.offerValidUntil
+            ? `Please confirm your acceptance on or before ${longDate(extras.offerValidUntil)}. This offer stands withdrawn if it is not accepted by that date.`
+            : "Please confirm your acceptance by signing below.",
+        ],
+      },
+      additionalSection(extras),
+    ]),
     "",
     "We look forward to welcoming you to the team.",
     ...COMPANY_SIGNATURE_BLOCKS(i),
@@ -284,79 +381,129 @@ function appointmentLetter(i: BuildDocumentInput): string {
   // Stated as a figure as well as a ladder: an employee who has to work out which rung they are on
   // to know their own notice period has not really been told it.
   const notice = noticePeriodFor(p);
+  const intern = isInternship(p);
   return compose([
-    ...letterHead(i, "Appointment Letter and Employment Agreement"),
+    ...letterHead(i, intern ? "Internship Appointment Letter and Agreement" : "Appointment Letter and Employment Agreement"),
     `Dear ${subject.name},`,
     "",
-    `With reference to your acceptance of our offer, we are pleased to confirm your appointment at ${co.name} on the following terms and conditions.`,
-    "",
-    "1. Position, Engagement and Reporting",
-    `Designation: ${value(p.designation)}`,
-    `Engagement: ${engagementDescription(p)}`,
-    p.reportingToName ? `Reporting to: ${p.reportingToName}` : null,
-    `Date of joining: ${longDate(p.joiningDate)}`,
-    "",
-    "2. Place of Work",
-    `${value(p.workLocation)}. The company may, with reasonable notice, require you to work from another of its locations or from a client site where the role requires it.`,
-    "",
-    "3. Remuneration",
-    `Gross monthly salary (CTC): ${rupees(p.ctcMonthly)}, payable monthly${ordinalDay(p.salaryPayDay) ? ` on or about the ${ordinalDay(p.salaryPayDay)} of each month` : ""}. Revisions, if any, are at the discretion of the company and will be communicated in writing.`,
-    "Salary is paid by bank transfer. You are required to hold a bank account in your own name and to provide its details, together with your PAN, before your first salary is processed.",
-    "Statutory deductions — income tax deducted at source (TDS), and Provident Fund and ESI where applicable — will be made from your salary as required by law.",
-    "",
-    "4. Probation and Confirmation",
-    (p.probationMonths ?? 0) > 0
-      ? `You will be on probation for ${p.probationMonths} month(s) from the date of joining${probationEnds ? `, ending on ${longDate(probationEnds)}` : ""}. During probation your attendance, discipline, work quality, productivity, communication, teamwork, learning ability and adherence to company policies will be evaluated. The company may, where the circumstances warrant it, extend the probation period by written notice stating the extension and the expectations to be met. Your employment will be confirmed in writing on successful completion of probation.`
-      : "This engagement does not carry a probation period.",
-    "",
-    "5. Working Hours, Days and Shift",
-    `Working hours: ${value(p.workingHours)}. Working days: ${value(p.workingDays)}.`,
-    p.shiftDetails ? `Shift: ${p.shiftDetails}.` : null,
-    "You may be required to work such additional hours as are reasonably necessary for the proper performance of your duties.",
-    "",
-    "6. Leave, Attendance and Punctuality",
-    "You will be entitled to leave in accordance with the company's leave policy as applicable to you from time to time. Leave must be applied for and approved through the company's system in advance, except in an emergency, when it must be intimated at the earliest opportunity.",
-    "You are required to record your attendance through the company's system on every working day, and to be available and working within your working hours. Persistent late arrival, unrecorded attendance or absence without intimation is treated as a matter of discipline and may be dealt with under the company's disciplinary policy.",
-    "",
-    "7. Remote Work",
-    "Where the company permits you to work remotely, whether occasionally or as a regular arrangement, the same working hours, attendance recording, availability, confidentiality and data-protection obligations apply as they do at the workplace. Permission to work remotely is granted at the company's discretion and may be withdrawn.",
-    "",
-    "8. Your Responsibilities",
-    "You shall perform the duties assigned to you diligently and to the standard the role requires; comply with the company's policies as amended from time to time; maintain the confidentiality of company and client information; take proper care of company assets issued to you; observe the code of conduct in your dealings with colleagues, clients and partners; record your attendance and apply for leave as required; report to your reporting manager and keep them informed of the progress of your work; and act at all times in the company's best interests.",
-    "",
-    "9. Confidentiality",
-    "You shall not, during your employment or at any time after it ends, disclose or use any confidential information of the company, its clients or its partners, except as required for the proper performance of your duties or by law. Confidential information includes client data, pricing, business plans, source code, prompts, creative assets, processes and any information not in the public domain.",
-    "",
-    "10. Intellectual Property",
-    "All work product, inventions, designs, creative material, code, prompts, documentation and other intellectual property created by you in the course of your employment, or using company resources, shall vest solely in the company. You agree to execute any document reasonably required to give effect to this clause. Your confidentiality and intellectual property obligations continue after your employment ends.",
-    "",
-    "11. Conduct and Discipline",
-    "You shall comply with the company's policies, maintain professional conduct, and act in the company's best interests. Misconduct will be dealt with under the company's misconduct and disciplinary policy, which provides for the process to be followed before any action is taken.",
-    "",
-    "12. Conflict of Interest",
-    "You shall not, during your employment, engage in any business, employment or activity that conflicts with the company's interests or with the proper performance of your duties, without the company's prior written consent. You shall disclose to the company any personal, financial or family interest that could reasonably be seen as a conflict.",
-    "",
-    "13. Non-Solicitation",
-    "For twelve months after your employment ends, you shall not solicit, for yourself or for any other person or business, any client of the company you dealt with in the last twelve months of your employment, nor induce any employee of the company to leave it. This clause is limited to what is reasonable to protect the company's legitimate business interests and does not restrain you from taking up lawful employment of your choice.",
-    "",
-    "14. Background Verification",
-    "This appointment is subject to verification of the information, documents and references you have provided. If any of it is found to be false or materially misleading, the company may withdraw this appointment or end your employment, following the process the disciplinary policy and applicable law require.",
-    "",
-    "15. Notice Period and Termination",
-    "Either party may end this employment by giving written notice in accordance with the notice period applicable to your stage of employment, as set out in the company's notice policy and summarised below:",
-    "Intern — 7 days. Full-time or part-time employee during probation — 15 days. Confirmed employee — 30 days. Team lead or other critical senior role — 45 days.",
-    `The notice period applicable to you at the date of this letter is ${notice.days} day(s) — ${notice.label.toLowerCase()}.`,
-    "The notice period may be shortened or waived by mutual written agreement. Payment in lieu of unserved notice may be agreed in writing, subject to applicable law. Termination on grounds of misconduct follows the disciplinary procedure and applicable law rather than this clause.",
-    "",
-    "16. Return of Company Property",
-    "On the last working day, or earlier if the company asks, you shall complete a proper handover and return all company property issued to you, including the ID card, laptop, phone, SIM, access cards, documents and any other assets recorded against your name. Your full and final settlement will be processed after the handover and the return of company property are complete, in accordance with company policy and applicable law.",
-    "",
-    "17. Amendment and Governing Terms",
-    "This letter, together with the company policies referred to in it, constitutes the terms of your employment. The company may amend its policies from time to time and will inform you of material changes. No change to the terms of this letter is effective unless made in writing. Nothing in this letter overrides any right you have under applicable law.",
-    "",
-    "18. Governing Law and Jurisdiction",
-    "This letter and your employment are governed by the laws of India, and the courts having jurisdiction over the place of work stated above shall have jurisdiction over any dispute arising from them.",
-    ...additional(extras, 19),
+    intern
+      ? `With reference to your acceptance of our offer, we are pleased to confirm your internship at ${co.name} on the following terms and conditions.`
+      : `With reference to your acceptance of our offer, we are pleased to confirm your appointment at ${co.name} on the following terms and conditions.`,
+    ...numbered([
+      {
+        title: "Position, Engagement and Reporting",
+        lines: [
+          `Designation: ${value(p.designation)}`,
+          `Engagement: ${engagementDescription(p)}`,
+          p.reportingToName ? `Reporting to: ${p.reportingToName}` : null,
+          `Date of joining: ${longDate(p.joiningDate)}`,
+        ],
+      },
+      {
+        title: "Place of Work",
+        lines: [`${value(p.workLocation)}. The company may, with reasonable notice, require you to work from another of its locations or from a client site where the role requires it.`],
+      },
+      {
+        title: intern ? "Stipend" : "Remuneration",
+        lines: [
+          intern
+            ? `Monthly stipend: ${rupees(p.ctcMonthly)}, payable monthly${ordinalDay(p.salaryPayDay) ? ` on or about the ${ordinalDay(p.salaryPayDay)} of each month` : ""}.`
+            : `Gross monthly salary (CTC): ${rupees(p.ctcMonthly)}, payable monthly${ordinalDay(p.salaryPayDay) ? ` on or about the ${ordinalDay(p.salaryPayDay)} of each month` : ""}. Revisions, if any, are at the discretion of the company and will be communicated in writing.`,
+          "Payment is made by bank transfer. You are required to hold a bank account in your own name and to provide its details, together with your PAN, before your first payment is processed.",
+          "Statutory deductions — income tax deducted at source (TDS), and Provident Fund and ESI where applicable — will be made as required by law.",
+        ],
+      },
+      {
+        title: "Probation and Confirmation",
+        lines: [
+          (p.probationMonths ?? 0) > 0
+            ? `You will be on probation for ${p.probationMonths} month(s) from the date of joining${probationEnds ? `, ending on ${longDate(probationEnds)}` : ""}. During probation your attendance, discipline, work quality, productivity, communication, teamwork, learning ability and adherence to company policies will be evaluated. The company may, where the circumstances warrant it, extend the probation period by written notice stating the extension and the expectations to be met. Your employment will be confirmed in writing on successful completion of probation.`
+            : intern
+              ? "This is a fixed-term internship and does not carry a probation period. Your attendance, conduct and work will be reviewed through the internship by your supervisor."
+              : "This engagement does not carry a probation period.",
+        ],
+      },
+      // Only for an intern, and numbered by position — every section below renumbers itself.
+      intern
+        ? { title: "Internship, Training and Supervision", lines: internshipBlock(p, { certificate: true }) }
+        : null,
+      {
+        title: "Working Hours, Days and Shift",
+        lines: [
+          `Working hours: ${value(p.workingHours)}. Working days: ${value(p.workingDays)}.`,
+          p.shiftDetails ? `Shift: ${p.shiftDetails}.` : null,
+          intern
+            ? "Where your institution requires you to attend classes or examinations, the company will accommodate reasonable adjustments to these hours on prior written request."
+            : "You may be required to work such additional hours as are reasonably necessary for the proper performance of your duties.",
+        ],
+      },
+      {
+        title: "Leave, Attendance and Punctuality",
+        lines: [
+          "You will be entitled to leave in accordance with the company's leave policy as applicable to you from time to time. Leave must be applied for and approved through the company's system in advance, except in an emergency, when it must be intimated at the earliest opportunity.",
+          "You are required to record your attendance through the company's system on every working day, and to be available and working within your working hours. Persistent late arrival, unrecorded attendance or absence without intimation is treated as a matter of discipline and may be dealt with under the company's disciplinary policy.",
+        ],
+      },
+      {
+        title: "Remote Work",
+        lines: ["Where the company permits you to work remotely, whether occasionally or as a regular arrangement, the same working hours, attendance recording, availability, confidentiality and data-protection obligations apply as they do at the workplace. Permission to work remotely is granted at the company's discretion and may be withdrawn."],
+      },
+      {
+        title: "Your Responsibilities",
+        lines: ["You shall perform the duties assigned to you diligently and to the standard the role requires; comply with the company's policies as amended from time to time; maintain the confidentiality of company and client information; take proper care of company assets issued to you; observe the code of conduct in your dealings with colleagues, clients and partners; record your attendance and apply for leave as required; report to your reporting manager and keep them informed of the progress of your work; and act at all times in the company's best interests."],
+      },
+      {
+        title: "Confidentiality",
+        lines: ["You shall not, during your employment or at any time after it ends, disclose or use any confidential information of the company, its clients or its partners, except as required for the proper performance of your duties or by law. Confidential information includes client data, pricing, business plans, source code, prompts, creative assets, processes and any information not in the public domain."],
+      },
+      {
+        title: "Intellectual Property",
+        lines: ["All work product, inventions, designs, creative material, code, prompts, documentation and other intellectual property created by you in the course of your employment, or using company resources, shall vest solely in the company. You agree to execute any document reasonably required to give effect to this clause. Your confidentiality and intellectual property obligations continue after your employment ends."],
+      },
+      {
+        title: "Conduct and Discipline",
+        lines: ["You shall comply with the company's policies, maintain professional conduct, and act in the company's best interests. Misconduct will be dealt with under the company's misconduct and disciplinary policy, which provides for the process to be followed before any action is taken."],
+      },
+      {
+        title: "Conflict of Interest",
+        lines: ["You shall not, during your employment, engage in any business, employment or activity that conflicts with the company's interests or with the proper performance of your duties, without the company's prior written consent. You shall disclose to the company any personal, financial or family interest that could reasonably be seen as a conflict."],
+      },
+      {
+        title: "Non-Solicitation",
+        lines: ["For twelve months after your employment ends, you shall not solicit, for yourself or for any other person or business, any client of the company you dealt with in the last twelve months of your employment, nor induce any employee of the company to leave it. This clause is limited to what is reasonable to protect the company's legitimate business interests and does not restrain you from taking up lawful employment of your choice."],
+      },
+      {
+        title: "Background Verification",
+        lines: ["This appointment is subject to verification of the information, documents and references you have provided. If any of it is found to be false or materially misleading, the company may withdraw this appointment or end your employment, following the process the disciplinary policy and applicable law require."],
+      },
+      {
+        title: intern ? "Completion and Early Termination" : "Notice Period and Termination",
+        lines: intern
+          ? [
+            "This internship ends on the date stated above without further notice. Either party may end it earlier by giving seven (7) days' written notice.",
+            "Where the internship is ended early by the company for any reason other than misconduct, a certificate stating the period actually served will still be issued, so that your institution has a record of the time completed.",
+          ]
+          : [
+            "Either party may end this employment by giving written notice in accordance with the notice period applicable to your stage of employment, as set out in the company's notice policy and summarised below:",
+            "Intern — 7 days. Full-time or part-time employee during probation — 15 days. Confirmed employee — 30 days. Team lead or other critical senior role — 45 days.",
+            `The notice period applicable to you at the date of this letter is ${notice.days} day(s) — ${notice.label.toLowerCase()}.`,
+            "The notice period may be shortened or waived by mutual written agreement. Payment in lieu of unserved notice may be agreed in writing, subject to applicable law. Termination on grounds of misconduct follows the disciplinary procedure and applicable law rather than this clause.",
+          ],
+      },
+      {
+        title: "Return of Company Property",
+        lines: ["On the last working day, or earlier if the company asks, you shall complete a proper handover and return all company property issued to you, including the ID card, laptop, phone, SIM, access cards, documents and any other assets recorded against your name. Your full and final settlement will be processed after the handover and the return of company property are complete, in accordance with company policy and applicable law."],
+      },
+      {
+        title: "Amendment and Governing Terms",
+        lines: ["This letter, together with the company policies referred to in it, constitutes the terms of your engagement. The company may amend its policies from time to time and will inform you of material changes. No change to the terms of this letter is effective unless made in writing. Nothing in this letter overrides any right you have under applicable law."],
+      },
+      {
+        title: "Governing Law and Jurisdiction",
+        lines: ["This letter and your engagement are governed by the laws of India, and the courts having jurisdiction over the place of work stated above shall have jurisdiction over any dispute arising from them."],
+      },
+      additionalSection(extras),
+    ]),
     "",
     "Please sign below to confirm that you have read, understood and accepted these terms.",
     ...COMPANY_SIGNATURE_BLOCKS(i),

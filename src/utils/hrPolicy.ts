@@ -410,6 +410,57 @@ const SIGNATURE_REQUIRED: HrDocumentType[] = [
 export const requiresEmployeeSignature = (type: HrDocumentType): boolean =>
   SIGNATURE_REQUIRED.includes(type);
 
+// ─── Internships ────────────────────────────────────────────────────────────
+
+/**
+ * What an intern is actually trained on, per department.
+ *
+ * This exists because of who reads it. An intern takes their offer letter and joining letter to
+ * their college to be granted permission to attend, and the person deciding is looking for one
+ * thing: evidence that this is a structured training programme and not unpaid labour. A letter
+ * that states the role and the stipend and stops answers none of that.
+ *
+ * Written as skills a syllabus would recognise, in the order they are actually taught.
+ */
+export const INTERNSHIP_SKILLS: Record<Department, string[]> = {
+  tech: [
+    "AI-assisted advertisement creation, end to end",
+    "Prompt engineering for image and video generation models",
+    "Script writing, voice-over drafting and localisation",
+    "Video editing, post-production and export standards",
+    "Brand and creative asset management",
+    "Reading a client requirement and turning it into a production brief",
+    "Quality review, revision handling and delivery workflows",
+    "Professional communication, documentation and workplace discipline",
+  ],
+  sales: [
+    "Lead generation, qualification and pipeline hygiene",
+    "Client communication and needs discovery",
+    "Consultative selling and solution positioning",
+    "Proposal preparation, pricing basics and quotations",
+    "Negotiation and objection handling",
+    "CRM discipline and accurate record keeping",
+    "Post-sale relationship management and account follow-up",
+    "Professional communication, documentation and workplace discipline",
+  ],
+};
+
+/** The training list for one employee — their own focus where set, the department's otherwise. */
+export function internshipSkillsFor(profile: EmployeeProfile): string[] {
+  const own = (profile.internshipFocus || "").trim();
+  if (own) {
+    // Accept either a newline list or a comma-separated sentence — an admin will type both.
+    const parts = own.includes("\n") ? own.split("\n") : own.split(/,(?![^(]*\))/);
+    const cleaned = parts.map((s) => s.trim().replace(/^[-•*]\s*/, "")).filter(Boolean);
+    if (cleaned.length > 0) return cleaned;
+  }
+  return INTERNSHIP_SKILLS[profile.department] || INTERNSHIP_SKILLS.tech;
+}
+
+/** Whether this engagement is the kind a college needs paperwork for. */
+export const isInternship = (profile: EmployeeProfile): boolean =>
+  profile.engagementType === "intern";
+
 // ─── Who signs for the company ──────────────────────────────────────────────
 
 /**

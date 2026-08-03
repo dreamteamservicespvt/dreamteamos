@@ -2,6 +2,29 @@ import { forwardRef } from "react";
 import { format } from "date-fns";
 import { LetterheadFoot, LetterheadTop } from "@/components/agreement/Letterhead";
 
+/**
+ * A document, rendered the way a document is supposed to look.
+ *
+ * The governing constraint: an offer letter gets shown to a bank, a landlord, a college admissions
+ * office and the next employer. It has to survive being looked at by someone who deals with real
+ * company paperwork every day. That rules out anything that reads as a web interface — tinted
+ * cards, rounded chips, coloured labels — however useful those are on screen. Everything here is
+ * ink on paper: rules, weight and spacing, no fills.
+ *
+ * The header block (Ref / Date / Employee Name / ID) is laid out as an aligned label-value table
+ * rather than sentences, because that is how a formal Indian business letter opens and because it
+ * is the part a reader scans first.
+ *
+ * Fixed hex colours, no theme tokens and no dark-mode variants: this is captured to PDF by
+ * html2canvas, which resolves computed styles at capture time, so a document built from theme
+ * tokens comes out dark grey for anyone browsing in dark mode.
+ */
+
+const INK = "#1e293b";
+const HEADING = "#0f172a";
+const MUTED = "#64748b";
+const RULE = "#cbd5e1";
+
 export interface AgreementViewData {
   bodyText: string;
   /**
@@ -96,13 +119,13 @@ const isAllCaps = (l: string) => l.length > 2 && l === l.toUpperCase() && /[A-Z]
  * "Employee Signature:" — or a bare "Signature:" — is the employee's. A line that names the
  * company as signer ("For Dream Team Services — Chief Executive Officer Signature:", "Employer
  * Signature:", "HR Signature:") is the company's. Anything else — a witness line, say — gets a
- * blank ruled box, which is exactly what it got before two-sided signing existed.
+ * blank ruled line, which is exactly what it got before two-sided signing existed.
  *
  * The leading `For …` test matters more than it looks: every letter this company generates opens
  * its company block that way, and the words after the dash are now the signing office ("Chief
  * Executive Officer", "CTO (Tech Admin)") rather than the fixed phrase "Authorised Signatory".
  * Matching only on that old phrase silently demoted the company's own signature to a blank ruled
- * box — the letter rendered, and the signature simply was not on it.
+ * line — the letter rendered, and the signature simply was not on it.
  */
 const signatureSide = (l: string): "employee" | "company" | "other" => {
   if (/employee/i.test(l)) return "employee";
@@ -111,17 +134,25 @@ const signatureSide = (l: string): "employee" | "company" | "other" => {
   return /^signature\s*:/i.test(l.trim()) ? "employee" : "other";
 };
 
-/** The `Name:` / `Designation:` / `Date:` lines that belong to the signature block above them. */
-const META_LINE = /^(Name|Designation|Date)\s*:\s*(.*)$/i;
-
-/** Employee-detail labels whose filled values get the highlight treatment. */
-const HIGHLIGHT_LABEL = /^(Employee Name|Employee ID|Mobile Number|Date)\s*:/i;
+/**
+ * The lines that belong to the signature block above them, rather than to the letter.
+ *
+ * Absorption stops at the first line that does not match, which is correct — but it means every
+ * label a template puts in a signature block has to be listed here. `Employee ID` was not, so an
+ * employee block reading Name / Employee ID / Date absorbed only the name, broke, and left a bare
+ * "Date:" to flow on as body text — far enough down a long letter to be pushed onto a page of its
+ * own. A whole extra sheet, carrying one word.
+ */
+const META_LINE = /^(Name|Designation|Date|Employee ID)\s*:\s*(.*)$/i;
 
 /**
- * Renders pasted agreement text as a clean, print-ready A4-ish document.
- * A plain white "paper" look (theme-independent) so the on-screen preview matches the PDF.
- * The member's auto-filled details (name, mobile, date) and the signature blocks are highlighted.
+ * The reference block a formal letter opens with.
+ *
+ * Only the *leading* run of these counts — "Date:" also appears inside a signature block, and
+ * pulling that one into the header would move the company's signing date to the top of the page.
  */
+const HEADER_FIELD = /^(Ref|Date|Employee Name|Employee ID|Mobile Number|Email|Address)\s*:\s*(.*)$/i;
+
 const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function AgreementView(data, ref) {
   const filled = fillAgreementText(data.bodyText, data);
   const lines = filled.replace(/\r/g, "").split("\n");
@@ -134,20 +165,34 @@ const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function Agr
     else if (titleLines.length > 0) break;
     i++;
   }
-  const body = lines.slice(i);
+  const rest = lines.slice(i);
+
+  // The reference block: everything from the top that is a `Label: value` header field. Stops at
+  // the first real line of the letter, which is normally the salutation.
+  const header: { label: string; value: string }[] = [];
+  let j = 0;
+  while (j < rest.length) {
+    const l = rest[j].trim();
+    if (l === "") { j++; continue; }
+    const m = l.match(HEADER_FIELD);
+    if (!m) break;
+    header.push({ label: m[1], value: m[2].trim() });
+    j++;
+  }
+  const body = rest.slice(j);
 
   // Pull the Name/Designation/Date lines that follow a signature line INTO that signature block,
-  // so a signature reads as one boxed unit instead of a box followed by three stray labels.
+  // so a signature reads as one unit instead of a rule followed by three stray labels.
   const signatureMeta = new Map<number, Record<string, string>>();
   const absorbed = new Set<number>();
   body.forEach((raw, idx) => {
     if (!isSignatureLine(raw.trim())) return;
     const meta: Record<string, string> = {};
-    for (let j = idx + 1; j < body.length; j++) {
-      const match = body[j].trim().match(META_LINE);
+    for (let k = idx + 1; k < body.length; k++) {
+      const match = body[k].trim().match(META_LINE);
       if (!match) break;
       meta[match[1].toLowerCase()] = match[2].trim();
-      absorbed.add(j);
+      absorbed.add(k);
     }
     signatureMeta.set(idx, meta);
   });
@@ -180,26 +225,52 @@ const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function Agr
   return (
     <div
       ref={ref}
-      style={{ colorScheme: "light" }}
-      className="mx-auto w-full max-w-[820px] bg-white text-slate-800 px-7 py-8 md:px-12 md:py-12 shadow-sm"
+      data-pdf="paper"
+      style={{ colorScheme: "light", color: INK }}
+      className="mx-auto w-full max-w-[820px] bg-white px-8 py-9 md:px-14 md:py-12 shadow-sm"
     >
       {data.letterhead && <LetterheadTop logoUrl={data.logoUrl} />}
 
       {titleLines.length > 0 && (
-        <div data-pdf="title" className="text-center mb-6 pb-4 border-b-2 border-slate-200">
-          {titleLines.map((t, idx) => (
-            <div key={idx} className={idx === 0 ? "text-xl md:text-2xl font-extrabold tracking-tight text-slate-900" : "text-sm md:text-base font-semibold text-slate-600 mt-0.5"}>
+        <div data-pdf="title" style={{ textAlign: "center", marginBottom: 22 }}>
+          <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: 0.4, color: HEADING, lineHeight: 1.25 }}>
+            {titleLines[0]}
+          </div>
+          {titleLines.slice(1).map((t, idx) => (
+            <div key={idx} style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: 1.4, color: MUTED, marginTop: 4 }}>
               {t}
             </div>
           ))}
+          {/* A short centred rule under the title, rather than a full-width border: it reads as a
+              typographic flourish on a letter, where a full rule reads as a table edge. */}
+          <div style={{ width: 64, height: 2, background: HEADING, margin: "12px auto 0", borderRadius: 1 }} />
         </div>
       )}
 
-      <div data-pdf="body" className="space-y-2.5 text-[13px] md:text-[14px] leading-relaxed">
+      {header.length > 0 && (
+        <div data-pdf="header-block" style={{ marginBottom: 20 }}>
+          <table style={{ borderCollapse: "collapse" }}>
+            <tbody>
+              {header.map((f, idx) => (
+                <tr key={idx}>
+                  <td style={{ padding: "2px 14px 2px 0", fontSize: 12.5, color: MUTED, whiteSpace: "nowrap", verticalAlign: "top" }}>
+                    {f.label}
+                  </td>
+                  <td style={{ padding: "2px 0", fontSize: 12.5, fontWeight: 600, color: HEADING }}>
+                    {f.value || "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div data-pdf="body" style={{ fontSize: 13.5, lineHeight: 1.75 }}>
         {body.map((raw, idx) => {
           if (absorbed.has(idx)) return null;
           const l = raw.trim();
-          if (l === "") return <div key={idx} className="h-1.5" />;
+          if (l === "") return <div key={idx} style={{ height: 8 }} />;
 
           if (isSignatureLine(l)) {
             const label = l.split(":")[0];
@@ -225,91 +296,102 @@ const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function Agr
             const stamp = isCompany && (companyLineOrder.get(idx) ?? 0) === 0 ? data.companyStampUrl : null;
 
             return (
-              <div key={idx} className="mt-5">
-                <div className={`relative inline-block rounded-lg border px-4 pt-2 pb-1.5 ${isCompany ? "border-sky-300 bg-sky-50" : "border-amber-300 bg-amber-50"}`}>
+              <div key={idx} data-pdf="signature" style={{ marginTop: 26, breakInside: "avoid" }}>
+                <div style={{ position: "relative", display: "inline-block", minWidth: 260 }}>
                   {/* The seal sits across the signature, as it would on paper — semi-transparent so
-                      it never hides the name underneath it.
-
-                      Anchored below the label rather than over it: the line now names the signing
-                      office in full ("Chief Executive Officer" rather than "Authorised Signatory"),
-                      and a seal pinned to the top of the box landed squarely on the last word of it.
-                      Over the signature is also simply where a stamp goes on paper. */}
+                      it never hides the name underneath it. */}
                   {stamp && (
                     <img
                       data-stamp="true"
                       src={stamp}
                       alt=""
                       crossOrigin="anonymous"
-                      className="pointer-events-none absolute -right-6 top-6 h-[86px] w-[86px] object-contain opacity-80 mix-blend-multiply"
+                      style={{
+                        // Below the office label and across the signature, which is where a stamp
+                        // lands on paper — and, with the office now named in full, the only place
+                        // it does not sit on top of the words.
+                        position: "absolute", right: -20, top: 20, height: 82, width: 82,
+                        objectFit: "contain", opacity: 0.75, pointerEvents: "none",
+                        mixBlendMode: "multiply",
+                      }}
                     />
                   )}
-                  <div className={`text-[11px] font-semibold uppercase tracking-wide mb-1 ${isCompany ? "text-sky-700" : "text-amber-700"}`}>
-                    {label}
+                  <div style={{ fontSize: 11, color: MUTED, marginBottom: 2 }}>{label}</div>
+                  <div style={{ display: "flex", alignItems: "flex-end", height: 62 }}>
+                    {imageUrl ? (
+                      /* mix-blend-multiply drops whitish photo backgrounds into the white paper,
+                         so uploaded photo signatures print as cleanly as drawn ones. */
+                      <img
+                        data-signature="true"
+                        src={imageUrl}
+                        alt="signature"
+                        crossOrigin="anonymous"
+                        style={{ height: 58, maxWidth: 240, objectFit: "contain", objectPosition: "left bottom", mixBlendMode: "multiply" }}
+                      />
+                    ) : (
+                      <span style={{ fontSize: 10.5, color: "#94a3b8", fontStyle: "italic", paddingBottom: 4 }}>
+                        Awaiting signature
+                      </span>
+                    )}
                   </div>
-                  {imageUrl ? (
-                    <div>
-                      <div className="flex items-end min-h-[72px]">
-                        {/* mix-blend-multiply drops whitish photo backgrounds into the white paper,
-                            so uploaded photo signatures print as cleanly as drawn ones. */}
-                        <img
-                          data-signature="true"
-                          src={imageUrl}
-                          alt="signature"
-                          crossOrigin="anonymous"
-                          className="h-[68px] object-contain object-left-bottom mix-blend-multiply"
-                          style={{ maxWidth: 260 }}
-                        />
-                      </div>
-                      <div className="border-t border-slate-500 mt-1 pt-1 min-w-[220px]">
-                        <span className="text-[11px] font-semibold text-slate-700">{name}</span>
-                        {designation && <span className="text-[11px] text-slate-500"> · {designation}</span>}
-                        {dateLabel && <span className="text-[11px] text-slate-500"> · {dateLabel}</span>}
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <div className="h-14 min-w-[220px] border-b border-slate-500 flex items-end pb-1">
-                        <span className="text-[10px] text-slate-400 italic">Awaiting signature</span>
-                      </div>
-                      {(name || designation) && (
-                        <div className="pt-1 min-w-[220px]">
-                          <span className="text-[11px] font-semibold text-slate-700">{name}</span>
-                          {designation && <span className="text-[11px] text-slate-500"> · {designation}</span>}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  {/* The rule IS the signature line. Nothing is boxed, tinted or rounded — this is
+                      the single place a document most obviously stops looking like a document. */}
+                  <div style={{ borderTop: `1px solid ${INK}`, paddingTop: 5, minWidth: 260 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: HEADING }}>{name || " "}</div>
+                    {designation && <div style={{ fontSize: 11.5, color: MUTED }}>{designation}</div>}
+                    {meta["employee id"] && (
+                      <div style={{ fontSize: 11.5, color: MUTED }}>Employee ID: {meta["employee id"]}</div>
+                    )}
+                    {/* The label prints even unsigned, so there is somewhere to date it by hand if
+                        the letter is printed and signed on paper. */}
+                    <div style={{ fontSize: 11.5, color: MUTED }}>Date:{dateLabel ? ` ${dateLabel}` : ""}</div>
+                  </div>
                 </div>
               </div>
             );
           }
 
-          // Highlight the auto-filled employee details (Name / Employee ID / Mobile / Date).
-          const hl = l.match(HIGHLIGHT_LABEL);
-          if (hl) {
-            const label = hl[1];
-            const value = l.slice(hl[0].length).trim();
+          // An indented numbered line is an item in a list inside a section — the training list in
+          // an internship letter — not a new section. Both look like "1. Something" once the line
+          // is trimmed, so the indentation on the raw line is the only thing that tells them apart,
+          // and without this check every skill in that list rendered as a bold heading.
+          if (/^\s{2,}/.test(raw) && /^\d+[.)]\s/.test(l)) {
             return (
-              <div key={idx} className="flex items-baseline gap-2 flex-wrap">
-                <span className="font-semibold text-slate-700">{label}:</span>
-                <span className="rounded-md bg-amber-100 border border-amber-300 px-2 py-0.5 font-bold text-slate-900">{value || "—"}</span>
-              </div>
+              <p key={idx} style={{ margin: "1px 0 1px 22px", textIndent: -14 }}>{l}</p>
             );
           }
 
           if (isSectionHeading(l)) {
-            return <div key={idx} className="mt-4 mb-0.5 font-bold text-slate-900 text-[14px] md:text-[15px]">{l}</div>;
+            return (
+              <div key={idx} data-pdf="heading" style={{ marginTop: 18, marginBottom: 2, fontSize: 13.5, fontWeight: 700, color: HEADING }}>
+                {l}
+              </div>
+            );
           }
           if (isAllCaps(l)) {
-            return <div key={idx} className="mt-3 font-semibold text-slate-800">{l}</div>;
+            return (
+              <div key={idx} data-pdf="heading" style={{ marginTop: 16, marginBottom: 2, fontSize: 12.5, fontWeight: 700, letterSpacing: 0.8, color: HEADING }}>
+                {l}
+              </div>
+            );
           }
-          return <p key={idx} className="text-slate-700">{l}</p>;
+          // A remaining `Label: value` line inside the body — printed plainly, label muted.
+          const inline = l.match(/^([A-Z][A-Za-z /&'()-]{2,34})\s*:\s*(.+)$/);
+          if (inline) {
+            return (
+              <p key={idx} style={{ margin: "3px 0", textAlign: "justify" }}>
+                <span style={{ color: MUTED }}>{inline[1]}: </span>
+                <span style={{ fontWeight: 600, color: HEADING }}>{inline[2]}</span>
+              </p>
+            );
+          }
+          return <p key={idx} style={{ margin: "3px 0", textAlign: "justify" }}>{l}</p>;
         })}
       </div>
 
       {(data.signedName || data.signedDate) && (
-        <div data-pdf="footer" className="mt-8 pt-4 border-t border-slate-200 text-[12px] text-slate-500">
-          Signed by <span className="font-semibold text-slate-700">{data.signedName || data.memberName}</span>
+        <div data-pdf="footer" style={{ marginTop: 26, paddingTop: 10, borderTop: `1px solid ${RULE}`, fontSize: 11.5, color: MUTED }}>
+          Signed by <span style={{ fontWeight: 700, color: HEADING }}>{data.signedName || data.memberName}</span>
           {signedDateLabel ? ` on ${signedDateLabel}` : ""}.
         </div>
       )}

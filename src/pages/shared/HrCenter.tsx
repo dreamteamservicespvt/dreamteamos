@@ -92,6 +92,8 @@ export default function HrCenter() {
   const awaiting = documents.filter((d) => d.requiresEmployeeSignature && d.status === "issued").length;
   const missingCount = missingLetters.reduce((n, r) => n + r.missing.length, 0);
   const settingsPath = user?.role === "sales_admin" ? "/sales-admin/settings" : "/tech-admin/settings";
+  // A team leader can see the register but must not be able to withdraw a letter an admin issued.
+  const isAdmin = user?.role === "tech_admin" || user?.role === "sales_admin" || user?.role === "main_admin";
 
   const badge = (key: TabKey): number =>
     key === "documents" ? awaiting : key === "missing" ? missingCount : 0;
@@ -130,7 +132,9 @@ export default function HrCenter() {
         ))}
       </div>
 
-      {tab === "documents" && <AllDocumentsPanel documents={documents} />}
+      {tab === "documents" && (
+        <AllDocumentsPanel documents={documents} canDelete={isAdmin} />
+      )}
 
       {tab === "missing" && user && (
         <MissingLettersPanel
