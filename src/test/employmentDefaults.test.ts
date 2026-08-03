@@ -25,6 +25,30 @@ describe("filling the blanks", () => {
     expect(filled.workingDays).toBe("Monday – Saturday");
   });
 
+  it("upgrades a record still carrying the old city-only default", () => {
+    // Not an overwrite of somebody's decision: this string WAS the default, so every record made
+    // before the full address existed carries it. Left alone, those letters would print a city
+    // forever while new hires got a postal address.
+    for (const stale of ["Kakinada, Andhra Pradesh", "Kakinada , Andhra Pradesh", "kakinada,andhra pradesh"]) {
+      expect(applyEmploymentDefaults({ workLocation: stale }, "full_time").workLocation, stale)
+        .toBe(EMPLOYMENT_DEFAULTS.workLocation);
+    }
+  });
+
+  it("leaves a location an admin actually chose alone", () => {
+    // A second office is a decision. Guessing that any short location is stale would move this
+    // person to the wrong address.
+    for (const chosen of ["Visakhapatnam", "Hyderabad, Telangana", "Client site — Rajahmundry"]) {
+      expect(applyEmploymentDefaults({ workLocation: chosen }, "full_time").workLocation, chosen)
+        .toBe(chosen);
+    }
+  });
+
+  it("does not touch the new address once it is in place", () => {
+    const current = EMPLOYMENT_DEFAULTS.workLocation;
+    expect(applyEmploymentDefaults({ workLocation: current }, "full_time").workLocation).toBe(current);
+  });
+
   it("never overwrites something already decided", () => {
     const existing = {
       designation: "Video Editor",

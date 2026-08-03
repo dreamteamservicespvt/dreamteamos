@@ -117,6 +117,33 @@ export function matchDayOption(value?: string | null): string {
 // ─── Applying the defaults ──────────────────────────────────────────────────
 
 /**
+ * Work locations that were themselves an old default, and should give way to the new one.
+ *
+ * "Only fill blanks" is the right rule for a field somebody chose. It is the wrong rule for a
+ * value nobody chose — every record created before the address existed carries the city that used
+ * to be the default, and under a strict blanks-only rule those letters would keep printing a city
+ * forever while new hires got a postal address.
+ *
+ * Deliberately an exact list rather than "anything without a PIN code". An admin who typed
+ * "Visakhapatnam" for a second office made a decision, and guessing that any short location is
+ * stale would move that person to the wrong address.
+ */
+const SUPERSEDED_WORK_LOCATIONS = [
+  "Kakinada, Andhra Pradesh",
+  "Kakinada, AP",
+];
+
+/** Compare loosely: these were typed by hand, so spacing around the comma varies. */
+const normalizeLocation = (v: string): string =>
+  v.toLowerCase().replace(/\s*,\s*/g, ",").replace(/\s+/g, " ").trim();
+
+export function isSupersededWorkLocation(value?: string | null): boolean {
+  const raw = (value || "").trim();
+  if (!raw) return false;
+  return SUPERSEDED_WORK_LOCATIONS.some((old) => normalizeLocation(old) === normalizeLocation(raw));
+}
+
+/**
  * Fill the blanks on a terms form, and only the blanks.
  *
  * A part-timer works their own allocated hours, so the standard shift is not assumed for them —
@@ -131,7 +158,10 @@ export function applyEmploymentDefaults(
   const isBlank = (v?: string | null) => !((v || "").trim());
 
   if (isBlank(filled.designation)) filled.designation = EMPLOYMENT_DEFAULTS.designation;
-  if (isBlank(filled.workLocation)) filled.workLocation = EMPLOYMENT_DEFAULTS.workLocation;
+  // Blank, or still carrying the old city-only default — see `isSupersededWorkLocation`.
+  if (isBlank(filled.workLocation) || isSupersededWorkLocation(filled.workLocation)) {
+    filled.workLocation = EMPLOYMENT_DEFAULTS.workLocation;
+  }
   if (isBlank(filled.reportingToName)) filled.reportingToName = EMPLOYMENT_DEFAULTS.reportingToName;
 
   // Part-time is the case where "the standard shift" is precisely wrong.
