@@ -5,7 +5,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/store/authStore";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import { Agreement, signAgreement, watchMemberAgreements } from "@/services/agreements";
-import AgreementView from "./AgreementView";
+import AgreementView, { companySideOf } from "./AgreementView";
+import { useCompanyLogo } from "@/hooks/useCompanyLogo";
 import SignaturePad from "./SignaturePad";
 import { downloadAgreementPdf } from "@/utils/agreementPdf";
 
@@ -22,6 +23,8 @@ const MEMBER_ROLES = new Set(["tech_member", "sales_member", "tech_team_leader"]
 export default function MandatoryAgreementGate() {
   const user = useAuthStore((s) => s.user);
   const { toast } = useToast();
+  // Inlined so a generated letter's letterhead survives the PDF export.
+  const logo = useCompanyLogo();
   const [unsigned, setUnsigned] = useState<Agreement[]>([]);
   const [saving, setSaving] = useState(false);
   const [justSigned, setJustSigned] = useState<Agreement | null>(null);
@@ -98,6 +101,8 @@ export default function MandatoryAgreementGate() {
               signatureUrl={justSigned.signatureUrl}
               signedName={justSigned.signedName}
               signedDate={justSigned.signedDate}
+              logoUrl={logo}
+              {...companySideOf(justSigned)}
             />
           </div>
         </div>
@@ -119,6 +124,8 @@ export default function MandatoryAgreementGate() {
             bodyText={current.bodyText}
             memberName={current.memberName}
             memberPhone={current.memberPhone}
+            logoUrl={logo}
+            {...companySideOf(current)}
           />
         </div>
 

@@ -39,7 +39,9 @@ type TabKey = "documents" | "missing" | "agreements";
 const TABS: { key: TabKey; label: string; Icon: typeof FileStack }[] = [
   { key: "documents", label: "All documents", Icon: FileStack },
   { key: "missing", label: "Missing paperwork", Icon: Users },
-  { key: "agreements", label: "Agreements", Icon: FileSignature },
+  // "Send" rather than "Agreements": this tab is now where a letter is written and sent, not just
+  // where a pasted agreement goes.
+  { key: "agreements", label: "Send a document", Icon: FileSignature },
 ];
 
 export default function HrCenter() {
@@ -101,8 +103,8 @@ export default function HrCenter() {
           <FolderOpen className="h-5 w-5 text-primary" /> HR &amp; Documents
         </h1>
         <p className="mt-1 text-xs text-muted-foreground md:text-sm">
-          Every letter this company has issued, who is still missing theirs, and the agreements
-          waiting to be signed.
+          Every letter this company has issued, who is still missing theirs, and one place to write
+          and send a document to one person, a chosen few, or everyone.
         </p>
       </div>
 

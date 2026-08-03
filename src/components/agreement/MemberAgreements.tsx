@@ -5,7 +5,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/store/authStore";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import { Agreement, signAgreement, watchMemberAgreements } from "@/services/agreements";
-import AgreementView from "./AgreementView";
+import AgreementView, { companySideOf } from "./AgreementView";
+import { useCompanyLogo } from "@/hooks/useCompanyLogo";
 import SignaturePad from "./SignaturePad";
 import { downloadAgreementPdf } from "@/utils/agreementPdf";
 
@@ -13,6 +14,8 @@ import { downloadAgreementPdf } from "@/utils/agreementPdf";
 export default function MemberAgreements() {
   const user = useAuthStore((s) => s.user);
   const { toast } = useToast();
+  // Inlined so a generated letter's letterhead survives the PDF export.
+  const logo = useCompanyLogo();
   const [list, setList] = useState<Agreement[]>([]);
   const [open, setOpen] = useState<Agreement | null>(null);
   const [saving, setSaving] = useState(false);
@@ -107,6 +110,8 @@ export default function MemberAgreements() {
                 signatureUrl={open.signatureUrl}
                 signedName={open.signedName}
                 signedDate={open.signedDate}
+                logoUrl={logo}
+                {...companySideOf(open)}
               />
             </div>
 

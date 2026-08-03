@@ -22,6 +22,25 @@ export interface Agreement {
   signedDate?: string; // yyyy-MM-dd
   signedAt?: Timestamp;
   createdAt: Timestamp;
+
+  /**
+   * The company side — present only on agreements generated from one of the company's own
+   * document templates, and absent on a pasted one.
+   *
+   * A generated letter ends with "For <company> — Chief Executive Officer Signature:", and without
+   * these it would reach the employee with an empty ruled box under that line: a letter the
+   * company appears not to have signed. A pasted agreement is somebody else's document reproduced
+   * verbatim and carries none of this, exactly as before.
+   *
+   * Frozen at send time, like `hr_documents` — a stamp replaced next year must not reprint itself
+   * onto everything already sent.
+   */
+  letterhead?: boolean;
+  companySignatories?: { name?: string | null; designation?: string | null; signatureUrl?: string | null }[];
+  companyStampUrl?: string | null;
+  companySignedDate?: string; // yyyy-MM-dd
+  /** Which template it came from, where it came from one. Blank for a pasted agreement. */
+  templateType?: string | null;
 }
 
 /** Extract a human title from the pasted text (first non-empty line, trimmed). */

@@ -3,7 +3,8 @@ import { format } from "date-fns";
 import { FileText, Download, CheckCircle2, Clock, X, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Agreement, watchMemberAgreements } from "@/services/agreements";
-import AgreementView from "./AgreementView";
+import AgreementView, { companySideOf } from "./AgreementView";
+import { useCompanyLogo } from "@/hooks/useCompanyLogo";
 import { downloadAgreementPdf } from "@/utils/agreementPdf";
 
 /**
@@ -12,6 +13,8 @@ import { downloadAgreementPdf } from "@/utils/agreementPdf";
  */
 export default function AgreementListForMember({ memberId }: { memberId: string }) {
   const { toast } = useToast();
+  // Inlined so a generated letter's letterhead survives the PDF export.
+  const logo = useCompanyLogo();
   const [list, setList] = useState<Agreement[]>([]);
   const [open, setOpen] = useState<Agreement | null>(null);
   const [downloading, setDownloading] = useState(false);
@@ -89,6 +92,8 @@ export default function AgreementListForMember({ memberId }: { memberId: string 
                 signatureUrl={open.signatureUrl}
                 signedName={open.signedName}
                 signedDate={open.signedDate}
+                logoUrl={logo}
+                {...companySideOf(open)}
               />
             </div>
           </div>

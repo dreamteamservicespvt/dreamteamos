@@ -53,6 +53,28 @@ export interface CompanySignatory {
   signatureUrl?: string | null;
 }
 
+/** The company side of a stored agreement, as it was frozen at send time. */
+export interface CompanySignedRecord {
+  letterhead?: boolean;
+  companySignatories?: CompanySignatory[];
+  companyStampUrl?: string | null;
+  companySignedDate?: string;
+}
+
+/**
+ * Spread a stored agreement's company side onto this view.
+ *
+ * One helper rather than four props repeated at five call sites, because the failure mode of
+ * forgetting one of them is a letter that renders with an empty signature box and no error —
+ * the same silent failure the signature-side detection had.
+ */
+export const companySideOf = (a: CompanySignedRecord) => ({
+  letterhead: !!a.letterhead,
+  companySignatories: a.companySignatories,
+  companyStampUrl: a.companyStampUrl,
+  companySignedDate: a.companySignedDate,
+});
+
 /** Fill the common "____" placeholders from the member's details + sign date. */
 export function fillAgreementText(text: string, d: { memberName: string; memberPhone?: string; signedDate?: string }): string {
   const date = d.signedDate ? format(new Date(d.signedDate), "dd MMM yyyy") : format(new Date(), "dd MMM yyyy");
