@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildDocument } from "@/utils/hrTemplates";
-import { INTERNSHIP_SKILLS, internshipSkillsFor } from "@/utils/hrPolicy";
+import { CORE_TRAINING, INTERNSHIP_SKILLS, internshipSkillsFor } from "@/utils/hrPolicy";
 import type { EmployeeProfile } from "@/types/hr";
 
 /**
@@ -63,6 +63,32 @@ describe("what an internship letter has to tell a college", () => {
         for (const skill of INTERNSHIP_SKILLS.tech) expect(t).toContain(skill);
       });
 
+      /**
+       * The six subjects, named.
+       *
+       * This is the specific thing a college weighs when deciding whether to grant permission, so
+       * it is pinned by subject rather than by whatever the array happens to hold — dropping one
+       * while rewording the list would still pass the test above.
+       */
+      it.each([
+        ["Generative AI", /Generative AI/],
+        ["website development", /Website design and development/],
+        ["AI chatbots", /AI chatbots/],
+        ["AI SaaS", /AI SaaS/],
+        ["AI agents", /AI agents/],
+        ["AI model development", /AI model development/],
+      ])("names %s as a training subject", (_label, pattern) => {
+        expect(text()).toMatch(pattern);
+      });
+
+      it("says how the training is delivered, not just what it covers", () => {
+        expect(text()).toMatch(/guided sessions .* supervised work on live projects/i);
+      });
+
+      it("offers the progress report and attendance record a college asks for", () => {
+        expect(text()).toMatch(/periodic progress report or an attendance record/i);
+      });
+
       it("promises a completion certificate", () => {
         expect(text()).toMatch(/Internship Completion Certificate/);
       });
@@ -123,6 +149,27 @@ describe("the training list", () => {
   it("uses the department's list by default", () => {
     expect(internshipSkillsFor(intern())).toEqual(INTERNSHIP_SKILLS.tech);
     expect(internshipSkillsFor(intern({ department: "sales" }))).toEqual(INTERNSHIP_SKILLS.sales);
+  });
+
+  it("teaches the same six subjects whatever department the intern joins", () => {
+    // The company trains every intern on the same technical curriculum; only the practical work
+    // that follows it differs. A sales intern's letter must not omit it.
+    for (const dept of ["tech", "sales"] as const) {
+      expect(INTERNSHIP_SKILLS[dept].slice(0, CORE_TRAINING.length)).toEqual(CORE_TRAINING);
+    }
+  });
+
+  it("prints the full curriculum in a sales intern's letter too", () => {
+    const text = letter("offer_letter", intern({ department: "sales" }));
+    for (const subject of CORE_TRAINING) expect(text).toContain(subject);
+  });
+
+  it("describes each subject, rather than naming it and stopping", () => {
+    // "Generative AI" alone tells an examiner nothing; the dash and what follows is the part they
+    // can map to a course outcome.
+    for (const subject of CORE_TRAINING) {
+      expect(subject, subject).toMatch(/ — .{25,}/);
+    }
   });
 
   it("lets an admin write their own, one per line", () => {

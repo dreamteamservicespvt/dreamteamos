@@ -279,6 +279,10 @@ const internshipBlock = (
     "During the internship you will be trained in:",
     ...skills.map((s, n) => `  ${n + 1}. ${s}`),
     "",
+    "Training is delivered as guided sessions on each subject followed by supervised work on live projects, so that every area above is practised and not only taught.",
+    // Colleges commonly require a periodic progress report during the placement, and a student who
+    // has to go back and ask for one after the fact often cannot get it in time.
+    "A record of the work you carry out is maintained throughout. Where your institution requires a periodic progress report or an attendance record, the company will provide it on request.",
     opts.certificate
       ? "On successful completion — satisfactory attendance, conduct and work — the company will issue an Internship Completion Certificate and, on request, an experience letter stating the period served and the work carried out."
       : "On successful completion the company will issue an Internship Completion Certificate stating the period served and the work carried out.",

@@ -234,3 +234,17 @@ Also added **keep-with-next** in the exporter: a `data-pdf="heading"` block (or 
 - `npx vitest run` — **1321/1321** (47 new across `internshipLetters.test.ts` and `employmentDefaults.test.ts`). Clean typecheck, clean build, no new lint errors.
 - **Real browser (Playwright, Chromium, 1280px + 412px) — 36/36, 0 console errors**, plus the exported PDF was **decoded page by page and looked at** (a small script pulls the embedded JPEGs out of the file): letterhead + foot rule on all four pages, aligned reference table, no chips, no tinted cards, signature on a ruled line with the seal across it, page numbers, section numbers 1–10 unbroken with the internship block inserted, and the training list as list items. All 14 types render with no `undefined`/`NaN`. Terms form: defaults present, 49-option time dropdown, intern fields appearing only for an internship. Check-out: opens on upload, Continue disabled until ticked, today's real folder path shown.
 - **Looking at the rendered PDF is now the only way to review this area.** All three rendering bugs above passed every on-screen check and every unit test.
+
+## Session — 2026-08-03d (The internship curriculum)
+
+**What the company actually trains interns on**, and therefore what the letters must say: generative AI, website design and development, AI chatbots, AI SaaS, AI agents, AI model development. The previous list described the ad business (scripts, voice-overs, video editing) and was wrong for the audience that matters.
+
+`hrPolicy.CORE_TRAINING` holds the six, each written as a syllabus entry — subject, em dash, what is covered — because a college maps the second half to a course outcome and "Generative AI" alone gives them nothing. `INTERNSHIP_SKILLS.tech` and `.sales` both **open with CORE_TRAINING** and then continue into their own practical work: the same curriculum is taught whatever role someone joins in, but a sales intern's letter should not read as though they spend the placement training models. A test asserts `INTERNSHIP_SKILLS[dept].slice(0, CORE_TRAINING.length) === CORE_TRAINING` for both departments, and each subject is asserted **by name** — rewording the list while dropping one would otherwise still pass.
+
+`internshipBlock` also gained two lines colleges specifically ask for: **how** the training is delivered (guided sessions per subject, then supervised live-project work), and an offer of the **periodic progress report / attendance record** institutions require *during* a placement — a student who has to request one after the fact often cannot get it in time.
+
+**Change the curriculum in `CORE_TRAINING` only.** There is no second copy; every intern offer and joining letter renders from it.
+
+### How this was verified
+- `npx vitest run` — **1340/1340** (19 new). Clean typecheck and build.
+- **Real browser, 12/12, 0 console errors**, with the PDF decoded and read: all six subjects present in both the offer letter and the appointment letter, for **both** tech and sales; the curriculum renders as a proper numbered list (not as bold section headings — see the previous session's bug); section numbers still run 1–10 unbroken; no sideways scroll at 412px.

@@ -413,34 +413,48 @@ export const requiresEmployeeSignature = (type: HrDocumentType): boolean =>
 // ─── Internships ────────────────────────────────────────────────────────────
 
 /**
- * What an intern is actually trained on, per department.
+ * The technical curriculum every intern is trained on, whatever role they join in.
  *
- * This exists because of who reads it. An intern takes their offer letter and joining letter to
- * their college to be granted permission to attend, and the person deciding is looking for one
- * thing: evidence that this is a structured training programme and not unpaid labour. A letter
- * that states the role and the stipend and stops answers none of that.
+ * This is the part of the letter that decides whether a student gets to take the placement at all.
+ * Their college grants permission on the strength of it, and the person deciding is looking for
+ * one thing: evidence of a structured technical training programme rather than unpaid labour. A
+ * letter that names the role and the stipend and stops answers none of that.
  *
- * Written as skills a syllabus would recognise, in the order they are actually taught.
+ * So each line is written the way a syllabus entry is written — the subject, then what is actually
+ * covered in it. "Generative AI" alone tells an examiner nothing; "foundations, prompt engineering
+ * and applied use of text, image and video models" is something they can map to a course outcome.
+ *
+ * These six are the company's real training areas. Change them here and every intern's offer and
+ * joining letter changes with them — there is no second copy of this list.
+ */
+export const CORE_TRAINING: string[] = [
+  "Generative AI — foundations, prompt engineering, and applied use of text, image and video generation models",
+  "Website design and development — responsive interface design, front-end and back-end build, deployment and maintenance",
+  "AI chatbots — conversational design, knowledge grounding, integration with business systems and deployment",
+  "AI SaaS — building and running software-as-a-service products with AI at their core, including multi-user access and subscription workflows",
+  "AI agents — designing tool-using and autonomous agents, orchestrating multi-step tasks, and evaluating their reliability",
+  "AI model development — dataset preparation, training and fine-tuning, evaluation, and putting a model into production",
+];
+
+/**
+ * What an intern is trained on, per department.
+ *
+ * Every list opens with the same technical curriculum, because that is what this company teaches
+ * its interns regardless of which side of it they sit on. What follows is the practical work of
+ * their own department, so a letter says something true about the specific placement as well.
  */
 export const INTERNSHIP_SKILLS: Record<Department, string[]> = {
   tech: [
-    "AI-assisted advertisement creation, end to end",
-    "Prompt engineering for image and video generation models",
-    "Script writing, voice-over drafting and localisation",
-    "Video editing, post-production and export standards",
-    "Brand and creative asset management",
-    "Reading a client requirement and turning it into a production brief",
-    "Quality review, revision handling and delivery workflows",
+    ...CORE_TRAINING,
+    "Applying the above to live client work, from requirement to reviewed delivery",
+    "Version control, code review and engineering documentation",
     "Professional communication, documentation and workplace discipline",
   ],
   sales: [
-    "Lead generation, qualification and pipeline hygiene",
-    "Client communication and needs discovery",
-    "Consultative selling and solution positioning",
-    "Proposal preparation, pricing basics and quotations",
-    "Negotiation and objection handling",
-    "CRM discipline and accurate record keeping",
-    "Post-sale relationship management and account follow-up",
+    ...CORE_TRAINING,
+    "Explaining AI products and their capabilities accurately to non-technical clients",
+    "Requirement discovery, proposal preparation and solution positioning",
+    "CRM discipline, pipeline hygiene and accurate record keeping",
     "Professional communication, documentation and workplace discipline",
   ],
 };
