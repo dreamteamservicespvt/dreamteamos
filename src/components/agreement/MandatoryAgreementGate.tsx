@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
-import { FileSignature, Download, CheckCircle2, Loader2 } from "lucide-react";
+import { FileSignature, Download, CheckCircle2, Loader2, Printer } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/store/authStore";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import { Agreement, signAgreement, watchMemberAgreements } from "@/services/agreements";
 import AgreementView, { companySideOf } from "./AgreementView";
+import { usePrintDocument } from "@/hooks/usePrintDocument";
 import { useCompanyLogo } from "@/hooks/useCompanyLogo";
 import SignaturePad from "./SignaturePad";
 import { downloadAgreementPdf } from "@/utils/agreementPdf";
@@ -30,6 +31,7 @@ export default function MandatoryAgreementGate() {
   const [justSigned, setJustSigned] = useState<Agreement | null>(null);
   const [downloading, setDownloading] = useState(false);
   const paperRef = useRef<HTMLDivElement>(null);
+  const { printing, print } = usePrintDocument(paperRef);
 
   useEffect(() => {
     if (!user || !MEMBER_ROLES.has(user.role)) return;
@@ -82,6 +84,10 @@ export default function MandatoryAgreementGate() {
               <CheckCircle2 className="w-4 h-4" /> Signed successfully — keep a copy if you like.
             </span>
             <div className="flex items-center gap-2">
+              <button onClick={print} disabled={printing} data-test="print-document"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/15 hover:bg-white/25">
+                {printing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />} Print
+              </button>
               <button onClick={handleDownload} disabled={downloading}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/15 hover:bg-white/25">
                 {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />} Download PDF

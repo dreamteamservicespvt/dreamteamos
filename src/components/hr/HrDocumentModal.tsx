@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
-import { Download, Loader2, X } from "lucide-react";
+import { Download, Loader2, Printer, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useCompanyLogo } from "@/hooks/useCompanyLogo";
+import { usePrintDocument } from "@/hooks/usePrintDocument";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import { declineDocument, markDownloaded, markViewed, signDocument } from "@/services/hrDocuments";
 import { downloadAgreementPdf } from "@/utils/agreementPdf";
@@ -31,6 +32,7 @@ export default function HrDocumentModal({ document, canSign, signerName, onClose
   const [doc, setDoc] = useState<HrDocument>(document);
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const { printing, print } = usePrintDocument(paperRef);
   const [declining, setDeclining] = useState(false);
   const [declineReason, setDeclineReason] = useState("");
   const [showDecline, setShowDecline] = useState(false);
@@ -106,6 +108,13 @@ export default function HrDocumentModal({ document, canSign, signerName, onClose
             {doc.memberName} · {doc.issuedOn}
           </span>
           <div className="flex items-center gap-2">
+            <button
+              onClick={print} disabled={printing}
+              data-test="print-document"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white/90 px-3 py-1.5 text-xs font-medium text-slate-800 hover:bg-white"
+            >
+              {printing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />} Print
+            </button>
             <button
               onClick={handleDownload} disabled={downloading}
               className="inline-flex items-center gap-1.5 rounded-lg bg-white/90 px-3 py-1.5 text-xs font-medium text-slate-800 hover:bg-white"

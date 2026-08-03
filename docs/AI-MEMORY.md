@@ -248,3 +248,22 @@ Also added **keep-with-next** in the exporter: a `data-pdf="heading"` block (or 
 ### How this was verified
 - `npx vitest run` — **1340/1340** (19 new). Clean typecheck and build.
 - **Real browser, 12/12, 0 console errors**, with the PDF decoded and read: all six subjects present in both the offer letter and the appointment letter, for **both** tech and sales; the curriculum renders as a proper numbered list (not as bold section headings — see the previous session's bug); section numbers still run 1–10 unbroken; no sideways scroll at 412px.
+
+## Session — 2026-08-03e (Print, and the logo size)
+
+**The logo was sized by a 62px square box.** The real mark is a wide lockup (badge + company name beside it), so squaring it scaled the whole artwork down until it fitted 62px of *width* — a thumbnail next to 21px type. `LetterheadTop` now sizes by **height** (76px) with `width: auto` and `maxWidth: 210`, which is the dimension a letterhead cares about; a square mark and a wide lockup then carry the same visual weight. The `DTS` fallback tile grew to 66px to match.
+
+**Printing added, alongside the PDF download and not instead of it.** The download photographs each sheet into a JPEG — identical everywhere, ~1 MB, text not selectable. Print hands the browser real text: crisper on paper, far smaller saved as a PDF from the dialog, copyable. Both are offered wherever a document can be opened.
+
+- `utils/agreementPrint.ts` — `printAgreementElement(el)`. Clones the paper into a body-level `.agreement-print-root`, **lifts the letterhead and foot rule out into `.print-running-head` / `.print-running-foot`** so they can be pinned and repeat on every printed sheet (matching the exported PDF), normalizes signature backgrounds as the PDF path does, then `window.print()`; cleans up on `afterprint` with a 1s Safari fallback.
+- `hooks/usePrintDocument.ts` — busy flag, unmounted-ref guard, toast on failure. Used at six sites; `IssueDocumentDialog` has its own handler because it must **open the preview first** (the paper does not exist until it is on screen), exactly like its download path.
+- Print CSS lives at the end of `src/index.css`.
+
+**Why the clone exists (do not "simplify" this):** the app shell is `html, body, #root { height: 100%; overflow: hidden }` for keyboard handling. Printed in place that clips output to exactly one sheet however long the letter is. The `@media print` block releases it with `height: auto !important; overflow: visible !important` — this is the same trap a previous session hit and documented.
+
+**Bug found in the browser:** the running head/foot heights are measured to set the flow's padding, and `.agreement-print-root` is `display: none` on screen — so the measurement returned **0px** and the first paragraph would have printed underneath the letterhead. The root is now laid out off-screen (`position: fixed; left: -20000px`, inline styles beating the class rule) for the measurement, then cleared so the print stylesheet's `!important` rules take over. Measured at a deliberately **narrow** 640px so the header wraps sooner — erring towards extra space rather than an overlap — plus a 10px gap.
+
+### How this was verified
+- `npx vitest run` — 1340/1340. Clean typecheck and build, no new lint errors.
+- **Real browser, 19/19, 0 console errors:** logo 76px tall / 207px wide and taller than the company name, fallback tile readable; print builds the root, marks the body, pins exactly one running head and one running foot, measures both heights non-zero, carries the whole letter and the signature, restores the page afterwards and leaves no second root behind; and the print stylesheet is asserted to release the fixed shell, hide the app, keep colours, avoid splitting a signature, and set A4.
+- `window.print()` blocks headless Chromium, so it is stubbed with a probe that captures what the stylesheet is about to apply to — the DOM the browser would print is checked, not the paper.

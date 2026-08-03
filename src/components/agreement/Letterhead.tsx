@@ -41,21 +41,33 @@ export function LetterheadTop({ logoUrl }: { logoUrl?: string | null }) {
   return (
     <div data-pdf="letterhead" style={{ marginBottom: 26 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-        {/* A fixed box, so the text column starts at the same x whatever shape the logo is. */}
+        {/*
+          Sized by HEIGHT, with width free up to a generous cap.
+          A square box squashed the real logo — a wide lockup of the mark plus the company name
+          set beneath it — down to whatever fitted in 62px of width, which made it a thumbnail
+          beside 21px type. Constraining the dimension a letterhead actually cares about, and
+          letting the other one follow the artwork, prints a square mark and a wide lockup at the
+          same visual weight.
+        */}
         <div
           style={{
-            flex: "0 0 auto", width: 62, height: 62, display: "flex",
-            alignItems: "center", justifyContent: "center",
+            flex: "0 0 auto", height: 76, maxWidth: 210, display: "flex",
+            alignItems: "center", justifyContent: "flex-start",
           }}
         >
           {logoUrl ? (
-            <img src={logoUrl} alt="" crossOrigin="anonymous" style={{ maxHeight: 62, maxWidth: 62, objectFit: "contain", display: "block" }} />
+            <img
+              src={logoUrl}
+              alt=""
+              crossOrigin="anonymous"
+              style={{ height: 76, width: "auto", maxWidth: 210, objectFit: "contain", display: "block" }}
+            />
           ) : (
             <div
               style={{
                 display: "flex", alignItems: "center", justifyContent: "center",
-                height: 52, width: 52, borderRadius: 10, backgroundColor: NAVY,
-                color: "#ffffff", fontWeight: 800, fontSize: 17, letterSpacing: 1,
+                height: 66, width: 66, borderRadius: 12, backgroundColor: NAVY,
+                color: "#ffffff", fontWeight: 800, fontSize: 21, letterSpacing: 1,
               }}
             >
               DTS

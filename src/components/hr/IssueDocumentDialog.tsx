@@ -1,10 +1,11 @@
 import { useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Check, Download, Eye, FileSignature, Loader2, PenTool, Send, ShieldQuestion, X } from "lucide-react";
+import { Check, Download, Eye, FileSignature, Loader2, PenTool, Printer, Send, ShieldQuestion, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useCompany } from "@/hooks/useCompany";
 import { useCompanyLogo } from "@/hooks/useCompanyLogo";
 import { downloadAgreementPdf } from "@/utils/agreementPdf";
+import { printAgreementElement } from "@/utils/agreementPrint";
 import { HR_DOCUMENT_GROUPS, HR_DOCUMENT_LABELS } from "@/types/hr";
 import type { AppUser } from "@/types";
 import type { EmployeeProfile, HrDocumentType } from "@/types/hr";
@@ -61,6 +62,7 @@ export default function IssueDocumentDialog({
   const [showPreview, setShowPreview] = useState(false);
   const [sending, setSending] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [printing, setPrinting] = useState(false);
   const paperRef = useRef<HTMLDivElement>(null);
   const logo = useCompanyLogo();
   const { company, assets: marks, officer } = useCompany();
@@ -152,6 +154,26 @@ export default function IssueDocumentDialog({
       toast({ title: "Error", description: "Could not generate the PDF.", variant: "destructive" });
     } finally {
       setDownloading(false);
+    }
+  };
+
+  /**
+   * The same trick as the download: open the preview first, because the paper only exists once it
+   * is on screen. Printing straight to paper is what an admin does when the letter is going into a
+   * file or being carried to somebody for a wet signature.
+   */
+  const handlePrint = async () => {
+    if (printing) return;
+    setShowPreview(true);
+    setPrinting(true);
+    try {
+      await new Promise((r) => setTimeout(r, 250));
+      if (!paperRef.current) throw new Error("preview not ready");
+      await printAgreementElement(paperRef.current);
+    } catch {
+      toast({ title: "Error", description: "Could not open the print dialog.", variant: "destructive" });
+    } finally {
+      setPrinting(false);
     }
   };
 
@@ -388,6 +410,15 @@ export default function IssueDocumentDialog({
             className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-accent"
           >
             <Eye size={15} /> {showPreview ? "Hide preview" : "Preview"}
+          </button>
+          <button
+            onClick={handlePrint}
+            disabled={printing}
+            data-test="print-before-issue"
+            className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-accent disabled:opacity-50"
+          >
+            {printing ? <Loader2 size={15} className="animate-spin" /> : <Printer size={15} />}
+            {printing ? "Preparing…" : "Print"}
           </button>
           <button
             onClick={handleDownload}

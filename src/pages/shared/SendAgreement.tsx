@@ -4,7 +4,7 @@ import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { Send, Eye, CheckCircle2, Clock, FileSignature, FileText, User, Users, UsersRound, Loader2, Sparkles, Trash2, Download, X, Filter, AlertTriangle } from "lucide-react";
+import { Send, Eye, CheckCircle2, Clock, FileSignature, FileText, User, Users, UsersRound, Loader2, Sparkles, Trash2, Download, Printer, X, Filter, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useCompany } from "@/hooks/useCompany";
 import type { AppUser } from "@/types";
@@ -16,6 +16,7 @@ import { formatAgreementWithAI } from "@/services/geminiService";
 import { employmentOf, EMPLOYMENT_LABELS, EmploymentType } from "@/services/employment";
 import AgreementView, { companySideOf } from "@/components/agreement/AgreementView";
 import { useCompanyLogo } from "@/hooks/useCompanyLogo";
+import { usePrintDocument } from "@/hooks/usePrintDocument";
 import { downloadAgreementPdf } from "@/utils/agreementPdf";
 import MissingLettersPanel, { findMissingLetters } from "@/components/hr/MissingLettersPanel";
 import { watchTeamProfiles } from "@/services/hr";
@@ -81,6 +82,7 @@ export default function SendAgreement({ embedded }: { embedded?: boolean } = {})
   const [viewOpen, setViewOpen] = useState<Agreement | null>(null);
   const [downloading, setDownloading] = useState(false);
   const paperRef = useRef<HTMLDivElement>(null);
+  const { printing, print } = usePrintDocument(paperRef);
   /** The HR side of this page: who is still missing the letters everyone should hold. */
   const [profiles, setProfiles] = useState<Map<string, EmployeeProfile>>(new Map());
   const [hrDocs, setHrDocs] = useState<HrDocument[]>([]);
@@ -722,6 +724,10 @@ export default function SendAgreement({ embedded }: { embedded?: boolean } = {})
             <div className="flex items-center justify-between gap-2 mb-2">
               <span className="text-xs font-medium text-white/90 bg-black/30 rounded-lg px-2.5 py-1.5">{viewOpen.memberName}</span>
               <div className="flex items-center gap-2">
+                <button onClick={print} disabled={printing} data-test="print-document"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/90 text-slate-800 hover:bg-white">
+                  {printing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />} Print
+                </button>
                 {viewOpen.status === "signed" && (
                   <button onClick={handleDownloadViewed} disabled={downloading}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/90 text-slate-800 hover:bg-white">

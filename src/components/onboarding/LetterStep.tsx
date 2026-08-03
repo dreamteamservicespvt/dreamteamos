@@ -1,8 +1,9 @@
 import { useRef, useState } from "react";
-import { ArrowRight, CheckCircle2, Download, Loader2 } from "lucide-react";
+import { ArrowRight, CheckCircle2, Download, Loader2, Printer } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import { downloadAgreementPdf } from "@/utils/agreementPdf";
+import { usePrintDocument } from "@/hooks/usePrintDocument";
 import AgreementView from "@/components/agreement/AgreementView";
 import { useCompanyLogo } from "@/hooks/useCompanyLogo";
 import SignaturePad from "@/components/agreement/SignaturePad";
@@ -43,6 +44,7 @@ export default function LetterStep({
 }) {
   const { toast } = useToast();
   const paperRef = useRef<HTMLDivElement>(null);
+  const { printing, print } = usePrintDocument(paperRef);
   const logo = useCompanyLogo();
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -121,6 +123,15 @@ export default function LetterStep({
             </div>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              onClick={print}
+              disabled={printing}
+              data-test="print-document"
+              className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-border bg-card text-sm font-semibold text-foreground hover:bg-accent disabled:opacity-50"
+            >
+              {printing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+              Print
+            </button>
             <button
               onClick={handleDownload}
               disabled={downloading}

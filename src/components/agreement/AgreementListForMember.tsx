@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
-import { FileText, Download, CheckCircle2, Clock, X, Loader2 } from "lucide-react";
+import { FileText, Download, CheckCircle2, Clock, Printer, X, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Agreement, watchMemberAgreements } from "@/services/agreements";
 import AgreementView, { companySideOf } from "./AgreementView";
+import { usePrintDocument } from "@/hooks/usePrintDocument";
 import { useCompanyLogo } from "@/hooks/useCompanyLogo";
 import { downloadAgreementPdf } from "@/utils/agreementPdf";
 
@@ -19,6 +20,7 @@ export default function AgreementListForMember({ memberId }: { memberId: string 
   const [open, setOpen] = useState<Agreement | null>(null);
   const [downloading, setDownloading] = useState(false);
   const paperRef = useRef<HTMLDivElement>(null);
+  const { printing, print } = usePrintDocument(paperRef);
 
   useEffect(() => {
     if (!memberId) return;
@@ -75,6 +77,10 @@ export default function AgreementListForMember({ memberId }: { memberId: string 
         <div className="fixed inset-0 z-50 bg-black/50 overflow-y-auto p-2 sm:p-4" onClick={() => setOpen(null)}>
           <div className="mx-auto max-w-3xl my-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-end gap-2 mb-2">
+              <button onClick={print} disabled={printing} data-test="print-document"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/90 text-slate-800 hover:bg-white">
+                {printing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />} Print
+              </button>
               {open.status === "signed" && (
                 <button onClick={handleDownload} disabled={downloading}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/90 text-slate-800 hover:bg-white">

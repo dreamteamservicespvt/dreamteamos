@@ -205,3 +205,87 @@ html.native-app body {
 ::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground)); }
 
+/* ── Printing a document ──────────────────────────────────────────────────────
+   Driven by `utils/agreementPrint.ts`, which clones the rendered document into
+   `.agreement-print-root` and puts `printing-agreement` on the body.
+
+   The clone exists because the app shell above is `height: 100%; overflow: hidden`
+   — printed in place, that clips the output to exactly one sheet however long the
+   letter is. Undoing it for the duration of the print is what makes page 2 exist. */
+
+.agreement-print-root { display: none; }
+
+@media print {
+  /* Release the fixed-height app shell, or nothing past the first sheet prints. */
+  html, body, #root {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  body.printing-agreement > *:not(.agreement-print-root) { display: none !important; }
+
+  body.printing-agreement .agreement-print-root {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    margin: 0 !important;
+    background: #ffffff !important;
+  }
+
+  /* The letterhead and foot rule are pinned to the sheet, so they repeat on every
+     printed page exactly as they do in the exported PDF. The flow is padded by
+     their measured heights — set as custom properties by the print helper — so no
+     paragraph ever runs underneath them. */
+  body.printing-agreement .print-running-head {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: #ffffff;
+  }
+
+  body.printing-agreement .print-running-foot {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #ffffff;
+  }
+
+  body.printing-agreement .print-flow {
+    padding-top: var(--print-head-h, 0px);
+    padding-bottom: var(--print-foot-h, 0px);
+  }
+
+  body.printing-agreement .print-flow > * {
+    box-shadow: none !important;
+    max-width: none !important;
+    width: 100% !important;
+    /* The paper's own screen padding would double up with the @page margin. */
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+
+  /* Keep the letterhead rule, the seal and the highlight tones — a letterhead that
+     prints as grey text on white is not a letterhead. */
+  body.printing-agreement .agreement-print-root,
+  body.printing-agreement .agreement-print-root * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* A signature split across two sheets is not a signature; a heading stranded at
+     the foot of one is the classic printing fault. */
+  body.printing-agreement img { break-inside: avoid; page-break-inside: avoid; }
+  body.printing-agreement [data-pdf="signature"] { break-inside: avoid; page-break-inside: avoid; }
+  body.printing-agreement [data-pdf="heading"] { break-after: avoid; page-break-after: avoid; }
+  body.printing-agreement [data-pdf="header-block"] { break-inside: avoid; page-break-inside: avoid; }
+  body.printing-agreement [data-pdf="title"] { break-after: avoid; page-break-after: avoid; }
+
+  @page {
+    size: A4;
+    margin: 14mm 16mm;
+  }
+}
