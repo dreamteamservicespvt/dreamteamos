@@ -13,6 +13,7 @@ import { deleteFCMToken } from "@/services/fcm";
 import InstallAppButton from "@/components/layout/InstallAppButton";
 import MemberAvatar from "@/components/MemberAvatar";
 import BrandLogo from "@/components/common/BrandLogo";
+import { useMyDesignation } from "@/hooks/useEmployeeProfile";
 import type { AppUser } from "@/types";
 
 interface SidebarProps {
@@ -286,13 +287,20 @@ function UserBlock({ user, onNavigate }: {
   user: AppUser;
   onNavigate?: () => void;
 }) {
+  // Their job, not the permission their account holds. Truncated with the full text on hover,
+  // because a real designation is longer than a role key and this badge sits in 240px.
+  const designation = useMyDesignation(user);
   const body = (
     <>
       <MemberAvatar name={user.name} avatar={user.avatar} size={36} />
       <div className="flex-1 min-w-0 text-left">
         <p className="text-sm font-medium text-foreground truncate">{user.name}</p>
-        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${getRoleColor(user.role)}`}>
-          {getRoleLabel(user.role)}
+        <span
+          title={`${designation} · ${getRoleLabel(user.role)} access`}
+          data-test="sidebar-designation"
+          className={`inline-block max-w-full truncate align-bottom text-[10px] font-medium px-1.5 py-0.5 rounded-full ${getRoleColor(user.role)}`}
+        >
+          {designation}
         </span>
       </div>
     </>

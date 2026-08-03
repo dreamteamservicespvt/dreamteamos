@@ -12,6 +12,7 @@ import { db } from "@/services/firebase";
 import { playClickSound } from "@/utils/audio";
 import MemberAvatar from "@/components/MemberAvatar";
 import BrandLogo from "@/components/common/BrandLogo";
+import { useMyDesignation } from "@/hooks/useEmployeeProfile";
 
 interface TopbarProps {
   onMenuClick?: () => void;
@@ -26,6 +27,9 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
   const { notifications, unreadCount, markAsRead, markAllAsRead, clearAll } = useNotifications();
   const [showNotifs, setShowNotifs] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
+  /* At component level, not inside the badge below — that block only renders when there is a user,
+     and a hook called conditionally is a hook called in a different order next render. */
+  const designation = useMyDesignation(user);
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -208,10 +212,14 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
           const body = (
             <>
               <MemberAvatar name={user.name} avatar={user.avatar} size={30} />
-              <div className="hidden md:block text-left">
-                <p className="text-sm font-medium text-foreground leading-tight">{user.name}</p>
-                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${getRoleColor(user.role)}`}>
-                  {getRoleLabel(user.role)}
+              <div className="hidden md:block max-w-[200px] text-left">
+                <p className="text-sm font-medium text-foreground leading-tight truncate">{user.name}</p>
+                <span
+                  title={`${designation} · ${getRoleLabel(user.role)} access`}
+                  data-test="topbar-designation"
+                  className={`inline-block max-w-full truncate align-bottom text-[10px] font-medium px-1.5 py-0.5 rounded-full ${getRoleColor(user.role)}`}
+                >
+                  {designation}
                 </span>
               </div>
             </>
