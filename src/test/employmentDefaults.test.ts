@@ -17,7 +17,9 @@ describe("filling the blanks", () => {
   it("fills an empty record with the standard arrangement", () => {
     const filled = applyEmploymentDefaults({}, "full_time");
     expect(filled.designation).toBe("AI Software Engineer");
-    expect(filled.workLocation).toBe("Kakinada, Andhra Pradesh");
+    // A full postal address, not a city — this is printed as the place of work on every letter.
+    expect(filled.workLocation).toContain("Vishnalayam Street");
+    expect(filled.workLocation).toContain("533002");
     expect(filled.reportingToName).toBe("Senior AI Software Engineer");
     expect(filled.workingHours).toBe("10:00 AM – 7:00 PM");
     expect(filled.workingDays).toBe("Monday – Saturday");

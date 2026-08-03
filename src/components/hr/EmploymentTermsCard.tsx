@@ -9,6 +9,7 @@ import {
 import { ENGAGEMENT_LABELS, WORK_ARRANGEMENT_LABELS } from "@/types/hr";
 import type { EmployeeProfile, EngagementType, WorkArrangement } from "@/types/hr";
 import { rupees } from "@/utils/hrTemplates";
+import { ladderFor, roleByTitle, termsForRole } from "@/utils/roleLadder";
 import {
   DAY_OPTIONS, EMPLOYMENT_DEFAULTS, TIME_OPTIONS, applyEmploymentDefaults, formatDays, formatHours,
   matchDayOption, matchTimeOption, splitRange,
@@ -33,6 +34,28 @@ import { Field, Input, SectionCard, Select, Textarea } from "./ui";
  * Notice period is derived from engagement, stage and seniority, unless the admin sets a number for
  * this specific person — which overrides the policy for them alone.
  */
+/**
+ * What the location field means under each arrangement.
+ *
+ * The field is always asked for. A remote employee still has a base office — it is the address the
+ * contract is governed from, the one they are called in to, and the one a bank or a court reads
+ * off the paperwork. Removing it would leave a letter that cannot say where the job belongs.
+ */
+/** The sentinel the designation picker uses for "not on the ladder". */
+const OTHER_ROLE = "__other";
+
+const WORK_LOCATION_LABEL: Record<WorkArrangement, string> = {
+  onsite: "Work location",
+  hybrid: "Base office (for the days on site)",
+  remote: "Base office (on record)",
+};
+
+const WORK_LOCATION_HINT: Record<WorkArrangement, string> = {
+  onsite: "Printed as the place of work on the offer and appointment letters.",
+  hybrid: "Where they work on their office days, and the address the letters are governed from.",
+  remote: "Still needed: it is the address on the letters, and where they may be called in to.",
+};
+
 export default function EmploymentTermsCard({
   profile, actor, readOnly, mode = "admin", title, employeeId,
 }: {
@@ -83,6 +106,38 @@ export default function EmploymentTermsCard({
     const { from, to } = splitRange(form.workingDays);
     return { from: matchDayOption(from), to: matchDayOption(to) };
   }, [form.workingDays]);
+
+  /**
+   * The annual figure, worked out live from the monthly one being typed.
+   *
+   * It is the number that goes on the letter and the number a candidate repeats back, and until
+   * now the admin had to do the multiplication themselves. Where a training period applies it is
+   * built from the post-training salary only — the same rule the letter states.
+   */
+  const draftCtcHint = useMemo(() => {
+    const monthly = form.ctcMonthly;
+    if (typeof monthly !== "number" || !Number.isFinite(monthly) || monthly <= 0) {
+      return isAdmin ? "Annual CTC is calculated from this." : "What you were offered — your admin will confirm it";
+    }
+    const training = (form.trainingMonths ?? 0) > 0 && typeof form.trainingSalaryMonthly === "number";
+    return training
+      ? `Annual CTC ${rupees(monthly * 12)} — on completion of training. The training salary is not part of it.`
+      : `Annual CTC ${rupees(monthly * 12)}`;
+  }, [form.ctcMonthly, form.trainingMonths, form.trainingSalaryMonthly, isAdmin]);
+
+  const ladder = ladderFor(profile.department);
+
+  /**
+   * Take a rung, or step off the ladder onto a custom title.
+   *
+   * Choosing "Other" clears only the title — the salary and notice period that were already agreed
+   * stay, because an admin naming a one-off role has not thereby changed what the person is paid.
+   */
+  const pickRole = (title: string) => {
+    if (title === OTHER_ROLE) { set("designation", ""); return; }
+    const role = roleByTitle(title, profile.department);
+    if (role) setForm((prev) => ({ ...prev, ...termsForRole(role) }));
+  };
 
   const set = <K extends keyof EmployeeProfile>(key: K, v: EmployeeProfile[K]) =>
     setForm((prev) => ({ ...prev, [key]: v }));
@@ -229,10 +284,65 @@ export default function EmploymentTermsCard({
               <option key={k} value={k}>{ENGAGEMENT_LABELS[k]}</option>
             ))}
           </Select>
-          <Input label="Designation" value={form.designation || ""} placeholder={EMPLOYMENT_DEFAULTS.designation}
-            onChange={(e) => set("designation", e.target.value)} data-test="terms-designation" />
-          <Input label="Work location" value={form.workLocation || ""} placeholder="Kakinada, Andhra Pradesh"
-            onChange={(e) => set("workLocation", e.target.value)} />
+          {/*
+            The ladder as a picker, because the title, the salary and the notice period are one
+            decision. Typed into three separate boxes they drift — two Associates on different
+            money, a Senior on a fortnight's notice. Choosing a rung fills all three in; every one
+            of them stays editable below, because people are hired above and below the band.
+          */}
+          {ladder.length > 0 ? (
+            <div>
+              <Select
+                label="Designation"
+                value={roleByTitle(form.designation, profile.department) ? (form.designation as string) : OTHER_ROLE}
+                data-test="terms-role"
+                onChange={(e) => pickRole(e.target.value)}
+              >
+                {ladder.map((r) => (
+                  <option key={r.title} value={r.title}>
+                    {r.title} — {rupees(r.monthlySalary)}/mo
+                  </option>
+                ))}
+                <option value={OTHER_ROLE}>Other / custom…</option>
+              </Select>
+              {!roleByTitle(form.designation, profile.department) && (
+                <Input
+                  label="" value={form.designation || ""} placeholder={EMPLOYMENT_DEFAULTS.designation}
+                  onChange={(e) => set("designation", e.target.value)}
+                  data-test="terms-designation" className="mt-1.5"
+                />
+              )}
+            </div>
+          ) : (
+            <Input label="Designation" value={form.designation || ""} placeholder={EMPLOYMENT_DEFAULTS.designation}
+              onChange={(e) => set("designation", e.target.value)} data-test="terms-designation" />
+          )}
+          {/* Where the work is done from. A term in its own right: the location says which office
+              somebody belongs to, this says whether they are expected in it. Both print on the
+              offer and appointment letters. */}
+          <Select label="Work arrangement" value={form.workArrangement || ""}
+            data-test="terms-work-arrangement"
+            onChange={(e) => set("workArrangement", (e.target.value || null) as WorkArrangement | null)}>
+            <option value="">Not set</option>
+            {(Object.keys(WORK_ARRANGEMENT_LABELS) as WorkArrangement[]).map((k) => (
+              <option key={k} value={k}>{WORK_ARRANGEMENT_LABELS[k]}</option>
+            ))}
+          </Select>
+          {/*
+            Asked for whatever the arrangement is, because a remote employee still has a base
+            office: it is the address the letter is governed from, the one an employee is called
+            in to, and the one a bank or a court reads off the paperwork. What changes is what the
+            field MEANS, so the label and the hint change with it rather than the field vanishing.
+          */}
+          <Input
+            label={WORK_LOCATION_LABEL[form.workArrangement || "onsite"]}
+            value={form.workLocation || ""}
+            placeholder={EMPLOYMENT_DEFAULTS.workLocation}
+            data-test="terms-work-location"
+            onChange={(e) => set("workLocation", e.target.value)}
+            hint={WORK_LOCATION_HINT[form.workArrangement || "onsite"]}
+            className="sm:col-span-2"
+          />
           <Input label="Reporting to" value={form.reportingToName || ""} placeholder={EMPLOYMENT_DEFAULTS.reportingToName}
             onChange={(e) => set("reportingToName", e.target.value)} />
           <Input label="Joining date" type="date" value={form.joiningDate || ""}
@@ -243,7 +353,7 @@ export default function EmploymentTermsCard({
           <Input label="Gross monthly salary (₹)" type="number" min={0} value={form.ctcMonthly ?? ""}
             onChange={(e) => set("ctcMonthly", e.target.value === "" ? null : Number(e.target.value))}
             data-test="terms-salary"
-            hint={isAdmin ? undefined : "What you were offered — your admin will confirm it"} />
+            hint={draftCtcHint} />
           {/* Pickers rather than free text: the same shift typed by three people produced "10-7",
               "10:00-7:00" and "10 AM to 7 PM" across three employees' letters. */}
           <div>

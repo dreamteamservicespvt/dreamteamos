@@ -360,3 +360,24 @@ The report that the composer preview and download ignore edits. A faithful repli
 
 ### Still open
 The user's offer-letter list started at an item **"1. … This should appear at the top"** whose description did not survive the message — never clarified, so nothing was done for it.
+
+## Session — 2026-08-04e (Role ladder, work arrangement on the form, stamp aspect)
+
+**A silent no-op worth remembering.** The work-arrangement `<Select>` "added" the session before never reached the form: the `.replace()` targeted a pattern that did not match (I assumed a placeholder had already been changed) and the script printed "ok" without asserting. The save path had landed, so the field was stored and unsettable. **Every scripted edit to a source file must `assert old in s` before replacing.**
+
+**`utils/roleLadder.ts` — the technical career ladder.** `TECH_ROLE_LADDER`: Associate AI Software Engineer ₹5,000 / 15 days, AI Software Engineer ₹10,000 / 30 days, Senior AI Software Engineer ₹15,000 / 45 days (senior). Order is load-bearing — it is what `nextRole()` means. `termsForRole()` returns designation + `ctcMonthly` + `noticeDaysOverride` + `seniorRole` to merge into the form; the notice is written as this person's **override** because on this ladder the role *is* the reason. Everything is a starting point an admin can edit. `ladderFor()` returns `[]` for sales, which keeps its free-text designation.
+
+- `EmploymentTermsCard`: designation becomes a `<Select>` of rungs (priced in the option label) plus **"Other / custom…"**, which reveals the free-text input and clears only the title — not the salary already agreed.
+- `IssueDocumentDialog`: choosing **promotion_letter** seeds `newDesignation`/`newCtcMonthly` from `nextRole()`, and a `data-test="promotion-step"` note says which rung → which rung, or says plainly the person is off-ladder / at the top.
+
+**Work arrangement + location.** The location field is asked for under **every** arrangement; only `WORK_LOCATION_LABEL` / `WORK_LOCATION_HINT` change (`Work location` → `Base office (for the days on site)` → `Base office (on record)`). A remote employee still has a base office: it is the address the letter is governed from and where they may be called in.
+
+**`EMPLOYMENT_DEFAULTS.workLocation` is now the full postal address**, not "Kakinada, Andhra Pradesh". `officeAddressLines` gained a `looksComplete` test (a 6-digit PIN, or ≥3 comma-separated parts) — a complete address prints **alone**, otherwise the registered address is appended. Without it the letter printed the street twice.
+
+**The stamp is sized by WIDTH (200px) with `height: auto, maxHeight: 150`.** It was `118 × 118`; the company's real stamp is a wide block of text, and a square box letterboxed it into an unreadable smudge. Round seals stay round, rectangular ones stay rectangular.
+
+**Live annual CTC** in the terms form (`draftCtcHint`), from the post-training salary where a training period applies — the same rule `remunerationLines` states on the letter.
+
+### How this was verified
+- `npx vitest run` — **1387/1387** (12 new in `roleLadder.test.ts`). Clean typecheck and build, no new lint errors.
+- **Browser, dark theme, 21/21, 0 console errors:** stamp 200×110 (wide, not square); the office address appears **once** in the letter body; the arrangement select offers all three and re-labels the location field each time; the three rungs are priced in the dropdown; picking Senior sets 15000/45 and Associate sets 5000/15; the annual figure reads ₹60,000 then follows an edit to ₹1,20,000; the salary stays editable after a role is picked.

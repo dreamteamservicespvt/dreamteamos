@@ -17,7 +17,14 @@ import type { EmployeeProfile, EngagementType } from "@/types/hr";
 /** The standing arrangement for a full-time hire. */
 export const EMPLOYMENT_DEFAULTS = {
   designation: "AI Software Engineer",
-  workLocation: "Kakinada, Andhra Pradesh",
+  /**
+   * The full postal address, not a city.
+   *
+   * This is printed as the place of work on every letter, and "Kakinada, Andhra Pradesh" is where
+   * the office roughly is rather than where it is. A landlord, a bank or a college checking the
+   * letter needs an address they could post to.
+   */
+  workLocation: "Dream Team Services, 50-6-23, Vishnalayam Street, Jagannaickpur, Kakinada, Andhra Pradesh – 533002",
   reportingToName: "Senior AI Software Engineer",
   startTime: "10:00 AM",
   endTime: "7:00 PM",

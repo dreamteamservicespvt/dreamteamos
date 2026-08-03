@@ -242,13 +242,19 @@ function SignaturePanel({ blocks, stampUrl }: { blocks: SignatureBlockData[]; st
                 src={stampUrl}
                 alt=""
                 crossOrigin="anonymous"
-                /* Centred under the offices that signed, at roughly the size a real 40 mm rubber
-                   stamp is against 13.5pt text. Beneath rather than across them: a seal laid over
-                   a signature obscured the name under it, and a photographed stamp carries its own
-                   paper, which sat as a pale rectangle on top of the ink. */
+                /*
+                  Sized by WIDTH, with the height free to follow the artwork.
+                  Forcing it into a 118px square letterboxed the real stamp — which is a wide block
+                  of text, not a circle — down to a cramped, unreadable smudge in the middle of an
+                  empty box. Constraining one dimension and capping the other lets a round seal be
+                  round and a rectangular one be rectangular, both at a legible size.
+
+                  Beneath the officers rather than across them: a seal laid over a signature
+                  obscured the name under it.
+                */
                 style={{
-                  height: 118, width: 118, objectFit: "contain",
-                  opacity: 0.9, mixBlendMode: "multiply", pointerEvents: "none",
+                  width: 200, height: "auto", maxHeight: 150, objectFit: "contain",
+                  opacity: 0.92, mixBlendMode: "multiply", pointerEvents: "none",
                 }}
               />
             </div>

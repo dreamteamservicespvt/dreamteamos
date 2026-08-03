@@ -310,14 +310,24 @@ function officeAddressLines(i: BuildDocumentInput): (string | null)[] {
   const own = (p.workLocation || "").trim();
   const address = co.address.filter(Boolean);
 
-  const place: (string | null)[] = address.length === 0
-    ? [value(own)]
-    : (() => {
-      const addressLine = `${co.name}, ${address.join(", ")}`;
-      // The registered address already names the city the employee was told about: one line, not two.
-      const covered = !own || address.join(", ").toLowerCase().includes(own.split(",")[0].trim().toLowerCase());
-      return covered ? [addressLine] : [own, addressLine];
-    })();
+  /**
+   * One address, never two.
+   *
+   * The work location on the record is now a full postal address by default, and the company's
+   * registered address is on file as well — printing both put the same street on the letter twice.
+   * A location that already reads as a complete address (a PIN code, or three or more parts) is
+   * used on its own; a bare city is printed above the registered address, which supplies the rest.
+   */
+  const looksComplete = /\b\d{6}\b/.test(own) || own.split(",").filter((s) => s.trim()).length >= 3;
+  const place: (string | null)[] = own && looksComplete
+    ? [own]
+    : address.length === 0
+      ? [value(own)]
+      : (() => {
+        const addressLine = `${co.name}, ${address.join(", ")}`;
+        const covered = !own || address.join(", ").toLowerCase().includes(own.split(",")[0].trim().toLowerCase());
+        return covered ? [addressLine] : [own, addressLine];
+      })();
 
   // Where the work is done from is a term, not a detail of the address — an employee reading
   // "Kakinada" learns which office they belong to and nothing about whether they are expected in it.

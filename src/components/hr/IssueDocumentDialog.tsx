@@ -8,6 +8,7 @@ import { downloadAgreementPdf } from "@/utils/agreementPdf";
 import { printAgreementElement } from "@/utils/agreementPrint";
 import { awaitRendered } from "@/utils/awaitRendered";
 import { HR_DOCUMENT_GROUPS, HR_DOCUMENT_LABELS } from "@/types/hr";
+import { nextRole } from "@/utils/roleLadder";
 import type { AppUser } from "@/types";
 import type { EmployeeProfile, HrDocumentType } from "@/types/hr";
 import { allocateReference, issueDocument } from "@/services/hrDocuments";
@@ -59,6 +60,11 @@ export default function IssueDocumentDialog({
 
   const [type, setType] = useState<HrDocumentType>(defaultType || suggested[0]);
   const [extras, setExtras] = useState<HrDocumentExtras>({});
+  /** The rung above this employee's current one, where they are on the ladder at all. */
+  const promotion = useMemo(
+    () => nextRole(profile.designation, profile.department),
+    [profile.designation, profile.department],
+  );
   const [issuedOn, setIssuedOn] = useState(todayIso());
   const [showPreview, setShowPreview] = useState(false);
   const [sending, setSending] = useState(false);
@@ -342,7 +348,20 @@ export default function IssueDocumentDialog({
             */}
             <select
               value={type}
-              onChange={(e) => { setType(e.target.value as HrDocumentType); setExtras({}); setShowPreview(false); }}
+              onChange={(e) => {
+                const next = e.target.value as HrDocumentType;
+                setType(next);
+                /*
+                  A promotion letter opens on the rung above the one they are on.
+                  The ladder already knows what follows what and what it pays; making the admin
+                  remember both is how somebody gets promoted into the right title on the wrong
+                  money. Both fields stay editable.
+                */
+                setExtras(next === "promotion_letter" && promotion
+                  ? { newDesignation: promotion.title, newCtcMonthly: promotion.monthlySalary }
+                  : {});
+                setShowPreview(false);
+              }}
               data-test="document-type"
               className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20"
             >
@@ -368,6 +387,18 @@ export default function IssueDocumentDialog({
           </div>
           <Input label="Dated" type="date" value={issuedOn} onChange={(e) => setIssuedOn(e.target.value)} />
         </div>
+
+        {type === "promotion_letter" && (
+          <p className="mt-3 rounded-lg bg-accent/40 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground" data-test="promotion-step">
+            {promotion
+              ? <>Promoting <b className="text-foreground">{member.name}</b> from{" "}
+                <b className="text-foreground">{profile.designation}</b> to{" "}
+                <b className="text-foreground">{promotion.title}</b>. The new figures below are the
+                ladder's — change them if this promotion was agreed on different terms.</>
+              : <>{profile.designation || "This employee"} is not on the technical ladder, or is
+                already at the top of it. Type the new designation and salary below.</>}
+          </p>
+        )}
 
         {fields.length > 0 && (
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
