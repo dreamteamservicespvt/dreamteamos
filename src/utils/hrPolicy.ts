@@ -75,9 +75,17 @@ export const SIGNATORY_ROLE: Record<Department, UserRole> = {
   sales: "sales_admin",
 };
 
+/**
+ * How each signatory is titled on the papers they sign.
+ *
+ * A letter is signed by an office, not a person — the candidate reading their offer needs to see
+ * who at the company stands behind it, and "Tech Admin" is an app role, not an office. Whoever
+ * holds the seat signs as the seat. An admin who wants something else sets their own `designation`
+ * in Settings, which still wins over this.
+ */
 export const SIGNATORY_TITLE: Record<Department, string> = {
-  tech: "Technical Head",
-  sales: "Sales Head",
+  tech: "CTO (Tech Admin)",
+  sales: "CEO (Sales Admin)",
 };
 
 // ─── Notice periods ─────────────────────────────────────────────────────────

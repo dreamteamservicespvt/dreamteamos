@@ -308,8 +308,18 @@ export interface EmployeeProfile {
   /** 0 means no probation (a short internship, say). Defaults to 3 for full/part-time. */
   probationMonths?: number | null;
   ctcMonthly?: number | null;
+  /**
+   * Day of the month salary is paid, printed on the appointment letter.
+   *
+   * On the employment record rather than a per-letter question because it is a standing fact about
+   * how this person is paid, and a letter that had to be told it every time would print a different
+   * answer each time someone forgot.
+   */
+  salaryPayDay?: number | null;
   workingHours?: string | null;
   workingDays?: string | null;
+  /** Named shift, where the role has one ("General shift", "2 PM – 11 PM"). Most roles have none. */
+  shiftDetails?: string | null;
   /** Team lead or other critical senior role — attracts the longer notice period. */
   seniorRole?: boolean;
   /** Set only when this person's contract genuinely differs from policy. */

@@ -78,7 +78,7 @@ describe("both ways of giving a signature", () => {
 
     await waitFor(() => expect(uploadToCloudinary).toHaveBeenCalledTimes(1));
     await waitFor(() =>
-      expect(saveCompanySignature).toHaveBeenCalledWith("a1", "https://cdn.test/sign.png", "Technical Head"));
+      expect(saveCompanySignature).toHaveBeenCalledWith("a1", "https://cdn.test/sign.png", "CTO (Tech Admin)"));
   });
 
   it("cannot be saved before anything has been drawn or picked", () => {
@@ -86,14 +86,14 @@ describe("both ways of giving a signature", () => {
     expect(screen.getByTestId("signature-save")).toBeDisabled();
   });
 
-  it("defaults the printed designation from the role, and a sales head gets theirs", () => {
+  it("defaults the printed designation from the role — tech signs as CTO, sales as CEO", () => {
     render(<CompanySignatureCard />);
-    expect(screen.getByTestId("signatory-designation")).toHaveValue("Technical Head");
+    expect(screen.getByTestId("signatory-designation")).toHaveValue("CTO (Tech Admin)");
 
     cleanup();
     state.user = techAdmin({ role: "sales_admin" });
     render(<CompanySignatureCard />);
-    expect(screen.getByTestId("signatory-designation")).toHaveValue("Sales Head");
+    expect(screen.getByTestId("signatory-designation")).toHaveValue("CEO (Sales Admin)");
   });
 });
 

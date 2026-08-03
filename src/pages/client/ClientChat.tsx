@@ -6,15 +6,15 @@
  * on purpose. A client opens a link from WhatsApp on a phone, types four digits, and is talking to
  * the person building their ad. Anything more than that is something else to explain.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Loader2, Lock, ShieldCheck, AlertTriangle, MessageSquare } from "lucide-react";
+import { Loader2, Lock, ShieldCheck, MessageSquare } from "lucide-react";
 import OrderChatPanel, { OrderChatCallButtons } from "@/components/order-chat/OrderChatPanel";
 import ClientCall, { type ClientCallType } from "@/components/order-chat/ClientCall";
+import AccessCodeGate from "@/components/common/AccessCodeGate";
 import { useOrderChat } from "@/hooks/useOrderChat";
 import { guestDb, guestUid, hasGuestSession, joinOrderChat, alertTeam, type JoinResult } from "@/services/orderChatGuest";
 import { CLIENT_SENDER_ID } from "@/types/orderChat";
-import { cn } from "@/lib/utils";
 
 export default function ClientChat() {
   const { chatId = "" } = useParams();
@@ -46,13 +46,9 @@ export default function ClientChat() {
 /* ────────────────────────────────────────────────────────────────────────────────────────────── */
 
 function CodeGate({ chatId, onJoined }: { chatId: string; onJoined: () => void }) {
-  const [digits, setDigits] = useState(["", "", "", ""]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [blocked, setBlocked] = useState(false);
-  const inputs = useRef<(HTMLInputElement | null)[]>([]);
-
-  useEffect(() => { inputs.current[0]?.focus(); }, []);
 
   const submit = useCallback(async (code: string) => {
     setBusy(true);
@@ -61,9 +57,6 @@ function CodeGate({ chatId, onJoined }: { chatId: string; onJoined: () => void }
     setBusy(false);
 
     if (result.ok) { onJoined(); return; }
-
-    setDigits(["", "", "", ""]);
-    setTimeout(() => inputs.current[0]?.focus(), 50);
 
     if (result.error === "locked") {
       setBlocked(true);
@@ -83,79 +76,18 @@ function CodeGate({ chatId, onJoined }: { chatId: string; onJoined: () => void }
     }
   }, [chatId, onJoined]);
 
-  const setDigit = (index: number, value: string) => {
-    if (blocked || busy) return;
-    if (!/^\d*$/.test(value)) return;
-    const next = [...digits];
-    next[index] = value.slice(-1);
-    setDigits(next);
-    setError(null);
-    if (value && index < 3) inputs.current[index + 1]?.focus();
-    if (next.every((d) => d !== "")) submit(next.join(""));
-  };
-
-  const onPaste = (e: React.ClipboardEvent) => {
-    e.preventDefault();
-    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 4);
-    if (pasted.length !== 4) return;
-    setDigits(pasted.split(""));
-    submit(pasted);
-  };
-
   return (
-    <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-background px-6 py-10">
-      <div className="w-full max-w-sm text-center">
-        <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
-          <MessageSquare className="h-8 w-8 text-primary" />
-        </div>
-        <h1 className="text-xl font-bold text-foreground">Your project chat</h1>
-        <p className="mx-auto mt-2 max-w-xs text-sm text-muted-foreground">
-          Enter the 4-digit code from the message we sent you.
-        </p>
-
-        <div className="my-7 flex justify-center gap-3" onPaste={onPaste}>
-          {digits.map((d, i) => (
-            <input
-              key={i}
-              ref={(el) => { inputs.current[i] = el; }}
-              value={d}
-              onChange={(e) => setDigit(i, e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Backspace" && !digits[i] && i > 0) inputs.current[i - 1]?.focus();
-              }}
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={1}
-              disabled={blocked || busy}
-              className={cn(
-                "h-16 w-14 rounded-xl border-2 bg-card text-center text-2xl font-bold text-foreground outline-none transition-all",
-                error ? "border-destructive/60" : "border-border focus:border-primary focus:ring-4 focus:ring-primary/10",
-                (blocked || busy) && "opacity-50",
-              )}
-            />
-          ))}
-        </div>
-
-        {busy && (
-          <p className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> Opening your chat…
-          </p>
-        )}
-
-        {error && !busy && (
-          <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-left">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-            <p className="text-xs text-destructive">{error}</p>
-          </div>
-        )}
-
-        <p className="mt-8 flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
-          <ShieldCheck className="h-3.5 w-3.5" />
-          Private chat with your project team
-        </p>
-      </div>
-    </div>
+    <AccessCodeGate
+      icon={<MessageSquare className="h-8 w-8 text-primary" />}
+      title="Your project chat"
+      subtitle="Enter the 4-digit code from the message we sent you."
+      busy={busy}
+      busyLabel="Opening your chat…"
+      error={error}
+      blocked={blocked}
+      onSubmit={submit}
+      note={<><ShieldCheck className="h-3.5 w-3.5" /> Private chat with your project team</>}
+    />
   );
 }
 

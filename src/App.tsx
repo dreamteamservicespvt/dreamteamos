@@ -80,6 +80,7 @@ import MySalaryPage from "@/pages/shared/MySalary";
 import MySalaryDashboard from "@/pages/tech-member/MySalaryDashboard";
 import NotFound from "@/pages/NotFound";
 import ClientChat from "@/pages/client/ClientChat";
+import JoinOnboarding from "@/pages/onboarding/JoinOnboarding";
 import Chat from "@/pages/shared/Chat";
 import Meeting from "@/pages/shared/Meeting";
 import AdminChatMonitor from "@/pages/shared/AdminChatMonitor";
@@ -122,6 +123,11 @@ const App = () => (
               a link and a 4-digit code, and must never be asked to sign in to answer a question
               about their own ad. Kept short so it survives being pasted into WhatsApp. */}
           <Route path="/c/:chatId" element={<ClientChat />} />
+
+          {/* Becoming an employee. Public by design and for the same reason: the person reading it
+              has no account, because the account is what they get for signing. Offer letter, then
+              joining letter, then their login — all behind a 4-digit code. */}
+          <Route path="/join/:inviteId" element={<JoinOnboarding />} />
 
           {/* Main Admin */}
           <Route element={<AppLayout allowedRoles={["main_admin"]} />}>

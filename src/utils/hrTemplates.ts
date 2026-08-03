@@ -1,7 +1,7 @@
 import { format } from "date-fns";
 import { COMPANY } from "@/utils/company";
 import { formatPhoneDisplay } from "@/utils/phone";
-import { parseDate } from "@/utils/hrPolicy";
+import { parseDate, probationEndDate, noticePeriodFor } from "@/utils/hrPolicy";
 import { ENGAGEMENT_LABELS, HR_DOCUMENT_LABELS } from "@/types/hr";
 import type { EmployeeProfile, HrDocumentType } from "@/types/hr";
 
@@ -40,6 +40,10 @@ export interface DocumentSignatory {
 export interface HrDocumentExtras {
   /** Offer letter — how long the offer stands. */
   offerValidUntil?: string | null;
+  /** Offer letter — the company's own reference for this offer, e.g. DTS/OFR/2026/007. */
+  offerLetterNumber?: string | null;
+  /** Offer letter — the candidate's postal address, where one was collected. */
+  candidateAddress?: string | null;
   /** Probation extension — the new probation end date and why. */
   extendedTo?: string | null;
   extensionReason?: string | null;
@@ -113,16 +117,23 @@ const COMPANY_SIGNATURE_BLOCK = (signatory: DocumentSignatory, issuedOn: string)
 ];
 
 /** The header block every letter opens with — who it is from, who it is to, and when. */
-const letterHead = (title: string, subject: DocumentSubject, issuedOn: string): (string | null)[] => [
+const letterHead = (
+  title: string,
+  subject: DocumentSubject,
+  issuedOn: string,
+  opts: { ref?: string | null; address?: string | null } = {},
+): (string | null)[] => [
   title.toUpperCase(),
   COMPANY.name.toUpperCase(),
   "",
+  opts.ref?.trim() ? `Ref: ${opts.ref.trim()}` : null,
   `Date: ${longDate(issuedOn)}`,
   "",
   `Employee Name: ${subject.name}`,
   subject.employeeId ? `Employee ID: ${subject.employeeId}` : null,
   subject.phone ? `Mobile Number: ${formatPhoneDisplay(subject.phone)}` : null,
   subject.email ? `Email: ${subject.email}` : null,
+  opts.address?.trim() ? `Address: ${opts.address.trim()}` : null,
   "",
 ];
 
@@ -138,6 +149,14 @@ export function engagementDescription(p: EmployeeProfile): string {
   return months > 0 ? `${base} Employee (${months}-month probation)` : `${base} Employee`;
 }
 
+/** `10` → `10th`. The salary payment date reads as a day of the month, not a bare number. */
+export function ordinalDay(day?: number | null): string | null {
+  if (typeof day !== "number" || !Number.isInteger(day) || day < 1 || day > 31) return null;
+  const teen = day % 100 >= 11 && day % 100 <= 13;
+  const suffix = teen ? "th" : day % 10 === 1 ? "st" : day % 10 === 2 ? "nd" : day % 10 === 3 ? "rd" : "th";
+  return `${day}${suffix}`;
+}
+
 const additional = (extras?: HrDocumentExtras, startingAt = 90): (string | null)[] =>
   extras?.additionalTerms?.trim()
     ? ["", `${startingAt}. Additional Terms`, extras.additionalTerms.trim()]
@@ -147,8 +166,12 @@ const additional = (extras?: HrDocumentExtras, startingAt = 90): (string | null)
 
 function offerLetter(i: BuildDocumentInput): string {
   const { profile: p, subject, extras } = i;
+  const probationEnds = probationEndDate(p);
   return compose([
-    ...letterHead("Offer of Employment", subject, i.issuedOn),
+    ...letterHead("Offer of Employment", subject, i.issuedOn, {
+      ref: extras?.offerLetterNumber,
+      address: extras?.candidateAddress,
+    }),
     `Dear ${subject.name},`,
     "",
     `We are pleased to offer you the position described below at ${COMPANY.name}. This letter sets out the principal terms of the offer. Your employment will additionally be governed by the Appointment Letter / Employment Agreement and the company policies you will be asked to acknowledge on or before joining.`,
@@ -167,23 +190,32 @@ function offerLetter(i: BuildDocumentInput): string {
     "",
     "4. Remuneration",
     `Gross monthly salary (CTC): ${rupees(p.ctcMonthly)}`,
-    "Salary is payable monthly, subject to statutory deductions as applicable.",
+    ordinalDay(p.salaryPayDay)
+      ? `Salary is payable monthly, on or about the ${ordinalDay(p.salaryPayDay)} of each month, subject to statutory deductions as applicable.`
+      : "Salary is payable monthly, subject to statutory deductions as applicable.",
     "",
     "5. Probation",
     (p.probationMonths ?? 0) > 0
-      ? `You will be on probation for ${p.probationMonths} month(s) from your date of joining. Your performance will be evaluated during this period, and your employment will be confirmed in writing on successful completion.`
+      ? `You will be on probation for ${p.probationMonths} month(s) from your date of joining${probationEnds ? `, ending on ${longDate(probationEnds)}` : ""}. Your performance will be evaluated during this period, and your employment will be confirmed in writing on successful completion.`
       : "This engagement does not carry a probation period.",
     "",
     "6. Working Hours and Days",
     `Working hours: ${value(p.workingHours)}`,
     `Working days: ${value(p.workingDays)}`,
+    p.shiftDetails ? `Shift: ${p.shiftDetails}` : null,
     "",
-    "7. Conditions of this Offer",
+    "7. Leave",
+    "You will be entitled to leave in accordance with the company's leave policy as applicable to you from time to time. Leave is applied for and approved in advance through the company's system, except in an emergency, when it must be intimated at the earliest opportunity. The full policy will be shared with you on joining.",
+    "",
+    "8. Confidentiality",
+    "During the recruitment process and at all times afterwards, you shall keep confidential the terms of this offer and any information about the company, its clients and its work that is not in the public domain. On joining you will be asked to accept the confidentiality and intellectual property terms in full.",
+    "",
+    "9. Conditions of this Offer",
     "This offer is subject to verification of the information and documents you provide, and to your signing the Appointment Letter / Employment Agreement, the Non-Disclosure and Intellectual Property terms, and the acknowledgement of company policies.",
     extras?.offerValidUntil
       ? `Please confirm your acceptance on or before ${longDate(extras.offerValidUntil)}. This offer stands withdrawn if it is not accepted by that date.`
       : "Please confirm your acceptance by signing below.",
-    ...additional(extras, 8),
+    ...additional(extras, 10),
     "",
     "We look forward to welcoming you to the team.",
     ...COMPANY_SIGNATURE_BLOCK(i.signatory, i.issuedOn),
@@ -196,6 +228,10 @@ function offerLetter(i: BuildDocumentInput): string {
 
 function appointmentLetter(i: BuildDocumentInput): string {
   const { profile: p, subject, extras } = i;
+  const probationEnds = probationEndDate(p);
+  // Stated as a figure as well as a ladder: an employee who has to work out which rung they are on
+  // to know their own notice period has not really been told it.
+  const notice = noticePeriodFor(p);
   return compose([
     ...letterHead("Appointment Letter and Employment Agreement", subject, i.issuedOn),
     `Dear ${subject.name},`,
@@ -212,44 +248,69 @@ function appointmentLetter(i: BuildDocumentInput): string {
     `${value(p.workLocation)}. The company may, with reasonable notice, require you to work from another of its locations or from a client site where the role requires it.`,
     "",
     "3. Remuneration",
-    `Gross monthly salary (CTC): ${rupees(p.ctcMonthly)}, payable monthly, subject to statutory deductions as applicable. Revisions, if any, are at the discretion of the company and will be communicated in writing.`,
+    `Gross monthly salary (CTC): ${rupees(p.ctcMonthly)}, payable monthly${ordinalDay(p.salaryPayDay) ? ` on or about the ${ordinalDay(p.salaryPayDay)} of each month` : ""}. Revisions, if any, are at the discretion of the company and will be communicated in writing.`,
+    "Salary is paid by bank transfer. You are required to hold a bank account in your own name and to provide its details, together with your PAN, before your first salary is processed.",
+    "Statutory deductions — income tax deducted at source (TDS), and Provident Fund and ESI where applicable — will be made from your salary as required by law.",
     "",
     "4. Probation and Confirmation",
     (p.probationMonths ?? 0) > 0
-      ? `You will be on probation for ${p.probationMonths} month(s) from the date of joining. During probation your attendance, discipline, work quality, productivity, communication, teamwork, learning ability and adherence to company policies will be evaluated. The company may, where the circumstances warrant it, extend the probation period by written notice stating the extension and the expectations to be met. Your employment will be confirmed in writing on successful completion of probation.`
+      ? `You will be on probation for ${p.probationMonths} month(s) from the date of joining${probationEnds ? `, ending on ${longDate(probationEnds)}` : ""}. During probation your attendance, discipline, work quality, productivity, communication, teamwork, learning ability and adherence to company policies will be evaluated. The company may, where the circumstances warrant it, extend the probation period by written notice stating the extension and the expectations to be met. Your employment will be confirmed in writing on successful completion of probation.`
       : "This engagement does not carry a probation period.",
     "",
-    "5. Working Hours and Days",
-    `Working hours: ${value(p.workingHours)}. Working days: ${value(p.workingDays)}. You may be required to work such additional hours as are reasonably necessary for the proper performance of your duties.`,
+    "5. Working Hours, Days and Shift",
+    `Working hours: ${value(p.workingHours)}. Working days: ${value(p.workingDays)}.`,
+    p.shiftDetails ? `Shift: ${p.shiftDetails}.` : null,
+    "You may be required to work such additional hours as are reasonably necessary for the proper performance of your duties.",
     "",
-    "6. Leave",
+    "6. Leave, Attendance and Punctuality",
     "You will be entitled to leave in accordance with the company's leave policy as applicable to you from time to time. Leave must be applied for and approved through the company's system in advance, except in an emergency, when it must be intimated at the earliest opportunity.",
+    "You are required to record your attendance through the company's system on every working day, and to be available and working within your working hours. Persistent late arrival, unrecorded attendance or absence without intimation is treated as a matter of discipline and may be dealt with under the company's disciplinary policy.",
     "",
-    "7. Confidentiality",
+    "7. Remote Work",
+    "Where the company permits you to work remotely, whether occasionally or as a regular arrangement, the same working hours, attendance recording, availability, confidentiality and data-protection obligations apply as they do at the workplace. Permission to work remotely is granted at the company's discretion and may be withdrawn.",
+    "",
+    "8. Your Responsibilities",
+    "You shall perform the duties assigned to you diligently and to the standard the role requires; comply with the company's policies as amended from time to time; maintain the confidentiality of company and client information; take proper care of company assets issued to you; observe the code of conduct in your dealings with colleagues, clients and partners; record your attendance and apply for leave as required; report to your reporting manager and keep them informed of the progress of your work; and act at all times in the company's best interests.",
+    "",
+    "9. Confidentiality",
     "You shall not, during your employment or at any time after it ends, disclose or use any confidential information of the company, its clients or its partners, except as required for the proper performance of your duties or by law. Confidential information includes client data, pricing, business plans, source code, prompts, creative assets, processes and any information not in the public domain.",
     "",
-    "8. Intellectual Property",
-    "All work product, inventions, designs, creative material, code, prompts, documentation and other intellectual property created by you in the course of your employment, or using company resources, shall vest solely in the company. You agree to execute any document reasonably required to give effect to this clause.",
+    "10. Intellectual Property",
+    "All work product, inventions, designs, creative material, code, prompts, documentation and other intellectual property created by you in the course of your employment, or using company resources, shall vest solely in the company. You agree to execute any document reasonably required to give effect to this clause. Your confidentiality and intellectual property obligations continue after your employment ends.",
     "",
-    "9. Conduct and Discipline",
+    "11. Conduct and Discipline",
     "You shall comply with the company's policies, maintain professional conduct, and act in the company's best interests. Misconduct will be dealt with under the company's misconduct and disciplinary policy, which provides for the process to be followed before any action is taken.",
     "",
-    "10. Notice Period and Termination",
+    "12. Conflict of Interest",
+    "You shall not, during your employment, engage in any business, employment or activity that conflicts with the company's interests or with the proper performance of your duties, without the company's prior written consent. You shall disclose to the company any personal, financial or family interest that could reasonably be seen as a conflict.",
+    "",
+    "13. Non-Solicitation",
+    "For twelve months after your employment ends, you shall not solicit, for yourself or for any other person or business, any client of the company you dealt with in the last twelve months of your employment, nor induce any employee of the company to leave it. This clause is limited to what is reasonable to protect the company's legitimate business interests and does not restrain you from taking up lawful employment of your choice.",
+    "",
+    "14. Background Verification",
+    "This appointment is subject to verification of the information, documents and references you have provided. If any of it is found to be false or materially misleading, the company may withdraw this appointment or end your employment, following the process the disciplinary policy and applicable law require.",
+    "",
+    "15. Notice Period and Termination",
     "Either party may end this employment by giving written notice in accordance with the notice period applicable to your stage of employment, as set out in the company's notice policy and summarised below:",
     "Intern — 7 days. Full-time or part-time employee during probation — 15 days. Confirmed employee — 30 days. Team lead or other critical senior role — 45 days.",
+    `The notice period applicable to you at the date of this letter is ${notice.days} day(s) — ${notice.label.toLowerCase()}.`,
     "The notice period may be shortened or waived by mutual written agreement. Payment in lieu of unserved notice may be agreed in writing, subject to applicable law. Termination on grounds of misconduct follows the disciplinary procedure and applicable law rather than this clause.",
     "",
-    "11. Return of Company Property",
-    "On the last working day, or earlier if the company asks, you shall complete a proper handover and return all company property issued to you, including the ID card, laptop, phone, SIM, access cards, documents and any other assets recorded against your name.",
+    "16. Return of Company Property",
+    "On the last working day, or earlier if the company asks, you shall complete a proper handover and return all company property issued to you, including the ID card, laptop, phone, SIM, access cards, documents and any other assets recorded against your name. Your full and final settlement will be processed after the handover and the return of company property are complete, in accordance with company policy and applicable law.",
     "",
-    "12. Governing Terms",
-    "This letter, together with the company policies referred to in it, constitutes the terms of your employment. Any change to these terms will be made in writing. Nothing in this letter overrides any right you have under applicable law.",
-    ...additional(extras, 13),
+    "17. Amendment and Governing Terms",
+    "This letter, together with the company policies referred to in it, constitutes the terms of your employment. The company may amend its policies from time to time and will inform you of material changes. No change to the terms of this letter is effective unless made in writing. Nothing in this letter overrides any right you have under applicable law.",
+    "",
+    "18. Governing Law and Jurisdiction",
+    "This letter and your employment are governed by the laws of India, and the courts having jurisdiction over the place of work stated above shall have jurisdiction over any dispute arising from them.",
+    ...additional(extras, 19),
     "",
     "Please sign below to confirm that you have read, understood and accepted these terms.",
     ...COMPANY_SIGNATURE_BLOCK(i.signatory, i.issuedOn),
     "",
     "ACCEPTED AND AGREED",
+    `Place: ${value(p.workLocation)}`,
     ...EMPLOYEE_SIGNATURE_BLOCK(subject),
   ]);
 }
@@ -514,7 +575,7 @@ export function buildDocument(input: BuildDocumentInput): BuiltDocument {
  * exactly those and nothing more.
  */
 export const EXTRA_FIELDS: Record<HrDocumentType, (keyof HrDocumentExtras)[]> = {
-  offer_letter: ["offerValidUntil"],
+  offer_letter: ["offerLetterNumber", "candidateAddress", "offerValidUntil"],
   appointment_letter: [],
   nda: [],
   policy_acknowledgement: [],
@@ -529,6 +590,8 @@ export const EXTRA_FIELDS: Record<HrDocumentType, (keyof HrDocumentExtras)[]> = 
 /** Human labels for those extra fields. */
 export const EXTRA_FIELD_LABELS: Record<keyof HrDocumentExtras, string> = {
   offerValidUntil: "Offer valid until",
+  offerLetterNumber: "Offer letter number",
+  candidateAddress: "Candidate address",
   extendedTo: "Probation extended to",
   extensionReason: "Reason for extension",
   newCtcMonthly: "Revised gross monthly salary (₹)",
@@ -545,6 +608,8 @@ export const EXTRA_FIELD_LABELS: Record<keyof HrDocumentExtras, string> = {
 /** Which of those fields are dates, numbers or long text — drives the input type in the form. */
 export const EXTRA_FIELD_KIND: Record<keyof HrDocumentExtras, "date" | "number" | "text" | "textarea"> = {
   offerValidUntil: "date",
+  offerLetterNumber: "text",
+  candidateAddress: "textarea",
   extendedTo: "date",
   extensionReason: "textarea",
   newCtcMonthly: "number",

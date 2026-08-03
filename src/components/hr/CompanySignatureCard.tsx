@@ -123,7 +123,7 @@ export default function CompanySignatureCard() {
           <input
             value={designation}
             onChange={(e) => setDesignation(e.target.value)}
-            placeholder={department ? SIGNATORY_TITLE[department] : "e.g. Technical Head"}
+            placeholder={department ? SIGNATORY_TITLE[department] : "e.g. CTO (Tech Admin)"}
             data-test="signatory-designation"
             className="h-10 flex-1 min-w-[200px] px-3 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary"
           />

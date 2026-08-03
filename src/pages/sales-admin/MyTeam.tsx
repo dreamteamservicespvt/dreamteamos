@@ -14,6 +14,9 @@ import EditMemberModal from "@/components/EditMemberModal";
 import MemberPasswordModal from "@/components/MemberPasswordModal";
 import MemberAvatar from "@/components/MemberAvatar";
 import MemberGridCard from "@/components/team/MemberGridCard";
+import AddMemberButton from "@/components/onboarding/AddMemberButton";
+import PendingInvites from "@/components/onboarding/PendingInvites";
+import OnboardInviteModal from "@/components/onboarding/OnboardInviteModal";
 import ViewToggle from "@/components/common/ViewToggle";
 import { useViewMode } from "@/hooks/useViewMode";
 import { watchTeamProfiles } from "@/services/hr";
@@ -27,6 +30,8 @@ export default function MyTeam() {
   const [members, setMembers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  /** The hiring flow: offer letter → joining letter → login, all on one link. */
+  const [showOnboard, setShowOnboard] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<AppUser | null>(null);
   const [editingMember, setEditingMember] = useState<AppUser | null>(null);
@@ -186,12 +191,16 @@ export default function MyTeam() {
         </div>
         <div className="flex items-center gap-2">
           <ViewToggle mode={view} onChange={setView} />
-          <button onClick={() => { resetForm(); setShowModal(true); }}
-            className="h-9 px-3 md:px-4 rounded-lg bg-primary text-primary-foreground font-display font-semibold text-xs md:text-sm flex items-center gap-2 hover:bg-primary/90 transition-colors">
-            <Plus size={14} /> <span className="hidden sm:inline">Add Member</span><span className="sm:hidden">Add</span>
-          </button>
+          <AddMemberButton
+            onOnboard={() => setShowOnboard(true)}
+            onQuickAdd={() => { resetForm(); setShowModal(true); }}
+          />
         </div>
       </div>
+
+      {/* People who have been offered a job and have not finished accepting it. Deliberately above
+          the grid and outside it: they are not on the team until they sign. */}
+      {currentUser?.uid && <PendingInvites adminUid={currentUser.uid} />}
 
       {/* Search */}
       <div className="relative">
@@ -373,7 +382,18 @@ export default function MyTeam() {
         </div>
       )}
 
-      {/* Create Modal */}
+      {/* Hiring: the letters are written here, the account is created when they sign the second one. */}
+      {showOnboard && currentUser && (
+        <OnboardInviteModal
+          department="sales"
+          signatory={currentUser}
+          roleOptions={[{ value: "sales_member", label: "Sales Member" }]}
+          settingsPath="/sales-admin/settings"
+          onClose={() => setShowOnboard(false)}
+        />
+      )}
+
+      {/* Quick add — no paperwork. For anyone already signed on paper. */}
       {showModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-card border border-border rounded-xl w-full max-w-md p-6">
