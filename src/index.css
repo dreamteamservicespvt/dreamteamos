@@ -239,12 +239,15 @@ html.native-app body {
     background: #ffffff !important;
   }
 
-  /* One sheet, already complete. Its own inline styles carry the ink colour and
-     the page break; all that is needed here is to stop the screen chrome. */
+  /* One sheet, already complete: A4 in real millimetres, so a short last page is
+     still a whole page rather than a strip with the paper cut away beneath it.
+     Its own inline styles carry the ink colour and the page break. */
   body.printing-agreement [data-document-page] {
     box-shadow: none !important;
     border-radius: 0 !important;
     max-width: none !important;
+    /* Chrome adds a hairline to the last sheet if anything can overflow it. */
+    overflow: hidden !important;
   }
 
   /* Keep the letterhead rule, the seal and the signature tones — a letterhead

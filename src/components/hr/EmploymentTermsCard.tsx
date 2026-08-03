@@ -6,8 +6,8 @@ import type { Actor } from "@/services/hr";
 import {
   defaultProbationMonths, noticePeriodFor, probationDaysRemaining, probationEndDate,
 } from "@/utils/hrPolicy";
-import { ENGAGEMENT_LABELS } from "@/types/hr";
-import type { EmployeeProfile, EngagementType } from "@/types/hr";
+import { ENGAGEMENT_LABELS, WORK_ARRANGEMENT_LABELS } from "@/types/hr";
+import type { EmployeeProfile, EngagementType, WorkArrangement } from "@/types/hr";
 import { rupees } from "@/utils/hrTemplates";
 import {
   DAY_OPTIONS, EMPLOYMENT_DEFAULTS, TIME_OPTIONS, applyEmploymentDefaults, formatDays, formatHours,
@@ -105,6 +105,7 @@ export default function EmploymentTermsCard({
         engagementType: form.engagementType,
         designation: form.designation?.trim() || null,
         workLocation: form.workLocation?.trim() || null,
+        workArrangement: form.workArrangement || null,
         reportingToName: form.reportingToName?.trim() || null,
         joiningDate: form.joiningDate || null,
         probationMonths: form.probationMonths ?? null,
@@ -382,6 +383,7 @@ export default function EmploymentTermsCard({
           />
           <Field label="Gross monthly salary" value={profile.ctcMonthly ? rupees(profile.ctcMonthly) : null} mono />
           <Field label="Work location" value={profile.workLocation} />
+          <Field label="Work arrangement" value={profile.workArrangement ? WORK_ARRANGEMENT_LABELS[profile.workArrangement] : null} />
           <Field label="Working hours" value={profile.workingHours} />
           <Field label="Working days" value={profile.workingDays} />
           {/* An empty record has no notice period to state — saying "15 days · During probation"

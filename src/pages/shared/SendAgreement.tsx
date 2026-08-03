@@ -253,9 +253,16 @@ export default function SendAgreement({ embedded }: { embedded?: boolean } = {})
    */
   const loadTemplate = (type: HrDocumentType | "") => {
     setTemplateType(type);
-    setShowPreview(false);
     setTemplateSignatories([]);
-    if (!type) return;
+    if (!type) { setShowPreview(false); return; }
+    /*
+      Show the letter the moment it is loaded, and leave it showing.
+      It used to close the preview here, which made the whole thing look broken: an admin picked
+      Offer Letter, got a wall of text in the box and nothing beside it, edited a line, and still
+      saw nothing change. The preview is live — every keystroke re-renders it — but only if it is
+      on screen to be watched.
+    */
+    setShowPreview(true);
 
     const base = targets[0] || previewMember;
     if (!base || !user) {

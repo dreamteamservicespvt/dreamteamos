@@ -39,13 +39,18 @@ export async function printAgreementElement(paperEl: HTMLElement): Promise<void>
   root.style.setProperty("--page-h", `${PAGE_H}px`);
 
   pages.forEach((page, idx) => {
-    // The sheets were sized in px to be photographed. On paper the @page box decides the size, so
-    // they scale to its width and let their own content set the height — a sheet pinned to 1123px
-    // while the printer's page box is shorter would spill a sliver onto a blank extra page.
-    page.style.width = "100%";
-    page.style.height = "auto";
-    page.style.minHeight = "0";
-    page.style.overflow = "visible";
+    /*
+      Sized in real millimetres, exactly matching `@page { size: A4 }`.
+      They were laid out in px to be photographed, and `height: auto` was tried first — but a sheet
+      that shrinks to its content makes the last page of a letter a short strip with the rest of
+      the paper cut away beneath it. Fixed A4 means every printed sheet is a whole sheet. mm rather
+      than px because 1123px is 297.05mm, and that fifth of a millimetre is enough to spill each
+      page onto a blank one after it.
+    */
+    page.style.width = "210mm";
+    page.style.height = "297mm";
+    page.style.minHeight = "297mm";
+    page.style.overflow = "hidden";
     // Last sheet gets no break, or every print ends with a blank page.
     page.style.breakAfter = idx === pages.length - 1 ? "auto" : "page";
     page.style.pageBreakAfter = idx === pages.length - 1 ? "auto" : "always";

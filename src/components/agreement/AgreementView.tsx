@@ -162,6 +162,103 @@ const META_LINE = /^(Name|Designation|Date|Employee ID)\s*:\s*(.*)$/i;
  */
 const HEADER_FIELD = /^(Ref|Date|Employee Name|Employee ID|Mobile Number|Email|Address)\s*:\s*(.*)$/i;
 
+interface SignatureBlockData {
+  side: "employee" | "company" | "other";
+  label: string;
+  imageUrl: string | null;
+  name: string;
+  designation: string;
+  employeeId: string;
+  dateLabel: string;
+  blankForSigning: boolean;
+}
+
+/** One ruled signature: the caption, the mark, the line, and who signed on it. */
+function SignatureBlock({ block }: { block: SignatureBlockData }) {
+  return (
+    <div style={{ breakInside: "avoid" }}>
+      <div style={{ fontSize: 11, color: MUTED, marginBottom: 2 }}>{block.label}</div>
+      <div style={{ display: "flex", alignItems: "flex-end", height: 56 }}>
+        {block.imageUrl ? (
+          /* mix-blend-multiply drops whitish photo backgrounds into the white paper, so uploaded
+             photo signatures print as cleanly as drawn ones. */
+          <img
+            data-signature="true"
+            src={block.imageUrl}
+            alt="signature"
+            crossOrigin="anonymous"
+            style={{ height: 52, maxWidth: "100%", objectFit: "contain", objectPosition: "left bottom", mixBlendMode: "multiply" }}
+          />
+        ) : (
+          <span style={{ fontSize: 10.5, color: "#94a3b8", fontStyle: "italic", paddingBottom: 4 }}>
+            {block.blankForSigning ? "" : "Awaiting signature"}
+          </span>
+        )}
+      </div>
+      {/* The rule IS the signature line. Nothing is boxed, tinted or rounded — this is the single
+          place a document most obviously stops looking like a document. */}
+      <div style={{ borderTop: `1px solid ${INK}`, paddingTop: 5 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: HEADING }}>{block.name || " "}</div>
+        {block.designation && <div style={{ fontSize: 11.5, color: MUTED }}>{block.designation}</div>}
+        {block.employeeId && (
+          <div style={{ fontSize: 11.5, color: MUTED }}>Employee ID: {block.employeeId}</div>
+        )}
+        {/* The label prints even unsigned, so there is somewhere to date it by hand if the letter
+            is printed and signed on paper. */}
+        <div style={{ fontSize: 11.5, color: MUTED }}>Date:{block.dateLabel ? ` ${block.dateLabel}` : ""}</div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The signed foot of the document, laid out the way a signed page is actually arranged.
+ *
+ * The person accepting on the left; the company's offices stacked on the right in seniority, CEO
+ * above CTO; the seal centred beneath them, where a stamp goes once both officers have signed.
+ * Two columns rather than a single run, because a column of four signature blocks reads as a
+ * queue and takes most of a page — and because a reader looking for "who signed for the company"
+ * should find them together in one place.
+ */
+function SignaturePanel({ blocks, stampUrl }: { blocks: SignatureBlockData[]; stampUrl?: string | null }) {
+  const left = blocks.filter((b) => b.side !== "company");
+  const right = blocks.filter((b) => b.side === "company");
+
+  return (
+    <div data-pdf="signature" style={{ marginTop: 30, breakInside: "avoid" }}>
+      <div style={{ display: "flex", gap: 36, alignItems: "flex-start" }}>
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 26 }}>
+          {left.map((b, i) => <SignatureBlock key={`l${i}`} block={b} />)}
+        </div>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 26 }}>
+            {right.map((b, i) => <SignatureBlock key={`r${i}`} block={b} />)}
+          </div>
+          {stampUrl && right.length > 0 && (
+            <div style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
+              <img
+                data-stamp="true"
+                src={stampUrl}
+                alt=""
+                crossOrigin="anonymous"
+                /* Centred under the offices that signed, at roughly the size a real 40 mm rubber
+                   stamp is against 13.5pt text. Beneath rather than across them: a seal laid over
+                   a signature obscured the name under it, and a photographed stamp carries its own
+                   paper, which sat as a pale rectangle on top of the ink. */
+                style={{
+                  height: 118, width: 118, objectFit: "contain",
+                  opacity: 0.9, mixBlendMode: "multiply", pointerEvents: "none",
+                }}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function AgreementView(data, ref) {
   const filled = fillAgreementText(data.bodyText, data);
   const lines = filled.replace(/\r/g, "").split("\n");
@@ -223,12 +320,45 @@ const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function Agr
       signatureUrl: data.companySignatureUrl,
     }];
 
-  const companyLineOrder = new Map<number, number>();
+  /**
+   * Every signature the document asks for, gathered up before anything is drawn.
+   *
+   * They used to render one under another wherever their line happened to fall, which put the
+   * company's signatures in the middle of the page and the employee's at the bottom with the
+   * acceptance wording stranded between them. Gathering them lets the whole lot be laid out as one
+   * panel — the employee on the left, the company's offices stacked on the right, the seal beneath
+   * them — which is how a signed page is actually arranged.
+   */
+  let companySeen = 0;
+  const signatureBlocks: SignatureBlockData[] = [];
+  let panelIdx = -1;
   body.forEach((raw, idx) => {
     const l = raw.trim();
-    if (isSignatureLine(l) && signatureSide(l) === "company") {
-      companyLineOrder.set(idx, companyLineOrder.size);
-    }
+    if (!isSignatureLine(l)) return;
+    panelIdx = idx;
+    const side = signatureSide(l);
+    const meta = signatureMeta.get(idx) || {};
+    const isCompany = side === "company";
+    const officer = isCompany ? signatories[companySeen] : undefined;
+    if (isCompany) companySeen += 1;
+
+    signatureBlocks.push({
+      side,
+      label: l.split(":")[0],
+      // A blank-for-signing copy carries no marks at all, on either side.
+      imageUrl: data.blankForSigning ? null
+        : isCompany ? (officer?.signatureUrl ?? null)
+        : side === "employee" ? (data.signatureUrl ?? null)
+        : null,
+      name: isCompany
+        ? (officer?.name || meta.name || "")
+        : side === "employee" ? (data.signedName || meta.name || data.memberName)
+        : meta.name || "",
+      designation: isCompany ? (officer?.designation || meta.designation || "") : "",
+      employeeId: meta["employee id"] || "",
+      dateLabel: isCompany ? (companyDateLabel || meta.date || "") : (signedDateLabel || meta.date || ""),
+      blankForSigning: !!data.blankForSigning,
+    });
   });
 
   return (
@@ -282,92 +412,16 @@ const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function Agr
           if (l === "") return <div key={idx} style={{ height: 8 }} />;
 
           if (isSignatureLine(l)) {
-            const label = l.split(":")[0];
-            const side = signatureSide(l);
-            const meta = signatureMeta.get(idx) || {};
-            const isCompany = side === "company";
-            // Which of the company's signatories this particular line belongs to.
-            const officer = isCompany ? signatories[companyLineOrder.get(idx) ?? 0] : undefined;
-            // A blank-for-signing copy carries no marks at all, on either side.
-            const imageUrl = data.blankForSigning ? null
-              : isCompany ? (officer?.signatureUrl ?? null)
-              : side === "employee" ? data.signatureUrl
-              : null;
-            const name = isCompany
-              ? (officer?.name || meta.name || "")
-              : side === "employee" ? (data.signedName || meta.name || data.memberName)
-              : meta.name || "";
-            const dateLabel = isCompany
-              ? (companyDateLabel || meta.date || "")
-              : (signedDateLabel || meta.date || "");
-            const designation = isCompany ? (officer?.designation || meta.designation || "") : "";
-
-            // The seal is pressed once, on the first company signature — a letter stamped twice
-            // looks like two letters glued together, not one document signed by two officers.
-            const stamp = !data.blankForSigning && isCompany && (companyLineOrder.get(idx) ?? 0) === 0
-              ? data.companyStampUrl
-              : null;
-
+            // Every signature is rendered once, together, at the position of the LAST signature
+            // line — see `SignaturePanel`. The earlier ones render nothing so the prose between
+            // them (the acceptance wording, say) still reads in its own place.
+            if (idx !== panelIdx) return null;
             return (
-              <div key={idx} data-pdf="signature" style={{ marginTop: 26, breakInside: "avoid" }}>
-                {/* Wide enough that the seal has its own column to sit in. A stamp squeezed against
-                    the signature had nowhere to go but on top of the name under it. */}
-                <div style={{ position: "relative", display: "inline-block", minWidth: stamp ? 430 : 260, paddingRight: stamp ? 150 : 0 }}>
-                  {/* The seal sits across the signature, as it would on paper — semi-transparent so
-                      it never hides the name underneath it. */}
-                  {stamp && (
-                    <img
-                      data-stamp="true"
-                      src={stamp}
-                      alt=""
-                      crossOrigin="anonymous"
-                      style={{
-                        /*
-                          In its own column to the right of the signature, at the size a real
-                          rubber stamp actually is.
-                          A company seal is roughly 40 mm across; at 82px squeezed over the
-                          signature it was both too small to read and sitting on the name and the
-                          date beneath it. Here it is 132px — about the right proportion against
-                          13.5pt text — with the block padded to make room, so it overlaps nothing.
-                        */
-                        position: "absolute", right: 0, top: 8, height: 132, width: 132,
-                        objectFit: "contain", opacity: 0.85, pointerEvents: "none",
-                        mixBlendMode: "multiply",
-                      }}
-                    />
-                  )}
-                  <div style={{ fontSize: 11, color: MUTED, marginBottom: 2 }}>{label}</div>
-                  <div style={{ display: "flex", alignItems: "flex-end", height: 62 }}>
-                    {imageUrl ? (
-                      /* mix-blend-multiply drops whitish photo backgrounds into the white paper,
-                         so uploaded photo signatures print as cleanly as drawn ones. */
-                      <img
-                        data-signature="true"
-                        src={imageUrl}
-                        alt="signature"
-                        crossOrigin="anonymous"
-                        style={{ height: 58, maxWidth: 240, objectFit: "contain", objectPosition: "left bottom", mixBlendMode: "multiply" }}
-                      />
-                    ) : (
-                      <span style={{ fontSize: 10.5, color: "#94a3b8", fontStyle: "italic", paddingBottom: 4 }}>
-                        {data.blankForSigning ? "" : "Awaiting signature"}
-                      </span>
-                    )}
-                  </div>
-                  {/* The rule IS the signature line. Nothing is boxed, tinted or rounded — this is
-                      the single place a document most obviously stops looking like a document. */}
-                  <div style={{ borderTop: `1px solid ${INK}`, paddingTop: 5, minWidth: 260 }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 700, color: HEADING }}>{name || " "}</div>
-                    {designation && <div style={{ fontSize: 11.5, color: MUTED }}>{designation}</div>}
-                    {meta["employee id"] && (
-                      <div style={{ fontSize: 11.5, color: MUTED }}>Employee ID: {meta["employee id"]}</div>
-                    )}
-                    {/* The label prints even unsigned, so there is somewhere to date it by hand if
-                        the letter is printed and signed on paper. */}
-                    <div style={{ fontSize: 11.5, color: MUTED }}>Date:{dateLabel ? ` ${dateLabel}` : ""}</div>
-                  </div>
-                </div>
-              </div>
+              <SignaturePanel
+                key={idx}
+                blocks={signatureBlocks}
+                stampUrl={data.blankForSigning ? null : data.companyStampUrl}
+              />
             );
           }
 

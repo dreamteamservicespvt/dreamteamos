@@ -241,7 +241,9 @@ describe("the two optional clauses", () => {
   it("omits each clause when it is turned off, rather than printing an empty one", () => {
     const text = letter("offer_letter", intern({ internshipExtendable: false, internshipNoticeDays: null }));
     expect(text).not.toMatch(/may be extended/);
-    expect(text).not.toMatch(/written notice/);
+    // The clause inside the internship block goes; the letter's own Notice Period section is a
+    // different thing and still states how the engagement can be ended.
+    expect(text).not.toMatch(/Early termination: Either party/);
     // The rest of the internship block survives.
     expect(text).toMatch(/structured, supervised internship/);
   });

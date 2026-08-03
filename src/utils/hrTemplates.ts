@@ -1,11 +1,14 @@
 import { format } from "date-fns";
 import { COMPANY_DEFAULTS, resolveCompany, type ResolvedCompany } from "@/utils/company";
 import { formatPhoneDisplay } from "@/utils/phone";
+import { DAY_OPTIONS, matchDayOption, splitRange } from "@/utils/employmentDefaults";
 import {
   internshipSkillsFor, isInternship, monthsBetween, noticePeriodFor, parseDate, probationEndDate,
   trainingTermsFor,
 } from "@/utils/hrPolicy";
-import { ENGAGEMENT_LABELS, HR_DOCUMENT_LABELS } from "@/types/hr";
+import {
+  ENGAGEMENT_LABELS, HR_DOCUMENT_LABELS, WORK_ARRANGEMENT_LABELS, WORK_ARRANGEMENT_TERMS,
+} from "@/types/hr";
 import type { EmployeeProfile, HrDocumentType, IssuedSignatory } from "@/types/hr";
 
 /**
@@ -267,6 +270,81 @@ const subjectWithRole = (base: string, p: EmployeeProfile): string => {
 const engagementLabel = (p: EmployeeProfile): string =>
   p.engagementType ? ENGAGEMENT_LABELS[p.engagementType] : "—";
 
+/**
+ * "Full-Time (Permanent, subject to successful completion of probation)".
+ *
+ * A category name on its own — "Full-Time" — does not answer the question the reader is actually
+ * asking, which is whether the job is permanent and what has to happen for it to become so. It is
+ * also the line a bank or a landlord looks for.
+ */
+function employmentTypeLine(p: EmployeeProfile): string {
+  const months = p.probationMonths ?? 0;
+  switch (p.engagementType) {
+    case "full_time":
+      return months > 0
+        ? `Full-Time (Permanent, subject to successful completion of a ${months}-month probation)`
+        : "Full-Time (Permanent)";
+    case "part_time":
+      return months > 0
+        ? `Part-Time (subject to successful completion of a ${months}-month probation)`
+        : "Part-Time";
+    case "intern":
+      return "Intern (fixed-term internship engagement)";
+    case "contract":
+      return "Contract (fixed-term engagement)";
+    default:
+      return "—";
+  }
+}
+
+/**
+ * The place of work, written as an address somebody could actually post a letter to.
+ *
+ * A city and a state is where the office roughly is; an address is where it is. The company's own
+ * registered address is used, with the employee's specific location named above it when it differs
+ * — a client site or a second office.
+ */
+function officeAddressLines(i: BuildDocumentInput): (string | null)[] {
+  const co = companyOf(i);
+  const p = i.profile;
+  const own = (p.workLocation || "").trim();
+  const address = co.address.filter(Boolean);
+
+  const place: (string | null)[] = address.length === 0
+    ? [value(own)]
+    : (() => {
+      const addressLine = `${co.name}, ${address.join(", ")}`;
+      // The registered address already names the city the employee was told about: one line, not two.
+      const covered = !own || address.join(", ").toLowerCase().includes(own.split(",")[0].trim().toLowerCase());
+      return covered ? [addressLine] : [own, addressLine];
+    })();
+
+  // Where the work is done from is a term, not a detail of the address — an employee reading
+  // "Kakinada" learns which office they belong to and nothing about whether they are expected in it.
+  const arrangement = p.workArrangement;
+  return arrangement
+    ? [...place, "", `Work Arrangement: ${WORK_ARRANGEMENT_LABELS[arrangement]}`, WORK_ARRANGEMENT_TERMS[arrangement]]
+    : place;
+}
+
+/**
+ * "Weekly Off: Sunday", worked out from the days actually worked.
+ *
+ * A working-days range says which days are worked and leaves the reader to infer the rest. A
+ * weekly off is a term of employment, and terms get written down.
+ */
+function weeklyOffLine(p: EmployeeProfile): string | null {
+  const { from, to } = splitRange(p.workingDays);
+  const start = matchDayOption(from);
+  const end = matchDayOption(to);
+  if (!start || !end) return null;
+  const startIdx = DAY_OPTIONS.indexOf(start as (typeof DAY_OPTIONS)[number]);
+  const endIdx = DAY_OPTIONS.indexOf(end as (typeof DAY_OPTIONS)[number]);
+  if (startIdx < 0 || endIdx < startIdx) return null;
+  const off = DAY_OPTIONS.filter((_, n) => n < startIdx || n > endIdx);
+  return off.length > 0 ? `Weekly Off: ${off.join(", ")}` : null;
+}
+
 /** "Full-Time Employee (3-month probation)" — the engagement, stated the way the policy asks for. */
 export function engagementDescription(p: EmployeeProfile): string {
   const base = engagementLabel(p);
@@ -385,6 +463,7 @@ function offerLetter(i: BuildDocumentInput): string {
   const co = companyOf(i);
   const intern = isInternship(p);
   const probationEnds = probationEndDate(p);
+  const notice = noticePeriodFor({ ...p, stage: "confirmed" });
   return compose([
     ...letterHead(i, intern ? "Internship Offer Letter" : "Offer of Employment", {
       ref: extras?.offerLetterNumber,
@@ -399,12 +478,14 @@ function offerLetter(i: BuildDocumentInput): string {
         title: "Position and Engagement",
         lines: [
           `Designation: ${value(p.designation)}`,
-          `Engagement: ${engagementDescription(p)}`,
+          // Spelled out rather than left as a category: "Full-Time" alone does not say whether the
+          // job is permanent, and that is the first thing a candidate — or their bank — asks.
+          `Employment Type: ${employmentTypeLine(p)}`,
           `Department: ${p.department === "tech" ? "Technical" : "Sales"}`,
           p.reportingToName ? `Reporting to: ${p.reportingToName}` : null,
         ],
       },
-      { title: "Work Location", lines: [value(p.workLocation)] },
+      { title: "Work Location", lines: officeAddressLines(i) },
       { title: "Date of Joining", lines: [`You are expected to join on ${longDate(p.joiningDate)}.`] },
       {
         title: intern ? "Stipend" : "Remuneration",
@@ -429,7 +510,11 @@ function offerLetter(i: BuildDocumentInput): string {
         lines: [
           `Working hours: ${value(p.workingHours)}`,
           `Working days: ${value(p.workingDays)}`,
+          // Named explicitly. "Monday to Saturday" states which days are worked and leaves the
+          // reader to infer the rest; a weekly off is a term, and terms get written down.
+          weeklyOffLine(p),
           p.shiftDetails ? `Shift: ${p.shiftDetails}` : null,
+          "You are expected to report ten minutes before the start of working hours.",
         ],
       },
       /*
@@ -452,17 +537,59 @@ function offerLetter(i: BuildDocumentInput): string {
         title: "Leave",
         lines: ["You will be entitled to leave in accordance with the company's leave policy as applicable to you from time to time. Leave is applied for and approved in advance through the company's system, except in an emergency, when it must be intimated at the earliest opportunity. The full policy will be shared with you on joining."],
       },
+      /*
+        Notice period, on the offer rather than only on the appointment letter.
+        It is the term a candidate most often finds out about at the point they try to leave, and
+        the one they are most entitled to know before they accept.
+      */
       {
-        title: "Confidentiality",
-        lines: ["During the recruitment process and at all times afterwards, you shall keep confidential the terms of this offer and any information about the company, its clients and its work that is not in the public domain. On joining you will be asked to accept the confidentiality and intellectual property terms in full."],
+        title: "Notice Period",
+        lines: intern
+          ? [`This internship may be ended early by either party on ${p.internshipNoticeDays ?? 7} days' written notice.`]
+          : [
+            `On successful confirmation of employment, either party may end the employment by giving ${notice.days} days' written notice in writing, or salary in lieu of the notice period, subject to applicable law and company policy.`,
+            "During probation a shorter notice period applies, as set out in the Appointment Letter and the company's notice policy.",
+          ],
       },
       {
-        title: "Conditions of this Offer",
+        title: "Confidentiality",
+        lines: ["During the recruitment process and at all times afterwards, you shall keep confidential the terms of this offer and any information about the company, its clients and its work that is not in the public domain. On joining you will be asked to accept the confidentiality terms in full."],
+      },
+      /*
+        Spelled out on the offer, not merely referenced.
+        For a company whose product IS what its people make, the clause that says who owns the
+        output is not boilerplate — it is the most consequential term in the letter, and a
+        candidate is entitled to read it before accepting rather than on their first day.
+      */
+      {
+        title: "Intellectual Property",
         lines: [
-          "This offer is subject to verification of the information and documents you provide, and to your signing the Appointment Letter / Employment Agreement, the Non-Disclosure and Intellectual Property terms, and the acknowledgement of company policies.",
+          `Any software, source code, designs, prompts, datasets, models, documentation, advertisements, creative material, websites and any other intellectual property created by you in the course of your employment, or using ${co.name}'s resources, time or confidential information, shall belong exclusively to ${co.name}.`,
+          "You agree to execute any document reasonably required to give effect to this, and your obligations under it continue after your employment ends.",
+        ],
+      },
+      {
+        title: "Company Property",
+        lines: [
+          `Any laptop, ID card, SIM, access card, accounts, documents or other property issued to you remains the property of ${co.name} at all times.`,
+          "All of it must be returned in working condition on or before your last working day, and your full and final settlement is processed after it has been.",
+        ],
+      },
+      {
+        title: "Background Verification",
+        lines: ["This offer is subject to satisfactory verification of your educational qualifications, identity documents and previous employment, where applicable. An offer may be withdrawn, or employment ended, if any information provided is found to be false or materially misleading."],
+      },
+      {
+        title: "Company Policies",
+        lines: ["By accepting this offer you agree to comply with the company's policies as amended from time to time, including those on attendance and punctuality, leave, code of conduct, information security, data protection and confidentiality."],
+      },
+      {
+        title: "Validity of this Offer",
+        lines: [
           extras?.offerValidUntil
-            ? `Please confirm your acceptance on or before ${longDate(extras.offerValidUntil)}. This offer stands withdrawn if it is not accepted by that date.`
-            : "Please confirm your acceptance by signing below.",
+            ? `This offer is valid until ${longDate(extras.offerValidUntil)}. If it is not accepted on or before that date it stands withdrawn.`
+            : "Please confirm your acceptance by signing and returning this letter at the earliest.",
+          "This offer is further subject to your signing the Appointment Letter / Employment Agreement, the Non-Disclosure and Intellectual Property terms, and the acknowledgement of company policies on or before joining.",
         ],
       },
       additionalSection(extras),
@@ -506,7 +633,10 @@ function appointmentLetter(i: BuildDocumentInput): string {
       },
       {
         title: "Place of Work",
-        lines: [`${value(p.workLocation)}. The company may, with reasonable notice, require you to work from another of its locations or from a client site where the role requires it.`],
+        lines: [
+          ...officeAddressLines(i),
+          "The company may, with reasonable notice, require you to work from another of its locations or from a client site where the role requires it.",
+        ],
       },
       {
         title: intern ? "Stipend" : "Remuneration",

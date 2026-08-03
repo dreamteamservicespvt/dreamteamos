@@ -65,6 +65,28 @@ export const STAGE_LABELS: Record<EmploymentStage, string> = {
 
 // ─── KYC / personal record ──────────────────────────────────────────────────
 
+/**
+ * Where the job is done from.
+ *
+ * A term in its own right, not a detail of the address: "Kakinada, Andhra Pradesh" tells an
+ * employee which office they belong to and nothing about whether they are expected in it. It
+ * changes what the letter promises and what the attendance and remote-work clauses mean.
+ */
+export type WorkArrangement = "onsite" | "hybrid" | "remote";
+
+export const WORK_ARRANGEMENT_LABELS: Record<WorkArrangement, string> = {
+  onsite: "Onsite",
+  hybrid: "Hybrid",
+  remote: "Remote",
+};
+
+/** How each arrangement reads on a letter, where a bare label would leave the terms unstated. */
+export const WORK_ARRANGEMENT_TERMS: Record<WorkArrangement, string> = {
+  onsite: "You are expected to work from the above location on all working days.",
+  hybrid: "You will work partly from the above location and partly remotely, on a schedule agreed with your reporting manager. The company may vary the split with reasonable notice.",
+  remote: "You will work remotely. You may be required to attend the above location for meetings, training or reviews with reasonable notice, and the same working hours, attendance recording, availability and confidentiality obligations apply as they would at the workplace.",
+};
+
 export interface EmergencyContact {
   name: string;
   relation: string;
@@ -303,6 +325,8 @@ export interface EmployeeProfile {
   engagementType?: EngagementType;
   designation?: string | null;
   workLocation?: string | null;
+  /** Onsite, hybrid or remote. Blank on older records, which print the location and nothing more. */
+  workArrangement?: WorkArrangement | null;
   reportingToName?: string | null;
   joiningDate?: string | null;     // yyyy-MM-dd
   /** 0 means no probation (a short internship, say). Defaults to 3 for full/part-time. */

@@ -339,3 +339,24 @@ The report that the composer preview and download ignore edits. A faithful repli
 ### How this was verified
 - `npx vitest run` — **1375/1375**. Clean typecheck and build, no new lint errors.
 - **Browser, dark theme, 21/21 + 11/11, 0 console errors.** Documents: both signatures on all three sampled types, seal 132px with zero overlap, review clause present, composer edit reaching preview *and* download, exported pages all carrying real ink. Print: **4 sheets, each with its own letterhead and foot rule**, no stray fixed bands, `break-after` page/page/page/auto, `overflow: visible`, ink colour `rgb(30,41,59)`, content on every sheet, page restored afterwards.
+
+## Session — 2026-08-04d (Signature panel, stamp ink, A4 print sheets, offer-letter clauses)
+
+**Signatures are one panel, not a run.** `AgreementView` gathers every signature line up front into `signatureBlocks` and renders them **once, at the position of the LAST signature line** (`panelIdx`) — so prose between them (the ACCEPTANCE wording) still reads in its own place. `SignaturePanel`: employee/other on the left, company offices stacked on the right (CEO above CTO), **seal centred beneath the officer column**. Do not go back to rendering each block where its line falls.
+
+**The seal was arriving in the PDF as a pale grey square.** `mix-blend-multiply` drops a photographed stamp's paper into the page on screen; **html2canvas ignores blend modes entirely**. `documentPages.normalizeMarkImgs` now runs the background-stripping pass over `img[data-stamp]` as well as `img[data-signature]` (it was signatures-only) and sets `mixBlendMode: normal` on the cleaned result.
+
+**Printed sheets are `210mm × 297mm`, not `height: auto`.** Auto made the last page a short strip with the paper cut away beneath it. mm rather than px because 1123px = 297.05mm and that fifth of a millimetre pushes every page onto a blank one after it. `@page { margin: 0 }` — the sheets carry their own margins.
+
+**The composer "not updating in real time" was `loadTemplate` calling `setShowPreview(false)`.** Pick a template → wall of text, nothing beside it → edit → nothing changes. The preview was always live; it was simply not on screen. It now opens on load and stays open. (A faithful replica of the state loop was built twice and the binding itself was never at fault.)
+
+**Offer letter gained ten clauses**, all from the company's own list: employment type spelled out (`employmentTypeLine` — "Full-Time (Permanent, subject to successful completion of a 3-month probation)"), the office as a full address (`officeAddressLines`, from company settings), reporting time, **weekly off derived from the working-days range** (`weeklyOffLine`), notice period with salary in lieu, company property, intellectual property written out in full (it only referenced it before), background verification, offer validity, policy compliance.
+
+**Work arrangement** — new `WorkArrangement` type (`onsite | hybrid | remote`) with `WORK_ARRANGEMENT_LABELS` and `WORK_ARRANGEMENT_TERMS` in `types/hr`. Dropdown in `EmploymentTermsCard`, printed by `officeAddressLines` into **both** the offer letter's Work Location and the appointment letter's Place of Work, each with the terms that follow from it. Blank on older records prints the location and nothing more.
+
+### How this was verified
+- `npx vitest run` — **1375/1375**. Clean typecheck and build, no new lint errors.
+- **Browser, dark theme, 30/30, 0 console errors**, plus the exported PDF read page by page. Panel geometry asserted numerically: employee x=346 vs CEO x=718 (left/right), CEO y=2931 above CTO y=3102, same column to within 2px, seal below the CTO's block and centred on the column to within 90px, overlapping neither signature. All ten offer clauses present. All three work arrangements print their terms, on both letters. Print: 5 sheets, every one `210mm × 297mm`, `overflow: hidden`, each with its own letterhead.
+
+### Still open
+The user's offer-letter list started at an item **"1. … This should appear at the top"** whose description did not survive the message — never clarified, so nothing was done for it.

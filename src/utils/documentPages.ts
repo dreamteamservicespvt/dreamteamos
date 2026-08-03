@@ -46,15 +46,27 @@ async function waitForImages(root: HTMLElement): Promise<void> {
   );
 }
 
-/** Replace signature imgs with background-stripped data-URLs where they can be re-fetched. */
-async function normalizeSignatureImgs(root: HTMLElement): Promise<void> {
-  const imgs = Array.from(root.querySelectorAll<HTMLImageElement>("img[data-signature]"));
+/**
+ * Strip the paper out of photographed signatures **and the company seal**.
+ *
+ * On screen `mix-blend-multiply` drops a whitish photo background into the white page. The
+ * rasteriser ignores blend modes entirely, so without this the seal arrived in the PDF as a pale
+ * grey square with a circle inside it — the photograph of the stamp rather than the stamp. The
+ * same pass that has always cleaned signatures cleans it: light pixels to transparent, ink kept.
+ *
+ * Best-effort. An image that cannot be re-fetched with CORS keeps its original, which still
+ * prints — just with the paper it was photographed on.
+ */
+async function normalizeMarkImgs(root: HTMLElement): Promise<void> {
+  const imgs = Array.from(root.querySelectorAll<HTMLImageElement>("img[data-signature], img[data-stamp]"));
   await Promise.all(
     imgs.map(async (img) => {
       const clean = await normalizeSignatureUrl(img.src);
       if (clean) {
         img.src = clean;
-        img.classList.remove("mix-blend-multiply"); // already clean; html2canvas ignores blends anyway
+        // Already clean, and the rasteriser would have dropped the blend anyway.
+        img.style.mixBlendMode = "normal";
+        img.classList.remove("mix-blend-multiply");
       }
     }),
   );
@@ -88,7 +100,7 @@ export async function paginateDocument(paperEl: HTMLElement): Promise<PaginatedD
   measureWrap.appendChild(src);
   stage.appendChild(measureWrap);
 
-  await normalizeSignatureImgs(src);
+  await normalizeMarkImgs(src);
   await waitForImages(src);
 
   // 2) The furniture that repeats on every sheet, and the blocks that flow between them.

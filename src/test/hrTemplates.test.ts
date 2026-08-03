@@ -108,7 +108,8 @@ describe("offer letter", () => {
   it("states everything the offer is required to state", () => {
     const { bodyText } = buildDocument(input("offer_letter"));
     expect(bodyText).toContain("Software Developer");                 // role / designation
-    expect(bodyText).toContain("Full-Time Employee (3-month probation)"); // engagement + probation
+    // Spelled out, so the letter says whether the job is permanent rather than only its category.
+    expect(bodyText).toContain("Employment Type: Full-Time (Permanent, subject to successful completion of a 3-month probation)");
     expect(bodyText).toContain("Kakinada, Andhra Pradesh");           // work location
     expect(bodyText).toContain("05 Jan 2026");                        // joining date
     expect(bodyText).toContain("₹25,000");                            // salary / CTC
