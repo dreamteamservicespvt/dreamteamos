@@ -3,6 +3,7 @@ import {
   EXTRA_FIELDS, EXTRA_FIELD_REQUIRED, buildDocument, engagementDescription, longDate, rupees,
 } from "@/utils/hrTemplates";
 import type { BuildDocumentInput } from "@/utils/hrTemplates";
+import { HR_DOCUMENT_ORDER } from "@/types/hr";
 import type { EmployeeProfile, HrDocumentType } from "@/types/hr";
 
 const profile = (over: Partial<EmployeeProfile> = {}): EmployeeProfile => ({
@@ -34,10 +35,14 @@ const input = (type: HrDocumentType, over: Partial<BuildDocumentInput> = {}): Bu
   ...over,
 });
 
-const ALL_TYPES: HrDocumentType[] = [
-  "offer_letter", "appointment_letter", "nda", "policy_acknowledgement", "confirmation_letter",
-  "probation_extension", "increment_letter", "warning_letter", "relieving_letter", "experience_letter",
-];
+/**
+ * Every type there is, taken from the union rather than listed by hand.
+ *
+ * A hardcoded list silently stops covering a document the day somebody adds one — which is exactly
+ * when these guarantees matter most, because a brand-new template is the one most likely to print
+ * "undefined" into a letter going out under the company's signature.
+ */
+const ALL_TYPES: HrDocumentType[] = HR_DOCUMENT_ORDER;
 
 describe("every document", () => {
   it("opens with an ALL-CAPS title block, which is what the renderer treats as the heading", () => {
@@ -49,10 +54,12 @@ describe("every document", () => {
     }
   });
 
-  it("carries the company's authorised-signature block", () => {
+  it("carries the company's signature block, naming the office that signs it", () => {
     for (const type of ALL_TYPES) {
       const { bodyText } = buildDocument(input(type));
-      expect(bodyText, type).toMatch(/Authorised Signatory Signature:/);
+      // "For <company> — <office> Signature:". The leading "For" is what AgreementView keys on to
+      // render this as the company's side rather than a blank ruled box.
+      expect(bodyText, type).toMatch(/^For .+ — .+ Signature:$/m);
       expect(bodyText, type).toContain("Asha Rao");
       expect(bodyText, type).toContain("Technical Head");
     }
@@ -76,10 +83,12 @@ describe("every document", () => {
 
 describe("signature blocks", () => {
   const NEEDS_EMPLOYEE_SIGNATURE: HrDocumentType[] = [
-    "offer_letter", "appointment_letter", "nda", "policy_acknowledgement", "probation_extension", "warning_letter",
+    "offer_letter", "appointment_letter", "nda", "policy_acknowledgement", "probation_extension",
+    "show_cause_notice", "warning_letter", "full_final_settlement",
   ];
   const COMPANY_ONLY: HrDocumentType[] = [
-    "confirmation_letter", "increment_letter", "relieving_letter", "experience_letter",
+    "confirmation_letter", "increment_letter", "promotion_letter", "resignation_acceptance",
+    "relieving_letter", "experience_letter",
   ];
 
   it("gives the employee a place to sign on everything they must accept", () => {

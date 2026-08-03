@@ -12,11 +12,13 @@ import { MemoryRouter } from "react-router-dom";
  * document itself is worse than no preview, because it is trusted.
  */
 
-const { issueDocument } = vi.hoisted(() => ({
+const { issueDocument, allocateReference } = vi.hoisted(() => ({
   issueDocument: vi.fn().mockResolvedValue("doc-1"),
+  /** The reference series lives in Firestore; the number itself is not what this file is about. */
+  allocateReference: vi.fn().mockResolvedValue("DTS/OFR/2026/0007"),
 }));
 
-vi.mock("@/services/hrDocuments", () => ({ issueDocument }));
+vi.mock("@/services/hrDocuments", () => ({ issueDocument, allocateReference }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 
 import IssueDocumentDialog from "@/components/hr/IssueDocumentDialog";

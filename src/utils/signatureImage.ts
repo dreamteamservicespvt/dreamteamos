@@ -95,6 +95,37 @@ export async function normalizeSignatureFile(file: File): Promise<File> {
 }
 
 /**
+ * Shrink an image to a sensible size for a letterhead, keeping every pixel it has.
+ *
+ * Deliberately NOT the treatment above. Background stripping assumes ink on paper, and a logo is
+ * not that: it can be light grey, it can be white on a coloured shape, and running the same pass
+ * over it would eat exactly the parts that make it a logo. What a logo actually needs is to stop
+ * being a 4 MB phone photo that has to be fetched before every letterhead can render.
+ *
+ * Falls back to the original file if anything goes wrong — an unoptimized logo still prints.
+ */
+export async function optimizeLogoFile(file: File, maxWidth = 600): Promise<File> {
+  try {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await loadImage(url);
+      const scale = Math.min(1, maxWidth / img.naturalWidth);
+      if (scale >= 1) return file; // already small enough — re-encoding would only lose quality
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+      canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/png"));
+      return blob ? new File([blob], "logo.png", { type: "image/png" }) : file;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  } catch {
+    return file;
+  }
+}
+
+/**
  * Normalize a remote signature URL → PNG data-URL (for PDF export of legacy signatures).
  * Returns null when the image can't be fetched with CORS — caller keeps the original.
  */

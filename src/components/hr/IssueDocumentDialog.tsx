@@ -1,21 +1,24 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Check, Download, Eye, FileSignature, Loader2, PenTool, Send, ShieldQuestion, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useCompany } from "@/hooks/useCompany";
 import { useCompanyLogo } from "@/hooks/useCompanyLogo";
 import { downloadAgreementPdf } from "@/utils/agreementPdf";
-import { watchCompanyAssets, type CompanyAssets } from "@/services/companyAssets";
-import { HR_DOCUMENT_LABELS } from "@/types/hr";
+import { HR_DOCUMENT_GROUPS, HR_DOCUMENT_LABELS } from "@/types/hr";
 import type { AppUser } from "@/types";
 import type { EmployeeProfile, HrDocumentType } from "@/types/hr";
-import { issueDocument } from "@/services/hrDocuments";
-import { documentTypesForStage, requiresEmployeeSignature, todayIso, SIGNATORY_TITLE } from "@/utils/hrPolicy";
+import { allocateReference, issueDocument } from "@/services/hrDocuments";
+import {
+  DOCUMENT_SIGNATORIES, canIssue, documentTypesForStage, requiresEmployeeSignature, resolveSignatories,
+  todayIso, SIGNATORY_TITLE,
+} from "@/utils/hrPolicy";
 import {
   EXTRA_FIELDS, EXTRA_FIELD_KIND, EXTRA_FIELD_LABELS, EXTRA_FIELD_REQUIRED, buildDocument,
 } from "@/utils/hrTemplates";
 import type { HrDocumentExtras } from "@/utils/hrTemplates";
 import AgreementView from "@/components/agreement/AgreementView";
-import { Input, Select, Textarea } from "./ui";
+import { Input, Textarea } from "./ui";
 
 /**
  * Issue a document to an employee.
@@ -25,9 +28,12 @@ import { Input, Select, Textarea } from "./ui";
  * facts, an increment's new figure, an exit's last working day). What they preview is exactly
  * what is stored and exactly what the employee will see.
  *
- * The company's signature is applied here, automatically, from whatever the signatory saved in
- * their settings. Without one the letter would go out with an empty signature line, so issuing is
- * held until they have added it — once, ever.
+ * The company's signature is applied here automatically, and it is the *company's* — the CEO's, or
+ * on an NDA the CEO's and the CTO's, from Settings → Company Documents. It is not whoever happened
+ * to open this dialog: the same offer letter must look the same whichever admin generated it.
+ * Where the company has not set an office up yet, the issuing admin signs instead, which is what
+ * happened before officers existed. Without any signature at all the letter would go out with an
+ * empty line, so issuing is held until there is one.
  */
 export default function IssueDocumentDialog({
   member, profile, signatory, settingsPath, defaultType, memberLink, issuedTypes, onClose, onIssued,
@@ -46,14 +52,10 @@ export default function IssueDocumentDialog({
   onIssued?: (id: string) => void;
 }) {
   const { toast } = useToast();
-  const available = useMemo(() => {
-    const forStage = documentTypesForStage(profile.stage);
-    const all = Object.keys(HR_DOCUMENT_LABELS) as HrDocumentType[];
-    // Stage-appropriate types first, then the rest — never hide a document an admin needs.
-    return [...forStage, ...all.filter((t) => !forStage.includes(t))];
-  }, [profile.stage]);
+  /** Stage-appropriate types first, then everything else — never hide a document an admin needs. */
+  const suggested = useMemo(() => documentTypesForStage(profile.stage), [profile.stage]);
 
-  const [type, setType] = useState<HrDocumentType>(defaultType || available[0]);
+  const [type, setType] = useState<HrDocumentType>(defaultType || suggested[0]);
   const [extras, setExtras] = useState<HrDocumentExtras>({});
   const [issuedOn, setIssuedOn] = useState(todayIso());
   const [showPreview, setShowPreview] = useState(false);
@@ -61,13 +63,37 @@ export default function IssueDocumentDialog({
   const [downloading, setDownloading] = useState(false);
   const paperRef = useRef<HTMLDivElement>(null);
   const logo = useCompanyLogo();
-  const [marks, setMarks] = useState<CompanyAssets>({});
-  useEffect(() => watchCompanyAssets(setMarks), []);
+  const { company, assets: marks, officer } = useCompany();
   const already = new Set(issuedTypes || []);
 
   const designation = signatory.designation
     || SIGNATORY_TITLE[profile.department]
     || "Authorised Signatory";
+
+  /**
+   * Who will sign this, resolved now so the preview shows exactly what will be stored.
+   *
+   * Recomputed per document type because the answer genuinely differs: an NDA needs the CTO as
+   * well, and the policy acknowledgement needs nobody at all.
+   */
+  const signatories = useMemo(
+    () => resolveSignatories(
+      type,
+      { ceo: officer("ceo"), cto: officer("cto") },
+      { name: signatory.name, designation, signatureUrl: signatory.signatureUrl },
+    ),
+    // Keyed on `marks` — the settings document itself — rather than on `officer`, which is a fresh
+    // closure on every render and would rebuild this (and the letter below it) continuously.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [type, marks, signatory.name, signatory.signatureUrl, designation],
+  );
+
+  /** True when the company's own offices signed; false when it fell back to the issuing admin. */
+  const signedByOffice = signatories.length > 0 && signatories[0].key !== "issuer";
+  /** Offices this document needs that have no signature on file yet. */
+  const missingOffices = DOCUMENT_SIGNATORIES[type].filter(
+    (k) => !signatories.some((s) => s.key === k),
+  );
 
   const fields = EXTRA_FIELDS[type];
   const required = EXTRA_FIELD_REQUIRED[type] || [];
@@ -86,14 +112,18 @@ export default function IssueDocumentDialog({
         employeeId: member.employeeId,
       },
       profile,
-      signatory: { name: signatory.name, designation },
+      signatory: signatories,
       issuedOn,
       extras,
+      company,
+      // The real reference is allocated at issue; the preview shows the shape without burning a
+      // number every time somebody opens the dialog to look.
+      referenceNo: null,
     }),
-    [type, member, profile, signatory.name, designation, issuedOn, extras],
+    [type, member, profile, signatories, issuedOn, extras, company],
   );
 
-  const hasSignature = !!signatory.signatureUrl;
+  const hasSignature = canIssue(signatories, type);
 
   const setExtra = (key: keyof HrDocumentExtras, value: string) =>
     setExtras((prev) => ({
@@ -137,6 +167,24 @@ export default function IssueDocumentDialog({
     }
     setSending(true);
     try {
+      // The number is taken first, then baked into the text, so the reference printed on the page
+      // is the reference in the register — not one added to the record afterwards.
+      const referenceNo = await allocateReference(company.name, type, issuedOn);
+      const final = referenceNo
+        ? buildDocument({
+          type,
+          subject: {
+            name: member.name, phone: member.phone, email: member.email, employeeId: member.employeeId,
+          },
+          profile,
+          signatory: signatories,
+          issuedOn,
+          extras,
+          company,
+          referenceNo,
+        })
+        : built;
+
       const id = await issueDocument({
         document: {
           memberId: member.uid,
@@ -145,12 +193,17 @@ export default function IssueDocumentDialog({
           memberRole: member.role,
           department: profile.department,
           type,
-          title: built.title,
-          bodyText: built.bodyText,
+          title: final.title,
+          bodyText: final.bodyText,
           issuedById: signatory.uid,
           issuedByName: signatory.name,
           issuedByDesignation: designation,
-          companySignatureUrl: signatory.signatureUrl || null,
+          signatories,
+          referenceNo,
+          companyStampUrl: marks.stampUrl || null,
+          // Kept in step with the first signatory so anything still reading the old single-signature
+          // field — an older cached client, a report — sees the same signature the page shows.
+          companySignatureUrl: signatories[0]?.signatureUrl || null,
           issuedOn,
           requiresEmployeeSignature: requiresEmployeeSignature(type),
         },
@@ -218,29 +271,72 @@ export default function IssueDocumentDialog({
         {!hasSignature && (
           <div className="mb-4 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5" data-test="no-signature-warning">
             <p className="flex items-center gap-1.5 text-xs font-semibold text-warning">
-              <PenTool size={13} /> You have not added your signature yet
+              <PenTool size={13} /> Nobody can sign this yet
             </p>
             <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-              Every document you issue carries your signature automatically. Add it once in Settings
-              and you will never have to sign a letter by hand again.
+              This letter is signed by the company — upload the CEO's signature under Company
+              Documents in Settings and every letter after it signs itself. Until then it would go
+              out with an empty signature line, so it cannot be issued.
             </p>
             <Link
               to={settingsPath}
               className="mt-2 inline-flex h-8 items-center rounded-lg bg-warning px-3 text-[11px] font-semibold text-warning-foreground hover:opacity-90"
             >
-              Add my signature →
+              Open Company Documents →
             </Link>
           </div>
         )}
 
+        {hasSignature && missingOffices.length > 0 && (
+          <div className="mb-4 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5" data-test="missing-officer-warning">
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-warning">
+              <PenTool size={13} /> {missingOffices.map((k) => k.toUpperCase()).join(" and ")} signature not on file
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+              {HR_DOCUMENT_LABELS[type]} is normally signed by{" "}
+              {DOCUMENT_SIGNATORIES[type].map((k) => k.toUpperCase()).join(" and ")}.
+              {signedByOffice
+                ? " It will go out signed by whoever is on file."
+                : " It will go out under your own signature instead."}{" "}
+              Add the missing one under Company Documents in Settings.
+            </p>
+          </div>
+        )}
+
         <div className="grid gap-3 sm:grid-cols-2">
-          <Select label="Document" value={type} onChange={(e) => { setType(e.target.value as HrDocumentType); setExtras({}); setShowPreview(false); }} data-test="document-type">
-            {available.map((t) => (
-              <option key={t} value={t}>
-                {HR_DOCUMENT_LABELS[t]}{already.has(t) ? " — already issued" : ""}
-              </option>
-            ))}
-          </Select>
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-muted-foreground">Document</label>
+            {/*
+              Grouped and in lifecycle order — hire, employ, discipline, part — because an admin
+              reaching for the next letter scans down from the last one they sent. The documents
+              that fit this employee's current stage are lifted to the top for the same reason.
+            */}
+            <select
+              value={type}
+              onChange={(e) => { setType(e.target.value as HrDocumentType); setExtras({}); setShowPreview(false); }}
+              data-test="document-type"
+              className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20"
+            >
+              {suggested.length > 0 && (
+                <optgroup label={`Suggested at this stage — ${profile.stage.replace(/_/g, " ")}`}>
+                  {suggested.map((t) => (
+                    <option key={`s-${t}`} value={t}>
+                      {HR_DOCUMENT_LABELS[t]}{already.has(t) ? " — already issued" : ""}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {HR_DOCUMENT_GROUPS.map((group) => (
+                <optgroup key={group.label} label={group.label}>
+                  {group.types.map((t) => (
+                    <option key={t} value={t}>
+                      {HR_DOCUMENT_LABELS[t]}{already.has(t) ? " — already issued" : ""}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </div>
           <Input label="Dated" type="date" value={issuedOn} onChange={(e) => setIssuedOn(e.target.value)} />
         </div>
 
@@ -312,8 +408,8 @@ export default function IssueDocumentDialog({
             {sending ? "Issuing…" : requiresEmployeeSignature(type) ? "Issue for signature" : "Issue document"}
           </button>
           {hasSignature && (
-            <span className="text-[11px] text-muted-foreground">
-              Signed as {signatory.name} · {designation}
+            <span className="text-[11px] text-muted-foreground" data-test="signing-as">
+              Signed by {signatories.map((s) => `${s.name} · ${s.designation}`).join("  +  ")}
             </span>
           )}
         </div>
@@ -327,9 +423,7 @@ export default function IssueDocumentDialog({
               bodyText={built.bodyText}
               memberName={member.name}
               memberPhone={member.phone}
-              companySignatureUrl={signatory.signatureUrl}
-              companySignedName={signatory.name}
-              companyDesignation={designation}
+              companySignatories={signatories}
               companySignedDate={issuedOn}
               companyStampUrl={marks.stampUrl}
             />

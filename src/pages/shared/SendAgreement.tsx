@@ -26,7 +26,15 @@ const memberProfileLink = (role: string): string =>
 
 type SendMode = "individual" | "bulk";
 
-export default function SendAgreement() {
+/**
+ * Paste-an-agreement, still exactly as it was.
+ *
+ * This is somebody else's document reproduced verbatim and sent for signature — a different job
+ * from the letters the company generates itself, which is why it survived the move into the HR
+ * centre rather than being folded into the document generator. When `embedded` is set it drops its
+ * own page heading and the missing-letters panel, because the page hosting it already shows both.
+ */
+export default function SendAgreement({ embedded }: { embedded?: boolean } = {}) {
   const user = useAuthStore((s) => s.user);
   const { toast } = useToast();
   const [allUsers, setAllUsers] = useState<AppUser[]>([]);
@@ -277,19 +285,21 @@ export default function SendAgreement() {
   };
 
   return (
-    <div className="p-4 md:p-6 max-w-5xl mx-auto">
-      <div className="mb-5">
-        <h1 className="font-display font-bold text-xl md:text-2xl text-foreground flex items-center gap-2">
-          <FileSignature className="w-5 h-5 text-primary" /> Agreements
-        </h1>
-        <p className="text-muted-foreground text-xs md:text-sm mt-1">
-          Paste any agreement text, auto-fill each member's details, preview, and send for signature — individually or in bulk.
-        </p>
-      </div>
+    <div className={embedded ? "" : "p-4 md:p-6 max-w-5xl mx-auto"}>
+      {!embedded && (
+        <div className="mb-5">
+          <h1 className="font-display font-bold text-xl md:text-2xl text-foreground flex items-center gap-2">
+            <FileSignature className="w-5 h-5 text-primary" /> Agreements
+          </h1>
+          <p className="text-muted-foreground text-xs md:text-sm mt-1">
+            Paste any agreement text, auto-fill each member's details, preview, and send for signature — individually or in bulk.
+          </p>
+        </div>
+      )}
 
       {/* The company's own letters come first: the team's missing offer and appointment letters
           are a bigger gap than any agreement waiting to be pasted. */}
-      {user && (
+      {user && !embedded && (
         <div className="mb-5">
           <MissingLettersPanel
             rows={missingLetters}

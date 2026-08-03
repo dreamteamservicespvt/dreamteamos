@@ -1,9 +1,9 @@
 import { format } from "date-fns";
-import { COMPANY } from "@/utils/company";
+import { COMPANY_DEFAULTS, resolveCompany, type ResolvedCompany } from "@/utils/company";
 import { formatPhoneDisplay } from "@/utils/phone";
 import { parseDate, probationEndDate, noticePeriodFor } from "@/utils/hrPolicy";
 import { ENGAGEMENT_LABELS, HR_DOCUMENT_LABELS } from "@/types/hr";
-import type { EmployeeProfile, HrDocumentType } from "@/types/hr";
+import type { EmployeeProfile, HrDocumentType, IssuedSignatory } from "@/types/hr";
 
 /**
  * The letters the employee lifecycle produces, generated from the employee's own record.
@@ -51,13 +51,24 @@ export interface HrDocumentExtras {
   newCtcMonthly?: number | null;
   newDesignation?: string | null;
   effectiveFrom?: string | null;
-  /** Warning letter. */
+  /** Warning letter / show cause notice. */
   incident?: string | null;
   incidentDate?: string | null;
   expectation?: string | null;
-  /** Relieving / experience letter. */
+  /**
+   * Show cause notice — the date by which the employee must answer.
+   *
+   * The whole point of a show cause notice is that it asks a question and waits. One with no
+   * deadline is just a warning letter wearing a different title.
+   */
+  responseByDate?: string | null;
+  /** Resignation acceptance — the date the resignation was received. */
+  resignationDate?: string | null;
+  /** Relieving / experience / settlement letter. */
   lastWorkingDay?: string | null;
   settlementNote?: string | null;
+  /** Full & final settlement — the net amount payable, as settled. */
+  settlementAmount?: number | null;
   /** Anything else this particular letter must say. Appended as its own section. */
   additionalTerms?: string | null;
 }
@@ -66,10 +77,23 @@ export interface BuildDocumentInput {
   type: HrDocumentType;
   subject: DocumentSubject;
   profile: EmployeeProfile;
-  signatory: DocumentSignatory;
+  /**
+   * Who signs for the company, in the order their blocks appear at the foot of the letter.
+   *
+   * Usually one; the NDA carries two. A single `DocumentSignatory` is still accepted so older
+   * callers — and the onboarding invite flow, which signs as one named admin — keep working.
+   */
+  signatory: DocumentSignatory | IssuedSignatory[];
   /** yyyy-MM-dd — the date printed on the letter. */
   issuedOn: string;
   extras?: HrDocumentExtras;
+  /**
+   * The company as it should be printed. Omitted in tests and older callers, where the built-in
+   * defaults are used — a letter must never render "undefined" as its own name.
+   */
+  company?: ResolvedCompany;
+  /** `DTS/OFR/2026/0007`. Printed under the title; omitted entirely when there is none. */
+  referenceNo?: string | null;
 }
 
 export interface BuiltDocument {
@@ -105,37 +129,63 @@ const EMPLOYEE_SIGNATURE_BLOCK = (subject: DocumentSubject): (string | null)[] =
   "",
   "Employee Signature:",
   `Name: ${subject.name}`,
+  subject.employeeId ? `Employee ID: ${subject.employeeId}` : null,
   "Date:",
 ];
 
-const COMPANY_SIGNATURE_BLOCK = (signatory: DocumentSignatory, issuedOn: string): (string | null)[] => [
-  "",
-  `For ${COMPANY.name} — Authorised Signatory Signature:`,
-  `Name: ${signatory.name}`,
-  `Designation: ${signatory.designation}`,
-  `Date: ${longDate(issuedOn)}`,
-];
+/** The company as it should be printed for this build — defaults when the caller gave none. */
+const companyOf = (i: BuildDocumentInput): ResolvedCompany => i.company || resolveCompany(null);
+
+/** Whoever signs, normalised to a list — one signatory and many are the same shape downstream. */
+const signatoriesOf = (i: BuildDocumentInput): IssuedSignatory[] =>
+  Array.isArray(i.signatory)
+    ? i.signatory
+    : [{ key: "issuer", name: i.signatory.name, designation: i.signatory.designation }];
+
+/**
+ * The company's signature blocks, one per signing office.
+ *
+ * The office is named in the signature line itself rather than left as a generic "Authorised
+ * Signatory", because a document carrying two signatures has to say which is which — a reader
+ * looking at an NDA needs to see that the CTO signed it as well as the CEO, not two identical
+ * boxes. `AgreementView` pairs these lines with the stored signature images in order.
+ */
+const COMPANY_SIGNATURE_BLOCKS = (i: BuildDocumentInput): (string | null)[] => {
+  const co = companyOf(i);
+  return signatoriesOf(i).flatMap((s) => [
+    "",
+    `For ${co.name} — ${s.designation || "Authorised Signatory"} Signature:`,
+    `Name: ${s.name}`,
+    `Designation: ${s.designation}`,
+    `Date: ${longDate(i.issuedOn)}`,
+  ]);
+};
 
 /** The header block every letter opens with — who it is from, who it is to, and when. */
 const letterHead = (
+  i: BuildDocumentInput,
   title: string,
-  subject: DocumentSubject,
-  issuedOn: string,
   opts: { ref?: string | null; address?: string | null } = {},
-): (string | null)[] => [
-  title.toUpperCase(),
-  COMPANY.name.toUpperCase(),
-  "",
-  opts.ref?.trim() ? `Ref: ${opts.ref.trim()}` : null,
-  `Date: ${longDate(issuedOn)}`,
-  "",
-  `Employee Name: ${subject.name}`,
-  subject.employeeId ? `Employee ID: ${subject.employeeId}` : null,
-  subject.phone ? `Mobile Number: ${formatPhoneDisplay(subject.phone)}` : null,
-  subject.email ? `Email: ${subject.email}` : null,
-  opts.address?.trim() ? `Address: ${opts.address.trim()}` : null,
-  "",
-];
+): (string | null)[] => {
+  const { subject } = i;
+  // An explicit per-letter reference (the offer letter has one) wins over the allocated series
+  // number, so an admin who types their own reference still sees exactly that on the page.
+  const ref = (opts.ref || "").trim() || (i.referenceNo || "").trim();
+  return [
+    title.toUpperCase(),
+    companyOf(i).name.toUpperCase(),
+    "",
+    ref ? `Ref: ${ref}` : null,
+    `Date: ${longDate(i.issuedOn)}`,
+    "",
+    `Employee Name: ${subject.name}`,
+    subject.employeeId ? `Employee ID: ${subject.employeeId}` : null,
+    subject.phone ? `Mobile Number: ${formatPhoneDisplay(subject.phone)}` : null,
+    subject.email ? `Email: ${subject.email}` : null,
+    opts.address?.trim() ? `Address: ${opts.address.trim()}` : null,
+    "",
+  ];
+};
 
 const engagementLabel = (p: EmployeeProfile): string =>
   p.engagementType ? ENGAGEMENT_LABELS[p.engagementType] : "—";
@@ -166,15 +216,16 @@ const additional = (extras?: HrDocumentExtras, startingAt = 90): (string | null)
 
 function offerLetter(i: BuildDocumentInput): string {
   const { profile: p, subject, extras } = i;
+  const co = companyOf(i);
   const probationEnds = probationEndDate(p);
   return compose([
-    ...letterHead("Offer of Employment", subject, i.issuedOn, {
+    ...letterHead(i, "Offer of Employment", {
       ref: extras?.offerLetterNumber,
       address: extras?.candidateAddress,
     }),
     `Dear ${subject.name},`,
     "",
-    `We are pleased to offer you the position described below at ${COMPANY.name}. This letter sets out the principal terms of the offer. Your employment will additionally be governed by the Appointment Letter / Employment Agreement and the company policies you will be asked to acknowledge on or before joining.`,
+    `We are pleased to offer you the position described below at ${co.name}. This letter sets out the principal terms of the offer. Your employment will additionally be governed by the Appointment Letter / Employment Agreement and the company policies you will be asked to acknowledge on or before joining.`,
     "",
     "1. Position and Engagement",
     `Designation: ${value(p.designation)}`,
@@ -218,7 +269,7 @@ function offerLetter(i: BuildDocumentInput): string {
     ...additional(extras, 10),
     "",
     "We look forward to welcoming you to the team.",
-    ...COMPANY_SIGNATURE_BLOCK(i.signatory, i.issuedOn),
+    ...COMPANY_SIGNATURE_BLOCKS(i),
     "",
     "ACCEPTANCE",
     "I have read and understood the terms of this offer and I accept them.",
@@ -228,15 +279,16 @@ function offerLetter(i: BuildDocumentInput): string {
 
 function appointmentLetter(i: BuildDocumentInput): string {
   const { profile: p, subject, extras } = i;
+  const co = companyOf(i);
   const probationEnds = probationEndDate(p);
   // Stated as a figure as well as a ladder: an employee who has to work out which rung they are on
   // to know their own notice period has not really been told it.
   const notice = noticePeriodFor(p);
   return compose([
-    ...letterHead("Appointment Letter and Employment Agreement", subject, i.issuedOn),
+    ...letterHead(i, "Appointment Letter and Employment Agreement"),
     `Dear ${subject.name},`,
     "",
-    `With reference to your acceptance of our offer, we are pleased to confirm your appointment at ${COMPANY.name} on the following terms and conditions.`,
+    `With reference to your acceptance of our offer, we are pleased to confirm your appointment at ${co.name} on the following terms and conditions.`,
     "",
     "1. Position, Engagement and Reporting",
     `Designation: ${value(p.designation)}`,
@@ -307,7 +359,7 @@ function appointmentLetter(i: BuildDocumentInput): string {
     ...additional(extras, 19),
     "",
     "Please sign below to confirm that you have read, understood and accepted these terms.",
-    ...COMPANY_SIGNATURE_BLOCK(i.signatory, i.issuedOn),
+    ...COMPANY_SIGNATURE_BLOCKS(i),
     "",
     "ACCEPTED AND AGREED",
     `Place: ${value(p.workLocation)}`,
@@ -317,9 +369,10 @@ function appointmentLetter(i: BuildDocumentInput): string {
 
 function nda(i: BuildDocumentInput): string {
   const { subject, extras } = i;
+  const co = companyOf(i);
   return compose([
-    ...letterHead("Non-Disclosure, Confidentiality and Intellectual Property Agreement", subject, i.issuedOn),
-    `This agreement is entered into between ${COMPANY.name} ("the Company") and ${subject.name} ("the Employee") in connection with the Employee's employment with the Company.`,
+    ...letterHead(i, "Non-Disclosure, Confidentiality and Intellectual Property Agreement"),
+    `This agreement is entered into between ${co.name} ("the Company") and ${subject.name} ("the Employee") in connection with the Employee's employment with the Company.`,
     "",
     "1. Confidential Information",
     "Confidential Information means all non-public information relating to the Company, its clients, vendors and partners, in any form, including client lists and contact details, pricing and commercials, business and marketing plans, creative assets, scripts, prompts, source code, designs, processes, credentials, financial information and employee information.",
@@ -345,7 +398,7 @@ function nda(i: BuildDocumentInput): string {
     "8. Consequences of Breach",
     "A breach of this agreement is treated as serious misconduct and may lead to disciplinary action under the Company's disciplinary policy, and to such legal remedies as are available to the Company under applicable law.",
     ...additional(extras, 9),
-    ...COMPANY_SIGNATURE_BLOCK(i.signatory, i.issuedOn),
+    ...COMPANY_SIGNATURE_BLOCKS(i),
     "",
     "ACCEPTED AND AGREED",
     ...EMPLOYEE_SIGNATURE_BLOCK(subject),
@@ -354,9 +407,10 @@ function nda(i: BuildDocumentInput): string {
 
 function policyAcknowledgement(i: BuildDocumentInput): string {
   const { subject, extras } = i;
+  const co = companyOf(i);
   return compose([
-    ...letterHead("Acknowledgement of Company Policies", subject, i.issuedOn),
-    `I confirm that the following policies of ${COMPANY.name} have been made available to me, that I have read and understood them, and that I agree to comply with them.`,
+    ...letterHead(i, "Acknowledgement of Company Policies"),
+    `I confirm that the following policies of ${co.name} have been made available to me, that I have read and understood them, and that I agree to comply with them.`,
     "",
     "1. Code of Conduct and Professional Behaviour",
     "Expected standards of conduct with colleagues, clients and partners, including a workplace free of harassment and discrimination.",
@@ -379,17 +433,18 @@ function policyAcknowledgement(i: BuildDocumentInput): string {
     "",
     "I understand that these policies may be updated from time to time and that I will be informed of material changes.",
     ...EMPLOYEE_SIGNATURE_BLOCK(subject),
-    ...COMPANY_SIGNATURE_BLOCK(i.signatory, i.issuedOn),
+    ...COMPANY_SIGNATURE_BLOCKS(i),
   ]);
 }
 
 function confirmationLetter(i: BuildDocumentInput): string {
   const { profile: p, subject, extras } = i;
+  const co = companyOf(i);
   return compose([
-    ...letterHead("Confirmation of Employment", subject, i.issuedOn),
+    ...letterHead(i, "Confirmation of Employment"),
     `Dear ${subject.name},`,
     "",
-    `We are pleased to inform you that you have successfully completed your probation period at ${COMPANY.name}.`,
+    `We are pleased to inform you that you have successfully completed your probation period at ${co.name}.`,
     "",
     "1. Confirmation",
     `Your employment is confirmed with effect from ${longDate(extras?.effectiveFrom || p.confirmedOn || i.issuedOn)}. You are now a confirmed ${engagementLabel(p)} employee in the role of ${value(p.designation)}.`,
@@ -405,14 +460,14 @@ function confirmationLetter(i: BuildDocumentInput): string {
     ...additional(extras, extras?.newCtcMonthly ? 5 : 4),
     "",
     "Thank you for your contribution during your probation. We look forward to your continued association with us.",
-    ...COMPANY_SIGNATURE_BLOCK(i.signatory, i.issuedOn),
+    ...COMPANY_SIGNATURE_BLOCKS(i),
   ]);
 }
 
 function probationExtension(i: BuildDocumentInput): string {
   const { profile: p, subject, extras } = i;
   return compose([
-    ...letterHead("Extension of Probation Period", subject, i.issuedOn),
+    ...letterHead(i, "Extension of Probation Period"),
     `Dear ${subject.name},`,
     "",
     `This letter is with reference to the probation period under your Appointment Letter dated ${longDate(p.joiningDate)}.`,
@@ -433,7 +488,7 @@ function probationExtension(i: BuildDocumentInput): string {
     "4. Outcome",
     "At the end of the extended period the company will either confirm your employment in writing, or take such action as the Appointment Letter and applicable law permit.",
     ...additional(extras, 5),
-    ...COMPANY_SIGNATURE_BLOCK(i.signatory, i.issuedOn),
+    ...COMPANY_SIGNATURE_BLOCKS(i),
     "",
     "ACKNOWLEDGED",
     ...EMPLOYEE_SIGNATURE_BLOCK(subject),
@@ -442,15 +497,14 @@ function probationExtension(i: BuildDocumentInput): string {
 
 function incrementLetter(i: BuildDocumentInput): string {
   const { profile: p, subject, extras } = i;
-  const promoted = !!extras?.newDesignation && extras.newDesignation !== p.designation;
   return compose([
-    ...letterHead(promoted ? "Promotion and Revision of Remuneration" : "Revision of Remuneration", subject, i.issuedOn),
+    ...letterHead(i, "Revision of Remuneration"),
     `Dear ${subject.name},`,
     "",
-    "In recognition of your performance and contribution, we are pleased to inform you of the following revision.",
+    "In recognition of your performance and contribution, we are pleased to inform you of the following revision to your remuneration.",
     "",
     "1. Revision",
-    promoted ? `Designation: ${value(p.designation)} → ${value(extras?.newDesignation)}` : `Designation: ${value(p.designation)} (unchanged)`,
+    `Designation: ${value(p.designation)} (unchanged)`,
     `Gross monthly salary: ${rupees(p.ctcMonthly)} → ${rupees(extras?.newCtcMonthly)}`,
     `Effective from: ${longDate(extras?.effectiveFrom || i.issuedOn)}`,
     "",
@@ -459,14 +513,97 @@ function incrementLetter(i: BuildDocumentInput): string {
     ...additional(extras, 3),
     "",
     "We thank you for your work and look forward to your continued contribution.",
-    ...COMPANY_SIGNATURE_BLOCK(i.signatory, i.issuedOn),
+    ...COMPANY_SIGNATURE_BLOCKS(i),
+  ]);
+}
+
+/**
+ * A promotion, which is a change of role — not merely a bigger number.
+ *
+ * Kept separate from the increment letter because the two say different things: an increment
+ * rewards the work already being done, a promotion changes what the person is responsible for and
+ * who they answer to. An employee showing this to a future employer is proving the role, and a
+ * letter headed "Revision of Remuneration" does not prove it.
+ */
+function promotionLetter(i: BuildDocumentInput): string {
+  const { profile: p, subject, extras } = i;
+  const revised = typeof extras?.newCtcMonthly === "number";
+  return compose([
+    ...letterHead(i, "Promotion Letter"),
+    `Dear ${subject.name},`,
+    "",
+    "In recognition of your performance, your growing contribution and the responsibility you have taken on, we are pleased to inform you of your promotion as set out below.",
+    "",
+    "1. Promotion",
+    `Designation: ${value(p.designation)} → ${value(extras?.newDesignation)}`,
+    p.reportingToName ? `Reporting to: ${p.reportingToName}` : null,
+    `Effective from: ${longDate(extras?.effectiveFrom || i.issuedOn)}`,
+    "",
+    "2. Remuneration",
+    revised
+      ? `Gross monthly salary: ${rupees(p.ctcMonthly)} → ${rupees(extras?.newCtcMonthly)}, effective from the same date and subject to statutory deductions as applicable.`
+      : "Your existing remuneration continues unchanged with this promotion. Any revision will be communicated separately in writing.",
+    "",
+    "3. Responsibilities",
+    "You are expected to carry out the duties of your new role, together with such other duties as may reasonably be assigned to you, to the standard the role requires. Your reporting manager will discuss the expectations of the role with you.",
+    "",
+    "4. Continuing Terms",
+    "All other terms of your employment remain unchanged and continue to be governed by your Appointment Letter / Employment Agreement, including your obligations of confidentiality and intellectual property.",
+    ...additional(extras, 5),
+    "",
+    "We congratulate you and look forward to your contribution in your new role.",
+    ...COMPANY_SIGNATURE_BLOCKS(i),
+  ]);
+}
+
+/**
+ * The letter that asks before it concludes.
+ *
+ * A warning letter records a finding; a show cause notice records an allegation and asks the
+ * employee to answer it by a date. Issuing the finding without ever having asked the question is
+ * the single most common way a disciplinary process is found to be unfair afterwards — which is
+ * why this sits above the warning letter in the list, not below it.
+ */
+function showCauseNotice(i: BuildDocumentInput): string {
+  const { subject, extras } = i;
+  const by = extras?.responseByDate;
+  return compose([
+    ...letterHead(i, "Show Cause Notice"),
+    `Dear ${subject.name},`,
+    "",
+    "This notice is issued to bring to your attention the matter recorded below and to give you an opportunity to explain it before the company takes any view on it. Nothing has been decided, and no conclusion has been drawn against you at this stage.",
+    "",
+    "1. The Matter",
+    value(extras?.incident),
+    extras?.incidentDate ? `Date of the incident/observation: ${longDate(extras.incidentDate)}` : null,
+    "",
+    "2. Why This Is of Concern",
+    "The conduct described above appears, on the face of it, to be inconsistent with the obligations set out in your Appointment Letter / Employment Agreement and the company's policies.",
+    "",
+    "3. You Are Required to Show Cause",
+    by
+      ? `You are required to submit your written explanation to your reporting manager on or before ${longDate(by)}, stating why the company should not proceed further in this matter.`
+      : "You are required to submit your written explanation to your reporting manager within three (3) working days of receiving this notice, stating why the company should not proceed further in this matter.",
+    "You may set out any facts, circumstances or documents you wish the company to take into account.",
+    "",
+    "4. If No Explanation Is Received",
+    "If no explanation is received within the time allowed, the company will proceed on the material available to it. Your explanation, if submitted, will be considered before any decision is taken.",
+    "",
+    "5. Status",
+    "This notice is not a punishment and does not by itself record any finding against you.",
+    ...additional(extras, 6),
+    ...COMPANY_SIGNATURE_BLOCKS(i),
+    "",
+    "ACKNOWLEDGEMENT OF RECEIPT",
+    "Signing below records receipt of this notice only. It is not an admission of the matter recorded in it.",
+    ...EMPLOYEE_SIGNATURE_BLOCK(subject),
   ]);
 }
 
 function warningLetter(i: BuildDocumentInput): string {
   const { subject, extras } = i;
   return compose([
-    ...letterHead("Warning Letter", subject, i.issuedOn),
+    ...letterHead(i, "Warning Letter"),
     `Dear ${subject.name},`,
     "",
     "This letter is issued to formally record a concern with your conduct or performance and to give you an opportunity to respond and to correct it.",
@@ -486,7 +623,7 @@ function warningLetter(i: BuildDocumentInput): string {
     "4. Consequences",
     "A repetition, or a failure to correct the matter, may lead to further action under the company's misconduct and disciplinary policy, which provides for the process to be followed before any action is taken.",
     ...additional(extras, 5),
-    ...COMPANY_SIGNATURE_BLOCK(i.signatory, i.issuedOn),
+    ...COMPANY_SIGNATURE_BLOCKS(i),
     "",
     "ACKNOWLEDGEMENT OF RECEIPT",
     "Signing below records receipt of this letter. It is not an admission of the matters recorded in it.",
@@ -494,15 +631,118 @@ function warningLetter(i: BuildDocumentInput): string {
   ]);
 }
 
-function relievingLetter(i: BuildDocumentInput): string {
+/**
+ * The company's written answer to a resignation.
+ *
+ * Worth its own letter because it is the document that fixes the last working day. Until the
+ * company has accepted in writing, the employee has told it they are leaving and nothing more —
+ * and the notice period, the handover and the settlement all count from a date that nobody has yet
+ * agreed. This is also where an early release or a waiver of notice gets recorded, which is
+ * precisely the term that gets argued about later.
+ */
+function resignationAcceptance(i: BuildDocumentInput): string {
+  const { profile: p, subject, extras } = i;
+  const sep = p.separation;
+  const submitted = extras?.resignationDate || sep?.submittedOn || null;
+  const lwd = extras?.lastWorkingDay || sep?.lastWorkingDay || null;
+  const early = sep?.earlyRelease;
+  const waived = sep?.waivedDays ?? 0;
+  return compose([
+    ...letterHead(i, "Acceptance of Resignation"),
+    `Dear ${subject.name},`,
+    "",
+    `We acknowledge receipt of your resignation dated ${longDate(submitted)}, and write to confirm that it has been accepted.`,
+    "",
+    "1. Last Working Day",
+    `Your last working day with the company will be ${longDate(lwd)}.`,
+    early
+      ? "This date has been brought forward from the date your full notice period would otherwise have ended, by mutual agreement."
+      : null,
+    waived > 0
+      ? `${waived} day(s) of the applicable notice period have not been served. Their treatment will follow the terms of your Appointment Letter / Employment Agreement.`
+      : null,
+    "",
+    "2. Until Your Last Working Day",
+    "You are expected to continue discharging your duties, to remain available during your working hours, and to complete a full handover of your work, files, credentials and any work in progress to the person nominated by your reporting manager.",
+    "",
+    "3. Company Property",
+    "All company property issued to you — including any laptop, phone, SIM, access card, accounts and credentials — must be returned on or before your last working day.",
+    "",
+    "4. Continuing Obligations",
+    "Your obligations of confidentiality and intellectual property survive the end of your employment and continue to bind you after your last working day.",
+    "",
+    "5. Settlement and Documents",
+    "Your full and final settlement will be processed in accordance with company policy and applicable law after the handover and return of company property are complete. Your relieving letter and experience certificate will be issued on completion of the exit formalities.",
+    ...additional(extras, 6),
+    "",
+    "We thank you for your contribution and wish you well.",
+    ...COMPANY_SIGNATURE_BLOCKS(i),
+  ]);
+}
+
+/**
+ * What the employee is finally owed, on paper.
+ *
+ * Every figure here is already recorded on the separation record — this letter is the statement of
+ * it, which is the thing an employee can actually keep, question, or show to somebody. It is signed
+ * by the employee for the same reason: a settlement nobody acknowledged is the one that gets
+ * reopened.
+ */
+function fullFinalSettlement(i: BuildDocumentInput): string {
   const { profile: p, subject, extras } = i;
   const sep = p.separation;
   const lwd = extras?.lastWorkingDay || sep?.lastWorkingDay || null;
+  const amount = typeof extras?.settlementAmount === "number"
+    ? extras.settlementAmount
+    : sep?.finalSettlementAmount ?? null;
   return compose([
-    ...letterHead("Relieving Letter", subject, i.issuedOn),
+    ...letterHead(i, "Full and Final Settlement"),
+    `Dear ${subject.name},`,
+    "",
+    `This letter sets out the full and final settlement of your dues consequent to the cessation of your employment with effect from ${longDate(lwd)}.`,
+    "",
+    "1. Period of Employment",
+    `From ${longDate(p.joiningDate)} to ${longDate(lwd)}, as ${value(p.designation)}.`,
+    "",
+    "2. Settlement Amount",
+    amount !== null
+      ? `Net amount payable: ${rupees(amount)}, arrived at after accounting for salary due for the period worked, any leave encashment, any reimbursements, and any recoveries and statutory deductions applicable.`
+      : "The net amount payable has been computed after accounting for salary due for the period worked, any leave encashment, any reimbursements, and any recoveries and statutory deductions applicable.",
+    sep?.finalSettlementOn ? `Settled on: ${longDate(sep.finalSettlementOn)}` : null,
+    value(extras?.settlementNote) === "—" ? null : value(extras?.settlementNote),
+    "",
+    "3. Mode of Payment",
+    "The amount will be credited to the bank account registered with the company against your record. Please ensure those details are current.",
+    "",
+    "4. Company Property",
+    sep?.assetsReturnedOn
+      ? `All company property issued to you was returned as on ${longDate(sep.assetsReturnedOn)}.`
+      : "This settlement is subject to the return of all company property issued to you.",
+    "",
+    "5. Continuing Obligations",
+    "Your obligations of confidentiality and intellectual property survive the end of your employment and are unaffected by this settlement.",
+    "",
+    "6. Confirmation",
+    "Please review the above. If you consider anything to be incorrect or omitted, raise it in writing before signing. Signing below records your acknowledgement of this statement of settlement.",
+    ...additional(extras, 7),
+    ...COMPANY_SIGNATURE_BLOCKS(i),
+    "",
+    "ACKNOWLEDGEMENT",
+    "I acknowledge the settlement set out above.",
+    ...EMPLOYEE_SIGNATURE_BLOCK(subject),
+  ]);
+}
+
+function relievingLetter(i: BuildDocumentInput): string {
+  const { profile: p, subject, extras } = i;
+  const co = companyOf(i);
+  const sep = p.separation;
+  const lwd = extras?.lastWorkingDay || sep?.lastWorkingDay || null;
+  return compose([
+    ...letterHead(i, "Relieving Letter"),
     "TO WHOMSOEVER IT MAY CONCERN",
     "",
-    `This is to certify that ${subject.name}${subject.employeeId ? ` (Employee ID: ${subject.employeeId})` : ""} was employed with ${COMPANY.name} as ${value(p.designation)} from ${longDate(p.joiningDate)} to ${longDate(lwd)}.`,
+    `This is to certify that ${subject.name}${subject.employeeId ? ` (Employee ID: ${subject.employeeId})` : ""} was employed with ${co.name} as ${value(p.designation)} from ${longDate(p.joiningDate)} to ${longDate(lwd)}.`,
     "",
     "1. Relieving",
     `${subject.name} has been relieved from the services of the company with effect from the close of business on ${longDate(lwd)}.`,
@@ -521,18 +761,19 @@ function relievingLetter(i: BuildDocumentInput): string {
     ...additional(extras, 4),
     "",
     "We thank them for their services and wish them well in their future endeavours.",
-    ...COMPANY_SIGNATURE_BLOCK(i.signatory, i.issuedOn),
+    ...COMPANY_SIGNATURE_BLOCKS(i),
   ]);
 }
 
 function experienceLetter(i: BuildDocumentInput): string {
   const { profile: p, subject, extras } = i;
+  const co = companyOf(i);
   const lwd = extras?.lastWorkingDay || p.separation?.lastWorkingDay || null;
   return compose([
-    ...letterHead("Experience Certificate", subject, i.issuedOn),
+    ...letterHead(i, "Experience Certificate"),
     "TO WHOMSOEVER IT MAY CONCERN",
     "",
-    `This is to certify that ${subject.name}${subject.employeeId ? ` (Employee ID: ${subject.employeeId})` : ""} was employed with ${COMPANY.name} from ${longDate(p.joiningDate)} to ${longDate(lwd)}.`,
+    `This is to certify that ${subject.name}${subject.employeeId ? ` (Employee ID: ${subject.employeeId})` : ""} was employed with ${co.name} from ${longDate(p.joiningDate)} to ${longDate(lwd)}.`,
     "",
     "1. Role",
     `Designation at the time of leaving: ${value(p.designation)}`,
@@ -544,7 +785,7 @@ function experienceLetter(i: BuildDocumentInput): string {
     ...additional(extras, 3),
     "",
     "This certificate is issued on request for whatever purpose it may serve.",
-    ...COMPANY_SIGNATURE_BLOCK(i.signatory, i.issuedOn),
+    ...COMPANY_SIGNATURE_BLOCKS(i),
   ]);
 }
 
@@ -556,9 +797,13 @@ const BUILDERS: Record<HrDocumentType, (i: BuildDocumentInput) => string> = {
   confirmation_letter: confirmationLetter,
   probation_extension: probationExtension,
   increment_letter: incrementLetter,
+  promotion_letter: promotionLetter,
+  show_cause_notice: showCauseNotice,
   warning_letter: warningLetter,
+  resignation_acceptance: resignationAcceptance,
   relieving_letter: relievingLetter,
   experience_letter: experienceLetter,
+  full_final_settlement: fullFinalSettlement,
 };
 
 /** Build a document's title and full body text from the employee's record. */
@@ -581,10 +826,14 @@ export const EXTRA_FIELDS: Record<HrDocumentType, (keyof HrDocumentExtras)[]> = 
   policy_acknowledgement: [],
   confirmation_letter: ["effectiveFrom", "newCtcMonthly"],
   probation_extension: ["extendedTo", "extensionReason", "expectation"],
-  increment_letter: ["newDesignation", "newCtcMonthly", "effectiveFrom"],
+  increment_letter: ["newCtcMonthly", "effectiveFrom"],
+  promotion_letter: ["newDesignation", "newCtcMonthly", "effectiveFrom"],
+  show_cause_notice: ["incident", "incidentDate", "responseByDate"],
   warning_letter: ["incident", "incidentDate", "expectation"],
+  resignation_acceptance: ["resignationDate", "lastWorkingDay"],
   relieving_letter: ["lastWorkingDay", "settlementNote"],
   experience_letter: ["lastWorkingDay"],
+  full_final_settlement: ["lastWorkingDay", "settlementAmount", "settlementNote"],
 };
 
 /** Human labels for those extra fields. */
@@ -600,8 +849,11 @@ export const EXTRA_FIELD_LABELS: Record<keyof HrDocumentExtras, string> = {
   incident: "What happened",
   incidentDate: "Date of the incident",
   expectation: "What is expected now",
+  responseByDate: "Explanation due by",
+  resignationDate: "Resignation received on",
   lastWorkingDay: "Last working day",
   settlementNote: "Settlement note",
+  settlementAmount: "Net amount payable (₹)",
   additionalTerms: "Additional terms",
 };
 
@@ -618,8 +870,11 @@ export const EXTRA_FIELD_KIND: Record<keyof HrDocumentExtras, "date" | "number" 
   incident: "textarea",
   incidentDate: "date",
   expectation: "textarea",
+  responseByDate: "date",
+  resignationDate: "date",
   lastWorkingDay: "date",
   settlementNote: "textarea",
+  settlementAmount: "number",
   additionalTerms: "textarea",
 };
 
@@ -627,7 +882,13 @@ export const EXTRA_FIELD_KIND: Record<keyof HrDocumentExtras, "date" | "number" 
 export const EXTRA_FIELD_REQUIRED: Partial<Record<HrDocumentType, (keyof HrDocumentExtras)[]>> = {
   probation_extension: ["extendedTo"],
   increment_letter: ["newCtcMonthly"],
+  // A promotion letter with no new designation is not a promotion letter.
+  promotion_letter: ["newDesignation"],
+  show_cause_notice: ["incident"],
   warning_letter: ["incident"],
+  // The date the resignation was received is what the notice period is counted from.
+  resignation_acceptance: ["lastWorkingDay"],
   relieving_letter: ["lastWorkingDay"],
   experience_letter: ["lastWorkingDay"],
+  full_final_settlement: ["lastWorkingDay"],
 };

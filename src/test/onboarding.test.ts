@@ -92,7 +92,9 @@ describe("the offer letter a candidate opens", () => {
 
   it("leaves both signature blocks in place — the company's and the candidate's", () => {
     const { bodyText } = letters().offer;
-    expect(bodyText).toMatch(/Authorised Signatory Signature:/);
+    // The company block opens "For <company> — <office> Signature:". That leading "For" is what
+    // AgreementView keys on to render it as the company's side, so it is worth pinning.
+    expect(bodyText).toMatch(/^For .+ — .+ Signature:$/m);
     expect(bodyText).toMatch(/^Employee Signature:/m);
     expect(bodyText).toContain("CTO (Tech Admin)");
   });

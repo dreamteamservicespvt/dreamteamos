@@ -33,6 +33,24 @@ export interface AgreementViewData {
   companySignedDate?: string;
   /** The company seal, printed across the company's signature block. */
   companyStampUrl?: string | null;
+  /**
+   * Every office signing for the company, in the order their blocks appear in the text.
+   *
+   * The NDA carries two — the CEO and the CTO — so a single signature URL is no longer enough to
+   * say who signed what. Company-side signature lines are paired with this list positionally: the
+   * first such line in the document gets the first signatory, and so on. Positional rather than
+   * matched on the text, because the line is prose the template controls and a renderer that tried
+   * to parse a job title out of it would break the first time somebody reworded a heading.
+   *
+   * Omit it and the single `companySignatureUrl` above is used, exactly as before.
+   */
+  companySignatories?: CompanySignatory[];
+}
+
+export interface CompanySignatory {
+  name?: string | null;
+  designation?: string | null;
+  signatureUrl?: string | null;
 }
 
 /** Fill the common "____" placeholders from the member's details + sign date. */
@@ -54,12 +72,19 @@ const isAllCaps = (l: string) => l.length > 2 && l === l.toUpperCase() && /[A-Z]
  * Which side a signature line belongs to.
  *
  * "Employee Signature:" — or a bare "Signature:" — is the employee's. A line that names the
- * company as signer ("For Dream Team Services — Authorised Signatory Signature:", "Employer
+ * company as signer ("For Dream Team Services — Chief Executive Officer Signature:", "Employer
  * Signature:", "HR Signature:") is the company's. Anything else — a witness line, say — gets a
  * blank ruled box, which is exactly what it got before two-sided signing existed.
+ *
+ * The leading `For …` test matters more than it looks: every letter this company generates opens
+ * its company block that way, and the words after the dash are now the signing office ("Chief
+ * Executive Officer", "CTO (Tech Admin)") rather than the fixed phrase "Authorised Signatory".
+ * Matching only on that old phrase silently demoted the company's own signature to a blank ruled
+ * box — the letter rendered, and the signature simply was not on it.
  */
 const signatureSide = (l: string): "employee" | "company" | "other" => {
   if (/employee/i.test(l)) return "employee";
+  if (/^for\s+\S/i.test(l.trim())) return "company";
   if (/authoris|authoriz|\bcompany\b|employer|signatory|\bhr\b/i.test(l)) return "company";
   return /^signature\s*:/i.test(l.trim()) ? "employee" : "other";
 };
@@ -108,6 +133,28 @@ const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function Agr
   const signedDateLabel = data.signedDate ? format(new Date(data.signedDate), "dd MMM yyyy") : "";
   const companyDateLabel = data.companySignedDate ? format(new Date(data.companySignedDate), "dd MMM yyyy") : "";
 
+  /**
+   * The company's signatories, and which body line each one signs on.
+   *
+   * Falling back to the single-signature props keeps every existing caller — agreements, the
+   * onboarding letters, documents issued before officers existed — rendering exactly as before.
+   */
+  const signatories: CompanySignatory[] = data.companySignatories?.length
+    ? data.companySignatories
+    : [{
+      name: data.companySignedName,
+      designation: data.companyDesignation,
+      signatureUrl: data.companySignatureUrl,
+    }];
+
+  const companyLineOrder = new Map<number, number>();
+  body.forEach((raw, idx) => {
+    const l = raw.trim();
+    if (isSignatureLine(l) && signatureSide(l) === "company") {
+      companyLineOrder.set(idx, companyLineOrder.size);
+    }
+  });
+
   return (
     <div
       ref={ref}
@@ -137,32 +184,41 @@ const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function Agr
             const side = signatureSide(l);
             const meta = signatureMeta.get(idx) || {};
             const isCompany = side === "company";
-            const imageUrl = side === "company" ? data.companySignatureUrl
+            // Which of the company's signatories this particular line belongs to.
+            const officer = isCompany ? signatories[companyLineOrder.get(idx) ?? 0] : undefined;
+            const imageUrl = isCompany ? (officer?.signatureUrl ?? null)
               : side === "employee" ? data.signatureUrl
               : null;
             const name = isCompany
-              ? (data.companySignedName || meta.name || "")
+              ? (officer?.name || meta.name || "")
               : side === "employee" ? (data.signedName || meta.name || data.memberName)
               : meta.name || "";
             const dateLabel = isCompany
               ? (companyDateLabel || meta.date || "")
               : (signedDateLabel || meta.date || "");
-            const designation = isCompany ? (data.companyDesignation || meta.designation || "") : "";
+            const designation = isCompany ? (officer?.designation || meta.designation || "") : "";
 
-            const stamp = isCompany ? data.companyStampUrl : null;
+            // The seal is pressed once, on the first company signature — a letter stamped twice
+            // looks like two letters glued together, not one document signed by two officers.
+            const stamp = isCompany && (companyLineOrder.get(idx) ?? 0) === 0 ? data.companyStampUrl : null;
 
             return (
               <div key={idx} className="mt-5">
                 <div className={`relative inline-block rounded-lg border px-4 pt-2 pb-1.5 ${isCompany ? "border-sky-300 bg-sky-50" : "border-amber-300 bg-amber-50"}`}>
                   {/* The seal sits across the signature, as it would on paper — semi-transparent so
-                      it never hides the name underneath it. */}
+                      it never hides the name underneath it.
+
+                      Anchored below the label rather than over it: the line now names the signing
+                      office in full ("Chief Executive Officer" rather than "Authorised Signatory"),
+                      and a seal pinned to the top of the box landed squarely on the last word of it.
+                      Over the signature is also simply where a stamp goes on paper. */}
                   {stamp && (
                     <img
                       data-stamp="true"
                       src={stamp}
                       alt=""
                       crossOrigin="anonymous"
-                      className="pointer-events-none absolute -right-6 -top-4 h-[86px] w-[86px] object-contain opacity-80 mix-blend-multiply"
+                      className="pointer-events-none absolute -right-6 top-6 h-[86px] w-[86px] object-contain opacity-80 mix-blend-multiply"
                     />
                   )}
                   <div className={`text-[11px] font-semibold uppercase tracking-wide mb-1 ${isCompany ? "text-sky-700" : "text-amber-700"}`}>

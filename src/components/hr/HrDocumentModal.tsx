@@ -1,10 +1,10 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import { Download, Loader2, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useCompanyLogo } from "@/hooks/useCompanyLogo";
 import { uploadToCloudinary } from "@/services/cloudinary";
-import { declineDocument, signDocument } from "@/services/hrDocuments";
+import { declineDocument, markDownloaded, markViewed, signDocument } from "@/services/hrDocuments";
 import { downloadAgreementPdf } from "@/utils/agreementPdf";
 import AgreementView from "@/components/agreement/AgreementView";
 import SignaturePad from "@/components/agreement/SignaturePad";
@@ -36,6 +36,17 @@ export default function HrDocumentModal({ document, canSign, signerName, onClose
   const [showDecline, setShowDecline] = useState(false);
 
   const awaitingSignature = canSign && doc.requiresEmployeeSignature && doc.status === "issued";
+
+  /**
+   * Note that the employee opened it — only the employee.
+   *
+   * `canSign` is the app's way of saying "the viewer is the person this was issued to", so an
+   * admin reviewing a warning letter never leaves a trace that reads as the employee having seen
+   * it. That distinction is the entire value of the field.
+   */
+  useEffect(() => {
+    if (canSign) void markViewed(document);
+  }, [canSign, document.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSign = async (file: File) => {
     setSaving(true);
@@ -79,6 +90,7 @@ export default function HrDocumentModal({ document, canSign, signerName, onClose
     setDownloading(true);
     try {
       await downloadAgreementPdf(paperRef.current, `${doc.title.replace(/[^\w]+/g, "_")}.pdf`);
+      void markDownloaded(doc.id);
     } catch {
       toast({ title: "Error", description: "Could not generate the PDF.", variant: "destructive" });
     } finally {
@@ -117,6 +129,9 @@ export default function HrDocumentModal({ document, canSign, signerName, onClose
             signatureUrl={doc.employeeSignatureUrl || undefined}
             signedName={doc.signedName || undefined}
             signedDate={doc.signedDate || undefined}
+            /* Documents issued before offices existed carry only the single signature fields; the
+               fallbacks below are what keeps those rendering exactly as they were issued. */
+            companySignatories={doc.signatories}
             companySignatureUrl={doc.companySignatureUrl}
             companySignedName={doc.issuedByName}
             companyDesignation={doc.issuedByDesignation}

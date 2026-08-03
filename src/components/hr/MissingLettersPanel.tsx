@@ -16,14 +16,14 @@
  *    would print an empty salary and joining date under the admin's signature.
  *  • The admin sees the whole list, and what will happen, before anything is sent.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { AlertTriangle, Check, FileSignature, Loader2, PenTool, Send } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
-import { issueDocument } from "@/services/hrDocuments";
-import { watchCompanyAssets, type CompanyAssets } from "@/services/companyAssets";
+import { allocateReference, issueDocument } from "@/services/hrDocuments";
+import { useCompany } from "@/hooks/useCompany";
 import { buildDocument } from "@/utils/hrTemplates";
-import { requiresEmployeeSignature, todayIso, SIGNATORY_TITLE } from "@/utils/hrPolicy";
+import { canIssue, requiresEmployeeSignature, resolveSignatories, todayIso, SIGNATORY_TITLE } from "@/utils/hrPolicy";
 import { HR_DOCUMENT_LABELS } from "@/types/hr";
 import type { AppUser } from "@/types";
 import type { HrDocumentType } from "@/types/hr";
@@ -45,13 +45,29 @@ export default function MissingLettersPanel({ rows, signatory, settingsPath, mem
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(0);
   const [failed, setFailed] = useState<string[]>([]);
-  const [marks, setMarks] = useState<CompanyAssets>({});
-  useEffect(() => watchCompanyAssets(setMarks), []);
+  const { company, assets: marks, officer } = useCompany();
 
   const ready = useMemo(() => rows.filter((r) => r.blockers.length === 0), [rows]);
   const blocked = useMemo(() => rows.filter((r) => r.blockers.length > 0), [rows]);
   const letterCount = ready.reduce((n, r) => n + r.missing.length, 0);
-  const hasSignature = !!signatory.signatureUrl;
+
+  const departmentDesignation = signatory.designation
+    || SIGNATORY_TITLE[ready[0]?.profile.department || "tech"]
+    || "Authorised Signatory";
+
+  /* Both backfilled letters are CEO-signed, so one resolution covers the whole run. It still
+     falls back to the issuing admin when no office has a signature on file. */
+  const signatories = useMemo(
+    () => resolveSignatories(
+      "offer_letter",
+      { ceo: officer("ceo"), cto: officer("cto") },
+      { name: signatory.name, designation: departmentDesignation, signatureUrl: signatory.signatureUrl },
+    ),
+    // Keyed on the settings document rather than on `officer`, which is a new closure each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [marks, signatory.name, signatory.signatureUrl, departmentDesignation],
+  );
+  const hasSignature = canIssue(signatories, "offer_letter");
 
   const issueAll = async () => {
     if (!hasSignature || running || letterCount === 0) return;
@@ -59,13 +75,12 @@ export default function MissingLettersPanel({ rows, signatory, settingsPath, mem
     setDone(0);
     setFailed([]);
     const issuedOn = todayIso();
-    const designation = signatory.designation
-      || SIGNATORY_TITLE[ready[0]?.profile.department || "tech"]
-      || "Authorised Signatory";
+    const designation = departmentDesignation;
 
     for (const row of ready) {
       for (const type of row.missing) {
         try {
+          const referenceNo = await allocateReference(company.name, type, issuedOn);
           const built = buildDocument({
             type,
             subject: {
@@ -75,9 +90,11 @@ export default function MissingLettersPanel({ rows, signatory, settingsPath, mem
               employeeId: row.member.employeeId,
             },
             profile: row.profile,
-            signatory: { name: signatory.name, designation },
+            signatory: signatories,
             issuedOn,
             extras: {},
+            company,
+            referenceNo,
           });
           await issueDocument({
             document: {
@@ -92,7 +109,9 @@ export default function MissingLettersPanel({ rows, signatory, settingsPath, mem
               issuedById: signatory.uid,
               issuedByName: signatory.name,
               issuedByDesignation: designation,
-              companySignatureUrl: signatory.signatureUrl || null,
+              signatories,
+              referenceNo,
+              companySignatureUrl: signatories[0]?.signatureUrl || null,
               companyStampUrl: marks.stampUrl || null,
               issuedOn,
               requiresEmployeeSignature: requiresEmployeeSignature(type),
@@ -144,13 +163,14 @@ export default function MissingLettersPanel({ rows, signatory, settingsPath, mem
       {!hasSignature && (
         <div className="mb-3 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5">
           <p className="flex items-center gap-1.5 text-xs font-semibold text-warning">
-            <PenTool size={13} /> You have not added your signature yet
+            <PenTool size={13} /> Nobody can sign these yet
           </p>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            Every letter carries it. Add it once and this whole list can go out in one press.
+            These letters are signed by the company. Upload the CEO's signature under Company
+            Documents in Settings and this whole list can go out in one press.
           </p>
           <Link to={settingsPath} className="mt-2 inline-flex h-8 items-center rounded-lg bg-warning px-3 text-[11px] font-semibold text-warning-foreground hover:opacity-90">
-            Add my signature →
+            Open Company Documents →
           </Link>
         </div>
       )}

@@ -59,9 +59,20 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // The CEO signature and the company stamp. Everyone signed in reads them; admins set them.
+    // Company identity and the marks that sign its letters — address, GSTIN, MSME, logo, the CEO's
+    // and CTO's signatures, the stamp. Everyone signed in reads them, because every letterhead,
+    // ID card and payslip in the app renders from this one document. Only admins set them: a write
+    // here changes the signature on every document the company issues from that moment on.
     match /company_settings/{docId} {
       allow read:  if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // The document reference series — DTS/OFR/2026/0007. One counter document per year.
+    // Readable by staff so an admin can see where a series has got to; written only by admins,
+    // because rewinding a counter makes two letters share a reference.
+    match /hr_counters/{year} {
+      allow read:  if isStaff();
       allow write: if isAdmin();
     }
 
@@ -128,16 +139,37 @@ service cloud.firestore {
 }
 ```
 
-## After publishing, check these four things
+## After publishing, check these five things
 
 1. Open an ID card and scan its QR (or visit `/verify/<uid>` signed out) — it must say **Verified
    employee**. If it says "could not be verified", press **Republish all badges** in
-   Settings → Company signature & stamp.
+   Settings → ID card verification.
 2. Open a client chat link in a private window, enter the code, send a message.
 3. Sign in as a member and open **My details** — their own KYC must still load.
-4. Confirm an outsider is locked out:
-   `curl "https://firestore.googleapis.com/v1/projects/dts-manager/databases/(default)/documents/employee_profiles?key=<web-api-key>"`
-   must now return **403**, where today it returns 200 with everyone's PAN.
+4. Sign in as an admin, open **HR & Documents**, and issue one letter. It must come back with a
+   reference like `DTS/OFR/2026/0001` — if the reference is missing, `hr_counters` is being
+   refused and the rule above did not publish.
+5. Confirm an outsider is locked out. Every one of these returns **200 today**:
+
+   ```sh
+   KEY=<web-api-key>
+   for c in employee_profiles hr_documents company_settings hr_counters member_credentials; do
+     printf '%s -> ' "$c"
+     curl -s -o /dev/null -w '%{http_code}\n' \
+       "https://firestore.googleapis.com/v1/projects/dts-manager/databases/(default)/documents/$c?key=$KEY&pageSize=1"
+   done
+   ```
+
+   After publishing, every line must read **403**. Anything still reading 200 is a collection these
+   rules missed.
+
+## Status
+
+**Not yet published.** Verified on 2026-08-03: all five collections above still answer
+unauthenticated reads with HTTP 200, including `employee_profiles` with every employee's PAN,
+Aadhaar, home address and salary. Everything in the app has been built and tested against these
+rules — publishing them is a paste into the console, and nothing in the product depends on the
+database staying open.
 
 ## Nothing else to enable
 

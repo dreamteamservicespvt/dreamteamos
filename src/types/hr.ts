@@ -365,35 +365,99 @@ export interface EmployeeProfile {
 // ─── Issued documents ───────────────────────────────────────────────────────
 
 /**
- * The paperwork the lifecycle produces. Each type maps to exactly one step of the flow, and the
- * order here is the order they are normally issued in.
+ * The paperwork the lifecycle produces.
+ *
+ * The order of this union — and of every list derived from it — is the order an employment
+ * actually happens in: hire, employ, discipline, part. That ordering is load-bearing, not
+ * cosmetic. It is what the Issue-a-document dropdown shows, and an admin reaching for the next
+ * letter scans down the list expecting to find it below the last one they sent. Sorting these
+ * alphabetically would put "Experience Letter" above "Offer Letter" and make the list useless.
+ *
+ * Two pairs are deliberately merged rather than split into four types: the appointment letter
+ * carries the full employment agreement, and the NDA carries the IP-assignment terms. Splitting
+ * them would mean chasing two more signatures for clauses the employee has already signed.
  */
 export type HrDocumentType =
+  // Recruitment & joining
   | "offer_letter"
   | "appointment_letter"
   | "nda"
   | "policy_acknowledgement"
+  // During employment
   | "confirmation_letter"
   | "probation_extension"
   | "increment_letter"
+  | "promotion_letter"
+  // Conduct — show cause first, warning only after an answer. That order is the due process.
+  | "show_cause_notice"
   | "warning_letter"
+  // Exit
+  | "resignation_acceptance"
   | "relieving_letter"
-  | "experience_letter";
+  | "experience_letter"
+  | "full_final_settlement";
 
 export const HR_DOCUMENT_LABELS: Record<HrDocumentType, string> = {
   offer_letter: "Offer Letter",
   appointment_letter: "Appointment Letter / Employment Agreement",
-  nda: "NDA & Confidentiality / IP Agreement",
+  nda: "NDA, Confidentiality & IP Agreement",
   policy_acknowledgement: "Company Policy Acknowledgement",
   confirmation_letter: "Confirmation Letter",
   probation_extension: "Probation Extension Letter",
-  increment_letter: "Increment / Promotion Letter",
+  increment_letter: "Increment Letter",
+  promotion_letter: "Promotion Letter",
+  show_cause_notice: "Show Cause Notice",
   warning_letter: "Warning Letter",
+  resignation_acceptance: "Resignation Acceptance Letter",
   relieving_letter: "Relieving Letter",
   experience_letter: "Experience Letter",
+  full_final_settlement: "Full & Final Settlement Letter",
 };
 
+/**
+ * The document list, grouped the way the dropdown shows it.
+ *
+ * One array, so the picker, the checklist and any future report all walk the same order and none
+ * of them can drift from the others.
+ */
+export const HR_DOCUMENT_GROUPS: { label: string; types: HrDocumentType[] }[] = [
+  {
+    label: "Recruitment & joining",
+    types: ["offer_letter", "appointment_letter", "nda", "policy_acknowledgement"],
+  },
+  {
+    label: "During employment",
+    types: ["confirmation_letter", "probation_extension", "increment_letter", "promotion_letter"],
+  },
+  {
+    label: "Conduct",
+    types: ["show_cause_notice", "warning_letter"],
+  },
+  {
+    label: "Exit",
+    types: ["resignation_acceptance", "relieving_letter", "experience_letter", "full_final_settlement"],
+  },
+];
+
+/** Every type, in lifecycle order. The single source of ordering for lists that are not grouped. */
+export const HR_DOCUMENT_ORDER: HrDocumentType[] = HR_DOCUMENT_GROUPS.flatMap((g) => g.types);
+
 export type HrDocumentStatus = "issued" | "signed" | "declined";
+
+/**
+ * One company-side signature on an issued document, frozen as it stood the day it went out.
+ *
+ * A letter is a record of what was issued, so the name, title and signature image are copied onto
+ * the document rather than read live from company settings. A CEO who leaves next year must not
+ * silently un-sign every letter the company ever sent.
+ */
+export interface IssuedSignatory {
+  /** Which office signed — `ceo`, `cto`, or `issuer` when it fell back to the admin who issued it. */
+  key: "ceo" | "cto" | "issuer";
+  name: string;
+  designation: string;
+  signatureUrl?: string | null;
+}
 
 /**
  * One issued document.
@@ -417,7 +481,26 @@ export interface HrDocument {
   issuedById: string;
   issuedByName: string;
   issuedByDesignation?: string;
+
+  /**
+   * Who signed for the company, in the order their blocks appear on the page.
+   *
+   * Usually one (the CEO); the NDA carries two, because confidentiality and IP assignment are the
+   * CTO's to affirm as much as the CEO's. Absent on documents issued before officers existed —
+   * those fall back to the single `companySignatureUrl` below, which is why it is still here.
+   */
+  signatories?: IssuedSignatory[];
+
+  /** @deprecated Superseded by `signatories`. Still read for documents issued before it existed. */
   companySignatureUrl?: string | null;
+
+  /**
+   * The company's own reference for this letter — `DTS/OFR/2026/0007`.
+   *
+   * Allocated once at issue and never recomputed, so the number on the employee's copy is the
+   * number in the register even after other letters are issued or deleted around it.
+   */
+  referenceNo?: string | null;
   /**
    * The company seal as it stood the day this went out.
    *
@@ -438,4 +521,15 @@ export interface HrDocument {
   signedAt?: HrTime | null;
   declinedReason?: string | null;
   declinedAt?: HrTime | null;
+
+  /**
+   * When the employee first opened it, and when they first took a copy away.
+   *
+   * "Issued" and "read" are different facts, and only one of them is currently provable. An
+   * employee disputing a warning letter they say they never saw is exactly the moment somebody
+   * wants this, and it cannot be backfilled later.
+   */
+  firstViewedAt?: HrTime | null;
+  lastDownloadedAt?: HrTime | null;
+  downloadCount?: number;
 }

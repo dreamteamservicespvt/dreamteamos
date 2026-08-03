@@ -1,8 +1,10 @@
 import {
-  addDoc, collection, deleteDoc, doc, onSnapshot, query, serverTimestamp, updateDoc, where,
+  addDoc, collection, deleteDoc, doc, increment, onSnapshot, query, runTransaction,
+  serverTimestamp, updateDoc, where,
 } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
+import { formatDocumentRef, refCounterDocId, refYear } from "@/utils/documentRef";
 import { HR_DOCUMENT_LABELS } from "@/types/hr";
 import type { HrDocument, HrDocumentType } from "@/types/hr";
 
@@ -20,6 +22,49 @@ import type { HrDocument, HrDocumentType } from "@/types/hr";
  */
 
 const COLLECTION = "hr_documents";
+const COUNTERS = "hr_counters";
+
+/**
+ * Take the next number in a document series, atomically.
+ *
+ * A transaction rather than a plain increment because two admins issuing an offer letter in the
+ * same minute must not both be handed `0007`. One counter document per year holds a field per type,
+ * so this costs one read and one write however many series are running.
+ *
+ * Returns null when the number cannot be allocated — a permissions problem, an offline browser.
+ * The letter is then issued without a reference rather than not at all: a document that exists
+ * with no reference can be given one later; a document that was never issued because a counter was
+ * unreachable is a worse failure, and the admin has no idea why.
+ */
+const REFERENCE_TIMEOUT_MS = 6000;
+
+export async function allocateReference(
+  companyName: string,
+  type: HrDocumentType,
+  issuedOn: string,
+): Promise<string | null> {
+  const year = refYear(issuedOn);
+  try {
+    const allocate = runTransaction(db, async (tx) => {
+      const ref = doc(db, COUNTERS, refCounterDocId(year));
+      const snap = await tx.get(ref);
+      const current = snap.exists() ? Number((snap.data() as Record<string, unknown>)[type] ?? 0) : 0;
+      const next = (Number.isFinite(current) ? current : 0) + 1;
+      tx.set(ref, { [type]: next, year, updatedAt: serverTimestamp() }, { merge: true });
+      return next;
+    });
+    // A Firestore transaction on an offline or throttled client retries rather than failing, so
+    // without this the Issue button would sit and spin with nothing to show for it. Six seconds,
+    // then the letter goes out unnumbered — the document matters more than its reference.
+    const seq = await Promise.race([
+      allocate,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), REFERENCE_TIMEOUT_MS)),
+    ]);
+    return seq === null ? null : formatDocumentRef(companyName, type, year, seq);
+  } catch {
+    return null;
+  }
+}
 
 export interface IssueDocumentInput {
   document: Omit<HrDocument, "id" | "createdAt" | "status">;
@@ -103,6 +148,31 @@ export async function declineDocument(document: HrDocument, reason: string): Pro
 /** Delete an issued document. Signed ones carry a stronger warning in the UI before this runs. */
 export async function deleteDocument(id: string): Promise<void> {
   await deleteDoc(doc(db, COLLECTION, id));
+}
+
+/**
+ * Record that the employee opened their document, once.
+ *
+ * "Issued" and "read" are different facts, and only the first of them was ever provable. The write
+ * happens only on the first open and only for the employee themselves — an admin reviewing a
+ * warning letter must not leave a trace that looks like the employee read it.
+ */
+export async function markViewed(document: HrDocument): Promise<void> {
+  if (!document.id || document.firstViewedAt) return;
+  try {
+    await updateDoc(doc(db, COLLECTION, document.id), { firstViewedAt: serverTimestamp() });
+  } catch { /* a lost read-receipt must never break opening the document */ }
+}
+
+/** Record that a copy was taken away. Counted, because "they downloaded it twice" is the question. */
+export async function markDownloaded(id?: string): Promise<void> {
+  if (!id) return;
+  try {
+    await updateDoc(doc(db, COLLECTION, id), {
+      lastDownloadedAt: serverTimestamp(),
+      downloadCount: increment(1),
+    });
+  } catch { /* the download already happened; failing to note it changes nothing for the user */ }
 }
 
 /** Seconds since epoch for a Firestore timestamp field, 0 while a serverTimestamp is unresolved. */

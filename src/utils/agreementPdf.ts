@@ -48,6 +48,25 @@ async function normalizeSignatureImgs(root: HTMLElement): Promise<void> {
   );
 }
 
+/**
+ * "Page 2 of 4", written into the PDF itself.
+ *
+ * Drawn with jsPDF's own text rather than rendered into the HTML and photographed with the rest of
+ * the page, for two reasons. The count is not knowable until every block has been distributed, so
+ * the markup would have to be re-rendered once the answer was already in hand; and vector text
+ * stays sharp at any zoom, where a number captured at 2× goes soft exactly when somebody is
+ * squinting at it to check nothing is missing.
+ *
+ * Skipped entirely for a single-page letter, where "Page 1 of 1" is noise.
+ */
+function stampPageNumber(pdf: jsPDF, page: number, total: number, pdfW: number, pdfH: number): void {
+  if (total < 2) return;
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(8);
+  pdf.setTextColor(130, 138, 150);
+  pdf.text(`Page ${page} of ${total}`, pdfW / 2, pdfH - 18, { align: "center" });
+}
+
 export async function downloadAgreementPdf(paperEl: HTMLElement, filename: string): Promise<void> {
   const stage = document.createElement("div");
   stage.style.cssText = "position:fixed;left:-20000px;top:0;z-index:-1;";
@@ -120,6 +139,7 @@ export async function downloadAgreementPdf(paperEl: HTMLElement, filename: strin
       });
       if (i > 0) pdf.addPage();
       pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, pdfW, pdfH);
+      stampPageNumber(pdf, i + 1, pages.length, pdfW, pdfH);
     }
     pdf.save(filename.endsWith(".pdf") ? filename : `${filename}.pdf`);
   } finally {

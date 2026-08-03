@@ -12,18 +12,29 @@
  *
  * Anything the company record does not have is left out rather than printed as a placeholder. A
  * letterhead carrying an invented address is worse than one carrying none.
+ *
+ * The details come from Settings → Company Documents, falling back to the built-in defaults, so
+ * moving office changes every letter in the app without a deploy.
  */
-import { COMPANY } from "@/utils/company";
+import { useCompany } from "@/hooks/useCompany";
 
 const NAVY = "#0b1f5c";
 const BRAND = "#1d4ed8";
 const MUTED = "#64748b";
 
 export function LetterheadTop({ logoUrl }: { logoUrl?: string | null }) {
+  const { company: COMPANY } = useCompany();
   const contact = [
     COMPANY.phone,
     COMPANY.email,
     COMPANY.website,
+  ].filter(Boolean);
+
+  /* GSTIN and MSME share a line: both are registration numbers a reader scans for in the same
+     glance, and two near-identical lines under an address read as clutter. */
+  const registrations = [
+    COMPANY.gstin ? `GSTIN: ${COMPANY.gstin}` : "",
+    COMPANY.msme ? `MSME/Udyam: ${COMPANY.msme}` : "",
   ].filter(Boolean);
 
   return (
@@ -64,9 +75,9 @@ export function LetterheadTop({ logoUrl }: { logoUrl?: string | null }) {
               {contact.join("  ·  ")}
             </p>
           )}
-          {COMPANY.gstin && (
-            <p style={{ margin: "2px 0 0", fontSize: 10, color: MUTED, letterSpacing: 0.3 }}>
-              GSTIN: <span style={{ fontWeight: 600, color: "#334155" }}>{COMPANY.gstin}</span>
+          {registrations.length > 0 && (
+            <p style={{ margin: "2px 0 0", fontSize: 10, color: "#334155", fontWeight: 600, letterSpacing: 0.3 }}>
+              {registrations.join("  ·  ")}
             </p>
           )}
         </div>
@@ -79,6 +90,7 @@ export function LetterheadTop({ logoUrl }: { logoUrl?: string | null }) {
 }
 
 export function LetterheadFoot() {
+  const { company: COMPANY } = useCompany();
   const line = [COMPANY.website, COMPANY.email, COMPANY.phone].filter(Boolean).join("  ·  ");
   return (
     <div

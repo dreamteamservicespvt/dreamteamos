@@ -63,7 +63,7 @@ import TeamLeaderWorkAssign from "@/pages/tech-team-leader/WorkAssign";
 import TeamLeaderMemberAssignments from "@/pages/tech-team-leader/MemberAssignments";
 import TeamAttendance from "@/pages/shared/TeamAttendance";
 import MemberProfileDetail from "@/pages/shared/MemberProfileDetail";
-import SendAgreement from "@/pages/shared/SendAgreement";
+import HrCenter from "@/pages/shared/HrCenter";
 import Tools from "@/pages/shared/Tools";
 import WorkReports from "@/pages/shared/WorkReports";
 import Payroll from "@/pages/shared/Payroll";
@@ -158,7 +158,10 @@ const App = () => (
             <Route path="/tech-admin/team/:memberId" element={<TechAdminMemberHistory />} />
             <Route path="/tech-admin/team/:memberId/analytics" element={<TechAdminMemberAnalytics />} />
             <Route path="/tech-admin/attendance" element={<TeamAttendance />} />
-            <Route path="/tech-admin/agreements" element={<SendAgreement />} />
+            <Route path="/tech-admin/hr" element={<HrCenter />} />
+            {/* The Agreements page moved into the HR centre. The old path still
+                resolves so existing links and bookmarks do not break. */}
+            <Route path="/tech-admin/agreements" element={<HrCenter />} />
             <Route path="/tech-admin/drive" element={<DriveManagement />} />
             <Route path="/tech-admin/training" element={<TechTrainingModules />} />
             <Route path="/tech-admin/sessions" element={<TechAdminSessionHistory />} />
@@ -198,7 +201,10 @@ const App = () => (
             <Route path="/sales-admin/scripts" element={<SalesScripts />} />
             <Route path="/sales-admin/sessions" element={<SalesAdminSessionHistory />} />
             <Route path="/sales-admin/settings" element={<SalesAdminSettings />} />
-            <Route path="/sales-admin/agreements" element={<SendAgreement />} />
+            <Route path="/sales-admin/hr" element={<HrCenter />} />
+            {/* The Agreements page moved into the HR centre. The old path still
+                resolves so existing links and bookmarks do not break. */}
+            <Route path="/sales-admin/agreements" element={<HrCenter />} />
             <Route path="/sales-admin/leaderboard" element={<Leaderboard />} />
             <Route path="/sales-admin/history" element={<SalesAdminActivityHistory />} />
             <Route path="/sales-admin/clients" element={<Clients />} />
@@ -256,7 +262,10 @@ const App = () => (
             <Route path="/team-leader/work-reports" element={<WorkReports />} />
             <Route path="/team-leader/orders" element={<Orders />} />
             <Route path="/team-leader/attendance" element={<TeamAttendance />} />
-            <Route path="/team-leader/agreements" element={<SendAgreement />} />
+            <Route path="/team-leader/hr" element={<HrCenter />} />
+            {/* The Agreements page moved into the HR centre. The old path still
+                resolves so existing links and bookmarks do not break. */}
+            <Route path="/team-leader/agreements" element={<HrCenter />} />
             {/* A team leader is an employee too — they have HR documents of their own to sign. */}
             <Route path="/team-leader/profile" element={<TechMemberProfile />} />
             <Route path="/team-leader/tools" element={<Tools />} />

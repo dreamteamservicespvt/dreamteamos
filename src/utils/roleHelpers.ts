@@ -42,7 +42,7 @@ const NAV: Record<UserRole, NavItem[]> = {
     {
       title: "Manage", icon: LayoutGrid,
       children: [
-        { title: "Agreements", path: "/tech-admin/agreements", icon: FileCheck },
+        { title: "HR & Documents", path: "/tech-admin/hr", icon: FileCheck },
         { title: "Profit & Loss", path: "/tech-admin/profit", icon: PiggyBank },
         { title: "Drive Management", path: "/tech-admin/drive", icon: FolderOpen },
         { title: "Training Modules", path: "/tech-admin/training", icon: BookOpen },
@@ -74,7 +74,7 @@ const NAV: Record<UserRole, NavItem[]> = {
         { title: "Schedule Numbers", path: "/sales-admin/schedule-numbers", icon: CalendarClock },
       ],
     },
-    { title: "Agreements", path: "/sales-admin/agreements", icon: FileCheck },
+    { title: "HR & Documents", path: "/sales-admin/hr", icon: FileCheck },
     {
       title: "Reports & History", icon: BarChart3,
       children: [
@@ -153,7 +153,7 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "Work Assign", path: "/team-leader/work-assign", icon: ClipboardList },
     { title: "Work Done & Reports", path: "/team-leader/work-reports", icon: BarChart3 },
     { title: "Attendance", path: "/team-leader/attendance", icon: CalendarClock },
-    { title: "Agreements", path: "/team-leader/agreements", icon: FileCheck },
+    { title: "HR & Documents", path: "/team-leader/hr", icon: FileCheck },
     { title: "Tools", path: "/team-leader/tools", icon: Wrench },
     // A team leader is an employee too: their own employment record and documents to sign.
     { title: "My Profile", path: "/team-leader/profile", icon: User },
