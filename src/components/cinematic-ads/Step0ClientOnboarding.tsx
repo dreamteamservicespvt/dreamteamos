@@ -59,7 +59,6 @@ export default function Step0ClientOnboarding() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
 
-  if (!project) return null;
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -85,17 +84,17 @@ export default function Step0ClientOnboarding() {
   );
 
   const handleGenerate = useCallback(async () => {
-    const hasLogo = project.uploadedFiles.some((f) => f.category === "logo");
-    const hasCard = project.uploadedFiles.some((f) => f.category === "visiting_card");
+    const hasLogo = project?.uploadedFiles.some((f) => f.category === "logo");
+    const hasCard = project?.uploadedFiles.some((f) => f.category === "visiting_card");
     if (!hasLogo || !hasCard) {
       toast.error("Business Logo and Visiting Card are required");
       return;
     }
-    if (project.selectedPlatforms.length === 0) {
+    if (project?.selectedPlatforms.length === 0) {
       toast.error("Select at least one target platform");
       return;
     }
-    const dur = project.selectedDuration === "custom" ? project.customDuration : project.selectedDuration;
+    const dur = project?.selectedDuration === "custom" ? project?.customDuration : project?.selectedDuration;
     if (!dur || dur < 10) {
       toast.error("Please set a valid ad duration");
       return;
@@ -104,11 +103,11 @@ export default function Step0ClientOnboarding() {
     setProcessing(true, "Analyzing client materials and generating brief…");
     try {
       const brief = await generateClientBrief(
-        project.uploadedFiles,
-        project.selectedPlatforms,
+        project?.uploadedFiles,
+        project?.selectedPlatforms,
         dur,
-        project.selectedLanguage,
-        project.dialectNotes,
+        project?.selectedLanguage,
+        project?.dialectNotes,
       );
       setBrief(brief);
       toast.success("Client brief generated successfully!");
@@ -121,14 +120,14 @@ export default function Step0ClientOnboarding() {
   }, [project, setBrief, setProcessing]);
 
   const handleConfirmBrief = useCallback(() => {
-    if (!project.clientBrief) return;
+    if (!project?.clientBrief) return;
     confirmBrief();
     toast.success("Brief confirmed! Proceeding to Story Generation.");
   }, [project?.clientBrief, confirmBrief]);
 
   const handleCopyBrief = useCallback(() => {
-    if (!project.clientBrief) return;
-    const b = project.clientBrief;
+    if (!project?.clientBrief) return;
+    const b = project?.clientBrief;
     const text = `CLIENT BRIEF — ${b.businessName}\n\nBusiness Type: ${b.businessType}\nCore Services: ${b.coreServices}\nTarget Audience: ${b.targetAudience}\nKey Message: ${b.keyMessage}\nTone & Style: ${b.toneAndStyle}\nBrand Colors: ${b.brandColors.join(", ")}\nDuration: ${b.duration}s\nPlatforms: ${b.platforms.join(", ")}\nLanguage: ${b.language}\nDialect: ${b.dialect || "—"}`;
     navigator.clipboard.writeText(text);
     setCopied(true);
@@ -142,7 +141,17 @@ export default function Step0ClientOnboarding() {
     return <FileText className="w-4 h-4 text-blue-500" />;
   };
 
-  const dur = project.selectedDuration === "custom" ? project.customDuration : project.selectedDuration;
+  const dur = project?.selectedDuration === "custom" ? project?.customDuration : project?.selectedDuration;
+
+  /**
+   * The guard sits BELOW every hook, and must stay there.
+   *
+   * It used to be the first statement in the component, above a row of `useCallback`s — so the
+   * moment the project or its brief was cleared while this step was on screen, React saw fewer
+   * hooks than the render before and threw, taking the whole page down with it. Hooks run
+   * unconditionally; only the markup is conditional.
+   */
+  if (!project) return null;
 
   return (
     <div className="space-y-6">
@@ -195,11 +204,11 @@ export default function Step0ClientOnboarding() {
           </div>
 
           {/* Uploaded files list */}
-          {project.uploadedFiles.length > 0 && (
+          {project?.uploadedFiles.length > 0 && (
             <div className="space-y-2">
-              <p className="text-sm font-semibold">Uploaded Files ({project.uploadedFiles.length})</p>
+              <p className="text-sm font-semibold">Uploaded Files ({project?.uploadedFiles.length})</p>
               <div className="grid gap-1.5">
-                {project.uploadedFiles.map((f) => (
+                {project?.uploadedFiles.map((f) => (
                   <div
                     key={f.id}
                     className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-muted/50 text-sm"
@@ -235,12 +244,12 @@ export default function Step0ClientOnboarding() {
               {TARGET_PLATFORMS.map((p) => (
                 <label key={p.value} className="flex items-center gap-1.5 cursor-pointer">
                   <Checkbox
-                    checked={project.selectedPlatforms.includes(p.value)}
+                    checked={project?.selectedPlatforms.includes(p.value)}
                     onCheckedChange={(checked) => {
                       if (checked) {
                         setPlatforms([...project.selectedPlatforms, p.value]);
                       } else {
-                        setPlatforms(project.selectedPlatforms.filter((v) => v !== p.value));
+                        setPlatforms(project?.selectedPlatforms.filter((v) => v !== p.value));
                       }
                     }}
                   />
@@ -257,7 +266,7 @@ export default function Step0ClientOnboarding() {
               {DURATION_OPTIONS.map((d) => (
                 <Button
                   key={d}
-                  variant={project.selectedDuration === d ? "default" : "outline"}
+                  variant={project?.selectedDuration === d ? "default" : "outline"}
                   size="sm"
                   onClick={() => setDuration(d)}
                 >
@@ -265,19 +274,19 @@ export default function Step0ClientOnboarding() {
                 </Button>
               ))}
               <Button
-                variant={project.selectedDuration === "custom" ? "default" : "outline"}
+                variant={project?.selectedDuration === "custom" ? "default" : "outline"}
                 size="sm"
                 onClick={() => setDuration("custom")}
               >
                 Custom
               </Button>
             </div>
-            {project.selectedDuration === "custom" && (
+            {project?.selectedDuration === "custom" && (
               <Input
                 type="number"
                 min={10}
                 max={300}
-                value={project.customDuration}
+                value={project?.customDuration}
                 onChange={(e) => setCustomDuration(Number(e.target.value))}
                 placeholder="Duration in seconds"
                 className="w-40 mt-2"
@@ -289,7 +298,7 @@ export default function Step0ClientOnboarding() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label className="text-sm font-semibold">Language *</Label>
-              <Select value={project.selectedLanguage} onValueChange={setLanguage}>
+              <Select value={project?.selectedLanguage} onValueChange={setLanguage}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -305,7 +314,7 @@ export default function Step0ClientOnboarding() {
             <div className="space-y-2">
               <Label className="text-sm font-semibold">Dialect Notes (optional)</Label>
               <Input
-                value={project.dialectNotes}
+                value={project?.dialectNotes}
                 onChange={(e) => setDialectNotes(e.target.value)}
                 placeholder='e.g., "Telangana dialect", "Mumbai Hindi"'
               />
@@ -315,7 +324,7 @@ export default function Step0ClientOnboarding() {
       </Card>
 
       {/* Generate Brief Button */}
-      {!project.clientBrief && (
+      {!project?.clientBrief && (
         <Button
           className="w-full gap-2"
           size="lg"
@@ -337,7 +346,7 @@ export default function Step0ClientOnboarding() {
       )}
 
       {/* Generated Brief */}
-      {project.clientBrief && (
+      {project?.clientBrief && (
         <Card className="border-primary/30">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-lg flex items-center gap-2">
@@ -357,11 +366,11 @@ export default function Step0ClientOnboarding() {
           </CardHeader>
           <CardContent>
             <BriefDisplay
-              brief={project.clientBrief}
+              brief={project?.clientBrief}
               editing={editingBrief}
               onUpdate={updateBrief}
             />
-            {!project.briefConfirmed && (
+            {!project?.briefConfirmed && (
               <>
                 <Separator className="my-4" />
                 <Button className="w-full gap-2" size="lg" onClick={handleConfirmBrief}>

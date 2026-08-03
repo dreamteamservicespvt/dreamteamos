@@ -44,18 +44,16 @@ export default function Step5EditingGuide() {
 
   const [activeTab, setActiveTab] = useState("assembly");
 
-  if (!project || !project.clientBrief) return null;
 
-  const selectedStory = project.stories.find((s) => s.id === project.selectedStoryId);
-  if (!selectedStory) return null;
+  const selectedStory = project?.stories.find((s) => s.id === project?.selectedStoryId);
 
-  const guide = project.editingGuide;
+  const guide = project?.editingGuide;
 
   const handleGenerate = useCallback(async () => {
-    if (!project.clientBrief || !selectedStory) return;
+    if (!project?.clientBrief || !selectedStory) return;
     setProcessing(true, "Generating comprehensive editing guide…");
     try {
-      const generated = await generateEditingGuide(selectedStory, project.animationPrompts, project.clientBrief);
+      const generated = await generateEditingGuide(selectedStory, project?.animationPrompts, project?.clientBrief);
       setEditingGuide(generated);
       toast.success("Editing guide generated!");
     } catch (err: any) {
@@ -116,6 +114,17 @@ export default function Step5EditingGuide() {
       </div>
     );
   }
+
+  /**
+   * The guard sits BELOW every hook, and must stay there.
+   *
+   * It used to be the first statement in the component, above a row of `useCallback`s — so the
+   * moment the project or its brief was cleared while this step was on screen, React saw fewer
+   * hooks than the render before and threw, taking the whole page down with it. Hooks run
+   * unconditionally; only the markup is conditional.
+   */
+  if (!project || !project?.clientBrief) return null;
+  if (!selectedStory) return null;
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
@@ -376,7 +385,7 @@ export default function Step5EditingGuide() {
       </Tabs>
 
       {/* Confirm */}
-      {!project.editingGuideConfirmed && (
+      {!project?.editingGuideConfirmed && (
         <div className="flex gap-3">
           <Button variant="outline" className="flex-1 gap-2" onClick={handleGenerate} disabled={processing}>
             <Sparkles className="w-4 h-4" /> Regenerate

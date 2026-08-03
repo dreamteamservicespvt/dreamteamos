@@ -39,6 +39,14 @@ const profile = (over: Partial<EmployeeProfile> = {}): EmployeeProfile => ({
 const file = (name: string, type = "image/png") =>
   new File([new Uint8Array([1, 2, 3])], name, { type });
 
+vi.mock("@/components/ImageCropper", () => ({
+  default: ({ file, shape, onCropped }: { file: File; shape?: string; onCropped: (f: File) => void }) => (
+    <button data-test={`crop-confirm-${shape || "circle"}`} onClick={() => onCropped(file)}>
+      confirm crop
+    </button>
+  ),
+}));
+
 configure({ testIdAttribute: "data-test" });
 
 beforeEach(() => {
@@ -52,15 +60,31 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("profile photograph upload", () => {
-  it("uploads the file and stores the returned URL on the employee's record", async () => {
+  it("crops to a square before anything is uploaded", async () => {
     render(<KycPanel profile={profile()} actor={actor} />);
 
     fireEvent.change(screen.getByTestId("photo-input"), { target: { files: [file("ravi.jpg", "image/jpeg")] } });
+
+    // Picking a file uploads nothing: this photograph is printed square on the card, so it is
+    // squared off here rather than stretched to fit later.
+    expect(uploadToCloudinary).not.toHaveBeenCalled();
+    expect(screen.getByTestId("crop-confirm-square")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("crop-confirm-square"));
 
     await waitFor(() => expect(uploadToCloudinary).toHaveBeenCalledTimes(1));
     expect(uploadToCloudinary.mock.calls[0][0].name).toBe("ravi.jpg");
     await waitFor(() =>
       expect(saveEmployeeProfile).toHaveBeenCalledWith("m1", { photoUrl: "https://cdn.test/upload.png" }, actor));
+  });
+
+  it("refuses a file that is not an image, before opening the cropper", () => {
+    render(<KycPanel profile={profile()} actor={actor} />);
+    fireEvent.change(screen.getByTestId("photo-input"), {
+      target: { files: [file("scan.pdf", "application/pdf")] },
+    });
+    expect(screen.queryByTestId("crop-confirm-square")).not.toBeInTheDocument();
+    expect(uploadToCloudinary).not.toHaveBeenCalled();
   });
 
   it("shows the photograph once it is on file", () => {
@@ -72,6 +96,7 @@ describe("profile photograph upload", () => {
     render(<KycPanel profile={profile()} actor={actor} />);
     const input = screen.getByTestId("photo-input") as HTMLInputElement;
     fireEvent.change(input, { target: { files: [file("ravi.jpg")] } });
+    fireEvent.click(await screen.findByTestId("crop-confirm-square"));
     await waitFor(() => expect(uploadToCloudinary).toHaveBeenCalled());
     expect(input.value).toBe("");
   });
@@ -80,6 +105,7 @@ describe("profile photograph upload", () => {
     uploadToCloudinary.mockRejectedValueOnce(new Error("network"));
     render(<KycPanel profile={profile()} actor={actor} />);
     fireEvent.change(screen.getByTestId("photo-input"), { target: { files: [file("ravi.jpg")] } });
+    fireEvent.click(await screen.findByTestId("crop-confirm-square"));
     await waitFor(() => expect(uploadToCloudinary).toHaveBeenCalled());
     expect(saveEmployeeProfile).not.toHaveBeenCalled();
   });

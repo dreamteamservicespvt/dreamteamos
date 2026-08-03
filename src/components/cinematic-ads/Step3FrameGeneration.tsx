@@ -43,16 +43,14 @@ export default function Step3FrameGeneration() {
   const [promptEdits, setPromptEdits] = useState<Record<number, string>>({});
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
-  if (!project || !project.clientBrief) return null;
 
-  const selectedStory = project.stories.find((s) => s.id === project.selectedStoryId);
-  if (!selectedStory) return null;
+  const selectedStory = project?.stories.find((s) => s.id === project?.selectedStoryId);
 
   const handleGenerate = useCallback(async () => {
-    if (!project.clientBrief || !selectedStory) return;
+    if (!project?.clientBrief || !selectedStory) return;
     setProcessing(true, "Generating frame composition prompts…");
     try {
-      const frames = await generateFramePrompts(selectedStory, project.characters, project.clientBrief);
+      const frames = await generateFramePrompts(selectedStory, project?.characters, project?.clientBrief);
       setSceneFrames(frames);
       toast.success(`${frames.length} frame prompts generated!`);
     } catch (err: any) {
@@ -65,7 +63,7 @@ export default function Step3FrameGeneration() {
 
   const handleImageUpload = useCallback(
     (sceneNum: number, imageId: string, file: File) => {
-      const frame = project.sceneFrames.find((f) => f.sceneNumber === sceneNum);
+      const frame = project?.sceneFrames.find((f) => f.sceneNumber === sceneNum);
       if (!frame) return;
       const url = URL.createObjectURL(file);
       const updatedImages = frame.images.map((img) =>
@@ -78,7 +76,7 @@ export default function Step3FrameGeneration() {
 
   const handleApproveImage = useCallback(
     (sceneNum: number, imageId: string) => {
-      const frame = project.sceneFrames.find((f) => f.sceneNumber === sceneNum);
+      const frame = project?.sceneFrames.find((f) => f.sceneNumber === sceneNum);
       if (!frame) return;
       const updatedImages = frame.images.map((img) =>
         img.id === imageId ? { ...img, approved: !img.approved } : img,
@@ -90,7 +88,7 @@ export default function Step3FrameGeneration() {
 
   const handleQCToggle = useCallback(
     (sceneNum: number, item: string) => {
-      const frame = project.sceneFrames.find((f) => f.sceneNumber === sceneNum);
+      const frame = project?.sceneFrames.find((f) => f.sceneNumber === sceneNum);
       if (!frame) return;
       const updated = { ...frame.qcChecklist, [item]: !frame.qcChecklist[item] };
       updateSceneFrame(sceneNum, { qcChecklist: updated });
@@ -110,8 +108,8 @@ export default function Step3FrameGeneration() {
     [promptEdits, updateSceneFrame],
   );
 
-  const allQCPassed = project.sceneFrames.length > 0 &&
-    project.sceneFrames.every((f) =>
+  const allQCPassed = project?.sceneFrames.length > 0 &&
+    project?.sceneFrames.every((f) =>
       QC_CHECKLIST_ITEMS.every((item) => f.qcChecklist[item]) &&
       f.images.every((img) => img.approved),
     );
@@ -125,10 +123,21 @@ export default function Step3FrameGeneration() {
     toast.success("Frames approved! Proceeding to Animation Prompts.");
   }, [allQCPassed, confirmFrames]);
 
+  /**
+   * The guard sits BELOW every hook, and must stay there.
+   *
+   * It used to be the first statement in the component, above a row of `useCallback`s — so the
+   * moment the project or its brief was cleared while this step was on screen, React saw fewer
+   * hooks than the render before and threw, taking the whole page down with it. Hooks run
+   * unconditionally; only the markup is conditional.
+   */
+  if (!project || !project?.clientBrief) return null;
+  if (!selectedStory) return null;
+
   return (
     <div className="space-y-6">
       {/* Generate Frames Button */}
-      {project.sceneFrames.length === 0 && (
+      {project?.sceneFrames.length === 0 && (
         <Card>
           <CardContent className="pt-6">
             <Button className="w-full gap-2" size="lg" onClick={handleGenerate} disabled={processing}>
@@ -149,14 +158,14 @@ export default function Step3FrameGeneration() {
       )}
 
       {/* Scene Frame Cards */}
-      {project.sceneFrames.map((frame, idx) => {
+      {project?.sceneFrames.map((frame, idx) => {
         const scene = selectedStory.scenes.find((s) => s.sceneNumber === frame.sceneNumber);
         const isExpanded = expandedScene === frame.sceneNumber;
         const isEditingPrompt = editingPrompt === frame.sceneNumber;
         const qcCount = QC_CHECKLIST_ITEMS.filter((item) => frame.qcChecklist[item]).length;
         const allApproved = frame.images.every((img) => img.approved);
         const charNames = frame.characterRefs
-          .map((id) => project.characters.find((c) => c.id === id)?.role)
+          .map((id) => project?.characters.find((c) => c.id === id)?.role)
           .filter(Boolean);
 
         return (
@@ -352,7 +361,7 @@ export default function Step3FrameGeneration() {
       })}
 
       {/* Confirm Button */}
-      {project.sceneFrames.length > 0 && !project.framesConfirmed && (
+      {project?.sceneFrames.length > 0 && !project?.framesConfirmed && (
         <Button className="w-full gap-2" size="lg" onClick={handleConfirm}>
           <ChevronRight className="w-5 h-5" />
           Approve All Frames & Proceed to Animation

@@ -18,6 +18,7 @@ import { downloadIdCardPdf, downloadIdCardPng, inlineImage } from "@/utils/idCar
 import type { AppUser } from "@/types";
 import type { EmployeeProfile } from "@/types/hr";
 import QRCode from "qrcode";
+import { watchCompanyAssets, type CompanyAssets } from "@/services/companyAssets";
 import { IdCardBack, IdCardFront } from "./IdCardView";
 
 export default function IdCardPanel({ member, profile, provisionalHint }: {
@@ -37,7 +38,12 @@ export default function IdCardPanel({ member, profile, provisionalHint }: {
   const [signature, setSignature] = useState<string | null>(null);
   /** The verification QR, drawn locally — no network, so it exports with the rest of the card. */
   const [qr, setQr] = useState<string | null>(null);
+  /** The company's own marks — the CEO signature the card is issued under. */
+  const [marks, setMarks] = useState<CompanyAssets>({});
+  const [ceoSignature, setCeoSignature] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+
+  useEffect(() => watchCompanyAssets(setMarks), []);
 
   const base = buildIdCard(member, profile);
 
@@ -45,10 +51,11 @@ export default function IdCardPanel({ member, profile, provisionalHint }: {
     let cancelled = false;
     setReady(false);
     (async () => {
-      const [p, l, sig, code] = await Promise.all([
+      const [p, l, sig, ceo, code] = await Promise.all([
         inlineImage(base.photoUrl),
         inlineImage("/dts-logo-full.png"),
         inlineImage(base.signatureUrl),
+        inlineImage(marks.ceoSignatureUrl || null),
         // Deep navy on white: a QR needs contrast far more than it needs to match the brand, and
         // a mid-blue code is the one that phones fail to read in a badge holder under strip lights.
         QRCode.toDataURL(idCardVerifyUrl(base.uid), {
@@ -62,11 +69,12 @@ export default function IdCardPanel({ member, profile, provisionalHint }: {
       setPhoto(p);
       setLogo(l);
       setSignature(sig);
+      setCeoSignature(ceo);
       setQr(code);
       setReady(true);
     })();
     return () => { cancelled = true; };
-  }, [base.photoUrl, base.signatureUrl, base.uid]);
+  }, [base.photoUrl, base.signatureUrl, base.uid, marks.ceoSignatureUrl]);
 
   // If the photo could not be inlined, drop it rather than exporting a card with a blank hole.
   const data = { ...base, photoUrl: photo, signatureUrl: signature };
@@ -104,7 +112,14 @@ export default function IdCardPanel({ member, profile, provisionalHint }: {
         <div className="mx-auto flex w-max gap-6">
           {ready ? (
             <>
-              <IdCardFront ref={frontRef} data={data} logoUrl={logo} qrUrl={qr} />
+              <IdCardFront
+                ref={frontRef}
+                data={data}
+                logoUrl={logo}
+                qrUrl={qr}
+                ceoSignatureUrl={ceoSignature}
+                ceoName={marks.ceoName}
+              />
               <IdCardBack ref={backRef} data={data} qrUrl={qr} />
             </>
           ) : (

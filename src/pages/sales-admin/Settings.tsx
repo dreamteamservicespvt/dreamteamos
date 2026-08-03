@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import ThemeSelector from "@/components/ThemeSelector";
 import CompanySignatureCard from "@/components/hr/CompanySignatureCard";
+import CompanyMarksCard from "@/components/hr/CompanyMarksCard";
 import ProfilePhotoUpload from "@/components/ProfilePhotoUpload";
 import MyIdCardCard from "@/components/MyIdCardCard";
 import { FESTIVALS, getUpcomingFestivalName, getFestivalOptionLabel } from "@/utils/festivals";
@@ -144,6 +145,8 @@ export default function SalesAdminSettings() {
 
       {/* Signed once, applied to every document this sales head issues */}
       <CompanySignatureCard />
+
+      <CompanyMarksCard />
 
       <MyIdCardCard />
 

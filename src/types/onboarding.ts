@@ -115,6 +115,8 @@ export interface OnboardingInvite {
   issuedByDesignation: string;
   issuedOn: string;                     // yyyy-MM-dd
   companySignatureUrl: string;
+  /** The company seal as it stood when the invite was created. */
+  companyStampUrl?: string | null;
 
   // ── The candidate's side ──
   offerSignatureUrl?: string | null;
@@ -185,6 +187,7 @@ export interface InvitePublicView {
   issuedByName: string;
   issuedByDesignation: string;
   companySignatureUrl: string;
+  companyStampUrl?: string | null;
 
   offerSignatureUrl?: string | null;
   offerAcceptedOn?: string | null;

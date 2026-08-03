@@ -1,9 +1,10 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Check, Download, Eye, FileSignature, Loader2, PenTool, Send, ShieldQuestion, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useCompanyLogo } from "@/hooks/useCompanyLogo";
 import { downloadAgreementPdf } from "@/utils/agreementPdf";
+import { watchCompanyAssets, type CompanyAssets } from "@/services/companyAssets";
 import { HR_DOCUMENT_LABELS } from "@/types/hr";
 import type { AppUser } from "@/types";
 import type { EmployeeProfile, HrDocumentType } from "@/types/hr";
@@ -60,6 +61,8 @@ export default function IssueDocumentDialog({
   const [downloading, setDownloading] = useState(false);
   const paperRef = useRef<HTMLDivElement>(null);
   const logo = useCompanyLogo();
+  const [marks, setMarks] = useState<CompanyAssets>({});
+  useEffect(() => watchCompanyAssets(setMarks), []);
   const already = new Set(issuedTypes || []);
 
   const designation = signatory.designation
@@ -328,6 +331,7 @@ export default function IssueDocumentDialog({
               companySignedName={signatory.name}
               companyDesignation={designation}
               companySignedDate={issuedOn}
+              companyStampUrl={marks.stampUrl}
             />
           </div>
         )}

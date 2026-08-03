@@ -41,16 +41,14 @@ export default function Step2Casting() {
   const [promptEdits, setPromptEdits] = useState<Record<string, string>>({});
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
-  if (!project || !project.clientBrief) return null;
 
-  const selectedStory = project.stories.find((s) => s.id === project.selectedStoryId);
-  if (!selectedStory) return null;
+  const selectedStory = project?.stories.find((s) => s.id === project?.selectedStoryId);
 
   const handleExtract = useCallback(async () => {
-    if (!project.clientBrief || !selectedStory) return;
+    if (!project?.clientBrief || !selectedStory) return;
     setProcessing(true, "Analyzing story and identifying characters…");
     try {
-      const chars = await extractCharacters(selectedStory, project.clientBrief);
+      const chars = await extractCharacters(selectedStory, project?.clientBrief);
       setCharacters(chars);
       toast.success(`${chars.length} characters identified!`);
     } catch (err: any) {
@@ -63,7 +61,7 @@ export default function Step2Casting() {
 
   const handleImageUpload = useCallback(
     (charId: string, imageId: string, file: File) => {
-      const char = project.characters.find((c) => c.id === charId);
+      const char = project?.characters.find((c) => c.id === charId);
       if (!char) return;
       const url = URL.createObjectURL(file);
       const updatedImages = char.images.map((img) =>
@@ -83,7 +81,7 @@ export default function Step2Casting() {
 
   const handleApproveImage = useCallback(
     (charId: string, imageId: string, approved: boolean) => {
-      const char = project.characters.find((c) => c.id === charId);
+      const char = project?.characters.find((c) => c.id === charId);
       if (!char) return;
       const updatedImages = char.images.map((img) =>
         img.id === imageId ? { ...img, approved } : img,
@@ -105,8 +103,8 @@ export default function Step2Casting() {
     [promptEdits, updateCharacter],
   );
 
-  const allImagesApproved = project.characters.length > 0 &&
-    project.characters.every((c) =>
+  const allImagesApproved = project?.characters.length > 0 &&
+    project?.characters.every((c) =>
       c.images.filter((img) => img.type !== "expression").every((img) => img.approved),
     );
 
@@ -119,10 +117,21 @@ export default function Step2Casting() {
     toast.success("Cast approved! Proceeding to Frame Generation.");
   }, [allImagesApproved, confirmCast]);
 
+  /**
+   * The guard sits BELOW every hook, and must stay there.
+   *
+   * It used to be the first statement in the component, above a row of `useCallback`s — so the
+   * moment the project or its brief was cleared while this step was on screen, React saw fewer
+   * hooks than the render before and threw, taking the whole page down with it. Hooks run
+   * unconditionally; only the markup is conditional.
+   */
+  if (!project || !project?.clientBrief) return null;
+  if (!selectedStory) return null;
+
   return (
     <div className="space-y-6">
       {/* Extract Characters Button */}
-      {project.characters.length === 0 && (
+      {project?.characters.length === 0 && (
         <Card>
           <CardContent className="pt-6">
             <Button className="w-full gap-2" size="lg" onClick={handleExtract} disabled={processing}>
@@ -143,7 +152,7 @@ export default function Step2Casting() {
       )}
 
       {/* Character Cards */}
-      {project.characters.map((char, idx) => {
+      {project?.characters.map((char, idx) => {
         const isExpanded = expandedChar === char.id;
         const isEditingPrompt = editingPrompt === char.id;
 
@@ -295,7 +304,7 @@ export default function Step2Casting() {
       })}
 
       {/* Confirm Button */}
-      {project.characters.length > 0 && !project.castConfirmed && (
+      {project?.characters.length > 0 && !project?.castConfirmed && (
         <Button className="w-full gap-2" size="lg" onClick={handleConfirm}>
           <ChevronRight className="w-5 h-5" />
           Approve All Cast & Proceed to Frame Generation

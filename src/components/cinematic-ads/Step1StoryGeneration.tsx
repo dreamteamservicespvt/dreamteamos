@@ -44,18 +44,17 @@ export default function Step1StoryGeneration() {
   const [copied, setCopied] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
 
-  if (!project || !project.clientBrief) return null;
 
   const handleGenerate = useCallback(
     async (tone?: StoryTone) => {
-      if (!project.clientBrief) return;
+      if (!project?.clientBrief) return;
       // Save current stories to version history
-      if (project.stories.length > 0) {
+      if (project?.stories.length > 0) {
         pushStoryVersionHistory([...project.stories]);
       }
       setProcessing(true, `Generating 5 ${tone ? tone + " " : ""}story variations…`);
       try {
-        const stories = await generateStories(project.clientBrief, tone);
+        const stories = await generateStories(project?.clientBrief, tone);
         setStories(stories);
         toast.success("5 stories generated!");
       } catch (err: any) {
@@ -70,13 +69,13 @@ export default function Step1StoryGeneration() {
 
   const handleRefine = useCallback(
     async (storyId: string) => {
-      const story = project.stories.find((s) => s.id === storyId);
+      const story = project?.stories.find((s) => s.id === storyId);
       const feedback = refineInputs[storyId];
-      if (!story || !feedback?.trim() || !project.clientBrief) return;
+      if (!story || !feedback?.trim() || !project?.clientBrief) return;
 
       setRefiningId(storyId);
       try {
-        const refined = await refineStory(story, project.clientBrief, feedback);
+        const refined = await refineStory(story, project?.clientBrief, feedback);
         updateStory(storyId, { ...refined, id: storyId });
         setRefineInputs((p) => ({ ...p, [storyId]: "" }));
         toast.success("Story refined!");
@@ -105,6 +104,16 @@ export default function Step1StoryGeneration() {
     [selectStory, confirmStory],
   );
 
+  /**
+   * The guard sits BELOW every hook, and must stay there.
+   *
+   * It used to be the first statement in the component, above a row of `useCallback`s — so the
+   * moment the project or its brief was cleared while this step was on screen, React saw fewer
+   * hooks than the render before and threw, taking the whole page down with it. Hooks run
+   * unconditionally; only the markup is conditional.
+   */
+  if (!project || !project?.clientBrief) return null;
+
   return (
     <div className="space-y-6">
       {/* Generate Controls */}
@@ -124,7 +133,7 @@ export default function Step1StoryGeneration() {
             ) : (
               <>
                 <Sparkles className="w-5 h-5" />
-                {project.stories.length > 0 ? "Regenerate All 5 Stories" : "Generate 5 Stories"}
+                {project?.stories.length > 0 ? "Regenerate All 5 Stories" : "Generate 5 Stories"}
               </>
             )}
           </Button>
@@ -146,10 +155,10 @@ export default function Step1StoryGeneration() {
           </div>
 
           {/* Version History */}
-          {project.storyVersionHistory.length > 0 && (
+          {project?.storyVersionHistory.length > 0 && (
             <Button variant="ghost" size="sm" className="gap-1" onClick={() => setShowHistory(!showHistory)}>
               <History className="w-4 h-4" />
-              {project.storyVersionHistory.length} Previous Version{project.storyVersionHistory.length !== 1 ? "s" : ""}
+              {project?.storyVersionHistory.length} Previous Version{project?.storyVersionHistory.length !== 1 ? "s" : ""}
             </Button>
           )}
         </CardContent>
@@ -157,14 +166,14 @@ export default function Step1StoryGeneration() {
 
       {/* Version History Panel */}
       <AnimatePresence>
-        {showHistory && project.storyVersionHistory.length > 0 && (
+        {showHistory && project?.storyVersionHistory.length > 0 && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}>
             <Card className="border-dashed">
               <CardHeader>
                 <CardTitle className="text-sm">Version History</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 max-h-60 overflow-y-auto">
-                {project.storyVersionHistory.map((ver, i) => (
+                {project?.storyVersionHistory.map((ver, i) => (
                   <div key={i} className="flex items-center justify-between text-sm p-2 rounded-lg bg-muted/40">
                     <span>Version {i + 1} — {ver.length} stories</span>
                     <Button
@@ -188,12 +197,12 @@ export default function Step1StoryGeneration() {
       </AnimatePresence>
 
       {/* Story Cards */}
-      {project.stories.length > 0 && (
+      {project?.stories.length > 0 && (
         <div className="space-y-4">
-          {project.stories.map((story, idx) => {
+          {project?.stories.map((story, idx) => {
             const isExpanded = expandedStory === story.id;
             const isRefining = refiningId === story.id;
-            const isSelected = project.selectedStoryId === story.id;
+            const isSelected = project?.selectedStoryId === story.id;
 
             return (
               <motion.div
@@ -307,7 +316,7 @@ export default function Step1StoryGeneration() {
                         <Share2 className="w-3.5 h-3.5" />
                         Share
                       </Button>
-                      {!project.storyConfirmed && (
+                      {!project?.storyConfirmed && (
                         <Button size="sm" className="gap-1 ml-auto" onClick={() => handleSelect(story.id)}>
                           <CheckCircle2 className="w-3.5 h-3.5" />
                           Select This Story

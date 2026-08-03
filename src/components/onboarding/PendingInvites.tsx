@@ -208,6 +208,7 @@ function LetterReader({ invite, onClose }: { invite: OnboardingInvite; onClose: 
             signedName={signature ? invite.name : undefined}
             signedDate={signedOn || undefined}
             companySignatureUrl={invite.companySignatureUrl}
+            companyStampUrl={invite.companyStampUrl}
             companySignedName={invite.issuedByName}
             companyDesignation={invite.issuedByDesignation}
             companySignedDate={letter.issuedOn}

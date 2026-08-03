@@ -8,6 +8,7 @@ import { uploadToCloudinary } from "@/services/cloudinary";
 import { addKycDocument, removeKycDocument, saveEmployeeProfile } from "@/services/hr";
 import type { Actor } from "@/services/hr";
 import { cleanId, formatAadhaar, isValidAadhaar, isValidPan, kycCompletion, maskIdentifier } from "@/utils/hrPolicy";
+import ImageCropper from "@/components/ImageCropper";
 import { KYC_DOC_LABELS } from "@/types/hr";
 import type { AppUser } from "@/types";
 import type { EmployeeProfile, KycDocKind } from "@/types/hr";
@@ -36,6 +37,8 @@ export default function KycPanel({ profile, actor, user, readOnly }: {
   const [revealed, setRevealed] = useState(false);
   const [uploading, setUploading] = useState<"photo" | "signature" | "document" | null>(null);
   const [docKind, setDocKind] = useState<KycDocKind>("aadhaar");
+  /** The picked photograph, waiting to be squared off. Nothing uploads until the crop is confirmed. */
+  const [pendingPhoto, setPendingPhoto] = useState<File | null>(null);
   const photoInput = useRef<HTMLInputElement>(null);
   const signatureInput = useRef<HTMLInputElement>(null);
   const docInput = useRef<HTMLInputElement>(null);
@@ -115,8 +118,24 @@ export default function KycPanel({ profile, actor, user, readOnly }: {
     }
   };
 
-  const handlePhoto = async (file?: File) => {
+  /**
+   * Picking the ID card photograph only opens the cropper.
+   *
+   * It used to upload whatever came off the phone, so a portrait snap was squashed into the card's
+   * square frame — a stretched face on a document the company issues. Now it is cropped to 1:1
+   * first, like every other photo here, and what leaves the browser is already the right shape.
+   */
+  const handlePickPhoto = (file?: File) => {
     if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Pick an image", description: "The ID photograph has to be an image file.", variant: "destructive" });
+      return;
+    }
+    setPendingPhoto(file);
+  };
+
+  const handlePhoto = async (file: File) => {
+    setPendingPhoto(null);
     setUploading("photo");
     try {
       const url = await uploadToCloudinary(file);
@@ -214,7 +233,7 @@ export default function KycPanel({ profile, actor, user, readOnly }: {
               <>
                 <input ref={photoInput} type="file" accept="image/*" className="hidden"
                   data-test="photo-input"
-                  onChange={(e) => handlePhoto(consume(e))} />
+                  onChange={(e) => handlePickPhoto(consume(e))} />
                 <button onClick={() => photoInput.current?.click()} disabled={uploading === "photo"}
                   className="mt-1.5 inline-flex h-7 w-20 items-center justify-center gap-1 rounded-lg border border-border text-[10px] font-medium text-muted-foreground hover:bg-accent disabled:opacity-50">
                   {uploading === "photo" ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />} Photo
@@ -377,6 +396,19 @@ export default function KycPanel({ profile, actor, user, readOnly }: {
           </div>
         )}
       </SectionCard>
+
+      {/* Square, not round: this photograph is printed square on the ID card, so the corners are
+          part of the picture and hiding them behind a circle would be a lie about the crop. */}
+      {pendingPhoto && (
+        <ImageCropper
+          file={pendingPhoto}
+          shape="square"
+          title="Crop the ID card photograph"
+          note="Only this square is printed on the card — head and shoulders, centred."
+          onCancel={() => setPendingPhoto(null)}
+          onCropped={handlePhoto}
+        />
+      )}
     </div>
   );
 }

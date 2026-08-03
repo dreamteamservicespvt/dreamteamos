@@ -175,6 +175,7 @@ export default function JoinOnboarding() {
           candidateName={invite.name}
           candidatePhone={invite.phone}
           companySignatureUrl={invite.companySignatureUrl}
+          companyStampUrl={invite.companyStampUrl}
           companySignedName={invite.issuedByName}
           companyDesignation={invite.issuedByDesignation}
           signatureUrl={invite.offerSignatureUrl}
@@ -194,6 +195,7 @@ export default function JoinOnboarding() {
           candidateName={invite.name}
           candidatePhone={invite.phone}
           companySignatureUrl={invite.companySignatureUrl}
+          companyStampUrl={invite.companyStampUrl}
           companySignedName={invite.issuedByName}
           companyDesignation={invite.issuedByDesignation}
           signatureUrl={invite.joiningSignatureUrl}

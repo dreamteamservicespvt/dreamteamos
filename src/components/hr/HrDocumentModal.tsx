@@ -121,6 +121,7 @@ export default function HrDocumentModal({ document, canSign, signerName, onClose
             companySignedName={doc.issuedByName}
             companyDesignation={doc.issuedByDesignation}
             companySignedDate={doc.issuedOn}
+            companyStampUrl={doc.companyStampUrl}
           />
         </div>
 

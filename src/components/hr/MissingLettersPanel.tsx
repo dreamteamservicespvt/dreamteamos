@@ -16,11 +16,12 @@
  *    would print an empty salary and joining date under the admin's signature.
  *  • The admin sees the whole list, and what will happen, before anything is sent.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Check, FileSignature, Loader2, PenTool, Send } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { issueDocument } from "@/services/hrDocuments";
+import { watchCompanyAssets, type CompanyAssets } from "@/services/companyAssets";
 import { buildDocument } from "@/utils/hrTemplates";
 import { requiresEmployeeSignature, todayIso, SIGNATORY_TITLE } from "@/utils/hrPolicy";
 import { HR_DOCUMENT_LABELS } from "@/types/hr";
@@ -44,6 +45,8 @@ export default function MissingLettersPanel({ rows, signatory, settingsPath, mem
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(0);
   const [failed, setFailed] = useState<string[]>([]);
+  const [marks, setMarks] = useState<CompanyAssets>({});
+  useEffect(() => watchCompanyAssets(setMarks), []);
 
   const ready = useMemo(() => rows.filter((r) => r.blockers.length === 0), [rows]);
   const blocked = useMemo(() => rows.filter((r) => r.blockers.length > 0), [rows]);
@@ -90,6 +93,7 @@ export default function MissingLettersPanel({ rows, signatory, settingsPath, mem
               issuedByName: signatory.name,
               issuedByDesignation: designation,
               companySignatureUrl: signatory.signatureUrl || null,
+              companyStampUrl: marks.stampUrl || null,
               issuedOn,
               requiresEmployeeSignature: requiresEmployeeSignature(type),
             },

@@ -418,6 +418,14 @@ export interface HrDocument {
   issuedByName: string;
   issuedByDesignation?: string;
   companySignatureUrl?: string | null;
+  /**
+   * The company seal as it stood the day this went out.
+   *
+   * Stored ON the document rather than read live, for the same reason the signature is: a letter
+   * is a record of what was issued, and a stamp replaced next year must not silently reprint
+   * itself onto every letter the company ever sent.
+   */
+  companyStampUrl?: string | null;
   issuedOn: string;                 // yyyy-MM-dd
   createdAt: HrTime;
 

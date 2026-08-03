@@ -77,8 +77,15 @@ function Row({ label, value }: { label: string; value: string }) {
 
 export const IdCardFront = forwardRef<
   HTMLDivElement,
-  { data: IdCardData; logoUrl?: string | null; qrUrl?: string | null }
->(function IdCardFront({ data, logoUrl, qrUrl }, ref) {
+  {
+    data: IdCardData;
+    logoUrl?: string | null;
+    qrUrl?: string | null;
+    /** The CEO's signature, inlined. What makes the card issued rather than printed. */
+    ceoSignatureUrl?: string | null;
+    ceoName?: string | null;
+  }
+>(function IdCardFront({ data, logoUrl, qrUrl, ceoSignatureUrl, ceoName }, ref) {
   return (
     <div ref={ref} style={shell} data-test="id-card-front">
       {/* Header band */}
@@ -222,22 +229,25 @@ export const IdCardFront = forwardRef<
           )}
         </div>
 
-        {/* Signed on the front, where anyone checking the card is already looking. The holder's
-            own signature goes above the rule when we have one — a blank rule on a card that was
-            issued, not filled in by hand, is the detail that makes it look homemade. */}
+        {/* The company signs the front. A card is issued BY someone — that is what separates a
+            credential from a laminated printout, and it is the signature a person checking the
+            badge is looking for. The holder's own signature is on the back, where they sign it. */}
         <div style={{ display: "flex", justifyContent: "center" }}>
           <div style={{ minWidth: 160, textAlign: "center" }}>
-            {data.signatureUrl && (
+            {ceoSignatureUrl && (
               <img
-                src={data.signatureUrl}
+                src={ceoSignatureUrl}
                 alt=""
                 crossOrigin="anonymous"
                 style={{ height: 30, maxWidth: 150, objectFit: "contain", display: "block", margin: "0 auto 2px" }}
               />
             )}
             <div style={{ borderTop: `1px solid ${RULE}`, paddingTop: 3 }}>
+              {ceoName && (
+                <p style={{ margin: "0 0 1px", fontSize: 8, fontWeight: 700, color: INK }}>{ceoName}</p>
+              )}
               <span style={{ fontSize: 7, letterSpacing: 0.5, textTransform: "uppercase", color: MUTED }}>
-                Signature of Holder
+                Authorised Signatory
               </span>
             </div>
           </div>

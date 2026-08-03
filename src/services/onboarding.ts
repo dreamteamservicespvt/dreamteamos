@@ -2,6 +2,7 @@ import {
   collection, doc, getDocs, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where,
 } from "firebase/firestore";
 import { db } from "@/services/firebase";
+import { fetchCompanyAssets } from "@/services/companyAssets";
 import { todayIso } from "@/utils/hrPolicy";
 import { buildInviteLetters } from "@/utils/onboardingLetters";
 import type { AppUser } from "@/types";
@@ -67,6 +68,7 @@ export const inviteUrl = (id: string): string => `${window.location.origin}/join
  * check belongs here as well — this is the function that decides what a candidate will read.
  */
 export async function createInvite({ draft, signatory, designation }: CreateInviteInput): Promise<CreatedInvite> {
+  const { stampUrl: companyStampUrl } = await fetchCompanyAssets();
   if (!signatory.signatureUrl) {
     throw new Error("no_signature");
   }
@@ -93,6 +95,7 @@ export async function createInvite({ draft, signatory, designation }: CreateInvi
     issuedByDesignation: designation,
     issuedOn,
     companySignatureUrl: signatory.signatureUrl,
+    companyStampUrl: companyStampUrl ?? null,
     status: "sent",
     createdAt: serverTimestamp(),
     createdBy: signatory.uid,

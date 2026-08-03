@@ -1,13 +1,16 @@
 /**
- * Choosing which square of a photo becomes the profile picture.
+ * Choosing which square of a photo becomes the picture.
  *
  * Every avatar in this app is a circle, and a circle cut out of the middle of an arbitrary phone
  * photo is usually somebody's shoulder. So the crop is made here, before the upload: the person
  * drags and zooms until their face is under the frame, and what leaves the browser is already the
  * square that will be shown. Nothing downstream has to guess, and no second copy is kept.
  *
- * Output is a fixed 512×512 JPEG regardless of the source, which keeps a 6 MB camera photo from
- * being stored and re-downloaded on every screen that shows a 26 px avatar.
+ * Output is a fixed 512×512 JPEG regardless of the source — always 1:1, whatever shape the phone
+ * took. That is the point as much as the file size is: nothing downstream has to cope with a
+ * portrait photo in a round frame or a landscape one on an ID card, because no other ratio can
+ * reach it. It also keeps a 6 MB camera photo from being re-downloaded on every screen that shows
+ * a 26 px avatar.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Loader2, Minus, Plus, X } from "lucide-react";
@@ -17,9 +20,23 @@ import { clampView, coverScale, cropRect, displaySize, offsetsAfterZoom } from "
 const OUTPUT = 512;
 const MAX_ZOOM = 4;
 
-export default function ImageCropper({ file, title = "Crop your photo", onCancel, onCropped }: {
+export default function ImageCropper({
+  file, title = "Crop your photo", shape = "circle", note, onCancel, onCropped,
+}: {
   file: File;
   title?: string;
+  /**
+   * What the picture will be shown inside once it is saved.
+   *
+   * The crop is square either way — every photo this app stores is 1:1, so nothing downstream ever
+   * has to reason about aspect ratios. This only decides what the person is shown while they aim
+   * it: a circle for an avatar, because a circle cut from a square hides the corners and a face
+   * centred in the square can still lose its ears; a plain square for the ID card photograph,
+   * which is printed square and where the corners are part of the picture.
+   */
+  shape?: "circle" | "square";
+  /** One line under the frame, when this particular photo needs explaining. */
+  note?: string;
   onCancel: () => void;
   /** The cropped square, as a file ready to upload. */
   onCropped: (file: File) => void;
@@ -199,7 +216,10 @@ export default function ImageCropper({ file, title = "Crop your photo", onCancel
 
         <div className="p-4">
           <p className="mb-3 text-center text-[11px] text-muted-foreground">
-            Drag to move · pinch or use the slider to zoom. The circle is exactly what everyone sees.
+            Drag to move · pinch or use the slider to zoom.{" "}
+            {note || (shape === "circle"
+              ? "The circle is exactly what everyone sees."
+              : "The square is exactly what gets printed.")}
           </p>
 
           <div
@@ -222,9 +242,16 @@ export default function ImageCropper({ file, title = "Crop your photo", onCancel
                 style={size ? { width: size.width, height: size.height, left: offset.x, top: offset.y } : { opacity: 0 }}
               />
             )}
-            {/* The circle the avatar will actually be — drawn over the picture, never exported. */}
-            <div className="pointer-events-none absolute inset-0 rounded-xl shadow-[0_0_0_9999px_rgba(0,0,0,0.45)_inset] [clip-path:circle(50%_at_50%_50%)]" />
-            <div className="pointer-events-none absolute inset-0 rounded-full border-2 border-white/80" />
+            {/* The shape the picture will actually be — drawn over it, never exported. Whatever is
+                outside the frame is discarded, which is what makes every stored photo 1:1. */}
+            {shape === "circle" ? (
+              <>
+                <div className="pointer-events-none absolute inset-0 rounded-xl shadow-[0_0_0_9999px_rgba(0,0,0,0.45)_inset] [clip-path:circle(50%_at_50%_50%)]" />
+                <div className="pointer-events-none absolute inset-0 rounded-full border-2 border-white/80" />
+              </>
+            ) : (
+              <div className="pointer-events-none absolute inset-0 rounded-xl border-2 border-white/80" />
+            )}
           </div>
 
           <div className="mt-4 flex items-center gap-2">

@@ -90,6 +90,40 @@ service cloud.firestore {
 }
 ```
 
+## Two more collections, added since
+
+`company_settings` holds the CEO signature and the company stamp — read by anything that prints a
+card or a letter, written by admins. `/verify/{uid}` is a public page, so an unauthenticated reader
+has to be able to see the handful of fields printed on the badge they are holding, and nothing else.
+
+```
+    // The company's own marks: CEO signature, stamp. Everyone signed in reads them; admins write.
+    match /company_settings/{docId} {
+      function isAdmin() {
+        return request.auth != null
+          && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+             in ['main_admin', 'tech_admin', 'sales_admin'];
+      }
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+```
+
+**The ID card's QR needs one more thing.** It opens `/verify/{uid}` in whatever browser scanned it,
+with no account, and that page reads `users/{uid}` and `employee_profiles/{uid}`. Under the rules
+above those are closed to an unauthenticated reader, so the QR would resolve to "could not be
+verified" for everybody.
+
+Two ways to solve it, and they are a real choice:
+
+1. **Leave those two collections readable** (what happens today, since the database is open). The
+   verification page works. It also means the whole `employee_profiles` collection — PAN, Aadhaar,
+   addresses — stays readable by anyone with the public API key. **Not recommended.**
+2. **Mirror the badge fields to a public document.** Write `public_badges/{uid}` holding only what
+   is already printed on the card — name, employee ID, designation, department, photo, joining
+   date, active — and point the verify page at that instead. `employee_profiles` then locks down
+   with everything else. This is the right answer and is a small change; say the word.
+
 ## Also required in the Firebase console
 
 Nothing. Custom-token sign-in needs no auth provider to be enabled — it works from the service

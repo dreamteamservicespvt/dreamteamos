@@ -44,7 +44,6 @@ export default function Step6ReviewDelivery() {
   const [showFeedbackHistory, setShowFeedbackHistory] = useState(false);
   const videoInputRef = useRef<HTMLInputElement | null>(null);
 
-  if (!project || !project.clientBrief) return null;
 
   const handleVideoUpload = useCallback(
     (file: File) => {
@@ -60,13 +59,13 @@ export default function Step6ReviewDelivery() {
       toast.error("Please enter feedback");
       return;
     }
-    if (project.feedbackRounds.length >= MAX_REVISION_ROUNDS) {
+    if (project?.feedbackRounds.length >= MAX_REVISION_ROUNDS) {
       toast.error(`Maximum ${MAX_REVISION_ROUNDS} revision rounds reached`);
       return;
     }
     const feedback: ReviewFeedback = {
       id: `fb-${Date.now()}`,
-      round: project.feedbackRounds.length + 1,
+      round: project?.feedbackRounds.length + 1,
       timestamp: feedbackTimestamp || undefined,
       comment: feedbackText.trim(),
       status: "pending",
@@ -78,16 +77,16 @@ export default function Step6ReviewDelivery() {
     toast.success(`Revision round ${feedback.round} feedback added`);
   }, [feedbackText, feedbackTimestamp, project, addFeedbackRound]);
 
-  const watermarkUrl = project.finalVideoUrl
-    ? project.finalVideoUrl
+  const watermarkUrl = project?.finalVideoUrl
+    ? project?.finalVideoUrl
     : null;
 
-  const shareableLink = project.finalVideoUrl
-    ? `${window.location.origin}/review/${project.id}`
+  const shareableLink = project?.finalVideoUrl
+    ? `${window.location.origin}/review/${project?.id}`
     : null;
 
-  const allDeliverablesReady = project.deliverables.length > 0 &&
-    project.deliverables.every((d) => d.ready);
+  const allDeliverablesReady = project?.deliverables.length > 0 &&
+    project?.deliverables.every((d) => d.ready);
 
   const handleMarkDelivered = useCallback(() => {
     if (!allDeliverablesReady) {
@@ -97,6 +96,16 @@ export default function Step6ReviewDelivery() {
     markDelivered();
     toast.success("Project marked as delivered!");
   }, [allDeliverablesReady, markDelivered]);
+
+  /**
+   * The guard sits BELOW every hook, and must stay there.
+   *
+   * It used to be the first statement in the component, above a row of `useCallback`s — so the
+   * moment the project or its brief was cleared while this step was on screen, React saw fewer
+   * hooks than the render before and threw, taking the whole page down with it. Hooks run
+   * unconditionally; only the markup is conditional.
+   */
+  if (!project || !project?.clientBrief) return null;
 
   return (
     <div className="space-y-6">
@@ -111,10 +120,10 @@ export default function Step6ReviewDelivery() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {project.finalVideoUrl ? (
+          {project?.finalVideoUrl ? (
             <div className="space-y-3">
               <video
-                src={project.finalVideoUrl}
+                src={project?.finalVideoUrl}
                 controls
                 className="w-full rounded-lg border aspect-video bg-black"
               />
@@ -175,17 +184,17 @@ export default function Step6ReviewDelivery() {
                 <MessageSquare className="w-4 h-4" /> Client Feedback & Revisions
               </CardTitle>
               <CardDescription className="text-xs">
-                Round {project.feedbackRounds.length}/{MAX_REVISION_ROUNDS} — Timestamp-based feedback
+                Round {project?.feedbackRounds.length}/{MAX_REVISION_ROUNDS} — Timestamp-based feedback
               </CardDescription>
             </div>
-            <Badge variant={project.feedbackRounds.length >= MAX_REVISION_ROUNDS ? "destructive" : "secondary"}>
-              {project.feedbackRounds.length}/{MAX_REVISION_ROUNDS} rounds
+            <Badge variant={project?.feedbackRounds.length >= MAX_REVISION_ROUNDS ? "destructive" : "secondary"}>
+              {project?.feedbackRounds.length}/{MAX_REVISION_ROUNDS} rounds
             </Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Add Feedback */}
-          {project.feedbackRounds.length < MAX_REVISION_ROUNDS && (
+          {project?.feedbackRounds.length < MAX_REVISION_ROUNDS && (
             <div className="space-y-3 bg-muted/30 rounded-lg p-4">
               <div className="flex gap-2">
                 <div className="space-y-1 w-32">
@@ -215,7 +224,7 @@ export default function Step6ReviewDelivery() {
           )}
 
           {/* Feedback History */}
-          {project.feedbackRounds.length > 0 && (
+          {project?.feedbackRounds.length > 0 && (
             <div className="space-y-2">
               <Button
                 variant="ghost"
@@ -224,7 +233,7 @@ export default function Step6ReviewDelivery() {
                 onClick={() => setShowFeedbackHistory(!showFeedbackHistory)}
               >
                 <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", showFeedbackHistory && "rotate-180")} />
-                Feedback History ({project.feedbackRounds.length} rounds)
+                Feedback History ({project?.feedbackRounds.length} rounds)
               </Button>
               <AnimatePresence>
                 {showFeedbackHistory && (
@@ -234,7 +243,7 @@ export default function Step6ReviewDelivery() {
                     exit={{ height: 0, opacity: 0 }}
                     className="space-y-2"
                   >
-                    {project.feedbackRounds.map((fb) => (
+                    {project?.feedbackRounds.map((fb) => (
                       <div
                         key={fb.id}
                         className="bg-muted/50 rounded-lg p-3 text-xs space-y-1"
@@ -276,8 +285,8 @@ export default function Step6ReviewDelivery() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {project.deliverables.length > 0 ? (
-            project.deliverables.map((d) => (
+          {project?.deliverables.length > 0 ? (
+            project?.deliverables.map((d) => (
               <label
                 key={d.id}
                 className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-muted/50"
@@ -305,19 +314,19 @@ export default function Step6ReviewDelivery() {
       </Card>
 
       {/* Mark as Delivered */}
-      {!project.delivered && (
+      {!project?.delivered && (
         <Button
           className="w-full gap-2"
           size="lg"
           onClick={handleMarkDelivered}
-          disabled={!allDeliverablesReady || !project.finalVideoUrl}
+          disabled={!allDeliverablesReady || !project?.finalVideoUrl}
         >
           <Star className="w-5 h-5" />
           Mark Project as Delivered
         </Button>
       )}
 
-      {project.delivered && (
+      {project?.delivered && (
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}

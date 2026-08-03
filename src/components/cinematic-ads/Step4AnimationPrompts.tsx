@@ -57,16 +57,14 @@ export default function Step4AnimationPrompts() {
   const [promptEdits, setPromptEdits] = useState<Record<number, string>>({});
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
-  if (!project || !project.clientBrief) return null;
 
-  const selectedStory = project.stories.find((s) => s.id === project.selectedStoryId);
-  if (!selectedStory) return null;
+  const selectedStory = project?.stories.find((s) => s.id === project?.selectedStoryId);
 
   const handleGenerate = useCallback(async () => {
-    if (!project.clientBrief || !selectedStory) return;
+    if (!project?.clientBrief || !selectedStory) return;
     setProcessing(true, "Generating animation prompts with platform recommendations…");
     try {
-      const prompts = await generateAnimationPrompts(selectedStory, project.sceneFrames, project.clientBrief);
+      const prompts = await generateAnimationPrompts(selectedStory, project?.sceneFrames, project?.clientBrief);
       setAnimationPrompts(prompts);
       toast.success(`${prompts.length} animation prompts generated!`);
     } catch (err: any) {
@@ -88,7 +86,7 @@ export default function Step4AnimationPrompts() {
 
   const handleApproveClip = useCallback(
     (clipNum: number) => {
-      const prompt = project.animationPrompts.find((p) => p.sceneNumber === clipNum);
+      const prompt = project?.animationPrompts.find((p) => p.sceneNumber === clipNum);
       if (!prompt) return;
       updateAnimationPrompt(clipNum, { approved: !prompt.approved });
     },
@@ -107,8 +105,8 @@ export default function Step4AnimationPrompts() {
     [promptEdits, updateAnimationPrompt],
   );
 
-  const allApproved = project.animationPrompts.length > 0 &&
-    project.animationPrompts.every((p) => p.approved);
+  const allApproved = project?.animationPrompts.length > 0 &&
+    project?.animationPrompts.every((p) => p.approved);
 
   const handleConfirm = useCallback(() => {
     if (!allApproved) {
@@ -119,10 +117,21 @@ export default function Step4AnimationPrompts() {
     toast.success("Animation confirmed! Proceeding to Editing Guide.");
   }, [allApproved, confirmAnimation]);
 
+  /**
+   * The guard sits BELOW every hook, and must stay there.
+   *
+   * It used to be the first statement in the component, above a row of `useCallback`s — so the
+   * moment the project or its brief was cleared while this step was on screen, React saw fewer
+   * hooks than the render before and threw, taking the whole page down with it. Hooks run
+   * unconditionally; only the markup is conditional.
+   */
+  if (!project || !project?.clientBrief) return null;
+  if (!selectedStory) return null;
+
   return (
     <div className="space-y-6">
       {/* Platform Selection Matrix Legend */}
-      {project.animationPrompts.length === 0 && (
+      {project?.animationPrompts.length === 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-sm flex items-center gap-2">
@@ -159,10 +168,10 @@ export default function Step4AnimationPrompts() {
       )}
 
       {/* Animation Prompt Cards */}
-      {project.animationPrompts.map((ap, idx) => {
+      {project?.animationPrompts.map((ap, idx) => {
         const isExpanded = expandedClip === ap.sceneNumber;
         const isEditingPromptLocal = editingPrompt === ap.sceneNumber;
-        const frame = project.sceneFrames.find((f) => f.sceneNumber === ap.sceneNumber);
+        const frame = project?.sceneFrames.find((f) => f.sceneNumber === ap.sceneNumber);
 
         return (
           <motion.div
@@ -406,7 +415,7 @@ export default function Step4AnimationPrompts() {
       })}
 
       {/* Regenerate All Button */}
-      {project.animationPrompts.length > 0 && !project.animationConfirmed && (
+      {project?.animationPrompts.length > 0 && !project?.animationConfirmed && (
         <div className="flex gap-3">
           <Button variant="outline" className="flex-1 gap-2" onClick={handleGenerate} disabled={processing}>
             <Sparkles className="w-4 h-4" />

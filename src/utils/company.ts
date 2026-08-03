@@ -19,7 +19,11 @@ export const COMPANY = {
    *
    * Lines are printed in order; keep it to building, street, area, city, district, state, PIN.
    */
-  address: [] as readonly string[],
+  address: [
+    "DREAM TEAM, 50-6-23, Vishnalayam Street",
+    "Jagannaickpur, Kakinada",
+    "Andhra Pradesh 533002",
+  ] as readonly string[],
   /** Printed beside the email on letters and on the back of an ID card. Blank hides it. */
   phone: "",
 } as const;

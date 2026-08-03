@@ -20,13 +20,14 @@ import type { FrozenLetter } from "@/types/onboarding";
  * pad, because a signature IS the agreement — asking for both suggests one of them is decorative.
  */
 export default function LetterStep({
-  letter, candidateName, candidatePhone, companySignatureUrl, companySignedName, companyDesignation,
+  letter, candidateName, candidatePhone, companySignatureUrl, companyStampUrl, companySignedName, companyDesignation,
   signatureUrl, signedOn, signed, signLabel, continueLabel, onSigned, onContinue, onDecline,
 }: {
   letter: FrozenLetter;
   candidateName: string;
   candidatePhone?: string;
   companySignatureUrl: string;
+  companyStampUrl?: string | null;
   companySignedName: string;
   companyDesignation: string;
   /** The candidate's signature, once it exists. */
@@ -101,6 +102,7 @@ export default function LetterStep({
           signedName={signed ? candidateName : undefined}
           signedDate={signedOn || undefined}
           companySignatureUrl={companySignatureUrl}
+          companyStampUrl={companyStampUrl}
           companySignedName={companySignedName}
           companyDesignation={companyDesignation}
           companySignedDate={letter.issuedOn}

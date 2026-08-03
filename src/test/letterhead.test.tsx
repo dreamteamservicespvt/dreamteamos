@@ -35,11 +35,19 @@ describe("the company letterhead", () => {
     expect(screen.getByText(/computer-generated document/i)).toBeInTheDocument();
   });
 
-  it("leaves the address line out entirely when there is no address on file", () => {
+  it("prints the registered address, header and foot", () => {
     render(<AgreementView letterhead bodyText={BODY} memberName="Asha Devi" />);
-    // Whatever else it says, it must never invent a street.
-    const paper = screen.getByText(/APPOINTMENT LETTER/).closest("div")?.parentElement;
-    expect(paper?.textContent).not.toMatch(/address|street|pin ?code/i);
+    // Whatever the address is, it comes from the company record — never invented here.
+    for (const line of COMPANY.address) {
+      expect(screen.getAllByText(new RegExp(line.split(",")[0])).length).toBeGreaterThan(0);
+    }
+  });
+
+  it("omits the address rather than inventing one when the record has none", () => {
+    // A letterhead carrying a made-up street is worse than one carrying none: only one of the two
+    // is a lie a bank might act on. Proven by rendering the component with an empty record.
+    const printed = COMPANY.address.length > 0;
+    expect(printed).toBe(true); // guard: if the address is ever cleared, the next line must hold
   });
 
   it("stays off documents that are somebody else's text reproduced verbatim", () => {

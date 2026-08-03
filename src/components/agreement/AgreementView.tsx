@@ -31,6 +31,8 @@ export interface AgreementViewData {
   companySignedName?: string;
   companyDesignation?: string;
   companySignedDate?: string;
+  /** The company seal, printed across the company's signature block. */
+  companyStampUrl?: string | null;
 }
 
 /** Fill the common "____" placeholders from the member's details + sign date. */
@@ -147,9 +149,22 @@ const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function Agr
               : (signedDateLabel || meta.date || "");
             const designation = isCompany ? (data.companyDesignation || meta.designation || "") : "";
 
+            const stamp = isCompany ? data.companyStampUrl : null;
+
             return (
               <div key={idx} className="mt-5">
-                <div className={`inline-block rounded-lg border px-4 pt-2 pb-1.5 ${isCompany ? "border-sky-300 bg-sky-50" : "border-amber-300 bg-amber-50"}`}>
+                <div className={`relative inline-block rounded-lg border px-4 pt-2 pb-1.5 ${isCompany ? "border-sky-300 bg-sky-50" : "border-amber-300 bg-amber-50"}`}>
+                  {/* The seal sits across the signature, as it would on paper — semi-transparent so
+                      it never hides the name underneath it. */}
+                  {stamp && (
+                    <img
+                      data-stamp="true"
+                      src={stamp}
+                      alt=""
+                      crossOrigin="anonymous"
+                      className="pointer-events-none absolute -right-6 -top-4 h-[86px] w-[86px] object-contain opacity-80 mix-blend-multiply"
+                    />
+                  )}
                   <div className={`text-[11px] font-semibold uppercase tracking-wide mb-1 ${isCompany ? "text-sky-700" : "text-amber-700"}`}>
                     {label}
                   </div>
