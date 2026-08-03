@@ -34,6 +34,7 @@ const FULL: EmployeeProfile = {
   emergencyContact: { name: "Ravi", relation: "Brother", phone: "+919000000000" },
   pan: "ABCDE1234F",
   aadhaar: "111122223333",
+  signatureUrl: "https://cdn/signature.png",
   kycDocuments: [doc("pan"), doc("aadhaar")],
 };
 
@@ -45,7 +46,7 @@ describe("the checklist itself", () => {
     expect(PROFILE_STEPS.map((s) => s.key)).toEqual([
       "fullName", "photo", "personalEmail", "dob", "bloodGroup",
       "currentAddress", "permanentAddress", "emergencyContact",
-      "pan", "panCard", "aadhaar", "aadhaarCard",
+      "pan", "panCard", "aadhaar", "aadhaarCard", "signature",
     ]);
     expect(new Set(PROFILE_STEPS.map((s) => s.key)).size).toBe(PROFILE_STEPS.length);
   });
@@ -53,7 +54,9 @@ describe("the checklist itself", () => {
   it("leaves the identity documents until last, so the form is not abandoned at step one", () => {
     const keys = PROFILE_STEPS.map((s) => s.key);
     expect(keys.indexOf("panCard")).toBeGreaterThan(keys.indexOf("photo"));
-    expect(keys.indexOf("aadhaarCard")).toBe(keys.length - 1);
+    // The signature is the true last step: it is the one item that needs paper and a camera.
+    expect(keys.indexOf("aadhaarCard")).toBe(keys.length - 2);
+    expect(keys.indexOf("signature")).toBe(keys.length - 1);
   });
 
   it("gives every step a reason, not just a name", () => {

@@ -269,6 +269,15 @@ export interface EmployeeProfile {
   // Personal / KYC — collected on joining day, kept current afterwards
   photoUrl?: string | null;
   /**
+   * The employee's own signature, as an image.
+   *
+   * Photographed off paper rather than drawn with a finger: a signature traced on a phone screen
+   * looks nothing like the one on the person's bank records, and these are the papers where that
+   * comparison gets made. Held on the employment record so it is asked for once, not per document.
+   */
+  signatureUrl?: string | null;
+  signatureUpdatedAt?: unknown;
+  /**
    * Family name, recorded separately from `users.name`.
    *
    * The account only ever held one free-text name, which is fine for a chat list and useless for

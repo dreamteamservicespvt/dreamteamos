@@ -202,6 +202,22 @@ export default function KycPanel({ profile, actor, user, readOnly }: {
                 </button>
               </>
             )}
+
+            {/* The signature the member photographed off paper, if they have given it yet. */}
+            <div className="mt-3 w-20">
+              <p className="mb-1 text-[10px] font-medium text-muted-foreground">Signature</p>
+              {profile.signatureUrl ? (
+                <a href={profile.signatureUrl} target="_blank" rel="noopener noreferrer"
+                  data-test="kyc-signature">
+                  <img src={profile.signatureUrl} alt="Signature"
+                    className="h-10 w-20 rounded-md border border-border bg-white object-contain p-0.5" />
+                </a>
+              ) : (
+                <p className="rounded-md border border-dashed border-border px-1.5 py-2 text-center text-[10px] text-muted-foreground">
+                  Not given
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="min-w-[240px] flex-1">

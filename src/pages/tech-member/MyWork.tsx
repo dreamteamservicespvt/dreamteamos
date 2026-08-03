@@ -258,6 +258,23 @@ export default function MyWork() {
 
   const [completedOpen, setCompletedOpen] = useState(false);
   const [completedShown, setCompletedShown] = useState(COMPLETED_PAGE_SIZE);
+  /**
+   * The status tile currently being used as a filter, or null for everything.
+   *
+   * The tiles were a read-out and nothing more: a member who saw "3 changes" then had to go and
+   * find those three by eye among everything else on the page. Each one is now the filter for the
+   * thing it counts.
+   */
+  const [statusFilter, setStatusFilter] = useState<WorkAssignment['status'] | null>(null);
+
+  /** Picking a delivered status opens the completed list, or the filter would appear to do nothing. */
+  const pickStatus = (status: WorkAssignment['status']) => {
+    setStatusFilter((current) => {
+      const next = current === status ? null : status;
+      if (next === 'completed' || next === 'verified') setCompletedOpen(true);
+      return next;
+    });
+  };
 
   // 5-day filter
   const recentDays = useMemo(() => {
@@ -319,9 +336,10 @@ export default function MyWork() {
         result = result.filter(inWindow);
       }
     }
+    if (statusFilter) result = result.filter(a => a.status === statusFilter);
     return result;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeWork, selectedDate, dayFilter, recentDays, activeCycle]);
+  }, [activeWork, selectedDate, dayFilter, recentDays, activeCycle, statusFilter]);
 
   const filteredCompleted = useMemo(() => {
     // Bucketed by the ASSIGNED date, not when it was marked complete/submitted — a video
@@ -333,9 +351,10 @@ export default function MyWork() {
     } else if (dayFilter !== 'all') {
       result = result.filter(inWindow);
     }
+    if (statusFilter) result = result.filter(a => a.status === statusFilter);
     return result;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [completedWork, selectedDate, dayFilter, recentDays, activeCycle]);
+  }, [completedWork, selectedDate, dayFilter, recentDays, activeCycle, statusFilter]);
 
   const visibleCompleted = useMemo(
     () => filteredCompleted.slice(0, completedShown),
@@ -359,12 +378,23 @@ export default function MyWork() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assignments, selectedDate, dayFilter, recentDays, activeCycle]);
 
-  const windowStats = useMemo(() => ({
-    active: windowAssignments.filter(a => ['assigned', 'in_progress', 'editing'].includes(a.status)).length,
-    completed: windowAssignments.filter(a => ['completed', 'verified'].includes(a.status)).length,
-    verified: windowAssignments.filter(a => a.status === 'verified').length,
-    seconds: windowAssignments.reduce((sum, a) => sum + (a.totalDurationSeconds || 0), 0),
-  }), [windowAssignments]);
+  /**
+   * One tile per status, in the order work moves through them.
+   *
+   * "Total time" used to sit at the end and was the only tile nobody could act on — a career
+   * stopwatch on a page about what to do next. Each tile now names one status and filters to it.
+   */
+  const statusTiles = useMemo(() => {
+    const count = (status: WorkAssignment['status']) =>
+      windowAssignments.filter(a => a.status === status).length;
+    return [
+      { key: 'assigned' as const, label: 'Active', hint: 'Not started yet', value: count('assigned') },
+      { key: 'in_progress' as const, label: 'In Progress', hint: 'Being worked on', value: count('in_progress') },
+      { key: 'editing' as const, label: 'Changes', hint: 'Sent back for edits', value: count('editing') },
+      { key: 'completed' as const, label: 'Completed', hint: 'Awaiting verify', value: count('completed') },
+      { key: 'verified' as const, label: 'Verified', hint: 'Signed off', value: count('verified') },
+    ];
+  }, [windowAssignments]);
 
   // Changing the date filter starts a fresh page — otherwise a previously expanded list would
   // keep showing more rows than the new filter warrants.
@@ -443,25 +473,42 @@ export default function MyWork() {
         </span>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-card border rounded-lg p-4 text-center">
-          <p className="text-2xl font-bold text-card-foreground">{windowStats.active}</p>
-          <p className="text-xs text-muted-foreground">Active</p>
-        </div>
-        <div className="bg-card border rounded-lg p-4 text-center">
-          <p className="text-2xl font-bold text-card-foreground">{windowStats.completed}</p>
-          <p className="text-xs text-muted-foreground">Completed</p>
-        </div>
-        <div className="bg-card border rounded-lg p-4 text-center">
-          <p className="text-2xl font-bold text-card-foreground">{windowStats.verified}</p>
-          <p className="text-xs text-muted-foreground">Verified</p>
-        </div>
-        <div className="bg-card border rounded-lg p-4 text-center">
-          <p className="text-2xl font-bold text-card-foreground">{formatDuration(windowStats.seconds)}</p>
-          <p className="text-xs text-muted-foreground">Total Time</p>
-        </div>
+      {/* Status tiles — each one filters the lists below to exactly what it counts. */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {statusTiles.map(tile => {
+          const on = statusFilter === tile.key;
+          return (
+            <button
+              key={tile.key}
+              onClick={() => pickStatus(tile.key)}
+              data-test={`my-work-tile-${tile.key}`}
+              aria-pressed={on}
+              className={`rounded-lg border p-4 text-center transition-colors ${
+                on
+                  ? 'border-primary bg-primary/10 ring-1 ring-primary/30'
+                  : 'border-border bg-card hover:border-primary/40 hover:bg-accent/40'
+              }`}
+            >
+              <p className={`text-2xl font-bold ${on ? 'text-primary' : 'text-card-foreground'}`}>{tile.value}</p>
+              <p className="text-xs font-medium text-foreground">{tile.label}</p>
+              <p className="mt-0.5 text-[10px] text-muted-foreground">{on ? 'Tap to clear' : tile.hint}</p>
+            </button>
+          );
+        })}
       </div>
+
+      {statusFilter && (
+        <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
+          <p className="flex-1 text-xs text-muted-foreground">
+            Showing only{' '}
+            <b className="text-foreground">{statusTiles.find(t => t.key === statusFilter)?.label}</b> work.
+          </p>
+          <button onClick={() => setStatusFilter(null)} data-test="my-work-clear-status"
+            className="rounded-md border border-border px-2 py-1 text-[11px] font-medium text-foreground hover:bg-accent">
+            Show all
+          </button>
+        </div>
+      )}
 
       {/* Active Work */}
       {filteredActive.length > 0 && (

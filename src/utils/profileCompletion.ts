@@ -18,6 +18,7 @@ import type { EmployeeProfile, KycDocKind } from "@/types/hr";
 export type ProfileStepKey =
   | "fullName"
   | "photo"
+  | "signature"
   | "personalEmail"
   | "dob"
   | "bloodGroup"
@@ -31,7 +32,7 @@ export type ProfileStepKey =
 
 /** How the prompt should ask for it. */
 export type ProfileStepKind =
-  | "name" | "photo" | "text" | "email" | "date" | "textarea" | "emergency" | "upload";
+  | "name" | "photo" | "signature" | "text" | "email" | "date" | "textarea" | "emergency" | "upload";
 
 /**
  * Splitting a stored name into the two boxes the prompt shows.
@@ -198,6 +199,21 @@ export const PROFILE_STEPS: ProfileStep[] = [
     kind: "upload",
     docKind: "aadhaar",
     has: (p) => hasDoc(p, "aadhaar"),
+  },
+  /**
+   * Last on purpose, and asked for as a photograph rather than a finger-drawn scribble.
+   *
+   * It goes on appointment letters, confirmations and relieving letters, where it may one day be
+   * held next to the signature on someone's bank mandate — and a signature drawn on a phone screen
+   * resembles that about as much as handwriting with a stick. Asking for the real one, on paper,
+   * is the difference between a document that stands up and one that only looks like it does.
+   */
+  {
+    key: "signature",
+    label: "Your signature",
+    hint: "Sign on a plain sheet of paper, take a clear photo or screenshot of it, and upload that here. It goes on the letters the company issues you.",
+    kind: "signature",
+    has: (p) => !!p.signatureUrl,
   },
 ];
 

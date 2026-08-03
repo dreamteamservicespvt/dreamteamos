@@ -6,15 +6,23 @@
  * member of staff: the customer renders this same component from a public page with no account, and
  * a second, "simpler" client version would be the thing that quietly rots while the staff one gets
  * fixed. Who you are arrives as a prop; everything else is identical.
+ *
+ * ── Two sides, always ─────────────────────────────────────────────────────────────────────────
+ * Bubbles are placed by SIDE — the client on one, the whole team on the other — not by who is
+ * reading. Placing them by sender put the client's messages and the member's messages on the same
+ * side of a leader's screen, because neither was the leader's own, and a conversation where both
+ * voices stack up on one edge is unreadable. Whoever on the team wrote it is named on the bubble
+ * instead, which is the part that actually needed saying.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Send, Paperclip, Mic, Square, SmilePlus, X, Play, Pause, FileText, Download,
-  Loader2, Trash2, Reply, Lock, Phone, Video as VideoIcon,
+  Loader2, Reply, Lock, Phone, Video as VideoIcon,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { uploadToCloudinary } from "@/services/cloudinary";
+import { CLIENT_SENDER_ID } from "@/types/orderChat";
 import type { OrderChatIdentity, OrderChatMessage, OrderChatMessageType } from "@/types/orderChat";
 
 const EMOJI_LIST = [
@@ -50,6 +58,14 @@ function secs(n: number): string {
   return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, "0")}`;
 }
 
+/** What kind of thing this file is, from the browser's own idea of it. */
+function kindOf(file: File): OrderChatMessageType {
+  if (file.type.startsWith("image/")) return "image";
+  if (file.type.startsWith("video/")) return "video";
+  if (file.type.startsWith("audio/")) return "voice";
+  return "file";
+}
+
 export interface OrderChatPanelProps {
   identity: OrderChatIdentity;
   messages: OrderChatMessage[];
@@ -68,7 +84,6 @@ export interface OrderChatPanelProps {
     duration?: number;
     replyTo?: { id: string; text: string; senderId: string } | null;
   }) => Promise<void> | void;
-  onDelete?: (messageId: string) => void;
   /** Rendered by the page above the messages — the header is page-specific, the chat is not. */
   header?: React.ReactNode;
   /** Empty-state copy, which differs for the client and the team. */
@@ -77,16 +92,17 @@ export interface OrderChatPanelProps {
 
 export default function OrderChatPanel({
   identity, messages, loading, locked, canSend = true, sending,
-  lockedNote, onSend, onDelete, header, emptyHint,
+  lockedNote, onSend, header, emptyHint,
 }: OrderChatPanelProps) {
   const [text, setText] = useState("");
   const [showEmojis, setShowEmojis] = useState(false);
   const [replyTo, setReplyTo] = useState<OrderChatMessage | null>(null);
-  const [pendingFile, setPendingFile] = useState<{ file: File; type: OrderChatMessageType } | null>(null);
+  /** A picked file waiting on its caption and a confirmation. Nothing uploads until Send. */
+  const [pending, setPending] = useState<{ file: File; type: OrderChatMessageType; url: string } | null>(null);
+  const [caption, setCaption] = useState("");
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [menuFor, setMenuFor] = useState<string | null>(null);
 
   const [recording, setRecording] = useState(false);
   const [recordSecs, setRecordSecs] = useState(0);
@@ -102,12 +118,9 @@ export default function OrderChatPanel({
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages.length]);
-  useEffect(() => {
-    if (!menuFor) return;
-    const close = () => setMenuFor(null);
-    document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
-  }, [menuFor]);
+
+  // The preview holds a blob URL; letting it go stops a long conversation leaking one per picture.
+  useEffect(() => () => { if (pending) URL.revokeObjectURL(pending.url); }, [pending]);
 
   const replyPayload = useCallback(() => (
     replyTo
@@ -136,22 +149,30 @@ export default function OrderChatPanel({
       setError(`That file is too big. Please keep it under ${MAX_FILE_MB} MB.`);
       return;
     }
-    const type: OrderChatMessageType = file.type.startsWith("image/") ? "image"
-      : file.type.startsWith("video/") ? "video"
-      : file.type.startsWith("audio/") ? "voice"
-      : "file";
-    setPendingFile({ file, type });
+    setCaption("");
+    setPending({ file, type: kindOf(file), url: URL.createObjectURL(file) });
   };
 
-  const sendPendingFile = async () => {
-    if (!pendingFile) return;
-    const { file, type } = pendingFile;
-    setPendingFile(null);
+  /** Upload the held file and send it as one message, caption included. */
+  const sendPending = async () => {
+    if (!pending) return;
+    const { file, type, url } = pending;
+    const note = caption.trim();
+    setPending(null);
+    setCaption("");
+    URL.revokeObjectURL(url);
     setUploading(true);
     setProgress(0);
     try {
-      const url = await uploadToCloudinary(file, setProgress);
-      await onSend({ type, fileUrl: url, fileName: file.name, fileType: file.type, replyTo: replyPayload() });
+      const uploaded = await uploadToCloudinary(file, setProgress);
+      await onSend({
+        type,
+        fileUrl: uploaded,
+        fileName: file.name,
+        fileType: file.type,
+        text: note,
+        replyTo: replyPayload(),
+      });
       setReplyTo(null);
     } catch {
       setError("That didn't upload. Check your connection and try again.");
@@ -257,12 +278,25 @@ export default function OrderChatPanel({
         ) : (
           <div className="mx-auto flex max-w-3xl flex-col gap-1.5">
             {messages.map((m) => {
-              const mine = m.senderId === identity.senderId;
+              const fromClient = m.senderId === CLIENT_SENDER_ID;
+              // The client sits on one side; everyone on the team sits on the other.
+              const mine = identity.isClient ? fromClient : !fromClient;
+              // Named whenever it is not the reader's own words — which is how a leader can tell
+              // their member's messages from their own, on the same side.
+              const showName = m.senderId !== identity.senderId && !!m.senderName;
               const when = toDate(m.createdAt);
               const day = when ? dayLabel(when) : "";
               const showDay = day && day !== lastDay;
               if (showDay) lastDay = day;
               const deleted = !!m.deletedAt;
+              /**
+               * Text sent WITH an attachment, shown under it.
+               *
+               * Keyed on there being a file, not on the type being "not text": a message written
+               * before the type was recorded has no `type` at all, and treating that as an
+               * attachment printed its words twice, once as the message and once as its own caption.
+               */
+              const hasCaption = !!m.text && !!m.fileUrl;
 
               if (m.type === "system") {
                 return (
@@ -283,18 +317,30 @@ export default function OrderChatPanel({
                       </span>
                     </div>
                   )}
-                  <div className={cn("flex", mine ? "justify-end" : "justify-start")}>
+                  <div className={cn("group flex items-end gap-1", mine ? "justify-end" : "justify-start")}>
+                    {/* Reply, on the outside of the bubble where it cannot cover the message. */}
+                    {!deleted && canSend && mine && (
+                      <button onClick={() => setReplyTo(m)} aria-label="Reply"
+                        className="mb-1 shrink-0 rounded-full p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent group-hover:opacity-100">
+                        <Reply className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+
                     <div
-                      onContextMenu={(e) => { e.preventDefault(); setMenuFor(m.id); }}
                       className={cn(
-                        "group relative max-w-[85%] rounded-2xl px-3 py-2 shadow-sm sm:max-w-[75%]",
+                        "max-w-[85%] rounded-2xl px-2.5 py-1.5 shadow-sm sm:max-w-[70%]",
                         mine
                           ? "rounded-br-sm bg-primary text-primary-foreground"
                           : "rounded-bl-sm border border-border bg-card text-card-foreground",
                       )}
                     >
-                      {!mine && m.senderName && (
-                        <p className="mb-0.5 text-[11px] font-semibold text-primary">{m.senderName}</p>
+                      {showName && (
+                        <p className={cn(
+                          "mb-0.5 text-[11px] font-semibold",
+                          mine ? "text-primary-foreground/80" : "text-primary",
+                        )}>
+                          {m.senderName}
+                        </p>
                       )}
 
                       {m.replyToId && !deleted && (
@@ -308,14 +354,21 @@ export default function OrderChatPanel({
                       )}
 
                       {deleted ? (
-                        <p className="text-sm italic opacity-60">This message was deleted</p>
+                        <p className="px-0.5 py-1 text-sm italic opacity-60">This message was deleted</p>
                       ) : m.type === "image" ? (
-                        <a href={m.fileUrl} target="_blank" rel="noreferrer">
+                        <a href={m.fileUrl} target="_blank" rel="noreferrer" className="block">
                           <img src={m.fileUrl} alt={m.fileName || "Photo"}
-                            className="max-h-72 w-full rounded-lg object-cover" loading="lazy" />
+                            className="max-h-80 w-full rounded-lg object-cover" loading="lazy" />
                         </a>
                       ) : m.type === "video" ? (
-                        <video src={m.fileUrl} controls playsInline className="max-h-72 w-full rounded-lg" />
+                        <video src={m.fileUrl} controls playsInline className="max-h-80 w-full rounded-lg" />
+                      ) : m.type === "voice" && m.fileName ? (
+                        // A shared audio FILE, not a recorded note: it has a name worth showing and
+                        // is long enough that scrubbing matters.
+                        <div className="min-w-[210px] py-1">
+                          <p className="mb-1 truncate text-xs font-medium">{m.fileName}</p>
+                          <audio src={m.fileUrl} controls className="w-full" style={{ height: 34 }} />
+                        </div>
                       ) : m.type === "voice" ? (
                         <button onClick={() => togglePlay(m)}
                           className="flex min-w-[150px] items-center gap-2 py-1 text-left">
@@ -345,7 +398,14 @@ export default function OrderChatPanel({
                       ) : m.type === "emoji" ? (
                         <p className="py-1 text-4xl leading-none">{m.text}</p>
                       ) : (
-                        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{m.text}</p>
+                        <p className="whitespace-pre-wrap break-words px-0.5 py-0.5 text-sm leading-relaxed">{m.text}</p>
+                      )}
+
+                      {/* The caption sent with a photo, video or file. */}
+                      {hasCaption && !deleted && (
+                        <p className="whitespace-pre-wrap break-words px-0.5 pt-1 text-sm leading-relaxed">
+                          {m.text}
+                        </p>
                       )}
 
                       <div className={cn(
@@ -354,48 +414,14 @@ export default function OrderChatPanel({
                       )}>
                         {clock(m.createdAt)}
                       </div>
-
-                      {/* Reply / delete. Kept behind a tap rather than always-on icons, which on a
-                          phone crowd the bubble they are attached to. */}
-                      {!deleted && canSend && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setMenuFor(menuFor === m.id ? null : m.id); }}
-                          className={cn(
-                            "absolute -top-1 rounded-full border border-border bg-card p-1 text-muted-foreground opacity-0 shadow transition-opacity group-hover:opacity-100",
-                            mine ? "-left-2" : "-right-2",
-                            menuFor === m.id && "opacity-100",
-                          )}
-                          aria-label="Message options"
-                        >
-                          <Reply className="h-3 w-3" />
-                        </button>
-                      )}
-
-                      {menuFor === m.id && (
-                        <div
-                          onClick={(e) => e.stopPropagation()}
-                          className={cn(
-                            "absolute top-6 z-20 w-32 overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-lg",
-                            mine ? "right-0" : "left-0",
-                          )}
-                        >
-                          <button
-                            onClick={() => { setReplyTo(m); setMenuFor(null); }}
-                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-accent"
-                          >
-                            <Reply className="h-3.5 w-3.5" /> Reply
-                          </button>
-                          {mine && onDelete && (
-                            <button
-                              onClick={() => { onDelete(m.id); setMenuFor(null); }}
-                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-destructive hover:bg-destructive/10"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" /> Delete
-                            </button>
-                          )}
-                        </div>
-                      )}
                     </div>
+
+                    {!deleted && canSend && !mine && (
+                      <button onClick={() => setReplyTo(m)} aria-label="Reply"
+                        className="mb-1 shrink-0 rounded-full p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent group-hover:opacity-100">
+                        <Reply className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -480,7 +506,7 @@ export default function OrderChatPanel({
                 accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip" />
               <button onClick={() => fileInputRef.current?.click()} disabled={!canSend || uploading}
                 className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
-                aria-label="Attach a file" title="Photo, video, PDF or any file">
+                aria-label="Attach a file" title="Photo, video, audio, PDF or any file">
                 <Paperclip className="h-5 w-5" />
               </button>
               <button onClick={() => setShowEmojis((s) => !s)} disabled={!canSend}
@@ -517,37 +543,55 @@ export default function OrderChatPanel({
         </div>
       )}
 
-      {/* Confirm before an attachment goes out — a mis-picked file in a client chat is awkward. */}
-      {pendingFile && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-          onClick={() => setPendingFile(null)}>
-          <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-4 shadow-xl"
-            onClick={(e) => e.stopPropagation()}>
-            <p className="mb-3 text-sm font-semibold text-foreground">Send this?</p>
-            {pendingFile.type === "image" ? (
-              <img src={URL.createObjectURL(pendingFile.file)} alt=""
-                className="mb-3 max-h-56 w-full rounded-lg object-contain" />
+      {/* ── See it before it goes, and say something about it ─────────────────────────────────── */}
+      {pending && (
+        <div className="fixed inset-0 z-[70] flex flex-col bg-black/90" data-test="order-chat-preview">
+          <div className="flex items-center justify-between px-4 py-3">
+            <button onClick={() => { URL.revokeObjectURL(pending.url); setPending(null); setCaption(""); }}
+              aria-label="Cancel" className="rounded-full p-2 text-white/80 hover:bg-white/10">
+              <X className="h-5 w-5" />
+            </button>
+            <p className="truncate px-3 text-sm text-white/70">{pending.file.name}</p>
+            <span className="w-9" />
+          </div>
+
+          <div className="flex min-h-0 flex-1 items-center justify-center px-4">
+            {pending.type === "image" ? (
+              <img src={pending.url} alt="" className="max-h-full max-w-full rounded-lg object-contain" />
+            ) : pending.type === "video" ? (
+              <video src={pending.url} controls playsInline className="max-h-full max-w-full rounded-lg" />
+            ) : pending.type === "voice" ? (
+              <div className="w-full max-w-sm rounded-xl bg-white/10 p-4 text-center">
+                <p className="mb-3 truncate text-sm text-white">{pending.file.name}</p>
+                <audio src={pending.url} controls className="w-full" />
+              </div>
             ) : (
-              <div className="mb-3 flex items-center gap-2 rounded-lg border border-border bg-muted/40 p-3">
-                <FileText className="h-6 w-6 text-muted-foreground" />
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-foreground">{pendingFile.file.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {(pendingFile.file.size / 1024 / 1024).toFixed(1)} MB
-                  </p>
-                </div>
+              <div className="flex flex-col items-center gap-3 text-center">
+                <FileText className="h-16 w-16 text-white/60" />
+                <p className="max-w-xs truncate text-sm text-white">{pending.file.name}</p>
+                <p className="text-xs text-white/50">
+                  {(pending.file.size / 1024 / 1024).toFixed(1)} MB
+                </p>
               </div>
             )}
-            <div className="flex gap-2">
-              <button onClick={() => setPendingFile(null)}
-                className="flex-1 rounded-lg border border-border py-2 text-sm font-medium text-foreground hover:bg-accent">
-                Cancel
-              </button>
-              <button onClick={sendPendingFile}
-                className="flex-[1.4] rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground hover:opacity-90">
-                Send
-              </button>
-            </div>
+          </div>
+
+          <div className="flex items-end gap-2 bg-black/60 px-3 py-3">
+            <textarea
+              value={caption}
+              onChange={(e) => setCaption(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendPending(); } }}
+              rows={1}
+              autoFocus
+              placeholder="Add a message (optional)"
+              data-test="order-chat-caption"
+              className="max-h-28 min-h-[42px] flex-1 resize-none rounded-2xl border border-white/20 bg-white/10 px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/50 focus:border-white/40"
+            />
+            <button onClick={sendPending} data-test="order-chat-preview-send"
+              className="rounded-full bg-primary p-3 text-primary-foreground transition-opacity hover:opacity-90"
+              aria-label="Send">
+              <Send className="h-5 w-5" />
+            </button>
           </div>
         </div>
       )}

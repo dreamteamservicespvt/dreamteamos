@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { configure, fireEvent, render, screen, within } from "@testing-library/react";
 
 /**
  * A tech member's month is the 10th → 9th cycle their output, targets and salary are all counted
@@ -45,6 +45,9 @@ vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 
 const MyWork = (await import("@/pages/tech-member/MyWork")).default;
 
+// This codebase marks test hooks with `data-test`, as the rest of the suite does.
+configure({ testIdAttribute: "data-test" });
+
 /** "Today" is fixed so the cycle list is deterministic: 28 Jul sits inside 10 Jul – 09 Aug. */
 beforeEach(() => {
   vi.useFakeTimers();
@@ -84,9 +87,34 @@ describe("My Work — the 10th to 9th month filter", () => {
   it("counts the tiles over the same cycle, not over the member's whole career", () => {
     render(<MyWork />);
     selectFilter(/10 Jul – 09 Aug 2026/);
-    expect(tile("Active")).toBe("1");
-    expect(tile("Completed")).toBe("2");
+    // One tile per status, so "completed" no longer swallows "verified" the way a combined
+    // count did — a member can see what is waiting to be signed off separately from what is done.
+    expect(tile("Active")).toBe("0");
+    expect(tile("In Progress")).toBe("1");
+    expect(tile("Changes")).toBe("0");
+    expect(tile("Completed")).toBe("1");
     expect(tile("Verified")).toBe("1");
+  });
+
+  it("filters the list to the tile that was tapped, and back again", () => {
+    render(<MyWork />);
+    selectFilter(/All Days/);
+
+    fireEvent.click(screen.getByTestId("my-work-tile-in_progress"));
+    expect(screen.getByText("Sharma Electronics")).toBeInTheDocument();
+    // The delivered work is a different status, so it is out of the way.
+    expect(screen.queryByText("Bodhan Sweets")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("my-work-clear-status"));
+    expect(screen.getByText("Sharma Electronics")).toBeInTheDocument();
+  });
+
+  it("opens the delivered list when a delivered status is picked, so the filter is not silent", () => {
+    render(<MyWork />);
+    selectFilter(/All Days/);
+    fireEvent.click(screen.getByTestId("my-work-tile-verified"));
+    expect(screen.getByText("Armoor Mobiles")).toBeInTheDocument();
+    expect(screen.queryByText("Bodhan Sweets")).not.toBeInTheDocument();
   });
 
   it("moves to the previous cycle cleanly", () => {
@@ -94,7 +122,8 @@ describe("My Work — the 10th to 9th month filter", () => {
     selectFilter(/10 Jun – 09 Jul 2026/);
     expect(screen.getByText("Completed (2)")).toBeInTheDocument();
     expect(screen.queryByText("Sharma Electronics")).not.toBeInTheDocument();
-    expect(tile("Completed")).toBe("2");
+    expect(tile("Completed")).toBe("1");
+    expect(tile("Verified")).toBe("1");
   });
 
   it("says which period is empty rather than showing a blank page", () => {
@@ -110,6 +139,6 @@ describe("My Work — the 10th to 9th month filter", () => {
     render(<MyWork />);
     selectFilter(/^Today$/);
     expect(screen.getByText("Sharma Electronics")).toBeInTheDocument();
-    expect(tile("Active")).toBe("1");
+    expect(tile("In Progress")).toBe("1");
   });
 });

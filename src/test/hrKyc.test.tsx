@@ -193,8 +193,8 @@ describe("read-only viewer", () => {
 describe("completeness", () => {
   it("says what is still missing rather than only a percentage", () => {
     render(<KycPanel actor={actor} profile={profile({ dob: "2001-04-12", pan: "ABCDE1234F" })} />);
-    // The ten items the daily prompt asks for — one list, so the two screens cannot disagree.
-    expect(screen.getByText(/2 of 12 on file/)).toBeInTheDocument();
+    // The same items the daily prompt asks for — one list, so the two screens cannot disagree.
+    expect(screen.getByText(/2 of 13 on file/)).toBeInTheDocument();
     expect(screen.getByText(/Still needed:/)).toHaveTextContent("Profile photo");
     expect(screen.getByText(/Still needed:/)).toHaveTextContent("Aadhaar number");
     // The number being on file does not mean the card has been uploaded.

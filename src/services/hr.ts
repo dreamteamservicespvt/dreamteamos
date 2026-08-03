@@ -152,6 +152,39 @@ export async function saveEmployeeProfile(
   // a read budget nobody has. So the date of birth alone is mirrored onto the user document, which
   // every screen already loads. Nothing else from the KYC section goes with it.
   if ("dob" in patch) await mirrorDobToUser(uid, patch.dob ?? null);
+  if ("photoUrl" in patch) await mirrorPhotoToUser(uid, patch.photoUrl ?? null);
+}
+
+/**
+ * One face, wherever it was uploaded.
+ *
+ * There are two places to put a photo — My Profile, and the KYC section of the employee record —
+ * and they wrote to two different documents, so a member who set their picture in one place still
+ * appeared blank in the other and had to do it twice. Whichever one is used now updates both:
+ * this mirrors the HR photograph onto the avatar every screen reads, and
+ * `mirrorAvatarToProfile` carries a change made in My Profile back the other way.
+ */
+async function mirrorPhotoToUser(uid: string, url: string | null): Promise<void> {
+  try {
+    await setDoc(doc(db, "users", uid), { avatar: url, updatedAt: serverTimestamp() }, { merge: true });
+  } catch (err) {
+    console.error("[hr] could not mirror the photo to the user record:", err);
+  }
+}
+
+/**
+ * The other direction: a photo set in My Profile lands on the HR record too.
+ *
+ * `updateDoc`, deliberately — it fails when there is no HR record, and that failure is the correct
+ * outcome. Admins have no employment record, and creating an empty one just because they changed
+ * their avatar would put people into HR who do not belong there.
+ */
+export async function mirrorAvatarToProfile(uid: string, url: string | null): Promise<void> {
+  try {
+    await updateDoc(doc(db, COLLECTION, uid), { photoUrl: url, updatedAt: serverTimestamp() });
+  } catch {
+    /* no employment record for this person — nothing to keep in step */
+  }
 }
 
 /** Best-effort: the HR record is the truth, and a failed mirror must not lose a saved profile. */

@@ -25,7 +25,7 @@ import { format } from "date-fns";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertCircle, Camera, Check, CheckCircle2, ClipboardList, Eye, FileText, FileUp, Loader2,
-  RefreshCw, Trash2,
+  PenTool, RefreshCw, Trash2,
 } from "lucide-react";
 import { collection, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import { db } from "@/services/firebase";
@@ -122,6 +122,7 @@ export default function ProfileCompletionPrompt() {
    */
   const profileRef = useRef<EmployeeProfile | null>(null);
   const photoInput = useRef<HTMLInputElement>(null);
+  const signatureInput = useRef<HTMLInputElement>(null);
   const panInput = useRef<HTMLInputElement>(null);
   const aadhaarInput = useRef<HTMLInputElement>(null);
   const inputFor: Record<string, React.RefObject<HTMLInputElement>> = {
@@ -251,14 +252,41 @@ export default function ProfileCompletionPrompt() {
     setUploading("photo");
     try {
       const url = await uploadToCloudinary(file);
-      await Promise.all([
-        saveEmployeeProfile(user.uid, { photoUrl: url }, actor),
-        updateDoc(doc(db, "users", user.uid), { avatar: url, updatedAt: serverTimestamp() }),
-      ]);
+      // One write: saveEmployeeProfile mirrors the photograph onto `users.avatar` itself, so the
+      // face lands on the ID card and in the topbar together (see services/hr.mirrorPhotoToUser).
+      await saveEmployeeProfile(user.uid, { photoUrl: url }, actor);
       setStoreUser({ ...user, avatar: url });
       toast({ title: "Photo saved", description: "It now shows everywhere you appear." });
     } catch {
       toast({ title: "Upload failed", description: "Could not save the photo. Try again.", variant: "destructive" });
+    } finally {
+      setUploading(null);
+    }
+  };
+
+  /**
+   * The signature, photographed off paper.
+   *
+   * Not cropped and not squared: a signature is a wide, short thing, and forcing it through the
+   * avatar cropper would cut the ends off the very name it exists to show.
+   */
+  const handleSignature = async (file?: File) => {
+    if (!file || !user) return;
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Pick an image", description: "Upload a photo or screenshot of your signature.", variant: "destructive" });
+      return;
+    }
+    if (file.size > MAX_BYTES) {
+      toast({ title: "Too large", description: "Please choose an image under 5 MB.", variant: "destructive" });
+      return;
+    }
+    setUploading("signature");
+    try {
+      const url = await uploadToCloudinary(file);
+      await saveEmployeeProfile(user.uid, { signatureUrl: url, signatureUpdatedAt: serverTimestamp() }, actor);
+      toast({ title: "Signature saved", description: "It will be used on the letters the company issues you." });
+    } catch {
+      toast({ title: "Upload failed", description: "Could not save your signature. Try again.", variant: "destructive" });
     } finally {
       setUploading(null);
     }
@@ -498,6 +526,50 @@ export default function ProfileCompletionPrompt() {
                       <input
                         ref={photoInput} type="file" accept="image/*" className="hidden"
                         onChange={(e) => { const f = e.target.files?.[0]; if (f) handlePickPhoto(f); }}
+                      />
+                    </div>
+                  </Row>
+                )}
+
+                {show("signature") && (
+                  <Row step={stepOf("signature")} done={isDone("signature")}>
+                    {/* Said as steps, because "upload your signature" is the one instruction people
+                        answer by scribbling on the screen with a fingertip. */}
+                    <ol className="mb-2 space-y-0.5 rounded-lg border border-border bg-muted/40 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+                      <li>1. Sign your name on a plain white sheet of paper.</li>
+                      <li>2. Take a clear photo of it, or screenshot it.</li>
+                      <li>3. Upload that image here.</li>
+                    </ol>
+                    <div className="flex flex-wrap items-center gap-3">
+                      {profile?.signatureUrl && (
+                        <img
+                          src={profile.signatureUrl}
+                          alt="Your signature"
+                          data-test="prompt-signature-preview"
+                          className="h-14 rounded-lg border border-border bg-white object-contain px-2"
+                        />
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => signatureInput.current?.click()}
+                        disabled={uploading === "signature"}
+                        data-test="prompt-upload-signature"
+                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium text-foreground hover:bg-accent disabled:opacity-50"
+                      >
+                        {uploading === "signature"
+                          ? <Loader2 size={13} className="animate-spin" />
+                          : <PenTool size={13} />}
+                        {uploading === "signature"
+                          ? "Uploading…"
+                          : profile?.signatureUrl ? "Replace signature" : "Upload signature"}
+                      </button>
+                      <input
+                        ref={signatureInput} type="file" accept="image/*" className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          e.target.value = "";
+                          handleSignature(f);
+                        }}
                       />
                     </div>
                   </Row>

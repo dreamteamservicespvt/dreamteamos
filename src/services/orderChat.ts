@@ -344,15 +344,14 @@ export async function sendOrderChatMessage(
   });
 }
 
-/** Soft delete, so the other side sees that something was removed rather than history changing. */
-export async function deleteOrderChatMessage(dbi: Firestore, chatId: string, messageId: string): Promise<void> {
-  await updateDoc(doc(dbi, ORDER_CHATS, chatId, "messages", messageId), {
-    deletedAt: serverTimestamp(),
-    text: "",
-    fileUrl: null,
-    fileName: null,
-  });
-}
+/*
+ * Deleting a message is deliberately not offered.
+ *
+ * This is a record of what a client asked for and what was delivered to them, and both sides refer
+ * back to it — a photo of a shopfront, a change requested on a Tuesday. A delete button turns that
+ * into something either side can quietly edit after the fact. Messages that were soft-deleted
+ * before the button was removed still render as "This message was deleted".
+ */
 
 /** Clears a viewer's badge. */
 export async function markOrderChatRead(dbi: Firestore, chatId: string, viewer: string): Promise<void> {

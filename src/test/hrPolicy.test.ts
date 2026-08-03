@@ -175,7 +175,7 @@ describe("KYC completeness", () => {
     const k = kycCompletion(profile({ photoUrl: "u", dob: "2000-01-01" }));
     expect(k.complete).toBe(false);
     expect(k.done).toBe(2);
-    expect(k.total).toBe(12);
+    expect(k.total).toBe(13);
     expect(k.missing).toContain("PAN number");
     expect(k.missing).toContain("Aadhaar number");
   });
@@ -187,6 +187,7 @@ describe("KYC completeness", () => {
       personalEmail: "a@b.com", bloodGroup: "O+",
       emergencyContact: { name: "A", relation: "Father", phone: "+919999999999" },
       pan: "ABCDE1234F", aadhaar: "111122223333",
+      signatureUrl: "https://cdn/sign.png",
       kycDocuments: [
         { id: "1", kind: "pan", label: "pan.jpg", url: "https://cdn/pan.jpg", uploadedAt: null as never, uploadedByName: "A" },
         { id: "2", kind: "aadhaar", label: "aadhaar.jpg", url: "https://cdn/aadhaar.jpg", uploadedAt: null as never, uploadedByName: "A" },

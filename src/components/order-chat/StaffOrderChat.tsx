@@ -55,7 +55,7 @@ export default function StaffOrderChat({ assignment, memberName, canShare, onClo
     ? { senderId: user.uid, senderName: user.name, isClient: false }
     : null;
 
-  const { room, messages, loading, missing, locked, canSend, sending, send, remove } =
+  const { room, messages, loading, missing, locked, canSend, sending, send } =
     useOrderChat({ chatId, identity });
 
   const callClient = useCallback((type: "voice" | "video") => {
@@ -137,7 +137,6 @@ export default function StaffOrderChat({ assignment, memberName, canShare, onClo
             sending={sending}
             lockedNote="Work delivered — chat closed"
             onSend={send}
-            onDelete={remove}
             emptyHint={
               canShare
                 ? "Share the link with the client to start the conversation."

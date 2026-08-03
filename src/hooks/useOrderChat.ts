@@ -12,8 +12,7 @@ import {
 } from "firebase/firestore";
 import { db as staffDb } from "@/services/firebase";
 import {
-  ORDER_CHATS, sendOrderChatMessage, deleteOrderChatMessage, markOrderChatRead, setOrderChatPresence,
-  messagePreview,
+  ORDER_CHATS, sendOrderChatMessage, markOrderChatRead, setOrderChatPresence, messagePreview,
 } from "@/services/orderChat";
 import { playChatMessageSound } from "@/utils/audio";
 import type { OrderChatDoc, OrderChatIdentity, OrderChatMessage, OrderChatMessageType } from "@/types/orderChat";
@@ -125,12 +124,7 @@ export function useOrderChat({ chatId, identity, dbi = staffDb, onSent }: UseOrd
     }
   }, [chatId, identity, dbi, onSent]);
 
-  const remove = useCallback(async (messageId: string) => {
-    if (!chatId) return;
-    await deleteOrderChatMessage(dbi, chatId, messageId);
-  }, [chatId, dbi]);
-
-  return { room, messages, loading, missing, locked, canSend, sending, send, remove };
+  return { room, messages, loading, missing, locked, canSend, sending, send };
 }
 
 /**

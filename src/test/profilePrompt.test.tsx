@@ -55,6 +55,7 @@ const FULL: Partial<EmployeeProfile> = {
   emergencyContact: { name: "Ravi", relation: "Brother", phone: "+919000000000" },
   pan: "ABCDE1234F",
   aadhaar: "111122223333",
+  signatureUrl: "https://cdn/sign.png",
   kycDocuments: [
     { id: "1", kind: "pan", label: "p.jpg", url: "https://cdn/p.jpg", uploadedAt: null as never, uploadedByName: "A" },
     { id: "2", kind: "aadhaar", label: "a.jpg", url: "https://cdn/a.jpg", uploadedAt: null as never, uploadedByName: "A" },
@@ -131,7 +132,7 @@ describe("what it asks for", () => {
     expect(screen.getByTestId("prompt-step-photo")).toBeInTheDocument();
     expect(screen.getByTestId("prompt-step-pan")).toBeInTheDocument();
     expect(screen.getByTestId("prompt-step-aadhaarCard")).toBeInTheDocument();
-    expect(screen.getByTestId("profile-progress")).toHaveTextContent("3 of 12");
+    expect(screen.getByTestId("profile-progress")).toHaveTextContent("3 of 13");
   });
 
   it("still asks for the card after the number has been typed in", () => {

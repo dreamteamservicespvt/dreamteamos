@@ -1,9 +1,11 @@
 /**
  * Uploading a profile photo.
  *
- * Written straight to `users/{uid}.avatar`, which is the copy every screen in the app already
- * reads — so the picture appears in chat, on calls, in team lists, on the leaderboard and in the
- * topbar the moment it saves, with nothing else to update and no second place to keep in step.
+ * Written to `users/{uid}.avatar`, which is the copy every screen in the app already reads — so the
+ * picture appears in chat, on calls, in team lists, on the leaderboard and in the topbar the moment
+ * it saves. It is mirrored onto the employment record's photograph at the same time, because the
+ * KYC section offers its own upload for the same face and a member should never have to give the
+ * company their photo twice (see services/hr.mirrorAvatarToProfile).
  *
  * The photo is squared off before it is uploaded, not after: every avatar in the app is a circle,
  * so the person who owns the face is the right one to say which square of it is them.
@@ -13,6 +15,7 @@ import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { Camera, Loader2, Trash2 } from "lucide-react";
 import { db } from "@/services/firebase";
 import { uploadToCloudinary } from "@/services/cloudinary";
+import { mirrorAvatarToProfile } from "@/services/hr";
 import { useAuthStore } from "@/store/authStore";
 import { useToast } from "@/hooks/use-toast";
 import MemberAvatar from "@/components/MemberAvatar";
@@ -51,6 +54,8 @@ export default function ProfilePhotoUpload({
 
   const save = async (url: string | null) => {
     await updateDoc(doc(db, "users", uid), { avatar: url, updatedAt: serverTimestamp() });
+    // Best effort, and after the avatar: the employment record is a mirror here, not the truth.
+    await mirrorAvatarToProfile(uid, url);
     syncStore(url);
     onChange?.(url);
   };

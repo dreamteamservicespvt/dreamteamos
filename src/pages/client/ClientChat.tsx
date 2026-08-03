@@ -179,7 +179,7 @@ function Conversation({ chatId }: { chatId: string }) {
 
   const identity = { senderId: CLIENT_SENDER_ID, senderName: sendAs, isClient: true };
 
-  const { room, messages, loading, missing, locked, canSend, sending, send, remove } = useOrderChat({
+  const { room, messages, loading, missing, locked, canSend, sending, send } = useOrderChat({
     chatId,
     dbi,
     identity,
@@ -214,7 +214,6 @@ function Conversation({ chatId }: { chatId: string }) {
         sending={sending}
         lockedNote="Your work has been delivered"
         onSend={send}
-        onDelete={remove}
         emptyHint="Share photos, videos, your logo or any details here. You can also call the team directly."
         header={
           <div className="flex items-center gap-3 border-b border-border bg-card px-3 py-2.5">
