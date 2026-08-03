@@ -135,10 +135,19 @@ export async function downloadAgreementPdf(paperEl: HTMLElement, filename: strin
       const page = document.createElement("div");
       page.className = paperClasses;
       page.style.cssText = [
+        // The paper's OWN inline styles first — above all, its text colour.
+        //
+        // A page shell is a fresh div, so it starts with none of them. The document sets its ink
+        // colour inline (`color: #1e293b`), and every ordinary paragraph inherits rather than
+        // declaring its own; dropped here, those paragraphs fell back to inheriting from <body>,
+        // which in the app's dark theme is near-white. The result was a letter whose headings
+        // printed solid and whose every sentence printed as a ghost — on screen it looked perfect,
+        // because on screen the paragraphs were still inside the real paper.
+        src.style.cssText,
         `width:${PAGE_W}px`, `height:${PAGE_H}px`,
         "overflow:hidden", "box-shadow:none", "color-scheme:light",
         "display:flex", "flex-direction:column",
-      ].join(";");
+      ].filter(Boolean).join(";");
 
       if (letterhead) {
         const head = letterhead.cloneNode(true) as HTMLElement;

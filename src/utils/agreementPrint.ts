@@ -81,6 +81,19 @@ export async function printAgreementElement(paperEl: HTMLElement): Promise<void>
    */
   root.style.cssText = `display:block;position:fixed;left:-20000px;top:0;width:${MEASURE_WIDTH}px;`;
 
+  /**
+   * Pin the document's ink colour and background onto the print root.
+   *
+   * Read off the live element rather than hardcoded, so there is no second copy of the constant to
+   * drift. It matters because the letterhead and foot rule are lifted OUT of the paper below, and
+   * anything lifted out of it stops inheriting from it — in the app's dark theme that means
+   * inheriting near-white text from <body> and printing a page of ghosts.
+   */
+  const live = getComputedStyle(paperEl);
+  root.style.color = live.color;
+  root.style.backgroundColor = "#ffffff";
+  root.style.colorScheme = "light";
+
   const paper = paperEl.cloneNode(true) as HTMLElement;
   paper.classList.remove("max-w-[820px]", "mx-auto", "shadow-sm");
 
@@ -117,7 +130,7 @@ export async function printAgreementElement(paperEl: HTMLElement): Promise<void>
   const footH = runningFoot.offsetHeight + GAP;
 
   // Done measuring: drop the off-screen positioning so the print stylesheet governs the layout.
-  root.style.cssText = "";
+  root.style.cssText = `color:${live.color};background:#ffffff;color-scheme:light;`;
   root.style.setProperty("--print-head-h", `${headH}px`);
   root.style.setProperty("--print-foot-h", `${footH}px`);
 

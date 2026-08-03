@@ -475,6 +475,58 @@ export function internshipSkillsFor(profile: EmployeeProfile): string[] {
 export const isInternship = (profile: EmployeeProfile): boolean =>
   profile.engagementType === "intern";
 
+/** Whole months from one date to another, rounded to the nearest month. Null if either is unusable. */
+export function monthsBetween(from?: string | null, to?: string | null): number | null {
+  const a = parseDate(from);
+  const b = parseDate(to);
+  if (!a || !b) return null;
+  const months = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+  // Round up a part-month so "2 Aug to 2 Nov" reads as 3 months, not 3 months and a rounding note.
+  const withDays = months + (b.getDate() >= a.getDate() ? 0 : -1);
+  return withDays > 0 ? withDays : null;
+}
+
+// ─── Training period ────────────────────────────────────────────────────────
+
+/**
+ * A paid training period at a lower rate, and the salary that follows it.
+ *
+ * The rule that matters, and the reason this is computed in one place: **the annual CTC is built
+ * from the post-training salary only.** Somebody who trains for three months on ₹8,000 and then
+ * earns ₹25,000 has an annual CTC of ₹3,00,000 — not a blended figure they are never actually
+ * paid. A letter shown to a bank has to state a number the payslips will agree with.
+ */
+export interface TrainingTerms {
+  /** True when a training period is configured at all. */
+  applies: boolean;
+  months: number;
+  /** Salary per month during training. */
+  trainingSalary: number | null;
+  /** Salary per month once training is complete — the CTC basis. */
+  fullSalary: number | null;
+  /** `fullSalary × 12`, or null when there is no full salary on record. */
+  annualCtc: number | null;
+  /** The day training ends, derived from the joining date. */
+  endsOn: string | null;
+}
+
+export function trainingTermsFor(profile: EmployeeProfile): TrainingTerms {
+  const months = Number(profile.trainingMonths) || 0;
+  const trainingSalary = typeof profile.trainingSalaryMonthly === "number"
+    ? profile.trainingSalaryMonthly
+    : null;
+  const fullSalary = typeof profile.ctcMonthly === "number" ? profile.ctcMonthly : null;
+  return {
+    // A period with no length, or no rate of its own, is not a training period worth stating.
+    applies: months > 0 && trainingSalary !== null,
+    months,
+    trainingSalary,
+    fullSalary,
+    annualCtc: fullSalary === null ? null : fullSalary * 12,
+    endsOn: months > 0 ? addMonthsIso(profile.joiningDate, months) : null,
+  };
+}
+
 // ─── Who signs for the company ──────────────────────────────────────────────
 
 /**

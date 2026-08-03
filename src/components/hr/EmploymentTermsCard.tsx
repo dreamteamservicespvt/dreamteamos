@@ -111,8 +111,12 @@ export default function EmploymentTermsCard({
         ctcMonthly: form.ctcMonthly ?? null,
         workingHours: form.workingHours?.trim() || null,
         workingDays: form.workingDays?.trim() || null,
+        trainingMonths: form.trainingMonths ?? null,
+        trainingSalaryMonthly: form.trainingSalaryMonthly ?? null,
         internshipEndDate: form.engagementType === "intern" ? (form.internshipEndDate || null) : null,
         internshipFocus: form.engagementType === "intern" ? (form.internshipFocus?.trim() || null) : null,
+        internshipExtendable: form.engagementType === "intern" ? !!form.internshipExtendable : false,
+        internshipNoticeDays: form.engagementType === "intern" ? (form.internshipNoticeDays ?? null) : null,
         // Company terms — only an admin may set these, so an employee's save leaves them untouched.
         ...(isAdmin ? {
           seniorRole: !!form.seniorRole,
@@ -287,6 +291,21 @@ export default function EmploymentTermsCard({
             </div>
           </div>
 
+          {/* A paid training period at a lower rate. Blank means there is none, and the letters
+              read exactly as they did before. */}
+          <Input label="Training period (months)" type="number" min={0} max={24}
+            value={form.trainingMonths ?? ""}
+            data-test="terms-training-months"
+            onChange={(e) => set("trainingMonths", e.target.value === "" ? null : Number(e.target.value))}
+            hint="Leave blank if there is no training period" />
+          <Input
+            label={`${form.engagementType === "intern" ? "Stipend" : "Salary"} during training (₹/month)`}
+            type="number" min={0}
+            value={form.trainingSalaryMonthly ?? ""}
+            data-test="terms-training-salary"
+            onChange={(e) => set("trainingSalaryMonthly", e.target.value === "" ? null : Number(e.target.value))}
+            hint="The annual CTC is built from the salary above, not this one" />
+
           {/* An intern's college needs the end date and the training list in writing, so both are
               asked for here rather than at the point a letter is issued — they are standing facts
               about the engagement, and a letter that had to ask each time would print a different
@@ -297,6 +316,20 @@ export default function EmploymentTermsCard({
                 data-test="terms-internship-end"
                 onChange={(e) => set("internshipEndDate", e.target.value)}
                 hint="Printed on the offer and joining letters the college reads" />
+              <Input label="Early-termination notice (days)" type="number" min={0} max={90}
+                value={form.internshipNoticeDays ?? ""}
+                data-test="terms-internship-notice"
+                onChange={(e) => set("internshipNoticeDays", e.target.value === "" ? null : Number(e.target.value))}
+                hint="Blank leaves the clause off the letter entirely" />
+              <label className="flex items-center gap-2 self-end pb-2 sm:col-span-2">
+                <input type="checkbox" checked={!!form.internshipExtendable}
+                  data-test="terms-internship-extendable"
+                  onChange={(e) => set("internshipExtendable", e.target.checked)}
+                  className="rounded border-border" />
+                <span className="text-xs text-muted-foreground">
+                  The letters may say the internship can be extended on performance
+                </span>
+              </label>
               <Textarea label="What this intern is trained on" rows={3}
                 value={form.internshipFocus || ""}
                 data-test="terms-internship-focus"

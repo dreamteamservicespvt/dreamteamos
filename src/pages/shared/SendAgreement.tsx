@@ -86,6 +86,8 @@ export default function SendAgreement({ embedded }: { embedded?: boolean } = {})
   /** The letter being composed, as opposed to a sent one being viewed. */
   const composerRef = useRef<HTMLDivElement>(null);
   const [composerBusy, setComposerBusy] = useState<"download" | "print" | null>(null);
+  /** Unticked takes a copy with ruled lines, to be signed and stamped by hand. */
+  const [includeMarks, setIncludeMarks] = useState(true);
   const { printing, print } = usePrintDocument(paperRef);
   /** The HR side of this page: who is still missing the letters everyone should hold. */
   const [profiles, setProfiles] = useState<Map<string, EmployeeProfile>>(new Map());
@@ -692,6 +694,16 @@ export default function SendAgreement({ embedded }: { embedded?: boolean } = {})
             {composerBusy === "print" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
             {composerBusy === "print" ? "Preparing…" : "Print"}
           </button>
+          <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={includeMarks}
+              onChange={(e) => setIncludeMarks(e.target.checked)}
+              data-test="include-marks"
+              className="rounded border-border"
+            />
+            Include signature &amp; stamp
+          </label>
           {mode === "individual" && selected && (
             <span className="text-xs text-muted-foreground">Auto-fills: {selected.name}{selected.phone ? ` · ${selected.phone}` : ""}</span>
           )}
@@ -716,6 +728,7 @@ export default function SendAgreement({ embedded }: { embedded?: boolean } = {})
               companySignatories={templateSignatories}
               companyStampUrl={marks.stampUrl}
               companySignedDate={format(new Date(), "yyyy-MM-dd")}
+              blankForSigning={!includeMarks}
             />
           </div>
         )}

@@ -63,6 +63,15 @@ export default function IssueDocumentDialog({
   const [sending, setSending] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [printing, setPrinting] = useState(false);
+  /**
+   * Whether a taken-away copy carries the marks.
+   *
+   * Unticked prints ruled lines instead, for a letter that is going to be signed and stamped by
+   * hand. It changes only what is downloaded or printed — the document that gets ISSUED always
+   * carries the company's signature, because an unsigned letter in somebody's account is not a
+   * letter.
+   */
+  const [includeMarks, setIncludeMarks] = useState(true);
   const paperRef = useRef<HTMLDivElement>(null);
   const logo = useCompanyLogo();
   const { company, assets: marks, officer } = useCompany();
@@ -438,6 +447,16 @@ export default function IssueDocumentDialog({
             {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
             {sending ? "Issuing…" : requiresEmployeeSignature(type) ? "Issue for signature" : "Issue document"}
           </button>
+          <label className="inline-flex cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={includeMarks}
+              onChange={(e) => setIncludeMarks(e.target.checked)}
+              data-test="include-marks"
+              className="rounded border-border"
+            />
+            Include signature &amp; stamp when printing
+          </label>
           {hasSignature && (
             <span className="text-[11px] text-muted-foreground" data-test="signing-as">
               Signed by {signatories.map((s) => `${s.name} · ${s.designation}`).join("  +  ")}
@@ -457,6 +476,7 @@ export default function IssueDocumentDialog({
               companySignatories={signatories}
               companySignedDate={issuedOn}
               companyStampUrl={marks.stampUrl}
+              blankForSigning={!includeMarks}
             />
           </div>
         )}

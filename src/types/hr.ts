@@ -307,7 +307,27 @@ export interface EmployeeProfile {
   joiningDate?: string | null;     // yyyy-MM-dd
   /** 0 means no probation (a short internship, say). Defaults to 3 for full/part-time. */
   probationMonths?: number | null;
+  /**
+   * The salary once training is complete — and the figure the annual CTC is built from.
+   *
+   * Deliberately the *post-training* number rather than an average. Somebody trains for three
+   * months on a lower figure and then earns this; quoting a blended annual sum would state a
+   * salary they are never actually paid, on a letter they will show to a bank.
+   */
   ctcMonthly?: number | null;
+
+  /**
+   * A paid training period at a lower salary, before the real one starts.
+   *
+   * Separate from `probationMonths`, which is an *evaluation* window and drives reviews, the
+   * lifecycle stage and the notice ladder. This is purely about money: how long the trainee rate
+   * applies and what it is. They often run for the same number of months, and they are still two
+   * different facts — an employee can be past training and still on probation.
+   *
+   * Both blank means no training period, and every letter reads exactly as it did before.
+   */
+  trainingMonths?: number | null;
+  trainingSalaryMonthly?: number | null;
   /**
    * Day of the month salary is paid, printed on the appointment letter.
    *
@@ -330,6 +350,15 @@ export interface EmployeeProfile {
    * asks for the dates in writing before granting permission to attend.
    */
   internshipEndDate?: string | null;
+  /**
+   * Whether the letters offer to extend the internship on performance.
+   *
+   * A clause a college reads closely: an internship that can be extended is one whose end date is
+   * not a promise, and they want to know which it is before granting permission.
+   */
+  internshipExtendable?: boolean;
+  /** Written notice, in days, for ending the internship early. Blank means the clause is omitted. */
+  internshipNoticeDays?: number | null;
   /**
    * What this intern will actually be trained on, where it differs from the department default.
    *

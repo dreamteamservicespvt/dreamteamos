@@ -2,7 +2,8 @@ import { format } from "date-fns";
 import { COMPANY_DEFAULTS, resolveCompany, type ResolvedCompany } from "@/utils/company";
 import { formatPhoneDisplay } from "@/utils/phone";
 import {
-  internshipSkillsFor, isInternship, noticePeriodFor, parseDate, probationEndDate,
+  internshipSkillsFor, isInternship, monthsBetween, noticePeriodFor, parseDate, probationEndDate,
+  trainingTermsFor,
 } from "@/utils/hrPolicy";
 import { ENGAGEMENT_LABELS, HR_DOCUMENT_LABELS } from "@/types/hr";
 import type { EmployeeProfile, HrDocumentType, IssuedSignatory } from "@/types/hr";
@@ -110,6 +111,47 @@ export function longDate(iso?: string | null): string {
   const d = parseDate(iso);
   return d ? format(d, "dd MMM yyyy") : "—";
 }
+
+/** `2026-08-01` → `01/08/2026`, for the bracketed date range on an internship duration line. */
+export function shortDate(iso?: string | null): string {
+  const d = parseDate(iso);
+  return d ? format(d, "dd/MM/yyyy") : "—";
+}
+
+/**
+ * The remuneration lines, which change shape entirely when a training period applies.
+ *
+ * Two salaries, stated separately and in order, and the annual CTC built from the second of them.
+ * The last line says so out loud, because the difference between "you will earn ₹3,00,000 a year"
+ * and "you will earn ₹8,000 a month for three months and then ₹25,000" is the whole reason a
+ * trainee's offer letter gets queried.
+ */
+const remunerationLines = (p: EmployeeProfile, intern: boolean): (string | null)[] => {
+  const t = trainingTermsFor(p);
+  const payDay = ordinalDay(p.salaryPayDay);
+  const payable = payDay
+    ? `Payable monthly, on or about the ${payDay} of each month, subject to statutory deductions as applicable.`
+    : "Payable monthly, subject to statutory deductions as applicable.";
+  const noun = intern ? "stipend" : "salary";
+
+  if (!t.applies) {
+    return [
+      intern ? `Monthly stipend: ${rupees(p.ctcMonthly)}` : `Gross monthly salary (CTC): ${rupees(p.ctcMonthly)}`,
+      !intern && t.annualCtc !== null ? `Annual CTC: ${rupees(t.annualCtc)}` : null,
+      payable,
+    ];
+  }
+
+  return [
+    `Training period: ${t.months} month(s) from the date of joining${t.endsOn ? `, ending on ${longDate(t.endsOn)}` : ""}.`,
+    `${intern ? "Stipend" : "Salary"} during the training period: ${rupees(t.trainingSalary)} per month.`,
+    `${intern ? "Stipend" : "Salary"} on successful completion of the training period: ${rupees(t.fullSalary)} per month.`,
+    t.annualCtc !== null ? `Annual CTC (on completion of training): ${rupees(t.annualCtc)}` : null,
+    // Stated explicitly so nobody reads the annual figure as covering the training months.
+    `The annual CTC above is calculated on the post-training monthly ${noun}. The ${noun} payable during the training period is stated separately above and does not form part of it.`,
+    payable,
+  ];
+};
 
 /** `45000` → `₹45,000` in Indian digit grouping. */
 export function rupees(amount?: number | null): string {
@@ -302,8 +344,13 @@ const internshipBlock = (
       ? `The internship concludes on ${longDate(ends)}.`
       : "The internship is for a fixed term, as communicated to you and to your institution.";
 
+  const months = monthsBetween(p.joiningDate, ends);
   return [
     "This is a structured, supervised internship. You will be trained on the job and given real work under guidance, rather than being left to observe.",
+    // The line a college copies onto its own form, in the shape they ask for it.
+    months && p.joiningDate && ends
+      ? `Duration: ${months} Month(s) (Effective from ${shortDate(p.joiningDate)} to ${shortDate(ends)})`
+      : null,
     duration,
     p.reportingToName
       ? `You will be mentored and supervised by ${p.reportingToName}, who will review your work and your progress through the internship.`
@@ -319,6 +366,14 @@ const internshipBlock = (
     opts.certificate
       ? "On successful completion — satisfactory attendance, conduct and work — the company will issue an Internship Completion Certificate and, on request, an experience letter stating the period served and the work carried out."
       : "On successful completion the company will issue an Internship Completion Certificate stating the period served and the work carried out.",
+    // Both clauses are conditions of the placement, so a college weighing it sees them beside the
+    // dates rather than buried in a termination section further down.
+    p.internshipExtendable
+      ? "Extension: The internship may be extended based on the intern's performance and the company's requirements. Any extension will be confirmed in writing."
+      : null,
+    (p.internshipNoticeDays ?? 0) > 0
+      ? `Early termination: Either party may terminate the internship by giving ${p.internshipNoticeDays} days' written notice.`
+      : null,
     "This letter may be submitted to your college, university or institution for their records and for the grant of permission to undertake this internship. The company has no objection to it being forwarded for that purpose, and will respond to a reasonable verification request from your institution.",
   ];
 };
@@ -331,7 +386,7 @@ function offerLetter(i: BuildDocumentInput): string {
   const intern = isInternship(p);
   const probationEnds = probationEndDate(p);
   return compose([
-    ...letterHead(i, "Offer of Employment", {
+    ...letterHead(i, intern ? "Internship Offer Letter" : "Offer of Employment", {
       ref: extras?.offerLetterNumber,
       address: extras?.candidateAddress,
       subject: subjectWithRole(intern ? "Offer of Internship" : "Offer of Employment", p),
@@ -352,15 +407,8 @@ function offerLetter(i: BuildDocumentInput): string {
       { title: "Work Location", lines: [value(p.workLocation)] },
       { title: "Date of Joining", lines: [`You are expected to join on ${longDate(p.joiningDate)}.`] },
       {
-        title: isInternship(p) ? "Stipend" : "Remuneration",
-        lines: [
-          isInternship(p)
-            ? `Monthly stipend: ${rupees(p.ctcMonthly)}`
-            : `Gross monthly salary (CTC): ${rupees(p.ctcMonthly)}`,
-          ordinalDay(p.salaryPayDay)
-            ? `Payable monthly, on or about the ${ordinalDay(p.salaryPayDay)} of each month, subject to statutory deductions as applicable.`
-            : "Payable monthly, subject to statutory deductions as applicable.",
-        ],
+        title: intern ? "Stipend" : "Remuneration",
+        lines: remunerationLines(p, intern),
       },
       {
         title: "Probation",
@@ -447,9 +495,8 @@ function appointmentLetter(i: BuildDocumentInput): string {
       {
         title: intern ? "Stipend" : "Remuneration",
         lines: [
-          intern
-            ? `Monthly stipend: ${rupees(p.ctcMonthly)}, payable monthly${ordinalDay(p.salaryPayDay) ? ` on or about the ${ordinalDay(p.salaryPayDay)} of each month` : ""}.`
-            : `Gross monthly salary (CTC): ${rupees(p.ctcMonthly)}, payable monthly${ordinalDay(p.salaryPayDay) ? ` on or about the ${ordinalDay(p.salaryPayDay)} of each month` : ""}. Revisions, if any, are at the discretion of the company and will be communicated in writing.`,
+          ...remunerationLines(p, intern),
+          intern ? null : "Revisions, if any, are at the discretion of the company and will be communicated in writing.",
           "Payment is made by bank transfer. You are required to hold a bank account in your own name and to provide its details, together with your PAN, before your first payment is processed.",
           "Statutory deductions — income tax deducted at source (TDS), and Provident Fund and ESI where applicable — will be made as required by law.",
         ],

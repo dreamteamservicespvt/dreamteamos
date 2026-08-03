@@ -193,6 +193,58 @@ describe("the training list", () => {
   });
 });
 
+describe("the duration line a college copies onto its own form", () => {
+  it("gives the months and both dates in the shape they ask for", () => {
+    expect(letter("offer_letter", intern()))
+      .toContain("Duration: 3 Month(s) (Effective from 02/08/2026 to 02/11/2026)");
+  });
+
+  it("is titled as an internship offer letter, not an offer of employment", () => {
+    const text = letter("offer_letter", intern());
+    expect(text.split("\n")[0]).toBe("INTERNSHIP OFFER LETTER");
+    expect(text).not.toMatch(/^OFFER OF EMPLOYMENT$/m);
+  });
+
+  it("keeps the employment title for a normal hire", () => {
+    expect(letter("offer_letter", employee()).split("\n")[0]).toBe("OFFER OF EMPLOYMENT");
+  });
+
+  it("is left off entirely when the dates cannot make one", () => {
+    expect(letter("offer_letter", intern({ internshipEndDate: null }))).not.toContain("Duration:");
+  });
+});
+
+describe("the two optional clauses", () => {
+  it("offers an extension when the engagement allows it", () => {
+    const text = letter("offer_letter", intern({ internshipExtendable: true }));
+    expect(text).toContain("may be extended based on the intern's performance and the company's requirements");
+  });
+
+  it("states the early-termination notice", () => {
+    expect(letter("offer_letter", intern({ internshipNoticeDays: 7 })))
+      .toContain("terminate the internship by giving 7 days' written notice");
+  });
+
+  it("honours a different notice period", () => {
+    expect(letter("offer_letter", intern({ internshipNoticeDays: 15 })))
+      .toContain("giving 15 days' written notice");
+  });
+
+  it("omits each clause when it is turned off, rather than printing an empty one", () => {
+    const text = letter("offer_letter", intern({ internshipExtendable: false, internshipNoticeDays: null }));
+    expect(text).not.toMatch(/may be extended/);
+    expect(text).not.toMatch(/written notice/);
+    // The rest of the internship block survives.
+    expect(text).toMatch(/structured, supervised internship/);
+  });
+
+  it("keeps both clauses off a normal employee's letter", () => {
+    const text = letter("offer_letter", employee({ internshipExtendable: true, internshipNoticeDays: 7 }));
+    expect(text).not.toMatch(/may be extended based on the intern/);
+    expect(text).not.toMatch(/terminate the internship/);
+  });
+});
+
 describe("an internship with no end date recorded", () => {
   it("still reads sensibly rather than printing a dash", () => {
     const text = letter("offer_letter", intern({ internshipEndDate: null }));

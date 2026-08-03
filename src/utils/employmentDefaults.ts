@@ -23,6 +23,9 @@ export const EMPLOYMENT_DEFAULTS = {
   endTime: "7:00 PM",
   fromDay: "Monday",
   toDay: "Saturday",
+  /** The two internship clauses a college expects to see, and the notice they usually carry. */
+  internshipNoticeDays: 7,
+  internshipExtendable: true,
 } as const;
 
 // ─── Working hours ──────────────────────────────────────────────────────────
@@ -131,6 +134,17 @@ export function applyEmploymentDefaults(
     }
     if (isBlank(filled.workingDays)) {
       filled.workingDays = formatDays(EMPLOYMENT_DEFAULTS.fromDay, EMPLOYMENT_DEFAULTS.toDay);
+    }
+  }
+
+  // The two clauses a college looks for. Offered by default because an internship letter without
+  // them prompts a question; the admin can still turn either off.
+  if (engagement === "intern") {
+    if (filled.internshipExtendable === undefined) {
+      filled.internshipExtendable = EMPLOYMENT_DEFAULTS.internshipExtendable;
+    }
+    if (filled.internshipNoticeDays === undefined || filled.internshipNoticeDays === null) {
+      filled.internshipNoticeDays = EMPLOYMENT_DEFAULTS.internshipNoticeDays;
     }
   }
   return filled;

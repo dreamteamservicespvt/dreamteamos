@@ -68,6 +68,15 @@ export interface AgreementViewData {
    * Omit it and the single `companySignatureUrl` above is used, exactly as before.
    */
   companySignatories?: CompanySignatory[];
+  /**
+   * Render a copy meant to be signed by hand: no signature images, no seal, and no
+   * "Awaiting signature" note where they would have been — just ruled lines.
+   *
+   * The note is right on screen, where it tells an employee the document is still open. It is
+   * wrong on a sheet of paper being carried to somebody for a wet signature, where it reads as
+   * part of the letter.
+   */
+  blankForSigning?: boolean;
 }
 
 export interface CompanySignatory {
@@ -279,7 +288,9 @@ const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function Agr
             const isCompany = side === "company";
             // Which of the company's signatories this particular line belongs to.
             const officer = isCompany ? signatories[companyLineOrder.get(idx) ?? 0] : undefined;
-            const imageUrl = isCompany ? (officer?.signatureUrl ?? null)
+            // A blank-for-signing copy carries no marks at all, on either side.
+            const imageUrl = data.blankForSigning ? null
+              : isCompany ? (officer?.signatureUrl ?? null)
               : side === "employee" ? data.signatureUrl
               : null;
             const name = isCompany
@@ -293,7 +304,9 @@ const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function Agr
 
             // The seal is pressed once, on the first company signature — a letter stamped twice
             // looks like two letters glued together, not one document signed by two officers.
-            const stamp = isCompany && (companyLineOrder.get(idx) ?? 0) === 0 ? data.companyStampUrl : null;
+            const stamp = !data.blankForSigning && isCompany && (companyLineOrder.get(idx) ?? 0) === 0
+              ? data.companyStampUrl
+              : null;
 
             return (
               <div key={idx} data-pdf="signature" style={{ marginTop: 26, breakInside: "avoid" }}>
@@ -330,7 +343,7 @@ const AgreementView = forwardRef<HTMLDivElement, AgreementViewData>(function Agr
                       />
                     ) : (
                       <span style={{ fontSize: 10.5, color: "#94a3b8", fontStyle: "italic", paddingBottom: 4 }}>
-                        Awaiting signature
+                        {data.blankForSigning ? "" : "Awaiting signature"}
                       </span>
                     )}
                   </div>

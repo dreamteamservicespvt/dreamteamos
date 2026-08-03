@@ -288,3 +288,25 @@ Added to `letterHead()` in `hrTemplates`, so every one of the 14 types gets them
 - **Real browser, 8/8, 0 console errors**, and the PDF decoded page by page: marking rendered bold, subject naming the role, `Yours sincerely,` above the signature, the reference block still a table, correct ordering, all 14 types carrying the conventions with no `undefined`/`NaN`, and the page count back to 3 with section 4 moved whole to page 2 rather than crammed onto the foot rule.
 
 **Still not done, deliberately:** a **CTC breakup annexure** (Basic / HRA / allowances / PF / gratuity → gross → CTC), which is the one remaining thing every MNC offer letter has and this one does not. `EmployeeProfile` stores a single `ctcMonthly` and nothing else, so any breakup would be invented figures printed under the company's signature. It needs the salary-structure percentages from the user before it can be built honestly.
+
+## Session — 2026-08-04b (Ghosted exports, training periods, blank-signature copies)
+
+**THE bug of this session, and the one most likely to come back.** Downloaded and printed letters rendered every heading solid and every ordinary sentence faded almost to the paper. Cause: `AgreementView` sets the document's ink colour as an **inline style on the paper element**, and plain paragraphs *inherit* it rather than declaring their own. `agreementPdf.newPage()` built each page shell as a fresh `div` carrying the paper's **className only** — so those paragraphs fell back to inheriting from `<body>`, which in the app's dark theme computes to `rgb(250,250,250)`. Headings survived because they carry explicit inline colours.
+
+- **Fix in `agreementPdf`:** page shells prepend `src.style.cssText` before their own layout styles.
+- **Fix in `agreementPrint`:** the print root pins `color` read off `getComputedStyle(paperEl)` (not a hardcoded constant), because the letterhead and foot are *lifted out of* the paper and stop inheriting from it.
+- **It looks perfect on screen either way.** Verifying this area means exporting from the **dark** theme and measuring the rendered pixels — `final_test.py` decodes the PDF's embedded JPEGs and asserts that marked pixels (<240) average below 190. Ghosted pages average 200+; healthy ones came out at 97–115. **Do not use ink *density* as the metric** — a signature page is mostly white space and fails a density floor while being perfectly printed.
+
+**Training period.** New profile fields `trainingMonths` + `trainingSalaryMonthly`; `hrPolicy.trainingTermsFor()` is the single place the rule lives. **The annual CTC is `ctcMonthly × 12` — the post-training salary alone, never a blend.** `remunerationLines()` in `hrTemplates` states the period, both salaries separately, the annual CTC, and then says explicitly that the training pay does not form part of it. Both fields are required for it to apply — a length with no rate is not a training period. Deliberately **separate from `probationMonths`**, which is an evaluation window driving reviews/stage/notice: someone can be past training and still on probation.
+
+**Blank-for-signing copies.** `AgreementView` gained `blankForSigning` — suppresses signature images, the seal, and the "Awaiting signature" note (right on screen, wrong on paper someone is about to sign). Exposed as an "Include signature & stamp" checkbox beside Download/Print in `IssueDocumentDialog` and the `SendAgreement` composer. **It only affects what is taken away — an ISSUED document always carries the marks.**
+
+**Internships.** `Duration: 3 Month(s) (Effective from 02/08/2026 to 02/11/2026)` via `monthsBetween()` + `shortDate()`; optional extension and early-termination clauses from `internshipExtendable` / `internshipNoticeDays` (defaulted to true / 7 by `applyEmploymentDefaults`); and the offer letter is titled **INTERNSHIP OFFER LETTER** rather than "Offer of Employment".
+
+**Also:** Download + Print buttons added beside Send for signature in the composer (`composerRef` + `withComposerPaper`).
+
+### How this was verified
+- `npx vitest run` — **1375/1375** (26 new across `trainingPeriod.test.ts` and `internshipLetters.test.ts`). Clean typecheck and build, no new lint errors.
+- **Real browser in the dark theme, 18/18, 0 console errors**, with the exported PDF decoded and its pixels measured: all three pages carry real ink; training period and both salaries stated; annual CTC is the post-training figure; marks toggle on and off; internship title, duration line and both clauses present.
+
+**Still not done:** the CTC *breakup* annexure (Basic / HRA / allowances / PF / gratuity). Needs the company's salary-structure percentages — inventing them would print fabricated figures under the company's signature.
