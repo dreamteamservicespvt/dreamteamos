@@ -9,7 +9,7 @@
  */
 import {
   CheckCircle, XCircle, RotateCcw, Trash2, Layers, ShoppingBag, Pencil, UserPlus, UserMinus,
-  Shuffle, BadgeCheck, Sparkle, AlertTriangle, Undo2,
+  Shuffle, BadgeCheck, Sparkle, AlertTriangle, Undo2, ShieldAlert,
 } from "lucide-react";
 import { formatCurrency } from "@/utils/formatters";
 import type { ActivityAction, ActivityActorRole } from "@/services/activityLog";
@@ -48,6 +48,7 @@ export const ACTIVITY_META: Record<ActivityAction, ActivityMeta> = {
   deleted_orders: { label: "Deleted Orders", icon: Trash2, ...BAD },
   restored_orders: { label: "Restored Orders", icon: Undo2, ...OK },
   cleaned_up_orders: { label: "Cleared Already-Done", icon: Sparkle, ...WARN },
+  purged_orders: { label: "Permanently Deleted", icon: ShieldAlert, ...BAD },
   added_penalty: { label: "Charged for Changes", icon: AlertTriangle, ...BAD },
   removed_penalty: { label: "Removed Charge", icon: Undo2, ...INFO },
 };
@@ -124,6 +125,11 @@ export function describeActivity(log: DescribableLog): string {
     }
     case "cleaned_up_orders":
       return `Cleared ${d.count} order${d.count === 1 ? "" : "s"} as already done by hand`;
+    case "purged_orders": {
+      const names = namesOf(d, 5);
+      // The order documents no longer exist, so this sentence is the only surviving record of them.
+      return `Permanently deleted ${d.count} order${d.count === 1 ? "" : "s"}${names ? ` — ${names}` : ""}`;
+    }
     case "added_penalty":
       return `Charged ${d.clips} ${spaced(d.clipType)} clip${d.clips === 1 ? "" : "s"} (${formatCurrency(d.amount || 0)}) on "${d.businessName || "an order"}"`
         + `${d.reason ? ` — ${d.reason}` : ""}`;

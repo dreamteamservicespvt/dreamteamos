@@ -404,6 +404,9 @@ async function provision(invite: InviteDoc, joiningSignatureUrl: string, passwor
     department: invite.department,
     stage: startingStage(invite.joiningDate, invite.engagementType),
     engagementType: invite.engagementType,
+    // The address that outlives the job — every letter prints it rather than the login, which is
+    // revoked on the last day. Captured when the admin created the invite.
+    personalEmail: invite.personalEmail || null,
     designation: invite.designation,
     workLocation: invite.workLocation,
     reportingToName: invite.reportingToName || null,

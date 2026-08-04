@@ -71,6 +71,15 @@ export interface OnboardingInvite {
   name: string;
   /** Lower-cased. This becomes their login. */
   email: string;
+  /**
+   * The address the employee keeps — their own, not the company's.
+   *
+   * Collected here so it exists from the first document onward. Every letter prints it, because the
+   * login is revoked when someone leaves and that is precisely when a relieving letter, a full and
+   * final settlement or an employment verification has to reach them. Seeded onto the employment
+   * record at completion, where the rest of the lifecycle reads it.
+   */
+  personalEmail?: string | null;
   phone: string;
   address?: string | null;
 

@@ -603,4 +603,13 @@ export interface HrDocument {
   firstViewedAt?: HrTime | null;
   lastDownloadedAt?: HrTime | null;
   downloadCount?: number;
+
+  /**
+   * When the printed contact details on this letter were corrected after issue.
+   *
+   * The only edit ever made to a letter's frozen text, and only on an UNSIGNED one — see
+   * `refreshDocumentEmails`. Recorded because a document that has been altered after issue should
+   * say so, even when the alteration was a correction the employee asked for.
+   */
+  contactRefreshedAt?: HrTime | null;
 }

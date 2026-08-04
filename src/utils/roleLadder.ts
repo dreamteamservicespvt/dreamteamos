@@ -36,9 +36,49 @@ export const TECH_ROLE_LADDER: LadderRole[] = [
   { title: "Senior AI Software Engineer", monthlySalary: 15000, noticeDays: 45, senior: true },
 ];
 
-/** Which ladder applies to a department. Sales has no fixed rungs yet, so it stays free text. */
+/**
+ * The business-development ladder, lowest rung first.
+ *
+ * Same three facts per rung as the technical one — and the same rule that every figure is a
+ * starting point. Picking a rung fills the salary and the notice period in; a sales admin who
+ * hired somebody above or below the band changes them afterwards and the letter prints what was
+ * actually agreed.
+ *
+ * The pay is deliberately NOT part of the title. The picker used to render "AI Software Engineer —
+ * ₹10,000/mo" and that string leaked: it is a label for choosing between rungs, not the person's
+ * designation, and a letter that printed it would say somebody's salary in the space reserved for
+ * their job. The two are shown side by side in the dropdown and stored apart.
+ */
+export const SALES_ROLE_LADDER: LadderRole[] = [
+  { title: "Business Development Associate", monthlySalary: 10000, noticeDays: 15, senior: false },
+  { title: "Business Development Executive", monthlySalary: 15000, noticeDays: 30, senior: false },
+  { title: "Senior Business Development Executive", monthlySalary: 20000, noticeDays: 30, senior: false },
+  { title: "Business Development Manager", monthlySalary: 25000, noticeDays: 45, senior: true },
+  { title: "Senior Business Development Manager", monthlySalary: 30000, noticeDays: 45, senior: true },
+  { title: "Regional Sales Manager", monthlySalary: 40000, noticeDays: 60, senior: true },
+  { title: "Head of Business Development", monthlySalary: 50000, noticeDays: 60, senior: true },
+];
+
+/** Which ladder applies to a department. */
 export function ladderFor(department?: Department | null): LadderRole[] {
-  return department === "tech" ? TECH_ROLE_LADDER : [];
+  if (department === "tech") return TECH_ROLE_LADDER;
+  if (department === "sales") return SALES_ROLE_LADDER;
+  return [];
+}
+
+/**
+ * The department a designation belongs to, worked out from the title itself.
+ *
+ * Needed because `EmployeeProfile.department` is blank on every record written before it existed,
+ * and the letters have to know which ladder a person is on to print the right reporting line and
+ * incentive clause. The title is the one piece of evidence that is always there.
+ */
+export function departmentForTitle(title?: string | null): Department | null {
+  const wanted = (title || "").trim().toLowerCase();
+  if (!wanted) return null;
+  if (TECH_ROLE_LADDER.some((r) => r.title.toLowerCase() === wanted)) return "tech";
+  if (SALES_ROLE_LADDER.some((r) => r.title.toLowerCase() === wanted)) return "sales";
+  return null;
 }
 
 /** The rung a title sits on, or null for a designation that is not on the ladder at all. */
@@ -46,6 +86,19 @@ export function roleByTitle(title?: string | null, department: Department = "tec
   const wanted = (title || "").trim().toLowerCase();
   if (!wanted) return null;
   return ladderFor(department).find((r) => r.title.toLowerCase() === wanted) || null;
+}
+
+/**
+ * The rung a title sits on, whichever ladder it is from.
+ *
+ * The letters need this rather than `roleByTitle`: they are handed a profile whose `department` is
+ * often blank (it postdates most records), and asking the wrong ladder returns null for a title
+ * that is perfectly well placed on the other one.
+ */
+export function roleByTitleAnyLadder(title?: string | null): LadderRole | null {
+  const wanted = (title || "").trim().toLowerCase();
+  if (!wanted) return null;
+  return [...TECH_ROLE_LADDER, ...SALES_ROLE_LADDER].find((r) => r.title.toLowerCase() === wanted) || null;
 }
 
 /**

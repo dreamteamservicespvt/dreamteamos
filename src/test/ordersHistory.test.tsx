@@ -47,7 +47,11 @@ const historyRows = [
 ];
 
 const restoreOrders = vi.fn(async () => 1);
+const purgeOrders = vi.fn(async () => 1);
 const fetchOrderHistory = vi.fn(async () => ({ rows: historyRows, scanned: 3 }));
+
+/** Who is signed in for this render. Swapped per test to check the two keys on the bin. */
+let currentUser: Record<string, unknown> = { uid: "ta1", name: "Srinu", role: "tech_admin", createdBy: "ma1" };
 
 vi.mock("@/services/firebase", () => ({ db: {} }));
 vi.mock("@/hooks/useFirestore", () => ({
@@ -58,8 +62,7 @@ vi.mock("@/hooks/useFirestore", () => ({
   }),
 }));
 vi.mock("@/store/authStore", () => ({
-  useAuthStore: (sel: (s: unknown) => unknown) =>
-    sel({ user: { uid: "ta1", name: "Srinu", role: "tech_admin", createdBy: "ma1" } }),
+  useAuthStore: (sel: (s: unknown) => unknown) => sel({ user: currentUser }),
 }));
 vi.mock("react-router-dom", () => ({ useNavigate: () => vi.fn() }));
 vi.mock("@/services/orders", async (importOriginal) => {
@@ -74,6 +77,7 @@ vi.mock("@/services/orders", async (importOriginal) => {
     revertOrderToUnassigned: vi.fn(),
     removeOrderPenalty: vi.fn(),
     restoreOrders,
+    purgeOrders,
     fetchOrderHistory,
   };
 });
@@ -87,6 +91,7 @@ afterEach(() => {
   cleanup();
   localStorage.clear();
   vi.clearAllMocks();
+  currentUser = { uid: "ta1", name: "Srinu", role: "tech_admin", createdBy: "ma1" };
 });
 configure({ testIdAttribute: "data-test" });
 
@@ -147,5 +152,49 @@ describe("Orders queue — history", () => {
     fireEvent.click(screen.getByTestId("orders-tab-delivered"));
     await waitFor(() => expect(shownBusinesses()).toEqual(["All Done"]));
     expect(screen.queryByTestId("order-restore-one")).toBeNull();
+  });
+});
+
+/**
+ * The bin has two keys.
+ *
+ * Taking a job out of the queue is delivery management and it is reversible, so a team leader may
+ * do it. Erasing the record is neither: the sale behind the order is money, and afterwards the only
+ * trace is one line in Activity History. So the second key is the tech admin's alone.
+ */
+describe("Orders queue — permanent deletion", () => {
+  it("lets the tech admin erase a removed order, and says what that costs", async () => {
+    render(<Orders />);
+    fireEvent.click(screen.getByTestId("orders-tab-removed"));
+    await waitFor(() => expect(screen.getAllByTestId("order-purge-one").length).toBe(2));
+
+    fireEvent.click(screen.getAllByTestId("order-purge-one")[0]);
+    // The dialog has to say the thing that cannot be taken back.
+    expect(document.body.textContent).toContain("Activity History");
+    fireEvent.click(screen.getByTestId("orders-purge-confirm"));
+
+    await waitFor(() => expect(purgeOrders).toHaveBeenCalled());
+    const [purged, actor] = purgeOrders.mock.calls[0] as unknown as [{ id: string }[], { uid: string }];
+    expect(purged.map((o) => o.id)).toEqual(["h_deleted"]);
+    expect(actor.uid).toBe("ta1");
+  });
+
+  it("does not offer it to a team leader, and says why rather than hiding the button", async () => {
+    currentUser = { uid: "tl1", name: "Saiveni", role: "tech_team_leader", createdBy: "ta1" };
+    render(<Orders />);
+    fireEvent.click(screen.getByTestId("orders-tab-removed"));
+    await waitFor(() => expect(screen.getAllByTestId("order-restore-one").length).toBe(2));
+
+    // A leader can still put an order back — the reversible half of the bin stays theirs.
+    expect(screen.queryByTestId("order-purge-one")).toBeNull();
+    // An absent button reads as a broken page; the page says whose key it is instead.
+    expect(screen.getByTestId("orders-purge-denied").textContent).toContain("Only the tech admin");
+  });
+
+  it("never offers it on the Delivered tab", async () => {
+    render(<Orders />);
+    fireEvent.click(screen.getByTestId("orders-tab-delivered"));
+    await waitFor(() => expect(shownBusinesses()).toEqual(["All Done"]));
+    expect(screen.queryByTestId("order-purge-one")).toBeNull();
   });
 });

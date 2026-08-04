@@ -27,6 +27,7 @@ import {
   canIssue, departmentOfRole, requiresEmployeeSignature, resolveSignatories, SIGNATORY_TITLE,
 } from "@/utils/hrPolicy";
 import { buildDocument, withReference } from "@/utils/hrTemplates";
+import { documentSubject } from "@/utils/documentSubject";
 import {
   AGREEMENT_TOKENS, fillTokens, tokenizeForBulk, tokensUsed, untokenizedPersonalValues,
 } from "@/utils/agreementTokens";
@@ -309,7 +310,7 @@ export default function SendAgreement({ embedded }: { embedded?: boolean } = {})
 
     const built = buildDocument({
       type,
-      subject: { name: base.name, phone: base.phone, email: base.email, employeeId: base.employeeId },
+      subject: documentSubject(base, profile),
       profile,
       signatory: signatories,
       issuedOn: format(new Date(), "yyyy-MM-dd"),

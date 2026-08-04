@@ -1,4 +1,5 @@
 import { buildDocument } from "@/utils/hrTemplates";
+import { SALES_INCENTIVE_PERCENT } from "@/utils/salesIncentive";
 import { todayIso, probationEndDate } from "@/utils/hrPolicy";
 import type { EmployeeProfile } from "@/types/hr";
 import type { FrozenLetter, InviteDraft } from "@/types/onboarding";
@@ -72,8 +73,15 @@ export function buildInviteLetters(input: BuildLettersInput): { offer: FrozenLet
   const subject = {
     name: draft.name,
     phone: draft.phone,
-    email: draft.email,
+    // The personal address, falling back to the login only when the admin left it blank — the same
+    // rule `documentSubject` applies everywhere else letters are written.
+    email: draft.personalEmail?.trim() || draft.email,
     employeeId: draft.employeeId || null,
+    // Sales hires are offered an incentive and a target from day one, so both belong on the offer
+    // letter they sign rather than being explained to them afterwards.
+    incentivePercent: draft.department === "sales" ? SALES_INCENTIVE_PERCENT : null,
+    dailyTarget: draft.dailyTarget ?? null,
+    monthlyTarget: draft.monthlyTarget ?? null,
   };
 
   const offer = buildDocument({

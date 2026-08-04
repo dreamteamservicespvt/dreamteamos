@@ -50,6 +50,7 @@ export default function OnboardInviteModal({
   const [role, setRole] = useState<UserRole>(roleOptions[0].value);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [personalEmail, setPersonalEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
 
@@ -113,6 +114,7 @@ export default function OnboardInviteModal({
     role,
     name: name.trim(),
     email: email.trim().toLowerCase(),
+    personalEmail: personalEmail.trim().toLowerCase() || null,
     phone: phone.trim() ? normalizePhone(phone.trim()) : "",
     address: address.trim() || null,
     designation: jobTitle.trim(),
@@ -135,7 +137,7 @@ export default function OnboardInviteModal({
     noticeDays,
     offerLetterNumber: offerLetterNumber.trim(),
   }), [
-    department, role, name, email, phone, address, jobTitle, engagementType, employeeId,
+    department, role, name, email, personalEmail, phone, address, jobTitle, engagementType, employeeId,
     reportingToName, workLocation, joiningDate, probationMonths, offerValidUntil, ctcMonthly,
     salaryPayDay, isSales, target, dailyTarget, monthlyTarget, googleDriveBaseUrl, workingDays,
     workingHours, shiftDetails, noticeDays, offerLetterNumber,
@@ -293,6 +295,13 @@ export default function OnboardInviteModal({
         <Input label="Full name *" value={name} onChange={(e) => setName(e.target.value)} data-test="invite-name" />
         <Input label="Email *" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
           hint="This becomes their login" data-test="invite-email" />
+        {/* Asked for here so it exists before the first letter is written. Every document prints
+            this rather than the login, which stops working the day the person leaves — the day a
+            relieving letter or an employment verification most needs to reach them. */}
+        <Input label="Personal email" type="email" value={personalEmail}
+          onChange={(e) => setPersonalEmail(e.target.value)}
+          placeholder="their own address" data-test="invite-personal-email"
+          hint="Printed on every letter. Not the login — this one outlives the job." />
         <Input label="Phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
           placeholder="9876543210" hint="+91 added automatically" data-test="invite-phone" />
         <Textarea label="Address (optional)" rows={2} value={address} onChange={(e) => setAddress(e.target.value)}

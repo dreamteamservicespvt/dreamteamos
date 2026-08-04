@@ -31,6 +31,12 @@ export type ActivityAction =
   | "deleted_orders"
   | "restored_orders"
   | "cleaned_up_orders"
+  /**
+   * The order document itself was erased. Unlike every other action here, this one has no record
+   * left to point at afterwards — the log line IS the record, which is why it carries the business
+   * name and amount rather than just an id.
+   */
+  | "purged_orders"
   // ── tech: money charged against an order ──
   | "added_penalty"
   | "removed_penalty";
@@ -44,7 +50,8 @@ export type ActivityActorRole =
 
 export const TECH_ACTIVITY_ACTIONS: ActivityAction[] = [
   "assigned_work", "unassigned_work", "reassigned_work", "verified_work",
-  "deleted_orders", "restored_orders", "cleaned_up_orders", "added_penalty", "removed_penalty",
+  "deleted_orders", "restored_orders", "cleaned_up_orders", "purged_orders",
+  "added_penalty", "removed_penalty",
 ];
 
 export interface ActivityLogEntry {

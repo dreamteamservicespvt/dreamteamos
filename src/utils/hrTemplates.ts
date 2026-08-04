@@ -3,9 +3,10 @@ import { COMPANY_DEFAULTS, resolveCompany, type ResolvedCompany } from "@/utils/
 import { formatPhoneDisplay } from "@/utils/phone";
 import { DAY_OPTIONS, matchDayOption, splitRange } from "@/utils/employmentDefaults";
 import {
-  internshipSkillsFor, isInternship, monthsBetween, noticePeriodFor, parseDate, probationEndDate,
-  trainingTermsFor,
+  defaultProbationMonths, internshipSkillsFor, isInternship, monthsBetween, noticePeriodFor, parseDate,
+  probationEndDate, trainingTermsFor,
 } from "@/utils/hrPolicy";
+import { departmentForTitle } from "@/utils/roleLadder";
 import {
   ENGAGEMENT_LABELS, HR_DOCUMENT_LABELS, WORK_ARRANGEMENT_LABELS, WORK_ARRANGEMENT_TERMS,
 } from "@/types/hr";
@@ -33,8 +34,27 @@ import type { EmployeeProfile, HrDocumentType, IssuedSignatory } from "@/types/h
 export interface DocumentSubject {
   name: string;
   phone?: string | null;
+  /**
+   * The employee's PERSONAL email — the one they keep.
+   *
+   * Not their login. A company account is issued by the company and revoked when they leave, so an
+   * offer letter, a relieving letter or an experience certificate addressed to it is addressed
+   * somewhere the person cannot read the day they most need to: at an exit, or when a future
+   * employer writes to verify it. The address on the paperwork has to outlive the employment.
+   */
   email?: string | null;
   employeeId?: string | null;
+  /**
+   * Sales facts, printed only on a sales employee's letters.
+   *
+   * They live on the user record rather than the employment profile — commission rate follows the
+   * earnings option payroll actually settles against, and the targets are the ones the leaderboard
+   * measures. Read from there rather than re-typed, so a letter can never promise an incentive the
+   * payroll does not pay.
+   */
+  incentivePercent?: number | null;
+  dailyTarget?: number | null;
+  monthlyTarget?: number | null;
 }
 
 export interface DocumentSignatory {
@@ -155,6 +175,76 @@ const remunerationLines = (p: EmployeeProfile, intern: boolean): (string | null)
     payable,
   ];
 };
+
+/**
+ * The probation this employee is actually on.
+ *
+ * `?? defaultProbationMonths` rather than `?? 0`, and the difference is the whole point: an
+ * employment record that has never had the field set is not a record of somebody hired with no
+ * probation, it is a record nobody filled in. Reading it as zero printed "Full-Time (Permanent)"
+ * on the offer letter — the job confirmed from day one, the opposite of what was agreed — on
+ * seventeen of twenty live records. An explicit 0 still means 0, because `??` only catches
+ * null and undefined, so an intern or a deliberate no-probation hire is unaffected.
+ *
+ * The same rule `probationEndDate` has always used, applied to the letters as well.
+ */
+function probationMonthsOf(p: EmployeeProfile): number {
+  return p.probationMonths ?? defaultProbationMonths(p.engagementType);
+}
+
+/**
+ * Is this a sales employee? The record's own department, falling back to the designation.
+ *
+ * The fallback earns its place: `department` is supplied by whoever loaded the profile and is blank
+ * on anything written before it existed, while the title is always there. A letter that decides
+ * "not sales" on missing data prints a tech reporting line on a Business Development Manager's
+ * offer, which is the exact failure this is here to stop.
+ */
+function isSalesEmployee(p: EmployeeProfile): boolean {
+  return p.department === "sales" || departmentForTitle(p.designation) === "sales";
+}
+
+/**
+ * The incentive and target block — a sales letter's most important clause after the salary.
+ *
+ * Sales pay is two numbers, and only one of them was ever on the letter. Someone joining on
+ * ₹15,000 plus 5% of what they sell has been told less than half of what they earn, and the target
+ * they are measured against — the thing their confirmation actually turns on — appeared nowhere at
+ * all. Both are read from the live record rather than typed, so the letter cannot promise a rate
+ * payroll does not settle or a target the leaderboard does not measure.
+ *
+ * Returns null for a non-sales employee, and for a sales employee whose incentive has not been set.
+ */
+function salesIncentiveSection(i: BuildDocumentInput): Section {
+  const { profile: p, subject } = i;
+  if (!isSalesEmployee(p)) return null;
+
+  const pct = subject.incentivePercent;
+  const hasPct = typeof pct === "number" && Number.isFinite(pct) && pct > 0;
+  const daily = subject.dailyTarget;
+  const monthly = subject.monthlyTarget;
+  const hasTarget = (typeof daily === "number" && daily > 0) || (typeof monthly === "number" && monthly > 0);
+  if (!hasPct && !hasTarget) return null;
+
+  return {
+    title: "Sales Incentive and Targets",
+    lines: [
+      hasPct
+        ? `Sales Incentive: ${pct}% of the value of every sale made by you and verified by the company, over and above your gross monthly salary.`
+        : null,
+      hasPct
+        ? "The incentive is calculated on verified sales only, and is paid with the salary for the pay cycle in which the sale is verified. A sale that is later reversed, refunded or found to be duplicated is excluded."
+        : null,
+      hasTarget ? "" : null,
+      hasTarget ? "You will be measured against the following sales targets:" : null,
+      typeof daily === "number" && daily > 0 ? `  Daily target: ${rupees(daily)}` : null,
+      typeof monthly === "number" && monthly > 0 ? `  Monthly target: ${rupees(monthly)}` : null,
+      hasTarget
+        ? "Targets are reviewed periodically and may be revised in writing to reflect your role, your territory and the company's requirements. Consistent achievement of target is a factor in confirmation, revision and promotion."
+        : null,
+    ],
+  };
+}
 
 /** `45000` → `₹45,000` in Indian digit grouping. */
 export function rupees(amount?: number | null): string {
@@ -278,7 +368,7 @@ const engagementLabel = (p: EmployeeProfile): string =>
  * also the line a bank or a landlord looks for.
  */
 function employmentTypeLine(p: EmployeeProfile): string {
-  const months = p.probationMonths ?? 0;
+  const months = probationMonthsOf(p);
   switch (p.engagementType) {
     case "full_time":
       return months > 0
@@ -360,7 +450,7 @@ export function engagementDescription(p: EmployeeProfile): string {
   const base = engagementLabel(p);
   if (p.engagementType === "intern") return "Intern (fixed-term internship engagement)";
   if (p.engagementType === "contract") return "Contract";
-  const months = p.probationMonths ?? 0;
+  const months = probationMonthsOf(p);
   return months > 0 ? `${base} Employee (${months}-month probation)` : `${base} Employee`;
 }
 
@@ -491,7 +581,7 @@ function offerLetter(i: BuildDocumentInput): string {
           // Spelled out rather than left as a category: "Full-Time" alone does not say whether the
           // job is permanent, and that is the first thing a candidate — or their bank — asks.
           `Employment Type: ${employmentTypeLine(p)}`,
-          `Department: ${p.department === "tech" ? "Technical" : "Sales"}`,
+          `Department: ${isSalesEmployee(p) ? "Sales" : "Technical"}`,
           p.reportingToName ? `Reporting to: ${p.reportingToName}` : null,
         ],
       },
@@ -501,11 +591,13 @@ function offerLetter(i: BuildDocumentInput): string {
         title: intern ? "Stipend" : "Remuneration",
         lines: remunerationLines(p, intern),
       },
+      // Immediately after the salary, because for a sales employee it IS part of the salary.
+      salesIncentiveSection(i),
       {
         title: "Probation",
         lines: [
-          (p.probationMonths ?? 0) > 0
-            ? `You will be on probation for ${p.probationMonths} month(s) from your date of joining${probationEnds ? `, ending on ${longDate(probationEnds)}` : ""}. Your performance will be evaluated during this period, and your employment will be confirmed in writing on successful completion.`
+          probationMonthsOf(p) > 0
+            ? `You will be on probation for ${probationMonthsOf(p)} month(s) from your date of joining${probationEnds ? `, ending on ${longDate(probationEnds)}` : ""}. Your performance will be evaluated during this period, and your employment will be confirmed in writing on successful completion.`
             : isInternship(p)
               ? "This is a fixed-term internship and does not carry a probation period."
               : "This engagement does not carry a probation period.",
@@ -657,11 +749,13 @@ function appointmentLetter(i: BuildDocumentInput): string {
           "Statutory deductions — income tax deducted at source (TDS), and Provident Fund and ESI where applicable — will be made as required by law.",
         ],
       },
+      // The other half of a sales employee's pay, and the targets confirmation turns on.
+      salesIncentiveSection(i),
       {
         title: "Probation and Confirmation",
         lines: [
-          (p.probationMonths ?? 0) > 0
-            ? `You will be on probation for ${p.probationMonths} month(s) from the date of joining${probationEnds ? `, ending on ${longDate(probationEnds)}` : ""}. During probation your attendance, discipline, work quality, productivity, communication, teamwork, learning ability and adherence to company policies will be evaluated. The company may, where the circumstances warrant it, extend the probation period by written notice stating the extension and the expectations to be met. Your employment will be confirmed in writing on successful completion of probation.`
+          probationMonthsOf(p) > 0
+            ? `You will be on probation for ${probationMonthsOf(p)} month(s) from the date of joining${probationEnds ? `, ending on ${longDate(probationEnds)}` : ""}. During probation your attendance, discipline, work quality, productivity, communication, teamwork, learning ability and adherence to company policies will be evaluated. The company may, where the circumstances warrant it, extend the probation period by written notice stating the extension and the expectations to be met. Your employment will be confirmed in writing on successful completion of probation.`
             : intern
               ? "This is a fixed-term internship and does not carry a probation period. Your attendance, conduct and work will be reviewed through the internship by your supervisor."
               : "This engagement does not carry a probation period.",

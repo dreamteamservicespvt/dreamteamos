@@ -23,6 +23,7 @@ import { useToast } from "@/hooks/use-toast";
 import { allocateReference, issueDocument } from "@/services/hrDocuments";
 import { useCompany } from "@/hooks/useCompany";
 import { buildDocument } from "@/utils/hrTemplates";
+import { documentSubject } from "@/utils/documentSubject";
 import { canIssue, requiresEmployeeSignature, resolveSignatories, todayIso, SIGNATORY_TITLE } from "@/utils/hrPolicy";
 import { HR_DOCUMENT_LABELS } from "@/types/hr";
 import type { AppUser } from "@/types";
@@ -83,12 +84,7 @@ export default function MissingLettersPanel({ rows, signatory, settingsPath, mem
           const referenceNo = await allocateReference(company.name, type, issuedOn);
           const built = buildDocument({
             type,
-            subject: {
-              name: row.member.name,
-              phone: row.member.phone,
-              email: row.member.email,
-              employeeId: row.member.employeeId,
-            },
+            subject: documentSubject(row.member, row.profile),
             profile: row.profile,
             signatory: signatories,
             issuedOn,

@@ -275,6 +275,52 @@ export async function clearOfferDates(uid: string): Promise<void> {
 }
 
 /**
+ * Keep the offer dates on the employment record in step with the offer letter itself.
+ *
+ * "Offer issued on" and "Offer accepted on" are one fact each, written in two places: a pair of
+ * date fields an admin types, and a letter that gets issued and signed. Nothing joined them, so the
+ * two drifted — the lifecycle strip read one, the Documents tab showed the other, and neither could
+ * be told apart when they disagreed. The letter is the stronger evidence (a signature has a date on
+ * it), so issuing writes the issue date and signing writes the acceptance date.
+ *
+ * Written straight rather than through `saveEmploymentTerms`, for the same reason `clearOfferDates`
+ * is: a letter being signed is not an admin re-agreeing anybody's terms, and it must not stamp
+ * "confirmed by" across the record.
+ *
+ * `onlyIfUnset` is what makes this safe to run on every issue. An admin who typed a deliberate
+ * offer date keeps it; a record that had nothing gets the letter's. Never throws — a document must
+ * not fail to issue because a mirrored date could not be written.
+ */
+export async function syncOfferDates(
+  uid: string,
+  dates: { offerIssuedOn?: string | null; offerAcceptedOn?: string | null },
+  options: { onlyIfUnset?: boolean } = {},
+): Promise<void> {
+  if (!uid) return;
+  try {
+    const ref = doc(db, COLLECTION, uid);
+    const patch: Record<string, unknown> = {};
+
+    if (options.onlyIfUnset) {
+      const snap = await getDoc(ref);
+      const current = (snap.exists() ? snap.data() : {}) as Record<string, unknown>;
+      for (const [key, val] of Object.entries(dates)) {
+        if (val && !current[key]) patch[key] = val;
+      }
+    } else {
+      for (const [key, val] of Object.entries(dates)) {
+        if (val) patch[key] = val;
+      }
+    }
+
+    if (Object.keys(patch).length === 0) return;
+    await setDoc(ref, { ...patch, updatedAt: serverTimestamp() }, { merge: true });
+  } catch (err) {
+    console.error("[hr] syncOfferDates failed:", err);
+  }
+}
+
+/**
  * The admin agrees the terms the employee entered are what the company actually offered.
  *
  * Separate from editing them, because confirming without changing anything is the common case —

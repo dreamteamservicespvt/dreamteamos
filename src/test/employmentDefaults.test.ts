@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  DAY_OPTIONS, EMPLOYMENT_DEFAULTS, TIME_OPTIONS, applyEmploymentDefaults, formatDays, formatHours,
-  matchDayOption, matchTimeOption, splitRange,
+  DAY_OPTIONS, DEFAULT_PROBATION_MONTHS, EMPLOYMENT_DEFAULTS, TIME_OPTIONS, applyEmploymentDefaults,
+  formatDays, formatHours, matchDayOption, matchTimeOption, splitRange,
 } from "@/utils/employmentDefaults";
 import type { EmployeeProfile } from "@/types/hr";
 
@@ -56,8 +56,39 @@ describe("filling the blanks", () => {
       reportingToName: "Asha Rao",
       workingHours: "9:00 AM – 6:00 PM",
       workingDays: "Monday – Friday",
+      probationMonths: 6,
     } as Partial<EmployeeProfile>;
     expect(applyEmploymentDefaults(existing, "full_time")).toEqual(existing);
+  });
+
+  it("puts a permanent hire on the standard probation rather than none", () => {
+    // Left unset, the letter printed "Full-Time (Permanent)" — the job confirmed from day one,
+    // which is the opposite of what was agreed. Seventeen of twenty live records were in that state.
+    expect(applyEmploymentDefaults({}, "full_time").probationMonths).toBe(DEFAULT_PROBATION_MONTHS);
+    expect(applyEmploymentDefaults({}, "part_time").probationMonths).toBe(DEFAULT_PROBATION_MONTHS);
+  });
+
+  it("gives an intern or a contractor no probation — a fixed term is not an evaluation", () => {
+    expect(applyEmploymentDefaults({}, "intern").probationMonths).toBe(0);
+    expect(applyEmploymentDefaults({}, "contract").probationMonths).toBe(0);
+  });
+
+  it("respects a deliberate zero", () => {
+    // `??` and not `||`: somebody hired with no probation has decided something, and a default
+    // that overrules an explicit 0 would put a probation on their letter nobody agreed to.
+    expect(applyEmploymentDefaults({ probationMonths: 0 }, "full_time").probationMonths).toBe(0);
+  });
+
+  it("starts a sales hire on a sales title reporting to a sales officer", () => {
+    // The single global default made every sales employee a "Senior AI Software Engineer"'s report,
+    // which is nonsense on a letter and is exactly what went out before this existed.
+    const sales = applyEmploymentDefaults({}, "full_time", "sales");
+    expect(sales.designation).toBe("Business Development Associate");
+    expect(sales.reportingToName).toBe("Chief Business Officer (CBO)");
+
+    const tech = applyEmploymentDefaults({}, "full_time", "tech");
+    expect(tech.designation).toBe(EMPLOYMENT_DEFAULTS.designation);
+    expect(tech.reportingToName).toBe(EMPLOYMENT_DEFAULTS.reportingToName);
   });
 
   it("treats whitespace as empty, so a stray space does not defeat the default", () => {

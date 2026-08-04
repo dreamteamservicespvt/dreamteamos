@@ -3,7 +3,7 @@ import {
   serverTimestamp, updateDoc, where,
 } from "firebase/firestore";
 import { db } from "@/services/firebase";
-import { clearOfferDates } from "@/services/hr";
+import { clearOfferDates, syncOfferDates } from "@/services/hr";
 import { sendNotification } from "@/services/notifications";
 import { formatDocumentRef, refCounterDocId, refYear } from "@/utils/documentRef";
 import { HR_DOCUMENT_LABELS } from "@/types/hr";
@@ -80,6 +80,17 @@ export async function issueDocument({ document, memberLink }: IssueDocumentInput
     status: "issued" as const,
     createdAt: serverTimestamp(),
   });
+
+  /**
+   * The offer letter's date IS "Offer issued on". Mirrored onto the employment record so the
+   * lifecycle strip and the Documents tab stop being able to disagree about whether an offer went
+   * out. `onlyIfUnset` so an admin who typed a deliberate date keeps it — the letter fills a blank,
+   * it does not overrule a decision.
+   */
+  if (document.type === "offer_letter" && document.memberId) {
+    await syncOfferDates(document.memberId, { offerIssuedOn: document.issuedOn }, { onlyIfUnset: true });
+  }
+
   try {
     await sendNotification({
       userId: document.memberId,
@@ -111,6 +122,18 @@ export async function signDocument(
     signedDate: data.signedDate,
     signedAt: serverTimestamp(),
   });
+
+  /**
+   * Signing the offer letter IS the acceptance, so the record says so.
+   *
+   * This one is not `onlyIfUnset`: a signature carries its own date and is the strongest evidence
+   * there is of when an offer was accepted. It overwrites a typed guess, which is the right way
+   * round — an admin's estimate should give way to the day the employee actually signed.
+   */
+  if (document.type === "offer_letter" && document.memberId) {
+    await syncOfferDates(document.memberId, { offerAcceptedOn: data.signedDate });
+  }
+
   try {
     await sendNotification({
       userId: document.issuedById,
@@ -177,6 +200,62 @@ export async function deleteDocument(document: HrDocument | string): Promise<voi
     // The letter is gone either way. A record left with a stale date is a smaller wrong than a
     // delete that appears to have failed.
   }
+}
+
+/**
+ * Swap the `Email:` line in a letter's frozen text.
+ *
+ * A letter is stored as text, not as fields, so correcting the address on one already issued means
+ * a targeted rewrite of that one line. Deliberately narrow: it matches only the header line
+ * `letterHead` writes, anchored to the start of a line, and leaves an email that appears anywhere
+ * else in the body — inside a clause, in an address block — completely alone.
+ *
+ * Returns null when there is nothing to change, so callers can skip the write.
+ */
+export function replaceLetterEmail(bodyText: string, email: string): string | null {
+  const line = `Email: ${email}`;
+  const pattern = /^Email:.*$/m;
+  if (!pattern.test(bodyText)) return null;
+  const next = bodyText.replace(pattern, line);
+  return next === bodyText ? null : next;
+}
+
+/** A document whose printed email is out of date and which may still be corrected. */
+export function documentsNeedingEmailRefresh(docs: HrDocument[], email: string): HrDocument[] {
+  if (!email.trim()) return [];
+  return docs.filter((d) => {
+    // Signed documents are records of what was actually signed. Rewriting one would change a page
+    // somebody put their name to, so they are reported to the admin and never edited.
+    if (d.status !== "issued") return false;
+    return !!d.bodyText && replaceLetterEmail(d.bodyText, email) !== null;
+  });
+}
+
+/** Signed documents still carrying a different address — shown to the admin, never rewritten. */
+export function signedDocumentsWithStaleEmail(docs: HrDocument[], email: string): HrDocument[] {
+  if (!email.trim()) return [];
+  return docs.filter(
+    (d) => d.status === "signed" && !!d.bodyText && replaceLetterEmail(d.bodyText, email) !== null,
+  );
+}
+
+/**
+ * Correct the printed email on every unsigned document this employee holds.
+ *
+ * The existing team's letters were all written before the personal email was collected, so they
+ * carry the login address — an account the employee loses on their last day, which is one of the
+ * two occasions the letter is most needed. Returns how many were rewritten.
+ */
+export async function refreshDocumentEmails(docs: HrDocument[], email: string): Promise<number> {
+  const targets = documentsNeedingEmailRefresh(docs, email);
+  let n = 0;
+  for (const d of targets) {
+    const bodyText = replaceLetterEmail(d.bodyText || "", email);
+    if (!bodyText || !d.id) continue;
+    await updateDoc(doc(db, COLLECTION, d.id), { bodyText, contactRefreshedAt: serverTimestamp() });
+    n += 1;
+  }
+  return n;
 }
 
 /**

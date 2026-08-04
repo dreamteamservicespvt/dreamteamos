@@ -11,8 +11,8 @@ import type { EmployeeProfile, EngagementType, WorkArrangement } from "@/types/h
 import { rupees } from "@/utils/hrTemplates";
 import { ladderFor, roleByTitle, termsForRole } from "@/utils/roleLadder";
 import {
-  DAY_OPTIONS, EMPLOYMENT_DEFAULTS, TIME_OPTIONS, applyEmploymentDefaults, formatDays, formatHours,
-  matchDayOption, matchTimeOption, splitRange,
+  DAY_OPTIONS, DEFAULT_PROBATION_MONTHS, EMPLOYMENT_DEFAULTS, TIME_OPTIONS, applyEmploymentDefaults,
+  defaultsForDepartment, formatDays, formatHours, matchDayOption, matchTimeOption, splitRange,
 } from "@/utils/employmentDefaults";
 import { Field, Input, SectionCard, Select, Textarea } from "./ui";
 
@@ -93,7 +93,7 @@ export default function EmploymentTermsCard({
    * that nobody chose.
    */
   const startEdit = () => {
-    setForm(applyEmploymentDefaults(profile, profile.engagementType) as EmployeeProfile);
+    setForm(applyEmploymentDefaults(profile, profile.engagementType, profile.department) as EmployeeProfile);
     setEditing(true);
   };
 
@@ -126,6 +126,8 @@ export default function EmploymentTermsCard({
   }, [form.ctcMonthly, form.trainingMonths, form.trainingSalaryMonthly, isAdmin]);
 
   const ladder = ladderFor(profile.department);
+  /** The title and manager this department starts from — sales does not report to a tech lead. */
+  const deptDefaults = defaultsForDepartment(profile.department);
 
   /**
    * Take a rung, or step off the ladder onto a custom title.
@@ -145,7 +147,7 @@ export default function EmploymentTermsCard({
   const handleEngagement = (engagement: EngagementType) =>
     setForm((prev) => ({
       ...prev,
-      ...applyEmploymentDefaults(prev, engagement),
+      ...applyEmploymentDefaults(prev, engagement, profile.department),
       engagementType: engagement,
       // Switching to an internship or a contract should not leave a stale 3-month probation behind.
       probationMonths: prev.probationMonths === null || prev.probationMonths === undefined
@@ -298,23 +300,34 @@ export default function EmploymentTermsCard({
                 data-test="terms-role"
                 onChange={(e) => pickRole(e.target.value)}
               >
+                {/*
+                  The title alone. The pay used to be appended here — "AI Software Engineer —
+                  ₹10,000/mo" — and that string is a label for choosing between rungs, not anybody's
+                  designation. Read at a glance it says the salary IS part of the job title, which is
+                  the one place it must not appear. What the rung pays is shown as a hint below, and
+                  lands in the salary field where it belongs.
+                */}
                 {ladder.map((r) => (
-                  <option key={r.title} value={r.title}>
-                    {r.title} — {rupees(r.monthlySalary)}/mo
-                  </option>
+                  <option key={r.title} value={r.title}>{r.title}</option>
                 ))}
                 <option value={OTHER_ROLE}>Other / custom…</option>
               </Select>
-              {!roleByTitle(form.designation, profile.department) && (
+              {roleByTitle(form.designation, profile.department) ? (
+                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground" data-test="terms-role-hint">
+                  Standard for this role: <b className="text-foreground">{rupees(roleByTitle(form.designation, profile.department)!.monthlySalary)}/month</b>
+                  {" · "}<b className="text-foreground">{roleByTitle(form.designation, profile.department)!.noticeDays} days</b> notice.
+                  Both are filled in below — change either if this hire was agreed on different terms.
+                </p>
+              ) : (
                 <Input
-                  label="" value={form.designation || ""} placeholder={EMPLOYMENT_DEFAULTS.designation}
+                  label="" value={form.designation || ""} placeholder={deptDefaults.designation}
                   onChange={(e) => set("designation", e.target.value)}
                   data-test="terms-designation" className="mt-1.5"
                 />
               )}
             </div>
           ) : (
-            <Input label="Designation" value={form.designation || ""} placeholder={EMPLOYMENT_DEFAULTS.designation}
+            <Input label="Designation" value={form.designation || ""} placeholder={deptDefaults.designation}
               onChange={(e) => set("designation", e.target.value)} data-test="terms-designation" />
           )}
           {/* Where the work is done from. A term in its own right: the location says which office
@@ -343,13 +356,14 @@ export default function EmploymentTermsCard({
             hint={WORK_LOCATION_HINT[form.workArrangement || "onsite"]}
             className="sm:col-span-2"
           />
-          <Input label="Reporting to" value={form.reportingToName || ""} placeholder={EMPLOYMENT_DEFAULTS.reportingToName}
-            onChange={(e) => set("reportingToName", e.target.value)} />
+          <Input label="Reporting to" value={form.reportingToName || ""} placeholder={deptDefaults.reportingToName}
+            onChange={(e) => set("reportingToName", e.target.value)} data-test="terms-reporting-to" />
           <Input label="Joining date" type="date" value={form.joiningDate || ""}
             onChange={(e) => set("joiningDate", e.target.value)} data-test="terms-joining" />
           <Input label="Probation (months)" type="number" min={0} max={12} value={form.probationMonths ?? ""}
             onChange={(e) => set("probationMonths", e.target.value === "" ? null : Number(e.target.value))}
-            hint="0 for an internship or a contract" />
+            data-test="terms-probation"
+            hint={`Defaults to ${DEFAULT_PROBATION_MONTHS} months. 0 for an internship or a contract.`} />
           <Input label="Gross monthly salary (₹)" type="number" min={0} value={form.ctcMonthly ?? ""}
             onChange={(e) => set("ctcMonthly", e.target.value === "" ? null : Number(e.target.value))}
             data-test="terms-salary"

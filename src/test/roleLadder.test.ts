@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  TECH_ROLE_LADDER, ladderFor, nextRole, roleByTitle, termsForRole,
+  SALES_ROLE_LADDER, TECH_ROLE_LADDER, departmentForTitle, ladderFor, nextRole, roleByTitle,
+  roleByTitleAnyLadder, termsForRole,
 } from "@/utils/roleLadder";
 
 /**
@@ -36,10 +37,54 @@ describe("the rungs", () => {
       .toEqual(["Senior AI Software Engineer"]);
   });
 
-  it("applies to the tech side only — sales has no fixed rungs yet", () => {
+  it("has a ladder per department, and none for a record without one", () => {
     expect(ladderFor("tech")).toHaveLength(3);
-    expect(ladderFor("sales")).toEqual([]);
+    expect(ladderFor("sales")).toHaveLength(7);
     expect(ladderFor(null)).toEqual([]);
+  });
+
+  it("pays the sales rungs what the company actually pays them", () => {
+    expect(SALES_ROLE_LADDER.map((r) => [r.title, r.monthlySalary])).toEqual([
+      ["Business Development Associate", 10000],
+      ["Business Development Executive", 15000],
+      ["Senior Business Development Executive", 20000],
+      ["Business Development Manager", 25000],
+      ["Senior Business Development Manager", 30000],
+      ["Regional Sales Manager", 40000],
+      ["Head of Business Development", 50000],
+    ]);
+  });
+
+  it("keeps the pay out of the title", () => {
+    // The picker used to render "AI Software Engineer — ₹10,000/mo", and that string is a label for
+    // choosing between rungs, not anybody's designation. A title carrying a salary would print the
+    // salary in the one place on a letter it must never appear.
+    for (const role of [...SALES_ROLE_LADDER, ...TECH_ROLE_LADDER]) {
+      expect(role.title).not.toMatch(/[₹\d]/);
+    }
+  });
+
+  it("scales notice with seniority, and flags the senior rungs", () => {
+    const bySales = Object.fromEntries(SALES_ROLE_LADDER.map((r) => [r.title, r]));
+    expect(bySales["Business Development Associate"].noticeDays).toBe(15);
+    expect(bySales["Head of Business Development"].noticeDays).toBe(60);
+    expect(bySales["Business Development Executive"].senior).toBe(false);
+    expect(bySales["Business Development Manager"].senior).toBe(true);
+  });
+
+  it("places a title on the right ladder even when the record has no department", () => {
+    // Every profile written before `department` existed has none, and the letters have to know
+    // which side somebody is on to print the right reporting line and incentive clause.
+    expect(departmentForTitle("Regional Sales Manager")).toBe("sales");
+    expect(departmentForTitle("Senior AI Software Engineer")).toBe("tech");
+    expect(departmentForTitle("Video Editor")).toBeNull();
+    expect(departmentForTitle(null)).toBeNull();
+  });
+
+  it("finds a rung without being told which ladder to look on", () => {
+    expect(roleByTitleAnyLadder("Business Development Manager")?.monthlySalary).toBe(25000);
+    expect(roleByTitleAnyLadder("AI Software Engineer")?.monthlySalary).toBe(10000);
+    expect(roleByTitleAnyLadder("Chief Vibes Officer")).toBeNull();
   });
 });
 

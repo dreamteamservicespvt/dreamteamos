@@ -12,7 +12,18 @@
  *
  * Pure — no React, no Firestore, so the fill rule is testable on its own.
  */
-import type { EmployeeProfile, EngagementType } from "@/types/hr";
+import type { Department, EmployeeProfile, EngagementType } from "@/types/hr";
+
+/**
+ * The evaluation window a permanent hire starts on.
+ *
+ * Three months is the standing policy, and leaving it blank was quietly costing something: an
+ * employment record with no probation prints "Full-Time (Permanent)" on the offer letter, which
+ * says the job is confirmed from day one — the opposite of what was agreed. Seventeen of twenty
+ * records were in exactly that state. It is a default, not a rule: an admin can set 0 (no
+ * probation), or any other number, and nothing here overrules them.
+ */
+export const DEFAULT_PROBATION_MONTHS = 3;
 
 /** The standing arrangement for a full-time hire. */
 export const EMPLOYMENT_DEFAULTS = {
@@ -34,6 +45,30 @@ export const EMPLOYMENT_DEFAULTS = {
   internshipNoticeDays: 7,
   internshipExtendable: true,
 } as const;
+
+/**
+ * The parts of the standing arrangement that differ by department.
+ *
+ * Everything else — the address, the hours, the working days — is the same building and the same
+ * shift for everybody. The title and the manager are not: a sales hire reporting to the "Senior AI
+ * Software Engineer" is nonsense on a letter, and it is exactly what the single global default
+ * produced for every sales employee.
+ */
+export const DEPARTMENT_DEFAULTS: Record<Department, { designation: string; reportingToName: string }> = {
+  tech: {
+    designation: EMPLOYMENT_DEFAULTS.designation,
+    reportingToName: EMPLOYMENT_DEFAULTS.reportingToName,
+  },
+  sales: {
+    designation: "Business Development Associate",
+    reportingToName: "Chief Business Officer (CBO)",
+  },
+};
+
+/** The department defaults, falling back to tech's for a record that has no department yet. */
+export function defaultsForDepartment(department?: Department | null) {
+  return DEPARTMENT_DEFAULTS[department as Department] || DEPARTMENT_DEFAULTS.tech;
+}
 
 // ─── Working hours ──────────────────────────────────────────────────────────
 
@@ -153,16 +188,29 @@ export function isSupersededWorkLocation(value?: string | null): boolean {
 export function applyEmploymentDefaults(
   form: Partial<EmployeeProfile>,
   engagement?: EngagementType,
+  /** Which department's title and manager to fall back on. Tech's, for a record without one. */
+  department?: Department | null,
 ): Partial<EmployeeProfile> {
   const filled: Partial<EmployeeProfile> = { ...form };
   const isBlank = (v?: string | null) => !((v || "").trim());
+  const byDept = defaultsForDepartment(department ?? form.department);
 
-  if (isBlank(filled.designation)) filled.designation = EMPLOYMENT_DEFAULTS.designation;
+  if (isBlank(filled.designation)) filled.designation = byDept.designation;
   // Blank, or still carrying the old city-only default — see `isSupersededWorkLocation`.
   if (isBlank(filled.workLocation) || isSupersededWorkLocation(filled.workLocation)) {
     filled.workLocation = EMPLOYMENT_DEFAULTS.workLocation;
   }
-  if (isBlank(filled.reportingToName)) filled.reportingToName = EMPLOYMENT_DEFAULTS.reportingToName;
+  if (isBlank(filled.reportingToName)) filled.reportingToName = byDept.reportingToName;
+
+  /**
+   * Probation, for the engagements that have one. An intern or a contractor is on a fixed term and
+   * is not being evaluated for confirmation, so they stay at zero and their letters say so.
+   */
+  if (filled.probationMonths === undefined || filled.probationMonths === null) {
+    filled.probationMonths = engagement === "intern" || engagement === "contract"
+      ? 0
+      : DEFAULT_PROBATION_MONTHS;
+  }
 
   // Part-time is the case where "the standard shift" is precisely wrong.
   if (engagement !== "part_time") {

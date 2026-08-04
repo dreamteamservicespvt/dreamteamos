@@ -15,9 +15,15 @@ import { formatCurrency } from "@/utils/formatters";
 import type { AppUser, CommissionSettlement, Lead, SaleDetail } from "@/types";
 
 /** Member commission rate as a whole percent (5 or 10). */
-export function commissionRate(option?: string): number {
-  return option === "incentive_10" ? 10 : 5;
-}
+/**
+ * Re-exported from `utils/salesIncentive`, which holds the rate itself.
+ *
+ * The number moved out to a pure module so the offer letter can state it without pulling Firestore
+ * into document generation. It is re-exported here because everything that settles money already
+ * reads it from this file, and one rate quoted by payroll and a different one printed on the
+ * paperwork is the exact failure worth spending an indirection to prevent.
+ */
+export { SALES_INCENTIVE_PERCENT, commissionRate } from "@/utils/salesIncentive";
 
 function saleItems(lead: Lead): SaleDetail[] {
   return lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);

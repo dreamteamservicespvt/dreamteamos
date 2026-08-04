@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  ClipboardList, Loader2, Search, MessageCircle, UserPlus, Clock, ShoppingBag, CheckCircle2, Sparkles, StickyNote, Hourglass, Sparkle, Trash2, CheckSquare, Square, Undo2, Copy, Check, Pin, Split, AlertTriangle, Layers, X, Archive, RotateCcw, History,
+  ClipboardList, Loader2, Search, MessageCircle, UserPlus, Clock, ShoppingBag, CheckCircle2, Sparkles, StickyNote, Hourglass, Sparkle, Trash2, CheckSquare, Square, Undo2, Copy, Check, Pin, Split, AlertTriangle, Layers, X, Archive, RotateCcw, History, ShieldAlert, Lock,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useFirestoreQuery, useFirestoreCollection } from "@/hooks/useFirestore";
@@ -12,7 +12,7 @@ import { categoryBilling, bulkCategoryLabel, categoryLabel } from "@/utils/servi
 import {
   activeOrdersQuery, notifyDueOrdersOnOpen, findReconcilableOrders, reconcileManualOrders,
   deleteOrders, restoreOrders, revertOrderToUnassigned, fetchOrderHistory, orderExitReason,
-  isRestorableOrder, ORDER_HISTORY_PAGE,
+  isRestorableOrder, purgeOrders, canPurgeOrders, ORDER_HISTORY_PAGE,
 } from "@/services/orders";
 import { verifyAssignments } from "@/services/workVerify";
 import { requirementSummary } from "@/utils/adRequirement";
@@ -417,6 +417,38 @@ export default function Orders() {
   };
 
   /**
+   * Clear removed orders out for good — the second key on a two-stage bin.
+   *
+   * A team leader can take a job out of the queue (it lands in Removed, and can be put back). Only
+   * the tech admin can erase it from there, because that step is not reversible and the sale behind
+   * the order is money: afterwards the single line in Activity History is the entire record.
+   */
+  const canPurge = canPurgeOrders(user?.role);
+  const [purging, setPurging] = useState(false);
+  const [confirmPurge, setConfirmPurge] = useState(false);
+  const purgeable = useMemo(
+    () => (canPurge ? selectedOrders.filter((o) => orderExitReason(o) !== "delivered") : []),
+    [canPurge, selectedOrders],
+  );
+  const runPurge = async () => {
+    setPurging(true);
+    try {
+      const n = await purgeOrders(purgeable, user);
+      toast({
+        title: "Permanently deleted",
+        description: `${n} order${n === 1 ? "" : "s"} erased. The only record now is the entry in Activity History.`,
+      });
+      setSelected(new Set());
+      setConfirmPurge(false);
+      await loadHistory(historyLimit);
+    } catch {
+      toast({ title: "Error", description: "Couldn't delete those orders permanently. Try again.", variant: "destructive" });
+    } finally {
+      setPurging(false);
+    }
+  };
+
+  /**
    * Approve delivered work without leaving the queue.
    *
    * The Completed column said "Awaiting verify" and gave nobody anything to click — the actual
@@ -597,10 +629,20 @@ export default function Orders() {
                   <RotateCcw className="w-3.5 h-3.5" /> Put back in the queue ({restorable.length})
                 </button>
               )}
-              {tab !== "delivered" && (
+              {/* On a live tab this moves the order to Removed. On Removed there is nothing left to
+                  move it to, so the only remaining action is the permanent one — and that is the
+                  tech admin's alone. */}
+              {tab !== "delivered" && tab !== "removed" && (
                 <button onClick={() => setConfirmDelete(true)}
                   className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border border-destructive/40 bg-destructive/10 text-xs md:text-sm font-medium text-destructive transition-colors hover:bg-destructive/20">
-                  <Trash2 className="w-3.5 h-3.5" /> Delete selected ({selected.size})
+                  <Trash2 className="w-3.5 h-3.5" /> Remove selected ({selected.size})
+                </button>
+              )}
+              {tab === "removed" && canPurge && purgeable.length > 0 && (
+                <button data-test="orders-purge" onClick={() => setConfirmPurge(true)}
+                  title="Erase these orders from the system. Only Activity History will remember them."
+                  className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border border-destructive bg-destructive/20 text-xs md:text-sm font-semibold text-destructive transition-colors hover:bg-destructive/30">
+                  <ShieldAlert className="w-3.5 h-3.5" /> Delete permanently ({purgeable.length})
                 </button>
               )}
             </>
@@ -672,11 +714,11 @@ export default function Orders() {
             <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-destructive/15">
               <Trash2 className="h-5 w-5 text-destructive" />
             </div>
-            <h3 className="text-center text-lg font-semibold text-foreground">Delete {selected.size} order{selected.size === 1 ? "" : "s"}?</h3>
+            <h3 className="text-center text-lg font-semibold text-foreground">Remove {selected.size} order{selected.size === 1 ? "" : "s"} from the queue?</h3>
             <p className="mt-2 text-center text-sm text-muted-foreground">
-              {tab === "unassigned"
-                ? "These orders will be permanently removed and won't come back — even if the sale is verified again. This can't be undone."
-                : "These orders will be permanently removed and won't come back, even if the sale is verified again. Any work already assigned stays in Work Done & Reports — only the order entry is deleted. This can't be undone."}
+              {selected.size === 1 ? "It moves" : "They move"} to the <strong className="text-foreground">Removed</strong> tab
+              and stop appearing in the queue, even if the sale is verified again. Any work already assigned stays in
+              Work Done &amp; Reports. You can put {selected.size === 1 ? "it" : "them"} back from Removed at any time.
             </p>
             <div className="mt-5 flex items-center gap-2">
               <button onClick={() => setConfirmDelete(false)} disabled={deleting}
@@ -686,7 +728,41 @@ export default function Orders() {
               <button onClick={runDelete} disabled={deleting}
                 className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-destructive px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-destructive/90 disabled:opacity-50">
                 {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                {deleting ? "Deleting…" : `Delete ${selected.size}`}
+                {deleting ? "Removing…" : `Remove ${selected.size}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Permanent deletion — the one action in this pipeline that leaves nothing behind. */}
+      {confirmPurge && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => !purging && setConfirmPurge(false)}>
+          <div className="w-full max-w-md rounded-xl border border-destructive/50 bg-card p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-destructive/20">
+              <ShieldAlert className="h-5 w-5 text-destructive" />
+            </div>
+            <h3 className="text-center text-lg font-semibold text-foreground">
+              Permanently delete {purgeable.length} order{purgeable.length === 1 ? "" : "s"}?
+            </h3>
+            <p className="mt-2 text-center text-sm text-muted-foreground">
+              {purgeable.length === 1 ? "This order is" : "These orders are"} erased from the system.
+              {purgeable.length === 1 ? " It" : " They"} cannot be put back, and will not show in the queue,
+              in Removed, or anywhere else.
+            </p>
+            <p className="mt-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-center text-xs text-muted-foreground">
+              The only remaining record will be one line in <strong className="text-foreground">Activity History</strong>,
+              naming you, the date, and what was deleted. The sale itself is not touched.
+            </p>
+            <div className="mt-5 flex items-center gap-2">
+              <button onClick={() => setConfirmPurge(false)} disabled={purging}
+                className="flex-1 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50">
+                Cancel
+              </button>
+              <button data-test="orders-purge-confirm" onClick={runPurge} disabled={purging}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-destructive px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-destructive/90 disabled:opacity-50">
+                {purging ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldAlert className="h-4 w-4" />}
+                {purging ? "Deleting…" : `Delete ${purgeable.length} for good`}
               </button>
             </div>
           </div>
@@ -729,6 +805,18 @@ export default function Orders() {
               ? "Orders that were delivered and verified. They have left the queue and are on the client's record — shown here so a finished job can still be found."
               : "Orders taken out of the queue — deleted by an admin, or cleared by \"already done\" clean-up. The sale behind each one still exists, so anything removed by mistake can be put back."}
             {" "}Showing the {historyLimit} most recently changed orders.
+          </p>
+        </div>
+      )}
+
+      {/* Said out loud on arrival, not after a selection — a leader who sees no delete button reads
+          the page as broken. The reversible half of the bin is still theirs; only emptying it is not. */}
+      {tab === "removed" && !canPurge && (
+        <div data-test="orders-purge-denied" className="flex items-start gap-2 rounded-xl border border-border/70 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <p>
+            You can put any of these back in the queue. Only the tech admin can delete them
+            permanently — once erased, the sale's order exists nowhere but Activity History.
           </p>
         </div>
       )}
@@ -990,14 +1078,25 @@ export default function Orders() {
                 {/* A removed order's only action is coming back. Everything else on this card —
                     assign, penalty, unassign — belongs to an order that is still in the pipeline. */}
                 {isHistoryTab ? (
-                  isRestorableOrder(o) && (
-                    <button
-                      data-test="order-restore-one"
-                      onClick={() => { setSelected(new Set([o.id])); setConfirmRestore(true); }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs md:text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
-                      <RotateCcw className="w-3.5 h-3.5" /> Put back in the queue
-                    </button>
-                  )
+                  <>
+                    {isRestorableOrder(o) && (
+                      <button
+                        data-test="order-restore-one"
+                        onClick={() => { setSelected(new Set([o.id])); setConfirmRestore(true); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs md:text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
+                        <RotateCcw className="w-3.5 h-3.5" /> Put back in the queue
+                      </button>
+                    )}
+                    {tab === "removed" && canPurge && (
+                      <button
+                        data-test="order-purge-one"
+                        onClick={() => { setSelected(new Set([o.id])); setConfirmPurge(true); }}
+                        title="Erase this order. Only Activity History will remember it."
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-destructive/50 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive/20 transition-colors">
+                        <ShieldAlert className="w-3.5 h-3.5" /> Delete permanently
+                      </button>
+                    )}
+                  </>
                 ) : <>
                 {/* A month splits three ways, so it gets its own assigner rather than the single-
                     member form — that form can only hand the whole thing to one person. */}

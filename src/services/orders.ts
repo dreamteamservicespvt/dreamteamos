@@ -563,6 +563,52 @@ export async function restoreOrders(orders: Order[], actor?: ActivityActor | nul
   return total;
 }
 
+/**
+ * Purge orders for good — the doc is removed from Firestore, not tombstoned.
+ *
+ * Deliberately the ONLY hard delete in the pipeline, and the only one behind a role check
+ * (`canPurgeOrders`). Everything else that "deletes" an order writes a tombstone, because a
+ * hard-deleted order used to be silently recreated the next time its sale was touched. That risk is
+ * still real, so this is the last step of a two-stage bin rather than an alternative to it: an order
+ * reaches Removed first, someone looks at it there, and only then can the tech admin clear it out.
+ *
+ * The activity log entry is written BEFORE the delete and is all that survives — which is the point.
+ * Once the doc is gone the only record that this sale ever had an order is that log line, so it
+ * carries the business name, category and amount rather than just an id.
+ */
+export async function purgeOrders(orders: Order[], actor?: ActivityActor | null): Promise<number> {
+  await logTechActivity({
+    actor,
+    action: "purged_orders",
+    details: { count: orders.length, orders: summariseOrders(orders) },
+  });
+
+  const BATCH_LIMIT = 400;
+  let batch = writeBatch(db);
+  let n = 0;
+  let total = 0;
+  for (const o of orders) {
+    batch.delete(doc(db, "orders", o.id));
+    n += 1;
+    total += 1;
+    if (n >= BATCH_LIMIT) { await batch.commit(); batch = writeBatch(db); n = 0; }
+  }
+  if (n > 0) await batch.commit();
+  return total;
+}
+
+/**
+ * Who may clear an order out of Removed for good.
+ *
+ * A team leader can take a job out of the queue — that is delivery management, and it is reversible
+ * because the order only moves to Removed. Erasing the record is not reversible and not theirs: the
+ * sale behind it is money, and the only remaining trace afterwards is a log line. So the bin has two
+ * different keys, and this is the second one.
+ */
+export function canPurgeOrders(role?: string | null): boolean {
+  return role === "tech_admin";
+}
+
 /** Scoped query for the tech Orders queue — ACTIVE orders only (verified/cancelled drop out). */
 export function activeOrdersQuery(): Query<DocumentData> {
   return query(collection(db, "orders"), where("status", "in", [...ACTIVE_ORDER_STATUSES]));

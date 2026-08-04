@@ -1,8 +1,8 @@
 import { useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  Check, Download, Eye, FileSignature, Loader2, PenTool, Printer, RotateCcw, Send, ShieldQuestion,
-  Sparkles, X,
+  Check, Download, Eye, FileSignature, Loader2, Mail, PenTool, Printer, RotateCcw, Send,
+  ShieldQuestion, Sparkles, X,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatAgreementWithAI } from "@/services/geminiService";
@@ -25,6 +25,7 @@ import {
   withReference,
 } from "@/utils/hrTemplates";
 import type { HrDocumentExtras } from "@/utils/hrTemplates";
+import { documentSubject, letterEmail } from "@/utils/documentSubject";
 import AgreementView from "@/components/agreement/AgreementView";
 import { Input, Textarea } from "./ui";
 
@@ -74,12 +75,33 @@ export default function IssueDocumentDialog({
 
   const [type, setType] = useState<HrDocumentType>(defaultType || suggested[0]);
   const [extras, setExtras] = useState<HrDocumentExtras>({});
+  /**
+   * The address this letter will carry, and whether it is the personal one.
+   *
+   * Surfaced rather than left to the template because falling back to the login email is silent,
+   * and silence is exactly how every existing letter came to be addressed to an account the
+   * employee loses on their last day.
+   */
+  const letterTo = letterEmail(member, profile);
   /** The rung above this employee's current one, where they are on the ladder at all. */
   const promotion = useMemo(
     () => nextRole(profile.designation, profile.department),
     [profile.designation, profile.department],
   );
-  const [issuedOn, setIssuedOn] = useState(todayIso());
+  /**
+   * The date on the letter.
+   *
+   * An offer letter opens on the offer date already recorded in Employment terms, where one is set.
+   * Those two dates are the same fact written in two places, and letting the dialog default to
+   * "today" meant issuing the paperwork for an offer made last week printed the wrong date on it —
+   * then wrote that wrong date back over the right one. Every other letter still opens on today,
+   * which is what they are: dated when they are written.
+   */
+  const [issuedOn, setIssuedOn] = useState(
+    (defaultType || suggested[0]) === "offer_letter" && profile.offerIssuedOn
+      ? profile.offerIssuedOn
+      : todayIso(),
+  );
   const [showPreview, setShowPreview] = useState(false);
   const [sending, setSending] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -147,12 +169,7 @@ export default function IssueDocumentDialog({
   const built = useMemo(
     () => buildDocument({
       type,
-      subject: {
-        name: member.name,
-        phone: member.phone,
-        email: member.email,
-        employeeId: member.employeeId,
-      },
+      subject: documentSubject(member, profile),
       profile,
       signatory: signatories,
       issuedOn,
@@ -325,6 +342,20 @@ export default function IssueDocumentDialog({
           </div>
         )}
 
+        {!letterTo.isPersonal && (
+          <div className="mb-4 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5" data-test="login-email-warning">
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-warning">
+              <Mail size={13} /> This letter will print {member.name}'s login email
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+              {letterTo.email
+                ? <>No personal email is on record, so <b className="text-foreground">{letterTo.email}</b> will be used. That account is revoked when they leave — the day a relieving letter or an employment check needs to reach them.</>
+                : <>No email is on record at all, so this letter will go out without one.</>}
+              {" "}Add a personal email under Personal &amp; KYC and re-open this dialog.
+            </p>
+          </div>
+        )}
+
         {profile.termsSelfDeclared && (
           <div className="mb-4 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5" data-test="unconfirmed-terms-warning">
             <p className="flex items-center gap-1.5 text-xs font-semibold text-warning">
@@ -395,6 +426,9 @@ export default function IssueDocumentDialog({
                 setExtras(next === "promotion_letter" && promotion
                   ? { newDesignation: promotion.title, newCtcMonthly: promotion.monthlySalary }
                   : {});
+                // Switching TO the offer letter picks up the recorded offer date; switching away
+                // from it goes back to today, because no other letter is dated in the past.
+                setIssuedOn(next === "offer_letter" && profile.offerIssuedOn ? profile.offerIssuedOn : todayIso());
                 // A different letter is a different letter — nobody wants their edits to the
                 // warning carried over onto the offer.
                 setDraft(null);

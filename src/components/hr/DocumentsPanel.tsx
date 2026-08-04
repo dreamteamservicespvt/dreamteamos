@@ -1,8 +1,11 @@
-import { useState } from "react";
-import { AlertTriangle, CheckCircle2, Clock, FileSignature, FileText, Plus, Trash2, XCircle } from "lucide-react";
+import { useMemo, useState } from "react";
+import { AlertTriangle, CheckCircle2, Clock, FileSignature, FileText, Loader2, Mail, Plus, Trash2, XCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirm } from "@/hooks/useConfirm";
-import { deleteDocument } from "@/services/hrDocuments";
+import {
+  deleteDocument, documentsNeedingEmailRefresh, refreshDocumentEmails, signedDocumentsWithStaleEmail,
+} from "@/services/hrDocuments";
+import { letterEmail } from "@/utils/documentSubject";
 import { CORE_EMPLOYMENT_DOCS } from "@/utils/hrPolicy";
 import { HR_DOCUMENT_LABELS } from "@/types/hr";
 import type { AppUser } from "@/types";
@@ -65,6 +68,39 @@ export default function DocumentsPanel({ member, profile, documents, signatory, 
 
   const openIssue = (type?: HrDocumentType) => { setIssueType(type); setIssuing(true); };
 
+  /**
+   * Letters still printing the wrong email.
+   *
+   * Every document this team holds was written before a personal email was collected, so they all
+   * carry the login — an account the person loses the day they leave, which is one of the two days
+   * the letter matters most. Unsigned ones can be corrected in place; signed ones are a record of
+   * what was actually signed, so they are named here and left alone.
+   */
+  const letterTo = letterEmail(member, profile);
+  const staleUnsigned = useMemo(
+    () => (letterTo.isPersonal ? documentsNeedingEmailRefresh(documents, letterTo.email || "") : []),
+    [documents, letterTo.isPersonal, letterTo.email],
+  );
+  const staleSigned = useMemo(
+    () => (letterTo.isPersonal ? signedDocumentsWithStaleEmail(documents, letterTo.email || "") : []),
+    [documents, letterTo.isPersonal, letterTo.email],
+  );
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefreshEmails = async () => {
+    setRefreshing(true);
+    try {
+      const n = await refreshDocumentEmails(documents, letterTo.email || "");
+      toast({
+        title: "Contact details updated",
+        description: `${n} unsigned document${n === 1 ? "" : "s"} now show ${letterTo.email}.`,
+      });
+    } catch {
+      toast({ title: "Error", description: "Could not update the documents.", variant: "destructive" });
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   return (
     <SectionCard
       title="Documents"
@@ -84,6 +120,45 @@ export default function DocumentsPanel({ member, profile, documents, signatory, 
       ) : null}
     >
       {ConfirmDialog}
+
+      {/* The address on the paperwork — flagged when it is not the one the employee keeps. */}
+      {!readOnly && !letterTo.isPersonal && (
+        <div className="mb-4 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5" data-test="no-personal-email">
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-warning">
+            <Mail size={13} /> No personal email on record
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+            Letters for {member.name} will print their login address, which stops working the day they
+            leave — exactly when a relieving letter or an employment verification needs to reach them.
+            Add a personal email under <b className="text-foreground">Personal &amp; KYC</b> first.
+          </p>
+        </div>
+      )}
+
+      {!readOnly && (staleUnsigned.length > 0 || staleSigned.length > 0) && (
+        <div className="mb-4 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5" data-test="stale-email-notice">
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-primary">
+            <Mail size={13} /> {staleUnsigned.length + staleSigned.length} document
+            {staleUnsigned.length + staleSigned.length === 1 ? "" : "s"} print a different email
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+            {member.name}'s personal email is <b className="text-foreground">{letterTo.email}</b>.
+            {staleUnsigned.length > 0 && ` ${staleUnsigned.length} unsigned document${staleUnsigned.length === 1 ? "" : "s"} can be corrected in place.`}
+            {staleSigned.length > 0 && ` ${staleSigned.length} signed document${staleSigned.length === 1 ? "" : "s"} will not be touched — a signed letter has to keep saying what was signed. Re-issue ${staleSigned.length === 1 ? "it" : "them"} if the address matters.`}
+          </p>
+          {staleUnsigned.length > 0 && (
+            <button
+              onClick={handleRefreshEmails}
+              disabled={refreshing}
+              data-test="refresh-document-emails"
+              className="mt-2 inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-[11px] font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            >
+              {refreshing ? <Loader2 size={12} className="animate-spin" /> : <Mail size={12} />}
+              {refreshing ? "Updating…" : `Update ${staleUnsigned.length} unsigned document${staleUnsigned.length === 1 ? "" : "s"}`}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* What every employee must have signed */}
       <div className="mb-4 grid gap-1.5 sm:grid-cols-3">
