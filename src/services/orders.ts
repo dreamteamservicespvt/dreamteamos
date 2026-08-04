@@ -10,10 +10,11 @@
  */
 import {
   collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, query, where, writeBatch,
-  serverTimestamp, Timestamp, arrayUnion, type Query, type DocumentData,
+  orderBy, limit, serverTimestamp, Timestamp, arrayUnion, type Query, type DocumentData,
 } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
+import { logTechActivity, type ActivityActor } from "@/services/activityLog";
 import { normalizePhone, phoneLockId } from "@/utils/phone";
 import { isAdCategory } from "@/utils/serviceCatalog";
 import { promiseDueMs, deadlineState } from "@/utils/promiseSla";
@@ -408,7 +409,9 @@ export function findReconcilableOrders(orders: Order[], assignments: WorkAssignm
   for (const list of pool.values()) list.sort((x, y) => x.ms - y.ms);
 
   return orders
-    .filter((o) => o.status === "unassigned" && !o.workAssignmentId && !o.deleted)
+    // An order somebody deliberately put back is never swept again — otherwise "restore" and
+    // "clean up already-done" fight each other and the sweep always wins.
+    .filter((o) => o.status === "unassigned" && !o.workAssignmentId && !o.deleted && !o.restoredAt)
     // Oldest order first, so the oldest matching job is claimed by the oldest order.
     .sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0))
     .filter((o) => {
@@ -436,7 +439,7 @@ export function findReconcilableOrders(orders: Order[], assignments: WorkAssignm
  * "verified" drops out of `activeOrdersQuery`) and are flagged so a later re-verify won't revive
  * them. Returns how many were retired.
  */
-export async function reconcileManualOrders(orders: Order[]): Promise<number> {
+export async function reconcileManualOrders(orders: Order[], actor?: ActivityActor | null): Promise<number> {
   const BATCH_LIMIT = 400;
   let batch = writeBatch(db);
   let n = 0;
@@ -445,6 +448,9 @@ export async function reconcileManualOrders(orders: Order[]): Promise<number> {
     batch.update(doc(db, "orders", o.id), {
       status: "verified",
       reconciledManually: true,
+      // Who swept it, so "why is this order not in the queue?" has an answer on the order itself.
+      ...(actor ? { retiredBy: actor.uid, retiredByName: actor.name } : {}),
+      retiredAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
     n += 1;
@@ -452,7 +458,21 @@ export async function reconcileManualOrders(orders: Order[]): Promise<number> {
     if (n >= BATCH_LIMIT) { await batch.commit(); batch = writeBatch(db); n = 0; }
   }
   if (n > 0) await batch.commit();
+  await logTechActivity({
+    actor, action: "cleaned_up_orders",
+    details: { count: total, orders: summariseOrders(orders) },
+  });
   return total;
+}
+
+/** The few fields that make a log line readable a month later, without copying the whole doc. */
+function summariseOrders(orders: Order[]): { id: string; businessName: string; category: string; amount: number }[] {
+  return orders.slice(0, 25).map((o) => ({
+    id: o.id,
+    businessName: o.businessName || o.clientName || "",
+    category: o.category,
+    amount: o.amount || 0,
+  }));
 }
 
 /**
@@ -462,17 +482,21 @@ export async function reconcileManualOrders(orders: Order[]): Promise<number> {
  * the sale was touched (a re-verify, an edit) `upsertOrderForSale` saw "no doc" and recreated it —
  * the "ghost" orders that kept coming back. Marking the doc `deleted` instead means the order drops
  * out of the active queue AND the recreation paths recognise it and leave it dead.
+ *
+ * The actor is recorded because this is destructive and silent: the SALE survives a deleted order,
+ * so a client who has paid can end up with nothing to deliver and no trace of who decided that.
  */
-export async function deleteOrders(orderIds: string[]): Promise<number> {
+export async function deleteOrders(orders: Order[], actor?: ActivityActor | null): Promise<number> {
   const BATCH_LIMIT = 400;
   let batch = writeBatch(db);
   let n = 0;
   let total = 0;
-  for (const id of orderIds) {
-    batch.update(doc(db, "orders", id), {
+  for (const o of orders) {
+    batch.update(doc(db, "orders", o.id), {
       status: "deleted",
       deleted: true,
       deletedAt: serverTimestamp(),
+      ...(actor ? { deletedBy: actor.uid, deletedByName: actor.name || "" } : {}),
       // Cut the link so a deleted order's work can't later flip it back to a live status.
       workAssignmentId: null,
       updatedAt: serverTimestamp(),
@@ -482,12 +506,123 @@ export async function deleteOrders(orderIds: string[]): Promise<number> {
     if (n >= BATCH_LIMIT) { await batch.commit(); batch = writeBatch(db); n = 0; }
   }
   if (n > 0) await batch.commit();
+  await logTechActivity({
+    actor, action: "deleted_orders",
+    details: { count: total, orders: summariseOrders(orders) },
+  });
+  return total;
+}
+
+/**
+ * Put removed orders back in the queue — the undo for a delete or a "clean up already-done" sweep.
+ *
+ * Both of those are one click and neither could be taken back, which is how three paid-for sales
+ * became one deliverable job with nobody able to say what happened to the other two. Restoring
+ * clears every flag that keeps an order out of the queue AND out of `upsertOrderForSale`'s
+ * recreation path, so the order behaves exactly like a fresh unassigned one.
+ *
+ * Deliberately NOT offered for an order that was genuinely delivered: that work is done, and
+ * pushing it back into "not assigned" would ask the team to build the same ad twice.
+ */
+export async function restoreOrders(orders: Order[], actor?: ActivityActor | null): Promise<number> {
+  const BATCH_LIMIT = 400;
+  let batch = writeBatch(db);
+  let n = 0;
+  let total = 0;
+  for (const o of orders) {
+    batch.update(doc(db, "orders", o.id), {
+      status: "unassigned",
+      deleted: false,
+      deletedAt: null,
+      deletedBy: null,
+      deletedByName: null,
+      reconciledManually: false,
+      retiredAt: null,
+      retiredBy: null,
+      retiredByName: null,
+      // A restored order is nobody's yet — it goes back to the front of the queue, not to whoever
+      // happened to hold it before it was removed.
+      workAssignmentId: null,
+      assignedTo: null,
+      assignedToName: null,
+      techAdminId: null,
+      completedAt: null,
+      ...(actor ? { restoredBy: actor.uid, restoredByName: actor.name || "" } : {}),
+      restoredAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    n += 1;
+    total += 1;
+    if (n >= BATCH_LIMIT) { await batch.commit(); batch = writeBatch(db); n = 0; }
+  }
+  if (n > 0) await batch.commit();
+  await logTechActivity({
+    actor, action: "restored_orders",
+    details: { count: total, orders: summariseOrders(orders) },
+  });
   return total;
 }
 
 /** Scoped query for the tech Orders queue — ACTIVE orders only (verified/cancelled drop out). */
 export function activeOrdersQuery(): Query<DocumentData> {
   return query(collection(db, "orders"), where("status", "in", [...ACTIVE_ORDER_STATUSES]));
+}
+
+/** How many past orders one page of history pulls. */
+export const ORDER_HISTORY_PAGE = 300;
+
+/**
+ * The orders that have LEFT the queue — delivered, swept as already-done, or deleted.
+ *
+ * Ordered by `updatedAt` rather than filtered by status, for two reasons. Firestore would need a
+ * composite index for `status == x` + `orderBy(createdAt)`, which is a deploy nobody can do from
+ * inside the app; and "most recently changed" is the right window anyway — the question this
+ * answers is "what happened to the order I was just looking for", not "list everything ever sold".
+ *
+ * Not a live subscription and not loaded with the page: history is only fetched when someone opens
+ * a history tab, so the daily read budget still goes on the ~40 orders that are actually in play.
+ */
+export async function fetchOrderHistory(
+  max: number = ORDER_HISTORY_PAGE,
+): Promise<{ rows: Order[]; scanned: number }> {
+  try {
+    const snap = await getDocs(query(
+      collection(db, "orders"),
+      orderBy("updatedAt", "desc"),
+      limit(max),
+    ));
+    const rows = snap.docs
+      .map((d) => ({ id: d.id, ...d.data() } as Order))
+      .filter((o) => !(ACTIVE_ORDER_STATUSES as readonly string[]).includes(o.status));
+    // `scanned` is orders read, not rows returned — the caller needs it to know whether asking for
+    // more would find anything, which the filtered count cannot tell it.
+    return { rows, scanned: snap.size };
+  } catch (err) {
+    console.error("[orders] fetchOrderHistory failed:", err);
+    return { rows: [], scanned: 0 };
+  }
+}
+
+/**
+ * Why an order is no longer in the queue — the one thing the queue could never tell anyone.
+ *
+ * "verified" covers both work that was delivered and verified AND the backlog that the "clean up
+ * already-done" button retired, which are very different facts about a sale. They are separated
+ * here by the flag that sweep leaves behind.
+ */
+export type OrderExitReason = "delivered" | "swept" | "deleted" | "cancelled";
+
+export function orderExitReason(order: Order): OrderExitReason | null {
+  if (order.deleted || order.status === "deleted") return "deleted";
+  if (order.status === "cancelled") return "cancelled";
+  if (order.status === "verified") return order.reconciledManually ? "swept" : "delivered";
+  return null;
+}
+
+/** A swept or deleted order can come back; delivered work cannot be un-delivered. */
+export function isRestorableOrder(order: Order): boolean {
+  const reason = orderExitReason(order);
+  return reason === "deleted" || reason === "swept" || reason === "cancelled";
 }
 
 /**
@@ -704,7 +839,7 @@ export async function addOrderPenalty(params: {
   ratePerClip: number;
   clipType: PenaltyClipType;
   reason?: string | null;
-  actor: Pick<AppUser, "uid" | "name" | "role">;
+  actor: Pick<AppUser, "uid" | "name" | "role"> & { createdBy?: string };
 }): Promise<PenaltyEntry> {
   const { order, clips, ratePerClip, clipType, reason, actor } = params;
 
@@ -746,13 +881,34 @@ export async function addOrderPenalty(params: {
     });
   }
 
+  // Money charged to a client on the tech side's say-so, so it belongs in the tech feed too.
+  if (actor.role === "tech_admin" || actor.role === "tech_team_leader") {
+    await logTechActivity({
+      actor,
+      action: "added_penalty",
+      details: {
+        orderId: order.id,
+        businessName: order.businessName || order.clientName || "",
+        clips: entry.clips,
+        amount: entry.amount,
+        clipType: entry.clipType,
+        reason: entry.reason,
+      },
+    });
+  }
+
   return entry;
 }
 
 /** Remove a penalty raised in error. Totals are recomputed from what is left. */
-export async function removeOrderPenalty(params: { order: Order; penaltyId: string }): Promise<void> {
-  const { order, penaltyId } = params;
+export async function removeOrderPenalty(params: {
+  order: Order;
+  penaltyId: string;
+  actor?: ActivityActor | null;
+}): Promise<void> {
+  const { order, penaltyId, actor } = params;
   const existing = order.penalties || [];
+  const removed = existing.find((p) => p.id === penaltyId);
   const remaining = existing.filter((p) => p.id !== penaltyId);
   if (remaining.length === existing.length) return;
 
@@ -764,6 +920,19 @@ export async function removeOrderPenalty(params: { order: Order; penaltyId: stri
     updatedAt: serverTimestamp(),
   });
   await mirrorPenaltyToSale(order, totals.total, totals.clips);
+
+  if (actor && (actor.role === "tech_admin" || actor.role === "tech_team_leader")) {
+    await logTechActivity({
+      actor,
+      action: "removed_penalty",
+      details: {
+        orderId: order.id,
+        businessName: order.businessName || order.clientName || "",
+        clips: removed?.clips ?? 0,
+        amount: removed?.amount ?? 0,
+      },
+    });
+  }
 }
 
 /**

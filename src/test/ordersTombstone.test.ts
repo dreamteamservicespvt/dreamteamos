@@ -45,6 +45,11 @@ vi.mock("firebase/firestore", () => {
     serverTimestamp: () => ({ __server: true }),
     Timestamp: { now: () => ({ seconds: 1_800_000_000 }) },
     arrayUnion: (...items: unknown[]) => ({ __arrayUnion: items }),
+    // Used by the activity log and the history query, neither of which these tests exercise —
+    // but a missing export is an import-time failure, not a lazy one.
+    addDoc: async () => ({ id: "log1" }),
+    orderBy: (field: string, dir?: string) => ({ field, dir }),
+    limit: (n: number) => ({ n }),
   };
 });
 
@@ -90,7 +95,7 @@ describe("findUnassignedOrderForPhone (manual assignment adopts a waiting order)
 
   it("ignores orders that are already assigned or deleted", async () => {
     await upsertOrderForSale({ lead, item, itemIndex: 0, soldByName: "Anita" });
-    await deleteOrders([id]);
+    await deleteOrders([{ id } as Order]);
     expect(await findUnassignedOrderForPhone("+919876543210", "promotional")).toBeNull();
   });
 
@@ -111,7 +116,7 @@ describe("order deletion is a permanent tombstone", () => {
     await seedOrder();
     expect((store.get(id) as Order).status).toBe("unassigned");
 
-    const n = await deleteOrders([id]);
+    const n = await deleteOrders([{ id } as Order]);
     expect(n).toBe(1);
     const o = store.get(id) as Order;
     expect(o.status).toBe("deleted");
@@ -120,7 +125,7 @@ describe("order deletion is a permanent tombstone", () => {
 
   it("a deleted order is NOT resurrected when the sale is re-verified", async () => {
     await seedOrder();
-    await deleteOrders([id]);
+    await deleteOrders([{ id } as Order]);
 
     // Simulates a later sales-admin verify firing upsert again for the same sale item.
     await upsertOrderForSale({ lead, item, itemIndex: 0, soldByName: "Anita", saleVerified: true, verifierUid: "admin1" });
@@ -132,21 +137,21 @@ describe("order deletion is a permanent tombstone", () => {
 
   it("cancelling the sale doesn't revive a deleted order", async () => {
     await seedOrder();
-    await deleteOrders([id]);
+    await deleteOrders([{ id } as Order]);
     await cancelOrderForSale({ leadId: lead.id, item, itemIndex: 0 });
     expect((store.get(id) as Order).status).toBe("deleted");
   });
 
   it("re-queueing (tech work deleted) doesn't revive a deleted order", async () => {
     await seedOrder();
-    await deleteOrders([id]);
+    await deleteOrders([{ id } as Order]);
     await revertOrderToUnassigned(id);
     expect((store.get(id) as Order).status).toBe("deleted");
   });
 
   it("completing orphaned work doesn't revive a deleted order", async () => {
     await seedOrder();
-    await deleteOrders([id]);
+    await deleteOrders([{ id } as Order]);
     await markOrderCompleted(id);
     expect((store.get(id) as Order).status).toBe("deleted");
   });

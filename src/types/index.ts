@@ -479,9 +479,21 @@ export interface Order {
   updateNotes?: OrderUpdateNote[];
   // Set when the cleanup sweep retired this order because matching work was already done manually.
   reconciledManually?: boolean;
+  retiredAt?: any | null;
+  retiredBy?: string | null;
+  retiredByName?: string | null;
   // Permanently deleted by an admin — a tombstone that blocks the sale from recreating the order.
+  // An order can leave the queue in one click, so WHO decided that is part of the record: the sale
+  // survives its order, and a paid-for job with nothing to deliver has to be answerable to someone.
   deleted?: boolean;
   deletedAt?: any | null;
+  deletedBy?: string | null;
+  deletedByName?: string | null;
+  // Put back in the queue after a delete or a cleanup sweep. Also stops the sweep re-claiming it:
+  // a human has said this order is real, so "already done by hand" must not overrule them again.
+  restoredAt?: any | null;
+  restoredBy?: string | null;
+  restoredByName?: string | null;
   // Lifecycle
   status: OrderStatus;
   workAssignmentId?: string | null;

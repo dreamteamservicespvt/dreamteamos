@@ -215,7 +215,7 @@ export default function WorkReports() {
     if (!verifyDialog?.items.length || !user) return;
     setVerifying(true);
     try {
-      await verifyAssignments(verifyDialog.items, user.uid, getMemberName);
+      await verifyAssignments(verifyDialog.items, user.uid, getMemberName, user);
       setVerifyDialog(null);
     } finally {
       setVerifying(false);
@@ -317,6 +317,7 @@ export default function WorkReports() {
             { ...original, businessName: editForm.businessName.trim() || original.businessName },
             { uid: newMember.uid, name: newMember.name },
             { uid: user.uid, name: user.name },
+            user,
           );
         }
       }

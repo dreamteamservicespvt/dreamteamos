@@ -53,21 +53,34 @@ vi.mock("@/store/authStore", () => ({
   useAuthStore: (sel: (s: unknown) => unknown) => sel({ user: { uid: "ta1", name: "Tech Admin", role: "tech_admin" } }),
 }));
 vi.mock("react-router-dom", () => ({ useNavigate: () => vi.fn() }));
-vi.mock("@/services/orders", () => ({
-  activeOrdersQuery: () => null,
-  notifyDueOrdersOnOpen: vi.fn(),
-  findReconcilableOrders: () => [],
-  reconcileManualOrders: vi.fn(),
-  deleteOrders: vi.fn(),
-  revertOrderToUnassigned: vi.fn(),
-  removeOrderPenalty: vi.fn(),
-}));
+vi.mock("@/services/orders", async (importOriginal) => {
+  // The pure helpers (orderExitReason / isRestorableOrder) are real — they are what the page uses
+  // to label a history card, and mocking them would test the mock rather than the labelling.
+  const actual = await importOriginal<typeof import("@/services/orders")>();
+  return {
+    ...actual,
+    activeOrdersQuery: () => null,
+    notifyDueOrdersOnOpen: vi.fn(),
+    findReconcilableOrders: () => [],
+    reconcileManualOrders: vi.fn(),
+    deleteOrders: vi.fn(),
+    restoreOrders: vi.fn(),
+    revertOrderToUnassigned: vi.fn(),
+    removeOrderPenalty: vi.fn(),
+    fetchOrderHistory: vi.fn(async () => ({ rows: [], scanned: 0 })),
+  };
+});
 vi.mock("@/services/workAssign", () => ({ unassignWork: vi.fn() }));
+vi.mock("@/services/workVerify", () => ({ verifyAssignments: vi.fn() }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 
 const Orders = (await import("@/pages/tech-admin/Orders")).default;
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  // The filter is remembered per browser now, so one test's pick must not leak into the next.
+  localStorage.clear();
+});
 configure({ testIdAttribute: "data-test" });
 
 const filter = () => screen.getByTestId("orders-category-filter") as HTMLSelectElement;
@@ -78,10 +91,28 @@ const shownBusinesses = () =>
   Array.from(document.querySelectorAll("h3")).map((h) => h.textContent?.trim() || "");
 
 describe("Orders queue — filter by kind of work", () => {
-  it("opens on promotional ads — the pile the team is nearly always here for", () => {
+  /**
+   * The queue used to open on "promotional". The badges count the filtered set, so a page opened
+   * pre-filtered said "Not assigned 2" while three other live orders sat behind a dropdown with
+   * nothing on screen to say so — which is how sales staff came to believe orders were vanishing.
+   */
+  it("opens on everything, so nothing is hidden before you have asked for it", () => {
     render(<Orders />);
-    expect(filter().value).toBe("promotional");
-    expect(shownBusinesses()).toEqual(["Promo One", "Promo Two"]);
+    expect(filter().value).toBe(ALL_ORDER_CATEGORIES);
+    expect(shownBusinesses()).toEqual(["Promo One", "Promo Two", "Cine One", "Cine Bulk", "Smm One"]);
+  });
+
+  it("remembers the kind you picked for next time — but only because you picked it", () => {
+    const first = render(<Orders />);
+    fireEvent.change(filter(), { target: { value: "cinematic" } });
+    first.unmount();
+
+    render(<Orders />);
+    expect(filter().value).toBe("cinematic");
+
+    // Choosing "all services" again clears the preference rather than pinning it.
+    fireEvent.change(filter(), { target: { value: ALL_ORDER_CATEGORIES } });
+    expect(localStorage.getItem("orderCategory:orders")).toBeNull();
   });
 
   it("offers only what is in the queue, each with its count", () => {
@@ -115,14 +146,14 @@ describe("Orders queue — filter by kind of work", () => {
 
   it("makes the tab badges count what the filter would show", () => {
     render(<Orders />);
-    // Opens on promotional: 2 of the 5 unassigned, 1 of the 2 assigned.
-    expect(tabCount("unassigned")).toContain("2");
-    expect(tabCount("assigned")).toContain("1");
-
-    fireEvent.change(filter(), { target: { value: ALL_ORDER_CATEGORIES } });
-    // A badge left on the unfiltered total would claim more work than the tab lists.
+    // Opens on everything: all 5 unassigned, both assigned.
     expect(tabCount("unassigned")).toContain("5");
     expect(tabCount("assigned")).toContain("2");
+
+    fireEvent.change(filter(), { target: { value: "promotional" } });
+    // A badge left on the unfiltered total would claim more work than the tab lists.
+    expect(tabCount("unassigned")).toContain("2");
+    expect(tabCount("assigned")).toContain("1");
   });
 
   it("says the filter is what emptied the tab, and offers the way out", () => {

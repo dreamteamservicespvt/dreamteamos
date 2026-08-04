@@ -2,6 +2,7 @@ import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "./firebase";
 import { sendNotification } from "./notifications";
 import { upsertClientOnWorkVerify } from "./clients";
+import { logTechActivity, type ActivityActor } from "./activityLog";
 import type { WorkAssignment } from "@/types";
 
 /**
@@ -18,6 +19,12 @@ export async function verifyAssignments(
   items: WorkAssignment[],
   verifierUid: string,
   memberNameFor: (uid: string) => string,
+  /**
+   * The verifier, for the activity feed. Verifying is what takes an order OUT of the queue — it
+   * flips to "verified" and stops being active work — so it is the single most important tech
+   * action to be able to trace back to a person and a moment.
+   */
+  actor?: ActivityActor | null,
 ): Promise<void> {
   try {
     for (const assignment of items) {
@@ -40,6 +47,20 @@ export async function verifyAssignments(
       await upsertClientOnWorkVerify({
         assignment,
         deliveredByName: memberNameFor(assignment.assignedTo),
+      });
+
+      await logTechActivity({
+        actor,
+        action: "verified_work",
+        details: {
+          assignmentId: assignment.id,
+          uniqueId: assignment.uniqueId,
+          memberUid: assignment.assignedTo,
+          memberName: memberNameFor(assignment.assignedTo),
+          category: assignment.category,
+          businessName: assignment.businessName || assignment.clientName || "",
+          orderId: assignment.orderId ?? null,
+        },
       });
     }
   } catch (error) {

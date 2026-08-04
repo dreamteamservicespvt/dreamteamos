@@ -241,6 +241,7 @@ export default function TeamLeaderWorkAssign() {
         assignerName: user.name,
         // A leader's own tech admin, so the admin can open the client chat their team is running.
         techAdminUid: user.createdBy,
+        actor: user,
         category: form.category,
         duration: form.duration,
         clipCount: clips,
@@ -315,7 +316,7 @@ export default function TeamLeaderWorkAssign() {
     if (!verifyDialog?.items.length || !user) return;
     setVerifying(true);
     try {
-      await verifyAssignments(verifyDialog.items, user.uid, getMemberName);
+      await verifyAssignments(verifyDialog.items, user.uid, getMemberName, user);
       setVerifyDialog(null);
     } finally {
       setVerifying(false);

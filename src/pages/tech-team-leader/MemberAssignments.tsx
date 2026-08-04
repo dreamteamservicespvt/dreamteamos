@@ -22,6 +22,7 @@ import { useOrderChatUnread } from '@/hooks/useOrderChat';
 import { buildAssignmentRequirementsMessage } from '@/utils/adRequirement';
 import { getCharacterPack } from '@/services/characterPacks';
 import { unassignWork } from '@/services/workAssign';
+import { verifyAssignments as verifyWorkAssignments } from '@/services/workVerify';
 import { useToast } from '@/hooks/use-toast';
 import SpecialCategoryFields from '@/components/work/SpecialCategoryFields';
 import ReassignWork from '@/components/work/ReassignWork';
@@ -181,25 +182,17 @@ export default function TeamLeaderMemberAssignments() {
   }, [memberAssignments, searchQuery]);
 
 
+  const getMemberName = (uid: string) => allUsers.find(u => u.uid === uid)?.name || 'Unknown';
+
+  /**
+   * The shared verify, not a local copy of two of its three steps. The copy that used to live here
+   * flipped the assignment and notified the member but never called `upsertClientOnWorkVerify`,
+   * which is the step that flips the ORDER to "verified" and records the delivery on the client —
+   * so work approved from this page stayed in the Orders queue's "Awaiting verify" column forever.
+   */
   const verifyAssignments = async (items: WorkAssignment[]) => {
     if (!currentUser) return;
-    try {
-      for (const assignment of items) {
-        await updateDoc(doc(db, 'work_assignments', assignment.id), {
-          status: 'verified',
-          verifiedAt: serverTimestamp(),
-          verifiedBy: currentUser.uid,
-        });
-        await sendNotification({
-          userId: assignment.assignedTo,
-          type: 'work_verified',
-          title: 'Work Verified!',
-          message: `Your ${assignment.category} work (${assignment.displayTitle}) has been verified and approved.`,
-        });
-      }
-    } catch (error) {
-      console.error('Failed to verify assignment(s):', error);
-    }
+    await verifyWorkAssignments(items, currentUser.uid, getMemberName, currentUser);
   };
 
   const handleVerify = (assignment: WorkAssignment) => setVerifyDialog({ mode: 'single', items: [assignment] });
@@ -278,8 +271,10 @@ export default function TeamLeaderMemberAssignments() {
       const { returnedToQueue } = await unassignWork({
         assignmentId: action.id,
         assignedTo: action.assignedTo!,
+        assignedToName: getMemberName(action.assignedTo!),
         orderId: action.orderId,
         title: action.title,
+        actor: currentUser,
       });
       setConfirmAction(null);
       toast({

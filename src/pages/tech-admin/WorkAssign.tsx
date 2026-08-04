@@ -257,6 +257,7 @@ export default function WorkAssign() {
         assignerUid: user.uid,
         assignerName: user.name,
         techAdminUid: user.uid,
+        actor: user,
         category: form.category,
         duration: form.duration,
         clipCount: clips,
@@ -349,7 +350,7 @@ export default function WorkAssign() {
     if (!verifyDialog?.items.length || !user) return;
     setVerifying(true);
     try {
-      await verifyAssignments(verifyDialog.items, user.uid, getMemberName);
+      await verifyAssignments(verifyDialog.items, user.uid, getMemberName, user);
       setVerifyDialog(null);
     } finally {
       setVerifying(false);

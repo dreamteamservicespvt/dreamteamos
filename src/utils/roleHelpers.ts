@@ -46,6 +46,8 @@ const NAV: Record<UserRole, NavItem[]> = {
         { title: "Profit & Loss", path: "/tech-admin/profit", icon: PiggyBank },
         { title: "Drive Management", path: "/tech-admin/drive", icon: FolderOpen },
         { title: "Training Modules", path: "/tech-admin/training", icon: BookOpen },
+        // Who assigned, moved, verified or removed what — including the team leaders'.
+        { title: "Activity History", path: "/tech-admin/activity", icon: History },
         { title: "Session History", path: "/tech-admin/sessions", icon: Clock },
         { title: "Team Chat", path: "/tech-admin/chat", icon: MessageSquare },
         { title: "Meetings", path: "/tech-admin/meeting", icon: Video },
@@ -154,6 +156,7 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "Work Done & Reports", path: "/team-leader/work-reports", icon: BarChart3 },
     { title: "Attendance", path: "/team-leader/attendance", icon: CalendarClock },
     { title: "HR & Documents", path: "/team-leader/hr", icon: FileCheck },
+    { title: "Activity History", path: "/team-leader/activity", icon: History },
     { title: "Tools", path: "/team-leader/tools", icon: Wrench },
     // A team leader is an employee too: their own employment record and documents to sign.
     { title: "My Profile", path: "/team-leader/profile", icon: User },

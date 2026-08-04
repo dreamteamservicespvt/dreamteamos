@@ -2,6 +2,7 @@ import { deleteField, doc, serverTimestamp, updateDoc } from "firebase/firestore
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import { reopenOrderChat } from "@/services/orderChat";
+import { logTechActivity, type ActivityActor } from "@/services/activityLog";
 import type { WorkAssignment } from "@/types";
 
 /**
@@ -14,6 +15,8 @@ export async function reassignWork(
   assignment: WorkAssignment,
   newMember: { uid: string; name: string },
   by: { uid: string; name: string },
+  /** The reassigner, with role + admin, so the move lands in the tech activity feed. */
+  actor?: ActivityActor | null,
 ): Promise<void> {
   const prevAssignee = assignment.assignedTo;
   await updateDoc(doc(db, "work_assignments", assignment.id), {
@@ -77,4 +80,19 @@ export async function reassignWork(
       link: "/tech/my-work",
     });
   }
+
+  await logTechActivity({
+    actor: actor ?? { uid: by.uid, name: by.name },
+    action: "reassigned_work",
+    details: {
+      assignmentId: assignment.id,
+      uniqueId: assignment.uniqueId,
+      businessName: title,
+      category: assignment.category,
+      fromUid: prevAssignee ?? null,
+      memberUid: newMember.uid,
+      memberName: newMember.name,
+      orderId: assignment.orderId ?? null,
+    },
+  });
 }

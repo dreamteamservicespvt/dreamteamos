@@ -17,12 +17,14 @@ import { useToast } from "@/hooks/use-toast";
 import { ORDER_TRACKS } from "@/types";
 import type { AppUser, Order, OrderTrack, WorkAssignment } from "@/types";
 
-export default function AssignTracksDialog({ order, members, assignments, assignerUid, onClose, onDone }: {
+export default function AssignTracksDialog({ order, members, assignments, assignerUid, assigner, onClose, onDone }: {
   order: Order;
   members: AppUser[];
   /** Existing work, so each new assignment gets the next sequential id. */
   assignments: WorkAssignment[];
   assignerUid: string;
+  /** The signed-in user, so each job handed out is recorded in the tech activity feed. */
+  assigner?: AppUser | null;
   onClose: () => void;
   onDone?: () => void;
 }) {
@@ -83,6 +85,8 @@ export default function AssignTracksDialog({ order, members, assignments, assign
           requirementNotes: order.requirement?.notes,
           order,
           tracks: memberTracks,
+          assignerName: assigner?.name,
+          actor: assigner,
         });
       }
 

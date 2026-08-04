@@ -21,6 +21,7 @@ import { useOrderChatUnread } from '@/hooks/useOrderChat';
 import { buildAssignmentRequirementsMessage } from '@/utils/adRequirement';
 import { getCharacterPack } from '@/services/characterPacks';
 import { unassignWork } from '@/services/workAssign';
+import { verifyAssignments as verifyWorkAssignments } from '@/services/workVerify';
 import { useToast } from '@/hooks/use-toast';
 import SpecialCategoryFields from '@/components/work/SpecialCategoryFields';
 import ReassignWork from '@/components/work/ReassignWork';
@@ -237,25 +238,19 @@ export default function MemberAssignments() {
     );
   }, [memberAssignments, searchQuery]);
 
+  /**
+   * Verifying here used to be its own hand-rolled copy of the three-step verify — flip the status,
+   * notify the member — and it was missing the third step. `upsertClientOnWorkVerify` is what flips
+   * the ORDER to "verified" and records the delivery against the client, so work approved from this
+   * page left its order sitting in the queue's "Awaiting verify" column forever and never reached
+   * the client's record. Two live orders were stuck that way. One shared implementation now, so the
+   * three screens that verify work cannot drift apart again.
+   */
+  const getMemberName = (uid: string) => allUsers.find(u => u.uid === uid)?.name || 'Unknown';
+
   const verifyAssignments = async (items: WorkAssignment[]) => {
     if (!currentUser) return;
-    try {
-      for (const assignment of items) {
-        await updateDoc(doc(db, 'work_assignments', assignment.id), {
-          status: 'verified',
-          verifiedAt: serverTimestamp(),
-          verifiedBy: currentUser.uid,
-        });
-        await sendNotification({
-          userId: assignment.assignedTo,
-          type: 'work_verified',
-          title: 'Work Verified!',
-          message: `Your ${assignment.category} work (${assignment.displayTitle}) has been verified and approved.`,
-        });
-      }
-    } catch (error) {
-      console.error('Failed to verify assignment(s):', error);
-    }
+    await verifyWorkAssignments(items, currentUser.uid, getMemberName, currentUser);
   };
 
   const handleVerify = (assignment: WorkAssignment) => {
@@ -340,8 +335,10 @@ export default function MemberAssignments() {
       const { returnedToQueue } = await unassignWork({
         assignmentId: action.id,
         assignedTo: action.assignedTo!,
+        assignedToName: getMemberName(action.assignedTo!),
         orderId: action.orderId,
         title: action.title,
+        actor: currentUser,
       });
       setConfirmAction(null);
       toast({

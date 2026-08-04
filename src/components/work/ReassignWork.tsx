@@ -32,7 +32,7 @@ export default function ReassignWork({ assignment, members, currentUser, onDone 
     if (!member || busy) return;
     setBusy(true);
     try {
-      await reassignWork(assignment, { uid: member.uid, name: member.name }, currentUser);
+      await reassignWork(assignment, { uid: member.uid, name: member.name }, currentUser, currentUser);
       toast({ title: "Work reassigned", description: `"${title}" moved to ${member.name}.` });
       setOpen(false);
       setTarget("");

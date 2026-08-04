@@ -1,7 +1,7 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  ClipboardList, Loader2, Search, MessageCircle, UserPlus, Clock, ShoppingBag, CheckCircle2, Sparkles, StickyNote, Hourglass, Sparkle, Trash2, CheckSquare, Square, Undo2, Copy, Check, Pin, Split, AlertTriangle, Layers, X,
+  ClipboardList, Loader2, Search, MessageCircle, UserPlus, Clock, ShoppingBag, CheckCircle2, Sparkles, StickyNote, Hourglass, Sparkle, Trash2, CheckSquare, Square, Undo2, Copy, Check, Pin, Split, AlertTriangle, Layers, X, Archive, RotateCcw, History,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useFirestoreQuery, useFirestoreCollection } from "@/hooks/useFirestore";
@@ -9,10 +9,16 @@ import { useNow } from "@/hooks/useNow";
 import { formatCurrency } from "@/utils/formatters";
 import { formatPhoneDisplay, getWhatsAppUrl } from "@/utils/phone";
 import { categoryBilling, bulkCategoryLabel, categoryLabel } from "@/utils/serviceCatalog";
-import { activeOrdersQuery, notifyDueOrdersOnOpen, findReconcilableOrders, reconcileManualOrders, deleteOrders, revertOrderToUnassigned } from "@/services/orders";
+import {
+  activeOrdersQuery, notifyDueOrdersOnOpen, findReconcilableOrders, reconcileManualOrders,
+  deleteOrders, restoreOrders, revertOrderToUnassigned, fetchOrderHistory, orderExitReason,
+  isRestorableOrder, ORDER_HISTORY_PAGE,
+} from "@/services/orders";
+import { verifyAssignments } from "@/services/workVerify";
 import { requirementSummary } from "@/utils/adRequirement";
 import { useToast } from "@/hooks/use-toast";
 import { useViewMode } from "@/hooks/useViewMode";
+import { useOrderCategory } from "@/hooks/useOrderCategory";
 import ViewToggle from "@/components/common/ViewToggle";
 import DeadlineChip from "@/components/work/DeadlineChip";
 import { format } from "date-fns";
@@ -30,20 +36,44 @@ import { ordersWithPenalties, totalPenalties } from "@/utils/penalty";
 import { removeOrderPenalty } from "@/services/orders";
 import { discountEditLabel } from "@/utils/bulkDiscount";
 import {
-  ALL_ORDER_CATEGORIES, DEFAULT_ORDER_CATEGORY, matchesOrderCategory, orderCategoryOptionLabel,
+  ALL_ORDER_CATEGORIES, matchesOrderCategory, orderCategoryOptionLabel,
   orderCategoryOptions,
 } from "@/utils/orderCategoryFilter";
 import OrderProgressPanel from "@/components/work/OrderProgressPanel";
 import PenaltyDialog from "@/components/work/PenaltyDialog";
 import AssignTracksDialog from "@/components/work/AssignTracksDialog";
 
-/** The queue's four delivery columns, plus the money-changes ledger that hangs off them. */
-type OrderTab = OrderQueueStatus | "changes";
+/**
+ * The queue's four delivery columns, the money-changes ledger that hangs off them, and the two
+ * history columns.
+ *
+ * History is the fix for the queue's oldest hole: an order that reached the end of the pipeline
+ * simply stopped existing here. `activeOrdersQuery` asks Firestore for three statuses, so 91% of
+ * every order ever taken — everything delivered, everything the "already done" sweep retired,
+ * everything an admin deleted — was not merely filtered out of the page, it was never fetched. The
+ * only honest answer to "where did my order go?" was that nobody could tell you.
+ */
+type OrderTab = OrderQueueStatus | "changes" | "delivered" | "removed";
+
+/** Delivered and Removed read from a separate, on-demand fetch — not the live active query. */
+const HISTORY_TABS: OrderTab[] = ["delivered", "removed"];
+
+function tsSeconds(ts: any): number {
+  return ts?.seconds ?? (typeof ts?.toMillis === "function" ? ts.toMillis() / 1000 : 0);
+}
 
 function fmtTs(ts: any): string {
-  const s = ts?.seconds ?? (typeof ts?.toMillis === "function" ? ts.toMillis() / 1000 : 0);
+  const s = tsSeconds(ts);
   return s ? format(new Date(s * 1000), "dd MMM, hh:mm a") : "—";
 }
+
+/** Why an order left the queue, said in the words the team uses — and who to ask about it. */
+const EXIT_META: Record<string, { label: string; className: string }> = {
+  delivered: { label: "Delivered & verified", className: "bg-green-500/15 text-green-600 dark:text-green-400" },
+  swept: { label: "Cleared as already-done", className: "bg-amber-500/15 text-amber-600 dark:text-amber-400" },
+  deleted: { label: "Deleted from the queue", className: "bg-destructive/15 text-destructive" },
+  cancelled: { label: "Cancelled (sale reverted)", className: "bg-muted text-muted-foreground" },
+};
 
 export default function Orders() {
   const user = useAuthStore((s) => s.user);
@@ -80,10 +110,58 @@ export default function Orders() {
    * pick "Cinematic" on Not assigned and it stays picked on Assigned, In progress and Changes, so
    * following one kind of job through the queue is a matter of clicking tabs, not re-filtering.
    */
-  const [category, setCategory] = useState<string>(DEFAULT_ORDER_CATEGORY);
+  const [category, setCategory] = useOrderCategory("orders");
   /** First-come-first-served by default: whoever has waited longest is served first. */
   const [sortMode, setSortMode] = useState<OrderSortMode>("fcfs");
   const [view, setView] = useViewMode("orders");
+
+  /**
+   * Orders that have left the queue, fetched only when a history tab is opened.
+   *
+   * Not a live subscription and not part of the page load: there are 700+ of these against ~40 live
+   * ones, and this app runs on Firestore's free daily read budget. Paying for the whole archive on
+   * every visit to a page whose job is the 40 would be the wrong trade — so history is a bounded,
+   * newest-first page you ask for, with "Load older" when the answer isn't in it yet.
+   */
+  const [history, setHistory] = useState<Order[]>([]);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyLimit, setHistoryLimit] = useState(ORDER_HISTORY_PAGE);
+  const [historyExhausted, setHistoryExhausted] = useState(false);
+
+  const loadHistory = useCallback(async (max: number) => {
+    setHistoryLoading(true);
+    try {
+      const { rows, scanned } = await fetchOrderHistory(max);
+      setHistory(rows);
+      setHistoryLoaded(true);
+      // Fewer orders read than asked for means the collection ran out — there is no "older" left.
+      setHistoryExhausted(scanned < max);
+    } catch {
+      toast({ title: "Couldn't load history", description: "Try again in a moment.", variant: "destructive" });
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [toast]);
+
+  const isHistoryTab = HISTORY_TABS.includes(tab);
+  useEffect(() => {
+    if (!isHistoryTab || historyLoaded || historyLoading) return;
+    loadHistory(ORDER_HISTORY_PAGE);
+  }, [isHistoryTab, historyLoaded, historyLoading, loadHistory]);
+
+  const loadOlder = async () => {
+    const next = historyLimit + ORDER_HISTORY_PAGE;
+    setHistoryLimit(next);
+    await loadHistory(next);
+  };
+
+  /** Delivered work vs. everything that was removed — two very different facts about a sale. */
+  const delivered = useMemo(() => history.filter((o) => orderExitReason(o) === "delivered"), [history]);
+  const removed = useMemo(
+    () => history.filter((o) => { const r = orderExitReason(o); return r === "deleted" || r === "swept" || r === "cancelled"; }),
+    [history],
+  );
 
   // Manual selection → delete, with a confirmation step. Selections are cleared whenever the
   // visible set changes (tab / search), so you can never delete something you can't see.
@@ -105,7 +183,7 @@ export default function Orders() {
   const runCleanup = async () => {
     setCleaning(true);
     try {
-      const n = await reconcileManualOrders(reconcilable);
+      const n = await reconcileManualOrders(reconcilable, user);
       toast({ title: "Queue cleaned up", description: `${n} order${n === 1 ? "" : "s"} already handled manually were cleared.` });
       setConfirmClean(false);
     } catch {
@@ -155,7 +233,9 @@ export default function Orders() {
    * board names on screen and this queue cannot show at all.
    */
   const counts = useMemo(() => {
-    const out: Record<OrderTab, number> = { unassigned: 0, assigned: 0, in_progress: 0, completed: 0, changes: 0 };
+    const out: Record<OrderTab, number> = {
+      unassigned: 0, assigned: 0, in_progress: 0, completed: 0, changes: 0, delivered: 0, removed: 0,
+    };
     for (const rec of orderBacked(buildAdPipeline(orders, assignments))) {
       // The tab badges count what the filter would actually show. Leaving them on the unfiltered
       // total made every tab claim more work than it listed the moment a filter was on.
@@ -163,24 +243,33 @@ export default function Orders() {
       if (rec.stage in out) out[rec.stage as OrderTab] += 1;
     }
     out.changes = penalisedOrders.filter((o) => matchesOrderCategory(o, category)).length;
+    // History counts are of what has been loaded, so they read 0 until the tab is first opened.
+    out.delivered = delivered.filter((o) => matchesOrderCategory(o, category)).length;
+    out.removed = removed.filter((o) => matchesOrderCategory(o, category)).length;
     return out;
-  }, [orders, assignments, penalisedOrders, category]);
+  }, [orders, assignments, penalisedOrders, category, delivered, removed]);
 
   /** This tab's orders, past the search box — before the category filter, which is built from them. */
   const inTab = useMemo(() => {
     const q = search.trim().toLowerCase();
     const qDigits = q.replace(/\D/g, "");
-    return (tab === "changes" ? penalisedOrders : orders.filter((o) => queueStatusOf(o) === tab))
+    const source =
+      tab === "changes" ? penalisedOrders
+      : tab === "delivered" ? delivered
+      : tab === "removed" ? removed
+      : orders.filter((o) => queueStatusOf(o) === tab);
+    return source
       .filter((o) => {
         if (!q) return true;
         if (o.businessName?.toLowerCase().includes(q)) return true;
+        if (o.clientName?.toLowerCase().includes(q)) return true;
         // Searching "cinematic" must find a bulk cinematic order, whose own category is "bulk".
         if (bulkCategoryLabel(o.category, o.bulkAdType).toLowerCase().includes(q)) return true;
         if (o.soldByName?.toLowerCase().includes(q)) return true;
         if (qDigits && o.clientPhone?.replace(/\D/g, "").includes(qDigits)) return true;
         return false;
       });
-  }, [orders, penalisedOrders, tab, search, queueStatusOf]);
+  }, [orders, penalisedOrders, delivered, removed, tab, search, queueStatusOf]);
 
   /**
    * What the dropdown offers, and how many of each are in front of you right now.
@@ -193,10 +282,15 @@ export default function Orders() {
     [inTab, category],
   );
 
-  const visible = useMemo(
-    () => sortOrders(inTab.filter((o) => matchesOrderCategory(o, category)), sortMode),
-    [inTab, category, sortMode],
-  );
+  const visible = useMemo(() => {
+    const filtered = inTab.filter((o) => matchesOrderCategory(o, category));
+    // History reads newest-first. The queue's sort answers "who has waited longest"; history
+    // answers "what just happened", and first-come-first-served would bury today under June.
+    if (isHistoryTab) {
+      return [...filtered].sort((a, b) => tsSeconds(b.updatedAt) - tsSeconds(a.updatedAt));
+    }
+    return sortOrders(filtered, sortMode);
+  }, [inTab, category, sortMode, isHistoryTab]);
 
   /** Overdue count for what's in view, so the sort option can say how many are waiting. */
   const overdueInTab = useMemo(
@@ -248,8 +342,10 @@ export default function Orders() {
         await unassignWork({
           assignmentId: work.id,
           assignedTo: work.assignedTo,
+          assignedToName: memberNameOf(work.assignedTo),
           orderId: order.id,
           title: order.businessName || order.clientName,
+          actor: user,
         });
       } else {
         // No assignment left to remove — just put the order back where it belongs.
@@ -267,18 +363,88 @@ export default function Orders() {
     }
   };
 
+  /** The selected rows, as orders — every bulk action needs the docs, not just their ids. */
+  const selectedOrders = useMemo(
+    () => [...orders, ...history].filter((o) => selected.has(o.id)),
+    [orders, history, selected],
+  );
+
   const runDelete = async () => {
     setDeleting(true);
     try {
-      const ids = [...selected];
-      const n = await deleteOrders(ids);
-      toast({ title: "Deleted", description: `${n} order${n === 1 ? "" : "s"} removed from the queue.` });
+      const n = await deleteOrders(selectedOrders, user);
+      toast({
+        title: "Removed from the queue",
+        description: `${n} order${n === 1 ? "" : "s"} moved to Removed. You can put ${n === 1 ? "it" : "them"} back from there.`,
+      });
       setSelected(new Set());
       setConfirmDelete(false);
+      // Whatever was just deleted belongs in the history list now, so it can be found and restored.
+      if (historyLoaded) await loadHistory(historyLimit);
     } catch {
       toast({ title: "Error", description: "Couldn't delete the selected orders. Try again.", variant: "destructive" });
     } finally {
       setDeleting(false);
+    }
+  };
+
+  /**
+   * Put removed orders back in the queue.
+   *
+   * The counterpart that never existed: deleting and sweeping were both one click and neither could
+   * be undone, so a sale whose order was removed by mistake stayed removed and unpaid-for work
+   * quietly never happened. Only offered for orders that CAN come back — delivered work is done.
+   */
+  const [restoring, setRestoring] = useState(false);
+  const [confirmRestore, setConfirmRestore] = useState(false);
+  const restorable = useMemo(() => selectedOrders.filter(isRestorableOrder), [selectedOrders]);
+  const runRestore = async () => {
+    setRestoring(true);
+    try {
+      const n = await restoreOrders(restorable, user);
+      toast({
+        title: "Back in the queue",
+        description: `${n} order${n === 1 ? "" : "s"} returned to Not assigned — assign ${n === 1 ? "it" : "them"} from there.`,
+      });
+      setSelected(new Set());
+      setConfirmRestore(false);
+      await loadHistory(historyLimit);
+    } catch {
+      toast({ title: "Error", description: "Couldn't restore the selected orders. Try again.", variant: "destructive" });
+    } finally {
+      setRestoring(false);
+    }
+  };
+
+  /**
+   * Approve delivered work without leaving the queue.
+   *
+   * The Completed column said "Awaiting verify" and gave nobody anything to click — the actual
+   * verify lived on two other screens. So an admin working the queue could see what was waiting on
+   * them and had to go somewhere else to do it, which is how two jobs sat verified-but-not-closed.
+   */
+  const [verifyFor, setVerifyFor] = useState<Order | null>(null);
+  const [verifying, setVerifying] = useState(false);
+  const runVerify = async () => {
+    if (!verifyFor || !user) return;
+    const work = byOrderId.get(verifyFor.id);
+    if (!work) {
+      toast({ title: "Nothing to verify", description: "This order has no work assignment behind it.", variant: "destructive" });
+      setVerifyFor(null);
+      return;
+    }
+    setVerifying(true);
+    try {
+      await verifyAssignments([work], user.uid, (uid) => memberNameOf(uid) || "Unknown", user);
+      toast({
+        title: "Verified",
+        description: `"${verifyFor.businessName || "This order"}" is delivered. It moves to the Delivered tab and onto the client's record.`,
+      });
+      setVerifyFor(null);
+    } catch {
+      toast({ title: "Error", description: "Couldn't verify this order. Try again.", variant: "destructive" });
+    } finally {
+      setVerifying(false);
     }
   };
 
@@ -342,17 +508,28 @@ export default function Orders() {
         </div>
       )}
 
-      {/* Tabs — the four delivery columns, plus Changes when anything has been charged for. */}
+      {/* Tabs — the four delivery columns, Changes when anything has been charged for, and the two
+          history columns that make an order's whole life reachable from one page. */}
       <div className="flex flex-wrap items-center gap-2">
-        {[...ORDER_QUEUE_TABS, ...(penalisedOrders.length > 0 ? [{ key: "changes" as const, label: "Changes" }] : [])].map(({ key: t, label }) => (
+        {[
+          ...ORDER_QUEUE_TABS,
+          ...(penalisedOrders.length > 0 ? [{ key: "changes" as const, label: "Changes" }] : []),
+          { key: "delivered" as const, label: "Delivered" },
+          { key: "removed" as const, label: "Removed" },
+        ].map(({ key: t, label }) => (
           <button
             key={t}
             data-test={`orders-tab-${t}`}
-            onClick={() => setTab(t)}
+            onClick={() => setTab(t as OrderTab)}
             className={`flex items-center gap-1.5 h-9 px-3 rounded-xl text-xs md:text-sm font-medium border transition-colors ${tab === t ? "bg-primary text-primary-foreground border-primary" : t === "changes" ? "bg-card text-destructive border-destructive/40 hover:bg-destructive/10" : "bg-card text-muted-foreground border-border hover:text-foreground hover:bg-accent/50"}`}
           >
+            {(t === "delivered" || t === "removed") && <History className="w-3.5 h-3.5" />}
             <span>{label}</span>
-            <span className={`px-1.5 rounded-full text-[10px] ${tab === t ? "bg-primary-foreground/20" : "bg-muted"}`}>{counts[t]}</span>
+            {/* History counts only mean something once history has been fetched — until then the
+                badge would claim "0 delivered", which is a lie about 600-odd delivered ads. */}
+            <span className={`px-1.5 rounded-full text-[10px] ${tab === t ? "bg-primary-foreground/20" : "bg-muted"}`}>
+              {HISTORY_TABS.includes(t as OrderTab) && !historyLoaded ? "…" : counts[t as OrderTab]}
+            </span>
           </button>
         ))}
         <div className="relative flex-1 min-w-[180px]">
@@ -382,18 +559,22 @@ export default function Orders() {
             <option key={o.key} value={o.key}>{orderCategoryOptionLabel(o)}</option>
           ))}
         </select>
-        <select
-          value={sortMode}
-          onChange={(e) => setSortMode(e.target.value as OrderSortMode)}
-          title="Order of the queue"
-          className="h-9 rounded-xl border border-border/70 bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20"
-        >
-          {ORDER_SORT_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}{o.value === "overdue" && overdueInTab > 0 ? ` (${overdueInTab})` : ""}
-            </option>
-          ))}
-        </select>
+        {/* The queue's sort answers "who has waited longest", which is not a question you can ask
+            of finished work — history is always newest-change-first, so the control is not offered. */}
+        {!isHistoryTab && (
+          <select
+            value={sortMode}
+            onChange={(e) => setSortMode(e.target.value as OrderSortMode)}
+            title="Order of the queue"
+            className="h-9 rounded-xl border border-border/70 bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20"
+          >
+            {ORDER_SORT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}{o.value === "overdue" && overdueInTab > 0 ? ` (${overdueInTab})` : ""}
+              </option>
+            ))}
+          </select>
+        )}
         <ViewToggle mode={view} onChange={setView} />
       </div>
 
@@ -408,12 +589,79 @@ export default function Orders() {
           {selected.size > 0 && (
             <>
               <span className="text-xs text-muted-foreground">{selected.size} selected</span>
-              <button onClick={() => setConfirmDelete(true)}
-                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border border-destructive/40 bg-destructive/10 text-xs md:text-sm font-medium text-destructive transition-colors hover:bg-destructive/20">
-                <Trash2 className="w-3.5 h-3.5" /> Delete selected ({selected.size})
-              </button>
+              {/* Restore comes first on the history tabs — putting a wrongly-removed order back is
+                  the reason anyone opens Removed, and it must not sit behind the delete button. */}
+              {restorable.length > 0 && (
+                <button data-test="orders-restore" onClick={() => setConfirmRestore(true)}
+                  className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border border-primary/40 bg-primary/10 text-xs md:text-sm font-medium text-primary transition-colors hover:bg-primary/20">
+                  <RotateCcw className="w-3.5 h-3.5" /> Put back in the queue ({restorable.length})
+                </button>
+              )}
+              {tab !== "delivered" && (
+                <button onClick={() => setConfirmDelete(true)}
+                  className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border border-destructive/40 bg-destructive/10 text-xs md:text-sm font-medium text-destructive transition-colors hover:bg-destructive/20">
+                  <Trash2 className="w-3.5 h-3.5" /> Delete selected ({selected.size})
+                </button>
+              )}
             </>
           )}
+        </div>
+      )}
+
+      {/* Restore confirmation */}
+      {confirmRestore && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => !restoring && setConfirmRestore(false)}>
+          <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-primary/15">
+              <RotateCcw className="h-5 w-5 text-primary" />
+            </div>
+            <h3 className="text-center text-lg font-semibold text-foreground">Put {restorable.length} order{restorable.length === 1 ? "" : "s"} back?</h3>
+            <p className="mt-2 text-center text-sm text-muted-foreground">
+              {restorable.length === 1 ? "It goes" : "They go"} back to <strong className="text-foreground">Not assigned</strong> with no member on
+              {restorable.length === 1 ? " it" : " them"}, ready to be assigned. The sale behind
+              {restorable.length === 1 ? " it is" : " them are"} untouched, and the clean-up sweep won't take
+              {restorable.length === 1 ? " it" : " them"} again.
+            </p>
+            <div className="mt-5 flex items-center gap-2">
+              <button onClick={() => setConfirmRestore(false)} disabled={restoring}
+                className="flex-1 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50">
+                Cancel
+              </button>
+              <button onClick={runRestore} disabled={restoring}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50">
+                {restoring ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                {restoring ? "Restoring…" : `Restore ${restorable.length}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Verify confirmation — closing out delivered work without leaving the queue. */}
+      {verifyFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => !verifying && setVerifyFor(null)}>
+          <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-green-500/15">
+              <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+            </div>
+            <h3 className="text-center text-lg font-semibold text-foreground">Verify this delivery?</h3>
+            <p className="mt-2 text-center text-sm text-muted-foreground">
+              <strong className="text-foreground">{verifyFor.businessName || "This order"}</strong> is marked done by the member.
+              Verifying approves it, tells them, records the delivery on the client's record and moves the order to
+              {" "}<strong className="text-foreground">Delivered</strong>.
+            </p>
+            <div className="mt-5 flex items-center gap-2">
+              <button onClick={() => setVerifyFor(null)} disabled={verifying}
+                className="flex-1 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50">
+                Cancel
+              </button>
+              <button data-test="order-verify-confirm" onClick={runVerify} disabled={verifying}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-50">
+                {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                {verifying ? "Verifying…" : "Verify"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -472,13 +720,33 @@ export default function Orders() {
         </div>
       )}
 
+      {/* What a history tab is, said once, so nobody has to guess why these are not in the queue. */}
+      {isHistoryTab && (
+        <div className="flex items-start gap-2 rounded-xl border border-border/70 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          <Archive className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <p>
+            {tab === "delivered"
+              ? "Orders that were delivered and verified. They have left the queue and are on the client's record — shown here so a finished job can still be found."
+              : "Orders taken out of the queue — deleted by an admin, or cleared by \"already done\" clean-up. The sale behind each one still exists, so anything removed by mistake can be put back."}
+            {" "}Showing the {historyLimit} most recently changed orders.
+          </p>
+        </div>
+      )}
+
       {/* List / grid */}
       <div className={view === "grid" ? "grid grid-cols-1 lg:grid-cols-2 gap-3" : "space-y-3"}>
-        {visible.length === 0 ? (
+        {isHistoryTab && historyLoading && !historyLoaded ? (
+          <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground lg:col-span-2">
+            <Loader2 className="h-5 w-5 animate-spin" /> Loading history…
+          </div>
+        ) : visible.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground lg:col-span-2">
             <ShoppingBag className="w-12 h-12 mx-auto mb-3 opacity-30" />
             <p className="text-lg font-medium">
-              {tab === "changes" ? "Nothing charged for changes" : `No ${tab.replace(/_/g, " ")} orders`}
+              {tab === "changes" ? "Nothing charged for changes"
+                : tab === "delivered" ? "No delivered orders"
+                : tab === "removed" ? "Nothing has been removed"
+                : `No ${tab.replace(/_/g, " ")} orders`}
               {/* An empty tab with a filter on is almost always the filter, not an empty queue —
                   say which one is hiding things and offer the way out in the same breath. */}
               {category !== ALL_ORDER_CATEGORIES && ` in ${categoryLabel(category)}`}
@@ -536,6 +804,19 @@ export default function Orders() {
                       {showSalesInfo && o.penaltyTotal ? ` · ${formatCurrency(o.penaltyTotal)}` : ""}
                     </span>
                   )}
+                  {/* On a history card, the first thing to say is why this order is not in the
+                      queue — and, where we know it, who took it out. */}
+                  {(() => {
+                    const reason = orderExitReason(o);
+                    const meta = reason ? EXIT_META[reason] : null;
+                    if (!meta) return null;
+                    return (
+                      <span data-test="order-exit-reason"
+                        className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${meta.className}`}>
+                        <Archive size={9} /> {meta.label}
+                      </span>
+                    );
+                  })()}
                   {/* Approval isn't a gate anymore, but the tech team should still see which sales
                       the sales admin hasn't signed off on yet. */}
                   {o.saleVerified === false && (
@@ -543,7 +824,10 @@ export default function Orders() {
                       <Hourglass size={9} /> Pending approval
                     </span>
                   )}
-                  <DeadlineChip promise={o.promise} />
+                  {/* A promise only means something while the job is still owed. "1d 19h overdue"
+                      on an order that was delivered in July — or deleted in August — is a clock
+                      still running on work nobody is doing. */}
+                  {!isHistoryTab && <DeadlineChip promise={o.promise} />}
                 </div>
                 <div className="flex flex-wrap gap-x-3 md:gap-x-4 gap-y-1 text-xs md:text-sm text-muted-foreground">
                   {showSalesInfo && <span>Amount: <strong className="text-foreground">{formatCurrency(o.amount)}</strong></span>}
@@ -559,6 +843,25 @@ export default function Orders() {
                     <Clock size={11} /> Taken: <strong className="text-foreground">{fmtTs(o.createdAt)}</strong>
                   </span>
                   {o.promise && <span className="inline-flex items-center gap-1"><Clock size={11} /> Promise: <strong className="text-foreground">{o.promise.label}</strong></span>}
+                  {/* Who took it out of the queue, and when. Orders removed before this was
+                      recorded show the date alone — which is still more than the queue used to say. */}
+                  {(o.deleted || o.status === "deleted") && (
+                    <span data-test="order-removed-by" className="inline-flex items-center gap-1">
+                      <Trash2 size={11} /> Deleted{o.deletedByName ? <> by <strong className="text-foreground">{o.deletedByName}</strong></> : null}
+                      : <strong className="text-foreground">{fmtTs(o.deletedAt)}</strong>
+                    </span>
+                  )}
+                  {o.reconciledManually && (
+                    <span className="inline-flex items-center gap-1">
+                      <Sparkle size={11} /> Cleared{o.retiredByName ? <> by <strong className="text-foreground">{o.retiredByName}</strong></> : null}
+                      {tsSeconds(o.retiredAt) ? <>: <strong className="text-foreground">{fmtTs(o.retiredAt)}</strong></> : null}
+                    </span>
+                  )}
+                  {o.restoredAt && (
+                    <span className="inline-flex items-center gap-1 text-primary">
+                      <RotateCcw size={11} /> Put back{o.restoredByName ? ` by ${o.restoredByName}` : ""}: {fmtTs(o.restoredAt)}
+                    </span>
+                  )}
                   {/* Who has it. A button, not text: the next question after "who?" is always
                       "what else are they on?", and that answer lives on their own page. */}
                   {(() => {
@@ -618,7 +921,7 @@ export default function Orders() {
                             <button
                               data-test="penalty-remove"
                               title="Remove this penalty"
-                              onClick={() => removeOrderPenalty({ order: o, penaltyId: p.id })}
+                              onClick={() => removeOrderPenalty({ order: o, penaltyId: p.id, actor: user })}
                               className="text-muted-foreground transition-colors hover:text-destructive"
                             >
                               <X size={12} />
@@ -684,6 +987,18 @@ export default function Orders() {
                 )}
               </div>
               <div className={`flex flex-wrap items-center gap-2 ${view === "grid" ? "w-full" : ""}`}>
+                {/* A removed order's only action is coming back. Everything else on this card —
+                    assign, penalty, unassign — belongs to an order that is still in the pipeline. */}
+                {isHistoryTab ? (
+                  isRestorableOrder(o) && (
+                    <button
+                      data-test="order-restore-one"
+                      onClick={() => { setSelected(new Set([o.id])); setConfirmRestore(true); }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs md:text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
+                      <RotateCcw className="w-3.5 h-3.5" /> Put back in the queue
+                    </button>
+                  )
+                ) : <>
                 {/* A month splits three ways, so it gets its own assigner rather than the single-
                     member form — that form can only hand the whole thing to one person. */}
                 {o.status === "unassigned" && o.progress ? (
@@ -731,17 +1046,42 @@ export default function Orders() {
                     <Undo2 className="w-3.5 h-3.5" /> Unassign
                   </button>
                 )}
-                {queueStatusOf(o) === "completed" && (
-                  <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded-lg">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> Awaiting verify
-                  </span>
+                {/* "Awaiting verify" used to be a label with nothing behind it — the verify itself
+                    lived on two other screens. Now the person looking at the waiting job can
+                    close it out here, which is the whole point of a queue. */}
+                {queueStatusOf(o) === "completed" && o.status !== "verified" && (
+                  byOrderId.get(o.id) ? (
+                    <button
+                      data-test="order-verify"
+                      onClick={() => setVerifyFor(o)}
+                      title="Approve the delivered work and close this order"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs md:text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Verify delivery
+                    </button>
+                  ) : (
+                    <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded-lg">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Awaiting verify
+                    </span>
+                  )
                 )}
+                </>}
               </div>
               </div>
             </div>
           </div>
         ))}
       </div>
+
+      {/* Older history, on request — nobody pays for reads they didn't ask for. */}
+      {isHistoryTab && historyLoaded && !historyExhausted && (
+        <div className="flex justify-center">
+          <button data-test="orders-load-older" onClick={loadOlder} disabled={historyLoading}
+            className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2 text-xs md:text-sm font-medium text-foreground transition-colors hover:bg-accent/50 disabled:opacity-50">
+            {historyLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <History className="h-4 w-4" />}
+            {historyLoading ? "Loading…" : "Load older orders"}
+          </button>
+        </div>
+      )}
 
       {penaltyFor && user && (
         <PenaltyDialog order={penaltyFor} actor={user} onClose={() => setPenaltyFor(null)} />
@@ -753,6 +1093,7 @@ export default function Orders() {
           members={assignableMembers}
           assignments={assignments}
           assignerUid={user.uid}
+          assigner={user}
           onClose={() => setSplitFor(null)}
         />
       )}

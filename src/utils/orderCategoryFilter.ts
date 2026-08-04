@@ -24,16 +24,19 @@ import type { Order } from "@/types";
 export const ALL_ORDER_CATEGORIES = "all services";
 
 /**
- * What the queue opens on.
+ * What the queue opens on: everything.
  *
- * Promotional ads are the bulk of what the team delivers, so that is the pile an admin or team
- * leader is almost always coming to the page to work through. Opening on everything meant scrolling
- * past the monthly and website jobs first, every time.
+ * It used to open on "promotional", on the reasoning that promotional ads are the bulk of the work.
+ * That reasoning was sound and the default was still wrong. The tab badges count the FILTERED set,
+ * so a page opened on promotional says "Not assigned 4" while eleven live orders — a wishes video,
+ * a website, two Google listings, a logo, a cinematic ad — sit behind a dropdown, with nothing on
+ * screen to suggest they exist. A queue whose job is to be the list of everything owed to a paying
+ * client cannot open by hiding some of it.
  *
- * The queue is never silently narrowed: the filter renders highlighted when it is not "all", and a
- * tab with no promotional work says so by name and offers one click back to everything.
+ * The filter is still one click away, and `useOrderCategory` remembers the pick — so someone who
+ * genuinely works one pile all day sets it once and keeps it, while a fresh session starts honest.
  */
-export const DEFAULT_ORDER_CATEGORY = "promotional";
+export const DEFAULT_ORDER_CATEGORY = ALL_ORDER_CATEGORIES;
 
 /**
  * The three kinds of video the team produces, always offered whether or not any are in the queue

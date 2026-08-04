@@ -14,6 +14,7 @@ import { sendNotification } from "@/services/notifications";
 import { normalizePhone } from "@/utils/phone";
 import { categoryLabel } from "@/utils/serviceCatalog";
 import { findUnassignedOrderForPhone, revertOrderToUnassigned } from "@/services/orders";
+import { logTechActivity, type ActivityActor } from "@/services/activityLog";
 import { createOrderChat, lockOrderChat, deleteOrderChat } from "@/services/orderChat";
 import { ORDER_TRACKS } from "@/types";
 import type { Order, OrderTrack } from "@/types";
@@ -66,6 +67,12 @@ export interface CreateWorkAssignmentInput {
    * they are answerable for.
    */
   techAdminUid?: string | null;
+  /**
+   * The person assigning, for the activity feed. Optional so no caller breaks, but every screen
+   * that hands work out has the signed-in user and should pass it — an unattributed reassignment
+   * is exactly the kind of change nobody can explain a week later.
+   */
+  actor?: ActivityActor | null;
 }
 
 /** Creates the assignment, links + advances any originating order, and notifies the member. */
@@ -74,7 +81,7 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
     assignedTo, assignedToName, assignerUid, category, duration, clipCount, pricePerUnit, uniqueId,
     businessName, businessWhatsapp, modelGender, attireType, customAttire, aspectRatio,
     language, festival, requirementNotes, characterPack, realLocationProvided,
-    order, tracks, memberLink = "/tech/my-work", assignerName, techAdminUid,
+    order, tracks, memberLink = "/tech/my-work", assignerName, techAdminUid, actor,
   } = input;
 
   const accessCode = generateAccessCode();
@@ -180,6 +187,25 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
     dedupeKey: `work_assigned_${ref.id}_${assignedTo}`,
   });
 
+  await logTechActivity({
+    actor,
+    action: "assigned_work",
+    details: {
+      assignmentId: ref.id,
+      uniqueId,
+      memberUid: assignedTo,
+      memberName: assignedToName || "",
+      category,
+      businessName: business,
+      clipCount,
+      duration,
+      orderId: linkedOrder?.id ?? null,
+      // A month split three ways is three different jobs; the feed has to say which one moved.
+      tracks: tracks || null,
+      fromOrder: !!linkedOrder,
+    },
+  });
+
   return { id: ref.id, accessCode };
 }
 
@@ -191,6 +217,10 @@ export interface UnassignWorkInput {
   orderId?: string | null;
   /** Business/display name, for the member's notification. */
   title?: string;
+  /** Who took the work back, for the activity feed. */
+  actor?: ActivityActor | null;
+  /** The member's display name, so the feed reads as a name rather than a uid. */
+  assignedToName?: string | null;
 }
 
 /**
@@ -207,7 +237,7 @@ export interface UnassignWorkInput {
  * that nobody sold. The caller tells the user which of the two happened.
  */
 export async function unassignWork(input: UnassignWorkInput): Promise<{ returnedToQueue: boolean }> {
-  const { assignmentId, assignedTo, orderId, title } = input;
+  const { assignmentId, assignedTo, orderId, title, actor, assignedToName } = input;
 
   // Order first: if this throws, the assignment is still on the member and the state stays
   // consistent. Deleting first could strand the order as "assigned" to work that no longer exists.
@@ -227,6 +257,19 @@ export async function unassignWork(input: UnassignWorkInput): Promise<{ returned
     title: "Work Removed",
     message: `${title ? `"${title}" has` : "A job has"} been taken off your list and returned to the queue. Nothing further is needed from you.`,
     link: "/tech/my-work",
+  });
+
+  await logTechActivity({
+    actor,
+    action: "unassigned_work",
+    details: {
+      assignmentId,
+      memberUid: assignedTo,
+      memberName: assignedToName || "",
+      businessName: title || "",
+      orderId: orderId ?? null,
+      returnedToQueue: !!orderId,
+    },
   });
 
   return { returnedToQueue: !!orderId };

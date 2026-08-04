@@ -52,6 +52,7 @@ import TechAdminMyTeam from "@/pages/tech-admin/MyTeam";
 import DriveManagement from "@/pages/tech-admin/DriveManagement";
 import TechTrainingModules from "@/pages/tech-admin/TrainingModules";
 import TechAdminSessionHistory from "@/pages/tech-admin/SessionHistory";
+import TechActivityHistory from "@/pages/tech-admin/ActivityHistory";
 import TechAdminSettings from "@/pages/tech-admin/Settings";
 import TechAdminMemberHistory from "@/pages/tech-admin/MemberHistory";
 import TechAdminMemberAnalytics from "@/pages/tech-admin/MemberAnalytics";
@@ -165,6 +166,7 @@ const App = () => (
             <Route path="/tech-admin/drive" element={<DriveManagement />} />
             <Route path="/tech-admin/training" element={<TechTrainingModules />} />
             <Route path="/tech-admin/sessions" element={<TechAdminSessionHistory />} />
+            <Route path="/tech-admin/activity" element={<TechActivityHistory />} />
             <Route path="/tech-admin/settings" element={<TechAdminSettings />} />
             <Route path="/tech-admin/salary" element={<MySalaryPage />} />
             <Route path="/tech-admin/work-assign" element={<WorkAssign />} />
@@ -261,6 +263,8 @@ const App = () => (
             <Route path="/team-leader/work-assign/:memberId" element={<TeamLeaderMemberAssignments />} />
             <Route path="/team-leader/work-reports" element={<WorkReports />} />
             <Route path="/team-leader/orders" element={<Orders />} />
+            {/* A leader reads the same department feed — their own actions are in it. */}
+            <Route path="/team-leader/activity" element={<TechActivityHistory />} />
             <Route path="/team-leader/attendance" element={<TeamAttendance />} />
             <Route path="/team-leader/hr" element={<HrCenter />} />
             {/* The Agreements page moved into the HR centre. The old path still
