@@ -40,15 +40,84 @@ export async function inlineImage(url: string | null | undefined): Promise<strin
   }
 }
 
+/** An image's own pixel dimensions, or null when it cannot be read. */
+export async function naturalSize(
+  src: string | null | undefined,
+): Promise<{ width: number; height: number } | null> {
+  if (!src) return null;
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+/**
+ * Centre-crop an image to an aspect ratio, in pixels.
+ *
+ * The card's photograph is cropped here rather than by `object-fit: cover`, because the exporter
+ * does not implement object-fit and drew the uncropped picture stretched to the box — the download
+ * showed a face a third wider than the one on screen. Cropping the pixels puts the two beyond
+ * disagreement. See `PHOTO_BOX` in utils/idCard.
+ *
+ * Returns the original on any failure: a correctly-shaped card with a slightly-off photo beats no
+ * photo at all.
+ */
+export async function cropToAspect(
+  src: string | null | undefined,
+  aspect: number,
+): Promise<string | null> {
+  if (!src || !(aspect > 0)) return src ?? null;
+  const size = await naturalSize(src);
+  if (!size) return src;
+
+  const { width, height } = size;
+  // The largest rectangle of this aspect that fits inside the picture, centred.
+  const cropWidth = Math.min(width, height * aspect);
+  const cropHeight = Math.min(height, width / aspect);
+  const sx = (width - cropWidth) / 2;
+  const sy = (height - cropHeight) / 2;
+
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(cropWidth));
+    canvas.height = Math.max(1, Math.round(cropHeight));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return src;
+    const img = await new Promise<HTMLImageElement | null>((resolve) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = () => resolve(null);
+      i.src = src;
+    });
+    if (!img) return src;
+    ctx.drawImage(img, sx, sy, cropWidth, cropHeight, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/png");
+  } catch {
+    return src;
+  }
+}
+
+/**
+ * One side of the card, rasterised.
+ *
+ * html2canvas re-lays-out a clone of the page and paints that, so the clone has to be laid out the
+ * way the real page is. This used to pass `windowWidth`/`windowHeight` set to the card's own size —
+ * a 336 px viewport — which laid the cloned document out at a width the real one never had and was
+ * a large part of why the downloaded card did not match the one on screen. The defaults are the
+ * real viewport and the real scroll position, which is exactly what is wanted.
+ *
+ * `imageTimeout: 0` disables the fetch timeout: every image here is already a data URL (see
+ * `inlineImage`), so there is nothing to wait for and nothing to give up on.
+ */
 async function capture(el: HTMLElement, scale: number): Promise<HTMLCanvasElement> {
   return html2canvas(el, {
     scale,
     backgroundColor: "#ffffff",
     useCORS: true,
     logging: false,
-    // The card is a fixed-size box; letting html2canvas infer the window can clip the shadow.
-    windowWidth: el.scrollWidth,
-    windowHeight: el.scrollHeight,
+    imageTimeout: 0,
   });
 }
 

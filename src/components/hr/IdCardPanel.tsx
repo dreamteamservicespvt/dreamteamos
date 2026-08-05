@@ -13,13 +13,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Download, FileImage, FileText, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { buildIdCard, idCardVerifyUrl, CARD_HEIGHT, CARD_WIDTH } from "@/utils/idCard";
-import { downloadIdCardPdf, downloadIdCardPng, inlineImage } from "@/utils/idCardExport";
+import { buildIdCard, idCardVerifyUrl, CARD_HEIGHT, CARD_WIDTH, PHOTO_BOX } from "@/utils/idCard";
+import { cropToAspect, downloadIdCardPdf, downloadIdCardPng, inlineImage, naturalSize } from "@/utils/idCardExport";
 import type { AppUser } from "@/types";
 import type { EmployeeProfile } from "@/types/hr";
 import QRCode from "qrcode";
 import { watchCompanyAssets, type CompanyAssets } from "@/services/companyAssets";
-import { IdCardBack, IdCardFront } from "./IdCardView";
+import { IdCardBack, IdCardFront, type CardMarks } from "./IdCardView";
 
 export default function IdCardPanel({ member, profile, provisionalHint }: {
   member: AppUser;
@@ -34,16 +34,18 @@ export default function IdCardPanel({ member, profile, provisionalHint }: {
   const [busy, setBusy] = useState<"png" | "pdf" | null>(null);
   /** Photo and logo as data URLs — see idCardExport.inlineImage for why this must happen first. */
   const [photo, setPhoto] = useState<string | null>(null);
-  const [logo, setLogo] = useState<string | null>(null);
   const [signature, setSignature] = useState<string | null>(null);
-  /** The verification QR, drawn locally — no network, so it exports with the rest of the card. */
-  const [qr, setQr] = useState<string | null>(null);
-  /** The company's own marks — the CEO signature the card is issued under. */
-  const [marks, setMarks] = useState<CompanyAssets>({});
-  const [ceoSignature, setCeoSignature] = useState<string | null>(null);
+  /**
+   * Everything the card renders that is not the employee's own record — resolved to data URLs and,
+   * critically, MEASURED. The exporter draws an image stretched to whatever box the layout gave it,
+   * so each one is handed its own natural size and rendered at that aspect (see IdCardView.fitBox).
+   */
+  const [cardMarks, setCardMarks] = useState<CardMarks>({});
+  /** The company's own marks, live from Firestore — the CEO signature the card is issued under. */
+  const [company, setCompany] = useState<CompanyAssets>({});
   const [ready, setReady] = useState(false);
 
-  useEffect(() => watchCompanyAssets(setMarks), []);
+  useEffect(() => watchCompanyAssets(setCompany), []);
 
   const base = buildIdCard(member, profile);
 
@@ -51,13 +53,13 @@ export default function IdCardPanel({ member, profile, provisionalHint }: {
     let cancelled = false;
     setReady(false);
     (async () => {
-      const [p, l, sig, ceo, code] = await Promise.all([
+      const [rawPhoto, logo, sig, ceo, qr] = await Promise.all([
         inlineImage(base.photoUrl),
         // The white mark, because the header band it sits on is black. The full-colour logo carried
         // its own dark box and printed as a rectangle inside a rectangle.
         inlineImage("/white_logo.png"),
         inlineImage(base.signatureUrl),
-        inlineImage(marks.ceoSignatureUrl || null),
+        inlineImage(company.ceoSignatureUrl || null),
         // Deep navy on white: a QR needs contrast far more than it needs to match the brand, and
         // a mid-blue code is the one that phones fail to read in a badge holder under strip lights.
         QRCode.toDataURL(idCardVerifyUrl(base.uid), {
@@ -67,16 +69,30 @@ export default function IdCardPanel({ member, profile, provisionalHint }: {
           color: { dark: "#0b1f5cff", light: "#ffffffff" },
         }).catch(() => null),
       ]);
+      // Cropped to the photo box's own aspect, so `object-fit` — which the exporter ignores — is
+      // never what decides how the face is framed.
+      const [croppedPhoto, logoSize, sigSize, ceoSize] = await Promise.all([
+        cropToAspect(rawPhoto, PHOTO_BOX.width / PHOTO_BOX.height),
+        naturalSize(logo),
+        naturalSize(sig),
+        naturalSize(ceo),
+      ]);
       if (cancelled) return;
-      setPhoto(p);
-      setLogo(l);
+      setPhoto(croppedPhoto);
       setSignature(sig);
-      setCeoSignature(ceo);
-      setQr(code);
+      setCardMarks({
+        logoUrl: logo,
+        logoSize,
+        qrUrl: qr,
+        ceoSignatureUrl: ceo,
+        ceoSignatureSize: ceoSize,
+        ceoName: company.ceoName,
+        holderSignatureSize: sigSize,
+      });
       setReady(true);
     })();
     return () => { cancelled = true; };
-  }, [base.photoUrl, base.signatureUrl, base.uid, marks.ceoSignatureUrl]);
+  }, [base.photoUrl, base.signatureUrl, base.uid, company.ceoSignatureUrl, company.ceoName]);
 
   // If the photo could not be inlined, drop it rather than exporting a card with a blank hole.
   const data = { ...base, photoUrl: photo, signatureUrl: signature };
@@ -114,21 +130,8 @@ export default function IdCardPanel({ member, profile, provisionalHint }: {
         <div className="mx-auto flex w-max gap-6">
           {ready ? (
             <>
-              <IdCardFront
-                ref={frontRef}
-                data={data}
-                logoUrl={logo}
-                qrUrl={qr}
-                ceoSignatureUrl={ceoSignature}
-                ceoName={marks.ceoName}
-              />
-              <IdCardBack
-                ref={backRef}
-                data={data}
-                qrUrl={qr}
-                ceoSignatureUrl={ceoSignature}
-                ceoName={marks.ceoName}
-              />
+              <IdCardFront ref={frontRef} data={data} marks={cardMarks} />
+              <IdCardBack ref={backRef} data={data} marks={cardMarks} />
             </>
           ) : (
             <div

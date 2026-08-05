@@ -207,13 +207,21 @@ function isSalesEmployee(p: EmployeeProfile): boolean {
 /**
  * The incentive and target block — a sales letter's most important clause after the salary.
  *
- * Sales pay is two numbers, and only one of them was ever on the letter. Someone joining on
- * ₹15,000 plus 5% of what they sell has been told less than half of what they earn, and the target
- * they are measured against — the thing their confirmation actually turns on — appeared nowhere at
- * all. Both are read from the live record rather than typed, so the letter cannot promise a rate
- * payroll does not settle or a target the leaderboard does not measure.
+ * ── Why the target FIGURES are not printed ────────────────────────────────────────────────────
+ * They used to be: "Daily target: ₹15,000. Monthly target: ₹3,00,000." A number on a signed letter
+ * is a term of the contract, and these are not terms — they move with the season, the territory and
+ * the package mix, and they are set by the sales admin in the app whenever the business needs them
+ * to move. Printing them meant either reissuing the letter every time a target changed or leaving a
+ * signed document that contradicts the live one. So the letter states that targets EXIST, how they
+ * are set and what turns on them, and the figures stay where they are actually maintained.
  *
- * Returns null for a non-sales employee, and for a sales employee whose incentive has not been set.
+ * The incentive percentage is the opposite case and is still printed: it is a rate payroll settles
+ * against and does not change without an agreed revision.
+ *
+ * ── Why this appears for every sales employee ─────────────────────────────────────────────────
+ * It no longer reads any target field, so there is nothing to be missing. A sales letter that says
+ * nothing about targets is the failure this clause exists to prevent, and it used to happen on
+ * exactly the records nobody had filled in yet.
  */
 function salesIncentiveSection(i: BuildDocumentInput): Section {
   const { profile: p, subject } = i;
@@ -221,13 +229,9 @@ function salesIncentiveSection(i: BuildDocumentInput): Section {
 
   const pct = subject.incentivePercent;
   const hasPct = typeof pct === "number" && Number.isFinite(pct) && pct > 0;
-  const daily = subject.dailyTarget;
-  const monthly = subject.monthlyTarget;
-  const hasTarget = (typeof daily === "number" && daily > 0) || (typeof monthly === "number" && monthly > 0);
-  if (!hasPct && !hasTarget) return null;
 
   return {
-    title: "Sales Incentive and Targets",
+    title: hasPct ? "Sales Incentive and Targets" : "Sales Targets",
     lines: [
       hasPct
         ? `Sales Incentive: ${pct}% of the value of every sale made by you and verified by the company, over and above your gross monthly salary.`
@@ -235,15 +239,46 @@ function salesIncentiveSection(i: BuildDocumentInput): Section {
       hasPct
         ? "The incentive is calculated on verified sales only, and is paid with the salary for the pay cycle in which the sale is verified. A sale that is later reversed, refunded or found to be duplicated is excluded."
         : null,
-      hasTarget ? "" : null,
-      hasTarget ? "You will be measured against the following sales targets:" : null,
-      typeof daily === "number" && daily > 0 ? `  Daily target: ${rupees(daily)}` : null,
-      typeof monthly === "number" && monthly > 0 ? `  Monthly target: ${rupees(monthly)}` : null,
-      hasTarget
-        ? "Targets are reviewed periodically and may be revised in writing to reflect your role, your territory and the company's requirements. Consistent achievement of target is a factor in confirmation, revision and promotion."
-        : null,
+      hasPct ? "" : null,
+      "Your role carries sales targets. The applicable targets are set by the company and communicated to you separately, and they are visible to you at all times in the company's system.",
+      "Targets are reviewed periodically and may be revised to reflect your role, your territory, the season and the company's requirements. Consistent achievement of target is a factor in confirmation, revision and promotion.",
+      // The consequence, stated plainly and in advance. A downward revision that a person first
+      // hears about on their payslip is a dispute; one that is written into the letter they signed
+      // is a term. The band is the company's — below it the salary is at risk, above it is not.
+      "Achievement against target is assessed each month. Where your achievement falls below the required range of 50% to 75% of target, your salary may be revised downward in proportion to your performance against target. Any such revision will be communicated to you in writing before it takes effect, and the salary is restored on sustained achievement of target.",
     ],
   };
+}
+
+/**
+ * What a sales employee, specifically, may not take out of the building.
+ *
+ * The generic intellectual-property clause is written for the people who MAKE things — source code,
+ * designs, prompts, creative material — and a sales employee creates none of that. What passes
+ * through their hands instead is the client list: the numbers they called, what each client pays,
+ * what the company earns and how much it is selling. That is the asset a competitor would pay for
+ * and the one a leaver can carry out in a phone, and the letter said nothing about it.
+ *
+ * Appended to the existing IP clause rather than made a clause of its own, because it is the same
+ * obligation — this is what "company property" means for this department.
+ *
+ * Returns [] for anyone who is not sales, so the tech letters are untouched.
+ */
+function salesInformationLines(p: EmployeeProfile): string[] {
+  if (!isSalesEmployee(p)) return [];
+  return [
+    "In your role you will handle information that belongs to the company and is confidential to it: client and prospect contact numbers, client lists and lead data, what each client is quoted and pays, the company's revenue, its sales figures and targets, achievement and performance data, pricing and margins, package and discount structures, supplier and partner terms, and any other business information not in the public domain.",
+    "None of it may be disclosed to anyone. You shall not reveal, share, forward, copy, photograph, screenshot, export, print or publish any of it to any person outside the company — including clients, prospects, competitors, agencies, your family, or any social media, messaging or group platform — nor to any colleague inside the company who does not need it for their own work.",
+    "You shall not keep any of it on a personal device, account, notebook or storage of your own, and you shall not use it for your own benefit or for any other person or business. These obligations apply during your employment and continue without limit of time after it ends.",
+  ];
+}
+
+/** The same information, said again where it belongs — it is property, and it is returned. */
+function salesPropertyLines(p: EmployeeProfile): string[] {
+  if (!isSalesEmployee(p)) return [];
+  return [
+    "Client numbers, lead data, sales records and every other piece of business information you hold or record in the company's system are company property in the same way a laptop or an ID card is. They remain with the company, and any copy in your possession must be returned or deleted on or before your last working day.",
+  ];
 }
 
 /** `45000` → `₹45,000` in Indian digit grouping. */
@@ -664,9 +699,10 @@ function offerLetter(i: BuildDocumentInput): string {
         candidate is entitled to read it before accepting rather than on their first day.
       */
       {
-        title: "Intellectual Property",
+        title: "Intellectual Property and Company Information",
         lines: [
           `Any software, source code, designs, prompts, datasets, models, documentation, advertisements, creative material, websites and any other intellectual property created by you in the course of your employment, or using ${co.name}'s resources, time or confidential information, shall belong exclusively to ${co.name}.`,
+          ...salesInformationLines(p),
           "You agree to execute any document reasonably required to give effect to this, and your obligations under it continue after your employment ends.",
         ],
       },
@@ -674,6 +710,7 @@ function offerLetter(i: BuildDocumentInput): string {
         title: "Company Property",
         lines: [
           `Any laptop, ID card, SIM, access card, accounts, documents or other property issued to you remains the property of ${co.name} at all times.`,
+          ...salesPropertyLines(p),
           "All of it must be returned in working condition on or before your last working day, and your full and final settlement is processed after it has been.",
         ],
       },
@@ -795,8 +832,11 @@ function appointmentLetter(i: BuildDocumentInput): string {
         lines: ["You shall not, during your employment or at any time after it ends, disclose or use any confidential information of the company, its clients or its partners, except as required for the proper performance of your duties or by law. Confidential information includes client data, pricing, business plans, source code, prompts, creative assets, processes and any information not in the public domain."],
       },
       {
-        title: "Intellectual Property",
-        lines: ["All work product, inventions, designs, creative material, code, prompts, documentation and other intellectual property created by you in the course of your employment, or using company resources, shall vest solely in the company. You agree to execute any document reasonably required to give effect to this clause. Your confidentiality and intellectual property obligations continue after your employment ends."],
+        title: "Intellectual Property and Company Information",
+        lines: [
+          "All work product, inventions, designs, creative material, code, prompts, documentation and other intellectual property created by you in the course of your employment, or using company resources, shall vest solely in the company. You agree to execute any document reasonably required to give effect to this clause. Your confidentiality and intellectual property obligations continue after your employment ends.",
+          ...salesInformationLines(p),
+        ],
       },
       {
         title: "Conduct and Discipline",
@@ -830,7 +870,10 @@ function appointmentLetter(i: BuildDocumentInput): string {
       },
       {
         title: "Return of Company Property",
-        lines: ["On the last working day, or earlier if the company asks, you shall complete a proper handover and return all company property issued to you, including the ID card, laptop, phone, SIM, access cards, documents and any other assets recorded against your name. Your full and final settlement will be processed after the handover and the return of company property are complete, in accordance with company policy and applicable law."],
+        lines: [
+          "On the last working day, or earlier if the company asks, you shall complete a proper handover and return all company property issued to you, including the ID card, laptop, phone, SIM, access cards, documents and any other assets recorded against your name. Your full and final settlement will be processed after the handover and the return of company property are complete, in accordance with company policy and applicable law.",
+          ...salesPropertyLines(p),
+        ],
       },
       {
         title: "Amendment and Governing Terms",

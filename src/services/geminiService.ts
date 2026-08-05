@@ -27,6 +27,7 @@ import {
 import {
   CHARACTER_VOICEOVER_SYSTEM_PROMPT,
   CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT,
+  CHARACTER_VOICEOVER_REFINE_SYSTEM_PROMPT,
   CHARACTER_MULTI_FRAME_SYSTEM_PROMPT,
   CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT,
   LOCATION_INDEX_SYSTEM_PROMPT,
@@ -443,9 +444,22 @@ IMPORTANT:
       break;
 
     case 'voiceOver': {
-      const segmentCount = Math.ceil(formData.duration / 8);
+      // The script the member is looking at is the authority on its own length. A pack script that
+      // was generated for a longer package, or a custom script the business supplied, must not be
+      // silently re-cut to whatever the duration field currently says.
+      const scriptClips = parseLabeledClips(currentContent).length;
+      const segmentCount = scriptClips > 0 ? scriptClips : Math.ceil(formData.duration / 8);
+      /*
+        A pack refine gets the EDIT prompt, never the generator.
+
+        The generator prompt knows the two-hander contract, which is why it was used here — but it
+        ends by asking for a script to be written, and a model handed a script plus "write the clips
+        now" writes a new one. That rewrite is where the two characters got flattened into a single
+        promotional voice-over. CHARACTER_VOICEOVER_REFINE_SYSTEM_PROMPT states the same contract as
+        something to preserve and the job as an edit.
+      */
       systemPrompt = REFINE_EDIT_DIRECTIVE + buildLanguageDirective(formData) + (pack
-        ? CHARACTER_VOICEOVER_SYSTEM_PROMPT(pack, formData.duration, segmentCount, formData.adType, formData.festivalName, formData.language, resolvePlaceName(businessInfo))
+        ? CHARACTER_VOICEOVER_REFINE_SYSTEM_PROMPT(pack, segmentCount, formData.language)
         : VOICEOVER_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName, formData.language, formData.gender || 'female'));
       userPrompt = `You previously generated this Voice Over script:
 
@@ -511,25 +525,49 @@ ${pack ? `- These are ${pack.label} clips. Keep both characters and their attrib
   const refined = response.text || currentContent;
 
   /**
-   * Put a refined pack script back into the exact shape the rest of the app reads.
+   * Put a refined pack script back into the exact shape the rest of the app reads — and refuse to
+   * accept one that is no longer a two-hander.
    *
-   * The editor is asked to preserve the two-speaker layout, but "asked" is not "guaranteed" — it
+   * The editor is ASKED to preserve the two-speaker layout, which is not the same as guaranteed. It
    * may come back with the labels spaced differently or the clip header missing its colon, and that
    * colon is what the AI Platform's clip splitter needs to break the script into cards at all.
    * Re-parsing and re-formatting makes the output canonical no matter how it was written, and
    * re-applies the fixed name spellings while we are at it.
    *
-   * If it comes back unparseable we keep the model's text rather than throwing away the member's
-   * edit — a script that reads oddly is recoverable; a lost edit is not.
+   * When the reply is NOT a two-hander the old code kept it anyway, on the reasoning that a lost
+   * edit is worse than an odd-reading script. That reasoning was wrong in this one case: what
+   * "odd-reading" meant in practice was the member's Motu & Patlu ad silently turning into an
+   * ordinary single-voice promotional script — the whole thing the client paid for, gone, with no
+   * way back to it. So a reply that has lost the format is rejected and the original script is kept.
+   * The member loses one attempt and can refine again; they do not lose the ad.
    */
   if (sectionType === 'voiceOver' && pack) {
-    const clips = parseDialogueClips(refined, packSpeakerAliases(pack));
-    if (clips.length > 0 && clips.every(c => c.length === packSpeakerList.length)) {
+    const canonical = (text: string): string | null => {
+      const clips = parseDialogueClips(text, packSpeakerAliases(pack));
+      if (clips.length === 0 || !clips.every(c => c.length === packSpeakerList.length)) return null;
       return formatDialogueScript(
         applyNameSpellings(clips, packNameSpellings(pack, formData.language)),
         packSpeakerList,
       );
-    }
+    };
+
+    const first = canonical(refined);
+    if (first) return first;
+
+    // One corrective attempt, told exactly what it did wrong. Models that flatten a two-hander
+    // usually do it once and get it right when the failure is named.
+    const retry = await callWithFallback(async (ai, model) => ai.models.generateContent({
+      model,
+      contents: [{ role: 'user', parts: [{ text: `${userPrompt}
+
+⚠️ YOUR PREVIOUS REPLY WAS REJECTED. It was not a ${pack.label} two-character script — the exchange
+between ${packSpeakerList.map(s => s.name).join(' and ')} was lost. Do it again: apply the SAME
+requested change to the SAME script, and return every clip as exactly ${packSpeakerList.length}
+labelled lines, ${packSpeakerList[0]?.name} first.` }] }],
+      config: { systemInstruction: systemPrompt },
+    }));
+
+    return canonical(retry.text || '') ?? currentContent;
   }
 
   return refined;
@@ -2215,7 +2253,21 @@ export const generatePosterPrompt = async (
 };
 
 // --- Regenerate Veo prompts from a (refined) voice-over script ---
-// Used so that refining the Voice Over script also updates the Veo 3 segment prompts.
+/**
+ * Used so that refining the Voice Over script also updates the Veo 3 segment prompts.
+ *
+ * ── Why this knows about character packs ──────────────────────────────────────────────────────
+ * It did not, and it runs automatically after EVERY voice-over refine. So a member who adjusted one
+ * line of a Motu & Patlu script got their video prompts silently rebuilt by the human-model
+ * pipeline: the cartoon duo replaced by a presenter, the attached-frame instruction gone, an
+ * ordinary promotional ad where a two-hander had been. Every other branch of the pack had been
+ * fixed; this one was reached only through a refine, which is exactly where the report came from.
+ *
+ * The two paths need genuinely different inputs, not just a different prompt. A normal script is
+ * one line per clip, so `normalizeAndFormatVoiceOver` (the single-speaker normaliser) is right for
+ * it — and would flatten a two-hander's exchange into one run-on line if it were used on one. A
+ * pack script is parsed as dialogue instead and handed over speaker by speaker.
+ */
 export const regenerateVeoFromVoiceOver = async (
   voiceOverScript: string,
   formData: AdFormData
@@ -2224,13 +2276,46 @@ export const regenerateVeoFromVoiceOver = async (
     throw new Error("No API keys configured. Please set API_KEY_1, API_KEY_2, etc. in your environment.");
   }
 
+  const pack = getCharacterPack(formData.characterPack);
+
   // The script is the authority on clip count — a business-supplied custom script can be longer
   // or shorter than the Video Duration setting, and the Veo prompts must match it 1:1.
   const scriptClips = parseLabeledClips(voiceOverScript).length;
   const segmentCount = scriptClips > 0 ? scriptClips : Math.round(formData.duration / 8);
+
+  let veoSystemPrompt: string;
+  let veoUserPrompt: string;
+
+  if (pack) {
+    const speakers = packSpeakers(pack);
+    const nameOf = new Map(speakers.map(s => [s.key, s.name]));
+    const clips = parseDialogueClips(voiceOverScript, packSpeakerAliases(pack));
+    const dialogueCount = clips.length > 0 ? clips.length : segmentCount;
+
+    veoSystemPrompt = CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT(
+      pack, dialogueCount, formData.aspectRatio === '16:9' ? '16:9' : '9:16',
+    );
+    veoUserPrompt = `Generate Veo 3 prompts for all ${dialogueCount} clips of this two-character cartoon ad.
+Each clip's frame image is attached separately by the member, so write motion and speech only.
+
+${clips.map((clip, i) => {
+      const lines = clip.map(l => `  ${nameOf.get(l.speaker) ?? l.speaker}: "${l.text}"`).join('\n');
+      return `CLIP ${i + 1} (${i * CLIP_SECONDS}-${(i + 1) * CLIP_SECONDS}s)\n${lines}`;
+    }).join('\n\n')}
+
+Generate ${dialogueCount} complete Veo 3 prompts now.`;
+
+    const packResponse = await callWithFallback(async (ai, model) => ai.models.generateContent({
+      model,
+      contents: [{ role: 'user', parts: [{ text: veoUserPrompt }] }],
+      config: { systemInstruction: veoSystemPrompt },
+    }));
+    return parseVeoSegmentPrompts(packResponse.text || "", dialogueCount);
+  }
+
   const { segments } = normalizeAndFormatVoiceOver(voiceOverScript, segmentCount);
-  const veoSystemPrompt = VEO_SEGMENT_SYSTEM_PROMPT(segmentCount, formData.gender || 'female');
-  const veoUserPrompt = `Generate Veo 3 prompts for all segments.
+  veoSystemPrompt = VEO_SEGMENT_SYSTEM_PROMPT(segmentCount, formData.gender || 'female');
+  veoUserPrompt = `Generate Veo 3 prompts for all segments.
   VOICE-OVER SEGMENTS: ${segments.map((s, i) => `Segment ${i + 1}: ${s}`).join('\n')}
   Generate ${segmentCount} complete Veo 3 prompts now.`;
 

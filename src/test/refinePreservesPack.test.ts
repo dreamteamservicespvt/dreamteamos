@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   CHARACTER_VOICEOVER_SYSTEM_PROMPT, CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT,
-  CHARACTER_MULTI_FRAME_SYSTEM_PROMPT,
+  CHARACTER_MULTI_FRAME_SYSTEM_PROMPT, CHARACTER_VOICEOVER_REFINE_SYSTEM_PROMPT,
 } from "@/services/prompts/characterAd";
 import { VOICEOVER_SYSTEM_PROMPT, VEO_SEGMENT_SYSTEM_PROMPT } from "@/services/prompts";
 import { getCharacterPack, packSpeakers, packSpeakerAliases, packNameSpellings } from "@/services/characterPacks";
@@ -23,6 +23,33 @@ describe("the prompt a refine is given", () => {
     const normal = VOICEOVER_SYSTEM_PROMPT(16, 2, "commercial", "", "Telugu", "female");
     expect(packPrompt).toContain("Motu");
     expect(normal).not.toMatch(/motu|patlu/i);
+  });
+
+  /**
+   * The generator prompt ends by asking for a script to be written, and a model handed a script
+   * plus "write the clips now" writes a new one — which is where the two-hander was being lost.
+   * A refine gets a prompt that asks for an EDIT and nothing else.
+   */
+  describe("a pack voice-over refine gets an edit prompt, not the generator", () => {
+    const refine = CHARACTER_VOICEOVER_REFINE_SYSTEM_PROMPT(pack, 2, "Telugu");
+
+    it("names both characters and the two-line contract", () => {
+      expect(refine).toContain("Motu");
+      expect(refine).toContain("Patlu");
+      expect(refine).toContain("EXACTLY 2 lines in every clip");
+      expect(refine).toContain("EXACTLY 2 clips");
+    });
+
+    it("forbids the flattening that caused the bug", () => {
+      expect(refine).toContain("NEVER collapse the two into one voice");
+      expect(refine).toContain("NEVER convert this into a narrator's voice-over");
+    });
+
+    it("never tells the model to write a script", () => {
+      // The exact instruction that turned an edit into a regeneration.
+      expect(refine).not.toMatch(/write the \d+ clips now/i);
+      expect(refine).toContain("You are NOT writing a new script");
+    });
   });
 
   it("differs between a pack ad and a normal one — Veo", () => {
@@ -85,12 +112,18 @@ describe("normalising what a refine returns", () => {
   });
 
   /**
-   * The guard that protects the member's edit: if the reply cannot be parsed as a two-hander we
-   * keep the model's text rather than discarding what they asked for. An odd-reading script is
-   * recoverable; a lost edit is not.
+   * The guard that decides whether a reply may replace the member's ad at all.
+   *
+   * A reply that has lost the two-hander is rejected — the caller retries once and then keeps the
+   * ORIGINAL script. Accepting it, which is what used to happen, meant a Motu & Patlu ad silently
+   * becoming an ordinary single-voice promotional script: the thing the client paid for, gone.
    */
   it("declines to normalise a reply that is no longer a two-hander", () => {
     expect(canonicalise("clip-1[0-8sec]: One single narrator line with no speakers.")).toBeNull();
     expect(canonicalise("")).toBeNull();
+  });
+
+  it("rejects a reply that dropped one of the two characters", () => {
+    expect(canonicalise("clip-1[0-8sec]:\n  [Motu]: Only one of them speaks here.")).toBeNull();
   });
 });

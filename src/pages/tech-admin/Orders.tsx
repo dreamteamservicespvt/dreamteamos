@@ -88,9 +88,21 @@ export default function Orders() {
   // Assigning happens on Work Assign, where the sales member's brief pre-fills the whole form —
   // an admin can adjust anything before it goes out instead of re-typing it into a second modal.
   // A team leader manages delivery, not the commercials — same rule as Work Done & Reports, so
-  // the sale amount and who sold it stay with the tech admin.
+  // the rupee figures stay with the tech admin.
   const isTeamLeader = user?.role === "tech_team_leader";
+  /** Money: the sale amount, penalty rupees, edited discounts. Tech admin only. */
   const showSalesInfo = !isTeamLeader;
+  /**
+   * Who sold it — shown to the leader as well, and deliberately not grouped with the money above.
+   *
+   * A leader running delivery has to reach the seller constantly: the brief is thin, the client
+   * wants a change, the promise date is impossible. Withholding the name meant walking the order
+   * back through the tech admin to find out whose sale it was, on every one of these. It is also
+   * already on their own Work Assign screen ("· sold by …"), so hiding it here only made the two
+   * pages disagree. The commercial figure is the thing a leader has no business seeing; the
+   * colleague's name is not.
+   */
+  const showSeller = true;
   const workAssignBase = isTeamLeader ? "/team-leader/work-assign" : "/tech-admin/work-assign";
 
   /**
@@ -568,7 +580,7 @@ export default function Orders() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
             type="text"
-            placeholder={showSalesInfo ? "Search business, category, seller, phone…" : "Search business, category, phone…"}
+            placeholder={showSeller ? "Search business, category, seller, phone…" : "Search business, category, phone…"}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="h-9 w-full rounded-xl border border-border/70 bg-background pl-9 pr-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20"
@@ -923,7 +935,9 @@ export default function Orders() {
                   {o.clientName && o.clientName !== o.businessName && (
                     <span>Client: <strong className="text-foreground">{o.clientName}</strong></span>
                   )}
-                  {showSalesInfo && <span>Sold by: <strong className="text-foreground">{o.soldByName}</strong></span>}
+                  {showSeller && o.soldByName && (
+                    <span>Sold by: <strong className="text-foreground">{o.soldByName}</strong></span>
+                  )}
                   {o.fromAd && <span className="text-info">From ad</span>}
                   {/* When the sale was taken — the thing first-come-first-served is ordered by,
                       so it has to be readable on every card, not only in the sort. */}

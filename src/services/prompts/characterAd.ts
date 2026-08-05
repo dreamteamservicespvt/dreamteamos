@@ -319,6 +319,64 @@ ${adType === "festival"
 Write the ${segmentCount} clips now, in the exact format above and nothing else.`;
 };
 
+/**
+ * Refine pass — the member has asked for ONE change to a script that already exists.
+ *
+ * Deliberately not the generator prompt above. Handing a refine the full CHARACTER_VOICEOVER prompt
+ * looked right — it is the prompt that knows the two-hander contract — but it ends with "Write the
+ * N clips now", and a model given a script plus an instruction to write a script writes a new one.
+ * The member's edit came back as a wholly rewritten ad, and when the rewrite drifted out of the
+ * two-speaker shape the result read as an ordinary single-voice promotional script: the exact
+ * failure the pack exists to avoid.
+ *
+ * So this states the contract as something to PRESERVE and the task as an edit. Everything the
+ * generator says about hooks, beats and word budgets is deliberately absent — none of it is being
+ * decided here, and repeating it is what invites a rewrite.
+ */
+export const CHARACTER_VOICEOVER_REFINE_SYSTEM_PROMPT = (
+  pack: CharacterPack,
+  segmentCount: number,
+  language: string = "Telugu",
+): string => {
+  const lang = (language || "Telugu").trim() || "Telugu";
+  const [first, second] = pack.characters;
+  const spellings = packNameSpellings(pack, lang);
+
+  return `You are a precise script EDITOR working on an existing ${lang} cartoon ad script for
+${pack.label}. You are NOT writing a new script. You will be given a finished script and one
+requested change, and you return the SAME script with ONLY that change applied.
+
+===== WHAT YOU ARE LOOKING AT =====
+
+This is a TWO-CHARACTER script. ${first.name} and ${second.name} are talking to each other. It is
+not a voice-over, not a narration, and not a single presenter reading an advertisement.
+
+Every clip is an exchange of exactly two lines:
+  ${first.name} speaks first. ${second.name} answers him.
+
+===== THE SHAPE YOU MUST RETURN (NON-NEGOTIABLE) =====
+
+• EXACTLY ${segmentCount} clips — never add one, never drop one, never merge two.
+• EXACTLY 2 lines in every clip, ${first.name} first and ${second.name} second, each labelled.
+• NEVER collapse the two into one voice. NEVER remove a character. NEVER reorder them.
+• NEVER convert this into a narrator's voice-over or a single-presenter script.
+• Keep the same clip timings, the same ${lang}, and the same business facts.
+• Output format exactly: \`<start>-<end>|${first.key}: <line>\` then \`<start>-<end>|${second.key}: <line>\`${spellings.length > 0
+  ? `\n• A spoken character name is written EXACTLY as: ${spellings.map((s) => `${s.name} → ${s.spelling}`).join(", ")}`
+  : ""}
+
+===== HOW TO EDIT =====
+
+Make the SMALLEST change that fully satisfies the request. Every line the request does not touch
+comes back word for word as it was — same wording, same order, same punctuation. Do not "improve",
+re-polish, re-translate, shorten or restructure anything you were not asked about.
+
+If the requested change affects only one line, change only that line. If it affects the whole
+script (a tone, a fact, a name), apply it line by line and leave everything else intact.
+
+Return ONLY the edited clip lines. No preamble, no explanation, no headings.`;
+};
+
 /** Repair pass — same contract, aimed at the specific faults found. */
 export const CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT = (
   pack: CharacterPack,

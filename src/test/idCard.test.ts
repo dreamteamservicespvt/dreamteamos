@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildIdCard, prettyDate, provisionalEmployeeId } from "@/utils/idCard";
+import { buildIdCard, fitBox, prettyDate, provisionalEmployeeId, PHOTO_BOX } from "@/utils/idCard";
 import { idCardFilename } from "@/utils/idCardExport";
 import type { AppUser } from "@/types";
 import type { EmployeeProfile } from "@/types/hr";
@@ -91,6 +91,48 @@ describe("prettyDate", () => {
     expect(prettyDate("")).toBeNull();
     expect(prettyDate(null)).toBeNull();
     expect(prettyDate("2024")).toBeNull();
+  });
+});
+
+/**
+ * The arithmetic that keeps the downloaded card identical to the one on screen.
+ *
+ * html2canvas — which makes the PNG and the PDF — does not implement `object-fit`: it stretches an
+ * image to whatever box the layout gave it. So the logo and the signatures are given a box of their
+ * own aspect ratio instead of being asked to fit one, and the photograph is cropped in pixels to
+ * the photo box's aspect before it is ever rendered.
+ */
+describe("fitBox", () => {
+  it("fits a wide image by its width, leaving height to follow", () => {
+    expect(fitBox({ width: 600, height: 150 }, 120, 40)).toEqual({ width: 120, height: 30 });
+  });
+
+  it("fits a tall image by its height", () => {
+    expect(fitBox({ width: 150, height: 600 }, 120, 40)).toEqual({ width: 10, height: 40 });
+  });
+
+  it("never returns a box of a different aspect than the picture", () => {
+    const natural = { width: 1024, height: 331 };
+    const box = fitBox(natural, 132, 40);
+    expect(box.width / box.height).toBeCloseTo(natural.width / natural.height, 1);
+  });
+
+  it("never scales a small image up past its box", () => {
+    expect(fitBox({ width: 40, height: 20 }, 120, 40)).toEqual({ width: 80, height: 40 });
+  });
+
+  it("falls back to the full box for an image it could not measure", () => {
+    expect(fitBox(null, 120, 40)).toEqual({ width: 120, height: 40 });
+    expect(fitBox({ width: 0, height: 0 }, 120, 40)).toEqual({ width: 120, height: 40 });
+  });
+});
+
+describe("the photo box", () => {
+  it("is a portrait ID photograph, and a large one", () => {
+    // 4:5 — the shape of a real ID photo, not the square an avatar defaults to.
+    expect(PHOTO_BOX.width / PHOTO_BOX.height).toBeCloseTo(0.8, 2);
+    // Comfortably larger than the 100px circle it replaced: the face is what a badge is checked on.
+    expect(PHOTO_BOX.height).toBeGreaterThan(150);
   });
 });
 

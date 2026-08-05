@@ -472,6 +472,20 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
         case 'veo': currentContent = outputs.veoPrompts.join('\n###SEGMENT###\n'); break;
       }
       const refinedContent = await refineSection(section, currentContent, additionalInstructions, formData, outputs.businessInfo);
+      /**
+       * A refine that could not be applied hands back exactly what it was given (see
+       * refineSection: a special-category reply that has lost its two-character format is
+       * rejected rather than allowed to overwrite the ad). Saying so beats redrawing the same
+       * script and leaving the member to wonder whether their instruction was too vague.
+       */
+      if (refinedContent.trim() === currentContent.trim()) {
+        await showAlert({
+          title: "Nothing changed",
+          description: "That refinement could not be applied without breaking the script's format, so the original has been kept. Try wording the change more specifically and refine again.",
+          confirmText: "OK",
+        });
+        return;
+      }
       setOutputs(prev => {
         if (!prev) return prev;
         switch (section) {
@@ -500,7 +514,14 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
         }
       }
     } catch (error: any) {
+      // Silently swallowed until now: the spinner stopped, the content did not move, and nobody
+      // was told why. A refine is a paid model call — its failure has to be visible.
       console.error('Refinement error:', error);
+      await showAlert({
+        title: "Refinement failed",
+        description: error?.message || "The refinement could not be completed. Your existing content is unchanged — please try again.",
+        confirmText: "OK",
+      });
     } finally {
       setRefiningSection(null);
     }

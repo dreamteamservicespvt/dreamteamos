@@ -24,6 +24,46 @@ export const CARD_WIDTH = 336;
 export const CARD_HEIGHT = 533;
 export const CARD_MM = { width: 53.98, height: 85.6 };
 
+/**
+ * The photograph's box, and the aspect the photo is cropped to before it is ever rendered.
+ *
+ * 4:5 portrait, the shape of a real ID photograph, and big — a badge is identified across a room by
+ * the face on it, and this was a 100px circle competing with everything else on the card.
+ *
+ * Cropping to the box's own aspect BEFORE render is not a nicety. html2canvas — which produces the
+ * PNG and the PDF — does not implement `object-fit`, so a photo that CSS was cropping to `cover` on
+ * screen came out of the exporter stretched to fill the box. Cropping the pixels means the two
+ * agree by construction, whatever the export path does. See `fitBox` for the same problem on the
+ * logo and the signatures.
+ */
+export const PHOTO_BOX = { width: 148, height: 185 };
+
+/**
+ * The box an image should be given so it fills it without distortion — `object-fit: contain`, done
+ * in arithmetic instead of in CSS.
+ *
+ * Same reason as the crop above: the exporter draws an `<img>` stretched to whatever box the layout
+ * gave it. Sizing the box to the picture's own aspect ratio makes `contain` a no-op, so the logo
+ * and the signatures are identical on screen and in the download.
+ *
+ * Returns the max box for an image whose size we could not read, which is the pre-existing
+ * behaviour and never worse than a blank.
+ */
+export function fitBox(
+  natural: { width: number; height: number } | null,
+  maxWidth: number,
+  maxHeight: number,
+): { width: number; height: number } {
+  if (!natural || !(natural.width > 0) || !(natural.height > 0)) {
+    return { width: maxWidth, height: maxHeight };
+  }
+  const scale = Math.min(maxWidth / natural.width, maxHeight / natural.height);
+  return {
+    width: Math.max(1, Math.round(natural.width * scale)),
+    height: Math.max(1, Math.round(natural.height * scale)),
+  };
+}
+
 export interface IdCardData {
   name: string;
   /** Who this card belongs to — what the verification QR resolves to. */

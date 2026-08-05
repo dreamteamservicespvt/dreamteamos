@@ -82,12 +82,32 @@ describe("the email a letter is addressed to", () => {
 describe("what a sales letter says about incentive and targets", () => {
   const salesSubject = subject({ incentivePercent: 5, dailyTarget: 2000, monthlyTarget: 50000 });
 
-  it("states the incentive and both targets on the offer letter", () => {
+  it("states the incentive and that the role carries targets", () => {
     const body = letter("offer_letter", profile(), salesSubject);
     expect(body).toContain("Sales Incentive and Targets");
     expect(body).toContain("5% of the value of every sale");
-    expect(body).toContain("Daily target: ₹2,000");
-    expect(body).toContain("Monthly target: ₹50,000");
+    expect(body).toContain("Your role carries sales targets");
+  });
+
+  /**
+   * A figure on a signed letter is a term of the contract. Targets move with the season and the
+   * territory and are maintained in the app, so printing them left a signed document that
+   * contradicts the live one the moment anybody adjusted a number.
+   */
+  it("never prints the target figures, even when the record holds them", () => {
+    const body = letter("offer_letter", profile(), salesSubject);
+    expect(body).not.toContain("Daily target");
+    expect(body).not.toContain("Monthly target");
+    expect(body).not.toContain("₹2,000");
+    expect(body).not.toContain("₹50,000");
+  });
+
+  it("warns that missing target can bring the salary down", () => {
+    for (const type of ["offer_letter", "appointment_letter"] as const) {
+      const body = letter(type, profile(), salesSubject);
+      expect(body, type).toContain("below the required range of 50% to 75%");
+      expect(body, type).toContain("salary may be revised downward");
+    }
   });
 
   it("states them on the appointment letter too", () => {
@@ -101,9 +121,11 @@ describe("what a sales letter says about incentive and targets", () => {
     expect(body).toContain("10% of the value of every sale");
   });
 
-  it("says nothing about incentive on a tech employee's letter", () => {
+  it("says nothing about sales targets or incentive on a tech employee's letter", () => {
     const tech = profile({ department: "tech", designation: "AI Software Engineer" });
-    expect(letter("offer_letter", tech, subject())).not.toContain("Sales Incentive");
+    const body = letter("offer_letter", tech, subject());
+    expect(body).not.toContain("Sales Incentive");
+    expect(body).not.toContain("Your role carries sales targets");
   });
 
   it("recognises a sales employee from their title when the record has no department", () => {
@@ -112,14 +134,41 @@ describe("what a sales letter says about incentive and targets", () => {
     expect(letter("offer_letter", noDept, salesSubject)).toContain("Sales Incentive and Targets");
   });
 
-  it("omits the section entirely when neither an incentive nor a target is set", () => {
-    expect(letter("offer_letter", profile(), subject())).not.toContain("Sales Incentive");
+  /**
+   * The targets clause no longer reads a target field, so there is nothing left to be missing —
+   * and a sales letter silent about targets was exactly what used to happen on the records nobody
+   * had filled in yet.
+   */
+  it("still states the targets when no incentive rate has been set", () => {
+    const body = letter("offer_letter", profile(), subject());
+    expect(body).toContain("Sales Targets");
+    expect(body).toContain("Your role carries sales targets");
+    expect(body).not.toContain("Sales Incentive");
+  });
+});
+
+describe("what a sales letter says about client and revenue information", () => {
+  const clauses = [
+    "client and prospect contact numbers",
+    "the company's revenue, its sales figures and targets",
+    "None of it may be disclosed to anyone",
+  ];
+
+  it.each(["offer_letter", "appointment_letter"] as const)("spells it out on the %s", (type) => {
+    const body = letter(type, profile(), subject({ incentivePercent: 5 }));
+    for (const clause of clauses) expect(body, clause).toContain(clause);
   });
 
-  it("prints just the incentive when no target has been set yet", () => {
-    const body = letter("offer_letter", profile(), subject({ incentivePercent: 5 }));
-    expect(body).toContain("5% of the value of every sale");
-    expect(body).not.toContain("Daily target");
+  it("treats the client list as returnable company property", () => {
+    expect(letter("offer_letter")).toContain("Client numbers, lead data, sales records");
+    expect(letter("appointment_letter")).toContain("Client numbers, lead data, sales records");
+  });
+
+  it("leaves a tech employee's letter alone", () => {
+    const tech = profile({ department: "tech", designation: "AI Software Engineer" });
+    for (const clause of clauses) {
+      expect(letter("offer_letter", tech, subject()), clause).not.toContain(clause);
+    }
   });
 });
 
