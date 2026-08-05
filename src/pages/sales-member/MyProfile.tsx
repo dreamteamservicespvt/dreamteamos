@@ -14,6 +14,7 @@ import MemberAgreements from "@/components/agreement/MemberAgreements";
 import MyEmploymentPanel from "@/components/hr/MyEmploymentPanel";
 import { saveMemberPassword } from "@/services/memberCredentials";
 import ProfilePhotoUpload from "@/components/ProfilePhotoUpload";
+import { dailyTargetOf, monthlyTargetOf } from "@/utils/salesTargets";
 
 export default function MyProfile() {
   const user = useAuthStore((s) => s.user);
@@ -134,11 +135,11 @@ export default function MyProfile() {
           </div>
           <div className="bg-background border border-border rounded-lg p-3 min-w-0">
             <span className="text-xs text-muted-foreground">Daily Target</span>
-            <p className="font-display font-bold text-foreground text-sm sm:text-base truncate">{formatCurrency(user.dailyTarget || 0)}</p>
+            <p className="font-display font-bold text-foreground text-sm sm:text-base truncate">{formatCurrency(dailyTargetOf(user))}</p>
           </div>
           <div className="bg-background border border-border rounded-lg p-3 min-w-0 col-span-2 sm:col-span-1">
             <span className="text-xs text-muted-foreground">Monthly Target</span>
-            <p className="font-display font-bold text-foreground text-sm sm:text-base truncate">{formatCurrency(user.monthlyTarget || user.target || 0)}</p>
+            <p className="font-display font-bold text-foreground text-sm sm:text-base truncate">{formatCurrency(monthlyTargetOf(user))}</p>
           </div>
         </div>
 

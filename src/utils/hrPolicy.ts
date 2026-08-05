@@ -66,9 +66,13 @@ export function departmentOfRole(role?: UserRole | null): Department | null {
   return null;
 }
 
+/**
+ * The two routing teams, named. "Sales" became "Business Development" across the company; the
+ * key stays `sales` because it is a storage and permissions key, not a label.
+ */
 export const DEPARTMENT_LABELS: Record<Department, string> = {
   tech: "Technical",
-  sales: "Sales",
+  sales: "Business Development",
 };
 
 /** The role that signs for a department — the person whose stored signature goes on the letters. */

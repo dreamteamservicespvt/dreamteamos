@@ -31,17 +31,31 @@ type SortKey = "career" | "daySales" | "commCareer" | "commDay";
 
 interface DayOption {
   label: string;
+  /** A single day. Null for the spans below. */
   dateStr: string | null;
+  /**
+   * A span, for the options that are not one day. "This Month" is the 10th → 9th pay cycle, which
+   * is the only "month" this business has — see utils/payrollEngine.
+   */
+  span?: { from: string; to: string };
 }
 
 function buildDayOptions(): DayOption[] {
   const today = new Date();
+  const cycle = payPeriodForMonth(currentPayMonth());
   return [
     { label: `Today (${format(today, "dd/MM")})`, dateStr: format(today, "yyyy-MM-dd") },
     { label: `Yesterday (${format(subDays(today, 1), "dd/MM")})`, dateStr: format(subDays(today, 1), "yyyy-MM-dd") },
     { label: `2 days ago (${format(subDays(today, 2), "dd/MM")})`, dateStr: format(subDays(today, 2), "yyyy-MM-dd") },
     { label: `3 days ago (${format(subDays(today, 3), "dd/MM")})`, dateStr: format(subDays(today, 3), "yyyy-MM-dd") },
     { label: `4 days ago (${format(subDays(today, 4), "dd/MM")})`, dateStr: format(subDays(today, 4), "yyyy-MM-dd") },
+    // The five days above answer "how did we do today"; this answers "how are we doing this
+    // cycle", which is the question everyone actually asks by the third week.
+    {
+      label: `This Month (${format(new Date(`${cycle.start}T00:00:00`), "dd MMM")} – ${format(new Date(`${cycle.end}T00:00:00`), "dd MMM")})`,
+      dateStr: null,
+      span: { from: cycle.start, to: cycle.end },
+    },
     { label: "All Days", dateStr: null },
   ];
 }
@@ -107,20 +121,36 @@ export default function Leaderboard() {
   const effectiveDateStr = calendarDate
     ? format(calendarDate, "yyyy-MM-dd")
     : dayOptions[selectedDayIdx].dateStr;
+  /** Set only by a span option ("This Month"), and never while a single day is chosen. */
+  const effectiveSpan = calendarDate ? undefined : dayOptions[selectedDayIdx].span;
 
   const effectiveLabel = calendarDate
     ? format(calendarDate, "dd/MM/yyyy")
     : dayOptions[selectedDayIdx].label;
 
+  /**
+   * Choosing a day re-ranks the board by that day.
+   *
+   * Picking "Yesterday" and being shown a list still ordered by the month's totals is the board
+   * answering a question nobody asked — the whole reason to select a day is to see who did best
+   * ON it. The column header is still clickable, so anyone who wants the month order back is one
+   * click away; this only changes what the board opens on after a choice.
+   *
+   * "All Days" is the exception: its day column IS the career total, so leaving the sort where it
+   * is keeps the ranking meaningful rather than duplicating the column beside it.
+   */
   const handleDayDropdown = (idx: number) => {
     setSelectedDayIdx(idx);
     setCalendarDate(undefined); // clear calendar selection
     setDayOpen(false);
+    const picked = dayOptions[idx];
+    if (picked.dateStr || picked.span) setSortBy("daySales");
   };
 
   const handleCalendar = (date: Date | undefined) => {
     setCalendarDate(date);
     // Keep dayIdx but calendar overrides it visually
+    if (date) setSortBy("daySales");
   };
 
   useEffect(() => {
@@ -177,9 +207,11 @@ export default function Leaderboard() {
     let daySales = 0;
     let dayVerified = 0;
 
-    if (effectiveDateStr) {
+    if (effectiveDateStr || effectiveSpan) {
       const dayItems = allItems.filter(({ item, lead }) => {
-        return getSaleDate(item, lead) === effectiveDateStr;
+        const d = getSaleDate(item, lead);
+        if (d === null) return false;
+        return effectiveSpan ? d >= effectiveSpan.from && d <= effectiveSpan.to : d === effectiveDateStr;
       });
       daySales = dayItems.reduce((s, { item }) => s + (item.amount || 0), 0);
       dayVerified = dayItems
@@ -425,7 +457,7 @@ export default function Leaderboard() {
                     className={`p-3 text-right text-xs font-medium cursor-pointer hover:text-foreground transition-colors select-none ${sortBy === "daySales" ? "text-primary underline" : "text-muted-foreground"}`}
                     onClick={() => setSortBy("daySales")}
                   >
-                    {effectiveDateStr ? "Day's Sales" : "All Sales"}
+                    {effectiveDateStr ? "Day's Sales" : effectiveSpan ? "Month Sales" : "All Sales"}
                     {sortBy === "daySales" && " ▲"}
                   </th>
                   <th
@@ -539,7 +571,7 @@ export default function Leaderboard() {
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs pl-10">
                     <div className="bg-muted/30 rounded-lg p-2">
-                      <p className="text-muted-foreground mb-0.5">{effectiveDateStr ? "Day's Sales" : "All Sales"}</p>
+                      <p className="text-muted-foreground mb-0.5">{effectiveDateStr ? "Day's Sales" : effectiveSpan ? "Month Sales" : "All Sales"}</p>
                       <p className={`font-mono font-semibold ${s.daySales > 0 ? "text-info" : "text-muted-foreground"}`}>{formatCurrency(s.daySales)}</p>
                     </div>
                     <div className="bg-muted/30 rounded-lg p-2">
@@ -563,7 +595,7 @@ export default function Leaderboard() {
       )}
 
       <p className="text-[10px] text-muted-foreground text-center">
-        Day Sales = all amounts submitted on selected date • {secondaryLabel} = {granularity === "career" ? "all verified sales ever" : `verified sales in ${periodLabel}`} • Commission: 5% or 10% based on member plan
+        Day Sales = all amounts submitted in the selected window • {secondaryLabel} = {granularity === "career" ? "all verified sales ever" : `verified sales in ${periodLabel}`} • Commission: 5% or 10% based on member plan
       </p>
     </div>
   );

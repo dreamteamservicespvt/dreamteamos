@@ -245,7 +245,6 @@ async function devProvision(
     createdBy: invite.createdBy,
     isActive: true,
     salary: invite.ctcMonthly || 0,
-    target: invite.target ?? 0,
     phone: invite.phone || "",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -253,7 +252,6 @@ async function devProvision(
   if (invite.employeeId) userDoc.employeeId = invite.employeeId.trim().toUpperCase();
   if (invite.googleDriveBaseUrl) userDoc.googleDriveBaseUrl = invite.googleDriveBaseUrl;
   if (typeof invite.dailyTarget === "number") userDoc.dailyTarget = invite.dailyTarget;
-  if (typeof invite.monthlyTarget === "number") userDoc.monthlyTarget = invite.monthlyTarget;
   if (invite.engagementType === "full_time" || invite.engagementType === "part_time") {
     userDoc.employmentType = invite.engagementType;
   }

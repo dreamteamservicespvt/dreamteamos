@@ -99,10 +99,13 @@ export interface OnboardingInvite {
   ctcMonthly: number;
   /** Day of the month salary is paid, printed on the joining letter. */
   salaryPayDay?: number | null;
-  /** Sales only — seeded onto the user document so targets work from day one. */
-  target?: number | null;
+  /**
+   * Sales only — seeded onto the user document so targets work from day one.
+   *
+   * The daily figure is the only one carried. The monthly target is derived from it (see
+   * utils/salesTargets), so there is nothing else to seed and nothing that can arrive inconsistent.
+   */
   dailyTarget?: number | null;
-  monthlyTarget?: number | null;
   /** Tech only. */
   googleDriveBaseUrl?: string | null;
 

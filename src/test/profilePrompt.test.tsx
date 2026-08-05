@@ -13,7 +13,7 @@ import { cleanup, configure, fireEvent, render, screen, waitFor } from "@testing
 
 const {
   saveEmployeeProfile, addKycDocument, removeKycDocument, uploadToCloudinary, watchEmployeeProfile,
-  updateDoc, setUser, state,
+  updateDoc, setUser, state, watchEmployeeBank, isBankComplete,
 } = vi.hoisted(() => ({
   saveEmployeeProfile: vi.fn().mockResolvedValue(undefined),
   addKycDocument: vi.fn().mockResolvedValue(undefined),
@@ -22,11 +22,20 @@ const {
   watchEmployeeProfile: vi.fn(),
   updateDoc: vi.fn().mockResolvedValue(undefined),
   setUser: vi.fn(),
-  state: { user: {} as Record<string, unknown> },
+  state: { user: {} as Record<string, unknown>, bankComplete: true },
+  watchEmployeeBank: vi.fn(() => () => {}),
+  // Payout details are the one asked-for item that does not live on the employment record, so the
+  // suite drives it through this flag rather than by building a bank fixture per test.
+  isBankComplete: vi.fn(() => state.bankComplete),
 }));
 
 vi.mock("@/services/hr", () => ({ saveEmployeeProfile, addKycDocument, removeKycDocument, watchEmployeeProfile }));
 vi.mock("@/services/cloudinary", () => ({ uploadToCloudinary }));
+vi.mock("@/services/payroll", () => ({
+  watchEmployeeBank, isBankComplete, payoutSummary: () => "UPI · asha@okaxis",
+}));
+// The payout form is its own tested component; the prompt only has to open it.
+vi.mock("@/components/payroll/BankDetailsModal", () => ({ default: () => null }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock("@/store/authStore", () => ({
   useAuthStore: (select: (s: unknown) => unknown) => select({ user: state.user, setUser }),
@@ -91,6 +100,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
   state.user = { uid: "u1", name: "Asha Devi", role: "sales_member", isActive: true };
+  // Payout on file by default, so the pre-existing tests keep asking about the record items only.
+  state.bankComplete = true;
   withProfile();
 });
 afterEach(cleanup);
@@ -132,7 +143,9 @@ describe("what it asks for", () => {
     expect(screen.getByTestId("prompt-step-photo")).toBeInTheDocument();
     expect(screen.getByTestId("prompt-step-pan")).toBeInTheDocument();
     expect(screen.getByTestId("prompt-step-aadhaarCard")).toBeInTheDocument();
-    expect(screen.getByTestId("profile-progress")).toHaveTextContent("3 of 13");
+    // Four of fourteen: the three set above plus the payout details, which are on file by default
+    // in this suite (see `state.bankComplete`).
+    expect(screen.getByTestId("profile-progress")).toHaveTextContent("4 of 14");
   });
 
   it("still asks for the card after the number has been typed in", () => {
@@ -358,6 +371,95 @@ describe("knowing whether it is saved", () => {
 
     fireEvent.change(screen.getByTestId("prompt-address"), { target: { value: "Flat 4" } });
     expect(screen.getByTestId("prompt-unsaved")).toBeInTheDocument();
+  });
+});
+
+/**
+ * The deferral budget.
+ *
+ * An unlimited "later" is not a nag, it is an opt-out — members pressed it every morning and
+ * payroll ran for people with no PAN and no account to pay into. Three is the budget, it is held
+ * on the employment record so a new phone does not reset it, and once spent the only way past the
+ * dialog is to finish the pack.
+ */
+describe("the three-deferral budget", () => {
+  it("counts each deferral onto the record", async () => {
+    render(<ProfileCompletionPrompt />);
+    fireEvent.click(screen.getByTestId("profile-prompt-later"));
+
+    await waitFor(() => expect(saveEmployeeProfile).toHaveBeenCalled());
+    const patch = saveEmployeeProfile.mock.calls[0][1];
+    expect(patch.profilePromptDeferrals).toBe(1);
+    // Stamped with the day the counting started, alongside the first one.
+    expect(patch.profilePromptFirstShownOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("carries on from what the record already holds", async () => {
+    withProfile({ profilePromptDeferrals: 1, profilePromptFirstShownOn: "2026-08-01" });
+    render(<ProfileCompletionPrompt />);
+    fireEvent.click(screen.getByTestId("profile-prompt-later"));
+
+    await waitFor(() => expect(saveEmployeeProfile).toHaveBeenCalled());
+    const patch = saveEmployeeProfile.mock.calls[0][1];
+    expect(patch.profilePromptDeferrals).toBe(2);
+    // The original date is kept — the budget runs from when it was FIRST shown.
+    expect(patch.profilePromptFirstShownOn).toBe("2026-08-01");
+  });
+
+  it("says how many are left, so the last one is not a surprise", () => {
+    withProfile({ profilePromptDeferrals: 2 });
+    render(<ProfileCompletionPrompt />);
+    expect(screen.getByTestId("prompt-deferrals-left")).toHaveTextContent("1 more time");
+  });
+
+  /**
+   * The whole point: after three, there is no way to close it but to finish. The button is
+   * removed rather than disabled — a dead button explains nothing, a sentence does.
+   */
+  it("takes the button away once the budget is spent", () => {
+    withProfile({ profilePromptDeferrals: 3 });
+    render(<ProfileCompletionPrompt />);
+    expect(screen.queryByTestId("profile-prompt-later")).not.toBeInTheDocument();
+    expect(screen.getByTestId("prompt-deferrals-spent")).toBeInTheDocument();
+    expect(screen.getByTestId("profile-completion-prompt")).toBeInTheDocument();
+  });
+
+  it("does not trap somebody who has actually finished, whatever their budget", () => {
+    // Budget spent AND the pack complete: the congratulations state must still be closeable, or
+    // finishing the form would leave them staring at a modal with no way out.
+    withProfile({ ...FULL, profilePromptDeferrals: 3 });
+    render(<ProfileCompletionPrompt />);
+    const close = screen.getByTestId("profile-prompt-later");
+    expect(close).toHaveTextContent("Close");
+    fireEvent.click(close);
+    expect(screen.queryByTestId("profile-completion-prompt")).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Payout details are the one asked-for item that is not on the employment record, and the only one
+ * with a hard deadline: payroll runs on the 10th whether or not there is an account to pay into.
+ */
+describe("payout details", () => {
+  it("asks for them when none are on file", () => {
+    state.bankComplete = false;
+    render(<ProfileCompletionPrompt />);
+    expect(screen.getByTestId("prompt-step-payout")).toBeInTheDocument();
+    expect(screen.getByTestId("prompt-add-payout")).toBeInTheDocument();
+  });
+
+  it("does not ask once they are", () => {
+    state.bankComplete = true;
+    render(<ProfileCompletionPrompt />);
+    expect(screen.queryByTestId("prompt-step-payout")).not.toBeInTheDocument();
+  });
+
+  it("holds the prompt open for a record that is otherwise complete", () => {
+    state.bankComplete = false;
+    withProfile(FULL);
+    render(<ProfileCompletionPrompt />);
+    expect(screen.getByTestId("profile-completion-prompt")).toBeInTheDocument();
+    expect(screen.getByTestId("prompt-step-payout")).toBeInTheDocument();
   });
 });
 

@@ -17,6 +17,7 @@ import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import type { AppUser } from "@/types";
 import type { EmployeeProfile } from "@/types/hr";
+import { orgUnitLabel } from "@/types/hr";
 
 export const PUBLIC_BADGES = "public_badges";
 
@@ -36,7 +37,6 @@ export interface PublicBadge {
   updatedAt?: unknown;
 }
 
-const DEPARTMENTS: Record<string, string> = { tech: "Technology", sales: "Sales" };
 
 /**
  * Build the badge from the two records.
@@ -53,8 +53,13 @@ export function buildPublicBadge(
     name: (user.name || "").trim() || "—",
     employeeId: (user.employeeId || "").trim(),
     designation: (profile?.designation || "").trim(),
-    department: DEPARTMENTS[String(profile?.department || "")]
-      || (role.startsWith("sales") ? "Sales" : "Technology"),
+    // The department by name — the org unit, so a Creative or Marketing hire verifies as what they
+    // actually are rather than as whichever admin happens to run their paperwork.
+    department: orgUnitLabel(
+      profile?.orgUnit || profile?.department
+        ? { orgUnit: profile?.orgUnit, department: profile?.department }
+        : { department: role.startsWith("sales") ? "sales" : "tech" },
+    ),
     photoUrl: profile?.photoUrl || user.avatar || null,
     joiningDate: profile?.joiningDate || null,
     // Someone deactivated, or marked exited by HR, is not currently employed here.

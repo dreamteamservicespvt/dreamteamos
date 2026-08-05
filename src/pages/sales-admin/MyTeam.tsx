@@ -23,6 +23,7 @@ import { useViewMode } from "@/hooks/useViewMode";
 import { watchTeamProfiles } from "@/services/hr";
 import type { EmployeeProfile } from "@/types/hr";
 import { formatCurrency } from "@/utils/formatters";
+import { daysInPayCycle, dailyTargetOf, monthlyTargetFor, monthlyTargetOf } from "@/utils/salesTargets";
 
 export default function MyTeam() {
   const currentUser = useAuthStore((s) => s.user);
@@ -51,9 +52,8 @@ export default function MyTeam() {
   const [formPhone, setFormPhone] = useState("");
   const [formPassword, setFormPassword] = useState("");
   const [formSalary, setFormSalary] = useState<number>(0);
-  const [formTarget, setFormTarget] = useState<number>(10000);
+  // One target, not three. The monthly figure is derived from this — see utils/salesTargets.
   const [formDailyTarget, setFormDailyTarget] = useState<number>(10000);
-  const [formMonthlyTarget, setFormMonthlyTarget] = useState<number>(0);
   const [showPw, setShowPw] = useState(false);
   const [creating, setCreating] = useState(false);
 
@@ -110,9 +110,7 @@ export default function MyTeam() {
         createdBy: currentUser?.uid || "",
         isActive: true,
         salary: formSalary,
-        target: formTarget,
         dailyTarget: formDailyTarget,
-        monthlyTarget: formMonthlyTarget,
         phone: normalizedPhone,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -165,7 +163,7 @@ export default function MyTeam() {
 
   const resetForm = () => {
     setFormName(""); setFormEmail(""); setFormPhone(""); setFormPassword("");
-    setFormSalary(0); setFormTarget(10000); setFormDailyTarget(10000); setFormMonthlyTarget(0); setShowPw(false);
+    setFormSalary(0); setFormDailyTarget(10000); setShowPw(false);
   };
 
   /**
@@ -237,8 +235,9 @@ export default function MyTeam() {
                 onOpen={() => openMember(m.uid)}
                 stats={[
                   { label: "Salary", value: formatCurrency(m.salary || 0) },
-                  { label: "Monthly target", value: formatCurrency(m.monthlyTarget || m.target || 0), tone: "primary" },
-                  { label: "Daily target", value: formatCurrency(m.dailyTarget || 0), tone: "muted" },
+                  // Derived, never stored — the daily figure is the only one anybody sets.
+                  { label: "Monthly target", value: formatCurrency(monthlyTargetOf(m)), tone: "primary" },
+                  { label: "Daily target", value: formatCurrency(dailyTargetOf(m)), tone: "muted" },
                   {
                     label: "Earnings plan",
                     value: m.earningsOption === "stipend_plus_5" ? "Stipend + 5%"
@@ -284,7 +283,7 @@ export default function MyTeam() {
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Member</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Phone</th>
                 <th className="text-right px-4 py-3 font-medium text-muted-foreground">Salary</th>
-                <th className="text-right px-4 py-3 font-medium text-muted-foreground">Target</th>
+                <th className="text-right px-4 py-3 font-medium text-muted-foreground">Daily target</th>
                 <th className="text-center px-4 py-3 font-medium text-muted-foreground">Status</th>
                 <th className="text-center px-4 py-3 font-medium text-muted-foreground">Actions</th>
               </tr>
@@ -309,9 +308,9 @@ export default function MyTeam() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <MemberAvatar name={m.name} avatar={m.avatar} size={32} />
-                        <div>
-                          <p className="font-medium text-foreground">{m.name}</p>
-                          <p className="text-xs text-muted-foreground">{m.email}</p>
+                        <div className="min-w-0">
+                          <p className="font-medium text-foreground truncate" title={m.name}>{m.name}</p>
+                          <p className="text-xs text-muted-foreground truncate" title={m.email}>{m.email}</p>
                         </div>
                       </div>
                     </td>
@@ -327,7 +326,7 @@ export default function MyTeam() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-foreground">₹{m.salary?.toLocaleString() || 0}</td>
-                    <td className="px-4 py-3 text-right font-mono text-primary">₹{m.target?.toLocaleString() || 0}</td>
+                    <td className="px-4 py-3 text-right font-mono text-primary">{formatCurrency(dailyTargetOf(m))}</td>
                     <td className="px-4 py-3 text-center">
                       <span className={`text-xs px-2 py-0.5 rounded-full ${m.isActive ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive"}`}>
                         {m.isActive ? "Active" : "Inactive"}
@@ -439,23 +438,21 @@ export default function MyTeam() {
                     className="w-full h-10 px-4 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary font-mono" />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Target (₹)</label>
-                  <input type="number" min={0} value={formTarget || ""} onChange={(e) => setFormTarget(Number(e.target.value) || 0)}
-                    className="w-full h-10 px-4 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary font-mono" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
                   <label className="text-xs font-medium text-muted-foreground mb-1 block">Daily Target (₹)</label>
                   <input type="number" min={0} value={formDailyTarget || ""} onChange={(e) => setFormDailyTarget(Number(e.target.value) || 0)}
-                    className="w-full h-10 px-4 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary font-mono" />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Monthly Target (₹)</label>
-                  <input type="number" min={0} value={formMonthlyTarget || ""} onChange={(e) => setFormMonthlyTarget(Number(e.target.value) || 0)}
+                    data-test="daily-target-input"
                     className="w-full h-10 px-4 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary font-mono" />
                 </div>
               </div>
+              {/* The monthly figure, shown and not asked for. It is the daily target across the
+                  pay cycle, so typing it separately could only ever contradict this one. */}
+              <p className="text-[10px] text-muted-foreground -mt-1" data-test="derived-monthly-target">
+                Monthly target works out to{" "}
+                <span className="font-mono font-semibold text-foreground">
+                  {formatCurrency(monthlyTargetFor(formDailyTarget))}
+                </span>{" "}
+                — the daily target across this {daysInPayCycle()}-day pay cycle.
+              </p>
               <button type="submit" disabled={creating}
                 className="w-full h-10 rounded-lg bg-primary text-primary-foreground font-display font-semibold text-sm hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 mt-2">
                 {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
@@ -517,22 +514,24 @@ function MobileTeamCards({ members, loading, onToggle, onDelete, onEdit, deletin
     <div className="space-y-3">
       {members.map((m) => (
         <div key={m.uid} onClick={() => onClickMember(m.uid)} className="bg-card border border-border rounded-xl p-4 cursor-pointer hover:bg-accent/30 transition-colors">
-          <div className="flex items-start justify-between mb-3">
-            <div className="flex items-center gap-3">
+          <div className="flex items-start justify-between gap-2 mb-3">
+            {/* min-w-0 down the chain, or a long name pushes the row wider than the card and the
+                status chip beside it falls off the right edge. */}
+            <div className="flex min-w-0 flex-1 items-center gap-3">
               <MemberAvatar name={m.name} avatar={m.avatar} size={40} />
-              <div>
-                <p className="font-medium text-foreground text-sm">{m.name}</p>
-                <p className="text-xs text-muted-foreground">{m.email}</p>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium text-foreground text-sm" title={m.name}>{m.name}</p>
+                <p className="truncate text-xs text-muted-foreground" title={m.email}>{m.email}</p>
               </div>
             </div>
-            <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${m.isActive ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive"}`}>
+            <span className={`shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-full ${m.isActive ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive"}`}>
               {m.isActive ? "Active" : "Inactive"}
             </span>
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-xs mb-3">
             <div><span className="text-muted-foreground">Salary</span><span className="ml-2 font-mono text-foreground">₹{m.salary?.toLocaleString() || 0}</span></div>
-            <div><span className="text-muted-foreground">Target</span><span className="ml-2 font-mono text-primary">₹{m.target?.toLocaleString() || 0}</span></div>
+            <div><span className="text-muted-foreground">Daily target</span><span className="ml-2 font-mono text-primary">{formatCurrency(dailyTargetOf(m))}</span></div>
             {m.phone && (
               <div className="col-span-2"><span className="text-muted-foreground">Phone</span><span className="ml-2 font-mono text-foreground">{formatPhoneDisplay(m.phone)}</span></div>
             )}

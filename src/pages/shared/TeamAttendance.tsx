@@ -13,20 +13,20 @@ import {
   AttendanceStatus,
   announceHoliday,
   clearAttendanceOverride,
-  daysInMonth,
+  daysBetween,
   deleteHoliday,
   isSunday,
   resolveStatus,
   setAttendanceOverride,
   summarize,
   todayDate,
-  todayMonth,
-  watchCheckedInDays,
-  watchHolidays,
-  watchOverrides,
+  watchCheckedInDaysInRange,
+  watchHolidayRecordsInRange,
+  watchOverridesInRange,
   attendanceKey,
   Holiday,
 } from "@/services/techAttendance";
+import { currentPayMonth, payPeriodForMonth } from "@/utils/payrollEngine";
 import { EMPLOYMENT_LABELS, employmentOf, setEmploymentType } from "@/services/employment";
 import { sendNotification } from "@/services/notifications";
 import { getWhatsAppUrl, normalizePhone } from "@/utils/phone";
@@ -45,7 +45,12 @@ export default function TeamAttendance() {
   const user = useAuthStore((s) => s.user);
   const { toast } = useToast();
   const [allUsers, setAllUsers] = useState<AppUser[]>([]);
-  const [month, setMonth] = useState<string>(todayMonth());
+  /**
+   * A PAY month, not a calendar one — the cycle runs 10th → 9th, which is the span the salary, the
+   * leave quota and the deductions are all settled over. A grid showing 1–31 against a payslip
+   * settling 10 → 9 meant the days the team counted were not the days they were paid for.
+   */
+  const [month, setMonth] = useState<string>(currentPayMonth());
   const [overrides, setOverrides] = useState<Map<string, AttendanceStatus>>(new Map());
   const [holidays, setHolidays] = useState<Map<string, Holiday>>(new Map());
   const [checkedIn, setCheckedIn] = useState<Set<string>>(new Set());
@@ -70,14 +75,19 @@ export default function TeamAttendance() {
     return () => unsub();
   }, []);
 
+  /** The cycle this label covers: 10th of `month` → 9th of the month after. */
+  const period = useMemo(() => payPeriodForMonth(month), [month]);
+
   useEffect(() => {
+    // Range-scoped: the cycle straddles two calendar months, and the month-scoped listeners
+    // dropped everything from the 1st onwards.
     const unsubs = [
-      watchOverrides(month, setOverrides),
-      watchHolidays(month, setHolidays),
-      watchCheckedInDays(month, setCheckedIn),
+      watchOverridesInRange(period.start, period.end, setOverrides),
+      watchHolidayRecordsInRange(period.start, period.end, setHolidays),
+      watchCheckedInDaysInRange(period.start, period.end, setCheckedIn),
     ];
     return () => unsubs.forEach((u) => u());
-  }, [month]);
+  }, [period.start, period.end]);
 
   /**
    * Sales runs the same grid as tech, with one difference: sales attendance is whole days only.
@@ -119,8 +129,8 @@ export default function TeamAttendance() {
     });
   }, [members, search]);
 
-  // The COMPLETE month, day 1 → last day, always.
-  const days = useMemo(() => daysInMonth(month), [month]);
+  // The COMPLETE cycle, 10th → 9th, always.
+  const days = useMemo(() => daysBetween(period.start, period.end), [period.start, period.end]);
   const monthHolidays = useMemo(
     () => [...holidays.values()].sort((a, b) => a.date.localeCompare(b.date)),
     [holidays],
@@ -234,8 +244,15 @@ export default function TeamAttendance() {
           </button>
           <div className="flex items-center gap-1 rounded-lg border border-border bg-card px-1">
             <button onClick={() => setMonth((m) => shiftMonth(m, -1))} className="p-1.5 hover:bg-accent rounded-md"><ChevronLeft className="w-4 h-4" /></button>
-            <span className="text-sm font-semibold text-foreground px-1 min-w-[92px] text-center">{format(new Date(`${month}-01`), "MMM yyyy")}</span>
-            <button onClick={() => setMonth((m) => shiftMonth(m, 1))} disabled={month >= todayMonth()}
+            <span className="flex flex-col px-1 min-w-[104px] text-center leading-tight">
+              <span className="text-sm font-semibold text-foreground">{format(new Date(`${month}-01`), "MMM yyyy")}</span>
+              {/* The span this grid actually covers. Without it a reader assumes 1–31 and
+                  miscounts the team's attendance against the payslip. */}
+              <span className="text-[10px] text-muted-foreground">
+                {format(new Date(`${period.start}T00:00:00`), "dd MMM")} – {format(new Date(`${period.end}T00:00:00`), "dd MMM")}
+              </span>
+            </span>
+            <button onClick={() => setMonth((m) => shiftMonth(m, 1))} disabled={month >= currentPayMonth()}
               className="p-1.5 hover:bg-accent rounded-md disabled:opacity-30"><ChevronRight className="w-4 h-4" /></button>
           </div>
         </div>
@@ -610,7 +627,7 @@ export default function TeamAttendance() {
 
             {monthHolidays.length > 0 && (
               <div className="mt-4 pt-3 border-t border-border">
-                <div className="text-xs font-medium text-muted-foreground mb-2">Announced this month</div>
+                <div className="text-xs font-medium text-muted-foreground mb-2">Announced this cycle</div>
                 <div className="space-y-1.5 max-h-40 overflow-y-auto">
                   {monthHolidays.map((h) => (
                     <div key={h.date} className="flex items-center justify-between gap-2 rounded-lg bg-muted/40 px-3 py-1.5">

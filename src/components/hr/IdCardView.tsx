@@ -32,7 +32,7 @@
  * whoever is checking the card is already looking.
  */
 import { forwardRef } from "react";
-import { CARD_HEIGHT, CARD_WIDTH, PHOTO_BOX, fitBox } from "@/utils/idCard";
+import { CARD_HEIGHT, CARD_WIDTH, PHOTO_BOX, fitBox, idCardNameSize } from "@/utils/idCard";
 import type { IdCardData } from "@/utils/idCard";
 import { COMPANY } from "@/utils/company";
 
@@ -319,12 +319,20 @@ export const IdCardFront = forwardRef<HTMLDivElement, { data: IdCardData; marks:
             minHeight: 0,
           }}
         >
-          {/* The job title wraps to a second line rather than being cut. A designation is what a
-              badge is read for, and "Senior Business Development Execu…" tells a reader nothing the
-              full line would not have told them in the space already sitting empty below it. */}
+          {/* The name in full, and the job title wrapped rather than cut. Both are what a badge is
+              read for, and an abbreviation of either tells a reader nothing the full line would not
+              have told them in the space already sitting empty below it. The name's type size steps
+              down as the name gets longer — see idCardNameSize. */}
           <div style={{ textAlign: "center", paddingBottom: 10, borderBottom: `1px solid ${RULE}` }}>
-            <p style={{ margin: 0, fontSize: 18, fontWeight: 800, color: INK, lineHeight: "19px", letterSpacing: -0.2 }}>
-              {clamp(data.name, 36)}
+            <p style={{
+              margin: 0,
+              fontSize: idCardNameSize(data.name).fontSize,
+              lineHeight: `${idCardNameSize(data.name).lineHeight}px`,
+              fontWeight: 800,
+              color: INK,
+              letterSpacing: -0.2,
+            }}>
+              {data.name}
             </p>
             <p style={{ margin: "4px 0 0", fontSize: 10, fontWeight: 600, color: BRAND, lineHeight: "12px" }}>
               {clamp(data.designation, 58)}
@@ -342,7 +350,9 @@ export const IdCardFront = forwardRef<HTMLDivElement, { data: IdCardData; marks:
                 letterSpacing: 0.9,
               }}
             >
-              {caps(`${data.department} Department`)}
+              {/* `department` is already the unit's full name ("Business Development Department"),
+                  so nothing is appended — doing so printed "…Department Department". */}
+              {caps(data.department)}
             </span>
           </div>
 
@@ -418,8 +428,8 @@ export const IdCardBack = forwardRef<HTMLDivElement, { data: IdCardData; marks: 
         <HeaderBand marks={marks} caption="Card Holder Details" />
 
         <div style={{ padding: "12px 18px 0", flexShrink: 0 }}>
-          <p style={{ margin: 0, fontSize: 12, fontWeight: 800, color: INK, lineHeight: "13px" }}>
-            {clamp(data.name, 30)}
+          <p style={{ margin: 0, fontSize: 12, fontWeight: 800, color: INK, lineHeight: "14px" }}>
+            {data.name}
           </p>
           <p style={{ margin: "2px 0 9px", fontSize: 8.5, color: MUTED }}>{clamp(data.designation, 40)}</p>
 
@@ -428,14 +438,14 @@ export const IdCardBack = forwardRef<HTMLDivElement, { data: IdCardData; marks: 
           </div>
         </div>
 
-        {/* The same pair as the front, so whichever way up the card is read it can be checked.
-            The bottom padding keeps it clear of the property notice underneath — without it the
-            captions and the small print ran together into one grey band. */}
-        <div style={{ flex: 1, display: "flex", alignItems: "flex-end", padding: "10px 0 14px", minHeight: 0 }}>
-          <SignaturePair data={data} marks={marks} />
-        </div>
+        {/* No signatures here. They are on the front, where somebody checking a badge is already
+            looking — printing them twice cost the back a third of its height and told a reader
+            nothing the front had not already told them.
 
-        <div style={{ padding: "0 18px 12px", flexShrink: 0, display: "flex", gap: 10, alignItems: "flex-end" }}>
+            The space they freed goes to the notice below rather than being left as a gap in the
+            middle: content sits top-weighted, and the slack falls at the bottom where it reads as
+            margin instead of as something missing. */}
+        <div style={{ padding: "14px 18px 0", flexShrink: 0, display: "flex", gap: 10, alignItems: "flex-start" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ margin: 0, fontSize: 7, lineHeight: "9px", color: MUTED }}>
               Property of {COMPANY.name}. Non-transferable; surrender on separation. If found,
@@ -449,14 +459,21 @@ export const IdCardBack = forwardRef<HTMLDivElement, { data: IdCardData; marks: 
             </p>
           </div>
           {marks.qrUrl && (
-            <img
-              src={marks.qrUrl}
-              alt="Verify"
-              crossOrigin="anonymous"
-              style={{ width: 46, height: 46, flexShrink: 0, borderRadius: 3, backgroundColor: "#ffffff" }}
-            />
+            <div style={{ textAlign: "center", flexShrink: 0 }}>
+              <img
+                src={marks.qrUrl}
+                alt="Verify"
+                crossOrigin="anonymous"
+                style={{ width: 52, height: 52, display: "block", borderRadius: 3, backgroundColor: "#ffffff" }}
+              />
+              <p style={{ margin: "3px 0 0", fontSize: 6, fontWeight: 700, letterSpacing: 0.6, color: FAINT }}>
+                {caps("Verify")}
+              </p>
+            </div>
           )}
         </div>
+
+        <div style={{ flex: 1, minHeight: 0 }} />
 
         <div style={{ height: 7, background: RULE_BAR, flexShrink: 0 }} />
       </div>

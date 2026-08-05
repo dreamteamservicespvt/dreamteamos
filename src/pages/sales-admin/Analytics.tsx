@@ -621,9 +621,9 @@ export default function SalesAnalytics() {
                             }`}>
                               {a.member.name?.charAt(0)}
                             </div>
-                            <div>
-                              <p className="font-medium text-foreground text-xs">{a.member.name}</p>
-                              <p className="text-[10px] text-muted-foreground">{a.member.email}</p>
+                            <div className="min-w-0">
+                              <p className="font-medium text-foreground text-xs truncate" title={a.member.name}>{a.member.name}</p>
+                              <p className="text-[10px] text-muted-foreground truncate" title={a.member.email}>{a.member.email}</p>
                             </div>
                           </div>
                         </td>

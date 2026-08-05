@@ -6,8 +6,10 @@ import type { Actor } from "@/services/hr";
 import {
   defaultProbationMonths, noticePeriodFor, probationDaysRemaining, probationEndDate,
 } from "@/utils/hrPolicy";
-import { ENGAGEMENT_LABELS, WORK_ARRANGEMENT_LABELS } from "@/types/hr";
-import type { EmployeeProfile, EngagementType, WorkArrangement } from "@/types/hr";
+import {
+  ENGAGEMENT_LABELS, WORK_ARRANGEMENT_LABELS, ORG_UNIT_LABELS, ORG_UNIT_OPTIONS, orgUnitLabel, orgUnitOf,
+} from "@/types/hr";
+import type { EmployeeProfile, EngagementType, OrgUnit, WorkArrangement } from "@/types/hr";
 import { rupees } from "@/utils/hrTemplates";
 import { ladderFor, roleByTitle, termsForRole } from "@/utils/roleLadder";
 import {
@@ -160,6 +162,7 @@ export default function EmploymentTermsCard({
     try {
       await saveEmploymentTerms(profile.uid, {
         engagementType: form.engagementType,
+        orgUnit: form.orgUnit || null,
         designation: form.designation?.trim() || null,
         workLocation: form.workLocation?.trim() || null,
         workArrangement: form.workArrangement || null,
@@ -280,6 +283,17 @@ export default function EmploymentTermsCard({
 
       {editing ? (
         <div className="grid gap-3 sm:grid-cols-2">
+          {/*
+            The department by NAME, which is not the same question as which team runs this person.
+            A Creative or Marketing hire is still managed by the tech admin — that routing lives in
+            `profile.department` and is not editable here. This is only what gets printed.
+          */}
+          <Select label="Department" value={orgUnitOf({ ...profile, orgUnit: form.orgUnit })}
+            onChange={(e) => set("orgUnit", e.target.value as OrgUnit)} data-test="terms-org-unit">
+            {ORG_UNIT_OPTIONS.map((u) => (
+              <option key={u} value={u}>{ORG_UNIT_LABELS[u]}</option>
+            ))}
+          </Select>
           <Select label="Engagement" value={form.engagementType || ""} onChange={(e) => handleEngagement(e.target.value as EngagementType)} data-test="terms-engagement">
             <option value="">Not set</option>
             {(Object.keys(ENGAGEMENT_LABELS) as EngagementType[]).map((k) => (
@@ -493,6 +507,7 @@ export default function EmploymentTermsCard({
         </div>
       ) : (
         <div className="grid gap-x-4 gap-y-3 sm:grid-cols-3">
+          <Field label="Department" value={orgUnitLabel(profile)} />
           <Field label="Designation" value={profile.designation} />
           <Field label="Engagement" value={profile.engagementType ? ENGAGEMENT_LABELS[profile.engagementType] : null} />
           {!isAdmin && <Field label="Employee ID" value={employeeId} mono />}

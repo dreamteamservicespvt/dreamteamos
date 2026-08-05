@@ -22,6 +22,7 @@ import PenaltyDialog from "@/components/work/PenaltyDialog";
 import {
   SALE_CATEGORIES, PACKAGES, categoryLabel, isAdCategory, isBulkCategory, needsDescription,
   packageOptionLabel, bulkTypesFor, effectiveAdCategory, bulkCategoryLabel,
+  DEFAULT_PROMOTIONAL_PACKAGE,
 } from "@/utils/serviceCatalog";
 import {
   quoteBulk, suggestedDiscountPercent, maxDiscountAmount, discountSummary,
@@ -1558,11 +1559,12 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
   const saleFormUser = useAuthStore((s) => s.user);
   const editing = !!editItem;
   const ed = editItem?.item;
-  // Promotional is what the team sells most, so it's the default; the ₹999 "30 Seconds + Poster"
-  // package is pre-selected to match. When editing, everything starts from the saved sale.
+  // Promotional is what the team sells most, so it's the default; the ₹499 "15 Seconds + Poster"
+  // package is pre-selected to match, since that is the one they actually sell most of. When
+  // editing, everything starts from the saved sale.
   const [category, setCategory] = useState(ed?.category || "promotional");
   const [packageKey, setPackageKey] = useState(
-    ed ? (ed.packageKey && ed.packageKey !== "custom" ? ed.packageKey : "") : "30 Seconds + Poster",
+    ed ? (ed.packageKey && ed.packageKey !== "custom" ? ed.packageKey : "") : DEFAULT_PROMOTIONAL_PACKAGE,
   );
   const [customAmount, setCustomAmount] = useState<number>(ed?.amount || 0);
   /**

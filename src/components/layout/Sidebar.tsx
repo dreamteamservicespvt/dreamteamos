@@ -96,14 +96,19 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={onMobileClose}
-              className="fixed inset-0 bg-black/50 z-40"
+              /* z-[60]/z-[61] rather than z-40/z-50: the page's own dropdowns are absolute at
+                  z-50, so at the old level the two tied and DOM order decided — page content
+                  renders after the drawer, so an open day-picker painted straight through the
+                  navigation covering it. Anything that BLOCKS (the check-in gate, the agreement
+                  gate) covers the menu button itself, so the drawer can never open over one. */
+              className="fixed inset-0 bg-black/50 z-[60]"
             />
             <motion.aside
               initial={{ x: -280 }}
               animate={{ x: 0 }}
               exit={{ x: -280 }}
               transition={{ duration: 0.2, ease: "easeInOut" }}
-              className="fixed left-0 top-0 h-[100dvh] w-[280px] bg-card border-r border-border flex flex-col z-50 overflow-hidden"
+              className="fixed left-0 top-0 h-[100dvh] w-[280px] bg-card border-r border-border flex flex-col z-[61] overflow-hidden"
               style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
             >
               <div className="h-14 flex items-center px-4 border-b border-border justify-between shrink-0">

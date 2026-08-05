@@ -14,6 +14,7 @@ import BankDetailsModal from "@/components/payroll/BankDetailsModal";
 import LeavePanel from "@/components/payroll/LeavePanel";
 import SalesEarningsCard from "@/components/sales/SalesEarningsCard";
 import type { EmployeeBank } from "@/types/payroll";
+import { dailyTargetOf } from "@/utils/salesTargets";
 
 /**
  * My Salary — sales member.
@@ -40,6 +41,8 @@ export default function SalesMySalary() {
     monthlySalary: user?.salary || 0,
     earningsOption: user?.earningsOption,
     month,
+    // The 75% gate, so this figure is the one the member is actually owed.
+    dailyTarget: dailyTargetOf(user),
   });
 
   const { salary, salaryPayable, salaryDeduction, commission, totalEarnings } = earnings;
@@ -127,7 +130,10 @@ export default function SalesMySalary() {
           {/* The total is always attributed to a named span — "this period" on its own is what
               let a member read July's pay as August's and conclude it had gone missing. */}
           <SalesEarningsCard totalEarnings={totalEarnings} salaryPayable={salaryPayable}
-            commission={commission} subtitle={monthLabel} />
+            commission={commission} subtitle={monthLabel}
+            incentiveWithheld={earnings.incentiveWithheld}
+            commissionBeforeTarget={earnings.commissionBeforeTarget}
+            achievement={earnings.achievement} />
 
           <section className="grid gap-4 lg:grid-cols-2">
             {/* Salary half */}

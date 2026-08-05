@@ -158,7 +158,6 @@ export default function TechAdminMyTeam() {
         createdBy: currentUser?.uid || "",
         isActive: true,
         salary: formSalary,
-        target: 0,
         phone: normalizedPhone,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -717,14 +716,16 @@ function MobileTechCards({ members, loading, onToggle, onDelete, onEdit, onClick
     <div className="space-y-3">
       {members.map((m) => (
         <div key={m.uid} onClick={() => onClickMember(m)} className="bg-card border border-border rounded-xl p-4 cursor-pointer hover:bg-accent/30 transition-colors">
-          <div className="flex items-start justify-between mb-3">
-            <div className="flex items-center gap-3">
+          <div className="flex items-start justify-between gap-2 mb-3">
+            {/* min-w-0 down the chain, or a long name pushes the row wider than the card and the
+                status chip beside it falls off the right edge. */}
+            <div className="flex min-w-0 flex-1 items-center gap-3">
               <MemberAvatar name={m.name} avatar={m.avatar} size={40} />
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <p className="font-medium text-foreground text-sm">{m.name}</p>
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <p className="truncate font-medium text-foreground text-sm" title={m.name}>{m.name}</p>
                   {m.externalCreator && (
-                    <span className="inline-flex items-center gap-1 text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                    <span className="inline-flex shrink-0 items-center gap-1 text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
                       <Wand2 size={8} /> External
                     </span>
                   )}

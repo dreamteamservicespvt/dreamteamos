@@ -13,6 +13,7 @@ import DashboardDayPicker from "@/components/dashboard/DayPicker";
 import SalesEarningsCard from "@/components/sales/SalesEarningsCard";
 import { useSalesEarnings } from "@/hooks/useSalesEarnings";
 import { payPeriodForDate, payPeriodLabel, currentPayMonth } from "@/utils/payrollEngine";
+import { dailyTargetOf, monthlyTargetOf } from "@/utils/salesTargets";
 import {
   recordCheckIn, recordCheckOut, watchTodayCheckin, buildCheckInMessage, buildCheckOutReport,
   reportWhatsAppUrl, type SalesCheckin,
@@ -36,6 +37,8 @@ export default function SalesMemberDashboard() {
     memberId: user?.uid,
     monthlySalary: user?.salary || 0,
     earningsOption: user?.earningsOption,
+    // The 75% gate, so this figure is the one the member is actually owed.
+    dailyTarget: dailyTargetOf(user),
   });
 
   useEffect(() => {
@@ -84,8 +87,9 @@ export default function SalesMemberDashboard() {
   const pendingVerification = revenueItems.filter(({ item }) => item.verificationStatus === "pending").length;
   const totalRevenue = revenueItems.reduce((sum, { item }) => sum + (item.amount || 0), 0);
   const conversionRate = total > 0 ? ((salesDone / total) * 100).toFixed(1) : "0";
-  const monthlyTarget = user?.monthlyTarget || user?.target || 0;
-  const dailyTarget = user?.dailyTarget || 0;
+  // Both derived from the one stored figure — see utils/salesTargets.
+  const dailyTarget = dailyTargetOf(user);
+  const monthlyTarget = monthlyTargetOf(user);
 
   // Monthly target runs on the business pay cycle — 10th → 9th of next month (the same cycle the
   // leaderboard and every salary screen use), NOT all-time and NOT the calendar month. Taken from
@@ -165,6 +169,9 @@ export default function SalesMemberDashboard() {
         totalEarnings={earnings.totalEarnings}
         salaryPayable={earnings.salaryPayable}
         commission={earnings.commission}
+        incentiveWithheld={earnings.incentiveWithheld}
+        commissionBeforeTarget={earnings.commissionBeforeTarget}
+        achievement={earnings.achievement}
         subtitle={earnings.salary.period
           ? `Cycle ${format(new Date(`${earnings.salary.period.start}T00:00:00`), "dd MMM")} – ${format(new Date(`${earnings.salary.period.end}T00:00:00`), "dd MMM")}`
           : undefined}

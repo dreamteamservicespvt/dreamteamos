@@ -5,6 +5,7 @@ import { commissionRate } from "@/services/settlements";
 import { useSalaryMonth, type SalaryMonthState } from "./useSalaryMonth";
 import { withinPeriod, type PeriodFilter } from "@/utils/periodFilter";
 import { deductionsFor } from "@/utils/payrollEngine";
+import { incentiveEarned, monthlyTargetFor, targetAchievement } from "@/utils/salesTargets";
 import type { Lead, SaleDetail } from "@/types";
 
 /**
@@ -28,7 +29,19 @@ export interface SalesEarnings {
   saleCount: number;
   /** Percentage rate this member earns. */
   rate: number;
+  /** What the rate produces on the period's verified sales, before the target gate. */
+  commissionBeforeTarget: number;
+  /** What is actually earned — zero when the target gate withheld it. */
   commission: number;
+  /** The target for this pay cycle: the daily figure across it. 0 when none is set. */
+  periodTarget: number;
+  /** Verified sales as a fraction of `periodTarget`. 0 when there is no target. */
+  achievement: number;
+  /**
+   * True when the incentive was withheld for missing target. Distinct from a commission of zero
+   * because there were no sales — the member is owed an explanation, not a blank.
+   */
+  incentiveWithheld: boolean;
   /** Sales recorded but not yet verified — not paid, but worth surfacing. */
   pendingSaleCount: number;
   pendingSaleValue: number;
@@ -53,10 +66,16 @@ export interface UseSalesEarningsOptions {
   earningsOption?: string;
   /** `yyyy-MM` pay period. */
   month?: string;
+  /**
+   * The member's daily target. The incentive is withheld for a cycle in which they achieve less
+   * than 75% of it across the period (see utils/salesTargets), which is the rule their offer and
+   * appointment letters state in those words. Omit it, or leave it 0, and nothing is withheld.
+   */
+  dailyTarget?: number;
 }
 
 export function useSalesEarnings({
-  memberId, monthlySalary, earningsOption, month,
+  memberId, monthlySalary, earningsOption, month, dailyTarget,
 }: UseSalesEarningsOptions): SalesEarnings {
   const salary = useSalaryMonth({ memberId, monthlySalary, month });
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -115,7 +134,21 @@ export function useSalesEarnings({
 
   const { total: salaryDeduction } = deductionsFor(salary.computation);
   const salaryPayable = Math.max(0, salary.computation.monthlySalary - salaryDeduction);
-  const commission = Math.round((sales.salesBase * rate) / 100);
+  const commissionBeforeTarget = Math.round((sales.salesBase * rate) / 100);
+
+  /**
+   * The target gate, measured over the same 10th → 9th cycle the commission is.
+   *
+   * All-or-nothing rather than tapered: below 75% of the cycle's target no incentive is payable on
+   * the sales that WERE made, which is what the member's letter says in those words.
+   * `incentiveEarned` returns true when no target is set, so a member nobody has given a target
+   * loses nothing to a blank field.
+   */
+  const periodTarget = dailyTarget && dailyTarget > 0
+    ? monthlyTargetFor(dailyTarget, new Date(`${salary.period.start}T00:00:00`))
+    : 0;
+  const earned = incentiveEarned(sales.salesBase, periodTarget);
+  const commission = earned ? commissionBeforeTarget : 0;
 
   return {
     loading: salary.loading || !leadsLoaded,
@@ -125,7 +158,11 @@ export function useSalesEarnings({
     salesBase: sales.salesBase,
     saleCount: sales.saleCount,
     rate,
+    commissionBeforeTarget,
     commission,
+    periodTarget,
+    achievement: targetAchievement(sales.salesBase, periodTarget),
+    incentiveWithheld: !earned && commissionBeforeTarget > 0,
     pendingSaleCount: sales.pendingSaleCount,
     pendingSaleValue: sales.pendingSaleValue,
     totalEarnings: salaryPayable + commission,

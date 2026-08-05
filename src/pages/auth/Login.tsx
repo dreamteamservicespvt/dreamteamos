@@ -57,7 +57,6 @@ export default function Login() {
             createdBy: "system",
             isActive: true,
             salary: 0,
-            target: 0,
             phone: "",
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),

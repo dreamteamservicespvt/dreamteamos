@@ -35,10 +35,12 @@ export default function LifecycleTracker({ steps }: { steps: LifecycleStep[] }) 
                 )}
               </div>
               <div className="min-w-0 pr-2">
-                <p className={`text-xs font-semibold leading-tight ${current ? "text-primary" : done ? "text-foreground" : "text-muted-foreground"}`}>
+                <p className={`break-words text-xs font-semibold leading-tight ${current ? "text-primary" : done ? "text-foreground" : "text-muted-foreground"}`}>
                   {step.label}
                 </p>
-                <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{step.detail}</p>
+                {/* Wraps inside its 160px column instead of running under the next step — the
+                    detail is the half of this strip that says what is actually outstanding. */}
+                <p className="mt-0.5 break-words text-[11px] leading-snug text-muted-foreground">{step.detail}</p>
               </div>
             </div>
           );

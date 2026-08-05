@@ -8,7 +8,7 @@ import {
 } from "@/utils/hrPolicy";
 import { departmentForTitle } from "@/utils/roleLadder";
 import {
-  ENGAGEMENT_LABELS, HR_DOCUMENT_LABELS, WORK_ARRANGEMENT_LABELS, WORK_ARRANGEMENT_TERMS,
+  ENGAGEMENT_LABELS, HR_DOCUMENT_LABELS, WORK_ARRANGEMENT_LABELS, WORK_ARRANGEMENT_TERMS, orgUnitLabel,
 } from "@/types/hr";
 import type { EmployeeProfile, HrDocumentType, IssuedSignatory } from "@/types/hr";
 
@@ -218,10 +218,25 @@ function isSalesEmployee(p: EmployeeProfile): boolean {
  * The incentive percentage is the opposite case and is still printed: it is a rate payroll settles
  * against and does not change without an agreed revision.
  *
- * ── Why this appears for every sales employee ─────────────────────────────────────────────────
+ * ── Why this appears for every sales employee, and only for them ──────────────────────────────
  * It no longer reads any target field, so there is nothing to be missing. A sales letter that says
  * nothing about targets is the failure this clause exists to prevent, and it used to happen on
- * exactly the records nobody had filled in yet.
+ * exactly the records nobody had filled in yet. Equally, `isSalesEmployee` is the whole gate: a
+ * target is a sales instrument, and an engineer's letter carries no trace of one.
+ *
+ * ── The consequences, and why they are on the letter at all ───────────────────────────────────
+ * Two of them, and both cost the employee money, which is precisely why they are written into the
+ * document somebody signs rather than explained on the day they first apply:
+ *
+ *   • Below 75% of target, no incentive is payable for that cycle. Not a reduced rate — none.
+ *     (utils/salesTargets.INCENTIVE_TARGET_THRESHOLD is the same 75%; the two move together.)
+ *   • Below the 50%–75% band, the salary itself may be revised downward.
+ *
+ * ── And why training is exempted ──────────────────────────────────────────────────────────────
+ * A trainee is being taught the job on a reduced salary. Measuring them against a full target and
+ * then withholding the incentive for missing it would penalise somebody for not yet knowing how to
+ * do the thing they were hired to be taught. Stated only when the record actually carries a
+ * training period, following the same rule as every other conditional clause in this file.
  */
 function salesIncentiveSection(i: BuildDocumentInput): Section {
   const { profile: p, subject } = i;
@@ -229,6 +244,7 @@ function salesIncentiveSection(i: BuildDocumentInput): Section {
 
   const pct = subject.incentivePercent;
   const hasPct = typeof pct === "number" && Number.isFinite(pct) && pct > 0;
+  const training = trainingTermsFor(p);
 
   return {
     title: hasPct ? "Sales Incentive and Targets" : "Sales Targets",
@@ -240,12 +256,23 @@ function salesIncentiveSection(i: BuildDocumentInput): Section {
         ? "The incentive is calculated on verified sales only, and is paid with the salary for the pay cycle in which the sale is verified. A sale that is later reversed, refunded or found to be duplicated is excluded."
         : null,
       hasPct ? "" : null,
-      "Your role carries sales targets. The applicable targets are set by the company and communicated to you separately, and they are visible to you at all times in the company's system.",
+      "Your role carries sales targets. The applicable targets are set by the company and communicated to you separately, and they are visible to you at all times in the company's system. Targets apply to sales roles only.",
       "Targets are reviewed periodically and may be revised to reflect your role, your territory, the season and the company's requirements. Consistent achievement of target is a factor in confirmation, revision and promotion.",
-      // The consequence, stated plainly and in advance. A downward revision that a person first
-      // hears about on their payslip is a dispute; one that is written into the letter they signed
-      // is a term. The band is the company's — below it the salary is at risk, above it is not.
-      "Achievement against target is assessed each month. Where your achievement falls below the required range of 50% to 75% of target, your salary may be revised downward in proportion to your performance against target. Any such revision will be communicated to you in writing before it takes effect, and the salary is restored on sustained achievement of target.",
+      "",
+      "Achievement against target is assessed for each pay cycle, and two things turn on it:",
+      // The incentive gate. Stated as all-or-nothing because that is what it is — a member who
+      // reaches 74% of target earns no incentive on the sales they did make, and somebody signing
+      // this letter is entitled to know that before it happens rather than on their payslip.
+      hasPct
+        ? `  (a) The sales incentive is payable only where you achieve at least 75% of your target for that cycle. Where your achievement is below 75%, no incentive is payable for that cycle, whatever the value of the sales made in it.`
+        : "  (a) Any sales incentive applicable to you is payable only where you achieve at least 75% of your target for that cycle. Below 75%, no incentive is payable for that cycle.",
+      // The salary consequence. A downward revision somebody first hears about on their payslip is
+      // a dispute; one written into the letter they signed is a term.
+      "  (b) Where your achievement falls below the required range of 50% to 75% of target, your salary may in addition be revised downward in proportion to your performance against target. Any such revision will be communicated to you in writing before it takes effect, and the salary is restored on sustained achievement of target.",
+      training.applies ? "" : null,
+      training.applies
+        ? `No sales target applies to you during your training period of ${training.months} month(s). Targets, and both of the consequences described above, apply from the end of that period. Your training period is set out in the ${isInternship(p) ? "Stipend" : "Remuneration"} clause of this letter.`
+        : null,
     ],
   };
 }
@@ -616,7 +643,7 @@ function offerLetter(i: BuildDocumentInput): string {
           // Spelled out rather than left as a category: "Full-Time" alone does not say whether the
           // job is permanent, and that is the first thing a candidate — or their bank — asks.
           `Employment Type: ${employmentTypeLine(p)}`,
-          `Department: ${isSalesEmployee(p) ? "Sales" : "Technical"}`,
+          `Department: ${orgUnitLabel(p)}`,
           p.reportingToName ? `Reporting to: ${p.reportingToName}` : null,
         ],
       },
@@ -1310,7 +1337,7 @@ function experienceLetter(i: BuildDocumentInput): string {
     "1. Role",
     `Designation at the time of leaving: ${value(p.designation)}`,
     `Engagement: ${engagementLabel(p)}`,
-    `Department: ${p.department === "tech" ? "Technical" : "Sales"}`,
+    `Department: ${orgUnitLabel(p)}`,
     "",
     "2. Conduct",
     "During the above period their conduct and performance were found to be satisfactory.",

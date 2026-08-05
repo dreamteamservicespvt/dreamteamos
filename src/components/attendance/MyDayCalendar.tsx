@@ -9,9 +9,10 @@ import {
 } from "lucide-react";
 import type { DailyCheckin, WorkAssignment } from "@/types";
 import {
-  ATTENDANCE_META, AttendanceStatus, attendanceKey, daysInMonth, isSunday,
-  resolveStatus, summarize, todayDate, todayMonth, watchHolidays, watchOverrides, Holiday,
+  ATTENDANCE_META, AttendanceStatus, attendanceKey, daysBetween, isSunday,
+  resolveStatus, summarize, todayDate, watchHolidayRecordsInRange, watchOverridesInRange, Holiday,
 } from "@/services/techAttendance";
+import { currentPayMonth, payPeriodForMonth } from "@/utils/payrollEngine";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -29,7 +30,13 @@ const fmtTs = (ts?: { toDate?: () => Date }): string => (ts?.toDate ? format(ts.
  * completed that day.
  */
 export default function MyDayCalendar({ memberId }: { memberId: string }) {
-  const [month, setMonth] = useState<string>(todayMonth());
+  /**
+   * The month label is a PAY month, not a calendar one — the cycle runs 10th → 9th, so "Jul 2026"
+   * here means 10 Jul → 09 Aug. `currentPayMonth` is what decides which one today belongs to; on
+   * the 5th of August that is still July, and a calendar-derived default would have shown an empty
+   * August grid while the member was working through July's cycle.
+   */
+  const [month, setMonth] = useState<string>(currentPayMonth());
   const [checkins, setCheckins] = useState<DailyCheckin[]>([]);
   const [assignments, setAssignments] = useState<WorkAssignment[]>([]);
   const [overrides, setOverrides] = useState<Map<string, AttendanceStatus>>(new Map());
@@ -49,14 +56,22 @@ export default function MyDayCalendar({ memberId }: { memberId: string }) {
     return () => unsubs.forEach((u) => u());
   }, [memberId]);
 
+  /** The cycle this label covers: 10th of `month` → 9th of the month after. */
+  const period = useMemo(() => payPeriodForMonth(month), [month]);
+
   useEffect(() => {
-    const unsubs = [watchOverrides(month, setOverrides), watchHolidays(month, setHolidays)];
+    // Range-scoped, because the cycle straddles two calendar months and the month-scoped
+    // listeners would drop everything after the 1st.
+    const unsubs = [
+      watchOverridesInRange(period.start, period.end, setOverrides),
+      watchHolidayRecordsInRange(period.start, period.end, setHolidays),
+    ];
     return () => unsubs.forEach((u) => u());
-  }, [month]);
+  }, [period.start, period.end]);
 
   const checkinByDate = useMemo(() => new Map(checkins.map((c) => [c.date, c])), [checkins]);
 
-  const days = useMemo(() => daysInMonth(month), [month]);
+  const days = useMemo(() => daysBetween(period.start, period.end), [period.start, period.end]);
 
   const statusFor = (dateStr: string): AttendanceStatus | null =>
     resolveStatus({
@@ -71,15 +86,15 @@ export default function MyDayCalendar({ memberId }: { memberId: string }) {
 
   // ── Selected-day story ──
   const selCheckin = checkinByDate.get(selected);
-  const selStatus = selected.startsWith(month) ? statusFor(selected) : null;
+  const selStatus = selected >= period.start && selected <= period.end ? statusFor(selected) : null;
   const selHoliday = holidays.get(selected);
   // Both keyed by the ASSIGNED date, not when the work was marked complete/submitted — a
   // video assigned on this day still belongs here even if it was finished days later.
   const assignedThatDay = assignments.filter((a) => a.date === selected);
   const completedThatDay = assignedThatDay.filter((a) => a.status === "completed" || a.status === "verified");
 
-  const [y, m] = month.split("-").map(Number);
-  const startPad = new Date(y, m - 1, 1).getDay();
+  // The grid pads to the weekday the CYCLE opens on, not the 1st of the month.
+  const startPad = new Date(`${period.start}T00:00:00`).getDay();
 
   return (
     <div className="bg-card border border-border rounded-xl p-5">
@@ -90,12 +105,18 @@ export default function MyDayCalendar({ memberId }: { memberId: string }) {
         <div className="flex items-center gap-1 rounded-lg border border-border bg-background px-1">
           <button onClick={() => setMonth((mo) => shiftMonth(mo, -1))} className="p-1.5 hover:bg-accent rounded-md"><ChevronLeft className="w-4 h-4" /></button>
           <span className="text-sm font-semibold text-foreground px-1 min-w-[92px] text-center">{format(new Date(`${month}-01`), "MMM yyyy")}</span>
-          <button onClick={() => setMonth((mo) => shiftMonth(mo, 1))} disabled={month >= todayMonth()}
+          <button onClick={() => setMonth((mo) => shiftMonth(mo, 1))} disabled={month >= currentPayMonth()}
             className="p-1.5 hover:bg-accent rounded-md disabled:opacity-30"><ChevronRight className="w-4 h-4" /></button>
         </div>
       </div>
 
-      {/* Month summary chips */}
+      {/* The span this grid actually covers, said out loud — "Jul 2026" above means 10 Jul → 09 Aug,
+          and a reader who assumes a calendar month will miscount their own attendance. */}
+      <p className="-mt-2 mb-3 text-[11px] text-muted-foreground">
+        Cycle {format(new Date(`${period.start}T00:00:00`), "dd MMM")} – {format(new Date(`${period.end}T00:00:00`), "dd MMM yyyy")} · attendance and salary run 10th to 9th
+      </p>
+
+      {/* Cycle summary chips */}
       <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 mb-4">
         {([
           ["Present", summary.full, "text-emerald-500 bg-emerald-500/10"],

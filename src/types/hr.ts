@@ -26,8 +26,80 @@ export type HrTime = Timestamp | FieldValue;
 
 // ─── Department & engagement ────────────────────────────────────────────────
 
+/**
+ * The eight ABO/Rh groups, for the picker.
+ *
+ * A free-text box produced "O+", "O positive", "o+ve" and "B +ve" on four records of the same
+ * group, which is worthless on the one document where it matters — the card somebody reads in an
+ * emergency. The picker still allows a typed value (see `BLOOD_GROUP_OTHER`), because rare groups
+ * outside this list exist and a fixed list that cannot be escaped is its own failure.
+ */
+export const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"] as const;
+
+/** The picker's escape hatch — selecting it reveals a free-text box. */
+export const BLOOD_GROUP_OTHER = "__other__";
+
 /** Which side of the company an employee sits on — decides whose signature signs their papers. */
 export type Department = "tech" | "sales";
+
+/**
+ * The department an employee belongs to *by name* — what goes on their ID card, their letters and
+ * their profile.
+ *
+ * Deliberately separate from `Department` above, which is a two-valued routing key: it decides
+ * which admin signs the paperwork, which team feed a member appears in, and which half of the app
+ * they can open. Those two things are not the same question, and conflating them is why the company
+ * could not hire a designer — a Creative hire is still managed by the tech admin, so their
+ * `Department` is "tech", but printing "Technical Department" on their card would be wrong.
+ *
+ * So: `Department` routes, `OrgUnit` names. Adding a unit here never touches permissions.
+ */
+export type OrgUnit =
+  | "technology"
+  | "business_development"
+  | "creative"
+  | "marketing"
+  | "human_resources"
+  | "administration";
+
+export const ORG_UNIT_LABELS: Record<OrgUnit, string> = {
+  technology: "Technology Department",
+  business_development: "Business Development Department",
+  creative: "Creative Department",
+  marketing: "Marketing Department",
+  human_resources: "Human Resources",
+  administration: "Administration",
+};
+
+/** Picker order — the two departments that exist today first, then the ones hiring will add. */
+export const ORG_UNIT_OPTIONS: OrgUnit[] = [
+  "technology", "business_development", "creative", "marketing", "human_resources", "administration",
+];
+
+/**
+ * The unit a member belongs to when nobody has chosen one.
+ *
+ * Every existing record predates the field, so this is what they all read as: the tech team is
+ * Technology, the sales team is Business Development. An admin changes it per employee from the
+ * Employment Terms card when a hire belongs somewhere else.
+ */
+export function defaultOrgUnit(department?: Department | null): OrgUnit {
+  return department === "sales" ? "business_development" : "technology";
+}
+
+/** The unit to print for this profile — the chosen one, else the department's default. */
+export function orgUnitOf(
+  profile?: { orgUnit?: OrgUnit | null; department?: Department | null } | null,
+): OrgUnit {
+  return profile?.orgUnit || defaultOrgUnit(profile?.department);
+}
+
+/** The unit's name, for a card, a letter or a profile row. */
+export function orgUnitLabel(
+  profile?: { orgUnit?: OrgUnit | null; department?: Department | null } | null,
+): string {
+  return ORG_UNIT_LABELS[orgUnitOf(profile)];
+}
 
 /**
  * How someone is engaged.
@@ -285,7 +357,13 @@ export interface SeparationRecord {
 
 export interface EmployeeProfile {
   uid: string;
+  /** The routing key — whose signature signs the papers, which team feed they appear in. */
   department: Department;
+  /**
+   * The department by name, printed on the card and the letters. Absent on every record written
+   * before the field existed, which reads as the department's default — see `orgUnitOf`.
+   */
+  orgUnit?: OrgUnit | null;
   stage: EmploymentStage;
 
   // Personal / KYC — collected on joining day, kept current afterwards
@@ -309,6 +387,14 @@ export interface EmployeeProfile {
    */
   surname?: string | null;
   dob?: string | null;             // yyyy-MM-dd
+  /**
+   * The completion prompt's deferral budget — see utils/profileCompletion.MAX_PROFILE_DEFERRALS.
+   *
+   * On the record rather than in localStorage on purpose: the budget is meant to be real, and one
+   * held in browser storage is cleared by a new phone, a private window or a cache wipe.
+   */
+  profilePromptFirstShownOn?: string | null;   // yyyy-MM-dd
+  profilePromptDeferrals?: number | null;
   personalEmail?: string | null;
   altPhone?: string | null;
   bloodGroup?: string | null;

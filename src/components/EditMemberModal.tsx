@@ -6,6 +6,8 @@ import { normalizePhone, formatPhoneDisplay } from "@/utils/phone";
 import type { AppUser } from "@/types";
 import { X, Loader2, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { formatCurrency } from "@/utils/formatters";
+import { dailyTargetOf, daysInPayCycle, monthlyTargetFor } from "@/utils/salesTargets";
 
 interface EditMemberModalProps {
   member: AppUser;
@@ -19,9 +21,10 @@ export default function EditMemberModal({ member, onClose, onUpdated, variant }:
   const [name, setName] = useState(member.name);
   const [phone, setPhone] = useState(member.phone || "");
   const [salary, setSalary] = useState(member.salary || 0);
-  const [target, setTarget] = useState(member.target || 0);
-  const [dailyTarget, setDailyTarget] = useState(member.dailyTarget || 0);
-  const [monthlyTarget, setMonthlyTarget] = useState(member.monthlyTarget || 0);
+  // The one target that is set. Monthly is derived from it — see utils/salesTargets. Seeded
+  // through `dailyTargetOf` so a record written before the simplification opens on the daily
+  // figure its stored monthly one implied, rather than on a blank.
+  const [dailyTarget, setDailyTarget] = useState(dailyTargetOf(member));
   const [earningsOption, setEarningsOption] = useState<"stipend_plus_5" | "incentive_10" | "">(
     member.earningsOption || ""
   );
@@ -45,9 +48,11 @@ export default function EditMemberModal({ member, onClose, onUpdated, variant }:
       };
 
       if (variant === "sales") {
-        updates.target = target;
         updates.dailyTarget = dailyTarget;
-        updates.monthlyTarget = monthlyTarget;
+        // Cleared, not left behind: these are the two fields the app used to read three different
+        // ways, and a stale value in either would keep contradicting the figure above.
+        updates.monthlyTarget = null;
+        updates.target = null;
         if (earningsOption) updates.earningsOption = earningsOption;
       } else {
         updates.googleDriveBaseUrl = driveUrl.trim() || null;
@@ -106,22 +111,18 @@ export default function EditMemberModal({ member, onClose, onUpdated, variant }:
 
           {variant === "sales" && (
             <>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Daily Target (₹)</label>
-                  <input type="number" min={0} value={dailyTarget || ""} onChange={(e) => setDailyTarget(Number(e.target.value) || 0)}
-                    className="w-full h-10 px-4 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary font-mono" />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Monthly Target (₹)</label>
-                  <input type="number" min={0} value={monthlyTarget || ""} onChange={(e) => setMonthlyTarget(Number(e.target.value) || 0)}
-                    className="w-full h-10 px-4 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary font-mono" />
-                </div>
-              </div>
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">Legacy Target (₹)</label>
-                <input type="number" min={0} value={target || ""} onChange={(e) => setTarget(Number(e.target.value) || 0)}
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Daily Target (₹)</label>
+                <input type="number" min={0} value={dailyTarget || ""} onChange={(e) => setDailyTarget(Number(e.target.value) || 0)}
+                  data-test="daily-target-input"
                   className="w-full h-10 px-4 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary font-mono" />
+                <p className="text-[10px] text-muted-foreground mt-1" data-test="derived-monthly-target">
+                  Monthly target works out to{" "}
+                  <span className="font-mono font-semibold text-foreground">
+                    {formatCurrency(monthlyTargetFor(dailyTarget))}
+                  </span>{" "}
+                  — the daily target across this {daysInPayCycle()}-day pay cycle.
+                </p>
               </div>
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Earnings Option</label>

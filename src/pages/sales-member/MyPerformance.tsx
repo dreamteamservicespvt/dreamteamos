@@ -12,6 +12,7 @@ import { saleDay } from "@/utils/salesRevenue";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { TrendingUp, Target, Award, Zap, IndianRupee, Wallet, History, CheckCircle2 } from "lucide-react";
 import AttendanceCard from "@/components/sales/AttendanceCard";
+import { monthlyTargetOf } from "@/utils/salesTargets";
 
 const PIE_COLORS = [
   "hsl(142 71% 45%)",   // success
@@ -50,7 +51,7 @@ export default function MyPerformance() {
   const verifiedRevenue = leads.reduce((sum, l) =>
     sum + getSaleItems(l).filter((i) => i.verificationStatus === "verified").reduce((s, i) => s + (i.amount || 0), 0), 0);
 
-  const target = user?.monthlyTarget || user?.target || 0;
+  const target = monthlyTargetOf(user);
 
   /**
    * This cycle's verified revenue — the figure the earnings estimate below is built on.

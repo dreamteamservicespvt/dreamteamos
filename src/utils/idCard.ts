@@ -13,6 +13,7 @@ import { format, parse } from "date-fns";
 import { getRoleLabel } from "@/utils/roleHelpers";
 import type { AppUser } from "@/types";
 import type { EmployeeProfile } from "@/types/hr";
+import { orgUnitLabel } from "@/types/hr";
 
 /**
  * The card's geometry, here rather than beside its markup so the PDF exporter can read it without
@@ -65,6 +66,13 @@ export function fitBox(
 }
 
 export interface IdCardData {
+  /**
+   * The employee's full name, printed in full on both faces.
+   *
+   * A shortened "R.Govardhan" form was tried and withdrawn: a badge is checked against other
+   * documents, and a name that does not match the one on them is worse than a name that has to be
+   * set in smaller type. The card sizes itself to the name instead — see `idCardNameSize`.
+   */
   name: string;
   /** Who this card belongs to — what the verification QR resolves to. */
   uid: string;
@@ -102,11 +110,6 @@ export function idCardVerifyUrl(uid: string): string {
   return `${ID_VERIFY_ORIGIN}/verify/${uid}`;
 }
 
-const DEPARTMENT_LABELS: Record<string, string> = {
-  tech: "Technology",
-  sales: "Sales",
-};
-
 /** "2024-03-14" → "14 Mar 2024". Anything unparseable is dropped rather than printed raw. */
 export function prettyDate(iso: string | null | undefined): string | null {
   const v = (iso || "").trim();
@@ -130,6 +133,26 @@ export function provisionalEmployeeId(uid: string): string {
   return `DTS-${tail.padStart(5, "0")}`;
 }
 
+/**
+ * The type size the name is set in, chosen from how long it is.
+ *
+ * The card carries the employee's FULL name — "Chodisetti Siva Naga Satyanarayana", not an
+ * initialled short form — because a badge is checked against other documents and a name that does
+ * not match the one on them is worse than a name in smaller type. That only works if the card
+ * gives way instead of the name: at 18px a long name wraps to three lines and pushes the ID panel
+ * off the card, so the size steps down and the line-height with it.
+ *
+ * Steps rather than a continuous scale, so two members of similar name length get cards that look
+ * like the same card.
+ */
+export function idCardNameSize(name: string): { fontSize: number; lineHeight: number } {
+  const n = (name || "").trim().length;
+  if (n <= 18) return { fontSize: 19, lineHeight: 21 };
+  if (n <= 24) return { fontSize: 16, lineHeight: 18 };
+  if (n <= 32) return { fontSize: 14, lineHeight: 16 };
+  return { fontSize: 12, lineHeight: 14 };
+}
+
 export function buildIdCard(member: AppUser, profile?: EmployeeProfile | null): IdCardData {
   const assigned = (member.employeeId || "").trim();
   const emergency = profile?.emergencyContact;
@@ -141,11 +164,16 @@ export function buildIdCard(member: AppUser, profile?: EmployeeProfile | null): 
     employeeIdIsProvisional: !assigned,
     // A designation is what a card is read for, so the role is a better fallback than a blank.
     designation: (profile?.designation || "").trim() || getRoleLabel(member.role),
-    department: DEPARTMENT_LABELS[profile?.department || ""] || (member.role?.startsWith("sales") ? "Sales" : "Technology"),
+    // The department by NAME — the org unit, not the two-valued routing key. A record with no
+    // unit chosen reads as its department's default, and a member with no HR record at all falls
+    // back to the one their role implies.
+    department: orgUnitLabel(profile || { department: member.role?.startsWith("sales") ? "sales" : "tech" }),
     // The HR photograph is the formal one; the avatar is whatever they uploaded. Either beats none.
     photoUrl: profile?.photoUrl || member.avatar || null,
     phone: (member.phone || "").trim() || null,
-    email: (member.email || "").trim() || null,
+    // The personal address, not the work login. A card is carried after the job ends and is shown
+    // to people outside the company; the address on it should be one that still reaches the person.
+    email: (profile?.personalEmail || "").trim() || (member.email || "").trim() || null,
     bloodGroup: (profile?.bloodGroup || "").trim() || null,
     joinedOn: prettyDate(profile?.joiningDate),
     emergencyContact: emergency?.name && emergency?.phone

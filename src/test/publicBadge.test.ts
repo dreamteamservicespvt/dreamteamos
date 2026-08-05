@@ -96,12 +96,12 @@ describe("filling the gaps", () => {
     const badge = buildPublicBadge(user(), null);
     expect(badge.name).toBe("Asha Devi");
     expect(badge.employeeId).toBe("DTS-005");
-    expect(badge.department).toBe("Technology");
+    expect(badge.department).toBe("Technology Department");
     expect(badge.active).toBe(true);
   });
 
   it("reads the department from the role when HR has not set one", () => {
-    expect(buildPublicBadge(user({ role: "sales_member" }), null).department).toBe("Sales");
-    expect(buildPublicBadge(user({ role: "tech_team_leader" }), null).department).toBe("Technology");
+    expect(buildPublicBadge(user({ role: "sales_member" }), null).department).toBe("Business Development Department");
+    expect(buildPublicBadge(user({ role: "tech_team_leader" }), null).department).toBe("Technology Department");
   });
 });

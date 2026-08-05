@@ -77,11 +77,11 @@ export function buildInviteLetters(input: BuildLettersInput): { offer: FrozenLet
     // rule `documentSubject` applies everywhere else letters are written.
     email: draft.personalEmail?.trim() || draft.email,
     employeeId: draft.employeeId || null,
-    // Sales hires are offered an incentive and a target from day one, so both belong on the offer
-    // letter they sign rather than being explained to them afterwards.
+    // Sales hires are offered an incentive from day one, so it belongs on the offer letter they
+    // sign rather than being explained to them afterwards. The target is stated as a term without
+    // a figure — see hrTemplates.salesIncentiveSection for why no number is printed.
     incentivePercent: draft.department === "sales" ? SALES_INCENTIVE_PERCENT : null,
     dailyTarget: draft.dailyTarget ?? null,
-    monthlyTarget: draft.monthlyTarget ?? null,
   };
 
   const offer = buildDocument({

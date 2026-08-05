@@ -22,7 +22,7 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "Team Management", path: "/main-admin/team", icon: Users },
     { title: "Revenue Overview", path: "/main-admin/revenue", icon: TrendingUp },
     { title: "Tech Department", path: "/main-admin/tech", icon: Code },
-    { title: "Sales Department", path: "/main-admin/sales", icon: Phone },
+    { title: "Business Development", path: "/main-admin/sales", icon: Phone },
     { title: "Clients", path: "/main-admin/clients", icon: Contact },
     { title: "Session History", path: "/main-admin/sessions", icon: Clock },
     { title: "Accounts", path: "/main-admin/accounts", icon: Wallet },

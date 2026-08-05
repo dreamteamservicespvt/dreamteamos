@@ -28,11 +28,13 @@ export type ProfileStepKey =
   | "pan"
   | "panCard"
   | "aadhaar"
-  | "aadhaarCard";
+  | "aadhaarCard"
+  | "payout";
 
 /** How the prompt should ask for it. */
 export type ProfileStepKind =
-  | "name" | "photo" | "signature" | "text" | "email" | "date" | "textarea" | "emergency" | "upload";
+  | "name" | "photo" | "signature" | "text" | "email" | "date" | "textarea" | "emergency" | "upload"
+  | "payout";
 
 /**
  * Splitting a stored name into the two boxes the prompt shows.
@@ -85,8 +87,18 @@ export interface ProfileStep {
   /**
    * Whether it is on file. The user record is optional so the HR module can ask the same
    * question about a profile alone — see `hrPolicy.kycCompletion`.
+   *
+   * `extras` carries the facts that do not live on the employment record. Payout details are the
+   * only one so far: they are held in their own collection, because a bank account is verified and
+   * versioned separately from a PAN number, and the step still has to be able to ask about them.
    */
-  has: (profile: EmployeeProfile, user?: AppUser | null) => boolean;
+  has: (profile: EmployeeProfile, user?: AppUser | null, extras?: ProfileExtras) => boolean;
+}
+
+/** Facts about a member held outside the employment record. */
+export interface ProfileExtras {
+  /** True when a complete payout account is on file — see services/payroll.isBankComplete. */
+  bankComplete?: boolean;
 }
 
 const hasDoc = (profile: EmployeeProfile, kind: KycDocKind): boolean =>
@@ -217,6 +229,59 @@ export const PROFILE_STEPS: ProfileStep[] = [
   },
 ];
 
+/**
+ * How the company actually pays them.
+ *
+ * ── Why it is not in PROFILE_STEPS ────────────────────────────────────────────────────────────
+ * That array is the EMPLOYMENT RECORD pack, and `hrPolicy.kycCompletion` reads it to decide
+ * whether a member's KYC is done. Payout details are not on the employment record — they live in
+ * their own collection, verified and versioned separately — so an HR-side check has no way to see
+ * them, and folding this in would have left every member permanently "KYC incomplete".
+ *
+ * ── Why the prompt asks for it anyway ─────────────────────────────────────────────────────────
+ * It is the one outstanding thing with a hard deadline: payroll runs on the 10th whether or not
+ * there is an account to send the money to. It was collected by a modal on the My Salary page,
+ * which a member only meets if they go looking — so somebody could finish every other item and
+ * still not be payable.
+ */
+export const PAYOUT_STEP: ProfileStep = {
+  key: "payout",
+  label: "Payout details",
+  hint: "The UPI ID or bank account your salary is paid into. Payroll cannot pay you without it.",
+  kind: "payout",
+  has: (_p, _u, extras) => !!extras?.bankComplete,
+};
+
+/** What the daily prompt asks for: the employment pack, plus how to pay them. */
+export const PROMPT_STEPS: ProfileStep[] = [...PROFILE_STEPS, PAYOUT_STEP];
+
+/**
+ * How many times "I'll do it later" may be pressed before the pack has to be finished.
+ *
+ * The prompt used to be dismissible for ever — a member could press later every morning and never
+ * complete their record, which is how the company ended up running payroll for people with no PAN
+ * on file. Three is deliberately generous: it covers not having the card to hand, not having a
+ * photo, and one bad morning, and it is counted from the FIRST time the prompt was shown rather
+ * than reset by anything, so the budget is real.
+ */
+export const MAX_PROFILE_DEFERRALS = 3;
+
+/** How many deferrals this member has left. Never below zero. */
+export function deferralsLeft(profile: EmployeeProfile | null | undefined): number {
+  const used = Number(profile?.profilePromptDeferrals) || 0;
+  return Math.max(0, MAX_PROFILE_DEFERRALS - used);
+}
+
+/**
+ * May this member still put it off?
+ *
+ * Kept as a function rather than read inline so the prompt, the tests and anything that later
+ * needs to warn an admin all agree on the rule.
+ */
+export function canDeferProfilePrompt(profile: EmployeeProfile | null | undefined): boolean {
+  return deferralsLeft(profile) > 0;
+}
+
 export interface ProfileCompletion {
   done: number;
   total: number;
@@ -231,14 +296,38 @@ export function profileCompletion(
   user: AppUser | null | undefined,
   profile: EmployeeProfile | null | undefined,
 ): ProfileCompletion {
+  return completionOver(PROFILE_STEPS, user, profile);
+}
+
+/**
+ * The same count over the prompt's list — the employment pack plus the payout details.
+ *
+ * Separate from `profileCompletion` because the two answer different questions: HR's is "is this
+ * person's record complete", the prompt's is "is there anything left to ask them for". Conflating
+ * them made every member read as KYC-incomplete, since an HR screen cannot see a bank account.
+ */
+export function promptCompletion(
+  user: AppUser | null | undefined,
+  profile: EmployeeProfile | null | undefined,
+  extras?: ProfileExtras,
+): ProfileCompletion {
+  return completionOver(PROMPT_STEPS, user, profile, extras);
+}
+
+function completionOver(
+  steps: ProfileStep[],
+  user: AppUser | null | undefined,
+  profile: EmployeeProfile | null | undefined,
+  extras?: ProfileExtras,
+): ProfileCompletion {
   // No profile record yet means nothing has been given — not an error, just the first day.
   const p = profile || ({} as EmployeeProfile);
-  const missing = PROFILE_STEPS.filter((step) => !step.has(p, user));
-  const done = PROFILE_STEPS.length - missing.length;
+  const missing = steps.filter((step) => !step.has(p, user, extras));
+  const done = steps.length - missing.length;
   return {
     done,
-    total: PROFILE_STEPS.length,
-    percent: Math.round((done / PROFILE_STEPS.length) * 100),
+    total: steps.length,
+    percent: Math.round((done / steps.length) * 100),
     missing,
     complete: missing.length === 0,
   };

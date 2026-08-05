@@ -208,6 +208,15 @@ const CATEGORY_BY_KEY: Record<string, ServiceCategory> = Object.fromEntries(
 export const SALE_CATEGORIES: string[] = SERVICE_CATALOG.map((c) => c.key);
 
 /** Category → packages — drop-in replacement for the old inline `PACKAGES`. */
+/**
+ * The package a new promotional sale opens on.
+ *
+ * Promotional is what the team sells most and the ₹499 fifteen-second package is the bulk of it,
+ * so it is what the form is pre-set to. Named here rather than typed into the sale form, so the
+ * default and the catalogue it has to exist in cannot drift apart.
+ */
+export const DEFAULT_PROMOTIONAL_PACKAGE = "15 Seconds + Poster";
+
 export const PACKAGES: Record<string, ServicePackage[]> = Object.fromEntries(
   SERVICE_CATALOG.map((c) => [c.key, c.packages]),
 );

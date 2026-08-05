@@ -106,8 +106,55 @@ describe("what a sales letter says about incentive and targets", () => {
     for (const type of ["offer_letter", "appointment_letter"] as const) {
       const body = letter(type, profile(), salesSubject);
       expect(body, type).toContain("below the required range of 50% to 75%");
-      expect(body, type).toContain("salary may be revised downward");
+      expect(body, type).toContain("salary may in addition be revised downward");
     }
+  });
+
+  /**
+   * All-or-nothing, and it has to read that way: a member on 74% earns no incentive on the sales
+   * they did make, and that is not something to discover on a payslip.
+   */
+  it("states that no incentive is payable below 75% of target", () => {
+    for (const type of ["offer_letter", "appointment_letter"] as const) {
+      const body = letter(type, profile(), salesSubject);
+      expect(body, type).toContain("payable only where you achieve at least 75% of your target");
+      expect(body, type).toContain("no incentive is payable for that cycle");
+    }
+  });
+
+  it("says the gate applies even where the rate has not been set on the record", () => {
+    const body = letter("offer_letter", profile(), subject());
+    expect(body).toContain("at least 75% of your target");
+  });
+
+  it("says targets are a sales instrument", () => {
+    expect(letter("offer_letter", profile(), salesSubject)).toContain("Targets apply to sales roles only");
+  });
+});
+
+/**
+ * A trainee is being taught the job on a reduced salary. Measuring them against a full target and
+ * then withholding the incentive would penalise somebody for not yet knowing the thing they were
+ * hired to be taught.
+ */
+describe("targets during a training period", () => {
+  const trainee = profile({ trainingMonths: 3, trainingSalaryMonthly: 8000 });
+  const salesSubject = subject({ incentivePercent: 5 });
+
+  it.each(["offer_letter", "appointment_letter"] as const)("exempts the training months on the %s", (type) => {
+    const body = letter(type, trainee, salesSubject);
+    expect(body).toContain("No sales target applies to you during your training period of 3 month(s)");
+    expect(body).toContain("apply from the end of that period");
+  });
+
+  it("says nothing about training on a letter for somebody who has none", () => {
+    expect(letter("offer_letter", profile(), salesSubject)).not.toContain("No sales target applies");
+  });
+
+  it("leaves the targets and the 75% gate on the trainee's letter, to apply later", () => {
+    const body = letter("offer_letter", trainee, salesSubject);
+    expect(body).toContain("Your role carries sales targets");
+    expect(body).toContain("at least 75% of your target");
   });
 
   it("states them on the appointment letter too", () => {

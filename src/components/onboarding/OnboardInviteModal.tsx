@@ -16,6 +16,8 @@ import { Input, Select, Textarea } from "@/components/hr/ui";
 import type { AppUser, UserRole } from "@/types";
 import type { Department, EngagementType } from "@/types/hr";
 import type { InviteDraft } from "@/types/onboarding";
+import { formatCurrency } from "@/utils/formatters";
+import { daysInPayCycle, monthlyTargetFor } from "@/utils/salesTargets";
 
 /**
  * Hiring someone, in one form.
@@ -71,9 +73,8 @@ export default function OnboardInviteModal({
 
   const [ctcMonthly, setCtcMonthly] = useState(0);
   const [salaryPayDay, setSalaryPayDay] = useState(10);
-  const [target, setTarget] = useState(0);
+  // One target, not three. Monthly is derived from it — see utils/salesTargets.
   const [dailyTarget, setDailyTarget] = useState(0);
-  const [monthlyTarget, setMonthlyTarget] = useState(0);
   const [googleDriveBaseUrl, setGoogleDriveBaseUrl] = useState("");
 
   const [workingDays, setWorkingDays] = useState("Monday to Saturday");
@@ -127,9 +128,7 @@ export default function OnboardInviteModal({
     offerValidUntil: offerValidUntil || null,
     ctcMonthly,
     salaryPayDay,
-    target: isSales ? target : null,
     dailyTarget: isSales ? dailyTarget : null,
-    monthlyTarget: isSales ? monthlyTarget : null,
     googleDriveBaseUrl: !isSales ? (googleDriveBaseUrl.trim() || null) : null,
     workingDays: workingDays.trim(),
     workingHours: workingHours.trim(),
@@ -139,7 +138,7 @@ export default function OnboardInviteModal({
   }), [
     department, role, name, email, personalEmail, phone, address, jobTitle, engagementType, employeeId,
     reportingToName, workLocation, joiningDate, probationMonths, offerValidUntil, ctcMonthly,
-    salaryPayDay, isSales, target, dailyTarget, monthlyTarget, googleDriveBaseUrl, workingDays,
+    salaryPayDay, isSales, dailyTarget, googleDriveBaseUrl, workingDays,
     workingHours, shiftDetails, noticeDays, offerLetterNumber,
   ]);
 
@@ -343,9 +342,15 @@ export default function OnboardInviteModal({
           onChange={(e) => setSalaryPayDay(Number(e.target.value) || 0)} />
         {isSales ? (
           <>
-            <Input label="Target (₹)" type="number" min={0} value={target || ""} onChange={(e) => setTarget(Number(e.target.value) || 0)} />
-            <Input label="Daily target (₹)" type="number" min={0} value={dailyTarget || ""} onChange={(e) => setDailyTarget(Number(e.target.value) || 0)} />
-            <Input label="Monthly target (₹)" type="number" min={0} value={monthlyTarget || ""} onChange={(e) => setMonthlyTarget(Number(e.target.value) || 0)} />
+            <Input label="Daily target (₹)" type="number" min={0} value={dailyTarget || ""}
+              onChange={(e) => setDailyTarget(Number(e.target.value) || 0)} data-test="daily-target-input" />
+            {/* Shown, not asked for: the monthly figure is this one across the pay cycle, and a
+                second box could only ever contradict it. */}
+            <p className="self-end pb-2 text-[11px] text-muted-foreground" data-test="derived-monthly-target">
+              Monthly target: <span className="font-mono font-semibold text-foreground">
+                {formatCurrency(monthlyTargetFor(dailyTarget))}
+              </span>{" "}({daysInPayCycle()}-day cycle)
+            </p>
           </>
         ) : (
           <Input label="Google Drive base URL (optional)" type="url" value={googleDriveBaseUrl}

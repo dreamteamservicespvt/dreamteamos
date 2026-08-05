@@ -200,7 +200,25 @@ export function watchCheckedInDays(month: string, cb: (set: Set<string>) => void
   );
 }
 
-/** All days (yyyy-MM-dd) of a month up to and including today (or the full month if past). */
+/**
+ * Every day (yyyy-MM-dd) between two dates, inclusive.
+ *
+ * The attendance calendars run on the pay cycle — 10th → 9th — rather than the calendar month,
+ * because that is the span everything else about a month here is measured over: the salary, the
+ * leave quota, the deductions and the commission. A grid that showed 1–31 while the payslip
+ * settled 10 → 9 meant the days a member counted and the days they were paid for were different
+ * days, and reconciling the two by hand is exactly the thing nobody can do reliably.
+ */
+export function daysBetween(startDate: string, endDate: string): string[] {
+  const out: string[] = [];
+  const end = new Date(`${endDate}T00:00:00`);
+  for (let d = new Date(`${startDate}T00:00:00`); d <= end; d.setDate(d.getDate() + 1)) {
+    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+  }
+  return out;
+}
+
+/** All days (yyyy-MM-dd) of a calendar month. Kept for callers that are genuinely month-scoped. */
 export function daysInMonth(month: string): string[] {
   const [y, m] = month.split("-").map(Number);
   const last = new Date(y, m, 0).getDate();
@@ -249,6 +267,29 @@ export function watchHolidaysInRange(
     q,
     (snap) => cb(new Set(snap.docs.map((d) => d.id))),
     () => cb(new Set()),
+  );
+}
+
+/**
+ * Live announced holidays between two dates, as the full records.
+ *
+ * `watchHolidaysInRange` above returns only the dates, which is all the payroll engine needs. A
+ * calendar also has to NAME the holiday it is showing, so it gets the records.
+ */
+export function watchHolidayRecordsInRange(
+  startDate: string,
+  endDate: string,
+  cb: (byDate: Map<string, Holiday>) => void,
+): () => void {
+  const q = query(collection(db, "holidays"), where("date", ">=", startDate), where("date", "<=", endDate));
+  return onSnapshot(
+    q,
+    (snap) => {
+      const map = new Map<string, Holiday>();
+      snap.docs.forEach((d) => map.set(d.id, d.data() as Holiday));
+      cb(map);
+    },
+    () => cb(new Map()),
   );
 }
 

@@ -116,7 +116,8 @@ export default function VerifyEmployee() {
               <div className="min-w-0">
                 <p className="truncate text-lg font-bold text-foreground">{person.name}</p>
                 <p className="truncate text-sm text-primary">{person.designation}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">{person.department} Department</p>
+                {/* Already the unit's full name — appending "Department" printed it twice. */}
+                <p className="mt-0.5 text-xs text-muted-foreground">{person.department}</p>
               </div>
             </div>
 

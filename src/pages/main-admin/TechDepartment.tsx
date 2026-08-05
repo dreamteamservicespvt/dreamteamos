@@ -122,9 +122,9 @@ export default function TechDepartment() {
                         <div className="w-8 h-8 rounded-lg bg-role-tech-member/15 flex items-center justify-center font-display font-bold text-role-tech-member text-xs">
                           {m.name?.charAt(0)}
                         </div>
-                        <div>
-                          <p className="font-medium text-foreground">{m.name}</p>
-                          <p className="text-xs text-muted-foreground">{m.email}</p>
+                        <div className="min-w-0">
+                          <p className="font-medium text-foreground truncate" title={m.name}>{m.name}</p>
+                          <p className="text-xs text-muted-foreground truncate" title={m.email}>{m.email}</p>
                         </div>
                       </div>
                     </td>

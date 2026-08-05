@@ -7,10 +7,17 @@
  * field is three clicks away. So the fields are here, in the popup, and each one saves the moment
  * it is filled — partial progress is kept even if they close it after two answers.
  *
- * ── Why it is dismissible ─────────────────────────────────────────────────────────────────────
- * A blocking gate would stop someone working because they cannot photograph their PAN card at
- * 9am. "I'll do it later" is honoured for the rest of the day and the prompt returns tomorrow, so
- * the nagging is real but never costs anyone a morning.
+ * ── Why it is dismissible THREE TIMES, and then not ───────────────────────────────────────────
+ * A blocking gate on day one would stop someone working because they cannot photograph their PAN
+ * card at 9am, so "I'll do it later" is honoured for the rest of that day and the prompt returns
+ * tomorrow. But an unlimited later is not a nag, it is an opt-out: members pressed it every
+ * morning for months and payroll ran for people with no PAN and no account to pay into.
+ *
+ * So the budget is three, counted from the first time the prompt was ever shown and held ON THE
+ * EMPLOYMENT RECORD — not in localStorage, which a new phone or a private window resets. Once it
+ * is spent the dialog has no dismiss button: the only way past it is to finish the pack. Three
+ * covers not having the card to hand, not having a photo, and one bad morning, which is every
+ * honest reason for putting it off.
  *
  * ── Why it asks only what is missing, but does not shrink while you use it ────────────────────
  * Somebody who has given eight of twelve things should see four fields, not a twelve-field form
@@ -37,9 +44,13 @@ import {
 } from "@/services/hr";
 import { cleanId, departmentOfRole, isValidAadhaar, isValidPan } from "@/utils/hrPolicy";
 import {
-  PROFILE_STEPS, joinName, needsProfilePrompt, profileCompletion, profilePromptDismissedKey,
-  splitName,
+  MAX_PROFILE_DEFERRALS, PROMPT_STEPS, canDeferProfilePrompt, deferralsLeft, joinName,
+  needsProfilePrompt, profilePromptDismissedKey, promptCompletion, splitName,
 } from "@/utils/profileCompletion";
+import { isBankComplete, payoutSummary, watchEmployeeBank } from "@/services/payroll";
+import type { EmployeeBank } from "@/types/payroll";
+import BankDetailsModal from "@/components/payroll/BankDetailsModal";
+import { Wallet } from "lucide-react";
 import type { ProfileStep, ProfileStepKey } from "@/utils/profileCompletion";
 import type { EmployeeProfile } from "@/types/hr";
 import ImageCropper from "@/components/ImageCropper";
@@ -110,6 +121,9 @@ export default function ProfileCompletionPrompt() {
   const [uploading, setUploading] = useState<ProfileStepKey | null>(null);
   const [pendingPhoto, setPendingPhoto] = useState<File | null>(null);
   const [justFinished, setJustFinished] = useState(false);
+  /** Payout details live in their own collection — see the `payout` step in profileCompletion. */
+  const [bank, setBank] = useState<EmployeeBank | null>(null);
+  const [bankOpen, setBankOpen] = useState(false);
 
   /**
    * The latest record, readable synchronously.
@@ -134,7 +148,11 @@ export default function ProfileCompletionPrompt() {
   useEffect(() => {
     if (!user?.uid || !eligible) return;
     setDismissed(readFlag(profilePromptDismissedKey(user.uid, today)));
-    return watchEmployeeProfile(user.uid, department, (p) => { profileRef.current = p; setProfile(p); });
+    const unsubs = [
+      watchEmployeeProfile(user.uid, department, (p) => { profileRef.current = p; setProfile(p); }),
+      watchEmployeeBank(user.uid, setBank),
+    ];
+    return () => unsubs.forEach((u) => u());
   }, [user?.uid, eligible, department, today]);
 
   /**
@@ -162,7 +180,21 @@ export default function ProfileCompletionPrompt() {
     );
   }, [user?.uid, eligible, waitsForCheckIn, today]);
 
-  const completion = useMemo(() => profileCompletion(user, profile), [user, profile]);
+  const bankComplete = isBankComplete(bank);
+  const completion = useMemo(
+    () => promptCompletion(user, profile, { bankComplete }),
+    [user, profile, bankComplete],
+  );
+
+  /**
+   * The budget, and whether it is spent.
+   *
+   * Read from the record so it survives a new device. `canDefer` is what removes the dismiss
+   * button entirely — a disabled button that does nothing is a worse explanation than no button
+   * and a sentence saying why.
+   */
+  const canDefer = canDeferProfilePrompt(profile);
+  const left = deferralsLeft(profile);
 
   /**
    * The draft is seeded ONCE, from the first snapshot, and never again.
@@ -211,7 +243,7 @@ export default function ProfileCompletionPrompt() {
   }, [profile, sessionKeys, completion.missing]);
 
   const sessionSteps = useMemo(
-    () => (sessionKeys ? PROFILE_STEPS.filter((s) => sessionKeys.includes(s.key)) : []),
+    () => (sessionKeys ? PROMPT_STEPS.filter((s) => sessionKeys.includes(s.key)) : []),
     [sessionKeys],
   );
 
@@ -226,10 +258,33 @@ export default function ProfileCompletionPrompt() {
 
   const actor = { uid: user?.uid || "", name: user?.name || "" };
 
-  const handleLater = () => {
-    if (user?.uid) writeFlag(profilePromptDismissedKey(user.uid, today));
+  /**
+   * Spend one of the three, and record the day the counting started.
+   *
+   * The write is awaited only for its side effect on the record; the dialog closes either way,
+   * because a failed counter must never trap somebody behind a modal they were entitled to defer.
+   */
+  const handleLater = async () => {
+    if (!user?.uid) return;
+    // Finishing is not deferring — "Close" on the completed state always works.
+    if (completion.complete) { setDismissed(true); return; }
+    if (!canDefer) return;
+    writeFlag(profilePromptDismissedKey(user.uid, today));
     setDismissed(true);
+    try {
+      // The date rides along with the first deferral rather than being stamped when the prompt
+      // mounts. A mount-time write costs a Firestore write per member for a date that only ever
+      // annotates the count — and the count is the rule. A deferral can only happen while the
+      // prompt is on screen, so the first one IS the first sighting for every practical purpose.
+      await saveEmployeeProfile(user.uid, {
+        profilePromptFirstShownOn: profile?.profilePromptFirstShownOn || today,
+        profilePromptDeferrals: (Number(profile?.profilePromptDeferrals) || 0) + 1,
+      }, actor);
+    } catch {
+      // Silent: the member has already been let through, and the count is retried next time.
+    }
   };
+
 
   // ── The photo. Cropped square first, then written to BOTH copies: the HR photograph the ID
   //    card prints and the avatar every other screen already reads. ──────────────────────────
@@ -419,8 +474,8 @@ export default function ProfileCompletionPrompt() {
   const stepOf = (key: ProfileStepKey) => sessionSteps.find((s) => s.key === key)!;
   /** Live state of one asked question, for the tick beside its label. */
   const isDone = (key: ProfileStepKey) => {
-    const step = PROFILE_STEPS.find((s) => s.key === key);
-    return !!(step && profile && step.has(profile, user));
+    const step = PROMPT_STEPS.find((s) => s.key === key);
+    return !!(step && profile && step.has(profile, user, { bankComplete }));
   };
 
   return (
@@ -674,6 +729,30 @@ export default function ProfileCompletionPrompt() {
                   </Row>
                 )}
 
+                {show("payout") && (
+                  <Row step={stepOf("payout")} done={isDone("payout")}>
+                    {/* Opens the real payout form rather than duplicating it — that component
+                        owns the IFSC/UPI validation and the verification flow, and a second
+                        half-validating copy here is how two accounts end up disagreeing. */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {bankComplete && (
+                        <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-2 text-xs text-foreground">
+                          <Wallet size={13} className="text-primary" /> {payoutSummary(bank)}
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setBankOpen(true)}
+                        data-test="prompt-add-payout"
+                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium text-foreground hover:bg-accent"
+                      >
+                        <Wallet size={13} />
+                        {bankComplete ? "Change payout details" : "Add payout details"}
+                      </button>
+                    </div>
+                  </Row>
+                )}
+
                 {(["panCard", "aadhaarCard"] as ProfileStepKey[]).filter(show).map((key) => {
                   const step = stepOf(key);
                   const existing = uploadedFor(step);
@@ -757,14 +836,35 @@ export default function ProfileCompletionPrompt() {
                 </p>
               )
             )}
+            {/* The budget, said before it is spent rather than after — somebody on their last
+                deferral should know it is their last one. */}
+            {!completion.complete && (
+              canDefer ? (
+                <p className="mb-2.5 text-[11px] font-medium text-muted-foreground" data-test="prompt-deferrals-left">
+                  You can put this off {left} more {left === 1 ? "time" : "times"}. After that these
+                  details have to be completed before you can close this.
+                </p>
+              ) : (
+                <p
+                  className="mb-2.5 flex items-center gap-1.5 rounded-lg border border-destructive/40 bg-destructive/10 px-2.5 py-2 text-[11px] font-medium leading-relaxed text-destructive"
+                  data-test="prompt-deferrals-spent"
+                >
+                  <AlertCircle size={12} className="shrink-0" />
+                  You have put this off {MAX_PROFILE_DEFERRALS} times. Please complete the details
+                  above — the company cannot run your payroll or issue your documents without them.
+                </p>
+              )
+            )}
             <div className="flex gap-2">
-              <button
-                onClick={handleLater}
-                data-test="profile-prompt-later"
-                className="h-10 flex-1 rounded-xl border border-border text-sm font-medium text-foreground transition-colors hover:bg-accent"
-              >
-                {completion.complete ? "Close" : "I'll do it later"}
-              </button>
+              {(completion.complete || canDefer) && (
+                <button
+                  onClick={handleLater}
+                  data-test="profile-prompt-later"
+                  className="h-10 flex-1 rounded-xl border border-border text-sm font-medium text-foreground transition-colors hover:bg-accent"
+                >
+                  {completion.complete ? "Close" : "I'll do it later"}
+                </button>
+              )}
               {!completion.complete && (
                 <button
                   onClick={handleSave}
@@ -790,6 +890,13 @@ export default function ProfileCompletionPrompt() {
           onCropped={handleCroppedPhoto}
         />
       )}
+
+      <BankDetailsModal
+        key="bank"
+        open={bankOpen}
+        bank={bank}
+        onClose={() => setBankOpen(false)}
+      />
     </AnimatePresence>
   );
 }

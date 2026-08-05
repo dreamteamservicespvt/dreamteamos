@@ -6,6 +6,7 @@ import { formatCurrency } from "@/utils/formatters";
 import StatCard from "@/components/dashboard/StatCard";
 import type { AppUser } from "@/types";
 import { TrendingUp, Users, Video, ShoppingBag } from "lucide-react";
+import { dailyTargetOf } from "@/utils/salesTargets";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
@@ -105,7 +106,7 @@ export default function MainAdminDashboard() {
   const salesTableData = salesMembers.map((m) => {
     const memberLeads = todayLeads.filter((l: any) => l.assignedTo === m.uid);
     const revenue = memberLeads.reduce((s, l: any) => s + (l.saleDetails?.amount || 0), 0);
-    return { name: m.name, sales: memberLeads.length, revenue, target: m.dailyTarget || m.target || 10000 };
+    return { name: m.name, sales: memberLeads.length, revenue, target: dailyTargetOf(m) || 10000 };
   });
 
   return (
@@ -233,7 +234,7 @@ export default function MainAdminDashboard() {
 
         {/* Sales Team */}
         <div className="bg-card border border-border rounded-xl p-5">
-          <h3 className="font-display font-semibold text-foreground mb-4">Sales Department</h3>
+          <h3 className="font-display font-semibold text-foreground mb-4">Business Development Department</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>

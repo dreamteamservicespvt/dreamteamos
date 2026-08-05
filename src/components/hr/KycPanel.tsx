@@ -9,7 +9,7 @@ import { addKycDocument, removeKycDocument, saveEmployeeProfile } from "@/servic
 import type { Actor } from "@/services/hr";
 import { cleanId, formatAadhaar, isValidAadhaar, isValidPan, kycCompletion, maskIdentifier } from "@/utils/hrPolicy";
 import ImageCropper from "@/components/ImageCropper";
-import { KYC_DOC_LABELS } from "@/types/hr";
+import { BLOOD_GROUPS, BLOOD_GROUP_OTHER, KYC_DOC_LABELS } from "@/types/hr";
 import type { AppUser } from "@/types";
 import type { EmployeeProfile, KycDocKind } from "@/types/hr";
 import { EmptyState, Field, Input, SectionCard, Select, Textarea } from "./ui";
@@ -44,6 +44,9 @@ export default function KycPanel({ profile, actor, user, readOnly }: {
   const docInput = useRef<HTMLInputElement>(null);
 
   const kyc = kycCompletion(profile, user);
+  /** False for a typed-in group, which is what reveals the free-text box beside the picker. */
+  const bloodGroupIsListed = !form.bloodGroup
+    || (BLOOD_GROUPS as readonly string[]).includes(form.bloodGroup);
 
   const set = <K extends keyof EmployeeProfile>(key: K, v: EmployeeProfile[K]) =>
     setForm((prev) => ({ ...prev, [key]: v }));
@@ -284,7 +287,24 @@ export default function KycPanel({ profile, actor, user, readOnly }: {
                 <Input label="Surname" value={form.surname || ""} placeholder="Family name"
                   onChange={(e) => set("surname", e.target.value)} data-test="kyc-surname" />
                 <Input label="Date of birth" type="date" value={form.dob || ""} onChange={(e) => set("dob", e.target.value)} data-test="kyc-dob" />
-                <Input label="Blood group" value={form.bloodGroup || ""} placeholder="O+" onChange={(e) => set("bloodGroup", e.target.value)} />
+                <div>
+                  <Select
+                    label="Blood group"
+                    value={bloodGroupIsListed ? (form.bloodGroup || "") : (form.bloodGroup ? BLOOD_GROUP_OTHER : "")}
+                    onChange={(e) => set("bloodGroup", e.target.value === BLOOD_GROUP_OTHER ? "" : e.target.value)}
+                    data-test="kyc-blood-group"
+                  >
+                    <option value="">Not set</option>
+                    {BLOOD_GROUPS.map((g) => <option key={g} value={g}>{g}</option>)}
+                    <option value={BLOOD_GROUP_OTHER}>Other (type it)</option>
+                  </Select>
+                  {/* The escape hatch. A fixed list nobody can get out of is its own failure —
+                      rare groups outside the eight ABO/Rh ones exist and belong on the card. */}
+                  {!bloodGroupIsListed && (
+                    <Input label="" className="mt-1.5" value={form.bloodGroup || ""} placeholder="Type the group"
+                      onChange={(e) => set("bloodGroup", e.target.value)} data-test="kyc-blood-group-other" />
+                  )}
+                </div>
                 <Input label="Personal email" type="email" value={form.personalEmail || ""} onChange={(e) => set("personalEmail", e.target.value)} />
                 <Input label="Alternate phone" value={form.altPhone || ""} onChange={(e) => set("altPhone", e.target.value)} />
                 <div>

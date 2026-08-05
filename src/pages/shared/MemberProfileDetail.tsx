@@ -34,6 +34,7 @@ import IssueDocumentDialog from "@/components/hr/IssueDocumentDialog";
 import IdCardModal from "@/components/hr/IdCardModal";
 import BirthdayPreviewModal from "@/components/birthday/BirthdayPreviewModal";
 import { EngagementChip, Field, SectionCard, StageChip } from "@/components/hr/ui";
+import { dailyTargetOf, monthlyTargetOf } from "@/utils/salesTargets";
 
 /**
  * One team member, in full.
@@ -198,7 +199,7 @@ export default function MemberProfileDetail() {
 
             <div className="min-w-[220px] flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="font-display text-xl font-bold text-foreground md:text-2xl">{member.name}</h1>
+                <h1 className="font-display min-w-0 break-words text-xl font-bold text-foreground md:text-2xl">{member.name}</h1>
                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${getRoleColor(member.role)}`}>
                   {getRoleLabel(member.role)}
                 </span>
@@ -224,7 +225,9 @@ export default function MemberProfileDetail() {
               <p className="mt-0.5 text-xs text-muted-foreground">{member.email}</p>
             </div>
 
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {/* Not shrink-0: at its intrinsic width this row is wider than a phone, and holding
+                that width pushed "Edit account" off the right edge instead of wrapping. */}
+            <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto">
               {member.phone && (
                 <>
                   <a href={getCallUrl(member.phone)} title="Call"
@@ -409,8 +412,9 @@ export default function MemberProfileDetail() {
                 />
                 {department === "sales" && (
                   <>
-                    <Field label="Daily target" value={formatCurrency(member.dailyTarget || 0)} mono />
-                    <Field label="Monthly target" value={formatCurrency(member.monthlyTarget || member.target || 0)} mono />
+                    <Field label="Daily target" value={formatCurrency(dailyTargetOf(member))} mono />
+                    {/* Derived from the daily figure across the pay cycle, never stored. */}
+                    <Field label="Monthly target" value={formatCurrency(monthlyTargetOf(member))} mono />
                     <Field
                       label="Earnings plan"
                       value={member.earningsOption === "stipend_plus_5" ? "Stipend + 5% incentive"

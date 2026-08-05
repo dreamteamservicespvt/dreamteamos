@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildIdCard, fitBox, prettyDate, provisionalEmployeeId, PHOTO_BOX } from "@/utils/idCard";
+import { buildIdCard, fitBox, idCardNameSize, prettyDate, provisionalEmployeeId, PHOTO_BOX } from "@/utils/idCard";
 import { idCardFilename } from "@/utils/idCardExport";
 import type { AppUser } from "@/types";
 import type { EmployeeProfile } from "@/types/hr";
@@ -52,7 +52,7 @@ describe("buildIdCard", () => {
     expect(card.name).toBe("Asha Devi");
     // Falls back to the role's own label rather than leaving the line blank.
     expect(card.designation).toBe("Sales Executive");
-    expect(card.department).toBe("Sales");
+    expect(card.department).toBe("Business Development Department");
     expect(card.employeeId).toMatch(/^DTS-/);
     // Nothing invented: what isn't known is null, and the card omits those rows.
     expect(card.bloodGroup).toBeNull();
@@ -82,7 +82,74 @@ describe("buildIdCard", () => {
 
   it("puts a tech member in the technology department", () => {
     const dev = { ...member, role: "tech_member" } as AppUser;
-    expect(buildIdCard(dev, null).department).toBe("Technology");
+    expect(buildIdCard(dev, null).department).toBe("Technology Department");
+  });
+});
+
+/**
+ * The card carries the full name, and gives way to it.
+ *
+ * An initialled short form ("R.Govardhan") was tried and withdrawn: a badge is checked against
+ * other documents, and a name that does not match the one on them is worse than a name set in
+ * smaller type. So the type size steps down instead of the name being cut.
+ */
+describe("idCardNameSize", () => {
+  it("sets a short name large", () => {
+    expect(idCardNameSize("Asha Devi").fontSize).toBe(19);
+  });
+
+  it("steps down as the name gets longer", () => {
+    const sizes = [
+      idCardNameSize("Asha Devi"),
+      idCardNameSize("Govardhan Rajulapati"),
+      idCardNameSize("Govardhan Sai Rajulapati"),
+      idCardNameSize("Chodisetti Siva Naga Satyanarayana"),
+    ].map((s) => s.fontSize);
+    // Monotonically decreasing — never a longer name in bigger type than a shorter one.
+    expect(sizes).toEqual([...sizes].sort((a, b) => b - a));
+    expect(new Set(sizes).size).toBeGreaterThan(1);
+  });
+
+  it("keeps the longest real name readable rather than shrinking without limit", () => {
+    expect(idCardNameSize("Chodisetti Siva Naga Satyanarayana Murthy").fontSize).toBeGreaterThanOrEqual(12);
+  });
+
+  it("always leaves the line taller than the type", () => {
+    for (const n of ["A", "Asha Devi", "Chodisetti Siva Naga Satyanarayana"]) {
+      const { fontSize, lineHeight } = idCardNameSize(n);
+      expect(lineHeight, n).toBeGreaterThan(fontSize);
+    }
+  });
+
+  it("survives an empty name", () => {
+    expect(idCardNameSize("").fontSize).toBeGreaterThan(0);
+  });
+});
+
+describe("what the card puts on each face", () => {
+  it("prints the full name, never an abbreviation of it", () => {
+    const card = buildIdCard(
+      { ...member, name: "Chodisetti Siva Naga Satyanarayana" },
+      { ...profile, surname: "Chodisetti" },
+    );
+    expect(card.name).toBe("Chodisetti Siva Naga Satyanarayana");
+  });
+
+  /**
+   * The card outlives the job and is shown to people outside the company, so the address on it
+   * should be one that still reaches the person once the work login is revoked.
+   */
+  it("prefers the personal email over the work login", () => {
+    expect(buildIdCard(member, { ...profile, personalEmail: "asha.personal@gmail.com" }).email)
+      .toBe("asha.personal@gmail.com");
+    expect(buildIdCard(member, profile).email).toBe("asha@example.com");
+  });
+
+  it("names the department the employee is actually in, not the team that runs them", () => {
+    expect(buildIdCard(member, { ...profile, orgUnit: "creative" }).department).toBe("Creative Department");
+    expect(buildIdCard(member, { ...profile, orgUnit: "marketing" }).department).toBe("Marketing Department");
+    // Nothing chosen falls back to the department's own default.
+    expect(buildIdCard(member, profile).department).toBe("Business Development Department");
   });
 });
 

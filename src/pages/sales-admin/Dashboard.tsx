@@ -256,9 +256,9 @@ export default function SalesAdminDashboard() {
                     <div className="w-10 h-10 rounded-lg bg-role-sales-member/15 flex items-center justify-center font-display font-bold text-role-sales-member text-sm">
                       {mp.member.name?.charAt(0)}
                     </div>
-                    <div>
-                      <p className="font-medium text-foreground">{mp.member.name}</p>
-                      <p className="text-[10px] text-muted-foreground">{mp.member.email}</p>
+                    <div className="min-w-0">
+                      <p className="font-medium text-foreground truncate" title={mp.member.name}>{mp.member.name}</p>
+                      <p className="text-[10px] text-muted-foreground truncate" title={mp.member.email}>{mp.member.email}</p>
                     </div>
                   </div>
                   {isOnTrack && (

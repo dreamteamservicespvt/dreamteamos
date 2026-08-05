@@ -21,9 +21,27 @@ export interface AppUser {
   salary: number;
   /** Salary package this employee is on (`salary_packages/{id}`). Absent for unassigned staff. */
   salaryPackageId?: string;
-  target: number;
+  /**
+   * The sales target, and the only one that is set. Everything else is derived from it — the
+   * monthly figure is this across the pay cycle. See utils/salesTargets.
+   */
   dailyTarget?: number;
+  /**
+   * @deprecated Derived now, not stored. Read through `monthlyTargetOf` instead.
+   *
+   * Still typed because live records written before the form was simplified carry it, and
+   * `dailyTargetOf` reads it once to recover the daily figure it implied. Nothing writes it.
+   */
   monthlyTarget?: number;
+  /**
+   * @deprecated Never read. Do not reintroduce.
+   *
+   * The original single target field, and the reason this needed cleaning up: the sales-admin
+   * dashboard read it as a DAILY figure while the member's own dashboard read the very same field
+   * as a MONTHLY one, so one record showed a member two different targets depending on who opened
+   * it. There is no safe reading of it, so it has none.
+   */
+  target?: number;
   googleDriveBaseUrl?: string;
   phone: string;
   /**
