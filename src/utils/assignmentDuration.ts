@@ -42,6 +42,27 @@ export function durationForClips(clips: number): string {
 }
 
 /**
+ * A length a sales member typed, as a duration the production side can build.
+ *
+ * Everything downstream counts in whole 8-second clips, so "2 minutes" has to become a number of
+ * clips before it means anything. Rounded UP rather than down: a client who bought two minutes
+ * gets 120 seconds of video, and a rounding rule that quietly delivers 112 is the company short-
+ * changing somebody by eight seconds to save a clip.
+ *
+ * Returns both halves because the caller needs both — the clip count drives the work and the price,
+ * and the duration string is what every existing dropdown and label speaks.
+ */
+export function clipsForSeconds(seconds: number): number {
+  const s = Math.max(CLIP_SECONDS, Math.round(Number(seconds) || 0));
+  return Math.max(1, Math.ceil(s / CLIP_SECONDS));
+}
+
+/** `120` → `"120s"`, snapped up to a whole clip so the label and the work agree. */
+export function durationFromSeconds(seconds: number): string {
+  return durationForClips(clipsForSeconds(seconds));
+}
+
+/**
  * Normalises a typed clip count. There is deliberately no upper bound — the team assigns ads of
  * whatever length the client bought — only a floor of 1, since a zero-clip ad is not a thing.
  */

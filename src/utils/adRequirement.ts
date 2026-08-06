@@ -9,8 +9,8 @@
  * the tech form can never drift apart.
  */
 import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from "@/types/aiPlatform";
-import { DURATIONS, END_CREDITS_SECONDS, getClipCount, hasPoster, priceForClips } from "./assignmentDuration";
-import { PACKAGES, isAdCategory, categoryLabel, effectiveAdCategory } from "./serviceCatalog";
+import { DURATIONS, END_CREDITS_SECONDS, durationFromSeconds, getClipCount, hasPoster, priceForClips } from "./assignmentDuration";
+import { PACKAGES, isAdCategory, categoryLabel, effectiveAdCategory, productionCategory } from "./serviceCatalog";
 import { PRICING } from "./pricing";
 import { getCharacterPack, packHighlight } from "@/services/characterPacks";
 import type { AdRequirement, Order } from "@/types";
@@ -60,7 +60,19 @@ export function attireForGender(gender: ModelGender, current: AttireType): Attir
  * DURATIONS, so position is the reliable mapping; price is the fallback when a package label has
  * been edited, and the shortest package the fallback of last resort.
  */
-export function durationForSale(category: string, packageKey?: string | null, amount?: number): string {
+export function durationForSale(
+  category: string,
+  packageKey?: string | null,
+  amount?: number,
+  /**
+   * A length typed on the sale, for a Custom order built on this category — a two-minute
+   * promotional ad. It wins over the package lookup because there is no package: the whole point
+   * of a Custom sale is that the client asked for a length the price list does not carry.
+   */
+  customDurationSeconds?: number | null,
+): string {
+  if (customDurationSeconds && customDurationSeconds > 0) return durationFromSeconds(customDurationSeconds);
+
   const durations = DURATIONS[category] || [];
   if (durations.length === 0) return "";
 
@@ -142,9 +154,11 @@ export interface AssignmentFormSpec {
  * unit price, because production speaks in the three real ad categories and knows no fourth.
  */
 export function assignmentFormFromOrder(order: Order, knownLanguages?: string[]): AssignmentFormSpec {
-  const resolved = effectiveAdCategory(order.category, order.bulkAdType);
+  // `productionCategory` resolves BOTH of the sales-side conveniences: a bulk order to the kind of
+  // video it is made of, and a Custom order to the real service it is a longer version of.
+  const resolved = productionCategory(order);
   const category = (isAdCategory(resolved) ? resolved : "promotional") as AssignmentFormSpec["category"];
-  const duration = durationForSale(category, order.packageKey, order.amount);
+  const duration = durationForSale(category, order.packageKey, order.amount, order.customDurationSeconds);
   const r = withRequirementDefaults(order.requirement);
 
   // A language the sales member typed is normally already in the shared list; if it somehow

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { updateDoc, doc, serverTimestamp, Timestamp } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { fetchTeamMembers, subscribeTeamLeads } from "@/services/teamLeads";
@@ -8,12 +8,13 @@ import { upsertOrderForSale, cancelOrderForSale } from "@/services/orders";
 import { useAuthStore } from "@/store/authStore";
 import { formatCurrency, formatDuration } from "@/utils/formatters";
 import { discountEditLabel, discountSummary } from "@/utils/bulkDiscount";
-import { bulkCategoryLabel } from "@/utils/serviceCatalog";
+import { EARNED_REASON_LABEL, MEMBER_DISCOUNT_LIMIT_PERCENT, earnedReasons } from "@/utils/saleDiscount";
+import { bulkCategoryLabel, categoryLabel } from "@/utils/serviceCatalog";
 import { useNow } from "@/hooks/useNow";
 import { applySaleFreeze, adminReleaseLock, buildLeadFreezeFields, clearedLeadFreezeFields, clearSaleFreeze } from "@/services/numberLock";
 import { format, subDays, startOfDay } from "date-fns";
 import type { AppUser, Lead, SaleDetail } from "@/types";
-import { CheckCircle, XCircle, ShoppingBag, ExternalLink, RotateCcw, Trash2, CheckSquare, Square, Phone, MessageCircle, AlertTriangle, FileText, Snowflake, Lock, ShieldOff, Loader2 } from "lucide-react";
+import { CheckCircle, XCircle, ShoppingBag, ExternalLink, RotateCcw, Trash2, CheckSquare, Square, Phone, MessageCircle, AlertTriangle, FileText, Snowflake, Lock, ShieldOff, Loader2, Search, X } from "lucide-react";
 import { formatPhoneDisplay, getCallUrl, getWhatsAppUrl, normalizePhone } from "@/utils/phone";
 import { useToast } from "@/hooks/use-toast";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
@@ -46,6 +47,15 @@ export default function SalesApprovals() {
   // Quick Today/Yesterday/last-5-days filter (same pattern used in Work Assign) — defaults to
   // Today. An exact calendar date picked below takes precedence over this quick filter.
   const [dayFilter, setDayFilter] = useState<string>("0");
+  /**
+   * Free-text search and a single-member filter, shared by every tab.
+   *
+   * Deliberately outside the tab state: an admin hunting for one sale does not know, and should
+   * not have to know, whether it is sitting in Pending, Verified or Rejected — so the same query
+   * narrows all of them and the tab counts show where it ended up.
+   */
+  const [search, setSearch] = useState("");
+  const [soldBy, setSoldBy] = useState<string>("all");
   const recentDays = useMemo(() => {
     const days: { date: Date; dateStr: string; label: string }[] = [];
     for (let i = 0; i < 5; i++) {
@@ -88,6 +98,30 @@ export default function SalesApprovals() {
 
   const makeKey = (leadId: string, itemIndex: number) => `${leadId}__${itemIndex}`;
 
+  /**
+   * Verifying a sale is agreeing its price.
+   *
+   * A sale discounted past what a member may give on their own has been sitting out of the tech
+   * queue entirely, waiting for exactly this decision — so approving it here is what releases it.
+   * Keeping them as one action rather than two is deliberate: an admin who has just looked at the
+   * amount, the payment screenshot and the discount and pressed Verify has made the decision, and
+   * a second button asking them to make it again is a second button that gets forgotten, leaving
+   * the sale verified and the work never started.
+   */
+  const approveOnVerify = (item: SaleDetail): SaleDetail => ({
+    ...item,
+    verificationStatus: "verified",
+    verifiedAt: Timestamp.now(),
+    ...(item.discountNeedsApproval
+      ? {
+          discountApproval: "approved" as const,
+          discountApprovedBy: currentUser?.name || null,
+          discountApprovedAt: Timestamp.now(),
+          discountRejectionReason: null,
+        }
+      : {}),
+  });
+
   // ── Single item actions ──────────────────────────────────────────────────
 
   const handleVerifyItem = async (leadId: string, itemIndex: number) => {
@@ -96,7 +130,7 @@ export default function SalesApprovals() {
     try {
       const items = [...getAllItems(lead)];
       const oldItem = items[itemIndex];
-      items[itemIndex] = { ...oldItem, verificationStatus: "verified", verifiedAt: Timestamp.now() };
+      items[itemIndex] = approveOnVerify(oldItem);
       await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
       // Verified sale → create/refresh the Order so it enters the tech "Orders" queue.
       await upsertOrderForSale({ lead, item: items[itemIndex], itemIndex, verifierUid: currentUser!.uid, saleVerified: true, soldByName: getMemberName(lead.assignedTo) });
@@ -259,7 +293,7 @@ export default function SalesApprovals() {
       // 1) Verify the chosen item.
       const wItems = [...getAllItems(winner)];
       const wOld = wItems[itemIndex];
-      wItems[itemIndex] = { ...wOld, verificationStatus: "verified", verifiedAt: Timestamp.now() };
+      wItems[itemIndex] = approveOnVerify(wOld);
       await updateDoc(doc(db, "leads", leadId), { saleItems: wItems, lastUpdated: serverTimestamp() });
       // Winner verified → create its Order for the tech queue.
       await upsertOrderForSale({ lead: winner, item: wItems[itemIndex], itemIndex, verifierUid: currentUser!.uid, saleVerified: true, soldByName: getMemberName(winner.assignedTo) });
@@ -395,9 +429,8 @@ export default function SalesApprovals() {
         const lead = leads.find((l) => l.id === leadId)!;
         const items = [...getAllItems(lead)];
         const affected = byLead[leadId];
-        const verifiedTs = Timestamp.now();
         affected.forEach(({ itemIndex }) => {
-          items[itemIndex] = { ...items[itemIndex], verificationStatus: "verified", verifiedAt: verifiedTs };
+          items[itemIndex] = approveOnVerify(items[itemIndex]);
         });
         await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
         // Each verified sale → an Order in the tech queue.
@@ -518,6 +551,67 @@ export default function SalesApprovals() {
     getAllItems(lead).map((item, idx) => ({ lead, item, itemIndex: idx }))
   );
 
+  /**
+   * Everything about one sale, flattened into a string the search box matches against.
+   *
+   * ── Why one blob rather than a field picker ───────────────────────────────────────────────────
+   * An admin looking for a sale does not know which field they remember it by. It might be the
+   * client's name, half a phone number, the member who sold it, "cinematic", "45 Seconds", the
+   * business on the ad, or the amount. A search that only covered names would fail on most of
+   * those, and a row of per-field boxes asks the admin to classify their own memory before they
+   * can use it. Everything printed on the card is searchable, because everything printed on the
+   * card is something somebody will type.
+   *
+   * The phone is included both as typed and as digits only, so "9876" finds "+91 98765 43210".
+   */
+  const searchBlobFor = useCallback((li: LeadItem): string => {
+    const { lead, item } = li;
+    return [
+      lead.displayName,
+      lead.realName,
+      lead.phone,
+      lead.phone.replace(/\D/g, ""),
+      getMemberName(lead.assignedTo),
+      categoryLabel(item.category),
+      item.category,
+      item.packageKey,
+      item.customDescription,
+      item.requirement?.businessName,
+      item.bulkAdType ? categoryLabel(item.bulkAdType) : "",
+      // Both forms of the money, because the admin reads "₹61,457" off the card and types it back
+      // with the comma, while the stored figure is 61457.
+      item.amount ? String(item.amount) : "",
+      item.amount ? item.amount.toLocaleString("en-IN") : "",
+      lead.notes,
+    ].filter(Boolean).join(" ").toLowerCase();
+  }, [getMemberName]);
+
+  const searchTerms = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
+
+  /**
+   * The search and the member filter, applied to every tab alike.
+   *
+   * All terms must match, in any order and any field — typing "kusuma cinematic" finds Kusuma's
+   * cinematic sales rather than everything mentioning either word.
+   */
+  const matchesFilters = useCallback((li: LeadItem): boolean => {
+    if (soldBy !== "all" && li.lead.assignedTo !== soldBy) return false;
+    if (searchTerms.length === 0) return true;
+    const blob = searchBlobFor(li);
+    return searchTerms.every((t) => blob.includes(t));
+  }, [soldBy, searchTerms.join(" "), searchBlobFor]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Members who actually have a sale in view, so the dropdown never offers an empty result. */
+  const sellersInView = useMemo(() => {
+    const byId = new Map<string, string>();
+    allLeadItems.forEach(({ lead }) => {
+      if (!byId.has(lead.assignedTo)) byId.set(lead.assignedTo, getMemberName(lead.assignedTo));
+    });
+    return [...byId.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [allLeadItems.length, members]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Duplicate DISPUTE detection based on the freeze/validity window.
   // Two members on the same number are a dispute ONLY if their sale-protection (freeze) windows
   // OVERLAP. Sequential sales — a later member selling after the earlier member's validity ended —
@@ -560,6 +654,7 @@ export default function SalesApprovals() {
   };
   const pending = allLeadItems.filter((li) => {
     if (li.item.verificationStatus !== "pending") return false;
+    if (!matchesFilters(li)) return false;
     // Today (the default) or no filter at all → never hide work still awaiting verification,
     // regardless of when it was submitted. A specific single day (Yesterday / N days ago / an
     // exact calendar date) filters strictly to that day.
@@ -568,6 +663,7 @@ export default function SalesApprovals() {
   });
   const verified = allLeadItems.filter((li) => {
     if (li.item.verificationStatus !== "verified") return false;
+    if (!matchesFilters(li)) return false;
     if (!dateStr) return true;
     const ts = li.lead.lastUpdated?.seconds;
     if (!ts) return false;
@@ -575,6 +671,7 @@ export default function SalesApprovals() {
   });
   const rejected = allLeadItems.filter((li) => {
     if (li.item.verificationStatus !== "rejected") return false;
+    if (!matchesFilters(li)) return false;
     if (!dateStr) return true;
     const ts = li.lead.lastUpdated?.seconds;
     if (!ts) return false;
@@ -583,7 +680,7 @@ export default function SalesApprovals() {
   // Duplicates: every sale item whose number was sold by 2+ different members (any status).
   // Sorted by number so competing sales sit side by side, then oldest submission first.
   const duplicates = allLeadItems
-    .filter((li) => getDuplicateOthers(li.lead).length > 0)
+    .filter((li) => getDuplicateOthers(li.lead).length > 0 && matchesFilters(li))
     .sort((a, b) => {
       const pa = normalizePhone(a.lead.phone);
       const pb = normalizePhone(b.lead.phone);
@@ -609,6 +706,16 @@ export default function SalesApprovals() {
   // Built straight from `leads` (which the admin already streams) so it needs no extra reads.
   const frozenLeads = leads
     .filter((l) => l.saleFrozen && tsToMs(l.saleFrozenUntil) > now)
+    /*
+      A frozen NUMBER matches if any of the sales on it does.
+      One number can carry several services — an ad, a logo and a website — so testing only the
+      first would hide the number when the admin searched for the second thing sold on it.
+    */
+    .filter((l) => {
+      const items = getAllItems(l);
+      if (items.length === 0) return matchesFilters({ lead: l, item: {} as SaleDetail, itemIndex: 0 });
+      return items.some((item, idx) => matchesFilters({ lead: l, item, itemIndex: idx }));
+    })
     .sort((a, b) => tsToMs(a.saleFrozenUntil) - tsToMs(b.saleFrozenUntil));
 
   const displayItems =
@@ -683,6 +790,61 @@ export default function SalesApprovals() {
           className={`h-8 md:h-9 px-3 md:px-4 rounded-lg text-xs md:text-sm font-medium transition-colors whitespace-nowrap flex items-center gap-1.5 ${tab === "frozen" ? "bg-success/15 text-success border border-success/30" : "bg-card border border-border text-muted-foreground hover:bg-accent"}`}>
           <Snowflake size={13} /> Frozen Numbers ({frozenLeads.length})
         </button>
+      </div>
+
+      {/*
+        Search and member filter.
+
+        Below the tabs rather than beside the date controls in the header: the header row is
+        already full on a phone, and these two narrow what is IN the tabs, so they read correctly
+        sitting between the tabs and the list they act on. The counts in the tabs above update
+        with them, which is how an admin sees that the sale they searched for is in Verified.
+      */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="relative min-w-0 flex-1">
+          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            data-test="approvals-search"
+            placeholder="Search name, number, sold by, package, business, amount…"
+            className="h-9 w-full rounded-lg border border-border bg-card pl-9 pr-8 text-xs text-foreground outline-none transition-shadow placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 md:text-sm"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <X size={13} />
+            </button>
+          )}
+        </div>
+        {/* Side by side on a phone, so the two controls do not eat two rows between the tabs
+            and the list they filter. */}
+        <div className="flex items-center gap-2">
+          <select
+            value={soldBy}
+            onChange={(e) => setSoldBy(e.target.value)}
+            data-test="approvals-sold-by"
+            aria-label="Filter by who sold it"
+            className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-card px-3 text-xs text-foreground outline-none focus:ring-2 focus:ring-primary/20 sm:flex-none md:text-sm"
+          >
+            <option value="all">All members ({sellersInView.length})</option>
+            {sellersInView.map((m) => (
+              <option key={m.id} value={m.id}>{m.name}</option>
+            ))}
+          </select>
+          {(search || soldBy !== "all") && (
+            <button
+              onClick={() => { setSearch(""); setSoldBy("all"); }}
+              data-test="approvals-clear-filters"
+              className="h-9 shrink-0 rounded-lg border border-border bg-card px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              Clear
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Total for the current tab + date filter — always visible, no selection required */}
@@ -799,8 +961,29 @@ export default function SalesApprovals() {
         )
       ) : /* Items */ displayItems.length === 0 ? (
         <div className="bg-card border border-border rounded-xl p-12 text-center">
-          <ShoppingBag size={32} className="mx-auto text-muted-foreground/30 mb-2" />
-          <p className="text-muted-foreground text-sm">No {tab} sales</p>
+          {/* An empty list because of a filter is a different fact from an empty list, and saying
+              which one it is saves the admin wondering whether the sale was deleted. */}
+          {search || soldBy !== "all" ? (
+            <>
+              <Search size={32} className="mx-auto mb-2 text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground">
+                Nothing in <span className="capitalize">{tab}</span> matches
+                {search ? <> “<b className="text-foreground">{search}</b>”</> : null}
+                {soldBy !== "all" ? <> for <b className="text-foreground">{sellersInView.find((m) => m.id === soldBy)?.name}</b></> : null}.
+              </p>
+              <button
+                onClick={() => { setSearch(""); setSoldBy("all"); }}
+                className="mt-3 text-xs font-medium text-primary hover:underline"
+              >
+                Clear the filters
+              </button>
+            </>
+          ) : (
+            <>
+              <ShoppingBag size={32} className="mx-auto mb-2 text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground">No {tab} sales</p>
+            </>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -894,6 +1077,48 @@ export default function SalesApprovals() {
                         <AlertTriangle size={9} />
                         {discountEditLabel(li.item.suggestedDiscountPercent || 0, li.item.discountPercent || 0)}
                       </span>
+                    </div>
+                  )}
+
+                  {/* What the client did to earn a discount, with the proof one tap away. This is
+                      the evidence the admin is actually approving. */}
+                  {earnedReasons(li.item.earnedDiscount).length > 0 && (
+                    <div className="col-span-2 flex flex-wrap items-center gap-1.5">
+                      {earnedReasons(li.item.earnedDiscount).map((reason) => {
+                        const url = li.item.earnedDiscount?.[reason]?.screenshotUrl;
+                        return (
+                          <a key={reason} href={url || "#"} target="_blank" rel="noopener noreferrer"
+                            data-test={`approval-earned-${reason}`}
+                            className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-medium text-success hover:bg-success/25">
+                            <ExternalLink size={9} /> {EARNED_REASON_LABEL[reason]}
+                          </a>
+                        );
+                      })}
+                      {!!li.item.earnedDiscountAmount && (
+                        <span className="text-[10px] text-muted-foreground">
+                          − {formatCurrency(li.item.earnedDiscountAmount)}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/*
+                    A sale the tech team has not been given, and will not be until this card is
+                    approved. Stated in exactly those terms: the reason it is worth an admin's
+                    attention is not that the price is unusual, it is that a client is waiting and
+                    nobody has started.
+                  */}
+                  {li.item.discountNeedsApproval && li.item.discountApproval !== "approved" && (
+                    <div className="col-span-2">
+                      <div data-test="approval-discount-hold"
+                        className="flex items-start gap-1.5 rounded-md border border-warning/40 bg-warning/10 px-2 py-1.5">
+                        <Lock size={11} className="mt-0.5 shrink-0 text-warning" />
+                        <p className="text-[10px] leading-relaxed text-warning">
+                          <b>Held from the tech team.</b> This is more than the {MEMBER_DISCOUNT_LIMIT_PERCENT}%
+                          a member may give alone, so no work has started. Verifying agrees the price
+                          and releases it.
+                        </p>
+                      </div>
                     </div>
                   )}
                   {/* Charged to the client for changes beyond the brief. Shown here so the admin

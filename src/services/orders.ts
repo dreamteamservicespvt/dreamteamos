@@ -16,7 +16,8 @@ import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import { logTechActivity, type ActivityActor } from "@/services/activityLog";
 import { normalizePhone, phoneLockId } from "@/utils/phone";
-import { isAdCategory } from "@/utils/serviceCatalog";
+import { isAdCategory, productionCategory } from "@/utils/serviceCatalog";
+import { releasedToTech } from "@/utils/saleDiscount";
 import { promiseDueMs, deadlineState } from "@/utils/promiseSla";
 import { initialProgress, isProgressComplete, isTrackComplete, TRACK_FIELDS } from "@/utils/orderProgress";
 import { penaltyAmount, totalPenalties } from "@/utils/penalty";
@@ -74,6 +75,27 @@ export async function upsertOrderForSale(params: {
 }): Promise<void> {
   const { lead, item, itemIndex, soldByName } = params;
   const salesAdminId = params.salesAdminId ?? params.verifierUid ?? null;
+
+  /**
+   * A price nobody has agreed does not reach the people who build against it.
+   *
+   * A sales member may take 10% off on their own; past that the sales admin has to confirm it
+   * first. Until they do there is no order at all — not a hidden one, not a badged one — because
+   * the tech team's own screens are built to show them work they can start, and work that starts
+   * cannot be un-started. The sale itself is recorded and visible on both sales screens throughout;
+   * only the handover waits. Approving it (which happens as part of verifying the sale) calls this
+   * again and the order appears then.
+   */
+  if (!releasedToTech(item)) {
+    /*
+      An order that already exists and has now become over-discounted — the member edited a sale
+      after it went out — is cancelled rather than left standing at a price that is no longer the
+      agreed one. Re-approval brings it back through the normal reactivate path below.
+    */
+    await cancelOrderForSale({ leadId: lead.id, item, itemIndex }).catch(() => {});
+    return;
+  }
+
   try {
     const id = orderDocId(lead.id, item, itemIndex);
     const ref = doc(db, "orders", id);
@@ -102,6 +124,13 @@ export async function upsertOrderForSale(params: {
       discountAmount: item.discountAmount ?? null,
       discountPercent: item.discountPercent ?? null,
       discountEdited: item.discountEdited ?? false,
+      // What the client earned, and the real service behind a Custom order — the two things that
+      // let the tech side derive a duration, a clip count, a price and a deadline for a sale the
+      // price list has no row for. See utils/serviceCatalog.productionCategory.
+      earnedDiscount: item.earnedDiscount ?? null,
+      earnedDiscountAmount: item.earnedDiscountAmount ?? null,
+      customBaseCategory: item.customBaseCategory ?? null,
+      customDurationSeconds: item.customDurationSeconds ?? null,
       leadId: lead.id,
       saleItemIndex: itemIndex,
       saleItemKey: `${lead.id}__${itemIndex}`,
@@ -118,7 +147,7 @@ export async function upsertOrderForSale(params: {
 
     // What this order still owes, for the two kinds that owe more than a single ad.
     const progress = initialProgress({
-      category: item.category,
+      category: productionCategory(item),
       packageKey: item.packageKey,
       quantity: item.quantity,
       bulkAdType: item.bulkAdType,

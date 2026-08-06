@@ -22,8 +22,13 @@ import PenaltyDialog from "@/components/work/PenaltyDialog";
 import {
   SALE_CATEGORIES, PACKAGES, categoryLabel, isAdCategory, isBulkCategory, needsDescription,
   packageOptionLabel, bulkTypesFor, effectiveAdCategory, bulkCategoryLabel,
-  DEFAULT_PROMOTIONAL_PACKAGE,
+  DEFAULT_PROMOTIONAL_PACKAGE, CUSTOM_BASE_CATEGORIES,
 } from "@/utils/serviceCatalog";
+import { clipsForSeconds, priceForClips } from "@/utils/assignmentDuration";
+import {
+  discountBreakdown, EARNED_DISCOUNT_PERCENT, EARNED_REASON_LABEL, MEMBER_DISCOUNT_LIMIT_PERCENT,
+  type EarnedReason,
+} from "@/utils/saleDiscount";
 import {
   quoteBulk, suggestedDiscountPercent, maxDiscountAmount, discountSummary,
   MAX_BULK_DISCOUNT_PERCENT, type DiscountMode,
@@ -38,7 +43,7 @@ import { buildClientSaleMessage } from "@/utils/salesMessage";
 import { dayRevenue, saleDay, type DayRevenue } from "@/utils/salesRevenue";
 import {
   Search, Phone, MessageCircle, StickyNote, ChevronDown, ChevronUp, Clock,
-  Loader2, Check, Upload, ExternalLink, Plus, Trash2, ShoppingBag, X, Lock, AlertTriangle, Snowflake, FileText, RotateCcw, Clapperboard, Copy, Pencil, History, Send, Layers, PartyPopper,
+  Loader2, Check, Upload, ExternalLink, Plus, Trash2, ShoppingBag, X, Lock, AlertTriangle, Snowflake, FileText, RotateCcw, Clapperboard, Copy, Pencil, History, Send, Layers, PartyPopper, Sparkles, BadgePercent, CheckCircle2,
 } from "lucide-react";
 import { CUSTOM_FESTIVAL_OPTION, WISHES_FESTIVALS, isListedFestival } from "@/utils/festivals";
 
@@ -1096,13 +1101,21 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
                 {showSalesList ? "Hide" : "Show"}
               </button>
             )}
+            {/*
+              One client often buys several things at once — a promotional ad, a logo and a website
+              on the same call. Each is its own service with its own package, price, deadline and
+              production track, so each is its own sale line; what was missing was any sign that a
+              second one could be added at all. Saying "Add another service" once there is a sale
+              on the client is the whole difference between the feature existing and being used.
+            */}
             <button
               onClick={() => setExpandedSale(expandedSale === lead.id ? null : lead.id)}
               disabled={frozen}
-              title={frozen ? "This number was taken over by another member" : undefined}
+              data-test="add-sale"
+              title={frozen ? "This number was taken over by another member" : "Add a service this client bought"}
               className="h-7 px-3 rounded-md bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <Plus size={12} /> Add Sale
+              <Plus size={12} /> {allSaleItems.length > 0 ? "Add another service" : "Add Sale"}
             </button>
           </div>
         </div>
@@ -1587,6 +1600,30 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
     () => (ed?.discountMode === "amount" ? ed?.discountAmount ?? 0 : ed?.discountPercent ?? 0),
   );
   const [discountTouched, setDiscountTouched] = useState(false);
+  /**
+   * What the client did to earn a discount, and the screenshot proving it.
+   *
+   * Two separate claims because a client can do either or both, and each needs its own evidence —
+   * a review screenshot does not prove a referral. What they are jointly worth is decided by
+   * utils/saleDiscount, not here.
+   */
+  const [reviewShot, setReviewShot] = useState(ed?.earnedDiscount?.review?.screenshotUrl || "");
+  const [referralShot, setReferralShot] = useState(ed?.earnedDiscount?.referral?.screenshotUrl || "");
+  const [earnedUploading, setEarnedUploading] = useState<EarnedReason | null>(null);
+  /**
+   * A Custom sale that is really a listed service at an unlisted length — a two-minute
+   * promotional ad. Naming the service and the seconds is what lets the tech pipeline derive a
+   * clip count, a price, a poster and a deadline instead of receiving a free-text note.
+   */
+  const [customBase, setCustomBase] = useState<string>(ed?.customBaseCategory || "");
+  const [customMinutes, setCustomMinutes] = useState<number>(
+    () => Math.floor((ed?.customDurationSeconds || 0) / 60),
+  );
+  const [customSeconds, setCustomSeconds] = useState<number>(
+    () => (ed?.customDurationSeconds || 0) % 60,
+  );
+  /** The auto-priced figure was overridden, so it stops following the duration. */
+  const [customPriceTouched, setCustomPriceTouched] = useState(false);
   const [screenshotUrl, setScreenshotUrl] = useState(ed?.paymentScreenshotUrl || "");
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1696,14 +1733,76 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
     [isBulk, quantity, selectedPkg?.amount, discountValue, discountMode],
   );
 
+  /**
+   * A Custom sale built on a real service — the two-minute promotional ad the price list has no
+   * row for. The length drives the price the same way it drives the work: whole 8-second clips at
+   * the category's own per-clip rate, which is exactly how the tech side already prices a
+   * non-standard length (see utils/assignmentDuration.priceForClips).
+   */
+  const isCustomService = category === "custom" && !!customBase;
+  const customTotalSeconds = isCustomService ? customMinutes * 60 + customSeconds : 0;
+  const customClips = customTotalSeconds > 0 ? clipsForSeconds(customTotalSeconds) : 0;
+  const suggestedCustomPrice = customClips > 0 ? priceForClips(customBase, customClips) : 0;
+
+  /**
+   * The suggestion follows the length until the member types their own figure — after that it is
+   * their price, because they are the one who quoted it. Suggested, never imposed.
+   */
+  useEffect(() => {
+    if (!isCustomService || customPriceTouched || suggestedCustomPrice <= 0) return;
+    setCustomAmount(suggestedCustomPrice);
+  }, [isCustomService, suggestedCustomPrice, customPriceTouched]);
+
   const amount = isBulk ? (bulkQuote?.amount ?? 0) : (selectedPkg?.amount || customAmount);
   const needsCustomAmount = !isBulk && (packages.length === 0 || (selectedPkg && selectedPkg.amount === 0));
+
+  /**
+   * Everything coming off this sale, and whether it is the member's to give.
+   *
+   * The bulk ladder discount is already inside `amount`, so it is passed as the negotiated part
+   * and the gross is the pre-discount figure — otherwise a 10% earned discount on an already
+   * discounted total would be measured against the wrong number and the 10% rule would let
+   * through prices it should have stopped.
+   */
+  const earned = useMemo(() => ({
+    review: reviewShot ? { screenshotUrl: reviewShot } : null,
+    referral: referralShot ? { screenshotUrl: referralShot } : null,
+  }), [reviewShot, referralShot]);
+
+  const grossBeforeDiscount = isBulk ? (bulkQuote?.grossAmount ?? 0) : amount;
+  const discount = useMemo(() => discountBreakdown({
+    grossAmount: grossBeforeDiscount,
+    negotiatedAmount: isBulk ? (bulkQuote?.discountAmount ?? 0) : 0,
+    earned,
+  }), [grossBeforeDiscount, isBulk, bulkQuote?.discountAmount, earned]);
+
+  /** What the client actually pays, once the earned discount is off as well. */
+  const finalAmount = discount.netAmount;
   /** Categories with no package list (Custom, Software), plus any explicit "custom quote" tier. */
   const showDescription = needsDescription(category) || (!!selectedPkg && selectedPkg.amount === 0);
   const descriptionRequired = needsDescription(category);
   const descriptionMissing = descriptionRequired && !description.trim();
   const hasProof = !!proofUrl || !!proofNote.trim();
   const slaOptions = presetsForCategory(adCategory);
+
+  /**
+   * Whether this form can be submitted, and the one thing standing in the way.
+   *
+   * Derived once and shared by both save buttons: two buttons each working out their own disabled
+   * state is two chances for them to disagree, and a member who can submit with one but not the
+   * other has no way of telling which of them is wrong.
+   */
+  const blockReason =
+    uploading ? "Uploading screenshot…"
+    : !screenshotUrl ? "Upload screenshot to continue"
+    : dupChecking ? "Checking…"
+    : isDuplicate && !hasProof ? "Add proof to continue"
+    : languageMissing ? "Type the language to continue"
+    : festivalMissing ? "Pick the occasion to continue"
+    : descriptionMissing ? "Say what was sold to continue"
+    : amount <= 0 ? "Pick a package or enter an amount"
+    : null;
+  const blocked = saving || proofUploading || !!blockReason;
 
   /**
    * Keep the discount box on the ladder while the member is still choosing a quantity, and stop
@@ -1788,7 +1887,7 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = async (opts: { keepOpen?: boolean } = {}) => {
     if (amount <= 0) {
       toast({ title: "Error", description: "Please enter a valid amount.", variant: "destructive" });
       return;
@@ -1857,6 +1956,26 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
      */
     const saleShape = {
       customDescription: showDescription ? description.trim() || null : null,
+      /*
+        A Custom sale that names a real service and a length stops being a note somebody has to
+        read. Only stored when both are present — a Custom sale for something genuinely not on the
+        list (a software job) still behaves exactly as it always has.
+      */
+      customBaseCategory: isCustomService ? customBase : null,
+      customDurationSeconds: isCustomService && customTotalSeconds > 0 ? customTotalSeconds : null,
+      // What the client earned, with the proof, and what it was worth.
+      earnedDiscount: discount.reasons.length > 0 ? earned : null,
+      earnedDiscountAmount: discount.earnedAmount || 0,
+      /*
+        Over 10% total is more than a member may give alone, so the sale waits for the sales admin
+        before it reaches the tech team at all — see services/orders.upsertOrderForSale.
+      */
+      discountNeedsApproval: discount.needsApproval,
+      discountApproval: discount.needsApproval
+        ? ((editing && ed?.discountApproval === "approved" && ed?.amount === finalAmount)
+            ? "approved" as const   // unchanged price on an already-approved sale keeps its approval
+            : "pending" as const)
+        : null,
       ...(isBulk && bulkQuote
         ? {
             // The kind of video travels with the sale: without it the tech side only knows the
@@ -1885,7 +2004,7 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
         category,
         packageKey: packageKey || "custom",
         ...saleShape,
-        amount,
+        amount: finalAmount,
         paymentScreenshotUrl: screenshotUrl || null,
         // submittedAt is kept, so the order's deterministic id stays stable.
         promise,
@@ -1926,7 +2045,7 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
       category,
       packageKey: packageKey || "custom",
       ...saleShape,
-      amount,
+      amount: finalAmount,
       verificationStatus: "pending",
       paymentScreenshotUrl: screenshotUrl || null,
       submittedAt: Timestamp.now(),
@@ -1983,13 +2102,52 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
       }
     }
     setSaving(false);
+    /*
+      What happened, in the terms the member needs.
+
+      An over-discounted sale is NOT with the tech team, and saying it is would have the member
+      promise the client a start date that is not going to happen.
+    */
+    const held = discount.needsApproval;
+    const frozenNote = froze
+      ? ` Client frozen for ${freezeDays} day${freezeDays > 1 ? "s" : ""}.`
+      : "";
     toast({
-      title: "Sale Added",
-      description: froze
-        ? `Sale of ${formatCurrency(amount)} added & sent to the tech team. Client frozen for ${freezeDays} day${freezeDays > 1 ? "s" : ""}.`
-        : `Sale of ${formatCurrency(amount)} added & sent to the tech team.`,
+      title: held ? "Sale saved — waiting on your admin" : "Sale Added",
+      description: held
+        ? `${formatCurrency(finalAmount)} recorded. ${discount.totalPercent}% off needs your sales admin's approval before it goes to the tech team.${frozenNote}`
+        : `Sale of ${formatCurrency(finalAmount)} added & sent to the tech team.${frozenNote}`,
     });
+    // Staying open for the next service on the same client, rather than closing and making them
+    // find the button again.
+    if (opts.keepOpen) { resetForNextService(); return; }
     onDone();
+  };
+
+  /**
+   * The form, reset for the next service on the same client.
+   *
+   * Keeps what belongs to the CLIENT — their brief, their business name, their language — and
+   * clears what belongs to the SERVICE. A client buying an ad, a logo and a website answers the
+   * "who are you" questions once, and making them re-answer three times is how the second and
+   * third sale end up never being recorded.
+   */
+  const resetForNextService = () => {
+    setCategory("promotional");
+    setPackageKey(DEFAULT_PROMOTIONAL_PACKAGE);
+    setCustomAmount(0);
+    setDescription("");
+    setCustomBase("");
+    setCustomMinutes(0);
+    setCustomSeconds(0);
+    setCustomPriceTouched(false);
+    setQuantity(5);
+    setDiscountValue(0);
+    setDiscountTouched(false);
+    // The screenshot and the earned discount belong to this payment, not the next one.
+    setScreenshotUrl("");
+    setReviewShot("");
+    setReferralShot("");
   };
 
   return (
@@ -1997,6 +2155,12 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
       {editing ? (
         <div className="bg-info/10 border border-info/30 text-info text-xs rounded-md p-2 flex items-center gap-1.5">
           <Pencil size={12} /> Editing sale — every change is logged and sent to the tech team
+        </div>
+      ) : discount.needsApproval ? (
+        /* The promise this banner makes has to be true. Over the member's own limit the sale does
+           NOT go to the tech team, and telling them it does is how a client gets a start date. */
+        <div className="flex items-center gap-1.5 rounded-md border border-warning/40 bg-warning/10 p-2 text-xs text-warning">
+          <Lock size={12} /> Held until your admin approves the {discount.totalPercent}% discount
         </div>
       ) : (
         <div className="bg-warning/10 border border-warning/30 text-warning text-xs rounded-md p-2 flex items-center gap-1.5">
@@ -2154,15 +2318,243 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
         </div>
       )}
 
+      {/*
+        Custom, when the client wants a listed service at a length the price list does not carry.
+
+        This is the two-minute promotional ad. Recorded as a free-text note it reached the tech
+        team with no duration, no clip count, no price per clip and no deadline, and somebody read
+        the note and re-typed all of it — which is where a two-minute sale quietly becomes a
+        one-minute build. Naming the service and the seconds makes every rule keyed on a category
+        apply to it unchanged.
+
+        Left blank for a Custom sale that genuinely is not one of these (a software job); that
+        behaves exactly as it always has.
+      */}
+      {category === "custom" && (
+        <div className="space-y-2 rounded-lg border border-border bg-card p-3">
+          <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <Sparkles size={12} className="text-primary" /> Is this one of our services at a different length?
+          </label>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => { setCustomBase(""); setCustomPriceTouched(false); }}
+              data-test="custom-base-none"
+              className={`h-8 rounded-lg border px-3 text-[11px] font-medium transition-colors ${
+                !customBase ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent"
+              }`}
+            >
+              No — something else
+            </button>
+            {CUSTOM_BASE_CATEGORIES.map((key) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => { setCustomBase(key); setCustomPriceTouched(false); }}
+                data-test={`custom-base-${key}`}
+                className={`h-8 rounded-lg border px-3 text-[11px] font-medium transition-colors ${
+                  customBase === key ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent"
+                }`}
+              >
+                {categoryLabel(key)}
+              </button>
+            ))}
+          </div>
+
+          {isCustomService && (
+            <div className="space-y-2 border-t border-border pt-2">
+              <label className="text-xs font-medium text-muted-foreground">How long?</label>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number" min={0} max={30}
+                    value={customMinutes || ""}
+                    onChange={(e) => setCustomMinutes(Math.max(0, Number(e.target.value) || 0))}
+                    data-test="custom-minutes"
+                    className="h-9 w-16 rounded-md border border-border bg-background px-2 text-center font-mono text-sm text-foreground outline-none focus:border-primary"
+                  />
+                  <span className="text-xs text-muted-foreground">min</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number" min={0} max={59}
+                    value={customSeconds || ""}
+                    onChange={(e) => setCustomSeconds(Math.min(59, Math.max(0, Number(e.target.value) || 0)))}
+                    data-test="custom-seconds"
+                    className="h-9 w-16 rounded-md border border-border bg-background px-2 text-center font-mono text-sm text-foreground outline-none focus:border-primary"
+                  />
+                  <span className="text-xs text-muted-foreground">sec</span>
+                </div>
+                {customClips > 0 && (
+                  <span className="text-[11px] text-muted-foreground" data-test="custom-clips">
+                    = {customClips} clips{customClips >= 4 ? " + poster" : ""}
+                  </span>
+                )}
+              </div>
+              {suggestedCustomPrice > 0 && (
+                <p className="text-[11px] text-muted-foreground">
+                  {/* Once the member has typed their own figure it stays theirs, even when the
+                      length changes — they quoted a price to a client, and a form that quietly
+                      re-writes it is a form that changes an agreed price behind their back. */}
+                  Our price for this length: <b className="font-mono text-foreground">{formatCurrency(suggestedCustomPrice)}</b>
+                  {customPriceTouched && customAmount !== suggestedCustomPrice && (
+                    <>
+                      {" · "}
+                      <button type="button" onClick={() => { setCustomPriceTouched(false); setCustomAmount(suggestedCustomPrice); }}
+                        className="font-medium text-primary hover:underline">
+                        use it
+                      </button>
+                    </>
+                  )}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {needsCustomAmount && (
-        <input
-          type="number"
-          min={1}
-          value={customAmount || ""}
-          onChange={(e) => setCustomAmount(Number(e.target.value) || 0)}
-          placeholder="Amount (₹)"
-          className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary font-mono"
-        />
+        <div className="space-y-1">
+          {isCustomService && (
+            <label className="text-xs font-medium text-muted-foreground">
+              Amount the client is paying
+            </label>
+          )}
+          <input
+            type="number"
+            min={1}
+            value={customAmount || ""}
+            onChange={(e) => { setCustomAmount(Number(e.target.value) || 0); setCustomPriceTouched(true); }}
+            placeholder="Amount (₹)"
+            data-test="sale-custom-amount"
+            className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary font-mono"
+          />
+        </div>
+      )}
+
+      {/*
+        What the client earned, and the proof of it.
+
+        A published offer rather than a negotiation: applying it is always within a member's own
+        authority, which is why the ordinary case never reaches the approval queue. Each claim
+        carries its own screenshot, because a review screenshot does not prove a referral — and
+        "they said they left one" is not a review.
+      */}
+      {amount > 0 && (
+        <div className="space-y-2 rounded-lg border border-border bg-card p-3" data-test="earned-discount">
+          <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <BadgePercent size={12} className="text-success" />
+            Client discount — {EARNED_DISCOUNT_PERCENT}% for a review or a referral
+          </p>
+          {(["review", "referral"] as EarnedReason[]).map((reason) => {
+            const url = reason === "review" ? reviewShot : referralShot;
+            const set = reason === "review" ? setReviewShot : setReferralShot;
+            return (
+              <div key={reason} className="flex items-center gap-2">
+                <label className={`flex flex-1 cursor-pointer items-center gap-2 rounded-md border px-2.5 py-2 transition-colors ${
+                  url ? "border-success/50 bg-success/5" : "border-border hover:border-primary/50"
+                }`}>
+                  <input
+                    type="checkbox"
+                    checked={!!url}
+                    data-test={`earned-${reason}`}
+                    onChange={(e) => {
+                      // Unticking clears the proof: a claim with no screenshot is not a claim, and
+                      // leaving a stale URL behind would keep the discount alive invisibly.
+                      if (!e.target.checked) { set(""); return; }
+                      document.getElementById(`earned-file-${reason}`)?.click();
+                    }}
+                    className="h-3.5 w-3.5 accent-emerald-600"
+                  />
+                  <span className="flex-1 text-[11.5px] text-foreground">{EARNED_REASON_LABEL[reason]}</span>
+                  {earnedUploading === reason && <Loader2 size={12} className="animate-spin text-muted-foreground" />}
+                  {url && <CheckCircle2 size={13} className="shrink-0 text-success" />}
+                </label>
+                <input
+                  id={`earned-file-${reason}`}
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!file) return;
+                    setEarnedUploading(reason);
+                    try {
+                      set(await uploadToCloudinary(file));
+                    } catch {
+                      toast({ title: "Upload failed", description: "Could not upload that screenshot.", variant: "destructive" });
+                    } finally {
+                      setEarnedUploading(null);
+                    }
+                  }}
+                />
+                {url && (
+                  <a href={url} target="_blank" rel="noopener noreferrer"
+                    className="shrink-0 rounded-md border border-border p-1.5 text-muted-foreground hover:text-foreground"
+                    title="View the screenshot">
+                    <ExternalLink size={12} />
+                  </a>
+                )}
+              </div>
+            );
+          })}
+          {discount.reasons.length === 0 && (
+            <p className="text-[10.5px] leading-relaxed text-muted-foreground">
+              Tick one and attach the screenshot. Both together are still {EARNED_DISCOUNT_PERCENT}% —
+              it is a thank-you, not a running total.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* What the client actually pays, once everything is off. */}
+      {discount.totalAmount > 0 && (
+        <div className="space-y-1 rounded-lg border border-success/30 bg-success/5 p-3 text-xs" data-test="discount-summary">
+          <div className="flex justify-between text-muted-foreground">
+            <span>Price</span>
+            <span className="font-mono">{formatCurrency(discount.grossAmount)}</span>
+          </div>
+          {discount.earnedAmount > 0 && (
+            <div className="flex justify-between text-success">
+              <span>{discount.earnedPercent}% — {discount.reasons.map((r) => EARNED_REASON_LABEL[r]).join(" + ")}</span>
+              <span className="font-mono">− {formatCurrency(discount.earnedAmount)}</span>
+            </div>
+          )}
+          {discount.negotiatedAmount > 0 && (
+            <div className="flex justify-between text-success">
+              <span>{discount.negotiatedPercent}% — agreed on the call</span>
+              <span className="font-mono">− {formatCurrency(discount.negotiatedAmount)}</span>
+            </div>
+          )}
+          <div className="flex justify-between border-t border-success/20 pt-1 font-semibold text-foreground">
+            <span>Client pays</span>
+            <span className="font-mono" data-test="final-amount">{formatCurrency(finalAmount)}</span>
+          </div>
+        </div>
+      )}
+
+      {/*
+        Past 10% the sale stops being the member's to conclude.
+
+        Said here, before they submit, rather than discovered later: the sale is still recorded and
+        the client is still theirs — what waits is the handover to the tech team, because work
+        started against a price nobody agreed cannot be un-started.
+      */}
+      {discount.needsApproval && (
+        <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3" data-test="discount-approval-warning">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warning" />
+          <div className="space-y-0.5">
+            <p className="text-xs font-semibold text-warning">
+              {discount.totalPercent}% off needs your sales admin's approval
+            </p>
+            <p className="text-[10.5px] leading-relaxed text-muted-foreground">
+              You can give {MEMBER_DISCOUNT_LIMIT_PERCENT}% on your own. This sale will be saved and
+              is yours, but it only goes to the tech team once your admin agrees the price — so tell
+              the client the work starts after that.
+            </p>
+          </div>
+        </div>
       )}
 
       {/* There is no package name to describe this sale, so the member has to. Without it the
@@ -2502,30 +2894,41 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
         </div>
       )}
 
-      <button
-        onClick={handleSave}
-        disabled={saving || amount <= 0 || uploading || !screenshotUrl || dupChecking || proofUploading || (isDuplicate && !hasProof) || languageMissing || descriptionMissing}
-        className="w-full h-9 rounded-lg bg-primary text-primary-foreground font-display font-semibold text-xs hover:bg-primary/90 disabled:opacity-40 transition-colors flex items-center justify-center gap-2"
-      >
-        {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-        {saving
-          ? "Saving..."
-          : uploading
-            ? "Uploading screenshot…"
-            : !screenshotUrl
-              ? "Upload screenshot to continue"
-              : dupChecking
-                ? "Checking…"
-                : isDuplicate && !hasProof
-                  ? "Add proof to continue"
-                  : languageMissing
-                    ? "Type the language to continue"
-                    : festivalMissing
-                      ? "Pick the occasion to continue"
-                      : editing
-                        ? `Save changes — ${formatCurrency(amount)}`
-                        : `Add Sale — ${formatCurrency(amount)}`}
-      </button>
+      <div className="space-y-2">
+        <button
+          onClick={() => handleSave()}
+          data-test="save-sale"
+          disabled={blocked}
+          className="w-full h-9 rounded-lg bg-primary text-primary-foreground font-display font-semibold text-xs hover:bg-primary/90 disabled:opacity-40 transition-colors flex items-center justify-center gap-2"
+        >
+          {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+          {saving
+            ? "Saving..."
+            : blockReason
+              || (editing
+                ? `Save changes — ${formatCurrency(finalAmount)}`
+                : `Add Sale — ${formatCurrency(finalAmount)}`)}
+        </button>
+
+        {/*
+          The second thing this client bought, without closing anything.
+
+          A client who takes an ad, a logo and a website does it on one call, and the member is
+          still on that call. Saving and being returned to a fresh service form — with the client's
+          own details still filled in — is the difference between three sales being recorded and
+          one being recorded and two being meant to.
+        */}
+        {!editing && (
+          <button
+            onClick={() => handleSave({ keepOpen: true })}
+            data-test="save-and-add-another"
+            disabled={blocked}
+            className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-card text-xs font-semibold text-foreground transition-colors hover:bg-accent disabled:opacity-40"
+          >
+            <Plus size={13} /> Save &amp; add another service for this client
+          </button>
+        )}
+      </div>
     </div>
   );
 }

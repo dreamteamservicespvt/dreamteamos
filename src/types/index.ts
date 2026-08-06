@@ -1,3 +1,5 @@
+import type { DiscountApproval, EarnedDiscount } from "@/utils/saleDiscount";
+
 export type UserRole =
   | "main_admin"
   | "tech_admin"
@@ -272,6 +274,33 @@ export interface SaleDetail {
    * who are the two people entitled to ask why the price moved.
    */
   discountEdited?: boolean;
+  // ── Earned discount (a Google review, a referral, or both) ─────────────────
+  /**
+   * What the client did to earn a discount, with the screenshot proving each claim. Worth 10% for
+   * either or both — see utils/saleDiscount for why it does not stack to 20%.
+   */
+  earnedDiscount?: EarnedDiscount | null;
+  /** Rupees taken off for the earned discount, kept separate from the negotiated one. */
+  earnedDiscountAmount?: number;
+  // ── Over the member's own authority ────────────────────────────────────────
+  /**
+   * Everything off this line came to more than a member may give alone (10%), so the sales admin
+   * has to agree the price before the tech team ever sees it.
+   */
+  discountNeedsApproval?: boolean;
+  discountApproval?: DiscountApproval | null;
+  discountApprovedBy?: string | null;
+  discountApprovedAt?: any;
+  discountRejectionReason?: string | null;
+  // ── Custom: a listed service at a length the price list does not carry ─────
+  /**
+   * The real service a Custom sale is a variation of — a two-minute promotional ad is
+   * `category: "custom"` with `customBaseCategory: "promotional"`. Without it the tech team gets
+   * an order with no duration, no clip count and no deadline. See utils/serviceCatalog.
+   */
+  customBaseCategory?: string | null;
+  /** How long that custom video is, in seconds. Drives clips, poster, price and the SLA. */
+  customDurationSeconds?: number | null;
   // ── Penalty (changes beyond what was committed) ────────────────────────────
   /**
    * Mirror of the order's penalty total, so the sales member's own screens can show it without a
@@ -463,6 +492,16 @@ export interface Order {
   discountAmount?: number | null;
   discountPercent?: number;
   discountEdited?: boolean;
+  /** What the client earned, and the rupee value of it. Mirrored from the sale for the tech card. */
+  earnedDiscount?: EarnedDiscount | null;
+  earnedDiscountAmount?: number | null;
+  /**
+   * The real service a Custom order is a longer version of, and how long. `productionCategory`
+   * and `durationForSale` read these, which is what makes a two-minute promotional ad arrive as
+   * fifteen clips with a price and a deadline instead of a free-text note.
+   */
+  customBaseCategory?: string | null;
+  customDurationSeconds?: number | null;
   /**
    * What is still outstanding on a multi-deliverable order (social media month / bulk ads).
    * Absent on ordinary single-ad orders, which are done when their one assignment is done.

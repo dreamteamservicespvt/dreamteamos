@@ -10,13 +10,17 @@ import { normalizePhone, formatPhoneDisplay, getWhatsAppUrl, getCallUrl } from "
 import { formatCurrency } from "@/utils/formatters";
 import { format, subDays, startOfDay } from "date-fns";
 import type { AppUser, Lead, LeadStatus, SaleDetail } from "@/types";
-import { ArrowLeft, Phone, Plus, Loader2, Search, Trash2, MessageCircle, StickyNote, ShoppingBag, X, Hash, List, Type, CheckSquare, Square, XCircle, CalendarClock, ChevronDown } from "lucide-react";
+import { ArrowLeft, Phone, Plus, Loader2, Search, Trash2, MessageCircle, StickyNote, ShoppingBag, X, Hash, List, Type, CheckSquare, Square, XCircle, CalendarClock, ChevronDown, ImageOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useConfirm } from "@/hooks/useConfirm";
 import { AnimatePresence, motion } from "framer-motion";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
 import NumberTimelineButton from "@/components/sales/NumberTimelineButton";
+import ViewToggle from "@/components/common/ViewToggle";
+import ImageLightbox from "@/components/common/ImageLightbox";
+import { useViewMode, type ViewMode } from "@/hooks/useViewMode";
+import { bulkCategoryLabel } from "@/utils/serviceCatalog";
 
 /**
  * Extract 10-digit Indian phone numbers from raw input.
@@ -127,6 +131,15 @@ export default function MemberLeadsDetail() {
   const [selectMode, setSelectMode] = useState(false);
   // Render leads 10 at a time ("Show 10 more") — resets when the visible set changes.
   const [visibleLeadCount, setVisibleLeadCount] = useState(10);
+  /**
+   * Grid by default, and remembered per admin.
+   *
+   * Grid is the view that shows the sales and their payment screenshots, which is what this page
+   * is opened to look at. The table stays for comparing one column down a long list.
+   */
+  const [viewMode, setViewMode] = useViewMode("salesAdminMemberLeads", "grid");
+  /** The payment screenshot being looked at, full screen. */
+  const [shot, setShot] = useState<{ url: string; caption: string } | null>(null);
   useEffect(() => { setVisibleLeadCount(10); }, [dayFilter, statusFilter, search, selectedDate, viewTab]);
   const [reassignTarget, setReassignTarget] = useState("");
   const [bulkReassigning, setBulkReassigning] = useState(false);
@@ -958,9 +971,13 @@ export default function MemberLeadsDetail() {
                   : `Showing leads from ${recentDays[parseInt(dayFilter)]?.label}`
               }
             </p>
-            <span className={`text-xs px-2 py-0.5 rounded-full ${activeDayLeads.length > 0 ? "bg-info/15 text-info" : "bg-muted text-muted-foreground"}`}>
-              {activeDayLeads.length} leads
-            </span>
+            <div className="flex items-center gap-2">
+              <span className={`text-xs px-2 py-0.5 rounded-full ${activeDayLeads.length > 0 ? "bg-info/15 text-info" : "bg-muted text-muted-foreground"}`}>
+                {activeDayLeads.length} leads
+              </span>
+              {/* Desktop only: a phone is always cards, so a switch there would offer one option. */}
+              {!isMobile && <ViewToggle mode={viewMode} onChange={setViewMode} />}
+            </div>
           </div>
 
           {activeDayLeads.length === 0 ? (
@@ -972,7 +989,7 @@ export default function MemberLeadsDetail() {
             <>
               <div className="bg-card border border-border rounded-xl overflow-hidden">
                 {/* Rendered 10 at a time to keep large lists (500+) fast; select-all / select-not-called still cover the FULL day list */}
-                <LeadsList leads={activeDayLeads.slice(0, visibleLeadCount)} members={members} isMobile={isMobile} expandedNotes={expandedNotes} setExpandedNotes={setExpandedNotes} onDelete={handleDelete} onReassign={handleReassign} selectMode={selectMode} selectedLeads={selectedLeads} onToggleSelect={toggleSelectLead} onToggleSelectAll={() => toggleSelectAll(activeDayLeads)} />
+                <LeadsList leads={activeDayLeads.slice(0, visibleLeadCount)} members={members} isMobile={isMobile} viewMode={viewMode} onViewShot={setShot} expandedNotes={expandedNotes} setExpandedNotes={setExpandedNotes} onDelete={handleDelete} onReassign={handleReassign} selectMode={selectMode} selectedLeads={selectedLeads} onToggleSelect={toggleSelectLead} onToggleSelectAll={() => toggleSelectAll(activeDayLeads)} />
               </div>
               {activeDayLeads.length > visibleLeadCount && (
                 <button
@@ -1084,15 +1101,106 @@ export default function MemberLeadsDetail() {
           )}
         </div>
       )}
+
+      {/* A payment screenshot, full screen. Closed by tapping off it or pressing Escape. */}
+      {shot && (
+        <ImageLightbox
+          src={shot.url}
+          alt="Payment screenshot"
+          caption={shot.caption}
+          onClose={() => setShot(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * What was sold on this lead, and the proof that it was paid for.
+ *
+ * ── Why the screenshot belongs here ───────────────────────────────────────────────────────────
+ * The payment screenshot is the only evidence a sale is real, and until now the admin could only
+ * see it on the Approvals page. Coming at it from the other direction — opening a member's leads
+ * to check what they have been doing — the money was a number with nothing behind it, and
+ * answering "did this one actually pay?" meant going to a different screen and finding the sale
+ * again. It is one thumbnail; it belongs next to the amount it is evidence of.
+ *
+ * Opens in a lightbox rather than a new tab: a new tab loses the admin's place in a long list they
+ * were working through, and they are checking one thing that takes two seconds.
+ */
+function SaleLines({ lead, onView }: {
+  lead: Lead;
+  onView: (shot: { url: string; caption: string }) => void;
+}) {
+  const items = lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
+  if (items.length === 0) return null;
+
+  return (
+    <div className="space-y-1.5">
+      {items.map((item, idx) => {
+        const status = item.verificationStatus;
+        const chip = status === "verified"
+          ? "bg-success/15 text-success"
+          : status === "rejected"
+            ? "bg-destructive/15 text-destructive"
+            : "bg-warning/15 text-warning";
+        return (
+          <div key={idx} className="flex items-start gap-2 rounded-lg border border-border bg-background px-2.5 py-2">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="truncate text-[11px] font-medium text-foreground">
+                  {bulkCategoryLabel(item.category, item.bulkAdType)}
+                </span>
+                <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium capitalize ${chip}`}>
+                  {status}
+                </span>
+              </div>
+              <p className="truncate text-[10px] text-muted-foreground">
+                {item.packageKey && item.packageKey !== "custom" ? item.packageKey : item.customDescription || "—"}
+                {item.quantity && item.quantity > 1 ? ` · ×${item.quantity}` : ""}
+              </p>
+            </div>
+            <span className="shrink-0 font-display text-[11px] font-bold text-foreground">
+              {formatCurrency(item.amount || 0)}
+            </span>
+            {item.paymentScreenshotUrl ? (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onView({
+                    url: item.paymentScreenshotUrl!,
+                    caption: `${lead.displayName || lead.phone} — ${formatCurrency(item.amount || 0)}`,
+                  });
+                }}
+                data-test="view-payment-screenshot"
+                title="View payment screenshot"
+                className="h-9 w-9 shrink-0 overflow-hidden rounded-md border border-border transition-colors hover:border-primary"
+              >
+                <img src={item.paymentScreenshotUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+              </button>
+            ) : (
+              <span
+                title="No payment screenshot on this sale"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-dashed border-border text-muted-foreground/50"
+              >
+                <ImageOff size={12} />
+              </span>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 /* ─── Leads List (shared for day sections & calendar view) ─── */
-function LeadsList({ leads, members, isMobile, expandedNotes, setExpandedNotes, onDelete, onReassign, selectMode, selectedLeads, onToggleSelect, onToggleSelectAll }: {
+function LeadsList({ leads, members, isMobile, viewMode, onViewShot, expandedNotes, setExpandedNotes, onDelete, onReassign, selectMode, selectedLeads, onToggleSelect, onToggleSelectAll }: {
   leads: Lead[];
   members: AppUser[];
   isMobile: boolean;
+  /** Desktop only — a phone is always cards, because a table on a phone is a horizontal scroll. */
+  viewMode: ViewMode;
+  onViewShot: (shot: { url: string; caption: string }) => void;
   expandedNotes: string | null;
   setExpandedNotes: (id: string | null) => void;
   onDelete: (id: string) => void;
@@ -1173,6 +1281,9 @@ function LeadsList({ leads, members, isMobile, expandedNotes, setExpandedNotes, 
                 </select>
               </div>
 
+              {/* What was sold, with the payment screenshot beside each amount. */}
+              <SaleLines lead={l} onView={onViewShot} />
+
               <AnimatePresence>
                 {expandedNotes === l.id && (
                   <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
@@ -1182,6 +1293,107 @@ function LeadsList({ leads, members, isMobile, expandedNotes, setExpandedNotes, 
                   </motion.div>
                 )}
               </AnimatePresence>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  /**
+   * Desktop grid — the default, and the one that shows everything.
+   *
+   * A table is the right shape for scanning one column down a hundred rows; it is the wrong shape
+   * for a lead, which carries a name, a number, a status, notes, several sales and a screenshot
+   * each. All of that in a row means eight cramped columns and a horizontal scrollbar, so the
+   * sales — the part an admin came to look at — were simply left out. The card has room for them.
+   * The table is still one toggle away for anyone comparing a column across many leads.
+   */
+  if (viewMode === "grid") {
+    return (
+      <div className="grid grid-cols-1 gap-3 p-3 lg:grid-cols-2 2xl:grid-cols-3" data-test="leads-grid">
+        {leads.map((l) => {
+          const statusInfo = STATUS_OPTIONS.find((s) => s.value === l.status);
+          const isSelected = selectedLeads.has(l.id);
+          const items = l.saleItems || (l.saleDetails ? [l.saleDetails] : []);
+          const total = items.reduce((s, i) => s + (i.amount || 0), 0);
+          return (
+            <div
+              key={l.id}
+              onClick={selectMode ? () => onToggleSelect(l.id) : undefined}
+              data-test="lead-card"
+              /* `min-w-0` so a long business name truncates instead of stretching the whole track. */
+              className={`flex min-w-0 flex-col gap-2.5 rounded-xl border bg-background p-3 transition-colors ${
+                l.saleDone ? "border-success/40" : "border-border"
+              } ${selectMode ? "cursor-pointer" : ""} ${isSelected ? "border-primary bg-primary/5" : ""}`}
+            >
+              <div className="flex items-start gap-2">
+                {selectMode && (
+                  <button onClick={(e) => { e.stopPropagation(); onToggleSelect(l.id); }} className="mt-0.5 shrink-0">
+                    {isSelected
+                      ? <CheckSquare size={16} className="text-primary" />
+                      : <Square size={16} className="text-muted-foreground" />}
+                  </button>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-display text-sm font-bold text-foreground">{l.displayName || l.phone}</p>
+                  {l.realName && <p className="truncate text-[10px] text-muted-foreground">{l.realName}</p>}
+                  <div className="mt-0.5 flex items-center gap-1">
+                    <span className="font-mono text-[10px] text-muted-foreground">{formatPhoneDisplay(l.phone)}</span>
+                    <NumberTimelineButton phone={l.phone} />
+                  </div>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] ${statusInfo?.color || ""}`}>
+                    {statusInfo?.label || l.status}
+                  </span>
+                  {l.saleDone && (
+                    <span className="rounded-full bg-success/15 px-2 py-0.5 text-[10px] text-success">
+                      {formatCurrency(total)} ({items.length})
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <SaleLines lead={l} onView={onViewShot} />
+
+              {l.notes && (
+                <p className="whitespace-pre-wrap break-words rounded-lg bg-card px-2.5 py-2 text-[10px] leading-relaxed text-muted-foreground">
+                  {l.notes}
+                </p>
+              )}
+
+              <div className="flex gap-1.5">
+                <a href={getCallUrl(l.phone)} onClick={(e) => e.stopPropagation()}
+                  className="flex h-7 flex-1 items-center justify-center gap-1 rounded-lg bg-info/10 text-[10px] font-medium text-info hover:bg-info/20">
+                  <Phone size={11} /> Call
+                </a>
+                <a href={getWhatsAppUrl(l.phone)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+                  className="flex h-7 flex-1 items-center justify-center gap-1 rounded-lg bg-success/10 text-[10px] font-medium text-success hover:bg-success/20">
+                  <MessageCircle size={11} /> WhatsApp
+                </a>
+                <button onClick={(e) => { e.stopPropagation(); onDelete(l.id); }}
+                  title="Delete lead"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
+                  <Trash2 size={11} />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between gap-2 border-t border-border/60 pt-2 text-[10px]">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <span className="shrink-0 text-muted-foreground">Reassign:</span>
+                  <select value={l.assignedTo} onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => onReassign(l.id, e.target.value)}
+                    className="h-6 min-w-0 flex-1 rounded border border-border bg-card px-1.5 text-[10px] text-foreground outline-none focus:border-primary">
+                    {members.map((m) => <option key={m.uid} value={m.uid}>{m.name}</option>)}
+                  </select>
+                </div>
+                {l.lastUpdated?.seconds && (
+                  <span className="shrink-0 font-mono text-[9px] text-muted-foreground">
+                    {format(new Date(l.lastUpdated.seconds * 1000), "dd/MM/yy HH:mm")}
+                  </span>
+                )}
+              </div>
             </div>
           );
         })}
@@ -1210,6 +1422,7 @@ function LeadsList({ leads, members, isMobile, expandedNotes, setExpandedNotes, 
             <th className="text-center px-4 py-2.5 font-medium text-muted-foreground text-xs">Status</th>
             <th className="text-left px-4 py-2.5 font-medium text-muted-foreground text-xs">Notes</th>
             <th className="text-center px-4 py-2.5 font-medium text-muted-foreground text-xs">Sale</th>
+            <th className="text-center px-4 py-2.5 font-medium text-muted-foreground text-xs">Payment</th>
             <th className="text-left px-4 py-2.5 font-medium text-muted-foreground text-xs">Last Activity</th>
             <th className="text-center px-4 py-2.5 font-medium text-muted-foreground text-xs">Reassign</th>
             <th className="text-center px-4 py-2.5 font-medium text-muted-foreground text-xs">Actions</th>
@@ -1265,6 +1478,34 @@ function LeadsList({ leads, members, isMobile, expandedNotes, setExpandedNotes, 
                   })() : (
                     <span className="text-[10px] text-muted-foreground">—</span>
                   )}
+                </td>
+                <td className="px-4 py-3">
+                  {(() => {
+                    const items = l.saleItems || (l.saleDetails ? [l.saleDetails] : []);
+                    const shots = items.filter((it) => it.paymentScreenshotUrl);
+                    if (shots.length === 0) return <span className="text-[10px] text-muted-foreground">—</span>;
+                    return (
+                      <div className="flex items-center justify-center gap-1">
+                        {shots.map((it, n) => (
+                          <button
+                            key={n}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onViewShot({
+                                url: it.paymentScreenshotUrl!,
+                                caption: `${l.displayName || l.phone} — ${formatCurrency(it.amount || 0)}`,
+                              });
+                            }}
+                            data-test="view-payment-screenshot"
+                            title="View payment screenshot"
+                            className="h-8 w-8 overflow-hidden rounded border border-border transition-colors hover:border-primary"
+                          >
+                            <img src={it.paymentScreenshotUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </td>
                 <td className="px-4 py-3">
                   {l.lastUpdated?.seconds ? (

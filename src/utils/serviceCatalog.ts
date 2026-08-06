@@ -281,6 +281,62 @@ export function bulkCategoryLabel(category: string, bulkAdType?: string | null):
   return `${categoryLabel(category)} — ${categoryLabel(effectiveAdCategory(category, bulkAdType))}`;
 }
 
+/** What a sale is, as far as anything downstream of the sale is concerned. */
+export interface SaleShape {
+  category: string;
+  /** Which kind of video a bulk order is made of. */
+  bulkAdType?: string | null;
+  /** The real service a Custom sale is a variation of — see `productionCategory`. */
+  customBaseCategory?: string | null;
+}
+
+/**
+ * The catalogue key the production side should actually work from.
+ *
+ * Two categories exist for the sales member's convenience rather than to describe work:
+ *
+ *  - **Bulk Videos** is N of one of the three ad kinds, and resolves to that kind.
+ *  - **Custom** is "the client asked for something not on the list", which in practice is almost
+ *    always a listed service at a length the list does not carry — a two-minute promotional ad,
+ *    a wishes video of an unusual length. Before this, that sale went through as the literal
+ *    category `custom` with the details in a free-text note, and the tech team got an order with
+ *    no duration, no clip count, no price per clip and no delivery deadline. Somebody read the
+ *    note and re-typed all of it by hand.
+ *
+ * Naming the base service on the sale is what lets every rule keyed on a category — clip counts,
+ * per-clip pricing, delivery presets, penalties, the ad brief — apply to it unchanged.
+ *
+ * A Custom sale with no base named stays `custom`, exactly as it behaves today.
+ */
+export function productionCategory(sale: SaleShape): string {
+  if (isBulkCategory(sale.category)) return effectiveAdCategory(sale.category, sale.bulkAdType);
+  if (sale.category === "custom") {
+    const base = sale.customBaseCategory?.trim();
+    return base && CATEGORY_BY_KEY[base] ? base : sale.category;
+  }
+  return sale.category;
+}
+
+/**
+ * Which services a Custom sale can be built on.
+ *
+ * The three ad kinds, because those are the ones with a length to vary. Everything else on the
+ * list is bought as a thing rather than as a duration, so offering "Custom → Logo Design, 2
+ * minutes" would be nonsense; a non-standard logo is a Custom sale with a description and a price,
+ * which is what Custom already did well.
+ */
+export const CUSTOM_BASE_CATEGORIES = ["promotional", "cinematic", "wishes"];
+
+/** "Custom — Promotional Ad · 2:00", for a queue card that has to say what it really is. */
+export function customSaleLabel(sale: SaleShape & { customDurationSeconds?: number | null }): string {
+  if (sale.category !== "custom") return bulkCategoryLabel(sale.category, sale.bulkAdType);
+  const base = productionCategory(sale);
+  if (base === "custom") return categoryLabel("custom");
+  const secs = sale.customDurationSeconds;
+  const length = secs ? ` · ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}` : "";
+  return `${categoryLabel("custom")} — ${categoryLabel(base)}${length}`;
+}
+
 /** Has no package list, so the member has to type what was actually sold (Custom, Software). */
 export function needsDescription(key: string): boolean {
   return CATEGORY_BY_KEY[key]?.needsDescription === true;
