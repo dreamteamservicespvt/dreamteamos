@@ -347,7 +347,7 @@ export default function VideoCallManager() {
          */
         const guestChatId = guestChatIdOf(peerId);
         if (guestChatId) {
-          alertClient({ chatId: guestChatId, kind: "call", callType: type, callDocId: callDocRef.id });
+          alertClient({ chatId: guestChatId, kind: "call", callDocId: callDocRef.id });
         } else {
           sendNotification({
             userId: peerId,

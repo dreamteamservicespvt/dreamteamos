@@ -124,10 +124,10 @@ export default function ClientCall({
     timerRef.current = setInterval(() => setDuration((d) => d + 1), 1000);
   }, []);
 
-  const getMedia = useCallback(async (kind: ClientCallType) => {
-    const stream = await navigator.mediaDevices.getUserMedia(
-      kind === "voice" ? { audio: true, video: false } : { audio: true, video: { facingMode: "user" } },
-    );
+  const getMedia = useCallback(async (_kind: ClientCallType) => {
+    // Audio only, whatever the other end offered. A customer standing in their own shop should
+    // never have their camera turned on by a call they did not know was a video call.
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     localStreamRef.current = stream;
     if (localVideoRef.current) localVideoRef.current.srcObject = stream;
     return stream;
@@ -309,9 +309,10 @@ export default function ClientCall({
   /** Present a ringing call to the customer. Shared by the live listener and the tapped push. */
   const presentIncoming = useCallback((id: string, data: Record<string, unknown>) => {
     if (phaseRef.current !== "idle") return;
-    const callType = data.callType === "video" ? "video" : "voice";
-    incomingRef.current = { id, offer: data.offer as RTCSessionDescriptionInit, callType };
-    setType(callType);
+    // Voice, whatever was offered — `getMedia` answers audio-only either way, so labelling it
+    // anything else would promise the customer a screen that never appears.
+    incomingRef.current = { id, offer: data.offer as RTCSessionDescriptionInit, callType: "voice" };
+    setType("voice");
     setPhase("incoming");
     startRingtone();
   }, []);
@@ -352,7 +353,7 @@ export default function ClientCall({
         if (data.status === "ringing" && data.receiverId === selfId) {
           presentIncoming(answerCallId, data);
         } else if (data.status !== "active") {
-          setNotice(`You missed a call from ${data.callerName || memberName || "the team"}. Send a message and they'll call you back.`);
+          setNotice(`You missed a call from ${memberName || "the team"}. Send a message and they'll call you back.`);
         }
       })
       .catch(() => { /* the call document may already be gone */ })
@@ -469,43 +470,25 @@ export default function ClientCall({
     ) : null;
   }
 
-  const showVideo = type === "video";
-
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-slate-950 text-white">
       <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
 
-      {/* Remote */}
       <div className="relative flex flex-1 items-center justify-center overflow-hidden">
-        {showVideo && phase === "active" ? (
-          <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-cover" />
-        ) : (
-          <div className="flex flex-col items-center gap-3 px-8 text-center">
-            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-white/10 text-3xl font-semibold">
-              {(memberName || "T").charAt(0).toUpperCase()}
-            </div>
-            <p className="text-lg font-semibold">{memberName || "Dream Team"}</p>
-            <p className="text-sm text-white/60">
-              {phase === "outgoing"
-                ? "Calling…"
-                : phase === "incoming"
-                  ? `Incoming ${type} call`
-                  : reconnecting ? "Reconnecting…" : secs(duration)}
-            </p>
-            {phase === "outgoing" && <Loader2 className="h-4 w-4 animate-spin text-white/50" />}
+        <div className="flex flex-col items-center gap-3 px-8 text-center">
+          <div className="flex h-24 w-24 items-center justify-center rounded-full bg-white/10 text-3xl font-semibold">
+            {(memberName || "T").charAt(0).toUpperCase()}
           </div>
-        )}
-
-        {showVideo && (
-          <video ref={localVideoRef} autoPlay playsInline muted
-            className="absolute bottom-4 right-4 h-36 w-24 rounded-xl border border-white/20 object-cover shadow-lg" />
-        )}
-
-        {phase === "active" && showVideo && (
-          <div className="absolute left-4 top-4 rounded-full bg-black/50 px-3 py-1 text-xs">
-            {reconnecting ? "Reconnecting…" : secs(duration)}
-          </div>
-        )}
+          <p className="text-lg font-semibold">{memberName || "Dream Team"}</p>
+          <p className="text-sm text-white/60">
+            {phase === "outgoing"
+              ? "Calling…"
+              : phase === "incoming"
+                ? "Incoming call"
+                : reconnecting ? "Reconnecting…" : secs(duration)}
+          </p>
+          {phase === "outgoing" && <Loader2 className="h-4 w-4 animate-spin text-white/50" />}
+        </div>
       </div>
 
       {/* Controls */}
@@ -539,14 +522,6 @@ export default function ClientCall({
               aria-label={muted ? "Unmute" : "Mute"}>
               {muted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
             </button>
-            {showVideo && (
-              <button onClick={toggleCamera}
-                className={cn("flex h-12 w-12 items-center justify-center rounded-full transition-colors",
-                  cameraOff ? "bg-white text-slate-900" : "bg-white/15")}
-                aria-label={cameraOff ? "Turn camera on" : "Turn camera off"}>
-                {cameraOff ? <VideoOff className="h-5 w-5" /> : <VideoIcon className="h-5 w-5" />}
-              </button>
-            )}
             <button onClick={endCall}
               className="flex h-16 w-16 items-center justify-center rounded-full bg-red-600 transition-transform active:scale-95"
               aria-label="End call">

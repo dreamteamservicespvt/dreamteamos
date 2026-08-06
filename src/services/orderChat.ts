@@ -306,8 +306,8 @@ export function alertClient(body: {
   chatId: string;
   kind: "message" | "call";
   preview?: string;
+  /** Which call the notification should let them answer. Client calls are voice only. */
   callDocId?: string;
-  callType?: "voice" | "video";
 }): void {
   Promise.resolve(auth.currentUser?.getIdToken())
     .then((token) => {

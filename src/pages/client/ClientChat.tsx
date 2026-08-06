@@ -318,21 +318,22 @@ function Conversation({ chatId }: { chatId: string }) {
               <p className="truncate text-[15px] font-semibold leading-tight">
                 {room?.businessName || "Your project"}
               </p>
+              {/*
+                The company, never the person.
+
+                Naming the member here turned a company into one individual: the customer starts
+                asking for "Aasritha" by name, and the day that job moves to somebody else they
+                believe they have been dropped. It is also unfair to the member, whose name ends up
+                on a stranger's phone. They are talking to the team.
+              */}
               <p className="truncate text-[11.5px] text-white/75">
-                {locked
-                  ? "Delivered · view only"
-                  : room?.memberName
-                    ? `${room.memberName} · ${COMPANY.name}`
-                    : COMPANY.name}
+                {locked ? "Delivered · view only" : COMPANY.name}
                 {room?.uniqueId ? ` · ${room.uniqueId}` : ""}
               </p>
             </div>
             <InstallChatButton />
             {!locked && room?.memberUid && (
-              <OrderChatCallButtons
-                onVoice={() => setCallRequest("voice")}
-                onVideo={() => setCallRequest("video")}
-              />
+              <OrderChatCallButtons onVoice={() => setCallRequest("voice")} />
             )}
           </div>
         }
@@ -345,7 +346,9 @@ function Conversation({ chatId }: { chatId: string }) {
           selfId={guestUid(chatId)}
           selfName={room.businessName || room.clientName || "Client"}
           memberUid={room.memberUid}
-          memberName={room.memberName || "Dream Team"}
+          // The company, not the person — see the header above for why the customer never learns
+          // which member is on the other end of the call.
+          memberName={COMPANY.name}
           request={callRequest}
           onRequestHandled={() => setCallRequest(null)}
           answerCallId={answerCallId}

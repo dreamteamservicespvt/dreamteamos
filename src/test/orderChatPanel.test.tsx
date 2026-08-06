@@ -29,9 +29,15 @@ const MESSAGES = [
   { id: "m3", senderId: "leader1", senderName: "Saiveni", text: "Anything you need, tell us", createdAt: at(11) },
 ];
 
-/** Which side a bubble sits on, read off the row that holds it. */
+/**
+ * Which side a bubble sits on, read off the row that holds it.
+ *
+ * Anchored to `data-test` rather than to the bubble's width class: the class is a layout detail
+ * that has already changed once, and when it did this returned "left" for everything and reported
+ * a side bug that did not exist.
+ */
 function sideOf(text: string): "right" | "left" {
-  const bubble = screen.getByText(text).closest("div.max-w-\\[85\\%\\]");
+  const bubble = screen.getByText(text).closest("[data-test=order-chat-bubble-wrap]");
   const row = bubble?.parentElement;
   return row?.className.includes("justify-end") ? "right" : "left";
 }
@@ -71,6 +77,67 @@ describe("which side a message lands on", () => {
     expect(screen.getByText("Sharma Electronics")).toBeInTheDocument();
     expect(screen.getByText("Saiveni")).toBeInTheDocument();
     expect(screen.queryByText("Hasini")).not.toBeInTheDocument();
+  });
+});
+
+describe("what the customer is allowed to learn", () => {
+  it("never names the person on the other end", () => {
+    // Naming the member turns a company into one individual: the client starts asking for
+    // "Hasini" by name, and the day that job is reassigned they believe they have been dropped.
+    // It also puts a member's name on a stranger's phone.
+    render(panel({ senderId: "client", senderName: "Sharma Electronics", isClient: true }));
+    expect(screen.queryByText("Hasini")).not.toBeInTheDocument();
+    expect(screen.queryByText("Saiveni")).not.toBeInTheDocument();
+    // Their own messages are still theirs, and every message is still readable.
+    expect(screen.getByText("Got it, starting now")).toBeInTheDocument();
+    expect(screen.getByText("Anything you need, tell us")).toBeInTheDocument();
+  });
+
+  it("does not leak the name through a reply quote either", () => {
+    render(panel({ senderId: "client", senderName: "Sharma Electronics", isClient: true }));
+    fireEvent.click(screen.getAllByTestId("order-chat-reply")[1]);
+    const bar = screen.getByTestId("order-chat-replying-to");
+    expect(bar.textContent).not.toContain("Hasini");
+    expect(bar.textContent).toContain("Got it, starting now");
+  });
+});
+
+describe("replying to a particular message", () => {
+  it("offers Reply on every message, with nothing to hover or tap first", () => {
+    // It used to appear on hover, and hover does not exist on a phone — so on the device this
+    // feature is actually used on, there was no reply button at all.
+    render(panel({ senderId: "member1", senderName: "Hasini", isClient: false }));
+    const buttons = screen.getAllByTestId("order-chat-reply");
+    expect(buttons).toHaveLength(MESSAGES.length);
+    for (const b of buttons) {
+      expect(b.className).not.toContain("opacity-0");
+      expect(b.parentElement?.className ?? "").not.toContain("opacity-0");
+    }
+  });
+
+  it("shows the customer which message they are answering", () => {
+    render(panel({ senderId: "client", senderName: "Sharma Electronics", isClient: true }));
+    fireEvent.click(screen.getAllByTestId("order-chat-reply")[0]);
+    expect(screen.getByTestId("order-chat-replying-to").textContent).toContain("Here is my logo");
+  });
+
+  it("offers it on both sides of the conversation, not just the other person's", () => {
+    render(panel({ senderId: "member1", senderName: "Hasini", isClient: false }));
+    // Three messages, one of them the reader's own — all three are quotable.
+    expect(screen.getAllByTestId("order-chat-reply")).toHaveLength(3);
+  });
+
+  it("offers nothing to reply with once the work is delivered", () => {
+    render(
+      <OrderChatPanel
+        identity={{ senderId: "client", senderName: "Sharma Electronics", isClient: true }}
+        messages={MESSAGES as never}
+        locked
+        canSend={false}
+        onSend={vi.fn()}
+      />,
+    );
+    expect(screen.queryAllByTestId("order-chat-reply")).toHaveLength(0);
   });
 });
 

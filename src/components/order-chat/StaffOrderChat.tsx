@@ -12,8 +12,8 @@
  * Calling reuses the app's own call manager by simply naming the customer as the peer, so there is
  * one call system here, not two.
  */
-import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, Share2, Phone, Video as VideoIcon, Lock, Info } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ArrowLeft, Share2, Phone, Lock, Info } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useCallStore } from "@/store/callStore";
 import OrderChatPanel from "@/components/order-chat/OrderChatPanel";
@@ -56,18 +56,37 @@ export default function StaffOrderChat({ assignment, memberName, canShare, onClo
     });
   }, [assignment.id, user?.uid]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /** Android's back gesture and the browser's Back button should close this, not leave the page. */
+  /**
+   * Android's back gesture and the browser's Back button close this, rather than leaving the page.
+   *
+   * ── The bug this is written the way it is to avoid ────────────────────────────────────────────
+   * Every caller passes `onClose={() => setOpenChatFor(null)}` — a new function on every render of
+   * the page underneath. With `onClose` in the dependency array, this effect tore itself down and
+   * rebuilt on every one of those renders, and the teardown called `history.back()`. That fired a
+   * popstate, which the just-reattached listener heard, which called `onClose`. The chat closed
+   * roughly the same instant it opened, and from the outside it simply looked like the button did
+   * nothing.
+   *
+   * So the handler is read through a ref and the effect runs once per chat. Nothing about a parent
+   * re-render can reach it.
+   */
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
-    window.history.pushState({ orderChat: chatId }, "");
-    const pop = () => onClose();
+    const marker = `orderChat:${chatId}`;
+    window.history.pushState({ orderChat: marker }, "");
+    /** Set when the entry we pushed has already been popped, so cleanup must not pop it again. */
+    let consumed = false;
+    const pop = () => { consumed = true; onCloseRef.current(); };
     window.addEventListener("popstate", pop);
     return () => {
       window.removeEventListener("popstate", pop);
-      // Closing by the arrow leaves the entry we pushed behind; take it back out so the member's
-      // next Back press does what it did before this chat was ever opened.
-      if (window.history.state?.orderChat === chatId) window.history.back();
+      // Closed by the arrow rather than by Back: the entry we pushed is still on the stack, so
+      // take it off. Without the guard this would pop an entry that was never ours.
+      if (!consumed && window.history.state?.orderChat === marker) window.history.back();
     };
-  }, [chatId, onClose]);
+  }, [chatId]);
 
   const identity = user
     ? { senderId: user.uid, senderName: user.name, isClient: false }
@@ -86,11 +105,19 @@ export default function StaffOrderChat({ assignment, memberName, canShare, onClo
   const { room, messages, loading, missing, locked, canSend, sending, send } =
     useOrderChat({ chatId, identity, onSent });
 
-  const callClient = useCallback((type: "voice" | "video") => {
+  /**
+   * Ring the customer. Voice only, deliberately.
+   *
+   * A client call is somebody asking about their order, usually from a shop floor on mobile data.
+   * Video costs them data they did not agree to spend, puts them on camera without warning, and is
+   * the reason a call gets declined rather than answered. The button that gets pressed is the one
+   * that only asks for the microphone.
+   */
+  const callClient = useCallback(() => {
     const name = businessName || room?.clientName || "Client";
     // The push to the customer's phone is raised by VideoCallManager once the call document
     // exists — it is the only place that knows the id the notification has to carry.
-    startCall(guestUid(chatId), name, undefined, type);
+    startCall(guestUid(chatId), name, undefined, "voice");
     setHint(`Ringing ${name}. They'll get a notification even if their chat is closed.`);
     setTimeout(() => setHint(null), 6000);
   }, [startCall, chatId, businessName, room?.clientName]);
@@ -116,17 +143,11 @@ export default function StaffOrderChat({ assignment, memberName, canShare, onClo
         </div>
 
         {!locked && !missing && (
-          <>
-            <button onClick={() => callClient("voice")} title="Voice call the client"
-              data-test="staff-call-client-voice"
-              className="shrink-0 rounded-full p-2 transition-colors hover:bg-white/15">
-              <Phone className="h-5 w-5" />
-            </button>
-            <button onClick={() => callClient("video")} title="Video call the client"
-              className="shrink-0 rounded-full p-2 transition-colors hover:bg-white/15">
-              <VideoIcon className="h-5 w-5" />
-            </button>
-          </>
+          <button onClick={callClient} title="Call the client"
+            data-test="staff-call-client-voice"
+            className="shrink-0 rounded-full p-2 transition-colors hover:bg-white/15">
+            <Phone className="h-5 w-5" />
+          </button>
         )}
         {canShare && (
           <button onClick={() => setSharing(true)} title="Send the link to the client"

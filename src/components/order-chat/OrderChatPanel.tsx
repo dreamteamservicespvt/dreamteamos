@@ -24,7 +24,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Send, Paperclip, Mic, Square, SmilePlus, X, Play, Pause, FileText, Download,
-  Loader2, Reply, Lock, Phone, Video as VideoIcon, CheckCheck, Trash2,
+  Loader2, Reply, Lock, Phone, CheckCheck, Trash2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -86,6 +86,21 @@ function kindOf(file: File): OrderChatMessageType {
 const WALLPAPER =
   "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='none' stroke='%23808080' stroke-opacity='0.13' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M18 22h14M18 27h9'/%3E%3Ccircle cx='92' cy='24' r='6'/%3E%3Cpath d='M30 62l6 6 10-12'/%3E%3Cpath d='M84 58h16v11h-6l-4 4v-4h-6z'/%3E%3Cpath d='M22 96c4-6 10-6 14 0'/%3E%3Ccircle cx='29' cy='90' r='3.5'/%3E%3Cpath d='M74 98l8-8 8 8-8 8z'/%3E%3C/g%3E%3C/svg%3E\")";
 
+/** The one action a message has. Always rendered, so there is nothing to discover. */
+function ReplyButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      data-test="order-chat-reply"
+      title="Reply to this message"
+      aria-label="Reply to this message"
+      className="mb-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/80 text-slate-500 shadow-sm ring-1 ring-black/5 transition-colors hover:bg-white hover:text-emerald-600 dark:bg-[#233138]/80 dark:text-slate-300 dark:ring-white/10 dark:hover:bg-[#233138] dark:hover:text-emerald-400"
+    >
+      <Reply className="h-3.5 w-3.5" />
+    </button>
+  );
+}
+
 export interface OrderChatPanelProps {
   identity: OrderChatIdentity;
   messages: OrderChatMessage[];
@@ -117,8 +132,6 @@ export default function OrderChatPanel({
   const [text, setText] = useState("");
   const [showEmojis, setShowEmojis] = useState(false);
   const [replyTo, setReplyTo] = useState<OrderChatMessage | null>(null);
-  /** Which bubble has its action bar open. Touch has no hover, so tapping is how you get at Reply. */
-  const [openActions, setOpenActions] = useState<string | null>(null);
   /** Briefly ringed after jumping to it from a reply quote, so the eye can find it. */
   const [flashed, setFlashed] = useState<string | null>(null);
   /** A picked file waiting on its caption and a confirmation. Nothing uploads until Send. */
@@ -147,15 +160,6 @@ export default function OrderChatPanel({
 
   // The preview holds a blob URL; letting it go stops a long conversation leaking one per picture.
   useEffect(() => () => { if (pending) URL.revokeObjectURL(pending.url); }, [pending]);
-
-  // Any tap outside a bubble puts its action bar away again.
-  useEffect(() => {
-    if (!openActions) return;
-    const close = () => setOpenActions(null);
-    // Capture, so it runs before a bubble's own handler can reopen it.
-    document.addEventListener("pointerdown", close, true);
-    return () => document.removeEventListener("pointerdown", close, true);
-  }, [openActions]);
 
   /**
    * Scroll to the message a reply is quoting.
@@ -356,9 +360,19 @@ export default function OrderChatPanel({
               const fromClient = m.senderId === CLIENT_SENDER_ID;
               // The client sits on one side; everyone on the team sits on the other.
               const mine = identity.isClient ? fromClient : !fromClient;
-              // Named whenever it is not the reader's own words — which is how a leader can tell
-              // their member's messages from their own, on the same side.
-              const showName = m.senderId !== identity.senderId && !!m.senderName;
+              /**
+               * Who wrote it — shown to the team, never to the customer.
+               *
+               * On a member's or a leader's screen the name is the whole point: it is how they
+               * tell their own messages from their colleague's on the same side of the thread.
+               *
+               * On the customer's screen it is actively harmful. Naming the person turns a company
+               * into one individual: the client starts asking for "Aasritha" by name, and the day
+               * that job is reassigned they believe they have been dropped. They are talking to
+               * the team. (The name is still stored on the message — this is a rendering
+               * decision, so the team keeps what it needs.)
+               */
+              const showName = !identity.isClient && m.senderId !== identity.senderId && !!m.senderName;
               const when = toDate(m.createdAt);
               const day = when ? dayLabel(when) : "";
               const showDay = day && day !== lastDay;
@@ -396,13 +410,30 @@ export default function OrderChatPanel({
                   )}
 
                   <div
-                    className={cn("group flex", mine ? "justify-end" : "justify-start", tail ? "mb-2" : "mb-0.5")}
+                    className={cn(
+                      "group flex items-end gap-1",
+                      mine ? "justify-end" : "justify-start",
+                      tail ? "mb-2" : "mb-0.5",
+                    )}
                   >
-                    <div className="relative max-w-[85%] sm:max-w-[70%]">
-                      {/* The tap target for the actions below — a whole bubble, as on a phone. */}
+                    {/*
+                      Reply, always on screen, on the outside edge of the bubble.
+
+                      It used to appear on hover and, on a phone, only after tapping the bubble.
+                      Hover does not exist on a phone and a hidden control is a control nobody
+                      knows about — the feature might as well not have been built. It sits outside
+                      the bubble so it can never cover a message, and it is rendered for every
+                      message on both sides: replying to what the client actually asked for is the
+                      whole reason this beats a WhatsApp group.
+                    */}
+                    {!deleted && canSend && mine && (
+                      <ReplyButton onClick={() => setReplyTo(m)} />
+                    )}
+
+                    {/* A stable hook for "which side is this on?" — the width classes move. */}
+                    <div className="relative max-w-[78%] sm:max-w-[65%]" data-test="order-chat-bubble-wrap">
                       <div
                         ref={(el) => { bubbleRefs.current[m.id] = el; }}
-                        onClick={() => { if (!deleted && canSend) setOpenActions((o) => (o === m.id ? null : m.id)); }}
                         className={cn(
                           "relative rounded-lg px-2 py-1.5 text-[14.2px] shadow-sm transition-shadow",
                           isMedia && "p-1",
@@ -411,7 +442,6 @@ export default function OrderChatPanel({
                             : "bg-white text-slate-900 dark:bg-[#202c33] dark:text-slate-50",
                           tail && (mine ? "rounded-br-none" : "rounded-bl-none"),
                           flashed === m.id && "ring-2 ring-emerald-500/70",
-                          !deleted && canSend && "cursor-pointer",
                         )}
                         data-test="order-chat-bubble"
                       >
@@ -439,7 +469,7 @@ export default function OrderChatPanel({
 
                         {m.replyToId && !deleted && (
                           <button
-                            onClick={(e) => { e.stopPropagation(); jumpTo(m.replyToId); }}
+                            onClick={() => jumpTo(m.replyToId)}
                             className={cn(
                               "mb-1 block w-full overflow-hidden rounded border-l-[3px] px-2 py-1 text-left text-[12.5px]",
                               mine
@@ -454,23 +484,21 @@ export default function OrderChatPanel({
                         {deleted ? (
                           <p className="px-0.5 py-1 text-[13.5px] italic opacity-60">This message was deleted</p>
                         ) : m.type === "image" ? (
-                          <a href={m.fileUrl} target="_blank" rel="noreferrer" className="block"
-                            onClick={(e) => e.stopPropagation()}>
+                          <a href={m.fileUrl} target="_blank" rel="noreferrer" className="block">
                             <img src={m.fileUrl} alt={m.fileName || "Photo"}
                               className="max-h-80 w-full rounded-md object-cover" loading="lazy" />
                           </a>
                         ) : m.type === "video" ? (
-                          <video src={m.fileUrl} controls playsInline className="max-h-80 w-full rounded-md"
-                            onClick={(e) => e.stopPropagation()} />
+                          <video src={m.fileUrl} controls playsInline className="max-h-80 w-full rounded-md" />
                         ) : m.type === "voice" && m.fileName ? (
                           // A shared audio FILE, not a recorded note: it has a name worth showing and
                           // is long enough that scrubbing matters.
-                          <div className="min-w-[210px] py-1" onClick={(e) => e.stopPropagation()}>
+                          <div className="min-w-[210px] py-1">
                             <p className="mb-1 truncate text-xs font-medium">{m.fileName}</p>
                             <audio src={m.fileUrl} controls className="w-full" style={{ height: 34 }} />
                           </div>
                         ) : m.type === "voice" ? (
-                          <button onClick={(e) => { e.stopPropagation(); togglePlay(m); }}
+                          <button onClick={() => togglePlay(m)}
                             className="flex min-w-[150px] items-center gap-2 py-1 text-left">
                             <span className={cn(
                               "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
@@ -487,7 +515,6 @@ export default function OrderChatPanel({
                           </button>
                         ) : m.type === "file" ? (
                           <a href={m.fileUrl} target="_blank" rel="noreferrer"
-                            onClick={(e) => e.stopPropagation()}
                             className={cn(
                               "flex items-center gap-2 rounded-md px-2 py-2",
                               mine ? "bg-black/5 dark:bg-white/10" : "bg-slate-500/5 dark:bg-white/5",
@@ -527,31 +554,11 @@ export default function OrderChatPanel({
                         )}
                         {tail && <span className="clear-both block" />}
                       </div>
-
-                      {/* Tap a bubble on a phone, hover it on a desktop — either way, Reply. */}
-                      {!deleted && canSend && (
-                        <div
-                          /* Fully above the bubble, never on top of it — at `-top-3` it sat over
-                             the sender's name, which is the one line telling a leader which of
-                             their people wrote this. */
-                          className={cn(
-                            "absolute bottom-full right-1 z-10 mb-1 flex items-center gap-1 rounded-full border border-slate-200 bg-white px-1 py-0.5 shadow-md transition-opacity dark:border-slate-700 dark:bg-[#233138]",
-                            openActions === m.id
-                              ? "opacity-100"
-                              : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100",
-                          )}
-                        >
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setReplyTo(m); setOpenActions(null); }}
-                            data-test="order-chat-reply"
-                            title="Reply to this message"
-                            className="flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-white/10"
-                          >
-                            <Reply className="h-3.5 w-3.5" /> Reply
-                          </button>
-                        </div>
-                      )}
                     </div>
+
+                    {!deleted && canSend && !mine && (
+                      <ReplyButton onClick={() => setReplyTo(m)} />
+                    )}
                   </div>
                 </div>
               );
@@ -588,7 +595,11 @@ export default function OrderChatPanel({
               <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border-l-4 border-emerald-500 bg-white px-2.5 py-1.5 dark:bg-[#111b21]">
                 <div className="min-w-0 flex-1">
                   <p className="text-[11.5px] font-semibold text-emerald-600 dark:text-emerald-400">
-                    {replyTo.senderId === identity.senderId ? "You" : replyTo.senderName || "Message"}
+                    {replyTo.senderId === identity.senderId
+                      ? "You"
+                      // The customer is replying to the company, not to a named individual — the
+                      // same reason `showName` is suppressed on their side of the thread.
+                      : identity.isClient ? "Their message" : replyTo.senderName || "Message"}
                   </p>
                   <p className="truncate text-[12.5px] text-slate-600 dark:text-slate-300">
                     {replyTo.text || (replyTo.type === "voice" ? "🎤 Voice message" : "📎 Attachment")}
@@ -740,20 +751,21 @@ export default function OrderChatPanel({
   );
 }
 
-/** The call buttons a page drops into its header. Kept here so both sides look the same. */
-export function OrderChatCallButtons({ onVoice, onVideo, disabled }: {
-  onVoice: () => void; onVideo: () => void; disabled?: boolean;
+/**
+ * The call button a page drops into its header.
+ *
+ * Voice only, on both sides. A video call to a customer asks them to spend mobile data they did
+ * not agree to and puts them on camera without warning, standing in their own shop — so the button
+ * that used to be there was the one that got a call declined instead of answered. Nothing about an
+ * order needs to be seen; it needs to be talked about.
+ */
+export function OrderChatCallButtons({ onVoice, disabled }: {
+  onVoice: () => void; disabled?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-0.5">
-      <button onClick={onVoice} disabled={disabled} title="Voice call" data-test="chat-call-voice"
-        className="rounded-full p-2 text-current opacity-90 transition-opacity hover:opacity-100 disabled:opacity-30">
-        <Phone className="h-5 w-5" />
-      </button>
-      <button onClick={onVideo} disabled={disabled} title="Video call" data-test="chat-call-video"
-        className="rounded-full p-2 text-current opacity-90 transition-opacity hover:opacity-100 disabled:opacity-30">
-        <VideoIcon className="h-5 w-5" />
-      </button>
-    </div>
+    <button onClick={onVoice} disabled={disabled} title="Call" data-test="chat-call-voice"
+      className="rounded-full p-2 text-current opacity-90 transition-opacity hover:opacity-100 disabled:opacity-30">
+      <Phone className="h-5 w-5" />
+    </button>
   );
 }

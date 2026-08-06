@@ -14,6 +14,17 @@ firebase.initializeApp({
 
 const APP_ICON = "https://res.cloudinary.com/dvmrhs2ek/image/upload/v1774554466/jdqjbuvcdo40o5gzdlvz.png";
 
+/**
+ * Whether the person is already looking at this app.
+ *
+ * `visibilityState === "visible"` rather than "a window exists": a tab left open behind three
+ * others is not being looked at, and a message that arrives there still needs a notification.
+ */
+async function appIsOnScreen() {
+  const windows = await clients.matchAll({ type: "window", includeUncontrolled: true });
+  return windows.some((c) => c.visibilityState === "visible");
+}
+
 // Handle push events directly so Chrome always sees showNotification()
 // inside event.waitUntil — this prevents the
 // "The site has been updated in the background" default notification.
@@ -47,7 +58,25 @@ self.addEventListener("push", (event) => {
       : [],
   };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  /**
+   * ── Why this checks whether anyone is looking ──────────────────────────────────────────────
+   *
+   * The page and this worker both hear about the same event, and both used to announce it. A
+   * member with the app open got the incoming-call popup ringing on screen AND a system
+   * notification for the same call, plus a row in the bell that played its own sound — one call,
+   * three alerts. That is what "the notification comes twice" is.
+   *
+   * If the app is on screen it already has a better way of saying this, so the worker stays quiet
+   * and just tells the page. If it is not, the notification IS the only way through and it shows.
+   */
+  event.waitUntil((async () => {
+    if (await appIsOnScreen()) {
+      const windows = await clients.matchAll({ type: "window", includeUncontrolled: true });
+      windows.forEach((c) => c.postMessage({ type: "push-received", data }));
+      return;
+    }
+    await self.registration.showNotification(title, options);
+  })());
 });
 
 /**

@@ -15,6 +15,16 @@ export interface AppNotification {
   createdAt: any;
 }
 
+/**
+ * Rows that must not make a sound here.
+ *
+ * A call already has a ringtone, playing over the incoming-call popup. The bell chiming underneath
+ * it was the third of three alerts for one event — notification, popup, chime — and the one that
+ * made the other two feel like a bug. The row is still written and still readable in the bell; it
+ * just does not announce itself twice.
+ */
+const SILENT_NOTIFICATION_TYPES = new Set(["voice_call", "video_call", "order_chat_call"]);
+
 export function useNotifications() {
   const user = useAuthStore((s) => s.user);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -37,7 +47,10 @@ export function useNotifications() {
       const currentUnreadCount = list.filter((n) => !n.read).length;
       setUnreadCount(currentUnreadCount);
 
-      if (!initialLoad.current && currentUnreadCount > previousUnreadCount.current) {
+      // The newest unread row is the one that just arrived; a call announces itself.
+      const arrived = list.find((n) => !n.read);
+      if (!initialLoad.current && currentUnreadCount > previousUnreadCount.current
+        && !SILENT_NOTIFICATION_TYPES.has(arrived?.type || "")) {
         playNotificationSound();
       }
       
@@ -57,7 +70,10 @@ export function useNotifications() {
         const currentUnreadCount = list.filter((n) => !n.read).length;
         setUnreadCount(currentUnreadCount);
 
-        if (!initialLoad.current && currentUnreadCount > previousUnreadCount.current) {
+        // The newest unread row is the one that just arrived; a call announces itself.
+        const arrived = list.find((n) => !n.read);
+        if (!initialLoad.current && currentUnreadCount > previousUnreadCount.current
+          && !SILENT_NOTIFICATION_TYPES.has(arrived?.type || "")) {
           playNotificationSound();
         }
         

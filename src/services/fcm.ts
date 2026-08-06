@@ -76,6 +76,31 @@ async function saveToken(
   }
 }
 
+/**
+ * Follow a notification's link without reloading the app.
+ *
+ * ── Two things this must not do ───────────────────────────────────────────────────────────────
+ * 1. **Reload.** A full navigation tears React down, Firebase auth re-initialises, and there is a
+ *    window where the user is null — which is what people report as being logged out by tapping a
+ *    notification. `pushState` plus a synthetic popstate moves React Router without any of that.
+ * 2. **Touch `location.hash`.** The previous version cleared the hash first, and assigning to it
+ *    is itself a navigation in some WebViews — the exact reload it was written to avoid.
+ *
+ * `/` is followed like anything else now: RootRedirect resolves it to whatever the reader's own
+ * home page is, carrying `?call=` along with it, which is how a tapped call notification reaches
+ * the answer screen for a role whose route the sender could not have known.
+ */
+function followNotificationLink(link: unknown, delayMs: number): void {
+  if (typeof link !== "string" || !link.startsWith("/")) return;
+  // Same-origin paths only — a link is data that arrived over the wire.
+  if (link.startsWith("//")) return;
+  // A moment for the app to finish resuming from the background before the route changes.
+  setTimeout(() => {
+    window.history.pushState({}, "", link);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, delayMs);
+}
+
 // ══════════════════════════════════════════════════
 // NATIVE (Android) push notification helpers
 // ══════════════════════════════════════════════════
@@ -108,15 +133,23 @@ async function initFCMNative(userId: string): Promise<void> {
 
     // Foreground notification — show a local notification (heads-up) so user sees it
     PushNotifications.addListener("pushNotificationReceived", (notification) => {
+      const data = notification.data || {};
+      const type = data.type || "general";
+
+      /**
+       * A call the app is already ringing for does not also get a notification.
+       *
+       * This listener only fires while the app is running, and while the app is running
+       * `VideoCallManager` has the incoming-call popup on screen with its own ringtone. Posting a
+       * heads-up notification on top of it was the second of the two alerts people were getting
+       * for one call. Answering from the notification and answering from the popup did the same
+       * thing, so one of them was pure noise.
+       */
+      if (type === "voice_call" || type === "video_call") return;
+
       // Use the Capacitor LocalNotifications plugin to display a heads-up notification
       import("@capacitor/local-notifications").then(({ LocalNotifications }) => {
-        const data = notification.data || {};
-        const type = data.type || "general";
-        // Pick channel based on type
-        const channelId = data.channelId
-          || ((type === "voice_call" || type === "video_call") ? "calls"
-            : type === "chat_message" ? "messages"
-            : "default");
+        const channelId = data.channelId || (type === "chat_message" ? "messages" : "default");
 
         LocalNotifications.schedule({
           notifications: [{
@@ -133,34 +166,15 @@ async function initFCMNative(userId: string): Promise<void> {
       });
     });
 
-    // User tapped a push notification — navigate to the link
+    // User tapped a push notification — go where it points.
     PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
-      const link = action.notification.data?.link;
-      if (link && typeof link === "string" && link !== "/") {
-        // Use hash-based navigation instead of full page reload
-        // Full reload destroys React state → Firebase auth re-init → brief null user → logout
-        setTimeout(() => {
-          window.location.hash = "";
-          // Use history.pushState + React Router-compatible navigation
-          const navEvent = new PopStateEvent("popstate");
-          window.history.pushState({}, "", link);
-          window.dispatchEvent(navEvent);
-        }, 500); // Small delay to let the app fully resume from background
-      }
+      followNotificationLink(action.notification.data?.link, 500);
     });
 
     // User tapped a local notification (foreground re-posted) — navigate to the link
     import("@capacitor/local-notifications").then(({ LocalNotifications }) => {
       LocalNotifications.addListener("localNotificationActionPerformed", (action) => {
-        const link = action.notification.extra?.link;
-        if (link && typeof link === "string" && link !== "/") {
-          setTimeout(() => {
-            window.location.hash = "";
-            const navEvent = new PopStateEvent("popstate");
-            window.history.pushState({}, "", link);
-            window.dispatchEvent(navEvent);
-          }, 300);
-        }
+        followNotificationLink(action.notification.extra?.link, 300);
       });
     }).catch(() => {});
   }

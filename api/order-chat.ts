@@ -33,6 +33,14 @@ const adminDb = admin.firestore();
 
 const APP_ICON = "https://res.cloudinary.com/dvmrhs2ek/image/upload/v1774554466/jdqjbuvcdo40o5gzdlvz.png";
 
+/**
+ * What the customer is told they are talking to.
+ *
+ * Duplicated from utils/company rather than imported: this file runs on Vercel's Node runtime and
+ * must not pull in the browser bundle's module graph.
+ */
+const COMPANY_NAME = "Dream Team Services";
+
 /** The id a customer holds for one room — their sender id, their call id, their push id. */
 const guestUid = (chatId: string) => `guest_${chatId}`;
 
@@ -258,7 +266,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const kind = String(req.body.kind || "message"); // "message" | "call"
       const preview = String(req.body.preview || "").slice(0, 120);
       const callDocId = req.body.callDocId ? String(req.body.callDocId) : undefined;
-      const callType = req.body.callType === "video" ? "video" : "voice";
 
       const memberUid = String(room.memberUid || "");
 
@@ -267,8 +274,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const home = await homeFor(memberUid);
           await alertUser({
             userId: memberUid,
-            type: callType === "video" ? "video_call" : "voice_call",
-            title: `Incoming ${callType} call from ${who}`,
+            type: "voice_call",
+            title: `Incoming call from ${who}`,
             message: `${who} is calling about ${room.uniqueId || "your assigned work"}`,
             // Straight to the call, not to a list of jobs. Tapping a ringing phone has to put the
             // answer button in front of the member, not somewhere they can navigate to it from.
@@ -324,8 +331,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const kind = String(req.body.kind || "message");
       const preview = String(req.body.preview || "").slice(0, 120);
       const callDocId = req.body.callDocId ? String(req.body.callDocId) : undefined;
-      const callType = req.body.callType === "video" ? "video" : "voice";
-      const from = room.memberName || "Dream Team Services";
+      /**
+       * The company, never the member's name.
+       *
+       * A notification is the one part of this that lands on a stranger's lock screen, so it is
+       * the last place an individual's name should appear. The customer is dealing with Dream Team
+       * Services; the day their job is reassigned, nothing they have seen needs to change.
+       */
+      const from = COMPANY_NAME;
 
       // Reading the room right now is the same as having been told.
       const active: string[] = room.activeUsers || [];
@@ -334,7 +347,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await alertUser({
         userId: guestUid(chatId),
         pushOnly: true, // no account, so no bell — the phone's own notification is the whole point
-        type: kind === "call" ? (callType === "video" ? "video_call" : "voice_call") : "chat_message",
+        type: kind === "call" ? "voice_call" : "chat_message",
         title: kind === "call" ? `${from} is calling you` : `${from} sent you a message`,
         message: kind === "call"
           ? `About your ${room.uniqueId || "order"} — tap to answer`
