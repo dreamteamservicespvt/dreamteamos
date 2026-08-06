@@ -8,6 +8,7 @@ import { useNavigate } from "react-router-dom";
 import type { AppUser, Lead, SaleDetail } from "@/types";
 import { Trophy, Medal, Crown, ChevronDown, ExternalLink, ChevronLeft, ChevronRight, CalendarRange } from "lucide-react";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
+import { useNow } from "@/hooks/useNow";
 import { currentPayMonth, payPeriodForMonth, shiftPayMonth } from "@/utils/payrollEngine";
 
 /** Granularity for the "Career Sales" / "Career Commission" columns — Month is the default and
@@ -89,10 +90,33 @@ export default function Leaderboard() {
   const [members, setMembers] = useState<AppUser[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
-  const [sortBy, setSortBy] = useState<SortKey>("career");
+  /**
+   * Ranked by the window the board is actually showing, which is today.
+   *
+   * ── The bug this fixes ────────────────────────────────────────────────────────────────────────
+   * The day filter has always defaulted to Today and the "Day's Sales" column has always shown
+   * today's figures — but the ranking was by the month, so the two disagreed on the very first
+   * screen. A member who had sold ₹29,497 today sat second to one who had sold ₹23,971, because
+   * the second had a bigger month. A leaderboard that puts today's top seller in second place on
+   * the day they earned first place is not doing the one job a leaderboard has.
+   *
+   * `daySales` follows the chosen window rather than meaning "today" literally — pick All Days and
+   * it ranks by all days, pick This Month and it ranks by the cycle. So the order always agrees
+   * with the numbers beside it, whatever the viewer has selected.
+   */
+  const [sortBy, setSortBy] = useState<SortKey>("daySales");
   const [dayOpen, setDayOpen] = useState(false);
 
-  const dayOptions = useMemo(buildDayOptions, []);
+  /**
+   * The day list, rebuilt when the actual date changes.
+   *
+   * Built once at mount, "Today" was whatever day the tab was opened on — and this board is left
+   * open on a screen in the office. Past midnight it still said "Today (06/08)" while showing
+   * 6 August's sales on 7 August, which is worse than being wrong: the label insists it is right.
+   * Keyed on the date string so it rebuilds exactly once a day, not once a minute.
+   */
+  const todayStr = format(new Date(useNow(60_000)), "yyyy-MM-dd");
+  const dayOptions = useMemo(buildDayOptions, [todayStr]);
   const [selectedDayIdx, setSelectedDayIdx] = useState(0); // default: Today
   const [calendarDate, setCalendarDate] = useState<Date | undefined>(undefined);
 

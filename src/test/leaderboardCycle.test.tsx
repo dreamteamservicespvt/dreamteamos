@@ -93,17 +93,38 @@ describe("Team leaderboard on the 1st of the month", () => {
 
   it("ranks by sales, biggest first — not by name", () => {
     render(<Leaderboard />);
+    fireEvent.click(header(/Jul 2026 Sales/));
     expect(rankedNames()).toEqual(["Bhavani", "Chandra", "Asha"]);
+  });
+
+  /**
+   * The board opens filtered to Today, so it must be RANKED by today.
+   *
+   * It used to open ranked by the month while showing today's figures beside the names, so the
+   * order and the numbers on the very first screen disagreed: whoever had the bigger month led,
+   * even on a day somebody else had outsold them. Asha is the only member who has sold today, and
+   * the smallest seller of the month — if she is not first, the board is ranking the wrong window.
+   */
+  it("opens ranked by today, the window it opens on", () => {
+    render(<Leaderboard />);
+    expect(header(/Day's Sales/).className).toContain("underline");
+    expect(rankedNames()[0]).toBe("Asha");
   });
 
   it("still ranks by money when the leading column ties", () => {
     render(<Leaderboard />);
-    fireEvent.click(header(/Day's Sales/));
-    // Asha is the only one who sold today, so she leads on the column that was clicked...
+    // Asha is the only one who sold today, so she leads on the day column...
     expect(rankedNames()[0]).toBe("Asha");
     // ...and the other two, tied at ₹0 for the day, are ordered by the money they HAVE made
     // rather than left in the order Firestore returned them, which is alphabetical.
     expect(rankedNames().slice(1)).toEqual(["Bhavani", "Chandra"]);
+  });
+
+  it("re-ranks when the viewer changes the window, so the order always matches the numbers", () => {
+    render(<Leaderboard />);
+    expect(rankedNames()[0]).toBe("Asha");        // today
+    fireEvent.click(header(/Jul 2026 Sales/));
+    expect(rankedNames()[0]).toBe("Bhavani");     // the cycle
   });
 
   it("keeps the previous cycle's sales out of this one", () => {
