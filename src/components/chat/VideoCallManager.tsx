@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
-  collection, doc, addDoc, setDoc, updateDoc, onSnapshot, query, where, serverTimestamp, deleteDoc, getDocs,
+  collection, doc, addDoc, setDoc, updateDoc, onSnapshot, query, where, serverTimestamp, deleteDoc,
+  getDoc, getDocs,
 } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { ICE_SERVERS } from "@/services/webrtcConfig";
@@ -16,10 +17,13 @@ import {
 } from "lucide-react";
 import { startRingtone, stopRingtone, startRingback, stopRingback } from "@/utils/audio";
 import { sendNotification } from "@/services/notifications";
-import { getChatRoute, getChatContactRoles, getMeetingRoute } from "@/utils/chatHelpers";
+import { alertClient, sendOrderChatMessage } from "@/services/orderChat";
+import DeclineWithReason from "@/components/order-chat/DeclineWithReason";
+import { useNotificationTap } from "@/hooks/useNotificationTap";
+import { getChatContactRoles, getMeetingRoute } from "@/utils/chatHelpers";
 import type { VideoCallDoc, AppUser } from "@/types";
 import { motion, AnimatePresence } from "framer-motion";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { isNative } from "@/utils/platform";
 import AudioRoute from "@/services/audio-route";
 import { KeepAwake } from "@capacitor-community/keep-awake";
@@ -27,6 +31,20 @@ import { KeepAwake } from "@capacitor-community/keep-awake";
 type CallPhase = "idle" | "outgoing" | "incoming" | "active";
 
 const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "🔥", "🎉", "👏", "😢"];
+
+/**
+ * A customer, rather than a colleague.
+ *
+ * Clients place and receive calls through the same `calls` collection the team uses, under the id
+ * `guest_<chatId>` — see services/orderChatGuest. Everything about a call is identical; what
+ * differs is that they have no account, so notifications and declines have to travel through the
+ * chat instead of through the notifications collection.
+ */
+const guestChatIdOf = (peerId: string): string | null =>
+  peerId.startsWith("guest_") ? peerId.slice("guest_".length) : null;
+
+/** How long a call is allowed to be "disconnected" before it is actually over. */
+const RECONNECT_GRACE_MS = 15_000;
 
 interface FloatingReaction {
   id: number;
@@ -39,6 +57,9 @@ export default function VideoCallManager() {
   const { pendingCall, clearPendingCall } = useCallStore();
   const setPendingMeeting = useCallStore((s) => s.setPendingMeeting);
   const navigate = useNavigate();
+  const location = useLocation();
+  // A tapped notification focuses this window; this is what makes it also GO somewhere.
+  useNotificationTap();
 
   const [phase, setPhase] = useState<CallPhase>("idle");
   const [callType, setCallType] = useState<CallType>("video");
@@ -57,6 +78,9 @@ export default function VideoCallManager() {
   const reactionIdRef = useRef(0);
 
   // Add members state
+  const [decliningReason, setDecliningReason] = useState(false);
+  /** Why the person we rang turned it down — survives cleanup, so it is not held in a ref. */
+  const [declinedNote, setDeclinedNote] = useState<string | null>(null);
   const [showAddPeople, setShowAddPeople] = useState(false);
   const [addPeopleContacts, setAddPeopleContacts] = useState<AppUser[]>([]);
   const [addPeopleSearch, setAddPeopleSearch] = useState("");
@@ -79,6 +103,26 @@ export default function VideoCallManager() {
   const remoteDescriptionSetRef = useRef(false);
   const isAnsweringRef = useRef(false);
   const facingModeRef = useRef<"user" | "environment">("user");
+  /**
+   * The current phase, readable from a callback that was memoised on an earlier render.
+   *
+   * The incoming-call listener used to depend on `phase`, which tore down and rebuilt the
+   * Firestore subscription on every state change a call makes — and a fresh subscription reports
+   * every matching document as newly "added" all over again.
+   */
+  const phaseRef = useRef<CallPhase>("idle");
+  useEffect(() => { phaseRef.current = phase; }, [phase]);
+  /** Ticking while the media path is down but not yet given up on. */
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [reconnecting, setReconnecting] = useState(false);
+  /**
+   * A call that rang while this member was already on one.
+   *
+   * The listener only fires once per document, so a call arriving mid-call used to be dropped and
+   * never seen again. Held here and offered the moment the current call ends, if it is still
+   * ringing by then.
+   */
+  const waitingCallRef = useRef<VideoCallDoc | null>(null);
 
   // ── Cleanup helper ──
   const cleanup = useCallback(() => {
@@ -99,6 +143,9 @@ export default function VideoCallManager() {
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
+    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+    reconnectTimerRef.current = null;
+    setReconnecting(false);
     callDocIdRef.current = null;
     incomingDocRef.current = null;
     pendingCandidatesRef.current = [];
@@ -117,6 +164,7 @@ export default function VideoCallManager() {
     setIsFrontCamera(true);
     setShowEmojiPicker(false);
     setReactions([]);
+    setDecliningReason(false);
     setShowAddPeople(false);
     setAddPeopleSearch("");
     setAddingMember(false);
@@ -174,11 +222,44 @@ export default function VideoCallManager() {
         }
       };
 
-      // Connection state
+      /**
+       * ── Connection state, and why "disconnected" is not the end of a call ──────────────────
+       *
+       * `disconnected` is WebRTC's word for "I have stopped hearing from the other side", and on a
+       * phone that happens constantly and briefly: a lift, a wifi-to-mobile handover, a tunnel. ICE
+       * recovers on its own within a few seconds nearly every time. Hanging up on it meant a call
+       * between two people on Indian mobile data rarely survived a minute, and both of them
+       * blamed the other for dropping it.
+       *
+       * So `disconnected` starts a clock and says "Reconnecting…". Recovering cancels it; still
+       * being gone after the grace period ends the call, as does `failed`, which — unlike
+       * `disconnected` — means ICE has given up and will not recover by itself.
+       */
       pc.onconnectionstatechange = () => {
-        if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
-          endCall();
+        const state = pc.connectionState;
+
+        if (state === "connected") {
+          if (reconnectTimerRef.current) {
+            clearTimeout(reconnectTimerRef.current);
+            reconnectTimerRef.current = null;
+          }
+          setReconnecting(false);
+          return;
         }
+
+        if (state === "disconnected") {
+          if (reconnectTimerRef.current) return;
+          setReconnecting(true);
+          reconnectTimerRef.current = setTimeout(() => {
+            reconnectTimerRef.current = null;
+            // Only if it never came back. Checking the live state rather than trusting the timer
+            // avoids ending a call that recovered while this was pending.
+            if (pcRef.current && pcRef.current.connectionState !== "connected") endCall();
+          }, RECONNECT_GRACE_MS);
+          return;
+        }
+
+        if (state === "failed") endCall();
       };
 
       // Listen for remote ICE candidates (buffer until remote description is set)
@@ -257,15 +338,29 @@ export default function VideoCallManager() {
           createdAt: serverTimestamp(),
         });
 
-        // Push notification so receiver sees it even with app in background
-        sendNotification({
-          userId: peerId,
-          type: type === "voice" ? "voice_call" : "video_call",
-          title: `Incoming ${type} call from ${user.name}`,
-          message: `${user.name} is calling you`,
-          link: getChatRoute(user.role),
-          callDocId: callDocRef.id,
-        });
+        /**
+         * Make the other end's phone ring, whichever kind of "other end" it is.
+         *
+         * A customer has no account, so there is no notifications row to write and no staff route
+         * to send them to — their alert goes out through the order-chat endpoint, which knows how
+         * to reach a guest and where to land them. Everyone else gets the ordinary path.
+         */
+        const guestChatId = guestChatIdOf(peerId);
+        if (guestChatId) {
+          alertClient({ chatId: guestChatId, kind: "call", callType: type, callDocId: callDocRef.id });
+        } else {
+          sendNotification({
+            userId: peerId,
+            type: type === "voice" ? "voice_call" : "video_call",
+            title: `Incoming ${type} call from ${user.name}`,
+            message: `${user.name} is calling you`,
+            // "/" rather than a named route: the caller does not know the receiver's role, and
+            // linking to their own sent the other person to a page their role cannot open. See
+            // RootRedirect in App.tsx — it forwards both the route and this parameter.
+            link: `/?call=${callDocRef.id}`,
+            callDocId: callDocRef.id,
+          });
+        }
 
         // Listen for answer / status changes
         const unsub = onSnapshot(callDocRef, (snap) => {
@@ -289,6 +384,10 @@ export default function VideoCallManager() {
             cleanup();
             navigate(getMeetingRoute(user!.role));
           } else if (data.status === "declined" || data.status === "ended") {
+            // Their reason, in their words, rather than a call that simply stops.
+            if (data.status === "declined") {
+              setDeclinedNote(data.declineReason ? `${name}: ${data.declineReason}` : `${name} can't take the call right now.`);
+            }
             cleanup();
           }
         });
@@ -352,15 +451,39 @@ export default function VideoCallManager() {
     }
   }, [user, getMedia, createPC, cleanup, startTimer, flushPendingCandidates, setPendingMeeting, navigate]);
 
-  // ── DECLINE INCOMING CALL ──
-  const declineCall = useCallback(async () => {
+  /**
+   * ── DECLINE INCOMING CALL ──
+   *
+   * With a reason when one is offered, and the reason travels two ways: onto the call document,
+   * which is what the caller's screen shows the moment the ringing stops, and — for a client call —
+   * into the conversation, which is what is still there when they come back to it. A customer who
+   * gets "In a meeting, send me a message" has been answered; one who gets silence has been hung
+   * up on, and those are very different companies to have bought an ad from.
+   */
+  const declineCall = useCallback(async (reason?: string) => {
     const callDoc = incomingDocRef.current;
     if (!callDoc) { cleanup(); return; }
     try {
-      await updateDoc(doc(db, "calls", callDoc.id), { status: "declined" });
+      await updateDoc(doc(db, "calls", callDoc.id), {
+        status: "declined",
+        ...(reason ? { declineReason: reason } : {}),
+      });
     } catch { /* best effort */ }
+
+    const guestChatId = guestChatIdOf(callDoc.callerId || "");
+    if (reason && guestChatId && user) {
+      try {
+        await sendOrderChatMessage(db, {
+          chatId: guestChatId,
+          senderId: user.uid,
+          senderName: user.name,
+          text: reason,
+        });
+        alertClient({ chatId: guestChatId, kind: "message", preview: reason });
+      } catch { /* the decline itself already went through */ }
+    }
     cleanup();
-  }, [cleanup]);
+  }, [cleanup, user]);
 
   // ── END ACTIVE CALL / CANCEL OUTGOING ──
   const endCall = useCallback(async () => {
@@ -569,6 +692,29 @@ export default function VideoCallManager() {
     }
   }, [user, addingMember, cleanup, navigate, setPendingMeeting]);
 
+  /**
+   * Put a ringing call in front of the member.
+   *
+   * Shared by the live listener and by a tapped notification, so the popup that appears is
+   * identical either way — which is the whole point: "when they click it, it should take them to
+   * the platform and open the popup to answer or decline".
+   */
+  const presentIncoming = useCallback((data: VideoCallDoc) => {
+    if (phaseRef.current !== "idle") {
+      // Already on a call. Hold it rather than losing it — the listener will not report this
+      // document a second time, so dropping it here means it is never seen at all.
+      waitingCallRef.current = data;
+      return false;
+    }
+    incomingDocRef.current = data;
+    setPeerName(data.callerName);
+    setPeerAvatar(data.callerAvatar);
+    setCallType(data.callType ?? "video");
+    setPhase("incoming");
+    startRingtone();
+    return true;
+  }, []);
+
   // ── Listen for incoming calls ──
   useEffect(() => {
     if (!user) return;
@@ -579,34 +725,83 @@ export default function VideoCallManager() {
     );
     const unsub = onSnapshot(q, (snap) => {
       snap.docChanges().forEach((change) => {
-        if (change.type === "added" && phase === "idle") {
-          const data = { id: change.doc.id, ...change.doc.data() } as VideoCallDoc;
+        if (change.type !== "added") return;
+        const data = { id: change.doc.id, ...change.doc.data() } as VideoCallDoc;
 
-          /**
-           * Ignore a call that has been ringing since before we opened the app.
-           *
-           * A caller who closes their browser mid-ring leaves the document in "ringing" forever,
-           * and this listener matches on status alone — so the next sign-in was answering calls
-           * that had ended long ago. Only really possible since clients gained calling, because a
-           * customer's tab closing is an ordinary thing rather than an app being force-quit.
-           */
-          const startedMs = (data.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0;
-          if (startedMs && Date.now() - startedMs > 60_000) {
-            updateDoc(doc(db, "calls", data.id), { status: "ended" }).catch(() => {});
-            return;
-          }
-
-          incomingDocRef.current = data;
-          setPeerName(data.callerName);
-          setPeerAvatar(data.callerAvatar);
-          setCallType(data.callType ?? "video");
-          setPhase("incoming");
-          startRingtone();
+        /**
+         * Ignore a call that has been ringing since before we opened the app.
+         *
+         * A caller who closes their browser mid-ring leaves the document in "ringing" forever,
+         * and this listener matches on status alone — so the next sign-in was answering calls
+         * that had ended long ago. Only really possible since clients gained calling, because a
+         * customer's tab closing is an ordinary thing rather than an app being force-quit.
+         *
+         * Ninety seconds rather than sixty: a member who taps the notification on a cold phone
+         * spends most of a minute on boot, sign-in and the first Firestore round trip, and the
+         * call they deliberately went to answer was being cancelled out from under them.
+         */
+        const startedMs = (data.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0;
+        if (startedMs && Date.now() - startedMs > 90_000) {
+          updateDoc(doc(db, "calls", data.id), { status: "ended" }).catch(() => {});
+          return;
         }
+
+        presentIncoming(data);
       });
     });
     return () => unsub();
-  }, [user?.uid, phase]);
+  }, [user?.uid, presentIncoming]);
+
+  /** A call that rang mid-call gets its turn the moment the line is free, if it is still ringing. */
+  useEffect(() => {
+    if (phase !== "idle") return;
+    const waiting = waitingCallRef.current;
+    if (!waiting) return;
+    waitingCallRef.current = null;
+    let alive = true;
+    getDoc(doc(db, "calls", waiting.id)).then((snap) => {
+      if (!alive || !snap.exists()) return;
+      if (snap.data().status === "ringing") presentIncoming({ id: snap.id, ...snap.data() } as VideoCallDoc);
+    }).catch(() => { /* it rang out while the member was busy — nothing to offer */ });
+    return () => { alive = false; };
+  }, [phase, presentIncoming]);
+
+  /**
+   * The member tapped "Incoming call from …" on their phone.
+   *
+   * `?call=<id>` is on the link every call notification carries. Fetching the document directly
+   * rather than waiting on the listener matters on a cold start, where the query can take seconds
+   * to arrive and the caller has already given up by the time it does. It also means being late
+   * says so — "missed call from X" — instead of opening a page where nothing appears to have
+   * happened.
+   */
+  const [missedCall, setMissedCall] = useState<string | null>(null);
+  useEffect(() => {
+    if (!user) return;
+    const callId = new URLSearchParams(location.search).get("call");
+    if (!callId) return;
+
+    // Strip it straight away: a refresh, or a Back into this entry, must not re-ring an old call.
+    const url = new URL(window.location.href);
+    url.searchParams.delete("call");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+
+    let alive = true;
+    getDoc(doc(db, "calls", callId)).then((snap) => {
+      if (!alive || !snap.exists()) return;
+      const data = { id: snap.id, ...snap.data() } as VideoCallDoc;
+      if (data.receiverId !== user.uid) return;
+      if (data.status === "ringing") { presentIncoming(data); return; }
+      if (data.status !== "active") setMissedCall(data.callerName || "Someone");
+    }).catch(() => { /* the call document may already be gone */ });
+    return () => { alive = false; };
+  }, [user?.uid, location.search, presentIncoming]);
+
+  useEffect(() => {
+    if (!missedCall && !declinedNote) return;
+    const t = setTimeout(() => { setMissedCall(null); setDeclinedNote(null); }, 8000);
+    return () => clearTimeout(t);
+  }, [missedCall, declinedNote]);
 
   // ── React to pendingCall from callStore ──
   useEffect(() => {
@@ -789,8 +984,34 @@ export default function VideoCallManager() {
     };
   }, [phase]);
 
-  // ── Render nothing when idle ──
-  if (phase === "idle") return null;
+  // ── Nothing to show when idle, unless a call ended in something worth saying ──
+  if (phase === "idle") {
+    if (!missedCall && !declinedNote) return null;
+    return (
+      <div className="fixed inset-x-4 top-4 z-[100] mx-auto max-w-sm rounded-2xl border border-border bg-card p-3 shadow-2xl"
+        data-test={missedCall ? "missed-call" : "call-declined"}>
+        <div className="flex items-center gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-rose-500/15">
+            <PhoneOff className="h-4 w-4 text-rose-500" />
+          </span>
+          <div className="min-w-0 flex-1">
+            {missedCall ? (
+              <>
+                <p className="truncate text-sm font-semibold text-foreground">Missed call from {missedCall}</p>
+                <p className="text-xs text-muted-foreground">They rang while the app was closed.</p>
+              </>
+            ) : (
+              <p className="text-[13px] leading-snug text-foreground">{declinedNote}</p>
+            )}
+          </div>
+          <button onClick={() => { setMissedCall(null); setDeclinedNote(null); }} aria-label="Dismiss"
+            className="shrink-0 rounded-full p-1.5 text-muted-foreground hover:bg-accent">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
@@ -802,38 +1023,64 @@ export default function VideoCallManager() {
 
   // ── INCOMING CALL SCREEN — WhatsApp-style floating popup ──
   if (phase === "incoming") {
+    const fromClient = !!guestChatIdOf(incomingDocRef.current?.callerId || "");
     return (
-      <div className="fixed top-4 left-4 right-4 z-[100] animate-in slide-in-from-top duration-300">
-        <div className="bg-card border border-border rounded-2xl p-4 shadow-2xl mx-auto max-w-sm">
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <Avatar className="w-12 h-12">
-                <AvatarImage src={peerAvatar} />
-                <AvatarFallback className="text-sm font-bold bg-primary/10 text-primary">{initials}</AvatarFallback>
-              </Avatar>
-              <div className="absolute inset-0 rounded-full border-2 border-green-500 animate-ping" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-sm truncate">{peerName}</p>
-              <p className="text-xs text-muted-foreground">Incoming {callType} call…</p>
-            </div>
+      <>
+        <div className="fixed left-4 right-4 top-4 z-[100] animate-in slide-in-from-top duration-300"
+          data-test="incoming-call">
+          <div className="mx-auto max-w-sm rounded-2xl border border-border bg-card p-4 shadow-2xl">
             <div className="flex items-center gap-3">
-              <button
-                onClick={declineCall}
-                className="w-11 h-11 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center text-white transition-colors shadow-lg"
-              >
-                <PhoneOff className="w-5 h-5" />
-              </button>
-              <button
-                onClick={acceptCall}
-                className="w-11 h-11 rounded-full bg-green-500 hover:bg-green-600 flex items-center justify-center text-white transition-colors shadow-lg"
-              >
-                <Phone className="w-5 h-5" />
-              </button>
+              <div className="relative shrink-0">
+                <Avatar className="h-12 w-12">
+                  <AvatarImage src={peerAvatar} />
+                  <AvatarFallback className="bg-primary/10 text-sm font-bold text-primary">{initials}</AvatarFallback>
+                </Avatar>
+                <div className="absolute inset-0 animate-ping rounded-full border-2 border-green-500" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold">{peerName}</p>
+                <p className="text-xs text-muted-foreground">
+                  {fromClient ? "Client · " : ""}Incoming {callType} call…
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-3">
+                <button
+                  onClick={() => declineCall()}
+                  aria-label="Decline"
+                  data-test="decline-call"
+                  className="flex h-11 w-11 items-center justify-center rounded-full bg-red-500 text-white shadow-lg transition-colors hover:bg-red-600"
+                >
+                  <PhoneOff className="h-5 w-5" />
+                </button>
+                <button
+                  onClick={acceptCall}
+                  aria-label="Accept"
+                  data-test="accept-call"
+                  className="flex h-11 w-11 items-center justify-center rounded-full bg-green-500 text-white shadow-lg transition-colors hover:bg-green-600"
+                >
+                  <Phone className="h-5 w-5" />
+                </button>
+              </div>
             </div>
+            {/* Declining a client in silence reads as being hung up on. One tap says why instead. */}
+            <button
+              onClick={() => setDecliningReason(true)}
+              data-test="decline-with-reason"
+              className="mt-2.5 w-full rounded-lg border border-border py-2 text-[11.5px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              Can't talk — reply with a reason
+            </button>
           </div>
         </div>
-      </div>
+
+        {decliningReason && (
+          <DeclineWithReason
+            side="team"
+            onCancel={() => setDecliningReason(false)}
+            onDecline={({ message }) => { setDecliningReason(false); declineCall(message); }}
+          />
+        )}
+      </>
     );
   }
 
@@ -882,7 +1129,9 @@ export default function VideoCallManager() {
             </Avatar>
             <div className="text-center">
               <h2 className="text-xl font-semibold">{peerName}</h2>
-              <p className="text-sm text-white/60 mt-1">{formatTime(callDuration)}</p>
+              <p className="mt-1 text-sm text-white/60">
+                {reconnecting ? "Reconnecting…" : formatTime(callDuration)}
+              </p>
             </div>
           </div>
         ) : (
@@ -898,7 +1147,9 @@ export default function VideoCallManager() {
             {/* Remote name + timer overlay */}
             <div className="absolute top-4 left-4 text-white bg-black/40 backdrop-blur-sm rounded-lg px-3 py-2">
               <p className="font-semibold text-sm">{peerName}</p>
-              <p className="text-xs text-white/70">{formatTime(callDuration)}</p>
+              <p className="text-xs text-white/70">
+                {reconnecting ? "Reconnecting…" : formatTime(callDuration)}
+              </p>
             </div>
             {/* Local video PiP — mirrored for front camera (natural mirror view) */}
             <video

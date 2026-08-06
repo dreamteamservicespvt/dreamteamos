@@ -129,7 +129,7 @@ export default function TeamLeaderWorkAssign() {
    * rather than beside it — two popups at once is how both get dismissed and neither gets sent.
    */
   const [clientChat, setClientChat] = useState<{
-    chatId: string; accessCode: string; businessName: string; uniqueId: string;
+    chatId: string; businessName: string; uniqueId: string;
     category?: string; clientPhone?: string;
   } | null>(null);
   const [clientChatOpen, setClientChatOpen] = useState(false);
@@ -288,7 +288,6 @@ export default function TeamLeaderWorkAssign() {
 
       setClientChat({
         chatId: assignmentId,
-        accessCode,
         businessName: form.businessName,
         uniqueId,
         category: form.category,
@@ -440,7 +439,6 @@ export default function TeamLeaderWorkAssign() {
       {clientChatOpen && clientChat && (
         <ShareChatModal
           chatId={clientChat.chatId}
-          accessCode={clientChat.accessCode}
           businessName={clientChat.businessName}
           uniqueId={clientChat.uniqueId}
           category={clientChat.category}

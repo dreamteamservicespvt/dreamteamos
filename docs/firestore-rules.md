@@ -15,7 +15,7 @@ Everything else requires a signed-in account.
 
 | Surface | Reads | Why it can be public |
 |---|---|---|
-| `/c/{chatId}` — client chat | `order_chats/{id}` | The customer holds a link **and** a 4-digit code checked on the server, which mints a token scoped to that one room. |
+| `/c/{chatId}` — client chat | `order_chats/{id}` | The link **is** the credential: `chatId` is a 20-character Firestore auto-id, and `/api/order-chat` exchanges it for a token scoped by an `orderChat` claim to that one room. Same model as an unlisted document link, and the exposure is one customer's own conversation about their own order. There is deliberately no code to type — see the header of `api/order-chat.ts`. |
 | `/verify/{uid}` — ID card QR | `public_badges/{uid}` | Holds only what is already printed on the card in the scanner's hand: name, employee ID, designation, department, photo, joining date, active. **Never** the HR record. |
 | `/join/{inviteId}` — hiring | via `/api/onboarding` | The candidate has no account yet; the serverless endpoint checks their code. The collection itself stays closed. |
 
@@ -144,7 +144,9 @@ service cloud.firestore {
 1. Open an ID card and scan its QR (or visit `/verify/<uid>` signed out) — it must say **Verified
    employee**. If it says "could not be verified", press **Republish all badges** in
    Settings → ID card verification.
-2. Open a client chat link in a private window, enter the code, send a message.
+2. Open a client chat link in a private window. It must allow notifications, then open straight
+   into the conversation with nothing typed. Send a message, and check it arrives on the member's
+   side.
 3. Sign in as a member and open **My details** — their own KYC must still load.
 4. Sign in as an admin, open **HR & Documents**, and issue one letter. It must come back with a
    reference like `DTS/OFR/2026/0001` — if the reference is missing, `hr_counters` is being

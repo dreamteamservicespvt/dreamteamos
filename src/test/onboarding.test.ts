@@ -82,8 +82,18 @@ describe("the offer letter a candidate opens", () => {
 
   it("covers leave and confidentiality, which an offer is expected to mention", () => {
     const { bodyText } = letters().offer;
-    expect(bodyText).toMatch(/^\d+\. Leave$/m);
+    expect(bodyText).toMatch(/^\d+\. Weekly Off, Public Holidays and Leave$/m);
     expect(bodyText).toMatch(/^\d+\. Confidentiality$/m);
+  });
+
+  it("tells the candidate the terms on time off rather than pointing at a policy", () => {
+    // A candidate deciding whether to take the job is entitled to the three facts that decide
+    // whether they feel fairly treated in month one.
+    const { bodyText } = letters().offer;
+    expect(bodyText).toContain("Weekly off: Sunday");
+    expect(bodyText).toContain("Public holidays");
+    expect(bodyText).toContain("two (2) days of paid leave for each pay cycle");
+    expect(bodyText).toContain("Paid leave does not carry forward");
   });
 
   it("says which day of the month salary lands on", () => {
@@ -106,7 +116,7 @@ describe("the joining letter that makes someone an employee", () => {
   it("states every clause the company's paperwork checklist asks for", () => {
     for (const clause of [
       "Remuneration", "Probation and Confirmation", "Working Hours, Days and Shift",
-      "Leave, Attendance and Punctuality", "Remote Work", "Your Responsibilities",
+      "Weekly Off, Public Holidays, Leave and Attendance", "Remote Work", "Your Responsibilities",
       "Confidentiality", "Intellectual Property", "Conduct and Discipline",
       "Conflict of Interest", "Non-Solicitation", "Background Verification",
       "Notice Period and Termination", "Return of Company Property",

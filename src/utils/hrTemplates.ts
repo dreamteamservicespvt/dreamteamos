@@ -7,6 +7,7 @@ import {
   probationEndDate, trainingTermsFor,
 } from "@/utils/hrPolicy";
 import { departmentForTitle } from "@/utils/roleLadder";
+import { DEFAULT_PAYROLL_CONFIG } from "@/types/payroll";
 import {
   ENGAGEMENT_LABELS, HR_DOCUMENT_LABELS, WORK_ARRANGEMENT_LABELS, WORK_ARRANGEMENT_TERMS, orgUnitLabel,
 } from "@/types/hr";
@@ -495,16 +496,95 @@ function officeAddressLines(i: BuildDocumentInput): (string | null)[] {
  * A working-days range says which days are worked and leaves the reader to infer the rest. A
  * weekly off is a term of employment, and terms get written down.
  */
-function weeklyOffLine(p: EmployeeProfile): string | null {
+function weeklyOffDays(p: EmployeeProfile): string[] {
   const { from, to } = splitRange(p.workingDays);
   const start = matchDayOption(from);
   const end = matchDayOption(to);
-  if (!start || !end) return null;
+  if (!start || !end) return [];
   const startIdx = DAY_OPTIONS.indexOf(start as (typeof DAY_OPTIONS)[number]);
   const endIdx = DAY_OPTIONS.indexOf(end as (typeof DAY_OPTIONS)[number]);
-  if (startIdx < 0 || endIdx < startIdx) return null;
-  const off = DAY_OPTIONS.filter((_, n) => n < startIdx || n > endIdx);
+  if (startIdx < 0 || endIdx < startIdx) return [];
+  return DAY_OPTIONS.filter((_, n) => n < startIdx || n > endIdx);
+}
+
+function weeklyOffLine(p: EmployeeProfile): string | null {
+  const off = weeklyOffDays(p);
   return off.length > 0 ? `Weekly Off: ${off.join(", ")}` : null;
+}
+
+/**
+ * The days off a letter has to name, and the paid leave that goes with them.
+ *
+ * ── Why this is its own function ───────────────────────────────────────────────────────────────
+ * "In accordance with the company's leave policy as applicable from time to time" is what every
+ * letter used to say, and it tells the reader nothing they can act on. Three facts decide whether
+ * an employee feels fairly treated in their first month, and all three were only ever said out
+ * loud: the weekly off, the public holidays, and how much paid leave there is. An employee who
+ * discovers on payday that their third day off was unpaid was not told the terms — they were told
+ * that terms exist.
+ *
+ * The non-accrual rule is the one that most needs writing down. Two days a month that quietly
+ * lapse is a different offer from twenty-four days a year, and an employee who saves them up for a
+ * wedding in November finds out the difference at the worst possible moment.
+ *
+ * The quota is read from the payroll configuration rather than typed here, so the letter cannot
+ * promise a number the salary engine does not honour.
+ */
+const PAID_LEAVE_PER_MONTH = DEFAULT_PAYROLL_CONFIG.paidLeaveQuota;
+
+/** `2` → "two". Letters spell small numbers; a bare digit reads like a form field. */
+const inWords = (n: number): string =>
+  ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"][n] ?? String(n);
+
+/**
+ * The sentence that proves a letter already states the current terms.
+ *
+ * Used by the backfill to tell a document that needs the addendum from one that does not, so
+ * running it twice cannot staple the same clause on twice.
+ */
+export const LEAVE_TERMS_MARKER = "Paid leave does not carry forward";
+
+function leaveAndHolidayLines(p: EmployeeProfile): string[] {
+  const off = weeklyOffDays(p);
+  const offLabel = off.length > 0 ? off.join(", ") : "Sunday";
+  const n = PAID_LEAVE_PER_MONTH;
+  return [
+    `Weekly off: ${offLabel}. ${off.length === 1 ? "That day is" : "Those days are"} a paid day off and ${off.length === 1 ? "is" : "are"} not counted against your leave.`,
+    "Public holidays: the company observes the public holidays it declares for the year. The list is published in the company's system, and a declared holiday is a paid day off which is likewise not counted against your leave.",
+    `Paid leave: you are entitled to ${inWords(n)} (${n}) days of paid leave for each pay cycle, in addition to the weekly off and the declared public holidays.`,
+    // The whole reason this clause exists. Said plainly, in the sentence the employee will quote
+    // back, rather than left to be inferred from "for each month".
+    `Paid leave does not carry forward. Any of the ${inWords(n)} days not taken within a pay cycle lapses at the end of that cycle; it is not added to the next cycle, and it is not encashed.`,
+    `Leave beyond ${inWords(n)} days in a pay cycle is treated as leave without pay and the day is deducted from that cycle's salary.`,
+    "Leave is applied for and approved in advance through the company's system, except in an emergency, when it must be intimated at the earliest opportunity.",
+  ];
+}
+
+/**
+ * The same terms, as a block that can be added to a letter that has already gone out.
+ *
+ * ── Why an addendum and not a rewrite ─────────────────────────────────────────────────────────
+ * A letter somebody has signed is a record of what they signed. Editing the clause inside it would
+ * leave a page bearing an employee's signature saying something they never read, and there would
+ * be nothing on the page to show that had happened. An addendum is what an HR department actually
+ * issues for this: the original letter is left exactly as it was, and the new terms arrive
+ * underneath it, dated, saying plainly what they are and what they attach to.
+ *
+ * Carries no signature line of its own — `AgreementView` pairs signature images with signature
+ * lines positionally, and a line here would take the employee's signature off the letter.
+ */
+export function leaveTermsAddendum(p: EmployeeProfile, dateIso?: string): string {
+  return compose([
+    "",
+    "———",
+    "",
+    "ADDENDUM — WEEKLY OFF, PUBLIC HOLIDAYS AND PAID LEAVE",
+    dateIso ? `Effective ${longDate(dateIso)}` : null,
+    "",
+    "This addendum records, in writing, the terms on days off and paid leave that apply to your engagement. It is issued because the letter above referred to the company's leave policy without setting these terms out, and it forms part of that letter. Nothing else in the letter is changed by it.",
+    "",
+    ...leaveAndHolidayLines(p),
+  ]);
 }
 
 /** "Full-Time Employee (3-month probation)" — the engagement, stated the way the policy asks for. */
@@ -698,8 +778,11 @@ function offerLetter(i: BuildDocumentInput): string {
         }
         : null,
       {
-        title: "Leave",
-        lines: ["You will be entitled to leave in accordance with the company's leave policy as applicable to you from time to time. Leave is applied for and approved in advance through the company's system, except in an emergency, when it must be intimated at the earliest opportunity. The full policy will be shared with you on joining."],
+        title: "Weekly Off, Public Holidays and Leave",
+        lines: [
+          ...leaveAndHolidayLines(p),
+          "The full leave policy will be shared with you on joining. Where it is more generous than the terms above, the policy applies.",
+        ],
       },
       /*
         Notice period, on the offer rather than only on the appointment letter.
@@ -840,9 +923,9 @@ function appointmentLetter(i: BuildDocumentInput): string {
         ],
       },
       {
-        title: "Leave, Attendance and Punctuality",
+        title: "Weekly Off, Public Holidays, Leave and Attendance",
         lines: [
-          "You will be entitled to leave in accordance with the company's leave policy as applicable to you from time to time. Leave must be applied for and approved through the company's system in advance, except in an emergency, when it must be intimated at the earliest opportunity.",
+          ...leaveAndHolidayLines(p),
           "You are required to record your attendance through the company's system on every working day, and to be available and working within your working hours. Persistent late arrival, unrecorded attendance or absence without intimation is treated as a matter of discipline and may be dealt with under the company's disciplinary policy.",
         ],
       },
@@ -976,6 +1059,7 @@ function policyAcknowledgement(i: BuildDocumentInput): string {
     "",
     "2. Attendance, Working Hours and Leave Policy",
     "Check-in and check-out through the company system, applying for leave in advance, and the treatment of paid, unpaid and half-day leave.",
+    `I understand in particular that the weekly off and the public holidays declared by the company are paid days off which do not count against my leave; that my paid leave is ${inWords(PAID_LEAVE_PER_MONTH)} (${PAID_LEAVE_PER_MONTH}) days per pay cycle; that unused paid leave lapses at the end of the pay cycle and is neither carried forward nor encashed; and that leave taken beyond that entitlement is leave without pay.`,
     "",
     "3. Confidentiality, Data Protection and IT Usage",
     "Handling of client and company information, use of company accounts and devices, and the prohibition on sharing credentials.",

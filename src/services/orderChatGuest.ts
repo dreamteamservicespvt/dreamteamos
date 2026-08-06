@@ -10,6 +10,7 @@
 import { initializeApp, getApp, getApps, type FirebaseApp } from "firebase/app";
 import { getAuth, signInWithCustomToken, type Auth } from "firebase/auth";
 import { getFirestore, doc, getDoc, type Firestore } from "firebase/firestore";
+import { getMessaging, getToken, type Messaging } from "firebase/messaging";
 import { firebaseConfig } from "@/services/firebase";
 import { isNative } from "@/utils/platform";
 import type { OrderChatDoc } from "@/types/orderChat";
@@ -41,11 +42,11 @@ export function guestUid(chatId: string): string {
 const devJoinKey = (chatId: string) => `orderChatDevJoin_${chatId}`;
 
 /**
- * Whether this browser has already proved the code for this room.
+ * Whether this browser already holds a session for this room.
  *
  * Firebase restores the guest session from storage asynchronously, so this waits for the first
- * auth callback rather than reading `currentUser` too early and sending a customer who is already
- * signed in back to the code screen on every refresh.
+ * auth callback rather than reading `currentUser` too early and re-running the sign-in on every
+ * refresh.
  */
 export function hasGuestSession(chatId: string): Promise<boolean> {
   const { auth } = guestApp();
@@ -53,7 +54,7 @@ export function hasGuestSession(chatId: string): Promise<boolean> {
     const unsub = auth.onAuthStateChanged((u) => {
       unsub();
       if (u?.uid === guestUid(chatId)) { resolve(true); return; }
-      // Dev has no serverless function to mint a token, so the join is remembered locally instead.
+      // Dev has no serverless function to mint a token, so the session is remembered locally.
       resolve(import.meta.env.DEV && sessionStorage.getItem(devJoinKey(chatId)) === "1");
     });
   });
@@ -61,45 +62,38 @@ export function hasGuestSession(chatId: string): Promise<boolean> {
 
 const API_BASE = isNative() ? "https://dreamteamos.vercel.app" : "";
 
-export interface JoinResult {
+export interface OpenResult {
   ok: boolean;
   /** Present when ok — what the header shows before any message has loaded. */
   chat?: { id: string; businessName: string; uniqueId: string; memberName: string; status: string };
-  error?: "wrong_code" | "locked" | "not_found" | "network";
-  attemptsLeft?: number;
-  retryInSeconds?: number;
+  error?: "not_found" | "network";
 }
 
 /**
- * Exchanges the four digits the customer typed for access to one room.
+ * Exchanges the link the customer followed for access to that one room.
  *
- * The code is checked on the server (see api/order-chat.ts) and comes back as a Firebase custom
- * token carrying an `orderChat` claim, which is what the Firestore rules match on. Nothing that
- * could be used to open a different room is ever in the page.
+ * There is nothing to type. The server checks the room exists and hands back a Firebase custom
+ * token carrying an `orderChat` claim, which is what the Firestore rules match on — so the page
+ * can read and write this conversation and reach nothing else. See api/order-chat.ts for why the
+ * link itself is treated as the credential.
  */
-export async function joinOrderChat(chatId: string, code: string): Promise<JoinResult> {
+export async function openOrderChat(chatId: string): Promise<OpenResult> {
   let res: Response;
   try {
     res = await fetch(`${API_BASE}/api/order-chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "join", chatId, code }),
+      body: JSON.stringify({ action: "open", chatId }),
     });
   } catch {
-    return devFallbackJoin(chatId, code);
+    return devFallbackOpen(chatId);
   }
 
   if (!res.ok) {
     let body: Record<string, unknown> = {};
     try { body = await res.json(); } catch { /* an HTML error page — treat as unreachable */ }
-    const error = body.error as JoinResult["error"] | undefined;
-    if (!error) return devFallbackJoin(chatId, code);
-    return {
-      ok: false,
-      error,
-      attemptsLeft: body.attemptsLeft as number | undefined,
-      retryInSeconds: body.retryInSeconds as number | undefined,
-    };
+    if (body.error === "not_found") return { ok: false, error: "not_found" };
+    return devFallbackOpen(chatId);
   }
 
   const data = await res.json();
@@ -112,16 +106,15 @@ export async function joinOrderChat(chatId: string, code: string): Promise<JoinR
  * Opening the chat against a plain `vite dev` server, which has no serverless functions.
  *
  * Compiled out of production builds — `import.meta.env.DEV` is a literal `false` there, so the
- * whole branch is removed and the only way in remains the server-checked one.
+ * whole branch is removed.
  */
-async function devFallbackJoin(chatId: string, code: string): Promise<JoinResult> {
+async function devFallbackOpen(chatId: string): Promise<OpenResult> {
   if (!import.meta.env.DEV) return { ok: false, error: "network" };
   try {
     const snap = await getDoc(doc(guestDb(), "order_chats", chatId));
     if (!snap.exists()) return { ok: false, error: "not_found" };
     const room = snap.data() as OrderChatDoc;
-    if (String(room.accessCode) !== code) return { ok: false, error: "wrong_code" };
-    console.warn("[orderChat] dev fallback: code checked in the browser, no API server running");
+    console.warn("[orderChat] dev fallback: no API server running, signed in as nobody");
     sessionStorage.setItem(devJoinKey(chatId), "1");
     return {
       ok: true,
@@ -141,10 +134,10 @@ async function devFallbackJoin(chatId: string, code: string): Promise<JoinResult
 /**
  * Asks the server to alert the team.
  *
- * Sends the guest's own token: the server will only ring a member for someone who has already
- * proved the code for that chat, so a stray link cannot be turned into a way of making a phone
- * ring on demand. Fire-and-forget either way — a customer's message must land in the room whether
- * or not the notification behind it got out.
+ * Sends the guest's own token: the server will only ring a member for someone holding a session
+ * for that chat, so a stray link cannot be turned into a way of making a phone ring on demand.
+ * Fire-and-forget either way — a customer's message must land in the room whether or not the
+ * notification behind it got out.
  */
 export function alertTeam(body: {
   chatId: string;
@@ -164,4 +157,68 @@ export function alertTeam(body: {
       body: JSON.stringify({ action: "notify", ...body }),
     }))
     .catch(() => { /* no API server (dev) or offline — the message itself already went through */ });
+}
+
+// ─── Being reachable with the page shut ──────────────────────────────────────────────────────
+
+export type PushState = "unsupported" | "default" | "granted" | "denied";
+
+/** What this browser can do about notifications, before anyone has been asked anything. */
+export function pushState(): PushState {
+  if (typeof Notification === "undefined" || !("serviceWorker" in navigator)) return "unsupported";
+  return Notification.permission as PushState;
+}
+
+let messagingInstance: Messaging | null = null;
+
+/**
+ * Ask for notification permission and register this browser against this one room.
+ *
+ * ── Why the client page insists on this ───────────────────────────────────────────────────────
+ * A customer is not sitting on this page. They send a photo of their shopfront and go back to
+ * running their shop, and the reply lands hours later in a tab they closed. Without a notification
+ * there is no reply — there is a message in a room nobody reopens, and the customer concludes
+ * nobody answered. The unread badge only works for someone who comes back to look at it, and the
+ * whole point of this feature is that they should not have to.
+ *
+ * Registered against `guest_<chatId>`, so the token is only ever sent to for this conversation and
+ * a customer with two orders gets two separate, unlinked registrations.
+ *
+ * Returns the state the browser ended up in. `denied` is permanent until the customer changes it
+ * in their own browser settings, which is why the page has to say so rather than ask again.
+ */
+export async function enableGuestPush(chatId: string): Promise<PushState> {
+  if (pushState() === "unsupported") return "unsupported";
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") return permission as PushState;
+
+    const registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+    // getToken needs an ACTIVE worker; a freshly registered one is still installing.
+    await navigator.serviceWorker.ready;
+
+    const { app, auth } = guestApp();
+    messagingInstance = messagingInstance || getMessaging(app);
+    const token = await getToken(messagingInstance, {
+      vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY as string,
+      serviceWorkerRegistration: registration,
+    });
+    if (!token) return "granted";
+
+    const idToken = await auth.currentUser?.getIdToken();
+    await fetch(`${API_BASE}/api/order-chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+      },
+      body: JSON.stringify({ action: "register-push", chatId, token }),
+    });
+    return "granted";
+  } catch (err) {
+    // Permission may well have been granted even if the token round-trip failed (no API server in
+    // dev, a blocked worker). Report what the browser actually says rather than guessing.
+    console.warn("[orderChat] could not register for notifications", err);
+    return pushState();
+  }
 }

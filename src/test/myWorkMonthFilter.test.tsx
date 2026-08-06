@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { configure, fireEvent, render, screen, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 
 /**
  * A tech member's month is the 10th → 9th cycle their output, targets and salary are all counted
@@ -57,6 +58,12 @@ beforeEach(() => {
 const tile = (label: string) =>
   screen.getByText(label).parentElement?.querySelector("p")?.textContent;
 
+/**
+ * The page reads `?chat=` so a tapped "client sent a message" notification opens that conversation,
+ * which means it needs a router around it exactly as it has in the app.
+ */
+const renderPage = () => render(<MemoryRouter><MyWork /></MemoryRouter>);
+
 const selectFilter = (optionText: RegExp) => {
   const select = screen.getByRole("combobox") as HTMLSelectElement;
   const option = within(select).getByText(optionText) as HTMLOptionElement;
@@ -65,7 +72,7 @@ const selectFilter = (optionText: RegExp) => {
 
 describe("My Work — the 10th to 9th month filter", () => {
   it("offers the last six performance months, spelled out in full", () => {
-    render(<MyWork />);
+    renderPage();
     const group = within(screen.getByRole("combobox")).getByRole("group", { name: "Months (10th – 9th)" });
     const options = within(group).getAllByRole("option").map((o) => o.textContent);
     expect(options).toHaveLength(6);
@@ -74,7 +81,7 @@ describe("My Work — the 10th to 9th month filter", () => {
   });
 
   it("shows the work assigned inside the cycle and nothing outside it", () => {
-    render(<MyWork />);
+    renderPage();
     selectFilter(/10 Jul – 09 Aug 2026/);
 
     expect(screen.getByText("Sharma Electronics")).toBeInTheDocument();
@@ -85,7 +92,7 @@ describe("My Work — the 10th to 9th month filter", () => {
   });
 
   it("counts the tiles over the same cycle, not over the member's whole career", () => {
-    render(<MyWork />);
+    renderPage();
     selectFilter(/10 Jul – 09 Aug 2026/);
     // One tile per status, so "completed" no longer swallows "verified" the way a combined
     // count did — a member can see what is waiting to be signed off separately from what is done.
@@ -97,7 +104,7 @@ describe("My Work — the 10th to 9th month filter", () => {
   });
 
   it("filters the list to the tile that was tapped, and back again", () => {
-    render(<MyWork />);
+    renderPage();
     selectFilter(/All Days/);
 
     fireEvent.click(screen.getByTestId("my-work-tile-in_progress"));
@@ -110,7 +117,7 @@ describe("My Work — the 10th to 9th month filter", () => {
   });
 
   it("opens the delivered list when a delivered status is picked, so the filter is not silent", () => {
-    render(<MyWork />);
+    renderPage();
     selectFilter(/All Days/);
     fireEvent.click(screen.getByTestId("my-work-tile-verified"));
     expect(screen.getByText("Armoor Mobiles")).toBeInTheDocument();
@@ -118,7 +125,7 @@ describe("My Work — the 10th to 9th month filter", () => {
   });
 
   it("moves to the previous cycle cleanly", () => {
-    render(<MyWork />);
+    renderPage();
     selectFilter(/10 Jun – 09 Jul 2026/);
     expect(screen.getByText("Completed (2)")).toBeInTheDocument();
     expect(screen.queryByText("Sharma Electronics")).not.toBeInTheDocument();
@@ -127,7 +134,7 @@ describe("My Work — the 10th to 9th month filter", () => {
   });
 
   it("says which period is empty rather than showing a blank page", () => {
-    render(<MyWork />);
+    renderPage();
     selectFilter(/10 Feb – 09 Mar 2026/);
     const empty = screen.getByText("No work in this period").parentElement!;
     // Names the period that emptied it — a blank page otherwise reads as a broken one.
@@ -136,7 +143,7 @@ describe("My Work — the 10th to 9th month filter", () => {
   });
 
   it("leaves the day filters working as they did", () => {
-    render(<MyWork />);
+    renderPage();
     selectFilter(/^Today$/);
     expect(screen.getByText("Sharma Electronics")).toBeInTheDocument();
     expect(tile("In Progress")).toBe("1");

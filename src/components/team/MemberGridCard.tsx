@@ -32,7 +32,18 @@ export default function MemberGridCard({ member, profile, stats, badges, actions
     <div
       onClick={onOpen}
       data-test="member-card"
-      className="group flex cursor-pointer flex-col rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-accent/20"
+      /*
+        `min-w-0` is what actually makes the truncation below work.
+
+        A grid item's automatic minimum size is its min-content width, and the min-content width of
+        a `truncate` line — which is `white-space: nowrap` — is the whole string. `overflow: hidden`
+        does not shrink it. So a member called "Venkata Naga Sai Sri Lakshmi Narasimha Prasad
+        Chowdary" sized the card to their full name and pushed it clean off a phone screen, taking
+        every other card in the column with it, because a 1fr track sizes to the widest item.
+        Setting min-width to 0 removes that floor and lets the card be the width of its grid area,
+        at which point the ellipsis does its job.
+      */
+      className="group flex min-w-0 cursor-pointer flex-col rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-accent/20"
     >
       <div className="flex items-start gap-3">
         {/* The photo the member uploaded themselves wins over the one filed in their HR record:

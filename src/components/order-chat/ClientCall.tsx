@@ -9,13 +9,16 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  addDoc, collection, doc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where,
+  addDoc, collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where,
   type Firestore,
 } from "firebase/firestore";
 import { Mic, MicOff, Phone, PhoneOff, Video as VideoIcon, VideoOff, Loader2 } from "lucide-react";
 import { ICE_SERVERS } from "@/services/webrtcConfig";
 import { alertTeam } from "@/services/orderChatGuest";
+import { sendOrderChatMessage } from "@/services/orderChat";
+import { CLIENT_SENDER_ID } from "@/types/orderChat";
 import { startRingback, stopRingback, startRingtone, stopRingtone } from "@/utils/audio";
+import DeclineWithReason, { type DeclineReason } from "@/components/order-chat/DeclineWithReason";
 import { cn } from "@/lib/utils";
 
 export type ClientCallType = "voice" | "video";
@@ -32,6 +35,15 @@ interface Props {
   /** Set by the header buttons; cleared once the call has been started. */
   request: ClientCallType | null;
   onRequestHandled: () => void;
+  /**
+   * A call id from `?call=` — the customer tapped "… is calling you" on their phone.
+   *
+   * The listener below would find the same document on its own, but only if it is still ringing by
+   * the time the page has booted. Naming it means the page can also say "that call has ended"
+   * instead of opening to a chat that looks like nothing happened.
+   */
+  answerCallId?: string | null;
+  onAnswerCallHandled?: () => void;
 }
 
 function secs(n: number) {
@@ -47,8 +59,12 @@ function secs(n: number) {
  */
 const RING_TIMEOUT_MS = 45_000;
 
+/** How long a call is allowed to be "disconnected" before it is actually over. */
+const RECONNECT_GRACE_MS = 15_000;
+
 export default function ClientCall({
   dbi, chatId, selfId, selfName, memberUid, memberName, request, onRequestHandled,
+  answerCallId, onAnswerCallHandled,
 }: Props) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [type, setType] = useState<ClientCallType>("voice");
@@ -56,6 +72,9 @@ export default function ClientCall({
   const [cameraOff, setCameraOff] = useState(false);
   const [duration, setDuration] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
+  const [decliningReason, setDecliningReason] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -86,6 +105,9 @@ export default function ClientCall({
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
+    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+    reconnectTimerRef.current = null;
+    setReconnecting(false);
     callIdRef.current = null;
     incomingRef.current = null;
     pendingCandidatesRef.current = [];
@@ -94,6 +116,7 @@ export default function ClientCall({
     setMuted(false);
     setCameraOff(false);
     setDuration(0);
+    setDecliningReason(false);
   }, []);
 
   const startTimer = useCallback(() => {
@@ -136,8 +159,30 @@ export default function ClientCall({
       if (e.candidate) addDoc(collection(dbi, "calls", callId, mine), e.candidate.toJSON()).catch(() => {});
     };
 
+    /**
+     * "disconnected" is a wobble, not a hang-up.
+     *
+     * Ending the call on it meant a customer walking from their shop counter to the doorway lost
+     * the call — ICE reports `disconnected` on any brief loss and recovers by itself within a few
+     * seconds nearly every time. `failed` is the state that means it will not.
+     */
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === "disconnected" || pc.connectionState === "failed") endCall();
+      const state = pc.connectionState;
+      if (state === "connected") {
+        if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
+        setReconnecting(false);
+        return;
+      }
+      if (state === "disconnected") {
+        if (reconnectTimerRef.current) return;
+        setReconnecting(true);
+        reconnectTimerRef.current = setTimeout(() => {
+          reconnectTimerRef.current = null;
+          if (pcRef.current && pcRef.current.connectionState !== "connected") endCall();
+        }, RECONNECT_GRACE_MS);
+        return;
+      }
+      if (state === "failed") endCall();
     };
 
     const theirs = isCaller ? "receiverCandidates" : "callerCandidates";
@@ -209,7 +254,10 @@ export default function ClientCall({
           setPhase("active");
           startTimer();
         } else if (data.status === "declined") {
-          setNotice(`${memberName || "The team"} can't take the call right now.`);
+          // Their own words when they gave them — "they hung up on me" is what a bare decline says.
+          setNotice(data.declineReason
+            ? `${memberName || "The team"}: ${data.declineReason}`
+            : `${memberName || "The team"} can't take the call right now.`);
           cleanup();
         } else if (data.status === "ended") {
           cleanup();
@@ -258,6 +306,16 @@ export default function ClientCall({
     };
   }, [dbi]);
 
+  /** Present a ringing call to the customer. Shared by the live listener and the tapped push. */
+  const presentIncoming = useCallback((id: string, data: Record<string, unknown>) => {
+    if (phaseRef.current !== "idle") return;
+    const callType = data.callType === "video" ? "video" : "voice";
+    incomingRef.current = { id, offer: data.offer as RTCSessionDescriptionInit, callType };
+    setType(callType);
+    setPhase("incoming");
+    startRingtone();
+  }, []);
+
   // ── The member calling back ──
   useEffect(() => {
     if (!selfId) return;
@@ -268,20 +326,39 @@ export default function ClientCall({
     );
     const unsub = onSnapshot(q, (snap) => {
       snap.docChanges().forEach((change) => {
-        if (change.type !== "added" || phaseRef.current !== "idle") return;
-        const data = change.doc.data();
-        incomingRef.current = {
-          id: change.doc.id,
-          offer: data.offer as RTCSessionDescriptionInit,
-          callType: data.callType === "video" ? "video" : "voice",
-        };
-        setType(data.callType === "video" ? "video" : "voice");
-        setPhase("incoming");
-        startRingtone();
+        if (change.type !== "added") return;
+        presentIncoming(change.doc.id, change.doc.data());
       });
     }, () => { /* rules or connection — the client simply gets no incoming call */ });
     return unsub;
-  }, [dbi, selfId]);
+  }, [dbi, selfId, presentIncoming]);
+
+  /**
+   * The customer tapped "… is calling you" on their phone.
+   *
+   * The listener above usually finds the same document a moment later, but only if the call is
+   * still ringing once the page has finished booting — and booting a cold page is exactly the slow
+   * case. Fetching it directly closes that gap, and gives the customer a straight answer when they
+   * were too late instead of a chat that looks like nothing happened.
+   */
+  useEffect(() => {
+    if (!answerCallId) return;
+    let alive = true;
+    getDoc(doc(dbi, "calls", answerCallId))
+      .then((snap) => {
+        if (!alive) return;
+        const data = snap.exists() ? snap.data() : null;
+        if (!data) return;
+        if (data.status === "ringing" && data.receiverId === selfId) {
+          presentIncoming(answerCallId, data);
+        } else if (data.status !== "active") {
+          setNotice(`You missed a call from ${data.callerName || memberName || "the team"}. Send a message and they'll call you back.`);
+        }
+      })
+      .catch(() => { /* the call document may already be gone */ })
+      .finally(() => { if (alive) onAnswerCallHandled?.(); });
+    return () => { alive = false; };
+  }, [answerCallId, dbi, selfId, memberName, presentIncoming, onAnswerCallHandled]);
 
   const accept = useCallback(async () => {
     const incoming = incomingRef.current;
@@ -315,13 +392,38 @@ export default function ClientCall({
     }
   }, [dbi, getMedia, createPC, flushCandidates, startTimer, cleanup]);
 
-  const decline = useCallback(async () => {
+  /**
+   * Turn the call down, and tell the member why.
+   *
+   * The reason goes on the call document AND into the conversation. On the document it is what the
+   * member's screen shows the instant the ringing stops; in the conversation it is what is still
+   * there tomorrow, which is the half that matters — a member who was in a client meeting when the
+   * customer rang comes back to a line saying so, rather than to a missed call.
+   */
+  const decline = useCallback(async (reason?: string) => {
     const incoming = incomingRef.current;
+    stopRingtone();
     if (incoming) {
-      try { await updateDoc(doc(dbi, "calls", incoming.id), { status: "declined" }); } catch { /* best effort */ }
+      try {
+        await updateDoc(doc(dbi, "calls", incoming.id), {
+          status: "declined",
+          ...(reason ? { declineReason: reason } : {}),
+        });
+      } catch { /* best effort */ }
+      if (reason) {
+        try {
+          await sendOrderChatMessage(dbi, {
+            chatId,
+            senderId: CLIENT_SENDER_ID,
+            senderName: selfName,
+            text: reason,
+          });
+          alertTeam({ chatId, kind: "message", preview: reason });
+        } catch { /* the decline itself already went through */ }
+      }
     }
     cleanup();
-  }, [dbi, cleanup]);
+  }, [dbi, chatId, selfName, cleanup]);
 
   // Someone cancelling before it is answered should not leave a phone ringing at the other end.
   useEffect(() => {
@@ -358,7 +460,10 @@ export default function ClientCall({
 
   if (phase === "idle") {
     return notice ? (
-      <div className="fixed inset-x-0 bottom-24 z-50 mx-auto w-fit max-w-[90%] rounded-full bg-foreground/90 px-4 py-2 text-center text-xs text-background shadow-lg">
+      <div
+        data-test="client-call-notice"
+        className="fixed inset-x-0 bottom-24 z-50 mx-auto w-fit max-w-[90%] rounded-2xl bg-slate-900/90 px-4 py-2.5 text-center text-xs leading-snug text-white shadow-lg"
+      >
         {notice}
       </div>
     ) : null;
@@ -381,7 +486,11 @@ export default function ClientCall({
             </div>
             <p className="text-lg font-semibold">{memberName || "Dream Team"}</p>
             <p className="text-sm text-white/60">
-              {phase === "outgoing" ? "Calling…" : phase === "incoming" ? `Incoming ${type} call` : secs(duration)}
+              {phase === "outgoing"
+                ? "Calling…"
+                : phase === "incoming"
+                  ? `Incoming ${type} call`
+                  : reconnecting ? "Reconnecting…" : secs(duration)}
             </p>
             {phase === "outgoing" && <Loader2 className="h-4 w-4 animate-spin text-white/50" />}
           </div>
@@ -393,25 +502,35 @@ export default function ClientCall({
         )}
 
         {phase === "active" && showVideo && (
-          <div className="absolute left-4 top-4 rounded-full bg-black/50 px-3 py-1 text-xs">{secs(duration)}</div>
+          <div className="absolute left-4 top-4 rounded-full bg-black/50 px-3 py-1 text-xs">
+            {reconnecting ? "Reconnecting…" : secs(duration)}
+          </div>
         )}
       </div>
 
       {/* Controls */}
       <div className="flex items-center justify-center gap-4 px-6 py-8">
         {phase === "incoming" ? (
-          <>
-            <button onClick={decline}
-              className="flex h-16 w-16 items-center justify-center rounded-full bg-red-600 transition-transform active:scale-95"
-              aria-label="Decline">
-              <PhoneOff className="h-7 w-7" />
+          <div className="flex w-full max-w-xs flex-col items-center gap-4">
+            <div className="flex items-center justify-center gap-10">
+              <button onClick={() => decline()} data-test="client-call-decline"
+                className="flex h-16 w-16 items-center justify-center rounded-full bg-red-600 transition-transform active:scale-95"
+                aria-label="Decline">
+                <PhoneOff className="h-7 w-7" />
+              </button>
+              <button onClick={accept} data-test="client-call-accept"
+                className="flex h-16 w-16 items-center justify-center rounded-full bg-green-600 transition-transform active:scale-95"
+                aria-label="Accept">
+                <Phone className="h-7 w-7" />
+              </button>
+            </div>
+            {/* One tap turns the call down AND says why — see DeclineWithReason for why that
+                matters more than the red button next to it. */}
+            <button onClick={() => setDecliningReason(true)} data-test="client-call-decline-reason"
+              className="rounded-full bg-white/10 px-4 py-2 text-xs font-medium text-white/80 transition-colors hover:bg-white/20">
+              Can't talk — reply with a reason
             </button>
-            <button onClick={accept}
-              className="flex h-16 w-16 items-center justify-center rounded-full bg-green-600 transition-transform active:scale-95"
-              aria-label="Accept">
-              <Phone className="h-7 w-7" />
-            </button>
-          </>
+          </div>
         ) : (
           <>
             <button onClick={toggleMute}
@@ -436,6 +555,14 @@ export default function ClientCall({
           </>
         )}
       </div>
+
+      {decliningReason && (
+        <DeclineWithReason
+          side="client"
+          onCancel={() => setDecliningReason(false)}
+          onDecline={(r: DeclineReason) => { setDecliningReason(false); decline(r.message); }}
+        />
+      )}
     </div>
   );
 }

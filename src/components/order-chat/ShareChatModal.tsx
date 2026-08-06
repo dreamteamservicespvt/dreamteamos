@@ -7,13 +7,12 @@
  * of clients are reached somewhere other than WhatsApp.
  */
 import { useState } from "react";
-import { MessageCircle, Copy, Check, ExternalLink, KeyRound } from "lucide-react";
+import { MessageCircle, Copy, Check, ExternalLink, Link2 } from "lucide-react";
 import { getWhatsAppUrl } from "@/utils/phone";
 import { buildClientChatMessage, orderChatLink } from "@/services/orderChat";
 
 interface Props {
   chatId: string;
-  accessCode: string;
   businessName?: string;
   uniqueId?: string;
   /** What was ordered. The message names the work, never the member making it. */
@@ -25,10 +24,10 @@ interface Props {
 }
 
 export default function ShareChatModal({
-  chatId, accessCode, businessName, uniqueId, category, clientPhone, onOpenChat, onClose,
+  chatId, businessName, uniqueId, category, clientPhone, onOpenChat, onClose,
 }: Props) {
   const [message, setMessage] = useState(() =>
-    buildClientChatMessage({ businessName, uniqueId, chatId, accessCode, category }));
+    buildClientChatMessage({ businessName, uniqueId, chatId, category }));
   const [copied, setCopied] = useState<"message" | "link" | null>(null);
 
   const copy = (what: "message" | "link") => {
@@ -49,18 +48,18 @@ export default function ShareChatModal({
           <span className="font-semibold text-foreground">Chat with client</span>
         </div>
         <p className="mb-3 text-xs text-muted-foreground">
-          Send this to <b>{businessName || "the client"}</b>. They open the link, enter the code, and
-          can message or call the team — no app and no phone numbers shared.
+          Send this to <b>{businessName || "the client"}</b>. They tap the link and they are in — no
+          code, no app, no sign-up, and no phone numbers shared. They can message or call the team
+          from there.
         </p>
 
         <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2">
-          <div className="flex items-center gap-2">
-            <KeyRound className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">Code</span>
-            <code className="font-mono text-base font-bold tracking-widest text-foreground">{accessCode}</code>
+          <div className="flex min-w-0 items-center gap-2">
+            <Link2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <code className="truncate font-mono text-[11px] text-foreground">{orderChatLink(chatId)}</code>
           </div>
           <button onClick={() => copy("link")}
-            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
             {copied === "link" ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
             {copied === "link" ? "Copied" : "Link"}
           </button>

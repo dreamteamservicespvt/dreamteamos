@@ -13,11 +13,18 @@
  * side of a leader's screen, because neither was the leader's own, and a conversation where both
  * voices stack up on one edge is unreadable. Whoever on the team wrote it is named on the bubble
  * instead, which is the part that actually needed saying.
+ *
+ * ── Why it looks like WhatsApp ────────────────────────────────────────────────────────────────
+ * This replaces a WhatsApp group, and the customer it replaces it for has never used anything else.
+ * Every convention here is load-bearing rather than decorative: the patterned backdrop that makes
+ * bubbles read as bubbles, the tail on the last message of a run, the timestamp tucked into the
+ * bottom-right of the bubble, the quoted bar above a reply. A chat that looks like a web form gets
+ * treated like a web form — filled in once and abandoned.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Send, Paperclip, Mic, Square, SmilePlus, X, Play, Pause, FileText, Download,
-  Loader2, Reply, Lock, Phone, Video as VideoIcon,
+  Loader2, Reply, Lock, Phone, Video as VideoIcon, CheckCheck, Trash2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -66,6 +73,19 @@ function kindOf(file: File): OrderChatMessageType {
   return "file";
 }
 
+/**
+ * The chat wallpaper, as a data URI so it costs no request and cannot 404.
+ *
+ * A flat panel makes bubbles look like list rows. The faint doodle field is what makes the eye
+ * read them as a conversation, and it is the single strongest signal that this is a chat.
+ *
+ * Mid-grey rather than black, because this same panel is beige for the customer and near-black for
+ * the member. A black stroke vanished completely against the staff theme; grey at a tenth of an
+ * alpha darkens a light backdrop and lightens a dark one, so one image serves both.
+ */
+const WALLPAPER =
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='none' stroke='%23808080' stroke-opacity='0.13' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M18 22h14M18 27h9'/%3E%3Ccircle cx='92' cy='24' r='6'/%3E%3Cpath d='M30 62l6 6 10-12'/%3E%3Cpath d='M84 58h16v11h-6l-4 4v-4h-6z'/%3E%3Cpath d='M22 96c4-6 10-6 14 0'/%3E%3Ccircle cx='29' cy='90' r='3.5'/%3E%3Cpath d='M74 98l8-8 8 8-8 8z'/%3E%3C/g%3E%3C/svg%3E\")";
+
 export interface OrderChatPanelProps {
   identity: OrderChatIdentity;
   messages: OrderChatMessage[];
@@ -97,6 +117,10 @@ export default function OrderChatPanel({
   const [text, setText] = useState("");
   const [showEmojis, setShowEmojis] = useState(false);
   const [replyTo, setReplyTo] = useState<OrderChatMessage | null>(null);
+  /** Which bubble has its action bar open. Touch has no hover, so tapping is how you get at Reply. */
+  const [openActions, setOpenActions] = useState<string | null>(null);
+  /** Briefly ringed after jumping to it from a reply quote, so the eye can find it. */
+  const [flashed, setFlashed] = useState<string | null>(null);
   /** A picked file waiting on its caption and a confirmation. Nothing uploads until Send. */
   const [pending, setPending] = useState<{ file: File; type: OrderChatMessageType; url: string } | null>(null);
   const [caption, setCaption] = useState("");
@@ -116,11 +140,38 @@ export default function OrderChatPanel({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const bubbleRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages.length]);
 
   // The preview holds a blob URL; letting it go stops a long conversation leaking one per picture.
   useEffect(() => () => { if (pending) URL.revokeObjectURL(pending.url); }, [pending]);
+
+  // Any tap outside a bubble puts its action bar away again.
+  useEffect(() => {
+    if (!openActions) return;
+    const close = () => setOpenActions(null);
+    // Capture, so it runs before a bubble's own handler can reopen it.
+    document.addEventListener("pointerdown", close, true);
+    return () => document.removeEventListener("pointerdown", close, true);
+  }, [openActions]);
+
+  /**
+   * Scroll to the message a reply is quoting.
+   *
+   * The quote is the only way back to what somebody actually said three days ago, and a quote you
+   * cannot follow is decoration. Falls back to a shake of the composer's error line when the
+   * original has scrolled out of the loaded window — better than a tap that appears broken.
+   */
+  const jumpTo = useCallback((id?: string) => {
+    if (!id) return;
+    const el = bubbleRefs.current[id];
+    if (!el) { setError("That message is further up — scroll back to find it."); return; }
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setFlashed(id);
+    setTimeout(() => setFlashed((f) => (f === id ? null : f)), 1600);
+  }, []);
 
   const replyPayload = useCallback(() => (
     replyTo
@@ -255,28 +306,52 @@ export default function OrderChatPanel({
 
   useEffect(() => () => { audioRef.current?.pause(); }, []);
 
+  /**
+   * Which messages end a run from the same sender.
+   *
+   * Only the last bubble of a run gets a tail and a visible timestamp, exactly as WhatsApp does it.
+   * Five bubbles each with their own tail and clock read as five separate interruptions rather than
+   * one person talking.
+   */
+  const lastOfRun = useMemo(() => {
+    const set = new Set<string>();
+    messages.forEach((m, i) => {
+      const next = messages[i + 1];
+      if (!next || next.senderId !== m.senderId || next.type === "system" || m.type === "system") {
+        set.add(m.id);
+      }
+    });
+    return set;
+  }, [messages]);
+
   let lastDay = "";
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
+    <div className="flex h-full min-h-0 flex-col bg-[#eae6df] dark:bg-[#0b141a]">
       {header}
 
       {/* ── Messages ─────────────────────────────────────────────────────────────────────────── */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-4">
+      <div
+        ref={scrollRef}
+        className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 sm:px-6"
+        style={{ backgroundImage: WALLPAPER, backgroundSize: "200px" }}
+        data-test="order-chat-messages"
+      >
         {loading ? (
           <div className="flex h-full items-center justify-center">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <Loader2 className="h-6 w-6 animate-spin text-slate-500" />
           </div>
         ) : messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center px-8 text-center">
-            <div className="mb-3 text-4xl">💬</div>
-            <p className="text-sm font-medium text-foreground">No messages yet</p>
-            <p className="mt-1 max-w-xs text-xs text-muted-foreground">
-              {emptyHint || "Send a message to get started."}
-            </p>
+            <div className="max-w-sm rounded-xl bg-[#fff8d4] px-4 py-3 shadow-sm dark:bg-[#182229]">
+              <p className="text-sm font-medium text-slate-800 dark:text-slate-100">No messages yet</p>
+              <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+                {emptyHint || "Send a message to get started."}
+              </p>
+            </div>
           </div>
         ) : (
-          <div className="mx-auto flex max-w-3xl flex-col gap-1.5">
+          <div className="mx-auto flex max-w-3xl flex-col gap-0.5">
             {messages.map((m) => {
               const fromClient = m.senderId === CLIENT_SENDER_ID;
               // The client sits on one side; everyone on the team sits on the other.
@@ -289,6 +364,7 @@ export default function OrderChatPanel({
               const showDay = day && day !== lastDay;
               if (showDay) lastDay = day;
               const deleted = !!m.deletedAt;
+              const tail = lastOfRun.has(m.id);
               /**
                * Text sent WITH an attachment, shown under it.
                *
@@ -297,11 +373,12 @@ export default function OrderChatPanel({
                * attachment printed its words twice, once as the message and once as its own caption.
                */
               const hasCaption = !!m.text && !!m.fileUrl;
+              const isMedia = !deleted && (m.type === "image" || m.type === "video");
 
               if (m.type === "system") {
                 return (
                   <div key={m.id} className="my-2 flex justify-center">
-                    <span className="rounded-full bg-muted px-3 py-1 text-center text-[11px] text-muted-foreground">
+                    <span className="rounded-lg bg-[#ffeecd] px-3 py-1.5 text-center text-[11.5px] leading-snug text-slate-700 shadow-sm dark:bg-[#182229] dark:text-slate-300">
                       {m.text}
                     </span>
                   </div>
@@ -312,116 +389,169 @@ export default function OrderChatPanel({
                 <div key={m.id}>
                   {showDay && (
                     <div className="my-3 flex justify-center">
-                      <span className="rounded-full bg-muted px-3 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                      <span className="rounded-lg bg-white/90 px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-slate-600 shadow-sm dark:bg-[#182229] dark:text-slate-300">
                         {day}
                       </span>
                     </div>
                   )}
-                  <div className={cn("group flex items-end gap-1", mine ? "justify-end" : "justify-start")}>
-                    {/* Reply, on the outside of the bubble where it cannot cover the message. */}
-                    {!deleted && canSend && mine && (
-                      <button onClick={() => setReplyTo(m)} aria-label="Reply"
-                        className="mb-1 shrink-0 rounded-full p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent group-hover:opacity-100">
-                        <Reply className="h-3.5 w-3.5" />
-                      </button>
-                    )}
 
-                    <div
-                      className={cn(
-                        "max-w-[85%] rounded-2xl px-2.5 py-1.5 shadow-sm sm:max-w-[70%]",
-                        mine
-                          ? "rounded-br-sm bg-primary text-primary-foreground"
-                          : "rounded-bl-sm border border-border bg-card text-card-foreground",
-                      )}
-                    >
-                      {showName && (
-                        <p className={cn(
-                          "mb-0.5 text-[11px] font-semibold",
-                          mine ? "text-primary-foreground/80" : "text-primary",
-                        )}>
-                          {m.senderName}
-                        </p>
-                      )}
+                  <div
+                    className={cn("group flex", mine ? "justify-end" : "justify-start", tail ? "mb-2" : "mb-0.5")}
+                  >
+                    <div className="relative max-w-[85%] sm:max-w-[70%]">
+                      {/* The tap target for the actions below — a whole bubble, as on a phone. */}
+                      <div
+                        ref={(el) => { bubbleRefs.current[m.id] = el; }}
+                        onClick={() => { if (!deleted && canSend) setOpenActions((o) => (o === m.id ? null : m.id)); }}
+                        className={cn(
+                          "relative rounded-lg px-2 py-1.5 text-[14.2px] shadow-sm transition-shadow",
+                          isMedia && "p-1",
+                          mine
+                            ? "bg-[#d9fdd3] text-slate-900 dark:bg-[#005c4b] dark:text-slate-50"
+                            : "bg-white text-slate-900 dark:bg-[#202c33] dark:text-slate-50",
+                          tail && (mine ? "rounded-br-none" : "rounded-bl-none"),
+                          flashed === m.id && "ring-2 ring-emerald-500/70",
+                          !deleted && canSend && "cursor-pointer",
+                        )}
+                        data-test="order-chat-bubble"
+                      >
+                        {/* The little corner that makes a rectangle read as speech. */}
+                        {tail && (
+                          <span
+                            aria-hidden
+                            className={cn(
+                              "absolute bottom-0 h-3 w-3",
+                              mine
+                                ? "-right-2 bg-[#d9fdd3] dark:bg-[#005c4b] [clip-path:polygon(0_0,0_100%,100%_100%)]"
+                                : "-left-2 bg-white dark:bg-[#202c33] [clip-path:polygon(100%_0,0_100%,100%_100%)]",
+                            )}
+                          />
+                        )}
 
-                      {m.replyToId && !deleted && (
-                        <div className={cn(
-                          "mb-1.5 rounded-lg border-l-2 px-2 py-1 text-[11px]",
-                          mine ? "border-primary-foreground/50 bg-black/10 text-primary-foreground/80"
-                               : "border-primary/50 bg-muted text-muted-foreground",
-                        )}>
-                          {m.replyToText}
-                        </div>
-                      )}
-
-                      {deleted ? (
-                        <p className="px-0.5 py-1 text-sm italic opacity-60">This message was deleted</p>
-                      ) : m.type === "image" ? (
-                        <a href={m.fileUrl} target="_blank" rel="noreferrer" className="block">
-                          <img src={m.fileUrl} alt={m.fileName || "Photo"}
-                            className="max-h-80 w-full rounded-lg object-cover" loading="lazy" />
-                        </a>
-                      ) : m.type === "video" ? (
-                        <video src={m.fileUrl} controls playsInline className="max-h-80 w-full rounded-lg" />
-                      ) : m.type === "voice" && m.fileName ? (
-                        // A shared audio FILE, not a recorded note: it has a name worth showing and
-                        // is long enough that scrubbing matters.
-                        <div className="min-w-[210px] py-1">
-                          <p className="mb-1 truncate text-xs font-medium">{m.fileName}</p>
-                          <audio src={m.fileUrl} controls className="w-full" style={{ height: 34 }} />
-                        </div>
-                      ) : m.type === "voice" ? (
-                        <button onClick={() => togglePlay(m)}
-                          className="flex min-w-[150px] items-center gap-2 py-1 text-left">
-                          <span className={cn(
-                            "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-                            mine ? "bg-primary-foreground/20" : "bg-primary/10",
+                        {showName && (
+                          <p className={cn(
+                            "mb-0.5 px-0.5 text-[12.5px] font-semibold",
+                            mine ? "text-emerald-900/70 dark:text-emerald-200/80" : "text-emerald-700 dark:text-emerald-400",
                           )}>
-                            {playing === m.id ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                          </span>
-                          <span className="flex-1">
-                            <span className="block h-1 rounded-full bg-current opacity-30" />
-                            <span className="mt-1 block text-[11px] opacity-70">
-                              {m.duration ? secs(m.duration) : "Voice message"}
+                            {m.senderName}
+                          </p>
+                        )}
+
+                        {m.replyToId && !deleted && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); jumpTo(m.replyToId); }}
+                            className={cn(
+                              "mb-1 block w-full overflow-hidden rounded border-l-[3px] px-2 py-1 text-left text-[12.5px]",
+                              mine
+                                ? "border-emerald-700 bg-black/5 text-slate-700 dark:border-emerald-300 dark:bg-black/20 dark:text-slate-200"
+                                : "border-emerald-600 bg-black/5 text-slate-600 dark:border-emerald-400 dark:bg-black/20 dark:text-slate-300",
+                            )}
+                          >
+                            <span className="line-clamp-2 break-words">{m.replyToText}</span>
+                          </button>
+                        )}
+
+                        {deleted ? (
+                          <p className="px-0.5 py-1 text-[13.5px] italic opacity-60">This message was deleted</p>
+                        ) : m.type === "image" ? (
+                          <a href={m.fileUrl} target="_blank" rel="noreferrer" className="block"
+                            onClick={(e) => e.stopPropagation()}>
+                            <img src={m.fileUrl} alt={m.fileName || "Photo"}
+                              className="max-h-80 w-full rounded-md object-cover" loading="lazy" />
+                          </a>
+                        ) : m.type === "video" ? (
+                          <video src={m.fileUrl} controls playsInline className="max-h-80 w-full rounded-md"
+                            onClick={(e) => e.stopPropagation()} />
+                        ) : m.type === "voice" && m.fileName ? (
+                          // A shared audio FILE, not a recorded note: it has a name worth showing and
+                          // is long enough that scrubbing matters.
+                          <div className="min-w-[210px] py-1" onClick={(e) => e.stopPropagation()}>
+                            <p className="mb-1 truncate text-xs font-medium">{m.fileName}</p>
+                            <audio src={m.fileUrl} controls className="w-full" style={{ height: 34 }} />
+                          </div>
+                        ) : m.type === "voice" ? (
+                          <button onClick={(e) => { e.stopPropagation(); togglePlay(m); }}
+                            className="flex min-w-[150px] items-center gap-2 py-1 text-left">
+                            <span className={cn(
+                              "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
+                              mine ? "bg-black/10 dark:bg-white/15" : "bg-emerald-600/10 dark:bg-white/10",
+                            )}>
+                              {playing === m.id ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                             </span>
-                          </span>
-                        </button>
-                      ) : m.type === "file" ? (
-                        <a href={m.fileUrl} target="_blank" rel="noreferrer"
-                          className="flex items-center gap-2 py-1">
-                          <FileText className="h-5 w-5 shrink-0 opacity-80" />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-medium">{m.fileName || "Attachment"}</span>
-                            <span className="text-[11px] opacity-70">Tap to open</span>
-                          </span>
-                          <Download className="h-4 w-4 shrink-0 opacity-60" />
-                        </a>
-                      ) : m.type === "emoji" ? (
-                        <p className="py-1 text-4xl leading-none">{m.text}</p>
-                      ) : (
-                        <p className="whitespace-pre-wrap break-words px-0.5 py-0.5 text-sm leading-relaxed">{m.text}</p>
-                      )}
+                            <span className="flex-1">
+                              <span className="block h-1 rounded-full bg-current opacity-25" />
+                              <span className="mt-1 block text-[11px] opacity-60">
+                                {m.duration ? secs(m.duration) : "Voice message"}
+                              </span>
+                            </span>
+                          </button>
+                        ) : m.type === "file" ? (
+                          <a href={m.fileUrl} target="_blank" rel="noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className={cn(
+                              "flex items-center gap-2 rounded-md px-2 py-2",
+                              mine ? "bg-black/5 dark:bg-white/10" : "bg-slate-500/5 dark:bg-white/5",
+                            )}>
+                            <FileText className="h-6 w-6 shrink-0 opacity-70" />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-[13.5px] font-medium">{m.fileName || "Attachment"}</span>
+                              <span className="text-[11px] opacity-60">Tap to open</span>
+                            </span>
+                            <Download className="h-4 w-4 shrink-0 opacity-50" />
+                          </a>
+                        ) : m.type === "emoji" ? (
+                          <p className="py-1 text-4xl leading-none">{m.text}</p>
+                        ) : (
+                          <p className="whitespace-pre-wrap break-words px-0.5 leading-[1.35]">{m.text}</p>
+                        )}
 
-                      {/* The caption sent with a photo, video or file. */}
-                      {hasCaption && !deleted && (
-                        <p className="whitespace-pre-wrap break-words px-0.5 pt-1 text-sm leading-relaxed">
-                          {m.text}
-                        </p>
-                      )}
+                        {/* The caption sent with a photo, video or file. */}
+                        {hasCaption && !deleted && (
+                          <p className="whitespace-pre-wrap break-words px-1.5 pt-1 text-[14.2px] leading-[1.35]">
+                            {m.text}
+                          </p>
+                        )}
 
-                      <div className={cn(
-                        "mt-0.5 flex items-center justify-end gap-1 text-[10px]",
-                        mine ? "text-primary-foreground/70" : "text-muted-foreground",
-                      )}>
-                        {clock(m.createdAt)}
+                        {/* Timestamp on the last of a run only, in the corner it belongs in. */}
+                        {tail && (
+                          <span className={cn(
+                            "float-right ml-2 mt-0.5 flex select-none items-center gap-0.5 pr-0.5 text-[10.5px] leading-none",
+                            isMedia && "rounded bg-black/45 px-1.5 py-0.5 text-white",
+                            mine ? "text-slate-600 dark:text-slate-300/70" : "text-slate-500 dark:text-slate-400",
+                          )}>
+                            {clock(m.createdAt)}
+                            {mine && !deleted && (
+                              <CheckCheck className="h-3 w-3 opacity-70" aria-label="Sent" />
+                            )}
+                          </span>
+                        )}
+                        {tail && <span className="clear-both block" />}
                       </div>
-                    </div>
 
-                    {!deleted && canSend && !mine && (
-                      <button onClick={() => setReplyTo(m)} aria-label="Reply"
-                        className="mb-1 shrink-0 rounded-full p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent group-hover:opacity-100">
-                        <Reply className="h-3.5 w-3.5" />
-                      </button>
-                    )}
+                      {/* Tap a bubble on a phone, hover it on a desktop — either way, Reply. */}
+                      {!deleted && canSend && (
+                        <div
+                          /* Fully above the bubble, never on top of it — at `-top-3` it sat over
+                             the sender's name, which is the one line telling a leader which of
+                             their people wrote this. */
+                          className={cn(
+                            "absolute bottom-full right-1 z-10 mb-1 flex items-center gap-1 rounded-full border border-slate-200 bg-white px-1 py-0.5 shadow-md transition-opacity dark:border-slate-700 dark:bg-[#233138]",
+                            openActions === m.id
+                              ? "opacity-100"
+                              : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100",
+                          )}
+                        >
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setReplyTo(m); setOpenActions(null); }}
+                            data-test="order-chat-reply"
+                            title="Reply to this message"
+                            className="flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-white/10"
+                          >
+                            <Reply className="h-3.5 w-3.5" /> Reply
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -433,54 +563,61 @@ export default function OrderChatPanel({
 
       {/* ── Composer ─────────────────────────────────────────────────────────────────────────── */}
       {locked ? (
-        <div className="border-t border-border bg-muted/40 px-4 py-4 text-center">
-          <Lock className="mx-auto mb-1.5 h-4 w-4 text-muted-foreground" />
-          <p className="text-sm font-medium text-foreground">
+        <div className="border-t border-black/10 bg-[#f0f2f5] px-4 py-4 text-center dark:border-white/10 dark:bg-[#202c33]">
+          <Lock className="mx-auto mb-1.5 h-4 w-4 text-slate-500 dark:text-slate-400" />
+          <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
             {lockedNote || "This chat is closed"}
           </p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
             You can still read everything and open the files that were shared.
           </p>
         </div>
       ) : (
-        <div className="border-t border-border bg-card">
+        <div className="border-t border-black/5 bg-[#f0f2f5] pb-[env(safe-area-inset-bottom)] dark:border-white/5 dark:bg-[#202c33]">
           {error && (
-            <div className="flex items-center justify-between gap-2 border-b border-destructive/20 bg-destructive/10 px-3 py-2">
-              <p className="text-xs text-destructive">{error}</p>
+            <div className="flex items-center justify-between gap-2 border-b border-rose-500/20 bg-rose-500/10 px-3 py-2">
+              <p className="text-xs text-rose-700 dark:text-rose-300">{error}</p>
               <button onClick={() => setError(null)} aria-label="Dismiss">
-                <X className="h-3.5 w-3.5 text-destructive" />
+                <X className="h-3.5 w-3.5 text-rose-700 dark:text-rose-300" />
               </button>
             </div>
           )}
 
           {replyTo && (
-            <div className="flex items-center gap-2 border-b border-border bg-muted/50 px-3 py-2">
-              <Reply className="h-3.5 w-3.5 shrink-0 text-primary" />
-              <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                Replying to: {replyTo.text || "attachment"}
-              </p>
-              <button onClick={() => setReplyTo(null)} aria-label="Cancel reply">
-                <X className="h-3.5 w-3.5 text-muted-foreground" />
-              </button>
+            <div className="flex items-stretch gap-2 px-2 pt-2" data-test="order-chat-replying-to">
+              <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border-l-4 border-emerald-500 bg-white px-2.5 py-1.5 dark:bg-[#111b21]">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11.5px] font-semibold text-emerald-600 dark:text-emerald-400">
+                    {replyTo.senderId === identity.senderId ? "You" : replyTo.senderName || "Message"}
+                  </p>
+                  <p className="truncate text-[12.5px] text-slate-600 dark:text-slate-300">
+                    {replyTo.text || (replyTo.type === "voice" ? "🎤 Voice message" : "📎 Attachment")}
+                  </p>
+                </div>
+                <button onClick={() => setReplyTo(null)} aria-label="Cancel reply"
+                  className="shrink-0 rounded-full p-1 text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           )}
 
           {uploading && (
-            <div className="border-b border-border px-3 py-2">
-              <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="px-3 py-2">
+              <div className="mb-1 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                 <Loader2 className="h-3 w-3 animate-spin" /> Sending… {progress}%
               </div>
-              <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
-                <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
+              <div className="h-1 w-full overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
+                <div className="h-full bg-emerald-500 transition-all" style={{ width: `${progress}%` }} />
               </div>
             </div>
           )}
 
           {showEmojis && (
-            <div className="grid grid-cols-8 gap-1 border-b border-border p-2">
+            <div className="grid grid-cols-8 gap-1 border-b border-black/5 p-2 dark:border-white/5">
               {EMOJI_LIST.map((e) => (
                 <button key={e} onClick={() => { setText((t) => t + e); }}
-                  className="rounded-lg p-1.5 text-xl transition-colors hover:bg-accent">
+                  className="rounded-lg p-1.5 text-xl transition-colors hover:bg-black/5 dark:hover:bg-white/10">
                   {e}
                 </button>
               ))}
@@ -489,14 +626,14 @@ export default function OrderChatPanel({
 
           {recording ? (
             <div className="flex items-center gap-3 px-3 py-3">
-              <span className="flex h-2.5 w-2.5 animate-pulse rounded-full bg-red-500" />
-              <span className="flex-1 font-mono text-sm text-foreground">{secs(recordSecs)}</span>
-              <button onClick={() => stopRecording(true)}
-                className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent">
-                Cancel
+              <span className="flex h-2.5 w-2.5 animate-pulse rounded-full bg-rose-500" />
+              <span className="flex-1 font-mono text-sm text-slate-700 dark:text-slate-200">{secs(recordSecs)}</span>
+              <button onClick={() => stopRecording(true)} aria-label="Cancel recording"
+                className="rounded-full p-2 text-slate-500 hover:bg-black/5 dark:hover:bg-white/10">
+                <Trash2 className="h-4 w-4" />
               </button>
               <button onClick={() => stopRecording(false)}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground">
+                className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white">
                 <Square className="h-3 w-3" /> Send
               </button>
             </div>
@@ -504,36 +641,40 @@ export default function OrderChatPanel({
             <div className="flex items-end gap-1.5 px-2 py-2">
               <input ref={fileInputRef} type="file" hidden onChange={pickFile}
                 accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip" />
-              <button onClick={() => fileInputRef.current?.click()} disabled={!canSend || uploading}
-                className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
-                aria-label="Attach a file" title="Photo, video, audio, PDF or any file">
-                <Paperclip className="h-5 w-5" />
-              </button>
-              <button onClick={() => setShowEmojis((s) => !s)} disabled={!canSend}
-                className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
-                aria-label="Emoji">
-                <SmilePlus className="h-5 w-5" />
-              </button>
-              <textarea
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitText(); }
-                }}
-                rows={1}
-                disabled={!canSend}
-                placeholder="Type a message"
-                className="max-h-32 min-h-[40px] flex-1 resize-none rounded-2xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
-              />
+              <div className="flex flex-1 items-end gap-1 rounded-3xl bg-white px-2 py-1 dark:bg-[#2a3942]">
+                <button onClick={() => setShowEmojis((s) => !s)} disabled={!canSend}
+                  className="rounded-full p-2 text-slate-500 transition-colors hover:bg-black/5 disabled:opacity-40 dark:text-slate-400 dark:hover:bg-white/10"
+                  aria-label="Emoji">
+                  <SmilePlus className="h-5 w-5" />
+                </button>
+                <textarea
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitText(); }
+                  }}
+                  rows={1}
+                  disabled={!canSend}
+                  placeholder="Type a message"
+                  data-test="order-chat-input"
+                  className="max-h-32 min-h-[38px] flex-1 resize-none bg-transparent px-1 py-2 text-[14.5px] text-slate-900 outline-none placeholder:text-slate-400 disabled:opacity-50 dark:text-slate-50"
+                />
+                <button onClick={() => fileInputRef.current?.click()} disabled={!canSend || uploading}
+                  className="rounded-full p-2 text-slate-500 transition-colors hover:bg-black/5 disabled:opacity-40 dark:text-slate-400 dark:hover:bg-white/10"
+                  aria-label="Attach a file" title="Photo, video, audio, PDF or any file">
+                  <Paperclip className="h-5 w-5 -rotate-45" />
+                </button>
+              </div>
               {text.trim() ? (
                 <button onClick={submitText} disabled={!canSend || sending}
-                  className="rounded-full bg-primary p-2.5 text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
+                  data-test="order-chat-send"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white transition-opacity hover:opacity-90 disabled:opacity-40"
                   aria-label="Send">
                   {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
                 </button>
               ) : (
                 <button onClick={startRecording} disabled={!canSend || uploading}
-                  className="rounded-full bg-primary p-2.5 text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white transition-opacity hover:opacity-90 disabled:opacity-40"
                   aria-label="Record a voice message" title="Hold a conversation without typing">
                   <Mic className="h-5 w-5" />
                 </button>
@@ -576,7 +717,7 @@ export default function OrderChatPanel({
             )}
           </div>
 
-          <div className="flex items-end gap-2 bg-black/60 px-3 py-3">
+          <div className="flex items-end gap-2 bg-black/60 px-3 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
             <textarea
               value={caption}
               onChange={(e) => setCaption(e.target.value)}
@@ -588,7 +729,7 @@ export default function OrderChatPanel({
               className="max-h-28 min-h-[42px] flex-1 resize-none rounded-2xl border border-white/20 bg-white/10 px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/50 focus:border-white/40"
             />
             <button onClick={sendPending} data-test="order-chat-preview-send"
-              className="rounded-full bg-primary p-3 text-primary-foreground transition-opacity hover:opacity-90"
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-600 text-white transition-opacity hover:opacity-90"
               aria-label="Send">
               <Send className="h-5 w-5" />
             </button>
@@ -604,13 +745,13 @@ export function OrderChatCallButtons({ onVoice, onVideo, disabled }: {
   onVoice: () => void; onVideo: () => void; disabled?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-1">
-      <button onClick={onVoice} disabled={disabled} title="Voice call"
-        className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30">
+    <div className="flex items-center gap-0.5">
+      <button onClick={onVoice} disabled={disabled} title="Voice call" data-test="chat-call-voice"
+        className="rounded-full p-2 text-current opacity-90 transition-opacity hover:opacity-100 disabled:opacity-30">
         <Phone className="h-5 w-5" />
       </button>
-      <button onClick={onVideo} disabled={disabled} title="Video call"
-        className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30">
+      <button onClick={onVideo} disabled={disabled} title="Video call" data-test="chat-call-video"
+        className="rounded-full p-2 text-current opacity-90 transition-opacity hover:opacity-100 disabled:opacity-30">
         <VideoIcon className="h-5 w-5" />
       </button>
     </div>

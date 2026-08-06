@@ -3,6 +3,7 @@ import {
   Briefcase, Clock, Play, CheckCircle2, ChevronDown, Loader2, AlertCircle, Sparkles, Edit3, Copy, Check, Undo2,
   MessagesSquare
 } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import { collection, query, where, doc, updateDoc, deleteField, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/services/firebase';
 import { revertOrderToAssigned } from '@/services/orders';
@@ -59,6 +60,26 @@ export default function MyWork() {
   const [verifyPurpose, setVerifyPurpose] = useState<'work' | 'chat'>('work');
   const [openAssignment, setOpenAssignment] = useState<WorkAssignment | null>(null);
   const [openChatFor, setOpenChatFor] = useState<WorkAssignment | null>(null);
+
+  /**
+   * A tapped "… sent a message" notification opens that conversation, not this list.
+   *
+   * The push carries `?chat=<assignmentId>`. Landing a member on twenty jobs and expecting them to
+   * find the one that just messaged them is how a reply takes an hour, which is the delay this
+   * whole feature exists to remove. The parameter is cleared once used so a refresh — or a Back
+   * into this entry — does not reopen a chat the member deliberately closed.
+   */
+  const [chatParams, setChatParams] = useSearchParams();
+  const requestedChatId = chatParams.get("chat");
+  useEffect(() => {
+    if (!requestedChatId) return;
+    const match = assignments.find(a => a.id === requestedChatId);
+    if (!match) return;              // still loading, or not this member's job
+    setOpenChatFor(match);
+    const next = new URLSearchParams(chatParams);
+    next.delete("chat");
+    setChatParams(next, { replace: true });
+  }, [requestedChatId, assignments, chatParams, setChatParams]);
   const chatState = useOrderChatUnread(user?.uid);
 
   /**

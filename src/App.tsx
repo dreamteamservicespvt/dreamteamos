@@ -3,7 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useAuthStore } from "@/store/authStore";
 import { defaultRouteForUser } from "@/utils/roleHelpers";
@@ -80,7 +80,7 @@ import PlaceholderPage from "@/pages/PlaceholderPage";
 import MySalaryPage from "@/pages/shared/MySalary";
 import MySalaryDashboard from "@/pages/tech-member/MySalaryDashboard";
 import NotFound from "@/pages/NotFound";
-import ClientChat from "@/pages/client/ClientChat";
+import ClientChat, { ClientChatResume } from "@/pages/client/ClientChat";
 import VerifyEmployee from "@/pages/public/VerifyEmployee";
 import JoinOnboarding from "@/pages/onboarding/JoinOnboarding";
 import Chat from "@/pages/shared/Chat";
@@ -91,9 +91,20 @@ import AppUpdateBanner from "@/components/layout/AppUpdateBanner";
 
 const queryClient = new QueryClient();
 
+/**
+ * "/" means "wherever this person's day starts", and it carries the query along with it.
+ *
+ * The query matters because it is how a tapped notification says what it was about — `?call=<id>`
+ * is what makes the answer button appear. A notification cannot know the recipient's role, and
+ * linking to a role's own route got it wrong in the one case that matters most: a tech admin
+ * ringing a member sent that member to `/tech-admin/chat`, which their role is not allowed to
+ * open, so answering a call signed them out. Sending everyone to "/" and forwarding both the route
+ * and the parameters is the version that cannot be wrong about who is reading it.
+ */
 function RootRedirect() {
   const { loading } = useAuth();
   const user = useAuthStore((s) => s.user);
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -103,7 +114,7 @@ function RootRedirect() {
     );
   }
 
-  if (user) return <Navigate to={defaultRouteForUser(user)} replace />;
+  if (user) return <Navigate to={`${defaultRouteForUser(user)}${location.search}`} replace />;
   return <Navigate to="/login" replace />;
 }
 
@@ -121,10 +132,14 @@ const App = () => (
           <Route path="/" element={<RootRedirect />} />
           <Route path="/login" element={<Login />} />
 
-          {/* The client's chat for one order. Public by design: the customer has no account, holds
-              a link and a 4-digit code, and must never be asked to sign in to answer a question
-              about their own ad. Kept short so it survives being pasted into WhatsApp. */}
+          {/* The client's chat for one order. Public by design: the customer has no account and
+              must never be asked to sign in — or to type anything — to answer a question about
+              their own ad. Kept short so it survives being pasted into WhatsApp. */}
           <Route path="/c/:chatId" element={<ClientChat />} />
+          {/* Where the installed chat app starts. A manifest is one static file for every
+              customer, so it cannot name a chat; this sends them to the last one they opened. */}
+          <Route path="/c" element={<ClientChatResume />} />
+          <Route path="/c/" element={<ClientChatResume />} />
 
           {/* Where an ID card's QR lands. Public because the people who check a badge — a client's
               security desk, a landlord, a bank — are by definition outside the company. */}

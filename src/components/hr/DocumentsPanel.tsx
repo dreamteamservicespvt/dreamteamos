@@ -1,12 +1,16 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, Clock, FileSignature, FileText, Loader2, Mail, Plus, Trash2, XCircle } from "lucide-react";
+import {
+  AlertTriangle, CalendarClock, CheckCircle2, Clock, FileSignature, FileText, Loader2, Mail, Plus,
+  Trash2, XCircle,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirm } from "@/hooks/useConfirm";
 import {
-  deleteDocument, documentsNeedingEmailRefresh, refreshDocumentEmails, signedDocumentsWithStaleEmail,
+  addLeaveTermsToDocuments, deleteDocument, documentsNeedingEmailRefresh, documentsNeedingLeaveTerms,
+  refreshDocumentEmails, signedDocumentsWithStaleEmail,
 } from "@/services/hrDocuments";
 import { letterEmail } from "@/utils/documentSubject";
-import { CORE_EMPLOYMENT_DOCS } from "@/utils/hrPolicy";
+import { CORE_EMPLOYMENT_DOCS, todayIso } from "@/utils/hrPolicy";
 import { HR_DOCUMENT_LABELS } from "@/types/hr";
 import type { AppUser } from "@/types";
 import type { EmployeeProfile, HrDocument, HrDocumentType } from "@/types/hr";
@@ -101,6 +105,38 @@ export default function DocumentsPanel({ member, profile, documents, signatory, 
     }
   };
 
+  /**
+   * Letters that predate the leave terms being written down.
+   *
+   * Offered for signed documents as well as unsigned ones, unlike the email correction above — and
+   * for the opposite reason. Correcting an address changes what a signed page says; this adds a
+   * dated addendum underneath it, leaving the signed page exactly as it was. The employee most
+   * likely to be caught out by a leave day that lapses is the one who signed longest ago.
+   */
+  const needsLeaveTerms = useMemo(() => documentsNeedingLeaveTerms(documents), [documents]);
+  const [addingTerms, setAddingTerms] = useState(false);
+  const handleAddLeaveTerms = async () => {
+    const { confirmed } = await confirm({
+      title: `Add the leave terms to ${needsLeaveTerms.length} document${needsLeaveTerms.length === 1 ? "" : "s"}?`,
+      description:
+        "A dated addendum stating the weekly off, the public holidays and the two paid leave days per pay cycle (which do not carry forward) is added to the end of each letter. The letters themselves are not changed, and signed ones keep their signature.",
+      confirmText: "Add addendum",
+    });
+    if (!confirmed) return;
+    setAddingTerms(true);
+    try {
+      const n = await addLeaveTermsToDocuments(documents, profile, todayIso());
+      toast({
+        title: "Leave terms added",
+        description: `${n} document${n === 1 ? "" : "s"} now state the weekly off, public holidays and paid leave.`,
+      });
+    } catch {
+      toast({ title: "Error", description: "Could not update the documents.", variant: "destructive" });
+    } finally {
+      setAddingTerms(false);
+    }
+  };
+
   return (
     <SectionCard
       title="Documents"
@@ -157,6 +193,30 @@ export default function DocumentsPanel({ member, profile, documents, signatory, 
               {refreshing ? "Updating…" : `Update ${staleUnsigned.length} unsigned document${staleUnsigned.length === 1 ? "" : "s"}`}
             </button>
           )}
+        </div>
+      )}
+
+      {!readOnly && needsLeaveTerms.length > 0 && (
+        <div className="mb-4 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5" data-test="leave-terms-notice">
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-primary">
+            <CalendarClock size={13} /> {needsLeaveTerms.length} letter
+            {needsLeaveTerms.length === 1 ? "" : "s"} do not state the leave terms
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+            {needsLeaveTerms.map((d) => HR_DOCUMENT_LABELS[d.type]).join(", ")} refer to "the company's
+            leave policy" without saying what it is. Adding the addendum puts the weekly off, the declared
+            public holidays and the two paid leave days per pay cycle — which lapse if unused — in writing.
+            Signed letters keep their original text and signature; the addendum goes underneath, dated.
+          </p>
+          <button
+            onClick={handleAddLeaveTerms}
+            disabled={addingTerms}
+            data-test="add-leave-terms"
+            className="mt-2 inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-[11px] font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            {addingTerms ? <Loader2 size={12} className="animate-spin" /> : <CalendarClock size={12} />}
+            {addingTerms ? "Adding…" : `Add the leave terms to ${needsLeaveTerms.length} letter${needsLeaveTerms.length === 1 ? "" : "s"}`}
+          </button>
         </div>
       )}
 

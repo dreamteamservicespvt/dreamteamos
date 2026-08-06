@@ -140,7 +140,7 @@ export default function WorkAssign() {
    * afterwards, because the client is often messaged later in the day.
    */
   const [clientChat, setClientChat] = useState<{
-    chatId: string; accessCode: string; businessName: string; uniqueId: string;
+    chatId: string; businessName: string; uniqueId: string;
     category?: string; clientPhone?: string;
   } | null>(null);
   const [clientChatOpen, setClientChatOpen] = useState(false);
@@ -322,7 +322,6 @@ export default function WorkAssign() {
 
       setClientChat({
         chatId: assignmentId,
-        accessCode,
         businessName: form.businessName,
         uniqueId,
         category: form.category,
@@ -520,7 +519,6 @@ export default function WorkAssign() {
       {clientChatOpen && clientChat && (
         <ShareChatModal
           chatId={clientChat.chatId}
-          accessCode={clientChat.accessCode}
           businessName={clientChat.businessName}
           uniqueId={clientChat.uniqueId}
           category={clientChat.category}

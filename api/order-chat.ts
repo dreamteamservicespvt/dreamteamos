@@ -1,16 +1,25 @@
 /**
- * The client's way into an order chat, and their way of raising an alert.
+ * The client's way into an order chat, and the alerts that travel in both directions.
  *
- * A customer has no account here and never will, so the two things they need are done for them on
- * the server: proving they hold the 4-digit code, and reaching the member who is doing their work.
+ * A customer has no account here and never will, so everything they cannot do for themselves is
+ * done for them on the server: getting into their own room, reaching the member doing their work,
+ * and being reachable when they are not looking at the page.
  *
- * The code is checked here rather than in the page because a code compared in the browser has to be
- * sent to the browser first, where anyone holding the link can read it straight out of the network
- * tab. Instead the client posts what they typed, and gets back a Firebase custom token scoped by an
- * `orderChat` claim to exactly one room — which is also what the Firestore rules read.
+ * ── Why there is no longer a code to type ─────────────────────────────────────────────────────
+ * The chat used to be opened with four digits sent alongside the link. It was the wrong lock for
+ * these customers. Half of them are small business owners reached on WhatsApp who do not read past
+ * the first line of a message, and asking them to find a code in it and type it into a box was the
+ * single biggest reason a chat was never opened at all — the feature exists to be easier than a
+ * WhatsApp group, and it was harder.
  *
- * Notifications are raised here for the same reason: the recipients are derived from the chat
- * document, so a guest cannot address anyone the chat does not already contain.
+ * The link IS the credential now. `chatId` is a Firestore auto-id: 20 characters from a 62-symbol
+ * alphabet, which is not something anyone guesses their way into. It is the same bearer-URL model
+ * as an unlisted document link, and the exposure is one customer's own conversation about their own
+ * order. What the link does NOT do is let its holder reach anything else: the token minted below is
+ * scoped by an `orderChat` claim to exactly this room, and every rule in the database matches on it.
+ *
+ * Notifications are raised here rather than from either browser because the recipients are derived
+ * from the chat document — so neither side can address anyone the room does not already contain.
  */
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import admin from "firebase-admin";
@@ -22,32 +31,54 @@ if (!admin.apps.length) {
 
 const adminDb = admin.firestore();
 
-/** Wrong tries allowed before the room stops answering, and for how long it stays quiet. */
-const MAX_ATTEMPTS = 5;
-const LOCKOUT_MS = 15 * 60 * 1000;
-
 const APP_ICON = "https://res.cloudinary.com/dvmrhs2ek/image/upload/v1774554466/jdqjbuvcdo40o5gzdlvz.png";
 
-/** Sends a push to one user, and writes the in-app row the bell reads. */
-async function alertUser(opts: {
-  userId: string; type: string; title: string; message: string; link: string; callDocId?: string;
-}) {
-  const { userId, type, title, message, link, callDocId } = opts;
+/** The id a customer holds for one room — their sender id, their call id, their push id. */
+const guestUid = (chatId: string) => `guest_${chatId}`;
 
-  await adminDb.collection("notifications").add({
-    userId, type, title, message, link, read: false,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
+interface Room {
+  businessName?: string;
+  clientName?: string;
+  uniqueId?: string;
+  memberUid?: string;
+  memberName?: string;
+  status?: string;
+  participants?: string[];
+  activeUsers?: string[];
+}
+
+/** Sends a push to one recipient, and writes the in-app row the bell reads. */
+async function alertUser(opts: {
+  userId: string;
+  type: string;
+  title: string;
+  message: string;
+  link: string;
+  callDocId?: string;
+  /** Skip the Firestore row — a customer has no bell to write to. */
+  pushOnly?: boolean;
+}) {
+  const { userId, type, title, message, link, callDocId, pushOnly } = opts;
+
+  if (!pushOnly) {
+    await adminDb.collection("notifications").add({
+      userId, type, title, message, link, read: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  }
 
   const tokensSnap = await adminDb.collection("fcmTokens").where("userId", "==", userId).get();
   if (tokensSnap.empty) return;
-  const tokens = tokensSnap.docs.map((d) => d.data().token as string);
+  // Row ids are kept alongside the tokens because a guest's id is `<token>__<chatId>`, not the
+  // bare token — deleting a dead one has to go by the row, not by what is inside it.
+  const rows = tokensSnap.docs.map((d) => ({ id: d.id, token: d.data().token as string }));
+  const tokens = rows.map((r) => r.token);
 
   const isCall = type === "voice_call" || type === "video_call";
   const channelId = isCall ? "calls" : type === "chat_message" ? "messages" : "default";
 
   try {
-    await admin.messaging().sendEachForMulticast({
+    const result = await admin.messaging().sendEachForMulticast({
       tokens,
       data: {
         title, body: message, type, channelId, link, icon: APP_ICON,
@@ -56,6 +87,20 @@ async function alertUser(opts: {
       android: { priority: "high", ttl: isCall ? 0 : 86400000 },
       webpush: { headers: { Urgency: "high" }, notification: { title, body: message, icon: APP_ICON } },
     });
+
+    /**
+     * Retire tokens the device behind them has thrown away.
+     *
+     * A customer's browser reissues its token whenever storage is cleared, and every dead one stays
+     * in the collection being sent to forever. Left alone, a room ends up with a dozen tokens, and
+     * every push costs a dozen failed sends before the one that lands.
+     */
+    const dead = result.responses
+      .map((r, i) => (r.success ? null : { id: rows[i].id, code: r.error?.code }))
+      .filter((r): r is { id: string; code?: string } =>
+        !!r && (r.code === "messaging/registration-token-not-registered"
+          || r.code === "messaging/invalid-registration-token"));
+    await Promise.all(dead.map((d) => adminDb.collection("fcmTokens").doc(d.id).delete().catch(() => {})));
   } catch (err) {
     console.error("[order-chat] push failed", err);
   }
@@ -77,21 +122,65 @@ function allowedOrigin(origin: string): string | null {
   return null;
 }
 
+const bearer = (authHeader?: string): string =>
+  authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : "";
+
 /**
- * Proves the caller is the customer who already passed the code for THIS chat.
+ * Proves the caller is the customer whose link this is.
  *
- * `join` is authorised by the four digits; everything after it is authorised by the token those
- * digits bought. Without this, anyone who came by a chat link — or guessed at one — could post
- * `notify` in a loop and ring the assigned member's phone until they turned the app off.
+ * `open` is authorised by holding the link; everything after it is authorised by the token the
+ * link bought. Without this, anyone who came by a chat URL could post `notify` in a loop and ring
+ * the assigned member's phone until they turned the app off.
  */
-async function isGuestOf(chatId: string, authHeader: string | undefined): Promise<boolean> {
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : "";
+async function isGuestOf(chatId: string, authHeader?: string): Promise<boolean> {
+  const token = bearer(authHeader);
   if (!token) return false;
   try {
     const decoded = await admin.auth().verifyIdToken(token);
     return decoded.orderChat === chatId;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Where a notification should actually land this particular person.
+ *
+ * Routes in this app are gated by role — `AppLayout` bounces anyone whose role is not on the
+ * route's allow-list straight to the login screen. Every alert from here used to link to
+ * `/tech/my-work`, which is a tech member's page, so a team leader or an admin who tapped
+ * "Client is calling" was signed out of the app instead of being shown the call. One read per
+ * recipient, and only on a notification, is a fair price for a link that works.
+ */
+async function homeFor(userId: string): Promise<string> {
+  try {
+    const snap = await adminDb.collection("users").doc(userId).get();
+    switch (snap.data()?.role) {
+      case "tech_member": return "/tech/my-work";
+      case "tech_team_leader": return "/team-leader/work-assign";
+      case "tech_admin":
+      case "main_admin": return "/tech-admin/work-assign";
+      default: return "/";
+    }
+  } catch {
+    // "/" resolves to whatever that person's own default page is, which is never a dead end.
+    return "/";
+  }
+}
+
+/** Proves the caller is a signed-in member of staff who belongs to this room. Returns their uid. */
+async function staffOf(chatId: string, room: Room, authHeader?: string): Promise<string | null> {
+  const token = bearer(authHeader);
+  if (!token) return null;
+  try {
+    const decoded = await admin.auth().verifyIdToken(token);
+    // A guest token carries the claim; a staff account never does. Belt and braces — the
+    // participants check below would fail for a guest anyway.
+    if (decoded.orderChat) return null;
+    const uid = decoded.uid;
+    return (room.participants || []).includes(uid) ? uid : null;
+  } catch {
+    return null;
   }
 }
 
@@ -114,50 +203,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const roomRef = adminDb.collection("order_chats").doc(chatId);
     const roomSnap = await roomRef.get();
     if (!roomSnap.exists) return res.status(404).json({ error: "not_found" });
-    const room = (roomSnap.data() || {}) as {
-      accessCode?: string | number;
-      businessName?: string;
-      clientName?: string;
-      uniqueId?: string;
-      memberUid?: string;
-      memberName?: string;
-      status?: string;
-      participants?: string[];
-      activeUsers?: string[];
-      failedAttempts?: number;
-      lockedUntil?: number;
-    };
+    const room = (roomSnap.data() || {}) as Room;
 
-    // ── Prove the code and hand back a token for this one room ──────────────────────────────────
-    if (action === "join") {
-      const code = String(req.body.code ?? "");
+    const who = room.businessName || room.clientName || "The client";
+    const clientLink = `/c/${chatId}`;
 
-      const lockedUntil = Number(room.lockedUntil || 0);
-      if (lockedUntil > Date.now()) {
-        return res.status(429).json({
-          error: "locked",
-          retryInSeconds: Math.ceil((lockedUntil - Date.now()) / 1000),
-        });
-      }
-
-      if (!code || code !== String(room.accessCode)) {
-        const attempts = Number(room.failedAttempts || 0) + 1;
-        const nowLocked = attempts >= MAX_ATTEMPTS;
-        await roomRef.update({
-          failedAttempts: nowLocked ? 0 : attempts,
-          ...(nowLocked ? { lockedUntil: Date.now() + LOCKOUT_MS } : {}),
-        });
-        return res.status(401).json({
-          error: nowLocked ? "locked" : "wrong_code",
-          attemptsLeft: nowLocked ? 0 : MAX_ATTEMPTS - attempts,
-          ...(nowLocked ? { retryInSeconds: Math.ceil(LOCKOUT_MS / 1000) } : {}),
-        });
-      }
-
-      if (room.failedAttempts) await roomRef.update({ failedAttempts: 0, lockedUntil: 0 });
-
-      const token = await admin.auth().createCustomToken(`guest_${chatId}`, { orderChat: chatId });
-
+    // ── Open the room: the link is the credential ───────────────────────────────────────────────
+    if (action === "open") {
+      const token = await admin.auth().createCustomToken(guestUid(chatId), { orderChat: chatId });
       return res.status(200).json({
         token,
         chat: {
@@ -168,6 +221,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           status: room.status || "open",
         },
       });
+    }
+
+    // ── The customer's device, so it can be reached with the page shut ──────────────────────────
+    if (action === "register-push") {
+      if (!(await isGuestOf(chatId, req.headers.authorization))) {
+        return res.status(403).json({ error: "forbidden" });
+      }
+      const token = String(req.body.token || "");
+      if (!token) return res.status(400).json({ error: "Missing token" });
+      /**
+       * Keyed by token AND room, unlike a staff registration.
+       *
+       * A browser has exactly one FCM token, and staff store it under that token as the document
+       * id. A customer with two orders open in the same browser would then have their second chat
+       * overwrite the `userId` on the first — and the first conversation would silently stop being
+       * able to reach them. One row per room fixes that; `alertUser` queries on `userId`, so the
+       * shape of the id is nothing it cares about.
+       */
+      await adminDb.collection("fcmTokens").doc(`${token}__${chatId}`).set({
+        userId: guestUid(chatId),
+        token,
+        platform: "web",
+        orderChat: chatId,
+        createdAt: new Date().toISOString(),
+      });
+      return res.status(200).json({ success: true });
     }
 
     // ── Tell the team the client wants them ─────────────────────────────────────────────────────
@@ -182,17 +261,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const callType = req.body.callType === "video" ? "video" : "voice";
 
       const memberUid = String(room.memberUid || "");
-      const who = room.businessName || room.clientName || "The client";
-      const link = "/tech/my-work";
 
       if (kind === "call") {
         if (memberUid) {
+          const home = await homeFor(memberUid);
           await alertUser({
             userId: memberUid,
             type: callType === "video" ? "video_call" : "voice_call",
             title: `Incoming ${callType} call from ${who}`,
             message: `${who} is calling about ${room.uniqueId || "your assigned work"}`,
-            link,
+            // Straight to the call, not to a list of jobs. Tapping a ringing phone has to put the
+            // answer button in front of the member, not somewhere they can navigate to it from.
+            link: callDocId ? `${home}?call=${callDocId}` : home,
             callDocId,
           });
         }
@@ -200,13 +280,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
          * Leader and admin are told, but never rung. They hold many orders at once, so a phone
          * ringing for every client of every member is the fastest way to make them mute the app.
          */
-        const watchers: string[] = (room.participants || []).filter((uid: string) => uid && uid !== memberUid);
-        await Promise.all(watchers.map((uid) => alertUser({
+        const watchers: string[] = (room.participants || []).filter((uid) => uid && uid !== memberUid);
+        await Promise.all(watchers.map(async (uid) => alertUser({
           userId: uid,
           type: "order_chat_call",
           title: "Client is calling",
           message: `${who} is calling ${room.memberName || "the assigned member"} about ${room.uniqueId || "their work"}.`,
-          link,
+          link: await homeFor(uid),
         })));
         return res.status(200).json({ success: true });
       }
@@ -214,14 +294,54 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // A message: only the member is pushed. The others get a badge on the assignment card.
       const active: string[] = room.activeUsers || [];
       if (memberUid && !active.includes(memberUid)) {
+        const home = await homeFor(memberUid);
         await alertUser({
           userId: memberUid,
           type: "chat_message",
           title: `${who} sent a message`,
           message: preview || "New message about your assigned work",
-          link,
+          // Only My Work knows how to open a chat from a link; a leader lands on their own page
+          // and opens it from the job, which is where they were going to do it from anyway.
+          link: home === "/tech/my-work" ? `${home}?chat=${chatId}` : home,
         });
       }
+      return res.status(200).json({ success: true });
+    }
+
+    // ── Tell the client the team wants them ─────────────────────────────────────────────────────
+    /**
+     * The other half of the conversation, and the half that was missing.
+     *
+     * A customer with the tab closed had no way of learning that the ad they are waiting for had
+     * arrived — the room bumped an unread counter nobody was looking at. Now their browser is
+     * registered above and reachable here, which is the whole reason the page asks for permission
+     * before it lets them in.
+     */
+    if (action === "notify-client") {
+      const uid = await staffOf(chatId, room, req.headers.authorization);
+      if (!uid) return res.status(403).json({ error: "forbidden" });
+
+      const kind = String(req.body.kind || "message");
+      const preview = String(req.body.preview || "").slice(0, 120);
+      const callDocId = req.body.callDocId ? String(req.body.callDocId) : undefined;
+      const callType = req.body.callType === "video" ? "video" : "voice";
+      const from = room.memberName || "Dream Team Services";
+
+      // Reading the room right now is the same as having been told.
+      const active: string[] = room.activeUsers || [];
+      if (kind !== "call" && active.includes("client")) return res.status(200).json({ success: true });
+
+      await alertUser({
+        userId: guestUid(chatId),
+        pushOnly: true, // no account, so no bell — the phone's own notification is the whole point
+        type: kind === "call" ? (callType === "video" ? "video_call" : "voice_call") : "chat_message",
+        title: kind === "call" ? `${from} is calling you` : `${from} sent you a message`,
+        message: kind === "call"
+          ? `About your ${room.uniqueId || "order"} — tap to answer`
+          : preview || "Open your project chat to read it",
+        link: kind === "call" && callDocId ? `${clientLink}?call=${callDocId}` : clientLink,
+        callDocId,
+      });
       return res.status(200).json({ success: true });
     }
 

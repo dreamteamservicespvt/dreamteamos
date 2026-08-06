@@ -10,7 +10,7 @@ import {
   collection, addDoc, doc, setDoc, updateDoc, deleteDoc, getDoc, serverTimestamp, increment,
   arrayUnion, arrayRemove, type Firestore,
 } from "firebase/firestore";
-import { db } from "@/services/firebase";
+import { auth, db } from "@/services/firebase";
 import { isNative } from "@/utils/platform";
 import { COMPANY } from "@/utils/company";
 import { categoryLabel } from "@/utils/serviceCatalog";
@@ -28,6 +28,9 @@ export const ORDER_CHATS = "order_chats";
  * works against a dev server too.
  */
 const PROD_ORIGIN = "https://dreamteamos.vercel.app";
+
+/** Inside the Android shell `fetch("/api/…")` resolves to a server that only exists on that phone. */
+const API_BASE = isNative() ? PROD_ORIGIN : "";
 
 export function orderChatLink(chatId: string): string {
   const origin = isNative() ? PROD_ORIGIN : window.location.origin;
@@ -49,23 +52,23 @@ export function buildClientChatMessage(input: {
   businessName?: string;
   uniqueId?: string;
   chatId: string;
-  accessCode: string;
   /** The work's catalog key, so the message can name what was actually ordered. */
   category?: string;
 }): string {
-  const { businessName, uniqueId, chatId, accessCode, category } = input;
+  const { businessName, uniqueId, chatId, category } = input;
   const what = category ? categoryLabel(category) : "ad";
   return [
     `Hello${businessName ? ` ${businessName}` : ""}! 👋`,
     ``,
     `Your ${what}${uniqueId ? ` (${uniqueId})` : ""} has started.`,
-    `Come here to chat with our team — share your photos, videos, logo and any details, and see`,
-    `your preview and the final ad in the same place. You can call the team from here too.`,
+    `Tap the link below to chat with our team — share your photos, videos, logo and any details,`,
+    `and see your preview and the final ad in the same place. You can call the team from there too.`,
     ``,
-    `🔗 Chat link: ${orderChatLink(chatId)}`,
-    `🔑 Code: ${accessCode}`,
+    `🔗 ${orderChatLink(chatId)}`,
     ``,
-    `Just open the link and enter the 4-digit code. No app or sign-up needed.`,
+    // The one instruction left. Everything else the page does for them — see api/order-chat.ts for
+    // why there is no longer a code to find in this message and type into a box.
+    `Just tap the link. Nothing to install, nothing to sign up for, no code to enter.`,
     ``,
     `— ${COMPANY.name}`,
   ].join("\n");
@@ -286,6 +289,36 @@ export async function syncOrderChatDetails(
     if (!Object.keys(clean).length) return;
     await updateDoc(doc(db, ORDER_CHATS, chatId), clean);
   } catch { /* the room may not exist for older assignments — nothing to sync */ }
+}
+
+/**
+ * Reach the customer on their phone when the team says something.
+ *
+ * The mirror of `alertTeam` in orderChatGuest, and the half that was missing: a room bumped an
+ * unread counter for a customer who had closed the tab, which is a signal nobody ever sees. The
+ * server decides who to push to from the chat document and the caller's own token, so a member can
+ * only ever reach the customer of a room they are actually on.
+ *
+ * Fire-and-forget. A message that landed in the room but failed to raise a notification is still a
+ * message that landed; an error thrown here would take the send down with it.
+ */
+export function alertClient(body: {
+  chatId: string;
+  kind: "message" | "call";
+  preview?: string;
+  callDocId?: string;
+  callType?: "voice" | "video";
+}): void {
+  Promise.resolve(auth.currentUser?.getIdToken())
+    .then((token) => {
+      if (!token) return;
+      return fetch(`${API_BASE}/api/order-chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: "notify-client", ...body }),
+      });
+    })
+    .catch(() => { /* no API server (dev) or offline */ });
 }
 
 /** A one-line preview for the room list and the notification body. */

@@ -1,93 +1,240 @@
 /**
- * What the customer sees: one page, one conversation, no account.
+ * What the customer sees: one page, one conversation, no account, nothing to type first.
  *
  * This is the only screen in the app built for someone who has never seen the app. Everything that
  * would normally frame a page — the sidebar, the role switcher, the notification bell — is absent
- * on purpose. A client opens a link from WhatsApp on a phone, types four digits, and is talking to
- * the person building their ad. Anything more than that is something else to explain.
+ * on purpose. A client opens a link from WhatsApp on a phone and is talking to the person building
+ * their ad. Anything more than that is something else to explain.
+ *
+ * ── The one thing it does ask for ─────────────────────────────────────────────────────────────
+ * Notification permission, before the conversation opens. It is the only gate left, and it is here
+ * because of what this page is: a customer sends a photo and goes back to running their shop. The
+ * reply arrives an hour later in a tab they closed. Without a notification there is no reply —
+ * there is a message in a room nobody reopens, and the customer concludes nobody answered. The
+ * whole feature turns on the team being able to reach them, so being reachable is the price of
+ * entry rather than a banner to dismiss.
  */
-import { useCallback, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
-import { Loader2, Lock, ShieldCheck, MessageSquare } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useParams, useSearchParams } from "react-router-dom";
+import { BellRing, Loader2, Lock, ShieldCheck, Sparkles } from "lucide-react";
 import OrderChatPanel, { OrderChatCallButtons } from "@/components/order-chat/OrderChatPanel";
 import ClientCall, { type ClientCallType } from "@/components/order-chat/ClientCall";
-import AccessCodeGate from "@/components/common/AccessCodeGate";
+import InstallChatButton from "@/components/order-chat/InstallChatButton";
 import { useOrderChat } from "@/hooks/useOrderChat";
-import { guestDb, guestUid, hasGuestSession, joinOrderChat, alertTeam, type JoinResult } from "@/services/orderChatGuest";
+import { useNotificationTap } from "@/hooks/useNotificationTap";
+import {
+  guestDb, guestUid, hasGuestSession, openOrderChat, alertTeam, enableGuestPush, pushState,
+  type PushState,
+} from "@/services/orderChatGuest";
 import { CLIENT_SENDER_ID } from "@/types/orderChat";
+import { COMPANY } from "@/utils/company";
+
+/** The chat this browser was last in, so the installed app knows where to reopen. */
+const LAST_CHAT_KEY = "dtsLastOrderChat";
+
+/**
+ * Dress the document as the customer's chat rather than as the staff console.
+ *
+ * Three things, all of them document-level and none of them expressible in a component:
+ *
+ * 1. **Light.** The app ships dark because it is a tool people stare at all day. This page is
+ *    something a customer opens twice, and every messaging app they have ever used is light. A
+ *    dark screen from a company they have paid money to reads as broken, not as styled.
+ * 2. **The chat's own manifest.** Installing from here must produce "My Project" opening at the
+ *    conversation, not "DTS Manager" opening at a staff login they can never get past.
+ * 3. **The address bar colour**, which on Android is the top inch of the screen.
+ *
+ * All three are restored on unmount, because the staff app and this page share one document in
+ * dev and one bundle in production.
+ */
+function useCustomerChrome() {
+  useEffect(() => {
+    const root = document.documentElement;
+    const wasDark = root.classList.contains("dark");
+    root.classList.remove("dark");
+    root.style.colorScheme = "light";
+
+    /**
+     * Hold it light against the app's own theme provider.
+     *
+     * React runs a child's effects before its parents', so this fires first and `ThemeProvider`
+     * puts `dark` straight back a moment later — the page came up in the staff palette every time.
+     * Watching the attribute is what makes the decision stick, and it also covers the provider
+     * reacting to a system-theme change while a customer is mid-conversation.
+     */
+    const observer = new MutationObserver(() => {
+      if (root.classList.contains("dark")) root.classList.remove("dark");
+    });
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+
+    const manifest = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
+    const previousManifest = manifest?.getAttribute("href") ?? null;
+    manifest?.setAttribute("href", "/chat.webmanifest");
+
+    const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    const previousThemeColor = themeColor?.getAttribute("content") ?? null;
+    themeColor?.setAttribute("content", "#008069");
+
+    return () => {
+      observer.disconnect();
+      if (wasDark) root.classList.add("dark");
+      root.style.colorScheme = "";
+      if (previousManifest) manifest?.setAttribute("href", previousManifest);
+      if (previousThemeColor) themeColor?.setAttribute("content", previousThemeColor);
+    };
+  }, []);
+}
 
 export default function ClientChat() {
   const { chatId = "" } = useParams();
-  const [checking, setChecking] = useState(true);
-  const [joined, setJoined] = useState(false);
+  const [phase, setPhase] = useState<"opening" | "gate" | "ready" | "gone">("opening");
+  const [permission, setPermission] = useState<PushState>(() => pushState());
+  useCustomerChrome();
 
+  /**
+   * Signing in happens on arrival, with nothing asked of the customer.
+   *
+   * `hasGuestSession` first so a refresh does not spend a round trip re-minting a token this
+   * browser already holds.
+   */
   useEffect(() => {
     let alive = true;
-    hasGuestSession(chatId).then((ok) => {
+    (async () => {
+      const already = await hasGuestSession(chatId);
       if (!alive) return;
-      setJoined(ok);
-      setChecking(false);
-    });
+      if (!already) {
+        const result = await openOrderChat(chatId);
+        if (!alive) return;
+        if (!result.ok && result.error === "not_found") { setPhase("gone"); return; }
+      }
+      try { localStorage.setItem(LAST_CHAT_KEY, chatId); } catch { /* private browsing */ }
+      const state = pushState();
+      setPermission(state);
+      /**
+       * Already allowed is not already registered.
+       *
+       * Permission belongs to the browser; the registration belongs to the room. A customer with
+       * two orders granted permission on the first one, and without this the second conversation
+       * would never be able to reach them — nothing would ask, because nothing needed asking.
+       * Done in the background: they have already said yes once and should not wait for it again.
+       */
+      if (state === "granted") void enableGuestPush(chatId);
+      // Nothing to ask on a browser that cannot do it at all — an iPhone on Safari outside the
+      // home screen has no push, and refusing to show that customer their chat helps nobody.
+      setPhase(state === "granted" || state === "unsupported" ? "ready" : "gate");
+    })();
     return () => { alive = false; };
   }, [chatId]);
 
-  if (checking) {
+  if (phase === "opening") {
     return (
-      <div className="flex min-h-[100dvh] items-center justify-center bg-background">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="flex min-h-[100dvh] items-center justify-center bg-[#f0f2f5]">
+        <Loader2 className="h-6 w-6 animate-spin text-emerald-600" />
       </div>
     );
   }
 
-  if (!joined) return <CodeGate chatId={chatId} onJoined={() => setJoined(true)} />;
+  if (phase === "gone") {
+    return (
+      <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-[#f0f2f5] px-8 text-center">
+        <Lock className="mb-3 h-8 w-8 text-slate-400" />
+        <p className="text-base font-semibold text-slate-800">This chat is no longer available</p>
+        <p className="mt-1 max-w-xs text-sm text-slate-500">
+          Please contact the team for an updated link.
+        </p>
+      </div>
+    );
+  }
+
+  if (phase === "gate") {
+    return (
+      <NotificationGate
+        permission={permission}
+        onGranted={() => setPhase("ready")}
+        onResult={setPermission}
+        chatId={chatId}
+      />
+    );
+  }
+
   return <Conversation chatId={chatId} />;
 }
 
 /* ────────────────────────────────────────────────────────────────────────────────────────────── */
 
-function CodeGate({ chatId, onJoined }: { chatId: string; onJoined: () => void }) {
+/**
+ * The one screen between the link and the conversation.
+ *
+ * Written for someone who has just been asked for a permission by a website and is deciding
+ * whether this is a scam: it says what will be sent, who from, and that it is only about their own
+ * order. "Allow notifications" as a bare instruction gets refused.
+ */
+function NotificationGate({ permission, onGranted, onResult, chatId }: {
+  permission: PushState;
+  onGranted: () => void;
+  onResult: (p: PushState) => void;
+  chatId: string;
+}) {
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [blocked, setBlocked] = useState(false);
 
-  const submit = useCallback(async (code: string) => {
+  const ask = useCallback(async () => {
     setBusy(true);
-    setError(null);
-    const result: JoinResult = await joinOrderChat(chatId, code);
+    const result = await enableGuestPush(chatId);
     setBusy(false);
-
-    if (result.ok) { onJoined(); return; }
-
-    if (result.error === "locked") {
-      setBlocked(true);
-      const mins = Math.ceil((result.retryInSeconds || 900) / 60);
-      setError(`Too many wrong codes. Please try again in ${mins} minute${mins === 1 ? "" : "s"}, or ask the team to resend the code.`);
-    } else if (result.error === "not_found") {
-      setBlocked(true);
-      setError("This chat link is no longer valid. Please ask the team for a new one.");
-    } else if (result.error === "network") {
-      setError("Couldn't connect. Check your internet and try again.");
-    } else {
-      setError(
-        result.attemptsLeft != null
-          ? `That code isn't right. ${result.attemptsLeft} ${result.attemptsLeft === 1 ? "try" : "tries"} left.`
-          : "That code isn't right. Please check the message again.",
-      );
-    }
-  }, [chatId, onJoined]);
+    onResult(result);
+    if (result === "granted" || result === "unsupported") onGranted();
+  }, [chatId, onGranted, onResult]);
 
   return (
-    <AccessCodeGate
-      icon={<MessageSquare className="h-8 w-8 text-primary" />}
-      title="Your project chat"
-      subtitle="Enter the 4-digit code from the message we sent you."
-      busy={busy}
-      busyLabel="Opening your chat…"
-      error={error}
-      blocked={blocked}
-      onSubmit={submit}
-      note={<><ShieldCheck className="h-3.5 w-3.5" /> Private chat with your project team</>}
-    />
+    <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-[#f0f2f5] px-6 py-10">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-sm">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50">
+          <BellRing className="h-7 w-7 text-emerald-600" />
+        </div>
+        <h1 className="text-lg font-semibold text-slate-900">Turn on notifications</h1>
+        <p className="mt-2 text-sm leading-relaxed text-slate-600">
+          So you know the moment our team replies, sends your preview, or calls you about your
+          order — even when this page is closed.
+        </p>
+
+        <ul className="mt-4 space-y-2 text-left text-[13px] text-slate-600">
+          <li className="flex gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+            Only about your own order. Nothing else, ever.</li>
+          <li className="flex gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+            No marketing, and no phone number needed.</li>
+        </ul>
+
+        {permission === "denied" ? (
+          <div className="mt-5 rounded-xl bg-amber-50 px-3 py-3 text-left">
+            <p className="text-[13px] font-semibold text-amber-800">Notifications are blocked</p>
+            <p className="mt-1 text-[12.5px] leading-relaxed text-amber-700">
+              Your browser has blocked them for this site, so we cannot ask again from here. Tap the
+              lock icon (or ⋮ → Site settings) next to the address bar, allow Notifications, then
+              reload this page.
+            </p>
+            <button
+              onClick={onGranted}
+              data-test="skip-notification-gate"
+              className="mt-3 text-[12.5px] font-semibold text-amber-800 underline underline-offset-2"
+            >
+              Continue without notifications
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={ask}
+            disabled={busy}
+            data-test="enable-notifications"
+            className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <BellRing className="h-4 w-4" />}
+            {busy ? "Just a moment…" : "Allow and open my chat"}
+          </button>
+        )}
+
+        <p className="mt-4 text-[11px] text-slate-400">{COMPANY.name}</p>
+      </div>
+    </div>
   );
 }
 
@@ -95,6 +242,9 @@ function CodeGate({ chatId, onJoined }: { chatId: string; onJoined: () => void }
 
 function Conversation({ chatId }: { chatId: string }) {
   const dbi = guestDb();
+  const [params, setParams] = useSearchParams();
+  // Tapping "… is calling you" focuses this tab; this is what turns that into an answer button.
+  useNotificationTap(dbi);
   const [callRequest, setCallRequest] = useState<ClientCallType | null>(null);
   /**
    * What the team sees above the customer's messages.
@@ -109,7 +259,10 @@ function Conversation({ chatId }: { chatId: string }) {
     alertTeam({ chatId, kind: "message", preview });
   }, [chatId]);
 
-  const identity = { senderId: CLIENT_SENDER_ID, senderName: sendAs, isClient: true };
+  const identity = useMemo(
+    () => ({ senderId: CLIENT_SENDER_ID, senderName: sendAs, isClient: true }),
+    [sendAs],
+  );
 
   const { room, messages, loading, missing, locked, canSend, sending, send } = useOrderChat({
     chatId,
@@ -123,12 +276,21 @@ function Conversation({ chatId }: { chatId: string }) {
     if (name) setSendAs(name);
   }, [room?.businessName, room?.clientName]);
 
+  /** A tapped "… is calling you" notification lands here. Answering it is ClientCall's job. */
+  const answerCallId = params.get("call");
+  const clearCallParam = useCallback(() => {
+    if (!params.get("call")) return;
+    const next = new URLSearchParams(params);
+    next.delete("call");
+    setParams(next, { replace: true });
+  }, [params, setParams]);
+
   if (missing) {
     return (
-      <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-background px-8 text-center">
-        <Lock className="mb-3 h-8 w-8 text-muted-foreground" />
-        <p className="text-base font-semibold text-foreground">This chat is no longer available</p>
-        <p className="mt-1 max-w-xs text-sm text-muted-foreground">
+      <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-[#f0f2f5] px-8 text-center">
+        <Lock className="mb-3 h-8 w-8 text-slate-400" />
+        <p className="text-base font-semibold text-slate-800">This chat is no longer available</p>
+        <p className="mt-1 max-w-xs text-sm text-slate-500">
           Please contact the team for an updated link.
         </p>
       </div>
@@ -136,7 +298,7 @@ function Conversation({ chatId }: { chatId: string }) {
   }
 
   return (
-    <div className="flex h-[100dvh] flex-col bg-background">
+    <div className="flex h-[100dvh] flex-col">
       <OrderChatPanel
         identity={identity}
         messages={messages}
@@ -148,23 +310,24 @@ function Conversation({ chatId }: { chatId: string }) {
         onSend={send}
         emptyHint="Share photos, videos, your logo or any details here. You can also call the team directly."
         header={
-          <div className="flex items-center gap-3 border-b border-border bg-card px-3 py-2.5">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+          <div className="flex items-center gap-3 bg-[#008069] px-3 py-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))] text-white">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/20 text-sm font-bold">
               {(room?.businessName || "D").charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-foreground">
+              <p className="truncate text-[15px] font-semibold leading-tight">
                 {room?.businessName || "Your project"}
               </p>
-              <p className="truncate text-[11px] text-muted-foreground">
+              <p className="truncate text-[11.5px] text-white/75">
                 {locked
                   ? "Delivered · view only"
                   : room?.memberName
-                    ? `${room.memberName} · Dream Team Services`
-                    : "Dream Team Services"}
+                    ? `${room.memberName} · ${COMPANY.name}`
+                    : COMPANY.name}
                 {room?.uniqueId ? ` · ${room.uniqueId}` : ""}
               </p>
             </div>
+            <InstallChatButton />
             {!locked && room?.memberUid && (
               <OrderChatCallButtons
                 onVoice={() => setCallRequest("voice")}
@@ -185,8 +348,48 @@ function Conversation({ chatId }: { chatId: string }) {
           memberName={room.memberName || "Dream Team"}
           request={callRequest}
           onRequestHandled={() => setCallRequest(null)}
+          answerCallId={answerCallId}
+          onAnswerCallHandled={clearCallParam}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * Where an installed chat app opens.
+ *
+ * The manifest's `start_url` cannot carry a chat id — it is one static file for every customer — so
+ * it points here, and here remembers which conversation this browser was last in. A customer with
+ * the app on their home screen taps it and lands in their chat; anyone else gets told plainly to
+ * use the link they were sent rather than a dead end.
+ */
+export function ClientChatResume() {
+  const [last, setLast] = useState<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    let id: string | null = null;
+    try { id = localStorage.getItem(LAST_CHAT_KEY); } catch { /* private browsing */ }
+    if (id) { window.location.replace(`/c/${id}`); return; }
+    setLast(null);
+  }, []);
+
+  if (last === undefined) {
+    return (
+      <div className="flex min-h-[100dvh] items-center justify-center bg-[#f0f2f5]">
+        <Loader2 className="h-6 w-6 animate-spin text-emerald-600" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-[#f0f2f5] px-8 text-center">
+      <Sparkles className="mb-3 h-8 w-8 text-emerald-600" />
+      <p className="text-base font-semibold text-slate-800">Open your chat from your link</p>
+      <p className="mt-1 max-w-xs text-sm text-slate-500">
+        Tap the link {COMPANY.name} sent you and this app will open straight into your project chat
+        from then on.
+      </p>
     </div>
   );
 }

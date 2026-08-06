@@ -30,24 +30,63 @@ self.addEventListener("push", (event) => {
   // Firebase data-only messages put everything under payload.data
   const data = payload.data || payload;
   const title = data.title || "DTS Manager";
+  const isCall = data.type === "voice_call" || data.type === "video_call";
   const options = {
     body: data.body || "You have a new notification",
     icon: data.icon || APP_ICON,
     badge: APP_ICON,
     data: data,
+    // A ringing phone has to demand attention and has to be actionable in one tap. A chat message
+    // does not, and coalesces per conversation so twenty replies are not twenty notifications.
+    requireInteraction: isCall,
+    renotify: isCall,
+    vibrate: isCall ? [400, 200, 400, 200, 400] : [180],
+    tag: isCall ? `call-${data.callDocId || "x"}` : `chat-${data.link || "x"}`,
+    actions: isCall
+      ? [{ action: "accept", title: "Answer" }, { action: "decline", title: "Decline" }]
+      : [],
   };
 
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
+/**
+ * Land the tap in the app that is already open, rather than in a second copy of it.
+ *
+ * `clients.openWindow` was opening a brand new window every time, which on a phone means a cold
+ * boot — sign-in, listeners, the lot — while the call that was being answered rings out. Focusing
+ * an existing client and steering it with a message keeps the answer inside the couple of seconds
+ * a caller will wait.
+ *
+ * "Decline" is handled without opening anything at all: the page it would need does not have to
+ * exist for the caller to stop being kept waiting.
+ */
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const link = event.notification.data?.link;
-  if (link) {
-    event.waitUntil(clients.openWindow(link));
-  } else {
-    event.waitUntil(clients.openWindow("/"));
-  }
+  const data = event.notification.data || {};
+  const link = data.link || "/";
+
+  event.waitUntil((async () => {
+    const windows = await clients.matchAll({ type: "window", includeUncontrolled: true });
+
+    if (event.action === "decline" && data.callDocId) {
+      // Tell an open tab to decline it; if none is open, the caller's own 45-second timeout ends
+      // the call — a service worker has no Firebase credentials of its own to write with.
+      for (const client of windows) {
+        client.postMessage({ type: "call-decline", callDocId: data.callDocId });
+      }
+      return;
+    }
+
+    for (const client of windows) {
+      if ("focus" in client) {
+        client.postMessage({ type: "notification-click", link, callDocId: data.callDocId || null });
+        await client.focus();
+        return;
+      }
+    }
+    await clients.openWindow(link);
+  })());
 });
 
 // ─── Updating ────────────────────────────────────────────────────────────────────────────────

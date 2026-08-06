@@ -850,7 +850,6 @@ export default function TeamLeaderMemberAssignments() {
       {shareChatFor && (
         <ShareChatModal
           chatId={shareChatFor.id}
-          accessCode={shareChatFor.accessCode}
           businessName={shareChatFor.businessName || shareChatFor.clientName}
           uniqueId={shareChatFor.uniqueId}
           category={shareChatFor.category}

@@ -6,8 +6,9 @@ import { db } from "@/services/firebase";
 import { clearOfferDates, syncOfferDates } from "@/services/hr";
 import { sendNotification } from "@/services/notifications";
 import { formatDocumentRef, refCounterDocId, refYear } from "@/utils/documentRef";
+import { LEAVE_TERMS_MARKER, leaveTermsAddendum } from "@/utils/hrTemplates";
 import { HR_DOCUMENT_LABELS } from "@/types/hr";
-import type { HrDocument, HrDocumentType } from "@/types/hr";
+import type { EmployeeProfile, HrDocument, HrDocumentType } from "@/types/hr";
 
 /**
  * Issued HR paperwork: `hr_documents`.
@@ -253,6 +254,56 @@ export async function refreshDocumentEmails(docs: HrDocument[], email: string): 
     const bodyText = replaceLetterEmail(d.bodyText || "", email);
     if (!bodyText || !d.id) continue;
     await updateDoc(doc(db, COLLECTION, d.id), { bodyText, contactRefreshedAt: serverTimestamp() });
+    n += 1;
+  }
+  return n;
+}
+
+/**
+ * ── Letters issued before the leave terms were written down ───────────────────────────────────
+ *
+ * The offer letter, the appointment letter and the policy acknowledgement now state the weekly
+ * off, the declared public holidays, and the two paid leave days a pay cycle that lapse if they
+ * are not taken. Every letter issued before that says only "in accordance with the company's leave
+ * policy", which is the sentence the terms were supposed to replace.
+ *
+ * So the terms are added to the letters already out there — including the signed ones, which is
+ * the point: an employee who signed six months ago is the one most likely to be surprised by a
+ * lapsing leave day. It is added as a dated addendum rather than an edit, so the page they signed
+ * still says exactly what they signed and the addition is visibly an addition.
+ */
+const LEAVE_TERM_TYPES: HrDocumentType[] = ["offer_letter", "appointment_letter", "policy_acknowledgement"];
+
+/** Documents of the right kind that do not yet carry the terms. Signed ones included, on purpose. */
+export function documentsNeedingLeaveTerms(docs: HrDocument[]): HrDocument[] {
+  return docs.filter(
+    (d) => LEAVE_TERM_TYPES.includes(d.type)
+      && !!d.bodyText
+      && !d.bodyText.includes(LEAVE_TERMS_MARKER),
+  );
+}
+
+/**
+ * Append the addendum to every such document. Returns how many were changed.
+ *
+ * `leaveTermsAddendumAt` is stamped so the panel can say when it was done, and so a second run
+ * over the same records is a no-op even if the marker phrase is ever reworded.
+ */
+export async function addLeaveTermsToDocuments(
+  docs: HrDocument[],
+  profile: EmployeeProfile,
+  effectiveOn: string,
+): Promise<number> {
+  const targets = documentsNeedingLeaveTerms(docs);
+  if (targets.length === 0) return 0;
+  const addendum = leaveTermsAddendum(profile, effectiveOn);
+  let n = 0;
+  for (const d of targets) {
+    if (!d.id) continue;
+    await updateDoc(doc(db, COLLECTION, d.id), {
+      bodyText: `${d.bodyText}\n${addendum}`,
+      leaveTermsAddendumAt: serverTimestamp(),
+    });
     n += 1;
   }
   return n;

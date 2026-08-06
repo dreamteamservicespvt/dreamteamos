@@ -149,18 +149,19 @@ describe("the client chat's lifecycle", () => {
 });
 
 describe("what the client is sent", () => {
-  it("carries the link and the code, and says no app is needed", () => {
+  it("carries the link, and asks the customer for nothing at all", () => {
     const message = buildClientChatMessage({
       businessName: "Sharma Electronics",
       uniqueId: "P001",
       chatId: "abc123",
-      accessCode: "4821",
       category: "promotional",
     });
     expect(message).toContain("/c/abc123");
-    expect(message).toContain("4821");
     expect(message).toContain("Sharma Electronics");
-    expect(message).toMatch(/no app or sign-up/i);
+    expect(message).toMatch(/nothing to install/i);
+    // The code was the single biggest reason a chat was never opened — see api/order-chat.ts.
+    expect(message).toMatch(/no code to enter/i);
+    expect(message).not.toMatch(/🔑/);
     // Names what was bought...
     expect(message).toContain("Promotional Ad");
     // ...says what the chat is for...
@@ -173,7 +174,7 @@ describe("what the client is sent", () => {
   });
 
   it("still reads properly for a job with no business name saved", () => {
-    const message = buildClientChatMessage({ chatId: "abc123", accessCode: "1234" });
+    const message = buildClientChatMessage({ chatId: "abc123" });
     expect(message).toContain("/c/abc123");
     expect(message).not.toContain("undefined");
   });

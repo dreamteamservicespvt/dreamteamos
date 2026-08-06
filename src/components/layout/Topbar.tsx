@@ -96,6 +96,15 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
       if (r === "sales_member") return "/sales/leads";
       if (r === "sales_admin") return "/sales-admin/approvals";
     }
+    // A client's message or call is about an assignment, so it lands wherever that person works
+    // with assignments — a member's My Work, a leader's or an admin's assignment board.
+    if (type === "chat_message" || type === "order_chat_call" || type === "voice_call" || type === "video_call") {
+      if (r === "tech_member") return "/tech/my-work";
+      if (r === "tech_team_leader") return "/team-leader/work-assign";
+      if (r === "tech_admin" || r === "main_admin") return "/tech-admin/work-assign";
+      if (r === "sales_member") return "/sales/chat";
+      if (r === "sales_admin") return "/sales-admin/chat";
+    }
     if (type === "work_assigned" || type === "team_work_assigned" || type === "work_completed" || type === "work_verified" || type === "work_editing" || type === "project_assigned") {
       if (r === "tech_admin" || r === "main_admin") return "/tech-admin/work-assign";
       if (r === "tech_member") return "/tech/my-work";
@@ -154,9 +163,17 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
                 initial={{ opacity: 0, y: -5 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -5 }}
-                className="absolute right-0 top-full mt-2 w-80 max-h-96 bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden"
+                /*
+                  Pinned to the viewport on a phone, hung off the bell on a desktop.
+
+                  A fixed 320px panel anchored to the bell's right edge runs off the left of a
+                  360px screen, because the bell is not at the edge — the profile block is to the
+                  right of it. `fixed inset-x-2` gives the panel the screen instead of the bell,
+                  which is the only anchor a phone actually has.
+                */
+                className="fixed inset-x-2 top-14 z-50 flex max-h-[70dvh] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:max-h-96 sm:w-80"
               >
-                <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 border-b border-border px-4 py-3">
                   <h3 className="font-display font-semibold text-foreground text-sm">Notifications</h3>
                   <div className="flex items-center gap-2">
                     {unreadCount > 0 && (
@@ -171,7 +188,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
                     )}
                   </div>
                 </div>
-                <div className="overflow-y-auto max-h-80">
+                <div className="min-h-0 flex-1 overflow-y-auto">
                   {notifications.length === 0 ? (
                     <div className="p-6 text-center">
                       <Bell size={24} className="mx-auto text-muted-foreground/30 mb-2" />
@@ -190,12 +207,14 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
                         className={`w-full text-left px-4 py-3 border-b border-border/50 hover:bg-accent/30 transition-colors ${!n.read ? "bg-primary/5" : ""}`}
                       >
                         <div className="flex items-start gap-2">
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full mt-0.5 shrink-0 ${getNotifColor(n.type)}`}>
+                          {/* Capped and truncated: "order chat call" at shrink-0 was wide enough to
+                              push the message text past the edge of the panel on a phone. */}
+                          <span className={`mt-0.5 max-w-[7rem] shrink-0 truncate rounded-full px-1.5 py-0.5 text-[10px] ${getNotifColor(n.type)}`}>
                             {n.type.replace(/_/g, " ")}
                           </span>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium text-foreground">{n.title}</p>
-                            <p className="text-[11px] text-muted-foreground truncate">{n.message}</p>
+                          <div className="min-w-0 flex-1">
+                            <p className="break-words text-xs font-medium text-foreground">{n.title}</p>
+                            <p className="truncate text-[11px] text-muted-foreground">{n.message}</p>
                           </div>
                           {!n.read && <span className="w-2 h-2 rounded-full bg-primary shrink-0 mt-1" />}
                         </div>

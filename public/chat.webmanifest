@@ -1,0 +1,32 @@
+{
+  "name": "Dream Team Chat",
+  "short_name": "My Project",
+  "description": "Chat with the Dream Team Services team about your order — share photos, see your preview, and call us.",
+  "id": "/c/",
+  "start_url": "/c/",
+  "scope": "/c/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f0f2f5",
+  "theme_color": "#008069",
+  "icons": [
+    {
+      "src": "/pwa-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
