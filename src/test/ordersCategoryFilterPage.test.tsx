@@ -117,23 +117,29 @@ describe("Orders queue — filter by kind of work", () => {
 
   it("offers only what is in the queue, each with its count", () => {
     render(<Orders />);
-    // Not assigned holds 2 promotional, 2 cinematic (one of them bulk) and 1 social media month.
-    // Busiest first; the two that tie fall back to alphabetical. Counts are of the whole tab, not
-    // of the current filter — otherwise picking one would strand you on it.
+    // Not assigned holds 2 promotional, 1 cinematic, 1 bulk and 1 social media month. Every
+    // option is the service that was actually SOLD — Bulk Videos included, because a member who
+    // sold Bulk Videos has to be able to find Bulk Videos. Busiest first; ties fall back to
+    // alphabetical. Counts are of the whole tab, not of the current filter.
     expect(optionTexts()).toEqual([
       "All services (5)",
-      "Cinematic Ad (2)",
       "Promotional Ad (2)",
+      "Bulk Videos (1)",
+      "Cinematic Ad (1)",
       "Social Media Management (Monthly) (1)",
       // Always offered even at zero — a filter you can only use in festival season is no filter.
       "Wishes (0)",
     ]);
   });
 
-  it("shows only the chosen kind — and counts a bulk order under it", () => {
+  it("shows only the chosen kind, with bulk under its own name", () => {
     render(<Orders />);
     fireEvent.change(filter(), { target: { value: "cinematic" } });
-    expect(shownBusinesses()).toEqual(["Cine One", "Cine Bulk"]);
+    // The bulk cinematic order is NOT here — it is bulk work, managed on its own board.
+    expect(shownBusinesses()).toEqual(["Cine One"]);
+
+    fireEvent.change(filter(), { target: { value: "bulk_ads" } });
+    expect(shownBusinesses()).toEqual(["Cine Bulk"]);
   });
 
   it("keeps the filter when you move to another tab", () => {

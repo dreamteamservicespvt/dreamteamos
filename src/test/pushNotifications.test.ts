@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
 import { readFileSync } from "node:fs";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { resolve } from "node:path";
 
 /**
@@ -205,5 +205,40 @@ describe("tapping the notification", () => {
     expect(windows[0].posted).toEqual([{ type: "call-decline", callDocId: "call-1" }]);
     expect(windows[0].focused).toBe(false);
     expect(w.opened).toHaveLength(0);
+  });
+});
+
+/**
+ * The push payload itself, as the two senders build it.
+ *
+ * ── The doubled banner ────────────────────────────────────────────────────────────────────────
+ * Both senders used to attach a `webpush.notification` block alongside the `data`. A push carrying
+ * a `notification` block is displayed by the browser AUTOMATICALLY — and the service worker above
+ * also listens for the raw `push` event and calls `showNotification` itself. Both fired for the
+ * same push, so one incoming call arrived as two identical banners.
+ *
+ * Read from the source rather than by invoking the handlers: these are Vercel functions that pull
+ * in firebase-admin at module load, and the thing worth pinning is one line of payload shape.
+ */
+describe("the push payload", () => {
+  const senders = [
+    ["api/send-notification.ts", readFileSync("api/send-notification.ts", "utf8")],
+    ["api/order-chat.ts", readFileSync("api/order-chat.ts", "utf8")],
+  ] as const;
+
+  it.each(senders)("%s sends data-only web pushes, with no notification block", (_name, src) => {
+    // The service worker builds a better one from `data` — Answer/Decline actions, a call
+    // vibration, requireInteraction, and a tag that coalesces repeats for one call.
+    const webpushBlocks = src.match(/webpush:\s*\{[\s\S]*?\n\s*\}/g) || [];
+    expect(webpushBlocks.length).toBeGreaterThan(0);
+    for (const block of webpushBlocks) {
+      expect(block).not.toMatch(/notification\s*:/);
+    }
+  });
+
+  it.each(senders)("%s still sends the data the worker renders from", (_name, src) => {
+    expect(src).toMatch(/title,/);
+    expect(src).toMatch(/channelId,/);
+    expect(src).toMatch(/callDocId/);
   });
 });

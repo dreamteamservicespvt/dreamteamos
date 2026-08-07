@@ -18,6 +18,7 @@ import {
   collectedOf, newPayment, pendingOf, pendingSales, saleItemsOf, withPayment, type PendingSale,
 } from "@/utils/salePayments";
 import { collectReadiness } from "@/utils/collectReadiness";
+import SaleSection from "@/components/sales/SaleSection";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
@@ -2293,17 +2294,26 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
       customHours: slaPreset === CUSTOM_PRESET_KEY ? Math.max(1, Math.round(customDays * 24)) : undefined,
       startMs: Date.now(),
     });
-    // Ad brief — only ad deliverables have one, and only the fields actually filled in are stored.
-    const requirement = isAdSale
-      ? cleanRequirement({
-          businessName: req.businessName,
-          businessWhatsapp: req.businessWhatsapp.trim() ? normalizePhone(req.businessWhatsapp) : "",
+    /**
+     * The brief that travels with the sale.
+     *
+     * Every service carries who it is for and what was asked for; only a video carries the parts
+     * that describe how to shoot it. Building it this way rather than "ads get a brief, everything
+     * else gets null" is what stopped a Google Business Profile reaching the tech team as a
+     * category and an amount with no client name on it. `cleanRequirement` strips the blanks, so a
+     * member who fills in nothing still stores `null` exactly as before.
+     */
+    const requirement = cleanRequirement({
+      businessName: req.businessName,
+      businessWhatsapp: req.businessWhatsapp.trim() ? normalizePhone(req.businessWhatsapp) : "",
+      notes: req.notes,
+      ...(isAdSale
+        ? {
           language: resolvedLanguage,
           modelGender: req.modelGender,
           attireType: req.attireType,
           customAttire: req.attireType === AttireType.CUSTOM ? req.customAttire : "",
           aspectRatio: req.aspectRatio,
-          notes: req.notes,
           // Only a greeting video has an occasion. Storing one on a promotional ad would follow it
           // into the generator and theme an ad nobody asked to be themed.
           festival: isWishesSale ? resolvedFestival : "",
@@ -2311,8 +2321,9 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
           // Only carried alongside a pack — on a normal ad "no real location" is not a fact about
           // the sale, and storing it would put a meaningless flag on every ordinary order.
           realLocationProvided: req.specialCategory ? req.realLocationProvided : undefined,
-        })
-      : null;
+        }
+        : {}),
+    });
     // A language the client asked for that isn't in the list yet joins it for everyone.
     if (isAdSale && usingCustomLanguage && resolvedLanguage) await rememberAdLanguage(resolvedLanguage);
 
@@ -2873,11 +2884,20 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
         "they said they left one" is not a review.
       */}
       {amount > 0 && (
-        <div className="space-y-2 rounded-lg border border-border bg-card p-3" data-test="earned-discount">
-          <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-            <BadgePercent size={12} className="text-success" />
-            Client discount — {EARNED_DISCOUNT_PERCENT}% for a review or a referral
-          </p>
+        <SaleSection
+          testId="earned-discount"
+          title={`Client discount — ${EARNED_DISCOUNT_PERCENT}% for a review or a referral`}
+          icon={<BadgePercent size={13} className="text-success" />}
+          active={discount.reasons.length > 0}
+          // Re-opening a sale that already carries a discount shows it: folding away something the
+          // member is halfway through editing reads as the form having lost it.
+          defaultOpen={discount.reasons.length > 0}
+          summary={
+            discount.reasons.length > 0
+              ? `${discount.earnedPercent}% off — ${discount.reasons.map((r) => EARNED_REASON_LABEL[r]).join(" + ")}`
+              : "Not applied — tap if the client left a review or referred someone"
+          }
+        >
           {(["review", "referral"] as EarnedReason[]).map((reason) => {
             const url = reason === "review" ? reviewShot : referralShot;
             const set = reason === "review" ? setReviewShot : setReferralShot;
@@ -2937,7 +2957,7 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
               it is a thank-you, not a running total.
             </p>
           )}
-        </div>
+        </SaleSection>
       )}
 
       {/* What the client actually pays, once everything is off. */}
@@ -3038,13 +3058,71 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
         </div>
       </div>
 
-      {/* Client's ad brief — travels with the sale into the tech Orders queue and pre-fills the
-          assignment, so the tech team never re-types what the client asked for. */}
+      {/*
+        Who the work is for, and what they asked for — on EVERY service.
+
+        ── Why this is no longer ad-only ─────────────────────────────────────────────────────────
+        These two fields used to live inside the ad brief, so a Google Business Profile, a logo or
+        a website arrived at the tech team with no business name and no note — just a category and
+        an amount. Somebody then messaged the sales member to ask who it was for, which is the
+        exact hand-off this whole pipeline exists to remove. The name and the note are not ad
+        details: they are the answer to "what am I making, and for whom", and every service has one.
+
+        The genuinely ad-specific fields — language, model, attire, ratio, occasion — stay in the
+        block below, because none of them mean anything on a website.
+      */}
+      <div className="space-y-2.5 rounded-md border border-primary/25 bg-primary/5 p-2.5">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-primary">
+          <StickyNote size={13} /> Client details
+          <span className="ml-auto text-[10px] font-normal text-muted-foreground">Goes straight to the tech team</span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div>
+            <label className="text-[11px] text-muted-foreground">Business name</label>
+            <input
+              type="text"
+              value={req.businessName}
+              data-test="sale-business-name"
+              onChange={(e) => setReq((r) => ({ ...r, businessName: e.target.value }))}
+              placeholder="e.g. Sharma Electronics"
+              className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary"
+            />
+          </div>
+          <div>
+            <label className="text-[11px] text-muted-foreground">Business WhatsApp</label>
+            <input
+              type="text"
+              value={req.businessWhatsapp}
+              data-test="sale-business-whatsapp"
+              onChange={(e) => setReq((r) => ({ ...r, businessWhatsapp: e.target.value }))}
+              placeholder="e.g. 9876543210"
+              className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary font-mono"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="text-[11px] text-muted-foreground">Notes for the tech team</label>
+          <textarea
+            value={req.notes}
+            data-test="sale-notes"
+            onChange={(e) => setReq((r) => ({ ...r, notes: e.target.value }))}
+            maxLength={1000}
+            placeholder={isAdSale
+              ? "Anything else the client asked for — offers, tagline, colours, must-say lines…"
+              : "Anything the client asked for — links, logins, colours, what they want it to say…"}
+            className="w-full h-16 p-2 rounded-md bg-card border border-border text-foreground text-xs outline-none focus:border-primary resize-none"
+          />
+        </div>
+      </div>
+
+      {/* The rest of the ad brief — the parts that only mean something on a video. */}
       {isAdSale && (
         <div className="space-y-2.5 rounded-md border border-primary/25 bg-primary/5 p-2.5">
           <div className="flex items-center gap-1.5 text-xs font-medium text-primary">
-            <Clapperboard size={13} /> Client requirement
-            <span className="ml-auto text-[10px] font-normal text-muted-foreground">Goes straight to the tech team</span>
+            <Clapperboard size={13} /> Video requirement
+            <span className="ml-auto text-[10px] font-normal text-muted-foreground">How the ad should be made</span>
           </div>
 
           {/* The occasion comes first on a greeting video, because it is what the video IS — the
@@ -3081,29 +3159,6 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
               </p>
             </div>
           )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <div>
-              <label className="text-[11px] text-muted-foreground">Business name</label>
-              <input
-                type="text"
-                value={req.businessName}
-                onChange={(e) => setReq((r) => ({ ...r, businessName: e.target.value }))}
-                placeholder="e.g. Sharma Electronics"
-                className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] text-muted-foreground">Business WhatsApp</label>
-              <input
-                type="text"
-                value={req.businessWhatsapp}
-                onChange={(e) => setReq((r) => ({ ...r, businessWhatsapp: e.target.value }))}
-                placeholder="e.g. 9876543210"
-                className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary font-mono"
-              />
-            </div>
-          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
@@ -3242,16 +3297,6 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
             </div>
           </div>
 
-          <div>
-            <label className="text-[11px] text-muted-foreground">Notes for the tech team</label>
-            <textarea
-              value={req.notes}
-              onChange={(e) => setReq((r) => ({ ...r, notes: e.target.value }))}
-              maxLength={1000}
-              placeholder="Anything else the client asked for — offers, tagline, colours, festival, must-say lines…"
-              className="w-full h-16 p-2 rounded-md bg-card border border-border text-foreground text-xs outline-none focus:border-primary resize-none"
-            />
-          </div>
         </div>
       )}
 
@@ -3266,7 +3311,21 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
         worse than an honest number, so the box is here for every category.
       */}
       {finalAmount > 0 && (
-        <div className="space-y-2 rounded-md border border-border bg-card p-2.5" data-test="advance-block">
+        <SaleSection
+          testId="advance-block"
+          title="Payment collected"
+          icon={<IndianRupee size={13} className={advanceCollected ? "text-warning" : "text-muted-foreground"} />}
+          active={advanceCollected}
+          // Opened for a sale that already has a balance, so nobody has to go looking for it.
+          defaultOpen={advanceCollected}
+          summary={
+            !advanceCollected
+              ? `Paid in full — ${formatCurrency(finalAmount)} received`
+              : advancePending > 0
+                ? `${formatCurrency(advancePending)} still to collect from the client`
+                : `Full ${formatCurrency(finalAmount)} collected`
+          }
+        >
           <label className="flex cursor-pointer items-start gap-2 text-xs text-foreground">
             <input
               type="checkbox"
@@ -3321,7 +3380,7 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
               </p>
             </div>
           )}
-        </div>
+        </SaleSection>
       )}
 
       <label className="block cursor-pointer">

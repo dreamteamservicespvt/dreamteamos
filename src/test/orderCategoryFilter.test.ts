@@ -13,13 +13,13 @@ describe("orderCategoryKey", () => {
     expect(orderCategoryKey(o("website"))).toBe("website");
   });
 
-  it("counts a bulk order as the kind of video it is made of", () => {
-    // Someone filtering for Cinematic to plan the week's shoots needs the bulk cinematic job in
-    // the list; a separate "Bulk" bucket would hide it from exactly the person looking for it.
-    expect(orderCategoryKey(o("bulk_ads", "cinematic"))).toBe("cinematic");
-    expect(orderCategoryKey(o("bulk_ads", "wishes"))).toBe("wishes");
-    // A bulk order sold before the kind was captured was promotional.
-    expect(orderCategoryKey(o("bulk_ads"))).toBe("promotional");
+  it("gives a bulk order its own bucket, whatever kind of video is inside it", () => {
+    // It used to resolve to the video kind, which meant a member who sold "Bulk Videos" could not
+    // find "Bulk Videos" in the filter — and bulk work is managed on its own board, not alongside
+    // single ads. Every option is now the service that was actually sold.
+    expect(orderCategoryKey(o("bulk_ads", "cinematic"))).toBe("bulk_ads");
+    expect(orderCategoryKey(o("bulk_ads", "wishes"))).toBe("bulk_ads");
+    expect(orderCategoryKey(o("bulk_ads"))).toBe("bulk_ads");
   });
 });
 
@@ -34,9 +34,15 @@ describe("matchesOrderCategory", () => {
     expect(matchesOrderCategory(o("promotional"), "cinematic")).toBe(false);
   });
 
-  it("matches a bulk order under the kind it is made of", () => {
-    expect(matchesOrderCategory(o("bulk_ads", "cinematic"), "cinematic")).toBe(true);
-    expect(matchesOrderCategory(o("bulk_ads", "cinematic"), "promotional")).toBe(false);
+  it("matches a bulk order under Bulk Videos, not under the kind inside it", () => {
+    expect(matchesOrderCategory(o("bulk_ads", "cinematic"), "bulk_ads")).toBe(true);
+    expect(matchesOrderCategory(o("bulk_ads", "cinematic"), "cinematic")).toBe(false);
+  });
+
+  it("leaves single ads completely unaffected", () => {
+    // The change is scoped to bulk: for everything else the key resolves exactly as before.
+    expect(matchesOrderCategory(o("cinematic"), "cinematic")).toBe(true);
+    expect(matchesOrderCategory(o("wishes"), "wishes")).toBe(true);
   });
 });
 
@@ -49,8 +55,10 @@ describe("orderCategoryOptions", () => {
 
   it("offers what is in the queue, plus the three kinds the team always produces", () => {
     const keys = orderCategoryOptions(queue).map((x) => x.key);
+    // Bulk Videos appears as itself — it is a service the sales team sells and a board the tech
+    // team works from, so it has to be reachable by name.
     expect(keys).toEqual([
-      ALL_ORDER_CATEGORIES, "promotional", "cinematic", "social_media_management", "wishes",
+      ALL_ORDER_CATEGORIES, "promotional", "bulk_ads", "cinematic", "social_media_management", "wishes",
     ]);
     // Never the whole catalog: nothing was sold as a website, so it is not offered.
     expect(keys).not.toContain("website");
@@ -61,12 +69,22 @@ describe("orderCategoryOptions", () => {
     expect(wishes).toEqual({ key: "wishes", label: "Wishes", count: 0 });
   });
 
-  it("counts each kind, with bulk folded into its own", () => {
+  it("counts each service under its own name", () => {
     const byKey = Object.fromEntries(orderCategoryOptions(queue).map((x) => [x.key, x.count]));
     expect(byKey[ALL_ORDER_CATEGORIES]).toBe(6);
     expect(byKey.promotional).toBe(3);
-    expect(byKey.cinematic).toBe(2); // one single + one bulk
+    // The bulk cinematic order counts as Bulk Videos, not as a second cinematic ad.
+    expect(byKey.cinematic).toBe(1);
+    expect(byKey.bulk_ads).toBe(1);
     expect(byKey.social_media_management).toBe(1);
+  });
+
+  it("still adds up to the total, whatever is in the queue", () => {
+    // The counts on the options must reconcile with "All services", or the dropdown is lying.
+    const options = orderCategoryOptions(queue);
+    const all = options.find((x) => x.key === ALL_ORDER_CATEGORIES)!.count;
+    const rest = options.filter((x) => x.key !== ALL_ORDER_CATEGORIES).reduce((s, x) => s + x.count, 0);
+    expect(rest).toBe(all);
   });
 
   it("puts the busiest kind first — the filter is for reaching the big pile", () => {

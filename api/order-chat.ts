@@ -123,7 +123,10 @@ async function alertUser(opts: {
         ...(callDocId ? { callDocId } : {}),
       },
       android: { priority: "high", ttl: isCall ? 0 : 86400000 },
-      webpush: { headers: { Urgency: "high" }, notification: { title, body: message, icon: APP_ICON } },
+      // Data-only, with no `notification` block — see api/send-notification.ts for the full
+      // reasoning. In short: a `notification` payload is auto-displayed by the browser AND our
+      // service worker displays one from `data`, which is where the doubled banners came from.
+      webpush: { headers: { Urgency: "high" } },
     });
 
     /**

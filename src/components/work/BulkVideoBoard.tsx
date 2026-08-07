@@ -21,12 +21,13 @@
  * finished-but-unticked videos cannot hold up the order.
  */
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Check, Loader2, UserPlus, X, Users, Undo2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   bulkVideoStats, bulkVideosOf, canAssignBulkVideos, canCompleteBulkVideo, memberProgress,
 } from "@/utils/bulkVideos";
-import { assignBulkVideos, setBulkVideoComplete, unassignBulkVideo } from "@/services/bulkVideos";
+import { setBulkVideoComplete, unassignBulkVideo } from "@/services/bulkVideos";
 import type { AppUser, BulkVideoSlot, Order } from "@/types";
 
 export default function BulkVideoBoard({ order, user, members, defaultOpen = true }: {
@@ -37,9 +38,16 @@ export default function BulkVideoBoard({ order, user, members, defaultOpen = tru
   defaultOpen?: boolean;
 }) {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [picked, setPicked] = useState<Set<number>>(new Set());
-  const [busy, setBusy] = useState<number | "assign" | null>(null);
+  const [busy, setBusy] = useState<number | null>(null);
   const [open, setOpen] = useState(defaultOpen);
+
+  /**
+   * Where the work form lives for this person. A team leader's own page is a different route from
+   * the admin's, and sending a leader to the admin's is a redirect straight back to their own.
+   */
+  const workAssignBase = user?.role === "tech_team_leader" ? "/team-leader/work-assign" : "/tech-admin/work-assign";
 
   const slots = useMemo(() => bulkVideosOf(order), [order]);
   const stats = useMemo(() => bulkVideoStats(slots), [slots]);
@@ -65,27 +73,20 @@ export default function BulkVideoBoard({ order, user, members, defaultOpen = tru
     slots.filter((s) => s.status !== "completed" && !s.assignedTo).map((s) => s.n),
   ));
 
-  const giveTo = async (uid: string) => {
-    if (!user || picked.size === 0) return;
-    const member = members?.find((m) => m.uid === uid);
-    if (!member) return;
-    setBusy("assign");
-    try {
-      const count = await assignBulkVideos({
-        order, numbers: [...picked], member: { uid: member.uid, name: member.name }, actor: user,
-      });
-      setPicked(new Set());
-      toast({
-        title: count > 0 ? "Assigned" : "Nothing to assign",
-        description: count > 0
-          ? `${member.name} now has ${count} video${count === 1 ? "" : "s"} on this order.`
-          : "Those videos were already finished or already theirs.",
-      });
-    } catch {
-      toast({ title: "Not saved", description: "Couldn't assign those videos. Try again.", variant: "destructive" });
-    } finally {
-      setBusy(null);
-    }
+  /**
+   * Hand the selected videos over — through the Work Assign form, not a dropdown here.
+   *
+   * ── Why it navigates instead of assigning in place ────────────────────────────────────────────
+   * A video is a real job: it needs a length, a language, a model, an aspect ratio and the client's
+   * brief before anybody can build it. Picking a name from a dropdown would create an assignment
+   * carrying none of that, and the member would open it to a blank spec — so bulk goes through
+   * exactly the same form every other order goes through, pre-filled from the sale, with the video
+   * numbers riding along so they get stamped on the order once the assignment exists.
+   */
+  const handOver = () => {
+    if (picked.size === 0) return;
+    const numbers = [...picked].sort((a, b) => a - b);
+    navigate(`${workAssignBase}?order=${encodeURIComponent(order.id)}&videos=${numbers.join(",")}`);
   };
 
   const complete = async (slot: BulkVideoSlot, next: boolean) => {
@@ -257,19 +258,21 @@ export default function BulkVideoBoard({ order, user, members, defaultOpen = tru
               ) : (
                 <>
                   <span className="text-[11px] font-semibold text-foreground" data-test="bulk-picked-count">
-                    {picked.size} video{picked.size === 1 ? "" : "s"} selected →
+                    {picked.size} video{picked.size === 1 ? "" : "s"} selected
                   </span>
-                  <select
-                    value=""
-                    disabled={busy === "assign"}
-                    data-test="bulk-assign-to"
-                    onChange={(e) => e.target.value && giveTo(e.target.value)}
-                    className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary disabled:opacity-50"
+                  <button
+                    type="button"
+                    onClick={handOver}
+                    data-test="bulk-assign-go"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
                   >
-                    <option value="">Give to…</option>
-                    {members!.map((m) => <option key={m.uid} value={m.uid}>{m.name}</option>)}
-                  </select>
-                  {busy === "assign" && <Loader2 size={13} className="animate-spin text-muted-foreground" />}
+                    <UserPlus size={12} /> Assign these
+                  </button>
+                  {/* Said before they leave the page, because the next screen is a full form and
+                      arriving there without knowing why is how people back out of it. */}
+                  <span className="text-[11px] text-muted-foreground">
+                    opens the work form, pre-filled from this order
+                  </span>
                   <button
                     type="button"
                     onClick={() => setPicked(new Set())}

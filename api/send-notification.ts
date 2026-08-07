@@ -58,12 +58,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const isCall = notifType === "voice_call" || notifType === "video_call";
 
-    // Android: data-only message (no "notification" key) so the app controls
-    // the icon via LocalNotifications / FirebaseMessagingService.
-    // If we include "notification", Android shows its own tray notification
-    // using the launcher icon (circle adaptive icon) which looks wrong.
-    //
-    // Web: include webpush.notification so the service worker can show it.
+    /**
+     * DATA-ONLY, on every platform. There is deliberately no `notification` key anywhere.
+     *
+     * ── Android ───────────────────────────────────────────────────────────────────────────────
+     * A `notification` payload makes Android draw its own tray entry with the launcher icon (the
+     * circular adaptive one), which looks wrong; data-only lets the app render it properly through
+     * LocalNotifications / FirebaseMessagingService.
+     *
+     * ── Web: why `webpush.notification` had to go ─────────────────────────────────────────────
+     * This is the double notification. A push carrying a `notification` block is displayed by the
+     * browser automatically — and our service worker ALSO listens for the raw `push` event and
+     * calls `showNotification` itself (see public/firebase-messaging-sw.js). Both fired for the
+     * same push, so one incoming call produced two identical banners.
+     *
+     * Dropping the block loses nothing: the worker builds a strictly better notification from the
+     * same `data` — Answer/Decline actions, a call vibration pattern, `requireInteraction` so a
+     * ringing phone does not auto-dismiss, and a tag that coalesces repeat pushes for one call. It
+     * also cannot show the auto-display version, which has none of that. One push, one banner,
+     * and the good one.
+     */
     const pushMessage: admin.messaging.MulticastMessage = {
       tokens,
       data: {
@@ -83,11 +97,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
       webpush: {
         headers: { Urgency: "high" },
-        notification: {
-          title,
-          body: message,
-          icon: APP_ICON,
-        },
       },
     };
 

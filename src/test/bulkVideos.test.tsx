@@ -11,10 +11,13 @@ import { cleanup, configure, fireEvent, render, screen, waitFor, within } from "
  * video with nobody on it was found at the deadline.
  */
 
-const { updateDoc, sendNotification } = vi.hoisted(() => ({
+const { updateDoc, sendNotification, navigate } = vi.hoisted(() => ({
   updateDoc: vi.fn().mockResolvedValue(undefined),
   sendNotification: vi.fn().mockResolvedValue(undefined),
+  navigate: vi.fn(),
 }));
+
+vi.mock("react-router-dom", () => ({ useNavigate: () => navigate }));
 
 vi.mock("@/services/firebase", () => ({ db: {} }));
 vi.mock("@/services/notifications", () => ({ sendNotification }));
@@ -63,7 +66,7 @@ const ADMIN = { uid: "a1", name: "Ravi", role: "tech_admin" } as const;
 const MEMBER = { uid: "m1", name: "Kiran", role: "tech_member" } as const;
 const TEAM = [{ uid: "m1", name: "Kiran" }, { uid: "m2", name: "Asha" }];
 
-beforeEach(() => { updateDoc.mockClear(); sendNotification.mockClear(); });
+beforeEach(() => { updateDoc.mockClear(); sendNotification.mockClear(); navigate.mockClear(); });
 afterEach(cleanup);
 
 describe("reading a bulk order as videos", () => {
@@ -310,14 +313,32 @@ describe("the board, as a leader uses it", () => {
     expect(screen.getByTestId("bulk-picked-count")).toHaveTextContent("2 videos selected");
   });
 
-  it("hands the selected videos to the chosen member", async () => {
+  it("hands the selected videos over through the Work Assign form", () => {
+    // Not a dropdown here: a video needs a length, a language, a model and the client's brief
+    // before anyone can build it, so it goes through the same form every other order goes through
+    // — with the video numbers riding along to be stamped on the order afterwards.
     render(<BulkVideoBoard order={boardOrder} user={ADMIN} members={TEAM} />);
     fireEvent.click(screen.getByTestId("bulk-select-free"));
-    fireEvent.change(screen.getByTestId("bulk-assign-to"), { target: { value: "m2" } });
+    fireEvent.click(screen.getByTestId("bulk-assign-go"));
 
-    await waitFor(() => expect(updateDoc).toHaveBeenCalled());
-    const slots = (updateDoc.mock.calls[0][1] as { bulkVideos: BulkVideoSlot[] }).bulkVideos;
-    expect(slots.filter((s) => s.assignedTo === "m2").map((s) => s.n)).toEqual([3, 4]);
+    expect(navigate).toHaveBeenCalledWith("/tech-admin/work-assign?order=o1&videos=3,4");
+  });
+
+  it("sends a team leader to their own Work Assign, not the admin's", () => {
+    render(<BulkVideoBoard order={boardOrder} user={{ ...ADMIN, role: "tech_team_leader" }} members={TEAM} />);
+    fireEvent.click(screen.getByTestId("bulk-select-free"));
+    fireEvent.click(screen.getByTestId("bulk-assign-go"));
+
+    expect(navigate).toHaveBeenCalledWith("/team-leader/work-assign?order=o1&videos=3,4");
+  });
+
+  it("passes the video numbers in order, however they were tapped", () => {
+    render(<BulkVideoBoard order={boardOrder} user={ADMIN} members={TEAM} />);
+    fireEvent.click(screen.getByTestId("bulk-video-4"));
+    fireEvent.click(screen.getByTestId("bulk-video-3"));
+    fireEvent.click(screen.getByTestId("bulk-assign-go"));
+
+    expect(navigate).toHaveBeenCalledWith("/tech-admin/work-assign?order=o1&videos=3,4");
   });
 
   it("never lets a finished video be selected for reassignment", () => {
@@ -362,7 +383,7 @@ describe("the board, as the member making the videos uses it", () => {
 
   it("offers them no way to assign anything", () => {
     render(<BulkVideoBoard order={boardOrder} user={MEMBER} />);
-    expect(screen.queryByTestId("bulk-assign-to")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("bulk-assign-go")).not.toBeInTheDocument();
     expect(screen.queryByTestId("bulk-select-free")).not.toBeInTheDocument();
   });
 

@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   ClipboardList, Plus, CheckCircle2, Loader2,
-  Search, X, Users, History, Copy, Check, MessageCircle, MessagesSquare, Sparkles, ShoppingBag
+  Search, X, Users, History, Copy, Check, MessageCircle, MessagesSquare, Sparkles, ShoppingBag, Boxes
 } from 'lucide-react';
 import ShareChatModal from '@/components/order-chat/ShareChatModal';
 import { getWhatsAppUrl, normalizePhone } from '@/utils/phone';
@@ -26,6 +26,7 @@ import OccasionPicker from '@/components/work/OccasionPicker';
 import { bulkCategoryLabel } from '@/utils/serviceCatalog';
 import { fetchOrder, activeOrdersQuery } from '@/services/orders';
 import { createWorkAssignment, nextWorkUniqueId } from '@/services/workAssign';
+import { assignBulkVideos } from '@/services/bulkVideos';
 import { verifyAssignments, awaitingVerification } from '@/services/workVerify';
 import MemberWorkloadCard from '@/components/work/MemberWorkloadCard';
 import SpecialCategoryFields from '@/components/work/SpecialCategoryFields';
@@ -168,19 +169,33 @@ export default function WorkAssign() {
     }
   }, [searchParams, techMembers]);
 
+  /**
+   * Which videos of a bulk order this assignment is for.
+   *
+   * Bulk work is handed out through this same form rather than through a picker on the board: the
+   * job still needs a length, a language, a model and a brief, and a dropdown that skipped all of
+   * that would create assignments the member cannot actually build from. The board sends the video
+   * numbers along, and they are stamped onto the order once the assignment exists.
+   */
+  const [bulkVideoNumbers, setBulkVideoNumbers] = useState<number[]>([]);
+
   // Opened from the Orders queue → fill the form from the sale and its brief.
   useEffect(() => {
     const orderId = searchParams.get('order');
     if (!orderId) return;
+    const videos = (searchParams.get('videos') || '')
+      .split(',').map((v) => parseInt(v, 10)).filter((n) => Number.isFinite(n) && n > 0);
     let cancelled = false;
     (async () => {
       const order = await fetchOrder(orderId);
       if (cancelled || !order) return;
       setSourceOrder(order);
+      setBulkVideoNumbers(videos);
       setForm(prev => ({ ...prev, ...assignmentFormFromOrder(order, languages) }));
       setShowForm(true);
       const nextParams = new URLSearchParams(searchParams);
       nextParams.delete('order');
+      nextParams.delete('videos');
       setSearchParams(nextParams, { replace: true });
     })();
     return () => { cancelled = true; };
@@ -258,6 +273,18 @@ export default function WorkAssign() {
         realLocationProvided: form.realLocationProvided,
         order: sourceOrder,
       });
+
+      // Stamp the videos onto the order, so the bulk board shows who is making which. Done after
+      // the assignment exists: a video marked assigned with no assignment behind it is worse than
+      // one still showing as free, because nobody goes looking for work that claims to be handed out.
+      if (sourceOrder && bulkVideoNumbers.length > 0 && assignedMember) {
+        await assignBulkVideos({
+          order: sourceOrder,
+          numbers: bulkVideoNumbers,
+          member: { uid: assignedMember.uid, name: assignedMember.name },
+          actor: user,
+        });
+      }
 
       // A language typed in here joins the shared list, same as one entered at sale time.
       if (form.language === 'Custom' && language) await rememberAdLanguage(language);
@@ -536,7 +563,7 @@ export default function WorkAssign() {
               <MessagesSquare className="w-4 h-4" /> Chat link ({clientChat.businessName || 'client'})
             </button>
           )}
-          <button onClick={() => { setShowForm(!showForm); if (showForm) setSourceOrder(null); }}
+          <button onClick={() => { setShowForm(!showForm); if (showForm) { setSourceOrder(null); setBulkVideoNumbers([]); } }}
             className="flex h-10 items-center justify-center space-x-2 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 w-full sm:w-auto">
             <Plus className="w-4 h-4" /><span>{showForm ? 'Cancel' : 'New Assignment'}</span>
           </button>
@@ -565,10 +592,31 @@ export default function WorkAssign() {
                 {` · ${formatCurrency(sourceOrder.amount)} · sold by ${sourceOrder.soldByName}`}
               </span>
               {sourceOrder.promise && <span className="text-muted-foreground">Promise: <strong className="text-foreground">{sourceOrder.promise.label}</strong></span>}
-              <button onClick={() => setSourceOrder(null)}
+              <button onClick={() => { setSourceOrder(null); setBulkVideoNumbers([]); }}
                 className="ml-auto text-[11px] font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
                 Unlink
               </button>
+            </div>
+          )}
+
+          {/* Which of the batch this is for. Said explicitly, because the form below looks
+              identical whether it is making one video or the whole order — and an admin who
+              assigns "the order" when they meant "video 3" has given one member all ten. */}
+          {bulkVideoNumbers.length > 0 && (
+            <div
+              data-test="assigning-bulk-videos"
+              className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-indigo-500/40 bg-indigo-500/10 px-3 py-2 text-xs"
+            >
+              <Boxes className="w-3.5 h-3.5 shrink-0 text-indigo-500" />
+              <span className="font-semibold text-indigo-600 dark:text-indigo-400">
+                {bulkVideoNumbers.length === 1
+                  ? `Assigning video #${bulkVideoNumbers[0]}`
+                  : `Assigning ${bulkVideoNumbers.length} videos`}
+              </span>
+              <span className="text-muted-foreground">
+                {bulkVideoNumbers.length > 1 ? `(#${bulkVideoNumbers.join(', #')}) ` : ''}
+                of {sourceOrder?.businessName || 'this order'} — the rest of the batch is untouched.
+              </span>
             </div>
           )}
 
