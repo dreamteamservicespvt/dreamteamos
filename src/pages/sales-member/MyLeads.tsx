@@ -851,7 +851,16 @@ function PendingPaymentsPanel({ leads, ordersById, onCollect }: {
   onCollect: (row: PendingSale, amount: number, note: string) => Promise<void>;
 }) {
   const [collecting, setCollecting] = useState<PendingSale | null>(null);
-  const [open, setOpen] = useState(true);
+  /**
+   * Closed until the member asks for it.
+   *
+   * Nothing is hidden by closing it: the header still carries the total owed, how many sales it is
+   * spread across, and how many are ready to collect right now — which is the whole answer for
+   * anyone just passing through. Opening it is for the member who has decided to work the list, and
+   * the rows below it are long enough that leaving them expanded pushed the leads themselves off
+   * the first screen every single visit.
+   */
+  const [open, setOpen] = useState(false);
 
   const rows = useMemo(() => {
     const list = pendingSales(leads).map((row) => ({
@@ -1401,6 +1410,33 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
                   </span>
                 )}
                 {item.customDescription && <span className="text-muted-foreground"> • {item.customDescription}</span>}
+                {/*
+                  What was actually sold, not just which category it fell under.
+
+                  "Promotional Ad • p1" is the same line whether the member sold an ordinary ad or a
+                  Motu & Patlu one at a different price — so the thing that made the sale special was
+                  invisible to the person who made it, and there was no way to check a client's
+                  question about it without opening the edit form. The cartoon duo and the occasion
+                  are the two answers people actually go looking for.
+                */}
+                {getCharacterPack(item.requirement?.specialCategory) && (
+                  <span
+                    data-test="sale-pack-chip"
+                    className="inline-flex items-center gap-0.5 rounded bg-purple-500/15 px-1 py-0.5 text-[9px] font-medium text-purple-600 dark:text-purple-400"
+                    title="Special cartoon duo sold with this ad"
+                  >
+                    🎭 {getCharacterPack(item.requirement?.specialCategory)!.label}
+                  </span>
+                )}
+                {!!item.requirement?.festival && (
+                  <span
+                    data-test="sale-occasion-chip"
+                    className="inline-flex items-center gap-0.5 rounded bg-amber-500/15 px-1 py-0.5 text-[9px] font-medium text-amber-600 dark:text-amber-400"
+                    title="The occasion this greeting video is for"
+                  >
+                    <PartyPopper size={9} /> {item.requirement.festival}
+                  </span>
+                )}
                 {/* A penalty is the client's, not the member's — shown so they know it was raised,
                     and deliberately outside the sale amount so it never enters their commission. */}
                 {!!item.penaltyTotal && (

@@ -261,7 +261,17 @@ export async function reopenOrderChat(
 
     if (note) await writeSystemMessage(chatId, note);
     else if (changingMember) {
-      await writeSystemMessage(chatId, `Work reassigned to ${member?.name || "another team member"}.`);
+      /**
+       * Deliberately does NOT name the member.
+       *
+       * The customer sees the company as one person — every staff message sits on one side of this
+       * conversation with no name on it (see OrderChatPanel), which is the whole point: they bought
+       * from a business, not from an individual, and they should never have to wonder who "Kiran"
+       * is or feel handed around. This line is the one place that leaked a real name into their
+       * view of the room. The team learns who it moved to through their own notifications and the
+       * activity feed, where naming people is exactly right.
+       */
+      await writeSystemMessage(chatId, "This project has been reassigned within our team. Nothing changes for you.");
     } else {
       await writeSystemMessage(chatId, "This chat is open again.");
     }

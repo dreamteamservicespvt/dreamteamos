@@ -23,10 +23,14 @@ const {
   updateDoc: vi.fn().mockResolvedValue(undefined),
   setUser: vi.fn(),
   state: { user: {} as Record<string, unknown>, bankComplete: true },
-  watchEmployeeBank: vi.fn(() => () => {}),
+  // Reports straight away by default, the way a loaded watcher does. The prompt deliberately shows
+  // nothing until it has heard back — see the deferred-payout suite for why that matters.
+  watchEmployeeBank: vi.fn((_uid: string, cb: (b: unknown) => void) => { cb(null); return () => {}; }),
   // Payout details are the one asked-for item that does not live on the employment record, so the
   // suite drives it through this flag rather than by building a bank fixture per test.
-  isBankComplete: vi.fn(() => state.bankComplete),
+  // Takes the bank so a test can answer from the real value — the deferred-payout suite needs
+  // "not loaded yet" and "nothing on file" to be the same `false`, which is the whole bug.
+  isBankComplete: vi.fn((_bank?: unknown) => state.bankComplete),
 }));
 
 vi.mock("@/services/hr", () => ({ saveEmployeeProfile, addKycDocument, removeKycDocument, watchEmployeeProfile }));
@@ -102,6 +106,14 @@ beforeEach(() => {
   state.user = { uid: "u1", name: "Asha Devi", role: "sales_member", isActive: true };
   // Payout on file by default, so the pre-existing tests keep asking about the record items only.
   state.bankComplete = true;
+  isBankComplete.mockImplementation(() => state.bankComplete);
+  // Restored by hand: `clearAllMocks` wipes the recorded calls but leaves any `mockImplementation`
+  // in place, so the deferred watcher one suite installs would otherwise silence every test after
+  // it — the prompt shows nothing until the payout watcher reports.
+  watchEmployeeBank.mockImplementation((_uid: string, cb: (b: unknown) => void) => {
+    cb(null);
+    return () => {};
+  });
   withProfile();
 });
 afterEach(cleanup);
@@ -465,6 +477,54 @@ describe("the thank-you screen", () => {
       expect(screen.queryByTestId("profile-completion-prompt")).not.toBeInTheDocument();
       cleanup();
     }
+  });
+
+  /**
+   * The one that kept getting through: two listeners, and the prompt made up its mind before the
+   * slower one had spoken.
+   *
+   * The employment record and the payout details are separate Firestore documents with separate
+   * watchers. The profile is the cached one and lands first, and at that instant the payout is
+   * still unknown — `null`, which also means "no payout on file". So the prompt concluded the
+   * payout step was outstanding, froze it into the session's question list, and then, when the
+   * bank snapshot arrived a beat later, read the record going complete as "they just finished the
+   * last item" and congratulated somebody who had done nothing at all.
+   */
+  it("waits for the payout details before deciding anything is missing", async () => {
+    /**
+     * Driven off the REAL bank value rather than this suite's `state.bankComplete` flag — the flag
+     * is true from the first render, which is exactly the condition that hides this bug. In life,
+     * "is the payout complete" is answered from a document that has not arrived yet, and the honest
+     * answer while it is in flight is the same `false` as "there is no payout on file".
+     */
+    isBankComplete.mockImplementation((b: unknown) => !!b);
+
+    let releaseBank!: () => void;
+    watchEmployeeBank.mockImplementation((_uid: string, cb: (b: unknown) => void) => {
+      releaseBank = () => cb({ uid: "u1", upiId: "asha@okaxis" });
+      return () => {};
+    });
+    withProfile(FULL); // everything on the employment record is already there
+
+    render(<ProfileCompletionPrompt />);
+    // Nothing at all while the payout is still in flight — not even a flash of the form.
+    expect(screen.queryByTestId("profile-completion-prompt")).not.toBeInTheDocument();
+
+    releaseBank();
+
+    // And nothing after it lands either: this member was already complete, so the record going
+    // complete is the watcher catching up, not somebody finishing their last item.
+    await waitFor(() => expect(watchEmployeeBank).toHaveBeenCalled());
+    expect(screen.queryByTestId("profile-completion-prompt")).not.toBeInTheDocument();
+    expect(screen.queryByText(/That's everything/)).not.toBeInTheDocument();
+  });
+
+  it("still asks properly when the payout genuinely is the missing item", () => {
+    // The guard must not swallow the real case it was added around.
+    state.bankComplete = false;
+    withProfile(FULL);
+    render(<ProfileCompletionPrompt />);
+    expect(screen.getByTestId("prompt-step-payout")).toBeInTheDocument();
   });
 
   it("does thank the person who finishes it here, and then lets them close", async () => {

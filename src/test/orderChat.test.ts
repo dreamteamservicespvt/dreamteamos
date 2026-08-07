@@ -122,8 +122,12 @@ describe("the client chat's lifecycle", () => {
     expect(room.memberName).toBe("Ravi");
     expect(room.participants).toEqual({ __arrayUnion: ["member2"] });
 
+    // The room moves to Ravi, but the CUSTOMER is never told his name. Every staff message sits on
+    // one unnamed side of this conversation on purpose — they bought from a business, not from an
+    // individual — and this system line was the one place a real name leaked into their view.
     const lastLine = added[added.length - 1];
-    expect(String(lastLine.data.text)).toMatch(/reassigned to Ravi/i);
+    expect(String(lastLine.data.text)).toMatch(/reassigned within our team/i);
+    expect(String(lastLine.data.text)).not.toMatch(/Ravi/);
   });
 
   it("re-opens without a member change when work is sent back for edits", async () => {
