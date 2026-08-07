@@ -13,15 +13,16 @@ import { useAuthStore } from '@/store/authStore';
 import { useFirestoreCollection, useFirestoreQuery } from '@/hooks/useFirestore';
 import {
   DURATIONS, END_CREDITS_SECONDS,
-  getClipCount, hasPoster, durationForClips, normalizeClipCount, priceForClips,
+  getClipCount, hasPoster, priceForClips,
 } from '@/utils/assignmentDuration';
+import DurationPicker from '@/components/work/DurationPicker';
 import { formatCurrency, formatDate, formatTime } from '@/utils/formatters';
 import { format } from 'date-fns';
 import type { WorkAssignment, AppUser, DailyCheckin, Order } from '@/types';
 import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from '@/types/aiPlatform';
 import { ATTIRE_LABELS, assignmentFormFromOrder, buildAssignmentRequirementsMessage } from '@/utils/adRequirement';
 import { watchAdLanguages, mergeAdLanguages, rememberAdLanguage } from '@/services/adLanguages';
-import { WISHES_FESTIVALS } from '@/utils/festivals';
+import OccasionPicker from '@/components/work/OccasionPicker';
 import { bulkCategoryLabel } from '@/utils/serviceCatalog';
 import { fetchOrder, activeOrdersQuery } from '@/services/orders';
 import { createWorkAssignment, nextWorkUniqueId } from '@/services/workAssign';
@@ -76,9 +77,6 @@ export default function WorkAssign() {
   const [submitting, setSubmitting] = useState(false);
   const [memberSearch, setMemberSearch] = useState('');
   const [memberPickerOpen, setMemberPickerOpen] = useState(false);
-  /** Duration entered as a free clip count instead of a standard package. */
-  const [customDuration, setCustomDuration] = useState(false);
-  const [customClips, setCustomClips] = useState(3);
   const [workloadSearch, setWorkloadSearch] = useState('');
   const [todayCheckins, setTodayCheckins] = useState<Map<string, DailyCheckin>>(new Map());
   const [verifying, setVerifying] = useState(false);
@@ -180,7 +178,6 @@ export default function WorkAssign() {
       if (cancelled || !order) return;
       setSourceOrder(order);
       setForm(prev => ({ ...prev, ...assignmentFormFromOrder(order, languages) }));
-      setCustomDuration(false);
       setShowForm(true);
       const nextParams = new URLSearchParams(searchParams);
       nextParams.delete('order');
@@ -197,9 +194,11 @@ export default function WorkAssign() {
     setForm(prev => {
       const next = { ...prev, [field]: value };
       if (field === 'category') {
-        const durations = DURATIONS[value as string];
-        // A custom clip count survives a category switch — only the price is re-derived.
-        if (!customDuration) next.duration = durations[0];
+        // A custom clip count survives a category switch — only the price is re-derived. Read off
+        // the value itself rather than a flag beside it: the two used to disagree, because this
+        // branch rewrote the duration without telling the flag.
+        const wasStandard = (DURATIONS[prev.category] || []).includes(prev.duration);
+        if (wasStandard) next.duration = DURATIONS[value as string][0];
         next.pricePerUnit = priceForClips(value as string, getClipCount(next.duration));
       }
       if (field === 'duration') {
@@ -207,23 +206,6 @@ export default function WorkAssign() {
       }
       return next;
     });
-  };
-
-  /** Switches the Duration dropdown to a free clip count, or back to the standard packages. */
-  const setCustomDurationMode = (enabled: boolean) => {
-    setCustomDuration(enabled);
-    const duration = enabled ? durationForClips(customClips) : DURATIONS[form.category][0];
-    setForm(prev => ({ ...prev, duration, pricePerUnit: priceForClips(prev.category, getClipCount(duration)) }));
-  };
-
-  const updateCustomClips = (clips: number) => {
-    const safe = normalizeClipCount(clips);
-    setCustomClips(safe);
-    setForm(prev => ({
-      ...prev,
-      duration: durationForClips(safe),
-      pricePerUnit: priceForClips(prev.category, safe),
-    }));
   };
 
   const clipCount = getClipCount(form.duration);
@@ -336,7 +318,6 @@ export default function WorkAssign() {
         modelGender: ModelGender.FEMALE, attireType: AttireType.TRADITIONAL, customAttire: '', aspectRatio: '9:16', language: 'Telugu', customLanguage: '',
         festival: '', requirementNotes: '', characterPack: '', realLocationProvided: false,
       });
-      setCustomDuration(false);
       setMemberSearch('');
     } catch (error) {
       console.error('Failed to create assignment:', error);
@@ -642,23 +623,13 @@ export default function WorkAssign() {
 
             {/* Duration — standard packages, or any custom clip count */}
             <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">Duration</label>
-              <select value={customDuration ? 'custom' : form.duration}
-                onChange={(e) => e.target.value === 'custom' ? setCustomDurationMode(true) : (setCustomDuration(false), updateField('duration', e.target.value))}
-                className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none">
-                {DURATIONS[form.category].map(d => <option key={d} value={d}>{d} ({getClipCount(d)} clips + {hasPoster(d) ? 'Poster ' : ''}{END_CREDITS_SECONDS}s EC)</option>)}
-                <option value="custom">Custom clips…</option>
-              </select>
-              {customDuration && (
-                <div className="mt-1.5 flex items-center gap-2">
-                  <input type="number" min={1} value={customClips}
-                    onChange={(e) => updateCustomClips(parseInt(e.target.value))}
-                    className="w-24 border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none" />
-                  <span className="text-xs text-muted-foreground">
-                    clips = {form.duration}{hasPoster(form.duration) ? ' + Poster' : ''} + {END_CREDITS_SECONDS}s EC
-                  </span>
-                </div>
-              )}
+              <label className="block text-sm font-medium text-muted-foreground mb-1">Length</label>
+              <DurationPicker
+                size="md"
+                category={form.category}
+                duration={form.duration}
+                onChange={(duration) => updateField('duration', duration)}
+              />
             </div>
 
             {/* Price Per Unit */}
@@ -765,19 +736,11 @@ export default function WorkAssign() {
                 created here by hand still needs it, because the generator themes the ad from it. */}
             {form.category === 'wishes' && (
               <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">Festival / occasion</label>
-                <select value={WISHES_FESTIVALS.includes(form.festival) || !form.festival ? form.festival : '__typed__'}
-                  onChange={(e) => setForm(prev => ({ ...prev, festival: e.target.value === '__typed__' ? '' : e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none">
-                  <option value="">Not specified</option>
-                  {WISHES_FESTIVALS.map(f => <option key={f} value={f}>{f}</option>)}
-                  <option value="__typed__">Other occasion…</option>
-                </select>
-                {!!form.festival && !WISHES_FESTIVALS.includes(form.festival) && (
-                  <input type="text" placeholder="Type the occasion…" value={form.festival}
-                    onChange={(e) => setForm(prev => ({ ...prev, festival: e.target.value }))}
-                    className="w-full mt-1.5 border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none" />
-                )}
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Occasion / function</label>
+                <OccasionPicker
+                  value={form.festival}
+                  onChange={(festival) => setForm(prev => ({ ...prev, festival }))}
+                />
               </div>
             )}
 

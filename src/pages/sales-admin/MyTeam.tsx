@@ -24,6 +24,7 @@ import { watchTeamProfiles } from "@/services/hr";
 import type { EmployeeProfile } from "@/types/hr";
 import { formatCurrency } from "@/utils/formatters";
 import { daysInPayCycle, dailyTargetOf, monthlyTargetFor, monthlyTargetOf } from "@/utils/salesTargets";
+import { earningsPlanLabel } from "@/utils/salesIncentive";
 
 export default function MyTeam() {
   const currentUser = useAuthStore((s) => s.user);
@@ -240,8 +241,7 @@ export default function MyTeam() {
                   { label: "Daily target", value: formatCurrency(dailyTargetOf(m)), tone: "muted" },
                   {
                     label: "Earnings plan",
-                    value: m.earningsOption === "stipend_plus_5" ? "Stipend + 5%"
-                      : m.earningsOption === "incentive_10" ? "10% incentive" : "Not set",
+                    value: earningsPlanLabel(m.earningsOption),
                     tone: "muted",
                   },
                 ]}

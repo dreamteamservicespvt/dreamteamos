@@ -132,7 +132,7 @@ export default function EditMemberModal({ member, onClose, onUpdated, variant }:
                   className="w-full h-10 px-4 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary"
                 >
                   <option value="">Not Assigned</option>
-                  <option value="stipend_plus_5">Option 1 — Stipend (up to ₹5,000) + 5% Incentives</option>
+                  <option value="stipend_plus_5">Option 1 — Salary (up to ₹5,000) + 5% Incentives</option>
                   <option value="incentive_10">Option 2 — 10% Direct Incentives</option>
                 </select>
                 <p className="text-[10px] text-muted-foreground mt-0.5">This controls which earnings plan the member is on</p>

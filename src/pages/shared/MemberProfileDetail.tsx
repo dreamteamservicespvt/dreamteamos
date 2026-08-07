@@ -35,6 +35,7 @@ import IdCardModal from "@/components/hr/IdCardModal";
 import BirthdayPreviewModal from "@/components/birthday/BirthdayPreviewModal";
 import { EngagementChip, Field, SectionCard, StageChip } from "@/components/hr/ui";
 import { dailyTargetOf, monthlyTargetOf } from "@/utils/salesTargets";
+import { earningsPlanLabel } from "@/utils/salesIncentive";
 
 /**
  * One team member, in full.
@@ -417,8 +418,7 @@ export default function MemberProfileDetail() {
                     <Field label="Monthly target" value={formatCurrency(monthlyTargetOf(member))} mono />
                     <Field
                       label="Earnings plan"
-                      value={member.earningsOption === "stipend_plus_5" ? "Stipend + 5% incentive"
-                        : member.earningsOption === "incentive_10" ? "10% direct incentive" : null}
+                      value={member.earningsOption ? earningsPlanLabel(member.earningsOption) : null}
                       className="sm:col-span-2"
                     />
                   </>

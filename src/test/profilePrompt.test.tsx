@@ -129,6 +129,9 @@ describe("who it interrupts", () => {
     withProfile(FULL);
     render(<ProfileCompletionPrompt />);
     // Nothing to ask for, so nothing is shown — not even a "you're done" they have to dismiss.
+    // Asserted on the dialog itself, not just the Save button: the congratulations state has no
+    // Save button either, so checking for that alone let a permanent thank-you modal through.
+    expect(screen.queryByTestId("profile-completion-prompt")).not.toBeInTheDocument();
     expect(screen.queryByTestId("profile-prompt-save")).not.toBeInTheDocument();
   });
 });
@@ -425,10 +428,55 @@ describe("the three-deferral budget", () => {
   });
 
   it("does not trap somebody who has actually finished, whatever their budget", () => {
-    // Budget spent AND the pack complete: the congratulations state must still be closeable, or
-    // finishing the form would leave them staring at a modal with no way out.
+    // Budget spent AND the pack complete: there is nothing left to ask, so the dialog does not
+    // open at all. A spent budget only removes the way OUT of an unfinished form; it can never
+    // put someone who has finished behind a modal.
     withProfile({ ...FULL, profilePromptDeferrals: 3 });
     render(<ProfileCompletionPrompt />);
+    expect(screen.queryByTestId("profile-completion-prompt")).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * The thank-you screen is a reply to somebody who just finished — not a greeting for everybody
+ * who finished at some point in the past.
+ *
+ * It used to key off "is the record complete", which is permanently true once it is. Nothing
+ * suppressed the repeat: the dismissal flag is dated, so it lapsed overnight, and "Close" on the
+ * completed state deliberately spends no deferral, so it wrote nothing at all. The result was a
+ * congratulations modal on every load, for ever, for exactly the people who had done what was
+ * asked. It is now gated on what was outstanding when the prompt loaded.
+ */
+describe("the thank-you screen", () => {
+  it("never greets somebody whose record was already complete when they arrived", () => {
+    withProfile(FULL);
+    render(<ProfileCompletionPrompt />);
+    expect(screen.queryByTestId("profile-completion-prompt")).not.toBeInTheDocument();
+    expect(screen.queryByText(/That's everything/)).not.toBeInTheDocument();
+  });
+
+  it("stays away across reloads, days and a lapsed dismissal flag", () => {
+    // The three things that used to bring it back: a fresh mount, no stored flag, and a record
+    // that has been complete for weeks.
+    withProfile({ ...FULL, profilePromptFirstShownOn: "2026-01-04", profilePromptDeferrals: 2 });
+    for (let reload = 0; reload < 3; reload++) {
+      localStorage.clear();
+      render(<ProfileCompletionPrompt />);
+      expect(screen.queryByTestId("profile-completion-prompt")).not.toBeInTheDocument();
+      cleanup();
+    }
+  });
+
+  it("does thank the person who finishes it here, and then lets them close", async () => {
+    // The case it exists for: something was outstanding at open, and the last item lands while
+    // they are looking at it.
+    const push = watchable();
+    render(<ProfileCompletionPrompt />);
+    expect(screen.getByTestId("profile-completion-prompt")).toBeInTheDocument();
+
+    push(FULL);
+
+    await waitFor(() => expect(screen.getByText(/That's everything/)).toBeInTheDocument());
     const close = screen.getByTestId("profile-prompt-later");
     expect(close).toHaveTextContent("Close");
     fireEvent.click(close);

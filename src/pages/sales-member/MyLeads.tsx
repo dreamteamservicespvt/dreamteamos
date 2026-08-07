@@ -24,7 +24,9 @@ import {
   packageOptionLabel, bulkTypesFor, effectiveAdCategory, bulkCategoryLabel,
   DEFAULT_PROMOTIONAL_PACKAGE, CUSTOM_BASE_CATEGORIES,
 } from "@/utils/serviceCatalog";
-import { clipsForSeconds, priceForClips } from "@/utils/assignmentDuration";
+import {
+  CLIP_PRESETS, clipsForSeconds, humanDuration, priceForClips, secondsForClips,
+} from "@/utils/assignmentDuration";
 import {
   discountBreakdown, EARNED_DISCOUNT_PERCENT, EARNED_REASON_LABEL, MEMBER_DISCOUNT_LIMIT_PERCENT,
   type EarnedReason,
@@ -1616,11 +1618,23 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
    * clip count, a price, a poster and a deadline instead of receiving a free-text note.
    */
   const [customBase, setCustomBase] = useState<string>(ed?.customBaseCategory || "");
-  const [customMinutes, setCustomMinutes] = useState<number>(
-    () => Math.floor((ed?.customDurationSeconds || 0) / 60),
-  );
-  const [customSeconds, setCustomSeconds] = useState<number>(
-    () => (ed?.customDurationSeconds || 0) % 60,
+  /**
+   * The length, counted in CLIPS rather than minutes and seconds.
+   *
+   * ── Why the unit changed ────────────────────────────────────────────────────────────────────
+   * The whole production side is built on 8-second clips, so a length typed in minutes and seconds
+   * had to be converted before it meant anything — and the conversion happened silently, after the
+   * sale. A member who sold "1 minute" had sold 8 clips (64 seconds); one who sold "45 seconds"
+   * had sold 6 clips (48). Neither could tell from this form, so the number quoted to the client
+   * and the number the tech team built were routinely different, and nobody found out until the
+   * finished ad was the wrong length.
+   *
+   * Picking clips removes the conversion entirely: the number chosen here IS the number of shots
+   * that get made, and the seconds are shown beside it so the member still knows what to tell the
+   * client. Seeded from the stored seconds so an existing sale re-opens on the length it holds.
+   */
+  const [customClips, setCustomClips] = useState<number>(
+    () => (ed?.customDurationSeconds ? clipsForSeconds(ed.customDurationSeconds) : 0),
   );
   /** The auto-priced figure was overridden, so it stops following the duration. */
   const [customPriceTouched, setCustomPriceTouched] = useState(false);
@@ -1740,8 +1754,8 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
    * non-standard length (see utils/assignmentDuration.priceForClips).
    */
   const isCustomService = category === "custom" && !!customBase;
-  const customTotalSeconds = isCustomService ? customMinutes * 60 + customSeconds : 0;
-  const customClips = customTotalSeconds > 0 ? clipsForSeconds(customTotalSeconds) : 0;
+  // Seconds are now derived from the clips, not the other way round — see `customClips` above.
+  const customTotalSeconds = isCustomService ? secondsForClips(customClips) : 0;
   const suggestedCustomPrice = customClips > 0 ? priceForClips(customBase, customClips) : 0;
 
   /**
@@ -2138,8 +2152,7 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
     setCustomAmount(0);
     setDescription("");
     setCustomBase("");
-    setCustomMinutes(0);
-    setCustomSeconds(0);
+    setCustomClips(0);
     setCustomPriceTouched(false);
     setQuantity(5);
     setDiscountValue(0);
@@ -2363,31 +2376,51 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
 
           {isCustomService && (
             <div className="space-y-2 border-t border-border pt-2">
-              <label className="text-xs font-medium text-muted-foreground">How long?</label>
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1">
-                  <input
-                    type="number" min={0} max={30}
-                    value={customMinutes || ""}
-                    onChange={(e) => setCustomMinutes(Math.max(0, Number(e.target.value) || 0))}
-                    data-test="custom-minutes"
-                    className="h-9 w-16 rounded-md border border-border bg-background px-2 text-center font-mono text-sm text-foreground outline-none focus:border-primary"
-                  />
-                  <span className="text-xs text-muted-foreground">min</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <input
-                    type="number" min={0} max={59}
-                    value={customSeconds || ""}
-                    onChange={(e) => setCustomSeconds(Math.min(59, Math.max(0, Number(e.target.value) || 0)))}
-                    data-test="custom-seconds"
-                    className="h-9 w-16 rounded-md border border-border bg-background px-2 text-center font-mono text-sm text-foreground outline-none focus:border-primary"
-                  />
-                  <span className="text-xs text-muted-foreground">sec</span>
-                </div>
+              <label className="text-xs font-medium text-muted-foreground">
+                How long is the video?
+              </label>
+              {/*
+                Tap a size, don't do arithmetic.
+
+                Each button says the same length twice — the number of clips the tech team will
+                build, and the number of seconds the client will watch — so the two halves of the
+                company are never describing the ad in different units, and a member on the phone
+                can read the seconds straight off the button they just pressed.
+              */}
+              <div className="flex flex-wrap gap-1.5" data-test="custom-clip-presets">
+                {CLIP_PRESETS.map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => { setCustomClips(n); setCustomPriceTouched(false); }}
+                    data-test={`custom-clips-${n}`}
+                    className={`h-auto rounded-lg border px-3 py-1.5 text-left transition-colors ${
+                      customClips === n
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:bg-accent"
+                    }`}
+                  >
+                    <span className="block text-[13px] font-semibold leading-tight">{n} clips</span>
+                    <span className="block text-[10px] leading-tight opacity-80">
+                      {humanDuration(secondsForClips(n))}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {/* Anything not on the row above. Still clips, so it still needs no conversion. */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] text-muted-foreground">Or type the number of clips:</span>
+                <input
+                  type="number" min={0} max={200}
+                  value={customClips || ""}
+                  onChange={(e) => { setCustomClips(Math.max(0, Number(e.target.value) || 0)); setCustomPriceTouched(false); }}
+                  data-test="custom-clips-input"
+                  className="h-9 w-20 rounded-md border border-border bg-background px-2 text-center font-mono text-sm text-foreground outline-none focus:border-primary"
+                />
                 {customClips > 0 && (
-                  <span className="text-[11px] text-muted-foreground" data-test="custom-clips">
-                    = {customClips} clips{customClips >= 4 ? " + poster" : ""}
+                  <span className="text-[11px] font-medium text-foreground" data-test="custom-clips">
+                    = {humanDuration(customTotalSeconds)} of video
+                    {customClips >= 4 ? " + poster" : ""}
                   </span>
                 )}
               </div>

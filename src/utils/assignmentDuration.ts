@@ -30,6 +30,61 @@ export function getClipCount(duration: string): number {
 /** Every ad closes with 5s of end credits. */
 export const END_CREDITS_SECONDS = 5;
 
+/** Seconds of finished video for a clip count. */
+export function secondsForClips(clips: number): number {
+  return Math.max(0, Math.floor(clips) || 0) * CLIP_SECONDS;
+}
+
+/**
+ * A length said the way a person says it.
+ *
+ * "64s" is not a length anybody uses out loud, and it is actively confusing next to "2 min" —
+ * a member comparing 64s with 120s has to do arithmetic to tell which is longer. Under a minute
+ * reads in seconds; above it reads in minutes, with the remainder only when there is one.
+ */
+export function humanDuration(seconds: number): string {
+  const s = Math.max(0, Math.round(Number(seconds) || 0));
+  if (s < 60) return `${s} sec`;
+  const mins = Math.floor(s / 60);
+  const rest = s % 60;
+  return rest ? `${mins} min ${rest} sec` : `${mins} min`;
+}
+
+/**
+ * How a length is written EVERYWHERE a person picks or reads one: clips first.
+ *
+ * ── Why clips lead ────────────────────────────────────────────────────────────────────────────
+ * The whole production side counts in clips — a clip is one generated shot, and eight seconds is
+ * simply how long one lasts. Sales was picking a length in minutes and seconds, which meant the
+ * two halves of the company described the same ad in units neither could convert on sight: a
+ * member sold "1 minute" and the tech team had to work out that this is 8 clips, sometimes
+ * getting 7 and building an ad eight seconds short of what was sold.
+ *
+ * Putting the clip count first and the seconds after it means nobody has to convert anything.
+ * The seconds stay because that is what the CLIENT was promised, and a member on the phone needs
+ * to be able to say it.
+ *
+ * e.g. 4 → "4 clips · 32 sec", 15 → "15 clips · 2 min".
+ */
+export function clipChoiceLabel(clips: number): string {
+  const n = Math.max(0, Math.floor(clips) || 0);
+  return `${n} ${n === 1 ? "clip" : "clips"} · ${humanDuration(secondsForClips(n))}`;
+}
+
+/** The same, from a stored duration string: `"64s"` → `"8 clips · 1 min 4 sec"`. */
+export function durationChoiceLabel(duration: string): string {
+  return clipChoiceLabel(getClipCount(duration));
+}
+
+/**
+ * The lengths offered first when somebody is picking one.
+ *
+ * Deliberately the sizes the team actually sells rather than every multiple of eight: a list of
+ * thirty options is not a choice, it is a search. Anything else is still reachable through the
+ * custom box, which is what the last entry of every picker opens.
+ */
+export const CLIP_PRESETS: number[] = [2, 4, 6, 8, 15];
+
 /** Posters ship from 4 clips (32s) up — custom durations follow the same threshold. */
 export function hasPoster(duration: string): boolean {
   const known = HAS_POSTER[duration];

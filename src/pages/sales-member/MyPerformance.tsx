@@ -10,9 +10,10 @@ import { commissionRate, computeCommissionInRange, earliestVerifiedSaleDate, pai
 import { payPeriodForDate, payPeriodLabel, currentPayMonth } from "@/utils/payrollEngine";
 import { saleDay } from "@/utils/salesRevenue";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import { TrendingUp, Target, Award, Zap, IndianRupee, Wallet, History, CheckCircle2 } from "lucide-react";
+import { TrendingUp, Target, Award, Zap, IndianRupee, Wallet, History, CheckCircle2, Search, Plus } from "lucide-react";
 import AttendanceCard from "@/components/sales/AttendanceCard";
 import { monthlyTargetOf } from "@/utils/salesTargets";
+import { EARNINGS_PLAN_LABELS, earningsPlanLabel } from "@/utils/salesIncentive";
 
 const PIE_COLORS = [
   "hsl(142 71% 45%)",   // success
@@ -23,11 +24,16 @@ const PIE_COLORS = [
   "hsl(240 4% 66%)",    // muted-foreground
 ];
 
+/** How many completed sales are listed at a time — the first page, and each "load more". */
+const SALES_PAGE = 10;
+
 export default function MyPerformance() {
   const user = useAuthStore((s) => s.user);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [earningsView, setEarningsView] = useState<"option1" | "option2">("option1");
+  const [saleSearch, setSaleSearch] = useState("");
+  const [saleLimit, setSaleLimit] = useState(SALES_PAGE);
 
   useEffect(() => {
     if (!user) return;
@@ -80,6 +86,16 @@ export default function MyPerformance() {
   const option2Total = monthlyVerifiedRevenue * 0.10;
   const assignedOption = user?.earningsOption;
 
+  /**
+   * Which breakdown is on screen.
+   *
+   * A member who has been put on a plan sees that plan and only that plan; the toggle is for the
+   * unassigned, who are still choosing. `earningsView` therefore only decides anything when there
+   * is no assignment to decide it for them.
+   */
+  const showOption1 = assignedOption ? assignedOption === "stipend_plus_5" : earningsView === "option1";
+  const showOption2 = assignedOption ? assignedOption === "incentive_10" : earningsView === "option2";
+
   // ── Commission settlements (what's been paid vs what's still owed) ──
   const { data: settlements } = useFirestoreQuery<CommissionSettlement>(
     useMemo(() => (user ? memberSettlementsQuery(user.uid) : null), [user?.uid]),
@@ -125,6 +141,61 @@ export default function MyPerformance() {
     { name: "Not Interested", value: leads.filter((l) => l.status === "not_interested").length },
     { name: "Not Called", value: leads.filter((l) => l.status === "not_called").length },
   ].filter((d) => d.value > 0);
+
+  /**
+   * Completed sales, newest first, as flat rows.
+   *
+   * ── Why it is a list rather than a nested map in the table ────────────────────────────────────
+   * One lead can hold several sale items, so the table's rows are items, not leads. Searching and
+   * paging have to work on the same units the table draws — flattening once here is what lets
+   * "showing 10 of 47" be a true statement, and it puts the sort in one place.
+   *
+   * ── Why newest first ──────────────────────────────────────────────────────────────────────────
+   * The list arrives in whatever order Firestore returns the leads, which is neither chronological
+   * nor stable. Cutting an arbitrary order at ten hides an arbitrary ten. A member opening this
+   * table wants the sale they just made, so recency is the order and the first page is the answer
+   * to the question they actually came with.
+   */
+  const saleRows = useMemo(() => {
+    const rows = leads
+      .filter((l) => l.saleDone)
+      .flatMap((l) => getSaleItems(l).map((item, idx) => ({ lead: l, item, key: `${l.id}-${idx}` })));
+    return rows.sort((a, b) => {
+      const at = (a.item.submittedAt as { seconds?: number } | undefined)?.seconds || 0;
+      const bt = (b.item.submittedAt as { seconds?: number } | undefined)?.seconds || 0;
+      return bt - at;
+    });
+  }, [leads]);
+
+  /**
+   * Free-text search across everything the row shows.
+   *
+   * Matched against one lower-cased haystack per row rather than field by field, so a member can
+   * type whatever they remember about the sale — the client's name, "wedding", the package, the
+   * amount, or "pending" — and find it. Every token has to match, which is what makes a second
+   * word narrow the list instead of widening it.
+   */
+  const filteredSales = useMemo(() => {
+    const terms = saleSearch.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!terms.length) return saleRows;
+    return saleRows.filter(({ lead, item }) => {
+      const hay = [
+        lead.displayName,
+        item.category?.replace(/_/g, " "),
+        item.packageKey,
+        item.amount,
+        item.verificationStatus || "pending",
+      ].join(" ").toLowerCase();
+      return terms.every((t) => hay.includes(t));
+    });
+  }, [saleRows, saleSearch]);
+
+  // A new search starts at the top of its own results — otherwise a search run after three
+  // "load more" presses would show 40 rows of a 5-row result and read as if nothing happened.
+  useEffect(() => { setSaleLimit(SALES_PAGE); }, [saleSearch]);
+
+  const visibleSales = filteredSales.slice(0, saleLimit);
+  const moreSales = filteredSales.length - visibleSales.length;
 
   if (loading) {
     return (
@@ -228,51 +299,58 @@ export default function MyPerformance() {
             </p>
           </div>
           {assignedOption && (
-            <span className={`text-[10px] font-medium px-2.5 py-1 rounded-full border ${
-              assignedOption === "stipend_plus_5"
-                ? "bg-primary/10 text-primary border-primary/30"
-                : "bg-success/10 text-success border-success/30"
-            }`}>
-              Your Plan: {assignedOption === "stipend_plus_5" ? "Stipend + 5%" : "10% Incentive"}
+            <span
+              data-test="earnings-plan-badge"
+              className={`text-[10px] font-medium px-2.5 py-1 rounded-full border ${
+                assignedOption === "stipend_plus_5"
+                  ? "bg-primary/10 text-primary border-primary/30"
+                  : "bg-success/10 text-success border-success/30"
+              }`}
+            >
+              Your Plan: {earningsPlanLabel(assignedOption)}
             </span>
           )}
         </div>
 
-        {/* Toggle */}
-        <div className="flex gap-1.5 mb-4">
-          <button
-            onClick={() => setEarningsView("option1")}
-            className={`flex-1 h-9 rounded-lg text-xs font-medium transition-colors relative ${
-              earningsView === "option1"
-                ? "bg-primary/15 text-primary border border-primary/30"
-                : "bg-accent border border-border text-muted-foreground hover:bg-accent/80"
-            }`}
-          >
-            Stipend + 5%
-            {assignedOption === "stipend_plus_5" && (
-              <span className="ml-1 text-[9px] opacity-75">★ Your Plan</span>
-            )}
-          </button>
-          <button
-            onClick={() => setEarningsView("option2")}
-            className={`flex-1 h-9 rounded-lg text-xs font-medium transition-colors ${
-              earningsView === "option2"
-                ? "bg-success/15 text-success border border-success/30"
-                : "bg-accent border border-border text-muted-foreground hover:bg-accent/80"
-            }`}
-          >
-            10% Incentive
-            {assignedOption === "incentive_10" && (
-              <span className="ml-1 text-[9px] opacity-75">★ Your Plan</span>
-            )}
-          </button>
-        </div>
+        {/*
+          The toggle only exists for somebody who has NOT been put on a plan yet — for them the two
+          are genuinely a choice, and seeing both is the point.
 
-        {/* Option 1 breakdown */}
-        {earningsView === "option1" && (
-          <div className="space-y-2">
+          Once a plan is assigned it is not a menu, and showing the other one was actively harmful:
+          a member on Salary + 5% could open the 10% tab, read a bigger number as their earnings,
+          and go to payroll with it. They now see one plan — theirs — and every figure on this card
+          is money they are actually owed.
+        */}
+        {!assignedOption && (
+          <div className="flex gap-1.5 mb-4" data-test="earnings-plan-toggle">
+            <button
+              onClick={() => setEarningsView("option1")}
+              className={`flex-1 h-9 rounded-lg text-xs font-medium transition-colors relative ${
+                earningsView === "option1"
+                  ? "bg-primary/15 text-primary border border-primary/30"
+                  : "bg-accent border border-border text-muted-foreground hover:bg-accent/80"
+              }`}
+            >
+              {EARNINGS_PLAN_LABELS.stipend_plus_5}
+            </button>
+            <button
+              onClick={() => setEarningsView("option2")}
+              className={`flex-1 h-9 rounded-lg text-xs font-medium transition-colors ${
+                earningsView === "option2"
+                  ? "bg-success/15 text-success border border-success/30"
+                  : "bg-accent border border-border text-muted-foreground hover:bg-accent/80"
+              }`}
+            >
+              {EARNINGS_PLAN_LABELS.incentive_10}
+            </button>
+          </div>
+        )}
+
+        {/* Salary + 5% */}
+        {showOption1 && (
+          <div className="space-y-2" data-test="earnings-option1">
             <div className="flex items-center justify-between text-sm py-1">
-              <span className="text-muted-foreground">Stipend (proportional to ₹30,000 target)</span>
+              <span className="text-muted-foreground">Salary (proportional to {formatCurrency(MONTHLY_TARGET)} target)</span>
               <span className="font-mono font-medium text-foreground">{formatCurrency(stipendAmount)}</span>
             </div>
             <div className="flex items-center justify-between text-sm py-1">
@@ -284,14 +362,14 @@ export default function MyPerformance() {
               <span className="font-display font-bold text-xl text-primary">{formatCurrency(option1Total)}</span>
             </div>
             <p className="text-[10px] text-muted-foreground bg-muted/40 rounded-md px-2.5 py-1.5 mt-1">
-              Stipend is proportional: ₹5,000 max at ₹30,000 sales. At {monthlyVerifiedRevenue >= MONTHLY_TARGET ? "100%" : `${Math.round((monthlyVerifiedRevenue / MONTHLY_TARGET) * 100)}%`} you earn {formatCurrency(stipendAmount)} stipend.
+              Salary is proportional: {formatCurrency(STIPEND_MAX)} max at {formatCurrency(MONTHLY_TARGET)} sales. At {monthlyVerifiedRevenue >= MONTHLY_TARGET ? "100%" : `${Math.round((monthlyVerifiedRevenue / MONTHLY_TARGET) * 100)}%`} you earn {formatCurrency(stipendAmount)} salary.
             </p>
           </div>
         )}
 
-        {/* Option 2 breakdown */}
-        {earningsView === "option2" && (
-          <div className="space-y-2">
+        {/* 10% Incentive */}
+        {showOption2 && (
+          <div className="space-y-2" data-test="earnings-option2">
             <div className="flex items-center justify-between text-sm py-1">
               <span className="text-muted-foreground">10% on {formatCurrency(monthlyVerifiedRevenue)} verified sales</span>
               <span className="font-mono font-medium text-foreground">{formatCurrency(option2Total)}</span>
@@ -306,19 +384,20 @@ export default function MyPerformance() {
           </div>
         )}
 
-        {/* Side-by-side comparison hint */}
-        <div className="mt-3 pt-3 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
-          <span>Option 1 (Stipend + 5%)</span>
-          <span className="font-mono font-medium text-foreground">{formatCurrency(option1Total)}</span>
-          <span className="text-muted-foreground/40">vs</span>
-          <span className="font-mono font-medium text-foreground">{formatCurrency(option2Total)}</span>
-          <span>Option 2 (10%)</span>
-        </div>
-
+        {/* The comparison is only meaningful while both plans are on offer — see the toggle above. */}
         {!assignedOption && (
-          <p className="text-xs text-muted-foreground text-center mt-3 italic">
-            Your earnings plan hasn't been assigned yet — contact your sales admin.
-          </p>
+          <>
+            <div className="mt-3 pt-3 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
+              <span>Option 1 ({EARNINGS_PLAN_LABELS.stipend_plus_5})</span>
+              <span className="font-mono font-medium text-foreground">{formatCurrency(option1Total)}</span>
+              <span className="text-muted-foreground/40">vs</span>
+              <span className="font-mono font-medium text-foreground">{formatCurrency(option2Total)}</span>
+              <span>Option 2 ({EARNINGS_PLAN_LABELS.incentive_10})</span>
+            </div>
+            <p className="text-xs text-muted-foreground text-center mt-3 italic">
+              Your earnings plan hasn't been assigned yet — contact your sales admin.
+            </p>
+          </>
         )}
       </div>
 
@@ -377,8 +456,26 @@ export default function MyPerformance() {
       {/* Sales Table */}
       {salesDoneCount > 0 && (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
-          <div className="p-4 border-b border-border">
-            <h2 className="font-display font-semibold text-foreground">Completed Sales</h2>
+          <div className="p-4 border-b border-border flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="font-display font-semibold text-foreground">Completed Sales</h2>
+              {/* Said plainly, because "10 rows" with no count reads as "you have made 10 sales". */}
+              <p className="text-xs text-muted-foreground mt-0.5" data-test="sales-count">
+                Showing {visibleSales.length} of {filteredSales.length}
+                {saleSearch.trim() && saleRows.length !== filteredSales.length ? ` matching sales (${saleRows.length} total)` : " sales"}
+              </p>
+            </div>
+            <div className="relative w-full sm:w-64">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <input
+                type="search"
+                value={saleSearch}
+                onChange={(e) => setSaleSearch(e.target.value)}
+                placeholder="Search name, category, package…"
+                data-test="sales-search"
+                className="w-full h-9 pl-9 pr-3 rounded-lg bg-background border border-border text-sm text-foreground outline-none focus:border-primary"
+              />
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -394,9 +491,8 @@ export default function MyPerformance() {
                 </tr>
               </thead>
               <tbody>
-                {leads.filter((l) => l.saleDone).flatMap((l) =>
-                  getSaleItems(l).map((item, idx) => (
-                    <tr key={`${l.id}-${idx}`} className="border-b border-border/50 hover:bg-accent/30 transition-colors">
+                {visibleSales.map(({ lead: l, item, key }) => (
+                    <tr key={key} className="border-b border-border/50 hover:bg-accent/30 transition-colors">
                       <td className="p-3 font-medium text-foreground">
                         {l.displayName}
                         {l.isCustomEntry && <span className="ml-1.5 text-[9px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">Custom</span>}
@@ -424,11 +520,32 @@ export default function MyPerformance() {
                           : <span className="text-muted-foreground">—</span>}
                       </td>
                     </tr>
-                  ))
+                ))}
+                {visibleSales.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="p-6 text-center text-sm text-muted-foreground" data-test="sales-no-match">
+                      No sales match “{saleSearch.trim()}”.
+                    </td>
+                  </tr>
                 )}
               </tbody>
             </table>
           </div>
+
+          {/* Load more — ten at a time, the same page size the table opens with. */}
+          {moreSales > 0 && (
+            <div className="p-3 border-t border-border">
+              <button
+                onClick={() => setSaleLimit((n) => n + SALES_PAGE)}
+                data-test="sales-load-more"
+                className="w-full h-9 rounded-lg border border-border text-xs font-medium text-foreground hover:bg-accent transition-colors inline-flex items-center justify-center gap-1.5"
+              >
+                <Plus size={13} />
+                Load {Math.min(SALES_PAGE, moreSales)} more
+                <span className="text-muted-foreground">({moreSales} left)</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

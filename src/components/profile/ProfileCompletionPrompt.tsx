@@ -451,15 +451,30 @@ export default function ProfileCompletionPrompt() {
   /**
    * The moment the last item lands, say so and get out of the way. Without this the prompt would
    * simply vanish mid-interaction, which reads as a crash rather than as finishing.
+   *
+   * ── Why it is gated on what was outstanding AT OPEN ───────────────────────────────────────────
+   * "That's everything — thank you!" is a reply to somebody who just finished. It used to fire on
+   * `completion.complete` alone, which is also true of every member who finished weeks ago — so
+   * they were congratulated again on every single load, for ever. (The dismissal flag could not
+   * stop it: it is keyed by day, and "Close" on the completed state deliberately does not spend a
+   * deferral, so it wrote nothing at all.)
+   *
+   * `sessionKeys` is the list of items missing when this prompt loaded. Empty means the record was
+   * already complete before they arrived — there is nothing to announce, so nothing is shown. It
+   * is only non-empty for someone who genuinely had things outstanding, and only they see the
+   * thank-you, exactly once, at the moment the last one lands.
    */
   useEffect(() => {
     if (!profile || !eligible || dismissed) return;
+    // Null means the list has not been frozen yet (it is set from the first snapshot, one render
+    // earlier than this effect can see it). Waiting a render is right; assuming is not.
+    if (!sessionKeys || sessionKeys.length === 0) return;
     if (completion.complete) {
       setJustFinished(true);
       const timer = setTimeout(() => setJustFinished(false), 2600);
       return () => clearTimeout(timer);
     }
-  }, [completion.complete, profile, eligible, dismissed]);
+  }, [completion.complete, profile, eligible, dismissed, sessionKeys]);
 
   if (!user || !eligible) return null;
   // Nothing is shown until the record has actually loaded — a prompt that flashes up and then
