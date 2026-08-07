@@ -17,13 +17,17 @@ import {
   progressPercent, PROGRESS_FIELD_LABELS, TRACK_FIELDS,
 } from "@/utils/orderProgress";
 import { updateOrderProgress, setOrderTrackComplete } from "@/services/orders";
+import { isBulkVideoOrder } from "@/utils/bulkVideos";
+import BulkVideoBoard from "@/components/work/BulkVideoBoard";
 import { useToast } from "@/hooks/use-toast";
 import { ORDER_TRACKS } from "@/types";
 import type { AppUser, Order, OrderProgressField, OrderTrack } from "@/types";
 
-export default function OrderProgressPanel({ order, user, compact = false }: {
+export default function OrderProgressPanel({ order, user, members, compact = false }: {
   order: Order;
   user: Pick<AppUser, "uid" | "name" | "role"> | null;
+  /** The team a bulk order's videos can be shared across. Omitted on a member's own screens. */
+  members?: Pick<AppUser, "uid" | "name">[];
   /** Cards in a grid get the bar and counters without the per-job breakdown. */
   compact?: boolean;
 }) {
@@ -31,6 +35,18 @@ export default function OrderProgressPanel({ order, user, compact = false }: {
   const { toast } = useToast();
   const [busy, setBusy] = useState<string | null>(null);
   const [open, setOpen] = useState(!compact);
+
+  /**
+   * A bulk order is a set of individually-owned videos, not a counter.
+   *
+   * Swapped in here rather than bolted on beside it, because this component is already rendered in
+   * both places a bulk order appears — the Orders queue and a member's My Work. Routing the board
+   * through the same door means the admin who assigns and the member who ticks off are looking at
+   * one implementation, and neither screen needed to know about the change.
+   */
+  if (isBulkVideoOrder(order)) {
+    return <BulkVideoBoard order={order} user={user} members={members} defaultOpen={!compact} />;
+  }
 
   if (!progress) return null;
 

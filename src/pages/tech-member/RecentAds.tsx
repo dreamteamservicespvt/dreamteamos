@@ -14,6 +14,7 @@ import { formatDate, formatTime } from '@/utils/formatters';
 import type { WorkAssignment } from '@/types';
 import { useCompleteWork } from '@/hooks/useCompleteWork';
 import CodeVerificationModal from '@/components/ai-platform/CodeVerificationModal';
+import { isWorkUnlocked, rememberWorkUnlock } from '@/utils/workUnlock';
 import AIPlatformApp from '@/components/ai-platform/AIPlatformApp';
 import StaffOrderChat from '@/components/order-chat/StaffOrderChat';
 import { useOrderChatUnread } from '@/hooks/useOrderChat';
@@ -70,6 +71,17 @@ export default function RecentAds() {
   const [verifyPurpose, setVerifyPurpose] = useState<'work' | 'chat'>('work');
   const [openChatFor, setOpenChatFor] = useState<WorkAssignment | null>(null);
   const chatState = useOrderChatUnread(user?.uid);
+
+  /** Asked once per job, per person, per device — see utils/workUnlock and the note in MyWork. */
+  const openWithCode = (assignment: WorkAssignment, purpose: 'work' | 'chat') => {
+    if (isWorkUnlocked(user?.uid, assignment.id)) {
+      if (purpose === 'chat') setOpenChatFor(assignment);
+      else setOpenAssignment(assignment);
+      return;
+    }
+    setVerifyPurpose(purpose);
+    setVerifyingAssignment(assignment);
+  };
 
   /**
    * The open job as it stands right now. `openAssignment` is a snapshot taken when it was clicked,
@@ -198,6 +210,7 @@ export default function RecentAds() {
         <CodeVerificationModal
           accessCode={verifyingAssignment.accessCode}
           onVerified={() => {
+            rememberWorkUnlock(user?.uid, verifyingAssignment.id);
             if (verifyPurpose === 'chat') setOpenChatFor(verifyingAssignment);
             else setOpenAssignment(verifyingAssignment);
             setVerifyingAssignment(null);
@@ -346,7 +359,7 @@ export default function RecentAds() {
 
                       {/* Talk to the client about this job — same code as the generator. */}
                       <button
-                        onClick={(e) => { e.stopPropagation(); setVerifyPurpose('chat'); setVerifyingAssignment(a); }}
+                        onClick={(e) => { e.stopPropagation(); openWithCode(a, 'chat'); }}
                         title="Chat with the client"
                         className="relative rounded-xl border border-border bg-background p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                       >
@@ -360,7 +373,7 @@ export default function RecentAds() {
 
                       {/* Open button — standalone, always visible */}
                       <button
-                        onClick={() => { setVerifyPurpose('work'); setVerifyingAssignment(a); }}
+                        onClick={() => openWithCode(a, 'work')}
                         className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 active:scale-95 transition-all shadow-sm shadow-primary/20"
                       >
                         Open <ChevronRight className="w-4 h-4" />

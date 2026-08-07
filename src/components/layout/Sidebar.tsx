@@ -10,6 +10,7 @@ import { ChevronLeft, ChevronDown, LogOut, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { deleteFCMToken } from "@/services/fcm";
+import { clearWorkUnlocks } from "@/utils/workUnlock";
 import InstallAppButton from "@/components/layout/InstallAppButton";
 import MemberAvatar from "@/components/MemberAvatar";
 import BrandLogo from "@/components/common/BrandLogo";
@@ -77,6 +78,9 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
     }
     await signOut(auth);
     await deleteFCMToken(user.uid).catch(() => {});
+    // Access codes proven on this device are forgotten with the session. They are remembered per
+    // person, but a shared phone should not carry one member's unlocked jobs into the next login.
+    clearWorkUnlocks();
     setUser(null);
     navigate("/login");
   };

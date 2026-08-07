@@ -67,6 +67,10 @@ beforeEach(() => {
   notifyTechTeamLeaders.mockClear();
   markOrderCompleted.mockClear();
   upsertClientOnWorkComplete.mockClear();
+  // A correct code is now remembered per job (utils/workUnlock), and localStorage outlives a
+  // render — without this, the first test in the file would unlock the job for all the rest and
+  // they would silently stop exercising the gate at all.
+  localStorage.clear();
 });
 afterEach(cleanup);
 

@@ -12,8 +12,12 @@ import { findMemberDuplicates, resolveNonSaleDuplicates } from "@/services/dupli
 import { formatCurrency, formatDuration } from "@/utils/formatters";
 import { normalizePhone, getCallUrl, getWhatsAppUrl, buildLeadGreeting } from "@/utils/phone";
 import { useNow } from "@/hooks/useNow";
-import { format, subDays, startOfDay } from "date-fns";
-import type { AppUser, Lead, LeadStatus, Order, SaleDetail, SaleEditEntry } from "@/types";
+import { format, subDays, startOfDay, parseISO } from "date-fns";
+import type { AppUser, Lead, LeadStatus, Order, SaleDetail, SaleEditEntry, SalePayment } from "@/types";
+import {
+  collectedOf, newPayment, pendingOf, pendingSales, saleItemsOf, withPayment, type PendingSale,
+} from "@/utils/salePayments";
+import { collectReadiness } from "@/utils/collectReadiness";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
@@ -25,7 +29,7 @@ import {
   DEFAULT_PROMOTIONAL_PACKAGE, CUSTOM_BASE_CATEGORIES,
 } from "@/utils/serviceCatalog";
 import {
-  CLIP_PRESETS, clipsForSeconds, humanDuration, priceForClips, secondsForClips,
+  CLIP_PRESETS, CLIP_SECONDS, clipsForSeconds, humanDuration, priceForClips, secondsForClips,
 } from "@/utils/assignmentDuration";
 import {
   discountBreakdown, EARNED_DISCOUNT_PERCENT, EARNED_REASON_LABEL, MEMBER_DISCOUNT_LIMIT_PERCENT,
@@ -44,7 +48,7 @@ import { upsertOrderForSale, cancelOrderForSale, addOrderUpdateNote, orderDocId 
 import { buildClientSaleMessage } from "@/utils/salesMessage";
 import { dayRevenue, saleDay, type DayRevenue } from "@/utils/salesRevenue";
 import {
-  Search, Phone, MessageCircle, StickyNote, ChevronDown, ChevronUp, Clock,
+  Search, Phone, MessageCircle, StickyNote, ChevronDown, ChevronUp, Clock, IndianRupee,
   Loader2, Check, Upload, ExternalLink, Plus, Trash2, ShoppingBag, X, Lock, AlertTriangle, Snowflake, FileText, RotateCcw, Clapperboard, Copy, Pencil, History, Send, Layers, PartyPopper, Sparkles, BadgePercent, CheckCircle2,
 } from "lucide-react";
 import { CUSTOM_FESTIVAL_OPTION, WISHES_FESTIVALS, isListedFestival } from "@/utils/festivals";
@@ -532,6 +536,39 @@ export default function MyLeads() {
         />
       )}
 
+      {/* Money still to collect — see PendingPaymentsPanel for why it sits above everything else. */}
+      <PendingPaymentsPanel
+        leads={leads}
+        ordersById={ordersById}
+        onCollect={async (row, amount, note) => {
+          const items = saleItemsOf(row.lead).slice();
+          const current = items[row.index];
+          if (!current) return;
+          const updated: SaleDetail = {
+            ...current,
+            partialPayment: true,
+            payments: withPayment(
+              current,
+              newPayment({
+                amount,
+                note: note || "Balance collected",
+                collectedAt: Timestamp.now(),
+                by: user ? { uid: user.uid, name: user.name } : null,
+              }),
+              row.lead,
+            ),
+          };
+          items[row.index] = updated;
+          await updateLead(row.lead.id, { saleItems: items, saleDetails: items[items.length - 1] });
+          toast({
+            title: "Payment recorded",
+            description: pendingOf(updated, row.lead) > 0
+              ? `${formatCurrency(pendingOf(updated, row.lead))} still pending.`
+              : "This sale is fully paid.",
+          });
+        }}
+      />
+
       {/* View Toggle */}
       <div className="flex gap-1.5">
         <button onClick={() => setViewTab("leads")}
@@ -787,6 +824,228 @@ interface LeadCardProps {
   setExpandedSale: (id: string | null) => void;
   /** This member's orders, keyed by order-doc id, so each sale row knows its delivery status. */
   ordersById: Map<string, Order>;
+}
+
+/**
+ * Money the member has sold but not yet been given.
+ *
+ * ── Why it is a section of its own, above the leads ───────────────────────────────────────────
+ * A pending balance is invisible work. The sale is recorded, the client is happy, the job is with
+ * the tech team — and the only thing keeping the money from arriving is somebody remembering to
+ * ask for it. Buried inside a sale row on a lead somewhere down a list of two hundred, nobody
+ * remembers. It is the single highest-value thing on this page, so it sits at the top of it.
+ *
+ * ── Why "ready to collect" comes first ────────────────────────────────────────────────────────
+ * The balance on a social-media month is not due on a date, it is due on a delivery: the client
+ * agreed to pay the rest once the first post is created, posted and the campaign is running. The
+ * tech team records exactly that on the order as they go — so the sale can promote itself the
+ * moment the work lands, and the member finds out by opening the page they already open. Chasing
+ * before then is chasing for nothing and spends goodwill they will need when it genuinely is due.
+ *
+ * Collapsed when nothing is outstanding: an empty panel every day is how a panel gets ignored.
+ */
+function PendingPaymentsPanel({ leads, ordersById, onCollect }: {
+  leads: Lead[];
+  ordersById: Map<string, Order>;
+  onCollect: (row: PendingSale, amount: number, note: string) => Promise<void>;
+}) {
+  const [collecting, setCollecting] = useState<PendingSale | null>(null);
+  const [open, setOpen] = useState(true);
+
+  const rows = useMemo(() => {
+    const list = pendingSales(leads).map((row) => ({
+      row,
+      readiness: collectReadiness(ordersById.get(orderDocId(row.lead.id, row.item, row.index))),
+    }));
+    // Ready first, then the biggest balance — the two things that decide who to ring next.
+    return list.sort((a, b) => {
+      if (a.readiness.ready !== b.readiness.ready) return a.readiness.ready ? -1 : 1;
+      return b.row.pending - a.row.pending;
+    });
+  }, [leads, ordersById]);
+
+  const total = rows.reduce((sum, r) => sum + r.row.pending, 0);
+  const readyCount = rows.filter((r) => r.readiness.ready).length;
+
+  if (rows.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-warning/40 bg-warning/5" data-test="pending-payments">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
+      >
+        <IndianRupee size={15} className="shrink-0 text-warning" />
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-foreground">
+            Pending payments · {formatCurrency(total)}
+          </span>
+          <span className="block text-[11px] text-muted-foreground" data-test="pending-payments-summary">
+            {rows.length} sale{rows.length === 1 ? "" : "s"} to collect
+            {readyCount > 0 ? ` · ${readyCount} ready now` : ""}
+          </span>
+        </span>
+        <ChevronDown size={15} className={`shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="space-y-1.5 px-2 pb-2">
+          {rows.map(({ row, readiness }) => (
+            <div
+              key={`${row.lead.id}-${row.index}`}
+              data-test="pending-payment-row"
+              data-ready={readiness.ready ? "yes" : "no"}
+              className={`rounded-lg border bg-card p-2.5 ${
+                readiness.ready ? "border-success/50" : "border-border"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-semibold text-foreground">
+                    {row.lead.realName || row.lead.displayName}
+                  </p>
+                  <p className="truncate text-[10px] text-muted-foreground">
+                    {categoryLabel(row.item.category)}
+                    {row.soldOn ? ` · sold ${format(parseISO(row.soldOn), "dd MMM")}` : ""}
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="font-mono text-sm font-bold text-warning">{formatCurrency(row.pending)}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    of {formatCurrency(row.price)} · got {formatCurrency(row.collected)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                    readiness.ready ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {readiness.ready ? <Check size={10} /> : <Clock size={10} />} {readiness.reason}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  {row.lead.phone && (
+                    <a
+                      href={getWhatsAppUrl(row.lead.phone)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex h-7 items-center gap-1 rounded-md border border-border px-2 text-[11px] font-medium text-muted-foreground hover:bg-accent"
+                    >
+                      <MessageCircle size={11} /> Remind
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setCollecting(row)}
+                    data-test="pending-collect"
+                    className="inline-flex h-7 items-center rounded-md bg-primary px-2.5 text-[11px] font-semibold text-primary-foreground hover:bg-primary/90"
+                  >
+                    Collect
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {collecting && (
+        <CollectPaymentModal
+          row={collecting}
+          onClose={() => setCollecting(null)}
+          onSave={async (amount, note) => { await onCollect(collecting, amount, note); setCollecting(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Recording money that has just been handed over. Defaults to the whole balance — the usual case. */
+function CollectPaymentModal({ row, onSave, onClose }: {
+  row: PendingSale;
+  onSave: (amount: number, note: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [amount, setAmount] = useState(row.pending);
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const capped = Math.max(0, Math.min(amount, row.pending));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 md:items-center md:p-4" onClick={onClose}>
+      <motion.div
+        initial={{ opacity: 0, y: 24 }}
+        animate={{ opacity: 1, y: 0 }}
+        role="dialog"
+        aria-label="Collect payment"
+        data-test="collect-payment"
+        onClick={(e) => e.stopPropagation()}
+        className="w-full space-y-3 rounded-t-2xl border border-border bg-card p-5 md:max-w-sm md:rounded-2xl"
+      >
+        <div>
+          <h3 className="font-display text-lg font-bold text-foreground">Collect payment</h3>
+          <p className="text-xs text-muted-foreground">
+            {row.lead.realName || row.lead.displayName} — {formatCurrency(row.pending)} outstanding
+          </p>
+        </div>
+
+        <div>
+          <label className="text-[11px] text-muted-foreground">Amount received now</label>
+          <input
+            type="number" min={0} max={row.pending}
+            value={amount || ""}
+            data-test="collect-amount"
+            onChange={(e) => setAmount(Math.max(0, Math.min(row.pending, Number(e.target.value) || 0)))}
+            className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-right font-mono text-sm text-foreground outline-none focus:border-primary"
+          />
+          {/* Part of a balance is still progress — a client paying 2,000 of 5,000 must be recordable. */}
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            {capped >= row.pending
+              ? "This settles the sale in full."
+              : `${formatCurrency(row.pending - capped)} will stay pending.`}
+          </p>
+        </div>
+
+        <div>
+          <label className="text-[11px] text-muted-foreground">Note (optional)</label>
+          <input
+            type="text"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Cash / UPI / cheque…"
+            className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
+          />
+        </div>
+
+        {/* Said out loud, because it is the point of recording it here rather than in a notebook. */}
+        <p className="rounded-md bg-muted/50 px-2.5 py-2 text-[11px] text-muted-foreground">
+          {formatCurrency(capped)} counts towards your revenue and commission <b>today</b>.
+        </p>
+
+        <div className="flex gap-2">
+          <button
+            type="button" onClick={onClose}
+            className="h-10 flex-1 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-accent"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={saving || capped <= 0}
+            data-test="collect-save"
+            onClick={async () => { setSaving(true); try { await onSave(capped, note); } finally { setSaving(false); } }}
+            className="inline-flex h-10 flex-[1.4] items-center justify-center gap-1.5 rounded-lg bg-primary text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+            {saving ? "Saving…" : `Record ${formatCurrency(capped)}`}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
 }
 
 /**
@@ -1170,6 +1429,21 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
                 </span>
               </div>
             </div>
+
+            {/* An outstanding balance, said on the sale itself — the chase list at the top of the
+                page is for working through them; this is for anyone who arrived at the sale first. */}
+            {pendingOf(item, lead) > 0 && (
+              <div
+                data-test="sale-pending-tag"
+                className="flex flex-wrap items-center gap-1.5 rounded-md border border-warning/40 bg-warning/10 px-2 py-1 text-[10px] font-medium text-warning"
+              >
+                <IndianRupee size={10} className="shrink-0" />
+                Pending payment: {formatCurrency(pendingOf(item, lead))}
+                <span className="font-normal opacity-80">
+                  · {formatCurrency(collectedOf(item, lead))} of {formatCurrency(item.amount)} collected
+                </span>
+              </div>
+            )}
 
             {/* Edit-log — plain record of every change made after the sale was added */}
             {logOpenIdx === idx && !!item.editLog?.length && (
@@ -1636,8 +1910,30 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
   const [customClips, setCustomClips] = useState<number>(
     () => (ed?.customDurationSeconds ? clipsForSeconds(ed.customDurationSeconds) : 0),
   );
+  /**
+   * The exact time the member typed, when they entered one — kept ONLY so the rounding can be
+   * shown back to them.
+   *
+   * Clips remain the stored unit; this is not a second source of truth for the length. A client
+   * who asks for 45 seconds is buying 6 clips, which is 48, and a form that silently accepts "45"
+   * and hands the tech team 48 is how a member quotes one number and the company delivers another.
+   * Cleared whenever the length is set as clips, so the time boxes go back to mirroring the clips.
+   */
+  const [typedSeconds, setTypedSeconds] = useState<number | null>(
+    () => ed?.customDurationSeconds ?? null,
+  );
   /** The auto-priced figure was overridden, so it stops following the duration. */
   const [customPriceTouched, setCustomPriceTouched] = useState(false);
+  /**
+   * Whether the client paid only part of the price, and how much they actually handed over.
+   *
+   * Seeded from what is already on the sale so re-opening one shows the real position rather than
+   * resetting it to "paid in full" — which would silently wipe a pending balance on any edit.
+   */
+  const [advanceCollected, setAdvanceCollected] = useState<boolean>(!!ed?.partialPayment);
+  const [advanceAmount, setAdvanceAmount] = useState<number>(
+    () => (ed?.partialPayment ? collectedOf(ed) : 0),
+  );
   const [screenshotUrl, setScreenshotUrl] = useState(ed?.paymentScreenshotUrl || "");
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1758,6 +2054,30 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
   const customTotalSeconds = isCustomService ? secondsForClips(customClips) : 0;
   const suggestedCustomPrice = customClips > 0 ? priceForClips(customBase, customClips) : 0;
 
+  /** Setting the length as clips — a preset or the clip box. The time boxes follow it again. */
+  const setClips = (clips: number) => {
+    setCustomClips(Math.max(0, clips || 0));
+    setTypedSeconds(null);
+    setCustomPriceTouched(false);
+  };
+
+  /** Setting the length as a time. Converted to whole clips, rounding up. */
+  const applyMinSec = (mins: number, secs: number) => {
+    const total = mins * 60 + secs;
+    setTypedSeconds(total);
+    setCustomClips(total > 0 ? clipsForSeconds(total) : 0);
+    setCustomPriceTouched(false);
+  };
+
+  // The time boxes show what was typed while it is being typed, and mirror the clips otherwise.
+  const shownSeconds = typedSeconds ?? customTotalSeconds;
+  const customMinutes = Math.floor(shownSeconds / 60);
+  const customSecondsPart = shownSeconds % 60;
+  /** The typed length, when it was not a whole number of clips and had to be rounded up. */
+  const roundedUpFrom = typedSeconds && typedSeconds > 0 && customTotalSeconds !== typedSeconds
+    ? typedSeconds
+    : null;
+
   /**
    * The suggestion follows the length until the member types their own figure — after that it is
    * their price, because they are the one who quoted it. Suggested, never imposed.
@@ -1792,6 +2112,39 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
 
   /** What the client actually pays, once the earned discount is off as well. */
   const finalAmount = discount.netAmount;
+
+  /**
+   * What is still owed, if an advance was taken.
+   *
+   * Clamped to the price, because a member correcting a figure downwards must never leave the sale
+   * showing a negative balance — and because "collected more than the price" is a typo, not a debt.
+   */
+  const advancePending = advanceCollected
+    ? Math.max(0, finalAmount - Math.min(advanceAmount, finalAmount))
+    : 0;
+
+  /**
+   * The payments this sale should carry once saved.
+   *
+   * Instalments collected AFTER the advance are preserved untouched — the form owns the advance,
+   * not the whole payment history, and rewriting the list wholesale on an ordinary edit would
+   * erase a balance somebody had already gone out and collected.
+   */
+  const buildPayments = (): SalePayment[] | null => {
+    if (!advanceCollected) return null;
+    const prior = (ed?.partialPayment && Array.isArray(ed.payments)) ? ed.payments : [];
+    const advance: SalePayment = {
+      id: prior[0]?.id || `pay_${Date.now()}`,
+      amount: Math.max(0, Math.min(advanceAmount, finalAmount)),
+      // The advance was taken when the sale was made; keep its original stamp on an edit so the
+      // money does not silently move to a different day — and a different pay cycle.
+      collectedAt: prior[0]?.collectedAt || Timestamp.now(),
+      note: "Advance at sale",
+      screenshotUrl: screenshotUrl || null,
+      ...(saleFormUser ? { byId: saleFormUser.uid, byName: saleFormUser.name } : {}),
+    };
+    return [advance, ...prior.slice(1)];
+  };
   /** Categories with no package list (Custom, Software), plus any explicit "custom quote" tier. */
   const showDescription = needsDescription(category) || (!!selectedPkg && selectedPkg.amount === 0);
   const descriptionRequired = needsDescription(category);
@@ -1977,6 +2330,10 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
       */
       customBaseCategory: isCustomService ? customBase : null,
       customDurationSeconds: isCustomService && customTotalSeconds > 0 ? customTotalSeconds : null,
+      // What was actually collected, versus what was agreed. See utils/salePayments — a sale with
+      // no payment list is one that was paid in full, which is the overwhelming majority.
+      partialPayment: advanceCollected,
+      payments: buildPayments(),
       // What the client earned, with the proof, and what it was worth.
       earnedDiscount: discount.reasons.length > 0 ? earned : null,
       earnedDiscountAmount: discount.earnedAmount || 0,
@@ -2153,6 +2510,7 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
     setDescription("");
     setCustomBase("");
     setCustomClips(0);
+    setTypedSeconds(null);
     setCustomPriceTouched(false);
     setQuantity(5);
     setDiscountValue(0);
@@ -2392,7 +2750,7 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
                   <button
                     key={n}
                     type="button"
-                    onClick={() => { setCustomClips(n); setCustomPriceTouched(false); }}
+                    onClick={() => setClips(n)}
                     data-test={`custom-clips-${n}`}
                     className={`h-auto rounded-lg border px-3 py-1.5 text-left transition-colors ${
                       customClips === n
@@ -2413,7 +2771,7 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
                 <input
                   type="number" min={0} max={200}
                   value={customClips || ""}
-                  onChange={(e) => { setCustomClips(Math.max(0, Number(e.target.value) || 0)); setCustomPriceTouched(false); }}
+                  onChange={(e) => setClips(Number(e.target.value))}
                   data-test="custom-clips-input"
                   className="h-9 w-20 rounded-md border border-border bg-background px-2 text-center font-mono text-sm text-foreground outline-none focus:border-primary"
                 />
@@ -2424,6 +2782,47 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
                   </span>
                 )}
               </div>
+
+              {/*
+                The other way round: a client who asked for "one and a half minutes".
+
+                Clips stay the stored unit — they are what gets built and what gets priced — but a
+                member should never have to divide by eight on a call. Typing a time converts it
+                here, in front of them, and the conversion is shown rather than applied silently:
+                a length that is not a whole number of 8-second clips rounds UP, and the member
+                needs to see that they are now selling 48 seconds before they quote 45.
+              */}
+              <div className="flex flex-wrap items-center gap-2" data-test="custom-minsec">
+                <span className="text-[11px] text-muted-foreground">Or enter the time:</span>
+                <input
+                  type="number" min={0} max={30}
+                  value={customMinutes || ""}
+                  onChange={(e) => applyMinSec(Math.max(0, Number(e.target.value) || 0), customSecondsPart)}
+                  data-test="custom-minutes"
+                  className="h-9 w-16 rounded-md border border-border bg-background px-2 text-center font-mono text-sm text-foreground outline-none focus:border-primary"
+                />
+                <span className="text-xs text-muted-foreground">min</span>
+                <input
+                  type="number" min={0} max={59}
+                  value={customSecondsPart || ""}
+                  onChange={(e) => applyMinSec(customMinutes, Math.min(59, Math.max(0, Number(e.target.value) || 0)))}
+                  data-test="custom-seconds"
+                  className="h-9 w-16 rounded-md border border-border bg-background px-2 text-center font-mono text-sm text-foreground outline-none focus:border-primary"
+                />
+                <span className="text-xs text-muted-foreground">sec</span>
+                {customClips > 0 && (
+                  <span className="text-[11px] font-semibold text-primary" data-test="custom-minsec-clips">
+                    = {customClips} clips
+                  </span>
+                )}
+              </div>
+              {/* Said plainly, and only when it actually happened. */}
+              {roundedUpFrom !== null && (
+                <p className="text-[11px] text-warning" data-test="custom-rounded-up">
+                  {roundedUpFrom} sec is not a whole number of {CLIP_SECONDS}-second clips — rounded up
+                  to {customClips} clips ({humanDuration(customTotalSeconds)}). The client gets the longer video.
+                </p>
+              )}
               {suggestedCustomPrice > 0 && (
                 <p className="text-[11px] text-muted-foreground">
                   {/* Once the member has typed their own figure it stays theirs, even when the
@@ -2853,6 +3252,75 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
               className="w-full h-16 p-2 rounded-md bg-card border border-border text-foreground text-xs outline-none focus:border-primary resize-none"
             />
           </div>
+        </div>
+      )}
+
+      {/*
+        How much of it was actually collected.
+
+        ── Why this is on every sale, not just social media ────────────────────────────────────
+        Half up front is the norm on a social-media month, with the rest due once the first post is
+        made, posted and the campaign is running. On ads it is not supposed to happen — but it does,
+        and there was nowhere to say so, which left a member two bad choices: record the full amount
+        and take commission on money nobody had handed over, or not record the sale at all. Both are
+        worse than an honest number, so the box is here for every category.
+      */}
+      {finalAmount > 0 && (
+        <div className="space-y-2 rounded-md border border-border bg-card p-2.5" data-test="advance-block">
+          <label className="flex cursor-pointer items-start gap-2 text-xs text-foreground">
+            <input
+              type="checkbox"
+              checked={advanceCollected}
+              data-test="advance-toggle"
+              onChange={(e) => {
+                setAdvanceCollected(e.target.checked);
+                // Half is the common case and the one worth pre-filling; it stays editable.
+                if (e.target.checked && advanceAmount <= 0) setAdvanceAmount(Math.round(finalAmount / 2));
+              }}
+              className="mt-0.5 h-3.5 w-3.5 accent-primary"
+            />
+            <span>
+              <b>Advance collected</b> — the client has paid only part of {formatCurrency(finalAmount)} so far
+            </span>
+          </label>
+
+          {advanceCollected && (
+            <div className="space-y-1.5 border-t border-border pt-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] text-muted-foreground">Amount collected now</span>
+                <input
+                  type="number" min={0} max={finalAmount}
+                  value={advanceAmount || ""}
+                  data-test="advance-amount"
+                  onChange={(e) => setAdvanceAmount(Math.max(0, Math.min(finalAmount, Number(e.target.value) || 0)))}
+                  className="h-9 w-28 rounded-md border border-border bg-background px-2 text-right font-mono text-sm text-foreground outline-none focus:border-primary"
+                />
+                {[0.5, 1].map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setAdvanceAmount(Math.round(finalAmount * f))}
+                    className="h-7 rounded-md border border-border px-2 text-[11px] font-medium text-muted-foreground hover:bg-accent"
+                  >
+                    {f === 1 ? "Full" : "50%"}
+                  </button>
+                ))}
+              </div>
+              {/* The number that matters, said in rupees rather than left to be worked out. */}
+              <p
+                className={`text-[11px] font-medium ${advancePending > 0 ? "text-warning" : "text-success"}`}
+                data-test="advance-pending"
+              >
+                {advancePending > 0
+                  ? `Pending payment: ${formatCurrency(advancePending)} still to collect from the client.`
+                  : "Nothing pending — the full amount has been collected."}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Your revenue and commission count {formatCurrency(advanceAmount)} today. The rest counts
+                on the day you collect it, and this sale will sit in <b>Pending payments</b> until then.
+              </p>
+            </div>
+          )}
         </div>
       )}
 

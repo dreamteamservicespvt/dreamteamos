@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  ClipboardList, Loader2, Search, MessageCircle, UserPlus, Clock, ShoppingBag, CheckCircle2, Sparkles, StickyNote, Hourglass, Sparkle, Trash2, CheckSquare, Square, Undo2, Copy, Check, Pin, Split, AlertTriangle, Layers, X, Archive, RotateCcw, History, ShieldAlert, Lock,
+  ClipboardList, Loader2, Search, MessageCircle, UserPlus, Clock, ShoppingBag, CheckCircle2, Sparkles, StickyNote, Hourglass, Sparkle, Trash2, CheckSquare, Square, Undo2, Copy, Check, Pin, Split, AlertTriangle, Layers, X, Archive, RotateCcw, History, ShieldAlert, Lock, Boxes,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useFirestoreQuery, useFirestoreCollection } from "@/hooks/useFirestore";
@@ -42,6 +42,8 @@ import {
 import OrderProgressPanel from "@/components/work/OrderProgressPanel";
 import PenaltyDialog from "@/components/work/PenaltyDialog";
 import AssignTracksDialog from "@/components/work/AssignTracksDialog";
+import BulkOrdersSection from "@/components/work/BulkOrdersSection";
+import { bulkStatsOf, isBulkVideoOrder } from "@/utils/bulkVideos";
 
 /**
  * The queue's four delivery columns, the money-changes ledger that hangs off them, and the two
@@ -53,7 +55,7 @@ import AssignTracksDialog from "@/components/work/AssignTracksDialog";
  * everything an admin deleted — was not merely filtered out of the page, it was never fetched. The
  * only honest answer to "where did my order go?" was that nobody could tell you.
  */
-type OrderTab = OrderQueueStatus | "changes" | "delivered" | "removed";
+type OrderTab = OrderQueueStatus | "bulk" | "changes" | "delivered" | "removed";
 
 /** Delivered and Removed read from a separate, on-demand fetch — not the live active query. */
 const HISTORY_TABS: OrderTab[] = ["delivered", "removed"];
@@ -244,9 +246,22 @@ export default function Orders() {
    * reconcilable: the only remaining difference is work created with no sale behind it, which the
    * board names on screen and this queue cannot show at all.
    */
+  /**
+   * Every live bulk order, whatever stage the queue thinks it is at.
+   *
+   * Deliberately NOT filtered by the queue tab or the category dropdown. A bulk order is "assigned"
+   * the moment one of its ten videos has an owner, so filtering by stage would scatter the same
+   * ten videos across four tabs — and this section exists precisely so the whole of a client's
+   * batch can be seen and shared out in one place.
+   */
+  const bulkOrders = useMemo(
+    () => orders.filter((o) => isBulkVideoOrder(o) && o.status !== "cancelled" && o.status !== "deleted"),
+    [orders],
+  );
+
   const counts = useMemo(() => {
     const out: Record<OrderTab, number> = {
-      unassigned: 0, assigned: 0, in_progress: 0, completed: 0, changes: 0, delivered: 0, removed: 0,
+      unassigned: 0, assigned: 0, in_progress: 0, completed: 0, bulk: 0, changes: 0, delivered: 0, removed: 0,
     };
     for (const rec of orderBacked(buildAdPipeline(orders, assignments))) {
       // The tab badges count what the filter would actually show. Leaving them on the unfiltered
@@ -254,12 +269,15 @@ export default function Orders() {
       if (rec.order && !matchesOrderCategory(rec.order, category)) continue;
       if (rec.stage in out) out[rec.stage as OrderTab] += 1;
     }
+    // Bulk counts CLIENTS with videos still to make, not videos and not orders — it is the number
+    // of customers somebody still owes something to, which is what the tab is for.
+    out.bulk = bulkOrders.filter((o) => bulkStatsOf(o).pending > 0).length;
     out.changes = penalisedOrders.filter((o) => matchesOrderCategory(o, category)).length;
     // History counts are of what has been loaded, so they read 0 until the tab is first opened.
     out.delivered = delivered.filter((o) => matchesOrderCategory(o, category)).length;
     out.removed = removed.filter((o) => matchesOrderCategory(o, category)).length;
     return out;
-  }, [orders, assignments, penalisedOrders, category, delivered, removed]);
+  }, [orders, assignments, penalisedOrders, category, delivered, removed, bulkOrders]);
 
   /** This tab's orders, past the search box — before the category filter, which is built from them. */
   const inTab = useMemo(() => {
@@ -557,6 +575,9 @@ export default function Orders() {
       <div className="flex flex-wrap items-center gap-2">
         {[
           ...ORDER_QUEUE_TABS,
+          // Only offered when there is bulk work — a permanently-empty tab is a tab people learn
+          // to skip over, which is how the real one gets missed the week it fills up.
+          ...(bulkOrders.length > 0 ? [{ key: "bulk" as const, label: "Bulk videos" }] : []),
           ...(penalisedOrders.length > 0 ? [{ key: "changes" as const, label: "Changes" }] : []),
           { key: "delivered" as const, label: "Delivered" },
           { key: "removed" as const, label: "Removed" },
@@ -567,6 +588,7 @@ export default function Orders() {
             onClick={() => setTab(t as OrderTab)}
             className={`flex items-center gap-1.5 h-9 px-3 rounded-xl text-xs md:text-sm font-medium border transition-colors ${tab === t ? "bg-primary text-primary-foreground border-primary" : t === "changes" ? "bg-card text-destructive border-destructive/40 hover:bg-destructive/10" : "bg-card text-muted-foreground border-border hover:text-foreground hover:bg-accent/50"}`}
           >
+            {t === "bulk" && <Boxes className="w-3.5 h-3.5" />}
             {(t === "delivered" || t === "removed") && <History className="w-3.5 h-3.5" />}
             <span>{label}</span>
             {/* History counts only mean something once history has been fetched — until then the
@@ -833,7 +855,14 @@ export default function Orders() {
         </div>
       )}
 
-      {/* List / grid */}
+      {/* Bulk videos — its own board rather than a row in the queue. See BulkOrdersSection for why:
+          an order can be "assigned" with six of its ten videos still belonging to nobody, which is
+          a state the four delivery columns have no way to show. */}
+      {tab === "bulk" ? (
+        <BulkOrdersSection orders={bulkOrders} user={user} members={assignableMembers} />
+      ) : (
+
+      /* List / grid */
       <div className={view === "grid" ? "grid grid-cols-1 lg:grid-cols-2 gap-3" : "space-y-3"}>
         {isHistoryTab && historyLoading && !historyLoaded ? (
           <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground lg:col-span-2">
@@ -992,9 +1021,9 @@ export default function Orders() {
 
                 {/* What a month or a bulk order still owes. Editable here by the admin and the
                     team leader, who are the two people fielding "where is it?" from the client. */}
-                {o.progress && (
+                {(o.progress || isBulkVideoOrder(o)) && (
                   <div className="mt-2">
-                    <OrderProgressPanel order={o} user={user} />
+                    <OrderProgressPanel order={o} user={user} members={assignableMembers} />
                   </div>
                 )}
 
@@ -1184,6 +1213,7 @@ export default function Orders() {
           </div>
         ))}
       </div>
+      )}
 
       {/* Older history, on request — nobody pays for reads they didn't ask for. */}
       {isHistoryTab && historyLoaded && !historyExhausted && (

@@ -1,6 +1,10 @@
-import { format } from "date-fns";
 import { categoryLabel } from "@/utils/serviceCatalog";
+import { collectedInDays, saleDay, saleItemsOf } from "@/utils/salePayments";
 import type { Lead, SaleDetail } from "@/types";
+
+// Re-exported: these moved to utils/salePayments, which owns the sale-money model, and a dozen
+// screens already import them from here.
+export { saleDay, saleItemsOf };
 
 /**
  * What a sales member earned in a given stretch of days, and what it was made of.
@@ -40,40 +44,44 @@ export interface DayRevenue {
   breakdown: RevenuePriceRow[];
 }
 
-/** The `yyyy-MM-dd` a sale counts on: when it was recorded, falling back to the lead's own date. */
-export function saleDay(item: SaleDetail, lead: Lead): string | null {
-  const submitted = (item.submittedAt as { seconds?: number } | undefined)?.seconds;
-  if (submitted) return format(new Date(submitted * 1000), "yyyy-MM-dd");
-  if (lead.createdAt?.seconds) return format(new Date(lead.createdAt.seconds * 1000), "yyyy-MM-dd");
-  return null;
-}
-
-/** Every sale on a lead, whichever shape the record uses. */
-const saleItemsOf = (lead: Lead): SaleDetail[] =>
-  lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
-
 /**
  * Total and split the sales that fall inside `days`.
  * Pass `null` for every day — the "All Days" view.
  */
 export function dayRevenue(leads: Lead[], days: ReadonlySet<string> | null): DayRevenue {
+  /**
+   * ── Why this counts MONEY COLLECTED, not sale values ────────────────────────────────────────
+   * A sale is what the client agreed to pay; a payment is what they actually handed over, and the
+   * two are not the same day when half is taken up front and the rest on delivery. Totalling
+   * `amount` on the sale's day credited a member with money they had not been given, and then
+   * credited them with nothing at all on the day they finally collected the balance — which is
+   * the day they did the work of collecting it.
+   *
+   * A sale nobody marked partial is one payment of the full price on the day of the sale, so for
+   * the overwhelming majority of sales this is the same arithmetic it always was.
+   */
   const sales: SaleDetail[] = [];
+  let total = 0;
+  let verified = 0;
+
   for (const lead of leads) {
     for (const item of saleItemsOf(lead)) {
       if (item.verificationStatus === "rejected") continue;
-      if (days) {
-        const day = saleDay(item, lead);
-        if (!day || !days.has(day)) continue;
-      }
+      const collected = collectedInDays(item, lead, days);
+      if (collected <= 0) continue;
+      total += collected;
+      if (item.verificationStatus === "verified") verified += collected;
       sales.push(item);
     }
   }
 
-  const total = sales.reduce((sum, i) => sum + (i.amount || 0), 0);
-  const verified = sales
-    .filter((i) => i.verificationStatus === "verified")
-    .reduce((sum, i) => sum + (i.amount || 0), 0);
-
+  /**
+   * The breakdown stays grouped by TICKET PRICE, not by what was collected.
+   *
+   * "Three 499s and a 999" is how a member reads their own day, and it stays true whether or not
+   * one of those clients paid half. What they collected is the headline above it; what they sold
+   * is what this list is for.
+   */
   const byPrice = new Map<number, { amount: number; count: number; categories: Set<string> }>();
   for (const item of sales) {
     const amount = item.amount || 0;

@@ -380,11 +380,12 @@ export async function sendOrderChatMessage(
     createdAt: serverTimestamp(),
   });
 
+  const roomPresence = room as { activeUsers?: string[]; activeAt?: Record<string, number> };
   const preview = messagePreview(type, trimmed, fileName);
-  const active: string[] = room.activeUsers || [];
-  // Everyone who could be waiting on this: the staff on the room, plus the customer.
+  // Everyone who could be waiting on this: the staff on the room, plus the customer. Presence is
+  // judged on a recent heartbeat, not a flag that a killed app never got to clear.
   const audience = Array.from(new Set([...(room.participants || []), CLIENT_SENDER_ID]))
-    .filter((k) => k !== senderId && !active.includes(k));
+    .filter((k) => k !== senderId && !isViewerPresent(roomPresence, k));
 
   const bumps: Record<string, unknown> = {};
   audience.forEach((k) => { bumps[`unreadCounts.${k}`] = increment(1); });
@@ -413,13 +414,47 @@ export async function markOrderChatRead(dbi: Firestore, chatId: string, viewer: 
   } catch { /* best effort — a stale badge is not worth an error in the user's face */ }
 }
 
-/** Presence, so someone reading the room right now is not also pinged about it. */
+/**
+ * How recent a presence heartbeat has to be to count as "still looking".
+ *
+ * Comfortably more than the heartbeat interval, so an ordinary slow write or a few seconds of bad
+ * signal does not make a member who is plainly reading the room look absent. Exported so the
+ * client, the server and the tests all use one number.
+ */
+export const PRESENCE_FRESH_MS = 120_000;
+
+/** How often an open room re-asserts presence. Half the freshness window, so one lost write is fine. */
+export const PRESENCE_HEARTBEAT_MS = 45_000;
+
+/** True when this viewer's last heartbeat is recent enough to suppress a notification. */
+export function isViewerPresent(room: { activeUsers?: string[]; activeAt?: Record<string, number> } | null | undefined, viewer: string, now = Date.now()): boolean {
+  if (!room) return false;
+  const beat = room.activeAt?.[viewer];
+  // A heartbeat is the only evidence that survives a phone being swiped away mid-conversation.
+  if (typeof beat === "number") return now - beat < PRESENCE_FRESH_MS;
+  /**
+   * No heartbeat recorded: this is a room last written by a build that only kept the flag. Trust
+   * it, so behaviour is unchanged for anyone mid-conversation across the deploy — the very next
+   * open writes a timestamp and the room self-heals.
+   */
+  return (room.activeUsers || []).includes(viewer);
+}
+
+/**
+ * Presence, so someone reading the room right now is not also pinged about it.
+ *
+ * Writes a timestamp as well as the flag. See `OrderChatDoc.activeAt` for why the flag alone left
+ * members permanently "present" and silently killed their client notifications.
+ */
 export async function setOrderChatPresence(
   dbi: Firestore, chatId: string, viewer: string, present: boolean,
 ): Promise<void> {
   try {
     await updateDoc(doc(dbi, ORDER_CHATS, chatId), {
       activeUsers: present ? arrayUnion(viewer) : arrayRemove(viewer),
+      // Zeroed rather than deleted on leave: an old timestamp reads as "left long ago", which is
+      // exactly right, and needs no special case at either end.
+      [`activeAt.${viewer}`]: present ? Date.now() : 0,
       ...(present ? { [`unreadCounts.${viewer}`]: 0 } : {}),
     });
   } catch { /* best effort */ }

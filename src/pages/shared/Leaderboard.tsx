@@ -10,6 +10,7 @@ import { Trophy, Medal, Crown, ChevronDown, ExternalLink, ChevronLeft, ChevronRi
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
 import { useNow } from "@/hooks/useNow";
 import { currentPayMonth, payPeriodForMonth, shiftPayMonth } from "@/utils/payrollEngine";
+import { collectedInRange, collectedOf } from "@/utils/salePayments";
 
 /** Granularity for the "Career Sales" / "Career Commission" columns — Month is the default and
  *  the only option sales members ever see; Career (true all-time totals) is admin-only, since
@@ -216,34 +217,42 @@ export default function Leaderboard() {
       getSaleItems(l).map((item) => ({ item, lead: l }))
     );
 
-    const careerSales = allItems
-      .filter(({ item }) => item.verificationStatus === "verified")
-      .reduce((s, { item }) => s + (item.amount || 0), 0);
+    /**
+     * ── Ranked on money COLLECTED, in the window it was collected in ────────────────────────────
+     * A board that ranks on sale values ranks on promises. A member who sold a ₹40,000 social-media
+     * year at 50% up front sat above one who had collected ₹30,000 in full, on the strength of
+     * ₹20,000 the company had not been given — and when the balance finally arrived months later
+     * the board showed nothing for it, because the sale was already counted on its original day.
+     *
+     * Counting payments fixes both ends: the advance counts on the day it was taken, the balance
+     * counts on the day it was collected, and the commission column beside it follows the same
+     * money. A sale nobody marked partial is a single payment of the full price on the sale's own
+     * day, so ordinary sales — very nearly all of them — rank exactly as they always have.
+     */
+    const collectedIn = (from: string, to: string) => allItems.reduce(
+      (s, { item, lead }) => s + collectedInRange(item, lead, from, to), 0,
+    );
+    const verifiedCollectedIn = (from: string, to: string) => allItems.reduce(
+      (s, { item, lead }) => s + (item.verificationStatus === "verified" ? collectedInRange(item, lead, from, to) : 0), 0,
+    );
 
-    const monthItems = allItems.filter(({ item, lead }) => {
-      const d = getSaleDate(item, lead);
-      return d !== null && d >= periodStart && d <= periodEnd;
-    });
-    const monthSales = monthItems
-      .filter(({ item }) => item.verificationStatus === "verified")
-      .reduce((s, { item }) => s + (item.amount || 0), 0);
+    const careerSales = allItems.reduce(
+      (s, { item, lead }) => s + (item.verificationStatus === "verified" ? collectedOf(item, lead) : 0), 0,
+    );
+
+    const monthSales = verifiedCollectedIn(periodStart, periodEnd);
 
     let daySales = 0;
     let dayVerified = 0;
 
     if (effectiveDateStr || effectiveSpan) {
-      const dayItems = allItems.filter(({ item, lead }) => {
-        const d = getSaleDate(item, lead);
-        if (d === null) return false;
-        return effectiveSpan ? d >= effectiveSpan.from && d <= effectiveSpan.to : d === effectiveDateStr;
-      });
-      daySales = dayItems.reduce((s, { item }) => s + (item.amount || 0), 0);
-      dayVerified = dayItems
-        .filter(({ item }) => item.verificationStatus === "verified")
-        .reduce((s, { item }) => s + (item.amount || 0), 0);
+      const from = effectiveSpan ? effectiveSpan.from : (effectiveDateStr as string);
+      const to = effectiveSpan ? effectiveSpan.to : (effectiveDateStr as string);
+      daySales = collectedIn(from, to);
+      dayVerified = verifiedCollectedIn(from, to);
     } else {
       // All days
-      daySales = allItems.reduce((s, { item }) => s + (item.amount || 0), 0);
+      daySales = allItems.reduce((s, { item, lead }) => s + collectedOf(item, lead), 0);
       dayVerified = careerSales;
     }
 
