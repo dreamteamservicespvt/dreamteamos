@@ -58,6 +58,36 @@ interface Room {
   participants?: string[];
   activeUsers?: string[];
   clientReview?: { work?: number; service?: number } | null;
+  activeAt?: Record<string, number>;
+}
+
+/**
+ * How recent a presence heartbeat has to be to count as "still reading this".
+ *
+ * Mirrors PRESENCE_FRESH_MS in services/orderChat — kept as its own constant because this file is
+ * a serverless function and deliberately does not import the browser bundle's module graph.
+ */
+const PRESENCE_FRESH_MS = 120_000;
+
+/**
+ * Is this viewer actually looking at the room right now?
+ *
+ * ── Why a flag was not enough ─────────────────────────────────────────────────────────────────
+ * Presence used to be membership of `activeUsers`: added when the room opened, removed when it
+ * closed. On a phone the "removed" half frequently never ran — swiping the app away, the OS
+ * reclaiming it, or a dropped connection all skip it. The member stayed listed as present for
+ * ever, and this function's caller reads present as "no need to notify them", so every subsequent
+ * message from that client vanished into a badge nobody was looking at. That is the reported bug:
+ * the notification simply stopped coming, permanently, for the busiest conversations.
+ *
+ * A heartbeat expires by itself. The room refreshes it while it is open, so a stuck flag costs at
+ * most one suppressed notification instead of all of them.
+ */
+function isPresent(room: Room, viewer: string, now = Date.now()): boolean {
+  const beat = room.activeAt?.[viewer];
+  if (typeof beat === "number") return now - beat < PRESENCE_FRESH_MS;
+  // Written by a build that only kept the flag — trust it, and it self-heals on the next open.
+  return (room.activeUsers || []).includes(viewer);
 }
 
 /** A score is one of five stars. Anything else is a browser that has been tampered with. */
@@ -113,7 +143,10 @@ async function alertUser(opts: {
         ...(callDocId ? { callDocId } : {}),
       },
       android: { priority: "high", ttl: isCall ? 0 : 86400000 },
-      webpush: { headers: { Urgency: "high" }, notification: { title, body: message, icon: APP_ICON } },
+      // Data-only, with no `notification` block — see api/send-notification.ts for the full
+      // reasoning. In short: a `notification` payload is auto-displayed by the browser AND our
+      // service worker displays one from `data`, which is where the doubled banners came from.
+      webpush: { headers: { Urgency: "high" } },
     });
 
     /**
@@ -321,8 +354,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // A message: only the member is pushed. The others get a badge on the assignment card.
-      const active: string[] = room.activeUsers || [];
-      if (memberUid && !active.includes(memberUid)) {
+      if (memberUid && !isPresent(room, memberUid)) {
         const home = await homeFor(memberUid);
         await alertUser({
           userId: memberUid,
@@ -363,8 +395,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const from = COMPANY_NAME;
 
       // Reading the room right now is the same as having been told.
-      const active: string[] = room.activeUsers || [];
-      if (kind !== "call" && active.includes("client")) return res.status(200).json({ success: true });
+      if (kind !== "call" && isPresent(room, "client")) return res.status(200).json({ success: true });
 
       await alertUser({
         userId: guestUid(chatId),

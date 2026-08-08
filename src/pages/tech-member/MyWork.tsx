@@ -19,7 +19,9 @@ import type { Order, WorkAssignment } from '@/types';
 import { useOrdersByIds } from '@/hooks/useOrdersByIds';
 import { isPinnedOrder } from '@/utils/orderProgress';
 import OrderProgressPanel from '@/components/work/OrderProgressPanel';
+import { isBulkVideoOrder } from '@/utils/bulkVideos';
 import CodeVerificationModal from '@/components/ai-platform/CodeVerificationModal';
+import { isWorkUnlocked, rememberWorkUnlock } from '@/utils/workUnlock';
 import AIPlatformApp from '@/components/ai-platform/AIPlatformApp';
 import SaleDeletedBanner from '@/components/work/SaleDeletedBanner';
 import StaffOrderChat from '@/components/order-chat/StaffOrderChat';
@@ -131,18 +133,29 @@ export default function MyWork() {
     };
   }, [openAssignment?.id]);
 
-  const handleOpenWork = (assignment: WorkAssignment) => {
-    setVerifyPurpose('work');
+  /**
+   * The code is asked once per job, per person, per device — not on every open.
+   *
+   * It gates two doors with the same four digits, so a member answering a client typed them to
+   * read the message, again to open the generator, and again the next time the client wrote. The
+   * third prompt protects nothing the first one did. See utils/workUnlock.
+   */
+  const openWithCode = (assignment: WorkAssignment, purpose: 'work' | 'chat') => {
+    if (isWorkUnlocked(user?.uid, assignment.id)) {
+      if (purpose === 'chat') setOpenChatFor(assignment);
+      else setOpenAssignment(assignment);
+      return;
+    }
+    setVerifyPurpose(purpose);
     setVerifyingAssignment(assignment);
   };
 
-  const handleOpenChat = (assignment: WorkAssignment) => {
-    setVerifyPurpose('chat');
-    setVerifyingAssignment(assignment);
-  };
+  const handleOpenWork = (assignment: WorkAssignment) => openWithCode(assignment, 'work');
+  const handleOpenChat = (assignment: WorkAssignment) => openWithCode(assignment, 'chat');
 
   const handleVerified = () => {
     if (!verifyingAssignment) return;
+    rememberWorkUnlock(user?.uid, verifyingAssignment.id);
     if (verifyPurpose === 'chat') setOpenChatFor(verifyingAssignment);
     else setOpenAssignment(verifyingAssignment);
     setVerifyingAssignment(null);
@@ -575,9 +588,13 @@ export default function MyWork() {
                     )}
                   </div>
 
-                  {/* The shared counters. Written to the order, so the other members on a split
-                      month see this person's progress without anyone having to message anyone. */}
-                  {order?.progress && (
+                  {/* The shared counters — or, for a bulk order, this member's own videos with a
+                      tick against each. Written to the order, so the other members on a split
+                      month see this person's progress without anyone having to message anyone.
+                      Bulk orders render whether or not they carry a progress object: their videos
+                      come from the quantity sold, and a member must always be able to tick off
+                      work that is sitting in their name. */}
+                  {order && (order.progress || isBulkVideoOrder(order)) && (
                     <div className="mb-3">
                       <OrderProgressPanel order={order} user={user} />
                     </div>

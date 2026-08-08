@@ -2099,6 +2099,29 @@ Clip 3 – Main Frame Prompt (${shotDesigns[2 % shotDesigns.length].name})
 Do NOT wrap individual prompts in code blocks — output them as plain text separated by ###CLIP###.`;
 };
 
+/**
+ * How tall the ad's header band is, as a percentage of frame height.
+ *
+ * ── Why it is a constant, said several times ──────────────────────────────────────────────────
+ * The height was one clause in the middle of a long sentence — "filling about the top 7% as a
+ * slim strip" — inside a paragraph that also said the band "FILLS the top of the frame
+ * COMPLETELY", and next to instructions calling the business name "the visual hero" and asking
+ * for "comfortable INNER spacing". An image model resolving that reads the strongest, most
+ * repeated signal, which was "fill it, make it roomy, make the name big" — and it drew headers
+ * two or three times too tall.
+ *
+ * A soft "about 7%" cannot win an argument against three confident instructions, so the rule is
+ * now stated as a hard ceiling, given a pixel figure to measure against, told what to do when the
+ * content does not fit (shrink the content), and repeated as the closing line of the prompt.
+ * The percentages contradicting it have been rewritten to say what they actually meant: full
+ * WIDTH, not full height.
+ */
+export const HEADER_BAND_PERCENT = 7;
+
+/** A concrete canvas to measure the band against — a percentage alone is easy to eyeball wrong. */
+const HEADER_REFERENCE_CANVAS = '1080 x 1920';
+const HEADER_REFERENCE_PX = Math.round(1920 * (HEADER_BAND_PERCENT / 100));
+
 export const HEADER_SYSTEM_PROMPT = (
   _adType: string,
   _festivalName: string,
@@ -2146,7 +2169,9 @@ export const HEADER_SYSTEM_PROMPT = (
     return `Design a PREMIUM, BUSINESS-THEMED HEADER for a 9:16 vertical advertisement.
 
 CANVAS & SIZE (FULL-BLEED TOP STRIP — NO OUTER PADDING):
-- 9:16 vertical frame. The ENTIRE header — brand row AND the address bar together — is ONE compact band that FILLS the top of the frame COMPLETELY: it spans the FULL WIDTH from the left edge to the right edge and starts flush at the very TOP edge, filling about the top 7% as a slim strip. Everything below the header stays empty / blank.
+- HEIGHT — THE SINGLE MOST IMPORTANT RULE, NON-NEGOTIABLE: the ENTIRE header — brand row AND address bar together — occupies the TOP ${HEADER_BAND_PERCENT}% OF THE FRAME HEIGHT AND NOTHING MORE. On a ${HEADER_REFERENCE_CANVAS} canvas that is a strip about ${HEADER_REFERENCE_PX} px tall. Measure it: from the top edge down, the band ends at ${HEADER_BAND_PERCENT}% of the total height. The remaining ${100 - HEADER_BAND_PERCENT}% of the frame below it stays completely EMPTY / BLANK.
+- ${HEADER_BAND_PERCENT}% IS A CEILING, NOT A TARGET: the band may be slightly SHORTER, never taller. It must NOT be 10%, NOT 15%, NOT 20%, and NOT a large top panel. If the name, pills or address will not fit inside ${HEADER_BAND_PERCENT}%, SHRINK THE CONTENTS — reduce the type size, tighten the inner padding, slim the pills — and NEVER grow the band to fit them. A taller, roomier, more "balanced" header is WRONG even if it looks better.
+- It FILLS THE FULL WIDTH (left edge to right edge) and starts flush at the very TOP edge. "Fills completely" refers to the WIDTH ONLY — it must never be read as filling the height.
 - FULL-BLEED (IMPORTANT): there must be NO outer margin, NO padding, and NO gap around the header band, and it must NOT look like a floating rounded card with empty space around it. The band reaches the TOP, LEFT, and RIGHT edges of the canvas; do NOT round the top-left or top-right outer corners (only the bottom edge of the band may be softly finished).
 - Inside the band, ${insideBand}, with comfortable INNER spacing so no element is clipped or cramped — elements are padded INSIDE the full-bleed band, while the band itself has no outer padding.
 
@@ -2182,7 +2207,10 @@ CONTENT RULES (STRICT):
 - Use ONLY the values that are provided. If a value is not provided, simply leave that element out — do NOT draw an empty box and do NOT write words like "not provided", "N/A", or any placeholder.
 - NEVER invent, guess, autocomplete, or fabricate any value — especially NEVER make up an address, street, area, city, pincode, or phone number. If the address (or a contact number) is not given to you, that element does NOT exist: do NOT draw its bar / pill and do NOT place any text for it. A field that is missing must be completely absent, not faked.
 - No taglines, no offers, no services, no extra text — ${nothingBeyond}.
-- All text must be crisp, perfectly spelled, and clearly readable.${noLogoRule}`;
+- All text must be crisp, perfectly spelled, and clearly readable.${noLogoRule}
+
+FINAL CHECK BEFORE YOU RENDER (the one thing that is most often wrong):
+- Measure the header's height against the whole frame. It must be the TOP ${HEADER_BAND_PERCENT}% ONLY — a slim full-width strip, about ${HEADER_REFERENCE_PX} px on a ${HEADER_REFERENCE_CANVAS} canvas — with the other ${100 - HEADER_BAND_PERCENT}% of the frame left completely blank. If your header is taller than that, redraw it smaller: shrink the text and the padding, never the empty space below.`;
 };
 export const getToneForAdType = (adType: string) =>
   adType === AdType.FESTIVAL

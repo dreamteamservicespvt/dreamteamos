@@ -115,3 +115,46 @@ describe("what the tech team receives", () => {
     expect(durationForSale("promotional", "custom", 4000, 120)).toBe("120s");
   });
 });
+
+/**
+ * Picking the length as a time instead of as clips.
+ *
+ * Clips are the stored unit — they are what gets built and what gets priced — but a client on the
+ * phone asks for "one and a half minutes", and a member should never have to divide by eight.
+ * What matters is that the conversion is shown rather than applied silently: 45 seconds is not a
+ * whole number of 8-second clips, and a member who quotes 45 while the company builds 48 has been
+ * let down by the form.
+ */
+describe("entering a length as minutes and seconds", () => {
+  const clipsFromMinSec = (min: number, sec: number) => clipsForSeconds(min * 60 + sec);
+
+  it("converts the times the team actually sells", () => {
+    expect(clipsFromMinSec(0, 32)).toBe(4);
+    expect(clipsFromMinSec(1, 4)).toBe(8);
+    expect(clipsFromMinSec(2, 0)).toBe(15);
+  });
+
+  it("rounds UP, so a client is never short-changed to save a clip", () => {
+    // 45s is 5.6 clips. Rounding down would deliver 40 seconds against a 45-second promise.
+    expect(clipsFromMinSec(0, 45)).toBe(6);
+    expect(clipsFromMinSec(1, 30)).toBe(12);
+  });
+
+  it("is detectable when it rounded, so the member can be told before they quote", () => {
+    const typed = 45;
+    const built = clipsForSeconds(typed) * 8;
+    expect(built).toBe(48);
+    expect(built === typed).toBe(false);
+    // …and not flagged when the time is already a whole number of clips.
+    expect(clipsForSeconds(64) * 8).toBe(64);
+  });
+
+  it("never produces a zero-clip ad from a stray keystroke", () => {
+    expect(clipsFromMinSec(0, 1)).toBe(1);
+  });
+
+  it("prices off the converted clip count, not the typed seconds", () => {
+    expect(priceForClips("promotional", clipsFromMinSec(0, 45)))
+      .toBe(priceForClips("promotional", 6));
+  });
+});

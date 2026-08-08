@@ -12,6 +12,7 @@ import { format } from "date-fns";
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import { formatCurrency } from "@/utils/formatters";
+import { collectedInRange, collectedOf } from "@/utils/salePayments";
 import type { AppUser, CommissionSettlement, Lead, SaleDetail } from "@/types";
 
 /** Member commission rate as a whole percent (5 or 10). */
@@ -41,16 +42,29 @@ export interface RangeCommission {
   saleCount: number;
 }
 
-/** Commission for a member's VERIFIED sales dated within [fromDate, toDate] (inclusive). */
+/**
+ * Commission for a member's VERIFIED sales, on money COLLECTED within [fromDate, toDate].
+ *
+ * ── Why it is the money and not the sale value ────────────────────────────────────────────────
+ * Commission is a share of what the company was actually paid. A social-media month sold at 50%
+ * up front used to pay the member commission on the whole year's price the day they wrote it down,
+ * months before the balance arrived — and if the balance never arrived, the company had paid
+ * commission on money it never received, with no mechanism to claw it back.
+ *
+ * Counting payments also puts the balance in the right period. A member who collects the second
+ * half in November earns that commission in November, which is the cycle they did the collecting
+ * in. A sale nobody marked partial is a single payment of the full price on the day of the sale,
+ * so ordinary sales settle exactly as they always did.
+ */
 export function computeCommissionInRange(leads: Lead[], fromDate: string, toDate: string, rate: number): RangeCommission {
   let base = 0;
   let saleCount = 0;
   for (const lead of leads) {
     for (const it of saleItems(lead)) {
       if (it.verificationStatus !== "verified") continue;
-      const d = saleDateStr(it, lead);
-      if (!d || d < fromDate || d > toDate) continue;
-      base += it.amount || 0;
+      const collected = collectedInRange(it, lead, fromDate, toDate);
+      if (collected <= 0) continue;
+      base += collected;
       saleCount++;
     }
   }
@@ -98,8 +112,16 @@ export function lastSettlementOf(settlements: CommissionSettlement[], memberId: 
   return latest;
 }
 
-/** Commission on every VERIFIED sale not covered by the last settlement — i.e. verified
- *  after the moment that settlement was marked (pass 0 when never settled). */
+/**
+ * Commission on every VERIFIED sale not covered by the last settlement — i.e. verified
+ * after the moment that settlement was marked (pass 0 when never settled).
+ *
+ * Only money actually collected counts, for the reasons in `computeCommissionInRange`. The cut is
+ * still the VERIFICATION moment rather than each payment's own date, because that is what decides
+ * whether this settlement already paid for the sale — moving that would re-pay sales that have
+ * been settled. A balance collected after the cut therefore rides in with its sale the first time
+ * the sale becomes payable, and a sale already settled does not come back.
+ */
 export function computeUnpaidCommission(leads: Lead[], lastPaidAtMs: number, rate: number): RangeCommission {
   let base = 0;
   let saleCount = 0;
@@ -107,7 +129,9 @@ export function computeUnpaidCommission(leads: Lead[], lastPaidAtMs: number, rat
     for (const it of saleItems(lead)) {
       if (it.verificationStatus !== "verified") continue;
       if (verifiedAtMs(it, lead) <= lastPaidAtMs) continue;
-      base += it.amount || 0;
+      const collected = collectedOf(it, lead);
+      if (collected <= 0) continue;
+      base += collected;
       saleCount++;
     }
   }

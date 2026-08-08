@@ -296,25 +296,37 @@ function workItemFromAssignment(
   };
 }
 
-/** The sale behind an assignment, or null when it was created directly in Work Assign. */
-async function saleBehind(orderId?: string | null): Promise<SaleAttribution | null> {
-  if (!orderId) return null;
-  try {
-    const snap = await getDoc(doc(db, "orders", orderId));
-    if (!snap.exists()) return null;
-    const order = snap.data() as Order;
-    return order.soldBy
-      ? {
-          soldBy: order.soldBy,
-          soldByName: order.soldByName || "",
-          saleAmount: order.amount || 0,
-          fromAd: !!order.fromAd,
-        }
-      : null;
-  } catch {
-    // One unreadable order must not stop a delivery being recorded — the Re-sync button repairs it.
-    return null;
-  }
+/**
+ * The same entry, for work that came from a sale.
+ *
+ * The order is the authority on everything about the SALE — who sold it, for how much, under which
+ * package, and whether it came from an ad. The assignment only knows about the delivery. Building
+ * the item from the assignment for order-driven work is what put a tech admin's uid in `soldBy`,
+ * an empty string in `soldByName` and the tech price in `saleAmount`.
+ */
+function workItemFromOrder(
+  order: Order,
+  assignment: WorkAssignment,
+  deliveredByName?: string | null,
+): ClientWorkItem {
+  return {
+    orderId: order.id,
+    workAssignmentId: assignment.id,
+    category: order.category,
+    packageKey: order.packageKey,
+    title: order.businessName
+      ? `${categoryLabel(order.category)} — ${order.businessName}`
+      : categoryLabel(order.category),
+    billing: categoryBilling(order.category),
+    soldBy: order.soldBy,
+    soldByName: order.soldByName,
+    saleAmount: order.amount || 0,
+    fromAd: !!order.fromAd,
+    deliveredBy: assignment.assignedTo,
+    deliveredByName: deliveredByName || null,
+    deliveredAmount: assignment.totalPrice || 0,
+    deliveredAt: deliveredAtStamp(assignment),
+  };
 }
 
 export async function upsertClientOnWorkComplete(params: {
@@ -324,50 +336,88 @@ export async function upsertClientOnWorkComplete(params: {
    * Sales admins who should be able to see this client. Directly-assigned work has no sale and
    * therefore no owning admin, so every sales admin gets visibility — otherwise the customer is
    * invisible to the very people who run upsells. Pass it in to avoid a lookup per client.
+   *
+   * Ignored for order-driven work, which has exactly one owning admin: the one on the order.
    */
   salesAdminIds?: string[];
 }): Promise<void> {
   const { assignment, deliveredByName } = params;
-  const salesAdminIds = params.salesAdminIds ?? await fetchSalesAdminIds();
-
-  const phone = assignment.businessWhatsapp ? normalizePhone(assignment.businessWhatsapp) : "";
-  // Without a number there is nobody to upsell to, so there is nothing useful to record.
-  if (!phone) return;
-
-  const phoneId = phone.replace(/\D/g, "");
-  if (!phoneId) return;
-
-  // Read before the transaction, not inside it: a transaction may only read documents through its
-  // own `tx`, and this one is in another collection entirely.
-  const sale = await saleBehind(assignment.orderId);
 
   try {
+    /**
+     * ── Why the order is read first ─────────────────────────────────────────────────────────────
+     * Completion is the moment the client record is created, and for a sold job the order holds
+     * facts the assignment simply does not have. Two of them were being lost:
+     *
+     *  1. **The customer's number.** It is optional on an assignment (`workAssign` omits the field
+     *     when the box is left blank, and both edit forms write it back as ""), so any sold job
+     *     assigned without re-typing the number bailed out here — and the client never appeared in
+     *     the list at all. The order always carries `clientPhoneId`; it is the join key the whole
+     *     pipeline is built on.
+     *  2. **Who sold it, and for how much.** Falling back to assignment data wrote the tech
+     *     admin's uid into `soldBy`, an empty `soldByName`, and the tech price into `saleAmount`,
+     *     with `totalSaleAmount` left at 0. `upsertClientOnWorkVerify` could not repair it later:
+     *     it matches on `orderId`, saw the entry already present, and skipped — so the wrong
+     *     attribution was permanent and every sold client read as a ₹0 sale by nobody.
+     */
+    const order = assignment.orderId
+      ? await getDoc(doc(db, "orders", assignment.orderId))
+          .then((s) => (s.exists() ? ({ id: s.id, ...s.data() } as Order) : null))
+          .catch(() => null)
+      : null;
+
+    // The order's own id wins: it is the key Orders, reviews and the verify path all use, so
+    // preferring the assignment's copy is how one customer ends up with two client documents.
+    const phone = order?.clientPhone
+      || (assignment.businessWhatsapp ? normalizePhone(assignment.businessWhatsapp) : "");
+    // Without a number there is nobody to upsell to, so there is nothing useful to record.
+    if (!phone) return;
+
+    const phoneId = order?.clientPhoneId || normalizePhone(phone).replace(/\D/g, "");
+    if (!phoneId) return;
+
+    // Only fetched when it is actually needed — a sold job's visibility comes from its order.
+    const salesAdminIds = order?.salesAdminId
+      ? [order.salesAdminId]
+      : params.salesAdminIds ?? await fetchSalesAdminIds();
+
     const clientRef = doc(db, "clients", phoneId);
 
     await runTransaction(db, async (tx) => {
       const clientSnap = await tx.get(clientRef);
-      const item = workItemFromAssignment(assignment, deliveredByName, sale);
+      const item = order
+        ? workItemFromOrder(order, assignment, deliveredByName)
+        : workItemFromAssignment(assignment, deliveredByName);
 
       if (clientSnap.exists()) {
         const client = clientSnap.data() as Client;
-        // Idempotent: re-completing the same assignment must not double-count revenue.
-        if ((client.works || []).some((w) => w.workAssignmentId === assignment.id)) return;
+        // Idempotent: re-completing the same assignment must not double-count revenue. Matched on
+        // the order too, so a job re-assigned after being taken back is still the same sale.
+        const already = (client.works || []).some(
+          (w) => w.workAssignmentId === assignment.id || (!!order && w.orderId === order.id),
+        );
+        if (already) return;
 
         tx.update(clientRef, {
           works: [...(client.works || []), item],
+          totalSaleAmount: (client.totalSaleAmount || 0) + item.saleAmount,
           totalDeliveredAmount: (client.totalDeliveredAmount || 0) + (item.deliveredAmount || 0),
           workCount: (client.workCount || 0) + 1,
-          ...(sale?.soldBy
-            ? { soldByIds: Array.from(new Set([...(client.soldByIds || []), sale.soldBy])) }
+          salesAdminIds: Array.from(new Set([...(client.salesAdminIds || []), ...salesAdminIds])),
+          // The seller keeps the customer, and it is what their own Clients page queries on. Only
+          // order-driven work contributes: a direct assignment's `assignedBy` is the tech person
+          // who handed it out, and putting them here would match a "my clients" query.
+          ...(order?.soldBy
+            ? { soldByIds: Array.from(new Set([...(client.soldByIds || []), order.soldBy])) }
             : {}),
-          name: client.name || assignment.businessName || "",
+          name: client.name || order?.businessName || assignment.businessName || "",
           updatedAt: serverTimestamp(),
         });
       } else {
         tx.set(clientRef, {
-          phone,
+          phone: order?.clientPhone || normalizePhone(phone),
           phoneId,
-          name: assignment.businessName || assignment.clientName || "",
+          name: order?.businessName || assignment.businessName || assignment.clientName || "",
           businessCategory: "",
           email: null,
           logoUrl: null,
@@ -376,14 +426,14 @@ export async function upsertClientOnWorkComplete(params: {
           websiteUrl: null,
           socialMedia: null,
           works: [item],
-          // Direct assignments carry no sale record, so sale value stays 0 until an order links up.
-          totalSaleAmount: sale?.saleAmount || 0,
+          // A direct assignment carries no sale, so its value stays 0 until an order links up.
+          totalSaleAmount: item.saleAmount,
           totalDeliveredAmount: item.deliveredAmount || 0,
           workCount: 1,
           // Unattributed delivery → visible to every sales admin, so the upsell can be picked up.
           salesAdminIds,
-          soldByIds: sale?.soldBy ? [sale.soldBy] : [],
-          firstSoldBy: sale?.soldBy || assignment.assignedBy || "",
+          soldByIds: order?.soldBy ? [order.soldBy] : [],
+          firstSoldBy: order?.soldBy || assignment.assignedBy || "",
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });

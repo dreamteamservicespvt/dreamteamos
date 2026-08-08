@@ -108,6 +108,21 @@ export interface OrderChatDoc {
   unreadCounts?: Record<string, number>;
   /** Who currently has the room open — suppresses unread bumps and pushes for them. */
   activeUsers?: string[];
+  /**
+   * When each viewer last said they were looking, as epoch milliseconds.
+   *
+   * ── Why presence needs a clock ────────────────────────────────────────────────────────────────
+   * `activeUsers` is a flag that is added on open and removed on close, and "close" depends on the
+   * app getting a chance to say goodbye. On a phone it usually does not: swiping the app away, the
+   * OS reclaiming it, or losing signal all skip `beforeunload` entirely. The member was then left
+   * in `activeUsers` for ever, and since the server suppresses the push for anyone "already
+   * looking", every later message from that client went silently into a badge nobody was watching.
+   *
+   * A timestamp cannot get stuck. The client refreshes it while the room is open and the server
+   * only believes presence that is recent (see PRESENCE_FRESH_MS), so the worst a missed goodbye
+   * can now cost is one notification, not all of them.
+   */
+  activeAt?: Record<string, number>;
   createdAt?: unknown;
   lockedAt?: unknown;
   /** Wrong-code throttling. Written only by the serverless join endpoint. */

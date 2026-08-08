@@ -118,13 +118,40 @@ describe("the notification gate", () => {
     expect(enableGuestPush).toHaveBeenCalledWith("abc123");
   });
 
-  it("lets a customer through anyway when their browser has blocked notifications", async () => {
-    // Nothing can be re-asked once a browser has decided; refusing to show them their own order
-    // would punish them for a setting they may not know they have.
+  it("holds a customer whose browser has blocked notifications, and says how to fix it", async () => {
+    /**
+     * There used to be a "Continue without notifications" link here. Taking it produced exactly the
+     * failure this screen exists to prevent: a customer sitting in a chat that cannot reach them,
+     * a team replying into silence, and a missed call neither side can explain. Letting them in is
+     * not the kind option — it is the one that wastes their week.
+     */
     pushState.mockReturnValue("denied");
     renderChat();
-    fireEvent.click(await screen.findByTestId("skip-notification-gate"));
+
+    expect(await screen.findByText(/Notifications are blocked/)).toBeTruthy();
+    expect(screen.queryByTestId("skip-notification-gate")).toBeNull();
+    expect(screen.queryByText("Sharma Electronics")).toBeNull();
+  });
+
+  it("opens the chat once they have allowed it and pressed re-check", async () => {
+    // The way out is to fix the setting, so the button re-reads it rather than making them hunt
+    // for the link again.
+    pushState.mockReturnValue("denied");
+    renderChat();
+    // Waited for, not assumed: the gate is decided in an async effect, so flipping the mock before
+    // it has read the first value tests nothing at all.
+    const recheck = await screen.findByTestId("recheck-notifications");
+
+    pushState.mockReturnValue("granted");
+    fireEvent.click(recheck);
     expect(await screen.findByText("Sharma Electronics")).toBeTruthy();
+  });
+
+  it("tells them what the permission is actually for — messages and calls", async () => {
+    pushState.mockReturnValue("default");
+    renderChat();
+    expect(await screen.findByText(/Messages/)).toBeTruthy();
+    expect(screen.getByText(/Calls/)).toBeTruthy();
   });
 
   it("does not block a browser that has no notifications to offer at all", async () => {

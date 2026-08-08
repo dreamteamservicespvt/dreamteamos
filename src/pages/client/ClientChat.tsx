@@ -16,7 +16,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
-import { BellRing, Loader2, Lock, ShieldCheck, Sparkles } from "lucide-react";
+import { BellRing, Loader2, Lock, MessageSquare, PhoneCall, ShieldCheck, Sparkles } from "lucide-react";
 import OrderChatPanel, { OrderChatCallButtons } from "@/components/order-chat/OrderChatPanel";
 import ClientCall, { type ClientCallType } from "@/components/order-chat/ClientCall";
 import ClientReviewCard from "@/components/order-chat/ClientReviewCard";
@@ -192,33 +192,48 @@ function NotificationGate({ permission, onGranted, onResult, chatId }: {
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50">
           <BellRing className="h-7 w-7 text-emerald-600" />
         </div>
-        <h1 className="text-lg font-semibold text-slate-900">Turn on notifications</h1>
+        <h1 className="text-lg font-semibold text-slate-900">Turn on notifications to open your chat</h1>
         <p className="mt-2 text-sm leading-relaxed text-slate-600">
-          So you know the moment our team replies, sends your preview, or calls you about your
-          order — even when this page is closed.
+          This chat only works if we can reach you. Please allow notifications — it takes one tap.
         </p>
 
+        {/* Said as the two things that actually happen, not as "stay updated". A customer deciding
+            whether to trust a permission prompt needs to know what it is FOR. */}
         <ul className="mt-4 space-y-2 text-left text-[13px] text-slate-600">
+          <li className="flex gap-2"><MessageSquare className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+            <span><b className="text-slate-800">Messages</b> — you will know the moment our team
+            replies or sends your video, even with this page closed.</span></li>
+          <li className="flex gap-2"><PhoneCall className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+            <span><b className="text-slate-800">Calls</b> — your phone rings when we call you about
+            your order. Without this, you will simply miss it.</span></li>
           <li className="flex gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-            Only about your own order. Nothing else, ever.</li>
-          <li className="flex gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-            No marketing, and no phone number needed.</li>
+            Only about your own order. No marketing, and no phone number needed.</li>
         </ul>
 
         {permission === "denied" ? (
+          /**
+           * No way past this, on purpose.
+           *
+           * There used to be a "Continue without notifications" link, and taking it produced the
+           * exact failure this screen exists to prevent: a customer sitting in a chat that cannot
+           * reach them, a team replying into silence, and a missed call neither side can explain.
+           * Letting them in is not the kind thing to do — it is the thing that wastes their week.
+           * The instructions are specific enough to follow, and the button re-checks rather than
+           * making them find the link again.
+           */
           <div className="mt-5 rounded-xl bg-amber-50 px-3 py-3 text-left">
             <p className="text-[13px] font-semibold text-amber-800">Notifications are blocked</p>
             <p className="mt-1 text-[12.5px] leading-relaxed text-amber-700">
               Your browser has blocked them for this site, so we cannot ask again from here. Tap the
               lock icon (or ⋮ → Site settings) next to the address bar, allow Notifications, then
-              reload this page.
+              come back and press the button below.
             </p>
             <button
-              onClick={onGranted}
-              data-test="skip-notification-gate"
-              className="mt-3 text-[12.5px] font-semibold text-amber-800 underline underline-offset-2"
+              onClick={() => { const now = pushState(); onResult(now); if (now === "granted") onGranted(); }}
+              data-test="recheck-notifications"
+              className="mt-3 w-full rounded-xl bg-amber-600 py-2.5 text-[13px] font-semibold text-white"
             >
-              Continue without notifications
+              I have allowed it — open my chat
             </button>
           </div>
         ) : (

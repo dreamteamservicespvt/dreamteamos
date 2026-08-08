@@ -251,6 +251,21 @@ export interface NumberLock {
   updatedAt: any;
 }
 
+/** One payment actually received against a sale — the advance, then whatever settles it. */
+export interface SalePayment {
+  /** Stable within the sale, so a row can be keyed and a duplicate collection spotted. */
+  id: string;
+  amount: number;
+  /** When the money was taken. The day this falls on is the day it counts as revenue. */
+  collectedAt: any;
+  /** "Advance at sale" / "Balance on delivery" / whatever the member typed. */
+  note?: string | null;
+  /** Proof of this instalment, kept per payment rather than per sale. */
+  screenshotUrl?: string | null;
+  byId?: string;
+  byName?: string;
+}
+
 export interface SaleDetail {
   category: string;
   packageKey: string;
@@ -260,10 +275,37 @@ export interface SaleDetail {
    */
   customDescription?: string | null;
   /**
-   * Final money for this sale line. For a bulk order this is already the discounted total, so every
-   * revenue reader keeps working untouched. NEVER includes penalties — see `penaltyTotal`.
+   * Final money for this sale line — what the client AGREED to pay. For a bulk order this is
+   * already the discounted total. NEVER includes penalties — see `penaltyTotal`.
+   *
+   * This is the contract value, not the cash received. When only part of it has been collected,
+   * `payments` says how much is actually in hand — see utils/salePayments.
    */
   amount: number;
+  // ── Money actually received ────────────────────────────────────────────────
+  /**
+   * The client paid only part of the price up front.
+   *
+   * Standard on a social-media month: half at the sale, the rest once the first post is made,
+   * posted and the campaign is running. It also happens on ordinary ads, which the form used to
+   * refuse to record — so a member who took ₹500 of a ₹999 ad had to either log the full amount
+   * (inflating their revenue and their commission on money nobody had) or not log the sale at all.
+   */
+  partialPayment?: boolean;
+  /**
+   * Every payment received against this sale, in the order collected.
+   *
+   * ── Why a list rather than a "collected so far" number ────────────────────────────────────────
+   * A running total cannot say WHEN the money arrived, and the day it arrived is the whole point:
+   * the member's revenue and their commission belong to the day they collected, not to the day the
+   * sale was first written down. A member who takes ₹500 today and ₹499 next month has earned on
+   * two different days, in two different pay cycles, and a single field flattens that into one.
+   *
+   * Absent means the sale was paid in full when it was made — which is every sale recorded before
+   * this existed, and most sales since. Nothing has to be backfilled: `utils/salePayments` reads a
+   * missing list as one payment of the full amount on the sale date.
+   */
+  payments?: SalePayment[] | null;
   // ── Bulk videos (quantity × package, with a volume discount) ───────────────
   /** How many videos were sold on this line. Absent (or 1) for an ordinary single-ad sale. */
   quantity?: number;
@@ -442,6 +484,32 @@ export interface OrderProgressEntry {
   to: number | null;
 }
 
+/** Where one video of a bulk order has got to. */
+export type BulkVideoStatus = "pending" | "assigned" | "completed";
+
+/**
+ * One video inside a bulk order.
+ *
+ * Deliberately small: it is the video's NUMBER, who is making it, and whether it is done. Anything
+ * else about the job — the brief, the language, the client — belongs to the order and is the same
+ * for all ten, so copying it onto every slot would be ten places for it to disagree.
+ */
+export interface BulkVideoSlot {
+  /**
+   * 1-based position in the order — "Video 3 of 10". Assigned once and never renumbered, so a
+   * member told "you have 3, 4 and 7" still has 3, 4 and 7 tomorrow.
+   */
+  n: number;
+  status: BulkVideoStatus;
+  assignedTo?: string | null;
+  assignedToName?: string | null;
+  assignedAt?: any;
+  completedAt?: any;
+  completedByName?: string | null;
+  /** What this particular video is, when the client named them — "Diwali offer", "Shop tour". */
+  title?: string | null;
+}
+
 export interface OrderProgress {
   kind: "smm" | "bulk";
   targets: OrderProgressCounts;
@@ -521,6 +589,20 @@ export interface Order {
    * Absent on ordinary single-ad orders, which are done when their one assignment is done.
    */
   progress?: OrderProgress | null;
+  /**
+   * A bulk order's videos, one entry each, each with its own owner and its own status.
+   *
+   * ── Why a list and not just a count ───────────────────────────────────────────────────────────
+   * `progress` answers "how many of the ten are done" — enough for a social-media month, where the
+   * eight ads are interchangeable. A bulk order is not like that: ten videos get shared out across
+   * the team, and the questions that actually get asked are "who has video 6", "which three are
+   * left" and "has Kiran finished hers". A single counter cannot answer any of them, so the team
+   * kept that list on paper, and a video with nobody on it was only discovered at the deadline.
+   *
+   * Absent on orders created before this existed — `utils/bulkVideos` builds the list on demand
+   * from the quantity, so every bulk order already in the queue shows up with no migration.
+   */
+  bulkVideos?: BulkVideoSlot[] | null;
   /**
    * Penalties charged on this order. Canonical here — the sale carries only a mirrored total,
    * because either side can add one and the order is the doc both sides can write.

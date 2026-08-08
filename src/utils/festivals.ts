@@ -122,13 +122,80 @@ export function findFestival(name: string): Festival | undefined {
 // generating the video must be naming the same thing. Two lists meant a sale saying "Sankranthi"
 // and a generator tuned for "Makar Sankranti", and the mismatch is invisible until the ad is wrong.
 
-export const WISHES_FESTIVALS: string[] = [
-  "Ugadi", "Sankranthi", "Maha Shivaratri", "Holi", "Sri Rama Navami", "Hanuman Jayanti",
-  "Good Friday", "Easter", "Akshaya Tritiya", "Buddha Purnima", "Eid ul-Fitr", "Bakrid",
-  "Muharram", "Raksha Bandhan", "Krishna Janmashtami", "Ganesh Chaturthi", "Onam",
-  "Bathukamma", "Navaratri", "Dasara", "Dussehra", "Diwali", "Karthika Pournami",
-  "Christmas", "New Year", "Republic Day", "Independence Day", "Gandhi Jayanti",
+/** One heading in the occasion dropdown, and the occasions filed under it. */
+export interface OccasionGroup {
+  label: string;
+  options: string[];
+}
+
+/**
+ * Every occasion a greeting video is sold for, grouped the way somebody picking one thinks.
+ *
+ * ── Why it is more than festivals ─────────────────────────────────────────────────────────────
+ * The list used to be festivals alone, and most of what the team actually sells is not a festival:
+ * a birthday, a wedding, a shop opening, an invitation to a function. Those had to go through
+ * "Other occasion…", which is a text box — so the same event arrived as "bday", "Birthday video",
+ * "B'DAY 🎂" and "birthday shoot", none of which the generator's theme system recognises and no
+ * two of which group together in a report. Naming the ones we sell repeatedly makes the common
+ * case a tap, and leaves the text box for what it is for: the genuinely unusual.
+ *
+ * ── Why it is grouped ─────────────────────────────────────────────────────────────────────────
+ * A flat list of fifty is a search, not a choice. Four headings mean a member looking for
+ * "Housewarming" knows to look under Family before they start reading.
+ *
+ * ── Why it is shared ──────────────────────────────────────────────────────────────────────────
+ * The sales member picking the occasion and the tech member generating the video must be naming
+ * the same thing. Two lists meant a sale saying "Sankranthi" and a generator tuned for "Makar
+ * Sankranti", and the mismatch is invisible until the ad is wrong.
+ */
+export const WISHES_OCCASION_GROUPS: OccasionGroup[] = [
+  {
+    label: "Family & personal",
+    options: [
+      "Birthday", "Wedding", "Engagement", "Wedding Anniversary", "Housewarming (Gruhapravesam)",
+      "Naming Ceremony (Barasala)", "Baby Shower (Seemantham)", "Half Saree Function",
+      "Retirement", "Farewell", "Graduation",
+    ],
+  },
+  {
+    label: "Business & shop",
+    options: [
+      "Shop Opening", "Branch Opening", "Inauguration", "Business Anniversary",
+      "Award / Achievement", "Thank You to Customers",
+    ],
+  },
+  {
+    // Called out separately because an invitation is a different VIDEO, not a different occasion:
+    // it is sent before the event to bring people to it, so it carries a date, a venue and a map,
+    // where a wishes video carries none of those. A member who picks one of these is telling the
+    // generator "this is the invite", which is exactly what they mean when they sell one.
+    label: "Invitations",
+    options: [
+      "Wedding Invitation", "Birthday Invitation", "Engagement Invitation",
+      "Housewarming Invitation", "Function Invitation", "Event Invitation",
+      "Opening Invitation",
+    ],
+  },
+  {
+    label: "Festivals",
+    options: [
+      "Ugadi", "Sankranthi", "Maha Shivaratri", "Holi", "Sri Rama Navami", "Hanuman Jayanti",
+      "Good Friday", "Easter", "Akshaya Tritiya", "Buddha Purnima", "Eid ul-Fitr", "Bakrid",
+      "Muharram", "Raksha Bandhan", "Krishna Janmashtami", "Ganesh Chaturthi", "Onam",
+      "Bathukamma", "Navaratri", "Dasara", "Dussehra", "Diwali", "Karthika Pournami",
+      "Christmas", "New Year", "Republic Day", "Independence Day", "Gandhi Jayanti",
+    ],
+  },
 ];
+
+/**
+ * Every listed occasion, flat.
+ *
+ * Derived from the groups rather than written out beside them, so adding an occasion in one place
+ * cannot leave the "is this one we know?" check disagreeing with the dropdown that offered it.
+ * The name is unchanged because the whole pipeline already reads it.
+ */
+export const WISHES_FESTIVALS: string[] = WISHES_OCCASION_GROUPS.flatMap((g) => g.options);
 
 /**
  * The "it isn't in the list" option.

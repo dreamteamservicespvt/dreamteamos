@@ -12,8 +12,13 @@ import { findMemberDuplicates, resolveNonSaleDuplicates } from "@/services/dupli
 import { formatCurrency, formatDuration } from "@/utils/formatters";
 import { normalizePhone, getCallUrl, getWhatsAppUrl, buildLeadGreeting } from "@/utils/phone";
 import { useNow } from "@/hooks/useNow";
-import { format, subDays, startOfDay } from "date-fns";
-import type { AppUser, Lead, LeadStatus, Order, SaleDetail, SaleEditEntry } from "@/types";
+import { format, subDays, startOfDay, parseISO } from "date-fns";
+import type { AppUser, Lead, LeadStatus, Order, SaleDetail, SaleEditEntry, SalePayment } from "@/types";
+import {
+  collectedOf, newPayment, pendingOf, pendingSales, saleItemsOf, withPayment, type PendingSale,
+} from "@/utils/salePayments";
+import { collectReadiness } from "@/utils/collectReadiness";
+import SaleSection from "@/components/sales/SaleSection";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
@@ -25,7 +30,9 @@ import {
   packageOptionLabel, bulkTypesFor, effectiveAdCategory, bulkCategoryLabel,
   DEFAULT_PROMOTIONAL_PACKAGE, CUSTOM_BASE_CATEGORIES,
 } from "@/utils/serviceCatalog";
-import { clipsForSeconds, priceForClips } from "@/utils/assignmentDuration";
+import {
+  CLIP_PRESETS, CLIP_SECONDS, clipsForSeconds, humanDuration, priceForClips, secondsForClips,
+} from "@/utils/assignmentDuration";
 import {
   discountBreakdown, EARNED_DISCOUNT_PERCENT, EARNED_REASON_LABEL, MEMBER_DISCOUNT_LIMIT_PERCENT,
   type EarnedReason,
@@ -43,7 +50,7 @@ import { upsertOrderForSale, cancelOrderForSale, addOrderUpdateNote, orderDocId 
 import { buildClientSaleMessage } from "@/utils/salesMessage";
 import { dayRevenue, saleDay, type DayRevenue } from "@/utils/salesRevenue";
 import {
-  Search, Phone, MessageCircle, StickyNote, ChevronDown, ChevronUp, Clock,
+  Search, Phone, MessageCircle, StickyNote, ChevronDown, ChevronUp, Clock, IndianRupee,
   Loader2, Check, Upload, ExternalLink, Plus, Trash2, ShoppingBag, X, Lock, AlertTriangle, Snowflake, FileText, RotateCcw, Clapperboard, Copy, Pencil, History, Send, Layers, PartyPopper, Sparkles, BadgePercent, CheckCircle2,
 } from "lucide-react";
 import { CUSTOM_FESTIVAL_OPTION, WISHES_FESTIVALS, isListedFestival } from "@/utils/festivals";
@@ -531,6 +538,39 @@ export default function MyLeads() {
         />
       )}
 
+      {/* Money still to collect — see PendingPaymentsPanel for why it sits above everything else. */}
+      <PendingPaymentsPanel
+        leads={leads}
+        ordersById={ordersById}
+        onCollect={async (row, amount, note) => {
+          const items = saleItemsOf(row.lead).slice();
+          const current = items[row.index];
+          if (!current) return;
+          const updated: SaleDetail = {
+            ...current,
+            partialPayment: true,
+            payments: withPayment(
+              current,
+              newPayment({
+                amount,
+                note: note || "Balance collected",
+                collectedAt: Timestamp.now(),
+                by: user ? { uid: user.uid, name: user.name } : null,
+              }),
+              row.lead,
+            ),
+          };
+          items[row.index] = updated;
+          await updateLead(row.lead.id, { saleItems: items, saleDetails: items[items.length - 1] });
+          toast({
+            title: "Payment recorded",
+            description: pendingOf(updated, row.lead) > 0
+              ? `${formatCurrency(pendingOf(updated, row.lead))} still pending.`
+              : "This sale is fully paid.",
+          });
+        }}
+      />
+
       {/* View Toggle */}
       <div className="flex gap-1.5">
         <button onClick={() => setViewTab("leads")}
@@ -786,6 +826,237 @@ interface LeadCardProps {
   setExpandedSale: (id: string | null) => void;
   /** This member's orders, keyed by order-doc id, so each sale row knows its delivery status. */
   ordersById: Map<string, Order>;
+}
+
+/**
+ * Money the member has sold but not yet been given.
+ *
+ * ── Why it is a section of its own, above the leads ───────────────────────────────────────────
+ * A pending balance is invisible work. The sale is recorded, the client is happy, the job is with
+ * the tech team — and the only thing keeping the money from arriving is somebody remembering to
+ * ask for it. Buried inside a sale row on a lead somewhere down a list of two hundred, nobody
+ * remembers. It is the single highest-value thing on this page, so it sits at the top of it.
+ *
+ * ── Why "ready to collect" comes first ────────────────────────────────────────────────────────
+ * The balance on a social-media month is not due on a date, it is due on a delivery: the client
+ * agreed to pay the rest once the first post is created, posted and the campaign is running. The
+ * tech team records exactly that on the order as they go — so the sale can promote itself the
+ * moment the work lands, and the member finds out by opening the page they already open. Chasing
+ * before then is chasing for nothing and spends goodwill they will need when it genuinely is due.
+ *
+ * Collapsed when nothing is outstanding: an empty panel every day is how a panel gets ignored.
+ */
+function PendingPaymentsPanel({ leads, ordersById, onCollect }: {
+  leads: Lead[];
+  ordersById: Map<string, Order>;
+  onCollect: (row: PendingSale, amount: number, note: string) => Promise<void>;
+}) {
+  const [collecting, setCollecting] = useState<PendingSale | null>(null);
+  /**
+   * Closed until the member asks for it.
+   *
+   * Nothing is hidden by closing it: the header still carries the total owed, how many sales it is
+   * spread across, and how many are ready to collect right now — which is the whole answer for
+   * anyone just passing through. Opening it is for the member who has decided to work the list, and
+   * the rows below it are long enough that leaving them expanded pushed the leads themselves off
+   * the first screen every single visit.
+   */
+  const [open, setOpen] = useState(false);
+
+  const rows = useMemo(() => {
+    const list = pendingSales(leads).map((row) => ({
+      row,
+      readiness: collectReadiness(ordersById.get(orderDocId(row.lead.id, row.item, row.index))),
+    }));
+    // Ready first, then the biggest balance — the two things that decide who to ring next.
+    return list.sort((a, b) => {
+      if (a.readiness.ready !== b.readiness.ready) return a.readiness.ready ? -1 : 1;
+      return b.row.pending - a.row.pending;
+    });
+  }, [leads, ordersById]);
+
+  const total = rows.reduce((sum, r) => sum + r.row.pending, 0);
+  const readyCount = rows.filter((r) => r.readiness.ready).length;
+
+  if (rows.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-warning/40 bg-warning/5" data-test="pending-payments">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
+      >
+        <IndianRupee size={15} className="shrink-0 text-warning" />
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-foreground">
+            Pending payments · {formatCurrency(total)}
+          </span>
+          <span className="block text-[11px] text-muted-foreground" data-test="pending-payments-summary">
+            {rows.length} sale{rows.length === 1 ? "" : "s"} to collect
+            {readyCount > 0 ? ` · ${readyCount} ready now` : ""}
+          </span>
+        </span>
+        <ChevronDown size={15} className={`shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="space-y-1.5 px-2 pb-2">
+          {rows.map(({ row, readiness }) => (
+            <div
+              key={`${row.lead.id}-${row.index}`}
+              data-test="pending-payment-row"
+              data-ready={readiness.ready ? "yes" : "no"}
+              className={`rounded-lg border bg-card p-2.5 ${
+                readiness.ready ? "border-success/50" : "border-border"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-semibold text-foreground">
+                    {row.lead.realName || row.lead.displayName}
+                  </p>
+                  <p className="truncate text-[10px] text-muted-foreground">
+                    {categoryLabel(row.item.category)}
+                    {row.soldOn ? ` · sold ${format(parseISO(row.soldOn), "dd MMM")}` : ""}
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="font-mono text-sm font-bold text-warning">{formatCurrency(row.pending)}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    of {formatCurrency(row.price)} · got {formatCurrency(row.collected)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                    readiness.ready ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {readiness.ready ? <Check size={10} /> : <Clock size={10} />} {readiness.reason}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  {row.lead.phone && (
+                    <a
+                      href={getWhatsAppUrl(row.lead.phone)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex h-7 items-center gap-1 rounded-md border border-border px-2 text-[11px] font-medium text-muted-foreground hover:bg-accent"
+                    >
+                      <MessageCircle size={11} /> Remind
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setCollecting(row)}
+                    data-test="pending-collect"
+                    className="inline-flex h-7 items-center rounded-md bg-primary px-2.5 text-[11px] font-semibold text-primary-foreground hover:bg-primary/90"
+                  >
+                    Collect
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {collecting && (
+        <CollectPaymentModal
+          row={collecting}
+          onClose={() => setCollecting(null)}
+          onSave={async (amount, note) => { await onCollect(collecting, amount, note); setCollecting(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Recording money that has just been handed over. Defaults to the whole balance — the usual case. */
+function CollectPaymentModal({ row, onSave, onClose }: {
+  row: PendingSale;
+  onSave: (amount: number, note: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [amount, setAmount] = useState(row.pending);
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const capped = Math.max(0, Math.min(amount, row.pending));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 md:items-center md:p-4" onClick={onClose}>
+      <motion.div
+        initial={{ opacity: 0, y: 24 }}
+        animate={{ opacity: 1, y: 0 }}
+        role="dialog"
+        aria-label="Collect payment"
+        data-test="collect-payment"
+        onClick={(e) => e.stopPropagation()}
+        className="w-full space-y-3 rounded-t-2xl border border-border bg-card p-5 md:max-w-sm md:rounded-2xl"
+      >
+        <div>
+          <h3 className="font-display text-lg font-bold text-foreground">Collect payment</h3>
+          <p className="text-xs text-muted-foreground">
+            {row.lead.realName || row.lead.displayName} — {formatCurrency(row.pending)} outstanding
+          </p>
+        </div>
+
+        <div>
+          <label className="text-[11px] text-muted-foreground">Amount received now</label>
+          <input
+            type="number" min={0} max={row.pending}
+            value={amount || ""}
+            data-test="collect-amount"
+            onChange={(e) => setAmount(Math.max(0, Math.min(row.pending, Number(e.target.value) || 0)))}
+            className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-right font-mono text-sm text-foreground outline-none focus:border-primary"
+          />
+          {/* Part of a balance is still progress — a client paying 2,000 of 5,000 must be recordable. */}
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            {capped >= row.pending
+              ? "This settles the sale in full."
+              : `${formatCurrency(row.pending - capped)} will stay pending.`}
+          </p>
+        </div>
+
+        <div>
+          <label className="text-[11px] text-muted-foreground">Note (optional)</label>
+          <input
+            type="text"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Cash / UPI / cheque…"
+            className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
+          />
+        </div>
+
+        {/* Said out loud, because it is the point of recording it here rather than in a notebook. */}
+        <p className="rounded-md bg-muted/50 px-2.5 py-2 text-[11px] text-muted-foreground">
+          {formatCurrency(capped)} counts towards your revenue and commission <b>today</b>.
+        </p>
+
+        <div className="flex gap-2">
+          <button
+            type="button" onClick={onClose}
+            className="h-10 flex-1 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-accent"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={saving || capped <= 0}
+            data-test="collect-save"
+            onClick={async () => { setSaving(true); try { await onSave(capped, note); } finally { setSaving(false); } }}
+            className="inline-flex h-10 flex-[1.4] items-center justify-center gap-1.5 rounded-lg bg-primary text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+            {saving ? "Saving…" : `Record ${formatCurrency(capped)}`}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
 }
 
 /**
@@ -1142,6 +1413,33 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
                   </span>
                 )}
                 {item.customDescription && <span className="text-muted-foreground"> • {item.customDescription}</span>}
+                {/*
+                  What was actually sold, not just which category it fell under.
+
+                  "Promotional Ad • p1" is the same line whether the member sold an ordinary ad or a
+                  Motu & Patlu one at a different price — so the thing that made the sale special was
+                  invisible to the person who made it, and there was no way to check a client's
+                  question about it without opening the edit form. The cartoon duo and the occasion
+                  are the two answers people actually go looking for.
+                */}
+                {getCharacterPack(item.requirement?.specialCategory) && (
+                  <span
+                    data-test="sale-pack-chip"
+                    className="inline-flex items-center gap-0.5 rounded bg-purple-500/15 px-1 py-0.5 text-[9px] font-medium text-purple-600 dark:text-purple-400"
+                    title="Special cartoon duo sold with this ad"
+                  >
+                    🎭 {getCharacterPack(item.requirement?.specialCategory)!.label}
+                  </span>
+                )}
+                {!!item.requirement?.festival && (
+                  <span
+                    data-test="sale-occasion-chip"
+                    className="inline-flex items-center gap-0.5 rounded bg-amber-500/15 px-1 py-0.5 text-[9px] font-medium text-amber-600 dark:text-amber-400"
+                    title="The occasion this greeting video is for"
+                  >
+                    <PartyPopper size={9} /> {item.requirement.festival}
+                  </span>
+                )}
                 {/* A penalty is the client's, not the member's — shown so they know it was raised,
                     and deliberately outside the sale amount so it never enters their commission. */}
                 {!!item.penaltyTotal && (
@@ -1171,6 +1469,21 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
                 </span>
               </div>
             </div>
+
+            {/* An outstanding balance, said on the sale itself — the chase list at the top of the
+                page is for working through them; this is for anyone who arrived at the sale first. */}
+            {pendingOf(item, lead) > 0 && (
+              <div
+                data-test="sale-pending-tag"
+                className="flex flex-wrap items-center gap-1.5 rounded-md border border-warning/40 bg-warning/10 px-2 py-1 text-[10px] font-medium text-warning"
+              >
+                <IndianRupee size={10} className="shrink-0" />
+                Pending payment: {formatCurrency(pendingOf(item, lead))}
+                <span className="font-normal opacity-80">
+                  · {formatCurrency(collectedOf(item, lead))} of {formatCurrency(item.amount)} collected
+                </span>
+              </div>
+            )}
 
             {/* Edit-log — plain record of every change made after the sale was added */}
             {logOpenIdx === idx && !!item.editLog?.length && (
@@ -1647,14 +1960,48 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
    * clip count, a price, a poster and a deadline instead of receiving a free-text note.
    */
   const [customBase, setCustomBase] = useState<string>(ed?.customBaseCategory || "");
-  const [customMinutes, setCustomMinutes] = useState<number>(
-    () => Math.floor((ed?.customDurationSeconds || 0) / 60),
+  /**
+   * The length, counted in CLIPS rather than minutes and seconds.
+   *
+   * ── Why the unit changed ────────────────────────────────────────────────────────────────────
+   * The whole production side is built on 8-second clips, so a length typed in minutes and seconds
+   * had to be converted before it meant anything — and the conversion happened silently, after the
+   * sale. A member who sold "1 minute" had sold 8 clips (64 seconds); one who sold "45 seconds"
+   * had sold 6 clips (48). Neither could tell from this form, so the number quoted to the client
+   * and the number the tech team built were routinely different, and nobody found out until the
+   * finished ad was the wrong length.
+   *
+   * Picking clips removes the conversion entirely: the number chosen here IS the number of shots
+   * that get made, and the seconds are shown beside it so the member still knows what to tell the
+   * client. Seeded from the stored seconds so an existing sale re-opens on the length it holds.
+   */
+  const [customClips, setCustomClips] = useState<number>(
+    () => (ed?.customDurationSeconds ? clipsForSeconds(ed.customDurationSeconds) : 0),
   );
-  const [customSeconds, setCustomSeconds] = useState<number>(
-    () => (ed?.customDurationSeconds || 0) % 60,
+  /**
+   * The exact time the member typed, when they entered one — kept ONLY so the rounding can be
+   * shown back to them.
+   *
+   * Clips remain the stored unit; this is not a second source of truth for the length. A client
+   * who asks for 45 seconds is buying 6 clips, which is 48, and a form that silently accepts "45"
+   * and hands the tech team 48 is how a member quotes one number and the company delivers another.
+   * Cleared whenever the length is set as clips, so the time boxes go back to mirroring the clips.
+   */
+  const [typedSeconds, setTypedSeconds] = useState<number | null>(
+    () => ed?.customDurationSeconds ?? null,
   );
   /** The auto-priced figure was overridden, so it stops following the duration. */
   const [customPriceTouched, setCustomPriceTouched] = useState(false);
+  /**
+   * Whether the client paid only part of the price, and how much they actually handed over.
+   *
+   * Seeded from what is already on the sale so re-opening one shows the real position rather than
+   * resetting it to "paid in full" — which would silently wipe a pending balance on any edit.
+   */
+  const [advanceCollected, setAdvanceCollected] = useState<boolean>(!!ed?.partialPayment);
+  const [advanceAmount, setAdvanceAmount] = useState<number>(
+    () => (ed?.partialPayment ? collectedOf(ed) : 0),
+  );
   const [screenshotUrl, setScreenshotUrl] = useState(ed?.paymentScreenshotUrl || "");
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1771,9 +2118,33 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
    * non-standard length (see utils/assignmentDuration.priceForClips).
    */
   const isCustomService = category === "custom" && !!customBase;
-  const customTotalSeconds = isCustomService ? customMinutes * 60 + customSeconds : 0;
-  const customClips = customTotalSeconds > 0 ? clipsForSeconds(customTotalSeconds) : 0;
+  // Seconds are now derived from the clips, not the other way round — see `customClips` above.
+  const customTotalSeconds = isCustomService ? secondsForClips(customClips) : 0;
   const suggestedCustomPrice = customClips > 0 ? priceForClips(customBase, customClips) : 0;
+
+  /** Setting the length as clips — a preset or the clip box. The time boxes follow it again. */
+  const setClips = (clips: number) => {
+    setCustomClips(Math.max(0, clips || 0));
+    setTypedSeconds(null);
+    setCustomPriceTouched(false);
+  };
+
+  /** Setting the length as a time. Converted to whole clips, rounding up. */
+  const applyMinSec = (mins: number, secs: number) => {
+    const total = mins * 60 + secs;
+    setTypedSeconds(total);
+    setCustomClips(total > 0 ? clipsForSeconds(total) : 0);
+    setCustomPriceTouched(false);
+  };
+
+  // The time boxes show what was typed while it is being typed, and mirror the clips otherwise.
+  const shownSeconds = typedSeconds ?? customTotalSeconds;
+  const customMinutes = Math.floor(shownSeconds / 60);
+  const customSecondsPart = shownSeconds % 60;
+  /** The typed length, when it was not a whole number of clips and had to be rounded up. */
+  const roundedUpFrom = typedSeconds && typedSeconds > 0 && customTotalSeconds !== typedSeconds
+    ? typedSeconds
+    : null;
 
   /**
    * The suggestion follows the length until the member types their own figure — after that it is
@@ -1809,6 +2180,39 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
 
   /** What the client actually pays, once the earned discount is off as well. */
   const finalAmount = discount.netAmount;
+
+  /**
+   * What is still owed, if an advance was taken.
+   *
+   * Clamped to the price, because a member correcting a figure downwards must never leave the sale
+   * showing a negative balance — and because "collected more than the price" is a typo, not a debt.
+   */
+  const advancePending = advanceCollected
+    ? Math.max(0, finalAmount - Math.min(advanceAmount, finalAmount))
+    : 0;
+
+  /**
+   * The payments this sale should carry once saved.
+   *
+   * Instalments collected AFTER the advance are preserved untouched — the form owns the advance,
+   * not the whole payment history, and rewriting the list wholesale on an ordinary edit would
+   * erase a balance somebody had already gone out and collected.
+   */
+  const buildPayments = (): SalePayment[] | null => {
+    if (!advanceCollected) return null;
+    const prior = (ed?.partialPayment && Array.isArray(ed.payments)) ? ed.payments : [];
+    const advance: SalePayment = {
+      id: prior[0]?.id || `pay_${Date.now()}`,
+      amount: Math.max(0, Math.min(advanceAmount, finalAmount)),
+      // The advance was taken when the sale was made; keep its original stamp on an edit so the
+      // money does not silently move to a different day — and a different pay cycle.
+      collectedAt: prior[0]?.collectedAt || Timestamp.now(),
+      note: "Advance at sale",
+      screenshotUrl: screenshotUrl || null,
+      ...(saleFormUser ? { byId: saleFormUser.uid, byName: saleFormUser.name } : {}),
+    };
+    return [advance, ...prior.slice(1)];
+  };
   /** Categories with no package list (Custom, Software), plus any explicit "custom quote" tier. */
   const showDescription = needsDescription(category) || (!!selectedPkg && selectedPkg.amount === 0);
   const descriptionRequired = needsDescription(category);
@@ -1957,17 +2361,26 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
       customHours: slaPreset === CUSTOM_PRESET_KEY ? Math.max(1, Math.round(customDays * 24)) : undefined,
       startMs: Date.now(),
     });
-    // Ad brief — only ad deliverables have one, and only the fields actually filled in are stored.
-    const requirement = isAdSale
-      ? cleanRequirement({
-          businessName: req.businessName,
-          businessWhatsapp: req.businessWhatsapp.trim() ? normalizePhone(req.businessWhatsapp) : "",
+    /**
+     * The brief that travels with the sale.
+     *
+     * Every service carries who it is for and what was asked for; only a video carries the parts
+     * that describe how to shoot it. Building it this way rather than "ads get a brief, everything
+     * else gets null" is what stopped a Google Business Profile reaching the tech team as a
+     * category and an amount with no client name on it. `cleanRequirement` strips the blanks, so a
+     * member who fills in nothing still stores `null` exactly as before.
+     */
+    const requirement = cleanRequirement({
+      businessName: req.businessName,
+      businessWhatsapp: req.businessWhatsapp.trim() ? normalizePhone(req.businessWhatsapp) : "",
+      notes: req.notes,
+      ...(isAdSale
+        ? {
           language: resolvedLanguage,
           modelGender: req.modelGender,
           attireType: req.attireType,
           customAttire: req.attireType === AttireType.CUSTOM ? req.customAttire : "",
           aspectRatio: req.aspectRatio,
-          notes: req.notes,
           // Only a greeting video has an occasion. Storing one on a promotional ad would follow it
           // into the generator and theme an ad nobody asked to be themed.
           festival: isWishesSale ? resolvedFestival : "",
@@ -1975,8 +2388,9 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
           // Only carried alongside a pack — on a normal ad "no real location" is not a fact about
           // the sale, and storing it would put a meaningless flag on every ordinary order.
           realLocationProvided: req.specialCategory ? req.realLocationProvided : undefined,
-        })
-      : null;
+        }
+        : {}),
+    });
     // A language the client asked for that isn't in the list yet joins it for everyone.
     if (isAdSale && usingCustomLanguage && resolvedLanguage) await rememberAdLanguage(resolvedLanguage);
 
@@ -1994,6 +2408,10 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
       */
       customBaseCategory: isCustomService ? customBase : null,
       customDurationSeconds: isCustomService && customTotalSeconds > 0 ? customTotalSeconds : null,
+      // What was actually collected, versus what was agreed. See utils/salePayments — a sale with
+      // no payment list is one that was paid in full, which is the overwhelming majority.
+      partialPayment: advanceCollected,
+      payments: buildPayments(),
       // What the client earned, with the proof, and what it was worth.
       earnedDiscount: discount.reasons.length > 0 ? earned : null,
       earnedDiscountAmount: discount.earnedAmount || 0,
@@ -2169,8 +2587,8 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
     setCustomAmount(0);
     setDescription("");
     setCustomBase("");
-    setCustomMinutes(0);
-    setCustomSeconds(0);
+    setCustomClips(0);
+    setTypedSeconds(null);
     setCustomPriceTouched(false);
     setQuantity(5);
     setDiscountValue(0);
@@ -2394,34 +2812,95 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
 
           {isCustomService && (
             <div className="space-y-2 border-t border-border pt-2">
-              <label className="text-xs font-medium text-muted-foreground">How long?</label>
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1">
-                  <input
-                    type="number" min={0} max={30}
-                    value={customMinutes || ""}
-                    onChange={(e) => setCustomMinutes(Math.max(0, Number(e.target.value) || 0))}
-                    data-test="custom-minutes"
-                    className="h-9 w-16 rounded-md border border-border bg-background px-2 text-center font-mono text-sm text-foreground outline-none focus:border-primary"
-                  />
-                  <span className="text-xs text-muted-foreground">min</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <input
-                    type="number" min={0} max={59}
-                    value={customSeconds || ""}
-                    onChange={(e) => setCustomSeconds(Math.min(59, Math.max(0, Number(e.target.value) || 0)))}
-                    data-test="custom-seconds"
-                    className="h-9 w-16 rounded-md border border-border bg-background px-2 text-center font-mono text-sm text-foreground outline-none focus:border-primary"
-                  />
-                  <span className="text-xs text-muted-foreground">sec</span>
-                </div>
+              <label className="text-xs font-medium text-muted-foreground">
+                How long is the video?
+              </label>
+              {/*
+                Tap a size, don't do arithmetic.
+
+                Each button says the same length twice — the number of clips the tech team will
+                build, and the number of seconds the client will watch — so the two halves of the
+                company are never describing the ad in different units, and a member on the phone
+                can read the seconds straight off the button they just pressed.
+              */}
+              <div className="flex flex-wrap gap-1.5" data-test="custom-clip-presets">
+                {CLIP_PRESETS.map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setClips(n)}
+                    data-test={`custom-clips-${n}`}
+                    className={`h-auto rounded-lg border px-3 py-1.5 text-left transition-colors ${
+                      customClips === n
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:bg-accent"
+                    }`}
+                  >
+                    <span className="block text-[13px] font-semibold leading-tight">{n} clips</span>
+                    <span className="block text-[10px] leading-tight opacity-80">
+                      {humanDuration(secondsForClips(n))}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {/* Anything not on the row above. Still clips, so it still needs no conversion. */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] text-muted-foreground">Or type the number of clips:</span>
+                <input
+                  type="number" min={0} max={200}
+                  value={customClips || ""}
+                  onChange={(e) => setClips(Number(e.target.value))}
+                  data-test="custom-clips-input"
+                  className="h-9 w-20 rounded-md border border-border bg-background px-2 text-center font-mono text-sm text-foreground outline-none focus:border-primary"
+                />
                 {customClips > 0 && (
-                  <span className="text-[11px] text-muted-foreground" data-test="custom-clips">
-                    = {customClips} clips{customClips >= 4 ? " + poster" : ""}
+                  <span className="text-[11px] font-medium text-foreground" data-test="custom-clips">
+                    = {humanDuration(customTotalSeconds)} of video
+                    {customClips >= 4 ? " + poster" : ""}
                   </span>
                 )}
               </div>
+
+              {/*
+                The other way round: a client who asked for "one and a half minutes".
+
+                Clips stay the stored unit — they are what gets built and what gets priced — but a
+                member should never have to divide by eight on a call. Typing a time converts it
+                here, in front of them, and the conversion is shown rather than applied silently:
+                a length that is not a whole number of 8-second clips rounds UP, and the member
+                needs to see that they are now selling 48 seconds before they quote 45.
+              */}
+              <div className="flex flex-wrap items-center gap-2" data-test="custom-minsec">
+                <span className="text-[11px] text-muted-foreground">Or enter the time:</span>
+                <input
+                  type="number" min={0} max={30}
+                  value={customMinutes || ""}
+                  onChange={(e) => applyMinSec(Math.max(0, Number(e.target.value) || 0), customSecondsPart)}
+                  data-test="custom-minutes"
+                  className="h-9 w-16 rounded-md border border-border bg-background px-2 text-center font-mono text-sm text-foreground outline-none focus:border-primary"
+                />
+                <span className="text-xs text-muted-foreground">min</span>
+                <input
+                  type="number" min={0} max={59}
+                  value={customSecondsPart || ""}
+                  onChange={(e) => applyMinSec(customMinutes, Math.min(59, Math.max(0, Number(e.target.value) || 0)))}
+                  data-test="custom-seconds"
+                  className="h-9 w-16 rounded-md border border-border bg-background px-2 text-center font-mono text-sm text-foreground outline-none focus:border-primary"
+                />
+                <span className="text-xs text-muted-foreground">sec</span>
+                {customClips > 0 && (
+                  <span className="text-[11px] font-semibold text-primary" data-test="custom-minsec-clips">
+                    = {customClips} clips
+                  </span>
+                )}
+              </div>
+              {/* Said plainly, and only when it actually happened. */}
+              {roundedUpFrom !== null && (
+                <p className="text-[11px] text-warning" data-test="custom-rounded-up">
+                  {roundedUpFrom} sec is not a whole number of {CLIP_SECONDS}-second clips — rounded up
+                  to {customClips} clips ({humanDuration(customTotalSeconds)}). The client gets the longer video.
+                </p>
+              )}
               {suggestedCustomPrice > 0 && (
                 <p className="text-[11px] text-muted-foreground">
                   {/* Once the member has typed their own figure it stays theirs, even when the
@@ -2472,11 +2951,20 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
         "they said they left one" is not a review.
       */}
       {amount > 0 && (
-        <div className="space-y-2 rounded-lg border border-border bg-card p-3" data-test="earned-discount">
-          <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-            <BadgePercent size={12} className="text-success" />
-            Client discount — {EARNED_DISCOUNT_PERCENT}% for a review or a referral
-          </p>
+        <SaleSection
+          testId="earned-discount"
+          title={`Client discount — ${EARNED_DISCOUNT_PERCENT}% for a review or a referral`}
+          icon={<BadgePercent size={13} className="text-success" />}
+          active={discount.reasons.length > 0}
+          // Re-opening a sale that already carries a discount shows it: folding away something the
+          // member is halfway through editing reads as the form having lost it.
+          defaultOpen={discount.reasons.length > 0}
+          summary={
+            discount.reasons.length > 0
+              ? `${discount.earnedPercent}% off — ${discount.reasons.map((r) => EARNED_REASON_LABEL[r]).join(" + ")}`
+              : "Not applied — tap if the client left a review or referred someone"
+          }
+        >
           {(["review", "referral"] as EarnedReason[]).map((reason) => {
             const url = reason === "review" ? reviewShot : referralShot;
             const set = reason === "review" ? setReviewShot : setReferralShot;
@@ -2536,7 +3024,7 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
               it is a thank-you, not a running total.
             </p>
           )}
-        </div>
+        </SaleSection>
       )}
 
       {/* What the client actually pays, once everything is off. */}
@@ -2637,13 +3125,71 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
         </div>
       </div>
 
-      {/* Client's ad brief — travels with the sale into the tech Orders queue and pre-fills the
-          assignment, so the tech team never re-types what the client asked for. */}
+      {/*
+        Who the work is for, and what they asked for — on EVERY service.
+
+        ── Why this is no longer ad-only ─────────────────────────────────────────────────────────
+        These two fields used to live inside the ad brief, so a Google Business Profile, a logo or
+        a website arrived at the tech team with no business name and no note — just a category and
+        an amount. Somebody then messaged the sales member to ask who it was for, which is the
+        exact hand-off this whole pipeline exists to remove. The name and the note are not ad
+        details: they are the answer to "what am I making, and for whom", and every service has one.
+
+        The genuinely ad-specific fields — language, model, attire, ratio, occasion — stay in the
+        block below, because none of them mean anything on a website.
+      */}
+      <div className="space-y-2.5 rounded-md border border-primary/25 bg-primary/5 p-2.5">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-primary">
+          <StickyNote size={13} /> Client details
+          <span className="ml-auto text-[10px] font-normal text-muted-foreground">Goes straight to the tech team</span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div>
+            <label className="text-[11px] text-muted-foreground">Business name</label>
+            <input
+              type="text"
+              value={req.businessName}
+              data-test="sale-business-name"
+              onChange={(e) => setReq((r) => ({ ...r, businessName: e.target.value }))}
+              placeholder="e.g. Sharma Electronics"
+              className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary"
+            />
+          </div>
+          <div>
+            <label className="text-[11px] text-muted-foreground">Business WhatsApp</label>
+            <input
+              type="text"
+              value={req.businessWhatsapp}
+              data-test="sale-business-whatsapp"
+              onChange={(e) => setReq((r) => ({ ...r, businessWhatsapp: e.target.value }))}
+              placeholder="e.g. 9876543210"
+              className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary font-mono"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="text-[11px] text-muted-foreground">Notes for the tech team</label>
+          <textarea
+            value={req.notes}
+            data-test="sale-notes"
+            onChange={(e) => setReq((r) => ({ ...r, notes: e.target.value }))}
+            maxLength={1000}
+            placeholder={isAdSale
+              ? "Anything else the client asked for — offers, tagline, colours, must-say lines…"
+              : "Anything the client asked for — links, logins, colours, what they want it to say…"}
+            className="w-full h-16 p-2 rounded-md bg-card border border-border text-foreground text-xs outline-none focus:border-primary resize-none"
+          />
+        </div>
+      </div>
+
+      {/* The rest of the ad brief — the parts that only mean something on a video. */}
       {isAdSale && (
         <div className="space-y-2.5 rounded-md border border-primary/25 bg-primary/5 p-2.5">
           <div className="flex items-center gap-1.5 text-xs font-medium text-primary">
-            <Clapperboard size={13} /> Client requirement
-            <span className="ml-auto text-[10px] font-normal text-muted-foreground">Goes straight to the tech team</span>
+            <Clapperboard size={13} /> Video requirement
+            <span className="ml-auto text-[10px] font-normal text-muted-foreground">How the ad should be made</span>
           </div>
 
           {/* The occasion comes first on a greeting video, because it is what the video IS — the
@@ -2680,29 +3226,6 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
               </p>
             </div>
           )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <div>
-              <label className="text-[11px] text-muted-foreground">Business name</label>
-              <input
-                type="text"
-                value={req.businessName}
-                onChange={(e) => setReq((r) => ({ ...r, businessName: e.target.value }))}
-                placeholder="e.g. Sharma Electronics"
-                className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] text-muted-foreground">Business WhatsApp</label>
-              <input
-                type="text"
-                value={req.businessWhatsapp}
-                onChange={(e) => setReq((r) => ({ ...r, businessWhatsapp: e.target.value }))}
-                placeholder="e.g. 9876543210"
-                className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary font-mono"
-              />
-            </div>
-          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
@@ -2841,17 +3364,90 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
             </div>
           </div>
 
-          <div>
-            <label className="text-[11px] text-muted-foreground">Notes for the tech team</label>
-            <textarea
-              value={req.notes}
-              onChange={(e) => setReq((r) => ({ ...r, notes: e.target.value }))}
-              maxLength={1000}
-              placeholder="Anything else the client asked for — offers, tagline, colours, festival, must-say lines…"
-              className="w-full h-16 p-2 rounded-md bg-card border border-border text-foreground text-xs outline-none focus:border-primary resize-none"
-            />
-          </div>
         </div>
+      )}
+
+      {/*
+        How much of it was actually collected.
+
+        ── Why this is on every sale, not just social media ────────────────────────────────────
+        Half up front is the norm on a social-media month, with the rest due once the first post is
+        made, posted and the campaign is running. On ads it is not supposed to happen — but it does,
+        and there was nowhere to say so, which left a member two bad choices: record the full amount
+        and take commission on money nobody had handed over, or not record the sale at all. Both are
+        worse than an honest number, so the box is here for every category.
+      */}
+      {finalAmount > 0 && (
+        <SaleSection
+          testId="advance-block"
+          title="Payment collected"
+          icon={<IndianRupee size={13} className={advanceCollected ? "text-warning" : "text-muted-foreground"} />}
+          active={advanceCollected}
+          // Opened for a sale that already has a balance, so nobody has to go looking for it.
+          defaultOpen={advanceCollected}
+          summary={
+            !advanceCollected
+              ? `Paid in full — ${formatCurrency(finalAmount)} received`
+              : advancePending > 0
+                ? `${formatCurrency(advancePending)} still to collect from the client`
+                : `Full ${formatCurrency(finalAmount)} collected`
+          }
+        >
+          <label className="flex cursor-pointer items-start gap-2 text-xs text-foreground">
+            <input
+              type="checkbox"
+              checked={advanceCollected}
+              data-test="advance-toggle"
+              onChange={(e) => {
+                setAdvanceCollected(e.target.checked);
+                // Half is the common case and the one worth pre-filling; it stays editable.
+                if (e.target.checked && advanceAmount <= 0) setAdvanceAmount(Math.round(finalAmount / 2));
+              }}
+              className="mt-0.5 h-3.5 w-3.5 accent-primary"
+            />
+            <span>
+              <b>Advance collected</b> — the client has paid only part of {formatCurrency(finalAmount)} so far
+            </span>
+          </label>
+
+          {advanceCollected && (
+            <div className="space-y-1.5 border-t border-border pt-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] text-muted-foreground">Amount collected now</span>
+                <input
+                  type="number" min={0} max={finalAmount}
+                  value={advanceAmount || ""}
+                  data-test="advance-amount"
+                  onChange={(e) => setAdvanceAmount(Math.max(0, Math.min(finalAmount, Number(e.target.value) || 0)))}
+                  className="h-9 w-28 rounded-md border border-border bg-background px-2 text-right font-mono text-sm text-foreground outline-none focus:border-primary"
+                />
+                {[0.5, 1].map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setAdvanceAmount(Math.round(finalAmount * f))}
+                    className="h-7 rounded-md border border-border px-2 text-[11px] font-medium text-muted-foreground hover:bg-accent"
+                  >
+                    {f === 1 ? "Full" : "50%"}
+                  </button>
+                ))}
+              </div>
+              {/* The number that matters, said in rupees rather than left to be worked out. */}
+              <p
+                className={`text-[11px] font-medium ${advancePending > 0 ? "text-warning" : "text-success"}`}
+                data-test="advance-pending"
+              >
+                {advancePending > 0
+                  ? `Pending payment: ${formatCurrency(advancePending)} still to collect from the client.`
+                  : "Nothing pending — the full amount has been collected."}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Your revenue and commission count {formatCurrency(advanceAmount)} today. The rest counts
+                on the day you collect it, and this sale will sit in <b>Pending payments</b> until then.
+              </p>
+            </div>
+          )}
+        </SaleSection>
       )}
 
       <label className="block cursor-pointer">

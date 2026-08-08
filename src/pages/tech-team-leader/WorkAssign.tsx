@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   ClipboardList, Plus, CheckCircle2, Loader2,
-  Search, X, Users, History, Copy, Check, MessageCircle, MessagesSquare, Sparkles, ShoppingBag
+  Search, X, Users, History, Copy, Check, MessageCircle, MessagesSquare, Sparkles, ShoppingBag, Boxes
 } from 'lucide-react';
 import ShareChatModal from '@/components/order-chat/ShareChatModal';
 import { getWhatsAppUrl, normalizePhone } from '@/utils/phone';
@@ -12,18 +12,20 @@ import { useAuthStore } from '@/store/authStore';
 import { useFirestoreCollection, useFirestoreQuery } from '@/hooks/useFirestore';
 import {
   DURATIONS, END_CREDITS_SECONDS,
-  getClipCount, hasPoster, durationForClips, normalizeClipCount, priceForClips,
+  getClipCount, hasPoster, priceForClips,
 } from '@/utils/assignmentDuration';
+import DurationPicker from '@/components/work/DurationPicker';
 import { formatDate, formatTime } from '@/utils/formatters';
 import { format } from 'date-fns';
 import type { WorkAssignment, AppUser, DailyCheckin, Order } from '@/types';
 import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from '@/types/aiPlatform';
 import { ATTIRE_LABELS, assignmentFormFromOrder, buildAssignmentRequirementsMessage } from '@/utils/adRequirement';
 import { watchAdLanguages, mergeAdLanguages, rememberAdLanguage } from '@/services/adLanguages';
-import { WISHES_FESTIVALS } from '@/utils/festivals';
+import OccasionPicker from '@/components/work/OccasionPicker';
 import { bulkCategoryLabel } from '@/utils/serviceCatalog';
 import { fetchOrder, activeOrdersQuery } from '@/services/orders';
 import { createWorkAssignment, nextWorkUniqueId } from '@/services/workAssign';
+import { assignBulkVideos } from '@/services/bulkVideos';
 import { verifyAssignments, awaitingVerification } from '@/services/workVerify';
 import MemberWorkloadCard from '@/components/work/MemberWorkloadCard';
 import SpecialCategoryFields from '@/components/work/SpecialCategoryFields';
@@ -70,9 +72,6 @@ export default function TeamLeaderWorkAssign() {
   const [submitting, setSubmitting] = useState(false);
   const [memberSearch, setMemberSearch] = useState('');
   const [memberPickerOpen, setMemberPickerOpen] = useState(false);
-  /** Duration entered as a free clip count instead of a standard package. */
-  const [customDuration, setCustomDuration] = useState(false);
-  const [customClips, setCustomClips] = useState(3);
   const [workloadSearch, setWorkloadSearch] = useState('');
   const [todayCheckins, setTodayCheckins] = useState<Map<string, DailyCheckin>>(new Map());
   const [verifying, setVerifying] = useState(false);
@@ -115,6 +114,8 @@ export default function TeamLeaderWorkAssign() {
   });
   /** The order being fulfilled, when the form was opened from the Orders queue. */
   const [sourceOrder, setSourceOrder] = useState<Order | null>(null);
+  /** Which videos of a bulk order this assignment is for — see the tech admin's page. */
+  const [bulkVideoNumbers, setBulkVideoNumbers] = useState<number[]>([]);
   /** Shared language list — grows whenever anyone sells in a language that wasn't listed. */
   const [languages, setLanguages] = useState<string[]>(() => mergeAdLanguages(null));
   useEffect(() => watchAdLanguages(setLanguages), []);
@@ -161,16 +162,20 @@ export default function TeamLeaderWorkAssign() {
   useEffect(() => {
     const orderId = searchParams.get('order');
     if (!orderId) return;
+    // Which videos of a bulk order this is for — see the same note on the tech admin's page.
+    const videos = (searchParams.get('videos') || '')
+      .split(',').map((v) => parseInt(v, 10)).filter((n) => Number.isFinite(n) && n > 0);
     let cancelled = false;
     (async () => {
       const order = await fetchOrder(orderId);
       if (cancelled || !order) return;
       setSourceOrder(order);
+      setBulkVideoNumbers(videos);
       setForm(prev => ({ ...prev, ...assignmentFormFromOrder(order, languages) }));
-      setCustomDuration(false);
       setShowForm(true);
       const nextParams = new URLSearchParams(searchParams);
       nextParams.delete('order');
+      nextParams.delete('videos');
       setSearchParams(nextParams, { replace: true });
     })();
     return () => { cancelled = true; };
@@ -183,9 +188,11 @@ export default function TeamLeaderWorkAssign() {
     setForm(prev => {
       const next = { ...prev, [field]: value };
       if (field === 'category') {
-        const durations = DURATIONS[value as string];
-        // A custom clip count survives a category switch — only the price is re-derived.
-        if (!customDuration) next.duration = durations[0];
+        // A custom clip count survives a category switch — only the price is re-derived. Read off
+        // the value itself rather than a flag beside it: the two used to disagree, because this
+        // branch rewrote the duration without telling the flag.
+        const wasStandard = (DURATIONS[prev.category] || []).includes(prev.duration);
+        if (wasStandard) next.duration = DURATIONS[value as string][0];
         next.pricePerUnit = priceForClips(value as string, getClipCount(next.duration));
       }
       if (field === 'duration') {
@@ -193,23 +200,6 @@ export default function TeamLeaderWorkAssign() {
       }
       return next;
     });
-  };
-
-  /** Switches the Duration dropdown to a free clip count, or back to the standard packages. */
-  const setCustomDurationMode = (enabled: boolean) => {
-    setCustomDuration(enabled);
-    const duration = enabled ? durationForClips(customClips) : DURATIONS[form.category][0];
-    setForm(prev => ({ ...prev, duration, pricePerUnit: priceForClips(prev.category, getClipCount(duration)) }));
-  };
-
-  const updateCustomClips = (clips: number) => {
-    const safe = normalizeClipCount(clips);
-    setCustomClips(safe);
-    setForm(prev => ({
-      ...prev,
-      duration: durationForClips(safe),
-      pricePerUnit: priceForClips(prev.category, safe),
-    }));
   };
 
   // Ranked "who should take this next": checked-in and most vacant first. Only a suggestion —
@@ -262,6 +252,18 @@ export default function TeamLeaderWorkAssign() {
       });
 
       // A language typed in here joins the shared list, same as one entered at sale time.
+      // Stamp the videos onto the order so the bulk board shows who is making which — after the
+      // assignment exists, never before: a video marked assigned with nothing behind it is worse
+      // than one still showing as free.
+      if (sourceOrder && bulkVideoNumbers.length > 0 && assignedMember) {
+        await assignBulkVideos({
+          order: sourceOrder,
+          numbers: bulkVideoNumbers,
+          member: { uid: assignedMember.uid, name: assignedMember.name },
+          actor: user,
+        });
+      }
+
       if (form.language === 'Custom' && language) await rememberAdLanguage(language);
 
       // The WhatsApp-ready requirements message (no price — leads don't see pricing; no internal
@@ -302,7 +304,6 @@ export default function TeamLeaderWorkAssign() {
         modelGender: ModelGender.FEMALE, attireType: AttireType.TRADITIONAL, customAttire: '', aspectRatio: '9:16', language: 'Telugu', customLanguage: '',
         festival: '', requirementNotes: '', characterPack: '', realLocationProvided: false,
       });
-      setCustomDuration(false);
       setMemberSearch('');
     } catch (error) {
       console.error('Failed to create assignment:', error);
@@ -518,7 +519,7 @@ export default function TeamLeaderWorkAssign() {
                 <MessagesSquare className="w-4 h-4" /> Chat link ({clientChat.businessName || 'client'})
               </button>
             )}
-            <button onClick={() => { setShowForm(!showForm); if (showForm) setSourceOrder(null); }}
+            <button onClick={() => { setShowForm(!showForm); if (showForm) { setSourceOrder(null); setBulkVideoNumbers([]); } }}
               className="flex h-10 items-center justify-center space-x-2 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 w-full sm:w-auto">
               <Plus className="w-4 h-4" /><span>{showForm ? 'Cancel' : 'New Assignment'}</span>
             </button>
@@ -548,10 +549,31 @@ export default function TeamLeaderWorkAssign() {
                 {` · sold by ${sourceOrder.soldByName}`}
               </span>
               {sourceOrder.promise && <span className="text-muted-foreground">Promise: <strong className="text-foreground">{sourceOrder.promise.label}</strong></span>}
-              <button onClick={() => setSourceOrder(null)}
+              <button onClick={() => { setSourceOrder(null); setBulkVideoNumbers([]); }}
                 className="ml-auto text-[11px] font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
                 Unlink
               </button>
+            </div>
+          )}
+
+          {/* Which of the batch this is for — the form looks identical whether it is making one
+              video or the whole order, and assigning "the order" when you meant "video 3" hands
+              one member all ten. */}
+          {bulkVideoNumbers.length > 0 && (
+            <div
+              data-test="assigning-bulk-videos"
+              className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-indigo-500/40 bg-indigo-500/10 px-3 py-2 text-xs"
+            >
+              <Boxes className="w-3.5 h-3.5 shrink-0 text-indigo-500" />
+              <span className="font-semibold text-indigo-600 dark:text-indigo-400">
+                {bulkVideoNumbers.length === 1
+                  ? `Assigning video #${bulkVideoNumbers[0]}`
+                  : `Assigning ${bulkVideoNumbers.length} videos`}
+              </span>
+              <span className="text-muted-foreground">
+                {bulkVideoNumbers.length > 1 ? `(#${bulkVideoNumbers.join(', #')}) ` : ''}
+                of {sourceOrder?.businessName || 'this order'} — the rest of the batch is untouched.
+              </span>
             </div>
           )}
 
@@ -606,23 +628,13 @@ export default function TeamLeaderWorkAssign() {
 
             {/* Duration — standard packages, or any custom clip count */}
             <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">Duration</label>
-              <select value={customDuration ? 'custom' : form.duration}
-                onChange={(e) => e.target.value === 'custom' ? setCustomDurationMode(true) : (setCustomDuration(false), updateField('duration', e.target.value))}
-                className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none">
-                {DURATIONS[form.category].map(d => <option key={d} value={d}>{d} ({getClipCount(d)} clips + {hasPoster(d) ? 'Poster ' : ''}{END_CREDITS_SECONDS}s EC)</option>)}
-                <option value="custom">Custom clips…</option>
-              </select>
-              {customDuration && (
-                <div className="mt-1.5 flex items-center gap-2">
-                  <input type="number" min={1} value={customClips}
-                    onChange={(e) => updateCustomClips(parseInt(e.target.value))}
-                    className="w-24 border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none" />
-                  <span className="text-xs text-muted-foreground">
-                    clips = {form.duration}{hasPoster(form.duration) ? ' + Poster' : ''} + {END_CREDITS_SECONDS}s EC
-                  </span>
-                </div>
-              )}
+              <label className="block text-sm font-medium text-muted-foreground mb-1">Length</label>
+              <DurationPicker
+                size="md"
+                category={form.category}
+                duration={form.duration}
+                onChange={(duration) => updateField('duration', duration)}
+              />
             </div>
 
             {/* Business Name */}
@@ -721,19 +733,11 @@ export default function TeamLeaderWorkAssign() {
                 created here by hand still needs it, because the generator themes the ad from it. */}
             {form.category === 'wishes' && (
               <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">Festival / occasion</label>
-                <select value={WISHES_FESTIVALS.includes(form.festival) || !form.festival ? form.festival : '__typed__'}
-                  onChange={(e) => setForm(prev => ({ ...prev, festival: e.target.value === '__typed__' ? '' : e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none">
-                  <option value="">Not specified</option>
-                  {WISHES_FESTIVALS.map(f => <option key={f} value={f}>{f}</option>)}
-                  <option value="__typed__">Other occasion…</option>
-                </select>
-                {!!form.festival && !WISHES_FESTIVALS.includes(form.festival) && (
-                  <input type="text" placeholder="Type the occasion…" value={form.festival}
-                    onChange={(e) => setForm(prev => ({ ...prev, festival: e.target.value }))}
-                    className="w-full mt-1.5 border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none" />
-                )}
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Occasion / function</label>
+                <OccasionPicker
+                  value={form.festival}
+                  onChange={(festival) => setForm(prev => ({ ...prev, festival }))}
+                />
               </div>
             )}
 

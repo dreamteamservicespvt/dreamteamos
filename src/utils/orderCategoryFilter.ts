@@ -13,11 +13,11 @@
  *    work itself, and a filter that offers them only on the days somebody happened to sell one is
  *    a filter nobody can rely on.
  *
- *  • A bulk order counts as the kind of video it is made of. Ten cinematic ads bought at once are
- *    cinematic work — someone filtering for Cinematic to plan the week's shoots needs them in the
- *    list, and a separate "Bulk" bucket would hide them from exactly the person looking.
+ *  • Every option is a service the sales team actually sells, under the name they sold it under.
+ *    Bulk Videos is its own bucket rather than being counted as the kind of video inside it — see
+ *    `orderCategoryKey` for why that changed.
  */
-import { categoryLabel, effectiveAdCategory } from "@/utils/serviceCatalog";
+import { categoryLabel, effectiveAdCategory, isBulkCategory } from "@/utils/serviceCatalog";
 import type { Order } from "@/types";
 
 /** The "no filter" sentinel. A real category key can never collide with it — none contain a space. */
@@ -52,8 +52,27 @@ export interface OrderCategoryOption {
 }
 
 /** The service an order is really for. */
+/**
+ * The service an order is really for — the one the sales member sold.
+ *
+ * ── Why a bulk order is "Bulk Videos" and not "Promotional Ad" ────────────────────────────────
+ * It used to resolve to the kind of video inside it, on the reasoning that ten cinematic ads
+ * bought at once are cinematic work and somebody planning the week's shoots needs them in that
+ * list. That reasoning was sound and the result was still wrong to use: bulk orders are managed
+ * completely differently — one order, ten individually-owned videos, its own board — and folding
+ * them into Promotional made the filter disagree with what was sold and with where the work is
+ * actually done. A member who sold "Bulk Videos" then could not find "Bulk Videos" in the list.
+ *
+ * So the key is the order's own category, and every service the sales team sells appears under
+ * its own name. The kind of video a bulk order holds is still on every card and still searchable;
+ * what it no longer does is decide which bucket the order lives in.
+ */
 export function orderCategoryKey(order: Pick<Order, "category" | "bulkAdType">): string {
-  return effectiveAdCategory(order.category || "", order.bulkAdType);
+  const category = order.category || "";
+  // A bulk order stands on its own. Everything else resolves as before — which for a non-bulk
+  // order is the identity, so single ads are completely unaffected.
+  if (isBulkCategory(category)) return category;
+  return effectiveAdCategory(category, order.bulkAdType);
 }
 
 export function matchesOrderCategory(

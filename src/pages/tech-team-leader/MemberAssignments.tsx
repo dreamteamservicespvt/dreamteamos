@@ -26,8 +26,9 @@ import { verifyAssignments as verifyWorkAssignments } from '@/services/workVerif
 import { useToast } from '@/hooks/use-toast';
 import SpecialCategoryFields from '@/components/work/SpecialCategoryFields';
 import ReassignWork from '@/components/work/ReassignWork';
+import DurationPicker from '@/components/work/DurationPicker';
 import {
-  DURATIONS, END_CREDITS_SECONDS, getClipCount, hasPoster, durationOptionsFor, priceForClips,
+  DURATIONS, END_CREDITS_SECONDS, getClipCount, hasPoster, priceForClips,
 } from '@/utils/assignmentDuration';
 import { formatDate, formatTime } from '@/utils/formatters';
 import { formatPhoneDisplay, getWhatsAppUrl, normalizePhone } from '@/utils/phone';
@@ -603,10 +604,11 @@ export default function TeamLeaderMemberAssignments() {
                       {/* Duration */}
                       <div>
                         <label className="block text-[11px] font-medium text-muted-foreground mb-1">Duration</label>
-                        <select value={editForm.duration} onChange={(e) => setEditForm(prev => prev ? { ...prev, duration: e.target.value } : prev)}
-                          className="w-full border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border outline-none focus:ring-2 focus:ring-primary/20">
-                          {durationOptionsFor(editForm.category, editForm.duration).map(d => <option key={d} value={d}>{d} ({getClipCount(d)} clips + {hasPoster(d) ? 'Poster ' : ''}{END_CREDITS_SECONDS}s EC)</option>)}
-                        </select>
+                        <DurationPicker
+                          category={editForm.category}
+                          duration={editForm.duration}
+                          onChange={(duration) => setEditForm(prev => prev ? { ...prev, duration } : prev)}
+                        />
                       </div>
 
                       {/* Business Name */}

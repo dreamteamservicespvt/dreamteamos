@@ -123,6 +123,21 @@ export default function ProfileCompletionPrompt() {
   const [justFinished, setJustFinished] = useState(false);
   /** Payout details live in their own collection — see the `payout` step in profileCompletion. */
   const [bank, setBank] = useState<EmployeeBank | null>(null);
+  /**
+   * Whether the payout watcher has actually reported yet.
+   *
+   * ── Why a separate flag, and not just `bank !== null` ─────────────────────────────────────────
+   * `null` means two different things: "we have not heard back yet" and "this member has no payout
+   * details on file". Treating the first as the second is what made the thank-you popup come back.
+   *
+   * The profile and the bank arrive from two independent listeners. The profile usually lands
+   * first — it is the one Firestore has cached — and at that instant `bankComplete` is still false,
+   * so the prompt concluded that the payout step was outstanding and froze it into the session's
+   * question list. A beat later the bank snapshot arrived, the record became complete, and the
+   * prompt read that as "they just finished the last item" and congratulated a member who had done
+   * nothing. Every single load, for anyone whose record was already complete.
+   */
+  const [bankLoaded, setBankLoaded] = useState(false);
   const [bankOpen, setBankOpen] = useState(false);
 
   /**
@@ -150,7 +165,7 @@ export default function ProfileCompletionPrompt() {
     setDismissed(readFlag(profilePromptDismissedKey(user.uid, today)));
     const unsubs = [
       watchEmployeeProfile(user.uid, department, (p) => { profileRef.current = p; setProfile(p); }),
-      watchEmployeeBank(user.uid, setBank),
+      watchEmployeeBank(user.uid, (b) => { setBank(b); setBankLoaded(true); }),
     ];
     return () => unsubs.forEach((u) => u());
   }, [user?.uid, eligible, department, today]);
@@ -238,9 +253,12 @@ export default function ProfileCompletionPrompt() {
    */
   const [sessionKeys, setSessionKeys] = useState<ProfileStepKey[] | null>(null);
   useEffect(() => {
-    if (!profile || sessionKeys) return;
+    // Not until EVERY source the question list depends on has reported. Freezing the list while
+    // the payout watcher was still in flight is what put "payout" into it for a member who had
+    // payout details on file — and the popup that followed is the bug this guard exists for.
+    if (!profile || !bankLoaded || sessionKeys) return;
     setSessionKeys(completion.missing.map((s) => s.key));
-  }, [profile, sessionKeys, completion.missing]);
+  }, [profile, bankLoaded, sessionKeys, completion.missing]);
 
   const sessionSteps = useMemo(
     () => (sessionKeys ? PROMPT_STEPS.filter((s) => sessionKeys.includes(s.key)) : []),
@@ -451,20 +469,40 @@ export default function ProfileCompletionPrompt() {
   /**
    * The moment the last item lands, say so and get out of the way. Without this the prompt would
    * simply vanish mid-interaction, which reads as a crash rather than as finishing.
+   *
+   * ── Why it is gated on what was outstanding AT OPEN ───────────────────────────────────────────
+   * "That's everything — thank you!" is a reply to somebody who just finished. It used to fire on
+   * `completion.complete` alone, which is also true of every member who finished weeks ago — so
+   * they were congratulated again on every single load, for ever. (The dismissal flag could not
+   * stop it: it is keyed by day, and "Close" on the completed state deliberately does not spend a
+   * deferral, so it wrote nothing at all.)
+   *
+   * `sessionKeys` is the list of items missing when this prompt loaded. Empty means the record was
+   * already complete before they arrived — there is nothing to announce, so nothing is shown. It
+   * is only non-empty for someone who genuinely had things outstanding, and only they see the
+   * thank-you, exactly once, at the moment the last one lands.
    */
   useEffect(() => {
     if (!profile || !eligible || dismissed) return;
+    // Null means the list has not been frozen yet (it is set from the first snapshot, one render
+    // earlier than this effect can see it). Waiting a render is right; assuming is not.
+    if (!sessionKeys || sessionKeys.length === 0) return;
     if (completion.complete) {
       setJustFinished(true);
       const timer = setTimeout(() => setJustFinished(false), 2600);
       return () => clearTimeout(timer);
     }
-  }, [completion.complete, profile, eligible, dismissed]);
+  }, [completion.complete, profile, eligible, dismissed, sessionKeys]);
 
   if (!user || !eligible) return null;
   // Nothing is shown until the record has actually loaded — a prompt that flashes up and then
   // disappears because the data arrived late is worse than one that appears a beat later.
   if (!profile) return null;
+  // Same reason as the question list: showing anything before the payout details have loaded means
+  // showing a "Payout details" question that vanishes a moment later on its own.
+  // Same reason as the question list: showing anything before the payout details have loaded means
+  // showing a "Payout details" question that vanishes a moment later on its own.
+  if (!bankLoaded) return null;
   if (!checkedIn) return null;
   if (dismissed) return null;
   if (completion.complete && !justFinished) return null;

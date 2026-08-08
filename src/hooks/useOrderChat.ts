@@ -12,7 +12,8 @@ import {
 } from "firebase/firestore";
 import { db as staffDb } from "@/services/firebase";
 import {
-  ORDER_CHATS, sendOrderChatMessage, markOrderChatRead, setOrderChatPresence, messagePreview,
+  ORDER_CHATS, PRESENCE_HEARTBEAT_MS, sendOrderChatMessage, markOrderChatRead, setOrderChatPresence,
+  messagePreview,
 } from "@/services/orderChat";
 import { playChatMessageSound } from "@/utils/audio";
 import type { OrderChatDoc, OrderChatIdentity, OrderChatMessage, OrderChatMessageType } from "@/types/orderChat";
@@ -82,9 +83,23 @@ export function useOrderChat({ chatId, identity, dbi = staffDb, onSent }: UseOrd
       if (document.hidden) leave();
       else setOrderChatPresence(dbi, chatId, viewer, true);
     };
+    /**
+     * Keep saying so, rather than saying it once and relying on being able to take it back.
+     *
+     * `beforeunload` does not fire when a phone's app is swiped away or killed by the OS, so the
+     * "I have left" write simply never happened — and the member stayed marked present for ever,
+     * which the server reads as "no need to notify them". Every later message from that client
+     * went silently into a badge. A heartbeat expires on its own, so the worst a missed goodbye
+     * costs is one notification. See services/orderChat.isViewerPresent.
+     */
+    const beat = window.setInterval(() => {
+      if (!document.hidden) setOrderChatPresence(dbi, chatId, viewer, true);
+    }, PRESENCE_HEARTBEAT_MS);
+
     window.addEventListener("beforeunload", leave);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
+      window.clearInterval(beat);
       window.removeEventListener("beforeunload", leave);
       document.removeEventListener("visibilitychange", onVisibility);
       leave();
