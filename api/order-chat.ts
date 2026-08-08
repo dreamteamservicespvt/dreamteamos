@@ -156,12 +156,15 @@ async function alertUser(opts: {
      * in the collection being sent to forever. Left alone, a room ends up with a dozen tokens, and
      * every push costs a dozen failed sends before the one that lands.
      */
-    const dead = result.responses
-      .map((r, i) => (r.success ? null : { id: rows[i].id, code: r.error?.code }))
-      .filter((r): r is { id: string; code?: string } =>
-        !!r && (r.code === "messaging/registration-token-not-registered"
-          || r.code === "messaging/invalid-registration-token"));
-    await Promise.all(dead.map((d) => adminDb.collection("fcmTokens").doc(d.id).delete().catch(() => {})));
+    const dead: string[] = [];
+    result.responses.forEach((r, i) => {
+      const code = r.success ? null : r.error?.code;
+      if (code === "messaging/registration-token-not-registered"
+        || code === "messaging/invalid-registration-token") {
+        dead.push(rows[i].id);
+      }
+    });
+    await Promise.all(dead.map((id) => adminDb.collection("fcmTokens").doc(id).delete().catch(() => {})));
   } catch (err) {
     console.error("[order-chat] push failed", err);
   }
