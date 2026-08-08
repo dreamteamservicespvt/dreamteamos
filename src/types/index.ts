@@ -1,4 +1,5 @@
 import type { DiscountApproval, EarnedDiscount } from "@/utils/saleDiscount";
+import type { ClientReview } from "@/types/orderChat";
 
 export type UserRole =
   | "main_admin"
@@ -46,6 +47,19 @@ export interface AppUser {
   target?: number;
   googleDriveBaseUrl?: string;
   phone: string;
+  /**
+   * The WhatsApp Business number a sales member actually sells on — not `phone`, which is their
+   * personal one and belongs to HR.
+   *
+   * It exists because of what happens at the end of a delivered ad: the client is offered a button
+   * to ask about another one, and that enquiry has to land with the person who sold them the first
+   * one, on the number they already know. Sellers work different numbers, so a single company line
+   * would hand every warm follow-up to whoever happens to be watching it.
+   *
+   * Settable by the member (My Profile) and by their sales admin (My Team) — they own the number,
+   * the admin needs to be able to fix it the day it changes and they are on a call.
+   */
+  businessWhatsapp?: string | null;
   /**
    * Profile photo (a Cloudinary URL). Shown wherever this person appears — chat, calls, team lists,
    * the leaderboard, workload cards and their own topbar — so one upload changes all of them.
@@ -551,6 +565,15 @@ export interface Order {
   restoredAt?: any | null;
   restoredBy?: string | null;
   restoredByName?: string | null;
+  /**
+   * What the customer said about the delivered ad, mirrored from their chat.
+   *
+   * Mirrored rather than joined because the Delivered tab is a bounded, on-demand history page —
+   * fetching a chat document per row to read two numbers would cost more reads than the history
+   * itself. The canonical copy is on `order_chats/{assignmentId}`, which is where the customer
+   * writes and edits it; see api/order-chat.ts.
+   */
+  clientReview?: ClientReview | null;
   // Lifecycle
   status: OrderStatus;
   workAssignmentId?: string | null;
@@ -597,6 +620,24 @@ export interface ClientSocialLink {
   url: string;
 }
 
+/** One delivered ad, as the customer rated it from their own chat. */
+export interface ClientWorkReview {
+  /** The work assignment — also the chat's id, and what makes an edit an edit. */
+  assignmentId: string;
+  orderId?: string | null;
+  uniqueId?: string | null;
+  /** The ad itself, 1–5. */
+  work: number;
+  /** Being dealt with, 1–5. */
+  service: number;
+  comment?: string | null;
+  soldBy?: string | null;
+  soldByName?: string | null;
+  deliveredBy?: string | null;
+  deliveredByName?: string | null;
+  at: any;
+}
+
 export interface Client {
   phone: string;                // "+91..."
   phoneId: string;              // doc id (phoneLockId)
@@ -614,8 +655,29 @@ export interface Client {
   totalSaleAmount: number;
   totalDeliveredAmount: number;
   workCount: number;
+  /**
+   * What this customer said about each ad they were delivered, newest last.
+   *
+   * Written by the server when they submit or edit a review in their chat (api/order-chat.ts), one
+   * entry per assignment — an edit replaces its entry rather than appending another opinion.
+   *
+   * It lives here because this is the page somebody opens before ringing a client about their next
+   * ad, and "they gave us two stars in June" is the single most useful thing to know first.
+   */
+  reviews?: ClientWorkReview[];
   // Scoping / attribution
   salesAdminIds: string[];      // admins whose teams sold to this client (for scoped reads)
+  /**
+   * Every sales member who has sold to this client.
+   *
+   * The field a sales member's own Clients list is queried on (`array-contains`), so it has to be
+   * an array rather than a single owner: two members selling to the same business at different
+   * times both keep the customer, and both see anything either of them learns about them.
+   *
+   * Written from the ORDER's `soldBy`, never from the assignment — see `upsertClientOnWorkComplete`
+   * for the bug that distinction fixes.
+   */
+  soldByIds?: string[];
   firstSoldBy: string;
   // DTS-US review / loyalty workflow (mirrored summary; the working copy is in review_tasks)
   reviewTaskId?: string | null;

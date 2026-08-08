@@ -19,6 +19,7 @@ import { ToastAction } from "@/components/ui/toast";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
 import NumberTimelineButton from "@/components/sales/NumberTimelineButton";
 import PenaltyDialog from "@/components/work/PenaltyDialog";
+import SalesOrderChat from "@/components/order-chat/SalesOrderChat";
 import {
   SALE_CATEGORIES, PACKAGES, categoryLabel, isAdCategory, isBulkCategory, needsDescription,
   packageOptionLabel, bulkTypesFor, effectiveAdCategory, bulkCategoryLabel,
@@ -872,6 +873,8 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
   const [noteIdx, setNoteIdx] = useState<number | null>(null);
   /** The sale row whose penalty dialog is open. Keyed by order, since that is where it is stored. */
   const [penaltyFor, setPenaltyFor] = useState<{ order: Order; idx: number } | null>(null);
+  /** The client chat being read, by work-assignment id — which is also the chat's id. */
+  const [chatFor, setChatFor] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   const allSaleItems = lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
@@ -1212,6 +1215,26 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
                   <Send size={11} /> {noteIdx === idx ? "Close" : "Send update note"}
                 </button>
               )}
+              {/*
+                Into the client's chat with the tech team.
+
+                The reason this button exists: clients give their photos, their logo and their
+                last-minute changes to the person who SOLD them the ad, and until now that person
+                had nowhere to put them — they were re-typed into an update note, or forwarded, or
+                lost. Posted here, everyone working on the ad has the original.
+
+                Only once the job has been assigned: the room is created with the assignment, and
+                there is nothing to open before that.
+              */}
+              {order?.workAssignmentId && (
+                <button
+                  data-test="sale-open-chat"
+                  onClick={() => setChatFor(order.workAssignmentId!)}
+                  title="Open the client's chat with the team"
+                  className="inline-flex items-center gap-1 h-7 px-2 rounded-md bg-primary/10 text-primary text-[11px] font-medium hover:bg-primary/20 transition-colors">
+                  <MessageCircle size={11} /> Client chat
+                </button>
+              )}
               {/* The member is the one on the call when a client asks for changes past the brief,
                   so they can raise the charge there and then rather than relaying it to tech.
                   It needs an order to hang off — that is where penalties are recorded. */}
@@ -1293,6 +1316,14 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
 
       {penaltyFor && currentUser && (
         <PenaltyDialog order={penaltyFor.order} actor={currentUser} onClose={() => setPenaltyFor(null)} />
+      )}
+
+      {chatFor && currentUser && (
+        <SalesOrderChat
+          assignmentId={chatFor}
+          soldBy={{ uid: currentUser.uid, name: currentUser.name }}
+          onClose={() => setChatFor(null)}
+        />
       )}
     </div>
   );

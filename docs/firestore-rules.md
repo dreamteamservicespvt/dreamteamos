@@ -15,7 +15,7 @@ Everything else requires a signed-in account.
 
 | Surface | Reads | Why it can be public |
 |---|---|---|
-| `/c/{chatId}` — client chat | `order_chats/{id}` | The link **is** the credential: `chatId` is a 20-character Firestore auto-id, and `/api/order-chat` exchanges it for a token scoped by an `orderChat` claim to that one room. Same model as an unlisted document link, and the exposure is one customer's own conversation about their own order. There is deliberately no code to type — see the header of `api/order-chat.ts`. |
+| `/c/{chatId}` — client chat | `order_chats/{id}`, `company_settings/main` | The link **is** the credential: `chatId` is a 20-character Firestore auto-id, and `/api/order-chat` exchanges it for a token scoped by an `orderChat` claim to that one room. Same model as an unlisted document link, and the exposure is one customer's own conversation about their own order. There is deliberately no code to type — see the header of `api/order-chat.ts`. The guest token is a signed-in identity, so `company_settings` is readable too: it holds the company's public face — the address and phone number already printed on every invoice that customer has been sent — and the chat reads the phone number as the fallback for "ask about another ad". |
 | `/verify/{uid}` — ID card QR | `public_badges/{uid}` | Holds only what is already printed on the card in the scanner's hand: name, employee ID, designation, department, photo, joining date, active. **Never** the HR record. |
 | `/join/{inviteId}` — hiring | via `/api/onboarding` | The candidate has no account yet; the serverless endpoint checks their code. The collection itself stays closed. |
 
@@ -88,12 +88,18 @@ service cloud.firestore {
       allow read:   if isStaff() || isGuestOfThisChat();
       allow create: if isStaff();
       allow delete: if isStaff();
-      // A guest may only touch presence, unread counters and the last-message preview — never the
-      // access code, the status, or who is in the room.
+      // A guest may only touch presence, unread counters, the last-message preview and their own
+      // review of the finished ad — never the access code, the status, or who is in the room.
+      //
+      // `clientReview` is the customer's own verdict on their own order, and it is here rather
+      // than behind the API so the review lands even when the serverless function is unreachable.
+      // The server mirrors it outward to the order and the client record (api/order-chat.ts):
+      // a guest can write this one document and nothing else.
       allow update: if isStaff() || (
         isGuestOfThisChat() &&
         request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['activeUsers', 'unreadCounts', 'lastMessage', 'lastMessageAt', 'lastMessageBy'])
+          .hasOnly(['activeUsers', 'unreadCounts', 'lastMessage', 'lastMessageAt', 'lastMessageBy',
+                    'clientReview'])
       );
 
       match /messages/{messageId} {

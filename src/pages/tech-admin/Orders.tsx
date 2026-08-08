@@ -1,7 +1,7 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { Fragment, useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  ClipboardList, Loader2, Search, MessageCircle, UserPlus, Clock, ShoppingBag, CheckCircle2, Sparkles, StickyNote, Hourglass, Sparkle, Trash2, CheckSquare, Square, Undo2, Copy, Check, Pin, Split, AlertTriangle, Layers, X, Archive, RotateCcw, History, ShieldAlert, Lock,
+  ClipboardList, Loader2, Search, MessageCircle, UserPlus, Clock, ShoppingBag, CheckCircle2, Sparkles, StickyNote, Hourglass, Sparkle, Trash2, CheckSquare, Square, Undo2, Copy, Check, Pin, Split, AlertTriangle, Layers, X, Archive, RotateCcw, History, ShieldAlert, Lock, Star,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useFirestoreQuery, useFirestoreCollection } from "@/hooks/useFirestore";
@@ -25,6 +25,7 @@ import { format } from "date-fns";
 import type { AppUser, Order, WorkAssignment } from "@/types";
 
 import { sortOrders, countOverdue, ORDER_SORT_OPTIONS, type OrderSortMode } from "@/utils/orderSort";
+import { hourBucketKey, hourBucketLabel } from "@/utils/orderHours";
 
 import {
   ORDER_QUEUE_TABS, assignmentsByOrderId, orderAssignee, orderQueueStatus, type OrderQueueStatus,
@@ -303,6 +304,47 @@ export default function Orders() {
     }
     return sortOrders(filtered, sortMode);
   }, [inTab, category, sortMode, isHistoryTab]);
+
+  /**
+   * The hour each waiting order arrived in, as headings down the Not-assigned list.
+   *
+   * Sales arrive in bursts — ten in one evening hour, none for the rest of the day — and the queue
+   * flattened all of that into one column of cards. Knowing a job came from *last night's six
+   * o'clock* rather than from this morning is what decides who is given it and what the client is
+   * told when they ring.
+   *
+   * A heading is emitted wherever the bucket differs from the row above it, so this NEVER reorders
+   * anything: it labels the list the chosen sort already produced.
+   *
+   * ── Why the run key carries the pin ───────────────────────────────────────────────────────────
+   * Every sort here hoists pinned work (an unfinished month or bulk order) above everything else,
+   * so the clock restarts partway down the list — the first six headings climb through the day,
+   * then it jumps back to last Tuesday. Seen on real data that reads as a bug rather than as a
+   * sort, and the same hour genuinely appearing twice is the part that looks broken.
+   *
+   * Folding the pin into the key means the boundary always gets its own heading, and the heading
+   * says "Pinned" — one word that explains why the hours start again. Merging the two runs instead
+   * would be a claim about ordering that the list does not make.
+   */
+  const hourGroups = useMemo(() => {
+    if (tab !== "unassigned") return null;
+    const heading = new Map<string, { label: string; pinned: boolean }>();
+    const runSize = new Map<string, number>();
+    let currentKey: string | null = null;
+    let currentHead: string | null = null;
+    for (const o of visible) {
+      const pinned = isPinnedOrder(o);
+      const key = `${pinned ? "pinned" : "queue"}-${hourBucketKey(o.createdAt)}`;
+      if (key !== currentKey) {
+        currentKey = key;
+        currentHead = o.id;
+        heading.set(o.id, { label: hourBucketLabel(o.createdAt), pinned });
+        runSize.set(o.id, 0);
+      }
+      if (currentHead) runSize.set(currentHead, (runSize.get(currentHead) || 0) + 1);
+    }
+    return { heading, runSize };
+  }, [tab, visible]);
 
   /** Overdue count for what's in view, so the sort option can say how many are waiting. */
   const overdueInTab = useMemo(
@@ -858,8 +900,32 @@ export default function Orders() {
               </button>
             )}
           </div>
-        ) : visible.map((o) => (
-          <div key={o.id} className={`bg-card border rounded-xl p-3 md:p-4 shadow-sm hover:shadow-md transition-shadow ${selected.has(o.id) ? "border-primary/60 ring-1 ring-primary/30" : ""}`}>
+        ) : visible.map((o) => {
+          const hourHeading = hourGroups?.heading.get(o.id);
+          const hourCount = hourGroups?.runSize.get(o.id) || 0;
+          return (
+          <Fragment key={o.id}>
+          {hourHeading && (
+            <div data-test="orders-hour-heading"
+              className="col-span-full flex flex-wrap items-center gap-2 pt-1 first:pt-0">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-muted/50 px-2.5 py-1 text-[11px] font-semibold text-foreground">
+                <Clock size={11} className="text-muted-foreground" /> {hourHeading.label}
+              </span>
+              <span className="text-[11px] text-muted-foreground">
+                {hourCount} {hourCount === 1 ? "ad" : "ads"}
+              </span>
+              {/* Says why the clock starts over here — these were lifted out of date order. */}
+              {hourHeading.pinned && (
+                <span data-test="orders-hour-pinned"
+                  title="Months and bulk orders stay at the top until every counter is met, so they are out of date order"
+                  className="inline-flex items-center gap-1 rounded-full bg-purple-500/15 px-2 py-0.5 text-[10px] font-medium text-purple-600 dark:text-purple-400">
+                  <Pin size={9} /> Pinned
+                </span>
+              )}
+              <span className="h-px flex-1 bg-border/70" />
+            </div>
+          )}
+          <div className={`bg-card border rounded-xl p-3 md:p-4 shadow-sm hover:shadow-md transition-shadow ${selected.has(o.id) ? "border-primary/60 ring-1 ring-primary/30" : ""}`}>
             <div className="flex items-start gap-3">
               {/* Per-order select checkbox */}
               <button onClick={() => toggleOne(o.id)} aria-label={selected.has(o.id) ? "Deselect order" : "Select order"}
@@ -917,6 +983,27 @@ export default function Orders() {
                       </span>
                     );
                   })()}
+                  {/*
+                    What the customer thought of it.
+
+                    On the card rather than a page behind it, because this is the only screen where
+                    a delivered job and the person who delivered it are in front of you at the same
+                    time — and a two-star ad that nobody ever reads about is a client who quietly
+                    stops answering the phone. The comment is the tooltip: the score is the alarm,
+                    the sentence is the detail.
+                  */}
+                  {o.clientReview && (
+                    <span data-test="order-client-review"
+                      title={o.clientReview.comment || "The client rated this ad from their chat"}
+                      className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${
+                        Math.min(o.clientReview.work, o.clientReview.service) <= 3
+                          ? "bg-destructive/15 text-destructive"
+                          : "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                      }`}>
+                      <Star size={9} className="fill-current" />
+                      {o.clientReview.work}/5 work · {o.clientReview.service}/5 service
+                    </span>
+                  )}
                   {/* Approval isn't a gate anymore, but the tech team should still see which sales
                       the sales admin hasn't signed off on yet. */}
                   {o.saleVerified === false && (
@@ -1182,7 +1269,9 @@ export default function Orders() {
               </div>
             </div>
           </div>
-        ))}
+          </Fragment>
+          );
+        })}
       </div>
 
       {/* Older history, on request — nobody pays for reads they didn't ask for. */}

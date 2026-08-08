@@ -9,10 +9,13 @@
  */
 import { initializeApp, getApp, getApps, type FirebaseApp } from "firebase/app";
 import { getAuth, signInWithCustomToken, type Auth } from "firebase/auth";
-import { getFirestore, doc, getDoc, type Firestore } from "firebase/firestore";
+import {
+  getFirestore, doc, getDoc, serverTimestamp, updateDoc, type Firestore,
+} from "firebase/firestore";
 import { getMessaging, getToken, type Messaging } from "firebase/messaging";
 import { firebaseConfig } from "@/services/firebase";
 import { isNative } from "@/utils/platform";
+import { resolveCompany, type CompanyAssets } from "@/utils/company";
 import type { OrderChatDoc } from "@/types/orderChat";
 
 const GUEST_APP_NAME = "orderChatGuest";
@@ -157,6 +160,105 @@ export function alertTeam(body: {
       body: JSON.stringify({ action: "notify", ...body }),
     }))
     .catch(() => { /* no API server (dev) or offline — the message itself already went through */ });
+}
+
+// ─── After the ad has been delivered ─────────────────────────────────────────────────────────
+
+/**
+ * The customer's verdict on the finished ad.
+ *
+ * Written straight onto their own room first, and mirrored outward by the server second. That
+ * order is the important part: the direct write is the one their screen reads back, it is the one
+ * that works against a plain `vite dev` server with no serverless functions behind it, and it is
+ * the one that survives the mirror failing. The same shape as sending a message — the message
+ * lands in Firestore, and the notification on top of it is best effort.
+ *
+ * The mirror is what puts the review on the order and the client's record, and what tells the two
+ * people who earned it. A guest can write to exactly one document — this room — and must never be
+ * able to touch an order or a customer record, which is why that half runs on the server.
+ */
+export async function submitClientReview(
+  chatId: string,
+  review: { work: number; service: number; comment?: string },
+): Promise<void> {
+  const { auth, db } = guestApp();
+  const comment = (review.comment || "").trim().slice(0, 500);
+
+  await updateDoc(doc(db, "order_chats", chatId), {
+    clientReview: {
+      work: review.work,
+      service: review.service,
+      ...(comment ? { comment } : {}),
+      submittedAt: serverTimestamp(),
+    },
+  });
+
+  try {
+    const token = await auth.currentUser?.getIdToken();
+    await fetch(`${API_BASE}/api/order-chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ action: "submit-review", chatId, ...review, comment }),
+    });
+  } catch { /* no API server (dev) or offline — the review itself is already on the room */ }
+}
+
+/** Where "ask about another ad" should open WhatsApp. */
+export interface EnquiryTarget {
+  /** Normalised number, or null when we have nobody to send them to. */
+  phone: string | null;
+  /** The seller's name, when it is their own number. Absent for the company line. */
+  name: string | null;
+  /** True when this is the company's general number rather than the seller's own. */
+  fallback: boolean;
+}
+
+/**
+ * Who the customer should be put through to about their next ad.
+ *
+ * Resolved when the button is drawn rather than mirrored onto the room at assignment time: sellers
+ * change handsets, and a number copied onto three hundred conversations months ago is three hundred
+ * dead ends that nobody notices until a customer says nobody answered.
+ *
+ * Falls back to the company's own line, because a button that goes nowhere is worse than a button
+ * that goes to the switchboard — and if even that is unset the caller hides it entirely.
+ */
+export async function fetchEnquiryTarget(chatId: string): Promise<EnquiryTarget> {
+  const { auth, db } = guestApp();
+
+  try {
+    const token = await auth.currentUser?.getIdToken();
+    const res = await fetch(`${API_BASE}/api/order-chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ action: "enquiry-target", chatId }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.phone) return { phone: String(data.phone), name: data.name || null, fallback: false };
+    }
+  } catch { /* no API server (dev) or offline — fall through to the company's own number */ }
+
+  /**
+   * The company line, read from the same settings document every letterhead uses.
+   *
+   * Readable by a guest on purpose: their token is a signed-in identity, and this document holds
+   * the company's public face — the address and phone number printed on every invoice they have
+   * already been sent.
+   */
+  try {
+    const snap = await getDoc(doc(db, "company_settings", "main"));
+    const company = resolveCompany(snap.exists() ? (snap.data() as CompanyAssets) : null);
+    if (company.phone) return { phone: company.phone, name: null, fallback: true };
+  } catch { /* offline, or the document has never been filled in */ }
+
+  return { phone: null, name: null, fallback: true };
 }
 
 // ─── Being reachable with the page shut ──────────────────────────────────────────────────────

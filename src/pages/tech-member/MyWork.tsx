@@ -24,7 +24,7 @@ import AIPlatformApp from '@/components/ai-platform/AIPlatformApp';
 import SaleDeletedBanner from '@/components/work/SaleDeletedBanner';
 import StaffOrderChat from '@/components/order-chat/StaffOrderChat';
 import { useOrderChatUnread } from '@/hooks/useOrderChat';
-import { reopenOrderChat } from '@/services/orderChat';
+import { reopenOrderChat, syncOrderChatWorkStatus } from '@/services/orderChat';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useToast } from '@/hooks/use-toast';
 
@@ -108,6 +108,9 @@ export default function MyWork() {
       // Mark as in_progress if assigned
       if (openAssignment.status === 'assigned' || openAssignment.status === 'editing') {
         updateDoc(doc(db, 'work_assignments', openAssignment.id), { status: 'in_progress' });
+        // The client chat carries the same fact, so the seller fielding "has anyone started?"
+        // can answer it without ringing the tech side.
+        syncOrderChatWorkStatus(openAssignment.id, 'in_progress');
       }
     }
     return () => {
@@ -182,6 +185,7 @@ export default function MyWork() {
       if (assignment.orderId) await revertOrderToAssigned(assignment.orderId);
       // Back in progress means the client can talk to their member again.
       await reopenOrderChat(assignment.id, undefined, 'The team is still working on this — chat is open again.');
+      await syncOrderChatWorkStatus(assignment.id, 'in_progress');
     } catch (error) {
       console.error('Failed to undo complete:', error);
     }

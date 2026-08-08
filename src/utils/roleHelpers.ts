@@ -128,6 +128,10 @@ const NAV: Record<UserRole, NavItem[]> = {
   sales_member: [
     { title: "Dashboard", path: "/sales/dashboard", icon: LayoutDashboard },
     { title: "My Leads", path: "/sales/leads", icon: Phone },
+    // High in the list on purpose: a client waiting on a reply is the most time-sensitive thing
+    // on this page, and both of these are opened several times a day.
+    { title: "Client Chats", path: "/sales/client-chats", icon: MessageSquare },
+    { title: "My Clients", path: "/sales/clients", icon: Contact },
     { title: "My Reviews", path: "/sales/reviews", icon: Star },
     { title: "My Performance", path: "/sales/performance", icon: Target },
     { title: "Leaderboard", path: "/sales/leaderboard", icon: Trophy },

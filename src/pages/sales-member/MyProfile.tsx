@@ -7,7 +7,8 @@ import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/utils/formatters";
 import { getRoleLabel } from "@/utils/roleHelpers";
 import { useEmployeeProfile } from "@/hooks/useEmployeeProfile";
-import { User, Mail, Phone, Shield, Loader2, Check, Lock, Receipt } from "lucide-react";
+import { User, Mail, Phone, Shield, Loader2, Check, Lock, Receipt, MessageCircle } from "lucide-react";
+import { normalizePhone } from "@/utils/phone";
 import SalaryTimeline from "@/components/SalaryTimeline";
 import AttendanceCard from "@/components/sales/AttendanceCard";
 import MemberAgreements from "@/components/agreement/MemberAgreements";
@@ -18,9 +19,20 @@ import { dailyTargetOf, monthlyTargetOf } from "@/utils/salesTargets";
 
 export default function MyProfile() {
   const user = useAuthStore((s) => s.user);
+  // Kept in step with the write, so the rest of the app sees the new number without a reload —
+  // this record is read straight out of the store all over the place.
+  const setUser = useAuthStore((s) => s.setUser);
   const { toast } = useToast();
   const [name, setName] = useState(user?.name || "");
   const [phone, setPhone] = useState(user?.phone || "");
+  /**
+   * The number they sell on, which is not the number HR holds.
+   *
+   * Theirs to set, because they are the one who knows which handset is in their pocket today —
+   * and because a delivered client tapping "ask about another ad" arrives on it. Their sales admin
+   * can set it too (My Team), for the day it changes while they are mid-call.
+   */
+  const [businessWhatsapp, setBusinessWhatsapp] = useState(user?.businessWhatsapp || "");
   const [saving, setSaving] = useState(false);
 
   const [currentPw, setCurrentPw] = useState("");
@@ -34,7 +46,16 @@ export default function MyProfile() {
     if (!user) return;
     setSaving(true);
     try {
-      await updateDoc(doc(db, "users", user.uid), { name: name.trim(), phone: phone.trim(), updatedAt: serverTimestamp() });
+      const business = businessWhatsapp.trim();
+      await updateDoc(doc(db, "users", user.uid), {
+        name: name.trim(),
+        phone: phone.trim(),
+        // Normalised on the way in, because it is turned into a wa.me link — "98765 43210" and
+        // "+919876543210" are the same number to a person and two different URLs to WhatsApp.
+        businessWhatsapp: business ? normalizePhone(business) : null,
+        updatedAt: serverTimestamp(),
+      });
+      setUser({ ...user, name: name.trim(), phone: phone.trim(), businessWhatsapp: business ? normalizePhone(business) : null });
       toast({ title: "Profile Updated" });
     } catch {
       toast({ title: "Error", description: "Failed to update profile.", variant: "destructive" });
@@ -126,6 +147,24 @@ export default function MyProfile() {
               className="w-full h-10 px-3 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary transition-colors"
             />
           </div>
+        </div>
+
+        <div className="mb-6">
+          <label className="text-xs text-muted-foreground mb-1 block flex items-center gap-1.5">
+            <MessageCircle size={12} /> Business WhatsApp number
+          </label>
+          <input
+            value={businessWhatsapp}
+            onChange={(e) => setBusinessWhatsapp(e.target.value)}
+            placeholder="9876543210"
+            data-test="my-business-whatsapp"
+            className="w-full h-10 px-3 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary transition-colors placeholder:text-muted-foreground/40"
+          />
+          <p className="text-[11px] text-muted-foreground mt-1">
+            The number you sell on. When a client whose ad you sold is delivered, the "ask about
+            another ad" button in their chat opens WhatsApp straight to this number — so keep it on
+            a phone you watch. Leave it blank and those enquiries go to the company line instead.
+          </p>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">

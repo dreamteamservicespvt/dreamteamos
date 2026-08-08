@@ -328,6 +328,25 @@ export default function OrderChatPanel({
     return set;
   }, [messages]);
 
+  /**
+   * Which messages OPEN a run — the only ones that carry a name.
+   *
+   * The same rule as the tail, from the other end, and for the same reason: five bubbles each
+   * captioned "Ravi" read as five people called Ravi. It matters more now than it did, because the
+   * customer's side of the thread names its senders too and every team message would otherwise be
+   * stamped "Tech team".
+   */
+  const firstOfRun = useMemo(() => {
+    const set = new Set<string>();
+    messages.forEach((m, i) => {
+      const prev = messages[i - 1];
+      if (!prev || prev.senderId !== m.senderId || prev.type === "system" || m.type === "system") {
+        set.add(m.id);
+      }
+    });
+    return set;
+  }, [messages]);
+
   let lastDay = "";
 
   return (
@@ -360,19 +379,43 @@ export default function OrderChatPanel({
               const fromClient = m.senderId === CLIENT_SENDER_ID;
               // The client sits on one side; everyone on the team sits on the other.
               const mine = identity.isClient ? fromClient : !fromClient;
+              const fromSales = m.senderRole === "sales";
               /**
-               * Who wrote it — shown to the team, never to the customer.
+               * Who wrote it — and the one place the two audiences are told different things.
                *
-               * On a member's or a leader's screen the name is the whole point: it is how they
-               * tell their own messages from their colleague's on the same side of the thread.
+               * ── The team ────────────────────────────────────────────────────────────────────
+               * The name is the whole point: it is how a member tells their own messages from a
+               * colleague's on the same side of the thread. Sales messages also carry a badge,
+               * because "the client sent me their logo" means something different coming from the
+               * person who sold the ad than from the person making it.
                *
-               * On the customer's screen it is actively harmful. Naming the person turns a company
-               * into one individual: the client starts asking for "Aasritha" by name, and the day
-               * that job is reassigned they believe they have been dropped. They are talking to
-               * the team. (The name is still stored on the message — this is a rendering
-               * decision, so the team keeps what it needs.)
+               * ── The customer ────────────────────────────────────────────────────────────────
+               * The tech team stays anonymous, and deliberately so: naming the maker turns a
+               * company into one individual, the client starts asking for "Aasritha" by name, and
+               * the day that job is reassigned they believe they have been dropped.
+               *
+               * The seller is the exception, because the premise does not hold for them — the
+               * customer already knows who sold them the ad, by name, and has their number. A
+               * message that arrives with no name on it from someone they have been speaking to
+               * for a week reads as a stranger in their conversation.
+               *
+               * Messages sent before this existed carry no role, and read as the team. That is
+               * accurate: until now nobody but the tech side could write here.
                */
-              const showName = !identity.isClient && m.senderId !== identity.senderId && !!m.senderName;
+              const attribution: { label: string; sales: boolean } | null =
+                !firstOfRun.has(m.id) || m.type === "system"
+                  ? null
+                  : identity.isClient
+                    // The customer's own messages need no caption; the team's do.
+                    ? fromClient
+                      ? null
+                      : fromSales
+                        ? { label: m.senderName || "Sales", sales: true }
+                        : { label: "Tech team", sales: false }
+                    // Staff see everyone but themselves by name — the customer included.
+                    : m.senderId !== identity.senderId && m.senderName
+                      ? { label: m.senderName, sales: fromSales }
+                      : null;
               const when = toDate(m.createdAt);
               const day = when ? dayLabel(when) : "";
               const showDay = day && day !== lastDay;
@@ -458,12 +501,19 @@ export default function OrderChatPanel({
                           />
                         )}
 
-                        {showName && (
-                          <p className={cn(
-                            "mb-0.5 px-0.5 text-[12.5px] font-semibold",
-                            mine ? "text-emerald-900/70 dark:text-emerald-200/80" : "text-emerald-700 dark:text-emerald-400",
-                          )}>
-                            {m.senderName}
+                        {attribution && (
+                          <p data-test="order-chat-sender"
+                            className={cn(
+                              "mb-0.5 flex items-center gap-1.5 px-0.5 text-[12.5px] font-semibold",
+                              mine ? "text-emerald-900/70 dark:text-emerald-200/80" : "text-emerald-700 dark:text-emerald-400",
+                            )}>
+                            <span className="truncate">{attribution.label}</span>
+                            {attribution.sales && (
+                              <span data-test="order-chat-sales-badge"
+                                className="shrink-0 rounded-full bg-amber-500/15 px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                                Sales
+                              </span>
+                            )}
                           </p>
                         )}
 
@@ -597,9 +647,11 @@ export default function OrderChatPanel({
                   <p className="text-[11.5px] font-semibold text-emerald-600 dark:text-emerald-400">
                     {replyTo.senderId === identity.senderId
                       ? "You"
-                      // The customer is replying to the company, not to a named individual — the
-                      // same reason `showName` is suppressed on their side of the thread.
-                      : identity.isClient ? "Their message" : replyTo.senderName || "Message"}
+                      // The same rule as the bubbles above: the customer sees the team as the
+                      // team, and the person who sold to them by name.
+                      : identity.isClient
+                        ? replyTo.senderRole === "sales" ? (replyTo.senderName || "Sales") : "Tech team"
+                        : replyTo.senderName || "Message"}
                   </p>
                   <p className="truncate text-[12.5px] text-slate-600 dark:text-slate-300">
                     {replyTo.text || (replyTo.type === "voice" ? "🎤 Voice message" : "📎 Attachment")}

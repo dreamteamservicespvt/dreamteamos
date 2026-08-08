@@ -29,6 +29,8 @@ export default function EditMemberModal({ member, onClose, onUpdated, variant }:
     member.earningsOption || ""
   );
   const [driveUrl, setDriveUrl] = useState(member.googleDriveBaseUrl || "");
+  /** The number this seller works on — where a delivered client's next enquiry is sent. */
+  const [businessWhatsapp, setBusinessWhatsapp] = useState(member.businessWhatsapp || "");
   const [saving, setSaving] = useState(false);
 
   const handleSave = async (e: React.FormEvent) => {
@@ -49,6 +51,7 @@ export default function EditMemberModal({ member, onClose, onUpdated, variant }:
 
       if (variant === "sales") {
         updates.dailyTarget = dailyTarget;
+        updates.businessWhatsapp = businessWhatsapp.trim() ? normalizePhone(businessWhatsapp.trim()) : null;
         // Cleared, not left behind: these are the two fields the app used to read three different
         // ways, and a stale value in either would keep contradicting the figure above.
         updates.monthlyTarget = null;
@@ -111,6 +114,16 @@ export default function EditMemberModal({ member, onClose, onUpdated, variant }:
 
           {variant === "sales" && (
             <>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Business WhatsApp number</label>
+                <input type="tel" value={businessWhatsapp} onChange={(e) => setBusinessWhatsapp(e.target.value)}
+                  placeholder="9876543210" data-test="business-whatsapp-input"
+                  className="w-full h-10 px-4 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary" />
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  The number they sell on. When a delivered client asks about another ad, this is
+                  where the enquiry lands — so it must be a number they actually watch.
+                </p>
+              </div>
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Daily Target (₹)</label>
                 <input type="number" min={0} value={dailyTarget || ""} onChange={(e) => setDailyTarget(Number(e.target.value) || 0)}

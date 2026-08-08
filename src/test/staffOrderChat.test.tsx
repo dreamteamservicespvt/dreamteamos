@@ -21,7 +21,13 @@ const { ensureOrderChat, alertClient, useOrderChat, startCall } = vi.hoisted(() 
   startCall: vi.fn(),
 }));
 
-vi.mock("@/services/orderChat", () => ({ ensureOrderChat, alertClient }));
+vi.mock("@/services/orderChat", () => ({
+  ensureOrderChat,
+  alertClient,
+  // Real behaviour, not a stub: what it returns decides whether a message is stamped as sales or
+  // tech, and a mock that always said "tech" would let that regress silently.
+  senderRoleOf: (role: string) => (role === "sales_member" || role === "sales_admin" ? "sales" : "tech"),
+}));
 vi.mock("@/hooks/useOrderChat", () => ({ useOrderChat }));
 vi.mock("@/services/orderChatGuest", () => ({ guestUid: (id: string) => `guest_${id}` }));
 vi.mock("@/store/authStore", () => ({

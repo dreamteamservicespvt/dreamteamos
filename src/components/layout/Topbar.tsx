@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
-import { getRoleLabel, getRoleColor, getProfileRoute } from "@/utils/roleHelpers";
+import { getRoleLabel, getRoleColor, getProfileRoute, defaultRouteForUser } from "@/utils/roleHelpers";
 import { Bell, Menu, Check, Trash2 } from "lucide-react";
 import { formatTime } from "@/utils/formatters";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -124,7 +124,10 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
               className="w-9 h-9 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
               <Menu size={20} />
             </button>
-            <BrandLogo variant="mark" alt="DTS" className="h-5 w-auto shrink-0" />
+            {/* The logo is the way home on a phone, where there is no sidebar to reach for. */}
+            <Link to={user ? defaultRouteForUser(user) : "/"} title="Go to dashboard" data-test="topbar-logo">
+              <BrandLogo variant="mark" alt="DTS" className="h-5 w-auto shrink-0" />
+            </Link>
           </>
         )}
         <div className="flex items-center gap-2 text-sm">

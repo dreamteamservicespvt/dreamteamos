@@ -19,6 +19,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { BellRing, Loader2, Lock, ShieldCheck, Sparkles } from "lucide-react";
 import OrderChatPanel, { OrderChatCallButtons } from "@/components/order-chat/OrderChatPanel";
 import ClientCall, { type ClientCallType } from "@/components/order-chat/ClientCall";
+import ClientReviewCard from "@/components/order-chat/ClientReviewCard";
 import InstallChatButton from "@/components/order-chat/InstallChatButton";
 import { useOrderChat } from "@/hooks/useOrderChat";
 import { useNotificationTap } from "@/hooks/useNotificationTap";
@@ -297,6 +298,16 @@ function Conversation({ chatId }: { chatId: string }) {
     );
   }
 
+  /**
+   * The review, asked for only when the room closed because the ad was DELIVERED.
+   *
+   * A job handed back to the team queue also locks this chat, and asking that customer to rate an
+   * ad nobody has made yet would be absurd — so the flag comes from the completion, not from the
+   * lock. Rooms locked before this existed carry no flag and are simply left alone, which is right:
+   * a review request arriving months after delivery is a strange message to receive.
+   */
+  const showReview = locked && room?.reviewInvited === true;
+
   return (
     <div className="flex h-[100dvh] flex-col">
       <OrderChatPanel
@@ -338,6 +349,15 @@ function Conversation({ chatId }: { chatId: string }) {
           </div>
         }
       />
+
+      {showReview && (
+        <ClientReviewCard
+          chatId={chatId}
+          review={room?.clientReview}
+          businessName={room?.businessName || room?.clientName}
+          uniqueId={room?.uniqueId}
+        />
+      )}
 
       {room?.memberUid && (
         <ClientCall

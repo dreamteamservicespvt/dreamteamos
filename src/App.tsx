@@ -31,6 +31,7 @@ import SalesMemberTraining from "@/pages/sales-member/Training";
 import SalesMemberProfile from "@/pages/sales-member/MyProfile";
 import SalesScripts from "@/pages/sales-member/SalesScripts";
 import MyReviews from "@/pages/sales-member/MyReviews";
+import SalesClientChats from "@/pages/sales-member/ClientChats";
 import SalesMemberActivityHistory from "@/pages/sales-member/ActivityHistory";
 import SalesMemberSettlements from "@/pages/sales-member/Settlements";
 import SalesAdminDashboard from "@/pages/sales-admin/Dashboard";
@@ -258,6 +259,10 @@ const App = () => (
           <Route element={<AppLayout allowedRoles={["sales_member"]} />}>
             <Route path="/sales/dashboard" element={<SalesMemberDashboard />} />
             <Route path="/sales/leads" element={<MyLeads />} />
+            {/* The seller is on their clients' order chats now — this is where they read them. */}
+            <Route path="/sales/client-chats" element={<SalesClientChats />} />
+            {/* Their own customers: the ones they sold to, and nobody else's. */}
+            <Route path="/sales/clients" element={<Clients />} />
             <Route path="/sales/reviews" element={<MyReviews />} />
             <Route path="/sales/performance" element={<MyPerformance />} />
             <Route path="/sales/training" element={<SalesMemberTraining />} />

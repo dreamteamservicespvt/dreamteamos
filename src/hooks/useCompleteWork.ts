@@ -105,7 +105,10 @@ export function useCompleteWork() {
 
       // The client chat goes read-only. Delivered work should not leave a live channel open for
       // "one more small change" — but the customer keeps every file that was sent through it.
-      await lockOrderChat(assignment.id);
+      //
+      // `delivered` is what invites the review: work handed back to the queue also locks a chat,
+      // and only one of those two is a finished ad worth asking the customer about.
+      await lockOrderChat(assignment.id, undefined, { delivered: true });
 
       // The customer now has something delivered, so they become an upsell target immediately —
       // including for work assigned directly (no order), which never reached Clients before.

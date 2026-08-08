@@ -12,15 +12,16 @@
  * Calling reuses the app's own call manager by simply naming the customer as the peer, so there is
  * one call system here, not two.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Share2, Phone, Lock, Info } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, Share2, Phone, Lock, Info, Star } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useCallStore } from "@/store/callStore";
 import OrderChatPanel from "@/components/order-chat/OrderChatPanel";
 import ShareChatModal from "@/components/order-chat/ShareChatModal";
 import { useOrderChat } from "@/hooks/useOrderChat";
-import { alertClient, ensureOrderChat } from "@/services/orderChat";
+import { alertClient, ensureOrderChat, senderRoleOf } from "@/services/orderChat";
 import { guestUid } from "@/services/orderChatGuest";
+import { workStatusChip } from "@/utils/orderChatStatus";
 import type { WorkAssignment } from "@/types";
 
 export interface StaffOrderChatProps {
@@ -30,10 +31,18 @@ export interface StaffOrderChatProps {
   memberName?: string;
   /** Leader and admin can hand the link to the client; the member cannot. */
   canShare?: boolean;
+  /**
+   * The seller, when the opener knows it.
+   *
+   * Passed by the sales side, whose whole route into this room is "the order I sold". It puts the
+   * seller onto conversations that started before sales were part of them, which is what the
+   * customer's "ask about another ad" button reads to find the right business number.
+   */
+  soldBy?: { uid: string; name?: string } | null;
   onClose: () => void;
 }
 
-export default function StaffOrderChat({ assignment, memberName, canShare, onClose }: StaffOrderChatProps) {
+export default function StaffOrderChat({ assignment, memberName, canShare, soldBy, onClose }: StaffOrderChatProps) {
   const user = useAuthStore((s) => s.user);
   const startCall = useCallStore((s) => s.startCall);
   const [sharing, setSharing] = useState(false);
@@ -53,8 +62,9 @@ export default function StaffOrderChat({ assignment, memberName, canShare, onClo
       actorUid: user.uid,
       actorName: user.name,
       techAdminUid: user.role === "tech_admin" ? user.uid : user.createdBy,
+      soldBy,
     });
-  }, [assignment.id, user?.uid]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [assignment.id, user?.uid, soldBy?.uid]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * Android's back gesture and the browser's Back button close this, rather than leaving the page.
@@ -88,9 +98,14 @@ export default function StaffOrderChat({ assignment, memberName, canShare, onClo
     };
   }, [chatId]);
 
-  const identity = user
-    ? { senderId: user.uid, senderName: user.name, isClient: false }
-    : null;
+  // Memoised: `useOrderChat` keys its presence and message effects on the identity's fields, and a
+  // fresh object every render would re-run them on every keystroke in the composer.
+  const identity = useMemo(
+    () => (user
+      ? { senderId: user.uid, senderName: user.name, isClient: false, role: senderRoleOf(user.role) }
+      : null),
+    [user?.uid, user?.name, user?.role], // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   /**
    * Reach the customer on their phone.
@@ -104,6 +119,8 @@ export default function StaffOrderChat({ assignment, memberName, canShare, onClo
 
   const { room, messages, loading, missing, locked, canSend, sending, send } =
     useOrderChat({ chatId, identity, onSent });
+
+  const review = room?.clientReview || null;
 
   /**
    * Ring the customer. Voice only, deliberately.
@@ -137,9 +154,37 @@ export default function StaffOrderChat({ assignment, memberName, canShare, onClo
           <p className="truncate text-[15px] font-semibold leading-tight">
             {businessName || "Client"}
           </p>
-          <p className="truncate text-[11.5px] text-white/75">
-            {locked ? "Delivered · view only" : "Client chat"}{uniqueId ? ` · ${uniqueId}` : ""}
-          </p>
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+            <p className="truncate text-[11.5px] text-white/75">
+              {locked ? "Delivered · view only" : "Client chat"}{uniqueId ? ` · ${uniqueId}` : ""}
+            </p>
+            {/*
+              Where the ad has got to, on the header rather than a page behind it.
+
+              Written for the sales member, who now reads this room: the client asks "is it done?"
+              in the chat, and the answer used to live on a tech screen they cannot open. It is
+              read off the room's own mirrored field so it costs nothing, and falls back to the
+              assignment we were handed when a room predates the mirror.
+            */}
+            {(() => {
+              const chip = workStatusChip(room?.workStatus || assignment.status);
+              return (
+                <span data-test="staff-chat-work-status"
+                  className="shrink-0 rounded-full bg-white/20 px-1.5 py-px text-[10px] font-semibold text-white">
+                  {chip.label}
+                </span>
+              );
+            })()}
+            {/* The customer's verdict, where the people who earned it will actually see it. */}
+            {review && (
+              <span data-test="staff-chat-review"
+                title={review.comment || undefined}
+                className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-amber-400/25 px-1.5 py-px text-[10px] font-semibold text-white">
+                <Star className="h-2.5 w-2.5 fill-current" />
+                {review.work}/5 work · {review.service}/5 service
+              </span>
+            )}
+          </div>
         </div>
 
         {!locked && !missing && (

@@ -139,6 +139,11 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
    * Created here rather than on first use so the leader can hand the link over in the same breath
    * as assigning the job — the whole point is that nobody has to go and build a WhatsApp group
    * before the client can send their logo.
+   *
+   * The sales member who sold it goes in at the same moment, and for the same reason the room
+   * exists at all: clients hand their photos, logos and last-minute changes to whoever they bought
+   * from, and until now that person had nowhere to put them. One place, everyone who is working on
+   * the ad reading it.
    */
   await createOrderChat({
     assignmentId: ref.id,
@@ -152,6 +157,8 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
     assignerUid,
     assignerName,
     techAdminUid,
+    soldByUid: linkedOrder?.soldBy ?? null,
+    soldByName: linkedOrder?.soldByName ?? null,
     orderId: linkedOrder?.id ?? null,
   });
 

@@ -5,8 +5,10 @@ import { collection, query, where, getDocs, updateDoc, doc, serverTimestamp } fr
 import { auth, db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { useSidebarStore } from "@/store/sidebarStore";
-import { getNavItems, getRoleLabel, getRoleColor, getProfileRoute, type NavItem } from "@/utils/roleHelpers";
-import { ChevronLeft, ChevronDown, LogOut, X } from "lucide-react";
+import {
+  getNavItems, getRoleLabel, getRoleColor, getProfileRoute, defaultRouteForUser, type NavItem,
+} from "@/utils/roleHelpers";
+import { ChevronLeft, ChevronRight, ChevronDown, LogOut, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { deleteFCMToken } from "@/services/fcm";
@@ -47,6 +49,11 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   if (!user) return null;
 
   const navItems = getNavItems(user.role, user);
+  /**
+   * Where the logo goes. The same helper "/" redirects through, so it is right for every role —
+   * and for an external creator, whose home is the ad tool rather than a dashboard.
+   */
+  const homeRoute = defaultRouteForUser(user);
 
   const handleLogout = async () => {
     if (user) {
@@ -112,7 +119,9 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
             >
               <div className="h-14 flex items-center px-4 border-b border-border justify-between shrink-0">
-                <BrandLogo className="h-9 w-auto" />
+                <Link to={homeRoute} onClick={handleNavClick} title="Go to dashboard" data-test="sidebar-logo">
+                  <BrandLogo className="h-9 w-auto" />
+                </Link>
                 <button onClick={onMobileClose} className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
                   <X size={18} />
                 </button>
@@ -182,19 +191,36 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
       transition={{ duration: 0.2, ease: "easeInOut" }}
       className="fixed left-0 top-0 h-screen bg-card border-r border-border flex flex-col z-30"
     >
-      <div className="h-16 flex items-center px-4 border-b border-border justify-between">
+      <div className={`h-16 flex items-center border-b border-border ${collapsed ? "flex-col justify-center gap-1 px-1" : "px-4 justify-between"}`}>
         <AnimatePresence mode="wait">
           {!collapsed ? (
             <motion.div key="full" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <BrandLogo className="h-9 w-auto" />
+              <Link to={homeRoute} title="Go to dashboard" data-test="sidebar-logo">
+                <BrandLogo className="h-9 w-auto" />
+              </Link>
             </motion.div>
           ) : (
-            <motion.button key="icon" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              onClick={toggle} title="Expand sidebar" className="mx-auto rounded-lg transition-transform hover:scale-105">
+            <motion.div key="icon" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="flex flex-col items-center gap-1">
               {/* 64px of sidebar: the letters only, and no tile — the mark carries its own
                   transparent background, so a framed box around it would be decoration. */}
-              <BrandLogo variant="mark" alt="DTS" className="h-5 w-auto" />
-            </motion.button>
+              <Link to={homeRoute} title="Go to dashboard" data-test="sidebar-logo"
+                className="rounded-lg transition-transform hover:scale-105">
+                <BrandLogo variant="mark" alt="DTS" className="h-5 w-auto" />
+              </Link>
+              {/*
+                The expander, as its own control.
+
+                The mark used to BE this button, and it was the only way to reopen a collapsed rail.
+                A logo that navigates cannot also be the expander, so rather than lose the way back
+                out of the collapsed state, the chevron gets its own three millimetres.
+              */}
+              <button onClick={toggle} title="Expand sidebar" aria-label="Expand sidebar"
+                data-test="sidebar-expand"
+                className="w-6 h-6 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+                <ChevronRight size={14} />
+              </button>
+            </motion.div>
           )}
         </AnimatePresence>
         {!collapsed && (

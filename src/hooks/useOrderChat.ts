@@ -116,6 +116,7 @@ export function useOrderChat({ chatId, identity, dbi = staffDb, onSent }: UseOrd
         chatId,
         senderId: identity.senderId,
         senderName: identity.senderName,
+        senderRole: identity.role,
         ...input,
       });
       onSent?.(messagePreview(input.type, input.text || "", input.fileName));
@@ -128,24 +129,44 @@ export function useOrderChat({ chatId, identity, dbi = staffDb, onSent }: UseOrd
 }
 
 /**
- * Unread counts for every room a staff member is on, keyed by assignment id.
+ * Every room this person is on.
  *
  * One listener for the whole page rather than one per card: a member with twenty jobs open should
  * cost twenty documents once, not twenty listeners that each re-read on every change.
+ *
+ * Scoped by `participants`, which is also what the sales member's route in depends on — a seller
+ * is put on the room when the work is assigned, so their client conversations arrive here without
+ * a second query against orders.
  */
-export function useOrderChatUnread(uid: string | undefined) {
+export function useMyOrderChats(uid: string | undefined) {
   const [rooms, setRooms] = useState<OrderChatDoc[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!uid) { setRooms([]); return; }
+    if (!uid) { setRooms([]); setLoading(false); return; }
+    setLoading(true);
     const q = query(collection(staffDb, ORDER_CHATS), where("participants", "array-contains", uid));
     const unsub = onSnapshot(
       q,
-      (snap) => setRooms(snap.docs.map((d) => ({ id: d.id, ...d.data() } as OrderChatDoc))),
-      (err) => { console.warn("[orderChat] unread listener failed", err); setRooms([]); },
+      (snap) => {
+        setRooms(snap.docs.map((d) => ({ id: d.id, ...d.data() } as OrderChatDoc)));
+        setLoading(false);
+      },
+      (err) => {
+        console.warn("[orderChat] room listener failed", err);
+        setRooms([]);
+        setLoading(false);
+      },
     );
     return unsub;
   }, [uid]);
+
+  return { rooms, loading };
+}
+
+/** The same rooms, reduced to what a job card needs: a badge and whether it is still open. */
+export function useOrderChatUnread(uid: string | undefined) {
+  const { rooms } = useMyOrderChats(uid);
 
   return useMemo(() => {
     const byAssignment: Record<string, { unread: number; status: string }> = {};

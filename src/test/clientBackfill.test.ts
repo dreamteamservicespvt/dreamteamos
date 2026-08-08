@@ -14,6 +14,14 @@ import type { Client, ClientWorkItem, WorkAssignment } from "@/types";
 /** In-memory stand-in for the `clients` collection. */
 const store = new Map<string, Client>();
 
+/**
+ * The `orders` collection, which the sweep reads once to attribute each job to its seller.
+ *
+ * It matters because "Sold by" used to be filled in from `assignment.assignedBy` — the tech person
+ * who handed the job out — and that name is what a sales member's own client list is now built on.
+ */
+const orders = new Map<string, Record<string, unknown>>();
+
 /** Writes actually committed, so a test can assert a no-op re-run touches nothing. */
 let commits = 0;
 
@@ -26,11 +34,15 @@ vi.mock("firebase/firestore", () => ({
     exists: () => store.has(ref.id),
     data: () => store.get(ref.id),
   }),
-  getDocs: async (ref: { name?: string }) => (
-    ref?.name === "clients"
-      ? { docs: [...store.entries()].map(([id, data]) => ({ id, data: () => data })) }
-      : { docs: [] }
-  ),
+  getDocs: async (ref: { name?: string }) => {
+    if (ref?.name === "clients") {
+      return { docs: [...store.entries()].map(([id, data]) => ({ id, data: () => data })) };
+    }
+    if (ref?.name === "orders") {
+      return { docs: [...orders.entries()].map(([id, data]) => ({ id, data: () => data })) };
+    }
+    return { docs: [] };
+  },
   updateDoc: async () => undefined,
   query: (...args: unknown[]) => args,
   where: (...args: unknown[]) => args,
@@ -82,7 +94,7 @@ const nameFor = () => "Ravi";
 /** Epoch seconds the backfill should stamp for a job finished on `yyyy-MM-dd`. */
 const secondsFor = (day: string) => Math.floor(Date.parse(`${day}T12:00:00`) / 1000);
 
-beforeEach(() => { store.clear(); commits = 0; });
+beforeEach(() => { store.clear(); orders.clear(); commits = 0; });
 
 describe("backfillClientsFromDeliveredWork", () => {
   it("imports delivered work that never reached Clients", async () => {
@@ -249,5 +261,95 @@ describe("backfillClientsFromDeliveredWork", () => {
     expect(commits).toBe(0);
     expect(second.clientsWritten).toBe(0);
     expect(second.alreadyPresent).toBe(2);
+  });
+});
+
+/**
+ * Whose customer is this?
+ *
+ * A sales member's own Clients page is a query on `soldByIds`, so getting this wrong does not
+ * produce a cosmetic error — it shows one member another member's customers, or hides their own.
+ */
+describe("attributing a delivered job to the person who sold it", () => {
+  const sale = (fields: Record<string, unknown> = {}) => ({
+    soldBy: "sales1", soldByName: "Ravi", amount: 1499, fromAd: true, ...fields,
+  });
+
+  it("takes the seller from the order, not the tech member who assigned the work", async () => {
+    orders.set("o1", sale());
+
+    await backfillClientsFromDeliveredWork([job({ orderId: "o1" })], nameFor);
+
+    const client = store.get("919876543210") as Client;
+    expect(client.works[0].soldBy).toBe("sales1");
+    expect(client.works[0].soldByName).toBe("Ravi");
+    // `admin1` is the assigner. It is the value this used to write, and it is the bug.
+    expect(client.works[0].soldBy).not.toBe("admin1");
+    expect(client.soldByIds).toEqual(["sales1"]);
+  });
+
+  it("repairs history that was written with the assigner's uid", async () => {
+    orders.set("o1", sale());
+    store.set("919876543210", {
+      phone: "+919876543210", phoneId: "919876543210", name: "Sharma Electronics",
+      works: [{
+        orderId: "o1", workAssignmentId: "a1", category: "promotional",
+        title: "Promotional Ad", billing: "one_time",
+        // What the old code wrote: the tech assigner, in a field called soldBy.
+        soldBy: "admin1", soldByName: "",
+        saleAmount: 999, fromAd: false, deliveredBy: "m1", deliveredByName: "Ravi",
+        deliveredAmount: 999, deliveredAt: { seconds: secondsFor("2026-07-15"), nanoseconds: 0 },
+      }],
+      workCount: 1, totalSaleAmount: 0, totalDeliveredAmount: 999,
+    } as unknown as Client);
+
+    const result = await backfillClientsFromDeliveredWork([job({ orderId: "o1" })], nameFor);
+
+    expect(result.reattributed).toBe(1);
+    expect(result.imported).toBe(0);
+    const client = store.get("919876543210") as Client;
+    expect(client.works[0].soldBy).toBe("sales1");
+    expect(client.soldByIds).toEqual(["sales1"]);
+    // Repairing attribution must not duplicate the job or move the money.
+    expect(client.works).toHaveLength(1);
+    expect(client.totalDeliveredAmount).toBe(999);
+  });
+
+  it("keeps both sellers when two of them sold to the same business", async () => {
+    orders.set("o1", sale({ soldBy: "sales1", soldByName: "Ravi" }));
+    orders.set("o2", sale({ soldBy: "sales2", soldByName: "Meera" }));
+
+    await backfillClientsFromDeliveredWork([
+      job({ id: "a1", orderId: "o1", completedDate: "2026-06-01" }),
+      job({ id: "a2", orderId: "o2", completedDate: "2026-07-01" }),
+    ], nameFor);
+
+    const client = store.get("919876543210") as Client;
+    expect(client.soldByIds?.sort()).toEqual(["sales1", "sales2"]);
+  });
+
+  /**
+   * Work created straight in Work Assign has no sale and no seller. Putting the tech assigner in
+   * here would hand a customer to somebody who never sold anything — and, worse, to a uid that a
+   * "my clients" query would happily match.
+   */
+  it("gives a directly-assigned job no seller at all", async () => {
+    await backfillClientsFromDeliveredWork([job({ orderId: undefined })], nameFor);
+
+    const client = store.get("919876543210") as Client;
+    expect(client.soldByIds).toEqual([]);
+  });
+
+  it("stays idempotent once attribution is right", async () => {
+    orders.set("o1", sale());
+    const jobs = [job({ orderId: "o1" })];
+    await backfillClientsFromDeliveredWork(jobs, nameFor);
+
+    commits = 0;
+    const second = await backfillClientsFromDeliveredWork(jobs, nameFor);
+
+    expect(commits).toBe(0);
+    expect(second.reattributed).toBe(0);
+    expect(second.alreadyPresent).toBe(1);
   });
 });

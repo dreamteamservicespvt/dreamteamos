@@ -2,6 +2,7 @@ import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "./firebase";
 import { sendNotification } from "./notifications";
 import { upsertClientOnWorkVerify } from "./clients";
+import { syncOrderChatWorkStatus } from "./orderChat";
 import { logTechActivity, type ActivityActor } from "./activityLog";
 import type { WorkAssignment } from "@/types";
 
@@ -33,6 +34,10 @@ export async function verifyAssignments(
         verifiedAt: serverTimestamp(),
         verifiedBy: verifierUid,
       });
+
+      // The client chat says "Delivered" from here on — for the seller as much as for the tech
+      // side, since "has it actually gone out?" is the question they field from the customer.
+      await syncOrderChatWorkStatus(assignment.id, "verified");
 
       await sendNotification({
         userId: assignment.assignedTo,

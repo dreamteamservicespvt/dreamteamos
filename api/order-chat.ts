@@ -47,13 +47,33 @@ const guestUid = (chatId: string) => `guest_${chatId}`;
 interface Room {
   businessName?: string;
   clientName?: string;
+  clientPhone?: string;
   uniqueId?: string;
   memberUid?: string;
   memberName?: string;
+  soldByUid?: string;
+  soldByName?: string;
+  orderId?: string;
   status?: string;
   participants?: string[];
   activeUsers?: string[];
+  clientReview?: { work?: number; service?: number } | null;
 }
+
+/** A score is one of five stars. Anything else is a browser that has been tampered with. */
+const star = (v: unknown): number => {
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) && n >= 1 && n <= 5 ? n : 5;
+};
+
+/**
+ * The clients collection is keyed by the customer's number, digits only.
+ *
+ * Duplicated from utils/phone.phoneLockId rather than imported — this file runs on Vercel's Node
+ * runtime and must not pull in the browser bundle's module graph. The input is already normalised
+ * (it was written by the app), so stripping non-digits is the whole of it.
+ */
+const phoneKey = (phone?: string): string => (phone || "").replace(/[^0-9]/g, "");
 
 /** Sends a push to one recipient, and writes the in-app row the bell reads. */
 async function alertUser(opts: {
@@ -168,6 +188,8 @@ async function homeFor(userId: string): Promise<string> {
       case "tech_team_leader": return "/team-leader/work-assign";
       case "tech_admin":
       case "main_admin": return "/tech-admin/work-assign";
+      // The seller is on these rooms now, and this is the page that lists them.
+      case "sales_member": return "/sales/client-chats";
       default: return "/";
     }
   } catch {
@@ -355,6 +377,126 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         link: kind === "call" && callDocId ? `${clientLink}?call=${callDocId}` : clientLink,
         callDocId,
       });
+      return res.status(200).json({ success: true });
+    }
+
+    // ── Where "ask about another ad" should send them ───────────────────────────────────────────
+    /**
+     * Resolved here, at the moment the button is drawn, rather than copied onto the room when the
+     * job was assigned.
+     *
+     * Sellers change handsets, and a number mirrored onto three hundred conversations months ago
+     * is three hundred dead ends nobody will notice until a customer complains that nobody
+     * answered. One read, always current. It also means a stranger holding the link learns nothing
+     * about our staff until they actually ask to be put in touch.
+     */
+    if (action === "enquiry-target") {
+      if (!(await isGuestOf(chatId, req.headers.authorization))) {
+        return res.status(403).json({ error: "forbidden" });
+      }
+      if (!room.soldByUid) return res.status(200).json({ phone: null, name: null });
+      try {
+        const seller = await adminDb.collection("users").doc(room.soldByUid).get();
+        const data = seller.data() || {};
+        const phone = String(data.businessWhatsapp || "").trim();
+        // An inactive seller's number is not somewhere to send a warm lead.
+        const usable = phone && data.isActive !== false ? phone : null;
+        return res.status(200).json({ phone: usable, name: usable ? (data.name || null) : null });
+      } catch {
+        return res.status(200).json({ phone: null, name: null });
+      }
+    }
+
+    // ── What the customer thought of the finished ad ────────────────────────────────────────────
+    /**
+     * The customer's browser has already written the review onto its own chat document — that is
+     * the copy that matters and the one their screen reads back. This mirrors it outward to the
+     * places staff work, and tells the two people who earned it.
+     *
+     * Mirroring is done here rather than in the browser because a guest can write to exactly one
+     * document — their own room — and must never be able to touch an order or a client record.
+     */
+    if (action === "submit-review") {
+      if (!(await isGuestOf(chatId, req.headers.authorization))) {
+        return res.status(403).json({ error: "forbidden" });
+      }
+
+      const work = star(req.body.work);
+      const service = star(req.body.service);
+      const comment = String(req.body.comment || "").slice(0, 500).trim();
+      const previous = room.clientReview || null;
+      const changed = !previous || previous.work !== work || previous.service !== service;
+
+      const review = {
+        work,
+        service,
+        ...(comment ? { comment } : {}),
+        submittedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+
+      // The room, again — the browser wrote it too, but a review that reached the server and not
+      // the room would be a review the customer cannot see they gave.
+      await roomRef.set({ clientReview: review }, { merge: true });
+
+      if (room.orderId) {
+        await adminDb.collection("orders").doc(room.orderId)
+          .set({ clientReview: review }, { merge: true })
+          .catch(() => { /* the order may have been purged; the review still stands */ });
+      }
+
+      /**
+       * Onto the customer's own record, so "what do they think of us?" is answerable before an
+       * upsell call rather than after it. Read-modify-write on an array keyed by assignment, since
+       * a second review from the same job is an edit, not another opinion.
+       */
+      const clientId = phoneKey(room.clientPhone);
+      if (clientId) {
+        try {
+          const clientRef = adminDb.collection("clients").doc(clientId);
+          const snap = await clientRef.get();
+          if (snap.exists) {
+            const rows: Record<string, unknown>[] = (snap.data()?.reviews as Record<string, unknown>[]) || [];
+            const entry = {
+              assignmentId: chatId,
+              orderId: room.orderId || null,
+              uniqueId: room.uniqueId || null,
+              work,
+              service,
+              comment: comment || null,
+              soldBy: room.soldByUid || null,
+              soldByName: room.soldByName || null,
+              deliveredBy: room.memberUid || null,
+              deliveredByName: room.memberName || null,
+              at: admin.firestore.Timestamp.now(),
+            };
+            const at = rows.findIndex((r) => r.assignmentId === chatId);
+            if (at >= 0) rows[at] = entry; else rows.push(entry);
+            await clientRef.set({ reviews: rows }, { merge: true });
+          }
+        } catch (err) {
+          console.error("[order-chat] could not put the review on the client record", err);
+        }
+      }
+
+      /**
+       * Told once per verdict, not once per keystroke.
+       *
+       * A customer nudging a comment about does not need to ring two phones again — only a score
+       * that actually moved is news. Both the maker and the seller hear it: one is being told how
+       * their work landed, the other whether this client is worth calling back next month.
+       */
+      if (changed) {
+        const stars = `${work}★ work · ${service}★ service`;
+        const audience = Array.from(new Set([room.memberUid, room.soldByUid].filter(Boolean) as string[]));
+        await Promise.all(audience.map(async (uid) => alertUser({
+          userId: uid,
+          type: work <= 3 || service <= 3 ? "client_review_low" : "client_review",
+          title: work <= 3 || service <= 3 ? "A client rated their ad poorly" : "A client reviewed their ad",
+          message: `${who} rated ${room.uniqueId || "their ad"} ${stars}.${comment ? ` "${comment}"` : ""}`,
+          link: await homeFor(uid),
+        })));
+      }
+
       return res.status(200).json({ success: true });
     }
 

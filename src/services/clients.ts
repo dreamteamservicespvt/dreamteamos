@@ -80,6 +80,9 @@ export async function upsertClientOnWorkVerify(params: {
             totalDeliveredAmount: (client.totalDeliveredAmount || 0) + (item.deliveredAmount || 0),
             workCount: (client.workCount || 0) + 1,
             salesAdminIds: Array.from(new Set([...(client.salesAdminIds || []), order.salesAdminId])),
+            // The seller keeps the customer. Two members who sold to the same business are both
+            // on this list, and both see them in their own Clients page.
+            soldByIds: Array.from(new Set([...(client.soldByIds || []), order.soldBy].filter(Boolean))),
             name: client.name || order.businessName || "",
             updatedAt: serverTimestamp(),
           });
@@ -101,6 +104,7 @@ export async function upsertClientOnWorkVerify(params: {
           totalDeliveredAmount: item.deliveredAmount || 0,
           workCount: 1,
           salesAdminIds: [order.salesAdminId],
+          soldByIds: order.soldBy ? [order.soldBy] : [],
           firstSoldBy: order.soldBy,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
@@ -120,10 +124,21 @@ export async function upsertClientOnWorkVerify(params: {
 }
 
 /**
- * Scoped clients query. Sales admins see only clients their team sold to (array-contains);
- * tech_admin / main_admin oversee all clients (bounded collection — one doc per delivered customer).
+ * Scoped clients query.
+ *
+ * A sales member sees the customers THEY sold to, and nobody else's — `soldByIds` is an array
+ * because two members can sell to the same business months apart and both keep it. Sales admins
+ * see everything their team sold; tech_admin / main_admin oversee all of it (a bounded collection,
+ * one document per delivered customer).
+ *
+ * Scoped as a query rather than filtered after the fetch, deliberately: this database runs on
+ * Firestore's free daily read budget, and reading nine hundred client documents to show a member
+ * their forty is how a whole company loses its afternoon.
  */
 export function clientsQuery(role: UserRole | undefined, uid: string | undefined): Query<DocumentData> {
+  if (role === "sales_member" && uid) {
+    return query(collection(db, "clients"), where("soldByIds", "array-contains", uid));
+  }
   if (role === "sales_admin" && uid) {
     return query(collection(db, "clients"), where("salesAdminIds", "array-contains", uid));
   }
@@ -234,8 +249,34 @@ export async function fetchSalesAdminIds(): Promise<string[]> {
   }
 }
 
-/** A delivered assignment, as the entry that goes on its client's record. */
-function workItemFromAssignment(assignment: WorkAssignment, deliveredByName?: string | null): ClientWorkItem {
+/** Just enough of the originating sale to attribute a delivered job to the person who sold it. */
+export interface SaleAttribution {
+  soldBy: string;
+  soldByName: string;
+  saleAmount: number;
+  fromAd: boolean;
+}
+
+/**
+ * A delivered assignment, as the entry that goes on its client's record.
+ *
+ * ── The bug the `sale` argument exists to fix ─────────────────────────────────────────────────
+ * Without it this fell back to `assignment.assignedBy` — the TECH person who handed the job out —
+ * and wrote it into a field called `soldBy`. Because completion runs before verification, and
+ * `upsertClientOnWorkVerify` skips an order it finds already recorded, that wrong name was the one
+ * that stuck: "Sold by" on the Clients page has been naming the tech admin for every order-backed
+ * job. Nobody noticed, because nobody had a reason to read that column until sales members were
+ * given their own client list — where the same field decides whose customers they are.
+ *
+ * Work created directly in Work Assign genuinely has no sale behind it. Those keep the assigner as
+ * a weak attribution and contribute nobody to `soldByIds`, which is correct: no sales member sold
+ * them, so no sales member should see them.
+ */
+function workItemFromAssignment(
+  assignment: WorkAssignment,
+  deliveredByName?: string | null,
+  sale?: SaleAttribution | null,
+): ClientWorkItem {
   return {
     orderId: assignment.orderId || `assignment_${assignment.id}`,
     workAssignmentId: assignment.id,
@@ -244,15 +285,36 @@ function workItemFromAssignment(assignment: WorkAssignment, deliveredByName?: st
       ? `${categoryLabel(assignment.category)} — ${assignment.businessName}`
       : categoryLabel(assignment.category),
     billing: categoryBilling(assignment.category),
-    soldBy: assignment.assignedBy || "",
-    soldByName: "",
-    saleAmount: assignment.totalPrice || 0,
-    fromAd: false,
+    soldBy: sale?.soldBy || assignment.assignedBy || "",
+    soldByName: sale?.soldByName || "",
+    saleAmount: sale?.saleAmount ?? (assignment.totalPrice || 0),
+    fromAd: sale?.fromAd ?? false,
     deliveredBy: assignment.assignedTo,
     deliveredByName: deliveredByName || null,
     deliveredAmount: assignment.totalPrice || 0,
     deliveredAt: deliveredAtStamp(assignment),
   };
+}
+
+/** The sale behind an assignment, or null when it was created directly in Work Assign. */
+async function saleBehind(orderId?: string | null): Promise<SaleAttribution | null> {
+  if (!orderId) return null;
+  try {
+    const snap = await getDoc(doc(db, "orders", orderId));
+    if (!snap.exists()) return null;
+    const order = snap.data() as Order;
+    return order.soldBy
+      ? {
+          soldBy: order.soldBy,
+          soldByName: order.soldByName || "",
+          saleAmount: order.amount || 0,
+          fromAd: !!order.fromAd,
+        }
+      : null;
+  } catch {
+    // One unreadable order must not stop a delivery being recorded — the Re-sync button repairs it.
+    return null;
+  }
 }
 
 export async function upsertClientOnWorkComplete(params: {
@@ -275,12 +337,16 @@ export async function upsertClientOnWorkComplete(params: {
   const phoneId = phone.replace(/\D/g, "");
   if (!phoneId) return;
 
+  // Read before the transaction, not inside it: a transaction may only read documents through its
+  // own `tx`, and this one is in another collection entirely.
+  const sale = await saleBehind(assignment.orderId);
+
   try {
     const clientRef = doc(db, "clients", phoneId);
 
     await runTransaction(db, async (tx) => {
       const clientSnap = await tx.get(clientRef);
-      const item = workItemFromAssignment(assignment, deliveredByName);
+      const item = workItemFromAssignment(assignment, deliveredByName, sale);
 
       if (clientSnap.exists()) {
         const client = clientSnap.data() as Client;
@@ -291,6 +357,9 @@ export async function upsertClientOnWorkComplete(params: {
           works: [...(client.works || []), item],
           totalDeliveredAmount: (client.totalDeliveredAmount || 0) + (item.deliveredAmount || 0),
           workCount: (client.workCount || 0) + 1,
+          ...(sale?.soldBy
+            ? { soldByIds: Array.from(new Set([...(client.soldByIds || []), sale.soldBy])) }
+            : {}),
           name: client.name || assignment.businessName || "",
           updatedAt: serverTimestamp(),
         });
@@ -308,12 +377,13 @@ export async function upsertClientOnWorkComplete(params: {
           socialMedia: null,
           works: [item],
           // Direct assignments carry no sale record, so sale value stays 0 until an order links up.
-          totalSaleAmount: 0,
+          totalSaleAmount: sale?.saleAmount || 0,
           totalDeliveredAmount: item.deliveredAmount || 0,
           workCount: 1,
           // Unattributed delivery → visible to every sales admin, so the upsell can be picked up.
           salesAdminIds,
-          firstSoldBy: assignment.assignedBy || "",
+          soldByIds: sale?.soldBy ? [sale.soldBy] : [],
+          firstSoldBy: sale?.soldBy || assignment.assignedBy || "",
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
@@ -339,6 +409,8 @@ export interface ClientBackfillResult {
   missingPhone: number;
   /** Client documents actually written. */
   clientsWritten: number;
+  /** Records whose sales attribution was wrong (the tech assigner) and has been corrected. */
+  reattributed: number;
 }
 
 /** A stamp is "the same" if it agrees to the minute — Firestore precision noise is not a change. */
@@ -384,7 +456,35 @@ export async function backfillClientsFromDeliveredWork(
     repaired: 0,
     missingPhone: 0,
     clientsWritten: 0,
+    reattributed: 0,
   };
+
+  /**
+   * Every order, once, so each delivered job can be attributed to the person who actually sold it.
+   *
+   * One collection read for the whole sweep — the alternative is a document read per job, which on
+   * eight hundred jobs is most of a day's free budget. It is also the repair for the bug described
+   * on `workItemFromAssignment`: history written before that fix has the tech assigner in
+   * `soldBy`, and every sales member's own Clients list is built from that field.
+   */
+  const saleByOrderId = new Map<string, SaleAttribution>();
+  try {
+    const snap = await getDocs(collection(db, "orders"));
+    snap.docs.forEach((d) => {
+      const o = d.data() as Order;
+      if (o.soldBy) {
+        saleByOrderId.set(d.id, {
+          soldBy: o.soldBy,
+          soldByName: o.soldByName || "",
+          saleAmount: o.amount || 0,
+          fromAd: !!o.fromAd,
+        });
+      }
+    });
+  } catch (err) {
+    // Attribution simply stays as it is. Everything else about the sweep still works.
+    console.error("[clients] backfill could not preload orders:", err);
+  }
 
   // Group by client, oldest first, so a client's work history reads in the order it happened.
   const ordered = [...delivered].sort((a, b) => (deliveredAtMs(a) ?? 0) - (deliveredAtMs(b) ?? 0));
@@ -434,7 +534,8 @@ export async function backfillClientsFromDeliveredWork(
 
     let changed = false;
     for (const a of items) {
-      const item = workItemFromAssignment(a, memberNameFor(a.assignedTo));
+      const sale = a.orderId ? saleByOrderId.get(a.orderId) || null : null;
+      const item = workItemFromAssignment(a, memberNameFor(a.assignedTo), sale);
       const at = positionOf.get(a.id);
 
       if (at === undefined) {
@@ -445,15 +546,43 @@ export async function backfillClientsFromDeliveredWork(
         continue;
       }
 
-      // Present already — but an import-time stamp needs correcting to the real delivery date.
+      // Present already — but two things about an old record can still be wrong.
+      let fixed = false;
+
+      // An import-time stamp needs correcting to the real delivery date.
       if (!sameStamp(works[at].deliveredAt, item.deliveredAt)) {
         works[at] = { ...works[at], deliveredAt: item.deliveredAt };
         result.repaired += 1;
-        changed = true;
-      } else {
-        result.alreadyPresent += 1;
+        fixed = true;
       }
+
+      // And the seller may be recorded as the tech person who handed the job out.
+      if (sale && (works[at].soldBy !== sale.soldBy || !works[at].soldByName)) {
+        works[at] = { ...works[at], soldBy: sale.soldBy, soldByName: sale.soldByName };
+        result.reattributed += 1;
+        fixed = true;
+      }
+
+      if (fixed) changed = true;
+      else result.alreadyPresent += 1;
     }
+
+    /**
+     * Who sold this customer anything, ever — recomputed from the merged list rather than added to.
+     *
+     * Only order-backed work contributes: `soldBy` on a directly-assigned job is the tech assigner,
+     * and putting them in here would show a tech admin's uid to a query that means "my clients".
+     */
+    const soldByIds = Array.from(new Set(
+      works
+        .filter((w) => w.orderId && saleByOrderId.has(w.orderId))
+        .map((w) => saleByOrderId.get(w.orderId!)!.soldBy)
+        .filter(Boolean),
+    ));
+    const existingSoldByIds = client?.soldByIds || [];
+    const soldByChanged = soldByIds.length !== existingSoldByIds.length
+      || soldByIds.some((uid) => !existingSoldByIds.includes(uid));
+    if (soldByChanged) changed = true;
 
     if (!changed) continue;
 
@@ -466,6 +595,7 @@ export async function backfillClientsFromDeliveredWork(
         works,
         workCount: works.length,
         totalDeliveredAmount,
+        soldByIds,
         name: client.name || first.businessName || first.clientName || "",
         updatedAt: serverTimestamp(),
       });
@@ -488,7 +618,8 @@ export async function backfillClientsFromDeliveredWork(
         workCount: works.length,
         // Unattributed delivery → visible to every sales admin, so the upsell can be picked up.
         salesAdminIds,
-        firstSoldBy: first.assignedBy || "",
+        soldByIds,
+        firstSoldBy: soldByIds[0] || first.assignedBy || "",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
