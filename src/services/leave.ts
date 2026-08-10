@@ -1,24 +1,33 @@
 import {
-  addDoc, collection, doc, onSnapshot, query, serverTimestamp, updateDoc, where,
+  addDoc, collection, doc, getDocs, onSnapshot, query, serverTimestamp, updateDoc, where,
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { recordAudit } from "./auditLog";
 import { sendNotification } from "./notifications";
 import { clearAttendanceOverride, isSunday, setAttendanceOverride } from "./techAttendance";
 import { payPeriodForDate, payPeriodForMonth, periodDates } from "@/utils/payrollEngine";
+import { splitLeaveDays, describeLeaveSplit } from "@/utils/leaveAllowance";
 import { DEFAULT_PAYROLL_CONFIG, type LeaveRequest, type LeaveStatus } from "@/types/payroll";
 import type { AppUser } from "@/types";
 
 /**
  * Leave requests.
  *
- * An approved leave writes an attendance override of `leave` for each working day it covers.
- * From there the salary engine takes over: the first `paidLeaveQuota` leave days in a pay period
- * are paid, everything beyond earns nothing — the employee still sees the day as Leave rather
- * than Absent, but it costs them a day's salary exactly as an absence would.
+ * Two paid leave days per PAY PERIOD (the 10th → 9th cycle, never the calendar month). Approving a
+ * request writes an attendance override for each working day it covers: `leave` for the days that
+ * fit inside the allowance, `absent` for the days beyond it.
  *
- * Approving and un-approving are symmetric: un-approving clears the same overrides it wrote, so
- * a mistaken approval leaves no trace on anyone's salary.
+ * ── Why the overflow is an absence rather than "unpaid leave" ─────────────────────────────────
+ * Both earn nothing, so the money is identical — but they are not the same fact about a person. A
+ * day recorded as leave reads as a day off that was granted; only an absence reads as a day the
+ * company did not agree to. The rule exists to draw that line, so it has to reach the attendance
+ * record and not merely the payslip, where an "unpaid leave" row could be mistaken for generosity.
+ *
+ * The allowance is measured across the whole period, not per request — see utils/leaveAllowance
+ * for why that distinction is what makes it an allowance at all.
+ *
+ * Approving and un-approving are symmetric: un-approving clears the same overrides it wrote,
+ * whichever kind they were, so a mistaken approval leaves no trace on anyone's salary.
  */
 
 /** Every date in an inclusive range. */
@@ -179,43 +188,97 @@ export async function submitLeaveRequest(
 }
 
 /**
- * Approve a request and mark those days as leave on the attendance record.
+ * Every working day this member already holds as approved LEAVE, across all their requests.
  *
- * The engine decides paid vs. unpaid from the period's quota — this only records *that* the
- * person was on leave, never whether it was paid.
+ * Deliberately only the days recorded as leave: a day already settled as an absence has been paid
+ * for once, and counting it against the allowance again would charge twice for one day off.
+ * `excludeRequestId` keeps a request from being measured against itself when it is re-approved.
+ */
+async function approvedLeaveDatesFor(memberId: string, excludeRequestId?: string): Promise<string[]> {
+  try {
+    const snap = await getDocs(query(
+      collection(db, "leave_requests"),
+      where("memberId", "==", memberId),
+      where("status", "==", "approved"),
+    ));
+    return snap.docs
+      .filter(d => d.id !== excludeRequestId)
+      .flatMap(d => {
+        const r = d.data() as LeaveRequest;
+        // Days this request itself booked as absence are not leave and never were.
+        const absent = new Set(r.absentDates || []);
+        return leaveWorkingDates(r.fromDate, r.toDate).filter(date => !absent.has(date));
+      });
+  } catch (err) {
+    // A failed lookup must not block an approval. The worst case is a generous split, which the
+    // payroll engine's own quota pass still catches at salary time.
+    console.error("[leave] could not read the member's approved leave:", err);
+    return [];
+  }
+}
+
+/**
+ * Approve a request, marking each day as either leave or an absence.
+ *
+ * ── Why the classification happens here ───────────────────────────────────────────────────────
+ * Two paid days per pay period; everything past them is an absence. That verdict has to reach the
+ * ATTENDANCE record, not just the payslip — an absence that shows as "Leave" on the calendar is
+ * indistinguishable from an approved day off, which is exactly the distinction the rule exists to
+ * make. So the split is decided at approval and written into the overrides themselves.
+ *
+ * The allowance is measured against the member's whole approved history in that period, so the
+ * third day off in a cycle is unpaid whether it arrives on its own or inside a batch.
  */
 export async function approveLeaveRequest(
   request: LeaveRequest,
   actor: { uid: string; name?: string },
 ): Promise<void> {
   const days = leaveWorkingDates(request.fromDate, request.toDate);
+  const split = splitLeaveDays({
+    requestedDates: days,
+    alreadyApprovedLeaveDates: await approvedLeaveDatesFor(request.memberId, request.id),
+  });
 
-  await Promise.all(days.map(date =>
-    setAttendanceOverride({ uid: request.memberId, name: request.memberName }, date, "leave", actor),
+  await Promise.all(split.days.map(day =>
+    setAttendanceOverride(
+      { uid: request.memberId, name: request.memberName },
+      day.date,
+      day.kind,
+      actor,
+    ),
   ));
 
   await updateDoc(doc(db, "leave_requests", request.id), {
     status: "approved" satisfies LeaveStatus,
+    // Recorded on the request so the decision is auditable, and so a later request measuring the
+    // allowance can tell which of these days were leave and which were already absence.
+    leaveDates: split.leaveDates,
+    absentDates: split.absentDates,
     reviewedBy: actor.uid,
     reviewedByName: actor.name || "",
     reviewedAt: serverTimestamp(),
   });
 
+  const range = `${request.fromDate}${request.toDate !== request.fromDate ? ` → ${request.toDate}` : ""}`;
   await recordAudit({
     action: "leave_approved",
     actor,
     target: { id: request.memberId, name: request.memberName },
     month: request.month,
-    summary: `Approved ${request.memberName}'s leave ${request.fromDate}${request.toDate !== request.fromDate ? ` → ${request.toDate}` : ""} (${days.length} day${days.length === 1 ? "" : "s"})`,
+    summary: `Approved ${request.memberName}'s leave ${range} — ${split.leaveDates.length} paid leave, ${split.absentDates.length} absence`,
     before: { status: request.status },
-    after: { status: "approved", days },
+    after: { status: "approved", leaveDates: split.leaveDates, absentDates: split.absentDates },
   });
 
   await sendNotification({
     userId: request.memberId,
     type: "leave_approved",
     title: "Leave Approved",
-    message: `Your leave for ${request.fromDate}${request.toDate !== request.fromDate ? ` to ${request.toDate}` : ""} has been approved.`,
+    // Said plainly and up front. Discovering on payday that half the week was unpaid is the
+    // complaint this whole rule has to avoid causing.
+    message: split.absentDates.length
+      ? `Your leave for ${request.fromDate}${request.toDate !== request.fromDate ? ` to ${request.toDate}` : ""} is approved. ${describeLeaveSplit(split)}`
+      : `Your leave for ${request.fromDate}${request.toDate !== request.fromDate ? ` to ${request.toDate}` : ""} has been approved.`,
     link: "/tech/salary",
   }).catch(() => undefined);
 }

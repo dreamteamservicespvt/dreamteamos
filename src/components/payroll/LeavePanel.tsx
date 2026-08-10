@@ -7,14 +7,15 @@ import {
   cancelLeaveRequest, leaveWorkingDates,
   submitLeaveRequest, watchMemberLeaveRequests,
 } from "@/services/leave";
+import { splitLeaveDays } from "@/utils/leaveAllowance";
 import type { LeaveRequest, LeaveStatus, PayrollConfig, SalaryComputation } from "@/types/payroll";
 
 /**
  * Leave for the employee: how much paid leave is left this cycle, a form to request more, and
  * the outcome of everything they've asked for.
  *
- * The form states the paid/unpaid split *before* submitting. Discovering on payday that leave
- * was unpaid is the single worst way to learn about a quota.
+ * The form states the leave/absence split *before* submitting. Discovering on payday that half a
+ * week was recorded as absence is the single worst way to learn about an allowance.
  */
 
 const STATUS_TONE: Record<LeaveStatus, string> = {
@@ -67,14 +68,36 @@ export default function LeavePanel({ month, config, computation }: LeavePanelPro
   const preview = useMemo(() => {
     if (!form.fromDate) return null;
     const to = form.toDate || form.fromDate;
-    if (to < form.fromDate) return { days: [], paid: 0, unpaid: 0, invalid: "End date is before the start date." };
+    if (to < form.fromDate) return { days: [], paid: 0, absent: 0, invalid: "End date is before the start date." };
 
     const days = leaveWorkingDates(form.fromDate, to);
-    if (days.length === 0) return { days, paid: 0, unpaid: 0, invalid: "That range is only Sundays — already days off." };
+    if (days.length === 0) return { days, paid: 0, absent: 0, invalid: "That range is only Sundays — already days off." };
 
-    const paid = Math.min(days.length, remaining);
-    return { days, paid, unpaid: days.length - paid, invalid: null };
-  }, [form.fromDate, form.toDate, remaining]);
+    /**
+     * Settled by the same rule the approval will use, so the number here is the number they get.
+     *
+     * Two sources, deliberately: days already approved on other requests, and — for the period
+     * being viewed — the engine's own count, which also catches leave an admin marked straight
+     * onto the attendance grid and which belongs to no request at all.
+     */
+    const split = splitLeaveDays({
+      requestedDates: days,
+      alreadyApprovedLeaveDates: requests
+        .filter(r => r.status === "approved")
+        .flatMap(r => r.leaveDates ?? leaveWorkingDates(r.fromDate, r.toDate)),
+      alreadyUsedByPeriod: { [month]: usedPaid },
+      quota,
+      cycleStartDay: config.payDayOfMonth,
+    });
+
+    return {
+      days,
+      paid: split.leaveDates.length,
+      absent: split.absentDates.length,
+      invalid: null,
+      split,
+    };
+  }, [form.fromDate, form.toDate, requests, month, usedPaid, quota, config.payDayOfMonth]);
 
   const handleSubmit = async () => {
     if (!user || !preview || preview.invalid || preview.days.length === 0) return;
@@ -176,17 +199,17 @@ export default function LeavePanel({ month, config, computation }: LeavePanelPro
           )}
           {preview && !preview.invalid && preview.days.length > 0 && (
             <div className={`rounded-xl border px-3.5 py-3 text-xs ${
-              preview.unpaid > 0 ? "border-warning/40 bg-warning/10" : "border-success/30 bg-success/10"
+              preview.absent > 0 ? "border-warning/40 bg-warning/10" : "border-success/30 bg-success/10"
             }`}>
               <p className="font-semibold text-foreground">
                 {preview.days.length} working day{preview.days.length === 1 ? "" : "s"} requested
               </p>
               <p className="mt-1 text-muted-foreground">
-                {preview.unpaid === 0
+                {preview.absent === 0
                   ? `All ${preview.paid} will be paid leave.`
                   : preview.paid === 0
-                    ? `You've used all ${quota} paid leaves this period, so ${preview.unpaid === 1 ? "this day is" : `all ${preview.unpaid} days are`} unpaid and deducted from your salary.`
-                    : `${preview.paid} paid, ${preview.unpaid} unpaid — the unpaid days are deducted from your salary.`}
+                    ? `You've used all ${quota} paid leave days for this pay period, so ${preview.absent === 1 ? "this day counts as an absence" : `all ${preview.absent} days count as absences`} — unpaid, and recorded as absent rather than leave.`
+                    : `${preview.paid} paid leave, then ${preview.absent} counted as ${preview.absent === 1 ? "an absence" : "absences"} — unpaid, and recorded as absent rather than leave.`}
               </p>
             </div>
           )}

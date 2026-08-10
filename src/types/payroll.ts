@@ -173,6 +173,18 @@ export interface LeaveRequest {
   kind: LeaveKind;
   reason: string;
   status: LeaveStatus;
+  /**
+   * How the approved days actually settled against the two-day allowance for their pay period.
+   *
+   * Written at approval (see `services/leave.approveLeaveRequest`), because the verdict has to be
+   * auditable and because a LATER request measuring the same allowance needs to know which of
+   * these days were leave — a day already recorded as an absence has been paid for once and must
+   * not consume the allowance a second time.
+   *
+   * Absent on requests approved before this rule existed; those simply have no absence days.
+   */
+  leaveDates?: string[];
+  absentDates?: string[];
   reviewedBy?: string;
   reviewedByName?: string;
   reviewedAt?: FirestoreTime;

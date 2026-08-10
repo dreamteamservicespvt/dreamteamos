@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { format, parse } from "date-fns";
 import {
   AlertTriangle, BadgeCheck, Banknote, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight,
-  Download, ExternalLink, FileText, IndianRupee, Loader2, Search, ShieldCheck, Undo2, Upload, Users, Wallet,
+  Download, ExternalLink, FileText, Film, IndianRupee, Loader2, Search, ShieldCheck, Undo2, Upload, Users, Wallet,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useFirestoreCollection } from "@/hooks/useFirestore";
@@ -16,6 +16,8 @@ import { setEmployeeId } from "@/services/employment";
 import { markSalaryPaid, undoSalaryPayment } from "@/services/payrollRun";
 import { downloadPayslip } from "@/utils/payslipPdf";
 import { currentPayMonth, deductionsFor, payPeriodLabel, shiftPayMonth } from "@/utils/payrollEngine";
+import { useTechProductivity } from "@/hooks/useTechProductivity";
+import { formatRatio, ratioBand, RATIO_BAND_STYLE, RATIO_TARGET, RATIO_LIMIT } from "@/utils/techProductivity";
 import type { AppUser } from "@/types";
 
 /**
@@ -59,6 +61,7 @@ export default function Payroll() {
 
   const { loading, rows, payDay, totals, period } = useMonthPayroll(members, month);
 
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter(row => {
@@ -76,6 +79,22 @@ export default function Payroll() {
 
   const paidCount = rows.filter(r => r.line?.paymentStatus === "completed").length;
   const totalPayable = filtered.reduce((sum, r) => sum + netOf(r), 0);
+  /**
+   * What each member actually produced this period, against what they cost.
+   *
+   * The payroll page showed only the cost, so "is this person worth it?" was a question nobody
+   * could answer from the one screen where it gets decided. Keyed on the SAME pay period the
+   * salary is calculated for, so the two halves of the ratio describe the same weeks.
+   */
+  const productivityMembers = useMemo(
+    () => rows.map(r => ({ uid: r.member.uid, pay: netOf(r) })),
+    [rows], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const productivityFilter = useMemo(
+    () => ({ mode: "month" as const, month, day: "", monthBasis: "cycle" as const }),
+    [month],
+  );
+  const { byUid: productivity } = useTechProductivity(productivityMembers, productivityFilter, period);
 
   // ── Actions ──────────────────────────────────────────────────────────────
 
@@ -190,15 +209,26 @@ export default function Payroll() {
   };
 
   const handleExport = () => {
-    const headers = ["Employee", "Monthly Salary", "Absent", "Half Days", "Unpaid Leave", "Deductions", "Net Payable", "Status", "Transaction ID"];
+    const headers = [
+      "Employee", "Monthly Salary", "Absent", "Half Days", "Unpaid Leave", "Deductions", "Net Payable",
+      // The productivity half. Exported alongside the cost because the comparison is the point —
+      // a spreadsheet of salaries with no output beside them is what this replaces.
+      "Videos Delivered", "Work Value", "Pay-to-Work %",
+      "Status", "Transaction ID",
+    ];
     const escape = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
     const csv = [
       headers.join(","),
       ...filtered.map(r => {
         const { total } = deductionsFor(r.computation);
+        const prod = productivity[r.member.uid];
         return [
           r.member.name, r.computation.monthlySalary, r.computation.absentDays, r.computation.halfDays,
           r.computation.unpaidLeaveDays, Math.round(total), Math.round(netOf(r)),
+          prod?.videos ?? 0, Math.round(prod?.workValue ?? 0),
+          // Blank rather than 0 when nothing was delivered: 0% is the best possible score, and a
+          // spreadsheet cannot show a tooltip explaining that it means the opposite.
+          prod?.ratioPercent === null || prod === undefined ? "" : prod.ratioPercent.toFixed(1),
           r.line?.paymentStatus === "completed" ? "Paid" : "Pending", r.line?.transactionId ?? "",
         ].map(escape).join(",");
       }),
@@ -324,6 +354,7 @@ export default function Payroll() {
               const isOpen = expanded === row.member.uid;
               const bankOk = isBankComplete(row.bank);
               const busy = busyUid === row.member.uid || uploadingFor === row.member.uid;
+              const prod = productivity[row.member.uid];
 
               return (
                 <div key={row.member.uid}>
@@ -340,6 +371,24 @@ export default function Payroll() {
                             ? <>{row.bank?.verified && <ShieldCheck className="h-2.5 w-2.5 shrink-0 text-success" />}{payoutSummary(row.bank)}</>
                             : <span className="text-warning">Payout details missing</span>}
                         </p>
+                        {/* What they produced, against what they cost — the reason this page can
+                            answer "is this person worth it?" rather than only "what do we owe?". */}
+                        {prod && (
+                          <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                            <span className="inline-flex items-center gap-1 text-muted-foreground">
+                              <Film className="h-2.5 w-2.5" />
+                              {prod.videos} {prod.videos === 1 ? "video" : "videos"}
+                            </span>
+                            <span className="font-mono tabular-nums text-muted-foreground">
+                              {formatCurrency(prod.workValue)}
+                            </span>
+                            <span data-test="pay-to-work-ratio"
+                              title={`${RATIO_BAND_STYLE[ratioBand(prod.ratioPercent)].label}${prod.inProgress ? " · so far this period" : ""}`}
+                              className={`rounded-full px-1.5 py-px font-semibold ${RATIO_BAND_STYLE[ratioBand(prod.ratioPercent)].className}`}>
+                              {formatRatio(prod.ratioPercent)}
+                            </span>
+                          </p>
+                        )}
                       </div>
                     </div>
 
@@ -394,6 +443,47 @@ export default function Payroll() {
                           <span className="font-display text-lg font-bold tabular-nums text-success">{formatCurrency(net)}</span>
                         </div>
                       </div>
+
+                      {/*
+                        Pay against output.
+
+                        Deliberately next to the salary calculation rather than on a dashboard
+                        somewhere: this is the screen where the decision about a person is actually
+                        taken, and a number that lives anywhere else is a number nobody reads at
+                        the moment it matters.
+                      */}
+                      {prod && (
+                        <div className="rounded-xl border border-border bg-card p-3.5" data-test="productivity-detail">
+                          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Work delivered this period
+                          </p>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">
+                              {prod.videos} {prod.videos === 1 ? "video" : "videos"} delivered
+                              {prod.inProgress && " so far"}
+                            </span>
+                            <span className="font-mono tabular-nums text-foreground">{formatCurrency(prod.workValue)}</span>
+                          </div>
+                          <div className="mt-1.5 flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">
+                              {prod.inProgress ? "Salary so far this period" : "Paid to them"}
+                            </span>
+                            <span className="font-mono tabular-nums text-foreground">{formatCurrency(prod.pay)}</span>
+                          </div>
+                          <div className="mt-2.5 flex items-center justify-between border-t border-border pt-2.5">
+                            <span className="text-sm font-semibold text-foreground">Pay-to-work</span>
+                            <span className={`rounded-full px-2 py-0.5 font-mono text-sm font-bold tabular-nums ${RATIO_BAND_STYLE[ratioBand(prod.ratioPercent)].className}`}>
+                              {formatRatio(prod.ratioPercent)}
+                            </span>
+                          </div>
+                          <p className="mt-1.5 text-[11px] text-muted-foreground">
+                            {prod.ratioPercent === null
+                              ? "Nothing delivered in this period yet, so there is no ratio to measure the salary against."
+                              : `${RATIO_BAND_STYLE[ratioBand(prod.ratioPercent)].label}. Target is ${RATIO_TARGET}% of the value delivered; past ${RATIO_LIMIT}% we are paying beyond the estimated margin.`}
+                            {prod.inProgress && " This period is still running, so both figures are counted to today."}
+                          </p>
+                        </div>
+                      )}
 
                       {/* Receipt */}
                       {row.line?.receiptUrl && (
