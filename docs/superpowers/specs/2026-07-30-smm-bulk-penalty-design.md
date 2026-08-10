@@ -1,7 +1,7 @@
 # Social Media Monthly, Bulk Ads, Custom Entry & Penalty — Design
 
 Date: 2026-07-30
-
+ 
 Four changes to the sale → order → work-assignment pipeline. They share one idea: an order
 carries what still has to be *done*, not just what was *sold*.
 
