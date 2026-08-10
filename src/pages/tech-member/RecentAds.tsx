@@ -19,6 +19,7 @@ import AIPlatformApp from '@/components/ai-platform/AIPlatformApp';
 import StaffOrderChat from '@/components/order-chat/StaffOrderChat';
 import { useOrderChatUnread } from '@/hooks/useOrderChat';
 import { syncOrderChatWorkStatus } from '@/services/orderChat';
+import { orderChatIdOf } from '@/utils/orderChatId';
 
 const STATUS_CONFIG: Record<string, {
   icon: React.ReactNode;
@@ -137,7 +138,7 @@ export default function RecentAds() {
       if (openAssignment.status === 'assigned' || openAssignment.status === 'editing') {
         updateDoc(doc(db, 'work_assignments', openAssignment.id), { status: 'in_progress' });
         // Same fact on the client chat — see MyWork, which opens the very same generator.
-        syncOrderChatWorkStatus(openAssignment.id, 'in_progress');
+        syncOrderChatWorkStatus(orderChatIdOf(openAssignment), 'in_progress');
       }
     }
     return () => {

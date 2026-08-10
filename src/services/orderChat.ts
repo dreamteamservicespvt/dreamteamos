@@ -15,6 +15,7 @@ import { isNative } from "@/utils/platform";
 import { COMPANY } from "@/utils/company";
 import { categoryLabel } from "@/utils/serviceCatalog";
 import { CLIENT_SENDER_ID } from "@/types/orderChat";
+import { orderChatIdOf } from "@/utils/orderChatId";
 import type { OrderChatDoc, OrderChatMessageType, OrderChatSenderRole } from "@/types/orderChat";
 import type { UserRole, WorkAssignmentStatus } from "@/types";
 
@@ -109,6 +110,11 @@ export interface CreateOrderChatInput {
   soldByUid?: string | null;
   soldByName?: string | null;
   orderId?: string | null;
+  /**
+   * Where the room lives, when that is not the assignment's own id — the order's id for work that
+   * came from a sale. See utils/orderChatId for why the two are no longer the same thing.
+   */
+  chatId?: string | null;
 }
 
 /**
@@ -132,7 +138,7 @@ export async function createOrderChat(input: CreateOrderChatInput): Promise<void
   if (soldByUid && soldByName) participantNames[soldByUid] = soldByName;
 
   try {
-    await setDoc(doc(db, ORDER_CHATS, assignmentId), {
+    await setDoc(doc(db, ORDER_CHATS, input.chatId || assignmentId), {
       assignmentId,
       ...(orderId ? { orderId } : {}),
       uniqueId,
@@ -143,6 +149,8 @@ export async function createOrderChat(input: CreateOrderChatInput): Promise<void
       accessCode,
       memberUid,
       memberName: memberName || "",
+      // Somebody is holding it, so the customer may be let in.
+      clientReady: true,
       ...(soldByUid ? { soldByUid, soldByName: soldByName || "" } : {}),
       participants,
       participantNames,
@@ -155,6 +163,142 @@ export async function createOrderChat(input: CreateOrderChatInput): Promise<void
     });
   } catch (err) {
     console.error("[orderChat] could not create room for", assignmentId, err);
+  }
+}
+
+/**
+ * The room for a sale, opened the moment the sale is taken.
+ *
+ * ── Why this exists at all ────────────────────────────────────────────────────────────────────
+ * Clients say what they want to the person who sold to them, immediately and usually in pieces —
+ * the logo over WhatsApp, the tagline in a voice note, the shop photo the next morning. None of
+ * that had anywhere to live until a tech member was assigned, sometimes days later, so it was
+ * retyped into a note, forwarded, or lost. Now it goes straight into the room the tech team will
+ * inherit, with the seller's name on every message.
+ *
+ * ── Why it is not `createOrderChat` ───────────────────────────────────────────────────────────
+ * `upsertOrderForSale` runs again on approval and on every subsequent edit of the sale, and
+ * `createOrderChat` does an unconditional `setDoc` — running it twice would blank the unread
+ * counters, the participant list, the status and the conversation's own metadata. This creates on
+ * the first call and, on every call after, patches only the descriptive fields a sale edit can
+ * legitimately change. Who is in the room, and how far anyone has read, is never touched.
+ *
+ * The room is deliberately NOT client-ready: `clientReady` stays unset until an assignment is
+ * attached, because a customer must not be dropped into a conversation nobody has been made
+ * responsible for answering.
+ */
+export async function ensureSaleOrderChat(input: {
+  /** The order's id — which is also the room's id for the whole life of this sale. */
+  orderId: string;
+  category?: string;
+  businessName?: string;
+  clientName?: string;
+  clientPhone?: string;
+  soldByUid?: string | null;
+  soldByName?: string | null;
+  /** The sales admin over this sale, so they can read it too. */
+  salesAdminUid?: string | null;
+}): Promise<void> {
+  const {
+    orderId, category, businessName, clientName, clientPhone, soldByUid, soldByName, salesAdminUid,
+  } = input;
+
+  const ref = doc(db, ORDER_CHATS, orderId);
+  /** Facts about the sale, which an edit can legitimately change after the room exists. */
+  const descriptive = {
+    orderId,
+    ...(category ? { category } : {}),
+    businessName: businessName || "",
+    ...(clientName ? { clientName } : {}),
+    ...(clientPhone ? { clientPhone } : {}),
+    ...(soldByUid ? { soldByUid, soldByName: soldByName || "" } : {}),
+  };
+
+  try {
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      await updateDoc(ref, descriptive);
+      return;
+    }
+
+    const participants = Array.from(new Set([soldByUid, salesAdminUid].filter(Boolean) as string[]));
+    const participantNames: Record<string, string> = {};
+    if (soldByUid && soldByName) participantNames[soldByUid] = soldByName;
+
+    await setDoc(ref, {
+      ...descriptive,
+      assignmentId: null,
+      // Both are filled in when the work is assigned; there is no job id to show yet.
+      uniqueId: "",
+      accessCode: "",
+      memberUid: "",
+      memberName: "",
+      // The team's own space until somebody is given the job. See the field's own note.
+      clientReady: false,
+      participants,
+      participantNames,
+      status: "open",
+      unreadCounts: {},
+      activeUsers: [],
+      createdAt: serverTimestamp(),
+    });
+  } catch (err) {
+    // A sale must never fail because its chat could not be opened. The room is created again by
+    // the next edit, and failing that by the assignment.
+    console.error("[orderChat] could not open the sale room for", orderId, err);
+  }
+}
+
+/**
+ * Hand the room over to the member who has just been given the work.
+ *
+ * The counterpart to `ensureSaleOrderChat`: the conversation already exists and already holds the
+ * client's brief, so the assignment joins it rather than starting a second one. This is also the
+ * moment the customer may be let in, which is why `clientReady` is set precisely here.
+ */
+export async function attachAssignmentToChat(input: {
+  chatId: string;
+  assignmentId: string;
+  accessCode: string;
+  uniqueId: string;
+  memberUid: string;
+  memberName?: string;
+  assignerUid: string;
+  assignerName?: string;
+  techAdminUid?: string | null;
+  /** Filled in only if the room somehow predates the sale-time creator. */
+  fallback?: Omit<CreateOrderChatInput, "assignmentId">;
+}): Promise<void> {
+  const {
+    chatId, assignmentId, accessCode, uniqueId, memberUid, memberName,
+    assignerUid, assignerName, techAdminUid,
+  } = input;
+
+  const joining = [memberUid, assignerUid, techAdminUid].filter(Boolean) as string[];
+  const names: Record<string, string> = {};
+  if (memberName) names[`participantNames.${memberUid}`] = memberName;
+  if (assignerName) names[`participantNames.${assignerUid}`] = assignerName;
+
+  try {
+    await updateDoc(doc(db, ORDER_CHATS, chatId), {
+      assignmentId,
+      accessCode,
+      uniqueId,
+      memberUid,
+      memberName: memberName || "",
+      // From here the customer may be given the link, and is never locked out again.
+      clientReady: true,
+      participants: arrayUnion(...joining),
+      ...names,
+      status: "open",
+      lockedAt: null,
+      workStatus: "assigned" as WorkAssignmentStatus,
+    });
+  } catch (err) {
+    // No room to attach to — a sale taken before this existed. Fall back to opening one outright,
+    // so the job still gets a chat rather than silently having none.
+    console.error("[orderChat] could not attach", assignmentId, "to", chatId, err);
+    if (input.fallback) await createOrderChat({ ...input.fallback, assignmentId, chatId });
   }
 }
 
@@ -175,6 +319,8 @@ export async function ensureOrderChat(input: {
     id: string; accessCode: string; uniqueId: string; assignedTo: string; assignedBy?: string;
     category?: string; businessName?: string; clientName?: string; businessWhatsapp?: string;
     orderId?: string; status?: WorkAssignmentStatus;
+    /** Where the room actually lives, for work whose chat opened with the sale. */
+    chatId?: string | null;
   };
   memberName?: string;
   /** Whoever is opening it — added to the room so they can read it. */
@@ -191,8 +337,16 @@ export async function ensureOrderChat(input: {
   soldBy?: { uid: string; name?: string } | null;
 }): Promise<void> {
   const { assignment: a, memberName, actorUid, actorName, techAdminUid, soldBy } = input;
+  /**
+   * The room's own id, which is NOT the assignment's for work that came from a sale.
+   *
+   * Getting this wrong is the expensive mistake: looking up the assignment id would find nothing,
+   * and this function's whole job is to create what it cannot find — so every order-backed job
+   * would quietly grow a second, empty room alongside the one holding the client's brief.
+   */
+  const chatId = orderChatIdOf(a);
   try {
-    const snap = await getDoc(doc(db, ORDER_CHATS, a.id));
+    const snap = await getDoc(doc(db, ORDER_CHATS, chatId));
     if (snap.exists()) {
       const room = snap.data() as OrderChatDoc;
       const known = room.participants || [];
@@ -215,11 +369,12 @@ export async function ensureOrderChat(input: {
       // Same for the work status: mirrored from now on, so old rooms learn it when next opened.
       if (a.status && room.workStatus !== a.status) patch.workStatus = a.status;
 
-      if (Object.keys(patch).length) await updateDoc(doc(db, ORDER_CHATS, a.id), patch);
+      if (Object.keys(patch).length) await updateDoc(doc(db, ORDER_CHATS, chatId), patch);
       return;
     }
     await createOrderChat({
       assignmentId: a.id,
+      chatId,
       accessCode: a.accessCode,
       uniqueId: a.uniqueId,
       category: a.category,
@@ -235,7 +390,7 @@ export async function ensureOrderChat(input: {
       orderId: a.orderId ?? null,
     });
     // The opener is not always the original assigner, and must not lock themselves out.
-    await updateDoc(doc(db, ORDER_CHATS, a.id), {
+    await updateDoc(doc(db, ORDER_CHATS, chatId), {
       participants: arrayUnion(actorUid),
       ...(actorName ? { [`participantNames.${actorUid}`]: actorName } : {}),
     });
@@ -258,6 +413,39 @@ async function writeSystemMessage(chatId: string, text: string): Promise<void> {
     lastMessageAt: serverTimestamp(),
     lastMessageBy: "system",
   });
+}
+
+/**
+ * Take the job back off a member, without ending the conversation.
+ *
+ * ── What this replaces ────────────────────────────────────────────────────────────────────────
+ * Unassigning used to LOCK the room, on the reasoning that reviving a conversation the customer
+ * had been told was over is worse than sending them a second link. That was the right call while
+ * a room belonged to an assignment: the next assignment was a different room, so there was nothing
+ * to go back to.
+ *
+ * It is the wrong call now that a room belongs to the ORDER. The thread holds the client's brief
+ * and everything they have sent, the customer already has the link, and the order is going straight
+ * back into the queue to be given to someone else. Closing it would throw away the very material
+ * the next member needs and make the client think the job had been abandoned.
+ *
+ * So the assignee is cleared and the room waits. `clientReady` is deliberately left alone — a
+ * customer already in their own thread must not be locked out of it because the work moved desks.
+ */
+export async function detachAssignmentFromChat(chatId: string, note?: string): Promise<void> {
+  try {
+    await updateDoc(doc(db, ORDER_CHATS, chatId), {
+      assignmentId: null,
+      memberUid: "",
+      memberName: "",
+      status: "open",
+      lockedAt: null,
+      workStatus: null,
+    });
+    if (note) await writeSystemMessage(chatId, note);
+  } catch (err) {
+    console.error("[orderChat] could not detach", chatId, err);
+  }
 }
 
 /**

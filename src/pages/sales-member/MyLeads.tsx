@@ -1144,8 +1144,8 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
   const [noteIdx, setNoteIdx] = useState<number | null>(null);
   /** The sale row whose penalty dialog is open. Keyed by order, since that is where it is stored. */
   const [penaltyFor, setPenaltyFor] = useState<{ order: Order; idx: number } | null>(null);
-  /** The client chat being read, by work-assignment id — which is also the chat's id. */
-  const [chatFor, setChatFor] = useState<string | null>(null);
+  /** The order whose client chat is being read — the order IS the room. */
+  const [chatFor, setChatFor] = useState<Order | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   const allSaleItems = lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
@@ -1536,13 +1536,14 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
                 had nowhere to put them — they were re-typed into an update note, or forwarded, or
                 lost. Posted here, everyone working on the ad has the original.
 
-                Only once the job has been assigned: the room is created with the assignment, and
-                there is nothing to open before that.
+                Available from the moment of sale, not from the assignment: the room opens with
+                the order precisely so the brief can be captured while the client is still on the
+                phone. The customer is not let in until somebody is given the job.
               */}
-              {order?.workAssignmentId && (
+              {order && (
                 <button
                   data-test="sale-open-chat"
-                  onClick={() => setChatFor(order.workAssignmentId!)}
+                  onClick={() => setChatFor(order)}
                   title="Open the client's chat with the team"
                   className="inline-flex items-center gap-1 h-7 px-2 rounded-md bg-primary/10 text-primary text-[11px] font-medium hover:bg-primary/20 transition-colors">
                   <MessageCircle size={11} /> Client chat
@@ -1633,7 +1634,7 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
 
       {chatFor && currentUser && (
         <SalesOrderChat
-          assignmentId={chatFor}
+          order={chatFor}
           soldBy={{ uid: currentUser.uid, name: currentUser.name }}
           onClose={() => setChatFor(null)}
         />

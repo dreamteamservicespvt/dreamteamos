@@ -15,6 +15,7 @@ import {
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import { logTechActivity, type ActivityActor } from "@/services/activityLog";
+import { ensureSaleOrderChat, deleteOrderChat } from "@/services/orderChat";
 import { normalizePhone, phoneLockId } from "@/utils/phone";
 import { isAdCategory, productionCategory } from "@/utils/serviceCatalog";
 import { releasedToTech } from "@/utils/saleDiscount";
@@ -190,6 +191,28 @@ export async function upsertOrderForSale(params: {
         deliveredAmount: null,
       });
     }
+
+    /**
+     * The client's chat, opened with the sale rather than with the assignment.
+     *
+     * This is the window the seller actually needs it in: the client sends their logo, their
+     * tagline and their change of mind to the person who sold to them, in pieces, over the days
+     * before anyone is given the job. All of it now lands in the room the tech team inherits.
+     *
+     * Team-only until somebody is assigned — see `clientReady`. Safe to call on every edit; it
+     * creates once and patches the descriptive fields thereafter. Awaited but never fatal: a sale
+     * must not fail because its chat could not be opened.
+     */
+    await ensureSaleOrderChat({
+      orderId: id,
+      category: item.category,
+      businessName: saleFields.businessName,
+      clientName: saleFields.clientName,
+      clientPhone: phone,
+      soldByUid: lead.assignedTo,
+      soldByName,
+      salesAdminUid: salesAdminId,
+    });
   } catch (err) {
     console.error("[orders] upsertOrderForSale failed:", err);
   }
@@ -623,6 +646,17 @@ export async function purgeOrders(orders: Order[], actor?: ActivityActor | null)
     if (n >= BATCH_LIMIT) { await batch.commit(); batch = writeBatch(db); n = 0; }
   }
   if (n > 0) await batch.commit();
+
+  /**
+   * The conversation goes with the order it was about.
+   *
+   * A room now opens with the sale and is keyed on the order, so erasing the order without it
+   * would leave an orphaned chat — reachable by anyone still holding the link, about a job that
+   * officially never happened. This is the one deletion in the pipeline that leaves nothing
+   * behind, and the chat is part of "nothing".
+   */
+  await Promise.all(orders.map((o) => deleteOrderChat(o.id)));
+
   return total;
 }
 

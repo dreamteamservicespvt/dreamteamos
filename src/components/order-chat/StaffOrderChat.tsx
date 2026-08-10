@@ -22,6 +22,7 @@ import { useOrderChat } from "@/hooks/useOrderChat";
 import { alertClient, ensureOrderChat, senderRoleOf } from "@/services/orderChat";
 import { guestUid } from "@/services/orderChatGuest";
 import { workStatusChip } from "@/utils/orderChatStatus";
+import { orderChatIdOf } from "@/utils/orderChatId";
 import type { WorkAssignment } from "@/types";
 
 export interface StaffOrderChatProps {
@@ -48,7 +49,11 @@ export default function StaffOrderChat({ assignment, memberName, canShare, soldB
   const [sharing, setSharing] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
 
-  const chatId = assignment.id;
+  /**
+   * The room, which is the ORDER's for work that came from a sale — the conversation the seller
+   * has been using since before this job existed. See utils/orderChatId.
+   */
+  const chatId = orderChatIdOf(assignment);
   const businessName = assignment.businessName || assignment.clientName;
   const uniqueId = assignment.uniqueId;
   const clientPhone = assignment.businessWhatsapp;
@@ -121,6 +126,14 @@ export default function StaffOrderChat({ assignment, memberName, canShare, soldB
     useOrderChat({ chatId, identity, onSent });
 
   const review = room?.clientReview || null;
+  /**
+   * Whether the customer may be brought in yet.
+   *
+   * A room now opens with the SALE, days before anyone is given the job, so it can exist with
+   * nobody holding it. Handing a client the link at that point drops them into a conversation no
+   * one has been made responsible for answering — so the share button waits for an assignee.
+   */
+  const assignable = !!(room?.memberUid || assignment.assignedTo);
 
   /**
    * Ring the customer. Voice only, deliberately.
@@ -167,7 +180,18 @@ export default function StaffOrderChat({ assignment, memberName, canShare, soldB
               assignment we were handed when a room predates the mirror.
             */}
             {(() => {
-              const chip = workStatusChip(room?.workStatus || assignment.status);
+              /**
+               * A room with nobody on it is "Not assigned", whatever the record we were handed
+               * says. The sales side opens these from a sale that has no assignment at all, and
+               * the stand-in it passes has to claim *some* status to satisfy the type — reading
+               * that would tell the seller the job is under way when nobody has touched it.
+               *
+               * Older rooms carry no `workStatus` but do have an assignee, so they still fall
+               * through to the assignment's own status rather than being mislabelled.
+               */
+              const chip = workStatusChip(
+                room && !room.memberUid ? undefined : (room?.workStatus || assignment.status),
+              );
               return (
                 <span data-test="staff-chat-work-status"
                   className="shrink-0 rounded-full bg-white/20 px-1.5 py-px text-[10px] font-semibold text-white">
@@ -194,7 +218,7 @@ export default function StaffOrderChat({ assignment, memberName, canShare, soldB
             <Phone className="h-5 w-5" />
           </button>
         )}
-        {canShare && (
+        {canShare && assignable && (
           <button onClick={() => setSharing(true)} title="Send the link to the client"
             className="shrink-0 rounded-full p-2 transition-colors hover:bg-white/15">
             <Share2 className="h-5 w-5" />
@@ -229,9 +253,13 @@ export default function StaffOrderChat({ assignment, memberName, canShare, soldB
             lockedNote="Work delivered — chat closed"
             onSend={send}
             emptyHint={
-              canShare
-                ? "Share the link with the client to start the conversation."
-                : "Say hello — the client can send photos, videos and details here."
+              // Nobody is on the job yet, so there is no link to share and no client in here to
+              // greet. What this room is FOR at this moment is the brief.
+              !assignable
+                ? "Put the client's brief here — their photos, logo, wording, anything they told you. Whoever is assigned the job sees all of it."
+                : canShare
+                  ? "Share the link with the client to start the conversation."
+                  : "Say hello — the client can send photos, videos and details here."
             }
           />
         </div>

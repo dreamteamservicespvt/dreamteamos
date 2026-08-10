@@ -22,7 +22,8 @@ import type { WorkAssignment, AppUser } from '@/types';
 import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from '@/types/aiPlatform';
 import { formatDateRangeLabel, isDateWithinRange, normalizeDateRange, parseQueryDate, parseQueryDateRange } from '@/utils/dateRange';
 import { revertOrderToAssigned, markOrderCompleted, revertOrderToUnassigned } from '@/services/orders';
-import { deleteOrderChat, lockOrderChat, reopenOrderChat } from '@/services/orderChat';
+import { deleteOrderChat, lockOrderChat, reopenOrderChat, detachAssignmentFromChat } from '@/services/orderChat';
+import { orderChatIdOf } from '@/utils/orderChatId';
 import { verifyAssignments } from '@/services/workVerify';
 import { reassignWork } from '@/services/workReassign';
 import DeadlineChip from '@/components/work/DeadlineChip';
@@ -223,6 +224,18 @@ export default function WorkReports() {
     }
   };
 
+  /**
+   * Where this job's conversation lives.
+   *
+   * Not the assignment id any more for work that came from a sale — the room opens with the order
+   * and the assignment joins it. See utils/orderChatId. These handlers are given an id rather than
+   * the record, so the record is looked back up here.
+   */
+  const chatIdFor = (assignmentId: string): string => {
+    const assignment = assignments.find(a => a.id === assignmentId);
+    return assignment ? orderChatIdOf(assignment) : assignmentId;
+  };
+
   const handleSetEditing = async (assignmentId: string, assignedTo: string) => {
     try {
       await updateDoc(doc(db, 'work_assignments', assignmentId), { status: 'editing' });
@@ -230,7 +243,7 @@ export default function WorkReports() {
       const orderId = assignments.find(a => a.id === assignmentId)?.orderId;
       if (orderId) await revertOrderToAssigned(orderId);
       // Work still in progress means the client may still need to say something about it.
-      await reopenOrderChat(assignmentId, undefined, "The team is making changes — this chat is open again.");
+      await reopenOrderChat(chatIdFor(assignmentId), undefined, "The team is making changes — this chat is open again.");
       await sendNotification({
         userId: assignedTo,
         type: 'work_editing',
@@ -250,7 +263,7 @@ export default function WorkReports() {
       // Undo edits → work is completed again, so the order is awaiting verify.
       const orderId = assignments.find(a => a.id === assignmentId)?.orderId;
       if (orderId) await markOrderCompleted(orderId);
-      await lockOrderChat(assignmentId);
+      await lockOrderChat(chatIdFor(assignmentId));
     } catch (error) {
       console.error('Failed to undo editing:', error);
     }
@@ -260,10 +273,25 @@ export default function WorkReports() {
     try {
       // A deleted assignment that came from an order sends its order back to the unassigned queue,
       // so the sale isn't silently lost — it can be reassigned, or the sales member can delete it.
-      const orderId = assignments.find(a => a.id === assignmentId)?.orderId;
+      const assignment = assignments.find(a => a.id === assignmentId);
+      const orderId = assignment?.orderId;
       await deleteDoc(doc(db, 'work_assignments', assignmentId));
-      // The job never existed, so neither should the client's chat about it.
-      await deleteOrderChat(assignmentId);
+      /**
+       * The room outlives the assignment when it belongs to the ORDER.
+       *
+       * The order is going back to the queue to be given to somebody else, and the conversation
+       * holds the client's brief and everything the seller collected before anyone was assigned —
+       * destroying it would throw away the very material the next member needs. Only a job with no
+       * sale behind it owns its room outright, and only that room goes with it.
+       */
+      if (assignment?.chatId) {
+        await detachAssignmentFromChat(
+          assignment.chatId,
+          'This job has gone back to the team queue and will be picked up by another member shortly.',
+        );
+      } else {
+        await deleteOrderChat(assignmentId);
+      }
       if (orderId) await revertOrderToUnassigned(orderId);
       setConfirmAction(null);
     } catch (error) {

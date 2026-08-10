@@ -18,7 +18,7 @@
  */
 import { useMemo, useState } from "react";
 import { collection, query, where } from "firebase/firestore";
-import { MessageCircle, Search, Loader2, Star, Clock, Hourglass } from "lucide-react";
+import { MessageCircle, Search, Loader2, Star, Clock } from "lucide-react";
 import { format } from "date-fns";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
@@ -50,8 +50,11 @@ function whenLabel(ms: number): string {
 /** One line in the list — a room, or a sale that has not become one yet. */
 interface ChatRow {
   key: string;
-  /** Present once the job has been assigned; absent means there is nothing to open. */
-  assignmentId?: string;
+  /**
+   * The room to open. Present for every sale — a chat now opens WITH the order, so there is no
+   * longer such a thing as a sale with nowhere to put the client's brief.
+   */
+  chatId: string;
   businessName: string;
   uniqueId?: string;
   category?: string;
@@ -63,6 +66,8 @@ interface ChatRow {
   review?: ClientReview | null;
   /** A room that exists but has not got this member on it yet — see `rows` for why. */
   joinable?: boolean;
+  /** The order behind the row, which is what the chat is opened with. */
+  order?: Order;
 }
 
 /**
@@ -89,10 +94,10 @@ export default function ClientChats() {
   const { data: orders, loading: ordersLoading } = useFirestoreQuery<Order>(ordersQuery, [user?.uid]);
 
   const [search, setSearch] = useState("");
-  const [openChat, setOpenChat] = useState<string | null>(null);
+  const [openChat, setOpenChat] = useState<ChatRow | null>(null);
 
   const rows = useMemo((): ChatRow[] => {
-    const byAssignment = new Map<string, OrderChatDoc>(rooms.map((r) => [r.id, r]));
+    const byRoomId = new Map<string, OrderChatDoc>(rooms.map((r) => [r.id, r]));
     const claimed = new Set<string>();
 
     /**
@@ -110,7 +115,9 @@ export default function ClientChats() {
     const fromOrders: ChatRow[] = orders
       .filter((o) => !o.deleted && o.status !== "deleted" && o.status !== "cancelled")
       .map((o) => {
-        const room = o.workAssignmentId ? byAssignment.get(o.workAssignmentId) : undefined;
+        // Keyed on the order for rooms opened at sale time, on the assignment for older ones.
+        const room = byRoomId.get(o.id)
+          || (o.workAssignmentId ? byRoomId.get(o.workAssignmentId) : undefined);
         if (room) claimed.add(room.id);
         const base = {
           key: `order_${o.id}`,
@@ -122,7 +129,8 @@ export default function ClientChats() {
         if (room) {
           return {
             ...base,
-            assignmentId: room.id,
+            chatId: room.id,
+            order: o,
             uniqueId: room.uniqueId,
             chip: workStatusChip(room.workStatus),
             unread: (user?.uid && room.unreadCounts?.[user.uid]) || 0,
@@ -135,7 +143,8 @@ export default function ClientChats() {
         if (o.workAssignmentId) {
           return {
             ...base,
-            assignmentId: o.workAssignmentId,
+            chatId: o.id,
+            order: o,
             chip: statusFromOrder(o.status),
             unread: 0,
             preview: "Open to join the conversation about this ad.",
@@ -144,11 +153,19 @@ export default function ClientChats() {
           };
         }
 
+        /**
+         * Sold, and nobody has picked it up — but the conversation is already open.
+         *
+         * This is the window the whole thing exists for: the client is telling the seller what
+         * they want RIGHT NOW, and it goes straight into the room the tech team will inherit.
+         */
         return {
           ...base,
+          chatId: o.id,
+          order: o,
           chip: NOT_ASSIGNED_CHIP,
           unread: 0,
-          preview: "Waiting for the tech team to pick this up.",
+          preview: "Add the client's brief, photos and details here — the tech team will see it.",
           at: tsMs(o.createdAt),
         };
       });
@@ -158,7 +175,15 @@ export default function ClientChats() {
       .filter((r) => !claimed.has(r.id))
       .map((r) => ({
         key: r.id,
-        assignmentId: r.id,
+        chatId: r.id,
+        order: {
+          id: r.orderId || r.id,
+          businessName: r.businessName || "",
+          clientName: r.clientName,
+          clientPhone: r.clientPhone,
+          category: r.category,
+          workAssignmentId: r.assignmentId,
+        } as unknown as Order,
         businessName: r.businessName || r.clientName || "Client",
         uniqueId: r.uniqueId,
         category: r.category,
@@ -242,16 +267,12 @@ export default function ClientChats() {
       ) : (
         <div className="space-y-2">
           {rows.map((r) => {
-            const openable = !!r.assignmentId;
             return (
               <button
                 key={r.key}
-                disabled={!openable}
                 data-test="client-chat-row"
-                onClick={() => r.assignmentId && setOpenChat(r.assignmentId)}
-                className={`w-full rounded-xl border border-border bg-card p-3 text-left transition-all md:p-4 ${
-                  openable ? "hover:border-primary/40 hover:shadow-md" : "cursor-default opacity-70"
-                }`}
+                onClick={() => setOpenChat(r)}
+                className="w-full rounded-xl border border-border bg-card p-3 text-left transition-all hover:border-primary/40 hover:shadow-md md:p-4"
               >
                 <div className="flex items-start gap-3">
                   <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/15 font-display font-bold text-primary">
@@ -292,17 +313,12 @@ export default function ClientChats() {
                           {r.review.work}/5 work · {r.review.service}/5 service
                         </span>
                       )}
-                      {!openable && (
-                        <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-                          <Hourglass className="h-2.5 w-2.5" /> No chat until it is assigned
-                        </span>
-                      )}
                       {r.joinable && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
                           Tap to join
                         </span>
                       )}
-                      {openable && r.at > 0 && (
+                      {r.at > 0 && (
                         <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
                           <Clock className="h-2.5 w-2.5" /> {format(new Date(r.at), "dd MMM, h:mm a")}
                         </span>
@@ -316,9 +332,9 @@ export default function ClientChats() {
         </div>
       )}
 
-      {openChat && user && (
+      {openChat?.order && user && (
         <SalesOrderChat
-          assignmentId={openChat}
+          order={openChat.order}
           soldBy={{ uid: user.uid, name: user.name }}
           onClose={() => setOpenChat(null)}
         />

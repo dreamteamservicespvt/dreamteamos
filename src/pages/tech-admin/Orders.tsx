@@ -26,6 +26,7 @@ import type { AppUser, Order, WorkAssignment } from "@/types";
 
 import { sortOrders, countOverdue, ORDER_SORT_OPTIONS, type OrderSortMode } from "@/utils/orderSort";
 import { hourBucketKey, hourBucketLabel } from "@/utils/orderHours";
+import { orderChatIdOf } from "@/utils/orderChatId";
 
 import {
   ORDER_QUEUE_TABS, assignmentsByOrderId, orderAssignee, orderQueueStatus, type OrderQueueStatus,
@@ -416,6 +417,9 @@ export default function Orders() {
           assignedTo: work.assignedTo,
           assignedToName: memberNameOf(work.assignedTo),
           orderId: order.id,
+          // The conversation belongs to the order and outlives this assignment, so the seller's
+          // material is still there for whoever picks the job up next.
+          chatId: orderChatIdOf(work),
           title: order.businessName || order.clientName,
           actor: user,
         });

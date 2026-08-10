@@ -58,8 +58,14 @@ export interface OrderChatMessage {
 
 export interface OrderChatDoc {
   id: string;
-  /** Doc id is the assignment id; kept as a field too so a query result reads on its own. */
-  assignmentId: string;
+  /**
+   * The work assignment this room belongs to, once there is one.
+   *
+   * No longer the doc id for order-backed work — see `utils/orderChatId`. A room now opens at the
+   * SALE, keyed by the order, and the assignment is attached to it later; keeping the field means
+   * a query result still reads on its own.
+   */
+  assignmentId?: string | null;
   orderId?: string | null;
   /** The readable job id (P001 / W002) — what the client is told the chat is about. */
   uniqueId: string;
@@ -71,9 +77,26 @@ export interface OrderChatDoc {
   clientPhone?: string;
   /** Mirrored from the assignment. Verified on the server; never sent to the client's browser. */
   accessCode: string;
-  /** The current assignee. The only person a client's call rings. */
+  /**
+   * The current assignee. The only person a client's call rings.
+   *
+   * Empty between the sale and the assignment, and again while a job sits back in the queue. A
+   * room now opens with the SALE so the seller can put the client's brief, photos and voice notes
+   * somewhere the tech team will find them — at which point nobody has been given the job yet.
+   */
   memberUid: string;
   memberName: string;
+  /**
+   * Whether the customer has ever been let into this room.
+   *
+   * Set the first time an assignment is attached, and never cleared. It is what keeps a
+   * conversation that starts at sale time private to the team — a customer must not land in a room
+   * where nobody has been made responsible for answering them.
+   *
+   * Not cleared on unassignment on purpose: once the client is in the conversation, taking the job
+   * off one member and giving it to another must not lock the customer out of their own thread.
+   */
+  clientReady?: boolean;
   /**
    * The sales member who sold this ad.
    *

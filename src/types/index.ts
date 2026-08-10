@@ -152,6 +152,15 @@ export interface WorkAssignment {
   // Link back to the originating Order (set when assigned from the Orders queue)
   orderId?: string;
   /**
+   * The client chat this job belongs to — the ORDER's id for work that came from a sale.
+   *
+   * Written at assignment time so the job attaches to the room the sales member has already been
+   * using since the sale, instead of opening an empty second one. Absent on direct Work Assign
+   * jobs and on every assignment made before this existed, both of which keep using their own id.
+   * Always read it through `utils/orderChatId.orderChatIdOf`, never directly.
+   */
+  chatId?: string | null;
+  /**
    * Which parts of a multi-deliverable order this member owns (social media month / bulk ads).
    * A member holding two tracks gets ONE assignment listing both, not two cards to keep straight.
    * Absent on ordinary single-ad work, which has no tracks to divide.

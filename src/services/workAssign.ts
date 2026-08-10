@@ -15,7 +15,10 @@ import { normalizePhone } from "@/utils/phone";
 import { categoryLabel } from "@/utils/serviceCatalog";
 import { findUnassignedOrderForPhone, revertOrderToUnassigned } from "@/services/orders";
 import { logTechActivity, type ActivityActor } from "@/services/activityLog";
-import { createOrderChat, lockOrderChat, deleteOrderChat } from "@/services/orderChat";
+import {
+  createOrderChat, attachAssignmentToChat, detachAssignmentFromChat, deleteOrderChat,
+} from "@/services/orderChat";
+import { orderChatIdOf } from "@/utils/orderChatId";
 import { ORDER_TRACKS } from "@/types";
 import type { Order, OrderTrack } from "@/types";
 
@@ -129,6 +132,15 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
     // a lone `realLocationProvided` on an ordinary job would be noise the member has to interpret.
     ...(characterPack ? { characterPack, realLocationProvided: realLocationProvided === true } : {}),
     ...(linkedOrder ? { orderId: linkedOrder.id } : {}),
+    /**
+     * Where this job's conversation lives.
+     *
+     * The order's own id, because the sales member has been using that room since the sale — the
+     * client's brief, their logo and their changes are already in it. Written explicitly rather
+     * than derived, so the hundreds of rooms already keyed on an assignment id keep working
+     * untouched. See utils/orderChatId.
+     */
+    ...(linkedOrder ? { chatId: linkedOrder.id } : {}),
     ...(linkedOrder?.promise ? { promise: linkedOrder.promise } : {}),
     ...(tracks?.length ? { tracks } : {}),
   });
@@ -145,8 +157,7 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
    * from, and until now that person had nowhere to put them. One place, everyone who is working on
    * the ad reading it.
    */
-  await createOrderChat({
-    assignmentId: ref.id,
+  const chatFields = {
     accessCode,
     uniqueId,
     category,
@@ -160,7 +171,28 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
     soldByUid: linkedOrder?.soldBy ?? null,
     soldByName: linkedOrder?.soldByName ?? null,
     orderId: linkedOrder?.id ?? null,
-  });
+  };
+
+  if (linkedOrder) {
+    // The room is already open and already holds whatever the seller has put in it. Join it.
+    await attachAssignmentToChat({
+      chatId: linkedOrder.id,
+      assignmentId: ref.id,
+      accessCode,
+      uniqueId,
+      memberUid: assignedTo,
+      memberName: assignedToName,
+      assignerUid,
+      assignerName,
+      techAdminUid,
+      // A sale taken before rooms opened at sale time has nothing to attach to.
+      fallback: { ...chatFields, chatId: linkedOrder.id },
+    });
+  } else {
+    // No sale behind this job, so nothing opened a room earlier — it starts here, on the
+    // assignment's own id, exactly as it always did.
+    await createOrderChat({ ...chatFields, assignmentId: ref.id });
+  }
 
   if (linkedOrder) {
     await updateDoc(doc(db, "orders", linkedOrder.id), {
@@ -228,6 +260,11 @@ export interface UnassignWorkInput {
   actor?: ActivityActor | null;
   /** The member's display name, so the feed reads as a name rather than a uid. */
   assignedToName?: string | null;
+  /**
+   * Where this job's chat lives — `orderChatIdOf(assignment)`. Defaults to the assignment's own id
+   * so a caller that has not been updated still points at the right room for older work.
+   */
+  chatId?: string | null;
 }
 
 /**
@@ -245,18 +282,21 @@ export interface UnassignWorkInput {
  */
 export async function unassignWork(input: UnassignWorkInput): Promise<{ returnedToQueue: boolean }> {
   const { assignmentId, assignedTo, orderId, title, actor, assignedToName } = input;
+  const chatId = input.chatId || assignmentId;
 
   // Order first: if this throws, the assignment is still on the member and the state stays
   // consistent. Deleting first could strand the order as "assigned" to work that no longer exists.
   if (orderId) await revertOrderToUnassigned(orderId);
   await deleteDoc(doc(db, "work_assignments", assignmentId));
   /**
-   * The room closes with the assignment, but is not destroyed: the client keeps everything that
-   * was said and sent. Work picked back up out of the queue becomes a NEW assignment with its own
-   * room and its own link, which is what the leader shares — the alternative, silently reviving a
-   * conversation the customer was told had ended, is worse than one more link.
+   * The conversation survives the assignment. The room belongs to the ORDER now, and the order is
+   * going straight back into the queue — so the client's brief, their logo and everything else in
+   * the thread is exactly what the next member needs. See `detachAssignmentFromChat`.
    */
-  await lockOrderChat(assignmentId, "This job has been returned to the team queue. This chat is now closed.");
+  await detachAssignmentFromChat(
+    chatId,
+    "This job has gone back to the team queue and will be picked up by another member shortly.",
+  );
 
   await sendNotification({
     userId: assignedTo,

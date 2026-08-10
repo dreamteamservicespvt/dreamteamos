@@ -59,6 +59,15 @@ interface Room {
   activeUsers?: string[];
   clientReview?: { work?: number; service?: number } | null;
   activeAt?: Record<string, number>;
+  /**
+   * Whether the customer may be let in yet.
+   *
+   * False between the sale — which is when the room now opens, so the seller has somewhere to put
+   * the client's brief — and the assignment, which is when somebody becomes responsible for
+   * answering. Absent on every room created before this existed, all of which were made at
+   * assignment time and are therefore already open to their customer.
+   */
+  clientReady?: boolean;
 }
 
 /**
@@ -276,6 +285,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // ── Open the room: the link is the credential ───────────────────────────────────────────────
     if (action === "open") {
+      /**
+       * A room exists from the moment the sale is taken, days before anybody is given the job.
+       *
+       * That window is the team's own: the seller is putting the client's brief, photos and voice
+       * notes somewhere the tech team will find them, and nobody has yet been made responsible for
+       * answering the customer. Handing out a token then would drop a client into a conversation
+       * where their question goes to no one — so entry waits for an assignment, which is what sets
+       * `clientReady`. It is never cleared afterwards, so a job moving between members cannot lock
+       * a customer out of a thread they are already in.
+       *
+       * Enforced here rather than in the page, because the token is the access.
+       */
+      if (room.clientReady === false) return res.status(404).json({ error: "not_found" });
+
       const token = await admin.auth().createCustomToken(guestUid(chatId), { orderChat: chatId });
       return res.status(200).json({
         token,

@@ -3,64 +3,92 @@
  *
  * Everything about the conversation itself is `StaffOrderChat` — there is deliberately no second
  * chat implementation for sales, because the whole value of putting the seller in the room is that
- * everyone is looking at the same thread. This is only the missing step in front of it: the sales
- * side reaches a chat through an *order*, which carries `workAssignmentId`, while the room is
- * addressed by the assignment itself. One document read turns one into the other.
+ * everyone is looking at the same thread.
  *
- * The read is done here rather than on the pages that launch it so neither My Leads nor the chats
- * list has to know that a chat id is an assignment id.
+ * ── Why it takes an order, not an assignment ──────────────────────────────────────────────────
+ * Because the seller gets here first. The room opens with the SALE so the client's brief, photos
+ * and voice notes have somewhere to go days before anyone is given the job, and at that point
+ * there is no assignment to look up at all. `StaffOrderChat` still wants a `WorkAssignment` — it
+ * reads the business name, the job id and the spec off it — so when the job has been assigned we
+ * fetch the real record, and when it has not we hand over a stand-in built from the order.
  */
 import { useEffect, useState } from "react";
 import { doc, getDoc } from "firebase/firestore";
-import { Loader2, Lock } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { db } from "@/services/firebase";
 import StaffOrderChat from "@/components/order-chat/StaffOrderChat";
-import type { WorkAssignment } from "@/types";
+import type { Order, WorkAssignment } from "@/types";
 
 export interface SalesOrderChatProps {
-  /** The work assignment behind the sale — `order.workAssignmentId`. Also the chat's id. */
-  assignmentId: string;
-  /** The seller, so a room created before sales joined these conversations learns who sold it. */
+  /** The order behind the sale. Its id is the room's id — see utils/orderChatId. */
+  order: Pick<Order, "id" | "businessName" | "clientName" | "clientPhone" | "category"> & {
+    workAssignmentId?: string | null;
+  };
+  /** The seller, so a room that started before sales joined these conversations learns who sold it. */
   soldBy?: { uid: string; name?: string } | null;
   onClose: () => void;
 }
 
-export default function SalesOrderChat({ assignmentId, soldBy, onClose }: SalesOrderChatProps) {
+/**
+ * A sale with nobody on it yet, in the shape the chat expects.
+ *
+ * `chatId` is the load-bearing field: it is what points every read and write at the order's room
+ * rather than at a work assignment that does not exist. The rest is what the header renders.
+ */
+function placeholderAssignment(order: SalesOrderChatProps["order"]): WorkAssignment {
+  return {
+    id: order.id,
+    chatId: order.id,
+    orderId: order.id,
+    assignedTo: "",
+    assignedBy: "",
+    businessName: order.businessName,
+    clientName: order.clientName,
+    businessWhatsapp: order.clientPhone,
+    category: order.category,
+    uniqueId: "",
+    accessCode: "",
+    displayTitle: order.businessName || "Client chat",
+    status: "assigned",
+    sessions: [],
+    totalDurationSeconds: 0,
+    clipCount: 0,
+    includesEndCredits: false,
+    duration: "",
+    pricePerUnit: 0,
+    totalPrice: 0,
+    date: "",
+    assignedAt: null,
+    createdAt: null,
+  } as unknown as WorkAssignment;
+}
+
+export default function SalesOrderChat({ order, soldBy, onClose }: SalesOrderChatProps) {
   const [assignment, setAssignment] = useState<WorkAssignment | null>(null);
-  const [gone, setGone] = useState(false);
 
   useEffect(() => {
     let alive = true;
     setAssignment(null);
-    setGone(false);
-    getDoc(doc(db, "work_assignments", assignmentId))
+
+    // Nobody is on it yet — the room still exists, opened by the sale.
+    if (!order.workAssignmentId) {
+      setAssignment(placeholderAssignment(order));
+      return () => { alive = false; };
+    }
+
+    getDoc(doc(db, "work_assignments", order.workAssignmentId))
       .then((snap) => {
         if (!alive) return;
-        if (snap.exists()) setAssignment({ id: snap.id, ...snap.data() } as WorkAssignment);
-        else setGone(true);
+        // A job taken back off a member leaves the order — and its conversation — behind, so a
+        // missing assignment is the not-assigned case again rather than a dead end.
+        setAssignment(snap.exists()
+          ? ({ id: snap.id, ...snap.data() } as WorkAssignment)
+          : placeholderAssignment(order));
       })
-      .catch(() => { if (alive) setGone(true); });
-    return () => { alive = false; };
-  }, [assignmentId]);
+      .catch(() => { if (alive) setAssignment(placeholderAssignment(order)); });
 
-  if (gone) {
-    return (
-      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-2 bg-background px-8 text-center">
-        <Lock className="h-7 w-7 text-muted-foreground" />
-        <p className="text-sm font-semibold text-foreground">This chat is no longer available</p>
-        {/* The honest reason, because it is the one the member can act on: work taken back off a
-            member is deleted outright, and the job gets a new room when it is assigned again. */}
-        <p className="max-w-xs text-xs text-muted-foreground">
-          The job behind it was unassigned or removed. It will have a new chat once the tech team
-          picks it up again.
-        </p>
-        <button onClick={onClose}
-          className="mt-2 rounded-lg border border-border px-4 py-2 text-xs font-medium text-foreground transition-colors hover:bg-accent">
-          Back
-        </button>
-      </div>
-    );
-  }
+    return () => { alive = false; };
+  }, [order.id, order.workAssignmentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!assignment) {
     return (
@@ -74,7 +102,8 @@ export default function SalesOrderChat({ assignmentId, soldBy, onClose }: SalesO
     <StaffOrderChat
       assignment={assignment}
       // The seller is one of the two people who can sensibly hand the client their link — they are
-      // the one already in a WhatsApp conversation with them.
+      // already in a WhatsApp conversation with them. The button itself still waits until somebody
+      // has been given the job; see `assignable` in StaffOrderChat.
       canShare
       soldBy={soldBy}
       onClose={onClose}

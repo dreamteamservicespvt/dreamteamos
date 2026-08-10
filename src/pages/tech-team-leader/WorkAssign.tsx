@@ -289,7 +289,9 @@ export default function TeamLeaderWorkAssign() {
       if (assignedMember) { setWaReq({ member: assignedMember, message }); setWaOpen(true); }
 
       setClientChat({
-        chatId: assignmentId,
+        // The order's room when the job came from a sale — that is where the seller has already
+        // been putting the client's brief. See utils/orderChatId.
+        chatId: sourceOrder?.id || assignmentId,
         businessName: form.businessName,
         uniqueId,
         category: form.category,

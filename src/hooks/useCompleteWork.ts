@@ -5,6 +5,7 @@ import { db } from "@/services/firebase";
 import { sendNotification, notifyTechTeamLeaders } from "@/services/notifications";
 import { markOrderCompleted } from "@/services/orders";
 import { lockOrderChat } from "@/services/orderChat";
+import { orderChatIdOf } from "@/utils/orderChatId";
 import { upsertClientOnWorkComplete } from "@/services/clients";
 import { useAuthStore } from "@/store/authStore";
 import { useToast } from "@/hooks/use-toast";
@@ -108,7 +109,7 @@ export function useCompleteWork() {
       //
       // `delivered` is what invites the review: work handed back to the queue also locks a chat,
       // and only one of those two is a finished ad worth asking the customer about.
-      await lockOrderChat(assignment.id, undefined, { delivered: true });
+      await lockOrderChat(orderChatIdOf(assignment), undefined, { delivered: true });
 
       // The customer now has something delivered, so they become an upsell target immediately —
       // including for work assigned directly (no order), which never reached Clients before.

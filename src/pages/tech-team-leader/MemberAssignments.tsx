@@ -17,7 +17,8 @@ import RequirementsShareModal from '@/components/work/RequirementsShareModal';
 import ShareChatModal from '@/components/order-chat/ShareChatModal';
 import StaffOrderChat from '@/components/order-chat/StaffOrderChat';
 import SaleDeletedBanner from '@/components/work/SaleDeletedBanner';
-import { deleteOrderChat, ensureOrderChat, lockOrderChat, reopenOrderChat } from '@/services/orderChat';
+import { deleteOrderChat, ensureOrderChat, lockOrderChat, reopenOrderChat, detachAssignmentFromChat } from '@/services/orderChat';
+import { orderChatIdOf } from '@/utils/orderChatId';
 import { useOrderChatUnread } from '@/hooks/useOrderChat';
 import { buildAssignmentRequirementsMessage } from '@/utils/adRequirement';
 import { getCharacterPack } from '@/services/characterPacks';
@@ -210,11 +211,21 @@ export default function TeamLeaderMemberAssignments() {
     }
   };
 
+  /**
+   * Where this job's conversation lives — the ORDER's room for work that came from a sale, so the
+   * seller's material carries over. See utils/orderChatId. Looked back up from the id because
+   * these handlers are given an id rather than the record.
+   */
+  const chatIdFor = (assignmentId: string): string => {
+    const assignment = allAssignments.find(a => a.id === assignmentId);
+    return assignment ? orderChatIdOf(assignment) : assignmentId;
+  };
+
   const handleSetEditing = async (assignmentId: string, assignedTo: string) => {
     try {
       await updateDoc(doc(db, 'work_assignments', assignmentId), { status: 'editing' });
       // Work still in progress means the client may still need to say something about it.
-      await reopenOrderChat(assignmentId, undefined, 'The team is making changes — this chat is open again.');
+      await reopenOrderChat(chatIdFor(assignmentId), undefined, 'The team is making changes — this chat is open again.');
       await sendNotification({
         userId: assignedTo,
         type: 'work_editing',
@@ -231,7 +242,7 @@ export default function TeamLeaderMemberAssignments() {
   const handleUndoEditing = async (assignmentId: string) => {
     try {
       await updateDoc(doc(db, 'work_assignments', assignmentId), { status: 'completed' });
-      await lockOrderChat(assignmentId);
+      await lockOrderChat(chatIdFor(assignmentId));
     } catch (error) {
       console.error('Failed to undo editing:', error);
     }
@@ -256,9 +267,21 @@ export default function TeamLeaderMemberAssignments() {
 
   const handleDelete = async (assignmentId: string) => {
     try {
+      const assignment = allAssignments.find(a => a.id === assignmentId);
       await deleteDoc(doc(db, 'work_assignments', assignmentId));
-      // The job never existed, so neither should the client's chat about it.
-      await deleteOrderChat(assignmentId);
+      /**
+       * A room that belongs to the ORDER outlives the assignment: the order goes back to the queue
+       * and the conversation holds the client's brief and whatever the seller collected before
+       * anyone was assigned. Only a job with no sale behind it owns its room outright.
+       */
+      if (assignment?.chatId) {
+        await detachAssignmentFromChat(
+          assignment.chatId,
+          'This job has gone back to the team queue and will be picked up by another member shortly.',
+        );
+      } else {
+        await deleteOrderChat(assignmentId);
+      }
       setConfirmAction(null);
     } catch (error) {
       console.error('Failed to delete assignment:', error);
@@ -851,7 +874,7 @@ export default function TeamLeaderMemberAssignments() {
 
       {shareChatFor && (
         <ShareChatModal
-          chatId={shareChatFor.id}
+          chatId={orderChatIdOf(shareChatFor)}
           businessName={shareChatFor.businessName || shareChatFor.clientName}
           uniqueId={shareChatFor.uniqueId}
           category={shareChatFor.category}

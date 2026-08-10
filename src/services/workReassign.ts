@@ -2,6 +2,7 @@ import { deleteField, doc, serverTimestamp, updateDoc } from "firebase/firestore
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import { reopenOrderChat } from "@/services/orderChat";
+import { orderChatIdOf } from "@/utils/orderChatId";
 import { logTechActivity, type ActivityActor } from "@/services/activityLog";
 import type { WorkAssignment } from "@/types";
 
@@ -59,7 +60,7 @@ export async function reassignWork(
    * means the client has something more to say — and calls follow `memberUid`, so this is also what
    * stops the customer ringing the person who no longer holds the job.
    */
-  await reopenOrderChat(assignment.id, { uid: newMember.uid, name: newMember.name });
+  await reopenOrderChat(orderChatIdOf(assignment), { uid: newMember.uid, name: newMember.name });
 
   const title = assignment.businessName || assignment.clientName || assignment.displayTitle || "work";
 
