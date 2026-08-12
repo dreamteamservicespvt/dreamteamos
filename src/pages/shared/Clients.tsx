@@ -84,16 +84,6 @@ export default function Clients() {
   const canManage = user?.role === "sales_admin" || user?.role === "main_admin";
   /** Tech side owns delivery, so they're the ones who can pull delivered work into Clients. */
   const canImport = user?.role === "tech_admin" || user?.role === "main_admin";
-  /**
-   * A sales member sees the customers they sold to, and only those (see `clientsQuery`).
-   *
-   * They can still EDIT what is on the record — the email they were given, the logo, the Instagram
-   * handle. That is the whole point of the page for them: two members who have both sold to a
-   * business are looking at one document, so whatever either of them learns is immediately in
-   * front of the other and in front of the sales admin. What they cannot do is hand the client to
-   * someone else or run the delivered-work import, both of which are an admin's call.
-   */
-  const isSalesMember = user?.role === "sales_member";
 
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
@@ -202,12 +192,8 @@ export default function Clients() {
         <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-medium text-primary">
           <Contact className="w-3 h-3" /> Single customer view
         </div>
-        <h1 className="text-xl md:text-2xl font-bold text-foreground">{isSalesMember ? "My Clients" : "Clients"}</h1>
-        <p className="text-xs md:text-sm text-muted-foreground mt-1">
-          {isSalesMember
-            ? "Every customer you've sold to and we've delivered for — what they bought, what they're missing, and what they said about it. Anything you add here is visible to your sales admin and to anyone else who has sold to them."
-            : "Every customer we've delivered to — what they bought, what they're missing, and their reviews."}
-        </p>
+        <h1 className="text-xl md:text-2xl font-bold text-foreground">Clients</h1>
+        <p className="text-xs md:text-sm text-muted-foreground mt-1">Every customer we've delivered to — what they bought, what they're missing, and their reviews.</p>
       </div>
 
       {/* Import delivered work — a one-off sweep for jobs finished before clients were recorded
@@ -287,24 +273,7 @@ export default function Clients() {
           {clients.length === 0 ? (
             <>
               <p className="text-lg font-medium">No clients yet</p>
-              <p className="text-sm">
-                {isSalesMember
-                  ? "A client you sold to appears here once the tech team has delivered their ad."
-                  : "Clients appear here once their work is delivered and verified."}
-              </p>
-              {/*
-                Said out loud, because the alternative is a member concluding the page is broken.
-
-                Sales attribution on client records is filled in by the one-time re-sync on the
-                admin's copy of this page. Until somebody runs it, a member who has delivered forty
-                customers sees exactly this screen, and has no way of knowing why.
-              */}
-              {isSalesMember && (
-                <p className="mx-auto mt-3 max-w-md rounded-xl border border-border/70 bg-muted/30 px-3 py-2 text-xs">
-                  Sold to clients already? Ask your admin to press <strong className="text-foreground">Re-sync</strong> on
-                  their Clients page once — it is what files past deliveries under the person who sold them.
-                </p>
-              )}
+              <p className="text-sm">Clients appear here once their work is delivered and verified.</p>
             </>
           ) : (
             // There *are* clients — the filter just excluded them. Say so, or this reads as data loss.

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, Timestamp,
@@ -107,6 +108,29 @@ export default function MyLeads() {
   const [salesStatus, setSalesStatus] = useState<string>("all");
   const [expandedNotes, setExpandedNotes] = useState<string | null>(null);
   const [expandedSale, setExpandedSale] = useState<string | null>(null);
+
+  /**
+   * Arriving from an upsell in My Clients.
+   *
+   * The member has already chosen the client and what they are selling them; this opens that
+   * lead's sale form on that category so the journey is one continuous act rather than "now go and
+   * find them again in a list of four hundred". The parameters are cleared once used, so a refresh
+   * — or Back into this entry — does not reopen a form they deliberately closed.
+   */
+  const [leadParams, setLeadParams] = useSearchParams();
+  const upsellRequest = {
+    leadId: leadParams.get("lead"),
+    category: leadParams.get("category") || undefined,
+    wantsSale: leadParams.get("sale") === "1",
+  };
+  useEffect(() => {
+    if (!upsellRequest.leadId || !upsellRequest.wantsSale) return;
+    if (!leads.some(l => l.id === upsellRequest.leadId)) return;  // still loading, or not theirs
+    setExpandedSale(upsellRequest.leadId);
+    const next = new URLSearchParams(leadParams);
+    next.delete("sale");
+    setLeadParams(next, { replace: true });
+  }, [upsellRequest.leadId, upsellRequest.wantsSale, leads, leadParams, setLeadParams]);
   const [showCustomModal, setShowCustomModal] = useState(false);
   const [duplicateLeadIds, setDuplicateLeadIds] = useState<Set<string>>(new Set());
   const [dupLoading, setDupLoading] = useState(true);
@@ -664,6 +688,7 @@ export default function MyLeads() {
                     expandedNotes={expandedNotes}
                     setExpandedNotes={setExpandedNotes}
                     expandedSale={expandedSale}
+                    upsellCategory={upsellRequest.category}
                     setExpandedSale={setExpandedSale}
                     ordersById={ordersById}
                   />
@@ -799,6 +824,7 @@ export default function MyLeads() {
                     expandedNotes={expandedNotes}
                     setExpandedNotes={setExpandedNotes}
                     expandedSale={expandedSale}
+                    upsellCategory={upsellRequest.category}
                     setExpandedSale={setExpandedSale}
                     ordersById={ordersById}
                   />
@@ -826,6 +852,8 @@ interface LeadCardProps {
   setExpandedSale: (id: string | null) => void;
   /** This member's orders, keyed by order-doc id, so each sale row knows its delivery status. */
   ordersById: Map<string, Order>;
+  /** What an upsell arriving from My Clients was for, so the sale form opens on it. */
+  upsellCategory?: string;
 }
 
 /**
@@ -1131,7 +1159,7 @@ function RevenueBreakdownModal({
   );
 }
 
-function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expandedNotes, setExpandedNotes, expandedSale, setExpandedSale, ordersById }: LeadCardProps) {
+function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expandedNotes, setExpandedNotes, expandedSale, setExpandedSale, ordersById, upsellCategory }: LeadCardProps) {
   const { toast } = useToast();
   const currentUser = useAuthStore((s) => s.user);
   const [notes, setNotes] = useState(lead.notes || "");
@@ -1622,7 +1650,8 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
         <AnimatePresence>
           {expandedSale === lead.id && (
             <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-              <SaleForm lead={lead} updateLead={updateLead} onDone={() => setExpandedSale(null)} />
+              <SaleForm lead={lead} updateLead={updateLead} onDone={() => setExpandedSale(null)}
+                initialCategory={upsellCategory} />
             </motion.div>
           )}
         </AnimatePresence>
@@ -1906,12 +1935,18 @@ function describeSaleChanges(prev: SaleDetail, next: SaleDetail): string[] {
   return out;
 }
 
-function SaleForm({ lead, updateLead, onDone, editItem }: {
+function SaleForm({ lead, updateLead, onDone, editItem, initialCategory }: {
   lead: Lead;
   updateLead: (id: string, data: Record<string, any>) => Promise<void>;
   onDone: () => void;
   /** Present when editing an existing sale rather than adding a new one. */
   editItem?: { index: number; item: SaleDetail };
+  /**
+   * What to open on. Set when the member arrived from an upsell in My Clients, where they had
+   * already chosen what they were selling — asking them to pick it a second time is how a Wishes
+   * upsell gets recorded as the promotional default nobody changed.
+   */
+  initialCategory?: string;
 }) {
   const { toast } = useToast();
   const saleFormUser = useAuthStore((s) => s.user);
@@ -1920,9 +1955,13 @@ function SaleForm({ lead, updateLead, onDone, editItem }: {
   // Promotional is what the team sells most, so it's the default; the ₹499 "15 Seconds + Poster"
   // package is pre-selected to match, since that is the one they actually sell most of. When
   // editing, everything starts from the saved sale.
-  const [category, setCategory] = useState(ed?.category || "promotional");
+  const [category, setCategory] = useState(ed?.category || initialCategory || "promotional");
   const [packageKey, setPackageKey] = useState(
-    ed ? (ed.packageKey && ed.packageKey !== "custom" ? ed.packageKey : "") : DEFAULT_PROMOTIONAL_PACKAGE,
+    ed
+      ? (ed.packageKey && ed.packageKey !== "custom" ? ed.packageKey : "")
+      // The promotional default only makes sense for a promotional sale; arriving on Wishes with a
+      // promotional package pre-picked is a wrong price waiting to be submitted.
+      : (!initialCategory || initialCategory === "promotional") ? DEFAULT_PROMOTIONAL_PACKAGE : "",
   );
   const [customAmount, setCustomAmount] = useState<number>(ed?.amount || 0);
   /**

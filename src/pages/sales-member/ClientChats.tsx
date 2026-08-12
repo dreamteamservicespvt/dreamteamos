@@ -19,6 +19,8 @@
 import { useMemo, useState } from "react";
 import { collection, query, where } from "firebase/firestore";
 import { MessageCircle, Search, Loader2, Star, Clock } from "lucide-react";
+import PeriodFilterBar from "@/components/dashboard/PeriodFilterBar";
+import { defaultPeriodFilter, periodLabel, withinPeriod, type PeriodFilter } from "@/utils/periodFilter";
 import { format } from "date-fns";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
@@ -29,6 +31,13 @@ import { bulkCategoryLabel } from "@/utils/serviceCatalog";
 import SalesOrderChat from "@/components/order-chat/SalesOrderChat";
 import type { Order } from "@/types";
 import type { ClientReview, OrderChatDoc } from "@/types/orderChat";
+
+/** `yyyy-MM-dd` of a Firestore stamp, for period filtering. */
+function dayOf(ts: unknown): string | undefined {
+  const ms = tsMs(ts);
+  if (!ms) return undefined;
+  return format(new Date(ms), "yyyy-MM-dd");
+}
 
 function tsMs(ts: unknown): number {
   const t = ts as { toMillis?: () => number; seconds?: number } | null;
@@ -68,6 +77,8 @@ interface ChatRow {
   joinable?: boolean;
   /** The order behind the row, which is what the chat is opened with. */
   order?: Order;
+  /** `yyyy-MM-dd` the sale was taken, for the period filter. Absent on a room with no order. */
+  soldOn?: string;
 }
 
 /**
@@ -94,6 +105,14 @@ export default function ClientChats() {
   const { data: orders, loading: ordersLoading } = useFirestoreQuery<Order>(ordersQuery, [user?.uid]);
 
   const [search, setSearch] = useState("");
+  /**
+   * Career by default, and filtered on when the SALE was taken.
+   *
+   * Same reasoning as My Clients: this is a working list, and one that hides everything older than
+   * four weeks is not one. Measuring by sale date rather than by the last message keeps a row in
+   * the month the seller actually earned it, instead of moving it whenever somebody types.
+   */
+  const [period, setPeriod] = useState<PeriodFilter>(() => ({ ...defaultPeriodFilter(), mode: "career" }));
   const [openChat, setOpenChat] = useState<ChatRow | null>(null);
 
   const rows = useMemo((): ChatRow[] => {
@@ -124,6 +143,7 @@ export default function ClientChats() {
           businessName: o.businessName || o.clientName || "Client",
           category: o.category,
           bulkAdType: o.bulkAdType,
+          soldOn: dayOf(o.createdAt),
         };
 
         if (room) {
@@ -196,12 +216,15 @@ export default function ClientChats() {
 
     const all = [...fromOrders, ...extraRooms];
     const q = search.trim().toLowerCase();
-    const filtered = q
-      ? all.filter((r) =>
-          r.businessName.toLowerCase().includes(q)
-          || (r.uniqueId || "").toLowerCase().includes(q)
-          || r.chip.label.toLowerCase().includes(q))
-      : all;
+    const filtered = all.filter((r) => {
+      // A room with no sale behind it has no sale date to judge, so it only shows on Career —
+      // dropping it from every dated view would lose a conversation the member is genuinely on.
+      if (period.mode !== "career" && !(r.soldOn && withinPeriod(r.soldOn, period))) return false;
+      if (!q) return true;
+      return r.businessName.toLowerCase().includes(q)
+        || (r.uniqueId || "").toLowerCase().includes(q)
+        || r.chip.label.toLowerCase().includes(q);
+    });
 
     // Anything unread first — it is the only reason to open this page in a hurry — then by when
     // something last happened.
@@ -209,7 +232,7 @@ export default function ClientChats() {
       if ((a.unread > 0) !== (b.unread > 0)) return a.unread > 0 ? -1 : 1;
       return b.at - a.at;
     });
-  }, [rooms, orders, user?.uid, search]);
+  }, [rooms, orders, user?.uid, search, period]);
 
   const totalUnread = rows.reduce((n, r) => n + r.unread, 0);
   const loading = roomsLoading || ordersLoading;
@@ -234,6 +257,13 @@ export default function ClientChats() {
           a change of mind — put it here and everyone working on the ad has it.
         </p>
       </div>
+
+      <PeriodFilterBar value={period} onChange={setPeriod}>
+        <span className="text-xs font-semibold text-foreground">
+          {rows.length} {rows.length === 1 ? "chat" : "chats"}
+          <span className="ml-1 font-normal text-muted-foreground">· {periodLabel(period)}</span>
+        </span>
+      </PeriodFilterBar>
 
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

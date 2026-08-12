@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { cleanup, configure, fireEvent, render, screen, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 
 /**
  * The Revenue tile on My Leads showed nothing on a day the member had actually sold.
@@ -64,6 +65,15 @@ vi.mock("@/components/sales/NumberTimelineButton", () => ({ default: () => null 
 
 const MyLeads = (await import("@/pages/sales-member/MyLeads")).default;
 
+/**
+ * MyLeads reads the query string — an upsell arriving from My Clients deep-links to a lead with
+ * the sale form open — so it needs a Router, exactly as it has in the app.
+ */
+function renderMyLeads() {
+  return render(<MemoryRouter><MyLeads /></MemoryRouter>);
+}
+
+
 beforeEach(() => {
   vi.setSystemTime(new Date("2026-07-28T13:00:00"));
 });
@@ -76,19 +86,19 @@ const revenueCard = () => screen.getByTestId("revenue-card");
 
 describe("My Leads — the day's revenue", () => {
   it("shows today's money, including a sale made on an older lead", () => {
-    render(<MyLeads />);
+    renderMyLeads();
     // 999 (old lead, today) + 499 + 499 = 1,997. Yesterday's 1,999 is excluded.
     expect(revenueCard().textContent).toContain("₹1,997");
   });
 
   it("counts a sale the moment it is made, not when an admin approves it", () => {
-    render(<MyLeads />);
+    renderMyLeads();
     // Only ₹499 has been approved so far; the tile still shows the full 1,997 and says so.
     expect(revenueCard().textContent).toContain("₹499 verified");
   });
 
   it("opens the split by ticket price when tapped", () => {
-    render(<MyLeads />);
+    renderMyLeads();
     fireEvent.click(revenueCard());
 
     const modal = screen.getByTestId("revenue-breakdown");
@@ -104,14 +114,14 @@ describe("My Leads — the day's revenue", () => {
   });
 
   it("names the categories sold at each price", () => {
-    render(<MyLeads />);
+    renderMyLeads();
     fireEvent.click(revenueCard());
     const modal = screen.getByTestId("revenue-breakdown");
     expect(within(modal).getByText(/Promotional Ad, Wishes|Wishes, Promotional Ad/)).toBeInTheDocument();
   });
 
   it("separates approved money from money still awaiting approval", () => {
-    render(<MyLeads />);
+    renderMyLeads();
     fireEvent.click(revenueCard());
     const modal = screen.getByTestId("revenue-breakdown");
     expect(within(modal).getByText(/₹499 verified/)).toBeInTheDocument();
@@ -119,7 +129,7 @@ describe("My Leads — the day's revenue", () => {
   });
 
   it("closes again", () => {
-    render(<MyLeads />);
+    renderMyLeads();
     fireEvent.click(revenueCard());
     fireEvent.click(screen.getByLabelText("Close"));
     expect(screen.queryByTestId("revenue-breakdown")).not.toBeInTheDocument();

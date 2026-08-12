@@ -32,6 +32,7 @@ import SalesMemberProfile from "@/pages/sales-member/MyProfile";
 import SalesScripts from "@/pages/sales-member/SalesScripts";
 import MyReviews from "@/pages/sales-member/MyReviews";
 import SalesClientChats from "@/pages/sales-member/ClientChats";
+import SalesMyClients from "@/pages/sales-member/MyClients";
 import SalesMemberActivityHistory from "@/pages/sales-member/ActivityHistory";
 import SalesMemberSettlements from "@/pages/sales-member/Settlements";
 import SalesAdminDashboard from "@/pages/sales-admin/Dashboard";
@@ -261,8 +262,9 @@ const App = () => (
             <Route path="/sales/leads" element={<MyLeads />} />
             {/* The seller is on their clients' order chats now — this is where they read them. */}
             <Route path="/sales/client-chats" element={<SalesClientChats />} />
-            {/* Their own customers: the ones they sold to, and nobody else's. */}
-            <Route path="/sales/clients" element={<Clients />} />
+            {/* Their own customers — built from their SALES, not from what has shipped, so a
+                client bought this morning is callable this morning. See pages/sales-member/MyClients. */}
+            <Route path="/sales/clients" element={<SalesMyClients />} />
             <Route path="/sales/reviews" element={<MyReviews />} />
             <Route path="/sales/performance" element={<MyPerformance />} />
             <Route path="/sales/training" element={<SalesMemberTraining />} />

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { cleanup, configure, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 
 /**
  * Selling ten cinematic ads at once, driven through the real Add Sale form.
@@ -73,6 +74,15 @@ vi.mock("@/components/sales/NumberTimelineButton", () => ({ default: () => null 
 
 const MyLeads = (await import("@/pages/sales-member/MyLeads")).default;
 
+/**
+ * MyLeads reads the query string — an upsell arriving from My Clients deep-links to a lead with
+ * the sale form open — so it needs a Router, exactly as it has in the app.
+ */
+function renderMyLeads() {
+  return render(<MemoryRouter><MyLeads /></MemoryRouter>);
+}
+
+
 beforeEach(() => { vi.setSystemTime(new Date("2026-08-01T13:00:00")); });
 afterEach(() => { vi.useRealTimers(); cleanup(); });
 
@@ -80,7 +90,7 @@ configure({ testIdAttribute: "data-test" });
 
 /** Open Add Sale on the one lead and switch it to a bulk order. */
 function openBulkForm() {
-  render(<MyLeads />);
+  renderMyLeads();
   fireEvent.click(screen.getAllByText("Add Sale")[0]);
   const category = screen.getByTestId("sale-category") as HTMLSelectElement;
   fireEvent.change(category, { target: { value: "bulk_ads" } });
@@ -138,7 +148,7 @@ describe("Add Sale — bulk videos", () => {
   it("drops the bulk arithmetic when a bulk sale is edited into a single video", async () => {
     // The old item is spread onto the edited one, so without an explicit strip the quantity and
     // discount survived a category change and the order kept announcing itself as "×10".
-    render(<MyLeads />);
+    renderMyLeads();
     updateDoc.mockClear();
     fireEvent.click(screen.getAllByText("Edit")[0]);
     fireEvent.change(screen.getByTestId("sale-category"), { target: { value: "cinematic" } });

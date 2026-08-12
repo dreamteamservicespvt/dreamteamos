@@ -11,8 +11,20 @@
  *
  * Calling reuses the app's own call manager by simply naming the customer as the peer, so there is
  * one call system here, not two.
+ *
+ * ── Why it is rendered into `document.body` ───────────────────────────────────────────────────
+ * Because `position: fixed` is not enough on its own. Every page that opens this renders it as a
+ * child of the page's own container, and those containers use Tailwind's `space-y-*`, which is
+ * `> * + * { margin-top: … }` — a rule that does not care whether a child is positioned. The
+ * overlay was picking up a 20px top margin from its parent's spacing and rendering 20px short of
+ * full screen, on every page that hosts it.
+ *
+ * A portal takes it out of that flow entirely, so no parent's layout — spacing today, a `gap` or a
+ * `divide-y` tomorrow — can reach it. Events still bubble through the React tree, so `onClose` and
+ * the rest are unaffected.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ArrowLeft, Share2, Phone, Lock, Info, Star } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useCallStore } from "@/store/callStore";
@@ -152,7 +164,7 @@ export default function StaffOrderChat({ assignment, memberName, canShare, soldB
     setTimeout(() => setHint(null), 6000);
   }, [startCall, chatId, businessName, room?.clientName]);
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex flex-col bg-[#eae6df] dark:bg-[#0b141a]" data-test="staff-order-chat">
       {/* Header */}
       <div className="flex items-center gap-1 bg-[#008069] px-1.5 py-2 pt-[calc(0.5rem+env(safe-area-inset-top))] text-white dark:bg-[#202c33]">
@@ -275,6 +287,7 @@ export default function StaffOrderChat({ assignment, memberName, canShare, soldB
           onClose={() => setSharing(false)}
         />
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }

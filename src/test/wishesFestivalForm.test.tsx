@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { cleanup, configure, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { CUSTOM_FESTIVAL_OPTION } from "@/utils/festivals";
 
 /**
@@ -68,20 +69,29 @@ vi.mock("@/components/sales/NumberTimelineButton", () => ({ default: () => null 
 
 const MyLeads = (await import("@/pages/sales-member/MyLeads")).default;
 
+/**
+ * MyLeads reads the query string — an upsell arriving from My Clients deep-links to a lead with
+ * the sale form open — so it needs a Router, exactly as it has in the app.
+ */
+function renderMyLeads() {
+  return render(<MemoryRouter><MyLeads /></MemoryRouter>);
+}
+
+
 beforeEach(() => { vi.setSystemTime(new Date("2026-08-02T13:00:00")); });
 afterEach(() => { vi.useRealTimers(); cleanup(); });
 
 configure({ testIdAttribute: "data-test" });
 
 function openSaleForm(category: string) {
-  render(<MyLeads />);
+  renderMyLeads();
   fireEvent.click(screen.getAllByText("Add Sale")[0]);
   fireEvent.change(screen.getByTestId("sale-category"), { target: { value: category } });
 }
 
 /** Open the existing wishes sale in edit mode — its screenshot is already on file. */
 function openWishesEdit() {
-  render(<MyLeads />);
+  renderMyLeads();
   fireEvent.click(screen.getAllByText("Edit")[0]);
 }
 

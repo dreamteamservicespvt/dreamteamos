@@ -13,6 +13,7 @@
  * fetch the real record, and when it has not we hand over a stand-in built from the order.
  */
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { doc, getDoc } from "firebase/firestore";
 import { Loader2 } from "lucide-react";
 import { db } from "@/services/firebase";
@@ -91,10 +92,13 @@ export default function SalesOrderChat({ order, soldBy, onClose }: SalesOrderCha
   }, [order.id, order.workAssignmentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!assignment) {
-    return (
+    // Portalled for the same reason as the chat itself — a parent's `space-y-*` would otherwise
+    // push this spinner off-centre. See the note in StaffOrderChat.
+    return createPortal(
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-background">
         <Loader2 className="h-6 w-6 animate-spin text-primary" />
-      </div>
+      </div>,
+      document.body,
     );
   }
 
