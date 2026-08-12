@@ -197,6 +197,16 @@ export const SERVICE_CATALOG: ServiceCategory[] = [
     ],
   },
   { key: "software", label: "Software", billing: "one_time", fromAd: false, packages: [], needsDescription: true },
+  /**
+   * Two services the team sells that had no catalogue entry, so they could be neither sold through
+   * the form nor counted as a gap on a client's record.
+   *
+   * Priced per job rather than from a list — like Software above, the member types what was agreed
+   * and says what it covers. Give them fixed packages here the day the prices settle; nothing else
+   * has to change.
+   */
+  { key: "banner", label: "Banner Design", billing: "one_time", fromAd: false, packages: [], needsDescription: true },
+  { key: "social_accounts", label: "Social Media Accounts", billing: "one_time", fromAd: false, packages: [], needsDescription: true },
   { key: "custom", label: "Custom", billing: "one_time", fromAd: false, packages: [], needsDescription: true },
 ];
 
@@ -371,15 +381,51 @@ export function packageOptionLabel(pkg: ServicePackage): string {
  * Foundational "has it or not" services that drive the upsell gap checklist. Repeatable services
  * (ads, single campaigns) are excluded — a client can always buy more of those, so they aren't "gaps".
  */
+/**
+ * What the business actually sets out to sell a business customer, in the order it pitches them.
+ *
+ * This is the checklist a seller works down on an upsell call — not the whole catalogue, which
+ * also contains the ad formats and the bulk/custom wrappers that are not a "thing a shop needs".
+ */
 export const GAP_ELIGIBLE_CATEGORIES = [
-  "website", "logo", "google_listing", "visiting_card", "social_media_management",
+  "logo", "visiting_card", "banner", "poster", "google_listing",
+  "social_accounts", "social_media_management", "website", "software",
 ];
+
+/**
+ * Services a customer only ever needs once.
+ *
+ * A shop has one logo and one website; having sold them, suggesting them again is noise that makes
+ * the whole checklist less trusted. Everything NOT listed here — banners, posters, the monthly
+ * social package — is bought over and over, so owning one is no reason to stop offering the next.
+ *
+ * Note the difference between "not a gap" and "not sellable": a client who dislikes their logo can
+ * absolutely buy another, and the form will always let them. This list only decides what the
+ * checklist nags about.
+ */
+export const ONE_TIME_SERVICES = new Set([
+  "logo", "visiting_card", "google_listing", "social_accounts", "website", "software",
+]);
+
+/** Is this something worth offering again once they have bought it? */
+export function isRepeatableService(key: string): boolean {
+  return !ONE_TIME_SERVICES.has(key);
+}
 
 /** Catalog entries a client doesn't yet own — the upsell opportunities. */
 export function gapCategories(ownedKeys: string[]): ServiceCategory[] {
   const owned = new Set(ownedKeys);
   return GAP_ELIGIBLE_CATEGORIES
     .filter((k) => !owned.has(k))
+    .map((k) => CATEGORY_BY_KEY[k])
+    .filter(Boolean);
+}
+
+/** What a client already has, from the offering — the other half of the same picture. */
+export function ownedServices(ownedKeys: string[]): ServiceCategory[] {
+  const owned = new Set(ownedKeys);
+  return GAP_ELIGIBLE_CATEGORIES
+    .filter((k) => owned.has(k))
     .map((k) => CATEGORY_BY_KEY[k])
     .filter(Boolean);
 }

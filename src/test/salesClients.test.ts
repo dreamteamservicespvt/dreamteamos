@@ -48,6 +48,23 @@ describe("building the book from orders", () => {
     expect(rows[0].totalSold).toBe(999);
   });
 
+  /**
+   * The footer said "nothing delivered yet" while the list above it showed three orders marked
+   * Delivered — because this was keyed on the client RECORD existing rather than on the work.
+   */
+  it("does not claim nothing was delivered when an order says otherwise", () => {
+    const rows = buildSalesClients({
+      orders: [order({ status: "verified" })],
+      clients: [],
+    });
+    expect(rows[0].awaitingDelivery).toBe(false);
+  });
+
+  it("still says so when nothing has shipped", () => {
+    const rows = buildSalesClients({ orders: [order({ status: "unassigned" })], clients: [] });
+    expect(rows[0].awaitingDelivery).toBe(true);
+  });
+
   it("merges the client record in when there is one", () => {
     const rows = buildSalesClients({ orders: [order()], clients: [client()] });
 

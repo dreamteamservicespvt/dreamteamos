@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   SALE_CATEGORIES, PACKAGES, categoryLabel, isAdCategory, categoryBilling, gapCategories, GAP_ELIGIBLE_CATEGORIES,
   isBulkCategory, needsDescription, packageOptionLabel, bulkTypesFor, effectiveAdCategory,
-  bulkCategoryLabel,
+  bulkCategoryLabel, ownedServices, isRepeatableService, SERVICE_CATALOG,
 } from "@/utils/serviceCatalog";
 
 describe("service catalog integrity", () => {
@@ -132,10 +132,72 @@ describe("gapCategories (upsell)", () => {
   });
 
   it("removes owned services", () => {
-    expect(gapCategories(["website", "logo"]).map((c) => c.key)).toEqual(["google_listing", "visiting_card", "social_media_management"]);
+    expect(gapCategories(["website", "logo"]).map((c) => c.key)).toEqual([
+      "visiting_card", "banner", "poster", "google_listing",
+      "social_accounts", "social_media_management", "software",
+    ]);
   });
 
-  it("ignores ownership of non-gap (repeatable) services like ads", () => {
+  it("ignores ownership of services that are not part of the offering, like ad formats", () => {
     expect(gapCategories(["promotional", "cinematic"]).map((c) => c.key)).toEqual(GAP_ELIGIBLE_CATEGORIES);
+  });
+
+  /**
+   * The other half of the same picture. A seller mid-call needs to know what NOT to pitch as
+   * urgently as what to pitch, and the two lists must never disagree about a service.
+   */
+  it("reports what they already have, and the two halves never overlap", () => {
+    const ownedKeys = ["logo", "poster", "promotional"];
+    const has = ownedServices(ownedKeys).map((c) => c.key);
+    const missing = gapCategories(ownedKeys).map((c) => c.key);
+
+    expect(has).toEqual(["logo", "poster"]);            // the ad format is not part of the offering
+    expect(missing).not.toContain("logo");
+    expect(missing).not.toContain("poster");
+    expect(has.filter((k) => missing.includes(k))).toEqual([]);
+    // Between them they account for the whole offering.
+    expect([...has, ...missing].sort()).toEqual([...GAP_ELIGIBLE_CATEGORIES].sort());
+  });
+});
+
+/**
+ * Which services are worth offering a second time.
+ *
+ * A shop has one logo and one website; re-suggesting them is noise that makes the whole checklist
+ * less trusted. Banners, posters and the monthly package are bought again and again.
+ */
+describe("one-time versus repeatable services", () => {
+  it("treats the build-once services as one-time", () => {
+    for (const key of ["logo", "visiting_card", "google_listing", "social_accounts", "website", "software"]) {
+      expect(isRepeatableService(key)).toBe(false);
+    }
+  });
+
+  it("treats the rest as repeatable", () => {
+    for (const key of ["banner", "poster", "social_media_management", "promotional", "wishes"]) {
+      expect(isRepeatableService(key)).toBe(true);
+    }
+  });
+
+  /**
+   * "Not a gap" is not "not sellable" — a client who dislikes their logo can buy another, and the
+   * form must always allow it. Only the checklist stops nagging.
+   */
+  it("keeps every one-time service in the sellable catalogue", () => {
+    for (const key of ["logo", "visiting_card", "google_listing", "social_accounts", "website", "software"]) {
+      expect(SERVICE_CATALOG.some((c) => c.key === key)).toBe(true);
+    }
+  });
+});
+
+describe("the two services added for the upsell checklist", () => {
+  it("sells a banner and social media accounts by custom quote", () => {
+    for (const key of ["banner", "social_accounts"]) {
+      const entry = SERVICE_CATALOG.find((c) => c.key === key);
+      expect(entry, `${key} missing from the catalogue`).toBeTruthy();
+      // No price list — the member types what was agreed, as with Software.
+      expect(entry!.packages).toEqual([]);
+      expect(entry!.needsDescription).toBe(true);
+    }
   });
 });

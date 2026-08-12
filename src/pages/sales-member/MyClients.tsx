@@ -20,28 +20,31 @@
  * is a calling list, and a call list that hides everybody older than four weeks is not one.
  */
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { collection, query, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import {
   Users, Search, Loader2, MessageCircle, TrendingUp, Star, CalendarDays, UserPlus,
-  ArrowDownUp, Hourglass, ShoppingBag, Sparkles,
+  ArrowDownUp, Hourglass, ShoppingBag, Sparkles, Check, X, Plus, RotateCcw,
 } from "lucide-react";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { useFirestoreQuery } from "@/hooks/useFirestore";
 import { useToast } from "@/hooks/use-toast";
 import { clientsQuery } from "@/services/clients";
-import { startUpsell, upsellLeadUrl } from "@/services/upsell";
+import { startUpsell } from "@/services/upsell";
 import { formatCurrency } from "@/utils/formatters";
 import { formatPhoneDisplay, getWhatsAppUrl } from "@/utils/phone";
-import { categoryLabel, bulkCategoryLabel, SERVICE_CATALOG } from "@/utils/serviceCatalog";
+import {
+  categoryLabel, bulkCategoryLabel, SERVICE_CATALOG,
+  gapCategories, ownedServices, isRepeatableService,
+} from "@/utils/serviceCatalog";
+import SaleForm from "@/components/sales/SaleForm";
 import { buildSalesClients, soldWithin, type SalesClient } from "@/utils/salesClients";
 import { defaultPeriodFilter, periodLabel, withinPeriod, type PeriodFilter } from "@/utils/periodFilter";
 import PeriodFilterBar from "@/components/dashboard/PeriodFilterBar";
 import ViewToggle from "@/components/common/ViewToggle";
 import { useViewMode } from "@/hooks/useViewMode";
 import { format } from "date-fns";
-import type { Client, Order } from "@/types";
+import type { Client, Lead, Order } from "@/types";
 
 /**
  * What can be upsold, in the order a seller would reach for it.
@@ -67,7 +70,6 @@ const SORT_OPTIONS: { key: SalesClientSort; label: string }[] = [
 export default function MyClients() {
   const user = useAuthStore(s => s.user);
   const { toast } = useToast();
-  const navigate = useNavigate();
 
   /** Everyone they sold to — the record of the sale, which exists from the moment it is taken. */
   const ordersQ = useMemo(
@@ -86,6 +88,41 @@ export default function MyClients() {
   const [sort, setSort] = useState<SalesClientSort>("recent");
   const [view, setView] = useViewMode("my-clients");
   const [active, setActive] = useState<SalesClient | null>(null);
+  /** The sale being recorded right now, if any — see `handleUpsell`. */
+  const [selling, setSelling] = useState<
+    { row: SalesClient; category: string; lead: Lead | null; leadId?: string; error: string | null } | null
+  >(null);
+
+  /**
+   * The lead the sale form writes to, watched live.
+   *
+   * Live rather than fetched once because the form reads the lead back after every save — that is
+   * how "Save & add another service" shows the sale that was just recorded. A stale snapshot would
+   * make the second sale of a call overwrite the first.
+   */
+  useEffect(() => {
+    const id = selling?.leadId;
+    if (!id) return;
+    return onSnapshot(
+      doc(db, "leads", id),
+      snap => {
+        setSelling(cur => (cur && cur.leadId === id
+          ? { ...cur, lead: snap.exists() ? ({ id: snap.id, ...snap.data() } as Lead) : null,
+              error: snap.exists() ? null : "That lead no longer exists." }
+          : cur));
+      },
+      () => setSelling(cur => (cur ? { ...cur, error: "Could not open the lead." } : cur)),
+    );
+  }, [selling?.leadId]);
+
+  /** Exactly what My Leads does, so a sale recorded here is indistinguishable from one recorded there. */
+  const updateLead = async (id: string, data: Record<string, unknown>) => {
+    try {
+      await updateDoc(doc(db, "leads", id), { ...data, lastUpdated: serverTimestamp() });
+    } catch {
+      toast({ title: "Error", description: "Failed to save the sale.", variant: "destructive" });
+    }
+  };
 
   const book = useMemo(
     () => buildSalesClients({ orders, clients }),
@@ -185,17 +222,33 @@ export default function MyClients() {
         <ClientDetail row={active} onClose={() => setActive(null)}
           onUpsell={cat => handleUpsell(active, cat)} />
       )}
+
+      {selling && (
+        <SaleModal
+          title={selling.row.name || selling.row.phone}
+          category={selling.category}
+          lead={selling.lead}
+          error={selling.error}
+          updateLead={updateLead}
+          onClose={() => setSelling(null)}
+        />
+      )}
     </div>
   );
 
   /**
-   * Take them to the sale form for this client, on the thing they picked.
+   * Open the sale form for this client, on the thing they picked — without leaving the page.
    *
-   * The number has to be their own lead before a sale can be added to it, which is what
-   * `startUpsell` settles — including the common case where it already is.
+   * A sale still needs a LEAD to hang off, because that is where sale lines live and what the
+   * number-lock rules are enforced against; `startUpsell` settles that, including the common case
+   * where the number is already theirs. What has changed is what happens next: the member stays
+   * here, in front of the client they were reading about, instead of being sent to My Leads to
+   * find a number they were already looking at.
    */
   async function handleUpsell(row: SalesClient, category: string) {
     if (!user) return;
+    setSelling({ row, category, lead: null, error: null });
+
     const result = await startUpsell({
       user: { uid: user.uid, name: user.name },
       phone: row.phone,
@@ -203,11 +256,11 @@ export default function MyClients() {
     });
 
     if (!result.ok || !result.leadId) {
+      setSelling(null);
       toast({ title: "Can't sell to this number", description: result.message, variant: "destructive" });
       return;
     }
-    toast({ title: `Upselling ${categoryLabel(category)}`, description: result.message });
-    navigate(upsellLeadUrl(result.leadId, category));
+    setSelling(cur => (cur ? { ...cur, leadId: result.leadId } : cur));
   }
 }
 
@@ -320,6 +373,22 @@ function ClientDetail({ row, onClose, onUpsell }: {
 
   const reviews = row.client?.reviews || [];
 
+  /**
+   * What this client owns, from BOTH sides of the record.
+   *
+   * Their delivered work says what the company has actually made them; this member's own orders say
+   * what has been sold but may still be in production. Counting only the first would re-pitch a
+   * logo somebody sold last week; counting only the second would ignore what a colleague sold them
+   * a year ago. Together they are the honest answer to "what do they already have?".
+   */
+  const ownedKeys = useMemo(() => [
+    ...(row.client?.works || []).map(w => w.category),
+    ...row.orders.map(o => o.category),
+  ].filter(Boolean) as string[], [row]);
+
+  const missing = useMemo(() => gapCategories(ownedKeys), [ownedKeys]);
+  const owned = useMemo(() => ownedServices(ownedKeys), [ownedKeys]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-border bg-card shadow-2xl"
@@ -338,16 +407,67 @@ function ClientDetail({ row, onClose, onUpsell }: {
         </div>
 
         <div className="space-y-5 p-5">
-          {/* Sell them the next one — the reason this page exists during a festival week. */}
+          {/*
+            What they have, and what is left to sell them.
+
+            The two halves belong together: a seller opening a client mid-call needs to know what
+            NOT to pitch as much as what to pitch, and reading it off a list of past orders takes
+            longer than the client will wait. Every item is a button — tapping one opens the sale
+            form on that service, which is the whole journey in one tap.
+          */}
           <div className="rounded-xl border border-primary/30 bg-primary/5 p-3.5">
             <div className="mb-2 flex items-center gap-2">
               <TrendingUp size={14} className="text-primary" />
-              <h4 className="text-sm font-semibold text-foreground">Sell them their next ad</h4>
+              <h4 className="text-sm font-semibold text-foreground">Grow this client</h4>
             </div>
-            <p className="mb-2.5 text-xs text-muted-foreground">
-              Opens their lead with the sale form ready. It is recorded as a normal sale and reaches
-              the tech team the usual way.
-            </p>
+
+            {missing.length > 0 ? (
+              <>
+                <p className="mb-2 text-xs text-muted-foreground">
+                  Not sold to them yet — tap to sell:
+                </p>
+                <div className="mb-3 flex flex-wrap gap-1.5" data-test="client-gaps">
+                  {missing.map(g => (
+                    <button key={g.key} onClick={() => onUpsell(g.key)}
+                      data-test={`gap-${g.key}`}
+                      className="inline-flex items-center gap-1 rounded-lg border border-info/30 bg-info/10 px-2.5 py-1.5 text-xs font-medium text-info transition-colors hover:bg-info/20">
+                      <Plus size={11} /> {g.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="mb-3 text-xs text-success">
+                They already have everything on the list 🎉 — anything below can still be sold again.
+              </p>
+            )}
+
+            {owned.length > 0 && (
+              <>
+                <p className="mb-2 text-xs text-muted-foreground">Already has:</p>
+                <div className="mb-3 flex flex-wrap gap-1.5" data-test="client-owned">
+                  {owned.map(o => {
+                    const again = isRepeatableService(o.key);
+                    return (
+                      <button key={o.key} onClick={() => onUpsell(o.key)}
+                        data-test={`owned-${o.key}`}
+                        title={again
+                          ? `Sell another ${o.label}`
+                          : `${o.label} is a one-time service — sell it again only if they want it redone`}
+                        className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                          again
+                            ? "border border-success/30 bg-success/10 text-success hover:bg-success/20"
+                            : "border border-border bg-muted/40 text-muted-foreground hover:bg-muted"
+                        }`}>
+                        {again ? <RotateCcw size={11} /> : <Check size={11} />} {o.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            <p className="mb-2 text-xs text-muted-foreground">Or sell something else:</p>
             <UpsellPicker onUpsell={onUpsell} />
           </div>
 
@@ -414,6 +534,66 @@ function ClientDetail({ row, onClose, onUpsell }: {
               Nothing has been delivered to this client yet, so there is no work history or review to
               show — only what you have sold them.
             </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+/**
+ * Recording the sale without leaving the client.
+ *
+ * The form inside is the very same `SaleForm` My Leads uses — the package lists, the discount
+ * ladder and its authority limit, the freeze rules, the order it creates at the end. Nothing about
+ * a sale made here differs from one made there, which is the entire reason the form was pulled out
+ * into its own component rather than reimplemented as a "quick upsell".
+ */
+function SaleModal({ title, category, lead, error, updateLead, onClose }: {
+  title: string;
+  category: string;
+  lead: Lead | null;
+  error: string | null;
+  updateLead: (id: string, data: Record<string, unknown>) => Promise<void>;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/60 p-4"
+      data-test="upsell-sale-modal" onClick={onClose}>
+      <div className="my-8 w-full max-w-lg rounded-xl border border-border bg-card shadow-2xl"
+        onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-foreground">{title}</p>
+            <p className="text-[11px] text-muted-foreground">Selling {categoryLabel(category)}</p>
+          </div>
+          <button onClick={onClose} aria-label="Close"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="p-4">
+          {error ? (
+            <p className="py-6 text-center text-sm text-destructive">{error}</p>
+          ) : !lead ? (
+            <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Opening this client's lead…
+            </div>
+          ) : (
+            <SaleForm
+              lead={lead}
+              updateLead={updateLead}
+              onDone={onClose}
+              initialCategory={category}
+            />
           )}
         </div>
       </div>

@@ -38,7 +38,13 @@ export interface SalesClient {
   totalSold: number;
   /** Delivered work, from the client record. Empty for a customer still waiting. */
   works: ClientWorkItem[];
-  /** True when nothing has been delivered yet — worth saying, since it changes the call. */
+  /**
+   * True when nothing has actually been delivered yet — worth saying, since it changes the call.
+   *
+   * Read from the WORK, not from whether a client record happens to exist. A record is only
+   * created on delivery, so keying off it looked right until an order said "Delivered" while the
+   * page underneath insisted nothing had been — the client doc simply had not caught up.
+   */
   awaitingDelivery: boolean;
 }
 
@@ -106,12 +112,17 @@ export function buildSalesClients(input: BuildSalesClientsInput): SalesClient[] 
       firstSoldMs: at,
       totalSold: order.amount || 0,
       works: client?.works || [],
-      awaitingDelivery: !client,
+      // Recomputed below, once every order for this customer has been gathered.
+      awaitingDelivery: true,
     });
   }
 
   for (const row of rows.values()) {
     row.orders.sort((a, b) => ms(b.createdAt) - ms(a.createdAt));
+    // Delivered according to either source: a work item on the record, or an order that has
+    // reached completion. The two can disagree briefly, and the customer is owed the kinder read.
+    row.awaitingDelivery = row.works.length === 0
+      && !row.orders.some((o) => o.status === "completed" || o.status === "verified");
   }
 
   return [...rows.values()].sort((a, b) => b.lastSoldMs - a.lastSoldMs);
