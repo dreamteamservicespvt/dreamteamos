@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, TrendingUp, Code, Phone, Clock, Wallet,
   Settings, BookOpen, FolderOpen, Target, User, BarChart3,
   ClipboardList, Briefcase, Wrench, FileCheck, MessageSquare, Video, Eye, Film, ScrollText, CalendarClock, Trophy, History,
-  ShoppingBag, Contact, Star, GraduationCap, LayoutGrid, PiggyBank, Banknote, Wand2,
+  ShoppingBag, Contact, Star, GraduationCap, LayoutGrid, PiggyBank, Banknote, Wand2, Search,
 } from "lucide-react";
 
 export interface NavItem {
@@ -65,6 +65,9 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "Leaderboard", path: "/sales-admin/leaderboard", icon: Trophy },
     { title: "Sales Approvals", path: "/sales-admin/approvals", icon: FileCheck },
     { title: "Clients", path: "/sales-admin/clients", icon: Contact },
+    // "Who has this number, and what have we sold them?" — asked several times a week and, until
+    // this page, answerable only by hand across three other screens.
+    { title: "Client Lookup", path: "/sales-admin/client-lookup", icon: Search },
     { title: "Settlements", path: "/sales-admin/settlements", icon: Wallet },
     { title: "Attendance", path: "/sales-admin/attendance", icon: CalendarClock },
     { title: "Payroll", path: "/sales-admin/payroll", icon: Banknote },

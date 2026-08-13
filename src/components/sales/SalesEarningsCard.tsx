@@ -21,6 +21,12 @@ interface SalesEarningsCardProps {
   achievement?: number;
   /** Sales still needed to unlock the incentive, in rupees — the actionable half of the warning. */
   incentiveShortfall?: number;
+  /**
+   * Approved sales so far this cycle. The other half of the same sentence: a member told only what
+   * is missing has no idea how far they have come, and the distance is the discouraging number of
+   * the two. Shown as "X approved so far · Y more locks it in".
+   */
+  salesSoFar?: number;
   loading?: boolean;
   /** e.g. "Cycle 10 Jul – 09 Aug" — small line under the split. */
   subtitle?: string;
@@ -30,7 +36,7 @@ interface SalesEarningsCardProps {
 
 export default function SalesEarningsCard({
   totalEarnings, salaryPayable, commission, incentiveWithheld, commissionBeforeTarget,
-  achievement, incentiveShortfall, loading, subtitle, onClick,
+  achievement, incentiveShortfall, salesSoFar, loading, subtitle, onClick,
 }: SalesEarningsCardProps) {
   if (loading) {
     return <div className="h-[104px] animate-pulse rounded-2xl bg-muted" />;
@@ -53,14 +59,17 @@ export default function SalesEarningsCard({
       <p data-test="earnings-total" className="mt-1 font-display text-3xl font-bold tabular-nums text-foreground md:text-4xl">
         {formatCurrency(headlineTotal)}
       </p>
-      <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-muted-foreground">
+      {/* One line, read left to right: salary + incentives = the number above. The two halves were
+          six units apart, which on a phone split them across the width of the card and made them
+          look like two unrelated figures rather than the sum of the headline. */}
+      <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
         <span>Salary <strong className="text-foreground">{formatCurrency(salaryPayable)}</strong></span>
         <span data-test={incentiveWithheld ? "commission-pending" : "commission-earned"}>
           + Incentives{" "}
           <strong className={incentiveWithheld ? "text-foreground" : "text-success"}>
             {formatCurrency(accruedIncentive)}
           </strong>
-          {incentiveWithheld && <span className="ml-1 text-[11px]">&nbsp;so far</span>}
+          {incentiveWithheld && <span className="ml-1 text-[11px]">so far</span>}
         </span>
       </div>
       {incentiveWithheld && (
@@ -89,9 +98,13 @@ export default function SalesEarningsCard({
             />
           </div>
           {incentiveShortfall && incentiveShortfall > 0 && (
-            <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-              <strong className="text-foreground">{formatCurrency(incentiveShortfall)}</strong> more in
-              approved sales locks it in.
+            <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground" data-test="incentive-progress">
+              {salesSoFar && salesSoFar > 0 ? (
+                <>
+                  <strong className="text-success">{formatCurrency(salesSoFar)}</strong> approved so far ·{" "}
+                </>
+              ) : null}
+              <strong className="text-foreground">{formatCurrency(incentiveShortfall)}</strong> more locks it in.
             </p>
           )}
         </div>

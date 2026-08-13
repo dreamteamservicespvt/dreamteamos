@@ -134,7 +134,8 @@ export default function SalesMySalary() {
             incentiveWithheld={earnings.incentiveWithheld}
             commissionBeforeTarget={earnings.commissionBeforeTarget}
             achievement={earnings.achievement}
-            incentiveShortfall={earnings.incentiveShortfall} />
+            incentiveShortfall={earnings.incentiveShortfall}
+            salesSoFar={earnings.salesBase} />
 
           <section className="grid gap-4 lg:grid-cols-2">
             {/* Salary half */}

@@ -39,6 +39,7 @@ import SalesAdminDashboard from "@/pages/sales-admin/Dashboard";
 import SalesAdminMyTeam from "@/pages/sales-admin/MyTeam";
 import LeadsManagement from "@/pages/sales-admin/LeadsManagement";
 import SalesApprovals from "@/pages/sales-admin/SalesApprovals";
+import ClientLookup from "@/pages/sales-admin/ClientLookup";
 import Settlements from "@/pages/sales-admin/Settlements";
 import MemberSalesHistory from "@/pages/sales-admin/MemberSalesHistory";
 import MemberLeadsDetail from "@/pages/sales-admin/MemberLeadsDetail";
@@ -211,6 +212,7 @@ const App = () => (
             <Route path="/sales-admin/leads/:memberId" element={<MemberLeadsDetail />} />
             <Route path="/sales-admin/schedule-numbers" element={<ScheduleNumbers />} />
             <Route path="/sales-admin/approvals" element={<SalesApprovals />} />
+            <Route path="/sales-admin/client-lookup" element={<ClientLookup />} />
             <Route path="/sales-admin/settlements" element={<Settlements />} />
             <Route path="/sales-admin/payroll" element={<SalesPayroll />} />
             <Route path="/sales-admin/attendance" element={<TeamAttendance />} />

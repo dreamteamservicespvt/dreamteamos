@@ -220,23 +220,12 @@ export default function SalesMemberDashboard() {
         commissionBeforeTarget={earnings.commissionBeforeTarget}
         achievement={earnings.achievement}
         incentiveShortfall={earnings.incentiveShortfall}
+        salesSoFar={earnings.salesBase}
         subtitle={earnings.salary.period
           ? `Cycle ${format(new Date(`${earnings.salary.period.start}T00:00:00`), "dd MMM")} – ${format(new Date(`${earnings.salary.period.end}T00:00:00`), "dd MMM")}`
           : undefined}
         onClick={() => navigate("/sales/salary")}
       />
-
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-        {stats.map((s, i) => (
-          <motion.div key={s.label} {...statVariant(i)} className="bg-card border border-border rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <s.icon size={16} className={s.color} />
-              <span className="text-xs text-muted-foreground">{s.label}</span>
-            </div>
-            <p className="font-display font-bold text-xl text-foreground">{s.value}</p>
-          </motion.div>
-        ))}
-      </div>
 
       {(dailyTarget > 0 || monthlyTarget > 0) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -275,8 +264,14 @@ export default function SalesMemberDashboard() {
                 figure is given its own line to sit on rather than fighting for the same one.
               */}
               <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                {/* The period is context, not the heading — set smaller and in muted type so
+                    "Monthly Target" reads as the title rather than competing with a date range
+                    the same size as itself. */}
                 <h2 data-test="monthly-target-heading" className="min-w-0 font-display text-sm font-semibold text-foreground">
-                  Monthly Target · {payPeriodLabel(currentPayMonth())}
+                  Monthly Target{" "}
+                  <span className="text-[11px] font-normal text-muted-foreground">
+                    · {payPeriodLabel(currentPayMonth())}
+                  </span>
                 </h2>
                 <span className="shrink-0 font-mono text-xs text-muted-foreground">
                   {formatCurrency(cycleVerified)} / {formatCurrency(monthlyTarget)}
@@ -300,6 +295,19 @@ export default function SalesMemberDashboard() {
           )}
         </div>
       )}
+
+
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
+        {stats.map((s, i) => (
+          <motion.div key={s.label} {...statVariant(i)} className="bg-card border border-border rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <s.icon size={16} className={s.color} />
+              <span className="text-xs text-muted-foreground">{s.label}</span>
+            </div>
+            <p className="font-display font-bold text-xl text-foreground">{s.value}</p>
+          </motion.div>
+        ))}
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-card border border-border rounded-xl p-5">

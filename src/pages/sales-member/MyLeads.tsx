@@ -252,7 +252,25 @@ export default function MyLeads() {
     return l.status === statusFilter;
   };
 
-  const searchFiltered = leads.filter(matchesSearch);
+  /**
+   * Numbers this member is locked out of never appear in their list.
+   *
+   * A lead frozen as a resolved duplicate belongs to whoever worked it first: Call, WhatsApp and
+   * Add Sale are all disabled on it, so it is a card the member can look at and nothing else. Worse,
+   * it can never leave "Not Called" — they cannot call it — so the "Today + uncalled past" carry-
+   * forward dragged every one of them into today's list, every day, for ever. That is what filled a
+   * working list with numbers from sixty days ago that nobody could do anything about.
+   *
+   * They are counted rather than silently dropped: `hiddenLockedCount` prints one line above the
+   * list, so the member can see the rule applied without scrolling past the evidence. The count
+   * covers every locked lead, not only the duplicates — a lead taken over by an admin is just as
+   * gone from this list, and a number that disappeared with no explanation is a support call.
+   */
+  const lockedOut = (l: Lead) => !!l.frozen;
+  const hiddenLockedCount = leads.filter(lockedOut).length;
+
+  const workable = leads.filter((l) => !lockedOut(l));
+  const searchFiltered = workable.filter(matchesSearch);
   const filtered = searchFiltered.filter(matchesStatus);
 
   // Last 5 days for day filter
@@ -690,6 +708,14 @@ export default function MyLeads() {
               {activeDayLeads.length} leads
             </span>
           </div>
+
+          {/* The rule, stated once, instead of one dead card per locked number. */}
+          {hiddenLockedCount > 0 && (
+            <p className="-mt-1 text-[11px] text-muted-foreground" data-test="hidden-duplicates">
+              {hiddenLockedCount} {hiddenLockedCount === 1 ? "number is" : "numbers are"} hidden —
+              another member holds {hiddenLockedCount === 1 ? "it" : "them"}.
+            </p>
+          )}
 
           {/* Lead Cards — rendered 10 at a time to keep the page light */}
           {activeDayLeads.length === 0 ? (

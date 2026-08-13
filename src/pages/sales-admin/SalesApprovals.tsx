@@ -9,6 +9,7 @@ import { useAuthStore } from "@/store/authStore";
 import { formatCurrency, formatDuration } from "@/utils/formatters";
 import { discountEditLabel, discountSummary } from "@/utils/bulkDiscount";
 import { EARNED_REASON_LABEL, MEMBER_DISCOUNT_LIMIT_PERCENT, earnedReasons, saleDiscountOf } from "@/utils/saleDiscount";
+import { decidedAtMs } from "@/utils/saleDecision";
 import { bulkCategoryLabel, categoryLabel } from "@/utils/serviceCatalog";
 import { useNow } from "@/hooks/useNow";
 import { applySaleFreeze, adminReleaseLock, buildLeadFreezeFields, clearedLeadFreezeFields, clearSaleFreeze } from "@/services/numberLock";
@@ -168,7 +169,7 @@ export default function SalesApprovals() {
     try {
       const items = [...getAllItems(lead)];
       const oldItem = items[itemIndex];
-      items[itemIndex] = { ...oldItem, verificationStatus: "rejected", verifiedAt: null };
+      items[itemIndex] = { ...oldItem, verificationStatus: "rejected", verifiedAt: null, rejectedAt: Timestamp.now() };
       await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
       // Sale left "verified" → pull its Order out of the tech queue.
       await cancelOrderForSale({ leadId, item: oldItem, itemIndex });
@@ -206,7 +207,9 @@ export default function SalesApprovals() {
     try {
       const items = [...getAllItems(lead)];
       const oldItem = items[itemIndex];
-      items[itemIndex] = { ...oldItem, verificationStatus: "pending", verifiedAt: null };
+      // Back to undecided: both decision stamps go, or the row would still date itself by a
+      // decision that has been taken back.
+      items[itemIndex] = { ...oldItem, verificationStatus: "pending", verifiedAt: null, rejectedAt: null };
       await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
       // Back to pending → pull its Order out of the tech queue.
       await cancelOrderForSale({ leadId, item: oldItem, itemIndex });
@@ -308,7 +311,7 @@ export default function SalesApprovals() {
         const cItems = getAllItems(c);
         if (!cItems.some((it) => it.verificationStatus !== "rejected")) continue; // already all rejected
         const newItems = cItems.map((it) =>
-          it.verificationStatus === "rejected" ? it : { ...it, verificationStatus: "rejected" as const, verifiedAt: null },
+          it.verificationStatus === "rejected" ? it : { ...it, verificationStatus: "rejected" as const, verifiedAt: null, rejectedAt: Timestamp.now() },
         );
         await updateDoc(doc(db, "leads", c.id), { saleItems: newItems, lastUpdated: serverTimestamp() });
         // Any previously-verified competing sale must drop out of the tech queue too.
@@ -355,7 +358,7 @@ export default function SalesApprovals() {
             return {
               ...l,
               saleItems: getAllItems(l).map((it) =>
-                it.verificationStatus === "rejected" ? it : { ...it, verificationStatus: "rejected" as const, verifiedAt: null },
+                it.verificationStatus === "rejected" ? it : { ...it, verificationStatus: "rejected" as const, verifiedAt: null, rejectedAt: Timestamp.now() },
               ),
             };
           }
@@ -490,7 +493,7 @@ export default function SalesApprovals() {
         const items = [...getAllItems(lead)];
         const affected = byLead[leadId];
         affected.forEach(({ itemIndex }) => {
-          items[itemIndex] = { ...items[itemIndex], verificationStatus: "rejected", verifiedAt: null };
+          items[itemIndex] = { ...items[itemIndex], verificationStatus: "rejected", verifiedAt: null, rejectedAt: Timestamp.now() };
         });
         await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
         // Each rejected sale → pull its Order from the tech queue.
@@ -661,21 +664,22 @@ export default function SalesApprovals() {
     if (!dateStr || isTodayFilter) return true;
     return pendingSubmittedDateStr(li) === dateStr;
   });
+  /** The day a sale was decided, for the date filter. See utils/saleDecision for why not lastUpdated. */
+  const decidedDateStr = (li: LeadItem): string | null => {
+    const ms = decidedAtMs(li.item, li.lead);
+    return ms ? format(new Date(ms), "dd/MM/yyyy") : null;
+  };
   const verified = allLeadItems.filter((li) => {
     if (li.item.verificationStatus !== "verified") return false;
     if (!matchesFilters(li)) return false;
     if (!dateStr) return true;
-    const ts = li.lead.lastUpdated?.seconds;
-    if (!ts) return false;
-    return format(new Date(ts * 1000), "dd/MM/yyyy") === dateStr;
+    return decidedDateStr(li) === dateStr;
   });
   const rejected = allLeadItems.filter((li) => {
     if (li.item.verificationStatus !== "rejected") return false;
     if (!matchesFilters(li)) return false;
     if (!dateStr) return true;
-    const ts = li.lead.lastUpdated?.seconds;
-    if (!ts) return false;
-    return format(new Date(ts * 1000), "dd/MM/yyyy") === dateStr;
+    return decidedDateStr(li) === dateStr;
   });
   // Duplicates: every sale item whose number was sold by 2+ different members (any status).
   // Sorted by number so competing sales sit side by side, then oldest submission first.

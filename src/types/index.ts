@@ -378,6 +378,12 @@ export interface SaleDetail {
   paymentScreenshotUrl?: string | null;
   submittedAt?: any;        // when the member recorded the sale
   verifiedAt?: any;         // when the admin approved it
+  /**
+   * When the admin rejected it. Kept separate from `verifiedAt` — which is cleared on rejection —
+   * because the approvals queue filters "what did I decide yesterday" on the decision's own stamp,
+   * and a rejection with no stamp of its own could only be dated by the lead's last edit.
+   */
+  rejectedAt?: any;
   // Duplicate-sale dispute proof — required when another member already sold this number
   disputed?: boolean;       // recorded on a number already sold by another member
   proofImageUrl?: string | null;  // call-record / proof screenshot
