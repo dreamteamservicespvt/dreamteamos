@@ -5,7 +5,9 @@ import { commissionRate } from "@/services/settlements";
 import { useSalaryMonth, type SalaryMonthState } from "./useSalaryMonth";
 import { withinPeriod, type PeriodFilter } from "@/utils/periodFilter";
 import { deductionsFor } from "@/utils/payrollEngine";
-import { incentiveEarned, monthlyTargetFor, targetAchievement } from "@/utils/salesTargets";
+import {
+  incentiveEarned, monthlyTargetFor, targetAchievement, INCENTIVE_TARGET_THRESHOLD,
+} from "@/utils/salesTargets";
 import type { Lead, SaleDetail } from "@/types";
 
 /**
@@ -42,6 +44,8 @@ export interface SalesEarnings {
    * because there were no sales — the member is owed an explanation, not a blank.
    */
   incentiveWithheld: boolean;
+  /** Sales still needed to reach the incentive gate, in rupees. 0 once it is earned. */
+  incentiveShortfall: number;
   /** Sales recorded but not yet verified — not paid, but worth surfacing. */
   pendingSaleCount: number;
   pendingSaleValue: number;
@@ -163,6 +167,16 @@ export function useSalesEarnings({
     periodTarget,
     achievement: targetAchievement(sales.salesBase, periodTarget),
     incentiveWithheld: !earned && commissionBeforeTarget > 0,
+    /**
+     * The sales still needed to unlock the incentive, in rupees.
+     *
+     * A gate stated as a percentage is a fact; stated as "₹12,400 more" it is an instruction. The
+     * member cannot act on "you are at 61%" without doing the arithmetic themselves, in their head,
+     * against a target they may not remember.
+     */
+    incentiveShortfall: earned
+      ? 0
+      : Math.max(0, Math.ceil(periodTarget * INCENTIVE_TARGET_THRESHOLD - sales.salesBase)),
     pendingSaleCount: sales.pendingSaleCount,
     pendingSaleValue: sales.pendingSaleValue,
     totalEarnings: salaryPayable + commission,

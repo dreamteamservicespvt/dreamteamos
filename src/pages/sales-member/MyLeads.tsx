@@ -12,7 +12,7 @@ import { claimNumber, applySaleFreeze, releaseLockForLead, buildLeadFreezeFields
 import { findMemberDuplicates, resolveNonSaleDuplicates } from "@/services/duplicateLeads";
 import { formatCurrency, formatDuration } from "@/utils/formatters";
 import { leadActivityDay, leadActivityMs } from "@/utils/leadActivity";
-import { normalizePhone, getCallUrl, getWhatsAppUrl, buildLeadGreeting } from "@/utils/phone";
+import { normalizePhone, getCallUrl, getWhatsAppUrl, buildLeadGreeting, phoneMatchesQuery } from "@/utils/phone";
 import { useNow } from "@/hooks/useNow";
 import { format, subDays, startOfDay, parseISO } from "date-fns";
 import type { AppUser, Lead, LeadStatus, Order, SaleDetail, SaleEditEntry, SalePayment } from "@/types";
@@ -240,7 +240,7 @@ export default function MyLeads() {
   const matchesSearch = (l: Lead) =>
     !search ||
     l.displayName?.toLowerCase().includes(search.toLowerCase()) ||
-    l.phone?.includes(search) ||
+    phoneMatchesQuery(l.phone, search) ||
     l.realName?.toLowerCase().includes(search.toLowerCase());
 
   const matchesStatus = (l: Lead) => {
@@ -281,7 +281,7 @@ export default function MyLeads() {
         if (salesSearch) {
           const q = salesSearch.toLowerCase();
           const matchName = lead.displayName?.toLowerCase().includes(q);
-          const matchPhone = lead.phone?.includes(q);
+          const matchPhone = phoneMatchesQuery(lead.phone, q);
           const matchCat = item.category?.toLowerCase().includes(q);
           if (!matchName && !matchPhone && !matchCat) return false;
         }

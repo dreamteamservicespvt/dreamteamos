@@ -100,3 +100,31 @@ export function buildLeadGreeting(clientName?: string | null, senderName?: strin
     `Once you're free, message us — we'll call you back to discuss about your ad requirements 🚀`,
   ].join("\n");
 }
+
+
+/**
+ * Does this stored number match what somebody typed into a search box?
+ *
+ * ── Why a plain `includes` is not enough ──────────────────────────────────────────────────────
+ * Numbers are STORED normalised — `+919849834102`, no spaces — but nobody searches that way. They
+ * paste what the client sent them, and a phone number arrives written every way there is:
+ *
+ *     +91 98498 34102      +91 984 98 34 102      984 98 34 102      09849834102
+ *
+ * Every one of those failed against the raw substring test, so a member searching for a number
+ * they had literally just copied was told they had no such lead — and concluded the search was
+ * broken, which it was.
+ *
+ * Both sides are reduced to digits and compared as a substring, so any grouping works and so does
+ * a partial number. A leading zero is dropped because it is a trunk prefix, not part of the
+ * number; the country code needs no special handling, since the stored digits end with the local
+ * number and `includes` finds it either way.
+ *
+ * Returns false for a query with no digits in it at all — that is a name search, and matching it
+ * against every phone number in the list would return everything.
+ */
+export function phoneMatchesQuery(phone: string | null | undefined, query: string): boolean {
+  const wanted = (query || "").replace(/\D/g, "").replace(/^0+/, "");
+  if (!wanted) return false;
+  return (phone || "").replace(/\D/g, "").includes(wanted);
+}

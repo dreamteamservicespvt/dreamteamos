@@ -172,6 +172,7 @@ export default function SalesMemberDashboard() {
         incentiveWithheld={earnings.incentiveWithheld}
         commissionBeforeTarget={earnings.commissionBeforeTarget}
         achievement={earnings.achievement}
+        incentiveShortfall={earnings.incentiveShortfall}
         subtitle={earnings.salary.period
           ? `Cycle ${format(new Date(`${earnings.salary.period.start}T00:00:00`), "dd MMM")} – ${format(new Date(`${earnings.salary.period.end}T00:00:00`), "dd MMM")}`
           : undefined}

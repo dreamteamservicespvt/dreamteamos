@@ -6,7 +6,7 @@ import { sendNotification } from "@/services/notifications";
 import { adminAssignNumber, transferLockOwnership, releaseLockForDeletedLead } from "@/services/numberLock";
 import { fetchTeamMembers, subscribeMemberLeads } from "@/services/teamLeads";
 import { useAuthStore } from "@/store/authStore";
-import { normalizePhone, formatPhoneDisplay, getWhatsAppUrl, getCallUrl } from "@/utils/phone";
+import { normalizePhone, formatPhoneDisplay, getWhatsAppUrl, getCallUrl, phoneMatchesQuery } from "@/utils/phone";
 import { formatCurrency } from "@/utils/formatters";
 import { format, subDays, startOfDay } from "date-fns";
 import type { AppUser, Lead, LeadStatus, SaleDetail } from "@/types";
@@ -276,7 +276,7 @@ export default function MemberLeadsDetail() {
   const matchesSearch = (l: Lead) => {
     if (!search) return true;
     const q = search.toLowerCase();
-    return l.phone.includes(q) || l.displayName?.toLowerCase().includes(q) || l.notes?.toLowerCase().includes(q) || l.realName?.toLowerCase().includes(q);
+    return phoneMatchesQuery(l.phone, q) || l.displayName?.toLowerCase().includes(q) || l.notes?.toLowerCase().includes(q) || l.realName?.toLowerCase().includes(q);
   };
   const matchesStatus = (l: Lead) => {
     if (statusFilter === "all") return true;
@@ -315,7 +315,7 @@ export default function MemberLeadsDetail() {
         if (salesSearch) {
           const q = salesSearch.toLowerCase();
           const matchName = lead.displayName?.toLowerCase().includes(q);
-          const matchPhone = lead.phone?.includes(q);
+          const matchPhone = phoneMatchesQuery(lead.phone, q);
           const matchCat = item.category?.toLowerCase().includes(q);
           if (!matchName && !matchPhone && !matchCat) return false;
         }

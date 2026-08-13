@@ -6,7 +6,7 @@ import { syncPublicBadge } from "@/services/publicBadge";
 import { createUserWithoutSignOut } from "@/services/secondaryAuth";
 import { saveMemberPassword, deleteMemberPassword, fetchMemberPassword, buildCredentialsMessage } from "@/services/memberCredentials";
 import { useAuthStore } from "@/store/authStore";
-import { normalizePhone, formatPhoneDisplay, getWhatsAppUrl, getCallUrl } from "@/utils/phone";
+import { normalizePhone, formatPhoneDisplay, getWhatsAppUrl, getCallUrl, phoneMatchesQuery } from "@/utils/phone";
 import type { AppUser, DailyCheckin, WorkAssignment } from "@/types";
 import { formatCurrency } from "@/utils/formatters";
 import { Users, Plus, X, Loader2, Eye, EyeOff, UserCheck, UserX, Trash2, Phone, MessageCircle, Pencil, Share2, Search, LogIn, LogOut, Sparkles, BarChart3, Wand2, Film, ExternalLink, KeyRound } from "lucide-react";
@@ -266,7 +266,7 @@ export default function TechAdminMyTeam() {
     const base = members.filter((m) => {
       if (!searchQuery.trim()) return true;
       const q = searchQuery.toLowerCase();
-      return m.name?.toLowerCase().includes(q) || m.phone?.includes(q) || formatPhoneDisplay(m.phone || '').includes(q);
+      return m.name?.toLowerCase().includes(q) || phoneMatchesQuery(m.phone, q);
     });
 
     if (revenueSortOrder === "none") return base;

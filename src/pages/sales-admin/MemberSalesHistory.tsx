@@ -9,7 +9,7 @@ import { format, subDays } from "date-fns";
 import type { AppUser, Lead, LeadStatus, SaleDetail } from "@/types";
 import { ArrowLeft, ShoppingBag, Phone, MessageCircle, Search } from "lucide-react";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
-import { formatPhoneDisplay, getCallUrl, getWhatsAppUrl } from "@/utils/phone";
+import { formatPhoneDisplay, getCallUrl, getWhatsAppUrl, phoneMatchesQuery } from "@/utils/phone";
 
 const STATUS_OPTIONS: { value: LeadStatus; label: string; color: string }[] = [
   { value: "not_called", label: "Not Called", color: "bg-muted text-muted-foreground" },
@@ -118,7 +118,7 @@ export default function MemberSalesHistory() {
         if (salesSearch) {
           const q = salesSearch.toLowerCase();
           const matchName = lead.displayName?.toLowerCase().includes(q);
-          const matchPhone = lead.phone?.includes(q);
+          const matchPhone = phoneMatchesQuery(lead.phone, q);
           const matchCat = item.category?.toLowerCase().includes(q);
           if (!matchName && !matchPhone && !matchCat) return false;
         }
