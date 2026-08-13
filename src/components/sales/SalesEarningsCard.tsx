@@ -1,4 +1,3 @@
-import { Clock3 } from "lucide-react";
 import { formatCurrency } from "@/utils/formatters";
 
 /**
@@ -46,35 +45,55 @@ export default function SalesEarningsCard({
       <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-muted-foreground">
         <span>Salary <strong className="text-foreground">{formatCurrency(salaryPayable)}</strong></span>
         {/*
-          The commission a member has actually built up, shown whether or not it is payable yet.
-
-          It used to read "+ Commission ₹0" until the target gate opened, which is true of the
-          payslip and useless to the person selling: the number they want to watch all cycle is the
-          one their work has earned so far, and hiding it until the last week removes the only
-          running feedback the job has. So the figure is always the accrued one — marked pending,
-          in warning colour, so it can never be mistaken for money already due.
+          The commission a member has built up, shown whether or not the target gate has opened.
+          It used to read "+ Commission ₹0" until 75%, which is true of the payslip and useless to
+          the person selling — the number they want to watch all cycle is the one their work has
+          earned, and hiding it removes the only running feedback the job has.
         */}
-        {incentiveWithheld ? (
-          <span className="inline-flex items-center gap-1.5" data-test="commission-pending">
-            + Commission <strong className="text-warning">{formatCurrency(commissionBeforeTarget || 0)}</strong>
-            <span className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-1.5 py-px text-[10px] font-semibold text-warning">
-              <Clock3 className="h-2.5 w-2.5" /> not yet earned
-            </span>
-          </span>
-        ) : (
-          <span>+ Commission <strong className="text-success">{formatCurrency(commission)}</strong></span>
-        )}
+        <span data-test={incentiveWithheld ? "commission-pending" : "commission-earned"}>
+          + Commission{" "}
+          <strong className={incentiveWithheld ? "text-foreground" : "text-success"}>
+            {formatCurrency(incentiveWithheld ? (commissionBeforeTarget || 0) : commission)}
+          </strong>
+          {incentiveWithheld && <span className="ml-1 text-[11px]">&nbsp;so far</span>}
+        </span>
       </div>
       {incentiveWithheld && (
-        <p className="mt-2 rounded-lg bg-warning/10 px-2.5 py-1.5 text-[11px] leading-relaxed text-warning" data-test="incentive-withheld">
-          <strong>Not in your total yet.</strong>{" "}
-          The incentive is payable at 75% of target or above — you are at{" "}
-          {Math.round((achievement || 0) * 100)}%
-          {incentiveShortfall && incentiveShortfall > 0
-            ? <>, {formatCurrency(incentiveShortfall)} of sales short</>
-            : null}
-          . Reach 75% and the full {formatCurrency(commissionBeforeTarget || 0)} is earned.
-        </p>
+        /*
+          Information, not an alarm.
+
+          This said "commission NOT EARNED" in warning colour, which turned the one card meant to
+          motivate somebody into a notice of something withheld — the opposite of its job. The fact
+          is unchanged and still stated plainly; what changed is that it reads as the next rung on a
+          ladder rather than a penalty, and the progress bar makes the distance feel finite.
+        */
+        <div className="mt-2.5 rounded-lg bg-muted/40 px-2.5 py-2" data-test="incentive-withheld">
+          <div className="flex items-center justify-between gap-2 text-[11px]">
+            <span className="text-muted-foreground">
+              Unlocks at 75% of target
+            </span>
+            <span className="font-semibold text-foreground">
+              {Math.round((achievement || 0) * 100)}% there
+            </span>
+          </div>
+          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-border">
+            <div
+              className="h-full rounded-full bg-success transition-[width] duration-700"
+              style={{ width: `${Math.min(100, ((achievement || 0) / 0.75) * 100)}%` }}
+            />
+          </div>
+          {incentiveShortfall && incentiveShortfall > 0 ? (
+            <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+              <strong className="text-foreground">{formatCurrency(incentiveShortfall)}</strong> more in
+              approved sales and the full{" "}
+              <strong className="text-success">{formatCurrency(commissionBeforeTarget || 0)}</strong> is yours.
+            </p>
+          ) : (
+            <p className="mt-1.5 text-[11px] text-muted-foreground">
+              Reach 75% and the full {formatCurrency(commissionBeforeTarget || 0)} is yours.
+            </p>
+          )}
+        </div>
       )}
       {subtitle && <p className="mt-2 text-[11px] text-muted-foreground">{subtitle}</p>}
     </>

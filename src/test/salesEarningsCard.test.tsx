@@ -32,9 +32,10 @@ describe("commission that has not reached the target yet", () => {
     expect(screen.getByTestId("commission-pending").textContent).toContain("1,200");
   });
 
-  it("marks it as not yet earned, so it cannot read as money due", () => {
+  /** It must still be legible as "building up", never as money already banked. */
+  it("marks it as running, so it cannot read as money already due", () => {
     render(<SalesEarningsCard {...withheld} />);
-    expect(screen.getByTestId("commission-pending").textContent).toContain("not yet earned");
+    expect(screen.getByTestId("commission-pending").textContent).toContain("so far");
   });
 
   /** The total is what will actually be paid. Inflating it would be a lie about somebody's wages. */
@@ -42,14 +43,14 @@ describe("commission that has not reached the target yet", () => {
     render(<SalesEarningsCard {...withheld} />);
     // Salary alone — the ₹1,200 accrued above is deliberately not added in.
     expect(screen.getByTestId("earnings-total").textContent).toBe("₹5,000");
-    expect(screen.getByTestId("incentive-withheld").textContent).toContain("Not in your total yet");
+    expect(screen.getByTestId("incentive-withheld").textContent).toContain("75%");
   });
 
   /** "You are at 61%" is a fact; "₹12,400 short" is an instruction. */
   it("says how much more selling unlocks it", () => {
     render(<SalesEarningsCard {...withheld} />);
     const note = screen.getByTestId("incentive-withheld").textContent || "";
-    expect(note).toContain("61%");
+    expect(note).toContain("61% there");
     expect(note).toContain("12,400");
     expect(note).toContain("1,200");
   });

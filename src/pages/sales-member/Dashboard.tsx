@@ -95,20 +95,41 @@ export default function SalesMemberDashboard() {
   // leaderboard and every salary screen use), NOT all-time and NOT the calendar month. Taken from
   // the one pay-period function rather than rebuilt here, so it cannot drift from the rest.
   const { start: cycleStart, end: cycleEnd } = payPeriodForDate(new Date());
-  const cycleRevenue = allSaleItems
-    .filter(({ item, lead }) => {
-      const d = saleItemDate(item, lead);
-      return d !== null && d >= cycleStart && d <= cycleEnd;
-    })
-    .reduce((sum, { item }) => sum + (item.amount || 0), 0);
-  const monthlyProgress = monthlyTarget > 0 ? Math.min((cycleRevenue / monthlyTarget) * 100, 100) : 0;
 
-  // Daily revenue: sales SUBMITTED today only
-  const todayStr = format(new Date(), "yyyy-MM-dd");
-  const todayRevenue = allSaleItems
-    .filter(({ item, lead }) => saleItemDate(item, lead) === todayStr)
+  /**
+   * Target progress counts VERIFIED sales, with anything still waiting shown beside it.
+   *
+   * ── The contradiction this removes ────────────────────────────────────────────────────────
+   * These cards used to count every non-rejected sale while the incentive gate on the earnings
+   * card counted only verified ones, so the same cycle appeared twice on one screen with two
+   * different answers — "17% achieved" above, "you are at 10%" below. A member cannot act on a
+   * screen that disagrees with itself, and the half that decides their money is the verified one.
+   *
+   * The pending figure is not hidden: it is what turns "why is my progress lower than my sales?"
+   * into a reason to chase the admin, so it is shown as its own number rather than folded in.
+   */
+  const inCycle = (item: { submittedAt?: any }, lead: Lead) => {
+    const d = saleItemDate(item, lead);
+    return d !== null && d >= cycleStart && d <= cycleEnd;
+  };
+  const cycleVerified = allSaleItems
+    .filter(({ item, lead }) => inCycle(item, lead) && item.verificationStatus === "verified")
     .reduce((sum, { item }) => sum + (item.amount || 0), 0);
-  const dailyProgress = dailyTarget > 0 ? Math.min((todayRevenue / dailyTarget) * 100, 100) : 0;
+  const cyclePending = allSaleItems
+    .filter(({ item, lead }) => inCycle(item, lead) && item.verificationStatus !== "verified")
+    .reduce((sum, { item }) => sum + (item.amount || 0), 0);
+  const monthlyProgress = monthlyTarget > 0 ? Math.min((cycleVerified / monthlyTarget) * 100, 100) : 0;
+
+  // Daily revenue: sales SUBMITTED today, on the same verified basis as the cycle above.
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const todayItems = allSaleItems.filter(({ item, lead }) => saleItemDate(item, lead) === todayStr);
+  const todayVerified = todayItems
+    .filter(({ item }) => item.verificationStatus === "verified")
+    .reduce((sum, { item }) => sum + (item.amount || 0), 0);
+  const todayPending = todayItems
+    .filter(({ item }) => item.verificationStatus !== "verified")
+    .reduce((sum, { item }) => sum + (item.amount || 0), 0);
+  const dailyProgress = dailyTarget > 0 ? Math.min((todayVerified / dailyTarget) * 100, 100) : 0;
 
   const stats = [
     { label: selectedDate ? "Active Leads" : "Total Leads", value: total, icon: Phone, color: "text-info" },
@@ -116,7 +137,19 @@ export default function SalesMemberDashboard() {
     { label: "Answered", value: answered, icon: CheckCircle, color: "text-success" },
     { label: "Sales Done", value: salesDone, icon: TrendingUp, color: "text-primary" },
     { label: "Pending Verify", value: pendingVerification, icon: AlertCircle, color: "text-role-sales-admin" },
-    { label: "Revenue", value: formatCurrency(totalRevenue), icon: TrendingUp, color: "text-success" },
+    /*
+      All-time unless a day is picked, and it says so.
+
+      Unlabelled, this sat directly above two cycle-based target cards showing far smaller figures,
+      and read as "revenue this period" — which made the targets underneath look broken rather than
+      the label look vague.
+    */
+    {
+      label: selectedDate ? "Revenue (this day)" : "Revenue (all time)",
+      value: formatCurrency(totalRevenue),
+      icon: TrendingUp,
+      color: "text-success",
+    },
   ];
 
   const statusBreakdown = [
@@ -195,10 +228,10 @@ export default function SalesMemberDashboard() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {dailyTarget > 0 && (
             <div className="bg-card border border-border rounded-xl p-4">
-              <div className="flex items-center justify-between mb-2">
+              <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
                 <h2 className="font-display font-semibold text-foreground text-sm">Daily Target</h2>
-                <span className="text-xs text-muted-foreground font-mono">
-                  {formatCurrency(todayRevenue)} / {formatCurrency(dailyTarget)}
+                <span className="font-mono text-xs text-muted-foreground">
+                  {formatCurrency(todayVerified)} / {formatCurrency(dailyTarget)}
                 </span>
               </div>
               <div className="h-2 bg-border rounded-full overflow-hidden">
@@ -209,18 +242,30 @@ export default function SalesMemberDashboard() {
                   className={`h-full rounded-full ${dailyProgress >= 100 ? "bg-success" : "bg-primary"}`}
                 />
               </div>
-              <p className="text-[10px] text-muted-foreground mt-1.5">{dailyProgress.toFixed(0)}% achieved</p>
+              <p className="mt-1.5 text-[10px] text-muted-foreground">
+                {dailyProgress.toFixed(0)}% achieved
+                {todayPending > 0 && (
+                  <span className="text-warning"> · {formatCurrency(todayPending)} awaiting approval</span>
+                )}
+              </p>
             </div>
           )}
           {monthlyTarget > 0 && (
             <div className="bg-card border border-border rounded-xl p-4">
-              <div className="flex items-center justify-between mb-2">
-                {/* Named by the period it measures, so nobody reads it as 1st–31st. */}
-                <h2 data-test="monthly-target-heading" className="font-display font-semibold text-foreground text-sm">
+              {/*
+                Stacked, not a two-column row.
+
+                The heading names the pay period — "Monthly Target · August 2026 (10 Aug – 09 Sep)"
+                — which on a phone ran straight into the figure beside it and printed
+                "…(10₹78,160 /". A wrapping flex row keeps them apart at every width, and the
+                figure is given its own line to sit on rather than fighting for the same one.
+              */}
+              <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                <h2 data-test="monthly-target-heading" className="min-w-0 font-display text-sm font-semibold text-foreground">
                   Monthly Target · {payPeriodLabel(currentPayMonth())}
                 </h2>
-                <span className="text-xs text-muted-foreground font-mono">
-                  {formatCurrency(cycleRevenue)} / {formatCurrency(monthlyTarget)}
+                <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                  {formatCurrency(cycleVerified)} / {formatCurrency(monthlyTarget)}
                 </span>
               </div>
               <div className="h-2 bg-border rounded-full overflow-hidden">
@@ -231,8 +276,11 @@ export default function SalesMemberDashboard() {
                   className={`h-full rounded-full ${monthlyProgress >= 100 ? "bg-success" : "bg-primary"}`}
                 />
               </div>
-              <p className="text-[10px] text-muted-foreground mt-1.5">
+              <p className="mt-1.5 text-[10px] leading-relaxed text-muted-foreground">
                 {monthlyProgress.toFixed(0)}% achieved · cycle {format(new Date(cycleStart), "dd MMM")} → {format(new Date(cycleEnd), "dd MMM")}
+                {cyclePending > 0 && (
+                  <span className="text-warning"> · {formatCurrency(cyclePending)} awaiting approval, not counted yet</span>
+                )}
               </p>
             </div>
           )}
