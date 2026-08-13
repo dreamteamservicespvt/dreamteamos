@@ -12,7 +12,7 @@ import { useNow } from "@/hooks/useNow";
 import { currentPayMonth, payPeriodForMonth, shiftPayMonth } from "@/utils/payrollEngine";
 import { collectedInRange, collectedOf } from "@/utils/salePayments";
 
-/** Granularity for the "Career Sales" / "Career Commission" columns — Month is the default and
+/** Granularity for the "Career Sales" / "Career Incentives" columns — Month is the default and
  *  the only option sales members ever see; Career (true all-time totals) is admin-only, since
  *  it exposes company-wide lifetime revenue. */
 type Granularity = "career" | "month";
@@ -21,9 +21,9 @@ type Granularity = "career" | "month";
  * The cycle we are IN — 10th to 9th, labelled by the month it starts in.
  *
  * This board used to open on the CALENDAR month, which between the 1st and the 9th is a cycle that
- * has not begun: on 1 August it showed 10 Aug → 9 Sep, so every member's month sales and commission
+ * has not begun: on 1 August it showed 10 Aug → 9 Sep, so every member's month sales and incentives
  * read ₹0 and the rows fell back to whatever order Firestore happened to return them in. That is
- * the "my commission has vanished" report, and the "sorted alphabetically" one, from one cause.
+ * the "my incentives have vanished" report, and the "sorted alphabetically" one, from one cause.
  */
 const todayMonth = () => currentPayMonth();
 
@@ -267,7 +267,7 @@ export default function Leaderboard() {
     };
   });
 
-  // The "Career Sales" / "Career Commission" columns show MONTH totals by default (and always
+  // The "Career Sales" / "Career Incentives" columns show MONTH totals by default (and always
   // for sales members); only an admin who has switched the toggle to Career sees true all-time
   // totals. Sort keys "career" / "commCareer" follow whichever is currently on screen.
   const secondarySales = (s: MemberStats) => (granularity === "career" ? s.careerSales : s.monthSales);
@@ -452,8 +452,8 @@ export default function Leaderboard() {
         {[
           { label: effectiveDateStr ? "Day's Total Sales" : "All Sales", value: formatCurrency(totalDaySales), color: "text-info" },
           { label: `${secondaryLabel} Sales (Verified)`, value: formatCurrency(totalSecondarySales), color: "text-success" },
-          { label: effectiveDateStr ? "Day's Commission" : "All Commission", value: formatCurrency(totalCommDay), color: "text-warning" },
-          { label: `${secondaryLabel} Commission`, value: formatCurrency(totalSecondaryComm), color: "text-primary" },
+          { label: effectiveDateStr ? "Day's Incentives" : "All Incentives", value: formatCurrency(totalCommDay), color: "text-warning" },
+          { label: `${secondaryLabel} Incentives`, value: formatCurrency(totalSecondaryComm), color: "text-primary" },
         ].map((card) => (
           <div key={card.label} className="bg-card border border-border rounded-xl p-3 md:p-4">
             <p className="text-[10px] md:text-xs text-muted-foreground mb-1">{card.label}</p>
@@ -466,7 +466,7 @@ export default function Leaderboard() {
       <p className="text-[10px] text-muted-foreground">
         Sort by clicking column headers below ↓ &nbsp;·&nbsp; Currently sorted by:{" "}
         <span className="text-foreground font-medium">
-          {sortBy === "career" ? `${secondaryLabel} Sales` : sortBy === "daySales" ? "Day Sales" : sortBy === "commCareer" ? `${secondaryLabel} Commission` : "Day Commission"}
+          {sortBy === "career" ? `${secondaryLabel} Sales` : sortBy === "daySales" ? "Day Sales" : sortBy === "commCareer" ? `${secondaryLabel} Incentives` : "Day Incentives"}
         </span>
         {isAdmin && " · Click a row to view that member's sales for the selected date"}
       </p>
@@ -503,14 +503,14 @@ export default function Leaderboard() {
                     className={`p-3 text-right text-xs font-medium cursor-pointer hover:text-foreground transition-colors select-none ${sortBy === "commDay" ? "text-primary underline" : "text-muted-foreground"}`}
                     onClick={() => setSortBy("commDay")}
                   >
-                    {effectiveDateStr ? "Day Commission" : "All Commission"}
+                    {effectiveDateStr ? "Day Incentives" : "All Incentives"}
                     {sortBy === "commDay" && " ▲"}
                   </th>
                   <th
                     className={`p-3 text-right text-xs font-medium cursor-pointer hover:text-foreground transition-colors select-none ${sortBy === "commCareer" ? "text-primary underline" : "text-muted-foreground"}`}
                     onClick={() => setSortBy("commCareer")}
                   >
-                    {secondaryLabel} Commission {sortBy === "commCareer" && "▲"}
+                    {secondaryLabel} Incentives {sortBy === "commCareer" && "▲"}
                   </th>
                   {isAdmin && <th className="p-3 w-8" />}
                 </tr>
@@ -612,7 +612,7 @@ export default function Leaderboard() {
                       <p className={`font-mono font-semibold ${secondarySales(s) > 0 ? "text-success" : "text-muted-foreground"}`}>{formatCurrency(secondarySales(s))}</p>
                     </div>
                     <div className="bg-muted/30 rounded-lg p-2">
-                      <p className="text-muted-foreground mb-0.5">{effectiveDateStr ? "Day Commission" : "All Comm."}</p>
+                      <p className="text-muted-foreground mb-0.5">{effectiveDateStr ? "Day Incentives" : "All Inc."}</p>
                       <p className={`font-mono font-semibold ${s.commDay > 0 ? "text-warning" : "text-muted-foreground"}`}>{formatCurrency(s.commDay)}</p>
                     </div>
                     <div className="bg-muted/30 rounded-lg p-2">
@@ -628,7 +628,7 @@ export default function Leaderboard() {
       )}
 
       <p className="text-[10px] text-muted-foreground text-center">
-        Day Sales = all amounts submitted in the selected window • {secondaryLabel} = {granularity === "career" ? "all verified sales ever" : `verified sales in ${periodLabel}`} • Commission: 5% or 10% based on member plan
+        Day Sales = all amounts submitted in the selected window • {secondaryLabel} = {granularity === "career" ? "all verified sales ever" : `verified sales in ${periodLabel}`} • Incentives: 5% or 10% based on member plan
       </p>
     </div>
   );

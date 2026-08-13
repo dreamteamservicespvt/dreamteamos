@@ -10,7 +10,7 @@ import { useEmployeeProfile } from "@/hooks/useEmployeeProfile";
 import { User, Mail, Phone, Shield, Loader2, Check, Lock, Receipt, MessageCircle } from "lucide-react";
 import { normalizePhone } from "@/utils/phone";
 import SalaryTimeline from "@/components/SalaryTimeline";
-import AttendanceCard from "@/components/sales/AttendanceCard";
+import SalesDayCalendar from "@/components/sales/SalesDayCalendar";
 import MemberAgreements from "@/components/agreement/MemberAgreements";
 import MyEmploymentPanel from "@/components/hr/MyEmploymentPanel";
 import { saveMemberPassword } from "@/services/memberCredentials";
@@ -195,8 +195,8 @@ export default function MyProfile() {
       {/* My employment record — terms, documents to sign, assets, reviews, resignation */}
       <MyEmploymentPanel />
 
-      {/* Monthly Attendance (from daily check-in/check-out) */}
-      <AttendanceCard memberId={user.uid} />
+      {/* Attendance calendar — the same grid tech members get, and the count salary is deducted from. */}
+      <SalesDayCalendar memberId={user.uid} />
 
       {/* Agreements to review & sign */}
       <MemberAgreements />

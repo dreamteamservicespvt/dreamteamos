@@ -49,3 +49,15 @@ export const NOT_ASSIGNED_CHIP: WorkStatusChip = {
 export function workStatusChip(status?: WorkAssignmentStatus | null): WorkStatusChip {
   return (status && WORK_STATUS_CHIP[status]) || NOT_ASSIGNED_CHIP;
 }
+
+/**
+ * Has the ad gone out?
+ *
+ * The one question that decides whether a chat is still work or is history — which is why the
+ * sales member's list folds these away and shows the rest. `completed` deliberately does NOT
+ * count: the tech team calling it done is not the same as it having been checked and delivered,
+ * and that gap is exactly the window where the client still comes back with a change.
+ */
+export function isDeliveredStatus(status?: WorkAssignmentStatus | null): boolean {
+  return status === "verified";
+}

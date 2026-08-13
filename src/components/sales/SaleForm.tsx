@@ -1746,7 +1746,7 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
         Half up front is the norm on a social-media month, with the rest due once the first post is
         made, posted and the campaign is running. On ads it is not supposed to happen — but it does,
         and there was nowhere to say so, which left a member two bad choices: record the full amount
-        and take commission on money nobody had handed over, or not record the sale at all. Both are
+        and take incentives on money nobody had handed over, or not record the sale at all. Both are
         worse than an honest number, so the box is here for every category.
       */}
       {finalAmount > 0 && (
@@ -1814,7 +1814,7 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
                   : "Nothing pending — the full amount has been collected."}
               </p>
               <p className="text-[11px] text-muted-foreground">
-                Your revenue and commission count {formatCurrency(advanceAmount)} today. The rest counts
+                Your revenue and incentives count {formatCurrency(advanceAmount)} today. The rest counts
                 on the day you collect it, and this sale will sit in <b>Pending payments</b> until then.
               </p>
             </div>

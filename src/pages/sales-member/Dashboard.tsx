@@ -14,6 +14,7 @@ import SalesEarningsCard from "@/components/sales/SalesEarningsCard";
 import { useSalesEarnings } from "@/hooks/useSalesEarnings";
 import { payPeriodForDate, payPeriodLabel, currentPayMonth } from "@/utils/payrollEngine";
 import { dailyTargetOf, monthlyTargetOf } from "@/utils/salesTargets";
+import { collectedInRange } from "@/utils/salePayments";
 import {
   recordCheckIn, recordCheckOut, watchTodayCheckin, buildCheckInMessage, buildCheckOutReport,
   reportWhatsAppUrl, type SalesCheckin,
@@ -31,7 +32,7 @@ export default function SalesMemberDashboard() {
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
 
-  // Total pay this cycle — salary + commission on verified sales, the same figure as My Salary.
+  // Total pay this cycle — salary + incentives on verified sales, the same figure as My Salary.
   // Shown here as day-to-day motivation, independent of the date filter above.
   const earnings = useSalesEarnings({
     memberId: user?.uid,
@@ -113,23 +114,36 @@ export default function SalesMemberDashboard() {
     return d !== null && d >= cycleStart && d <= cycleEnd;
   };
   const cycleVerified = allSaleItems
-    .filter(({ item, lead }) => inCycle(item, lead) && item.verificationStatus === "verified")
-    .reduce((sum, { item }) => sum + (item.amount || 0), 0);
+    .filter(({ item }) => item.verificationStatus === "verified")
+    .reduce((sum, { item, lead }) => sum + collectedInRange(item, lead, cycleStart, cycleEnd), 0);
   const cyclePending = allSaleItems
-    .filter(({ item, lead }) => inCycle(item, lead) && item.verificationStatus !== "verified")
-    .reduce((sum, { item }) => sum + (item.amount || 0), 0);
+    .filter(({ item }) => item.verificationStatus !== "verified")
+    .reduce((sum, { item, lead }) => sum + collectedInRange(item, lead, cycleStart, cycleEnd), 0);
   const monthlyProgress = monthlyTarget > 0 ? Math.min((cycleVerified / monthlyTarget) * 100, 100) : 0;
 
-  // Daily revenue: sales SUBMITTED today, on the same verified basis as the cycle above.
+  /**
+   * Today's number, counted exactly as the leaderboard counts it.
+   *
+   * Two things had to change to make the two screens agree, and both were wrong here rather than
+   * there:
+   *
+   *  1. **Money collected, not price agreed.** The leaderboard sums PAYMENTS in the window, so a
+   *     sale taken with an advance counts the advance today and the balance on the day it is
+   *     collected. Summing the whole sale price on the day it was recorded put ₹19,615 next to the
+   *     board's ₹14,615 for the same member on the same day.
+   *  2. **Not verified-only.** A daily target is the answer to "did I hit my number today", and a
+   *     sale made today has not been approved yet — it usually cannot be until tomorrow. Measuring
+   *     it on verified sales made the card read ₹0 every afternoon however much somebody sold,
+   *     which is worse than no card at all. The verified basis belongs to the incentive gate,
+   *     where the money is decided; it does not belong here.
+   */
   const todayStr = format(new Date(), "yyyy-MM-dd");
-  const todayItems = allSaleItems.filter(({ item, lead }) => saleItemDate(item, lead) === todayStr);
-  const todayVerified = todayItems
-    .filter(({ item }) => item.verificationStatus === "verified")
-    .reduce((sum, { item }) => sum + (item.amount || 0), 0);
-  const todayPending = todayItems
+  const todayRevenue = allSaleItems
+    .reduce((sum, { item, lead }) => sum + collectedInRange(item, lead, todayStr, todayStr), 0);
+  const todayPending = allSaleItems
     .filter(({ item }) => item.verificationStatus !== "verified")
-    .reduce((sum, { item }) => sum + (item.amount || 0), 0);
-  const dailyProgress = dailyTarget > 0 ? Math.min((todayVerified / dailyTarget) * 100, 100) : 0;
+    .reduce((sum, { item, lead }) => sum + collectedInRange(item, lead, todayStr, todayStr), 0);
+  const dailyProgress = dailyTarget > 0 ? Math.min((todayRevenue / dailyTarget) * 100, 100) : 0;
 
   const stats = [
     { label: selectedDate ? "Active Leads" : "Total Leads", value: total, icon: Phone, color: "text-info" },
@@ -195,7 +209,7 @@ export default function SalesMemberDashboard() {
       {/* Daily check-in / check-out — drives monthly attendance */}
       {user && <CheckinCard user={{ uid: user.uid, name: user.name }} leads={leads} />}
 
-      {/* Total earnings this cycle — salary + commission, the same figure as My Salary. Tap to
+      {/* Total earnings this cycle — salary + incentives, the same figure as My Salary. Tap to
           open the full breakdown. */}
       <SalesEarningsCard
         loading={earnings.loading}
@@ -231,7 +245,7 @@ export default function SalesMemberDashboard() {
               <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
                 <h2 className="font-display font-semibold text-foreground text-sm">Daily Target</h2>
                 <span className="font-mono text-xs text-muted-foreground">
-                  {formatCurrency(todayVerified)} / {formatCurrency(dailyTarget)}
+                  {formatCurrency(todayRevenue)} / {formatCurrency(dailyTarget)}
                 </span>
               </div>
               <div className="h-2 bg-border rounded-full overflow-hidden">
@@ -245,7 +259,7 @@ export default function SalesMemberDashboard() {
               <p className="mt-1.5 text-[10px] text-muted-foreground">
                 {dailyProgress.toFixed(0)}% achieved
                 {todayPending > 0 && (
-                  <span className="text-warning"> · {formatCurrency(todayPending)} awaiting approval</span>
+                  <span className="text-warning"> · {formatCurrency(todayPending)} still to be approved</span>
                 )}
               </p>
             </div>

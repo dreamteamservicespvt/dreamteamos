@@ -18,7 +18,7 @@ import { currentPayMonth, payPeriodLabel, shiftPayMonth } from "@/utils/payrollE
 import type { AppUser } from "@/types";
 
 /**
- * Sales Payroll — salary plus commission, paid the same way tech is.
+ * Sales Payroll — salary plus incentives, paid the same way tech is.
  *
  * Deliberately mirrors the tech payroll page: derive live, pay on the 10th, attach a receipt,
  * undo a mistake. The only difference is that a sales member's pay has two components, so both
@@ -146,7 +146,7 @@ export default function SalesPayroll() {
   };
 
   const handleExport = () => {
-    const headers = ["Employee", "Salary", "Deductions", "Salary Payable", "Sales", "Rate %", "Commission", "Total", "Status"];
+    const headers = ["Employee", "Salary", "Deductions", "Salary Payable", "Sales", "Rate %", "Incentives", "Total", "Status"];
     const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
     const csv = [
       headers.join(","),
@@ -182,7 +182,7 @@ export default function SalesPayroll() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-medium text-primary">
-              <Wallet className="h-3 w-3" /> Salary + commission
+              <Wallet className="h-3 w-3" /> Salary + incentives
             </div>
             <h1 className="font-display text-xl font-bold text-foreground md:text-2xl">Sales Payroll</h1>
             <p className="mt-1 text-xs text-muted-foreground md:text-sm">
@@ -209,7 +209,7 @@ export default function SalesPayroll() {
       <section className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <Stat icon={IndianRupee} label="Total Payout" value={formatCurrency(totals.total)} tone="primary" />
         <Stat icon={Banknote} label="Salary" value={formatCurrency(totals.salary)} />
-        <Stat icon={TrendingUp} label="Commission" value={formatCurrency(totals.commission)} tone="success" />
+        <Stat icon={TrendingUp} label="Incentives" value={formatCurrency(totals.commission)} tone="success" />
         <Stat icon={Users} label="Members" value={members.length} hint={`${totals.paidCount} paid`} />
         <Stat icon={CalendarClock} label="Next Pay Day"
           value={payDay.daysRemaining === 0 ? "Today" : `${payDay.daysRemaining}d`}
@@ -224,7 +224,7 @@ export default function SalesPayroll() {
               {totals.pendingSaleCount} sale{totals.pendingSaleCount === 1 ? "" : "s"} awaiting verification
             </p>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Worth {formatCurrency(totals.pendingSaleValue)}. Unverified sales earn no commission — verify
+              Worth {formatCurrency(totals.pendingSaleValue)}. Unverified sales earn no incentives — verify
               or reject them before paying, or they drop out of this period entirely.
             </p>
           </div>
@@ -268,7 +268,7 @@ export default function SalesPayroll() {
                 order people expect: what you earn, then what came off it. */}
             <span className="col-span-2 text-right">Salary</span>
             <span className="col-span-2 text-right">Deductions</span>
-            <span className="col-span-2 text-right">Commission</span>
+            <span className="col-span-2 text-right">Incentives</span>
             <span className="col-span-1 text-right">Total</span>
             <span className="col-span-1">Status</span>
           </div>
@@ -340,7 +340,7 @@ export default function SalesPayroll() {
                           <Row label={`Attendance deductions (${row.computation.absentDays}A · ${row.computation.halfDays}H · ${row.computation.unpaidLeaveDays}LWP)`}
                             value={`−${formatCurrency(row.salaryDeduction)}`} negative />
                         )}
-                        <Row label={`Commission · ${row.rate}% of ${formatCurrency(row.salesBase)}`} value={`+${formatCurrency(row.commission)}`} positive />
+                        <Row label={`Incentives · ${row.rate}% of ${formatCurrency(row.salesBase)}`} value={`+${formatCurrency(row.commission)}`} positive />
                         <div className="mt-2.5 flex items-center justify-between border-t border-border pt-2.5">
                           <span className="font-semibold text-foreground">Total payable</span>
                           <span className="font-display text-lg font-bold tabular-nums text-success">

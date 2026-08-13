@@ -19,7 +19,7 @@ import { dailyTargetOf } from "@/utils/salesTargets";
 /**
  * My Salary — sales member.
  *
- * Same salary engine as tech, plus commission on verified sales. The two halves are shown
+ * Same salary engine as tech, plus incentives on verified sales. The two halves are shown
  * separately all the way to the total: a sales member needs to see what is guaranteed and what
  * they earned, not one blended number.
  */
@@ -59,7 +59,7 @@ export default function SalesMySalary() {
   }, [bankLoaded, bankComplete, bankDeferred]);
 
   // "July 2026 (10 Jul – 09 Aug)" — the span is spelled out because calling 10 Jul → 9 Aug "July"
-  // with no dates is what made the team think a month of their commission had gone missing.
+  // with no dates is what made the team think a month of their incentives had gone missing.
   const monthLabel = payPeriodLabel(month, salary.config.payDayOfMonth);
   const day = (d: string) => format(parse(d, "yyyy-MM-dd", new Date()), "dd MMM");
 
@@ -170,16 +170,20 @@ export default function SalesMySalary() {
               </div>
             </div>
 
-            {/* Commission half */}
+            {/* Incentives half */}
             <div className="rounded-2xl border border-border bg-card p-5">
               <h2 className="mb-3 flex items-center gap-2 font-display text-sm font-semibold text-foreground">
-                <TrendingUp className="h-4 w-4 text-success" /> Commission
+                <TrendingUp className="h-4 w-4 text-success" /> Incentives
               </h2>
+              {/* The accrued figure, matching the card at the top of the page. Showing ₹0 here
+                  while the card counted ₹1,200 into the total reads as a discrepancy in somebody's
+                  pay, so both say the same number and both carry the same condition. */}
               <p className="font-display text-2xl font-bold tabular-nums text-success">
-                {formatCurrency(commission)}
+                {formatCurrency(earnings.incentiveWithheld ? (earnings.commissionBeforeTarget || 0) : commission)}
               </p>
               <p className="mt-0.5 text-[11px] text-muted-foreground">
                 {earnings.rate}% of {formatCurrency(earnings.salesBase)} in verified sales
+                {earnings.incentiveWithheld && " · settled at 75% of target"}
               </p>
 
               <div className="mt-3 space-y-1.5 border-t border-border pt-3 text-sm">
@@ -203,7 +207,7 @@ export default function SalesMySalary() {
 
               {earnings.pendingSaleCount > 0 && (
                 <p className="mt-3 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
-                  Pending sales don't earn commission until your admin verifies them. Verified,
+                  Pending sales don't earn incentives until your admin verifies them. Verified,
                   they would add about {formatCurrency(Math.round((earnings.pendingSaleValue * earnings.rate) / 100))}.
                 </p>
               )}

@@ -93,10 +93,13 @@ export async function fetchMonthAttendance(month: string, cycleStartDay?: number
   const period = payPeriodForMonth(month, cycleStartDay);
   const range = [where("date", ">=", period.start), where("date", "<=", period.end)];
 
-  const [overrideSnap, holidaySnap, checkinSnap] = await Promise.all([
+  // Two check-in collections, because the sales side writes its own — see
+  // `watchCheckedInDaysInRange`. Missing the second one scored every sales member Absent.
+  const [overrideSnap, holidaySnap, checkinSnap, salesCheckinSnap] = await Promise.all([
     getDocs(query(collection(db, "attendance"), ...range)),
     getDocs(query(collection(db, "holidays"), ...range)),
     getDocs(query(collection(db, "daily_checkins"), ...range)),
+    getDocs(query(collection(db, "salesCheckins"), ...range)),
   ]);
 
   const overrides = new Map<string, AttendanceStatus>();
@@ -108,7 +111,7 @@ export async function fetchMonthAttendance(month: string, cycleStartDay?: number
   const holidays = new Set(holidaySnap.docs.map(d => d.id));
 
   const checkedIn = new Set<string>();
-  checkinSnap.docs.forEach(d => {
+  [...checkinSnap.docs, ...salesCheckinSnap.docs].forEach(d => {
     const c = d.data() as { memberId?: string; date?: string };
     if (c.memberId && c.date) checkedIn.add(attendanceKey(c.memberId, c.date));
   });

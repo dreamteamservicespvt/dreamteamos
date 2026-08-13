@@ -117,7 +117,7 @@ export default function Profit() {
           headlineLabel="Revenue brought in"
           rows={[
             { label: "Salary", amount: profit.salesSalary },
-            { label: "Commission", amount: profit.salesCommission },
+            { label: "Incentives", amount: profit.salesCommission },
           ]}
           ratio={profit.salesRevenueRatio}
           ratioLabel="revenue per rupee of sales cost"
@@ -152,7 +152,7 @@ export default function Profit() {
           </h2>
           <Line label="Tech salary" amount={profit.techSalary} negative />
           <Line label="Sales salary" amount={profit.salesSalary} negative />
-          <Line label="Sales commission" amount={profit.salesCommission} negative />
+          <Line label="Sales incentives" amount={profit.salesCommission} negative />
           <Line label="Expenses" amount={profit.expenses} negative />
           <Line label="Total cost" amount={profit.totalCost} negative bold />
         </div>

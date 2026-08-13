@@ -5,18 +5,19 @@ import SalesEarningsCard from "@/components/sales/SalesEarningsCard";
 /**
  * What a sales member sees their work has earned them.
  *
- * The card used to read "+ Commission ₹0" until the 75% target gate opened. True of the payslip and
- * useless to the person selling: the number they want to watch all cycle is the one their work has
- * built up, and hiding it until the last week removes the only running feedback the job has.
+ * The card used to read "+ Incentives ₹0" until the 75% target gate opened, and then counted only
+ * salary in the total. True of the payslip that minute and useless to the person selling: their own
+ * month of work simply did not appear anywhere on the card meant to motivate them.
  *
- * The line it must not cross is claiming the money is due. The accrued figure is shown, marked
- * pending, and the TOTAL stays exactly what will actually be paid.
+ * So the accrued incentive is now counted in the headline. That is only honest while the condition
+ * travels with the number, which is what these tests pin: the figure and the words "settled at 75%"
+ * must both be on the card, so the total can never be read as money already banked.
  */
 
 configure({ testIdAttribute: "data-test" });
 afterEach(() => cleanup());
 
-describe("commission that has not reached the target yet", () => {
+describe("incentives that have not reached the target yet", () => {
   const withheld = {
     totalEarnings: 5000,
     salaryPayable: 5000,
@@ -38,21 +39,29 @@ describe("commission that has not reached the target yet", () => {
     expect(screen.getByTestId("commission-pending").textContent).toContain("so far");
   });
 
-  /** The total is what will actually be paid. Inflating it would be a lie about somebody's wages. */
-  it("leaves it out of the total", () => {
+  /** Salary ₹5,000 + the ₹1,200 built up. The member's whole period, in one number. */
+  it("counts it in the total", () => {
     render(<SalesEarningsCard {...withheld} />);
-    // Salary alone — the ₹1,200 accrued above is deliberately not added in.
-    expect(screen.getByTestId("earnings-total").textContent).toBe("₹5,000");
-    expect(screen.getByTestId("incentive-withheld").textContent).toContain("75%");
+    expect(screen.getByTestId("earnings-total").textContent).toBe("₹6,200");
+  });
+
+  /**
+   * The condition is what keeps the total above from being a promise. A number that big with no
+   * qualifier next to it would read as money already due, so the words are not decoration.
+   */
+  it("says on the card that the total only settles at 75%", () => {
+    render(<SalesEarningsCard {...withheld} />);
+    const note = screen.getByTestId("incentive-withheld").textContent || "";
+    expect(note).toContain("settled at 75% of target");
+    expect(note).toContain("1,200"); // how much of the total is conditional
   });
 
   /** "You are at 61%" is a fact; "₹12,400 short" is an instruction. */
-  it("says how much more selling unlocks it", () => {
+  it("says how much more selling locks it in", () => {
     render(<SalesEarningsCard {...withheld} />);
     const note = screen.getByTestId("incentive-withheld").textContent || "";
     expect(note).toContain("61% there");
     expect(note).toContain("12,400");
-    expect(note).toContain("1,200");
   });
 
   it("copes when the shortfall is not known", () => {
@@ -61,7 +70,7 @@ describe("commission that has not reached the target yet", () => {
   });
 });
 
-describe("commission that has been earned", () => {
+describe("incentives that have been earned", () => {
   it("shows it plainly, with no pending marker", () => {
     render(
       <SalesEarningsCard

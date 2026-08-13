@@ -82,10 +82,10 @@ export default function Settlements() {
     <div className="space-y-6">
       <div className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-accent/20 p-4 md:p-5 shadow-sm">
         <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-medium text-primary">
-          <Wallet className="w-3 h-3" /> Commission payouts
+          <Wallet className="w-3 h-3" /> Incentive payouts
         </div>
         <h1 className="text-xl md:text-2xl font-bold text-foreground">Settlements</h1>
-        <p className="text-xs md:text-sm text-muted-foreground mt-1">Pay each member's commission by date range and always see what's paid vs still owed.</p>
+        <p className="text-xs md:text-sm text-muted-foreground mt-1">Pay each member's incentives by date range and always see what's paid vs still owed.</p>
       </div>
 
       <div className="relative">
@@ -113,7 +113,7 @@ export default function Settlements() {
                   <div className="w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center font-display font-bold text-primary">{m.name?.charAt(0) || "?"}</div>
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-foreground truncate">{m.name}</p>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-info/15 text-info">{rate}% commission</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-info/15 text-info">{rate}% incentive</span>
                   </div>
                   <ChevronRight className="w-4 h-4 text-muted-foreground ml-auto" />
                 </div>
@@ -222,7 +222,7 @@ function SettlementDetail({ member, admin, settlements, pendingRequests, onClose
           <div>
             <h3 className="text-lg font-semibold text-foreground">{member.name}</h3>
             <p className="text-xs text-muted-foreground">
-              {rate}% commission · last paid {last?.paidAt?.seconds ? format(new Date(last.paidAt.seconds * 1000), "dd MMM yyyy, hh:mm a") : "never"}
+              {rate}% incentive · last paid {last?.paidAt?.seconds ? format(new Date(last.paidAt.seconds * 1000), "dd MMM yyyy, hh:mm a") : "never"}
             </p>
           </div>
           <button onClick={onClose} disabled={paying} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-50 text-sm">Close</button>
@@ -243,7 +243,7 @@ function SettlementDetail({ member, admin, settlements, pendingRequests, onClose
               <div className="rounded-lg border border-border p-4 space-y-3">
                 <div className="flex items-center gap-2">
                   <CalendarRange size={15} className="text-primary" />
-                  <h4 className="text-sm font-semibold text-foreground">Pay commission</h4>
+                  <h4 className="text-sm font-semibold text-foreground">Pay incentives</h4>
                 </div>
 
                 <p className="text-xs text-muted-foreground">
@@ -257,7 +257,7 @@ function SettlementDetail({ member, admin, settlements, pendingRequests, onClose
                 ) : (
                   <div className="rounded-md bg-muted/40 p-3 space-y-1 text-sm">
                     <div className="flex justify-between"><span className="text-muted-foreground">Verified sales ({range.saleCount})</span><span className="text-foreground font-medium">{formatCurrency(range.base)}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">Commission @ {rate}%</span><span className="text-primary font-bold text-base">{formatCurrency(range.commission)}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Incentives @ {rate}%</span><span className="text-primary font-bold text-base">{formatCurrency(range.commission)}</span></div>
                   </div>
                 )}
 

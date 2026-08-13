@@ -1084,7 +1084,7 @@ function CollectPaymentModal({ row, onSave, onClose }: {
 
         {/* Said out loud, because it is the point of recording it here rather than in a notebook. */}
         <p className="rounded-md bg-muted/50 px-2.5 py-2 text-[11px] text-muted-foreground">
-          {formatCurrency(capped)} counts towards your revenue and commission <b>today</b>.
+          {formatCurrency(capped)} counts towards your revenue and incentives <b>today</b>.
         </p>
 
         <div className="flex gap-2">
@@ -1492,7 +1492,7 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
                   </span>
                 )}
                 {/* A penalty is the client's, not the member's — shown so they know it was raised,
-                    and deliberately outside the sale amount so it never enters their commission. */}
+                    and deliberately outside the sale amount so it never enters their incentives. */}
                 {!!item.penaltyTotal && (
                   <span className="inline-flex items-center gap-0.5 text-[9px] px-1 py-0.5 rounded bg-destructive/15 text-destructive"
                     title="Penalty for changes beyond the committed brief — not part of your sale value">
@@ -1814,7 +1814,7 @@ function AddCustomLeadModal({ user, onClose }: { user: AppUser; onClose: () => v
             />
           </div>
           <div className="bg-info/10 border border-info/30 text-info text-xs rounded-md p-2.5 leading-relaxed">
-            This lead will appear in your My Leads list. Use the "Add Sale" button on the card to record the sale and get commission.
+            This lead will appear in your My Leads list. Use the "Add Sale" button on the card to record the sale and earn incentives.
           </div>
           <button
             onClick={handleCreate}

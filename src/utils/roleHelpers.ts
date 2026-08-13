@@ -128,16 +128,28 @@ const NAV: Record<UserRole, NavItem[]> = {
   sales_member: [
     { title: "Dashboard", path: "/sales/dashboard", icon: LayoutDashboard },
     { title: "My Leads", path: "/sales/leads", icon: Phone },
-    // High in the list on purpose: a client waiting on a reply is the most time-sensitive thing
-    // on this page, and both of these are opened several times a day.
-    { title: "Client Chats", path: "/sales/client-chats", icon: MessageSquare },
-    { title: "My Clients", path: "/sales/clients", icon: Contact },
-    { title: "My Reviews", path: "/sales/reviews", icon: Star },
-    { title: "My Performance", path: "/sales/performance", icon: Target },
+    // Third, right under the work itself: where a member stands against the room is the thing they
+    // check between calls, and it was buried under six links they open once a month.
     { title: "Leaderboard", path: "/sales/leaderboard", icon: Trophy },
-    { title: "My Salary", path: "/sales/salary", icon: Wallet },
-    { title: "Settlements", path: "/sales/settlements", icon: Wallet },
-    { title: "My History", path: "/sales/history", icon: History },
+    // Everything about people who have already bought, in one place. Split across three top-level
+    // links it read as three unrelated jobs; it is one — look after the client you sold to.
+    {
+      title: "Clients", icon: Contact,
+      children: [
+        { title: "Client Chats", path: "/sales/client-chats", icon: MessageSquare },
+        { title: "My Clients", path: "/sales/clients", icon: Contact },
+        { title: "My Reviews", path: "/sales/reviews", icon: Star },
+      ],
+    },
+    // Likewise for money: what I sold, what I am paid, what has been settled.
+    {
+      title: "Salary", icon: Wallet,
+      children: [
+        { title: "My Performance", path: "/sales/performance", icon: Target },
+        { title: "My Salary", path: "/sales/salary", icon: Wallet },
+        { title: "Settlements", path: "/sales/settlements", icon: Wallet },
+      ],
+    },
     {
       title: "Communication", icon: MessageSquare,
       children: [
@@ -152,6 +164,8 @@ const NAV: Record<UserRole, NavItem[]> = {
         { title: "Sales Scripts", path: "/sales/scripts", icon: ScrollText },
       ],
     },
+    // Not in the requested running order, but a page nobody should lose the way to.
+    { title: "My History", path: "/sales/history", icon: History },
     { title: "My Profile", path: "/sales/profile", icon: User },
   ],
   tech_team_leader: [

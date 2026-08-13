@@ -18,7 +18,7 @@
  */
 import { useMemo, useState } from "react";
 import { collection, query, where } from "firebase/firestore";
-import { MessageCircle, Search, Loader2, Star, Clock } from "lucide-react";
+import { MessageCircle, Search, Loader2, Star, Clock, CheckCircle2, ChevronDown } from "lucide-react";
 import PeriodFilterBar from "@/components/dashboard/PeriodFilterBar";
 import { defaultPeriodFilter, periodLabel, withinPeriod, type PeriodFilter } from "@/utils/periodFilter";
 import { format } from "date-fns";
@@ -26,7 +26,7 @@ import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { useFirestoreQuery } from "@/hooks/useFirestore";
 import { useMyOrderChats } from "@/hooks/useOrderChat";
-import { workStatusChip, NOT_ASSIGNED_CHIP } from "@/utils/orderChatStatus";
+import { workStatusChip, NOT_ASSIGNED_CHIP, isDeliveredStatus } from "@/utils/orderChatStatus";
 import { bulkCategoryLabel } from "@/utils/serviceCatalog";
 import SalesOrderChat from "@/components/order-chat/SalesOrderChat";
 import type { Order } from "@/types";
@@ -79,6 +79,8 @@ interface ChatRow {
   order?: Order;
   /** `yyyy-MM-dd` the sale was taken, for the period filter. Absent on a room with no order. */
   soldOn?: string;
+  /** The ad has gone out. Folded away by default — see the two lists in the render. */
+  delivered?: boolean;
 }
 
 /**
@@ -153,6 +155,7 @@ export default function ClientChats() {
             order: o,
             uniqueId: room.uniqueId,
             chip: workStatusChip(room.workStatus),
+            delivered: isDeliveredStatus(room.workStatus) || o.status === "verified",
             unread: (user?.uid && room.unreadCounts?.[user.uid]) || 0,
             preview: room.lastMessage || "No messages yet",
             at: tsMs(room.lastMessageAt) || tsMs(room.createdAt) || tsMs(o.createdAt),
@@ -166,6 +169,7 @@ export default function ClientChats() {
             chatId: o.id,
             order: o,
             chip: statusFromOrder(o.status),
+            delivered: o.status === "verified",
             unread: 0,
             preview: "Open to join the conversation about this ad.",
             at: tsMs(o.updatedAt) || tsMs(o.createdAt),
@@ -208,6 +212,7 @@ export default function ClientChats() {
         uniqueId: r.uniqueId,
         category: r.category,
         chip: workStatusChip(r.workStatus),
+        delivered: isDeliveredStatus(r.workStatus),
         unread: (user?.uid && r.unreadCounts?.[user.uid]) || 0,
         preview: r.lastMessage || "No messages yet",
         at: tsMs(r.lastMessageAt) || tsMs(r.createdAt),
@@ -233,6 +238,21 @@ export default function ClientChats() {
       return b.at - a.at;
     });
   }, [rooms, orders, user?.uid, search, period]);
+
+  /**
+   * Two lists, not one.
+   *
+   * A member who has been here a year has hundreds of finished ads, and every one of them sat above
+   * the three clients actually waiting on a reply today. Delivered work is not deleted — it is the
+   * record of what they sold and the place a repeat client comes back to — but it is history, so it
+   * folds away and the page opens on the work that is still live.
+   *
+   * The one exception is an unread message: if a client has written since delivery, that is exactly
+   * the conversation this page exists for, so it stays out in the open.
+   */
+  const liveRows = rows.filter((r) => !r.delivered || r.unread > 0);
+  const deliveredRows = rows.filter((r) => r.delivered && r.unread === 0);
+  const [showDelivered, setShowDelivered] = useState(false);
 
   const totalUnread = rows.reduce((n, r) => n + r.unread, 0);
   const loading = roomsLoading || ordersLoading;
@@ -296,12 +316,60 @@ export default function ClientChats() {
         </div>
       ) : (
         <div className="space-y-2">
-          {rows.map((r) => {
-            return (
+          {liveRows.length === 0 && (
+            <div className="rounded-xl border border-dashed border-border bg-card/50 py-8 text-center">
+              <p className="text-sm font-medium text-foreground">Everything you sold has been delivered</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Nothing is waiting on you. Finished ads are in the list below.
+              </p>
+            </div>
+          )}
+          {liveRows.map((r) => <ChatRowButton key={r.key} row={r} onOpen={setOpenChat} />)}
+
+          {deliveredRows.length > 0 && (
+            <div className="pt-1">
               <button
-                key={r.key}
+                type="button"
+                data-test="delivered-toggle"
+                onClick={() => setShowDelivered((v) => !v)}
+                className="flex w-full items-center gap-2 rounded-xl border border-border/70 bg-muted/30 px-3 py-2.5 text-left transition-colors hover:bg-muted/50"
+              >
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
+                <span className="flex-1 text-sm font-semibold text-foreground">
+                  Delivered
+                  <span className="ml-1.5 font-normal text-muted-foreground">
+                    {deliveredRows.length} {deliveredRows.length === 1 ? "chat" : "chats"}
+                  </span>
+                </span>
+                <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${showDelivered ? "rotate-180" : ""}`} />
+              </button>
+              {showDelivered && (
+                <div className="mt-2 space-y-2" data-test="delivered-list">
+                  {deliveredRows.map((r) => <ChatRowButton key={r.key} row={r} onOpen={setOpenChat} />)}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {openChat?.order && user && (
+        <SalesOrderChat
+          order={openChat.order}
+          soldBy={{ uid: user.uid, name: user.name }}
+          onClose={() => setOpenChat(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** One chat in the list. Shared by the live list and the folded-away delivered one. */
+function ChatRowButton({ row: r, onOpen }: { row: ChatRow; onOpen: (r: ChatRow) => void }) {
+  return (
+              <button
                 data-test="client-chat-row"
-                onClick={() => setOpenChat(r)}
+                onClick={() => onOpen(r)}
                 className="w-full rounded-xl border border-border bg-card p-3 text-left transition-all hover:border-primary/40 hover:shadow-md md:p-4"
               >
                 <div className="flex items-start gap-3">
@@ -357,18 +425,5 @@ export default function ClientChats() {
                   </div>
                 </div>
               </button>
-            );
-          })}
-        </div>
-      )}
-
-      {openChat?.order && user && (
-        <SalesOrderChat
-          order={openChat.order}
-          soldBy={{ uid: user.uid, name: user.name }}
-          onClose={() => setOpenChat(null)}
-        />
-      )}
-    </div>
   );
 }

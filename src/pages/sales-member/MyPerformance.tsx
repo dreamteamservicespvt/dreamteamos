@@ -96,7 +96,7 @@ export default function MyPerformance() {
   const showOption1 = assignedOption ? assignedOption === "stipend_plus_5" : earningsView === "option1";
   const showOption2 = assignedOption ? assignedOption === "incentive_10" : earningsView === "option2";
 
-  // ── Commission settlements (what's been paid vs what's still owed) ──
+  // ── Incentive settlements (what's been paid vs what's still owed) ──
   const { data: settlements } = useFirestoreQuery<CommissionSettlement>(
     useMemo(() => (user ? memberSettlementsQuery(user.uid) : null), [user?.uid]),
     [user?.uid],
@@ -238,11 +238,11 @@ export default function MyPerformance() {
       {/* Monthly Attendance (from daily check-in/check-out) */}
       {user && <AttendanceCard memberId={user.uid} />}
 
-      {/* Commission Settlements (paid vs pending, from the sales admin) */}
+      {/* Incentive settlements (paid vs pending, from the sales admin) */}
       <div className="bg-card border border-border rounded-xl p-5">
         <div className="flex items-center gap-2 mb-4">
           <Wallet size={16} className="text-primary" />
-          <h2 className="font-display font-semibold text-foreground">Commission Settlements</h2>
+          <h2 className="font-display font-semibold text-foreground">Incentive Settlements</h2>
           <span className="text-[10px] px-2 py-0.5 rounded-full bg-info/15 text-info">{commRate}%</span>
         </div>
         <div className="grid grid-cols-3 gap-3 mb-4">
@@ -269,7 +269,7 @@ export default function MyPerformance() {
           <h3 className="text-xs font-semibold text-foreground">Payment history</h3>
         </div>
         {settleHistory.length === 0 ? (
-          <p className="text-xs text-muted-foreground inline-flex items-center gap-1"><CheckCircle2 size={12} /> No commission paid yet.</p>
+          <p className="text-xs text-muted-foreground inline-flex items-center gap-1"><CheckCircle2 size={12} /> No incentives paid yet.</p>
         ) : (
           <div className="border border-border rounded-lg divide-y divide-border">
             {settleHistory.map((s) => (

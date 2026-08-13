@@ -3,7 +3,7 @@ import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { commissionRate } from "@/services/settlements";
 import { useSalaryMonth, type SalaryMonthState } from "./useSalaryMonth";
-import { withinPeriod, type PeriodFilter } from "@/utils/periodFilter";
+import { collectedInRange } from "@/utils/salePayments";
 import { deductionsFor } from "@/utils/payrollEngine";
 import {
   incentiveEarned, monthlyTargetFor, targetAchievement, INCENTIVE_TARGET_THRESHOLD,
@@ -58,11 +58,6 @@ function saleItemsOf(lead: Lead): SaleDetail[] {
   return lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
 }
 
-function saleDateOf(item: SaleDetail, lead: Lead): string | null {
-  const seconds = (item.submittedAt as { seconds?: number })?.seconds
-    ?? (lead.createdAt as { seconds?: number })?.seconds;
-  return seconds ? new Date(seconds * 1000).toISOString().slice(0, 10) : null;
-}
 
 export interface UseSalesEarningsOptions {
   memberId: string | undefined;
@@ -105,29 +100,34 @@ export function useSalesEarnings({
   const rate = commissionRate(earningsOption);
 
   const sales = useMemo(() => {
-    // Commission follows the same 10th→9th pay period as salary, so one payday settles one span.
-    const filter: PeriodFilter = {
-      mode: "range",
-      month: salary.period.month,
-      day: salary.period.start,
-      range: {
-        from: new Date(`${salary.period.start}T00:00:00`),
-        to: new Date(`${salary.period.end}T00:00:00`),
-      },
-    };
+    /**
+     * Incentives follow the same 10th→9th pay period as salary, so one payday settles one span —
+     * and they are counted on MONEY COLLECTED in that span, not on the price agreed.
+     *
+     * That second half was the discrepancy. This counted `item.amount` in full on the day the sale
+     * was submitted, while the leaderboard, the dashboard's revenue line and its target bars all
+     * count what the client actually paid, on the day they paid it. So the same card could say "11%
+     * achieved" against the monthly target and "10% there" against the incentive gate — two
+     * different answers to one question, on one screen — and a member's incentive on their own
+     * salary page disagreed with the leaderboard's figure for them.
+     *
+     * Collected is the right basis of the two: an advance on a ₹50,000 package should not pay a
+     * full incentive on the day it is booked, and the balance should pay when it arrives.
+     */
+    const { start, end } = salary.period;
 
     let salesBase = 0, saleCount = 0, pendingSaleValue = 0, pendingSaleCount = 0;
 
     for (const lead of leads) {
       for (const item of saleItemsOf(lead)) {
-        const date = saleDateOf(item, lead);
-        if (!withinPeriod(date ?? undefined, filter)) continue;
+        const collected = collectedInRange(item, lead, start, end);
+        if (collected <= 0) continue;
 
         if (item.verificationStatus === "verified") {
-          salesBase += item.amount || 0;
+          salesBase += collected;
           saleCount += 1;
         } else if (item.verificationStatus === "pending") {
-          pendingSaleValue += item.amount || 0;
+          pendingSaleValue += collected;
           pendingSaleCount += 1;
         }
       }

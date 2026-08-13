@@ -113,7 +113,7 @@ export default function PenaltyDialog({ order, actor, onClose }: {
             <span className="font-mono text-base font-semibold text-destructive" data-test="penalty-total">{formatCurrency(total)}</span>
           </div>
           <p className="text-[11px] text-muted-foreground">
-            Charged to the client on top of the sale. It is not sales revenue and does not count towards anyone's commission.
+            Charged to the client on top of the sale. It is not sales revenue and does not count towards anyone's incentives.
           </p>
         </div>
 

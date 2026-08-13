@@ -81,10 +81,10 @@ export default function SalesMemberSettlements() {
     <div className="space-y-6 max-w-2xl mx-auto">
       <div className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-accent/20 p-4 md:p-5 shadow-sm">
         <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-medium text-primary">
-          <Wallet className="w-3 h-3" /> My commission
+          <Wallet className="w-3 h-3" /> My incentives
         </div>
         <h1 className="text-xl md:text-2xl font-bold text-foreground">Settlements</h1>
-        <p className="text-xs md:text-sm text-muted-foreground mt-1">Track your commission and request your payout whenever you're ready.</p>
+        <p className="text-xs md:text-sm text-muted-foreground mt-1">Track your incentives and request your payout whenever you're ready.</p>
       </div>
 
       {/* Last settlement */}
@@ -105,9 +105,9 @@ export default function SalesMemberSettlements() {
 
       {/* Current unpaid period */}
       <div className="bg-card border border-border rounded-xl p-4 md:p-5 space-y-3">
-        <h2 className="text-sm font-semibold text-foreground flex items-center gap-2"><CalendarRange size={15} className="text-primary" /> Current sales &amp; commission</h2>
+        <h2 className="text-sm font-semibold text-foreground flex items-center gap-2"><CalendarRange size={15} className="text-primary" /> Current sales &amp; incentives</h2>
         <p className="text-xs text-muted-foreground">
-          Every verified sale since {lastSettlement?.paidAt?.seconds ? `your last payout on ${format(new Date(lastSettlement.paidAt.seconds * 1000), "dd MMM yyyy")}` : "your first sale"} · {rate}% commission plan
+          Every verified sale since {lastSettlement?.paidAt?.seconds ? `your last payout on ${format(new Date(lastSettlement.paidAt.seconds * 1000), "dd MMM yyyy")}` : "your first sale"} · {rate}% incentive plan
           {pendingCount > 0 && (
             <span className="block mt-0.5">{pendingCount} sale{pendingCount > 1 ? "s" : ""} still pending verification will be added automatically once approved.</span>
           )}
@@ -117,7 +117,7 @@ export default function SalesMemberSettlements() {
         ) : (
           <div className="rounded-lg bg-muted/40 p-3 space-y-1.5 text-sm">
             <div className="flex justify-between"><span className="text-muted-foreground">Verified sales ({current.saleCount})</span><span className="text-foreground font-medium">{formatCurrency(current.base)}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Commission @ {rate}%</span><span className="text-primary font-bold text-lg">{formatCurrency(current.commission)}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Incentives @ {rate}%</span><span className="text-primary font-bold text-lg">{formatCurrency(current.commission)}</span></div>
           </div>
         )}
 

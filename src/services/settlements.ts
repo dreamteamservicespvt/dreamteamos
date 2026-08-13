@@ -207,8 +207,8 @@ export async function createSettlement(params: {
   await sendNotification({
     userId: member.uid,
     type: "commission_paid",
-    title: "Commission paid",
-    message: `${formatCurrency(amount)} commission paid for ${fromDate} → ${toDate} (${rate}% of ${formatCurrency(salesBase)}).`,
+    title: "Incentives paid",
+    message: `${formatCurrency(amount)} incentives paid for ${fromDate} → ${toDate} (${rate}% of ${formatCurrency(salesBase)}).`,
   });
 }
 
@@ -263,7 +263,7 @@ export async function requestSettlement(params: {
     userId: adminId,
     type: "settlement_requested",
     title: "Settlement requested",
-    message: `${member.name} requested their commission settlement of ${formatCurrency(amount)} for ${fromDate} → ${toDate}.`,
+    message: `${member.name} requested their incentive settlement of ${formatCurrency(amount)} for ${fromDate} → ${toDate}.`,
     link: `/sales-admin/settlements?member=${member.uid}`,
   });
 }

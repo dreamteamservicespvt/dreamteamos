@@ -299,17 +299,36 @@ export function watchCheckedInDaysInRange(
   endDate: string,
   cb: (set: Set<string>) => void,
 ): () => void {
-  const q = query(collection(db, "daily_checkins"), where("date", ">=", startDate), where("date", "<=", endDate));
-  return onSnapshot(
-    q,
-    (snap) => {
-      const set = new Set<string>();
-      snap.docs.forEach((d) => {
-        const c = d.data() as { memberId?: string; date?: string };
-        if (c.memberId && c.date) set.add(attendanceId(c.memberId, c.date));
-      });
-      cb(set);
-    },
-    () => cb(new Set()),
-  );
+  /**
+   * BOTH check-in collections, unioned.
+   *
+   * The tech side writes `daily_checkins`; a sales member's check-in button has always written
+   * `salesCheckins` instead. Everything that decides attendance — this function, and so the salary
+   * engine behind it — only ever read the first, which meant a sales member could check in every
+   * working day of a cycle and still be scored Absent for every one of them. Their pay came out of
+   * that number.
+   *
+   * Reading both here rather than making the sales side write a second doc fixes the cycles already
+   * behind us too: the check-ins were recorded correctly all along, they were being read from the
+   * wrong place.
+   */
+  const range = [where("date", ">=", startDate), where("date", "<=", endDate)];
+  const fromTech = new Set<string>();
+  const fromSales = new Set<string>();
+  const emit = () => cb(new Set([...fromTech, ...fromSales]));
+
+  const collect = (into: Set<string>) => (snap: { docs: { data: () => unknown }[] }) => {
+    into.clear();
+    snap.docs.forEach((d) => {
+      const c = d.data() as { memberId?: string; date?: string };
+      if (c.memberId && c.date) into.add(attendanceId(c.memberId, c.date));
+    });
+    emit();
+  };
+
+  const unsubs = [
+    onSnapshot(query(collection(db, "daily_checkins"), ...range), collect(fromTech), emit),
+    onSnapshot(query(collection(db, "salesCheckins"), ...range), collect(fromSales), emit),
+  ];
+  return () => unsubs.forEach((u) => u());
 }
