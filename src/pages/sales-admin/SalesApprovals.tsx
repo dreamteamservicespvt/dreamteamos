@@ -8,13 +8,13 @@ import { upsertOrderForSale, cancelOrderForSale } from "@/services/orders";
 import { useAuthStore } from "@/store/authStore";
 import { formatCurrency, formatDuration } from "@/utils/formatters";
 import { discountEditLabel, discountSummary } from "@/utils/bulkDiscount";
-import { EARNED_REASON_LABEL, MEMBER_DISCOUNT_LIMIT_PERCENT, earnedReasons } from "@/utils/saleDiscount";
+import { EARNED_REASON_LABEL, MEMBER_DISCOUNT_LIMIT_PERCENT, earnedReasons, saleDiscountOf } from "@/utils/saleDiscount";
 import { bulkCategoryLabel, categoryLabel } from "@/utils/serviceCatalog";
 import { useNow } from "@/hooks/useNow";
 import { applySaleFreeze, adminReleaseLock, buildLeadFreezeFields, clearedLeadFreezeFields, clearSaleFreeze } from "@/services/numberLock";
 import { format, subDays, startOfDay } from "date-fns";
 import type { AppUser, Lead, SaleDetail } from "@/types";
-import { CheckCircle, XCircle, ShoppingBag, ExternalLink, RotateCcw, Trash2, CheckSquare, Square, Phone, MessageCircle, AlertTriangle, FileText, Snowflake, Lock, ShieldOff, Loader2, Search, X } from "lucide-react";
+import { CheckCircle, XCircle, ShoppingBag, ExternalLink, RotateCcw, Trash2, CheckSquare, Square, Phone, MessageCircle, AlertTriangle, FileText, Snowflake, Lock, ShieldOff, Loader2, Search, X, BadgePercent } from "lucide-react";
 import { formatPhoneDisplay, getCallUrl, getWhatsAppUrl, normalizePhone } from "@/utils/phone";
 import { useToast } from "@/hooks/use-toast";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
@@ -723,6 +723,18 @@ export default function SalesApprovals() {
 
   const pendingKeys = pending.map((li) => makeKey(li.lead.id, li.itemIndex));
   const allPendingSelected = pendingKeys.length > 0 && pendingKeys.every((k) => selectedKeys.has(k));
+
+  /** Discounted sales in the pending queue, and how many are past a member's own authority. */
+  const discountedPending = useMemo(() => {
+    let total = 0;
+    let overLimit = 0;
+    for (const li of pending) {
+      if (saleDiscountOf(li.item).amount <= 0) continue;
+      total += 1;
+      if (li.item.discountNeedsApproval && li.item.discountApproval !== "approved") overLimit += 1;
+    }
+    return { total, overLimit };
+  }, [pending]);
   const someSelected = selectedKeys.size > 0 && tab === "pending";
 
   // Totals — the filtered-list total is always visible (no selection needed); the selected
@@ -852,6 +864,34 @@ export default function SalesApprovals() {
         <div className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-2.5">
           <span className="text-xs md:text-sm text-muted-foreground capitalize">{tab} total ({displayItems.length} sale{displayItems.length === 1 ? "" : "s"})</span>
           <span className="font-display font-bold text-foreground text-base md:text-lg">{formatCurrency(filteredTotal)}</span>
+        </div>
+      )}
+
+      {/*
+        How many of the sales waiting here had money taken off.
+
+        Said once, above the queue, because the failure this prevents is a batch approval: "Select
+        all → Verify" is the fastest way through a morning's pending sales and it is also the
+        fastest way to agree a price nobody looked at. One line naming the count is enough to make
+        somebody open those cards first — every discounted sale carries a tag, and the ones past a
+        member's own limit say so in orange.
+      */}
+      {tab === "pending" && discountedPending.total > 0 && (
+        <div data-test="approvals-discount-heads-up"
+          className={`flex items-start gap-2 rounded-xl border px-3.5 py-2.5 ${
+            discountedPending.overLimit > 0
+              ? "border-warning/40 bg-warning/10"
+              : "border-info/30 bg-info/10"
+          }`}>
+          <BadgePercent size={14} className={`mt-0.5 shrink-0 ${discountedPending.overLimit > 0 ? "text-warning" : "text-info"}`} />
+          <p className={`text-xs leading-relaxed ${discountedPending.overLimit > 0 ? "text-warning" : "text-info"}`}>
+            <b>{discountedPending.total} of these {pending.length === 1 ? "sale has" : "sales have"} a discount</b>
+            {discountedPending.overLimit > 0 && (
+              <> — {discountedPending.overLimit} past the {MEMBER_DISCOUNT_LIMIT_PERCENT}% a member may
+              give alone, and held from the tech team until you agree the price</>
+            )}
+            . Worth opening those before verifying in bulk.
+          </p>
         </div>
       )}
 
@@ -1070,7 +1110,29 @@ export default function SalesApprovals() {
                       </span>
                     </div>
                   )}
-                  {li.item.discountEdited && (
+                  {/*
+                    Any discount at all, said on the card.
+
+                    The warning below only fires past the member's own limit, which left the
+                    ordinary case invisible: a price quietly reduced by a few hundred rupees looked
+                    identical to one that was not. An approver checking a figure needs to know it
+                    was reduced even when nobody needed permission — that is the whole job.
+                  */}
+                  {saleDiscountOf(li.item).amount > 0 && (
+                    <div className="col-span-2">
+                      <span data-test="approval-discount-tag"
+                        title="The price the client was quoted, less what was taken off"
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                          li.item.discountNeedsApproval
+                            ? "bg-warning/15 text-warning"
+                            : "bg-info/15 text-info"
+                        }`}>
+                        <BadgePercent size={9} />
+                        {saleDiscountOf(li.item).label}
+                      </span>
+                    </div>
+                  )}
+                  {li.item.discountEdited && !!li.item.quantity && li.item.quantity > 1 && (
                     <div className="col-span-2">
                       <span data-test="approval-discount-edited"
                         className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">

@@ -40,6 +40,19 @@ export async function startUpsell(params: {
   if (!normalized) return { ok: false, message: "This client has no usable phone number." };
 
   try {
+    /**
+     * The common case, settled without writing anything.
+     *
+     * An upsell is nearly always to a number the member already owns — that is what makes them the
+     * person selling it. Reading the lock first means the ordinary path never touches the
+     * number-lock machinery at all: no claim, no transaction, and no chance of tripping over a
+     * freeze that this member's own earlier sale created.
+     */
+    const existing = await fetchNumberLock(normalized);
+    if (existing?.ownerId === user.uid && existing.ownerLeadId) {
+      return { ok: true, leadId: existing.ownerLeadId, message: "Opening this client's lead." };
+    }
+
     const result = await claimNumber({ user, phone: normalized, displayName });
 
     switch (result.kind) {
@@ -66,9 +79,10 @@ export async function startUpsell(params: {
           message: `${result.ownerName} has this number reserved until ${result.until.toLocaleString()}.`,
         };
       case "sale_frozen":
+        // Only ever another member now: the owner is settled above and inside `claimNumber`.
         return {
           ok: false,
-          message: `${result.saleByName} sold to this client recently — the number is frozen until ${result.until.toLocaleDateString()}.`,
+          message: `${result.saleByName} sold to this client recently, so the number is held until ${result.until.toLocaleDateString()}.`,
         };
       default:
         return { ok: false, message: "Could not open this client's lead." };

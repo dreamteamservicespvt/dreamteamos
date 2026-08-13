@@ -38,8 +38,8 @@ import {
   CLIP_PRESETS, CLIP_SECONDS, clipsForSeconds, humanDuration, priceForClips, secondsForClips,
 } from "@/utils/assignmentDuration";
 import {
-  discountBreakdown, EARNED_DISCOUNT_PERCENT, EARNED_REASON_LABEL, MEMBER_DISCOUNT_LIMIT_PERCENT,
-  type EarnedReason,
+  discountBreakdown, negotiatedFromInput, EARNED_DISCOUNT_PERCENT, EARNED_REASON_LABEL,
+  MEMBER_DISCOUNT_LIMIT_PERCENT, type EarnedReason,
 } from "@/utils/saleDiscount";
 import {
   quoteBulk, suggestedDiscountPercent, maxDiscountAmount, discountSummary,
@@ -182,6 +182,22 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
     () => (ed?.discountMode === "amount" ? ed?.discountAmount ?? 0 : ed?.discountPercent ?? 0),
   );
   const [discountTouched, setDiscountTouched] = useState(false);
+  /**
+   * The discount on an ordinary sale, kept apart from the bulk ladder's.
+   *
+   * Deliberately its own state rather than sharing the bulk boxes above. They are seeded from the
+   * sale being edited, so reusing them meant a bulk order converted to a single video carried its
+   * volume discount across as a manual one — the ladder's arithmetic surviving the very edit that
+   * was supposed to remove it. `withoutBulkFields` exists to strip exactly that.
+   */
+  const [manualMode, setManualMode] = useState<DiscountMode>(
+    () => (!ed?.quantity && ed?.discountMode === "amount" ? "amount" : "percent"),
+  );
+  const [manualValue, setManualValue] = useState<number>(() => {
+    // A bulk sale's figures belong to the ladder, never to this box.
+    if (!ed || (ed.quantity ?? 0) > 1) return 0;
+    return ed.discountMode === "amount" ? ed.discountAmount ?? 0 : ed.discountPercent ?? 0;
+  });
   /**
    * What the client did to earn a discount, and the screenshot proving it.
    *
@@ -410,11 +426,29 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
   }), [reviewShot, referralShot]);
 
   const grossBeforeDiscount = isBulk ? (bulkQuote?.grossAmount ?? 0) : amount;
+
+  /**
+   * A discount agreed on the call, on an ordinary single sale.
+   *
+   * Bulk orders have had this for ever, through the volume ladder. Everything else was hard-wired
+   * to zero, so a member who agreed ₹100 off a ₹999 poster had no way to record it — they either
+   * typed a smaller "custom" amount, which loses the fact that a discount was given at all, or
+   * they promised something the system then billed differently.
+   *
+   * The 10% authority rule needs no special handling here: `discountBreakdown` measures the total
+   * coming off, whatever its source, and anything past a member's own limit holds the order back
+   * from the tech team until the sales admin confirms the price.
+   */
+  const manualDiscountAmount = useMemo(
+    () => (isBulk ? 0 : negotiatedFromInput(manualMode, manualValue, amount)),
+    [isBulk, manualMode, manualValue, amount],
+  );
+
   const discount = useMemo(() => discountBreakdown({
     grossAmount: grossBeforeDiscount,
-    negotiatedAmount: isBulk ? (bulkQuote?.discountAmount ?? 0) : 0,
+    negotiatedAmount: isBulk ? (bulkQuote?.discountAmount ?? 0) : manualDiscountAmount,
     earned,
-  }), [grossBeforeDiscount, isBulk, bulkQuote?.discountAmount, earned]);
+  }), [grossBeforeDiscount, isBulk, bulkQuote?.discountAmount, manualDiscountAmount, earned]);
 
   /** What the client actually pays, once the earned discount is off as well. */
   const finalAmount = discount.netAmount;
@@ -663,6 +697,18 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
             ? "approved" as const   // unchanged price on an already-approved sale keeps its approval
             : "pending" as const)
         : null,
+      /*
+        An ordinary sale's negotiated discount, recorded in the unit the member gave it in so the
+        approvals screen can show "10% off" or "₹100 off" as it was actually agreed.
+      */
+      ...(!isBulk && manualDiscountAmount > 0
+        ? {
+            discountMode: manualMode,
+            discountAmount: manualDiscountAmount,
+            discountPercent: amount > 0 ? Math.round((manualDiscountAmount / amount) * 1000) / 10 : 0,
+            discountEdited: true,
+          }
+        : {}),
       ...(isBulk && bulkQuote
         ? {
             // The kind of video travels with the sale: without it the tech side only knows the
@@ -1260,6 +1306,94 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
             <p className="text-[10.5px] leading-relaxed text-muted-foreground">
               Tick one and attach the screenshot. Both together are still {EARNED_DISCOUNT_PERCENT}% —
               it is a thank-you, not a running total.
+            </p>
+          )}
+        </SaleSection>
+      )}
+
+      {/*
+        A discount agreed on the call.
+
+        Folded away by default and tinted the moment it holds something, like the sections either
+        side of it — most sales carry no discount, and a box of empty inputs above the Save button
+        is what pushes the thing people actually came to press below the fold on a phone.
+
+        Bulk orders are excluded on purpose: their discount comes from the volume ladder just above,
+        and offering two ways to discount the same order is how the two end up disagreeing.
+      */}
+      {!isBulk && amount > 0 && (
+        <SaleSection
+          testId="manual-discount"
+          title="Discount agreed on the call"
+          icon={<BadgePercent size={13} className="text-info" />}
+          active={manualDiscountAmount > 0}
+          defaultOpen={manualDiscountAmount > 0}
+          summary={
+            manualDiscountAmount > 0
+              ? `${formatCurrency(manualDiscountAmount)} off — client pays ${formatCurrency(finalAmount)}`
+              : "None — tap if you agreed a price reduction"
+          }
+        >
+          <div className="flex items-center gap-1.5">
+            {/* Percent or rupees, because members agree it both ways and converting in their head
+                on a call is where the wrong figure gets typed. */}
+            <div className="flex shrink-0 overflow-hidden rounded-lg border border-border">
+              {(["percent", "amount"] as DiscountMode[]).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  data-test={`manual-discount-${m}`}
+                  onClick={() => setManualMode(m)}
+                  className={`h-8 px-2.5 text-xs font-semibold transition-colors ${
+                    manualMode === m ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:bg-accent"
+                  }`}
+                >
+                  {m === "percent" ? "%" : "₹"}
+                </button>
+              ))}
+            </div>
+            <input
+              type="number"
+              min={0}
+              max={manualMode === "percent" ? 100 : amount}
+              value={manualValue || ""}
+              data-test="manual-discount-value"
+              onChange={(e) => setManualValue(Math.max(0, Number(e.target.value) || 0))}
+              placeholder={manualMode === "percent" ? "e.g. 10" : "e.g. 100"}
+              className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-background px-2.5 text-xs text-foreground outline-none focus:border-primary"
+            />
+            {manualDiscountAmount > 0 && (
+              <button
+                type="button"
+                onClick={() => setManualValue(0)}
+                data-test="manual-discount-clear"
+                className="shrink-0 rounded-lg border border-border px-2 py-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          {/*
+            The authority line, said before they save rather than after.
+
+            A member may give MEMBER_DISCOUNT_LIMIT_PERCENT on their own; past that the sale is
+            recorded but held back from the tech team until the sales admin confirms the price.
+            Discovering that from a job that never arrived is how a client gets promised a delivery
+            date nobody is working towards.
+          */}
+          {manualDiscountAmount > 0 && (
+            <p className={`text-[10.5px] leading-relaxed ${discount.needsApproval ? "text-warning" : "text-muted-foreground"}`}>
+              {discount.needsApproval ? (
+                <>
+                  <AlertTriangle size={10} className="mr-1 inline align-[-1px]" />
+                  {discount.totalPercent}% off is past the {MEMBER_DISCOUNT_LIMIT_PERCENT}% you can give on your
+                  own. The sale is saved, but the tech team will not start it until your sales admin
+                  approves the price.
+                </>
+              ) : (
+                <>{discount.totalPercent}% off — within the {MEMBER_DISCOUNT_LIMIT_PERCENT}% you can give on your own, so this goes straight to the tech team.</>
+              )}
             </p>
           )}
         </SaleSection>

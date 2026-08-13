@@ -153,7 +153,26 @@ export async function claimNumber({
 
     const lock = lockSnap.data() as NumberLock;
 
-    // ── Sold & still frozen → blocked for everyone, UNLESS the freeze is orphaned ──
+    /**
+     * ── Already owned by the same member ──
+     *
+     * Checked BEFORE the freeze, and that order is the whole point.
+     *
+     * A sale freezes the number so nobody else can take the client off the person who just sold to
+     * them. It was also, accidentally, stopping that person: sell a client a Google listing in the
+     * morning, try to add a Wishes video in the afternoon, and the answer was "you sold to this
+     * client recently — the number is frozen", naming them to themselves. Adding a second sale to
+     * your own client is the ordinary thing this business does all day, and it is exactly what
+     * happens without complaint in My Leads, where the lead is already open in front of them.
+     *
+     * There is nothing to protect here: the number is theirs, and claiming it again changes
+     * nothing. The freeze below still blocks everybody else for its full term.
+     */
+    if (lock.ownerId === user.uid) {
+      return { kind: "already_yours" };
+    }
+
+    // ── Sold & still frozen → blocked for everyone ELSE, unless the freeze is orphaned ──
     const frozenUntilMs = toMillis(lock.saleFrozenUntil);
     if (lock.saleFrozen && frozenUntilMs > now) {
       // Verify the sale that created this freeze still exists. If its lead was deleted (e.g. an admin
@@ -190,11 +209,6 @@ export async function claimNumber({
         updatedAt: nowTs,
       } as NumberLock);
       return { kind: "created", leadId: newLeadRef.id };
-    }
-
-    // ── Already owned by the same member ──
-    if (lock.ownerId === user.uid) {
-      return { kind: "already_yours" };
     }
 
     // ── Still inside the 24h reservation held by another member ──

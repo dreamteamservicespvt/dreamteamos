@@ -166,3 +166,60 @@ export function discountExplanation(b: DiscountBreakdown): string {
   if (b.negotiatedAmount > 0) parts.push(`${b.negotiatedPercent}% agreed`);
   return `${b.totalPercent}% off — ₹${b.totalAmount.toLocaleString("en-IN")}${parts.length ? ` (${parts.join(", ")})` : ""}`;
 }
+
+
+/**
+ * What came off one sale, for a screen that has to show it at a glance.
+ *
+ * Works from the stored sale rather than from a live form, so the approvals queue, a receipt and a
+ * client's history all describe the same discount the same way — and so a sale saved before a rule
+ * changed still reads correctly, because it reports what was recorded rather than recomputing it.
+ */
+export function saleDiscountOf(item: {
+  amount?: number;
+  discountAmount?: number | null;
+  discountPercent?: number | null;
+  earnedDiscountAmount?: number | null;
+  quantity?: number | null;
+  unitAmount?: number | null;
+}): { amount: number; percent: number; label: string } {
+  const negotiated = Math.max(0, Math.round(Number(item.discountAmount) || 0));
+  const earned = Math.max(0, Math.round(Number(item.earnedDiscountAmount) || 0));
+  const amount = negotiated + earned;
+  if (amount <= 0) return { amount: 0, percent: 0, label: "" };
+
+  // The price before anything came off: what they paid, plus what they did not.
+  const net = Math.max(0, Math.round(Number(item.amount) || 0));
+  const gross = net + amount;
+  const percent = gross > 0 ? Math.round((amount / gross) * 1000) / 10 : 0;
+
+  const parts = [`${percent}% off`, `₹${amount.toLocaleString("en-IN")}`];
+  if (earned > 0 && negotiated > 0) parts.push("review/referral + agreed");
+  else if (earned > 0) parts.push("review/referral");
+
+  return { amount, percent, label: parts.join(" · ") };
+}
+
+
+/**
+ * A discount the member typed, in rupees, whichever unit they typed it in.
+ *
+ * ── Why a percentage rounds DOWN ──────────────────────────────────────────────────────────────
+ * 10% of ₹99 is ₹9.90. Rounded to ₹10 that is 10.1% of the price — past the 10% a member may give
+ * on their own — so asking for exactly ten percent held the order back from the tech team and told
+ * the member to go and find their admin. Rounding down cannot turn a permitted discount into a
+ * forbidden one, and it costs the client at most a rupee.
+ *
+ * A figure typed in rupees is exact and is taken as given.
+ */
+export function negotiatedFromInput(
+  mode: "percent" | "amount",
+  value: number,
+  grossAmount: number,
+): number {
+  const gross = Math.max(0, Math.round(Number(grossAmount) || 0));
+  const v = Math.max(0, Number(value) || 0);
+  if (gross <= 0 || v <= 0) return 0;
+  const off = mode === "amount" ? Math.round(v) : Math.floor((gross * v) / 100);
+  return Math.max(0, Math.min(gross, off));
+}
