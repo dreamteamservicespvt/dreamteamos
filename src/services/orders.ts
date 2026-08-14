@@ -94,6 +94,28 @@ export async function upsertOrderForSale(params: {
       agreed one. Re-approval brings it back through the normal reactivate path below.
     */
     await cancelOrderForSale({ leadId: lead.id, item, itemIndex }).catch(() => {});
+
+    /*
+      The chat still opens, even though the order does not.
+
+      Withholding the ORDER is about not handing the tech team work at a price nobody has agreed.
+      It was never meant to take away the place the client's brief goes — and this is exactly when
+      the client is most talkative, because the price is still being settled. The room is team-only
+      until somebody is assigned (`clientReady`), so opening it exposes nothing to the customer and
+      puts nothing in the tech queue; it just means the photos and the tagline have somewhere to
+      land instead of being re-typed later. When the admin approves the price, the order appears
+      and attaches to this same room.
+    */
+    await ensureSaleOrderChat({
+      orderId: orderDocId(lead.id, item, itemIndex),
+      category: item.category,
+      businessName: item.requirement?.businessName?.trim() || lead.realName || lead.displayName || "",
+      clientName: lead.realName || lead.displayName || "",
+      clientPhone: normalizePhone(lead.phone),
+      soldByUid: lead.assignedTo,
+      soldByName,
+      salesAdminUid: salesAdminId,
+    }).catch(() => { /* the sale is recorded either way */ });
     return;
   }
 

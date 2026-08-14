@@ -16,36 +16,48 @@ import type { Lead, Order, SaleDetail } from "@/types";
 
 const store = new Map<string, any>();
 
+/**
+ * Keys are `collection/id`, not bare ids.
+ *
+ * They used to be bare, which quietly made every collection the same collection. A sale opens a
+ * client chat under the ORDER's id — a different collection, the same id — and the moment that
+ * started happening for held sales too, the chat doc landed on the order's key and "no order was
+ * created" read as false. The product was right; the double was lying about where things live.
+ */
+const key = (name: string, id: string) => `${name}/${id}`;
+
 vi.mock("firebase/firestore", () => {
-  const applyPatch = (id: string, patch: Record<string, any>) => {
-    store.set(id, { ...(store.get(id) || {}), ...patch });
+  const applyPatch = (k: string, patch: Record<string, any>) => {
+    store.set(k, { ...(store.get(k) || {}), ...patch });
   };
   return {
     collection: (_db: unknown, name: string) => ({ name }),
-    doc: (_db: unknown, _name: string, id: string) => ({ id }),
-    getDoc: async (ref: { id: string }) => ({
-      exists: () => store.has(ref.id),
+    doc: (_db: unknown, name: string, id: string) => ({ id, key: `${name}/${id}` }),
+    getDoc: async (ref: { key: string; id: string }) => ({
+      exists: () => store.has(ref.key),
       id: ref.id,
-      data: () => store.get(ref.id),
+      data: () => store.get(ref.key),
     }),
-    setDoc: async (ref: { id: string }, data: any) => { store.set(ref.id, data); },
-    updateDoc: async (ref: { id: string }, patch: any) => applyPatch(ref.id, patch),
-    deleteDoc: async (ref: { id: string }) => { store.delete(ref.id); },
+    setDoc: async (ref: { key: string }, data: any) => { store.set(ref.key, data); },
+    updateDoc: async (ref: { key: string }, patch: any) => applyPatch(ref.key, patch),
+    deleteDoc: async (ref: { key: string }) => { store.delete(ref.key); },
     writeBatch: () => {
       const ops: (() => void)[] = [];
       return {
-        update: (ref: { id: string }, patch: any) => ops.push(() => applyPatch(ref.id, patch)),
-        delete: (ref: { id: string }) => ops.push(() => store.delete(ref.id)),
-        set: (ref: { id: string }, data: any) => ops.push(() => store.set(ref.id, data)),
+        update: (ref: { key: string }, patch: any) => ops.push(() => applyPatch(ref.key, patch)),
+        delete: (ref: { key: string }) => ops.push(() => store.delete(ref.key)),
+        set: (ref: { key: string }, data: any) => ops.push(() => store.set(ref.key, data)),
         commit: async () => { ops.forEach((op) => op()); ops.length = 0; },
       };
     },
     where: (field: string, _op: string, value: unknown) => ({ field, value }),
-    query: (_coll: unknown, ...constraints: { field: string; value: unknown }[]) => ({ constraints }),
-    getDocs: async (q: { constraints: { field: string; value: unknown }[] }) => {
+    query: (coll: { name: string }, ...constraints: { field: string; value: unknown }[]) =>
+      ({ name: coll?.name, constraints }),
+    getDocs: async (q: { name?: string; constraints: { field: string; value: unknown }[] }) => {
       const docs = [...store.entries()]
+        .filter(([k]) => !q.name || k.startsWith(`${q.name}/`))
         .filter(([, data]) => q.constraints.every((c) => data?.[c.field] === c.value))
-        .map(([id, data]) => ({ id, data: () => data }));
+        .map(([k, data]) => ({ id: k.split("/").slice(1).join("/"), data: () => data }));
       return { docs, empty: docs.length === 0 };
     },
     serverTimestamp: () => ({ __server: true }),
@@ -76,7 +88,8 @@ const sale = (over: Partial<SaleDetail> = {}): SaleDetail => ({
 const send = (item: SaleDetail, saleVerified = false) =>
   upsertOrderForSale({ lead, item, itemIndex: 0, soldByName: "Kusuma", saleVerified });
 
-const idFor = (item: SaleDetail) => orderDocId(lead.id, item, 0);
+/** The key an ORDER would live under — the collection is part of it, deliberately. */
+const idFor = (item: SaleDetail) => key("orders", orderDocId(lead.id, item, 0));
 
 beforeEach(() => store.clear());
 

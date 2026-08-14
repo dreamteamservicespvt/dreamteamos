@@ -136,7 +136,14 @@ function describeSaleChanges(prev: SaleDetail, next: SaleDetail): string[] {
 export default function SaleForm({ lead, updateLead, onDone, editItem, initialCategory }: {
   lead: Lead;
   updateLead: (id: string, data: Record<string, any>) => Promise<void>;
-  onDone: () => void;
+  /**
+   * Closed, and what happened.
+   *
+   * `heldForApproval` means the discount is past the member's own authority, so no order exists
+   * yet — see `upsertOrderForSale`. A caller that shows sales via their orders has nothing at all
+   * to display for such a sale, and must be told rather than left looking unchanged.
+   */
+  onDone: (result?: { heldForApproval: boolean }) => void;
   /** Present when editing an existing sale rather than adding a new one. */
   editItem?: { index: number; item: SaleDetail };
   /**
@@ -854,7 +861,7 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
     // Staying open for the next service on the same client, rather than closing and making them
     // find the button again.
     if (opts.keepOpen) { resetForNextService(); return; }
-    onDone();
+    onDone({ heldForApproval: held });
   };
 
   /**

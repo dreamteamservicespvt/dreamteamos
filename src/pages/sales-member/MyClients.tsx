@@ -23,7 +23,7 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import {
   Users, Search, Loader2, MessageCircle, TrendingUp, Star, CalendarDays, UserPlus,
-  ArrowDownUp, Hourglass, ShoppingBag, Sparkles, Check, X, Plus, RotateCcw,
+  ArrowDownUp, Hourglass, ShoppingBag, Sparkles, Check, X, Plus, RotateCcw, MessagesSquare,
 } from "lucide-react";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
@@ -38,6 +38,7 @@ import {
   gapCategories, ownedServices, isRepeatableService,
 } from "@/utils/serviceCatalog";
 import SaleForm from "@/components/sales/SaleForm";
+import SalesOrderChat from "@/components/order-chat/SalesOrderChat";
 import { buildSalesClients, soldWithin, type SalesClient } from "@/utils/salesClients";
 import { defaultPeriodFilter, periodLabel, withinPeriod, type PeriodFilter } from "@/utils/periodFilter";
 import PeriodFilterBar from "@/components/dashboard/PeriodFilterBar";
@@ -88,6 +89,8 @@ export default function MyClients() {
   const [sort, setSort] = useState<SalesClientSort>("recent");
   const [view, setView] = useViewMode("my-clients");
   const [active, setActive] = useState<SalesClient | null>(null);
+  /** The client chat being read, opened from a row or from an order in the detail panel. */
+  const [chatFor, setChatFor] = useState<Order | null>(null);
   /** The sale being recorded right now, if any — see `handleUpsell`. */
   const [selling, setSelling] = useState<
     { row: SalesClient; category: string; lead: Lead | null; leadId?: string; error: string | null } | null
@@ -213,14 +216,22 @@ export default function MyClients() {
         <div className={view === "grid" ? "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" : "grid grid-cols-1 gap-2"}>
           {visible.map((row, i) => (
             <ClientCard key={row.phoneId} row={row} index={i} onOpen={() => setActive(row)}
-              onUpsell={cat => handleUpsell(row, cat)} />
+              onUpsell={cat => handleUpsell(row, cat)} onChat={setChatFor} />
           ))}
         </div>
       )}
 
       {active && (
         <ClientDetail row={active} onClose={() => setActive(null)}
-          onUpsell={cat => handleUpsell(active, cat)} />
+          onUpsell={cat => handleUpsell(active, cat)} onChat={setChatFor} />
+      )}
+
+      {chatFor && user && (
+        <SalesOrderChat
+          order={chatFor}
+          soldBy={{ uid: user.uid, name: user.name }}
+          onClose={() => setChatFor(null)}
+        />
       )}
 
       {selling && (
@@ -296,12 +307,33 @@ function UpsellPicker({ onUpsell, compact }: { onUpsell: (c: string) => void; co
   );
 }
 
-function ClientCard({ row, index, onOpen, onUpsell }: {
+/**
+ * What still has to happen to this client's sales, from the orders already on the row.
+ *
+ * A sale recorded here used to leave no trace on the page that recorded it: the modal closed, the
+ * count went from "2 sales" to "3 sales", and nothing said the sale was waiting on the admin or
+ * that a chat had opened for it. From My Leads both are on the sale row, which is why selling from
+ * here felt like it had not worked. Derived from `row.orders`, which this page already streams, so
+ * it costs nothing.
+ */
+function saleProgress(row: SalesClient) {
+  const live = row.orders.filter((o) => o.status !== "cancelled" && o.status !== "deleted");
+  return {
+    awaitingApproval: live.filter((o) => o.saleVerified === false).length,
+    withTech: live.filter((o) => o.saleVerified !== false && o.status !== "verified").length,
+    /** The chat to open from the row: the newest sale is the one they were just talking about. */
+    latest: live[0] || null,
+  };
+}
+
+function ClientCard({ row, index, onOpen, onUpsell, onChat }: {
   row: SalesClient;
   index: number;
   onOpen: () => void;
   onUpsell: (c: string) => void;
+  onChat: (order: Order) => void;
 }) {
+  const progress = saleProgress(row);
   return (
     <div data-test="my-client-card"
       className="rounded-xl border border-border bg-card p-4 transition-all hover:border-primary/40 hover:shadow-md">
@@ -337,11 +369,19 @@ function ClientCard({ row, index, onOpen, onUpsell }: {
             Last sale {format(new Date(row.lastSoldMs), "dd MMM yyyy")}
           </p>
         )}
-        {row.awaitingDelivery && (
-          <p className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-medium text-warning">
-            <Hourglass size={9} /> Nothing delivered yet
-          </p>
-        )}
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          {progress.awaitingApproval > 0 && (
+            <span data-test="client-awaiting-approval"
+              className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-medium text-warning">
+              <Hourglass size={9} /> {progress.awaitingApproval} awaiting approval
+            </span>
+          )}
+          {row.awaitingDelivery && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-medium text-warning">
+              <Hourglass size={9} /> Nothing delivered yet
+            </span>
+          )}
+        </div>
       </button>
 
       <div className="mt-3 flex items-center gap-1.5 border-t border-border/60 pt-3">
@@ -351,6 +391,18 @@ function ClientCard({ row, index, onOpen, onUpsell }: {
           className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-green-100 text-green-700 transition-colors hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400">
           <MessageCircle className="h-3.5 w-3.5" />
         </a>
+        {/* The same room My Leads opens from its sale row. The client hands their photos, logo and
+            changes of mind to whoever sold to them, and this is where that goes so the tech team
+            has the original rather than a re-typed version of it. */}
+        {progress.latest && (
+          <button
+            data-test="client-open-chat"
+            onClick={e => { e.stopPropagation(); onChat(progress.latest!); }}
+            title="Open this client's chat with the team"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors hover:bg-primary/20">
+            <MessagesSquare className="h-3.5 w-3.5" />
+          </button>
+        )}
         <div className="min-w-0 flex-1">
           <UpsellPicker onUpsell={onUpsell} compact />
         </div>
@@ -359,10 +411,11 @@ function ClientCard({ row, index, onOpen, onUpsell }: {
   );
 }
 
-function ClientDetail({ row, onClose, onUpsell }: {
+function ClientDetail({ row, onClose, onUpsell, onChat }: {
   row: SalesClient;
   onClose: () => void;
   onUpsell: (c: string) => void;
+  onChat: (order: Order) => void;
 }) {
   // Escape closes it — a modal a phone cannot dismiss is a trap.
   useEffect(() => {
@@ -493,13 +546,27 @@ function ClientDetail({ row, onClose, onUpsell }: {
                     <span className="block text-[10px] text-muted-foreground">
                       {o.createdAt ? format(new Date((o.createdAt as { seconds: number }).seconds * 1000), "dd MMM yyyy") : "—"}
                       {" · "}
-                      {o.status === "verified" ? "Delivered"
+                      {/* The sales admin's sign-off comes before anything the tech team does, so it
+                          is the first thing to say about a sale that is still waiting for it —
+                          "Not assigned" is true of such a sale and tells the seller nothing. */}
+                      {o.saleVerified === false ? (
+                        <span className="font-medium text-warning">Waiting on your admin</span>
+                      ) : o.status === "verified" ? "Delivered"
                         : o.status === "completed" ? "Awaiting verify"
-                        : o.status === "assigned" ? "In production"
-                        : "Not assigned"}
+                          : o.status === "assigned" ? "In production"
+                            : "Not assigned"}
                     </span>
                   </span>
-                  <span className="shrink-0 font-mono font-medium text-primary">{formatCurrency(o.amount)}</span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <span className="font-mono font-medium text-primary">{formatCurrency(o.amount)}</span>
+                    <button
+                      data-test="detail-open-chat"
+                      onClick={() => onChat(o)}
+                      title="Open this sale's client chat"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 text-primary transition-colors hover:bg-primary/20">
+                      <MessagesSquare className="h-3.5 w-3.5" />
+                    </button>
+                  </span>
                 </div>
               ))}
             </div>
@@ -558,6 +625,9 @@ function SaleModal({ title, category, lead, error, updateLead, onClose }: {
   updateLead: (id: string, data: Record<string, unknown>) => Promise<void>;
   onClose: () => void;
 }) {
+  /** Set once the sale saved but its price is waiting on the sales admin — see the render. */
+  const [held, setHeld] = useState(false);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
@@ -587,11 +657,36 @@ function SaleModal({ title, category, lead, error, updateLead, onClose }: {
             <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" /> Opening this client's lead…
             </div>
+          ) : held ? (
+            /*
+              A sale whose price still needs the sales admin has no order yet, by design — the tech
+              team is never shown work at a price nobody has agreed. This page lists a client's
+              sales FROM their orders, so such a sale would leave the modal, change nothing on the
+              page, and read exactly like a sale that had failed to save. It has not: it is on the
+              lead and in the admin's queue. Saying so is the whole of the fix.
+            */
+            <div className="py-6 text-center" data-test="sale-held-notice">
+              <p className="text-sm font-semibold text-foreground">Sale recorded — waiting on your admin</p>
+              <p className="mx-auto mt-1.5 max-w-sm text-xs leading-relaxed text-muted-foreground">
+                The discount is above what you can give on your own, so your sales admin has to agree
+                the price first. It is already in their approvals queue. It appears in this client's
+                sales, and its chat opens, as soon as they approve it.
+              </p>
+              <button onClick={onClose}
+                className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90">
+                Done
+              </button>
+            </div>
           ) : (
             <SaleForm
               lead={lead}
               updateLead={updateLead}
-              onDone={onClose}
+              onDone={(result) => {
+                // Held sales stay on screen to explain themselves; everything else closes, and the
+                // live orders listener puts the sale on the client's row a moment later.
+                if (result?.heldForApproval) setHeld(true);
+                else onClose();
+              }}
               initialCategory={category}
             />
           )}
