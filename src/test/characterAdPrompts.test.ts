@@ -461,8 +461,8 @@ describe("veo prompt", () => {
   const p = CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT(pack, 4);
 
   it("attributes each line to the right character for lip-sync", () => {
-    expect(p).toContain("Motu says, in his own original Motu voice from the show");
-    expect(p).toContain("Then Patlu replies, in his own original Patlu voice from the show");
+    expect(p).toContain("Motu says, in the original Motu voice from the show");
+    expect(p).toContain("Then Patlu replies, in the original Patlu voice from the show");
     expect(p).toContain("Only the speaking character's mouth moves");
   });
 

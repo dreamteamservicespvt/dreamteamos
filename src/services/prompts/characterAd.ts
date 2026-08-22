@@ -463,7 +463,19 @@ export const CHARACTER_VOICEOVER_REFINE_SYSTEM_PROMPT = (
   language: string = "Telugu",
 ): string => {
   const lang = (language || "Telugu").trim() || "Telugu";
-  const [first, second] = pack.characters;
+  const [first] = pack.characters;
+  /**
+   * The second speaker, or the first again when there is only one.
+   *
+   * Twenty-three of the thirty-two catalogue entries have a single speaker — a deity, one
+   * cartoon, the client’s own face — and on those `pack.characters[1]` is undefined. Every
+   * prompt builder in this file reads `second.name`, so an unguarded destructure throws
+   * “Cannot read properties of undefined (reading ‘name’)” before a single prompt is built,
+   * which stops the member’s job dead with no way past it.
+   */
+  const second = pack.characters[1] ?? first;
+  /** True when this ad has one voice in it. Prose that describes a two-hander is branched on it. */
+  const solo = pack.characters.length === 1;
   const spellings = packNameSpellings(pack, lang);
 
   return `You are a precise script EDITOR working on an existing ${lang} cartoon ad script for
@@ -509,7 +521,19 @@ export const CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT = (
   language: string = "Telugu",
   placeName: string = "",
 ): string => {
-  const [first, second] = pack.characters;
+  const [first] = pack.characters;
+  /**
+   * The second speaker, or the first again when there is only one.
+   *
+   * Twenty-three of the thirty-two catalogue entries have a single speaker — a deity, one
+   * cartoon, the client’s own face — and on those `pack.characters[1]` is undefined. Every
+   * prompt builder in this file reads `second.name`, so an unguarded destructure throws
+   * “Cannot read properties of undefined (reading ‘name’)” before a single prompt is built,
+   * which stops the member’s job dead with no way past it.
+   */
+  const second = pack.characters[1] ?? first;
+  /** True when this ad has one voice in it. Prose that describes a two-hander is branched on it. */
+  const solo = pack.characters.length === 1;
   const spellings = packNameSpellings(pack, language);
   const place = (placeName || "").trim();
   return `You repair ${language} cartoon two-character ad scripts. You will be given a script and a
@@ -779,8 +803,18 @@ Each prompt is plain flowing English — no headings, no numbering, no bullet li
 and no negative list. Follow the per-clip word budgets above. Never describe what the characters
 look like${hasLogo ? ", and never describe the attached logo" : ""} — naming them is enough.
 
-${characterDirectionBlock(pack, "video")}
+${/*
+  No performance direction here, deliberately.
 
+  This prompt ANIMATES AN ATTACHED FRAME, and its own most important rule three lines down is
+  “NEVER describe the location, characters, lighting or composition — the attached frame IS all of
+  that”. Pouring in expression, gaze, gesture and camera paragraphs contradicts that instruction
+  directly, and it pushed the prompt past the length budget the standard ad holds itself to — a
+  budget that exists because a bloated Veo prompt degrades the motion it is asking for.
+
+  The direction still reaches the video: it shaped the frame this animates and the script it
+  speaks. See characterDirectionBlock for which scope goes where.
+*/''}
 ${characterNegativesBlock(pack)}
 
 ${businessContext ? `===== BUSINESS CONTEXT =====\n${businessContext}` : ""}`;
@@ -801,7 +835,19 @@ export const CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT = (
   segmentCount: number,
   aspectRatio: "9:16" | "16:9" = "9:16",
 ): string => {
-  const [first, second] = pack.characters;
+  const [first] = pack.characters;
+  /**
+   * The second speaker, or the first again when there is only one.
+   *
+   * Twenty-three of the thirty-two catalogue entries have a single speaker — a deity, one
+   * cartoon, the client’s own face — and on those `pack.characters[1]` is undefined. Every
+   * prompt builder in this file reads `second.name`, so an unguarded destructure throws
+   * “Cannot read properties of undefined (reading ‘name’)” before a single prompt is built,
+   * which stops the member’s job dead with no way past it.
+   */
+  const second = pack.characters[1] ?? first;
+  /** True when this ad has one voice in it. Prose that describes a two-hander is branched on it. */
+  const solo = pack.characters.length === 1;
   const cast = pack.characters.map((c) => c.name).join(" and ");
   const orientation = aspectRatio === "16:9" ? "horizontal" : "vertical";
 
@@ -818,10 +864,10 @@ Output each clip in this EXACT FORMAT:
 
 ${aspectRatio} ${orientation} video. Animate the attached frame, keeping it exactly as it is.
 
-${first.name} says, in his own original ${first.name} voice from the show: "\${${first.name}'s line}"
-Then ${second.name} replies, in his own original ${second.name} voice from the show: "\${${second.name}'s line}"
+${first.name} says, in the original ${first.name} voice from the show: "\${${first.name}'s line}"
+${solo ? "" : `Then ${second.name} replies, in the original ${second.name} voice from the show: "\${${second.name}'s line}"`}
 
-Only the speaking character's mouth moves; the other listens and reacts. Camera holds steady, single continuous shot.
+${solo ? `Only ${first.name}'s mouth moves, in sync with the line. Camera holds steady, single continuous shot.` : `Only the speaking character's mouth moves; the other listens and reacts. Camera holds steady, single continuous shot.`}
 
 Negative prompt:
 No text on the screen, no subtitles, no watermark
@@ -832,7 +878,7 @@ No change to the characters, location or framing from the attached image
 RULES:
 • NEVER describe the location, characters, lighting or composition — the attached frame IS all of that. Most important rule here.
 • Keep each prompt SHORT — the shape above, nothing more.
-• VOICES ARE STRICT: only the original ${cast} voices from the show — ${first.name} ${first.voice}, ${second.name} ${second.voice}. Never a narrator, a new voice actor, or a different accent.
+• VOICES ARE STRICT: only the original ${cast} voice${solo ? "" : "s"} from the show — ${pack.characters.map((c) => `${c.name} ${c.voice}`).join(", ")}. Never a narrator, a new voice actor, or a different accent.
 • Use the dialogue lines EXACTLY as given — do not rewrite, translate or shorten them.
 • Only the dialogue changes between clips; every clip has its own attached frame.
 
