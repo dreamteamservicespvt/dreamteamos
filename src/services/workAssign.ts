@@ -214,13 +214,29 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
     ? `${trackNames} on ${business || categoryLabel(category)}`
     : `a new ${category} work (${clipCount} clips, ${duration})`;
 
+  /**
+   * The client’s own words, carried into the notification itself.
+   *
+   * The note used to travel in one place only: the WhatsApp requirements message the tech admin
+   * copies out by hand. Assign through the split dialog, which builds no such message, or simply
+   * dismiss the popup without sending, and the member never saw it — which is why it arrived only
+   * “sometimes”. It sits on the assignment card now, and it opens with the alert that sends them
+   * there, so the first thing they read already contains what the client asked for.
+   *
+   * Trimmed because a notification is a line, not a brief: the full text lives on the job.
+   */
+  const clientNote = requirementNotes?.trim() || "";
+  const noteForAlert = clientNote
+    ? ` 📝 Client asked: ${clientNote.slice(0, 140)}${clientNote.length > 140 ? "…" : ""}`
+    : "";
+
   await sendNotification({
     userId: assignedTo,
     type: "work_assigned",
     title: "New Work Assigned",
     message: `You have been assigned ${what}.${
       linkedOrder?.promise ? ` Deliver within ${linkedOrder.promise.label}.` : ""
-    } Access code: ${accessCode}`,
+    } Access code: ${accessCode}${noteForAlert}`,
     link: memberLink,
     // One assignment is one "you have new work" notification for that member.
     dedupeKey: `work_assigned_${ref.id}_${assignedTo}`,

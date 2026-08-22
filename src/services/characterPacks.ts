@@ -1,22 +1,28 @@
 /**
- * Character packs — cartoon duos that front a "special category" ad.
+ * The video-requirement catalogue — who or what fronts an ad.
  *
- * A pack is a *creative treatment*, deliberately orthogonal to the two axes that already exist:
+ * A “special category” is a creative treatment, deliberately orthogonal to the two axes that
+ * already exist:
  *
- *   AdType        commercial | festival        — the TONE of the ad (unchanged by packs)
- *   CharacterPack none | motu_patlu | …        — WHO is on screen
+ *   AdType        commercial | festival        — the TONE of the ad (unchanged by these)
+ *   CharacterPack none | duo_motu_patlu | …    — WHO is on screen
  *   LocationMode  real_provided | ai_generated — WHERE they are
  *
- * Adding another duo later is a data entry here, not a change to the generation pipeline.
+ * This file is the TYPE and the lookups; the entries themselves live in ./characterCatalogue, so
+ * adding a character is a data edit in one place and the pipeline never changes.
  *
- * ── Why the prompts name the characters instead of describing them ───────────────────────────
+ * ── Why the prompts name characters instead of describing them ─────────────────────────
  * This was originally built the other way round: every image and video prompt restated the exact
  * build, colours and clothing, on the theory that a description gives the model more to hold onto
  * than a name. Generating real ads proved the opposite. These are famous characters the models
  * already know, and a long physical description competes with that knowledge — it yields a generic
- * round cartoon man in an orange kurta rather than Motu, and it bloats every prompt. So the prompts
- * now say "Motu and Patlu" and stop, and nothing here describes how they look.
+ * round cartoon man in an orange kurta rather than Motu, and it bloats every prompt. So `franchise`
+ * says where the character comes from and stops.
+ *
+ * What a name CANNOT carry is how someone moves, sounds and is shot — and that is the difference
+ * between a deity and a cartoon. Those are the direction fields on CharacterPack below.
  */
+import { CHARACTER_CATALOGUE } from "./characterCatalogue";
 
 /**
  * How a character's name is written when it is SPOKEN, in one language.
@@ -58,8 +64,27 @@ export interface PackCharacter {
   scriptRole: string;
 }
 
+/**
+ * Which shelf of the catalogue an entry sits on. Purely for grouping the picker — the generation
+ * pipeline never branches on it, because every entry already carries its own direction.
+ */
+export type CharacterFamily = "human" | "god" | "duo" | "solo" | "custom";
+
+export const CHARACTER_FAMILY_LABELS: Record<CharacterFamily, string> = {
+  human: "Human Model",
+  god: "God Promotion",
+  duo: "Cartoon Duo",
+  solo: "Single Cartoon",
+  custom: "Custom",
+};
+
+/** The order the families are offered in — commonest first, escape hatch last. */
+export const CHARACTER_FAMILY_ORDER: CharacterFamily[] = ["human", "god", "duo", "solo", "custom"];
+
 export interface CharacterPack {
   id: string;
+  /** Which shelf this sits on in the picker. Absent on packs written before families existed. */
+  family?: CharacterFamily;
   /**
    * Where these characters come from, named so the model reaches for the REAL ones rather than
    * inventing a look-alike. This is the entire identity anchor now that nothing describes them.
@@ -75,82 +100,107 @@ export interface CharacterPack {
   styleDirective: string;
   /** The beat every clip must follow. */
   dialogueRhythm: string;
+  /**
+   * ── The production direction ─────────────────────────────────────────────
+   * Every field below is OPTIONAL, which is what makes this a strict superset: the pack that
+   * existed before these were added still satisfies the type, and every order already referencing
+   * it keeps generating exactly as it did.
+   *
+   * They exist because a name alone cannot tell a model how a character MOVES. “Lord Shiva” and
+   * “Shinchan” are both one identity anchor, and without direction both come out as a generic
+   * figure reciting an advertisement. These say how each one sounds, looks, gestures and is shot
+   * — the whole difference between thirty-two options and one option worn thirty-two ways.
+   */
+  /** Tone and modulation for the voice-over. */
+  voiceDirection?: string;
+  /** What the face does, and on which word it changes. */
+  expressionDirection?: string;
+  /** Where the eyes go, and when they come back to the lens. */
+  eyeDirection?: string;
+  /** One clear hand gesture per line, and which vocabulary it is drawn from. */
+  gestureDirection?: string;
+  bodyLanguage?: string;
+  /** Shot sizes, lens, movement and framing, clip by clip. */
+  cameraDirection?: string;
+  /** How the location is built when the client sent no photographs. */
+  backgroundDirection?: string;
+  /** How the promotional script should read in this character’s register. */
+  scriptStyle?: string;
+  /**
+   * The subject IS the client, built from a photograph they supplied.
+   *
+   * Only the Real Owner Face entries. It changes what the uploaded images MEAN: on every other
+   * entry a client photo is a location reference, and here it is the face that must be reproduced
+   * identically in every single clip.
+   */
+  usesClientFace?: boolean;
   /** Hard negatives repeated verbatim in every frame and video prompt. */
   negatives: string[];
 }
 
-const MOTU_PATLU: CharacterPack = {
-  id: "motu_patlu",
-  franchise: 'the Indian animated television series "Motu Patlu"',
-  label: "Motu & Patlu",
-  tagline: "Cartoon duo placed inside the client's real business location",
-  characters: [
-    {
-      key: "motu",
-      name: "Motu",
-      // Orange for Motu, blue for Patlu — their own colours in the show.
-      emoji: "🟠",
-      nativeNames: {
-        telugu: { spelling: "మోటూ", variants: ["మోటు", "మొటూ", "మొటు", "మోతూ", "మోతు"] },
-      },
-      // Reads inside "…says, in a <voice> voice", so it must stay a clean adjectival phrase.
-      voice: "high-pitched, bubbly and excitable",
-      persona: "warm-hearted, impulsive, food-loving, easily amazed, asks what everyone is thinking; speaks quickly",
-      scriptRole:
-        "Opens every clip. He asks the customer's real question, reacts with excitement or friendly "
-        + "doubt, and sets up the line that follows. He never delivers the offer or the call to action.",
-    },
-    {
-      key: "patlu",
-      name: "Patlu",
-      emoji: "🔵",
-      nativeNames: {
-        telugu: { spelling: "పట్లు", variants: ["పతలూ", "పట్లూ", "పత్లూ", "పత్లు", "పాట్లూ", "పాట్లు", "పతలు"] },
-      },
-      voice: "calm, measured, clear and unhurried",
-      persona: "logical, well-informed, patient, quietly witty, the one who always has the answer; speaks slower than Motu",
-      scriptRole:
-        "Answers Motu in every clip. He carries the business value — the service, the offer, the proof — "
-        + "and delivers the closing call to action in the final clip.",
-    },
-  ],
-  // Describes the COMPOSITE, not the characters — how the cartoon sits inside the photograph.
-  // Says nothing about their build or relative size: that is part of who they already are, and
-  // stating it invites the generator to redraw them to the words instead of using the real pair.
-  styleDirective:
-    "2D cartoon characters composited into a PHOTOREAL live-action environment. The characters stay "
-    + "cartoon; the location stays photographic and is never restyled. They stand on the actual floor in "
-    + "correct perspective, casting soft contact shadows that match the scene's light.",
-  dialogueRhythm:
-    "Motu speaks first and sets up the question or reaction; Patlu answers with the business value. "
-    + "This order never reverses. Both characters speak in every single clip.",
-  negatives: [
-    "Do NOT restyle the environment into a cartoon — the location must stay photoreal",
-    // Says "the real ones" rather than naming proportions or heights: describing their build is
-    // what let the generator draw two same-sized men who merely resembled them.
-    "Do NOT redraw, restyle or re-proportion the characters — use the real ones, identical in every clip",
-    "No additional cartoon characters anywhere in frame",
-    "No on-screen text, captions, subtitles, logos-as-text, or watermarks",
-    "No floating characters — both must contact the ground with matching shadows",
-    "No morphing, no extra or missing limbs, no distorted faces",
-    "No background music — clean studio voice only",
-  ],
-};
+// The Motu & Patlu pack now lives in the catalogue as `duo_motu_patlu`, reproduced there
+// verbatim — same speaking order, same fixed Telugu spellings, same negatives. The old id still
+// resolves through LEGACY_PACK_ALIASES below.
 
-/** Every pack, keyed by id. Add a new duo here and it appears everywhere automatically. */
-export const CHARACTER_PACKS: Record<string, CharacterPack> = {
-  [MOTU_PATLU.id]: MOTU_PATLU,
+/**
+ * Every entry, keyed by id.
+ *
+ * Built from the catalogue rather than written out here, so adding a character is a data edit in
+ * one file and nothing else in the codebase has to know.
+ */
+export const CHARACTER_PACKS: Record<string, CharacterPack> = Object.fromEntries(
+  CHARACTER_CATALOGUE.map((pack) => [pack.id, pack]),
+);
+
+/**
+ * Ids that used to mean something else.
+ *
+ * ── Why an alias and not a migration ─────────────────────────────────────────────
+ * The only pack that ever existed was `motu_patlu`, and that string is written onto every sale,
+ * order and work assignment made since. Grouping the catalogue into families renamed it to
+ * `duo_motu_patlu` for consistency with the other eight duos.
+ *
+ * Rewriting live data to change a key nobody outside this file ever sees is risk with no benefit:
+ * a sweep over orders, assignments and saved generations, any one of which could be missed, in
+ * exchange for tidiness. One line of indirection resolves the old id for ever, costs nothing, and
+ * cannot half-succeed.
+ */
+const LEGACY_PACK_ALIASES: Record<string, string> = {
+  motu_patlu: "duo_motu_patlu",
 };
 
 /** The pack for an id, or null for a normal (human-model) ad. */
 export function getCharacterPack(id?: string | null): CharacterPack | null {
   if (!id) return null;
-  return CHARACTER_PACKS[id] ?? null;
+  return CHARACTER_PACKS[id] ?? CHARACTER_PACKS[LEGACY_PACK_ALIASES[id]] ?? null;
 }
 
-/** Options for a dropdown, in display order. */
+/** Options for a flat dropdown, in catalogue order. */
 export function characterPackOptions(): { id: string; label: string; tagline: string }[] {
-  return Object.values(CHARACTER_PACKS).map(({ id, label, tagline }) => ({ id, label, tagline }));
+  return CHARACTER_CATALOGUE.map(({ id, label, tagline }) => ({ id, label, tagline }));
+}
+
+/**
+ * The same options, grouped for an `<optgroup>` picker.
+ *
+ * Thirty-two entries in one flat list is a search, not a choice — a member looking for Shinchan
+ * should not have to read past six deities to find him. Empty families are dropped so the picker
+ * only ever offers shelves that have something on them.
+ */
+export function characterPackGroups(): {
+  family: CharacterFamily;
+  label: string;
+  options: { id: string; label: string; tagline: string }[];
+}[] {
+  return CHARACTER_FAMILY_ORDER
+    .map((family) => ({
+      family,
+      label: CHARACTER_FAMILY_LABELS[family],
+      options: CHARACTER_CATALOGUE
+        .filter((p) => p.family === family)
+        .map(({ id, label, tagline }) => ({ id, label, tagline })),
+    }))
+    .filter((g) => g.options.length > 0);
 }
 
 /** The speaker list a script must follow, in speaking order. */

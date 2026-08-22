@@ -36,15 +36,108 @@ import { CLIP_SECONDS } from "@/utils/voiceOverFormat";
  */
 export const characterCastBlock = (pack: CharacterPack): string => {
   const cast = pack.characters.map((c) => c.name).join(" and ");
-  return `===== CHARACTERS =====
 
-${cast} — the REAL, ORIGINAL characters from ${pack.franchise}, exactly as they appear on screen in that show.
-These specific existing characters and nobody else: NOT look-alikes, NOT "inspired by", NOT a new pair of Indian cartoon men.
+  /**
+   * What kind of identity this is, and therefore what “get it right” means.
+   *
+   * The original wording — “the REAL, ORIGINAL characters … exactly as they appear on screen in
+   * that show … NOT a new pair of Indian cartoon men” — is precisely correct for a cartoon and
+   * actively wrong for everything else. A deity does not appear in a show. A Real Owner Face ad
+   * has no franchise at all: the identity is a photograph the client sent, and telling the model
+   * to reach for a recognisable existing character is the one instruction guaranteed to lose the
+   * client’s actual face. So each family is told what its own identity anchor is.
+   */
+  const identity = pack.usesClientFace
+    ? `${cast} IS THE CLIENT THEMSELF, built from the photograph supplied with this job.
+That photograph is the only source of this face. Reproduce it exactly: the same bone structure, the same
+age, the same skin tone, the same hair, the same build — in EVERY clip, from every angle.
+Do NOT beautify, slim, de-age, lighten, restyle or “improve” them, and do NOT substitute a model who merely
+resembles them. If the owner’s own family would not say “that is them”, the frame is WRONG.`
+    : pack.family === "god"
+      ? `${cast} — ${pack.franchise}.
+Depict the deity with full devotional accuracy and respect: the established iconography, attributes, vahana,
+posture and colour associations, exactly as a devotee would expect to see them.
+Never comic, never romanticised, never casual, and never blended with another deity’s iconography.
+The same ${cast}, identical in every clip.`
+      : pack.family === "human"
+        ? `${cast} — ${pack.franchise}.
+One consistent person: cast them once, in clip 1, and keep that exact face, age, build, hair and wardrobe
+in every clip after. A presenter who changes between clips reads as a different person and destroys the ad.`
+        : pack.family === "custom"
+          ? `${cast} — ${pack.franchise}`
+          : `${cast} — the REAL, ORIGINAL character${pack.characters.length > 1 ? "s" : ""} from ${pack.franchise}, exactly as they appear on screen in that show.
+These specific existing characters and nobody else: NOT look-alikes, NOT "inspired by", NOT newly invented cartoons.
 If a viewer who watches the show would not instantly recognise them as ${cast}, the frame is WRONG.
 Do not restyle, redesign or reinterpret them, and do not describe their appearance in the prompt: name them and let them be themselves.
-They must be the same ${cast} in every clip.
+They must be the same ${cast} in every clip.`;
+
+  return `===== CHARACTERS =====
+
+${identity}
 
 STAGING: ${pack.styleDirective}`;
+};
+
+/**
+ * How this character MOVES, SOUNDS and IS SHOT.
+ *
+ * The single most important block for making thirty-two options behave like thirty-two options.
+ * `franchise` anchors WHO; without this, a model given only a name falls back to the same neutral
+ * presenter reciting an advertisement whoever it was asked for — Shiva and SpongeBob rendered with
+ * the same face, the same hands and the same camera.
+ *
+ * Every line is optional and omitted when the entry does not carry it, so the pack that predates
+ * these fields emits exactly the prompt it always did.
+ */
+/** Which slices of the direction a given prompt should carry. */
+export type DirectionScope = "script" | "frame" | "video";
+
+/**
+ * How this character MOVES, SOUNDS and IS SHOT.
+ *
+ * The single most important block for making thirty-two options behave like thirty-two options.
+ * `franchise` anchors WHO; without this a model given only a name falls back to the same neutral
+ * presenter whoever it was asked for — Shiva and SpongeBob rendered with the same face, the same
+ * hands and the same camera.
+ *
+ * ── Why the IMAGE prompt gets less of it ────────────────────────────────────────────────────
+ * Body language is written in terms of stance, weight and scale against the room, and on a still
+ * frame that reads as a description of the character's BUILD. Describing a famous character's
+ * build is the one thing this whole file is organised around not doing: it makes the generator
+ * redraw them to the words instead of using the real pair, which is how two identically-sized
+ * cartoon men kept coming back instead of Motu and Patlu. So the frame prompt takes performance
+ * and camera direction and leaves the body to the video prompt, where it describes MOTION.
+ *
+ * Voice and script style are omitted from the frame prompt for the plainer reason that a still
+ * image cannot carry either.
+ *
+ * Every field is optional and omitted when absent, so a pack predating them emits exactly the
+ * prompt it always did.
+ */
+export const characterDirectionBlock = (
+  pack: CharacterPack,
+  scope: DirectionScope = "video",
+): string => {
+  const all: [string, string | undefined, DirectionScope[]][] = [
+    ["VOICE & MODULATION", pack.voiceDirection, ["script", "video"]],
+    ["FACIAL EXPRESSION", pack.expressionDirection, ["script", "frame", "video"]],
+    ["EYES & GAZE", pack.eyeDirection, ["script", "frame", "video"]],
+    ["HAND GESTURES", pack.gestureDirection, ["script", "frame", "video"]],
+    ["BODY LANGUAGE", pack.bodyLanguage, ["video"]],
+    ["CAMERA & CINEMATIC DIRECTION", pack.cameraDirection, ["frame", "video"]],
+    ["BACKGROUND", pack.backgroundDirection, ["frame", "video"]],
+    ["SCRIPT STYLE", pack.scriptStyle, ["script"]],
+  ];
+
+  const lines = all
+    .filter(([, v, scopes]) => !!(v && v.trim()) && scopes.includes(scope))
+    .map(([k, v]) => `${k}: ${v}`);
+
+  if (lines.length === 0) return "";
+
+  return ["===== HOW THIS CHARACTER PERFORMS =====", ""]
+    .concat(lines)
+    .join(String.fromCharCode(10));
 };
 
 /** Negatives, formatted for appending to any prompt. */
@@ -103,38 +196,67 @@ export const CHARACTER_VOICEOVER_SYSTEM_PROMPT = (
   const lang = (language || "Telugu").trim() || "Telugu";
   const place = (placeName || "").trim();
   const isLatin = lang.toLowerCase() === "english";
-  const [first, second] = pack.characters;
+  const [first] = pack.characters;
+  /**
+   * The second speaker, or the first again when there is only one.
+   *
+   * This prompt was written for a two-hander and reads `second.name` throughout. Twenty-three of
+   * the thirty-two catalogue entries have a single speaker, and on those `pack.characters[1]` is
+   * undefined — which threw before a single word of the script was generated. Falling back keeps
+   * the template safe; the prose that would actually READ wrong for one person is branched on
+   * `solo` below, because a fallback stops a crash but cannot stop a sentence being nonsense.
+   */
+  const second = pack.characters[1] ?? first;
   const spellings = packNameSpellings(pack, lang);
+
+  /**
+   * How many people are actually in this ad.
+   *
+   * The catalogue holds duos AND single characters — a lone deity, one cartoon, the client’s own
+   * face — and this prompt used to hard-code a two-line exchange per clip. Asked for Lord Shiva it
+   * would invent a second speaker purely to satisfy the contract, because the contract is the
+   * format a model obeys far more literally than any prose above it. So it is built from the cast.
+   */
+  const solo = pack.characters.length === 1;
 
   const contract = Array.from({ length: segmentCount }, (_, i) => {
     const start = i * CLIP_SECONDS;
     const end = start + CLIP_SECONDS;
-    return `${start}-${end}|${first.key}: [${first.name}'s line]\n${start}-${end}|${second.key}: [${second.name}'s line]`;
-  }).join("\n");
+    return pack.characters
+      .map((c) => `${start}-${end}|${c.key}: [${c.name}'s line]`)
+      .join(String.fromCharCode(10));
+  }).join(String.fromCharCode(10));
 
-  return `You are a WORLD-CLASS ${lang.toUpperCase()} AD SCRIPTWRITER who writes CARTOON DIALOGUE for
-television commercials. You are writing a ${duration}-second ad in which two well-known cartoon
-characters visit a real business and talk to each other about it.
+  return `You are a WORLD-CLASS ${lang.toUpperCase()} AD SCRIPTWRITER writing a ${duration}-second
+television commercial in which ${solo
+  ? `${first.name} presents a real business straight to camera`
+  : "two well-known characters visit a real business and talk to each other about it"}.
 
-===== THE TWO CHARACTERS =====
+===== ${solo ? "THE CHARACTER" : "THE TWO CHARACTERS"} =====
 
-${pack.characters.map((c) => `${c.name} — ${c.persona}\n  Voice: ${c.voice}\n  His job in the script: ${c.scriptRole}`).join("\n\n")}
+${pack.characters.map((c) => `${c.name} — ${c.persona}\n  Voice: ${c.voice}\n  Their job in the script: ${c.scriptRole}`).join("\n\n")}
 
 ===== THE BEAT (NEVER BREAK THIS) =====
 
 ${pack.dialogueRhythm}
 
-Every clip is a tiny two-line exchange: a set-up and a pay-off. It must feel like a real
+${solo
+  ? `Every clip is ONE line from ${first.name}: a set-up half and a pay-off half inside a single breath.
+It must sound like ${first.name} talking to the viewer — never a narrator reading an advertisement,
+and never a second voice answering, because there is nobody else in this ad.`
+  : `Every clip is a tiny two-line exchange: a set-up and a pay-off. It must feel like a real
 conversation between friends — never two separate announcements stitched together. ${second.name}'s
-line must actually ANSWER what ${first.name} just said.
+line must actually ANSWER what ${first.name} just said.`}
+
+${characterDirectionBlock(pack, "script")}
 
 ===== THIS IS A PROMOTIONAL AD FOR ONE SPECIFIC BUSINESS =====
 
-THE SITUATION, AND IT NEVER CHANGES: ${first.name} and ${second.name} have come to this client's
-business to show it to people. They are standing in the real premises, seeing the real thing, and
-telling the viewer why it is worth coming to. Write it as that visit — two friends who turned up at
-a good place and want everyone to know about it — never as a studio announcement, never as an
-advert read aloud, never as a comedy sketch with a tagline bolted on the end.
+${solo
+  ? `THE SITUATION, AND IT NEVER CHANGES: ${first.name} has come to this client's business to show
+it to people. They are standing in the real premises, talking straight to the viewer about why it is
+worth coming to. Write it as that visit — never as an announcement read out over pictures.`
+  : `THE SITUATION, AND IT NEVER CHANGES: ${first.name} and ${second.name} have come to this client's business to show it to people. They are standing in the real premises, seeing the real thing, and telling the viewer why it is worth coming to. Write it as that visit — two friends who turned up at a good place and want everyone to know about it — never as a studio announcement, never as an advert read aloud, never as a comedy sketch with a tagline bolted on the end.`}
 
 The characters are the DELIVERY, not the subject. This ad sells the business described in the
 BUSINESS INFORMATION you are given — it is not a general chat about advertising, marketing, offers
@@ -143,7 +265,7 @@ ${lang} speech between the two of them, not like a written slogan.
 
 ===== BOTH NAMES, EACH EXACTLY ONCE (STRICT) =====
 
-BOTH characters must be named in the ad, and each name is spoken EXACTLY ONE TIME across the ENTIRE
+${solo ? `Say "${first.name}" AT MOST ONCE in the whole script, in clip 1. Every word spent on the character is a word the client did not get.` : `BOTH characters must be named in the ad, and each name is spoken EXACTLY ONE TIME across the ENTIRE
 script — all ${segmentCount} clips together. "${first.name}" appears once. "${second.name}" appears
 once. That is two name-words in the whole ad, and no more. It is the same in every ad whatever its
 length: a 2-clip ad and an 8-clip ad each get exactly one of each.
@@ -158,6 +280,7 @@ We are promoting the business, not the characters. Beyond that one introduction,
 on "${first.name}" or "${second.name}" is a word the client did not get. The viewer can SEE who is
 talking; they cannot know the business unless it is said. So the BUSINESS's name is the one that
 gets repeated.
+`}
 
 CLIP-BY-CLIP STRUCTURE:
 
@@ -266,7 +389,7 @@ GROUND EVERY SINGLE LINE IN THE DATA YOU WERE GIVEN:
 ===== CORE OUTPUT CONTRACT =====
 
 1. Output EXACTLY ${segmentCount} clips. Each clip has EXACTLY 2 lines — one for ${first.name},
-   then one for ${second.name}. ${first.name} ALWAYS speaks first.
+   ${solo ? "" : `then one for ${second.name}. ${first.name} ALWAYS speaks first.`}
 2. Output format must be EXACTLY this, with no headings, notes, or explanation:
 
 ${contract}
@@ -288,13 +411,14 @@ ${isLatin
 2. Brand names must be transliterated into ${lang} script naturally.
 3. Prefer the SIMPLE everyday English business word written in ${lang} script over a heavy literary ${lang} translation — write how a popular ${lang} cartoon actually speaks.
 4. Never archaic, devotional, bookish, or government-style ${lang}.`}
-5. ${first.name} speaks in short, excited, simple words. ${second.name} speaks in calm, clear,
+${solo ? `5. ${first.name} speaks in their own register throughout — see the performance direction above.` : `5. ${first.name} speaks in short, excited, simple words. ${second.name} speaks in calm, clear,
    informative words. Their two voices must sound DIFFERENT on the page.
 ${spellings.length > 0
   ? `6. NAME SPELLING (EXACT — NO ALTERNATIVES). When a character's name is spoken inside a line, it must be written EXACTLY as:
 ${spellings.map((s) => `     ${s.name} → ${s.spelling}`).join("\n")}
    Never any other spelling of these names, and never in Latin letters. If a name is not spoken in a line, do not add it.`
   : ""}
+`}
 
 ===== CONTENT TRUTH RULES =====
 
@@ -307,7 +431,7 @@ ${spellings.map((s) => `     ${s.name} → ${s.spelling}`).join("\n")}
 
 1. Never use digits in spoken content.
 2. NEVER speak a phone number or contact number — it is shown on screen, not spoken.
-3. Only the FINAL clip carries the call to action, and ${second.name} delivers it.
+3. Only the FINAL clip carries the call to action, and ${solo ? first.name : second.name} delivers it.
 4. Do not leak CTA or "visit us / call us" language into earlier clips.
 
 ===== TONE =====
@@ -617,6 +741,8 @@ different aspect ratio.
 
 ${characterCastBlock(pack)}
 
+${characterDirectionBlock(pack, "frame")}
+
 ${locationBlock}
 
 ${logoBlock}
@@ -652,6 +778,8 @@ Write ${segmentCount} prompts separated by ###CLIP### on its own line, in clip o
 Each prompt is plain flowing English — no headings, no numbering, no bullet lists, no commentary,
 and no negative list. Follow the per-clip word budgets above. Never describe what the characters
 look like${hasLogo ? ", and never describe the attached logo" : ""} — naming them is enough.
+
+${characterDirectionBlock(pack, "video")}
 
 ${characterNegativesBlock(pack)}
 

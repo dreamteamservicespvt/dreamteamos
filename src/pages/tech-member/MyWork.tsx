@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Briefcase, Clock, Play, CheckCircle2, ChevronDown, Loader2, AlertCircle, Sparkles, Edit3, Copy, Check, Undo2,
-  MessagesSquare
+  MessagesSquare, StickyNote
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { collection, query, where, doc, updateDoc, deleteField, serverTimestamp } from 'firebase/firestore';
@@ -598,6 +598,33 @@ export default function MyWork() {
                   {order && (order.progress || isBulkVideoOrder(order)) && (
                     <div className="mb-3">
                       <OrderProgressPanel order={order} user={user} />
+                    </div>
+                  )}
+
+                  {/*
+                    What the client actually asked for, on the card.
+
+                    ── Why it is here and not only in the WhatsApp message ──────────────────────
+                    This note is the one thing on a job nobody can derive from anywhere else: it is
+                    the client's own words, captured by the person who spoke to them. It used to live
+                    in exactly one place — the requirements message the tech admin copies out and
+                    sends by hand — and nowhere in the app at all. So it reached the member only
+                    when three things lined up: the sale carried it, the admin assigned through the
+                    form that builds that message, and the admin remembered to press send. Miss any
+                    one and the note was gone, which is why it arrived "sometimes". Reading it off
+                    the assignment removes all three conditions.
+                  */}
+                  {a.requirementNotes?.trim() && (
+                    <div
+                      data-test="assignment-client-notes"
+                      className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5"
+                    >
+                      <p className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+                        <StickyNote className="h-3.5 w-3.5 shrink-0" /> Client's requirement
+                      </p>
+                      <p className="whitespace-pre-wrap text-xs leading-relaxed text-foreground">
+                        {a.requirementNotes.trim()}
+                      </p>
                     </div>
                   )}
 

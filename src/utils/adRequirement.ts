@@ -235,7 +235,11 @@ export function buildAssignmentRequirementsMessage(a: {
     // thing the member notices in a thread of near-identical assignment messages.
     pack ? `🎭✨ *SPECIAL CATEGORY* ✨🎭` : null,
     pack ? `${packHighlight(pack)}` : null,
-    pack ? `💬 Both characters speak in every clip` : null,
+    // True of a duo and false of the other twenty-three entries — a brief that tells a member two
+    // characters speak in an ad with one deity in it is a brief they stop trusting.
+    pack ? (pack.characters.length > 1
+      ? `💬 Both characters speak in every clip`
+      : `💬 ${pack.characters[0].name} carries every clip alone`) : null,
     pack ? (a.realLocationProvided
       ? `📷 *Location:* the client's own photos — upload every photo they sent`
       : `🏙️ *Location:* build it from the business (client sent no photos)`) : null,

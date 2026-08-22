@@ -27,6 +27,8 @@ import { orderChatIdOf } from '@/utils/orderChatId';
 import { verifyAssignments } from '@/services/workVerify';
 import { reassignWork } from '@/services/workReassign';
 import DeadlineChip from '@/components/work/DeadlineChip';
+import SpecialCategoryFields from '@/components/work/SpecialCategoryFields';
+import { getCharacterPack } from '@/services/characterPacks';
 import WorkDoneReport from '@/components/work/WorkDoneReport';
 import ViewToggle from '@/components/common/ViewToggle';
 import { useViewMode } from '@/hooks/useViewMode';
@@ -103,6 +105,16 @@ export default function WorkReports() {
   const [editForm, setEditForm] = useState<{
     assignedTo: string; category: string; duration: string; pricePerUnit: number; businessName: string; businessWhatsapp: string;
     modelGender: ModelGender; attireType: AttireType; customAttire: string; aspectRatio: '9:16' | '16:9'; language: string; customLanguage: string;
+    /**
+     * Who is on screen, when it is not a human model.
+     *
+     * This dialog is the third place an assignment can be edited, and it was the only one that had
+     * never heard of a special category. It wrote modelGender and attireType unconditionally, so
+     * opening a cartoon-duo job here and pressing Save stamped a human model onto a job that has
+     * no person in it — and the row then displayed a model who never appears. Carrying the pack is
+     * what keeps the category the sales member sold attached to the job.
+     */
+    characterPack: string; realLocationProvided: boolean;
   } | null>(null);
   const [editMemberSearch, setEditMemberSearch] = useState('');
   const [confirmAction, setConfirmAction] = useState<{ type: 'delete' | 'sendback'; id: string; assignedTo?: string; title: string } | null>(null);
@@ -312,6 +324,8 @@ export default function WorkReports() {
       aspectRatio: a.aspectRatio || '9:16',
       language: a.language ? (isPresetLanguage ? a.language : 'Custom') : 'Telugu',
       customLanguage: a.language && !isPresetLanguage ? a.language : '',
+      characterPack: a.characterPack || '',
+      realLocationProvided: a.realLocationProvided === true,
     });
     setEditMemberSearch(getMemberName(a.assignedTo));
   };
@@ -336,6 +350,11 @@ export default function WorkReports() {
         customAttire: editForm.attireType === AttireType.CUSTOM ? editForm.customAttire.trim() : '',
         aspectRatio: editForm.aspectRatio,
         language,
+        // Written unconditionally so clearing the pack really clears it — the same contract the
+        // other two edit dialogs already keep. The location flag only means anything beside a
+        // pack, so it is forced false the moment there is no pack.
+        characterPack: editForm.characterPack,
+        realLocationProvided: !!editForm.characterPack && editForm.realLocationProvided,
       });
       // Member changed → hand off through the established reassign flow (resets the work to
       // "assigned" for the new member and notifies both members).
@@ -696,6 +715,15 @@ export default function WorkReports() {
                             className="w-full border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/20" />
                         </div>
 
+                        {/* Who is on screen. Selecting a pack replaces the human model outright,
+                            so Model and Attire disappear below — there is no person to dress. */}
+                        <SpecialCategoryFields
+                          characterPack={editForm.characterPack}
+                          realLocationProvided={editForm.realLocationProvided}
+                          onChange={(patch) => setEditForm(prev => prev ? { ...prev, ...patch } : prev)}
+                        />
+
+                        {!editForm.characterPack && (<>
                         {/* Model */}
                         <div>
                           <label className="block text-[11px] font-medium text-muted-foreground mb-1">Model</label>
@@ -732,6 +760,8 @@ export default function WorkReports() {
                               className="w-full mt-1.5 border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/20" />
                           )}
                         </div>
+
+                        </>)}
 
                         {/* Aspect Ratio */}
                         <div>
@@ -791,14 +821,26 @@ export default function WorkReports() {
                         {a.totalDurationSeconds > 0 && <span>Time: {formatDuration(a.totalDurationSeconds)}</span>}
                         <span className="font-mono text-[10px] md:text-xs">Code: {a.accessCode}</span>
                       </div>
-                      {(a.modelGender || a.attireType || a.aspectRatio || a.language) && (
+                      {(a.characterPack || a.modelGender || a.attireType || a.aspectRatio || a.language) && (
                         <div className="flex flex-wrap gap-1.5 mt-1.5">
+                          {/* A pack job has no model and no attire — the two slots are reused to say
+                              who IS on screen and where the location comes from. */}
+                          {getCharacterPack(a.characterPack) && (
+                            <span data-test="report-pack-chip" className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
+                              🎭 {getCharacterPack(a.characterPack)!.label}
+                            </span>
+                          )}
+                          {a.characterPack && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                              {a.realLocationProvided ? "📷 Client’s photos" : "🏙️ Location created"}
+                            </span>
+                          )}
                           {a.modelGender && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
                               {a.modelGender === 'male' ? '👨 Male' : '👩 Female'}
                             </span>
                           )}
-                          {a.attireType && (
+                          {!a.characterPack && a.attireType && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
                               {a.attireType === 'custom' && a.customAttire ? a.customAttire : ATTIRE_LABELS[a.attireType]}
                             </span>

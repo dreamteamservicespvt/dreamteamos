@@ -26,7 +26,7 @@ import { upsertOrderForSale } from "@/services/orders";
 import { logActivity } from "@/services/activityLog";
 import { applySaleFreeze, buildLeadFreezeFields, fetchNumberLock } from "@/services/numberLock";
 import { watchAdLanguages, rememberAdLanguage, mergeAdLanguages } from "@/services/adLanguages";
-import { characterPackOptions, getCharacterPack } from "@/services/characterPacks";
+import { characterPackGroups, getCharacterPack } from "@/services/characterPacks";
 import { formatCurrency } from "@/utils/formatters";
 import { normalizePhone } from "@/utils/phone";
 import {
@@ -1629,13 +1629,22 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
             </div>
             <div>
               <label className="text-[11px] text-muted-foreground">Special category</label>
+              {/* Resolved, not raw: a sale saved as `motu_patlu` has no matching option in a
+                  catalogue-built list and would show as “Normal ad”. See SpecialCategoryFields. */}
               <select
-                value={req.specialCategory}
+                value={getCharacterPack(req.specialCategory)?.id ?? req.specialCategory}
                 onChange={(e) => setReq((r) => ({ ...r, specialCategory: e.target.value }))}
                 className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary"
               >
                 <option value="">Normal ad (with a model)</option>
-                {characterPackOptions().map((o) => <option key={o.id} value={o.id}>🎭 {o.label}</option>)}
+                {/* Grouped: thirty-two entries in one flat list is a search, not a choice. */}
+                {characterPackGroups().map((group) => (
+                  <optgroup key={group.family} label={group.label}>
+                    {group.options.map((o) => (
+                      <option key={o.id} value={o.id}>{o.label}</option>
+                    ))}
+                  </optgroup>
+                ))}
               </select>
             </div>
           </div>
@@ -1645,10 +1654,10 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
           {salePack && (
             <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 space-y-2">
               <p className="text-[11px] text-amber-700 dark:text-amber-300">
-                <b>{salePack.label}</b> — {salePack.tagline}. Both characters speak in every clip. Same price as a normal ad.
+                <b>{salePack.label}</b> — {salePack.tagline}.{salePack.characters.length > 1 ? " Both characters speak in every clip." : ""} Same price as a normal ad.
               </p>
               <div>
-                <label className="text-[11px] text-muted-foreground">Is the client sending photos of their shop / office?</label>
+                <label className="text-[11px] text-muted-foreground">{salePack.usesClientFace ? "Is the client sending photos of their shop / office? (background)" : "Is the client sending photos of their shop / office?"}</label>
                 <div className="grid grid-cols-2 gap-1.5 mt-1">
                   {([
                     { v: true, label: "📷 Yes — use their business background" },
@@ -1673,6 +1682,15 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
                 <p className="text-[10px] text-amber-700 dark:text-amber-300 leading-relaxed">
                   Collect every angle they can send — inside, outside, counter, product shelf. Each clip is set in a
                   different one of their photos, so more photos means a better ad.
+                </p>
+              )}
+              {/* The face is not the background. On every other entry a client photo is a location
+                  reference; here it is the identity the entire ad is built from, so the sales member
+                  has to collect it while the client is still on the call — there is no ad without it. */}
+              {salePack.usesClientFace && (
+                <p className="text-[10px] font-medium leading-relaxed text-amber-700 dark:text-amber-300">
+                  <b>Also collect a clear photo of the owner’s face.</b> This exact face appears in every
+                  clip, so ask for a straight-on, well-lit one — not a group photo and not a side angle.
                 </p>
               )}
             </div>
