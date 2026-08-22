@@ -143,3 +143,49 @@ describe("the frame prompt names the real cast", () => {
     expect(frame("duo_motu_patlu")).toContain("the same Motu and Patlu exactly as in the attached reference");
   });
 });
+
+/**
+ * Nothing in the catalogue may name its own word count.
+ *
+ * ── The generation this exists because of ───────────────────────────────────────────
+ * A Presenter ad came back with ten words a clip against a budget of eighteen to twenty. The
+ * budget was right and the prompt stated it plainly — but the entry’s own scriptStyle said
+ * “Everyday spoken sentences, six to fourteen words”, and a model handed two numbers obeys the
+ * more specific one. The clip band is a TIMING rule owned by wordBudgetFor and injected once; an
+ * entry that restates it in smaller numbers silently overrides it for that character alone, which
+ * is the hardest kind of wrong to notice because every other character stays correct.
+ *
+ * A PACE is fine and stays allowed — “two words per second” describes delivery, not length.
+ */
+describe("the catalogue never sets its own word count", () => {
+  const RANGE = new RegExp(String.raw`\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|\d{1,2})[\s-]*(?:to|and|-|\u2013)[\s-]*(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|\d{1,2})\s+words?\b`, "gi");
+  const CAP = new RegExp(String.raw`\b(?:under|below|max(?:imum)?|at most|no more than)\s+(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|\d{1,2})\s+words?\b`, "gi");
+
+  it("states no clip or line length of its own", () => {
+    const offences: string[] = [];
+    for (const pack of CHARACTER_CATALOGUE) {
+      const fields: Record<string, unknown> = pack as unknown as Record<string, unknown>;
+      for (const key of Object.keys(fields)) {
+        const value = fields[key];
+        if (typeof value !== "string") continue;
+        for (const re of [RANGE, CAP]) {
+          re.lastIndex = 0;
+          let m: RegExpExecArray | null;
+          while ((m = re.exec(value))) {
+            // “about four words per second” is a pace, not a length — allowed.
+            const after = value.slice(m.index + m[0].length, m.index + m[0].length + 12);
+            if (/^s*(per|a)s+second/i.test(after)) continue;
+            offences.push(`${pack.id}.${key}: "${m[0]}"`);
+          }
+        }
+      }
+    }
+    expect(offences, offences.join(" | ")).toEqual([]);
+  });
+
+  it("lets the prompt be the only place a clip length is stated", () => {
+    const out = script("normal_female");
+    expect(out).toContain(`${MIN_WORDS_PER_CLIP} and ${MAX_WORDS_PER_CLIP}`);
+    expect(out).not.toContain("six to fourteen words");
+  });
+});
