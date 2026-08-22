@@ -64,11 +64,24 @@ export async function reassignWork(
 
   const title = assignment.businessName || assignment.clientName || assignment.displayTitle || "work";
 
+  /**
+   * The client’s own words travel with the job when it changes hands.
+   *
+   * Reassignment is the second of the two ways a member is told they have new work, and it built
+   * its own notification rather than going through createWorkAssignment — so the note that was
+   * added there never appeared here. The member picking up somebody else’s job is precisely the
+   * one with no other way of knowing what the client asked for.
+   */
+  const note = assignment.requirementNotes?.trim();
+  const reassignNote = note
+    ? ` 📝 Client asked: ${note.slice(0, 140)}${note.length > 140 ? "…" : ""}`
+    : "";
+
   await sendNotification({
     userId: newMember.uid,
     type: "work_assigned",
     title: "New Work Assigned",
-    message: `"${title}" has been assigned to you by ${by.name}.${assignment.accessCode ? ` Access code: ${assignment.accessCode}` : ""}`,
+    message: `"${title}" has been assigned to you by ${by.name}.${assignment.accessCode ? ` Access code: ${assignment.accessCode}` : ""}${reassignNote}`,
     link: "/tech/my-work",
   });
 

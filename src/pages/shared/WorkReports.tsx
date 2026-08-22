@@ -835,7 +835,7 @@ export default function WorkReports() {
                               {a.realLocationProvided ? "📷 Client’s photos" : "🏙️ Location created"}
                             </span>
                           )}
-                          {a.modelGender && (
+                          {!a.characterPack && a.modelGender && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
                               {a.modelGender === 'male' ? '👨 Male' : '👩 Female'}
                             </span>

@@ -11,7 +11,7 @@ import { GeneratedCard, parseVoiceOverClips, stripAttachmentDirective } from './
 import { buildPromptAttachments, type PromptAttachment } from '@/utils/promptAttachments';
 import { SavedItems, SavedGeneration } from './SavedItems';
 import { AdFormData, AdType, AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER, FileStore, GeneratedOutputs, GenerationStatus, LocationMode } from '@/types/aiPlatform';
-import { characterPackOptions, getCharacterPack } from '@/services/characterPacks';
+import { characterPackGroups, getCharacterPack } from '@/services/characterPacks';
 import { generateAdAssets, extractBusinessOnly, generateStockImagePrompts, refineStockImagePrompt, generateOverlayTexts, refineSection, regenerateVeoFromVoiceOver, SectionType, extractBusinessNameFromInfo } from '@/services/geminiService';
 import { collection, addDoc, getDocs, getDoc, query, where, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/services/firebase';
@@ -1036,7 +1036,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       </div>
                     ) : (
                     <select
-                      value={formData.characterPack || ''}
+                      value={getCharacterPack(formData.characterPack)?.id ?? (formData.characterPack || '')}
                       onChange={(e) => setFormData(prev => ({
                         ...prev,
                         characterPack: e.target.value || undefined,
@@ -1047,8 +1047,13 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                         isDark ? "bg-slate-700 border-slate-600 text-slate-200 focus:ring-amber-800" : "bg-white border-slate-300 text-slate-700 focus:ring-amber-200")}
                     >
                       <option value="">No — normal ad with a model</option>
-                      {characterPackOptions().map(o => (
-                        <option key={o.id} value={o.id}>{o.label}</option>
+                      {/* Grouped: thirty-two entries in one flat list is a search, not a choice. */}
+                      {characterPackGroups().map(group => (
+                        <optgroup key={group.family} label={group.label}>
+                          {group.options.map(o => (
+                            <option key={o.id} value={o.id}>{o.label}</option>
+                          ))}
+                        </optgroup>
                       ))}
                     </select>
                     )}
@@ -1057,7 +1062,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       <div className={cn("mt-3 rounded-lg border p-3 space-y-3",
                         isDark ? "border-amber-700/50 bg-amber-950/20" : "border-amber-300 bg-amber-50")}>
                         <p className={cn("text-xs", isDark ? "text-amber-200" : "text-amber-800")}>
-                          <b>{activePack.label}</b> — {activePack.tagline}. Both characters speak in every clip.
+                          <b>{activePack.label}</b> — {activePack.tagline}.{activePack.characters.length > 1 ? ' Both characters speak in every clip.' : ` ${activePack.characters[0].name} presents throughout.`}
                         </p>
 
                         <div>

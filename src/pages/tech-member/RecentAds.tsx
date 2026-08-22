@@ -338,6 +338,18 @@ export default function RecentAds() {
                         </span>
                       </div>
                     </div>
+                    {/* The client’s own words. Recent Ads opens the same generator as My Work, so a
+                        member who starts a job from here needs the brief here too — it was only on
+                        the other page, which is the sort of gap that makes a note “sometimes” arrive. */}
+                    {a.requirementNotes?.trim() && (
+                      <p
+                        data-test="recent-ads-client-notes"
+                        className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[11px] leading-relaxed text-foreground"
+                      >
+                        <span className="font-semibold text-amber-700 dark:text-amber-400">Client asked: </span>
+                        {a.requirementNotes.trim()}
+                      </p>
+                    )}
 
                     {/* Right: code + open */}
                     <div className="shrink-0 flex items-center gap-2">

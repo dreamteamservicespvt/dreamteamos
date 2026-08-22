@@ -1,6 +1,6 @@
 import { packNameSpellings, type CharacterPack } from "@/services/characterPacks";
 import {
-  MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE,
+  MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE, wordBudgetFor,
 } from "@/utils/dialogueFormat";
 import { CLIP_SECONDS } from "@/utils/voiceOverFormat";
 
@@ -154,7 +154,15 @@ export const characterNegativesBlock = (pack: CharacterPack): string =>
  * The beats scale with the package: every ad gets a hook and a close, and the clips in between
  * each carry one distinct, real reason to choose this business.
  */
+/**
+ * The promotional shape of the script, clip by clip.
+ *
+ * Cast-aware because a solo entry has nobody to address. Written for two, it told a lone deity to
+ * greet themselves by name in clip 1 and to answer their own question — an instruction with no
+ * possible correct output, which the validator then enforced.
+ */
 const promotionalBeats = (segmentCount: number, first: string, second: string, place: string): string => {
+  const solo = first === second;
   const placeAndName = place
     ? `NAMES THE BUSINESS **and says it is in ${place}**, saying plainly what it does`
     : `NAMES THE BUSINESS, saying plainly what it does`;
@@ -165,10 +173,14 @@ const promotionalBeats = (segmentCount: number, first: string, second: string, p
   }
 
   const beats = [
-    `Clip 1 — THE HOOK: ${first}'s first line must STOP someone who is scrolling past. He addresses `
-    + `${second} BY NAME and reacts to something striking — see THE HOOK below for how. `
-    + `${second} answers with "${first}" and ${placeAndName}. `
-    + `This clip carries the one and only mention of each name — no clip after this may use either again.`,
+    solo
+      ? `Clip 1 — THE HOOK: ${first}'s first line must STOP someone who is scrolling past. They react `
+        + `to something striking in front of them — see THE HOOK below for how — and in the same breath `
+        + `${placeAndName}. This clip carries the one and only mention of ${first}'s name.`
+      : `Clip 1 — THE HOOK: ${first}'s first line must STOP someone who is scrolling past. He addresses `
+        + `${second} BY NAME and reacts to something striking — see THE HOOK below for how. `
+        + `${second} answers with "${first}" and ${placeAndName}. `
+        + `This clip carries the one and only mention of each name — no clip after this may use either again.`,
   ];
   for (let i = 2; i < segmentCount; i++) {
     beats.push(
@@ -178,9 +190,11 @@ const promotionalBeats = (segmentCount: number, first: string, second: string, p
   }
   beats.push(
     `Clip ${segmentCount} — CLOSE: ${second} gives the reason to act now and delivers the call to action, `
-    + `inviting the viewer to come to the business the way the two of them just did.`,
+    + (solo
+      ? `inviting the viewer to come to the business the way ${first} just showed them.`
+      : `inviting the viewer to come to the business the way the two of them just did.`),
   );
-  return beats.join("\n");
+  return beats.join(String.fromCharCode(10));
 };
 
 export const CHARACTER_VOICEOVER_SYSTEM_PROMPT = (
@@ -218,6 +232,8 @@ export const CHARACTER_VOICEOVER_SYSTEM_PROMPT = (
    * format a model obeys far more literally than any prose above it. So it is built from the cast.
    */
   const solo = pack.characters.length === 1;
+  /** 18-20 words an 8-second clip, split between the cast. See wordBudgetFor. */
+  const budget = wordBudgetFor(pack.characters.length);
 
   const contract = Array.from({ length: segmentCount }, (_, i) => {
     const start = i * CLIP_SECONDS;
@@ -320,7 +336,7 @@ An ad is skipped in the first two seconds or not at all, so ${first.name}'s open
 job: make a person stop. It must PROVOKE, never explain. Pick whichever of these fits the business
 and open with it:
 
-• SURPRISE — he reacts to something striking in front of him. "Look at the size of that shelf!"
+• SURPRISE — ${solo ? "they react" : "he reacts"} to something striking in front of him. "Look at the size of that shelf!"
 • CURIOSITY GAP — something unexplained that demands an answer. "Why is there a queue outside?"
 • THE CUSTOMER'S OWN PROBLEM — the exact pain that brings people to this business. "My phone died again!"
 • DISBELIEF — he challenges a claim as too good to be true. "At that price? I don't believe it."
@@ -354,7 +370,20 @@ The scripts that fail do so in the same two ways — half-sentences, and an endi
 This is shown in English so the STRUCTURE is unmistakable. Write yours in ${lang}, about the real
 business you were given. Word counts are marked to show how a complete thought fits the budget.
 
-clip-1 (the hook — curiosity gap, then the business and its town are named)
+${solo ? `clip-1 (the hook — curiosity gap, then the business and its town are named)
+  ${first.name}: ${place
+    ? `"Why is there a queue outside this shop? That is Sharma Electronics here in ${place} — everyone buys here."  (19 words)`
+    : `"Why is there a queue outside this shop? That is Sharma Electronics — the whole town buys here."  (18 words)`}
+
+clip-2 (proof — a real, specific offering)
+  ${first.name}: "They keep every brand and every model of washing machine, with free home delivery included."  (18 words)
+
+clip-3 (proof — a DIFFERENT one, never a repeat)
+  ${first.name}: "Repairs would cost a fortune elsewhere, but here one full year of service is free."  (18 words)
+
+clip-4 (close — it ends, and it tells you what to do)
+  ${first.name}: "Visit Sharma Electronics today and see the festival offers for yourself before they finish."  (18 words)`
+  : `clip-1 (the hook — curiosity gap, then the business and its town are named)
   ${first.name}:  "${second.name}! Why is there a queue outside this shop?"            (9 words)
   ${second.name}: ${place
     ? `"That is Sharma Electronics here in ${place}, ${first.name} — everyone buys here."   (11 words)`
@@ -370,7 +399,7 @@ clip-3 (proof — a DIFFERENT one, never a repeat)
 
 clip-4 (close — it ends, and it tells you what to do)
   ${first.name}:  "Then what are we waiting for, let us go!"                   (9 words)
-  ${second.name}: "Visit Sharma Electronics today and see the festival offers yourself." (10 words)
+  ${second.name}: "Visit Sharma Electronics today and see the festival offers yourself." (10 words)`}
 
 Notice: the first line provokes, the business${place ? " and its town are" : " is"} named immediately, every line is a
 whole sentence, each clip adds something new, and the last line tells the viewer exactly what to do.
@@ -388,16 +417,19 @@ GROUND EVERY SINGLE LINE IN THE DATA YOU WERE GIVEN:
 
 ===== CORE OUTPUT CONTRACT =====
 
-1. Output EXACTLY ${segmentCount} clips. Each clip has EXACTLY 2 lines — one for ${first.name},
+1. Output EXACTLY ${segmentCount} clips. Each clip has EXACTLY ${pack.characters.length} line${solo ? "" : "s"}${solo ? ` — ${first.name}'s` : ` — one for ${first.name},`}
    ${solo ? "" : `then one for ${second.name}. ${first.name} ALWAYS speaks first.`}
 2. Output format must be EXACTLY this, with no headings, notes, or explanation:
 
 ${contract}
 
 3. WORD BUDGET (this is a timing rule, not a style preference): each clip is
-   ${CLIP_SECONDS} seconds shared by two speakers with a short hand-off pause between
-   them. Each clip must total between ${MIN_WORDS_PER_CLIP} and ${MAX_WORDS_PER_CLIP} spoken words across both characters — never fewer, never more.
-   Each character's single line must be between ${MIN_WORDS_PER_LINE} and ${MAX_WORDS_PER_LINE} words. Count every clip carefully before you output it.
+   ${CLIP_SECONDS} seconds${solo ? "" : " shared by two speakers with a short hand-off pause between them"}.
+   Each clip must total between ${budget.minClip} and ${budget.maxClip} spoken words${solo ? "" : " across both characters"} — never fewer, never more.
+   ${solo
+     ? `That single line therefore carries the whole clip: ${budget.minLine}-${budget.maxLine} words.`
+     : `Each character's single line must be between ${budget.minLine} and ${budget.maxLine} words.`}
+   Count every clip carefully before you output it.
 4. Each line is ONE complete spoken sentence ending in . ! or ?
 5. Do NOT output a FULL SCRIPT section. Do NOT repeat the same line twice anywhere.
 
@@ -534,6 +566,8 @@ export const CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT = (
   const second = pack.characters[1] ?? first;
   /** True when this ad has one voice in it. Prose that describes a two-hander is branched on it. */
   const solo = pack.characters.length === 1;
+  /** Same cast-derived budget as the writer — otherwise the repair re-imposes the impossible pair. */
+  const repairBudget = wordBudgetFor(pack.characters.length);
   const spellings = packNameSpellings(pack, language);
   const place = (placeName || "").trim();
   return `You repair ${language} cartoon two-character ad scripts. You will be given a script and a
@@ -542,7 +576,7 @@ list of validation problems. Fix ONLY those problems and return the corrected sc
 NON-NEGOTIABLE CONTRACT:
 • EXACTLY ${segmentCount} clips, each with EXACTLY 2 lines
 • ${first.name} speaks first in every clip, ${second.name} answers
-• ${MIN_WORDS_PER_CLIP}-${MAX_WORDS_PER_CLIP} spoken words per clip; each line ${MIN_WORDS_PER_LINE}-${MAX_WORDS_PER_LINE} words
+• ${repairBudget.minClip}-${repairBudget.maxClip} spoken words per clip; ${solo ? `that single line carries the clip: ${repairBudget.minLine}-${repairBudget.maxLine} words` : `each line ${repairBudget.minLine}-${repairBudget.maxLine} words`}
 • Each line is one complete sentence ending in . ! or ?
 • Output format exactly: \`<start>-<end>|${first.key}: <line>\` then \`<start>-<end>|${second.key}: <line>\`
 • Keep the original meaning and the business facts — change only what is broken
@@ -661,6 +695,8 @@ function clipShotPlan(
   hasLogo: boolean,
   aspectRatio: string,
   orientation: string,
+  /** Who is on screen — the continuation line used to hard-code one pair for all 32 entries. */
+  cast: string,
 ): string {
   return shots.map((shot, i) => {
     const n = i + 1;
@@ -686,7 +722,7 @@ function clipShotPlan(
 
    ⚠️ CONTINUATION FRAME — clip 1's frame is attached as the reference. Do NOT re-describe the
    characters, the style, the grade or the business identity: they are LOCKED by that reference.
-   Write ONE line referring to it — "the same Motu and Patlu exactly as in the attached reference
+   Write ONE line referring to it — "the same ${cast} exactly as in the attached reference
    frame, unchanged" — and then spend the rest of the prompt ONLY on what genuinely changes:
    the new zone and the real objects in it, the new staging and gestures, the new camera angle,
    and how the light differs in this part of the premises.
@@ -705,6 +741,8 @@ export const CHARACTER_MULTI_FRAME_SYSTEM_PROMPT = (
   } = input;
   const clipContext = clipSummaries.map((s, i) => `  Clip ${i + 1}: ${s}`).join("\n");
   const orientation = aspectRatio === "16:9" ? "horizontal (landscape)" : "vertical (portrait)";
+  /** Who is on screen, for the continuation line. Named from the cast, never hard-coded. */
+  const cast = pack.characters.map((c) => c.name).join(" and ");
   const shots = shotsForClipCount(segmentCount);
 
   /**
@@ -794,7 +832,7 @@ the background must prove the line.
 
 ===== THE SHOT PLAN — WRITE THESE ${segmentCount} PROMPTS =====
 
-${clipShotPlan(segmentCount, clipSummaries, shots, hasLogo, aspectRatio, orientation)}
+${clipShotPlan(segmentCount, clipSummaries, shots, hasLogo, aspectRatio, orientation, cast)}
 
 ===== OUTPUT FORMAT =====
 

@@ -35,7 +35,7 @@ import {
 import { getCharacterPack, packSpeakers, packSpeakerAliases, packNameSpellings } from "./characterPacks";
 import {
   parseDialogueClips, validateDialogueClips, formatDialogueScript, applyNameSpellings,
-  type DialogueClip,
+  type DialogueClip, wordBudgetFor,
 } from "@/utils/dialogueFormat";
 import {
   assignPhotosToClips, describeClipLocations, attachmentDirective, parseLocationIndex,
@@ -1484,8 +1484,24 @@ export const generateAdAssets = async (
             + `business's name${spokenPlace ? `, spelled exactly "${spokenPlace}"` : ""}, and nowhere else.`,
         }]
       : [];
+    /**
+     * Validated against the budget for THIS cast.
+     *
+     * The default bands assume two speakers: 18-20 words a clip, 8-12 a line. On a single-speaker
+     * entry — a deity, a solo cartoon, the owner's own face — the one line has to satisfy both,
+     * which nothing can. Every clip failed, every script fell into the repair loop, and the repair
+     * prompt re-imposed the same impossible pair. See wordBudgetFor.
+     */
+    const budget = wordBudgetFor(packSpeakerList.length);
     const checkDialogue = (clips: DialogueClip[]) =>
-      validateDialogueClips(clips, segmentCount, packSpeakerList, { characterNames, requiredPhrases });
+      validateDialogueClips(clips, segmentCount, packSpeakerList, {
+        characterNames,
+        requiredPhrases,
+        minWordsPerClip: budget.minClip,
+        maxWordsPerClip: budget.maxClip,
+        minWordsPerLine: budget.minLine,
+        maxWordsPerLine: budget.maxLine,
+      });
 
     // The spelling the script must use: the native form when we could get one, else the Latin name.
     const promptPlace = spokenPlace || placeName;

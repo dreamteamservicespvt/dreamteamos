@@ -43,6 +43,36 @@ export const MAX_WORDS_PER_CLIP = 20;
 export const MIN_WORDS_PER_LINE = 8;
 export const MAX_WORDS_PER_LINE = 12;
 
+export interface WordBudget {
+  minClip: number;
+  maxClip: number;
+  minLine: number;
+  maxLine: number;
+}
+
+/**
+ * The word budget for a clip, given how many people speak in it.
+ *
+ * ── Why this is not a constant ────────────────────────────────────────────────────
+ * The CLIP band is a timing rule: eight seconds of speech is 18–20 words whoever says them. The
+ * LINE band only ever existed to split that between two speakers.
+ *
+ * The catalogue now holds entries with a single speaker, and on those the two bands were applied
+ * unchanged — so one line was told to be 8–12 words while its clip had to total 18–20. Nothing can
+ * satisfy both, so every clip of every solo ad failed validation and fell into the repair loop,
+ * which then re-imposed the same impossible pair. With one speaker the line IS the clip, so it
+ * inherits the clip band.
+ */
+export function wordBudgetFor(speakerCount: number): WordBudget {
+  const solo = speakerCount <= 1;
+  return {
+    minClip: MIN_WORDS_PER_CLIP,
+    maxClip: MAX_WORDS_PER_CLIP,
+    minLine: solo ? MIN_WORDS_PER_CLIP : MIN_WORDS_PER_LINE,
+    maxLine: solo ? MAX_WORDS_PER_CLIP : MAX_WORDS_PER_LINE,
+  };
+}
+
 export interface DialogueLine {
   /** Character key, e.g. `motu`. */
   speaker: string;

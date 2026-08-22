@@ -39,7 +39,11 @@ export function buildClientSaleMessage(lead: Lead, item: SaleDetail): string {
       // Highlighted for the client too — this is the part of the order they are excited about,
       // and it is what makes the confirmation feel like the ad they actually bought.
       pack ? `🎭 *Starring:* ${packHighlight(pack)} 🎭` : null,
-      pack ? `   ✨ Both characters speak in every clip` : null,
+      // True of a duo and false of the twenty-three single-speaker entries. A confirmation that
+      // promises the client two characters in a one-deity ad is a promise the ad cannot keep.
+      pack ? (pack.characters.length > 1
+        ? `   ✨ Both characters speak in every clip`
+        : `   ✨ ${pack.characters[0].name} presents your business throughout`) : null,
       pack ? (r.realLocationProvided
         ? `📷 *Setting:* your own business background, from the photos you send us`
         : `🏙️ *Setting:* a custom AI background built for your business`) : null,
