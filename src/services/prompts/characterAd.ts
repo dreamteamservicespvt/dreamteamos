@@ -630,7 +630,7 @@ const SHOT_DESIGNS = [
   {
     name: "ARRIVAL / ESTABLISHING SHOT",
     zone: "the entrance, shopfront or main reception — where a real customer would walk in",
-    camera: "wide enough to establish the place, both characters full-figure, the business clearly readable behind them",
+    camera: "wide enough to establish the place, the cast full-figure, the business clearly readable behind them",
     staging: "the two have just arrived and are taking the place in — open, welcoming body language turned towards camera",
     purpose: "establish WHERE we are and WHOSE business this is, in one glance",
   },
@@ -697,6 +697,8 @@ function clipShotPlan(
   orientation: string,
   /** Who is on screen — the continuation line used to hard-code one pair for all 32 entries. */
   cast: string,
+  /** True when only one character is in the ad — see the note in the frame builder. */
+  solo: boolean,
 ): string {
   return shots.map((shot, i) => {
     const n = i + 1;
@@ -711,7 +713,7 @@ function clipShotPlan(
       return `${head}
 
    Write a COMPLETE standalone prompt for this frame, about 90–120 words, as one flowing paragraph.
-   Open by naming the photograph or generated zone this clip uses, then the two characters by name
+   Open by naming the photograph or generated zone this clip uses, then ${solo ? cast : `the two characters`} by name
    only, then the real fixtures and stock actually visible around them, then the light in that
    space, then the ${aspectRatio} ${orientation} framing.${hasLogo ? " Place the attached logo where it would really be installed in this zone." : ""}
    This frame sets the look for the whole ad — the grade, the light and the finish that every later
@@ -743,6 +745,17 @@ export const CHARACTER_MULTI_FRAME_SYSTEM_PROMPT = (
   const orientation = aspectRatio === "16:9" ? "horizontal (landscape)" : "vertical (portrait)";
   /** Who is on screen, for the continuation line. Named from the cast, never hard-coded. */
   const cast = pack.characters.map((c) => c.name).join(" and ");
+  /**
+   * How many figures belong in the frame.
+   *
+   * This prompt was written for a two-hander, and its lines ORDER a second person into the shot:
+   * “showing BOTH characters together”, “stage the two characters”, “the classic two-hander”. On a
+   * single-character entry that is an instruction, and the generator obeys it — a Real Owner Face
+   * ad came back with the client’s real photographed face standing beside an invented cartoon man,
+   * and a Ganesha ad was told to frame “a second, unstated character”. Nothing in the negatives
+   * can undo a positive instruction to include somebody.
+   */
+  const solo = pack.characters.length === 1;
   const shots = shotsForClipCount(segmentCount);
 
   /**
@@ -789,7 +802,7 @@ ${locationPlan}`;
 photographed business locations for television commercials.
 
 YOUR TASK: Write ${segmentCount} image-generation prompts — one per ${CLIP_SECONDS}-second
-clip — each showing BOTH characters together inside this business.
+clip — each showing ${solo ? `${cast} alone` : "BOTH characters together"} inside this business.
 
 ===== AD CONFIGURATION (WHAT WAS ORDERED) =====
 
@@ -797,8 +810,8 @@ clip — each showing BOTH characters together inside this business.
 • Clips: ${segmentCount}, ${CLIP_SECONDS} seconds each.
 • Ad type: ${adType === "festival" ? `festival greeting for ${festivalName || "the festival"} — layer the festival cues naturally over the real premises, never replace them` : "commercial — the business and what it sells must be unmistakable"}.
 
-Every prompt must state the ${aspectRatio} ${orientation} framing explicitly, and stage the two
-characters and the business zone to fill that shape properly — no composition borrowed from a
+Every prompt must state the ${aspectRatio} ${orientation} framing explicitly, and stage
+${solo ? `${cast}` : "the two characters"} and the business zone to fill that shape properly — no composition borrowed from a
 different aspect ratio.
 
 ${characterCastBlock(pack)}
@@ -821,18 +834,24 @@ them at the shelves. If they are talking about service, stand them at the counte
 welcoming, put them at the entrance. Never repeat a location, and never pick a zone at random —
 the background must prove the line.
 
-===== STAGING BOTH CHARACTERS =====
+===== ${solo ? `STAGING ${cast.toUpperCase()}` : "STAGING BOTH CHARACTERS"} =====
 
-• BOTH characters visible in every frame, clearly separated, neither hidden or cropped.
+${solo
+  ? `• ${cast} is the ONLY character in the frame. Nobody else appears — no second figure, no
+  companion, no staff member, no passer-by, no cartoon, no crowd. If anyone else is visible, the
+  frame is WRONG.
+• Stage them open to camera, addressing the viewer directly rather than anyone in the room.
+• They must be the focus, but the business must be unmistakable behind them.`
+  : `• BOTH characters visible in every frame, clearly separated, neither hidden or cropped.
 • Stage them mid-conversation, angled slightly towards each other but open to camera — the classic
   two-hander. The one who is speaking is the more animated of the two.
 • They must be the focus, but the business must be unmistakable behind them.
 • Say nothing about their build, size or how tall either one is. They are the real characters —
-  their proportions come with them. Writing it down only invites the generator to redraw them.
+  their proportions come with them. Writing it down only invites the generator to redraw them.`}
 
 ===== THE SHOT PLAN — WRITE THESE ${segmentCount} PROMPTS =====
 
-${clipShotPlan(segmentCount, clipSummaries, shots, hasLogo, aspectRatio, orientation, cast)}
+${clipShotPlan(segmentCount, clipSummaries, shots, hasLogo, aspectRatio, orientation, cast, solo)}
 
 ===== OUTPUT FORMAT =====
 

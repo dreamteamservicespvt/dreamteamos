@@ -189,3 +189,92 @@ describe("the catalogue never sets its own word count", () => {
     expect(out).not.toContain("six to fourteen words");
   });
 });
+
+/**
+ * The image prompt must never order a character nobody sold.
+ *
+ * ── The two generations this exists because of ────────────────────────────────────────────────
+ * A Real Owner Face ad came back with the client's real photographed face standing beside an
+ * invented cartoon man. A Ganesha ad was told to frame "a second, unstated character". Both had the
+ * same cause: this prompt was written for a two-hander and its lines are INSTRUCTIONS — "each
+ * showing BOTH characters together", "stage the two characters", "the classic two-hander". On a
+ * single-character entry the generator does as it is told, and no amount of hard negatives further
+ * down can undo a positive instruction to include somebody.
+ */
+describe("the image prompt stages only who was sold", () => {
+  const frame = (id: string, locationMode: "real_provided" | "ai_generated" = "real_provided") =>
+    CHARACTER_MULTI_FRAME_SYSTEM_PROMPT(getCharacterPack(id)!, {
+      segmentCount: 2,
+      clipSummaries: ["a", "b"],
+      locationMode,
+      locationPlan: "",
+      aspectRatio: "9:16",
+      adType: "commercial",
+      festivalName: "",
+      businessContext: "{}",
+    });
+
+  it("never asks for a second figure in a one-character ad", () => {
+    const banned = ["BOTH characters", "the two characters", "two-hander", "both characters"];
+    for (const pack of SOLO) {
+      const out = frame(pack.id);
+      for (const phrase of banned) {
+        expect(out, `${pack.id} still says "${phrase}"`).not.toContain(phrase);
+      }
+    }
+  });
+
+  it("says out loud that nobody else appears", () => {
+    // A negative is not enough on its own, but paired with removing the positive it is what stops
+    // the generator inventing a companion to fill the frame.
+    for (const pack of SOLO.slice(0, 6)) {
+      expect(frame(pack.id), pack.id).toContain("is the ONLY character in the frame");
+    }
+  });
+
+  it("still stages a duo as a two-hander", () => {
+    const out = frame("duo_motu_patlu");
+    expect(out).toContain("BOTH characters visible in every frame");
+    expect(out).toContain("two-hander");
+  });
+});
+
+/**
+ * A deity fronting an ad is PRESENTING a business.
+ *
+ * A seated murti reads as a statue parked in the corner of a clinic — which is what came back — and
+ * the festive dressing was gated on "only for frames that must be generated", so a job with the
+ * client's own shop photos got a plain room with a god standing in it and no occasion at all. The
+ * client is buying an auspicious frame; the decoration is the product.
+ */
+describe("god ads", () => {
+  const GODS = CHARACTER_CATALOGUE.filter((p) => p.family === "god");
+
+  it("covers every deity offered", () => {
+    expect(GODS.length).toBe(6);
+  });
+
+  it("stands the deity rather than seating them", () => {
+    for (const god of GODS) {
+      const posture = [god.bodyLanguage, god.styleDirective, god.cameraDirection].join(" ");
+      // "Never seated" is the instruction, so only a POSITIVE seating clause is a failure.
+      const positives = posture.match(/\b(sits|seated|sitting)\b/gi) || [];
+      const negatives = posture.match(/never\s+(sits|seated|sitting)\b/gi) || [];
+      expect(positives.length, `${god.id}: ${posture.slice(0, 120)}`).toBe(negatives.length);
+      expect(posture.toLowerCase(), god.id).toContain("standing");
+    }
+  });
+
+  it("dresses the scene whether or not the client sent photos", () => {
+    for (const god of GODS) {
+      expect(god.backgroundDirection, god.id).toContain("FESTIVE DRESSING IS NEVER OPTIONAL");
+      expect(god.backgroundDirection, god.id).toMatch(/torana|rangoli|kolam|garland/i);
+    }
+  });
+
+  it("keeps the decoration on top of the real premises, never replacing them", () => {
+    for (const god of GODS) {
+      expect(god.backgroundDirection, god.id).toMatch(/never replace|onto that real space/i);
+    }
+  });
+});
