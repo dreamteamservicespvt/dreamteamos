@@ -381,3 +381,63 @@ The user's offer-letter list started at an item **"1. … This should appear at 
 ### How this was verified
 - `npx vitest run` — **1387/1387** (12 new in `roleLadder.test.ts`). Clean typecheck and build, no new lint errors.
 - **Browser, dark theme, 21/21, 0 console errors:** stamp 200×110 (wide, not square); the office address appears **once** in the letter body; the arrangement select offers all three and re-labels the location field each time; the three rungs are priced in the dropdown; picking Senior sets 15000/45 and Associate sets 5000/15; the annual figure reads ₹60,000 then follows an edit to ₹1,20,000; the salary stays editable after a role is picked.
+
+## Session — 2026-09-09 (Sales ↔ tech workflow batch: 7 items)
+
+Branch `sales-tech-workflow-batch`. Spec at `docs/superpowers/specs/2026-09-09-sales-tech-workflow-batch-design.md`.
+
+**The sale captures the whole order now.** `AdRequirement` gained `businessAddress` and
+`businessInfo`; `businessWhatsapp` became **required on ad sales** (`contactMissing` in `SaleForm`).
+`businessInfo` is CLIENT-FACING and is read back in the confirmation; `notes` is the internal tech
+aside and is **no longer printed to the client at all** — it used to go out as "Your notes", which
+is how a production note reached the person it was about. Each box carries a `FieldHint` (ⓘ) saying
+which audience it has. `utils/salesMessage.ts` also gained contact, address, background, the
+social-media platform list, and `DELIVERY_CAVEAT` under the delivery line.
+
+**Real vs AI background is asked on EVERY ad**, not only character-pack ones. It travels
+sale → order → assignment → `AIPlatformApp`. In `geminiService` the photo scout, the clip→photo plan
+and the "attach photo #N" stamp are all un-gated from `pack`, and a new `realPremisesDirective`
+**replaces** the invented-environment ladder (`CLIENT ENVIRONMENT ANCHOR` / `CLIENT LOCATION LADDER`
+/ `LOGO INSTALLATION SURFACES` / `LOCATION VARIATION RULE` all switch on `usingClientPhotos`).
+Half-overriding it produced a beautiful generic interior the client did not recognise as theirs.
+The tech member now **reads** the background (`backgroundLocked` in `AIPlatformApp`); only the team
+leader (Work Assign / assignment editors) and the selling sales member can change it, and either
+change re-raises the spec-changed dialog via `assignmentSpecDiff` (its Background diff is no longer
+gated on both specs being packs). **Do not** re-gate `realLocationProvided` on `characterPack` in
+the three assignment editors — that reset a normal ad's background to AI on every unrelated edit.
+
+**Social months owe two posts and two stories per video.** `smmQuota(videos)` →
+`{ads: n, posters: n, posted: 2n, stories: 2n, campaigns: n}`. `OrderProgressCounts` gained
+`stories`; `TRACK_FIELDS.social_upload` owns `posted` AND `stories`; `ServicePackage.platforms`
+added. Campaigns stay at the VIDEO count — only a video is ever run as one. Existing orders keep
+their stored targets; `initialProgress` spreads over `ZERO` so an old four-key quota still reads.
+
+**New pure modules:** `utils/saleStatus.ts` (derived per-sale stage → `SaleStatusChip`, used by My
+Leads and My Clients so they cannot describe one sale two ways), `utils/upsellLadder.ts`
+(ad → social → website → software, measured from the HIGHEST rung owned), `services/saleFeedback.ts`.
+
+**One extension per promise.** `PromiseDeadline` gained `originalDueAt` + `extension`;
+`canExtendPromise` / `extendPromise` in `promiseSla`; `extendOrderPromise` in `services/orders`
+writes the order and mirrors onto the assignment (**never** the sale — that records what was
+promised). Tech member, team leader and the selling sales member may each use it, once, measured
+from the ORIGINAL deadline. `notifyDueOrdersOnOpen` now fans out to assignee + seller + tech admin +
+team leaders, with the leader lookup **cached per sweep** (a dozen late orders share one admin).
+
+**Feedback gates the upsell.** `Order.feedback` (NOT the client doc — that is only written when work
+ships, by a write that can fail). Both `work` and `service` ratings required (`feedbackComplete`).
+Tech admin and team leader can READ it and deliberately cannot enter it — see `canRecordFeedback`.
+New shared page `pages/shared/FeedbackUpsell.tsx` for sales admin / tech admin / team leader: you
+open a SELLER first, and only their orders are subscribed to, because a cross-member scan of orders
+is the query that exhausts the free-tier read budget.
+
+**Sales admin lands on `/sales-admin/leaderboard`**, not the dashboard.
+
+### How this was verified
+- `npx vitest run` — **2079/2079** (135 files; new: `saleStatus`, `promiseExtension`, `saleFeedback`,
+  `upsellLadder`, plus additions to `salesMessage`, `orderProgress`, `serviceCatalog`,
+  `deadlineSweep`, `legacyPackPicker`, `salesNav`).
+- `npx tsc -p tsconfig.check.json --noEmit` — only the pre-existing `VideoCallManager` error.
+  `npm run build` clean.
+- Real browser, 39 assertions via a throwaway harness — see [[browser-testing-this-app]]. It caught
+  two things jsdom cannot: the ⓘ could not be opened with a mouse (hover opened it, the click that
+  must follow toggled it shut), and the extend dialog had no Escape key. Both fixed.
