@@ -3,12 +3,19 @@
  *
  * ── Why a tap rather than a hover tooltip ────────────────────────────────────────────────────
  * Almost everyone using these forms is on a phone with a client on the line, and a hover tooltip
- * simply does not exist there. So this is a button: tap to open, tap anywhere to close. On a
- * desktop it opens on hover too, which is the behaviour a mouse expects.
+ * simply does not exist there. So this is a button: tap to open, tap again or tap away to close. On
+ * a desktop it also opens on hover, which is the behaviour a mouse expects.
+ *
+ * ── Why hover and tap are two separate states ────────────────────────────────────────────────
+ * They were one, and a mouse could not open it at all: hovering set it open, and the click that
+ * followed — which a mouse cannot make without first hovering — toggled that straight back to
+ * closed. So the hint flickered and vanished for every desktop user, while working fine on the
+ * phones it had been tested on. `pinned` is the click; `hovered` is the pointer; it is open if
+ * either is true, and only the click has to be dismissed.
  *
  * ── Why the hint is not just placeholder text ────────────────────────────────────────────────
- * Two boxes that look identical and go to opposite audiences — one to the customer, one to the
- * tech team — cannot be told apart by a placeholder, because a placeholder disappears the moment
+ * Two boxes that look identical and go to opposite audiences — one to the customer, one to the tech
+ * team — cannot be told apart by a placeholder, because a placeholder disappears the moment
  * somebody types. The hint stays reachable after the box is full, which is exactly when the
  * question "wait, does the client see this one?" gets asked.
  */
@@ -16,14 +23,16 @@ import { useState, useEffect, useRef } from "react";
 import { Info } from "lucide-react";
 
 export default function FieldHint({ text, testId }: { text: string; testId?: string }) {
-  const [open, setOpen] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const wrap = useRef<HTMLSpanElement>(null);
+  const open = pinned || hovered;
 
-  // Any tap outside closes it. Without this the bubble follows the member down the form.
+  // Any tap outside unpins it. Without this the bubble follows the member down the form.
   useEffect(() => {
-    if (!open) return;
+    if (!pinned) return;
     const close = (e: MouseEvent | TouchEvent) => {
-      if (!wrap.current?.contains(e.target as Node)) setOpen(false);
+      if (!wrap.current?.contains(e.target as Node)) setPinned(false);
     };
     document.addEventListener("mousedown", close);
     document.addEventListener("touchstart", close);
@@ -31,7 +40,7 @@ export default function FieldHint({ text, testId }: { text: string; testId?: str
       document.removeEventListener("mousedown", close);
       document.removeEventListener("touchstart", close);
     };
-  }, [open]);
+  }, [pinned]);
 
   return (
     <span ref={wrap} className="relative inline-flex">
@@ -39,11 +48,13 @@ export default function FieldHint({ text, testId }: { text: string; testId?: str
         type="button"
         data-test={testId}
         aria-label={text}
+        aria-expanded={open}
         title={text}
-        onClick={(e) => { e.preventDefault(); setOpen((v) => !v); }}
-        onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
-        className="inline-flex items-center text-muted-foreground/70 hover:text-primary transition-colors"
+        onClick={(e) => { e.preventDefault(); setPinned((v) => !v); }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        onBlur={() => setHovered(false)}
+        className="inline-flex items-center text-muted-foreground/70 transition-colors hover:text-primary"
       >
         <Info size={12} />
       </button>

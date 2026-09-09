@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { feedbackComplete } from "@/types";
 import type { Order } from "@/types";
 
-const updateDoc = vi.fn(async () => undefined);
+const updateDoc = vi.fn(async (_ref: unknown, _data: Record<string, unknown>) => undefined);
 vi.mock("@/services/firebase", () => ({ db: {} }));
 vi.mock("firebase/firestore", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();

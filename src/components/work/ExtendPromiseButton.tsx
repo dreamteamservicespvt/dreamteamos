@@ -18,7 +18,7 @@
  * member is the one actually talking to the client. Any of them may be first to learn the client
  * has stalled, and routing it through one of them means the extension happens hours late or never.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CalendarClock, Loader2, Lock } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useToast } from "@/hooks/use-toast";
@@ -44,6 +44,15 @@ export default function ExtendPromiseButton({ order, assignment, compact = false
   // more days.
   const [hours, setHours] = useState(() => order.promise?.hours || 24);
   const [reason, setReason] = useState("");
+
+  // Escape closes it. The rest of this app treats a modal a phone cannot dismiss as a trap, and
+  // this one is opened from a dense card where the backdrop is easy to miss.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !saving) setOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, saving]);
 
   const verdict = canExtendPromise({
     promise: order.promise,
