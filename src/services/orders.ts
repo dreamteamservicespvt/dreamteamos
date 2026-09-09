@@ -19,12 +19,12 @@ import { ensureSaleOrderChat, deleteOrderChat } from "@/services/orderChat";
 import { normalizePhone, phoneLockId } from "@/utils/phone";
 import { isAdCategory, productionCategory } from "@/utils/serviceCatalog";
 import { releasedToTech } from "@/utils/saleDiscount";
-import { promiseDueMs, deadlineState } from "@/utils/promiseSla";
+import { promiseDueMs, deadlineState, canExtendPromise, extendPromise } from "@/utils/promiseSla";
 import { initialProgress, isProgressComplete, isTrackComplete, TRACK_FIELDS } from "@/utils/orderProgress";
 import { penaltyAmount, totalPenalties } from "@/utils/penalty";
 import type {
   AppUser, Lead, Order, OrderProgress, OrderProgressField, OrderTrack, OrderUpdateNote,
-  PenaltyClipType, PenaltyEntry, SaleDetail, WorkAssignment,
+  PenaltyClipType, PenaltyEntry, SaleDetail, UserRole, WorkAssignment,
 } from "@/types";
 
 const ACTIVE_ORDER_STATUSES = ["unassigned", "assigned", "completed"] as const;
@@ -784,6 +784,34 @@ export async function notifyDueOrdersOnOpen(
   const byOrderId = new Map<string, WorkAssignment>();
   for (const a of assignments) if (a.orderId) byOrderId.set(a.orderId, a);
 
+  /**
+   * The team leaders over one tech admin, read at most once per sweep.
+   *
+   * A sweep can find a dozen late orders at once, and every one of them belongs to the same admin
+   * in practice — so resolving the leaders per order would be a dozen identical `users` queries on
+   * a free-tier read budget. Cached by admin uid, and a failed lookup caches its empty answer too:
+   * retrying it once per late order is the same waste in a different shape.
+   */
+  const leaderCache = new Map<string, string[]>();
+  const leadersOf = async (techAdminId: string | null | undefined): Promise<string[]> => {
+    if (!techAdminId) return [];
+    const cached = leaderCache.get(techAdminId);
+    if (cached) return cached;
+    let uids: string[] = [];
+    try {
+      const snap = await getDocs(query(
+        collection(db, "users"),
+        where("role", "==", "tech_team_leader"),
+        where("createdBy", "==", techAdminId),
+      ));
+      uids = snap.docs.map((d) => d.id);
+    } catch (err) {
+      console.error("[orders] team-leader lookup failed:", err);
+    }
+    leaderCache.set(techAdminId, uids);
+    return uids;
+  };
+
   for (const order of orders) {
     if (order.status !== "assigned" || !order.promise) continue;
 
@@ -800,20 +828,124 @@ export async function notifyDueOrdersOnOpen(
     if (state === "ok") continue;
     const lastMs = tsToMs(order.lastDeadlineNotifiedAt);
     if (lastMs && now - lastMs < THROTTLE_MS) continue;
+
+    /**
+     * Everyone who has to act on a late delivery — not only the person making it.
+     *
+     * The alert used to go to the assignee alone, which is the one person who already knows. The
+     * client rings the SALES MEMBER, who had no idea their 24-hour promise had gone; and the job
+     * of moving work around belongs to the TEAM LEADER and the tech admin, neither of whom heard
+     * until somebody complained. All four now hear once, on the same throttle.
+     *
+     * Deduped because these overlap constantly: a team leader assigning work to themselves is both
+     * the assignee and a leader, and would otherwise be told twice about their own job.
+     */
+    const audience = Array.from(new Set([
+      assignee,
+      order.soldBy,
+      order.techAdminId,
+      ...(await leadersOf(order.techAdminId)),
+    ].filter((uid): uid is string => !!uid)));
+
+    const business = order.businessName || "Client work";
+    const nearOrPast = state === "overdue" ? "past its" : "near its";
+    // The seller is told what to do about it, which is not the same instruction the maker gets:
+    // they are the one who can find out whether the client is the reason and move the deadline.
+    const messageFor = (uid: string) => uid === assignee
+      ? `"${business}" is ${nearOrPast} ${order.promise!.label} promise. Please deliver.`
+      : uid === order.soldBy
+        ? `"${business}" you sold is ${nearOrPast} ${order.promise!.label} promise. If the client held it up, you can extend the delivery time once.`
+        : `"${business}" is ${nearOrPast} ${order.promise!.label} promise${order.assignedToName ? ` with ${order.assignedToName}` : ""}.`;
+
     try {
-      await sendNotification({
-        userId: assignee,
+      await Promise.all(audience.map((uid) => sendNotification({
+        userId: uid,
         type: "work_deadline",
         title: state === "overdue" ? "Delivery overdue" : "Delivery due soon",
-        message: `"${order.businessName || "Client work"}" is ${state === "overdue" ? "past its" : "near its"} ${order.promise.label} promise. Please deliver.`,
+        message: messageFor(uid),
         // One alert per order per state per recipient: whoever opens the queue next re-runs this
         // sweep, and without a key every admin who opened the page added another row.
-        dedupeKey: `work_deadline_${order.id}_${state}_${assignee}`,
-      });
+        dedupeKey: `work_deadline_${order.id}_${state}_${uid}`,
+      })));
       await updateDoc(doc(db, "orders", order.id), { lastDeadlineNotifiedAt: serverTimestamp() });
     } catch (err) {
       console.error("[orders] deadline notify failed:", err);
     }
+  }
+}
+
+/**
+ * Move a delivery promise out by its one allowed extension.
+ *
+ * Written on the ORDER, which is the document both sides can write, and mirrored onto the work
+ * assignment so the member's own deadline chip and the tech-side sort agree with it. The sale's
+ * copy of the promise is deliberately left alone: it records what was PROMISED at the sale, and
+ * rewriting it would erase the fact that an extension ever happened.
+ *
+ * Refuses a second extension at the point of writing as well as in the UI — two people can be
+ * looking at the same overdue job, and the check that matters is the one next to the write.
+ */
+export async function extendOrderPromise(params: {
+  order: Order;
+  hours?: number;
+  reason?: string | null;
+  actor: { uid: string; name: string; role: UserRole };
+  /** The work assignment fulfilling this order, when one is loaded — its promise is mirrored too. */
+  assignment?: WorkAssignment | null;
+}): Promise<{ ok: boolean; message: string }> {
+  const { order, hours, reason, actor, assignment } = params;
+
+  const verdict = canExtendPromise({
+    promise: order.promise,
+    role: actor.role,
+    uid: actor.uid,
+    assigneeUid: assignment?.assignedTo || order.assignedTo,
+    soldBy: order.soldBy,
+  });
+  if (!verdict.allowed) return { ok: false, message: verdict.reason };
+
+  const next = extendPromise(order.promise!, {
+    hours, uid: actor.uid, name: actor.name, role: actor.role, reason,
+  });
+
+  try {
+    await updateDoc(doc(db, "orders", order.id), {
+      promise: next,
+      // The throttle is cleared so the next sweep can speak about the NEW deadline. Left in place,
+      // an order extended an hour after its overdue alert would stay silent through the whole
+      // extension and then be told nothing when that one ran out too.
+      lastDeadlineNotifiedAt: null,
+      updatedAt: serverTimestamp(),
+    });
+    if (assignment?.id) {
+      await updateDoc(doc(db, "work_assignments", assignment.id), { promise: next }).catch(() => {});
+    }
+
+    /**
+     * Everyone who was going to be told this job was late.
+     *
+     * An extension is the good news half of the same event, and it has to travel the same way: the
+     * member is no longer late, and the seller and the leader need to know the deadline they are
+     * about to chase has moved.
+     */
+    const audience = Array.from(new Set([
+      assignment?.assignedTo || order.assignedTo,
+      order.soldBy,
+      order.techAdminId,
+    ].filter((uid): uid is string => !!uid && uid !== actor.uid)));
+
+    await Promise.all(audience.map((uid) => sendNotification({
+      userId: uid,
+      type: "work_deadline",
+      title: "Delivery time extended",
+      message: `"${order.businessName || "Client work"}" now has ${next.label} — extended by ${actor.name}${reason?.trim() ? `: ${reason.trim()}` : ""}.`,
+      dedupeKey: `promise_extended_${order.id}_${uid}`,
+    })));
+
+    return { ok: true, message: `Delivery time is now ${next.label}.` };
+  } catch (err) {
+    console.error("[orders] extend promise failed:", err);
+    return { ok: false, message: "Could not change the delivery time. Try again." };
   }
 }
 

@@ -21,6 +21,7 @@ import { useViewMode } from "@/hooks/useViewMode";
 import { useOrderCategory } from "@/hooks/useOrderCategory";
 import ViewToggle from "@/components/common/ViewToggle";
 import DeadlineChip from "@/components/work/DeadlineChip";
+import ExtendPromiseButton from "@/components/work/ExtendPromiseButton";
 import { format } from "date-fns";
 import type { AppUser, Order, WorkAssignment } from "@/types";
 
@@ -1048,6 +1049,10 @@ export default function Orders() {
                       on an order that was delivered in July — or deleted in August — is a clock
                       still running on work nobody is doing. */}
                   {!isHistoryTab && <DeadlineChip promise={o.promise} />}
+                  {/* The leader's copy of the one extension. They are the person who reviews the
+                      queue and the one most often told, by the seller, that the client is the
+                      reason a job has stalled — so the button is where they are already looking. */}
+                  {!isHistoryTab && <ExtendPromiseButton order={o} assignment={byOrderId.get(o.id) ?? null} />}
                 </div>
                 <div className="flex flex-wrap gap-x-3 md:gap-x-4 gap-y-1 text-xs md:text-sm text-muted-foreground">
                   {showSalesInfo && <span>Amount: <strong className="text-foreground">{formatCurrency(o.amount)}</strong></span>}

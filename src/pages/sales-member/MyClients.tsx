@@ -38,6 +38,7 @@ import {
   gapCategories, ownedServices, isRepeatableService,
 } from "@/utils/serviceCatalog";
 import SaleForm from "@/components/sales/SaleForm";
+import SaleStatusChip from "@/components/sales/SaleStatusChip";
 import SalesOrderChat from "@/components/order-chat/SalesOrderChat";
 import { buildSalesClients, soldWithin, type SalesClient } from "@/utils/salesClients";
 import { defaultPeriodFilter, periodLabel, withinPeriod, type PeriodFilter } from "@/utils/periodFilter";
@@ -545,16 +546,26 @@ function ClientDetail({ row, onClose, onUpsell, onChat }: {
                     )}
                     <span className="block text-[10px] text-muted-foreground">
                       {o.createdAt ? format(new Date((o.createdAt as { seconds: number }).seconds * 1000), "dd MMM yyyy") : "—"}
-                      {" · "}
-                      {/* The sales admin's sign-off comes before anything the tech team does, so it
-                          is the first thing to say about a sale that is still waiting for it —
-                          "Not assigned" is true of such a sale and tells the seller nothing. */}
-                      {o.saleVerified === false ? (
-                        <span className="font-medium text-warning">Waiting on your admin</span>
-                      ) : o.status === "verified" ? "Delivered"
-                        : o.status === "completed" ? "Awaiting verify"
-                          : o.status === "assigned" ? "In production"
-                            : "Not assigned"}
+                    </span>
+                    {/*
+                      The tech-side state, in the same words and colours My Leads uses — the two
+                      pages described the same sale differently, and this one said nothing at all
+                      about a delivery running late.
+
+                      The admin's sign-off is a separate fact and gets its own chip: it used to be
+                      shown INSTEAD of the tech state, so a sale already in production read as
+                      "Waiting on your admin" and the seller had no idea it was being made.
+                    */}
+                    <span className="mt-1 flex flex-wrap items-center gap-1">
+                      <SaleStatusChip order={o} />
+                      {o.saleVerified === false && (
+                        <span
+                          className="inline-flex items-center gap-0.5 rounded bg-warning/15 px-1 py-0.5 text-[9px] font-medium text-warning"
+                          title="Your sales admin has not signed this sale off yet"
+                        >
+                          ⏳ Waiting on your admin
+                        </span>
+                      )}
                     </span>
                   </span>
                   <span className="flex shrink-0 items-center gap-2">

@@ -51,6 +51,8 @@ import { characterPackOptions, getCharacterPack } from "@/services/characterPack
 import { watchAdLanguages, rememberAdLanguage, mergeAdLanguages } from "@/services/adLanguages";
 import { upsertOrderForSale, cancelOrderForSale, addOrderUpdateNote, orderDocId } from "@/services/orders";
 import { buildClientSaleMessage } from "@/utils/salesMessage";
+import SaleStatusChip from "@/components/sales/SaleStatusChip";
+import ExtendPromiseButton from "@/components/work/ExtendPromiseButton";
 import { dayRevenue, saleDay, type DayRevenue } from "@/utils/salesRevenue";
 import {
   Search, Phone, MessageCircle, StickyNote, ChevronDown, ChevronUp, Clock, IndianRupee,
@@ -1533,11 +1535,19 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
                     <History size={9} /> edited
                   </button>
                 )}
-                {locked && (
-                  <span className="inline-flex items-center gap-0.5 text-[9px] px-1 py-0.5 rounded bg-blue-500/15 text-blue-600 dark:text-blue-400" title="The tech team has started this work">
-                    <Lock size={9} /> {order?.status === "completed" ? "Delivered" : order?.status === "verified" ? "Done" : "In production"}
-                  </span>
-                )}
+                {/*
+                  Where this sale has got to, on every sale rather than only the locked ones.
+
+                  It used to appear only once the tech team had started, so a member looking at a
+                  sale they made an hour ago could not tell an unassigned order from one already in
+                  production — and the client on the phone was asking exactly that. See
+                  components/sales/SaleStatusChip.
+                */}
+                <SaleStatusChip item={item} order={order} />
+                {/* The seller's copy of the one extension. They are the person actually talking to
+                    the client, so they are usually the first to know the client is the reason a
+                    delivery has slipped — and the overdue alert they now get says so. */}
+                {order && <ExtendPromiseButton order={order} compact />}
               </div>
               <div className="flex items-center gap-2">
                 <span className="font-mono font-medium text-foreground">{formatCurrency(item.amount)}</span>

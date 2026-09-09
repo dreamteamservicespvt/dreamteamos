@@ -78,7 +78,12 @@ const DUE_SOON_TONE = "bg-warning/20 text-warning";
  * "waiting for the tech team" is true of it, and a blank chip is what this exists to remove.
  */
 export function saleStatusView(
-  item: SaleDetail,
+  /**
+   * The sale line. Optional because My Clients is built from ORDERS and has no sale item to hand —
+   * and it does not need one: the sale is only consulted to tell a withheld price from a queue that
+   * has not caught up, which is a question that only arises when there is no order.
+   */
+  item: SaleDetail | null | undefined,
   order: Order | null | undefined,
   now: number = Date.now(),
 ): SaleStatusView {
@@ -107,17 +112,17 @@ export function saleStatusView(
   };
 }
 
-function saleStage(item: SaleDetail, order: Order | null | undefined): SaleStage {
+function saleStage(item: SaleDetail | null | undefined, order: Order | null | undefined): SaleStage {
   // No order and an unapproved discount is the one case that is genuinely NOT in the queue. Every
   // other missing order is a sale the queue simply has not caught up with, which is "queued".
-  if (!order) return releasedToTech(item) ? "queued" : "withheld";
+  if (!order) return !item || releasedToTech(item) ? "queued" : "withheld";
 
   switch (order.status) {
     case "verified": return "verified";
     case "completed": return "delivered";
     case "assigned": return "in_production";
     case "cancelled":
-    case "deleted": return releasedToTech(item) ? "cancelled" : "withheld";
+    case "deleted": return item && !releasedToTech(item) ? "withheld" : "cancelled";
     default: return "queued";
   }
 }

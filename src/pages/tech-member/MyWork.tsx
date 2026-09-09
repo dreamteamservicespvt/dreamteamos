@@ -19,6 +19,8 @@ import type { Order, WorkAssignment } from '@/types';
 import { useOrdersByIds } from '@/hooks/useOrdersByIds';
 import { isPinnedOrder } from '@/utils/orderProgress';
 import OrderProgressPanel from '@/components/work/OrderProgressPanel';
+import DeadlineChip from '@/components/work/DeadlineChip';
+import ExtendPromiseButton from '@/components/work/ExtendPromiseButton';
 import { isBulkVideoOrder } from '@/utils/bulkVideos';
 import CodeVerificationModal from '@/components/ai-platform/CodeVerificationModal';
 import { isWorkUnlocked, rememberWorkUnlock } from '@/utils/workUnlock';
@@ -253,12 +255,23 @@ export default function MyWork() {
     return ts?.seconds || (a.assignedAtIso ? Math.floor(new Date(a.assignedAtIso).getTime() / 1000) : 0);
   };
   /**
-   * The orders behind this member's multi-deliverable work — a social-media month or a bulk order.
-   * Fetched by id rather than by subscribing to the whole collection: only work that carries tracks
-   * needs one, so a member doing ordinary single ads pays for nothing here.
+   * The orders behind this member's live work.
+   *
+   * Fetched by id rather than by subscribing to the whole collection — this project runs on the
+   * Firebase free tier and a member holds a handful of jobs at a time, so this reads those few
+   * documents and nothing else.
+   *
+   * ── Why it is no longer only the tracked work ────────────────────────────────────────────────
+   * It used to fetch only assignments carrying tracks, because the counters on a social-media month
+   * live on the order. The member now also needs the order to move a delivery deadline: the promise
+   * is written on the ORDER, which is the document both sides can write, and the member watching an
+   * unanswered script is often the first to know the client is the reason it slipped. Limited to
+   * ACTIVE work, so finished jobs — which can no longer be extended — cost nothing.
    */
   const trackedOrderIds = useMemo(
-    () => assignments.filter(a => a.tracks?.length && a.orderId).map(a => a.orderId!),
+    () => assignments
+      .filter(a => a.orderId && (a.tracks?.length || ['assigned', 'in_progress', 'editing'].includes(a.status)))
+      .map(a => a.orderId!),
     [assignments],
   );
   const trackedOrders = useOrdersByIds(trackedOrderIds);
@@ -587,6 +600,17 @@ export default function MyWork() {
                     {a.totalDurationSeconds > 0 && (
                       <span className="flex items-center space-x-1"><Clock className="w-3 h-3" /><span>{formatDuration(a.totalDurationSeconds)}</span></span>
                     )}
+                    {/*
+                      The delivery promise, on the member's own card at last.
+
+                      It was on the admin's queue and on the reports page but not here, so the one
+                      person who could actually do something about a deadline was the one person who
+                      could not see it. The extend button sits beside it because they are usually
+                      the first to know the client is the reason it has slipped — an unanswered
+                      script is visible to them and to nobody else.
+                    */}
+                    <DeadlineChip promise={a.promise} />
+                    {order && <ExtendPromiseButton order={order} assignment={a} />}
                   </div>
 
                   {/* The shared counters — or, for a bulk order, this member's own videos with a

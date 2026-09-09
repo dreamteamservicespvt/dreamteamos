@@ -13,12 +13,18 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const sendNotification = vi.fn(async (_params: Record<string, unknown>) => undefined);
 const updateDoc = vi.fn(async () => undefined);
+/** The `users where role == tech_team_leader` lookup. Counted, so the per-sweep cache is provable. */
+const getDocs = vi.fn(async () => ({ docs: [{ id: "leader_1" }, { id: "leader_2" }] }));
 
 vi.mock("@/services/firebase", () => ({ db: {} }));
 vi.mock("@/services/notifications", () => ({ sendNotification }));
 vi.mock("firebase/firestore", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
-  return { ...actual, updateDoc, doc: vi.fn(() => ({})), serverTimestamp: () => "TS" };
+  return {
+    ...actual, updateDoc, getDocs,
+    doc: vi.fn(() => ({})), collection: vi.fn(() => ({})), query: vi.fn(() => ({})),
+    where: vi.fn(() => ({})), serverTimestamp: () => "TS",
+  };
 });
 
 const { notifyDueOrdersOnOpen } = await import("@/services/orders");
@@ -48,6 +54,7 @@ const recipients = () => sendNotification.mock.calls.map((c) => (c[0] as { userI
 beforeEach(() => {
   sendNotification.mockClear();
   updateDoc.mockClear();
+  getDocs.mockClear();
 });
 
 describe("notifyDueOrdersOnOpen", () => {
@@ -93,6 +100,73 @@ describe("notifyDueOrdersOnOpen", () => {
 
   it("skips an order with nobody on it at all", async () => {
     await notifyDueOrdersOnOpen([order({ assignedTo: null } as Partial<Order>)], [], NOW);
+    expect(sendNotification).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Who a late delivery is actually announced to.
+ *
+ * It went to the assignee alone — the one person who already knows. The client rings the SALES
+ * MEMBER, who had no idea their 24-hour promise had gone; and moving work around is the TEAM
+ * LEADER's and the tech admin's job, and neither heard until somebody complained.
+ */
+describe("who hears about a late delivery", () => {
+  const full = (f: Partial<Order> = {}) =>
+    order({ soldBy: "seller_1", techAdminId: "admin_1", ...f } as Partial<Order>);
+
+  it("tells the maker, the seller, the tech admin and every team leader", async () => {
+    await notifyDueOrdersOnOpen([full()], [work()], NOW);
+    expect(recipients().sort())
+      .toEqual(["admin_1", "leader_1", "leader_2", "member_new", "seller_1"]);
+  });
+
+  it("tells the seller what THEY can do about it, not what the maker should", async () => {
+    await notifyDueOrdersOnOpen([full()], [work()], NOW);
+    const toSeller = sendNotification.mock.calls
+      .map((c) => c[0] as { userId: string; message: string })
+      .find((n) => n.userId === "seller_1");
+    expect(toSeller?.message).toMatch(/you sold/i);
+    expect(toSeller?.message).toMatch(/extend the delivery time once/i);
+  });
+
+  /** A leader who assigned a job to themselves is both the assignee and a leader. */
+  it("tells nobody twice", async () => {
+    getDocs.mockResolvedValueOnce({ docs: [{ id: "member_new" }] });
+    await notifyDueOrdersOnOpen([full()], [work()], NOW);
+    const got = recipients();
+    expect(new Set(got).size).toBe(got.length);
+    expect(got).toContain("member_new");
+  });
+
+  it("keys every recipient's alert separately, so re-opening the queue adds nothing", async () => {
+    await notifyDueOrdersOnOpen([full()], [work()], NOW);
+    const keys = sendNotification.mock.calls.map((c) => (c[0] as { dedupeKey: string }).dedupeKey);
+    expect(keys).toContain("work_deadline_o1_overdue_seller_1");
+    expect(keys).toContain("work_deadline_o1_overdue_leader_1");
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  /**
+   * A sweep can find a dozen late orders at once and they all belong to the same admin — a lookup
+   * per order would be a dozen identical queries on a free-tier read budget.
+   */
+  it("looks the team leaders up once per sweep, however many orders are late", async () => {
+    const late = [full({ id: "o1" }), full({ id: "o2" }), full({ id: "o3" })];
+    const works = late.map((o) => work({ id: `w-${o.id}`, orderId: o.id }));
+    await notifyDueOrdersOnOpen(late, works, NOW);
+    expect(getDocs).toHaveBeenCalledTimes(1);
+  });
+
+  it("still alerts when the leader lookup fails, minus the leaders", async () => {
+    getDocs.mockRejectedValueOnce(new Error("offline"));
+    await notifyDueOrdersOnOpen([full()], [work()], NOW);
+    expect(recipients().sort()).toEqual(["admin_1", "member_new", "seller_1"]);
+  });
+
+  it("says nothing to anyone about work that is still inside its promise", async () => {
+    const onTime = full({ promise: { label: "3 days", hours: 72, dueAt: at(NOW + 48 * 60 * 60 * 1000) } } as Partial<Order>);
+    await notifyDueOrdersOnOpen([onTime], [work()], NOW);
     expect(sendNotification).not.toHaveBeenCalled();
   });
 });
