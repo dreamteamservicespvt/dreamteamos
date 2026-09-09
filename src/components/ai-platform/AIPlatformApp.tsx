@@ -191,12 +191,21 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       ...(a.festival ? { festivalName: a.festival } : {}),
       // A special category was sold, not chosen here — the member opens straight on the right
       // treatment rather than having to know that this particular job is a cartoon-duo ad.
-      ...(a.characterPack
-        ? {
-            characterPack: a.characterPack,
-            locationMode: (a.realLocationProvided ? 'real_provided' : 'ai_generated') as LocationMode,
-          }
-        : { characterPack: undefined, locationMode: undefined }),
+      ...(a.characterPack ? { characterPack: a.characterPack } : { characterPack: undefined }),
+      /*
+        Where the ad is set — carried on EVERY ad job now, not only a pack one.
+
+        This used to be applied only alongside a character pack, so a normal ad opened with no
+        location mode at all and the generator built the location from the business profile
+        regardless of what the client had been asked to send. A member with a chat full of shop
+        photographs had no way to tell the pipeline to use them.
+
+        An assignment made before this existed carries no flag; `realLocationProvided` reads as
+        false there, which is a built location — which is what those ads in fact got.
+      */
+      ...(a.realLocationProvided === undefined
+        ? {}
+        : { locationMode: (a.realLocationProvided ? 'real_provided' : 'ai_generated') as LocationMode }),
     }));
   }, []);
 
@@ -282,11 +291,31 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     [outputs?.mainFramePrompts, storeImageUrls, files.storeImage],
   );
   /**
-   * The special category was sold, not chosen here. The member still answers the location question
-   * — photos can arrive (or fail to) after the sale — but they cannot turn a Motu & Patlu ad into
+   * The special category was sold, not chosen here — a member cannot turn a Motu & Patlu ad into
    * an ordinary one, because that is what the client paid for.
    */
   const packLocked = !!assignment?.characterPack && !!activePack;
+
+  /**
+   * The background was sold too, and it is fixed for whoever is making the ad.
+   *
+   * ── Why the member no longer answers this ────────────────────────────────────────────────────
+   * They used to, on the reasoning that photographs can arrive — or fail to arrive — after the
+   * sale. In practice that made the answer the member's, and it is not theirs to give: a client
+   * who paid for their own showroom and got a generated interior has been sold one thing and
+   * delivered another, and nobody upstream ever learned it had happened. It is also the single
+   * fact that decides which prompt the generator writes, so a member flipping it mid-job quietly
+   * rebuilds the ad against a brief nobody agreed.
+   *
+   * So it is read-only here, and changed by the two people who can answer for it: the tech team
+   * leader (through Work Assign / the assignment editor) or the sales member who sold it (through
+   * their own sale). Either change re-raises the spec-changed dialog on this screen, so a member
+   * half-way through hears about it rather than finding out on delivery.
+   *
+   * Unlocked for work created outside an assignment — the ad-creation tool used directly, and every
+   * assignment made before the background was carried, both of which have nobody to defer to.
+   */
+  const backgroundLocked = assignment?.realLocationProvided !== undefined;
 
   // Extract business name whenever outputs change
   useEffect(() => {
@@ -1059,44 +1088,73 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     )}
 
                     {activePack && (
-                      <div className={cn("mt-3 rounded-lg border p-3 space-y-3",
+                      <div className={cn("mt-3 rounded-lg border p-3",
                         isDark ? "border-amber-700/50 bg-amber-950/20" : "border-amber-300 bg-amber-50")}>
                         <p className={cn("text-xs", isDark ? "text-amber-200" : "text-amber-800")}>
                           <b>{activePack.label}</b> — {activePack.tagline}.{activePack.characters.length > 1 ? ' Both characters speak in every clip.' : ` ${activePack.characters[0].name} presents throughout.`}
                         </p>
-
-                        <div>
-                          <label className={cn("block text-xs font-semibold mb-1.5", isDark ? "text-slate-300" : "text-slate-700")}>
-                            Has the client sent photos of their location?
-                          </label>
-                          <div className="grid grid-cols-2 gap-2">
-                            {([
-                              { key: 'real_provided' as const, label: 'Yes — use their business background' },
-                              { key: 'ai_generated' as const, label: 'No — create AI background' },
-                            ]).map(({ key, label }) => (
-                              <button key={key} type="button"
-                                onClick={() => setFormData(prev => ({ ...prev, locationMode: key }))}
-                                className={cn("px-3 py-2 rounded-lg text-xs font-medium border transition-all",
-                                  formData.locationMode === key
-                                    ? (isDark ? "border-amber-500 bg-amber-900/40 text-amber-300" : "border-amber-500 bg-amber-100 text-amber-800")
-                                    : (isDark ? "border-slate-600 text-slate-400 hover:border-slate-500" : "border-slate-300 text-slate-600 hover:border-slate-400"))}>
-                                {label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {formData.locationMode === 'real_provided' && (
-                          <p className={cn("text-[11px] leading-relaxed",
-                            files.storeImage.length > 0
-                              ? (isDark ? "text-emerald-300" : "text-emerald-700")
-                              : (isDark ? "text-amber-300" : "text-amber-700"))}>
-                            {files.storeImage.length > 0
-                              ? `✓ ${files.storeImage.length} location photo${files.storeImage.length === 1 ? '' : 's'} attached — each clip will use a different one.`
-                              : "Upload the client's photos into “Store / Office Image” below. Send every angle they gave you — each clip uses a different one."}
-                          </p>
-                        )}
                       </div>
+                    )}
+                  </div>
+
+                  {/*
+                    Background — on EVERY ad, and read-only when it came with the job.
+
+                    It lived inside the character-pack block, so a normal ad had no background
+                    question at all and the generator built the location from the business profile
+                    whatever the client had been asked to send. It is its own field now, because it
+                    is its own decision: the same ad at the same price is a different product shot
+                    in the client's showroom than it is on a built set, and the pipeline writes a
+                    different prompt for each. See `backgroundLocked` for why the member reads this
+                    rather than answers it.
+                  */}
+                  <div>
+                    <label className={cn("block text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>
+                      Background
+                    </label>
+                    {backgroundLocked ? (
+                      <div className={cn("flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm",
+                        isDark ? "bg-slate-700/60 border-slate-600 text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
+                        <span className="font-semibold truncate">
+                          {formData.locationMode === 'real_provided'
+                            ? "📷 Real — the client's own premises"
+                            : '🏙️ AI — location built for the business'}
+                        </span>
+                        <span className={cn("shrink-0 ml-2 text-[11px] px-2 py-0.5 rounded-full", isDark ? "bg-blue-900/40 text-blue-300" : "bg-blue-100 text-blue-700")}>🔒 Sold as this</span>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2">
+                        {([
+                          { key: 'real_provided' as const, label: "📷 Real — client's own premises" },
+                          { key: 'ai_generated' as const, label: '🏙️ AI — build the location' },
+                        ]).map(({ key, label }) => (
+                          <button key={key} type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, locationMode: key }))}
+                            className={cn("px-3 py-2 rounded-lg text-xs font-medium border transition-all",
+                              formData.locationMode === key
+                                ? (isDark ? "border-amber-500 bg-amber-900/40 text-amber-300" : "border-amber-500 bg-amber-100 text-amber-800")
+                                : (isDark ? "border-slate-600 text-slate-400 hover:border-slate-500" : "border-slate-300 text-slate-600 hover:border-slate-400"))}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {formData.locationMode === 'real_provided' && (
+                      <p className={cn("mt-2 text-[11px] leading-relaxed",
+                        files.storeImage.length > 0
+                          ? (isDark ? "text-emerald-300" : "text-emerald-700")
+                          : (isDark ? "text-amber-300" : "text-amber-700"))}>
+                        {files.storeImage.length > 0
+                          ? `✓ ${files.storeImage.length} location photo${files.storeImage.length === 1 ? '' : 's'} attached — each clip will use a different one.`
+                          : "Upload the client's photos into “Store / Office Image” below. Send every angle they gave you — each clip uses a different one."}
+                      </p>
+                    )}
+                    {backgroundLocked && (
+                      <p className={cn("mt-1.5 text-[10px] leading-relaxed", isDark ? "text-slate-400" : "text-slate-500")}>
+                        This is what the client bought. If it is wrong, ask your team leader or the sales
+                        member who sold it to change it — the correction reaches you here.
+                      </p>
                     )}
                   </div>
 

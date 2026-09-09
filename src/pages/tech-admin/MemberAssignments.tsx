@@ -417,7 +417,9 @@ export default function MemberAssignments() {
         // Written unconditionally so clearing the special category actually clears it — a spread
         // that omits the field would leave the old duo on the job while the form showed none.
         characterPack: editForm.characterPack,
-        realLocationProvided: !!editForm.characterPack && editForm.realLocationProvided,
+        // Written on every ad, not only a pack one — a normal ad's background is now a real
+        // field, and gating it on the pack would reset it to "AI" on every unrelated edit.
+        realLocationProvided: editForm.realLocationProvided === true,
       });
       // Tell the member their brief moved. The AI Platform shows them exactly what changed if they
       // have it open; this is for when they do not, so a spec change is never silent.
@@ -878,15 +880,12 @@ export default function MemberAssignments() {
                 </div>
                 {(a.modelGender || a.attireType || a.aspectRatio || a.language || a.characterPack) && (
                   <div className="flex flex-wrap gap-1.5 mt-3">
-                    {/* A pack ad has no human model, so its two chips replace the model/attire pair
+                    {/* A pack ad has no human model, so this chip replaces the model/attire pair
                         rather than sitting beside a description of someone who never appears. */}
                     {getCharacterPack(a.characterPack) ? (
                       <>
                         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
                           🎭 {getCharacterPack(a.characterPack)!.label}
-                        </span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
-                          {a.realLocationProvided ? "📷 Client's photos" : '🏙️ Location created'}
                         </span>
                       </>
                     ) : (
@@ -902,6 +901,14 @@ export default function MemberAssignments() {
                       </span>
                     )}
                     </>
+                    )}
+                    {/* On every ad, not only a pack one. A real-premises job cannot be STARTED until
+                        the client's photographs land, so this belongs on the card beside the ratio
+                        rather than hidden behind a treatment most ads do not have. */}
+                    {a.realLocationProvided !== undefined && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+                        {a.realLocationProvided ? "📷 Client's photos" : '🏙️ AI background'}
+                      </span>
                     )}
                     {a.aspectRatio && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full font-mono bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{a.aspectRatio}</span>

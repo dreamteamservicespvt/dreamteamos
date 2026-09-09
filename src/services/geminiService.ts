@@ -1729,15 +1729,22 @@ Segment 2: <text>
   emitPartial({ voiceOverScript });
 
   /**
-   * Location scouting for a character-pack ad built on the client's own photographs.
+   * Location scouting for an ad built on the client's own photographs.
    *
    * Reading the photos once, up front, is what lets each clip be matched to the RIGHT backdrop
    * instead of simply taking them in upload order. If the scout call fails we fall back to a
    * plain positional assignment rather than losing the photos altogether.
+   *
+   * ── Why this is no longer pack-only ──────────────────────────────────────────────────────────
+   * It was gated on a character pack, from when staging two cartoons in a real shop was the only
+   * reason anyone uploaded premises photos. A human-model ad shot in the client's own showroom
+   * needs exactly the same thing and was getting none of it: the photos sat in the Store/Office
+   * slot as generic "business context" while the frame prompts described an invented interior. A
+   * client who was asked for every angle of their shop got an ad set somewhere else.
    */
   const scoutClientLocations = async (): Promise<LocationPhoto[]> => {
     const photos = files.storeImage || [];
-    if (!pack || formData.locationMode !== 'real_provided' || photos.length === 0) return [];
+    if (formData.locationMode !== 'real_provided' || photos.length === 0) return [];
     try {
       onProgress("Reviewing the client's location photos...", 40);
       const parts: any[] = [];
@@ -1769,7 +1776,7 @@ Segment 2: <text>
    * sent and has to attach the right one to the right prompt; if the plan were derived twice, the
    * prompt could describe photo 2 while the instruction said attach photo 3.
    */
-  const usingClientPhotos = !!pack && formData.locationMode === 'real_provided' && clientLocations.length > 0;
+  const usingClientPhotos = formData.locationMode === 'real_provided' && clientLocations.length > 0;
   const clipPhotoPlan = usingClientPhotos ? assignPhotosToClips(segmentCount, clientLocations) : [];
 
   // --- Steps 3-6 run CONCURRENTLY: Main Frame, Header (local), Poster, Veo ---
@@ -1824,15 +1831,44 @@ Segment 2: <text>
   );
 
   const isCommercialMainFrame = formData.adType !== 'festival';
+
+  /**
+   * The real-premises override for a human-model ad.
+   *
+   * Everything below this in the main-frame prompt describes how to INVENT a believable location
+   * for the business — the environment anchor, the location ladder, the "rebuild the real premises"
+   * rule. All of it is the right instruction when we are building the set and the wrong one when
+   * the client has sent photographs of the actual shop, because the model will happily produce a
+   * beautiful generic interior that the client does not recognise as theirs.
+   *
+   * So when photos are in hand the ladder is replaced rather than supplemented: the scouted zones
+   * ARE the location plan, one per clip, and the prompt is told in as many words that invention is
+   * off. Stated before the routing note so it reads as the governing rule, and repeated as a
+   * negative because "use the attached photo" alone is routinely interpreted as "use it as
+   * inspiration".
+   */
+  const realPremisesDirective = usingClientPhotos
+    ? `
+  LOCATION SOURCE — THE CLIENT'S OWN PREMISES (ABSOLUTE, OVERRIDES EVERY ENVIRONMENT RULE BELOW):
+  The client has supplied ${clientLocations.length} photograph${clientLocations.length === 1 ? '' : 's'} of their actual business. Every clip is set in one of those real photographed spaces — the attached reference for that clip — and NOT in an invented, generic, or "typical for this business type" interior.
+  • Rebuild the exact space in the attached photograph: its real walls, floor, ceiling, fixtures, counters, shelving, stock, signage, colours and daylight direction. Keep what is actually there.
+  • Do NOT redesign, upgrade, tidy, modernise, or "premiumise" the premises. A modest real shop must stay a modest real shop; making it look like a showroom is the failure this override exists to prevent.
+  • Do NOT substitute a stock interior, a studio backdrop, or a location invented from the business profile. Do NOT merge several of their spaces into one composite room.
+  • The model is placed INTO that photographed space with matching perspective, matching light direction and matching colour temperature, so the frame reads as a photograph taken on location that day.
+  CLIP-BY-CLIP LOCATION PLAN (each clip uses its own photograph — never the same one twice unless the plan says so):
+  ${describeClipLocations(clipPhotoPlan, clientLocations)}
+`
+    : '';
+
   const mainFrameEnvironmentRoutingNote = isCommercialMainFrame
     ? `
   CLIENT BUSINESS TYPE: ${detectedBusinessType}
   ${educationEnvironmentMode ? `EDUCATION ENVIRONMENT MODE: ${educationEnvironmentMode === 'institution' ? 'college / school / institute campus mode' : 'education consultancy mode'}
-  ` : ''}CLIENT ENVIRONMENT ANCHOR: ${resolvedEnvironmentGuidance}
-  CLIENT LOCATION LADDER: ${resolvedLocationPlan}
+  ` : ''}CLIENT ENVIRONMENT ANCHOR: ${usingClientPhotos ? "the client's own photographed premises, attached — see the LOCATION SOURCE block above" : resolvedEnvironmentGuidance}
+  CLIENT LOCATION LADDER: ${usingClientPhotos ? 'the clip-by-clip photograph plan above. Do not invent zones that are not in their photographs.' : resolvedLocationPlan}
   BACKGROUND NEGATIVE RULES: ${environmentNegativeRules}
-  LOGO INSTALLATION SURFACES: ${realisticLogoPlacementGuidance}
-  LOCATION VARIATION RULE: Every clip must choose a different real business zone from the client location ladder unless the script absolutely demands a return to the same spot.`
+  LOGO INSTALLATION SURFACES: ${usingClientPhotos ? 'a real surface visible in that clip\'s own photograph — an existing board, counter fascia, wall panel or door. Never invent a surface the photograph does not show.' : realisticLogoPlacementGuidance}
+  LOCATION VARIATION RULE: ${usingClientPhotos ? "Every clip uses the photograph assigned to it above." : 'Every clip must choose a different real business zone from the client location ladder unless the script absolutely demands a return to the same spot.'}`
     : '';
   const commercialMainFramePriorityNote = isCommercialMainFrame
     ? `
@@ -1904,7 +1940,7 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
   You MUST output EXACTLY ${segmentCount} prompts. Do NOT combine clips into one block.` : '';
 
   const humanModelMainFrameUserPrompt = `Generate ${segmentCount} unique Main Frame image prompts (one per 8-second clip) for:
-${maleCastingOverride}${commercialMainFramePriorityNote}
+${realPremisesDirective}${maleCastingOverride}${commercialMainFramePriorityNote}
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
   AD TYPE: ${formData.adType}
   ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName}` : ''}
@@ -2067,7 +2103,7 @@ ${maleCastingOverride}${commercialMainFramePriorityNote}
      * photo to everything. The mapping is already decided in `clipPhotoPlan`, so this just says it
      * out loud, in code rather than trusting the model to have repeated it.
      */
-    if (pack && clipPhotoPlan.length > 0) {
+    if (clipPhotoPlan.length > 0) {
       mainFramePrompts = mainFramePrompts.map((prompt, i) => {
         const plan = clipPhotoPlan[i];
         return plan ? `${attachmentDirective(plan, clientLocations)}\n\n${prompt}` : prompt;

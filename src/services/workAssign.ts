@@ -12,7 +12,7 @@ import { format } from "date-fns";
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import { normalizePhone } from "@/utils/phone";
-import { categoryLabel } from "@/utils/serviceCatalog";
+import { categoryLabel, isAdCategory } from "@/utils/serviceCatalog";
 import { findUnassignedOrderForPhone, revertOrderToUnassigned } from "@/services/orders";
 import { logTechActivity, type ActivityActor } from "@/services/activityLog";
 import {
@@ -51,7 +51,11 @@ export interface CreateWorkAssignmentInput {
   requirementNotes?: string;
   /** Special-category cartoon duo (a services/characterPacks id), when one was sold. */
   characterPack?: string;
-  /** For a pack job: whether the client is supplying photos of their own premises. */
+  /**
+   * Whether the client is supplying photographs of their own premises — on EVERY ad job, not only
+   * a pack one. The generator writes a different location prompt for each answer, so a job handed
+   * out without it is a job the member has to guess at.
+   */
   realLocationProvided?: boolean;
   /** The order this fulfils, when it came from the Orders queue. */
   order?: Order | null;
@@ -128,9 +132,18 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
     // festival left on a promotional ad would theme one that nobody sold.
     ...(category === "wishes" && festival?.trim() ? { festival: festival.trim() } : {}),
     ...(requirementNotes?.trim() ? { requirementNotes: requirementNotes.trim() } : {}),
-    // The location flag only means something next to a pack, so the two are written together —
-    // a lone `realLocationProvided` on an ordinary job would be noise the member has to interpret.
-    ...(characterPack ? { characterPack, realLocationProvided: realLocationProvided === true } : {}),
+    ...(characterPack ? { characterPack } : {}),
+    /**
+     * Where the ad is set, on every ad job.
+     *
+     * It used to be written only alongside a character pack, on the reasoning that a lone location
+     * flag on an ordinary job was noise. It was the opposite of noise: without it every normal ad
+     * reached the generator as "build the location", whatever the client had been asked to send,
+     * and the member had no way of knowing a boot-full of shop photographs was waiting in the chat.
+     *
+     * Written for ad categories only — a website job has no location to shoot.
+     */
+    ...(isAdCategory(category) ? { realLocationProvided: realLocationProvided === true } : {}),
     ...(linkedOrder ? { orderId: linkedOrder.id } : {}),
     /**
      * Where this job's conversation lives.

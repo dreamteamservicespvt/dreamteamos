@@ -1,12 +1,25 @@
 /**
- * The special-category block of the New Assignment form.
+ * The special-category and background block of the New Assignment form.
  *
  * The tech admin's and the team leader's Work Assign pages are near-identical copies of each other,
  * which is exactly how the two drifted apart before. This block exists once so a new character duo
- * — or a change to how the location question is asked — lands on both pages at the same time.
+ * — or a change to how the background question is asked — lands on both pages at the same time.
  *
  * Selecting a pack replaces the human model outright, so the caller hides its own Model and Attire
  * fields while `characterPack` is set; there is no person to dress.
+ *
+ * ── Why the background sits outside the pack block now ───────────────────────────────────────
+ * It used to appear only once a cartoon duo was chosen, from when staging two cartoons in a real
+ * shop was the only reason anyone uploaded premises photos. It was never a pack question. An
+ * ordinary human-model ad shot in the client's own showroom and one shot on a built set are two
+ * different products at the same price, and the generator writes a different prompt for each. While
+ * the question was pack-only, every other ad reached the pipeline as "build the location" whatever
+ * the client had been asked to send.
+ *
+ * The sales member answers it on the call, and it arrives here already filled in. This form is
+ * where the ONLY two people who may change it afterwards do so — the team leader here, and the
+ * selling sales member on their own sale. The member making the ad reads it and cannot move it;
+ * see `backgroundLocked` in AIPlatformApp.
  */
 import { characterPackGroups, getCharacterPack } from '@/services/characterPacks';
 
@@ -34,69 +47,64 @@ export default function SpecialCategoryFields({ characterPack, realLocationProvi
   const selectedId = pack?.id ?? characterPack;
 
   return (
-    <div>
-      <label className="block text-sm font-medium text-muted-foreground mb-1">Special Category</label>
-      <select
-        value={selectedId}
-        onChange={(e) => onChange({ characterPack: e.target.value })}
-        className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none"
-      >
-        <option value="">Normal ad (with a model)</option>
-        {/* Grouped, because thirty-two entries in one flat list is a search rather than a
-            choice — a member looking for Shinchan should not read past six deities to find him. */}
-        {characterPackGroups().map((group) => (
-          <optgroup key={group.family} label={group.label}>
-            {group.options.map((o) => (
-              <option key={o.id} value={o.id}>{o.label}</option>
-            ))}
-          </optgroup>
-        ))}
-      </select>
-
-      {pack && (
-        <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 space-y-2">
-          <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-relaxed">
-            <b>{pack.label}</b> — {pack.tagline}.{pack.characters.length > 1 ? ' Both characters speak in every clip.' : ''}
-          </p>
-          <div>
-            <label className="block text-[11px] text-muted-foreground mb-1">{pack.usesClientFace ? 'Did the client send photos of their shop?' : 'Did the client send photos of their location?'}</label>
-            <div className="grid grid-cols-2 gap-2">
-              {([
-                { v: true, label: '📷 Yes — use their business background' },
-                { v: false, label: '🏙️ No — create AI background' },
-              ] as const).map(({ v, label }) => (
-                <button
-                  key={String(v)}
-                  type="button"
-                  onClick={() => onChange({ realLocationProvided: v })}
-                  className={`px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${
-                    realLocationProvided === v
-                      ? 'border-amber-500 bg-amber-500/20 text-amber-700 dark:text-amber-300'
-                      : 'border-border text-muted-foreground hover:bg-accent'
-                  }`}
-                >
-                  {label}
-                </button>
+    <div className="space-y-3">
+      <div>
+        <label className="block text-sm font-medium text-muted-foreground mb-1">Special Category</label>
+        <select
+          value={selectedId}
+          onChange={(e) => onChange({ characterPack: e.target.value })}
+          className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none"
+        >
+          <option value="">Normal ad (with a model)</option>
+          {/* Grouped, because thirty-two entries in one flat list is a search rather than a
+              choice — a member looking for Shinchan should not read past six deities to find him. */}
+          {characterPackGroups().map((group) => (
+            <optgroup key={group.family} label={group.label}>
+              {group.options.map((o) => (
+                <option key={o.id} value={o.id}>{o.label}</option>
               ))}
-            </div>
+            </optgroup>
+          ))}
+        </select>
+
+        {pack && (
+          <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5">
+            <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-relaxed">
+              <b>{pack.label}</b> — {pack.tagline}.{pack.characters.length > 1 ? ' Both characters speak in every clip.' : ''}
+            </p>
+            {/* The face is not the location. On every other entry a client photo is a background
+                reference; here it is the identity the whole ad is built from, and there is no ad at
+                all without it — so it is stated separately and unconditionally. */}
+            {pack.usesClientFace && (
+              <p className="mt-1.5 text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">
+                <b>The owner’s photo is required.</b> Upload a clear, front-facing photo of the owner —
+                this exact face is reproduced in every clip. Without it there is nothing to build.
+              </p>
+            )}
           </div>
-          {realLocationProvided && (
-            <p className="text-[10px] text-amber-700 dark:text-amber-300 leading-relaxed">
-              The member must upload every photo the client sent into <b>Store / Office Image</b> — each clip is set in a
-              different one.
-            </p>
-          )}
-          {/* The face is not the location. On every other entry a client photo is a background
-              reference; here it is the identity the whole ad is built from, and there is no ad at
-              all without it — so it is stated separately and unconditionally. */}
-          {pack.usesClientFace && (
-            <p className="text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">
-              <b>The owner’s photo is required.</b> Upload a clear, front-facing photo of the owner —
-              this exact face is reproduced in every clip. Without it there is nothing to build.
-            </p>
-          )}
-        </div>
-      )}
+        )}
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-muted-foreground mb-1">
+          Background <span className="text-[10px] text-muted-foreground/60">(as sold — the member cannot change it)</span>
+        </label>
+        <select
+          data-test="assign-background"
+          value={realLocationProvided ? 'real' : 'ai'}
+          onChange={(e) => onChange({ realLocationProvided: e.target.value === 'real' })}
+          className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none"
+        >
+          <option value="ai">🏙️ AI background — build the location from the business profile</option>
+          <option value="real">📷 Real background — the client's own photos of their premises</option>
+        </select>
+        {realLocationProvided && (
+          <p className="mt-1.5 text-[10px] text-amber-700 dark:text-amber-300 leading-relaxed">
+            The member must upload every photo the client sent into <b>Store / Office Image</b> — each clip is set in a
+            different one. <b>Nothing can be started until those photos arrive</b>, so check the client chat before assigning.
+          </p>
+        )}
+      </div>
     </div>
   );
 }

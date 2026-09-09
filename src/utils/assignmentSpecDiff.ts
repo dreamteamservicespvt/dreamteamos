@@ -106,14 +106,19 @@ export function describeSpecChanges(prev: AssignmentSpec, next: AssignmentSpec):
   add("Category", plain(prev.category), plain(next.category));
   add("Duration", durationText(prev), durationText(next));
 
-  const prevPack = getCharacterPack(prev.characterPack);
   const nextPack = getCharacterPack(next.characterPack);
   add("Special category", packText(prev.characterPack), packText(next.characterPack));
 
-  // Only meaningful for a pack ad, and only worth mentioning while it stays one.
-  if (prevPack && nextPack) {
-    add("Background", locationText(prev.realLocationProvided), locationText(next.realLocationProvided));
-  }
+  /*
+    The background, on every ad.
+
+    It was gated behind "both specs are pack ads", from when that was the only kind of ad that had
+    a background at all. It is now asked of every ad — and it is one of the few changes that can
+    strand a member completely: a job flipped to the client's own premises cannot be started until
+    their photographs arrive, and a job flipped away from it means half-attached photos should stop
+    being used. Both are worth interrupting for.
+  */
+  add("Background", locationText(prev.realLocationProvided), locationText(next.realLocationProvided));
 
   // A pack ad has no human model, so these two would describe someone who never appears.
   if (!nextPack) {

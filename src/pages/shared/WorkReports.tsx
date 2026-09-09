@@ -354,7 +354,9 @@ export default function WorkReports() {
         // other two edit dialogs already keep. The location flag only means anything beside a
         // pack, so it is forced false the moment there is no pack.
         characterPack: editForm.characterPack,
-        realLocationProvided: !!editForm.characterPack && editForm.realLocationProvided,
+        // Written on every ad, not only a pack one — a normal ad's background is now a real
+        // field, and gating it on the pack would reset it to "AI" on every unrelated edit.
+        realLocationProvided: editForm.realLocationProvided === true,
       });
       // Member changed → hand off through the established reassign flow (resets the work to
       // "assigned" for the new member and notifies both members).
@@ -823,16 +825,11 @@ export default function WorkReports() {
                       </div>
                       {(a.characterPack || a.modelGender || a.attireType || a.aspectRatio || a.language) && (
                         <div className="flex flex-wrap gap-1.5 mt-1.5">
-                          {/* A pack job has no model and no attire — the two slots are reused to say
-                              who IS on screen and where the location comes from. */}
+                          {/* A pack job has no model and no attire — this chip takes their place
+                              and says who IS on screen. */}
                           {getCharacterPack(a.characterPack) && (
                             <span data-test="report-pack-chip" className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
                               🎭 {getCharacterPack(a.characterPack)!.label}
-                            </span>
-                          )}
-                          {a.characterPack && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                              {a.realLocationProvided ? "📷 Client’s photos" : "🏙️ Location created"}
                             </span>
                           )}
                           {!a.characterPack && a.modelGender && (
@@ -843,6 +840,14 @@ export default function WorkReports() {
                           {!a.characterPack && a.attireType && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
                               {a.attireType === 'custom' && a.customAttire ? a.customAttire : ATTIRE_LABELS[a.attireType]}
+                            </span>
+                          )}
+                          {/* On every ad, not only a pack one. A real-premises job cannot be STARTED until
+                              the client's photographs land, so this belongs on the card beside the ratio
+                              rather than hidden behind a treatment most ads do not have. */}
+                          {a.realLocationProvided !== undefined && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+                              {a.realLocationProvided ? "📷 Client's photos" : '🏙️ AI background'}
                             </span>
                           )}
                           {a.aspectRatio && (
