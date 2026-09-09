@@ -4,6 +4,7 @@ import {
   Settings, BookOpen, FolderOpen, Target, User, BarChart3,
   ClipboardList, Briefcase, Wrench, FileCheck, MessageSquare, Video, Eye, Film, ScrollText, CalendarClock, Trophy, History,
   ShoppingBag, Contact, Star, GraduationCap, LayoutGrid, PiggyBank, Banknote, Wand2, Search,
+  MessageSquarePlus,
 } from "lucide-react";
 
 export interface NavItem {
@@ -37,6 +38,9 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "Payroll", path: "/tech-admin/payroll", icon: Wallet },
     { title: "My Team", path: "/tech-admin/team", icon: Users },
     { title: "Clients", path: "/tech-admin/clients", icon: Contact },
+    // The WORK half of every feedback rating is this department's own report card, so it is a
+    // top-level link rather than something to go looking for.
+    { title: "Feedback & Upsell", path: "/tech-admin/feedback-upsell", icon: MessageSquarePlus },
     // Opened daily, so it sits in the top-level list rather than buried in the Manage dropdown.
     { title: "Work Done & Reports", path: "/tech-admin/work-reports", icon: BarChart3 },
     {
@@ -69,6 +73,7 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "My Team", path: "/sales-admin/team", icon: Users },
     { title: "Sales Approvals", path: "/sales-admin/approvals", icon: FileCheck },
     { title: "Clients", path: "/sales-admin/clients", icon: Contact },
+    { title: "Feedback & Upsell", path: "/sales-admin/feedback-upsell", icon: MessageSquarePlus },
     // "Who has this number, and what have we sold them?" — asked several times a week and, until
     // this page, answerable only by hand across three other screens.
     { title: "Client Lookup", path: "/sales-admin/client-lookup", icon: Search },
@@ -179,6 +184,7 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "Orders", path: "/team-leader/orders", icon: ShoppingBag },
     { title: "Work Assign", path: "/team-leader/work-assign", icon: ClipboardList },
     { title: "Work Done & Reports", path: "/team-leader/work-reports", icon: BarChart3 },
+    { title: "Feedback & Upsell", path: "/team-leader/feedback-upsell", icon: MessageSquarePlus },
     { title: "Attendance", path: "/team-leader/attendance", icon: CalendarClock },
     { title: "HR & Documents", path: "/team-leader/hr", icon: FileCheck },
     { title: "Activity History", path: "/team-leader/activity", icon: History },

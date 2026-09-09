@@ -62,6 +62,7 @@ import TechAdminMemberAnalytics from "@/pages/tech-admin/MemberAnalytics";
 import WorkAssign from "@/pages/tech-admin/WorkAssign";
 import Orders from "@/pages/tech-admin/Orders";
 import Clients from "@/pages/shared/Clients";
+import FeedbackUpsell from "@/pages/shared/FeedbackUpsell";
 import MemberAssignments from "@/pages/tech-admin/MemberAssignments";
 import TeamLeaderWorkAssign from "@/pages/tech-team-leader/WorkAssign";
 import TeamLeaderMemberAssignments from "@/pages/tech-team-leader/MemberAssignments";
@@ -194,6 +195,9 @@ const App = () => (
             <Route path="/tech-admin/profit" element={<Profit />} />
             <Route path="/tech-admin/orders" element={<Orders />} />
             <Route path="/tech-admin/clients" element={<Clients />} />
+            {/* How the delivered work was actually received — the WORK half of the feedback is
+                this department's own report card. Read-only here: see canRecordFeedback. */}
+            <Route path="/tech-admin/feedback-upsell" element={<FeedbackUpsell />} />
             <Route path="/tech-admin/tools" element={<Tools />} />
             <Route path="/tech-admin/cinematic-ads" element={<CinematicAds />} />
             <Route path="/tech-admin/chat" element={<Chat />} />
@@ -229,6 +233,7 @@ const App = () => (
             <Route path="/sales-admin/leaderboard" element={<Leaderboard />} />
             <Route path="/sales-admin/history" element={<SalesAdminActivityHistory />} />
             <Route path="/sales-admin/clients" element={<Clients />} />
+            <Route path="/sales-admin/feedback-upsell" element={<FeedbackUpsell />} />
             <Route path="/sales-admin/chat" element={<Chat />} />
             <Route path="/sales-admin/meeting" element={<Meeting />} />
             <Route path="/sales-admin/chat-monitor" element={<AdminChatMonitor />} />
@@ -287,6 +292,7 @@ const App = () => (
             <Route path="/team-leader/work-assign/:memberId" element={<TeamLeaderMemberAssignments />} />
             <Route path="/team-leader/work-reports" element={<WorkReports />} />
             <Route path="/team-leader/orders" element={<Orders />} />
+            <Route path="/team-leader/feedback-upsell" element={<FeedbackUpsell />} />
             {/* A leader reads the same department feed — their own actions are in it. */}
             <Route path="/team-leader/activity" element={<TechActivityHistory />} />
             <Route path="/team-leader/attendance" element={<TeamAttendance />} />

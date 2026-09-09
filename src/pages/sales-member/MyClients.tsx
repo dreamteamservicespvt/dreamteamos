@@ -39,6 +39,8 @@ import {
 } from "@/utils/serviceCatalog";
 import SaleForm from "@/components/sales/SaleForm";
 import SaleStatusChip from "@/components/sales/SaleStatusChip";
+import SaleFeedbackCard from "@/components/sales/SaleFeedbackCard";
+import { nextUpsellCategory } from "@/utils/upsellLadder";
 import SalesOrderChat from "@/components/order-chat/SalesOrderChat";
 import { buildSalesClients, soldWithin, type SalesClient } from "@/utils/salesClients";
 import { defaultPeriodFilter, periodLabel, withinPeriod, type PeriodFilter } from "@/utils/periodFilter";
@@ -46,7 +48,15 @@ import PeriodFilterBar from "@/components/dashboard/PeriodFilterBar";
 import ViewToggle from "@/components/common/ViewToggle";
 import { useViewMode } from "@/hooks/useViewMode";
 import { format } from "date-fns";
-import type { Client, Lead, Order } from "@/types";
+import { feedbackComplete, type Client, type Lead, type Order } from "@/types";
+
+/** Epoch ms from any of the timestamp shapes this data has carried over time. */
+function msOf(ts: unknown): number {
+  const t = ts as { toMillis?: () => number; seconds?: number } | null | undefined;
+  if (!t) return 0;
+  if (typeof t.toMillis === "function") return t.toMillis();
+  return typeof t.seconds === "number" ? t.seconds * 1000 : 0;
+}
 
 /**
  * What can be upsold, in the order a seller would reach for it.
@@ -319,9 +329,20 @@ function UpsellPicker({ onUpsell, compact }: { onUpsell: (c: string) => void; co
  */
 function saleProgress(row: SalesClient) {
   const live = row.orders.filter((o) => o.status !== "cancelled" && o.status !== "deleted");
+  const delivered = live.filter((o) => o.status === "completed" || o.status === "verified");
   return {
     awaitingApproval: live.filter((o) => o.saleVerified === false).length,
     withTech: live.filter((o) => o.saleVerified !== false && o.status !== "verified").length,
+    /**
+     * Delivered jobs nobody has rung about yet — the call this page exists to prompt.
+     *
+     * On the card rather than only inside the panel because a member works this list top to bottom
+     * between calls, and "which of these forty do I still owe a call?" is not a question they
+     * should have to open forty panels to answer.
+     */
+    feedbackDue: delivered.filter((o) => !feedbackComplete(o.feedback)).length,
+    /** Delivered, asked about, and therefore ready to be sold something else. */
+    upsellReady: delivered.filter((o) => feedbackComplete(o.feedback)).length,
     /** The chat to open from the row: the newest sale is the one they were just talking about. */
     latest: live[0] || null,
   };
@@ -380,6 +401,18 @@ function ClientCard({ row, index, onOpen, onUpsell, onChat }: {
           {row.awaitingDelivery && (
             <span className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-medium text-warning">
               <Hourglass size={9} /> Nothing delivered yet
+            </span>
+          )}
+          {progress.feedbackDue > 0 && (
+            <span data-test="client-feedback-due"
+              className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-medium text-primary">
+              <MessageCircle size={9} /> {progress.feedbackDue} to ask about
+            </span>
+          )}
+          {progress.feedbackDue === 0 && progress.upsellReady > 0 && (
+            <span data-test="client-upsell-ready"
+              className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-medium text-success">
+              <Sparkles size={9} /> Ready to upsell
             </span>
           )}
         </div>
@@ -442,6 +475,26 @@ function ClientDetail({ row, onClose, onUpsell, onChat }: {
 
   const missing = useMemo(() => gapCategories(ownedKeys), [ownedKeys]);
   const owned = useMemo(() => ownedServices(ownedKeys), [ownedKeys]);
+
+  /**
+   * The jobs that have actually been delivered, newest first — the only ones there is anything to
+   * ask about.
+   *
+   * Read from the ORDER's own status rather than from the client's delivered-work list: that list
+   * is written when work ships, by a write that can fail, and this whole page exists because it
+   * had failed for hundreds of customers. An order that says "verified" has been delivered whether
+   * or not the client document caught up.
+   */
+  const delivered = useMemo(
+    () => row.orders
+      .filter((o) => o.status === "completed" || o.status === "verified")
+      .sort((a, b) => msOf(b.completedAt || b.verifiedAt) - msOf(a.completedAt || a.verifiedAt)),
+    [row.orders],
+  );
+  const pendingFeedback = useMemo(
+    () => delivered.filter((o) => !feedbackComplete(o.feedback)).length,
+    [delivered],
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
@@ -524,6 +577,39 @@ function ClientDetail({ row, onClose, onUpsell, onChat }: {
             <p className="mb-2 text-xs text-muted-foreground">Or sell something else:</p>
             <UpsellPicker onUpsell={onUpsell} />
           </div>
+
+          {/*
+            The delivered work, worked like a lead: what the client said about it, and the button
+            that turns it into the next sale.
+
+            First in the panel, above the history and the gap checklist, because it is the reason
+            somebody opens a delivered client at all — and because the upsell below it is gated on
+            what gets recorded here. See components/sales/SaleFeedbackCard.
+          */}
+          {delivered.length > 0 && (
+            <div>
+              <div className="mb-2 flex items-center gap-2">
+                <Sparkles size={14} className="text-primary" />
+                <h4 className="text-sm font-semibold text-foreground">Feedback &amp; upsell</h4>
+                <span className="text-[10px] text-muted-foreground">
+                  {pendingFeedback > 0
+                    ? `${pendingFeedback} to ask about`
+                    : "all asked — sell them the next thing"}
+                </span>
+              </div>
+              <div className="space-y-2">
+                {delivered.map((o) => (
+                  <SaleFeedbackCard
+                    key={o.id}
+                    order={o}
+                    // The ladder decides which service the form OPENS on; the member can change it
+                    // in the form. Passing nothing would land every upsell on the same default.
+                    onUpsell={() => onUpsell(nextUpsellCategory(ownedKeys))}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* What they have bought from this member. */}
           <div>

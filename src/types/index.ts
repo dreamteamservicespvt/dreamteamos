@@ -747,6 +747,14 @@ export interface Order {
    * writes and edits it; see api/order-chat.ts.
    */
   clientReview?: ClientReview | null;
+  /**
+   * What the SALES MEMBER heard when they rang the client about this delivered job.
+   *
+   * Not `clientReview`: that is the customer's own 1–5 stars, left in their chat, and most of them
+   * never leave one. This is the follow-up call the member makes before trying to sell the next
+   * thing, and it is the gate on doing so — see `ClientWorkFeedback` and `feedbackComplete`.
+   */
+  feedback?: ClientWorkFeedback | null;
   // Lifecycle
   status: OrderStatus;
   workAssignmentId?: string | null;
@@ -857,11 +865,14 @@ export const CLIENT_FOLLOWUP_STATUSES: { value: ClientFollowUpStatus; label: str
 /**
  * One delivered job, as the member wrote it down after the follow-up call.
  *
- * Keyed by ORDER id rather than assignment id: the order is what the sale produced and what the
- * sales member is looking at, and it survives the work being reassigned between tech members.
+ * Stored ON the order rather than on the client document. A client record is only created when work
+ * ships, by a write that can fail — this whole page exists because one member had sold to 710
+ * customers and the clients collection knew about 53 — so hanging the upsell gate off it would mean
+ * the member who most needs to make the call is the one who cannot record having made it. The order
+ * always exists, is already streamed by every screen that shows this, and is one-to-one with the
+ * sale the feedback is about.
  */
 export interface ClientWorkFeedback {
-  orderId: string;
   /** The ad itself. */
   work?: FeedbackRating | null;
   /** Being dealt with — how we communicated, and whether we did what we said we would. */
@@ -873,6 +884,18 @@ export interface ClientWorkFeedback {
   by?: string | null;
   byName?: string | null;
   at?: any;
+}
+
+/**
+ * Both halves of the feedback are in. The gate on the upsell button, in one place.
+ *
+ * Both, not either: "the ad was outstanding" and "nobody answered my calls for a week" are the two
+ * answers that most change what to say next, and a member who has only heard one of them is not
+ * ready to sell anything. Exported here rather than written inline on the page so the button, the
+ * row's own summary and any later report cannot disagree about what counts as done.
+ */
+export function feedbackComplete(f: ClientWorkFeedback | null | undefined): boolean {
+  return !!f?.work && !!f?.service;
 }
 
 export interface Client {
@@ -902,11 +925,6 @@ export interface Client {
    * ad, and "they gave us two stars in June" is the single most useful thing to know first.
    */
   reviews?: ClientWorkReview[];
-  /**
-   * What the SALES MEMBER recorded after ringing them about each delivered job, keyed by order id.
-   * The gate on the upsell button — see `ClientWorkFeedback`.
-   */
-  workFeedback?: Record<string, ClientWorkFeedback> | null;
   // Scoping / attribution
   salesAdminIds: string[];      // admins whose teams sold to this client (for scoped reads)
   /**
