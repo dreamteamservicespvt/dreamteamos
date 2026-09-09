@@ -11,12 +11,12 @@ const order = (id: string, takenMs: number, progress?: OrderProgress | null): Or
 
 const unfinished = (): OrderProgress => ({
   kind: "smm",
-  targets: { ads: 8, posters: 8, posted: 8, campaigns: 8 },
-  done: { ads: 2, posters: 0, posted: 0, campaigns: 0 },
+  targets: { ads: 8, posters: 8, posted: 16, stories: 16, campaigns: 8 },
+  done: { ads: 2, posters: 0, posted: 0, stories: 0, campaigns: 0 },
   tracks: {}, completedTracks: [], log: [],
 });
 
-const finished = (): OrderProgress => ({ ...unfinished(), done: { ads: 8, posters: 8, posted: 8, campaigns: 8 } });
+const finished = (): OrderProgress => ({ ...unfinished(), done: { ads: 8, posters: 8, posted: 16, stories: 16, campaigns: 8 } });
 
 describe("multi-deliverable orders pin to the top", () => {
   const oldSingle = order("old-single", NOW - 40 * HOUR);

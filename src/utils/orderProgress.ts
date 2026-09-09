@@ -12,20 +12,24 @@ import type {
   Order, OrderProgress, OrderProgressCounts, OrderProgressField, OrderTrack, WorkAssignment,
 } from "@/types";
 
-const ZERO: OrderProgressCounts = { ads: 0, posters: 0, posted: 0, campaigns: 0 };
+const ZERO: OrderProgressCounts = { ads: 0, posters: 0, posted: 0, stories: 0, campaigns: 0 };
 
 /** The counters each job is responsible for. Progress is edited through this map, not free-hand. */
 export const TRACK_FIELDS: Record<OrderTrack, OrderProgressField[]> = {
   ad_creation: ["ads", "posters"],
-  social_upload: ["posted"],
+  // Posts and stories are the same person's job on the same day — one login, one scheduling pass —
+  // so they belong to one track. They are two counters because a month owes twice as many of each
+  // as it owes videos, and a single "uploads" number cannot say which half is outstanding.
+  social_upload: ["posted", "stories"],
   digital_marketing: ["campaigns"],
 };
 
 export const PROGRESS_FIELD_LABELS: Record<OrderProgressField, string> = {
-  ads: "Ads created",
+  ads: "Videos created",
   posters: "Posters created",
-  posted: "Posted on social media",
-  campaigns: "Ads running",
+  posted: "Posts published",
+  stories: "Stories published",
+  campaigns: "Videos running as campaigns",
 };
 
 /**
@@ -48,13 +52,17 @@ export function initialProgress(input: {
   if (category === "social_media_management") {
     const quota = packageKey ? packageDeliverables(category, packageKey) : undefined;
     if (!quota) return null; // a custom-priced month has no defined quota to count down
-    return blankProgress("smm", { ...quota });
+    // Spread over ZERO, not bare: a package saved before stories existed carries four keys, and a
+    // month with an absent `stories` target would make `activeFields` read `undefined > 0`.
+    return blankProgress("smm", { ...ZERO, ...quota });
   }
 
   if (isBulkCategory(category)) {
     const n = Math.max(0, Math.floor(Number(quantity) || 0));
     if (n <= 0) return null;
     const posters = effectiveAdCategory(category, bulkAdType) === "wishes" ? 0 : n;
+    // A bulk order is videos and their posters. It has no feed, so posts, stories and campaigns
+    // stay at zero and never appear — see `activeFields`.
     return blankProgress("bulk", { ...ZERO, ads: n, posters });
   }
 
@@ -106,7 +114,7 @@ export function progressPercent(progress: OrderProgress | null | undefined): num
   return target === 0 ? 0 : Math.round((done / target) * 100);
 }
 
-/** "5 of 8 ads · 3 of 8 posters" — the one-line summary on a card. */
+/** "5 of 8 videos created · 3 of 8 posters created" — the one-line summary on a card. */
 export function progressSummary(progress: OrderProgress | null | undefined): string {
   if (!progress) return "";
   return activeFields(progress)

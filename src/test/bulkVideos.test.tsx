@@ -50,8 +50,8 @@ const order = (patch: Partial<Order> = {}): Order => ({
   status: "assigned",
   progress: {
     kind: "bulk",
-    targets: { ads: 10, posters: 10, posted: 0, campaigns: 0 },
-    done: { ads: 0, posters: 0, posted: 0, campaigns: 0 },
+    targets: { ads: 10, posters: 10, posted: 0, stories: 0, campaigns: 0 },
+    done: { ads: 0, posters: 0, posted: 0, stories: 0, campaigns: 0 },
     tracks: {},
     completedTracks: [],
     log: [],
@@ -85,7 +85,7 @@ describe("reading a bulk order as videos", () => {
 
   it("carries progress across from the old counting model, with no migration", () => {
     // The compatibility claim: an order half-finished before this existed must not read as untouched.
-    const half = order({ progress: { ...order().progress!, done: { ads: 4, posters: 0, posted: 0, campaigns: 0 } } });
+    const half = order({ progress: { ...order().progress!, done: { ads: 4, posters: 0, posted: 0, stories: 0, campaigns: 0 } } });
     const stats = bulkStatsOf(half);
     expect(stats.completed).toBe(4);
     expect(stats.pending).toBe(6);

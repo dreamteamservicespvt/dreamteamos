@@ -7,8 +7,8 @@ import type { Order, OrderProgress } from "@/types";
 
 const smm = (done: Partial<OrderProgress["done"]> = {}): OrderProgress => ({
   kind: "smm",
-  targets: { ads: 8, posters: 8, posted: 8, campaigns: 8 },
-  done: { ads: 0, posters: 0, posted: 0, campaigns: 0, ...done },
+  targets: { ads: 8, posters: 8, posted: 16, stories: 16, campaigns: 8 },
+  done: { ads: 0, posters: 0, posted: 0, stories: 0, campaigns: 0, ...done },
   tracks: {},
   completedTracks: [],
   log: [],
@@ -18,8 +18,10 @@ describe("initialProgress", () => {
   it("seeds a social media month from its package quota", () => {
     const p = initialProgress({ category: "social_media_management", packageKey: "Pro Package" })!;
     expect(p.kind).toBe("smm");
-    expect(p.targets).toEqual({ ads: 8, posters: 8, posted: 8, campaigns: 8 });
-    expect(p.done).toEqual({ ads: 0, posters: 0, posted: 0, campaigns: 0 });
+    // Twice as many posts and stories as videos; campaigns track the VIDEOS, because only a
+    // video is ever run as one.
+    expect(p.targets).toEqual({ ads: 8, posters: 8, posted: 16, stories: 16, campaigns: 8 });
+    expect(p.done).toEqual({ ads: 0, posters: 0, posted: 0, stories: 0, campaigns: 0 });
   });
 
   it("seeds every listed package", () => {
@@ -28,24 +30,34 @@ describe("initialProgress", () => {
     expect(quotas).toEqual([4, 6, 8, 10, 12]);
   });
 
+  it("owes two posts and two stories for every video, on every package", () => {
+    for (const k of ["Starter Package", "Plus Package", "Pro Package", "Business Package", "Ultra Package"]) {
+      const t = initialProgress({ category: "social_media_management", packageKey: k })!.targets;
+      expect(t.posted).toBe(t.ads * 2);
+      expect(t.stories).toBe(t.ads * 2);
+      // Only videos are run as campaigns — never a post, never a story.
+      expect(t.campaigns).toBe(t.ads);
+    }
+  });
+
   it("seeds a bulk order with N ads and N posters, and no marketing leg", () => {
     const p = initialProgress({ category: "bulk_ads", packageKey: "30 Seconds + Poster", quantity: 8 })!;
     expect(p.kind).toBe("bulk");
-    expect(p.targets).toEqual({ ads: 8, posters: 8, posted: 0, campaigns: 0 });
+    expect(p.targets).toEqual({ ads: 8, posters: 8, posted: 0, stories: 0, campaigns: 0 });
   });
 
   it("counts posters on a bulk cinematic order, which ships them", () => {
     const p = initialProgress({ category: "bulk_ads", quantity: 6, bulkAdType: "cinematic" })!;
-    expect(p.targets).toEqual({ ads: 6, posters: 6, posted: 0, campaigns: 0 });
+    expect(p.targets).toEqual({ ads: 6, posters: 6, posted: 0, stories: 0, campaigns: 0 });
   });
 
   it("counts no posters on a bulk wishes order, which ships none", () => {
     // A wishes package is plain seconds — no poster was sold, so a poster counter could never be
     // filled and the order would sit half-done for ever.
     const p = initialProgress({ category: "bulk_ads", quantity: 6, bulkAdType: "wishes" })!;
-    expect(p.targets).toEqual({ ads: 6, posters: 0, posted: 0, campaigns: 0 });
+    expect(p.targets).toEqual({ ads: 6, posters: 0, posted: 0, stories: 0, campaigns: 0 });
     expect(activeFields(p)).toEqual(["ads"]);
-    expect(isProgressComplete({ ...p, done: { ads: 6, posters: 0, posted: 0, campaigns: 0 } })).toBe(true);
+    expect(isProgressComplete({ ...p, done: { ads: 6, posters: 0, posted: 0, stories: 0, campaigns: 0 } })).toBe(true);
   });
 
   it("gives an ordinary single ad nothing to count", () => {
@@ -63,8 +75,8 @@ describe("initialProgress", () => {
 });
 
 describe("which counters and jobs an order actually has", () => {
-  it("a month owes all four counters and all three jobs", () => {
-    expect(activeFields(smm())).toEqual(["ads", "posters", "posted", "campaigns"]);
+  it("a month owes all five counters and all three jobs", () => {
+    expect(activeFields(smm())).toEqual(["ads", "posters", "posted", "stories", "campaigns"]);
     expect(activeTracks(smm())).toEqual(["ad_creation", "social_upload", "digital_marketing"]);
   });
 
@@ -89,12 +101,14 @@ describe("completion", () => {
   });
 
   it("the order is complete only when every counter is met", () => {
-    expect(isProgressComplete(smm({ ads: 8, posters: 8, posted: 8 }))).toBe(false);
-    expect(isProgressComplete(smm({ ads: 8, posters: 8, posted: 8, campaigns: 8 }))).toBe(true);
+    // Every post up but no stories: a month that used to read as finished here, because posts and
+    // stories were one counter.
+    expect(isProgressComplete(smm({ ads: 8, posters: 8, posted: 16, campaigns: 8 }))).toBe(false);
+    expect(isProgressComplete(smm({ ads: 8, posters: 8, posted: 16, stories: 16, campaigns: 8 }))).toBe(true);
   });
 
   it("over-delivering still counts as complete", () => {
-    expect(isProgressComplete(smm({ ads: 9, posters: 9, posted: 9, campaigns: 9 }))).toBe(true);
+    expect(isProgressComplete(smm({ ads: 9, posters: 9, posted: 20, stories: 20, campaigns: 9 }))).toBe(true);
   });
 
   it("an order with no progress is not 'complete'", () => {
@@ -105,17 +119,18 @@ describe("completion", () => {
 describe("percent and summary", () => {
   it("counts across every counter, not per job", () => {
     expect(progressPercent(smm())).toBe(0);
-    expect(progressPercent(smm({ ads: 8, posters: 8 }))).toBe(50);
-    expect(progressPercent(smm({ ads: 8, posters: 8, posted: 8, campaigns: 8 }))).toBe(100);
+    // 16 of the 64 a Pro month owes (8+8+16+16+8 = 56)… the videos and posters are 16 of 56.
+    expect(progressPercent(smm({ ads: 8, posters: 8 }))).toBe(29);
+    expect(progressPercent(smm({ ads: 8, posters: 8, posted: 16, stories: 16, campaigns: 8 }))).toBe(100);
   });
 
   it("does not let over-delivery push the bar past 100", () => {
-    expect(progressPercent(smm({ ads: 40, posters: 40, posted: 40, campaigns: 40 }))).toBe(100);
+    expect(progressPercent(smm({ ads: 40, posters: 40, posted: 40, stories: 40, campaigns: 40 }))).toBe(100);
   });
 
   it("reads as a sentence", () => {
     expect(progressSummary(smm({ ads: 5, posters: 3 })))
-      .toBe("5 of 8 ads created · 3 of 8 posters created · 0 of 8 posted on social media · 0 of 8 ads running");
+      .toBe("5 of 8 videos created · 3 of 8 posters created · 0 of 16 posts published · 0 of 16 stories published · 0 of 8 videos running as campaigns");
   });
 });
 
@@ -127,7 +142,7 @@ describe("pinning", () => {
   });
 
   it("releases it once everything is delivered", () => {
-    expect(isPinnedOrder(order(smm({ ads: 8, posters: 8, posted: 8, campaigns: 8 })))).toBe(false);
+    expect(isPinnedOrder(order(smm({ ads: 8, posters: 8, posted: 16, stories: 16, campaigns: 8 })))).toBe(false);
   });
 
   it("never pins an ordinary single ad", () => {
@@ -149,7 +164,7 @@ describe("who may move the counters", () => {
     expect(canEditProgress(withTracks(), "tech_admin", "x")).toBe(true);
     expect(canEditProgress(withTracks(), "tech_team_leader", "x")).toBe(true);
     expect(editableFields(withTracks(), "tech_admin", "x"))
-      .toEqual(["ads", "posters", "posted", "campaigns"]);
+      .toEqual(["ads", "posters", "posted", "stories", "campaigns"]);
   });
 
   it("lets an assigned member edit only their own job's counters", () => {
@@ -158,7 +173,8 @@ describe("who may move the counters", () => {
   });
 
   it("gives a member holding two jobs both sets of counters", () => {
-    expect(editableFields(withTracks(), "tech_member", "m2")).toEqual(["posted", "campaigns"]);
+    // Posts and stories are one job, so the member who has the uploading leg gets both counters.
+    expect(editableFields(withTracks(), "tech_member", "m2")).toEqual(["posted", "stories", "campaigns"]);
     expect(tracksForMember(withTracks(), "m2")).toEqual(["social_upload", "digital_marketing"]);
   });
 

@@ -412,6 +412,22 @@ export interface SaleEditEntry {
 export interface AdRequirement {
   businessName?: string;
   businessWhatsapp?: string;
+  /**
+   * Where the business actually is. Asked on the call and read back to the client in their order
+   * confirmation, because a confirmation that names the wrong branch is how a shoot goes to the
+   * wrong shop — and because a "client's own photos" ad needs somewhere to send someone.
+   */
+  businessAddress?: string;
+  /**
+   * What the business does and what the ad must carry — the offer, the tagline, the line the owner
+   * insists on. CLIENT-FACING: it is read back to them in the confirmation, so it is written in
+   * words the client would recognise as their own.
+   *
+   * Deliberately not `notes`. That field is the internal aside to the tech team and is never sent
+   * anywhere near the customer; folding the two together meant either the client saw a production
+   * note or the tech team lost the offer they were supposed to put on screen.
+   */
+  businessInfo?: string;
   language?: string;                 // free text — the dropdown remembers custom entries
   modelGender?: "male" | "female";
   attireType?: "professional" | "traditional" | "shirt_pant" | "custom";
@@ -435,9 +451,20 @@ export interface AdRequirement {
    */
   specialCategory?: string;
   /**
-   * Special-category ads only. True when the client is sending photographs of their own premises
-   * (the tech member must upload them), false when the tech team builds the location from the
-   * business profile. Meaningless without `specialCategory`, so it is only stored alongside it.
+   * Where the ad is SET. True when the client is sending photographs of their own premises (the
+   * tech member uploads them into the Store/Office slot), false when the location is built from
+   * the business profile.
+   *
+   * ── Why this is asked on every ad now ────────────────────────────────────────────────────────
+   * It began as a character-pack question, because staging two cartoons in a real shop is obviously
+   * a different job from staging them anywhere. It was never only a pack question: an ordinary
+   * human-model ad shot in the client's own showroom and one shot in a generated interior are two
+   * different products at the same price, and the generator needs to know which before it writes a
+   * single prompt. Asking it only on packs meant every other ad silently defaulted to a generated
+   * location and the client's photographs, when they sent any, went unused.
+   *
+   * Absent on sales recorded before this was asked, which read as `false` — a generated location,
+   * which is what those ads in fact got.
    */
   realLocationProvided?: boolean;
 }
@@ -454,6 +481,43 @@ export interface PromiseDeadline {
   source: PromiseDeadlineSource;
   startAt: any;        // Timestamp at SALE time — the countdown anchor
   dueAt: any;          // startAt + hours, precomputed for cheap compares/queries
+  /**
+   * The deadline this promise was FIRST given, kept when an extension moves `dueAt`.
+   *
+   * Without it an extended promise is indistinguishable from one that was always 48 hours, and the
+   * question the team actually asks — "was this late, or did we give them longer?" — has no answer
+   * a week later. Absent on a promise nobody has extended.
+   */
+  originalDueAt?: any | null;
+  /** The one extension this promise is allowed. Absent until somebody uses it. See `extension`. */
+  extension?: PromiseExtension | null;
+}
+
+/**
+ * The single extension a delivery promise may be given.
+ *
+ * ── Why exactly one ──────────────────────────────────────────────────────────────────────────
+ * The promise is the client's, and the caveat we send them says as much: 24 hours holds only while
+ * they confirm their details and answer the script quickly. When they don't, the clock ran on work
+ * nobody could start, and the tech member is marked late for a delay they had no part in. So the
+ * deadline can be moved — once. A second move would make the promise mean nothing, and "it keeps
+ * getting extended" is exactly the failure the countdown exists to make visible.
+ *
+ * ── Why three roles may use it ────────────────────────────────────────────────────────────────
+ * The tech member is the one who knows the script has been sitting unanswered; the team leader is
+ * the one who reviews it; and the sales member is the one actually talking to the client. Any of
+ * them may be the first to learn the client has stalled, and routing it through one of them means
+ * the extension happens hours after it was needed, or not at all.
+ */
+export interface PromiseExtension {
+  /** How much longer, in hours. Defaults to the original promise again — 24h becomes 48h. */
+  hours: number;
+  at: any;
+  by: string;
+  byName: string;
+  byRole: UserRole;
+  /** Why the client caused the delay. Free text — this is the part somebody reads later. */
+  reason?: string | null;
 }
 
 // ─── Multi-deliverable progress (Social Media Monthly & Bulk Ads) ───
@@ -474,11 +538,23 @@ export const ORDER_TRACKS: { key: OrderTrack; label: string }[] = [
   { key: "digital_marketing", label: "Digital marketing" },
 ];
 
-/** The four things counted. `campaigns` is "ads run" — the digital-marketing side. */
+/**
+ * The five things counted on a multi-deliverable order.
+ *
+ * `ads` are the videos, `posted` the feed posts and `stories` the 24-hour stories — a social month
+ * owes twice as many of each of the last two as it does videos, which is why they are separate
+ * counters and not one "uploads" number. `campaigns` is "ads run", the digital-marketing side, and
+ * is counted in VIDEOS: only a video is ever run as a campaign, never a post or a story.
+ */
 export interface OrderProgressCounts {
   ads: number;
   posters: number;
   posted: number;
+  /**
+   * Stories put up. Absent on every order created before social months owed them, which is why
+   * every read of a counter goes through `|| 0` rather than trusting the shape.
+   */
+  stories: number;
   campaigns: number;
 }
 
@@ -735,6 +811,70 @@ export interface ClientWorkReview {
   at: any;
 }
 
+/**
+ * How the client rated a delivered job when the sales member RANG THEM about it.
+ *
+ * ── Why this is not `ClientWorkReview` ───────────────────────────────────────────────────────
+ * That one is the customer's own doing: they open their chat and leave 1–5 stars, and most of them
+ * never do. This one is the member's job — the follow-up call they make before trying to sell the
+ * next thing — and it is the gate on that sale: no feedback, no upsell button. Two different
+ * records of two different conversations, and collapsing them would mean either a member could
+ * fill in the customer's own star rating, or a customer who never opened their chat could never
+ * be upsold.
+ *
+ * ── Why a four-point scale rather than stars ─────────────────────────────────────────────────
+ * The member is typing what somebody just said out loud. "Outstanding", "Good", "Not bad", "Bad"
+ * are the four things people actually say about work; asking them to convert that into 1–5 loses
+ * the answer and gains a number nobody trusts.
+ */
+export type FeedbackRating = "outstanding" | "good" | "not_bad" | "bad";
+
+export const FEEDBACK_RATINGS: { key: FeedbackRating; label: string }[] = [
+  { key: "outstanding", label: "Outstanding" },
+  { key: "good", label: "Good" },
+  { key: "not_bad", label: "Not Bad" },
+  { key: "bad", label: "Bad" },
+];
+
+/** Where a delivered client has got to on the follow-up call. Drives the row's own dropdown. */
+export type ClientFollowUpStatus =
+  | "not_contacted"
+  | "contacted"
+  | "feedback_taken"
+  | "upsell_pitched"
+  | "upsell_done"
+  | "not_interested";
+
+export const CLIENT_FOLLOWUP_STATUSES: { value: ClientFollowUpStatus; label: string }[] = [
+  { value: "not_contacted", label: "Not contacted" },
+  { value: "contacted", label: "Contacted" },
+  { value: "feedback_taken", label: "Feedback taken" },
+  { value: "upsell_pitched", label: "Upsell pitched" },
+  { value: "upsell_done", label: "Upsell done" },
+  { value: "not_interested", label: "Not interested" },
+];
+
+/**
+ * One delivered job, as the member wrote it down after the follow-up call.
+ *
+ * Keyed by ORDER id rather than assignment id: the order is what the sale produced and what the
+ * sales member is looking at, and it survives the work being reassigned between tech members.
+ */
+export interface ClientWorkFeedback {
+  orderId: string;
+  /** The ad itself. */
+  work?: FeedbackRating | null;
+  /** Being dealt with — how we communicated, and whether we did what we said we would. */
+  service?: FeedbackRating | null;
+  /** Anything worth remembering before the next call. */
+  notes?: string | null;
+  status?: ClientFollowUpStatus | null;
+  /** Who took it, so a row on a shared page is answerable to a person. */
+  by?: string | null;
+  byName?: string | null;
+  at?: any;
+}
+
 export interface Client {
   phone: string;                // "+91..."
   phoneId: string;              // doc id (phoneLockId)
@@ -762,6 +902,11 @@ export interface Client {
    * ad, and "they gave us two stars in June" is the single most useful thing to know first.
    */
   reviews?: ClientWorkReview[];
+  /**
+   * What the SALES MEMBER recorded after ringing them about each delivered job, keyed by order id.
+   * The gate on the upsell button — see `ClientWorkFeedback`.
+   */
+  workFeedback?: Record<string, ClientWorkFeedback> | null;
   // Scoping / attribution
   salesAdminIds: string[];      // admins whose teams sold to this client (for scoped reads)
   /**

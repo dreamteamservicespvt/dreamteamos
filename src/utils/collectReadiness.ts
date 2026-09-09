@@ -50,7 +50,7 @@ export function collectReadiness(order: Order | null | undefined): CollectReadin
   const progress = order.progress;
 
   if (progress?.kind === "smm") {
-    const done = progress.done || { ads: 0, posters: 0, posted: 0, campaigns: 0 };
+    const done = progress.done || { ads: 0, posters: 0, posted: 0, stories: 0, campaigns: 0 };
     const completed = new Set(progress.completedTracks || []);
     // A leg counts as done either because its counter moved or because its owner signed the whole
     // leg off — a member who marks "social uploading finished" has finished it, whatever the count.

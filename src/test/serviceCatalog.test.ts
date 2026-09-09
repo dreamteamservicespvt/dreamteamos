@@ -38,8 +38,24 @@ describe("service catalog integrity", () => {
     expect(quotas).toEqual([4, 6, 8, 10, 12]);
     for (const p of PACKAGES["social_media_management"]) {
       const d = p.deliverables!;
-      expect([d.posters, d.posted, d.campaigns]).toEqual([d.ads, d.ads, d.ads]);
+      // One poster and one campaign per video; TWO posts and TWO stories. A month's feed carries
+      // the video and a still or a cut from it, which is why the last two are not the video count.
+      expect([d.posters, d.campaigns]).toEqual([d.ads, d.ads]);
+      expect([d.posted, d.stories]).toEqual([d.ads * 2, d.ads * 2]);
     }
+  });
+
+  it("every social media package says which networks it covers", () => {
+    // The second question on every call, and the only real difference between two tiers that
+    // otherwise read as "the same thing, more of it".
+    const platforms = PACKAGES["social_media_management"].map((p) => p.platforms);
+    expect(platforms).toEqual([
+      ["Instagram", "Facebook"],
+      ["Instagram", "Facebook", "YouTube"],
+      ["Instagram", "Facebook", "YouTube", "LinkedIn"],
+      ["Instagram", "Facebook", "YouTube", "LinkedIn"],
+      ["Instagram", "Facebook", "YouTube", "LinkedIn"],
+    ]);
   });
 
   it("bulk videos have no price list of their own — they borrow the chosen kind's", () => {
@@ -70,7 +86,7 @@ describe("service catalog integrity", () => {
   it("packageOptionLabel quotes the price and, for a month, the quota", () => {
     expect(packageOptionLabel({ label: "Basic", amount: 99 })).toBe("Basic — ₹99");
     expect(packageOptionLabel(PACKAGES["social_media_management"][2]))
-      .toBe("Pro Package — ₹20,000 (8 ads · 8 posters · 8 posted · 8 run)");
+      .toBe("Pro Package — ₹20,000 (8 videos · 8 posters · 16 posts · 16 stories · 8 run) · Instagram + Facebook + YouTube + LinkedIn");
   });
 });
 

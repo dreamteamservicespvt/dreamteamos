@@ -60,9 +60,13 @@ const NAV: Record<UserRole, NavItem[]> = {
   ],
   sales_admin: [
     // Ordered by how often the sales admin actually opens each screen, not by module.
+    //
+    // The Leaderboard leads, and is also where they land — see `getDefaultRoute`. It is the one
+    // screen that answers the question the job is actually about ("who is selling, and how much"),
+    // and it was third, under a Dashboard that summarises the same numbers less usefully.
+    { title: "Leaderboard", path: "/sales-admin/leaderboard", icon: Trophy },
     { title: "Dashboard", path: "/sales-admin/dashboard", icon: LayoutDashboard },
     { title: "My Team", path: "/sales-admin/team", icon: Users },
-    { title: "Leaderboard", path: "/sales-admin/leaderboard", icon: Trophy },
     { title: "Sales Approvals", path: "/sales-admin/approvals", icon: FileCheck },
     { title: "Clients", path: "/sales-admin/clients", icon: Contact },
     // "Who has this number, and what have we sold them?" — asked several times a week and, until
@@ -251,7 +255,10 @@ export function getDefaultRoute(role: UserRole): string {
   const routes: Record<UserRole, string> = {
     main_admin: "/main-admin/dashboard",
     tech_admin: "/tech-admin/dashboard",
-    sales_admin: "/sales-admin/dashboard",
+    // Not the dashboard. A sales admin's first question every morning is who is selling and how
+    // much, which is the leaderboard — the dashboard is a summary of the same figures that they
+    // then had to leave in order to see the figures themselves.
+    sales_admin: "/sales-admin/leaderboard",
     accounts_admin: "/accounts/dashboard",
     tech_member: "/tech/dashboard",
     sales_member: "/sales/dashboard",

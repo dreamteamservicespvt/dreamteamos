@@ -54,6 +54,7 @@ import {
 import { CUSTOM_FESTIVAL_OPTION, WISHES_FESTIVALS, isListedFestival } from "@/utils/festivals";
 import { collectedOf, newPayment, withPayment } from "@/utils/salePayments";
 import SaleSection from "@/components/sales/SaleSection";
+import FieldHint from "@/components/common/FieldHint";
 import type { Lead, SaleDetail, SaleEditEntry, SalePayment } from "@/types";
 
 type TimestampLike = { toMillis?: () => number; seconds?: number } | null | undefined;
@@ -122,14 +123,22 @@ function describeSaleChanges(prev: SaleDetail, next: SaleDetail): string[] {
   const attire = (r: typeof pr) => (r.attireType ? attireLabel(r.attireType, r.customAttire) : "—");
   if (attire(pr) !== attire(nr)) out.push(`Attire: ${attire(pr)} → ${attire(nr)}`);
   if ((pr.aspectRatio || "") !== (nr.aspectRatio || "")) out.push(`Ratio: ${pr.aspectRatio || "—"} → ${nr.aspectRatio || "—"}`);
-  if ((pr.notes || "") !== (nr.notes || "")) out.push(`Notes updated`);
+  if ((pr.notes || "") !== (nr.notes || "")) out.push(`Tech notes updated`);
+  // The client reads this one back in their own confirmation, so a change to it is a change to
+  // what we have promised to put on screen — not the same event as an internal note being edited.
+  if ((pr.businessInfo || "") !== (nr.businessInfo || "")) out.push(`Business info / what to include updated`);
   if ((pr.businessName || "") !== (nr.businessName || "")) out.push(`Business: ${pr.businessName || "—"} → ${nr.businessName || "—"}`);
-  // Switching the special category or the location source changes what the tech team must produce,
+  if ((pr.businessWhatsapp || "") !== (nr.businessWhatsapp || "")) out.push(`Contact: ${pr.businessWhatsapp || "—"} → ${nr.businessWhatsapp || "—"}`);
+  if ((pr.businessAddress || "") !== (nr.businessAddress || "")) out.push(`Address: ${pr.businessAddress || "—"} → ${nr.businessAddress || "—"}`);
+  // Switching the special category or the background changes what the tech team must produce,
   // so both are logged by name rather than folded into a generic "requirement updated".
   const special = (r: typeof pr) => getCharacterPack(r.specialCategory)?.label || "Normal ad";
   if (special(pr) !== special(nr)) out.push(`Special category: ${special(pr)} → ${special(nr)}`);
-  const loc = (r: typeof pr) => (r.realLocationProvided ? "Client's photos" : "Location created");
-  if (!!pr.specialCategory && !!nr.specialCategory && loc(pr) !== loc(nr)) out.push(`Location: ${loc(pr)} → ${loc(nr)}`);
+  // Logged on EVERY ad now. Flipping an ad from a built location to the client's own photographs
+  // changes what has to be collected before anyone can start, and it used to be invisible unless
+  // the sale happened to carry a character pack.
+  const loc = (r: typeof pr) => (r.realLocationProvided ? "Real — client's photos" : "AI — location created");
+  if (loc(pr) !== loc(nr)) out.push(`Background: ${loc(pr)} → ${loc(nr)}`);
   return out;
 }
 
@@ -297,6 +306,8 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
     return {
       businessName: r.businessName || lead.realName || lead.displayName || "",
       businessWhatsapp: r.businessWhatsapp || normalizePhone(lead.phone),
+      businessAddress: r.businessAddress,
+      businessInfo: r.businessInfo,
       language: r.language,
       modelGender: r.modelGender as ModelGender,
       attireType: r.attireType as AttireType,
@@ -361,6 +372,16 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
   const isWishesSale = adCategory === "wishes";
   const resolvedFestival = (festivalChoice === CUSTOM_FESTIVAL_OPTION ? customFestival : festivalChoice).trim();
   const festivalMissing = isWishesSale && !resolvedFestival;
+  /**
+   * An ad with no number on it.
+   *
+   * The number is pre-filled from the lead, so this only ever fires when somebody has cleared it —
+   * but it is the field the client's own confirmation is addressed from and the one the tech team
+   * rings when a script goes unanswered, and an ad sale that reaches the queue without one costs
+   * an afternoon of asking around. Required on ads only: a logo or a website is delivered through
+   * the same lead the sale was made on.
+   */
+  const contactMissing = isAdSale && !normalizePhone(req.businessWhatsapp.trim());
 
   /**
    * A bulk order is priced from the quantity, so the amount is computed rather than picked. The
@@ -512,6 +533,7 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
     : dupChecking ? "Checking…"
     : isDuplicate && !hasProof ? "Add proof to continue"
     : languageMissing ? "Type the language to continue"
+    : contactMissing ? "Add the client's contact number to continue"
     : festivalMissing ? "Pick the occasion to continue"
     : descriptionMissing ? "Say what was sold to continue"
     : amount <= 0 ? "Pick a package or enter an amount"
@@ -630,6 +652,10 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
       toast({ title: "Language needed", description: "Type the custom language the client asked for.", variant: "destructive" });
       return;
     }
+    if (contactMissing) {
+      toast({ title: "Contact number needed", description: "The client's confirmation is addressed from this number, and it is the one the tech team rings about the ad.", variant: "destructive" });
+      return;
+    }
     if (festivalMissing) {
       toast({ title: "Which occasion?", description: "Pick the festival this wishes video is for — the tech team themes the whole ad from it.", variant: "destructive" });
       return;
@@ -652,6 +678,8 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
     const requirement = cleanRequirement({
       businessName: req.businessName,
       businessWhatsapp: req.businessWhatsapp.trim() ? normalizePhone(req.businessWhatsapp) : "",
+      businessAddress: req.businessAddress,
+      businessInfo: req.businessInfo,
       notes: req.notes,
       ...(isAdSale
         ? {
@@ -664,9 +692,18 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
           // into the generator and theme an ad nobody asked to be themed.
           festival: isWishesSale ? resolvedFestival : "",
           specialCategory: req.specialCategory,
-          // Only carried alongside a pack — on a normal ad "no real location" is not a fact about
-          // the sale, and storing it would put a meaningless flag on every ordinary order.
-          realLocationProvided: req.specialCategory ? req.realLocationProvided : undefined,
+          /*
+            Where the ad is SET — on every ad now, not only a cartoon one.
+
+            An ordinary ad shot in the client's own showroom and one shot in a generated interior
+            are two different products at the same price, and the generator cannot tell which it is
+            being asked for unless the sale says. It used to be stored only alongside a character
+            pack, so every other ad silently defaulted to a generated location and the client's
+            photographs, when they sent any, went unused. `false` survives `cleanRequirement`
+            (only blank STRINGS are dropped), so "no photos coming" is recorded as a decision
+            rather than as an absence.
+          */
+          realLocationProvided: req.realLocationProvided === true,
         }
         : {}),
     });
@@ -1536,28 +1573,76 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
             />
           </div>
           <div>
-            <label className="text-[11px] text-muted-foreground">Business WhatsApp</label>
+            <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+              Contact number {isAdSale && <span className="text-destructive">*</span>}
+              <FieldHint text="The number on the client's own order confirmation, and the one the tech team rings about this job. Pre-filled from the lead — change it if the ad is for a different branch or a different person." />
+            </label>
             <input
-              type="text"
+              type="tel"
               value={req.businessWhatsapp}
               data-test="sale-business-whatsapp"
               onChange={(e) => setReq((r) => ({ ...r, businessWhatsapp: e.target.value }))}
               placeholder="e.g. 9876543210"
-              className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary font-mono"
+              className={`w-full h-9 px-3 rounded-md bg-card border text-foreground text-sm outline-none focus:border-primary font-mono ${
+                contactMissing ? "border-destructive/60" : "border-border"
+              }`}
             />
           </div>
         </div>
 
         <div>
-          <label className="text-[11px] text-muted-foreground">Notes for the tech team</label>
+          <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+            Address
+            <FieldHint text="Where the business actually is. It goes on the client's confirmation, and it is where somebody is sent if we shoot at their premises." />
+          </label>
+          <input
+            type="text"
+            value={req.businessAddress}
+            data-test="sale-business-address"
+            onChange={(e) => setReq((r) => ({ ...r, businessAddress: e.target.value }))}
+            maxLength={300}
+            placeholder="Shop / office address — area, city"
+            className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary"
+          />
+        </div>
+
+        {/*
+          The two free-text boxes, side by side and clearly labelled by AUDIENCE.
+
+          They were one box, and the price of that was a production note — "client is difficult
+          about the logo" — going out inside the customer's own receipt. Splitting them only works
+          if the difference is legible at a glance, which is what the ⓘ and the tint are for.
+        */}
+        <div>
+          <label className="flex items-center gap-1 text-[11px] font-medium text-success">
+            Business info & what to include
+            <span className="text-[10px] font-normal text-muted-foreground">— the client reads this</span>
+            <FieldHint text="What the business does and what the ad must carry: the offer, the tagline, the line the owner insists on. It is read back to the client word for word in their confirmation, so write it as they would recognise it." />
+          </label>
+          <textarea
+            value={req.businessInfo}
+            data-test="sale-business-info"
+            onChange={(e) => setReq((r) => ({ ...r, businessInfo: e.target.value }))}
+            maxLength={1000}
+            placeholder="e.g. Paint shop, 18 years old. Mention the festive 20% offer and free delivery."
+            className="w-full h-16 p-2 rounded-md bg-card border border-success/40 text-foreground text-xs outline-none focus:border-success resize-none"
+          />
+        </div>
+
+        <div>
+          <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+            Notes for the tech team
+            <span className="text-[10px]">— internal, never sent to the client</span>
+            <FieldHint text="Your aside to whoever makes this: what to watch out for, what the client is fussy about, anything you would say to a colleague. It never leaves the team." />
+          </label>
           <textarea
             value={req.notes}
             data-test="sale-notes"
             onChange={(e) => setReq((r) => ({ ...r, notes: e.target.value }))}
             maxLength={1000}
             placeholder={isAdSale
-              ? "Anything else the client asked for — offers, tagline, colours, must-say lines…"
-              : "Anything the client asked for — links, logins, colours, what they want it to say…"}
+              ? "e.g. Check the spelling on their board. Client wants to approve the script himself."
+              : "e.g. Logins to come by tomorrow. Client is fussy about the shade of blue."}
             className="w-full h-16 p-2 rounded-md bg-card border border-border text-foreground text-xs outline-none focus:border-primary resize-none"
           />
         </div>
@@ -1649,52 +1734,63 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
             </div>
           </div>
 
-          {/* Where a cartoon-duo ad is set. The tech member cannot start a "client's photos" job
-              until those photos arrive, so this is asked while the client is still on the call. */}
-          {salePack && (
-            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 space-y-2">
+          {/*
+            Where the ad is SET — asked on EVERY ad, not only a cartoon one.
+
+            ── Why this moved out of the character-pack block ─────────────────────────────────
+            It began life here because staging two cartoons in a real shop is obviously a different
+            job from staging them anywhere. It was never only a pack question. An ordinary ad shot
+            in the client's own showroom and one shot in a generated interior are two different
+            products at the same price, and the generator needs to be told which before it writes a
+            single prompt. While the question was pack-only, every other ad silently defaulted to a
+            generated location — and a client who had been asked for photos of their shop watched
+            them go unused.
+
+            A dropdown rather than the old pair of buttons: it is one decision with two answers,
+            and on a phone a select is one tap rather than a hunt for which of two tiles is lit.
+
+            It is asked while the client is still on the call because a "client's photos" job
+            cannot be STARTED until those photos arrive. Discovering that two days later is how a
+            24-hour promise is lost to nobody's fault in particular.
+          */}
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 space-y-2">
+            {salePack && (
               <p className="text-[11px] text-amber-700 dark:text-amber-300">
                 <b>{salePack.label}</b> — {salePack.tagline}.{salePack.characters.length > 1 ? " Both characters speak in every clip." : ""} Same price as a normal ad.
               </p>
-              <div>
-                <label className="text-[11px] text-muted-foreground">{salePack.usesClientFace ? "Is the client sending photos of their shop / office? (background)" : "Is the client sending photos of their shop / office?"}</label>
-                <div className="grid grid-cols-2 gap-1.5 mt-1">
-                  {([
-                    { v: true, label: "📷 Yes — use their business background" },
-                    { v: false, label: "🏙️ No — create AI background" },
-                  ] as const).map(({ v, label }) => (
-                    <button
-                      key={String(v)}
-                      type="button"
-                      onClick={() => setReq((r) => ({ ...r, realLocationProvided: v }))}
-                      className={`h-9 rounded-md text-xs font-medium border transition-colors ${
-                        req.realLocationProvided === v
-                          ? "border-amber-500 bg-amber-500/20 text-amber-700 dark:text-amber-300"
-                          : "border-border bg-card text-muted-foreground hover:bg-accent"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              {req.realLocationProvided && (
-                <p className="text-[10px] text-amber-700 dark:text-amber-300 leading-relaxed">
-                  Collect every angle they can send — inside, outside, counter, product shelf. Each clip is set in a
-                  different one of their photos, so more photos means a better ad.
-                </p>
-              )}
-              {/* The face is not the background. On every other entry a client photo is a location
-                  reference; here it is the identity the entire ad is built from, so the sales member
-                  has to collect it while the client is still on the call — there is no ad without it. */}
-              {salePack.usesClientFace && (
-                <p className="text-[10px] font-medium leading-relaxed text-amber-700 dark:text-amber-300">
-                  <b>Also collect a clear photo of the owner’s face.</b> This exact face appears in every
-                  clip, so ask for a straight-on, well-lit one — not a group photo and not a side angle.
-                </p>
-              )}
+            )}
+            <div>
+              <label className="flex items-center gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+                Background *
+                <FieldHint text="Real background means every clip is built from photographs of the client's own shop or office, which they must send before work can start. AI background means we build the location from their business profile. The generator writes a different prompt for each, so this cannot be guessed later." />
+              </label>
+              <select
+                data-test="sale-background"
+                value={req.realLocationProvided ? "real" : "ai"}
+                onChange={(e) => setReq((r) => ({ ...r, realLocationProvided: e.target.value === "real" }))}
+                className="mt-1 w-full h-9 px-3 rounded-md bg-card border border-amber-500/50 text-foreground text-sm outline-none focus:border-amber-500"
+              >
+                <option value="ai">🏙️ AI background — we build the location</option>
+                <option value="real">📷 Real background — client is sending photos of their shop / office</option>
+              </select>
             </div>
-          )}
+            {req.realLocationProvided && (
+              <p className="text-[10px] text-amber-700 dark:text-amber-300 leading-relaxed">
+                Collect every angle they can send — inside, outside, counter, product shelf. Each clip is set in a
+                different one of their photos, so more photos means a better ad.{" "}
+                <b>Nothing can be started until the photos arrive</b>, so ask for them on this call.
+              </p>
+            )}
+            {/* The face is not the background. On every other entry a client photo is a location
+                reference; here it is the identity the entire ad is built from, so the sales member
+                has to collect it while the client is still on the call — there is no ad without it. */}
+            {salePack?.usesClientFace && (
+              <p className="text-[10px] font-medium leading-relaxed text-amber-700 dark:text-amber-300">
+                <b>Also collect a clear photo of the owner’s face.</b> This exact face appears in every
+                clip, so ask for a straight-on, well-lit one — not a group photo and not a side angle.
+              </p>
+            )}
+          </div>
 
           {!salePack && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">

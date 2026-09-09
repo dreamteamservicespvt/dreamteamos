@@ -143,8 +143,8 @@ describe("a social-media month", () => {
     category: "social_media_management",
     progress: {
       kind: "smm",
-      targets: { ads: 8, posters: 0, posted: 0, campaigns: 0 },
-      done: { ads: adsDone, posters: 0, posted: 0, campaigns: 0 },
+      targets: { ads: 8, posters: 0, posted: 0, stories: 0, campaigns: 0 },
+      done: { ads: adsDone, posters: 0, posted: 0, stories: 0, campaigns: 0 },
       tracks: { ad_creation: { uid: trackUid, name: "Whoever" } },
       completedTracks: [],
       log: [],

@@ -94,6 +94,8 @@ export function withRequirementDefaults(requirement?: AdRequirement | null) {
   return {
     businessName: requirement?.businessName?.trim() || "",
     businessWhatsapp: requirement?.businessWhatsapp?.trim() || "",
+    businessAddress: requirement?.businessAddress?.trim() || "",
+    businessInfo: requirement?.businessInfo?.trim() || "",
     language: requirement?.language?.trim() || DEFAULT_REQUIREMENT.language,
     modelGender: (requirement?.modelGender as ModelGender) || DEFAULT_REQUIREMENT.modelGender,
     attireType: (requirement?.attireType as AttireType) || DEFAULT_REQUIREMENT.attireType,
@@ -104,8 +106,9 @@ export function withRequirementDefaults(requirement?: AdRequirement | null) {
     // greeting video themed for the wrong festival is worse than one nobody has themed yet.
     festival: requirement?.festival?.trim() || "",
     specialCategory: requirement?.specialCategory?.trim() || "",
-    // Only meaningful for a special-category sale, and there the sales member always answers it —
-    // so an unanswered flag means "no photos coming", which is the safe assumption to build on.
+    // Asked on every ad now, not only a special-category one. An unanswered flag means "no photos
+    // coming", which is the safe assumption to build on and what every ad sold before this in fact
+    // got — a location built from the business profile.
     realLocationProvided: requirement?.realLocationProvided === true,
   };
 }

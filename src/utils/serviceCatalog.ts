@@ -24,7 +24,9 @@ export interface PackageDeliverables {
   ads: number;
   posters: number;
   posted: number;
-  /** Ads actually run as digital-marketing campaigns. */
+  /** Stories put up. Twice the video count on every package — see `smmQuota`. */
+  stories: number;
+  /** Ads actually run as digital-marketing campaigns. Counted in VIDEOS: only a video is ever run. */
   campaigns: number;
 }
 
@@ -33,6 +35,15 @@ export interface ServicePackage {
   amount: number; // INR; 0 means "enter a custom amount"
   /** Monthly quota, for packages that owe a countable amount of work (Social Media Monthly). */
   deliverables?: PackageDeliverables;
+  /**
+   * The networks this package covers, biggest package widest.
+   *
+   * On the package rather than in a sales script because it is the second question every client
+   * asks after the price, and because it is the difference between two packages that otherwise
+   * look like "the same thing, more of it". It is read back to the client in their confirmation,
+   * so nobody can be told later that YouTube was included when they bought Starter.
+   */
+  platforms?: string[];
 }
 
 export interface ServiceCategory {
@@ -59,10 +70,27 @@ export interface ServiceCategory {
 /** Every ad in a Social Media Monthly package is the same length. */
 export const SMM_AD_LENGTH = "30 Seconds + Poster";
 
-/** N ads, N posters, N posted, N run — the shape every social-media package takes. */
-const smmQuota = (n: number): PackageDeliverables => ({
-  ads: n, posters: n, posted: n, campaigns: n,
+/**
+ * What a social-media month owes, from its video count.
+ *
+ * ── Why posts and stories are twice the videos ────────────────────────────────────────────────
+ * A month's feed is not one post per video. Every package runs two posts and two stories for each
+ * video made — the video itself, and a still or a cut from it — which is how a four-video Starter
+ * month still fills eight slots. The quota used to read N of everything, so a Starter month showed
+ * as finished after four posts when eight had been sold.
+ *
+ * Campaigns stay at N: only a VIDEO is ever run as a paid campaign, never a post or a story.
+ */
+const smmQuota = (videos: number): PackageDeliverables => ({
+  ads: videos, posters: videos, posted: videos * 2, stories: videos * 2, campaigns: videos,
 });
+
+/** Networks, by package tier — each tier adds to the one below it. */
+const SMM_PLATFORMS = {
+  starter: ["Instagram", "Facebook"],
+  plus: ["Instagram", "Facebook", "YouTube"],
+  pro: ["Instagram", "Facebook", "YouTube", "LinkedIn"],
+} as const;
 
 export const SERVICE_CATALOG: ServiceCategory[] = [
   {
@@ -120,11 +148,11 @@ export const SERVICE_CATALOG: ServiceCategory[] = [
     billing: "monthly",
     fromAd: false,
     packages: [
-      { label: "Starter Package", amount: 10000, deliverables: smmQuota(4) },
-      { label: "Plus Package", amount: 15000, deliverables: smmQuota(6) },
-      { label: "Pro Package", amount: 20000, deliverables: smmQuota(8) },
-      { label: "Business Package", amount: 25000, deliverables: smmQuota(10) },
-      { label: "Ultra Package", amount: 30000, deliverables: smmQuota(12) },
+      { label: "Starter Package", amount: 10000, deliverables: smmQuota(4), platforms: [...SMM_PLATFORMS.starter] },
+      { label: "Plus Package", amount: 15000, deliverables: smmQuota(6), platforms: [...SMM_PLATFORMS.plus] },
+      { label: "Pro Package", amount: 20000, deliverables: smmQuota(8), platforms: [...SMM_PLATFORMS.pro] },
+      { label: "Business Package", amount: 25000, deliverables: smmQuota(10), platforms: [...SMM_PLATFORMS.pro] },
+      { label: "Ultra Package", amount: 30000, deliverables: smmQuota(12), platforms: [...SMM_PLATFORMS.pro] },
     ],
   },
   {
@@ -364,17 +392,40 @@ export function packageDeliverables(
   return findPackage(categoryKey, packageLabel)?.deliverables;
 }
 
+/** The networks a package covers. Empty for everything that is not a social-media month. */
+export function packagePlatforms(categoryKey: string, packageLabel?: string | null): string[] {
+  if (!packageLabel) return [];
+  return findPackage(categoryKey, packageLabel)?.platforms || [];
+}
+
 /**
- * "Pro Package — ₹20,000 (8 ads · 8 posters · 8 posted · 8 run)".
+ * "Pro Package — ₹20,000 (8 videos · 8 posters · 16 posts · 16 stories · 8 run) · Instagram + Facebook + YouTube + LinkedIn".
  *
- * The quota is in the option text because the sales member is quoting it on a live call — having
- * to remember that Pro means eight of everything is how a client gets promised the wrong number.
+ * The quota AND the networks are in the option text because the sales member is quoting both on a
+ * live call — having to remember that Pro means sixteen posts but only eight videos, and that it
+ * is the first tier with LinkedIn, is how a client gets promised the wrong month.
  */
 export function packageOptionLabel(pkg: ServicePackage): string {
   const price = pkg.amount > 0 ? ` — ₹${pkg.amount.toLocaleString("en-IN")}` : "";
-  const d = pkg.deliverables;
-  const quota = d ? ` (${d.ads} ads · ${d.posters} posters · ${d.posted} posted · ${d.campaigns} run)` : "";
-  return `${pkg.label}${price}${quota}`;
+  const quota = pkg.deliverables ? ` (${deliverablesSummary(pkg.deliverables)})` : "";
+  const where = pkg.platforms?.length ? ` · ${pkg.platforms.join(" + ")}` : "";
+  return `${pkg.label}${price}${quota}${where}`;
+}
+
+/**
+ * "8 videos · 8 posters · 16 posts · 16 stories · 8 run" — one line for a quota.
+ *
+ * A zero is dropped rather than printed: a bulk order owes no stories, and "0 stories" on its card
+ * reads as work that is outstanding rather than work nobody bought.
+ */
+export function deliverablesSummary(d: PackageDeliverables): string {
+  return [
+    [d.ads, "videos"], [d.posters, "posters"], [d.posted, "posts"],
+    [d.stories, "stories"], [d.campaigns, "run"],
+  ]
+    .filter(([n]) => (n as number) > 0)
+    .map(([n, word]) => `${n} ${word}`)
+    .join(" · ");
 }
 
 /**

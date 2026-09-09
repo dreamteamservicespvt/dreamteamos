@@ -245,7 +245,7 @@ describe("knowing when the balance is due", () => {
     progress: {
       kind: "smm",
       targets: { ads: 8, posters: 8, posted: 8, campaigns: 8 },
-      done: { ads: 0, posters: 0, posted: 0, campaigns: 0, ...done },
+      done: { ads: 0, posters: 0, posted: 0, stories: 0, campaigns: 0, ...done },
       tracks: {},
       completedTracks,
       log: [],

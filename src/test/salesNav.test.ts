@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getNavItems, type NavItem } from "@/utils/roleHelpers";
+import { getNavItems, getDefaultRoute, type NavItem } from "@/utils/roleHelpers";
 
 /**
  * The sales member's sidebar.
@@ -79,5 +79,32 @@ describe("nothing was lost in the regrouping", () => {
       if (item.children) expect(item.children.every((c) => !!c.path)).toBe(true);
       else expect(item.path, `${item.title} has no path`).toBeTruthy();
     }
+  });
+});
+
+/**
+ * The sales admin's front door.
+ *
+ * They were landing on a Dashboard that summarises the leaderboard's own figures — so the first
+ * thing they did every morning was leave it. The leaderboard is the screen the job is about.
+ */
+describe("where a sales admin lands", () => {
+  it("opens on the leaderboard, not the dashboard", () => {
+    expect(getDefaultRoute("sales_admin")).toBe("/sales-admin/leaderboard");
+  });
+
+  it("puts the leaderboard first in their sidebar too", () => {
+    expect(getNavItems("sales_admin")[0].title).toBe("Leaderboard");
+  });
+
+  it("still keeps the dashboard reachable", () => {
+    const paths = getNavItems("sales_admin").flatMap((i) => (i.children ? i.children.map((c) => c.path!) : [i.path!]));
+    expect(paths).toContain("/sales-admin/dashboard");
+  });
+
+  it("leaves every other role where it was", () => {
+    expect(getDefaultRoute("sales_member")).toBe("/sales/dashboard");
+    expect(getDefaultRoute("tech_admin")).toBe("/tech-admin/dashboard");
+    expect(getDefaultRoute("tech_team_leader")).toBe("/team-leader/work-assign");
   });
 });
