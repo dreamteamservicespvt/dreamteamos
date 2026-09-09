@@ -430,6 +430,11 @@ New shared page `pages/shared/FeedbackUpsell.tsx` for sales admin / tech admin /
 open a SELLER first, and only their orders are subscribed to, because a cross-member scan of orders
 is the query that exhausts the free-tier read budget.
 
+**A new order rings the tech side.** `notifyTechSideOfNewOrder` fires from the CREATE branch of
+`upsertOrderForSale` only (the update branch runs on every sale edit) to **both** `tech_admin` and
+`tech_team_leader`, in one `role in [...]` query, keyed `order_new_<id>`. The promise clock starts
+at the SALE, so an ad sold at six in the evening used to spend the night unseen.
+
 **Sales admin lands on `/sales-admin/leaderboard`**, not the dashboard.
 
 ### How this was verified

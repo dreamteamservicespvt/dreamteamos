@@ -17,14 +17,14 @@ import { sendNotification } from "@/services/notifications";
 import { logTechActivity, type ActivityActor } from "@/services/activityLog";
 import { ensureSaleOrderChat, deleteOrderChat } from "@/services/orderChat";
 import { normalizePhone, phoneLockId } from "@/utils/phone";
-import { isAdCategory, productionCategory } from "@/utils/serviceCatalog";
+import { isAdCategory, productionCategory, categoryLabel as serviceCategoryLabel } from "@/utils/serviceCatalog";
 import { releasedToTech } from "@/utils/saleDiscount";
 import { promiseDueMs, deadlineState, canExtendPromise, extendPromise } from "@/utils/promiseSla";
 import { initialProgress, isProgressComplete, isTrackComplete, TRACK_FIELDS } from "@/utils/orderProgress";
 import { penaltyAmount, totalPenalties } from "@/utils/penalty";
 import type {
   AppUser, Lead, Order, OrderProgress, OrderProgressField, OrderTrack, OrderUpdateNote,
-  PenaltyClipType, PenaltyEntry, SaleDetail, UserRole, WorkAssignment,
+  PenaltyClipType, PenaltyEntry, PromiseDeadline, SaleDetail, UserRole, WorkAssignment,
 } from "@/types";
 
 const ACTIVE_ORDER_STATUSES = ["unassigned", "assigned", "completed"] as const;
@@ -55,6 +55,46 @@ export function nextWorkUniqueId(category: string, existing: WorkAssignment[]): 
     return isNaN(n) ? m : Math.max(m, n);
   }, 0);
   return `${prefix}${String(max + 1).padStart(3, "0")}`;
+}
+
+/**
+ * Tell the tech side a new job has arrived.
+ *
+ * ── Why both roles, and why a notification at all ────────────────────────────────────────────
+ * A new order used to appear in the queue and say nothing. That is fine for a queue somebody is
+ * already looking at and useless for the 24-hour promise attached to it: the clock starts at the
+ * SALE, so an ad sold at six in the evening had already spent the night before anyone knew it
+ * existed. The team leader does most of the assigning, but not all of it and not always today —
+ * so both they and the tech admin are told, which is what makes "it went to the team leader" true
+ * without making it the only route.
+ *
+ * One query for both roles rather than two, and only on CREATION — `upsertOrderForSale` runs again
+ * on every edit of the sale, and re-announcing a job somebody is already making is how a team
+ * learns to ignore the bell.
+ */
+async function notifyTechSideOfNewOrder(order: {
+  id: string; businessName?: string; category: string; soldByName?: string;
+  promise?: PromiseDeadline | null;
+}): Promise<void> {
+  try {
+    const snap = await getDocs(query(
+      collection(db, "users"),
+      where("role", "in", ["tech_admin", "tech_team_leader"]),
+    ));
+    const promise = order.promise?.label ? ` · due in ${order.promise.label}` : "";
+    await Promise.all(snap.docs.map((d) => sendNotification({
+      userId: d.id,
+      type: "order_new",
+      title: "New order in the queue",
+      message: `${serviceCategoryLabel(order.category)} for "${order.businessName || "a client"}"${order.soldByName ? `, sold by ${order.soldByName}` : ""}${promise}.`,
+      link: "/tech-admin/orders",
+      // The order is the event. Without this, a sale saved twice in the same minute — which the
+      // form allows, and members do — would ring everyone twice for one job.
+      dedupeKey: `order_new_${order.id}`,
+    })));
+  } catch (err) {
+    console.error("[orders] new-order notify failed:", err);
+  }
 }
 
 /**
@@ -212,6 +252,19 @@ export async function upsertOrderForSale(params: {
         verifiedAt: null,
         deliveredAmount: null,
       });
+
+      /*
+        Only here, in the create branch. The update branch above runs on every edit of the sale,
+        and a re-announcement of a job already in production is noise the team learns to ignore.
+        Awaited but never fatal: a sale must not fail because a bell could not be rung.
+      */
+      await notifyTechSideOfNewOrder({
+        id,
+        businessName: saleFields.businessName,
+        category: item.category,
+        soldByName,
+        promise: item.promise ?? null,
+      }).catch(() => { /* the order exists either way */ });
     }
 
     /**
