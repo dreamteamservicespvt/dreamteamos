@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { AdFormData, FileStore, GeneratedOutputs } from "@/types/aiPlatform";
+import { AdFormData, FileStore, GeneratedOutputs, PosterConcept } from "@/types/aiPlatform";
 import { 
   MAIN_FRAME_SYSTEM_PROMPT,
   MULTI_FRAME_SYSTEM_PROMPT,
@@ -31,8 +31,18 @@ import {
   CHARACTER_MULTI_FRAME_SYSTEM_PROMPT,
   CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT,
   LOCATION_INDEX_SYSTEM_PROMPT,
+  wardrobeDirective,
 } from "./prompts/characterAd";
-import { getCharacterPack, packSpeakers, packSpeakerAliases, packNameSpellings } from "./characterPacks";
+import {
+  getCharacterPack, packSpeakers, packSpeakerAliases, packNameSpellings, isHumanPack, packModelGender,
+  type CharacterPack,
+} from "./characterPacks";
+import {
+  POSTER_CONCEPT_SYSTEM_PROMPT, POSTER_CONCEPT_USER_PROMPT, POSTER_CONCEPT_REFINE_SYSTEM_PROMPT,
+} from "./prompts/posterConcept";
+import { getPosterStyle, AUTO_POSTER_STYLE } from "./posterStyles";
+import { DEFAULT_POSTER_SIZE } from "@/utils/posterSpec";
+import { finalizePosterConcepts, normalizePosterConcept, parsePosterConcepts } from "@/utils/posterConcepts";
 import {
   parseDialogueClips, validateDialogueClips, formatDialogueScript, applyNameSpellings,
   type DialogueClip, wordBudgetFor,
@@ -296,6 +306,15 @@ const buildRatioDirective = (formData: AdFormData): string => {
 };
 
 /**
+ * The ordered outfit for a human-model special category ("Normal Ad (Female)" and friends), or
+ * undefined for every other pack. The pack decides the gender; the form decides the clothes.
+ */
+const packWardrobe = (pack: CharacterPack | null, formData: AdFormData): string | undefined => {
+  if (!pack || !isHumanPack(pack) || !formData.attireType) return undefined;
+  return wardrobeDirective(formData.attireType, formData.customAttire, packModelGender(pack)) || undefined;
+};
+
+/**
  * Resolves the name-board text: the explicit "logoNameText" if the user typed one, else a
  * fallback to the business name extracted from the business info (task 3 — the name board must
  * still render even when the user did not type a custom name).
@@ -368,6 +387,7 @@ export const refineSection = async (
             adType: formData.adType,
             festivalName: formData.festivalName,
             businessContext: JSON.stringify(businessInfo),
+            wardrobe: packWardrobe(pack, formData),
           })
         : buildRatioDirective(formData) + buildNameBoardDirective(formData, businessInfo) + MAIN_FRAME_SYSTEM_PROMPT(
             formData.attireType,
@@ -906,6 +926,132 @@ export const extractBusinessOnly = async (
     productImageCount: files.productImages ? files.productImages.length : 0,
     stockImagePrompts: null
   };
+};
+
+// --- Poster Creation: concept posters from the team's style library ---
+
+/** How many concepts a poster run writes when nobody says otherwise. */
+export const DEFAULT_POSTER_CONCEPT_COUNT = 3;
+
+/**
+ * Concept posters for a business: extract who they are, then write N distinct concepts in the
+ * chosen style (or the best-fitting styles), each with a copy-paste image prompt.
+ *
+ * The logo and the product/premises photos are attached to the concept call as well as the
+ * extraction: the art director can only build a metaphor out of "the client's real product" if it
+ * can see the product. The logo is attached so it can judge the palette, and the prompt forbids it
+ * from describing the logo — see services/prompts/posterConcept.
+ */
+export const generatePosterConcepts = async (
+  formData: AdFormData,
+  files: FileStore,
+  onProgress: (status: string, progress: number) => void,
+): Promise<GeneratedOutputs> => {
+  const extracted = await extractBusinessOnly(formData, files, (step, progress) => onProgress(step, Math.min(45, progress * 0.45)));
+  const businessInfo = extracted.businessInfo;
+
+  const posterSize = formData.posterSize || DEFAULT_POSTER_SIZE;
+  const styleId = formData.posterStyle || AUTO_POSTER_STYLE;
+  const style = getPosterStyle(styleId);
+  const occasion = (formData.posterOccasion || '').trim();
+  const conceptCount = Math.max(1, Math.min(6, formData.posterConceptCount || DEFAULT_POSTER_CONCEPT_COUNT));
+  const businessName = (formData.noLogo && formData.logoNameText?.trim()) || extractBusinessNameFromInfo(businessInfo);
+  const contacts = extractContactsFromInfo(businessInfo).slice(0, 2);
+  const address = resolveRealAddress(businessInfo, businessName);
+
+  onProgress(`Designing ${conceptCount} poster concept${conceptCount === 1 ? '' : 's'}${style ? ` — ${style.label}` : ''}...`, 55);
+
+  const imageParts: Array<{ inlineData: { mimeType: string; data: string } } | { text: string }> = [];
+  if (files.logo) {
+    imageParts.push({ inlineData: { mimeType: files.logo.type, data: await fileToBase64(files.logo) } });
+    imageParts.push({ text: `This is the client's logo — for your eyes only. In the prompts call it "the attached logo" and never describe it.` });
+  }
+  for (const [i, f] of (files.productImages || []).slice(0, 4).entries()) {
+    imageParts.push({ inlineData: { mimeType: f.type, data: await fileToBase64(f) } });
+    imageParts.push({ text: `Product photo ${i + 1} — a real product this business sells. Build metaphors from what you see.` });
+  }
+  for (const [i, f] of (files.storeImage || []).slice(0, 3).entries()) {
+    imageParts.push({ inlineData: { mimeType: f.type, data: await fileToBase64(f) } });
+    imageParts.push({ text: `Premises photo ${i + 1} — the client's real shop/office.` });
+  }
+
+  const systemInstruction = POSTER_CONCEPT_SYSTEM_PROMPT({
+    posterSize,
+    style,
+    occasion,
+    conceptCount,
+    textLanguage: formData.posterTextLanguage || 'English',
+    hasLogo: !!files.logo,
+    nameBoardText: formData.noLogo ? (formData.logoNameText || businessName) : undefined,
+  });
+  const userPrompt = POSTER_CONCEPT_USER_PROMPT({
+    businessInfo,
+    businessName,
+    contacts,
+    address,
+    clientBrief: formData.textInstructions,
+    occasion,
+    conceptCount,
+  });
+
+  const runOnce = async (extraNote = '') => {
+    const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
+      model,
+      contents: [{ role: 'user', parts: [...imageParts, { text: userPrompt + extraNote }] }],
+      config: { systemInstruction, responseMimeType: 'application/json', temperature: 0.95 },
+    }));
+    return parsePosterConcepts(response.text || '', styleId);
+  };
+
+  let concepts = await runOnce();
+  // A short reply is retried once, asking for exactly the missing number rather than starting over.
+  if (concepts.length < conceptCount) {
+    onProgress('Filling in the remaining concepts...', 80);
+    const more = await runOnce(`\n\nYou returned ${concepts.length}. Return ${conceptCount} complete, different concepts this time.`).catch(() => []);
+    if (more.length > concepts.length) concepts = more;
+  }
+  if (concepts.length === 0) {
+    throw new Error('The poster concepts could not be read. Please try again.');
+  }
+
+  onProgress('Poster concepts ready.', 100);
+  return {
+    ...extracted,
+    posterConcepts: finalizePosterConcepts(concepts, { posterSize, contacts, maxCount: conceptCount }),
+  };
+};
+
+/** Rewrites one concept to the team's request, keeping the canvas, style and truth rules. */
+export const refinePosterConcept = async (
+  concept: PosterConcept,
+  instruction: string,
+  formData: AdFormData,
+  businessInfo: unknown,
+  hasLogo: boolean,
+): Promise<PosterConcept> => {
+  const posterSize = formData.posterSize || DEFAULT_POSTER_SIZE;
+  const style = getPosterStyle(formData.posterStyle);
+  const contacts = extractContactsFromInfo(businessInfo).slice(0, 2);
+  const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
+    model,
+    contents: [{ role: 'user', parts: [{ text: [
+      `CURRENT CONCEPT:\n${JSON.stringify(concept, null, 2)}`,
+      `REQUESTED CHANGE:\n${instruction}`,
+      `REAL PHONE NUMBERS (the only ones allowed): ${contacts.join(' , ') || 'none'}`,
+      `BUSINESS INFORMATION:\n${JSON.stringify(businessInfo ?? {}, null, 2)}`,
+    ].join('\n\n') }] }],
+    config: {
+      systemInstruction: POSTER_CONCEPT_REFINE_SYSTEM_PROMPT({
+        posterSize, style, occasion: formData.posterOccasion, textLanguage: formData.posterTextLanguage, hasLogo,
+      }),
+      responseMimeType: 'application/json',
+    },
+  }));
+  const [parsed] = parsePosterConcepts(response.text || '', concept.style);
+  const next = parsed ?? normalizePosterConcept(concept, concept.style);
+  if (!next) return concept;
+  const [final] = finalizePosterConcepts([next], { posterSize, contacts });
+  return final;
 };
 
 export interface GenerationOptions {
@@ -1816,6 +1962,7 @@ Segment 2: <text>
         festivalName: formData.festivalName,
         hasLogo: !!files.logo,
         businessContext: serializedBusinessInfo,
+        wardrobe: packWardrobe(pack, formData),
       })
     : buildRatioDirective(formData) + buildNameBoardDirective(formData, businessInfo) + MULTI_FRAME_SYSTEM_PROMPT(
     formData.attireType,

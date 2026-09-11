@@ -48,10 +48,13 @@ export function orderDocId(leadId: string, item: SaleDetail, itemIndex: number):
 
 /** Sequential, readable work id (W001 / P002 / C003 / O004) — mirrors the WorkAssign convention. */
 export function nextWorkUniqueId(category: string, existing: WorkAssignment[]): string {
-  const prefix = category === "wishes" ? "W" : category === "promotional" ? "P" : category === "cinematic" ? "C" : "O";
+  // Posters get "PS" — two letters, because P is promotional. A promotional id is `P` + digits, so
+  // a PS id read as promotional parses as NaN and is skipped, and the two sequences never collide.
+  const prefix = category === "poster" ? "PS"
+    : category === "wishes" ? "W" : category === "promotional" ? "P" : category === "cinematic" ? "C" : "O";
   const same = existing.filter((a) => a.uniqueId?.startsWith(prefix));
   const max = same.reduce((m, a) => {
-    const n = parseInt(a.uniqueId?.slice(1) || "0", 10);
+    const n = parseInt(a.uniqueId?.slice(prefix.length) || "0", 10);
     return isNaN(n) ? m : Math.max(m, n);
   }, 0);
   return `${prefix}${String(max + 1).padStart(3, "0")}`;

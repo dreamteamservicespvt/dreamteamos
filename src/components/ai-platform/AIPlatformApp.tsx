@@ -11,9 +11,15 @@ import { GeneratedCard, parseVoiceOverClips, stripAttachmentDirective } from './
 import { buildPromptAttachments, type PromptAttachment } from '@/utils/promptAttachments';
 import { SavedItems, SavedGeneration } from './SavedItems';
 import { AdFormData, AdType, AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER, FileStore, GeneratedOutputs, GenerationStatus, LocationMode } from '@/types/aiPlatform';
-import { characterPackGroups, getCharacterPack } from '@/services/characterPacks';
-import { generateAdAssets, extractBusinessOnly, generateStockImagePrompts, refineStockImagePrompt, generateOverlayTexts, refineSection, regenerateVeoFromVoiceOver, SectionType, extractBusinessNameFromInfo } from '@/services/geminiService';
-import { collection, addDoc, getDocs, getDoc, query, where, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
+import PosterSpecFields from '@/components/work/PosterSpecFields';
+import PosterConceptsPanel from './PosterConceptsPanel';
+import { DEFAULT_POSTER_SIZE, isPosterCategory, isValidPosterSize, posterSizeLabel } from '@/utils/posterSpec';
+import { AUTO_POSTER_STYLE } from '@/services/posterStyles';
+import { useAssignmentBrief } from '@/hooks/useAssignmentBrief';
+import { briefAsInstructions } from '@/utils/adRequirement';
+import { characterPackGroups, getCharacterPack, isHumanPack, packModelGender } from '@/services/characterPacks';
+import { generateAdAssets, generatePosterConcepts, refinePosterConcept, DEFAULT_POSTER_CONCEPT_COUNT, generateStockImagePrompts, refineStockImagePrompt, generateOverlayTexts, refineSection, regenerateVeoFromVoiceOver, SectionType, extractBusinessNameFromInfo } from '@/services/geminiService';
+import { collection, addDoc, getDocs, getDoc, query, where, serverTimestamp, doc, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/services/firebase';
 import { useAuthStore } from '@/store/authStore';
 import type { WorkAssignment } from '@/types';
@@ -91,7 +97,14 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     aspectRatio: '9:16',
     language: 'Telugu',
     noLogo: false,
-    logoNameText: ''
+    logoNameText: '',
+    // Poster Creation — read only in poster mode. 4:5 because that is how Instagram shows a
+    // poster uncropped, and English because image generators spell it most reliably.
+    posterSize: DEFAULT_POSTER_SIZE,
+    posterStyle: AUTO_POSTER_STYLE,
+    posterOccasion: '',
+    posterConceptCount: DEFAULT_POSTER_CONCEPT_COUNT,
+    posterTextLanguage: 'English',
   });
 
   const [files, setFiles] = useState<FileStore>({
@@ -131,7 +144,17 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   const toggleOutputSection = (section: string) => {
     setCollapsedOutputs(prev => ({ ...prev, [section]: !prev[section] }));
   };
-  const [creationMode, setCreationMode] = useState<'video' | 'poster'>('video');
+  /** A poster job opens in Poster Creation and stays there — the client bought a poster. */
+  const posterJob = isPosterCategory(assignment?.category);
+  const [creationMode, setCreationMode] = useState<'video' | 'poster'>(() => (posterJob ? 'poster' : 'video'));
+  /** Which concept is being refined. */
+  const [refiningConcept, setRefiningConcept] = useState<number | null>(null);
+  /**
+   * The saved generation this screen is showing, so pressing Save updates it instead of writing a
+   * second copy. Generate → auto-save → Save used to leave two identical documents behind (three
+   * with a regenerate), and the team's history listed every one of them.
+   */
+  const generationDocIdRef = useRef<string | null>(null);
   const [selectedFestivalOption, setSelectedFestivalOption] = useState<string>('');
   const [customFestivalName, setCustomFestivalName] = useState<string>('');
   const [customScript, setCustomScript] = useState<string>('');
@@ -169,6 +192,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       setSelectedFestivalOption(listed ? a.festival : CUSTOM_FESTIVAL_OPTION);
       setCustomFestivalName(listed ? '' : a.festival);
     }
+    const poster = isPosterCategory(a.category);
+    if (poster) setCreationMode('poster');
     const clips = a.clipCount || Math.max(1, Math.floor((parseInt(a.duration) || 16) / 8));
     const seconds = Math.min(120, Math.max(8, clips * 8));
     const isPreset = [16, 32, 48, 64].includes(seconds);
@@ -185,7 +210,13 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       ...(a.attireType ? { attireType: a.attireType as AttireType } : {}),
       ...(a.attireType === AttireType.CUSTOM && a.customAttire ? { customAttire: a.customAttire } : {}),
       ...(a.aspectRatio ? { aspectRatio: a.aspectRatio } : {}),
-      ...(a.language ? { language: a.language } : {}),
+      // On a poster job the language is the language of the words ON the poster.
+      ...(a.language ? (poster ? { posterTextLanguage: a.language } : { language: a.language }) : {}),
+      ...(poster ? {
+        posterSize: a.posterSize || DEFAULT_POSTER_SIZE,
+        posterStyle: a.posterStyle || AUTO_POSTER_STYLE,
+        posterOccasion: a.festival || '',
+      } : {}),
       // The occasion was agreed with the client at sale time and themes the entire ad, so the
       // member opens on it rather than choosing a festival nobody bought.
       ...(a.festival ? { festivalName: a.festival } : {}),
@@ -267,6 +298,33 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   const aspectRatioLocked = !!assignment?.aspectRatio;
   const languageLocked = !!assignment?.language;
   const adTypeLocked = !!assignment;
+  /** Poster fields the job specifies are fixed, exactly like the ad spec. */
+  const posterLocks = {
+    size: posterJob && !!assignment?.posterSize,
+    style: posterJob && !!assignment?.posterStyle,
+    occasion: posterJob && !!assignment?.festival,
+  };
+
+  /**
+   * The sale's business info, in the generator's text box when the job opens.
+   *
+   * The sales member wrote down what the business does and what the ad must carry; the member used
+   * to find it (if at all) in a WhatsApp message and retype it here. Read off the job, or its order
+   * for work assigned before the job carried it, and put in only when the box is empty — whatever a
+   * member has typed is never replaced.
+   */
+  const assignmentBrief = useAssignmentBrief(assignment);
+  const briefAppliedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!assignment || assignmentBrief.loading) return;
+    if (briefAppliedFor.current === assignment.id) return;
+    briefAppliedFor.current = assignment.id;
+    const text = briefAsInstructions(assignmentBrief.businessInfo, assignmentBrief.businessAddress);
+    if (!text) return;
+    setFormData(prev => (prev.textInstructions.trim() ? prev : { ...prev, textInstructions: text }));
+    // Keyed on the job and on the brief arriving; the assignment object itself changes every snapshot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assignment?.id, assignmentBrief.loading, assignmentBrief.businessInfo, assignmentBrief.businessAddress]);
   /** The selected cartoon duo, or null for a normal human-model ad. */
   const activePack = getCharacterPack(formData.characterPack);
 
@@ -335,41 +393,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
         const snap = await getDoc(doc(db, 'ai_generations', assignment.savedGenerationId!));
         if (!snap.exists()) return;
         const item = { id: snap.id, ...snap.data() } as SavedGeneration;
-        const savedFestivalName = item.festivalName || '';
-        const isKnownFestival = savedFestivalName ? upcomingFestivals.includes(savedFestivalName) : false;
-        setSelectedFestivalOption(savedFestivalName ? (isKnownFestival ? savedFestivalName : CUSTOM_FESTIVAL_OPTION) : '');
-        setCustomFestivalName(savedFestivalName && !isKnownFestival ? savedFestivalName : '');
-        setViewingSavedItem(item);
-        setOutputs({
-          businessInfo: item.businessInfo,
-          mainFramePrompts: item.mainFramePrompts || [],
-          headerPrompt: item.headerPrompt,
-          posterPrompt: item.posterPrompt || '',
-          voiceOverScript: item.voiceOverScript,
-          veoPrompts: item.veoPrompts,
-          hasProductImages: false,
-          productImageCount: 0,
-          stockImagePrompts: item.stockImagePrompts || null,
-          overlayTexts: item.overlayTexts || null,
-        });
-        setFormData(prev => ({
-          ...prev,
-          adType: item.adType as AdType,
-          festivalName: item.festivalName || '',
-          characterPack: item.characterPack || undefined,
-          locationMode: item.locationMode === 'real_provided' || item.locationMode === 'ai_generated' ? item.locationMode : undefined,
-          attireType: item.attireType as AttireType,
-          ...(item.gender ? { gender: item.gender as ModelGender } : {}),
-          ...(item.customAttire !== undefined ? { customAttire: item.customAttire } : {}),
-          // Duration stays locked from assignment — do not override
-          ...(item.aspectRatio ? { aspectRatio: item.aspectRatio as any } : {}),
-          ...(item.language ? { language: item.language } : {}),
-          ...(item.noLogo !== undefined ? { noLogo: item.noLogo } : {}),
-          ...(item.logoNameText !== undefined ? { logoNameText: item.logoNameText } : {}),
-        }));
-        if (item.creationMode === 'video' || item.creationMode === 'poster') {
-          setCreationMode(item.creationMode);
-        }
+        restoreGeneration(item, true);
       } catch (e) {
         console.error('Failed to auto-load saved generation:', e);
       }
@@ -392,44 +416,66 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     }
   };
 
+  /** Everything a saved generation stores, for both the auto-save and the Save button. */
+  const generationPayload = (o: GeneratedOutputs) => ({
+    userId: user?.uid,
+    userName: user?.name || user?.email,
+    ...(assignmentId ? { workAssignmentId: assignmentId } : {}),
+    businessName: extractBusinessNameFromInfo(o.businessInfo) || 'Untitled',
+    businessType: o.businessInfo?.businessType || o.businessInfo?.type || 'Business',
+    businessInfo: o.businessInfo,
+    mainFramePrompts: o.mainFramePrompts,
+    headerPrompt: o.headerPrompt,
+    posterPrompt: o.posterPrompt,
+    voiceOverScript: o.voiceOverScript,
+    veoPrompts: o.veoPrompts,
+    stockImagePrompts: o.stockImagePrompts,
+    overlayTexts: o.overlayTexts || null,
+    posterConcepts: o.posterConcepts || null,
+    adType: formData.adType,
+    festivalName: formData.festivalName,
+    characterPack: formData.characterPack || null,
+    locationMode: formData.locationMode || null,
+    gender: formData.gender || ModelGender.FEMALE,
+    attireType: formData.attireType,
+    customAttire: formData.customAttire || '',
+    duration: formData.duration,
+    creationMode: creationMode,
+    aspectRatio: formData.aspectRatio,
+    language: formData.language,
+    noLogo: formData.noLogo || false,
+    logoNameText: formData.logoNameText || '',
+    posterSize: formData.posterSize || DEFAULT_POSTER_SIZE,
+    posterStyle: formData.posterStyle || AUTO_POSTER_STYLE,
+    posterOccasion: formData.posterOccasion || '',
+    posterTextLanguage: formData.posterTextLanguage || 'English',
+  });
+
+  /**
+   * Writes the generation on screen: a new document the first time, the same document after that.
+   * Returns its id. The job is pointed at it so reopening the job reopens this work.
+   */
+  const persistGeneration = async (o: GeneratedOutputs, forceNew = false): Promise<string> => {
+    const payload = generationPayload(o);
+    let id = forceNew ? null : generationDocIdRef.current;
+    if (id) {
+      await setDoc(doc(db, 'ai_generations', id), { ...payload, updatedAt: serverTimestamp() }, { merge: true });
+    } else {
+      const ref = await addDoc(collection(db, 'ai_generations'), { ...payload, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      id = ref.id;
+      generationDocIdRef.current = id;
+    }
+    if (assignmentId) {
+      await updateDoc(doc(db, 'work_assignments', assignmentId), { savedGenerationId: id });
+    }
+    return id;
+  };
+
   const handleSave = async () => {
     if (!user || !outputs) return;
     setIsSaving(true);
     try {
-      const businessName = extractBusinessNameFromInfo(outputs.businessInfo) || 'Untitled';
-      const businessType = outputs.businessInfo?.businessType || outputs.businessInfo?.type || 'Business';
-      const docRef = await addDoc(collection(db, 'ai_generations'), {
-        userId: user.uid,
-        userName: user.name || user.email,
-        ...(assignmentId ? { workAssignmentId: assignmentId } : {}),
-        businessName, businessType,
-        businessInfo: outputs.businessInfo,
-        mainFramePrompts: outputs.mainFramePrompts,
-        headerPrompt: outputs.headerPrompt,
-        posterPrompt: outputs.posterPrompt,
-        voiceOverScript: outputs.voiceOverScript,
-        veoPrompts: outputs.veoPrompts,
-        stockImagePrompts: outputs.stockImagePrompts,
-        overlayTexts: outputs.overlayTexts || null,
-        adType: formData.adType,
-        festivalName: formData.festivalName,
-        characterPack: formData.characterPack || null,
-        locationMode: formData.locationMode || null,
-        gender: formData.gender || ModelGender.FEMALE,
-        attireType: formData.attireType,
-        customAttire: formData.customAttire || '',
-        duration: formData.duration,
-        creationMode: creationMode,
-        aspectRatio: formData.aspectRatio,
-        language: formData.language,
-        noLogo: formData.noLogo || false,
-        logoNameText: formData.logoNameText || '',
-        createdAt: serverTimestamp()
-      });
-      // Link to assignment if exists
-      if (assignmentId) {
-        await updateDoc(doc(db, 'work_assignments', assignmentId), { savedGenerationId: docRef.id });
-      }
+      await persistGeneration(outputs);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
       loadSavedItems();
@@ -440,15 +486,17 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     }
   };
 
-  const handleSelectSavedItem = (item: SavedGeneration) => {
+  /**
+   * Puts a saved generation back on screen — its outputs, its settings, and its document id, so a
+   * later Save updates it rather than writing a copy. Used by the auto-load when a job opens and by
+   * the Saved Items list. `keepDuration` holds the length an assignment fixed.
+   */
+  const restoreGeneration = (item: SavedGeneration, keepDuration: boolean) => {
     const savedFestivalName = item.festivalName || '';
     const isKnownFestival = savedFestivalName ? upcomingFestivals.includes(savedFestivalName) : false;
-
-    setSelectedFestivalOption(
-      savedFestivalName ? (isKnownFestival ? savedFestivalName : CUSTOM_FESTIVAL_OPTION) : ''
-    );
+    setSelectedFestivalOption(savedFestivalName ? (isKnownFestival ? savedFestivalName : CUSTOM_FESTIVAL_OPTION) : '');
     setCustomFestivalName(savedFestivalName && !isKnownFestival ? savedFestivalName : '');
-
+    generationDocIdRef.current = item.id || null;
     setViewingSavedItem(item);
     setOutputs({
       businessInfo: item.businessInfo,
@@ -461,6 +509,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       productImageCount: 0,
       stockImagePrompts: item.stockImagePrompts || null,
       overlayTexts: item.overlayTexts || null,
+      posterConcepts: item.posterConcepts || null,
     });
     setFormData(prev => ({
       ...prev,
@@ -472,15 +521,25 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       ...(item.gender ? { gender: item.gender as ModelGender } : {}),
       ...(item.customAttire !== undefined ? { customAttire: item.customAttire } : {}),
       // Only restore duration when not locked by an assignment
-      ...(durationLocked ? {} : { duration: item.duration || 16, durationMode: 'preset' as const }),
+      ...(keepDuration ? {} : { duration: item.duration || 16, durationMode: 'preset' as const }),
       ...(item.aspectRatio ? { aspectRatio: item.aspectRatio as any } : {}),
       ...(item.language ? { language: item.language } : {}),
       ...(item.noLogo !== undefined ? { noLogo: item.noLogo } : {}),
       ...(item.logoNameText !== undefined ? { logoNameText: item.logoNameText } : {}),
+      // A poster job's canvas, style and occasion come from the job, not from an older save.
+      ...(item.posterSize && !posterLocks.size ? { posterSize: item.posterSize } : {}),
+      ...(item.posterStyle && !posterLocks.style ? { posterStyle: item.posterStyle } : {}),
+      ...(item.posterOccasion !== undefined && !posterLocks.occasion ? { posterOccasion: item.posterOccasion || '' } : {}),
+      ...(item.posterTextLanguage ? { posterTextLanguage: item.posterTextLanguage } : {}),
     }));
-    if (item.creationMode === 'video' || item.creationMode === 'poster') {
+    // A poster job never switches to video, whatever an older save says.
+    if (!posterJob && (item.creationMode === 'video' || item.creationMode === 'poster')) {
       setCreationMode(item.creationMode);
     }
+  };
+
+  const handleSelectSavedItem = (item: SavedGeneration) => {
+    restoreGeneration(item, durationLocked);
     setShowSavedItems(false);
   };
 
@@ -562,13 +621,17 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       await showAlert({ title: "Missing Logo", description: "Upload a logo image, OR tick 'No logo' and enter the business name to use as a name board.", confirmText: "OK" });
       return;
     }
-    if (formData.adType === AdType.FESTIVAL && !formData.festivalName.trim()) {
+    if (creationMode === 'poster' && !isValidPosterSize(formData.posterSize)) {
+      await showAlert({ title: "Poster size", description: "Enter a valid custom size — a ratio like 5 : 7, or pixels like 1080 × 1350.", confirmText: "OK" });
+      return;
+    }
+    if (creationMode === 'video' && formData.adType === AdType.FESTIVAL && !formData.festivalName.trim()) {
       await showAlert({ title: "Missing Festival", description: "Please select a festival or enter a custom festival name.", confirmText: "OK" });
       return;
     }
     // "Use their photos" with no photos attached would silently fall back to an invented
     // location — the opposite of what was promised to the client, so stop and say so.
-    if (activePack && formData.locationMode === 'real_provided' && files.storeImage.length === 0) {
+    if (creationMode === 'video' && activePack && formData.locationMode === 'real_provided' && files.storeImage.length === 0) {
       await showAlert({
         title: "Location photos missing",
         description: `You chose to use the client's real location for this ${activePack.label} ad, but no photos are attached. Upload them into "Store / Office Image", or switch to "No — create AI background".`,
@@ -584,7 +647,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     try {
       let generatedResult: GeneratedOutputs;
       if (creationMode === 'poster') {
-        generatedResult = await extractBusinessOnly(formData, files, (step, progress) => {
+        generatedResult = await generatePosterConcepts(formData, files, (step, progress) => {
           if (abortControllerRef.current?.signal.aborted) throw new Error('Generation stopped by user');
           setStatus(prev => ({ ...prev, step, progress }));
         });
@@ -601,42 +664,11 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       setOutputs(generatedResult);
       setStatus(prev => ({ ...prev, isProcessing: false, step: 'Completed', progress: 100 }));
 
-      // Auto-save to history
+      // Auto-save to history. A new generation is a new version, so it always starts a new document;
+      // Save after this updates that same document rather than duplicating it.
       if (user) {
         try {
-          const bName = extractBusinessNameFromInfo(generatedResult.businessInfo) || 'Untitled';
-          const bType = generatedResult.businessInfo?.businessType || generatedResult.businessInfo?.type || 'Business';
-          const autoSaveRef = await addDoc(collection(db, 'ai_generations'), {
-            userId: user.uid,
-            userName: user.name || user.email,
-            ...(assignmentId ? { workAssignmentId: assignmentId } : {}),
-            businessName: bName, businessType: bType,
-            businessInfo: generatedResult.businessInfo,
-            mainFramePrompts: generatedResult.mainFramePrompts,
-            headerPrompt: generatedResult.headerPrompt,
-            posterPrompt: generatedResult.posterPrompt,
-            voiceOverScript: generatedResult.voiceOverScript,
-            veoPrompts: generatedResult.veoPrompts,
-            stockImagePrompts: generatedResult.stockImagePrompts,
-            overlayTexts: generatedResult.overlayTexts || null,
-            adType: formData.adType,
-            festivalName: formData.festivalName,
-            characterPack: formData.characterPack || null,
-            locationMode: formData.locationMode || null,
-            gender: formData.gender || ModelGender.FEMALE,
-            attireType: formData.attireType,
-            customAttire: formData.customAttire || '',
-            duration: formData.duration,
-            creationMode: creationMode,
-            aspectRatio: formData.aspectRatio,
-            language: formData.language,
-            noLogo: formData.noLogo || false,
-            logoNameText: formData.logoNameText || '',
-            createdAt: serverTimestamp()
-          });
-          if (assignmentId) {
-            await updateDoc(doc(db, 'work_assignments', assignmentId), { savedGenerationId: autoSaveRef.id });
-          }
+          await persistGeneration(generatedResult, true);
           setSaveSuccess(true);
           setTimeout(() => setSaveSuccess(false), 3000);
           loadSavedItems();
@@ -656,6 +688,29 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       setStatus(prev => ({ ...prev, step: 'Stopping...', isProcessing: false }));
+    }
+  };
+
+  const handleRefineConcept = async (index: number, instruction: string) => {
+    const concept = outputs?.posterConcepts?.[index];
+    if (!outputs || !concept || !instruction.trim()) return;
+    setRefiningConcept(index);
+    try {
+      const next = await refinePosterConcept(concept, instruction, formData, outputs.businessInfo, !!files.logo);
+      setOutputs(prev => {
+        if (!prev?.posterConcepts) return prev;
+        const list = [...prev.posterConcepts];
+        list[index] = next;
+        return { ...prev, posterConcepts: list };
+      });
+    } catch (error: any) {
+      await showAlert({
+        title: "Refinement failed",
+        description: error?.message || "The concept could not be refined. It is unchanged — please try again.",
+        confirmText: "OK",
+      });
+    } finally {
+      setRefiningConcept(null);
     }
   };
 
@@ -794,7 +849,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
             <span className="opacity-40">·</span>
             <span className="capitalize">{assignment.category}</span>
             <span className="opacity-40">·</span>
-            <span>{assignment.clipCount} clips + EC</span>
+            <span>{isPosterCategory(assignment.category) ? posterSizeLabel(assignment.posterSize) : `${assignment.clipCount} clips + EC`}</span>
             <span className="font-mono text-[10px] opacity-50">{assignment.uniqueId}</span>
           </div>
         )}
@@ -936,20 +991,76 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                   <div>
                     <label className={cn("block text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>Creation Mode</label>
                     <div className="grid grid-cols-2 gap-3">
-                      {[{ mode: 'video' as const, icon: Video, label: 'Video Ad' }, { mode: 'poster' as const, icon: PenTool, label: 'Poster Only' }].map(({ mode, icon: Icon, label }) => (
+                      {[{ mode: 'video' as const, icon: Video, label: 'Video Ad' }, { mode: 'poster' as const, icon: PenTool, label: 'Poster Creation' }].map(({ mode, icon: Icon, label }) => (
                         <button key={mode} onClick={() => setCreationMode(mode)}
+                          disabled={posterJob && mode === 'video'}
+                          data-test={`creation-mode-${mode}`}
                           className={cn("flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-semibold border transition-all",
                             creationMode === mode
                               ? cn("border-transparent text-white shadow-lg shadow-blue-600/25", BRAND_GRADIENT)
                               : (isDark ? "border-slate-700 hover:border-slate-600 text-slate-400 bg-slate-800/40" : "border-slate-200 hover:border-slate-300 text-slate-600 bg-white")
+                            , posterJob && mode === 'video' && "opacity-40 cursor-not-allowed"
                           )}>
                           <Icon className="w-4 h-4" /><span>{label}</span>
                         </button>
                       ))}
                     </div>
+                    {posterJob && (
+                      <p className={cn("mt-1.5 text-[11px]", isDark ? "text-slate-400" : "text-slate-500")}>🔒 This job is a poster — fixed by the assignment.</p>
+                    )}
                   </div>
 
-                  {/* #4a — Aspect Ratio */}
+                  {/* Poster Creation — the canvas, the style from the team's library, the occasion. */}
+                  {creationMode === 'poster' && (
+                    <div className={cn("rounded-xl border p-3 sm:p-4", isDark ? "border-slate-700 bg-slate-800/40" : "border-slate-200 bg-slate-50/60")}>
+                      <PosterSpecFields
+                        posterSize={formData.posterSize || DEFAULT_POSTER_SIZE}
+                        posterStyle={formData.posterStyle || AUTO_POSTER_STYLE}
+                        occasion={formData.posterOccasion || ''}
+                        locked={posterLocks}
+                        onChange={({ posterSize, posterStyle, occasion }) => setFormData(prev => ({
+                          ...prev,
+                          ...(posterSize !== undefined ? { posterSize } : {}),
+                          ...(posterStyle !== undefined ? { posterStyle } : {}),
+                          ...(occasion !== undefined ? { posterOccasion: occasion } : {}),
+                        }))}
+                      />
+                      <div className="mt-4 grid grid-cols-2 gap-3">
+                        <div>
+                          <label className={cn("block text-sm font-medium mb-1", isDark ? "text-slate-300" : "text-muted-foreground")}>Concepts to write</label>
+                          <select
+                            data-test="poster-concept-count"
+                            value={formData.posterConceptCount || DEFAULT_POSTER_CONCEPT_COUNT}
+                            onChange={(e) => setFormData(prev => ({ ...prev, posterConceptCount: parseInt(e.target.value, 10) }))}
+                            className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
+                              isDark ? "bg-slate-700 border-slate-600 text-slate-200 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200")}
+                          >
+                            {[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n} concept{n === 1 ? '' : 's'}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className={cn("block text-sm font-medium mb-1", isDark ? "text-slate-300" : "text-muted-foreground")}>Text on the poster</label>
+                          <select
+                            data-test="poster-text-language"
+                            // A poster job that names its text language keeps it, like every other field it fixes.
+                            disabled={posterJob && !!assignment?.language}
+                            value={formData.posterTextLanguage || 'English'}
+                            onChange={(e) => setFormData(prev => ({ ...prev, posterTextLanguage: e.target.value }))}
+                            className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
+                              isDark ? "bg-slate-700 border-slate-600 text-slate-200 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200")}
+                          >
+                            {Array.from(new Set(['English', ...LANGUAGE_OPTIONS, formData.posterTextLanguage || 'English'])).map(l => <option key={l} value={l}>{l}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <p className={cn("mt-2 text-[11px] leading-relaxed", isDark ? "text-slate-400" : "text-slate-500")}>
+                        Each concept is a different idea with its own copy-paste image prompt. Upload the logo and any product or shop photos above — the concepts are built from what the business really sells.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* #4a — Aspect Ratio (video — a poster's canvas is chosen above) */}
+                  {creationMode === 'video' && (
                   <div>
                     <label className={cn("flex items-center gap-1.5 text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>
                       <Ratio className="w-4 h-4 text-blue-500" /> Aspect Ratio
@@ -976,7 +1087,10 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     )}
                   </div>
 
+                  )}
+
                   {/* #4b — Language (searchable) */}
+                  {creationMode === 'video' && (
                   <div>
                     <label className={cn("flex items-center gap-1.5 text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>
                       <Languages className="w-4 h-4 text-purple-500" /> Language
@@ -1024,7 +1138,10 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     )}
                   </div>
 
+                  )}
+
                   {/* Ad Type */}
+                  {creationMode === 'video' && (
                   <div>
                     <label className={cn("block text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>Ad Type</label>
                     {adTypeLocked ? (
@@ -1051,8 +1168,11 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     )}
                   </div>
 
+                  )}
+
                   {/* Special Category — cartoon duo instead of a human model.
                       Off by default, so a normal ad is completely unaffected. */}
+                  {creationMode === 'video' && (
                   <div>
                     <label className={cn("block text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>
                       Special Category Ad
@@ -1097,6 +1217,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     )}
                   </div>
 
+                  )}
+
                   {/*
                     Background — on EVERY ad, and read-only when it came with the job.
 
@@ -1108,6 +1230,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     different prompt for each. See `backgroundLocked` for why the member reads this
                     rather than answers it.
                   */}
+                  {creationMode === 'video' && (
                   <div>
                     <label className={cn("block text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>
                       Background
@@ -1158,8 +1281,10 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     )}
                   </div>
 
+                  )}
+
                   {/* Festival Name */}
-                  {formData.adType === AdType.FESTIVAL && (
+                  {creationMode === 'video' && formData.adType === AdType.FESTIVAL && (
                     <div>
                       <label className={cn("block text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>Festival Name</label>
                       <select className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
@@ -1235,8 +1360,9 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     </div>
                   )}
 
-                  {/* Attire — Video only (adapts to gender), hidden for a character pack. */}
-                  {creationMode === 'video' && !activePack && (
+                  {/* Attire — Video only (adapts to gender). Hidden for a deity or cartoon, kept for a
+                      human-model special category ("Normal Ad (Female)"…), whose gender it follows. */}
+                  {creationMode === 'video' && (!activePack || isHumanPack(activePack)) && (
                     <div>
                       <label className={cn("block text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>Model Attire</label>
                       {attireLocked ? (
@@ -1250,7 +1376,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       <select className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
                           isDark ? "bg-slate-700 border-slate-600 text-slate-200 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200"
                         )} value={formData.attireType} onChange={(e) => setFormData(prev => ({ ...prev, attireType: e.target.value as AttireType }))}>
-                        {ATTIRE_OPTIONS_BY_GENDER[formData.gender || ModelGender.FEMALE].map((a) => (
+                        {ATTIRE_OPTIONS_BY_GENDER[(packModelGender(activePack) as ModelGender | null) || formData.gender || ModelGender.FEMALE].map((a) => (
                           <option key={a} value={a}>{ATTIRE_LABELS[a]}</option>
                         ))}
                       </select>
@@ -1417,7 +1543,7 @@ clip-2[8-16sec]: second spoken line`}</pre>
                           : cn(BRAND_GRADIENT, BRAND_GRADIENT_HOVER, "shadow-xl shadow-blue-600/30 hover:shadow-blue-500/40 active:scale-[0.99]")
                       )}>
                       {status.isProcessing ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Rocket className="w-5 h-5" />}
-                      <span>{status.isProcessing ? 'Processing...' : creationMode === 'poster' ? 'Extract Business Info' : 'Start Generation'}</span>
+                      <span>{status.isProcessing ? 'Processing...' : creationMode === 'poster' ? 'Generate Poster Concepts' : 'Start Generation'}</span>
                     </button>
                     {status.isProcessing && (
                       <button onClick={handleStopGeneration}
@@ -1483,6 +1609,24 @@ clip-2[8-16sec]: second spoken line`}</pre>
                         BRAND_GRADIENT, BRAND_GRADIENT_HOVER)}>
                       <Video className="w-5 h-5" /><span>Open Video Generation Platform</span><ExternalLink className="w-4 h-4 opacity-70" />
                     </a>
+                  )}
+
+                  {/* Poster outputs */}
+                  {creationMode === 'poster' && (outputs.posterConcepts?.length ?? 0) > 0 && (
+                    <PosterConceptsPanel
+                      concepts={outputs.posterConcepts!}
+                      posterSize={formData.posterSize || DEFAULT_POSTER_SIZE}
+                      occasion={formData.posterOccasion}
+                      hasLogo={!!files.logo}
+                      isDark={isDark}
+                      refiningIndex={refiningConcept}
+                      onRefine={handleRefineConcept}
+                    />
+                  )}
+                  {creationMode === 'poster' && !(outputs.posterConcepts?.length) && (
+                    <p className={cn("rounded-xl border px-4 py-3 text-sm", isDark ? "border-slate-700 text-slate-400" : "border-slate-200 text-slate-500")}>
+                      This saved work has no poster concepts yet — press <b>Generate Poster Concepts</b> to write them.
+                    </p>
                   )}
 
                   {/* Video outputs */}

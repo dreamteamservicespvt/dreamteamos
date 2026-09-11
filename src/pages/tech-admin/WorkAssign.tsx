@@ -20,7 +20,12 @@ import { formatCurrency, formatDate, formatTime } from '@/utils/formatters';
 import { format } from 'date-fns';
 import type { WorkAssignment, AppUser, DailyCheckin, Order } from '@/types';
 import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from '@/types/aiPlatform';
-import { ATTIRE_LABELS, assignmentFormFromOrder, buildAssignmentRequirementsMessage } from '@/utils/adRequirement';
+import {
+  assignmentFormFromOrder, buildAssignmentRequirementsMessage, blankAssignmentForm, categorySwitch, resolveModelSpec,
+} from '@/utils/adRequirement';
+import ModelAttireFields from '@/components/work/ModelAttireFields';
+import PosterSpecFields from '@/components/work/PosterSpecFields';
+import { isPosterCategory, POSTER_DURATION, assignmentSizeLabel } from '@/utils/posterSpec';
 import { watchAdLanguages, mergeAdLanguages, rememberAdLanguage } from '@/services/adLanguages';
 import OccasionPicker from '@/components/work/OccasionPicker';
 import { bulkCategoryLabel } from '@/utils/serviceCatalog';
@@ -101,25 +106,7 @@ export default function WorkAssign() {
   }, []);
 
   // Form state — no more end credits or manual clip count
-  const [form, setForm] = useState({
-    assignedTo: '',
-    category: 'promotional' as 'wishes' | 'promotional' | 'cinematic',
-    duration: '16s',
-    pricePerUnit: 499,
-    clientName: '',
-    businessName: '',
-    businessWhatsapp: '',
-    modelGender: ModelGender.FEMALE as ModelGender,
-    attireType: AttireType.TRADITIONAL as AttireType,
-    customAttire: '',
-    aspectRatio: '9:16' as '9:16' | '16:9',
-    language: 'Telugu' as string,
-    customLanguage: '',
-    festival: '',
-    requirementNotes: '',
-    characterPack: '',
-    realLocationProvided: false,
-  });
+  const [form, setForm] = useState(blankAssignmentForm);
   /** The order being fulfilled, when the form was opened from the Orders queue. */
   const [sourceOrder, setSourceOrder] = useState<Order | null>(null);
   /** Shared language list — grows whenever anyone sells in a language that wasn't listed. */
@@ -142,16 +129,15 @@ export default function WorkAssign() {
     chatId: string; businessName: string; uniqueId: string;
     category?: string; clientPhone?: string;
   } | null>(null);
+  /**
+   * Opened only when someone presses "Chat link" — never by itself.
+   *
+   * It used to pop up on its own the moment the requirements message was dismissed, on every
+   * single assignment. Most jobs do not need the client's link sent that minute (the sales member
+   * already has the room open), so it was a second popup to close each time. The link is still one
+   * tap away in the header, and on the member's assignment card as "Chat with client".
+   */
   const [clientChatOpen, setClientChatOpen] = useState(false);
-  const [clientChatOffered, setClientChatOffered] = useState(true);
-
-  // The moment the requirements popup is out of the way, offer the client's chat link — once.
-  useEffect(() => {
-    if (!waOpen && clientChat && !clientChatOffered) {
-      setClientChatOffered(true);
-      setClientChatOpen(true);
-    }
-  }, [waOpen, clientChat, clientChatOffered]);
 
   // Auto-open form with pre-selected member from query param
   useEffect(() => {
@@ -209,12 +195,12 @@ export default function WorkAssign() {
     setForm(prev => {
       const next = { ...prev, [field]: value };
       if (field === 'category') {
-        // A custom clip count survives a category switch — only the price is re-derived. Read off
-        // the value itself rather than a flag beside it: the two used to disagree, because this
-        // branch rewrote the duration without telling the flag.
-        const wasStandard = (DURATIONS[prev.category] || []).includes(prev.duration);
-        if (wasStandard) next.duration = DURATIONS[value as string][0];
-        next.pricePerUnit = priceForClips(value as string, getClipCount(next.duration));
+        // Length and price follow the category — a poster has no length, and coming back from one
+        // opens on the category's first package. See utils/adRequirement.categorySwitch.
+        Object.assign(next, categorySwitch(prev, value as string));
+        // The words on a poster default to English — image generators spell it reliably — unless
+        // someone already chose a language other than the video default.
+        if (isPosterCategory(value as string) && prev.language === 'Telugu') next.language = 'English';
       }
       if (field === 'duration') {
         next.pricePerUnit = priceForClips(next.category, getClipCount(value as string));
@@ -244,7 +230,10 @@ export default function WorkAssign() {
     setSubmitting(true);
     try {
       const uniqueId = nextWorkUniqueId(form.category, assignments);
-      const clips = getClipCount(form.duration);
+      const poster = isPosterCategory(form.category);
+      // A poster is not measured in clips — 0 keeps it out of every video tally.
+      const clips = poster ? 0 : getClipCount(form.duration);
+      const model = resolveModelSpec(form);
       const language = resolvedLanguage();
       const assignedMember = techMembers.find(m => m.uid === form.assignedTo);
 
@@ -256,19 +245,22 @@ export default function WorkAssign() {
         techAdminUid: user.uid,
         actor: user,
         category: form.category,
-        duration: form.duration,
+        duration: poster ? POSTER_DURATION : form.duration,
         clipCount: clips,
         pricePerUnit: form.pricePerUnit,
         uniqueId,
         businessName: form.businessName,
         businessWhatsapp: form.businessWhatsapp,
-        modelGender: form.modelGender,
-        attireType: form.attireType,
-        customAttire: form.customAttire,
+        modelGender: model.modelGender,
+        attireType: model.attireType,
+        customAttire: model.customAttire,
         aspectRatio: form.aspectRatio,
         language,
         festival: form.festival,
         requirementNotes: form.requirementNotes,
+        businessInfo: form.businessInfo,
+        businessAddress: form.businessAddress,
+        ...(poster ? { posterSize: form.posterSize, posterStyle: form.posterStyle, posterCount: form.posterCount } : {}),
         characterPack: form.characterPack,
         realLocationProvided: form.realLocationProvided,
         order: sourceOrder,
@@ -301,7 +293,7 @@ export default function WorkAssign() {
         excludeUserId: form.assignedTo,
         type: 'team_work_assigned',
         title: 'New Team Work Assigned',
-        message: `${getMemberName(form.assignedTo)} was assigned a new ${form.category} work (${clips} clips, ${form.duration}).`,
+        message: `${getMemberName(form.assignedTo)} was assigned a new ${poster ? `poster (${assignmentSizeLabel(form)})` : `${form.category} work (${clips} clips, ${form.duration})`}.`,
         link: `/team-leader/work-assign/${form.assignedTo}`,
         // The fan-out appends each leader's uid, so one assignment is one notification per leader.
         dedupeKey: `team_work_assigned_${uniqueId}`,
@@ -315,14 +307,19 @@ export default function WorkAssign() {
         category: form.category,
         duration: form.duration,
         clipCount: clips,
-        modelGender: form.modelGender,
-        attireType: form.attireType,
-        customAttire: form.customAttire,
-        aspectRatio: form.aspectRatio,
+        modelGender: model.modelGender,
+        attireType: model.attireType,
+        customAttire: model.customAttire,
+        aspectRatio: poster ? undefined : form.aspectRatio,
         language,
         festival: form.festival,
         requirementNotes: form.requirementNotes,
-        characterPack: form.characterPack,
+        businessInfo: form.businessInfo,
+        businessAddress: form.businessAddress,
+        posterSize: form.posterSize,
+        posterStyle: form.posterStyle,
+        posterCount: form.posterCount,
+        characterPack: poster ? '' : form.characterPack,
         realLocationProvided: form.realLocationProvided,
         accessCode,
       });
@@ -338,15 +335,10 @@ export default function WorkAssign() {
         category: form.category,
         clientPhone: form.businessWhatsapp,
       });
-      setClientChatOffered(false);
 
       setShowForm(false);
       setSourceOrder(null);
-      setForm({
-        assignedTo: '', category: 'promotional', duration: '16s', pricePerUnit: 499, clientName: '', businessName: '', businessWhatsapp: '',
-        modelGender: ModelGender.FEMALE, attireType: AttireType.TRADITIONAL, customAttire: '', aspectRatio: '9:16', language: 'Telugu', customLanguage: '',
-        festival: '', requirementNotes: '', characterPack: '', realLocationProvided: false,
-      });
+      setForm(blankAssignmentForm());
       setMemberSearch('');
     } catch (error) {
       console.error('Failed to create assignment:', error);
@@ -668,10 +660,12 @@ export default function WorkAssign() {
                 <option value="promotional">Promotional</option>
                 <option value="wishes">Wishes</option>
                 <option value="cinematic">Cinematic</option>
+                <option value="poster">🖼️ Poster</option>
               </select>
             </div>
 
-            {/* Duration — standard packages, or any custom clip count */}
+            {/* Duration — standard packages, or any custom clip count. A poster has no length. */}
+            {!isPosterCategory(form.category) && (
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">Length</label>
               <DurationPicker
@@ -681,6 +675,7 @@ export default function WorkAssign() {
                 onChange={(duration) => updateField('duration', duration)}
               />
             </div>
+            )}
 
             {/* Price Per Unit */}
             <div>
@@ -706,53 +701,43 @@ export default function WorkAssign() {
                 className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none" />
             </div>
 
-            <SpecialCategoryFields
-              characterPack={form.characterPack}
-              realLocationProvided={form.realLocationProvided}
-              onChange={(patch) => setForm(prev => ({ ...prev, ...patch }))}
-            />
-
-            {/* Model Gender — a character pack replaces the human model, so it drops out entirely. */}
-            {!form.characterPack && (
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">Model</label>
-              <div className="grid grid-cols-2 gap-2">
-                {[ModelGender.FEMALE, ModelGender.MALE].map(g => (
-                  <button key={g} type="button"
-                    onClick={() => setForm(prev => {
-                      const allowed = ATTIRE_OPTIONS_BY_GENDER[g];
-                      const nextAttire = allowed.includes(prev.attireType) ? prev.attireType : AttireType.PROFESSIONAL;
-                      return { ...prev, modelGender: g, attireType: nextAttire };
-                    })}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                      form.modelGender === g ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-accent'
-                    }`}>
-                    {g === ModelGender.FEMALE ? '👩 Female' : '👨 Male'}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {/* Who is on screen — video only. A poster is briefed by the block below instead. */}
+            {!isPosterCategory(form.category) && (
+              <SpecialCategoryFields
+                characterPack={form.characterPack}
+                realLocationProvided={form.realLocationProvided}
+                onChange={(patch) => setForm(prev => ({ ...prev, ...patch }))}
+              />
             )}
 
-            {/* Attire */}
-            {!form.characterPack && (
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">Attire</label>
-              <select value={form.attireType} onChange={(e) => setForm(prev => ({ ...prev, attireType: e.target.value as AttireType }))}
-                className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none">
-                {ATTIRE_OPTIONS_BY_GENDER[form.modelGender].map(a => (
-                  <option key={a} value={a}>{ATTIRE_LABELS[a]}</option>
-                ))}
-              </select>
-              {form.attireType === AttireType.CUSTOM && (
-                <input type="text" placeholder="Describe the exact attire…" value={form.customAttire}
-                  onChange={(e) => setForm(prev => ({ ...prev, customAttire: e.target.value }))}
-                  className="w-full mt-1.5 border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none" />
-              )}
-            </div>
+            {/* Model and attire — hidden for deities and cartoons, attire kept for a human-model
+                special category. See components/work/ModelAttireFields. */}
+            {!isPosterCategory(form.category) && (
+              <ModelAttireFields
+                characterPack={form.characterPack}
+                modelGender={form.modelGender}
+                attireType={form.attireType}
+                customAttire={form.customAttire}
+                onChange={(patch) => setForm(prev => ({ ...prev, ...patch }))}
+              />
             )}
 
-            {/* Aspect Ratio */}
+            {isPosterCategory(form.category) && (
+              <PosterSpecFields
+                className="md:col-span-2 lg:col-span-3"
+                posterSize={form.posterSize}
+                posterStyle={form.posterStyle}
+                occasion={form.festival}
+                posterCount={form.posterCount}
+                showCount
+                onChange={({ occasion, ...rest }) => setForm(prev => ({
+                  ...prev, ...rest, ...(occasion !== undefined ? { festival: occasion } : {}),
+                }))}
+              />
+            )}
+
+            {/* Aspect Ratio — video only; a poster's canvas is chosen above. */}
+            {!isPosterCategory(form.category) && (
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">Aspect Ratio</label>
               <div className="grid grid-cols-2 gap-2">
@@ -766,10 +751,11 @@ export default function WorkAssign() {
                 ))}
               </div>
             </div>
+            )}
 
             {/* Language */}
             <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">Language</label>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{isPosterCategory(form.category) ? 'Poster text language' : 'Language'}</label>
               <select value={form.language} onChange={(e) => setForm(prev => ({ ...prev, language: e.target.value }))}
                 className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none">
                 {languages.map(l => <option key={l} value={l}>{l}</option>)}
@@ -794,6 +780,32 @@ export default function WorkAssign() {
               </div>
             )}
 
+            {/*
+              The sale's "Business info & what to include", carried onto the job.
+
+              It stopped at the order before — nothing copied it here, so the requirements message
+              the member received never said what the business does or what the ad must carry.
+              Pre-filled from the sale and editable, because it goes out in that message.
+            */}
+            <div className="md:col-span-2 lg:col-span-3 grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <div className="lg:col-span-2">
+                <label className="block text-sm font-medium text-muted-foreground mb-1">
+                  Business info &amp; what to include <span className="text-[10px] text-muted-foreground/60">(from the sale — sent to the member)</span>
+                </label>
+                <textarea rows={3} value={form.businessInfo} data-test="assign-business-info"
+                  onChange={(e) => setForm(prev => ({ ...prev, businessInfo: e.target.value }))}
+                  placeholder="What the business does, the offer, the tagline, the line the owner insists on…"
+                  className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none resize-y" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Business address <span className="text-[10px] text-muted-foreground/60">(optional)</span></label>
+                <textarea rows={3} value={form.businessAddress} data-test="assign-business-address"
+                  onChange={(e) => setForm(prev => ({ ...prev, businessAddress: e.target.value }))}
+                  placeholder="Shop / office address — area, city"
+                  className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none resize-y" />
+              </div>
+            </div>
+
             {/* Client notes — whatever the client asked for beyond the spec above. */}
             <div className="md:col-span-2 lg:col-span-3">
               <label className="block text-sm font-medium text-muted-foreground mb-1">
@@ -810,7 +822,11 @@ export default function WorkAssign() {
           <div className="mt-4 flex items-center justify-between pt-4 border-t border-border">
             <div className="text-sm text-muted-foreground">
               Total: <span className="font-bold text-foreground text-lg">{formatCurrency(totalPrice)}</span>
-              <span className="ml-2">({clipCount} clips + {hasPoster(form.duration) ? 'Poster ' : ''}5s EC)</span>
+              <span className="ml-2">
+                {isPosterCategory(form.category)
+                  ? `(${assignmentSizeLabel(form)})`
+                  : `(${clipCount} clips + ${hasPoster(form.duration) ? 'Poster ' : ''}5s EC)`}
+              </span>
             </div>
             <button onClick={handleCreate} disabled={submitting || !form.assignedTo}
               className="flex items-center space-x-2 px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed">

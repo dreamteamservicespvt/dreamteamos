@@ -30,6 +30,8 @@ import StaffOrderChat from '@/components/order-chat/StaffOrderChat';
 import { useOrderChatUnread } from '@/hooks/useOrderChat';
 import { reopenOrderChat, syncOrderChatWorkStatus } from '@/services/orderChat';
 import { orderChatIdOf } from '@/utils/orderChatId';
+import PosterSpecChips from '@/components/work/PosterSpecChips';
+import { isPosterCategory, assignmentSizeLabel } from '@/utils/posterSpec';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useToast } from '@/hooks/use-toast';
 
@@ -593,9 +595,9 @@ export default function MyWork() {
                         {a.tracks.map(t => ORDER_TRACKS.find(x => x.key === t)?.label || t).join(' + ')}
                       </span>
                     ) : (
-                      <span>{a.clipCount} clips + EC</span>
+                      <span>{assignmentSizeLabel(a)}</span>
                     )}
-                    <span>{a.duration}</span>
+                    {!isPosterCategory(a.category) && <span>{a.duration}</span>}
                     <span>Assigned: {getAssignedStamp(a)}</span>
                     {a.totalDurationSeconds > 0 && (
                       <span className="flex items-center space-x-1"><Clock className="w-3 h-3" /><span>{formatDuration(a.totalDurationSeconds)}</span></span>
@@ -651,6 +653,30 @@ export default function MyWork() {
                       </p>
                     </div>
                   )}
+
+                  {/* What the business is and what the ad or poster must carry — the sales
+                      member's own words from the sale. Off the job itself, or its order for work
+                      assigned before the job carried it. */}
+                  {(a.businessInfo?.trim() || order?.requirement?.businessInfo?.trim()) && (
+                    <div
+                      data-test="assignment-business-info"
+                      className="mb-3 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-2.5"
+                    >
+                      <p className="mb-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                        🏢 Business info &amp; what to include
+                      </p>
+                      <p className="whitespace-pre-wrap text-xs leading-relaxed text-foreground">
+                        {a.businessInfo?.trim() || order?.requirement?.businessInfo?.trim()}
+                      </p>
+                      {(a.businessAddress?.trim() || order?.requirement?.businessAddress?.trim()) && (
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          📍 {a.businessAddress?.trim() || order?.requirement?.businessAddress?.trim()}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  <PosterSpecChips a={a} className="mb-3" />
 
                   <div className="flex items-center justify-between mb-4 bg-muted/50 rounded-lg px-3 py-2">
                     <span className="text-xs text-muted-foreground">Access Code:</span>
@@ -709,7 +735,7 @@ export default function MyWork() {
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${cfg.color}`}>{cfg.label}</span>
                     <div>
                       <span className="font-medium text-card-foreground text-sm">{a.businessName || a.displayTitle}</span>
-                      <span className="ml-3 text-xs text-muted-foreground capitalize">{a.category} · {a.clipCount} clips · {a.duration} · Assigned: {getAssignedStamp(a)}</span>
+                      <span className="ml-3 text-xs text-muted-foreground capitalize">{a.category} · {isPosterCategory(a.category) ? assignmentSizeLabel(a) : `${a.clipCount} clips · ${a.duration}`} · Assigned: {getAssignedStamp(a)}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">

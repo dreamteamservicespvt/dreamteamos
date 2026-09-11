@@ -26,7 +26,7 @@ import { upsertOrderForSale } from "@/services/orders";
 import { logActivity } from "@/services/activityLog";
 import { applySaleFreeze, buildLeadFreezeFields, fetchNumberLock } from "@/services/numberLock";
 import { watchAdLanguages, rememberAdLanguage, mergeAdLanguages } from "@/services/adLanguages";
-import { characterPackGroups, getCharacterPack } from "@/services/characterPacks";
+import { characterPackGroups, getCharacterPack, isHumanPack, packModelGender } from "@/services/characterPacks";
 import { formatCurrency } from "@/utils/formatters";
 import { normalizePhone } from "@/utils/phone";
 import {
@@ -48,7 +48,7 @@ import {
 import { presetsForCategory, buildPromise, CUSTOM_PRESET_KEY } from "@/utils/promiseSla";
 import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from "@/types/aiPlatform";
 import {
-  ATTIRE_LABELS, DEFAULT_REQUIREMENT, attireForGender, attireLabel, cleanRequirement,
+  ATTIRE_LABELS, DEFAULT_REQUIREMENT, attireForGender, attireLabel, cleanRequirement, resolveModelSpec,
   withRequirementDefaults,
 } from "@/utils/adRequirement";
 import { CUSTOM_FESTIVAL_OPTION, WISHES_FESTIVALS, isListedFestival } from "@/utils/festivals";
@@ -684,9 +684,17 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
       ...(isAdSale
         ? {
           language: resolvedLanguage,
-          modelGender: req.modelGender,
-          attireType: req.attireType,
-          customAttire: req.attireType === AttireType.CUSTOM ? req.customAttire : "",
+          // A human-model special category ("Normal Ad (Female)"…) decides the gender, and the
+          // attire is kept only if it suits it — see resolveModelSpec.
+          ...(() => {
+            const model = resolveModelSpec({
+              characterPack: req.specialCategory,
+              modelGender: req.modelGender,
+              attireType: req.attireType,
+              customAttire: req.customAttire,
+            });
+            return { modelGender: model.modelGender, attireType: model.attireType, customAttire: model.customAttire };
+          })(),
           aspectRatio: req.aspectRatio,
           // Only a greeting video has an occasion. Storing one on a promotional ad would follow it
           // into the generator and theme an ad nobody asked to be themed.
@@ -1815,15 +1823,21 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {!salePack && (
+            {/* Kept for a human-model special category ("Normal Ad (Female)"…): there is still a
+                person on screen, and what they wear is the client's call. Hidden for a deity or a
+                cartoon, who come dressed. */}
+            {(!salePack || isHumanPack(salePack)) && (
             <div>
-              <label className="text-[11px] text-muted-foreground">Model attire</label>
+              <label className="text-[11px] text-muted-foreground">
+                Model attire{salePack ? ` (${packModelGender(salePack) === "male" ? "👨 male" : "👩 female"})` : ""}
+              </label>
               <select
-                value={req.attireType}
+                value={attireForGender((packModelGender(salePack) as ModelGender | null) ?? req.modelGender, req.attireType)}
+                data-test="sale-attire"
                 onChange={(e) => setReq((r) => ({ ...r, attireType: e.target.value as AttireType }))}
                 className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary"
               >
-                {ATTIRE_OPTIONS_BY_GENDER[req.modelGender].map((a) => (
+                {ATTIRE_OPTIONS_BY_GENDER[(packModelGender(salePack) as ModelGender | null) ?? req.modelGender].map((a) => (
                   <option key={a} value={a}>{ATTIRE_LABELS[a]}</option>
                 ))}
               </select>

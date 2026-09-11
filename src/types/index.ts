@@ -126,7 +126,8 @@ export interface WorkAssignment {
    * The catalog key of what is being made. Was the three ad types only; social-media months and
    * bulk ads are now assigned the same way, so they appear here too.
    */
-  category: "wishes" | "promotional" | "cinematic" | "bulk_ads" | "social_media_management";
+  category: "wishes" | "promotional" | "cinematic" | "bulk_ads" | "social_media_management" | "poster";
+  /** Clips for video work; 0 for a poster job, which is not measured in clips. */
   clipCount: number;
   includesEndCredits: boolean;
   duration: string;
@@ -181,6 +182,24 @@ export interface WorkAssignment {
   festival?: string;
   /** Free-text brief from the client, carried through from the sale. */
   requirementNotes?: string;
+  /**
+   * The sale's "Business info & what to include" — what the business does and what the ad or
+   * poster must carry, in the words the client will recognise. Copied from the order at assignment
+   * time; before that it stopped at the order and never reached the member's brief.
+   */
+  businessInfo?: string;
+  /** Where the business is, from the sale. */
+  businessAddress?: string;
+  /**
+   * ── Poster jobs (category "poster") ──────────────────────────────────────────────────────
+   * Pre-fill and lock the AI Platform's Poster Creation fields, the same way the ad spec does.
+   */
+  /** Canvas: "4:5", a custom ratio "5:7", or pixels "1080x1350". See utils/posterSpec. */
+  posterSize?: string;
+  /** services/posterStyles id, or "auto" for best fit. */
+  posterStyle?: string;
+  /** How many posters this job owes (absent = one). */
+  posterCount?: number;
   /**
    * Special-category cartoon duo (a services/characterPacks id) sold for this job. Carried from the
    * sale so the member's AI Platform opens on the right treatment instead of them having to know.

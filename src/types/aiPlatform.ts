@@ -66,6 +66,38 @@ export interface AdFormData {
    * from the business profile. Ignored when no pack is selected.
    */
   locationMode?: LocationMode;
+  /**
+   * ── Poster Creation ──────────────────────────────────────────────────────────────────────
+   * Only read when the creation mode is "poster". See utils/posterSpec and services/posterStyles.
+   */
+  /** Canvas as a stored string: "4:5" (default), a custom ratio "5:7", or pixels "1080x1350". */
+  posterSize?: string;
+  /** A services/posterStyles id, or "auto" for best fit. */
+  posterStyle?: string;
+  /** The occasion the poster is themed for — "" for a plain commercial poster. */
+  posterOccasion?: string;
+  /** How many distinct concepts to write (1–6, default 3). */
+  posterConceptCount?: number;
+  /** Language of the words printed on the poster (default English). */
+  posterTextLanguage?: string;
+}
+
+/**
+ * One poster idea, ready to run: the metaphor, the words, and a copy-paste image prompt.
+ * Produced by geminiService.generatePosterConcepts and finalised by utils/posterConcepts.
+ */
+export interface PosterConcept {
+  title: string;
+  /** services/posterStyles id actually used. */
+  style: string;
+  /** The metaphor in one sentence. */
+  idea: string;
+  whyItWorks?: string;
+  headline: string;
+  subline?: string;
+  /** The full image-generation prompt, opening with the canvas sentence. */
+  imagePrompt: string;
+  negativePrompt?: string;
 }
 
 export type LocationMode = 'real_provided' | 'ai_generated';
@@ -101,6 +133,8 @@ export interface GeneratedOutputs {
   stockImagePrompts: any[] | null;
   /** Per-clip on-screen overlay texts with CapCut SFX suggestions (generated on demand). */
   overlayTexts?: OverlayTextItem[] | null;
+  /** Poster Creation output — absent on video generations. */
+  posterConcepts?: PosterConcept[] | null;
 }
 
 export interface GenerationStatus {

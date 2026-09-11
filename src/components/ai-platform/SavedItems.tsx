@@ -6,6 +6,7 @@ import { deleteDoc, doc } from 'firebase/firestore';
 import { db } from '@/services/firebase';
 import { extractBusinessNameFromInfo } from '@/services/geminiService';
 import { useConfirm } from '@/hooks/useConfirm';
+import type { PosterConcept } from '@/types/aiPlatform';
 
 const getBusinessName = (item: SavedGeneration) => {
   if (item.businessName && item.businessName !== 'Untitled') return item.businessName;
@@ -42,7 +43,15 @@ export interface SavedGeneration {
   language?: string;
   noLogo?: boolean;
   logoNameText?: string;
+  /** Poster Creation output and settings — absent on video generations. */
+  posterConcepts?: PosterConcept[] | null;
+  posterSize?: string;
+  posterStyle?: string;
+  posterOccasion?: string;
+  posterTextLanguage?: string;
   createdAt: any;
+  /** Set when Save updated this generation in place rather than writing a copy. */
+  updatedAt?: unknown;
   workAssignmentId?: string;
 }
 

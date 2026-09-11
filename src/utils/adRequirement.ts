@@ -12,7 +12,11 @@ import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from "@/types/aiPla
 import { DURATIONS, END_CREDITS_SECONDS, durationFromSeconds, getClipCount, hasPoster, priceForClips } from "./assignmentDuration";
 import { PACKAGES, isAdCategory, categoryLabel, effectiveAdCategory, productionCategory } from "./serviceCatalog";
 import { PRICING } from "./pricing";
-import { getCharacterPack, packHighlight } from "@/services/characterPacks";
+import { getCharacterPack, packHighlight, packModelGender } from "@/services/characterPacks";
+import { posterStyleLabel, AUTO_POSTER_STYLE } from "@/services/posterStyles";
+import {
+  DEFAULT_POSTER_SIZE, DEFAULT_POSTER_PRICE, POSTER_DURATION, isPosterCategory, posterSizeLabel,
+} from "./posterSpec";
 import type { AdRequirement, Order } from "@/types";
 
 /** Human-readable label for each attire option — the one copy used everywhere. */
@@ -50,6 +54,30 @@ export function attireLabel(attire?: string | null, custom?: string | null): str
 export function attireForGender(gender: ModelGender, current: AttireType): AttireType {
   const allowed = ATTIRE_OPTIONS_BY_GENDER[gender];
   return allowed.includes(current) ? current : AttireType.PROFESSIONAL;
+}
+
+/**
+ * The model and attire a job actually stores.
+ *
+ * A human-model special category ("Normal Ad (Female)", "Real Owner Face (Male)"…) decides the
+ * gender by itself, so whatever the Model buttons last said is overridden by the entry — and the
+ * attire is kept only if it suits that gender. Every form runs its values through this on save, so
+ * a female entry can never be stored with "shirt & pant" left over from an earlier male choice.
+ */
+export function resolveModelSpec(spec: {
+  characterPack?: string | null;
+  modelGender: ModelGender;
+  attireType: AttireType;
+  customAttire?: string | null;
+}): { modelGender: ModelGender; attireType: AttireType; customAttire: string } {
+  const packGender = packModelGender(getCharacterPack(spec.characterPack));
+  const modelGender = (packGender as ModelGender | null) ?? spec.modelGender;
+  const attireType = attireForGender(modelGender, spec.attireType);
+  return {
+    modelGender,
+    attireType,
+    customAttire: attireType === AttireType.CUSTOM ? (spec.customAttire || "").trim() : "",
+  };
 }
 
 /**
@@ -120,9 +148,12 @@ export function cleanRequirement(requirement: AdRequirement): AdRequirement | nu
   return Object.fromEntries(entries.map(([k, v]) => [k, typeof v === "string" ? v.trim() : v])) as AdRequirement;
 }
 
+/** Categories the Work Assign form can hand out — the three ad kinds, and posters. */
+export type AssignableCategory = "wishes" | "promotional" | "cinematic" | "poster";
+
 /** The shape the Work Assign "Create New Assignment" form holds. */
 export interface AssignmentFormSpec {
-  category: "wishes" | "promotional" | "cinematic";
+  category: AssignableCategory;
   duration: string;
   pricePerUnit: number;
   businessName: string;
@@ -140,6 +171,72 @@ export interface AssignmentFormSpec {
   characterPack: string;
   /** For a pack ad: whether the client is sending photos of their own premises. */
   realLocationProvided: boolean;
+  /**
+   * The sale's "Business info & what to include" — the client-facing brief the sales member wrote
+   * (what the business does, the offer, the line the owner insists on). It used to stop at the
+   * order: nothing copied it onto the assignment, so the requirements message the member receives
+   * never carried it. See `buildAssignmentRequirementsMessage`.
+   */
+  businessInfo: string;
+  /** Where the business is, from the sale. */
+  businessAddress: string;
+  /** Poster jobs only: canvas ("4:5", "5:7", "1080x1350"). */
+  posterSize: string;
+  /** Poster jobs only: services/posterStyles id, or "auto". */
+  posterStyle: string;
+  /** Poster jobs only: how many posters this job owes. */
+  posterCount: number;
+}
+
+/** An empty New Assignment form — what the page opens on and resets to after creating a job. */
+export function blankAssignmentForm(): AssignmentFormSpec & { assignedTo: string; clientName: string } {
+  return {
+    assignedTo: "",
+    category: "promotional",
+    duration: "16s",
+    pricePerUnit: 499,
+    clientName: "",
+    businessName: "",
+    businessWhatsapp: "",
+    modelGender: ModelGender.FEMALE,
+    attireType: AttireType.TRADITIONAL,
+    customAttire: "",
+    aspectRatio: "9:16",
+    language: "Telugu",
+    customLanguage: "",
+    requirementNotes: "",
+    festival: "",
+    characterPack: "",
+    realLocationProvided: false,
+    businessInfo: "",
+    businessAddress: "",
+    posterSize: DEFAULT_POSTER_SIZE,
+    posterStyle: AUTO_POSTER_STYLE,
+    posterCount: 1,
+  };
+}
+
+/**
+ * What switching the form's category does to the length and the price.
+ *
+ * A poster has no length, so it stores POSTER_DURATION and is valued at the Standard poster price;
+ * coming back from a poster opens on the category's first package. A custom clip count survives a
+ * switch between two ad categories — only the price is re-derived.
+ */
+export function categorySwitch(
+  prev: { category: string; duration: string },
+  nextCategory: string,
+): { duration: string; pricePerUnit: number } {
+  if (isPosterCategory(nextCategory)) {
+    return { duration: POSTER_DURATION, pricePerUnit: DEFAULT_POSTER_PRICE };
+  }
+  const nextDurations = DURATIONS[nextCategory] || [];
+  const wasStandard = (DURATIONS[prev.category] || []).includes(prev.duration);
+  const cameFromPoster = isPosterCategory(prev.category) || prev.duration === POSTER_DURATION;
+  const duration = wasStandard || cameFromPoster || !prev.duration
+    ? (nextDurations[0] || prev.duration)
+    : prev.duration;
+  return { duration, pricePerUnit: priceForClips(nextCategory, getClipCount(duration)) };
 }
 
 /**
@@ -160,9 +257,33 @@ export function assignmentFormFromOrder(order: Order, knownLanguages?: string[])
   // `productionCategory` resolves BOTH of the sales-side conveniences: a bulk order to the kind of
   // video it is made of, and a Custom order to the real service it is a longer version of.
   const resolved = productionCategory(order);
+  const r = withRequirementDefaults(order.requirement);
+
+  /*
+    A poster sale is a poster job. It used to open on "promotional" like every other non-ad order,
+    which handed the member a two-clip video brief for a client who had paid for a poster.
+  */
+  if (isPosterCategory(resolved)) {
+    const count = Math.max(1, order.quantity || 1);
+    return {
+      ...blankAssignmentForm(),
+      category: "poster",
+      duration: POSTER_DURATION,
+      pricePerUnit: order.amount > 0 ? Math.round(order.amount / count) : DEFAULT_POSTER_PRICE,
+      businessName: r.businessName || order.businessName || "",
+      businessWhatsapp: r.businessWhatsapp || order.clientPhone || "",
+      language: "English",
+      customLanguage: "",
+      requirementNotes: r.notes,
+      festival: r.festival,
+      businessInfo: r.businessInfo,
+      businessAddress: r.businessAddress,
+      posterCount: count,
+    };
+  }
+
   const category = (isAdCategory(resolved) ? resolved : "promotional") as AssignmentFormSpec["category"];
   const duration = durationForSale(category, order.packageKey, order.amount, order.customDurationSeconds);
-  const r = withRequirementDefaults(order.requirement);
 
   // A language the sales member typed is normally already in the shared list; if it somehow
   // isn't, it goes in through the form's own "Custom" slot rather than being dropped. Defaulting
@@ -190,6 +311,11 @@ export function assignmentFormFromOrder(order: Order, knownLanguages?: string[])
     // generator no longer knows; resolving it here degrades to a normal ad instead of failing later.
     characterPack: getCharacterPack(r.specialCategory) ? r.specialCategory : "",
     realLocationProvided: r.realLocationProvided,
+    businessInfo: r.businessInfo,
+    businessAddress: r.businessAddress,
+    posterSize: DEFAULT_POSTER_SIZE,
+    posterStyle: AUTO_POSTER_STYLE,
+    posterCount: 1,
   };
 }
 
@@ -216,11 +342,68 @@ export function buildAssignmentRequirementsMessage(a: {
   characterPack?: string;
   realLocationProvided?: boolean;
   festival?: string;
+  /** The sale's client-facing brief — "Business info & what to include". */
+  businessInfo?: string;
+  businessAddress?: string;
+  posterSize?: string;
+  posterStyle?: string;
+  posterCount?: number;
 }): string {
   const business = (a.businessName || a.clientName || "").trim();
   const notes = a.requirementNotes?.trim();
   const pack = getCharacterPack(a.characterPack);
   const festival = a.festival?.trim();
+  const info = a.businessInfo?.trim();
+  const address = a.businessAddress?.trim();
+
+  /*
+    What the business is and what the ad must carry — the sales member's own words from the call.
+
+    This is the block that was missing. The sale captured it, the order kept it, and then the
+    assignment dropped it, so every requirements message went out without the one paragraph that
+    says what the client actually wants on screen. It sits above the internal notes because it is
+    the brief; the notes are the asides.
+  */
+  const brief = [
+    info ? `` : null,
+    info ? `🏢 *Business info & what to include:*` : null,
+    info ? info : null,
+    address ? `📍 *Address:* ${address}` : null,
+  ];
+  const tail = [
+    notes ? `` : null,
+    notes ? `📝 *Client notes:* ${notes}` : null,
+    ``,
+    a.accessCode ? `🔑 *Access Code:* ${a.accessCode}` : null,
+    a.accessCode ? `` : null,
+    `🚀 Let's create something amazing — good luck! 🔥`,
+  ];
+
+  // A poster is briefed on its canvas, its style and its occasion — there is no clip, model or
+  // voice-over to describe, and a video brief on a poster job is a brief the member cannot use.
+  if (isPosterCategory(a.category)) {
+    const count = a.posterCount && a.posterCount > 1 ? a.posterCount : 0;
+    return [
+      `🖼️✨ *NEW POSTER ASSIGNMENT* ✨🖼️`,
+      ``,
+      business ? `🏢 *Business:* ${business}` : null,
+      `🎯 *Category:* ${categoryLabel(a.category)}`,
+      festival ? `🎊 *Occasion:* ${festival}` : null,
+      ``,
+      `📋 *POSTER SPECIFICATION*`,
+      `📐 *Size:* ${posterSizeLabel(a.posterSize)}`,
+      `🎨 *Style:* ${posterStyleLabel(a.posterStyle)}`,
+      count ? `🔢 *Posters:* ${count}` : null,
+      a.language ? `🗣️ *Text language:* ${a.language}` : null,
+      ...brief,
+      ...tail,
+    ].filter((l): l is string => l !== null).join("\n");
+  }
+
+  // A human-model entry ("Normal Ad (Female)"…) still has a person to dress, so its attire is
+  // briefed like an ordinary ad's. Deities and cartoons come dressed.
+  const dressable = !pack || pack.family === "human";
+  const packGender = packModelGender(pack);
   return [
     `🎬✨ *NEW AD ASSIGNMENT* ✨🎬`,
     ``,
@@ -247,16 +430,32 @@ export function buildAssignmentRequirementsMessage(a: {
       ? `📷 *Location:* the client's own photos — upload every photo they sent`
       : `🏙️ *Location:* build it from the business (client sent no photos)`) : null,
     !pack && a.modelGender ? `👤 *Model:* ${a.modelGender === "male" ? "Male" : "Female"}` : null,
-    !pack && a.attireType ? `👔 *Attire:* ${attireLabel(a.attireType, a.customAttire)}` : null,
+    dressable && a.attireType
+      ? `👔 *Attire:* ${attireLabel(attireForGender((packGender as ModelGender | null) ?? ((a.modelGender as ModelGender) || ModelGender.FEMALE), a.attireType as AttireType), a.customAttire)}`
+      : null,
     a.aspectRatio ? `📐 *Ratio:* ${a.aspectRatio}` : null,
     a.language ? `🗣️ *Language:* ${a.language}` : null,
-    notes ? `` : null,
-    notes ? `📝 *Client notes:* ${notes}` : null,
-    ``,
-    a.accessCode ? `🔑 *Access Code:* ${a.accessCode}` : null,
-    a.accessCode ? `` : null,
-    `🚀 Let's create something amazing — good luck! 🔥`,
+    ...brief,
+    ...tail,
   ].filter((l): l is string => l !== null).join("\n");
+}
+
+/**
+ * The sale's business info, written as the generator's "Business Messages / Text Instructions".
+ *
+ * That box is what the generator reads to learn what the business does and what the ad must carry,
+ * and the member used to retype the sales member's brief into it by hand — when they had it at all.
+ * The AI Platform now opens a job with this already in the box (only when the box is empty, so
+ * nothing a member typed is ever replaced). Empty when there is nothing to say.
+ */
+export function briefAsInstructions(businessInfo?: string | null, businessAddress?: string | null): string {
+  const info = businessInfo?.trim();
+  const address = businessAddress?.trim();
+  if (!info && !address) return "";
+  return [
+    info ? `Business info & what to include (from the sale):\n${info}` : null,
+    address ? `Address: ${address}` : null,
+  ].filter(Boolean).join("\n\n");
 }
 
 /**
@@ -278,6 +477,8 @@ export function requirementSummary(requirement?: AdRequirement | null): string[]
       : r.modelGender === "male" ? "👨 Male" : r.modelGender === "female" ? "👩 Female" : null,
     pack ? (r.realLocationProvided ? "📷 Client's photos" : "🏙️ Location created")
       : r.attireType ? attireLabel(r.attireType, r.customAttire) : null,
+    // A human-model entry is still a person in clothes — say which clothes.
+    pack?.family === "human" && r.attireType ? attireLabel(r.attireType, r.customAttire) : null,
     r.aspectRatio,
   ].filter((v): v is string => !!v);
 }

@@ -20,6 +20,7 @@ import StaffOrderChat from '@/components/order-chat/StaffOrderChat';
 import { useOrderChatUnread } from '@/hooks/useOrderChat';
 import { syncOrderChatWorkStatus } from '@/services/orderChat';
 import { orderChatIdOf } from '@/utils/orderChatId';
+import { isPosterCategory, assignmentSizeLabel } from '@/utils/posterSpec';
 
 const STATUS_CONFIG: Record<string, {
   icon: React.ReactNode;
@@ -328,9 +329,13 @@ export default function RecentAds() {
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
                         <span className="capitalize">{a.category}</span>
                         <span className="opacity-40">·</span>
-                        <span>{a.clipCount} clips</span>
-                        <span className="opacity-40">·</span>
-                        <span>{a.duration}</span>
+                        {isPosterCategory(a.category) ? (
+                          <span>{assignmentSizeLabel(a)}</span>
+                        ) : (<>
+                          <span>{a.clipCount} clips</span>
+                          <span className="opacity-40">·</span>
+                          <span>{a.duration}</span>
+                        </>)}
                         <span className="opacity-40">·</span>
                         <span className="flex items-center gap-1">
                           <Clock className="w-3 h-3" />
@@ -348,6 +353,15 @@ export default function RecentAds() {
                       >
                         <span className="font-semibold text-amber-700 dark:text-amber-400">Client asked: </span>
                         {a.requirementNotes.trim()}
+                      </p>
+                    )}
+                    {a.businessInfo?.trim() && (
+                      <p
+                        data-test="recent-ads-business-info"
+                        className="mt-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1.5 text-[11px] leading-relaxed text-foreground"
+                      >
+                        <span className="font-semibold text-emerald-700 dark:text-emerald-400">Business info: </span>
+                        {a.businessInfo.trim()}
                       </p>
                     )}
 

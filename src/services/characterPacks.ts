@@ -175,6 +175,50 @@ export function getCharacterPack(id?: string | null): CharacterPack | null {
   return CHARACTER_PACKS[id] ?? CHARACTER_PACKS[LEGACY_PACK_ALIASES[id]] ?? null;
 }
 
+/**
+ * The human-model entries, and which model each one casts.
+ *
+ * ── Why these are special ────────────────────────────────────────────────────────────────────
+ * Every other entry replaces the person on screen — a deity, a cartoon, a duo — so every form
+ * hides Model and Attire the moment a pack is chosen. That rule was written before the catalogue
+ * gained "Normal Ad (Female)", "Normal Ad (Male)" and the Real Owner Face entries, which are packs
+ * in the data but still put a real person in front of the camera. Hiding their attire meant a team
+ * leader correcting a Normal Ad (Female) job had no way to say "saree, not suit" — and the frame
+ * prompt was left choosing between the two on its own.
+ *
+ * Named explicitly rather than read off the id: an id is a storage key, and a renamed key must not
+ * silently turn a man into a woman.
+ */
+const HUMAN_PACK_GENDER: Record<string, "female" | "male"> = {
+  normal_female: "female",
+  normal_male: "male",
+  owner_face_female: "female",
+  owner_face_male: "male",
+};
+
+/** True for an entry that still puts a real person on screen — someone who can be dressed. */
+export function isHumanPack(pack?: CharacterPack | null): boolean {
+  return !!pack && pack.family === "human";
+}
+
+/**
+ * The model a human-model entry casts, or null for everything else (and for no pack at all).
+ * A human entry missing from the table falls back to its id, then to female, the catalogue's default.
+ */
+export function packModelGender(pack?: CharacterPack | null): "female" | "male" | null {
+  if (!isHumanPack(pack)) return null;
+  return HUMAN_PACK_GENDER[pack!.id] ?? (/(^|_)male$/.test(pack!.id) ? "male" : "female");
+}
+
+/**
+ * Whether the job has a person whose clothes can be chosen: an ordinary ad, or a human-model entry.
+ * Deities and cartoons come dressed.
+ */
+export function hasDressableModel(packId?: string | null): boolean {
+  const pack = getCharacterPack(packId);
+  return !pack || isHumanPack(pack);
+}
+
 /** Options for a flat dropdown, in catalogue order. */
 export function characterPackOptions(): { id: string; label: string; tagline: string }[] {
   return CHARACTER_CATALOGUE.map(({ id, label, tagline }) => ({ id, label, tagline }));

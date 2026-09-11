@@ -446,3 +446,66 @@ at the SALE, so an ad sold at six in the evening used to spend the night unseen.
 - Real browser, 39 assertions via a throwaway harness — see [[browser-testing-this-app]]. It caught
   two things jsdom cannot: the ⓘ could not be opened with a mouse (hover opened it, the click that
   must follow toggled it shut), and the extend dialog had no Escape key. Both fixed.
+
+## Session — 2026-09-11 (Poster Creation + four tech-side fixes)
+
+**1. Business info missing from "Share requirements".** The sale's *Business info & what to
+include* (`AdRequirement.businessInfo`, plus `businessAddress`) stopped at the order: nothing copied
+it onto the assignment and `buildAssignmentRequirementsMessage` never printed it. Now
+`assignmentFormFromOrder` → Work Assign form (editable box) → `createWorkAssignment` →
+`WorkAssignment.businessInfo/businessAddress` → the message, the member's My Work card and the AI
+Platform's text box (`briefAsInstructions`, only when the box is empty). Jobs assigned before this
+have no copy: `hooks/useAssignmentBrief` reads ONE order doc when the share dialog or generator
+opens (never per card). `RequirementsShareModal` follows its `message` prop until someone types.
+
+**2. Attire on human-model special categories.** "Normal Ad (Female/Male)" and the Real Owner Face
+pair are catalogue entries (family `human`) stored as `characterPack`, and every form hid Model +
+Attire for ANY pack. `characterPacks.isHumanPack` / `packModelGender` / `hasDressableModel`;
+`components/work/ModelAttireFields` now replaces the five copies (both Work Assign pages, both
+member pages, Work Reports) — human pack → Attire only, filtered by the entry's gender; deity/cartoon
+→ nothing. `adRequirement.resolveModelSpec` normalises gender/attire on every save (also inside
+`createWorkAssignment` and the sale form). The generator honours it: `wardrobeDirective` →
+`CharacterFramePromptInput.wardrobe` → a WARDROBE line after STAGING that overrides the entry's
+"suit or saree". Spec diff reports attire changes on human packs.
+
+**3. No automatic "Chat with client" popup after assigning.** The `clientChatOffered` effect is
+gone from both Work Assign pages; the header "Chat link" button and the card's "Chat with client"
+still open it by hand.
+
+**4. Tools → Ad Generation History showed each ad ~3 times, under varying names.** Every Generate
+AND every Save wrote a new `ai_generations` doc; the page listed them all (it even re-added the
+older versions of completed jobs). `utils/generationHistory.buildGenerationHistory`: one row per
+job (newest version, the JOB's business name, uniqueId, status, "N versions"), delivered jobs with
+nothing saved still listed, loose generations grouped by person+business+kind+day. Source fix in
+`AIPlatformApp.persistGeneration`: Generate starts a new doc (a version), Save updates the doc on
+screen (`generationDocIdRef`, `setDoc merge`, `updatedAt`). Also applied to `AdsHistoryModal`.
+
+**Poster Creation (new).** `WorkAssignment.category` gained `"poster"` (id prefix `PS`, 0 clips,
+`duration: "poster"`, Standard price 199; `posterSize` / `posterStyle` / `posterCount`, occasion in
+`festival`). Pure modules: `utils/posterSpec` (sizes "4:5" default, "3:4", "1:1", "9:16", custom
+ratio "5:7", pixels "1080x1350"; shorter side 1080), `utils/posterOccasions` (upcoming dated
+festivals + fixed/relative observance days incl. Engineers' Day, Telugu aliases like Vinayaka
+Chavithi; lunar dates only from the 2026 calendar, never guessed), `services/posterStyles` (the
+"training set": the 8 styles from the user's boards — mechanism, recipe, look, festival fusion,
+avoid list, 9–15 reference ads each — plus the 3 festival fusion patterns from the Udaan ×2 and
+Dhanalakshmi posters; NO client phone numbers in it), `services/prompts/posterConcept`,
+`utils/posterConcepts` (reads any reply shape, re-states a missing canvas, strips phone numbers the
+business never gave). `geminiService.generatePosterConcepts` / `refinePosterConcept`. UI:
+`components/work/PosterSpecFields` (one component for Work Assign ×2, editors ×3 and the AI
+Platform), `PosterSpecChips`, `ai-platform/PosterConceptsPanel`. A poster job opens the AI Platform
+locked to Poster Creation with size/style/occasion fixed. `assignmentEdit.categoryDependentPatch`
+is what all three editors write for the kind-dependent fields. Poster sales (`category: "poster"`)
+now open Work Assign as a poster, priced per poster.
+
+### How this was verified
+- `npx vitest run` — **2146/2146** (67 new across `posterSpec`, `posterOccasions`,
+  `posterConcepts`, `businessBriefAndPosterJobs`, `generationHistory`, `posterFormFields`).
+- `tsc -p tsconfig.check.json` — only the pre-existing `VideoCallManager` error. `npm run build`
+  clean. Lint on touched files at or below the committed baseline (154 → 150 errors).
+- **Real browser, 116 checks, 0 console errors**, via a throwaway harness (deleted) that aliased
+  `firebase/*` to an in-memory fake and answered Gemini with canned JSON — no production reads.
+  Real pages: both Work Assign pages, both member pages, Work Reports, Tools, My Work, AI Platform
+  (poster job, Normal Ad video job, free use) at 1280px and 412px. Caught one pre-existing bug:
+  Tools history detail nested a copy `<button>` inside the header `<button>` — fixed.
+- NOT verified against live Gemini output quality (no keys locally) — the concept prompt is unit-
+  tested for content; judge real concepts after deploying.

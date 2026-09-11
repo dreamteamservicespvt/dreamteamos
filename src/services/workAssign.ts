@@ -13,6 +13,10 @@ import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import { normalizePhone } from "@/utils/phone";
 import { categoryLabel, isAdCategory } from "@/utils/serviceCatalog";
+import { isPosterCategory, posterSizeLabel, DEFAULT_POSTER_SIZE } from "@/utils/posterSpec";
+import { AUTO_POSTER_STYLE } from "@/services/posterStyles";
+import { resolveModelSpec } from "@/utils/adRequirement";
+import { AttireType, ModelGender } from "@/types/aiPlatform";
 import { findUnassignedOrderForPhone, revertOrderToUnassigned } from "@/services/orders";
 import { logTechActivity, type ActivityActor } from "@/services/activityLog";
 import {
@@ -46,9 +50,17 @@ export interface CreateWorkAssignmentInput {
   customAttire?: string;
   aspectRatio?: "9:16" | "16:9";
   language?: string;
-  /** The occasion a wishes video is for, carried from the sale. */
+  /** The occasion a wishes video — or a poster — is for, carried from the sale. */
   festival?: string;
   requirementNotes?: string;
+  /** The sale's client-facing brief ("Business info & what to include"). */
+  businessInfo?: string;
+  /** Where the business is, from the sale. */
+  businessAddress?: string;
+  /** Poster jobs only. See utils/posterSpec and services/posterStyles. */
+  posterSize?: string;
+  posterStyle?: string;
+  posterCount?: number;
   /** Special-category cartoon duo (a services/characterPacks id), when one was sold. */
   characterPack?: string;
   /**
@@ -88,8 +100,24 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
     assignedTo, assignedToName, assignerUid, category, duration, clipCount, pricePerUnit, uniqueId,
     businessName, businessWhatsapp, modelGender, attireType, customAttire, aspectRatio,
     language, festival, requirementNotes, characterPack, realLocationProvided,
+    businessInfo, businessAddress, posterSize, posterStyle, posterCount,
     order, tracks, memberLink = "/tech/my-work", assignerName, techAdminUid, actor,
   } = input;
+  const poster = isPosterCategory(category);
+
+  /*
+    A human-model special category ("Normal Ad (Female)"…) decides the gender, and the attire has
+    to suit it. Normalised here as well as in the forms, because this is the one door every new
+    job goes through.
+  */
+  const modelSpec = modelGender && attireType
+    ? resolveModelSpec({
+        characterPack,
+        modelGender: modelGender as ModelGender,
+        attireType: attireType as AttireType,
+        customAttire,
+      })
+    : null;
 
   const accessCode = generateAccessCode();
   const business = (businessName || "").trim();
@@ -123,16 +151,25 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
     sessions: [],
     totalDurationSeconds: 0,
     date: format(new Date(), "yyyy-MM-dd"),
-    ...(modelGender ? { modelGender } : {}),
-    ...(attireType ? { attireType } : {}),
-    ...(attireType === "custom" && customAttire?.trim() ? { customAttire: customAttire.trim() } : {}),
-    ...(aspectRatio ? { aspectRatio } : {}),
+    // A poster has no model, no attire and no video ratio — writing the form's defaults onto it
+    // would brief a presenter who never appears.
+    ...(!poster && modelSpec ? { modelGender: modelSpec.modelGender } : {}),
+    ...(!poster && modelSpec ? { attireType: modelSpec.attireType } : {}),
+    ...(!poster && modelSpec?.attireType === "custom" && modelSpec.customAttire ? { customAttire: modelSpec.customAttire } : {}),
+    ...(!poster && aspectRatio ? { aspectRatio } : {}),
     ...(language ? { language } : {}),
-    // Only ever on a wishes job — the category decides whether an occasion means anything, and a
-    // festival left on a promotional ad would theme one that nobody sold.
-    ...(category === "wishes" && festival?.trim() ? { festival: festival.trim() } : {}),
+    // Only on a wishes job or a poster — the category decides whether an occasion means anything,
+    // and a festival left on a promotional ad would theme one that nobody sold.
+    ...((category === "wishes" || poster) && festival?.trim() ? { festival: festival.trim() } : {}),
     ...(requirementNotes?.trim() ? { requirementNotes: requirementNotes.trim() } : {}),
-    ...(characterPack ? { characterPack } : {}),
+    ...(businessInfo?.trim() ? { businessInfo: businessInfo.trim() } : {}),
+    ...(businessAddress?.trim() ? { businessAddress: businessAddress.trim() } : {}),
+    ...(poster ? {
+      posterSize: posterSize?.trim() || DEFAULT_POSTER_SIZE,
+      posterStyle: posterStyle?.trim() || AUTO_POSTER_STYLE,
+      ...(posterCount && posterCount > 1 ? { posterCount: Math.floor(posterCount) } : {}),
+    } : {}),
+    ...(!poster && characterPack ? { characterPack } : {}),
     /**
      * Where the ad is set, on every ad job.
      *
@@ -225,7 +262,9 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
     .join(" + ");
   const what = trackNames
     ? `${trackNames} on ${business || categoryLabel(category)}`
-    : `a new ${category} work (${clipCount} clips, ${duration})`;
+    : poster
+      ? `a new poster${posterCount && posterCount > 1 ? ` ×${posterCount}` : ""} (${posterSizeLabel(posterSize)})${business ? ` for ${business}` : ""}`
+      : `a new ${category} work (${clipCount} clips, ${duration})`;
 
   /**
    * The client’s own words, carried into the notification itself.

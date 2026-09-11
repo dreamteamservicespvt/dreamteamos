@@ -17,6 +17,10 @@ import type { AppUser, WorkAssignment } from '@/types';
 import { format, subDays, startOfDay } from 'date-fns';
 import DashboardDayPicker from '@/components/dashboard/DayPicker';
 import { normalizeClipCount } from '@/utils/assignmentDuration';
+import { buildGenerationHistory, type HistoryEntry } from '@/utils/generationHistory';
+import { posterStyleLabel } from '@/services/posterStyles';
+import { posterSizeLabel } from '@/utils/posterSpec';
+import { posterConceptAsText } from '@/utils/posterConcepts';
 
 /** Clip-count presets offered by the Script Duration Checker (matches the ad packages). */
 const CLIP_PRESETS = [2, 4, 6, 8] as const;
@@ -79,76 +83,34 @@ export default function Tools() {
     return allUsers.filter(u => (u.role === 'tech_member' || u.role === 'tech_admin') && u.isActive !== false);
   }, [allUsers]);
 
-  // Build unified history from work_assignments + ai_generations
-  const allHistoryEntries = useMemo(() => {
-    const genByAssignmentId = new Map<string, SavedGeneration>();
-    const genById = new Map<string, SavedGeneration>();
-    const standaloneGens: SavedGeneration[] = [];
-
-    for (const gen of allGenerations) {
-      if (gen.id) genById.set(gen.id, gen);
-      if (gen.workAssignmentId) {
-        const existing = genByAssignmentId.get(gen.workAssignmentId);
-        if (!existing || (gen.createdAt?.seconds || 0) > (existing.createdAt?.seconds || 0)) {
-          genByAssignmentId.set(gen.workAssignmentId, gen);
-        }
-      } else {
-        standaloneGens.push(gen);
-      }
-    }
-
-    const entries: any[] = [];
-    const usedGenIds = new Set<string>();
-
-    for (const a of allAssignments) {
-      if (!['completed', 'verified'].includes(a.status)) continue;
-      const gen = genByAssignmentId.get(a.id) || (a.savedGenerationId ? genById.get(a.savedGenerationId) : undefined) || null;
-      if (gen?.id) usedGenIds.add(gen.id);
-
-      if (gen) {
-        entries.push({ ...gen, _hasGeneration: true, _status: a.status });
-      } else {
-        entries.push({
-          id: a.id, userId: a.assignedTo, userName: '',
-          businessName: a.businessName || a.displayTitle || a.clientName || 'Untitled',
-          businessType: a.category || '', businessInfo: null,
-          mainFramePrompts: [], headerPrompt: '', voiceOverScript: '', veoPrompts: [],
-          adType: '', attireType: '', duration: parseInt(a.duration) || 0,
-          createdAt: a.completedAt || a.assignedAt,
-          workAssignmentId: a.id, _hasGeneration: false, _status: a.status,
-        });
-      }
-    }
-
-    for (const gen of allGenerations) {
-      if (gen.id && usedGenIds.has(gen.id)) continue;
-      entries.push({ ...gen, _hasGeneration: true });
-    }
-
-    return entries.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-  }, [allGenerations, allAssignments]);
+  /**
+   * One row per ad. See utils/generationHistory: a job used to appear once for every time it was
+   * generated or saved, under whatever name the AI had read off the logo that time.
+   */
+  const allHistoryEntries = useMemo(
+    () => buildGenerationHistory(allGenerations as any[], allAssignments as any[], (g) => {
+      // The name a generation read off the business — for work made outside a job. (Inline rather
+      // than getBusinessName below: useMemo runs during render, before that const exists.)
+      const stored = typeof g.businessName === 'string' ? g.businessName : '';
+      if (stored && stored !== 'Untitled') return stored;
+      return (g.businessInfo ? extractBusinessNameFromInfo(g.businessInfo) : '') || stored || 'Untitled';
+    }),
+    [allGenerations, allAssignments],
+  );
 
   // Filter by date
   const dateFilteredGenerations = useMemo(() => {
     let items = allHistoryEntries;
 
+    const onDay = (item: HistoryEntry, dayStr: string) =>
+      item.timestampMs > 0 && format(new Date(item.timestampMs), 'yyyy-MM-dd') === dayStr;
     if (selectedDate) {
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
-      items = items.filter((item: any) => {
-        if (!item.createdAt) return false;
-        const d = item.createdAt.toDate ? item.createdAt.toDate() : new Date(item.createdAt);
-        return !isNaN(d.getTime()) && format(d, 'yyyy-MM-dd') === dateStr;
-      });
+      items = items.filter((item) => onDay(item, dateStr));
     } else if (dayFilter !== 'all') {
       const dayIndex = parseInt(dayFilter);
       const dayDateStr = recentDays[dayIndex]?.dateStr;
-      if (dayDateStr) {
-        items = items.filter((item: any) => {
-          if (!item.createdAt) return false;
-          const d = item.createdAt.toDate ? item.createdAt.toDate() : new Date(item.createdAt);
-          return !isNaN(d.getTime()) && format(d, 'yyyy-MM-dd') === dayDateStr;
-        });
-      }
+      if (dayDateStr) items = items.filter((item) => onDay(item, dayDateStr));
     }
 
     return items;
@@ -157,7 +119,7 @@ export default function Tools() {
   // Group by userId for member cards
   const memberGenerationCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    dateFilteredGenerations.forEach((item: any) => {
+    dateFilteredGenerations.forEach((item) => {
       counts[item.userId] = (counts[item.userId] || 0) + 1;
     });
     return counts;
@@ -166,16 +128,17 @@ export default function Tools() {
   // Filtered items for selected member + search
   const filteredHistory = useMemo(() => {
     let items = selectedMemberId
-      ? dateFilteredGenerations.filter((item: any) => item.userId === selectedMemberId)
+      ? dateFilteredGenerations.filter((item) => item.userId === selectedMemberId)
       : dateFilteredGenerations;
 
     if (historySearch.trim()) {
       const s = historySearch.toLowerCase();
-      items = items.filter((item: any) =>
+      items = items.filter((item) =>
         (item.businessName || '').toLowerCase().includes(s) ||
-        (item.userName || '').toLowerCase().includes(s) ||
+        String(item.generation?.userName || '').toLowerCase().includes(s) ||
         (item.businessType || '').toLowerCase().includes(s) ||
-        (item.festivalName || '').toLowerCase().includes(s)
+        (item.festivalName || '').toLowerCase().includes(s) ||
+        (item.uniqueId || '').toLowerCase().includes(s)
       );
     }
 
@@ -663,21 +626,37 @@ export default function Tools() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {filteredHistory.map((item: any) => (
-                    <button key={item.id} onClick={() => { if (item._hasGeneration !== false) { setViewingItem(item); setExpandedHistorySections({}); } }}
-                      className={`w-full bg-card border border-border rounded-xl p-4 text-left transition-all group ${item._hasGeneration !== false ? 'hover:border-primary/40 hover:shadow cursor-pointer' : 'opacity-70 cursor-default'}`}>
+                  {filteredHistory.map((item) => {
+                    const gen = item.generation as unknown as SavedGeneration | null;
+                    const openable = !!gen;
+                    return (
+                    <button key={item.key} data-test="history-row"
+                      onClick={() => { if (gen) { setViewingItem({ ...gen, businessName: item.businessName }); setExpandedHistorySections({}); } }}
+                      className={`w-full bg-card border border-border rounded-xl p-4 text-left transition-all group ${openable ? 'hover:border-primary/40 hover:shadow cursor-pointer' : 'opacity-70 cursor-default'}`}>
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h3 className="font-semibold text-foreground truncate">{getBusinessName(item)}</h3>
-                            {item._status && (
-                              <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium ${item._status === 'verified' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'}`}>
-                                {item._status === 'verified' ? 'Verified' : 'Completed'}
+                          <div className="flex flex-wrap items-center gap-2 mb-1">
+                            <h3 className="font-semibold text-foreground truncate">{item.businessName}</h3>
+                            {item.uniqueId && (
+                              <span className="shrink-0 text-[10px] font-mono text-muted-foreground">{item.uniqueId}</span>
+                            )}
+                            {item.status && (
+                              <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                                item.status === 'verified' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                                  : item.status === 'completed' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                                  : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'}`}>
+                                {item.status === 'verified' ? 'Verified' : item.status === 'completed' ? 'Completed' : item.status === 'editing' ? 'Edits required' : item.status === 'assigned' ? 'Assigned' : 'In progress'}
                               </span>
                             )}
                             {item.creationMode && (
                               <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
-                                {item.creationMode === 'video' ? 'Video' : 'Poster'}
+                                {item.creationMode === 'poster' ? 'Poster' : 'Video'}
+                              </span>
+                            )}
+                            {/* The other saves of the same ad, counted rather than listed. */}
+                            {item.versions > 1 && (
+                              <span data-test="history-versions" className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground" title="Generated more than once — the latest is shown">
+                                {item.versions} versions · latest shown
                               </span>
                             )}
                           </div>
@@ -686,16 +665,17 @@ export default function Tools() {
                             {item.festivalName && (
                               <span className="text-purple-600 dark:text-purple-400">{item.festivalName}</span>
                             )}
-                            <span>{item.duration}s</span>
-                            <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{formatDate(item.createdAt)}</span>
+                            {item.creationMode !== 'poster' && item.duration > 0 && <span>{item.duration}s</span>}
+                            <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{formatDate(item.timestamp)}</span>
                           </div>
                         </div>
-                        {item._hasGeneration !== false && (
+                        {openable && (
                           <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0 group-hover:translate-x-0.5 transition-transform" />
                         )}
                       </div>
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </>
@@ -719,8 +699,14 @@ export default function Tools() {
                 <span className="flex items-center gap-1"><User className="w-3.5 h-3.5" />{viewingItem.userName}</span>
               )}
               <span className="flex items-center gap-1"><Building2 className="w-3.5 h-3.5" />{viewingItem.businessType || 'Business'}</span>
-              <span>{viewingItem.adType === 'festival' ? `Festival: ${viewingItem.festivalName}` : 'Commercial'}</span>
-              <span>{viewingItem.duration}s ({Math.ceil(viewingItem.duration / 8)} clips)</span>
+              {viewingItem.creationMode === 'poster' ? (<>
+                <span>🖼️ Poster · {posterSizeLabel(viewingItem.posterSize)}</span>
+                <span>{posterStyleLabel(viewingItem.posterStyle)}</span>
+                {viewingItem.posterOccasion && <span>🎊 {viewingItem.posterOccasion}</span>}
+              </>) : (<>
+                <span>{viewingItem.adType === 'festival' ? `Festival: ${viewingItem.festivalName}` : 'Commercial'}</span>
+                <span>{viewingItem.duration}s ({Math.ceil(viewingItem.duration / 8)} clips)</span>
+              </>)}
               <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />{formatDate(viewingItem.createdAt)}</span>
             </div>
           </div>
@@ -734,19 +720,22 @@ export default function Tools() {
             { key: 'veo', title: `VEO Prompts (${viewingItem.veoPrompts?.length || 0} Segments)`, content: viewingItem.veoPrompts, isArray: true },
           ].filter(s => s.isArray ? (s.content as string[])?.length > 0 : !!(s.content as string)).map(section => (
             <div key={section.key} className="bg-card border border-border rounded-xl overflow-hidden">
-              <button onClick={() => toggleHistorySection(section.key)}
-                className="w-full flex items-center justify-between px-4 py-3 hover:bg-accent/30 transition-colors">
-                <span className="font-semibold text-sm text-foreground">{section.title}</span>
-                <div className="flex items-center gap-2">
-                  <button onClick={(e) => { e.stopPropagation(); handleCopyHistorySection(section.key, section.content as any); }}
-                    className="p-1 rounded hover:bg-accent transition-colors">
-                    {copiedHistorySection === section.key
-                      ? <Check className="w-3.5 h-3.5 text-green-500" />
-                      : <Copy className="w-3.5 h-3.5 text-muted-foreground" />}
-                  </button>
+              {/* Two sibling buttons, not one inside the other — a button nested in a button is
+                  invalid HTML, and React warned about it every time a saved ad was opened. */}
+              <div className="flex items-center gap-2 pr-4 hover:bg-accent/30 transition-colors">
+                <button onClick={() => toggleHistorySection(section.key)}
+                  className="flex-1 flex items-center justify-between gap-2 pl-4 py-3 text-left">
+                  <span className="font-semibold text-sm text-foreground">{section.title}</span>
                   <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${expandedHistorySections[section.key] ? 'rotate-180' : ''}`} />
-                </div>
-              </button>
+                </button>
+                <button onClick={() => handleCopyHistorySection(section.key, section.content as string | string[])}
+                  aria-label={`Copy ${section.title}`}
+                  className="p-1 rounded hover:bg-accent transition-colors">
+                  {copiedHistorySection === section.key
+                    ? <Check className="w-3.5 h-3.5 text-green-500" />
+                    : <Copy className="w-3.5 h-3.5 text-muted-foreground" />}
+                </button>
+              </div>
               {expandedHistorySections[section.key] && (
                 <div className="px-4 pb-4 border-t border-border pt-3">
                   {section.isArray ? (
@@ -775,6 +764,35 @@ export default function Tools() {
               )}
             </div>
           ))}
+
+          {/* Poster concepts */}
+          {viewingItem.posterConcepts && viewingItem.posterConcepts.length > 0 && (
+            <div className="bg-card border border-border rounded-xl overflow-hidden" data-test="history-poster-concepts">
+              <div className="w-full flex items-center justify-between px-4 py-3">
+                <span className="font-semibold text-sm text-foreground">Poster Concepts ({viewingItem.posterConcepts.length})</span>
+                <button onClick={() => handleCopyHistorySection('posterConcepts', viewingItem.posterConcepts!.map((c, i) => posterConceptAsText(c, i)).join('\n\n────────\n\n'))}
+                  className="p-1 rounded hover:bg-accent transition-colors">
+                  {copiedHistorySection === 'posterConcepts' ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5 text-muted-foreground" />}
+                </button>
+              </div>
+              <div className="px-4 pb-4 border-t border-border pt-3 space-y-3">
+                {viewingItem.posterConcepts.map((c, idx) => (
+                  <div key={idx} className="bg-background border border-border rounded-lg p-3">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className="text-xs font-bold text-primary">Concept {idx + 1}: {c.title}</span>
+                      <button onClick={() => handleCopyHistorySection(`poster-${idx}`, c.imagePrompt)}
+                        className="p-1 rounded hover:bg-accent transition-colors">
+                        {copiedHistorySection === `poster-${idx}` ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3 text-muted-foreground" />}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mb-1">{posterStyleLabel(c.style)}{c.headline ? ` · “${c.headline}”` : ''}</p>
+                    {c.idea && <p className="text-xs text-foreground mb-2">{c.idea}</p>}
+                    <p className="text-sm text-foreground whitespace-pre-wrap">{c.imagePrompt}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Stock Image Prompts */}
           {viewingItem.stockImagePrompts && viewingItem.stockImagePrompts.length > 0 && (

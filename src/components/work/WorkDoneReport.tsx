@@ -9,6 +9,7 @@ import { formatCurrency } from '@/utils/formatters';
 import { DONE_STATUSES, workDayOf, cycleForDate } from '@/utils/performanceCycle';
 import { categoryLabel } from '@/utils/serviceCatalog';
 import type { AppUser, WorkAssignment } from '@/types';
+import { isPosterCategory, assignmentSizeLabel } from '@/utils/posterSpec';
 
 /**
  * Work-done reporting for the tech team.
@@ -412,7 +413,7 @@ export default function WorkDoneReport({
                               title={a.businessName || a.clientName || a.displayTitle}>
                               {a.businessName || a.clientName || a.displayTitle}
                             </span>
-                            <span className="shrink-0 text-[10px] text-muted-foreground">{a.duration} · {a.clipCount} clips</span>
+                            <span className="shrink-0 text-[10px] text-muted-foreground">{isPosterCategory(a.category) ? assignmentSizeLabel(a) : `${a.duration} · ${a.clipCount} clips`}</span>
                             <span className="hidden shrink-0 font-mono text-[10px] text-muted-foreground sm:inline">{a.uniqueId}</span>
                             {showRevenue && (
                               <span className="w-16 shrink-0 text-right font-medium tabular-nums text-primary">{formatCurrency(a.totalPrice || 0)}</span>

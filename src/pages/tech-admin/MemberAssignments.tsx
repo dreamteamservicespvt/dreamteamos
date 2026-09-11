@@ -20,11 +20,18 @@ import { deleteOrderChat, ensureOrderChat, lockOrderChat, reopenOrderChat, detac
 import { orderChatIdOf } from '@/utils/orderChatId';
 import { useOrderChatUnread } from '@/hooks/useOrderChat';
 import { buildAssignmentRequirementsMessage } from '@/utils/adRequirement';
+import { useAssignmentBrief } from '@/hooks/useAssignmentBrief';
 import { getCharacterPack } from '@/services/characterPacks';
 import { unassignWork } from '@/services/workAssign';
 import { verifyAssignments as verifyWorkAssignments } from '@/services/workVerify';
 import { useToast } from '@/hooks/use-toast';
 import SpecialCategoryFields from '@/components/work/SpecialCategoryFields';
+import ModelAttireFields from '@/components/work/ModelAttireFields';
+import PosterSpecFields from '@/components/work/PosterSpecFields';
+import PosterSpecChips from '@/components/work/PosterSpecChips';
+import { categoryDependentPatch, posterEditFieldsOf } from '@/utils/assignmentEdit';
+import { categorySwitch } from '@/utils/adRequirement';
+import { isPosterCategory, DEFAULT_POSTER_PRICE, assignmentSizeLabel } from '@/utils/posterSpec';
 import ReassignWork from '@/components/work/ReassignWork';
 import DurationPicker from '@/components/work/DurationPicker';
 import {
@@ -123,6 +130,8 @@ export default function MemberAssignments() {
   const [view, setView] = useViewMode('member-assignments');
   /** The assignment whose requirements message is open for re-sharing. */
   const [shareAssignment, setShareAssignment] = useState<WorkAssignment | null>(null);
+  // The sale's business info for the job being shared — off the job, or its order for older jobs.
+  const shareBrief = useAssignmentBrief(shareAssignment);
   /** The client chat being handed over, and the one being read. */
   const [shareChatFor, setShareChatFor] = useState<WorkAssignment | null>(null);
   const [openChatFor, setOpenChatFor] = useState<WorkAssignment | null>(null);
@@ -135,6 +144,8 @@ export default function MemberAssignments() {
     category: string; duration: string; pricePerUnit: number; businessName: string; businessWhatsapp: string;
     modelGender: ModelGender; attireType: AttireType; customAttire: string; aspectRatio: '9:16' | '16:9'; language: string; customLanguage: string;
     characterPack: string; realLocationProvided: boolean;
+    /** Poster jobs — see utils/assignmentEdit. */
+    posterSize: string; posterStyle: string; posterCount: number; festival: string;
   } | null>(null);
   const [confirmAction, setConfirmAction] = useState<{ type: 'delete' | 'sendback' | 'unassign'; id: string; assignedTo?: string; title: string; orderId?: string | null } | null>(null);
   const [unassigning, setUnassigning] = useState(false);
@@ -393,6 +404,7 @@ export default function MemberAssignments() {
       customLanguage: a.language && !isPresetLanguage ? a.language : '',
       characterPack: a.characterPack || '',
       realLocationProvided: a.realLocationProvided === true,
+      ...posterEditFieldsOf(a),
     });
   };
 
@@ -403,23 +415,13 @@ export default function MemberAssignments() {
       const language = editForm.language === 'Custom' ? (editForm.customLanguage.trim() || 'Custom') : editForm.language;
       await updateDoc(doc(db, 'work_assignments', editingId), {
         category: editForm.category,
-        duration: editForm.duration,
         pricePerUnit: editForm.pricePerUnit,
-        clipCount: clips,
         totalPrice: editForm.pricePerUnit,
         businessName: editForm.businessName.trim(),
         ...(editForm.businessWhatsapp.trim() ? { businessWhatsapp: normalizePhone(editForm.businessWhatsapp.trim()) } : { businessWhatsapp: '' }),
-        modelGender: editForm.modelGender,
-        attireType: editForm.attireType,
-        customAttire: editForm.attireType === AttireType.CUSTOM ? editForm.customAttire.trim() : '',
-        aspectRatio: editForm.aspectRatio,
         language,
-        // Written unconditionally so clearing the special category actually clears it — a spread
-        // that omits the field would leave the old duo on the job while the form showed none.
-        characterPack: editForm.characterPack,
-        // Written on every ad, not only a pack one — a normal ad's background is now a real
-        // field, and gating it on the pack would reset it to "AI" on every unrelated edit.
-        realLocationProvided: editForm.realLocationProvided === true,
+        // Duration, clips, the ad spec — or the poster spec. See utils/assignmentEdit.
+        ...categoryDependentPatch(editForm),
       });
       // Tell the member their brief moved. The AI Platform shows them exactly what changed if they
       // have it open; this is for when they do not, so a spec change is never silent.
@@ -719,17 +721,18 @@ export default function MemberAssignments() {
                       <label className="block text-[11px] font-medium text-muted-foreground mb-1">Category</label>
                       <select value={editForm.category} onChange={(e) => {
                         const cat = e.target.value;
-                        const dur = DURATIONS[cat][0];
-                        setEditForm(prev => prev ? { ...prev, category: cat, duration: dur, pricePerUnit: priceForClips(cat, getClipCount(dur)) } : prev);
+                        // A poster has no length; coming back from one opens on the first package.
+                        setEditForm(prev => prev ? { ...prev, category: cat, ...categorySwitch(prev, cat) } : prev);
                       }} className="w-full border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border outline-none focus:ring-2 focus:ring-primary/20">
                         <option value="wishes">Wishes</option>
                         <option value="promotional">Promotional</option>
                         <option value="cinematic">Cinematic</option>
+                        <option value="poster">🖼️ Poster</option>
                       </select>
                     </div>
 
-                    {/* Duration */}
-                    <div>
+                    {/* Duration — a poster has no length */}
+                    {!isPosterCategory(editForm.category) && (<div>
                       <label className="block text-[11px] font-medium text-muted-foreground mb-1">Duration</label>
                       <DurationPicker
                         category={editForm.category}
@@ -738,7 +741,7 @@ export default function MemberAssignments() {
                           ? { ...prev, duration, pricePerUnit: priceForClips(prev.category, clips) }
                           : prev)}
                       />
-                    </div>
+                    </div>)}
 
                     {/* Price */}
                     <div>
@@ -764,52 +767,44 @@ export default function MemberAssignments() {
                         className="w-full border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/20" />
                     </div>
 
-                    <SpecialCategoryFields
-                      characterPack={editForm.characterPack}
-                      realLocationProvided={editForm.realLocationProvided}
-                      onChange={(patch) => setEditForm(prev => prev ? { ...prev, ...patch } : prev)}
-                    />
-
-                    {/* Model — a character pack replaces the human model, so it drops out entirely. */}
-                    {!editForm.characterPack && (
-                    <div>
-                      <label className="block text-[11px] font-medium text-muted-foreground mb-1">Model</label>
-                      <div className="grid grid-cols-2 gap-1.5">
-                        {[ModelGender.FEMALE, ModelGender.MALE].map(g => (
-                          <button key={g} type="button"
-                            onClick={() => setEditForm(prev => {
-                              if (!prev) return prev;
-                              const allowed = ATTIRE_OPTIONS_BY_GENDER[g];
-                              return { ...prev, modelGender: g, attireType: allowed.includes(prev.attireType) ? prev.attireType : AttireType.PROFESSIONAL };
-                            })}
-                            className={`px-2 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                              editForm.modelGender === g ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-accent'
-                            }`}>
-                            {g === ModelGender.FEMALE ? '👩 Female' : '👨 Male'}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                    {!isPosterCategory(editForm.category) && (
+                      <SpecialCategoryFields
+                        characterPack={editForm.characterPack}
+                        realLocationProvided={editForm.realLocationProvided}
+                        onChange={(patch) => setEditForm(prev => prev ? { ...prev, ...patch } : prev)}
+                      />
                     )}
 
-                    {/* Attire */}
-                    {!editForm.characterPack && (
-                    <div>
-                      <label className="block text-[11px] font-medium text-muted-foreground mb-1">Attire</label>
-                      <select value={editForm.attireType} onChange={(e) => setEditForm(prev => prev ? { ...prev, attireType: e.target.value as AttireType } : prev)}
-                        className="w-full border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border outline-none focus:ring-2 focus:ring-primary/20">
-                        {ATTIRE_OPTIONS_BY_GENDER[editForm.modelGender].map(at => <option key={at} value={at}>{ATTIRE_LABELS[at]}</option>)}
-                      </select>
-                      {editForm.attireType === AttireType.CUSTOM && (
-                        <input type="text" placeholder="Describe the exact attire…" value={editForm.customAttire}
-                          onChange={(e) => setEditForm(prev => prev ? { ...prev, customAttire: e.target.value } : prev)}
-                          className="w-full mt-1.5 border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground border-border placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/20" />
-                      )}
-                    </div>
+                    {/* Model and attire — attire stays for a human-model special category ("Normal Ad
+                        (Female)" and the rest), and both drop out for deities and cartoons. */}
+                    {!isPosterCategory(editForm.category) && (
+                      <ModelAttireFields
+                        size="sm"
+                        characterPack={editForm.characterPack}
+                        modelGender={editForm.modelGender}
+                        attireType={editForm.attireType}
+                        customAttire={editForm.customAttire}
+                        onChange={(patch) => setEditForm(prev => prev ? { ...prev, ...patch } : prev)}
+                      />
                     )}
 
-                    {/* Aspect Ratio */}
-                    <div>
+                    {isPosterCategory(editForm.category) && (
+                      <PosterSpecFields
+                        size="sm"
+                        className="sm:col-span-2 lg:col-span-3"
+                        posterSize={editForm.posterSize}
+                        posterStyle={editForm.posterStyle}
+                        occasion={editForm.festival}
+                        posterCount={editForm.posterCount}
+                        showCount
+                        onChange={({ occasion, ...rest }) => setEditForm(prev => prev
+                          ? { ...prev, ...rest, ...(occasion !== undefined ? { festival: occasion } : {}) }
+                          : prev)}
+                      />
+                    )}
+
+                    {/* Aspect Ratio — video only */}
+                    {!isPosterCategory(editForm.category) && (<div>
                       <label className="block text-[11px] font-medium text-muted-foreground mb-1">Aspect Ratio</label>
                       <div className="grid grid-cols-2 gap-1.5">
                         {(['9:16', '16:9'] as const).map(r => (
@@ -821,7 +816,7 @@ export default function MemberAssignments() {
                           </button>
                         ))}
                       </div>
-                    </div>
+                    </div>)}
 
                     {/* Language */}
                     <div>
@@ -860,8 +855,8 @@ export default function MemberAssignments() {
                     <p className="text-sm font-medium text-foreground capitalize">{a.category}</p>
                   </div>
                   <div>
-                    <p className="text-[10px] text-muted-foreground mb-0.5">Duration & Clips</p>
-                    <p className="text-sm font-medium text-foreground">{a.duration} · {a.clipCount} clips</p>
+                    <p className="text-[10px] text-muted-foreground mb-0.5">{isPosterCategory(a.category) ? 'Size' : 'Duration & Clips'}</p>
+                    <p className="text-sm font-medium text-foreground">{isPosterCategory(a.category) ? assignmentSizeLabel(a) : `${a.duration} · ${a.clipCount} clips`}</p>
                   </div>
                   <div>
                     <p className="text-[10px] text-muted-foreground mb-0.5">Price</p>
@@ -878,6 +873,7 @@ export default function MemberAssignments() {
                     </div>
                   )}
                 </div>
+                <PosterSpecChips a={a} className="mt-3" />
                 {(a.modelGender || a.attireType || a.aspectRatio || a.language || a.characterPack) && (
                   <div className="flex flex-wrap gap-1.5 mt-3">
                     {/* A pack ad has no human model, so this chip replaces the model/attire pair
@@ -887,6 +883,12 @@ export default function MemberAssignments() {
                         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
                           🎭 {getCharacterPack(a.characterPack)!.label}
                         </span>
+                        {/* A human-model entry still has clothes worth reading off the card. */}
+                        {getCharacterPack(a.characterPack)?.family === 'human' && a.attireType && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
+                            {a.attireType === 'custom' && a.customAttire ? a.customAttire : ATTIRE_LABELS[a.attireType]}
+                          </span>
+                        )}
                       </>
                     ) : (
                     <>
@@ -1006,7 +1008,8 @@ export default function MemberAssignments() {
         <RequirementsShareModal
           memberName={member?.name || 'this member'}
           phone={member?.phone}
-          message={buildAssignmentRequirementsMessage(shareAssignment)}
+          message={buildAssignmentRequirementsMessage({ ...shareAssignment, ...shareBrief })}
+          loading={shareBrief.loading}
           onClose={() => setShareAssignment(null)}
         />
       )}

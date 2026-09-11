@@ -34,7 +34,7 @@ import { CLIP_SECONDS } from "@/utils/voiceOverFormat";
  * Deliberately three lines. Anything longer here is a physical description by another route, and
  * that is exactly what made the generated characters stop looking like themselves.
  */
-export const characterCastBlock = (pack: CharacterPack): string => {
+export const characterCastBlock = (pack: CharacterPack, wardrobe?: string): string => {
   const cast = pack.characters.map((c) => c.name).join(" and ");
 
   /**
@@ -71,11 +71,56 @@ If a viewer who watches the show would not instantly recognise them as ${cast}, 
 Do not restyle, redesign or reinterpret them, and do not describe their appearance in the prompt: name them and let them be themselves.
 They must be the same ${cast} in every clip.`;
 
+  /**
+   * The outfit that was ordered, for an entry with a real person on screen.
+   *
+   * The human-model entries' STAGING offers "a formal suit or a designer saree" and leaves the
+   * generator to choose — which it did differently from one ad to the next, whatever the client had
+   * asked for. When an attire was ordered it is stated after STAGING and said to override it, so
+   * the choice the team made is the one on screen, identical in every clip.
+   */
+  const wardrobeBlock = wardrobe && pack.family === "human"
+    ? `\n\nWARDROBE (as ordered — this overrides any outfit STAGING offers): ${wardrobe}. The exact same outfit, colour and styling in every clip.`
+    : "";
+
   return `===== CHARACTERS =====
 
 ${identity}
 
-STAGING: ${pack.styleDirective}`;
+STAGING: ${pack.styleDirective}${wardrobeBlock}`;
+};
+
+/**
+ * The ordered attire, written as a wardrobe line for a human-model entry.
+ *
+ * Mirrors the four AttireType values without importing them, so this prompt module stays free of
+ * the app's form types. Colour always comes from the client's brand palette — the one choice the
+ * brief never makes.
+ */
+export const wardrobeDirective = (
+  attireType?: string | null,
+  customAttire?: string | null,
+  gender?: string | null,
+): string => {
+  const male = gender === "male";
+  switch (attireType) {
+    case "traditional":
+      return male
+        ? "an elegant traditional kurta with a Nehru jacket, in a colour drawn from the client's brand palette"
+        : "an elegant designer silk saree with a modest elbow-length blouse, in a colour drawn from the client's brand palette, with tasteful traditional jewellery";
+    case "shirt_pant":
+      return "a crisp formal shirt neatly tucked into tailored formal trousers with a leather belt, in colours drawn from the client's brand palette";
+    case "custom":
+      return customAttire?.trim()
+        ? `exactly this outfit: ${customAttire.trim()}`
+        : "the outfit described in the client's brief";
+    case "professional":
+      return male
+        ? "a premium tailored men's formal suit — structured blazer, crisp shirt, formal trousers — in a colour drawn from the client's brand palette"
+        : "a premium tailored formal suit — structured blazer, crisp inner shirt, slim formal trousers — in a colour drawn from the client's brand palette";
+    default:
+      return "";
+  }
 };
 
 /**
@@ -615,6 +660,11 @@ export interface CharacterFramePromptInput {
   /** True when the client's logo file is attached to the request. */
   hasLogo?: boolean;
   businessContext?: string;
+  /**
+   * The ordered outfit for a human-model entry (see `wardrobeDirective`). Ignored for deities and
+   * cartoons, who come dressed.
+   */
+  wardrobe?: string;
 }
 
 /**
@@ -739,7 +789,7 @@ export const CHARACTER_MULTI_FRAME_SYSTEM_PROMPT = (
 ): string => {
   const {
     segmentCount, clipSummaries, locationMode, locationPlan,
-    aspectRatio, adType, festivalName, hasLogo = false, businessContext = "",
+    aspectRatio, adType, festivalName, hasLogo = false, businessContext = "", wardrobe,
   } = input;
   const clipContext = clipSummaries.map((s, i) => `  Clip ${i + 1}: ${s}`).join("\n");
   const orientation = aspectRatio === "16:9" ? "horizontal (landscape)" : "vertical (portrait)";
@@ -814,7 +864,7 @@ Every prompt must state the ${aspectRatio} ${orientation} framing explicitly, an
 ${solo ? `${cast}` : "the two characters"} and the business zone to fill that shape properly — no composition borrowed from a
 different aspect ratio.
 
-${characterCastBlock(pack)}
+${characterCastBlock(pack, wardrobe)}
 
 ${characterDirectionBlock(pack, "frame")}
 

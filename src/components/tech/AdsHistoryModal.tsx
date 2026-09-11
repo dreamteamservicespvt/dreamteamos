@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { format } from "date-fns";
 import { db } from "@/services/firebase";
 import { Film, Loader2, X, Clock } from "lucide-react";
 import type { AppUser } from "@/types";
+import { buildGenerationHistory } from "@/utils/generationHistory";
 
 /**
  * The ads an external creator has generated, for the tech admin to review as history.
@@ -19,12 +20,24 @@ interface AdGeneration {
   language?: string;
   duration?: string;
   aspectRatio?: string;
+  creationMode?: string;
   createdAt?: { seconds?: number };
+  updatedAt?: { seconds?: number };
+  [key: string]: unknown;
 }
 
 export default function AdsHistoryModal({ member, onClose }: { member: AppUser; onClose: () => void }) {
   const [ads, setAds] = useState<AdGeneration[]>([]);
   const [loading, setLoading] = useState(true);
+  /**
+   * One row per ad. Generate-then-Save used to write the same ad twice, and every copy was listed —
+   * see utils/generationHistory. A creator works outside assignments, so rows are grouped by
+   * business, kind and day, and the newest save is the one shown.
+   */
+  const rows = useMemo(
+    () => buildGenerationHistory(ads, []).map((e) => ({ entry: e, ad: e.generation as unknown as AdGeneration })),
+    [ads],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -53,7 +66,7 @@ export default function AdsHistoryModal({ member, onClose }: { member: AppUser; 
               <Film className="h-4 w-4 text-amber-500" /> {member.name}'s ads
             </h3>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              {loading ? "Loading…" : `${ads.length} ad${ads.length === 1 ? "" : "s"} created on the platform`}
+              {loading ? "Loading…" : `${rows.length} ad${rows.length === 1 ? "" : "s"} created on the platform`}
             </p>
           </div>
           <button onClick={onClose} aria-label="Close" className="shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
@@ -64,20 +77,20 @@ export default function AdsHistoryModal({ member, onClose }: { member: AppUser; 
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
           {loading ? (
             <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
-          ) : ads.length === 0 ? (
+          ) : rows.length === 0 ? (
             <div className="py-12 text-center text-sm text-muted-foreground">
               <Film className="mx-auto mb-2 h-8 w-8 opacity-30" />
               No ads created yet.
             </div>
           ) : (
             <div className="space-y-2">
-              {ads.map((ad) => (
-                <div key={ad.id} className="rounded-xl border border-border bg-background p-3">
+              {rows.map(({ entry, ad }) => (
+                <div key={entry.key} className="rounded-xl border border-border bg-background p-3">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="truncate font-medium text-foreground">{ad.businessName || "Untitled"}</span>
-                    {ad.createdAt?.seconds && (
+                    <span className="truncate font-medium text-foreground">{entry.businessName || "Untitled"}</span>
+                    {entry.timestampMs > 0 && (
                       <span className="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground">
-                        <Clock size={10} /> {format(new Date(ad.createdAt.seconds * 1000), "dd MMM yyyy, hh:mm a")}
+                        <Clock size={10} /> {format(new Date(entry.timestampMs), "dd MMM yyyy, hh:mm a")}
                       </span>
                     )}
                   </div>
@@ -87,6 +100,8 @@ export default function AdsHistoryModal({ member, onClose }: { member: AppUser; 
                     {ad.duration && <Chip>{ad.duration}</Chip>}
                     {ad.aspectRatio && <Chip>{ad.aspectRatio}</Chip>}
                     {ad.language && <Chip>{ad.language}</Chip>}
+                    {ad.creationMode === "poster" && <Chip>poster</Chip>}
+                    {entry.versions > 1 && <Chip>{entry.versions} versions</Chip>}
                   </div>
                 </div>
               ))}

@@ -13,7 +13,9 @@
  * someone is interrupted mid-work, so it must never fire on a field nobody cares about.
  */
 import { attireLabel } from "./adRequirement";
-import { getCharacterPack } from "@/services/characterPacks";
+import { getCharacterPack, isHumanPack } from "@/services/characterPacks";
+import { posterStyleLabel } from "@/services/posterStyles";
+import { posterSizeLabel } from "./posterSpec";
 import type { WorkAssignment } from "@/types";
 
 export interface SpecChange {
@@ -39,6 +41,10 @@ export interface AssignmentSpec {
   requirementNotes?: string;
   characterPack?: string;
   realLocationProvided?: boolean;
+  /** Poster jobs: the canvas, the style and how many — each changes what has to be produced. */
+  posterSize?: string;
+  posterStyle?: string;
+  posterCount?: number;
 }
 
 /** Everything that matters, pulled off an assignment. */
@@ -58,6 +64,9 @@ export function specOf(a: WorkAssignment | null | undefined): AssignmentSpec {
     requirementNotes: a.requirementNotes,
     characterPack: a.characterPack,
     realLocationProvided: a.realLocationProvided,
+    posterSize: a.posterSize,
+    posterStyle: a.posterStyle,
+    posterCount: a.posterCount,
   };
 }
 
@@ -74,6 +83,11 @@ export function specSignature(spec: AssignmentSpec): string {
     spec.modelGender ?? "", spec.attireType ?? "", spec.customAttire ?? "",
     spec.aspectRatio ?? "", spec.language ?? "", spec.festival ?? "", spec.requirementNotes ?? "",
     spec.characterPack ?? "", spec.realLocationProvided === true,
+    // Appended, never interleaved: a job with no poster fields signs exactly as it did before, so
+    // this change cannot interrupt anyone holding an ordinary ad.
+    ...(spec.posterSize || spec.posterStyle || spec.posterCount
+      ? [spec.posterSize ?? "", spec.posterStyle ?? "", spec.posterCount ?? 1]
+      : []),
   ]);
 }
 
@@ -120,9 +134,13 @@ export function describeSpecChanges(prev: AssignmentSpec, next: AssignmentSpec):
   */
   add("Background", locationText(prev.realLocationProvided), locationText(next.realLocationProvided));
 
-  // A pack ad has no human model, so these two would describe someone who never appears.
+  // A pack ad has no human model, so these two would describe someone who never appears — except
+  // a human-model entry ("Normal Ad (Female)"…), whose gender comes with the entry but whose
+  // clothes are still chosen, so a change of attire on one is worth stopping for.
   if (!nextPack) {
     add("Model", genderText(prev.modelGender), genderText(next.modelGender));
+  }
+  if (!nextPack || isHumanPack(nextPack)) {
     add(
       "Attire",
       prev.attireType ? attireLabel(prev.attireType, prev.customAttire) : "—",
@@ -136,6 +154,13 @@ export function describeSpecChanges(prev: AssignmentSpec, next: AssignmentSpec):
   // job has become a Ugadi one has to start the look again, not find out on delivery.
   add("Occasion", plain(prev.festival), plain(next.festival));
   add("Client notes", plain(prev.requirementNotes), plain(next.requirementNotes));
+
+  // Poster jobs. Compared only when either side IS a poster, so an ad never reports "Poster size".
+  if (prev.category === "poster" || next.category === "poster") {
+    add("Poster size", prev.posterSize ? posterSizeLabel(prev.posterSize) : "—", next.posterSize ? posterSizeLabel(next.posterSize) : "—");
+    add("Poster style", prev.posterStyle ? posterStyleLabel(prev.posterStyle) : "—", next.posterStyle ? posterStyleLabel(next.posterStyle) : "—");
+    add("Posters", String(prev.posterCount || 1), String(next.posterCount || 1));
+  }
 
   return changes;
 }
