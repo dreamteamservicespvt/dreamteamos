@@ -1617,6 +1617,15 @@ export const generateAdAssets = async (
 
     const spokenPlace = await resolveSpokenPlace();
     /**
+     * Which clip has to carry the town.
+     *
+     * Clip 1 in a normal ad, where the hook names the business. A Festival Wishes ad spends clip 1
+     * on the greeting alone — no product, no offer and no address — so the town moves down to the
+     * clip where the ad turns into a promotion. Validating clip 1 for it would have failed every
+     * correct festival script and sent it into the repair loop to have the wish written out again.
+     */
+    const townClip = formData.adType === 'festival' && segmentCount > 1 ? 2 : 1;
+    /**
      * The town has to be SAID, so it is validated rather than merely asked for. Both spellings
      * count: the native one is what the script should contain, and the Latin one catches a script
      * that named the place but ignored the transliteration.
@@ -1625,7 +1634,7 @@ export const generateAdAssets = async (
       ? [{
           label: `The town "${placeName}"`,
           tokens: [placeName, spokenPlace].filter(Boolean),
-          clip: 1,
+          clip: townClip,
           hint: `Put it in ${packSpeakerList[1]?.name ?? "the second character"}'s line, beside the `
             + `business's name${spokenPlace ? `, spelled exactly "${spokenPlace}"` : ""}, and nowhere else.`,
         }]
@@ -1658,8 +1667,8 @@ export const generateAdAssets = async (
     const userPrompt = `Write the ${segmentCount}-clip cartoon dialogue script for:
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
   AD TYPE: ${formData.adType}
-  ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName}` : ''}
-  ${placeName ? `TOWN / VILLAGE (must be spoken once, in clip 1): ${placeName}` : ''}
+  ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName} (clip 1 is the wishes on behalf of the business and sells nothing)` : ''}
+  ${placeName ? `TOWN / VILLAGE (must be spoken once, in clip ${townClip}): ${placeName}` : ''}
   DURATION: ${effectiveDuration} seconds (${segmentCount} clips of ${CLIP_SECONDS} seconds)`;
 
     const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
@@ -1689,7 +1698,10 @@ Return only the repaired ${segmentCount} clips.`;
         model,
         contents: [{ role: 'user', parts: [{ text: repairPrompt }] }],
         config: {
-          systemInstruction: CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT(pack, effectiveDuration, segmentCount, formData.language, promptPlace),
+          systemInstruction: CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT(
+            pack, effectiveDuration, segmentCount, formData.language, promptPlace,
+            formData.adType, formData.festivalName,
+          ),
         },
       }));
 

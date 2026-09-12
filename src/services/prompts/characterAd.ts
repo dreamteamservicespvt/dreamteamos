@@ -242,6 +242,95 @@ const promotionalBeats = (segmentCount: number, first: string, second: string, p
   return beats.join(String.fromCharCode(10));
 };
 
+/**
+ * The shape of a FESTIVAL WISHES ad, clip by clip.
+ *
+ * A festival ad is not a commercial with a festive adjective in it. The business is WISHING the
+ * viewer, and that wish is the whole of clip 1 — no product, no offer, no town, no call to action.
+ * The selling starts at clip 2 and runs exactly as it would in any other ad.
+ *
+ * The standard human-model path has enforced this split for a long time (FESTIVAL MODE in
+ * services/prompts). The character path never did: choosing Festival Wishes alongside a special
+ * category changed one TONE sentence and nothing else, so the commercial skeleton below — clip 1 is
+ * a hook, greetings are banned, the town goes in clip 1 — stayed in force and the member got an
+ * ordinary promotional script back. This is that same festival contract, written for a cast.
+ */
+const festivalBeats = (
+  segmentCount: number,
+  first: string,
+  second: string,
+  place: string,
+  festival: string,
+): string => {
+  const solo = first === second;
+  /**
+   * Two forms of the occasion, because a missing festival name has to read as English either way.
+   * `occasion` stands alone ("Diwali is finished", "the festival is finished"); `bare` follows an
+   * article ("a happy Diwali", "a happy festival") where "the festival" would double the article.
+   */
+  const occasion = (festival || "").trim() || "the festival";
+  const bare = (festival || "").trim() || "festival";
+  const placeAndName = place
+    ? `NAMES THE BUSINESS **and says it is in ${place}**, saying plainly what it does`
+    : `NAMES THE BUSINESS, saying plainly what it does`;
+
+  /** Clip 1 is the greeting itself, and it is the only clip the names are allowed in. */
+  const wishes = solo
+    ? `Clip 1 — THE WISHES (NOT A HOOK, NOT A SELL): ${first} wishes the viewer and their family a `
+      + `happy ${bare} ON BEHALF OF THE BUSINESS, naming the business as the one sending the `
+      + `wish. This clip carries the one and only mention of ${first}'s name.`
+    : `Clip 1 — THE WISHES (NOT A HOOK, NOT A SELL): ${first} greets ${second} BY NAME about `
+      + `${occasion}, and ${second} answers with "${first}" and wishes the viewer and their family a `
+      + `happy ${bare} ON BEHALF OF THE BUSINESS, naming the business as the one sending the `
+      + `wish. This clip carries the one and only mention of each name — no clip after this may use `
+      + `either again.`;
+
+  const nothingElse = `Clip 1 CONTAINS NOTHING ELSE. No product, no service, no offer, no price, no `
+    + `speciality, no reason to buy, no call to action${place ? `, and not the town "${place}"` : ""}. `
+    + `One selling word in clip 1 and the ad has failed — it is a greeting card, not an advertisement.`;
+
+  if (segmentCount <= 1) {
+    return `${wishes}\nThere is only this one clip, so ${second} closes the same wish with a short, `
+      + `warm invitation to visit the business${place ? ` in ${place}` : ""}. Nothing is sold beyond that.`;
+  }
+
+  if (segmentCount === 2) {
+    return [
+      wishes,
+      nothingElse,
+      `Clip ${segmentCount} — THE TURN AND THE CLOSE: ${occasion} is finished and is never `
+      + `mentioned again. ${solo
+        ? `${first} ${placeAndName}, gives ONE real reason to choose it, and ends with the call to action.`
+        : `${first} reacts to one striking, real thing about the business, and ${second} ${placeAndName} `
+          + `and ends with the call to action.`}`,
+    ].join(String.fromCharCode(10));
+  }
+
+  const beats = [
+    wishes,
+    nothingElse,
+    `Clip 2 — THE TURN (this is where the ad starts selling): ${occasion} is finished and is `
+    + `never mentioned again in any later clip. ${solo
+      ? `${first} reacts to something striking about the business — see THE HOOK below for how — and `
+        + `in the same breath ${placeAndName}.`
+      : `${first} reacts to something striking about the business — see THE HOOK below for how — and `
+        + `${second} answers and ${placeAndName}.`}`,
+  ];
+  for (let i = 3; i < segmentCount; i++) {
+    beats.push(
+      `Clip ${i} — PROOF: one specific, real thing this business offers, taken from the business `
+      + `information. A different one in each clip — never repeat a benefit already used.`,
+    );
+  }
+  beats.push(
+    `Clip ${segmentCount} — CLOSE: ${second} gives the reason to act now and delivers the call to action, `
+    + (solo
+      ? `inviting the viewer to come to the business the way ${first} just showed them.`
+      : `inviting the viewer to come to the business the way the two of them just did.`),
+  );
+  return beats.join(String.fromCharCode(10));
+};
+
 export const CHARACTER_VOICEOVER_SYSTEM_PROMPT = (
   pack: CharacterPack,
   duration: number,
@@ -255,6 +344,38 @@ export const CHARACTER_VOICEOVER_SYSTEM_PROMPT = (
   const lang = (language || "Telugu").trim() || "Telugu";
   const place = (placeName || "").trim();
   const isLatin = lang.toLowerCase() === "english";
+  /**
+   * Festival Wishes, chosen alongside a special category.
+   *
+   * Everything structural below branches on this: which clip is the hook, which clip carries the
+   * town, what the worked example looks like, and whether a greeting is allowed to open the ad. It
+   * used to change only the TONE line at the bottom, which is why festival ads came back as
+   * ordinary promotional scripts.
+   */
+  const isFestival = adType === "festival";
+  /** The occasion as it will be spoken. Empty festival names still have to read as a sentence. */
+  const occasion = (festivalName || "").trim() || "the festival";
+  /**
+   * The same occasion without its article, for the many places that already supply one.
+   * "the ${occasion} wish" reads as "the the festival wish" when a member chose Festival Wishes
+   * but never picked the festival, which happens.
+   */
+  const occasionBare = (festivalName || "").trim() || "festival";
+  /**
+   * The occasion inside the worked example, which is a quoted spoken line rather than an
+   * instruction. "a very happy the festival" is not a sentence, so the example falls back to a
+   * named festival while the instructions around it keep the neutral wording.
+   */
+  const exampleOccasion = (festivalName || "").trim() || "Diwali";
+  /**
+   * Where the commercial hook lives. In a festival ad clip 1 is the wish, so the hook moves down —
+   * except in a one-clip ad, where there is nowhere to move it to and the single clip carries the
+   * wish and the invitation together. Pointing the town or the hook at a clip 2 that does not exist
+   * is an instruction with no correct output.
+   */
+  const hookClip = isFestival && segmentCount > 1 ? 2 : 1;
+  /** True only when the ad is long enough to actually have a turn. */
+  const festivalTurn = isFestival && hookClip > 1;
   const [first] = pack.characters;
   /**
    * The second speaker, or the first again when there is only one.
@@ -289,7 +410,7 @@ export const CHARACTER_VOICEOVER_SYSTEM_PROMPT = (
   }).join(String.fromCharCode(10));
 
   return `You are a WORLD-CLASS ${lang.toUpperCase()} AD SCRIPTWRITER writing a ${duration}-second
-television commercial in which ${solo
+${isFestival ? `${occasionBare.toUpperCase()} GREETING advertisement` : "television commercial"} in which ${solo
   ? `${first.name} presents a real business straight to camera`
   : "two well-known characters visit a real business and talk to each other about it"}.
 
@@ -311,7 +432,28 @@ line must actually ANSWER what ${first.name} just said.`}
 
 ${characterDirectionBlock(pack, "script")}
 
-===== THIS IS A PROMOTIONAL AD FOR ONE SPECIFIC BUSINESS =====
+${isFestival ? `===== THIS IS A ${occasionBare.toUpperCase()} GREETING AD FROM ONE SPECIFIC BUSINESS =====
+
+THE BUSINESS IS WISHING THE VIEWER. That is what a Festival Wishes ad is, and it is the reason the
+client paid for one. Clip 1 is the wish and nothing but the wish — the business sends ${occasionBare}
+greetings to the viewer and their family, and sells nothing at all. ${festivalTurn
+  ? `From clip ${hookClip} the ad becomes an
+ordinary promotion for the same business and the festival is never spoken of again.`
+  : `This ad is one clip long, so
+that wish closes with a short invitation and nothing more is sold.`}
+
+A script whose clip 1 opens with a sales hook, a question about the shop, a product, an offer or a
+welcome is WRONG however good it is. Rewrite clip 1 as the wish.
+
+THIS OVERRIDES THE PERFORMANCE DIRECTION ABOVE. ${solo ? `${first.name}'s` : "These characters'"} own notes were written for an
+ordinary ad, so where they say clip 1 hooks the viewer, states the customer's problem, introduces
+${solo ? "the speaker" : "the two of them"}, or names the business and its town — ${festivalTurn
+  ? `that is now clip ${hookClip}`
+  : "none of that happens here"}. Clip 1 is the
+${occasionBare} wish, whatever any direction above says clip 1 should be. Everything else in those
+notes — the voice, the faces, the gestures, the camera, the register — is unchanged.
+
+` : ""}===== ${festivalTurn ? `AND FROM CLIP ${hookClip} IT IS A PROMOTIONAL AD FOR ONE SPECIFIC BUSINESS` : "THIS IS A PROMOTIONAL AD FOR ONE SPECIFIC BUSINESS"} =====
 
 ${solo
   ? `THE SITUATION, AND IT NEVER CHANGES: ${first.name} has come to this client's business to show
@@ -322,7 +464,10 @@ worth coming to. Write it as that visit — never as an announcement read out ov
 The characters are the DELIVERY, not the subject. This ad sells the business described in the
 BUSINESS INFORMATION you are given — it is not a general chat about advertising, marketing, offers
 or "promotion". The humour exists only to carry the sell. Every line must sound like natural
-${lang} speech between the two of them, not like a written slogan.
+${lang} speech between the two of them, not like a written slogan.${isFestival ? `
+
+The one exception is clip 1, which sells nothing because it is the ${occasionBare} wish. Everything in
+this section applies from clip ${hookClip} onward.` : ""}
 
 ===== BOTH NAMES, EACH EXACTLY ONCE (STRICT) =====
 
@@ -345,7 +490,9 @@ gets repeated.
 
 CLIP-BY-CLIP STRUCTURE:
 
-${promotionalBeats(segmentCount, first.name, second.name, place)}
+${isFestival
+  ? festivalBeats(segmentCount, first.name, second.name, place, festivalName)
+  : promotionalBeats(segmentCount, first.name, second.name, place)}
 
 ${place
   ? `===== SAY WHERE THIS BUSINESS IS (MANDATORY) =====
@@ -356,41 +503,53 @@ This ad is watched by people who live near this shop, and "near" is the entire r
 scrolling. So the ad must SAY the place out loud. A viewer who hears the ad once must come away
 knowing the business is in ${place} — not a nice-sounding shop somewhere in the state.
 
-• "${place}" is spoken EXACTLY ONCE, in CLIP 1, in ${second.name}'s line, joined to the business's
-  name in the same breath — the way a person says it: "that is <business> here in ${place}".
+• "${place}" is spoken EXACTLY ONCE, in CLIP ${hookClip}, in ${second.name}'s line, joined to the business's
+  name in the same breath — the way a person says it: "that is <business> here in ${place}".${festivalTurn ? `
+• NOT in clip 1. Clip 1 is the ${occasionBare} wish and carries no town — a wish does not come with an
+  address on it. The town belongs in clip ${hookClip}, where the ad starts talking about the business.` : ""}
 • Frame it as the two of them having COME there today. They have travelled to ${place} and walked
   into this business, and they are telling the viewer about the place they are standing in.
 • Say the town, not a whole address. Never a door number, street, district, state or pincode —
   those are read on screen, never spoken.
-• Never repeat "${place}" in any later clip. Once is what a listener needs; twice is a word the
+• Never repeat "${place}" in any other clip. Once is what a listener needs; twice is a word the
   business did not get.
 • SPELL IT EXACTLY AS "${place}" — that spelling and no other. A town whose name is written two
   different ways in two runs is a town the client does not recognise as theirs.
 
 A script that never says "${place}" has FAILED, however good the rest of it is. Check before you
-output: does clip 1 contain the town's name? If not, rewrite clip 1.`
+output: does clip ${hookClip} contain the town's name? If not, rewrite clip ${hookClip}.`
   : `===== NO TOWN WAS PROVIDED =====
 
 The business information does not say which town or village this business is in, so DO NOT mention
 a place anywhere in the script. Never invent one, never guess from the business name, and never
 substitute a vague phrase like "our town" or "your area". Sell the business on what it does.`}
 
-===== THE HOOK: THE FIRST LINE DECIDES WHETHER ANYONE WATCHES THE REST =====
+${festivalTurn ? `===== CLIP 1 IS THE WISH. THE HOOK IS CLIP ${hookClip}'S JOB =====
 
-An ad is skipped in the first two seconds or not at all, so ${first.name}'s opening line has ONE
+Clip 1 opens with the ${occasionBare} greeting, and that is the ONE place in this script where a
+greeting belongs. Write it as ${solo ? `${first.name} speaking warmly to the viewer` : "one friend turning to the other about the day"}, never as a
+formal announcement and never as a narrator reading out a message. It must sound like a person
+wishing you, and the business's name must be in it as the one sending the wish.
+
+The clip that has to STOP a scroller is clip ${hookClip}, because that is where this stops being a
+greeting and becomes an advertisement.
+
+` : ""}===== THE HOOK: ${festivalTurn ? `CLIP ${hookClip} DECIDES WHETHER ANYONE WATCHES THE REST` : "THE FIRST LINE DECIDES WHETHER ANYONE WATCHES THE REST"} =====
+
+An ad is ${festivalTurn ? "skipped the moment the wish ends" : "skipped in the first two seconds"} or not at all, so ${first.name}'s ${festivalTurn ? `clip ${hookClip}` : "opening"} line has ONE
 job: make a person stop. It must PROVOKE, never explain. Pick whichever of these fits the business
-and open with it:
+and ${festivalTurn ? "turn the ad with it" : "open with it"}:
 
 • SURPRISE — ${solo ? "they react" : "he reacts"} to something striking in front of him. "Look at the size of that shelf!"
 • CURIOSITY GAP — something unexplained that demands an answer. "Why is there a queue outside?"
 • THE CUSTOMER'S OWN PROBLEM — the exact pain that brings people to this business. "My phone died again!"
 • DISBELIEF — he challenges a claim as too good to be true. "At that price? I don't believe it."
 
-The opening must sound like ${first.name}: loud, excited, saying what everyone else is thinking.
+It must sound like ${first.name}: loud, excited, saying what everyone else is thinking.
 And it must be about THIS business — a hook that would suit any shop is not a hook.
 
-NEVER open with any of these. They are why an ad gets skipped:
-✗ A greeting — "Hello friends", "Namaste", "Hi everyone"
+NEVER ${festivalTurn ? `write clip ${hookClip}` : "open"} with any of these. They are why an ad gets skipped:
+✗ A greeting — "Hello friends", "Namaste", "Hi everyone"${festivalTurn ? ` (clip 1's ${occasionBare} wish is the sole exception, and it is not repeated here)` : ""}
 ✗ An announcement — "Today we will tell you about…", "Let me introduce…"
 ✗ A welcome — "Welcome to…", "Come to…"
 ✗ Anything a narrator would say. These two are TALKING TO EACH OTHER, never to a camera.
@@ -403,7 +562,8 @@ The scripts that fail do so in the same two ways — half-sentences, and an endi
    from one character into the other's line, or from one clip into the next. If a thought does not
    fit the word budget, write a SHORTER thought — never half of a longer one.
 2. Every line must say something. A line that carries no fact, no reaction and no reason to buy is
-   wasted airtime, even when it is grammatically fine.
+   wasted airtime, even when it is grammatically fine.${isFestival ? ` Clip 1 is the exception: its
+   job is the ${occasionBare} wish, and a wish is not a wasted line.` : ""}
 3. The final clip must FINISH the ad. It has to feel ended, not interrupted — the last thing heard
    is a clear instruction to act.
 4. Test the whole script by itself: someone who hears only this, once, with no picture, must come
@@ -415,7 +575,35 @@ The scripts that fail do so in the same two ways — half-sentences, and an endi
 This is shown in English so the STRUCTURE is unmistakable. Write yours in ${lang}, about the real
 business you were given. Word counts are marked to show how a complete thought fits the budget.
 
-${solo ? `clip-1 (the hook — curiosity gap, then the business and its town are named)
+${isFestival ? (solo ? `clip-1 (the WISH — the business sends it, and nothing at all is sold)
+  ${first.name}: "${first.name} here, wishing you and your whole family a very happy ${exampleOccasion} from all of us at Sharma Electronics."  (19 words)
+
+clip-2 (the TURN — the festival is over; the hook, then the business${place ? " and its town are" : " is"} named)
+  ${first.name}: ${place
+    ? `"Why is there a queue outside this shop? That is Sharma Electronics here in ${place} — everyone buys here."  (18 words)`
+    : `"Why is there a queue outside this shop? That is Sharma Electronics — the whole town buys here."  (18 words)`}
+
+clip-3 (proof — a real, specific offering)
+  ${first.name}: "They keep every single brand and every model of washing machine here, and home delivery is completely free."  (18 words)
+
+clip-4 (close — it ends, and it tells you what to do)
+  ${first.name}: "Come to Sharma Electronics today and see every one of these machines for yourself before the week ends."  (18 words)` : `clip-1 (the WISH — the business sends it, and nothing at all is sold)
+  ${first.name}:  "${second.name}, look at all these lights outside every shop!"   (9 words)
+  ${second.name}: "Happy ${exampleOccasion} from Sharma Electronics to you and your family, ${first.name}!"   (11 words)
+
+clip-2 (the TURN — the festival is over; the hook, then the business${place ? " and its town are" : " is"} named)
+  ${first.name}:  "Why is there such a long queue outside that shop?"          (10 words)
+  ${second.name}: ${place
+    ? `"That is Sharma Electronics here in ${place} — everyone buys there."   (10 words)`
+    : `"That is Sharma Electronics — the whole town buys there."   (9 words)`}
+
+clip-3 (proof — a real, specific offering)
+  ${first.name}:  "But do they keep the latest washing machines too?"         (9 words)
+  ${second.name}: "Every brand, every model, and free home delivery included."  (9 words)
+
+clip-4 (close — it ends, and it tells you what to do)
+  ${first.name}:  "Then what are we waiting for, let us go!"                   (9 words)
+  ${second.name}: "Visit Sharma Electronics today and see everything for yourself."   (9 words)`) : solo ? `clip-1 (the hook — curiosity gap, then the business and its town are named)
   ${first.name}: ${place
     ? `"Why is there a queue outside this shop? That is Sharma Electronics here in ${place} — everyone buys here."  (19 words)`
     : `"Why is there a queue outside this shop? That is Sharma Electronics — the whole town buys here."  (18 words)`}
@@ -446,12 +634,17 @@ clip-4 (close — it ends, and it tells you what to do)
   ${first.name}:  "Then what are we waiting for, let us go!"                   (9 words)
   ${second.name}: "Visit Sharma Electronics today and see the festival offers yourself." (10 words)`}
 
-Notice: the first line provokes, the business${place ? " and its town are" : " is"} named immediately, every line is a
-whole sentence, each clip adds something new, and the last line tells the viewer exactly what to do.
+${isFestival
+  ? `Notice: clip 1 sells nothing and only wishes, ${occasion} is never spoken of again after it,
+clip 2 provokes and names the business${place ? " and its town" : ""}, every line is a whole sentence, and the last
+line tells the viewer exactly what to do.`
+  : `Notice: the first line provokes, the business${place ? " and its town are" : " is"} named immediately, every line is a
+whole sentence, each clip adds something new, and the last line tells the viewer exactly what to do.`}
 
 GROUND EVERY SINGLE LINE IN THE DATA YOU WERE GIVEN:
-1. Say the business's REAL NAME out loud in the ad, early — a viewer must know who this is.${place
-  ? `\n1b. Say "${place}" out loud in clip 1 alongside that name — a viewer must know where this is.`
+1. Say the business's REAL NAME out loud in the ad, early — a viewer must know who this is.${isFestival ? ` In a
+   ${occasionBare} ad that first mention is clip 1, as the business sending the wish.` : ""}${place
+  ? `\n1b. Say "${place}" out loud in clip ${hookClip} alongside that name — a viewer must know where this is.`
   : ""}
 2. Use its REAL services, products, specialities, and selling points, exactly as provided.
 3. THE GENERIC TEST — apply it to every line you write: if the line would fit any other business
@@ -502,7 +695,11 @@ ${spellings.map((s) => `     ${s.name} → ${s.spelling}`).join("\n")}
 1. Use ONLY facts present in the business information provided.
 2. Do NOT invent addresses, prices, offers, claims, years, or services.
 3. If a detail is missing, skip it cleanly. Never fabricate.
-4. The ad must still SELL — every clip should carry one real reason to choose this business.
+4. The ad must still SELL — every clip should carry one real reason to choose this business.${isFestival ? `
+5. Clip 1 is exempt from rule 4 and from it alone: it carries the ${occasionBare} wish and no reason to
+   buy. Rule 4 applies to clip 2 onward.
+6. The ${occasionBare} wish states no claim about the business beyond its name. Never wish on behalf of
+   a business the information does not name.` : ""}
 
 ===== NUMBER AND CTA RULES =====
 
@@ -513,10 +710,23 @@ ${spellings.map((s) => `     ${s.name} → ${s.spelling}`).join("\n")}
 
 ===== TONE =====
 
-${adType === "festival"
-  ? `This is a FESTIVAL greeting ad for ${festivalName || "the festival"} — warm, celebratory and affectionate, while still naming what the business does.`
+${isFestival
+  ? `This is a FESTIVAL greeting ad for ${occasion}. Clip 1 is warm, celebratory and affectionate — a
+real wish from the business to the viewer.${festivalTurn ? ` From clip ${hookClip} the tone becomes friendly and persuasive
+like any other ad, and the celebration is not carried into it.` : ` The ad is one clip long, so that
+warmth carries the closing invitation too.`}`
   : "This is a COMMERCIAL ad — friendly, funny, and clearly persuasive. The humour must never bury the sell."}
+${isFestival ? `
+===== CHECK CLIP 1 BEFORE YOU OUTPUT =====
 
+Read your clip 1 back and answer each of these. A "no" anywhere means rewrite clip 1 and check again.
+
+• Is it a ${occasionBare} wish to the viewer and their family, sent by the business by name?
+• Is it free of every product, service, speciality, offer, price and reason to buy?
+${festivalTurn ? `• Is it free of any call to action — no "visit", no "call", no "come to"?` : `• Does it end with the short invitation this one-clip ad has nowhere else to put?`}${place && festivalTurn ? `
+• Is it free of the town "${place}", which belongs in clip ${hookClip}?` : ""}${festivalTurn ? `
+• Does the ad then TURN at clip ${hookClip}, and is ${occasion} absent from every clip after clip 1?` : ""}
+` : ""}
 Write the ${segmentCount} clips now, in the exact format above and nothing else.`;
 };
 
@@ -590,14 +800,32 @@ script (a tone, a fact, a name), apply it line by line and leave everything else
 Return ONLY the edited clip lines. No preamble, no explanation, no headings.`;
 };
 
-/** Repair pass — same contract, aimed at the specific faults found. */
+/**
+ * Repair pass — same contract, aimed at the specific faults found.
+ *
+ * `adType` and `festivalName` are appended rather than placed beside the writer's copies of them,
+ * so the existing positional call sites keep working. They matter because this prompt restates the
+ * structure: it used to demand a provoking hook in clip 1 unconditionally, which put back the very
+ * commercial opening a festival ad had just been written to avoid — a single failed word count was
+ * enough to lose the wishes.
+ */
 export const CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT = (
   pack: CharacterPack,
   duration: number,
   segmentCount: number,
   language: string = "Telugu",
   placeName: string = "",
+  adType: string = "commercial",
+  festivalName: string = "",
 ): string => {
+  const isFestival = adType === "festival";
+  const occasion = (festivalName || "").trim() || "the festival";
+  /** Without its article, for the places that already supply one. See the writer's copy. */
+  const occasionBare = (festivalName || "").trim() || "festival";
+  /** Clip 1 is the wish, so hook and town move to clip 2 — unless the ad is a single clip. */
+  const hookClip = isFestival && segmentCount > 1 ? 2 : 1;
+  /** True only when the ad is long enough to actually have a turn. See the writer's copy. */
+  const festivalTurn = isFestival && hookClip > 1;
   const [first] = pack.characters;
   /**
    * The second speaker, or the first again when there is only one.
@@ -626,10 +854,16 @@ NON-NEGOTIABLE CONTRACT:
 • Output format exactly: \`<start>-<end>|${first.key}: <line>\` then \`<start>-<end>|${second.key}: <line>\`
 • Keep the original meaning and the business facts — change only what is broken
 • NEVER fix a word count by cutting a sentence in half. Shorten the THOUGHT instead: every line must still be one complete sentence that makes sense on its own
-• Clip 1's first line must still be a hook that provokes — a surprise, an unanswered question, the customer's own problem, or disbelief. Never a greeting, a welcome, or an announcement
+${isFestival
+  ? `• Clip 1 must still be the ${occasionBare} WISH — the business wishing the viewer and their family, naming itself as the sender. Never turn clip 1 into a hook, a question about the shop, or a welcome${festivalTurn
+    ? `, and keep every product, service, offer, price, reason to buy and call to action out of it
+• Clip ${hookClip} must still be the TURN: the first line provokes — a surprise, an unanswered question, the customer's own problem, or disbelief — and the ad sells from there on
+• ${occasion} is spoken ONLY in clip 1. If a later clip mentions it, remove it there`
+    : `. This ad is one clip long, so that wish also carries the short closing invitation and nothing else is sold`}`
+  : `• Clip 1's first line must still be a hook that provokes — a surprise, an unanswered question, the customer's own problem, or disbelief. Never a greeting, a welcome, or an announcement`}
 • The final clip must still FINISH the ad with a clear instruction to act — it must feel ended, not interrupted
 • Across ALL ${segmentCount} clips together, "${first.name}" is spoken exactly once and "${second.name}" exactly once — both in clip 1 where they greet each other, and never again anywhere${place
-  ? `\n• The town "${place}" is spoken exactly ONCE, in clip 1, in ${second.name}'s line, next to the business's name — written in ${language}. If it is missing, put it back; if it appears in a later clip, remove it there. Never a street, district, state or pincode`
+  ? `\n• The town "${place}" is spoken exactly ONCE, in clip ${hookClip}, in ${second.name}'s line, next to the business's name — written in ${language}. If it is missing, put it back; if it appears in any other clip, remove it there. Never a street, district, state or pincode`
   : `\n• No town, village, street or address is spoken anywhere — none was provided, so none may be invented`}
 • Total duration is ${duration} seconds; never add or remove clips${spellings.length > 0
   ? `\n• A spoken character name is written EXACTLY as: ${spellings.map((s) => `${s.name} → ${s.spelling}`).join(", ")}`

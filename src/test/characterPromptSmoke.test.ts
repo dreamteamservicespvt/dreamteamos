@@ -33,8 +33,15 @@ const SUMMARIES = ["clip one", "clip two", "clip three", "clip four"];
 /** Every builder, called the way geminiService calls it. */
 const BUILDERS: [string, (p: typeof CHARACTER_CATALOGUE[number]) => string][] = [
   ["voiceover", (p) => CHARACTER_VOICEOVER_SYSTEM_PROMPT(p, 32, CLIPS, "commercial", "", "Telugu", "Bodhan")],
+  // Festival Wishes takes a different structural branch through the writer and the repair pass —
+  // a different clip-1 beat, a different worked example, a different clip carrying the town. The
+  // cross product is the only thing that proves that branch renders for a deity and a solo cartoon
+  // as well as for the duo it was written against.
+  ["voiceover-festival", (p) => CHARACTER_VOICEOVER_SYSTEM_PROMPT(p, 32, CLIPS, "festival", "Diwali", "Telugu", "Bodhan")],
+  ["voiceover-festival-unnamed", (p) => CHARACTER_VOICEOVER_SYSTEM_PROMPT(p, 32, CLIPS, "festival", "", "Telugu", "")],
   ["refine", (p) => CHARACTER_VOICEOVER_REFINE_SYSTEM_PROMPT(p, CLIPS, "Telugu")],
   ["repair", (p) => CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT(p, 32, CLIPS, "Telugu", "Bodhan")],
+  ["repair-festival", (p) => CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT(p, 32, CLIPS, "Telugu", "Bodhan", "festival", "Diwali")],
   ["veo", (p) => CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT(p, CLIPS, "9:16")],
   ["multiFrame", (p) => CHARACTER_MULTI_FRAME_SYSTEM_PROMPT(p, {
     segmentCount: CLIPS,
