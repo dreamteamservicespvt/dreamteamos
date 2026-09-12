@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
-import { db } from "@/services/firebase";
+import { useMemo } from "react";
 import { commissionRate } from "@/services/settlements";
 import { useSalaryMonth, type SalaryMonthState } from "./useSalaryMonth";
+import { useMyLeads } from "./useMyLeads";
 import { collectedInRange } from "@/utils/salePayments";
 import { deductionsFor } from "@/utils/payrollEngine";
 import {
@@ -77,25 +76,11 @@ export function useSalesEarnings({
   memberId, monthlySalary, earningsOption, month, dailyTarget,
 }: UseSalesEarningsOptions): SalesEarnings {
   const salary = useSalaryMonth({ memberId, monthlySalary, month });
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [leadsLoaded, setLeadsLoaded] = useState(false);
-
-  useEffect(() => {
-    if (!memberId) return;
-    setLeadsLoaded(false);
-    return onSnapshot(
-      query(collection(db, "leads"), where("assignedTo", "==", memberId)),
-      snap => {
-        setLeads(snap.docs.map(d => ({ id: d.id, ...d.data() } as Lead)));
-        setLeadsLoaded(true);
-      },
-      error => {
-        console.error("Sales earnings lead listener failed:", error);
-        setLeads([]);
-        setLeadsLoaded(true);
-      },
-    );
-  }, [memberId]);
+  // Shared with Dashboard / My Leads / My Performance — one listener for the whole session
+  // (see store/salesLeadsStore.ts) instead of this hook opening its own. Only ever called with
+  // the signed-in member's own uid, which is exactly what the shared store is keyed on.
+  const { leads, loading: leadsLoading } = useMyLeads();
+  const leadsLoaded = !!memberId && !leadsLoading;
 
   const rate = commissionRate(earningsOption);
 

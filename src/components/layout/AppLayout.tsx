@@ -17,6 +17,8 @@ import BirthdayGreeting from "@/components/BirthdayGreeting";
 import { registerBackButton } from "@/services/capacitor-plugins";
 import { isNative } from "@/utils/platform";
 import { EXTERNAL_CREATOR_ROUTES } from "@/utils/roleHelpers";
+import { useMyLeadsSync } from "@/hooks/useMyLeads";
+import { useMyOrdersSync } from "@/hooks/useMyOrders";
 import type { UserRole } from "@/types";
 
 interface AppLayoutProps {
@@ -30,6 +32,12 @@ export default function AppLayout({ allowedRoles }: AppLayoutProps) {
   const fcmInitialized = useRef(false);
   const navigate = useNavigate();
   const location = useLocation();
+
+  // One live "my leads" / "my sold orders" listener for the whole session (sales members only) —
+  // every sales page reads them from the store instead of each opening its own redundant
+  // listener. See useMyLeads.ts / useMyOrders.ts.
+  useMyLeadsSync();
+  useMyOrdersSync();
 
   useEffect(() => {
     if (user && !fcmInitialized.current) {

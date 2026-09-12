@@ -509,3 +509,82 @@ now open Work Assign as a poster, priced per poster.
   Tools history detail nested a copy `<button>` inside the header `<button>` — fixed.
 - NOT verified against live Gemini output quality (no keys locally) — the concept prompt is unit-
   tested for content; judge real concepts after deploying.
+
+## Session — 2026-09-12 (Cutting unnecessary Firestore reads, mostly for sales members)
+
+**The trigger.** Firebase console showed 352K reads in a day against the Spark plan's 50K/day
+free quota (project already over the no-cost limit). Two root causes, both in `src/pages/shared/
+Leaderboard.tsx` and the sales-member pages — the pages a sales login opens the most.
+
+**1. The leaderboard read the whole company on every open.** `onSnapshot(collection(db,"users"))`
+and `onSnapshot(collection(db,"leads"))` with **no `where` filter at all** — every sales_member
+AND every sales_admin opening `/sales/leaderboard` (or `/sales-admin/leaderboard`) re-streamed
+every lead and every user in the entire org, repeatedly, for the life of the session. `services/
+teamLeads.ts` already existed with exactly this fix (`fetchTeamMembers` + `subscribeTeamLeads`,
+built for the sales-admin Dashboard/Analytics/SalesApprovals pages) but Leaderboard.tsx was never
+migrated to it. Fixed: one-time `fetchTeamMembers(teamAdminUid)` (admin's own uid for a
+sales_admin, `currentUser.createdBy` for a sales_member — same team either way) + `subscribeTeamLeads`
+scoped to just that team's member ids via chunked `in` queries. Also dropped the `[currentUser,
+isAdmin]` effect dependency (whole user OBJECT — see next item) down to `[currentUser?.uid,
+currentUser?.createdBy, isAdmin]`.
+
+**2. Four sales-member pages each opened their OWN identical "my data" listener.** Dashboard,
+My Leads, My Performance and (via `useSalesEarnings`) My Salary each ran their own
+`onSnapshot(query(collection(db,"leads"), where("assignedTo","==",uid)))` — so navigating
+Dashboard → My Leads → My Performance re-read the member's entire lead history from scratch on
+every single click, no caching between pages. Same duplication for `orders` where `soldBy==uid`
+across My Leads, My Clients and Client Chats. **Permanent fix, not a per-page patch:** two new
+Zustand stores (`store/salesLeadsStore.ts`, `store/salesOrdersStore.ts`) + sync hooks
+(`hooks/useMyLeads.ts` → `useMyLeadsSync()`, `hooks/useMyOrders.ts` → `useMyOrdersSync()`) mounted
+**once**, in `AppLayout.tsx`, next to the existing `useNotifications`/FCM pattern — the listener's
+lifetime is now tied to the session (AppLayout never unmounts while logged in), not to which child
+route happens to be on screen. Every consuming page now calls the read-only `useMyLeads()` /
+`useMyOrders()` selector instead of subscribing itself. `MyLeads.tsx`'s own lead-sort logic moved
+into a `useMemo` over the shared data (still page-local, since sort order is a display concern).
+
+**3. The `[user]`-as-a-whole-object dependency bug** (see [[inline-onclose-effect-trap]] for the
+general shape of this class of bug in this codebase): `useAuth`'s per-user-doc listener calls
+`setUser({ uid, ...data })` — a NEW object reference on every emission (at least twice on every
+page load: once from cache, once from server). Any `useEffect(..., [user])` feeding an
+`onSnapshot` therefore unsubscribed and **fully re-read** its query on every one of those
+emissions. Fixed everywhere it fed a live query in the sales-member surface: `Dashboard.tsx`,
+`MyLeads.tsx` (orders effect), `ActivityHistory.tsx`, `shared/MySalary.tsx` — all now key on
+`user?.uid` (a stable primitive), matching the pattern `useNotifications.ts` already used
+correctly. `MyPerformance.tsx`'s own copy of this bug was removed entirely along with its listener
+(point 2, above).
+
+**Deliberately NOT touched:** the equivalent unscoped `onSnapshot(collection(db,"users"/"leads"/
+"work_assignments"))` patterns in `main-admin/*`, `accounts-admin/*` and `tech-admin/*` dashboards
+— same bug class, but those roles log in far less often than the sales team and the ask was
+specifically "mostly for sales members". Also not touched: `useSalaryMonth` (via
+`useSalesEarnings`) still opens its own `attendance`/`holidays`/`daily_checkins`/`salesCheckins`
+range listeners per page mount (Dashboard and My Salary each pay for this again on every visit) —
+same class of fix as point 2 would apply, just not done this pass; a smaller cost since those
+collections are bounded to one ~30-day pay period rather than the whole org.
+
+### How this was verified
+- `npm run build` (vite) and `npx tsc -p tsconfig.check.json --noEmit` — clean (only the
+  pre-existing `VideoCallManager` Capacitor error).
+- `npx vitest run` — **2146/2146 pass.** Five test files needed updating for the new
+  architecture, not because behavior changed: `wishesFestivalForm`, `myLeadsRevenue`,
+  `bulkSaleForm` and `myPerformance` now seed `useSalesLeadsStore` directly (My Leads / My
+  Performance no longer own an `onSnapshot`, so there is nothing for the old firestore mock to
+  answer); `leaderboardCycle.test.tsx` now mocks `@/services/teamLeads` instead of raw
+  `firebase/firestore`, and its `render()` calls became `await renderBoard()` (an `act(async…)`
+  flush) because `fetchTeamMembers` is a genuine Promise where the old raw `onSnapshot` mock fired
+  synchronously.
+- **Real browser**, throwaway harness (deleted) aliasing `firebase/firestore` to an in-memory fake
+  that **counts every `onSnapshot`/`getDocs` call by collection+filter** and exposes it on
+  `window.__HARNESS_CALLS__` — mounted the REAL Dashboard/My Leads/My Performance/My Clients/
+  Client Chats/Leaderboard behind a layout that calls only the real `useMyLeadsSync`/
+  `useMyOrdersSync` (not the full AppLayout chrome — FCM/VideoCall/MandatoryAgreementGate are
+  unrelated to this change). Proved, by direct count: `leads[assignedTo==uid]` and
+  `orders[soldBy==uid]` open exactly **once** across 6 page visits + 2 revisits (was: once per
+  page, every visit); Leaderboard's calls are `getDocs:users[role==..&createdBy==..]` (3 docs) and
+  `leads[assignedTo in [team ids]]` — **no unscoped `users` or `leads` call appears anywhere in the
+  log**; a fixture "outsider" user (different `createdBy`) never appears on the board. One real
+  finding from this pass, already fixed **in the harness, not the app**: the fake's `onSnapshot`
+  was firing its first callback synchronously, which real Firestore never does — that had briefly
+  made `SalesEarningsCard` look permanently stuck loading in the harness only; made the fake
+  deliver via `queueMicrotask` to match real Firestore's always-async callback, and the card
+  rendered correctly (₹18,462) — confirming it was a harness fidelity gap, not an app bug.

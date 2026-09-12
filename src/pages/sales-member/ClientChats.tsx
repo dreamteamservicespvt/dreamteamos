@@ -7,9 +7,12 @@
  * actually come looking for: which of my clients is waiting on a reply.
  *
  * ── What it costs ─────────────────────────────────────────────────────────────────────────────
- * Two live queries, both scoped to this member: the rooms they are on, and the orders they sold.
- * Neither scans the company. That matters more here than it looks — this app runs on Firestore's
- * free daily read budget, and a chat list is exactly the kind of screen someone leaves open.
+ * One page-local query (the rooms this member is on) plus the shared "my sold orders" listener
+ * (hooks/useMyOrders.ts, synced once for the whole session in AppLayout — My Leads and My
+ * Clients read the exact same data instead of each opening their own copy of this query).
+ * Nothing here scans the company. That matters more here than it looks — this app runs on
+ * Firestore's free daily read budget, and a chat list is exactly the kind of screen someone
+ * leaves open.
  *
  * The orders query earns its place by supplying the rows that have no room yet: a sale nobody has
  * picked up has no assignment and therefore no conversation, and leaving it off the list would
@@ -17,14 +20,12 @@
  * team has not started it".
  */
 import { useMemo, useState } from "react";
-import { collection, query, where } from "firebase/firestore";
 import { MessageCircle, Search, Loader2, Star, Clock, CheckCircle2, ChevronDown } from "lucide-react";
 import PeriodFilterBar from "@/components/dashboard/PeriodFilterBar";
 import { defaultPeriodFilter, periodLabel, withinPeriod, type PeriodFilter } from "@/utils/periodFilter";
 import { format } from "date-fns";
-import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
-import { useFirestoreQuery } from "@/hooks/useFirestore";
+import { useMyOrders } from "@/hooks/useMyOrders";
 import { useMyOrderChats } from "@/hooks/useOrderChat";
 import { workStatusChip, NOT_ASSIGNED_CHIP, isDeliveredStatus } from "@/utils/orderChatStatus";
 import { bulkCategoryLabel } from "@/utils/serviceCatalog";
@@ -100,11 +101,8 @@ export default function ClientChats() {
   const user = useAuthStore((s) => s.user);
   const { rooms, loading: roomsLoading } = useMyOrderChats(user?.uid);
 
-  const ordersQuery = useMemo(
-    () => (user?.uid ? query(collection(db, "orders"), where("soldBy", "==", user.uid)) : null),
-    [user?.uid],
-  );
-  const { data: orders, loading: ordersLoading } = useFirestoreQuery<Order>(ordersQuery, [user?.uid]);
+  // Shared session-wide listener (see hooks/useMyOrders.ts) — not a page-local subscription.
+  const { orders, loading: ordersLoading } = useMyOrders();
 
   const [search, setSearch] = useState("");
   /**

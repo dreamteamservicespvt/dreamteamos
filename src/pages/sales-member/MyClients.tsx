@@ -20,7 +20,7 @@
  * is a calling list, and a call list that hides everybody older than four weeks is not one.
  */
 import { useEffect, useMemo, useState } from "react";
-import { collection, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
+import { doc, onSnapshot, serverTimestamp, updateDoc } from "firebase/firestore";
 import {
   Users, Search, Loader2, MessageCircle, TrendingUp, Star, CalendarDays, UserPlus,
   ArrowDownUp, Hourglass, ShoppingBag, Sparkles, Check, X, Plus, RotateCcw, MessagesSquare,
@@ -28,6 +28,7 @@ import {
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { useFirestoreQuery } from "@/hooks/useFirestore";
+import { useMyOrders } from "@/hooks/useMyOrders";
 import { useToast } from "@/hooks/use-toast";
 import { clientsQuery } from "@/services/clients";
 import { startUpsell } from "@/services/upsell";
@@ -83,12 +84,9 @@ export default function MyClients() {
   const user = useAuthStore(s => s.user);
   const { toast } = useToast();
 
-  /** Everyone they sold to — the record of the sale, which exists from the moment it is taken. */
-  const ordersQ = useMemo(
-    () => (user?.uid ? query(collection(db, "orders"), where("soldBy", "==", user.uid)) : null),
-    [user?.uid],
-  );
-  const { data: orders, loading: ordersLoading } = useFirestoreQuery<Order>(ordersQ, [user?.uid]);
+  /** Everyone they sold to — the record of the sale, which exists from the moment it is taken.
+   *  Shared session-wide listener (see hooks/useMyOrders.ts) — not a page-local subscription. */
+  const { orders, loading: ordersLoading } = useMyOrders();
 
   /** The delivered ones, for their history, profile and reviews. Absent is fine — see the header. */
   const clientsQ = useMemo(() => clientsQuery(user?.role, user?.uid), [user?.role, user?.uid]);

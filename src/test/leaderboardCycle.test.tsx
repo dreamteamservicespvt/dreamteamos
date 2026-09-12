@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { cleanup, configure, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, configure, fireEvent, render, screen, within } from "@testing-library/react";
 
 /**
  * The leaderboard on the 1st of the month.
@@ -36,15 +36,17 @@ const leads = [
   { id: "l5", phone: "9000000005", displayName: "Kiran", assignedTo: "m1", createdAt: at("2026-08-01T09:00:00"), saleItems: [sale("2026-08-01", 499)] },
 ];
 
-vi.mock("@/services/firebase", () => ({ db: {} }));
-vi.mock("firebase/firestore", () => ({
-  // Named so the single onSnapshot mock can tell the two collections apart.
-  collection: (_db: unknown, name: string) => name,
-  onSnapshot: (name: string, next: (snap: unknown) => void) => {
-    const docs = name === "users"
-      ? users.map((u) => ({ id: u.uid, data: () => u }))
-      : leads.map((l) => ({ id: l.id, data: () => l }));
-    next({ docs });
+/**
+ * The board now goes through services/teamLeads.ts (a one-time team fetch + a leads listener
+ * scoped to that team by chunked `in` queries) instead of streaming the whole `users`/`leads`
+ * collections — see the comment in Leaderboard.tsx. Mocking at that boundary, rather than raw
+ * firebase/firestore, is what the component actually depends on now.
+ */
+vi.mock("@/services/teamLeads", () => ({
+  fetchTeamMembers: async (adminUid: string) =>
+    users.filter((u) => u.role === "sales_member" && u.createdBy === adminUid),
+  subscribeTeamLeads: (memberIds: string[], cb: (leads: unknown[]) => void) => {
+    cb(leads.filter((l) => memberIds.includes(l.assignedTo)));
     return () => {};
   },
 }));
@@ -75,24 +77,33 @@ function header(text: RegExp): HTMLElement {
   return Array.from(head.querySelectorAll("th")).find((th) => text.test(th.textContent || ""))!;
 }
 
+/**
+ * `fetchTeamMembers` is a real (mocked) Promise, so the board's first paint is the loading
+ * skeleton — flush that microtask before asserting on the rendered table.
+ */
+async function renderBoard() {
+  render(<Leaderboard />);
+  await act(async () => {});
+}
+
 describe("Team leaderboard on the 1st of the month", () => {
-  it("opens on the cycle we are living in, not the one that starts on the 10th", () => {
-    render(<Leaderboard />);
+  it("opens on the cycle we are living in, not the one that starts on the 10th", async () => {
+    await renderBoard();
     // 1 August sits inside 10 Jul → 9 Aug, so the board must be showing July's cycle.
     expect(screen.getByTestId("leaderboard-cycle").textContent).toContain("Jul 2026");
     expect(screen.getAllByText(/10 Jul 2026 → 09 Aug 2026/).length).toBeGreaterThan(0);
   });
 
-  it("shows the month's sales instead of ₹0 — the commission that looked lost", () => {
-    render(<Leaderboard />);
+  it("shows the month's sales instead of ₹0 — the commission that looked lost", async () => {
+    await renderBoard();
     // 999 + 9,999 + 4,999 + 499 = 16,496 verified in the cycle. June's ₹50,000 is another cycle.
     expect(screen.getAllByText("₹16,496").length).toBeGreaterThan(0);
     // 10% of 16,496 = 1,649.6 → rounded by the formatter.
     expect(screen.getAllByText("₹1,650").length).toBeGreaterThan(0);
   });
 
-  it("ranks by sales, biggest first — not by name", () => {
-    render(<Leaderboard />);
+  it("ranks by sales, biggest first — not by name", async () => {
+    await renderBoard();
     fireEvent.click(header(/Jul 2026 Sales/));
     expect(rankedNames()).toEqual(["Bhavani", "Chandra", "Asha"]);
   });
@@ -105,14 +116,14 @@ describe("Team leaderboard on the 1st of the month", () => {
    * even on a day somebody else had outsold them. Asha is the only member who has sold today, and
    * the smallest seller of the month — if she is not first, the board is ranking the wrong window.
    */
-  it("opens ranked by today, the window it opens on", () => {
-    render(<Leaderboard />);
+  it("opens ranked by today, the window it opens on", async () => {
+    await renderBoard();
     expect(header(/Day's Sales/).className).toContain("underline");
     expect(rankedNames()[0]).toBe("Asha");
   });
 
-  it("still ranks by money when the leading column ties", () => {
-    render(<Leaderboard />);
+  it("still ranks by money when the leading column ties", async () => {
+    await renderBoard();
     // Asha is the only one who sold today, so she leads on the day column...
     expect(rankedNames()[0]).toBe("Asha");
     // ...and the other two, tied at ₹0 for the day, are ordered by the money they HAVE made
@@ -120,15 +131,15 @@ describe("Team leaderboard on the 1st of the month", () => {
     expect(rankedNames().slice(1)).toEqual(["Bhavani", "Chandra"]);
   });
 
-  it("re-ranks when the viewer changes the window, so the order always matches the numbers", () => {
-    render(<Leaderboard />);
+  it("re-ranks when the viewer changes the window, so the order always matches the numbers", async () => {
+    await renderBoard();
     expect(rankedNames()[0]).toBe("Asha");        // today
     fireEvent.click(header(/Jul 2026 Sales/));
     expect(rankedNames()[0]).toBe("Bhavani");     // the cycle
   });
 
-  it("keeps the previous cycle's sales out of this one", () => {
-    render(<Leaderboard />);
+  it("keeps the previous cycle's sales out of this one", async () => {
+    await renderBoard();
     const table = document.querySelector("table")!;
     const ashaRow = Array.from(table.querySelectorAll("tbody tr"))
       .find((r) => r.textContent?.includes("Asha"))!;

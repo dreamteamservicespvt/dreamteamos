@@ -48,7 +48,7 @@ export default function ActivityHistory() {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
 
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser?.uid) return;
     const q = query(
       collection(db, "activityLogs"),
       where("actorId", "==", currentUser.uid)
@@ -62,7 +62,7 @@ export default function ActivityHistory() {
       setLoading(false);
     });
     return unsub;
-  }, [currentUser]);
+  }, [currentUser?.uid]);
 
   const dateStr = selectedDate ? format(selectedDate, "yyyy-MM-dd") : null;
   const filtered = logs.filter((log) => {

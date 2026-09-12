@@ -27,7 +27,7 @@ export default function MySalaryPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user?.uid) return;
     const q = query(collection(db, "salary_receipts"), where("userId", "==", user.uid));
     const unsub = onSnapshot(q, (snap) => {
       const data = snap.docs
@@ -37,7 +37,7 @@ export default function MySalaryPage() {
       setLoading(false);
     });
     return unsub;
-  }, [user]);
+  }, [user?.uid]);
 
   const totalReceived = receipts.reduce((s, r) => s + r.amount, 0);
   const settingsRoute = user?.role ? getDefaultRoute(user.role).replace("dashboard", "settings").replace("profile", "settings") : "/";

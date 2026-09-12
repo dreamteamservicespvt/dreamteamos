@@ -2,10 +2,12 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, Timestamp,
+  doc, updateDoc, deleteDoc, serverTimestamp, Timestamp,
 } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
+import { useMyLeads } from "@/hooks/useMyLeads";
+import { useMyOrders } from "@/hooks/useMyOrders";
 import { logActivity } from "@/services/activityLog";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import { claimNumber, applySaleFreeze, releaseLockForLead, buildLeadFreezeFields, fetchNumberLock, clearSaleFreeze, clearedLeadFreezeFields } from "@/services/numberLock";
@@ -99,9 +101,36 @@ type SaleRow = { lead: Lead; item: SaleDetail; itemIndex: number };
 export default function MyLeads() {
   const user = useAuthStore((s) => s.user);
   const { toast } = useToast();
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Shared session-wide listener (see hooks/useMyLeads.ts) — not a page-local subscription.
+  const { leads: rawLeads, loading } = useMyLeads();
+  // Sort order only — the data itself comes from the shared listener above.
+  const leads = useMemo(() => {
+    const list = [...rawLeads];
+    list.sort((a, b) => {
+      // Custom entries always at the top (newest first among custom)
+      if (a.isCustomEntry && !b.isCustomEntry) return -1;
+      if (!a.isCustomEntry && b.isCustomEntry) return 1;
+      if (a.isCustomEntry && b.isCustomEntry) return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0);
+
+      /**
+       * Just-sold leads first, then the calling queue.
+       *
+       * Oldest-first is the right order for numbers still to be rung — it is the queue. But it is
+       * the wrong place to put the lead somebody has this second finished selling to: at the
+       * bottom of a fifty-row day, which is why sellers were resorting to "All days" and a
+       * search. A lead that has been worked since it arrived floats up, newest first; everything
+       * untouched keeps its queue order underneath.
+       */
+      const aWorked = leadActivityMs(a) > (a.createdAt?.seconds || 0) * 1000;
+      const bWorked = leadActivityMs(b) > (b.createdAt?.seconds || 0) * 1000;
+      if (aWorked !== bWorked) return aWorked ? -1 : 1;
+      if (aWorked && bWorked) return leadActivityMs(b) - leadActivityMs(a);
+
+      // Regular leads: oldest first (daily workflow order)
+      return (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0);
+    });
+    return list;
+  }, [rawLeads]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [dayFilter, setDayFilter] = useState<string>("0");
@@ -143,48 +172,10 @@ export default function MyLeads() {
   useEffect(() => { setVisibleLeadCount(10); }, [dayFilter, statusFilter, search, selectedDate, viewTab]);
   const pendingDeletesRef = useRef<Map<string, { timeoutId: ReturnType<typeof setTimeout>; intervalId: ReturnType<typeof setInterval> }>>(new Map());
 
-  // Realtime listener
-  useEffect(() => {
-    if (!user) return;
-    const q = query(collection(db, "leads"), where("assignedTo", "==", user.uid));
-    const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Lead));
-      list.sort((a, b) => {
-        // Custom entries always at the top (newest first among custom)
-        if (a.isCustomEntry && !b.isCustomEntry) return -1;
-        if (!a.isCustomEntry && b.isCustomEntry) return 1;
-        if (a.isCustomEntry && b.isCustomEntry) return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0);
-
-        /**
-         * Just-sold leads first, then the calling queue.
-         *
-         * Oldest-first is the right order for numbers still to be rung — it is the queue. But it is
-         * the wrong place to put the lead somebody has this second finished selling to: at the
-         * bottom of a fifty-row day, which is why sellers were resorting to "All days" and a
-         * search. A lead that has been worked since it arrived floats up, newest first; everything
-         * untouched keeps its queue order underneath.
-         */
-        const aWorked = leadActivityMs(a) > (a.createdAt?.seconds || 0) * 1000;
-        const bWorked = leadActivityMs(b) > (b.createdAt?.seconds || 0) * 1000;
-        if (aWorked !== bWorked) return aWorked ? -1 : 1;
-        if (aWorked && bWorked) return leadActivityMs(b) - leadActivityMs(a);
-
-        // Regular leads: oldest first (daily workflow order)
-        return (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0);
-      });
-      setLeads(list);
-      setLoading(false);
-    });
-    return unsub;
-  }, [user]);
-
   // The member's own orders, so each sale row knows whether the tech team has started work on it
   // (and must therefore be locked from edit/delete). `soldBy` is the selling member's uid.
-  useEffect(() => {
-    if (!user) return;
-    const q = query(collection(db, "orders"), where("soldBy", "==", user.uid));
-    return onSnapshot(q, (snap) => setOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Order))), () => {});
-  }, [user]);
+  // Shared session-wide listener (see hooks/useMyOrders.ts) — not a page-local subscription.
+  const { orders } = useMyOrders();
 
   const ordersById = useMemo(() => new Map(orders.map((o) => [o.id, o])), [orders]);
 

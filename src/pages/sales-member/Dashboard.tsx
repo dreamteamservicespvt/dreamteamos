@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { collection, query, where, onSnapshot } from "firebase/firestore";
-import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/utils/formatters";
@@ -12,6 +10,7 @@ import { Phone, CheckCircle, Clock, TrendingUp, AlertCircle, LogIn, LogOut, Load
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
 import SalesEarningsCard from "@/components/sales/SalesEarningsCard";
 import { useSalesEarnings } from "@/hooks/useSalesEarnings";
+import { useMyLeads } from "@/hooks/useMyLeads";
 import { payPeriodForDate, payPeriodLabel, currentPayMonth } from "@/utils/payrollEngine";
 import { dailyTargetOf, monthlyTargetOf } from "@/utils/salesTargets";
 import { collectedInRange } from "@/utils/salePayments";
@@ -28,8 +27,8 @@ const statVariant = (i: number) => ({
 export default function SalesMemberDashboard() {
   const user = useAuthStore((s) => s.user);
   const navigate = useNavigate();
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Shared session-wide listener (see hooks/useMyLeads.ts) — not a page-local subscription.
+  const { leads, loading } = useMyLeads();
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
 
   // Total pay this cycle — salary + incentives on verified sales, the same figure as My Salary.
@@ -41,16 +40,6 @@ export default function SalesMemberDashboard() {
     // The 75% gate, so this figure is the one the member is actually owed.
     dailyTarget: dailyTargetOf(user),
   });
-
-  useEffect(() => {
-    if (!user) return;
-    const q = query(collection(db, "leads"), where("assignedTo", "==", user.uid));
-    const unsub = onSnapshot(q, (snap) => {
-      setLeads(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Lead)));
-      setLoading(false);
-    });
-    return unsub;
-  }, [user]);
 
   // Filter by date
   const dateStr = selectedDate ? format(selectedDate, "yyyy-MM-dd") : null;

@@ -64,12 +64,18 @@ vi.mock("@/components/dashboard/DayPicker", () => ({ default: () => null }));
 vi.mock("@/components/sales/NumberTimelineButton", () => ({ default: () => null }));
 
 const MyLeads = (await import("@/pages/sales-member/MyLeads")).default;
+const { useSalesLeadsStore } = await import("@/store/salesLeadsStore");
 
 /**
  * MyLeads reads the query string — an upsell arriving from My Clients deep-links to a lead with
  * the sale form open — so it needs a Router, exactly as it has in the app.
+ *
+ * It also reads the shared "my leads" store (see hooks/useMyLeads.ts) rather than subscribing
+ * itself — normally synced once by AppLayout, which this focused render doesn't mount, so the
+ * store is seeded directly before every render.
  */
 function renderMyLeads() {
+  useSalesLeadsStore.getState().setLeads("u1", leads as any);
   return render(<MemoryRouter><MyLeads /></MemoryRouter>);
 }
 

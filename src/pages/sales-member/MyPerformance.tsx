@@ -1,8 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
-import { collection, query, where, onSnapshot } from "firebase/firestore";
-import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { useFirestoreQuery } from "@/hooks/useFirestore";
+import { useMyLeads } from "@/hooks/useMyLeads";
 import { formatCurrency } from "@/utils/formatters";
 import { format, addDays, parseISO } from "date-fns";
 import type { Lead, SaleDetail, CommissionSettlement } from "@/types";
@@ -29,21 +28,11 @@ const SALES_PAGE = 10;
 
 export default function MyPerformance() {
   const user = useAuthStore((s) => s.user);
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Shared session-wide listener (see hooks/useMyLeads.ts) — not a page-local subscription.
+  const { leads, loading } = useMyLeads();
   const [earningsView, setEarningsView] = useState<"option1" | "option2">("option1");
   const [saleSearch, setSaleSearch] = useState("");
   const [saleLimit, setSaleLimit] = useState(SALES_PAGE);
-
-  useEffect(() => {
-    if (!user) return;
-    const q = query(collection(db, "leads"), where("assignedTo", "==", user.uid));
-    const unsub = onSnapshot(q, (snap) => {
-      setLeads(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Lead)));
-      setLoading(false);
-    });
-    return unsub;
-  }, [user]);
 
   const getSaleItems = (l: Lead): SaleDetail[] =>
     l.saleItems || (l.saleDetails ? [l.saleDetails] : []);

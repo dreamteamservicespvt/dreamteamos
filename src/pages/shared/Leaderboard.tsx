@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { collection, onSnapshot } from "firebase/firestore";
-import { db } from "@/services/firebase";
+import { fetchTeamMembers, subscribeTeamLeads } from "@/services/teamLeads";
 import { useAuthStore } from "@/store/authStore";
 import { formatCurrency } from "@/utils/formatters";
 import { format, subDays } from "date-fns";
@@ -179,25 +178,27 @@ export default function Leaderboard() {
   };
 
   useEffect(() => {
-    if (!currentUser) return;
-    const unsubs: (() => void)[] = [];
-    unsubs.push(
-      onSnapshot(collection(db, "users"), (snap) => {
-        const allUsers = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser));
-        const team = isAdmin
-          ? allUsers.filter((u) => u.role === "sales_member" && u.createdBy === currentUser.uid && u.isActive !== false)
-          : allUsers.filter((u) => u.role === "sales_member" && u.createdBy === currentUser.createdBy && u.isActive !== false);
-        setMembers(team);
-      })
-    );
-    unsubs.push(
-      onSnapshot(collection(db, "leads"), (snap) => {
-        setLeads(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Lead)));
+    if (!currentUser?.uid) return;
+    // Quota-friendly: one-time team fetch (users change rarely) + a leads listener scoped to
+    // just that team via chunked `in` queries — NOT the whole org's `users`/`leads` collections.
+    // See services/teamLeads.ts; this board used to re-read every lead and every user in the
+    // company on every open, which is the single biggest source of unnecessary reads for sales
+    // logins (this page is opened many times a day by every sales member).
+    const teamAdminUid = isAdmin ? currentUser.uid : currentUser.createdBy;
+    if (!teamAdminUid) { setLoading(false); return; }
+    let unsubLeads: (() => void) | undefined;
+    let cancelled = false;
+    fetchTeamMembers(teamAdminUid).then((myMembers) => {
+      if (cancelled) return;
+      const team = myMembers.filter((u) => u.isActive !== false);
+      setMembers(team);
+      unsubLeads = subscribeTeamLeads(team.map((m) => m.uid), (teamLeads) => {
+        setLeads(teamLeads);
         setLoading(false);
-      })
-    );
-    return () => unsubs.forEach((u) => u());
-  }, [currentUser, isAdmin]);
+      });
+    }).catch(() => setLoading(false));
+    return () => { cancelled = true; unsubLeads?.(); };
+  }, [currentUser?.uid, currentUser?.createdBy, isAdmin]);
 
   // ── Per-member stats ─────────────────────────────────────────────────────
 

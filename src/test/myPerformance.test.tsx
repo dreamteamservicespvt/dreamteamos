@@ -61,11 +61,16 @@ vi.mock("recharts", () => {
 });
 
 import MyPerformance from "@/pages/sales-member/MyPerformance";
+import { useSalesLeadsStore } from "@/store/salesLeadsStore";
 
 configure({ testIdAttribute: "data-test" });
 
 beforeEach(() => {
   AUTH.user = { uid: "u1", name: "Asha Devi", role: "sales_member", salary: 0 };
+  // MyPerformance now reads the shared "my leads" store (see hooks/useMyLeads.ts) instead of
+  // subscribing itself — normally synced once by AppLayout, which this focused render doesn't
+  // mount, so the test seeds it directly.
+  useSalesLeadsStore.getState().setLeads("u1", leads as any);
 });
 afterEach(cleanup);
 
