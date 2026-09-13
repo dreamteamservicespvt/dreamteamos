@@ -32,7 +32,7 @@ import { normalizePhone } from "@/utils/phone";
 import {
   SALE_CATEGORIES, PACKAGES, categoryLabel, isAdCategory, isBulkCategory, needsDescription,
   packageOptionLabel, bulkTypesFor, effectiveAdCategory,
-  DEFAULT_PROMOTIONAL_PACKAGE, CUSTOM_BASE_CATEGORIES,
+  DEFAULT_PROMOTIONAL_PACKAGE, CUSTOM_BASE_CATEGORIES, retiredPackagePrice,
 } from "@/utils/serviceCatalog";
 import {
   CLIP_PRESETS, CLIP_SECONDS, clipsForSeconds, humanDuration, priceForClips, secondsForClips,
@@ -362,6 +362,21 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
   const adCategory = effectiveAdCategory(category, isBulk ? bulkAdType : undefined);
   const packages = PACKAGES[adCategory] || [];
   const selectedPkg = packages.find((p) => p.label === packageKey);
+  /**
+   * A package this sale was made with that the price list no longer carries — a Wishes sale from
+   * before Wishes took the Promotional list, saved as "20 Seconds". Offered as its own option while
+   * editing so the dropdown shows what was actually sold instead of falling back to "Select
+   * package"; the saved amount already rides in `customAmount`, so nothing is re-priced.
+   */
+  const retiredPackage = editing && packageKey && packageKey !== "custom" && !selectedPkg ? packageKey : "";
+  /**
+   * The per-video price a bulk order is quoted from. A retired package has no list entry to read it
+   * from, so it comes from what the sale itself recorded — and, for a sale saved before unit prices
+   * were stored, from the price that package used to carry. Without this an old bulk Wishes order
+   * opens at ₹0 with Save disabled.
+   */
+  const bulkUnitAmount = selectedPkg?.amount
+    || (retiredPackage ? (ed?.unitAmount || retiredPackagePrice(adCategory, retiredPackage)) : 0);
 
   /**
    * Only a greeting video has an occasion — and it must have one, because the generator themes the
@@ -389,8 +404,8 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
    * admin and the sales admin see, and it has to be derived here rather than trusted from a box.
    */
   const bulkQuote = useMemo(
-    () => (isBulk ? quoteBulk(quantity, selectedPkg?.amount || 0, discountValue, discountMode) : null),
-    [isBulk, quantity, selectedPkg?.amount, discountValue, discountMode],
+    () => (isBulk ? quoteBulk(quantity, bulkUnitAmount, discountValue, discountMode) : null),
+    [isBulk, quantity, bulkUnitAmount, discountValue, discountMode],
   );
 
   /**
@@ -998,6 +1013,9 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
           className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary"
         >
           <option value="">Select package</option>
+          {retiredPackage && (
+            <option value={retiredPackage}>{retiredPackage} (as sold, no longer offered)</option>
+          )}
           {packages.map((p) => (
             /* The monthly quota rides in the option text — a member quoting a package on a live
                call should not have to remember that Pro means eight of everything. */

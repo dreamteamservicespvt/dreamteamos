@@ -131,9 +131,13 @@ describe("Add Sale — bulk videos", () => {
     fireEvent.change(pkg(), { target: { value: "30 Seconds + Poster" } });
     expect(pkg().value).toBe("30 Seconds + Poster");
     fireEvent.change(screen.getByTestId("bulk-type"), { target: { value: "wishes" } });
+    // Cleared even though Wishes now carries the same labels — the kind changed, so the member
+    // re-picks rather than inheriting a choice that was made against another price list.
     expect(pkg().value).toBe("");
-    // Wishes has its own two packages, and no "30 Seconds + Poster" among them.
-    expect(Array.from(pkg().options).map((o) => o.value)).toEqual(["", "20 Seconds", "40 Seconds"]);
+    // Wishes sells the Promotional packages.
+    expect(Array.from(pkg().options).map((o) => o.value)).toEqual([
+      "", "15 Seconds + Poster", "30 Seconds + Poster", "45 Seconds + Poster", "1 Minute + Poster",
+    ]);
   });
 
   it("takes a discount in rupees and caps it at 20% of the order", () => {
@@ -149,6 +153,39 @@ describe("Add Sale — bulk videos", () => {
     // ₹9,000 off a ₹9,990 order is not a discount, it is a giveaway: clamped to ₹1,998.
     fireEvent.change(screen.getByTestId("bulk-discount"), { target: { value: "9000" } });
     expect(total()).toBe("₹7,992");
+  });
+
+  /**
+   * A bulk Wishes order recorded on "40 Seconds", a package Wishes no longer sells. A bulk order is
+   * priced from its unit price, and the price list has no entry for a retired label — so it used to
+   * open at ₹0 with Save disabled, and a member fixing a typo in the brief had to re-price the order.
+   */
+  it("keeps an old bulk wishes order on a retired package priced and saveable", async () => {
+    const lead = leads[1] as any;
+    const original = lead.saleItems;
+    for (const unitAmount of [999, undefined]) {
+      lead.saleItems = [{
+        ...original[0], bulkAdType: "wishes", packageKey: "40 Seconds", quantity: 10, unitAmount,
+        requirement: { language: "Telugu", festival: "Diwali", aspectRatio: "9:16" },
+      }];
+      try {
+        renderMyLeads();
+        updateDoc.mockClear();
+        fireEvent.click(screen.getAllByText("Edit")[0]);
+        expect((screen.getByTestId("sale-package") as HTMLSelectElement).value).toBe("40 Seconds");
+        // 10 × ₹999 less the ladder's 10% — the list price the package carried when it was sold,
+        // read from the sale when it recorded one and from the retired list when it did not.
+        expect(total(), String(unitAmount)).toBe("₹8,991");
+        fireEvent.click(screen.getByText(/^Save changes/));
+        await vi.waitFor(() => expect(updateDoc).toHaveBeenCalled());
+        const saved = updateDoc.mock.calls.at(-1)![1].saleItems[0];
+        expect(saved.packageKey).toBe("40 Seconds");
+        expect(saved.unitAmount).toBe(999);
+      } finally {
+        lead.saleItems = original;
+        cleanup();
+      }
+    }
   });
 
   it("drops the bulk arithmetic when a bulk sale is edited into a single video", async () => {

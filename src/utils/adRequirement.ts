@@ -81,6 +81,18 @@ export function resolveModelSpec(spec: {
 }
 
 /**
+ * Package labels that have left the price list, and the duration each one actually sold.
+ *
+ * Checked before the position and price lookups, because both of those would now answer wrongly.
+ * A "40 Seconds" Wishes sale is ₹999, and ₹999 on today's Wishes list is "30 Seconds + Poster" —
+ * so the price fallback would turn a 4-clip greeting with no poster into a 32-second job that owes
+ * the client a poster nobody sold them.
+ */
+export const LEGACY_PACKAGE_DURATIONS: Record<string, Record<string, string>> = {
+  wishes: { "20 Seconds": "20s", "40 Seconds": "40s" },
+};
+
+/**
  * The video duration a sold package buys.
  *
  * The sales catalog speaks in marketing terms ("30 Seconds + Poster") and the production side in
@@ -103,6 +115,9 @@ export function durationForSale(
 
   const durations = DURATIONS[category] || [];
   if (durations.length === 0) return "";
+
+  const retired = packageKey ? LEGACY_PACKAGE_DURATIONS[category]?.[packageKey] : undefined;
+  if (retired) return retired;
 
   const packages = PACKAGES[category] || [];
   const index = packageKey ? packages.findIndex((p) => p.label === packageKey) : -1;

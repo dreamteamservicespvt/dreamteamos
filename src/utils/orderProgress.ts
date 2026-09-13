@@ -7,7 +7,7 @@
  * carries running counts, so anyone looking at it can see 3 of 8 rather than a status that has
  * been true for a fortnight.
  */
-import { packageDeliverables, isBulkCategory, effectiveAdCategory } from "@/utils/serviceCatalog";
+import { packageDeliverables, isBulkCategory, effectiveAdCategory, isRetiredPackage } from "@/utils/serviceCatalog";
 import type {
   Order, OrderProgress, OrderProgressCounts, OrderProgressField, OrderTrack, WorkAssignment,
 } from "@/types";
@@ -37,9 +37,12 @@ export const PROGRESS_FIELD_LABELS: Record<OrderProgressField, string> = {
  * that have nothing to count.
  *
  * Bulk orders track the videos and their posters; they have no uploading or marketing leg, so those
- * targets stay at zero and never appear on screen. Wishes videos ship WITHOUT a poster — every
- * wishes package is plain seconds — so a bulk wishes order counts videos only. Counting posters
- * nobody agreed to make would leave the order permanently stuck at "8 of 8 ads · 0 of 8 posters".
+ * targets stay at zero and never appear on screen.
+ *
+ * Wishes used to be sold as plain seconds ("20 Seconds", "40 Seconds") with no poster, and an order
+ * made on one of those still counts videos only — counting posters nobody agreed to make would leave
+ * it permanently stuck at "8 of 8 ads · 0 of 8 posters". Wishes now sells the Promotional packages,
+ * every one of which comes "+ Poster", so a new bulk Wishes order owes its posters like any other.
  */
 export function initialProgress(input: {
   category: string;
@@ -60,7 +63,11 @@ export function initialProgress(input: {
   if (isBulkCategory(category)) {
     const n = Math.max(0, Math.floor(Number(quantity) || 0));
     if (n <= 0) return null;
-    const posters = effectiveAdCategory(category, bulkAdType) === "wishes" ? 0 : n;
+    const kind = effectiveAdCategory(category, bulkAdType);
+    // No package at all is how a bulk Wishes order was recorded before packages were compared, and
+    // those were all poster-less; a retired label is the same sale with its name kept.
+    const posterless = kind === "wishes" && (!packageKey || isRetiredPackage(kind, packageKey));
+    const posters = posterless ? 0 : n;
     // A bulk order is videos and their posters. It has no feed, so posts, stories and campaigns
     // stay at zero and never appear — see `activeFields`.
     return blankProgress("bulk", { ...ZERO, ads: n, posters });

@@ -1724,12 +1724,27 @@ export const MULTI_FRAME_SYSTEM_PROMPT = (
   gender: string = 'female',
   customAttire: string = '',
   noLogo: boolean = false,
-  logoName: string = ''
+  logoName: string = '',
+  /**
+   * The client's own photographs, when this ad is shot in them — the shared real-premises formula
+   * block (prompts/realLocation) and, per clip, which photograph backs it.
+   *
+   * Absent, this prompt plans its own tour of the business: reception, then the product wall, then
+   * the logo wall, a new zone for every line. Present, every one of those location choices is
+   * replaced by the photograph assigned to that clip — replaced, not argued with, because a system
+   * prompt that both orders a new zone per line and forbids inventing zones is resolved by the model
+   * in favour of whichever instruction it read most often, and that was never the photographs.
+   */
+  realLocation?: { formula: string; clips: string[] }
 ) => {
   const p = getModelProfile(gender);
   const brand = getBrandMark(noLogo, logoName);
   const isCustomAttire = attireType === 'custom';
   const basePrompt = MAIN_FRAME_SYSTEM_PROMPT(attireType, adType, festivalName, '1:1', businessContext, gender, customAttire, noLogo, logoName);
+  /** Where each clip is set, when the client's photographs decide it. */
+  const photoFor = (clipIndex: number) => realLocation?.clips[clipIndex] || '';
+  /** Where the logo goes, when the scene is a real photograph rather than a planned zone. */
+  const PHOTO_LOGO_SURFACE = "a real surface visible in this clip's own photograph — an existing board, counter fascia, wall panel or door. Never invent a surface the photograph does not show";
   const detectedBusinessType = businessContext ? detectBusinessType(businessContext) : 'default';
   const educationEnvironmentMode = detectedBusinessType === 'education' ? detectEducationEnvironmentMode(businessContext) : null;
   const clientEnvironmentGuidance = businessContext ? getEnvironmentForBusiness(detectedBusinessType, businessContext) : '';
@@ -1821,12 +1836,18 @@ export const MULTI_FRAME_SYSTEM_PROMPT = (
 
 **OVERRIDE: Instead of generating ONE prompt, you must generate EXACTLY ${segmentCount} SEPARATE Main Frame image prompts — one for each 8-second video clip.**
 
-Think of this as a ₹20-lakh national TV commercial shoot where the brand ambassador MOVES THROUGH different areas of the business establishment. Each clip = a DIFFERENT LOCATION within the SAME office/store/premises.
+${realLocation
+  ? `This campaign is shot ON LOCATION, in the client's own premises. The client has photographed their business and each clip has been assigned one of those photographs. Each clip = the photograph assigned to it, reproduced as photographed, with the brand ambassador placed into it.
+
+${realLocation.formula}
+
+THIS OVERRIDES EVERY LOCATION INSTRUCTION IN THIS PROMPT. Wherever the base prompt above or the shot plan below says reception, front desk, logo wall, product display, consultation zone, "choose the zone that proves the line", "a different area of the business", or describes an environment for this type of business — that clip's location is its assigned photograph instead. The shot plan still decides the camera, the pose, the purpose and the mood of each clip. It no longer decides where the clip is.`
+  : `Think of this as a ₹20-lakh national TV commercial shoot where the brand ambassador MOVES THROUGH different areas of the business establishment. Each clip = a DIFFERENT LOCATION within the SAME office/store/premises.`}
 
 TOTAL CLIPS: ${segmentCount}
 EACH CLIP DURATION: 8 seconds
 
-VOICE-OVER SCRIPT PER CLIP (MANDATORY DRIVER OF LOCATION, BACKGROUND PROOF, POSE ENERGY, AND MOOD):
+VOICE-OVER SCRIPT PER CLIP (${realLocation ? 'MANDATORY DRIVER OF POSE ENERGY, EXPRESSION AND MOOD — the location is the assigned photograph' : 'MANDATORY DRIVER OF LOCATION, BACKGROUND PROOF, POSE ENERGY, AND MOOD'}):
 ${segmentContext}
 
 ===== CASTING CONTINUITY RULES (MANDATORY) =====
@@ -1839,8 +1860,8 @@ The consistency rule is: same woman within this campaign; different businesses s
 
 ===== THE DIRECTOR'S SHOT PLAN =====
 
-**GOLDEN RULE: The model must appear at a DIFFERENT physical location within the same business environment in EVERY clip, and each chosen location must be the best visual proof for that clip's exact voice-over message.**
-
+${realLocation ? `**GOLDEN RULE (ON LOCATION): Every clip is set in the client's photograph assigned to it — never an invented zone, never a "typical" interior for this kind of business, and never the same photograph behind two clips. The voice-over decides the pose, the gesture and the mood inside that photographed space.**` : `**GOLDEN RULE: The model must appear at a DIFFERENT physical location within the same business environment in EVERY clip, and each chosen location must be the best visual proof for that clip's exact voice-over message.**`}
+${realLocation ? '' : `
 Just like in real TV commercials — the actress doesn't stand in one spot for 30 seconds. She MOVES through the business:
 • From the reception → to the product display → to the logo wall → to the consultation area → back to the entrance
 • Each location reveals a DIFFERENT aspect of the business
@@ -1870,7 +1891,7 @@ Each chosen spot must match the exact service claim, business proof point, or em
 • **Tea/Beverage:** Counter → Tea packet shelf display → Tasting area → Storage/distribution zone → Brand display wall
 • **Jewellery:** Entrance/display case → Gold collection showcase → Diamond/premium section → Trial mirror area → Heritage/trust wall
 • **Electrical/Hardware:** Service counter → Equipment display → Tool showcase area → Workstation/demo zone → Branded reception feature wall
-• **Default:** Reception → Product/service showcase → Logo/brand wall → Work area → Entrance/closing zone
+• **Default:** Reception → Product/service showcase → Logo/brand wall → Work area → Entrance/closing zone`}
 
 ===== FRAME-BY-FRAME GENERATION RULES =====
 
@@ -1879,35 +1900,47 @@ ${Array.from({ length: segmentCount }, (_, i) => {
   const shotIdx = i < shotDesigns.length ? i : i % shotDesigns.length;
   const shot = shotDesigns[shotIdx];
   
+  // On location, the photograph replaces the shot's planned zone and the logo goes where that
+  // photograph actually has a surface for it. Camera, pose and purpose stay the director's.
+  const location = realLocation ? photoFor(i) : shot.location;
+  const logoSurface = realLocation ? PHOTO_LOGO_SURFACE : shot.logoPlacement;
+  const camera = realLocation
+    ? shot.camera.replace(/the business reception/g, "that photograph's real space")
+    : shot.camera;
+  /** Clip 1's backdrop in the words its instructions use — the reception, or the real photograph. */
+  const heroBackdrop = realLocation
+    ? `the space in the client's photograph assigned to Clip 1 (${photoFor(0)})`
+    : `the real [BUSINESS TYPE] reception background built from the business details and 100% relatable to this exact business (its real equipment, products, displays, and service cues so a viewer instantly recognises what it does)`;
+
   if (clipNum === 1) {
     return `**CLIP ${clipNum} — ${shot.name} (Full standalone prompt)**
-   📍 LOCATION: ${shot.location}
-   🎥 CAMERA: ${shot.camera}
+   📍 LOCATION: ${location}
+   🎥 CAMERA: ${camera}
    🧍 POSE: ${shot.pose}
    🎯 PURPOSE: ${shot.purpose}
-    🪧 LOGO SURFACE: ${shot.logoPlacement}
+    🪧 LOGO SURFACE: ${logoSurface}
    
    ${adType !== AdType.FESTIVAL ? `Generate a COMPLETE standalone first-frame image prompt EXACTLY in the base format above (the headers: Create an ultra-realistic promotional portrait…, Main Character, Pose, Background, Visual Style, Composition, Important).
    Keep it clean and concise — about 200–300 words, simple bullet lines, no extra sections, no negative list.
-   Describe the ${p.personYoung} (with ${p.isMale ? 'minimal masculine accessories only — ' + p.jewellery : 'elegant jewellery — ' + (attireType === 'traditional' ? 'necklace/chain, earrings, bangles, finger ring, and a small bindi on the forehead' : 'finger ring, necklace/chain, earrings, watch, and NO bindi on the forehead')}), the formal front-clasp pose, the real [BUSINESS TYPE] reception background built from the business details and 100% relatable to this exact business (its real equipment, products, displays, and service cues so a viewer instantly recognises what it does), and ${brand.ref} fully visible on the reception wall.
-   The reception, visible business cues, pose, and mood must directly match Clip ${clipNum}'s voice-over line, and ${brand.ref} must feel physically installed on ${shot.logoPlacement} — pixel-perfect and unchanged, mounted in the upper background, fully readable and fully visible in one piece, with nothing blocking, cropping, or altering it.
+   Describe the ${p.personYoung} (with ${p.isMale ? 'minimal masculine accessories only — ' + p.jewellery : 'elegant jewellery — ' + (attireType === 'traditional' ? 'necklace/chain, earrings, bangles, finger ring, and a small bindi on the forehead' : 'finger ring, necklace/chain, earrings, watch, and NO bindi on the forehead')}), the formal front-clasp pose, ${heroBackdrop}, and ${brand.ref} fully visible on ${realLocation ? 'a real surface in that photograph' : 'the reception wall'}.
+   ${realLocation ? `The pose and mood must directly match Clip ${clipNum}'s voice-over line — the place is the photograph, reproduced exactly as it is` : `The reception, visible business cues, pose, and mood must directly match Clip ${clipNum}'s voice-over line`}, and ${brand.ref} must feel physically installed on ${logoSurface} — pixel-perfect and unchanged, mounted in the upper background, fully readable and fully visible in one piece, with nothing blocking, cropping, or altering it.
    ${brand.isNameBoard ? brand.ref.charAt(0).toUpperCase() + brand.ref.slice(1) : 'The attached logo'} must be the ONLY text in the image — do NOT invent any other logo, signage, banners, taglines, mission lines, service lists, dates, or academic years, and do NOT add empty/blank boards, frames, certificates, brochures, posters, standees, or blank screens (empty placeholders look like cardboard) — keep walls and surfaces clean. Keep it perfectly sharp and in focus (not blurred by depth of field) so all its text is clearly readable.
    Frame the ${p.personYoung} as a three-quarter shot (head to thighs/knees), centered and clearly filling about 70% of the frame height (not a small full head-to-feet shot), looking directly at the camera. Keep the ${p.personYoung}'s ~70% size the priority and ${brand.ref} small-to-medium and secondary — dynamically sized to the free wall space and never enlarged at the cost of the ${p.personYoung}'s size.` : `Generate a COMPLETE, detailed image generation prompt following ALL the rules/sections from the base prompt above.
-   This frame sets the visual foundation — character face, hair, skin, beauty, attire, jewellery, AND this specific location within the business.
+   This frame sets the visual foundation — character face, hair, skin, beauty, attire, jewellery, AND ${realLocation ? `the client's photographed space assigned to this clip (${photoFor(0)})` : 'this specific location within the business'}.
    This is the ONLY clip where you fully describe the model's physical appearance.
-  The chosen location, visible business cues, pose energy, and emotional tone must directly match Clip ${clipNum}'s voice-over line.
-    The logo must feel physically installed on ${shot.logoPlacement}, with believable depth, reflections, and material behavior.
+  ${realLocation ? `The pose energy and emotional tone must directly match Clip ${clipNum}'s voice-over line; the location is the photograph, reproduced as it is, with any festival cues layered onto it rather than replacing it.` : `The chosen location, visible business cues, pose energy, and emotional tone must directly match Clip ${clipNum}'s voice-over line.`}
+    The logo must feel physically installed on ${logoSurface}, with believable depth, reflections, and material behavior.
   Include ALL sections: SUBJECT, FACE, MAKEUP, EXPRESSION, HAIR, ATTIRE, JEWELLERY, ENVIRONMENT, LOGO PLACEMENT, CAMERA, OVERALL RESULT.
    The subject must occupy roughly 70% of the frame, maintain direct eye contact with the camera, and ${brand.ref} must appear fully visible in the upper background without any alteration.
    Target length: 500-800 words.`}`;
   }
   
   return `**CLIP ${clipNum} — ${shot.name} (⚠️ DO NOT RE-DESCRIBE THE MODEL)**
-   📍 LOCATION: ${shot.location}
-   🎥 CAMERA: ${shot.camera}
+   📍 LOCATION: ${location}
+   🎥 CAMERA: ${camera}
    🧍 POSE: ${shot.pose}
    🎯 PURPOSE: ${shot.purpose}
-    🪧 LOGO SURFACE: ${shot.logoPlacement}
+    🪧 LOGO SURFACE: ${logoSurface}
    
    **⛔ FORBIDDEN — DO NOT WRITE ANY OF THESE FOR CLIP ${clipNum}:**
    You must NOT mention, describe, or reference ANY of the following words/concepts for the model:
@@ -1926,7 +1959,7 @@ ${Array.from({ length: segmentCount }, (_, i) => {
   "Use the attached image (the Frame-1 reference) EXACTLY as the identity and styling anchor for this clip — the SAME ${p.person}, the SAME face, the SAME hair, and the EXACT SAME attire in the EXACT SAME colour, shade, and design as the attached image. Do NOT change, shift, re-tint, or re-style the outfit or its colour between clips — keep it perfectly identical to the attached image. Only the pose, hand position, action, and background location may change to match this clip's script."
    
    **✅ THEN FOCUS 100% ON THESE (the ONLY things you should describe):**
-  • 📍 The NEW LOCATION within the SAME business — a different REAL area/zone that best matches the meaning of Clip ${clipNum}'s voice-over line (show the real place the script is talking about). Describe it as a real, operational spot with real physical objects.
+  • 📍 ${realLocation ? `THE LOCATION — ${location}. Open the prompt by naming that photograph, then describe the real objects actually visible in it. Do NOT choose, invent or move to a different zone; the client photographed this space for this clip.` : `The NEW LOCATION within the SAME business — a different REAL area/zone that best matches the meaning of Clip ${clipNum}'s voice-over line (show the real place the script is talking about). Describe it as a real, operational spot with real physical objects.`}
   • 🔍 What's visible in the background: ONLY real, in-use, naturally-present objects this business actually has — e.g. shelves stacked with real books, real equipment / machines / tools, work counters, desks, seating, stock, materials, plants — shown as solid real objects with NO readable text on them. Do NOT invent any decorative wall content.
   • 🚫 TEXT RULE (STRICT — VERY IMPORTANT): ${brand.ref} is the ONLY text anywhere in the frame. Do NOT add or invent ANY other text — no signage, banners, posters, notice boards, brochures, application forms, department lists, course / curriculum lists, certificates, taglines, slogans, dates, or years on the walls, desks, screens, or anywhere. (The image generator mis-spells such text, so it must NEVER appear.)
   • 🚫 NO FRAMES / DISPLAYS / PLACEHOLDERS (STRICT — VERY IMPORTANT): do NOT create ANY wall frames, picture frames, photo frames, certificate frames, achievement / award / "success" / proof / display walls, photo walls, notice boards, posters, standees, brochures, or screens — NEITHER empty NOR filled. They are ALL forbidden. NEVER write phrases like "empty frames", "frames to hold photos", "displays without text", "achievement display", "wall displays", or similar — those create ugly empty cardboard panels. Walls stay clean (plain wall + real architecture) carrying ONLY ${brand.ref}; communicate the business through REAL in-use objects, never through any display or frame.
@@ -1935,7 +1968,7 @@ ${Array.from({ length: segmentCount }, (_, i) => {
    • 🎥 The new CAMERA ANGLE and composition
   • 💡 How lighting naturally differs at this new spot (e.g., near window = warm, interior = ambient) while still preserving the realism formula
   • 👁️ Mandatory direct eye contact to the camera while holding this new pose
-  • 🪧 ${brand.isNameBoard ? 'The business name board' : 'The attached logo'} placed on this clip's believable physical surface — ${shot.logoPlacement} — small-to-medium, sharp and clearly readable, fully visible, physically installed, and completely unmodified${brand.isNameBoard && brand.name ? ` (it must read exactly "${brand.name}")` : ''}
+  • 🪧 ${brand.isNameBoard ? 'The business name board' : 'The attached logo'} placed on this clip's believable physical surface — ${logoSurface} — small-to-medium, sharp and clearly readable, fully visible, physically installed, and completely unmodified${brand.isNameBoard && brand.name ? ` (it must read exactly "${brand.name}")` : ''}
 
    WHY THIS MATTERS: Any model description — even saying "beautiful ${p.person}" or "silk saree" — will cause the AI image generator to create a COMPLETELY DIFFERENT person. The model's identity is LOCKED from Clip 1. You ONLY control the scene around ${p.object}.
    
@@ -1947,7 +1980,7 @@ ${Array.from({ length: segmentCount }, (_, i) => {
 ===== VISUAL VARIATION RULES — THE DIRECTOR'S CHECKLIST =====
 
 **WHAT MUST CHANGE between every clip (MANDATORY):**
-• **📍 MODEL'S PHYSICAL LOCATION** — she must be at a DIFFERENT spot within the same business (THIS IS THE MOST IMPORTANT CHANGE)
+${realLocation ? `• **📍 MODEL'S PHYSICAL LOCATION** — the client's photograph assigned to that clip, reproduced as photographed (THIS IS THE MOST IMPORTANT CHANGE — and the client decided it, not you)` : `• **📍 MODEL'S PHYSICAL LOCATION** — she must be at a DIFFERENT spot within the same business (THIS IS THE MOST IMPORTANT CHANGE)`}
 • **🎥 Camera angle & composition** — match the shot type (establishing, showcase, trust, detail, closing)
 • **🧍 Subject POSE** — body angle, hand position, body interaction with the new location's elements
 • **😊 Subject EXPRESSION** — match the script mood (welcoming → proud → trustworthy → warm → inviting)

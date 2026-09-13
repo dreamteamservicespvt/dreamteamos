@@ -27,6 +27,17 @@ describe("service catalog integrity", () => {
     expect(PACKAGES["cinematic"].map((p) => p.amount)).toEqual([999, 1999, 2999, 3999]);
   });
 
+  // A member selling a festival greeting can offer every length a promotional client can buy.
+  it("wishes sells exactly the promotional packages, at the same prices", () => {
+    expect(PACKAGES["wishes"]).toEqual(PACKAGES["promotional"]);
+  });
+
+  // Shared by value, not by reference: editing one category's list in memory must not edit both.
+  it("gives wishes its own copy of the list", () => {
+    expect(PACKAGES["wishes"]).not.toBe(PACKAGES["promotional"]);
+    expect(PACKAGES["wishes"][0]).not.toBe(PACKAGES["promotional"][0]);
+  });
+
   it("monthly packages are present and priced", () => {
     expect(PACKAGES["social_media_management"].map((p) => p.amount)).toEqual([10000, 15000, 20000, 25000, 30000]);
   });

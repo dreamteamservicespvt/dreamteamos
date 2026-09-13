@@ -92,18 +92,56 @@ const SMM_PLATFORMS = {
   pro: ["Instagram", "Facebook", "YouTube", "LinkedIn"],
 } as const;
 
+/**
+ * The Promotional Ad price list, which Wishes sells too.
+ *
+ * Wishes used to carry its own two-entry list ("20 Seconds" ₹499, "40 Seconds" ₹999), so a member
+ * selling a festival greeting could not offer the 45-second or one-minute video, or the poster, that
+ * the same client could buy as a promotional ad. Both categories now read this one list, so a
+ * package added here reaches Wishes without anyone having to remember to copy it.
+ *
+ * The two retired Wishes labels still resolve on sales saved before the change — see
+ * LEGACY_PACKAGE_DURATIONS in utils/adRequirement.
+ */
+export const PROMOTIONAL_PACKAGES: readonly ServicePackage[] = [
+  { label: "15 Seconds + Poster", amount: 499 },
+  { label: "30 Seconds + Poster", amount: 999 },
+  { label: "45 Seconds + Poster", amount: 1499 },
+  { label: "1 Minute + Poster", amount: 1999 },
+];
+
+/**
+ * Packages that have left the price list but still name sales already made.
+ *
+ * Never offered for a new sale. Read only when an existing sale is opened for editing and its label
+ * is no longer listed — a bulk order is priced from its unit price, and without one the order reads
+ * ₹0 and cannot be saved, so a member fixing a typo in the brief would first have to re-price it.
+ */
+export const RETIRED_PACKAGES: Record<string, readonly ServicePackage[]> = {
+  wishes: [
+    { label: "20 Seconds", amount: 499 },
+    { label: "40 Seconds", amount: 999 },
+  ],
+};
+
+/** True when this label is one of the category's retired packages. */
+export function isRetiredPackage(category: string, label?: string | null): boolean {
+  return !!label && !!RETIRED_PACKAGES[category]?.some((p) => p.label === label);
+}
+
+/** The list price a retired package was sold at, or 0 when the label was never on any list. */
+export function retiredPackagePrice(category: string, label?: string | null): number {
+  if (!label) return 0;
+  return RETIRED_PACKAGES[category]?.find((p) => p.label === label)?.amount ?? 0;
+}
+
 export const SERVICE_CATALOG: ServiceCategory[] = [
   {
     key: "promotional",
     label: "Promotional Ad",
     billing: "one_time",
     fromAd: true,
-    packages: [
-      { label: "15 Seconds + Poster", amount: 499 },
-      { label: "30 Seconds + Poster", amount: 999 },
-      { label: "45 Seconds + Poster", amount: 1499 },
-      { label: "1 Minute + Poster", amount: 1999 },
-    ],
+    packages: PROMOTIONAL_PACKAGES.map((p) => ({ ...p })),
   },
   {
     key: "cinematic",
@@ -122,10 +160,8 @@ export const SERVICE_CATALOG: ServiceCategory[] = [
     label: "Wishes",
     billing: "one_time",
     fromAd: true,
-    packages: [
-      { label: "20 Seconds", amount: 499 },
-      { label: "40 Seconds", amount: 999 },
-    ],
+    // The same packages, at the same prices, as a Promotional Ad. See PROMOTIONAL_PACKAGES.
+    packages: PROMOTIONAL_PACKAGES.map((p) => ({ ...p })),
   },
   {
     key: "digital_marketing",

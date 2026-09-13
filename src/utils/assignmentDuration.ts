@@ -3,20 +3,30 @@ import { PRICING } from './pricing';
 /** Every ad clip is 8 seconds long — the unit the whole generation pipeline is built on. */
 export const CLIP_SECONDS = 8;
 
-/** Standard packages offered per category. */
+/**
+ * Standard packages offered per category, in the same order as the sales catalogue's package list —
+ * utils/adRequirement maps a sold package to its duration by POSITION, so the two must stay aligned.
+ * Wishes sells the Promotional list, so it has the Promotional durations.
+ */
 export const DURATIONS: Record<string, string[]> = {
-  wishes: ['20s', '40s'],
+  wishes: ['16s', '32s', '48s', '64s'],
   promotional: ['16s', '32s', '48s', '64s'],
   cinematic: ['16s', '32s', '48s', '64s'],
 };
 
-/** Clip count for the standard packages (wishes clips run longer than 8s, hence the lookup). */
+/**
+ * Clip count for the standard packages.
+ *
+ * `20s` and `40s` are the two retired Wishes lengths. Nothing sells them any more, but assignments
+ * created before the change still carry them, and dropping the keys would turn a 2-clip job into a
+ * 20 ÷ 8 = 2 guess today and something else the day the fallback changes.
+ */
 export const CLIP_COUNTS: Record<string, number> = {
   '16s': 2, '32s': 4, '48s': 6, '64s': 8,
   '20s': 2, '40s': 4,
 };
 
-/** Which standard packages ship with a poster. */
+/** Which standard packages ship with a poster. `20s` / `40s` are retired Wishes lengths, see above. */
 export const HAS_POSTER: Record<string, boolean> = {
   '16s': false, '32s': true, '48s': true, '64s': true,
   '20s': false, '40s': false,

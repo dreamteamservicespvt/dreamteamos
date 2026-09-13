@@ -51,6 +51,7 @@ import {
   assignPhotosToClips, describeClipLocations, attachmentDirective, parseLocationIndex,
   type LocationPhoto,
 } from "@/utils/locationAssignment";
+import { MODEL_LOCATION_SUBJECT, clipLocationLabel, realLocationFormula } from "./prompts/realLocation";
 import { resolvePlaceName } from "@/utils/businessPlace";
 import { fileToBase64, readFileAsText } from "@/utils/fileHelpers";
 import { CLIP_SECONDS, clipLabel, formatClipScript, parseLabeledClips } from "@/utils/voiceOverFormat";
@@ -1986,7 +1987,15 @@ Segment 2: <text>
     formData.gender || 'female',
     formData.customAttire || '',
     formData.noLogo || false,
-    resolveNameBoardText(formData, businessInfo)
+    resolveNameBoardText(formData, businessInfo),
+    // The same real-premises formula the character packs use, in the SYSTEM prompt where the
+    // location rules it replaces actually live. See prompts/realLocation.
+    usingClientPhotos
+      ? {
+          formula: realLocationFormula(MODEL_LOCATION_SUBJECT, describeClipLocations(clipPhotoPlan, clientLocations)),
+          clips: clipPhotoPlan.map((plan) => clipLocationLabel(plan, clientLocations)),
+        }
+      : undefined,
   );
 
   const isCommercialMainFrame = formData.adType !== 'festival';
@@ -2014,6 +2023,7 @@ Segment 2: <text>
   • Do NOT redesign, upgrade, tidy, modernise, or "premiumise" the premises. A modest real shop must stay a modest real shop; making it look like a showroom is the failure this override exists to prevent.
   • Do NOT substitute a stock interior, a studio backdrop, or a location invented from the business profile. Do NOT merge several of their spaces into one composite room.
   • The model is placed INTO that photographed space with matching perspective, matching light direction and matching colour temperature, so the frame reads as a photograph taken on location that day.
+  • Where any rule below says "reception", "front desk", "logo wall", "business zone" or "a different area", read it as that clip's photograph. The attire, pose and framing rules still apply; the place they happen in is the photograph.
   CLIP-BY-CLIP LOCATION PLAN (each clip uses its own photograph — never the same one twice unless the plan says so):
   ${describeClipLocations(clipPhotoPlan, clientLocations)}
 `

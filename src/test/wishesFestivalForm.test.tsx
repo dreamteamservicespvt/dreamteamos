@@ -147,6 +147,27 @@ describe("Add Sale — the occasion on a wishes video", () => {
     expect(submitLabel()).toContain("Save changes —");
   });
 
+  /**
+   * This sale was made as "20 Seconds" — a Wishes package that left the price list when Wishes took
+   * the Promotional one. Editing it must show what was sold and save it as sold, not open on
+   * "Select package" and quietly become a different product at a different price.
+   */
+  it("keeps a sale made on a retired Wishes package exactly as it was sold", async () => {
+    openWishesEdit();
+    const pkg = screen.getByTestId("sale-package") as HTMLSelectElement;
+    expect(pkg.value).toBe("20 Seconds");
+    expect(pkg.selectedOptions[0].textContent).toContain("no longer offered");
+    // And a NEW wishes sale is offered the full promotional list, not the retired label.
+    expect(Array.from(pkg.options).map((o) => o.value)).toContain("1 Minute + Poster");
+
+    updateDoc.mockClear();
+    fireEvent.click(screen.getByText(/^Save changes —/));
+    await vi.waitFor(() => expect(updateDoc).toHaveBeenCalled());
+    const saved = updateDoc.mock.calls.at(-1)![1].saleItems[0];
+    expect(saved.packageKey).toBe("20 Seconds");
+    expect(saved.amount).toBe(499);
+  });
+
   it("stores the occasion on the sale's brief", async () => {
     openWishesEdit();
     fireEvent.change(screen.getByTestId("sale-festival"), { target: { value: "Ganesh Chaturthi" } });

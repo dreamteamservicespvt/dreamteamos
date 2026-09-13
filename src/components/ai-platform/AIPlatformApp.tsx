@@ -33,6 +33,13 @@ import { useToast } from '@/hooks/use-toast';
 import BrandLogo from '@/components/common/BrandLogo';
 import { clipLabel, clipRange, formatClipLine, formatClipScript, parseLabeledClips } from '@/utils/voiceOverFormat';
 import { CUSTOM_FESTIVAL_OPTION, WISHES_FESTIVALS } from '@/utils/festivals';
+import { measureRun, saveRunTiming, type Checkpoint, type RunProfile } from '@/utils/generationEta';
+import { hasGeneratedAsset, type GenerationRun, type RunFacts } from './generation/run';
+import { MissionWorkspace, RunCountdown, missionMotion } from './generation/MissionWorkspace';
+import { AIGuideSheet } from './generation/AIGuideSheet';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+// DTS brand system (violet → blue → cyan, from "JUST DREAM BIG, WE BUILD IT").
+import { BRAND_GRADIENT, BRAND_GRADIENT_HOVER, BRAND_TEXT } from './brand';
 
 interface AIPlatformAppProps {
   assignment?: WorkAssignment;
@@ -60,11 +67,6 @@ const cleanPromptForClipboard = (content: string) => {
     .replace(/\n?```$/gim, '')
     .trim();
 };
-
-// ── DTS brand system (violet → blue → cyan, from "JUST DREAM BIG, WE BUILD IT") ──
-const BRAND_GRADIENT = 'bg-gradient-to-r from-violet-600 via-blue-600 to-cyan-500';
-const BRAND_GRADIENT_HOVER = 'hover:from-violet-500 hover:via-blue-500 hover:to-cyan-400';
-const BRAND_TEXT = 'bg-clip-text text-transparent bg-gradient-to-r from-violet-500 via-blue-500 to-cyan-400';
 
 const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   assignment, assignmentId, onBusinessNameExtracted, onClose, onComplete, completing = false
@@ -115,6 +117,26 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   const [status, setStatus] = useState<GenerationStatus>({ step: '', isProcessing: false, error: null, progress: 0 });
   const [errorModalDismissed, setErrorModalDismissed] = useState(false);
   const [outputs, setOutputs] = useState<GeneratedOutputs | null>(null);
+  /**
+   * The run the waiting workspace describes. Updated only when Start is pressed and at each progress
+   * checkpoint — a handful of times per run. The one-second countdown tick lives inside the
+   * workspace's own leaf component so it never re-renders this screen.
+   */
+  const [activeRun, setActiveRun] = useState<GenerationRun | null>(null);
+  /** The member's side of the run — tabs opened, logo attached — shared by the workspace and the guide. */
+  const [missionDone, setMissionDone] = useState<Record<string, boolean>>({});
+  const [guideOpen, setGuideOpen] = useState(false);
+  const toggleMission = useCallback((key: string, value: boolean) => {
+    setMissionDone(prev => (prev[key] === value ? prev : { ...prev, [key]: value }));
+  }, []);
+  const reduceMotion = useReducedMotion();
+  /**
+   * Whether anything usable has arrived. Not `!!outputs`: the first snapshot the generator emits
+   * holds only the extracted business info, a few seconds in, before any asset exists.
+   */
+  const firstAssetIn = hasGeneratedAsset(outputs);
+  const showMission = status.isProcessing && !!activeRun && !firstAssetIn;
+  const showAssets = firstAssetIn;
   const [refiningSection, setRefiningSection] = useState<SectionType | null>(null);
   const [collapsedSections, setCollapsedSections] = useState({
     storeOffice: true, productImages: true, flyersPosters: true, voiceInstructions: true
@@ -615,6 +637,41 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     }
   };
 
+  /** How many clips this run will produce — the pasted script's own count when it has one. */
+  const runClipCount = () => {
+    const pasted = useCustomScript && customScript.trim() ? parseLabeledClips(customScript).length : 0;
+    return pasted > 0 ? pasted : Math.max(1, Math.round((formData.duration || 32) / 8));
+  };
+
+  /** The inputs that decide how long this run takes, frozen at Start. See utils/generationEta. */
+  const currentRunProfile = (): RunProfile => ({
+    mode: creationMode === 'poster' ? 'poster' : 'video',
+    clipCount: runClipCount(),
+    fileCount: (files.logo ? 1 : 0) + files.visitingCard.length + files.storeImage.length
+      + files.productImages.length + files.flyersPosters.length + files.voiceRecording.length
+      + files.textInstructionsFile.length,
+    locationPhotos: creationMode === 'video' && formData.locationMode === 'real_provided' ? files.storeImage.length : 0,
+    characterPack: creationMode === 'video' && !!activePack,
+    customScript: creationMode === 'video' && useCustomScript && !!customScript.trim(),
+    conceptCount: formData.posterConceptCount || DEFAULT_POSTER_CONCEPT_COUNT,
+  });
+
+  /** What the member is preparing for while this run goes, frozen at Start. */
+  const currentRunFacts = (): RunFacts => {
+    const onLocation = creationMode === 'video' && formData.locationMode === 'real_provided' && files.storeImage.length > 0;
+    return {
+      mode: creationMode === 'poster' ? 'poster' : 'video',
+      clipCount: runClipCount(),
+      aspectRatio: formData.aspectRatio === '16:9' ? '16:9' : '9:16',
+      hasLogo: !!files.logo,
+      nameBoard: !files.logo && !!(formData.noLogo && formData.logoNameText?.trim()),
+      onLocation,
+      locationPhotos: onLocation ? files.storeImage.length : 0,
+      castLabel: creationMode === 'video' && activePack ? activePack.label : '',
+      conceptCount: formData.posterConceptCount || DEFAULT_POSTER_CONCEPT_COUNT,
+    };
+  };
+
   const handleGenerate = async () => {
     const hasNameBoard = !!(formData.noLogo && formData.logoNameText?.trim());
     if (!files.logo && !hasNameBoard) {
@@ -630,39 +687,67 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       return;
     }
     // "Use their photos" with no photos attached would silently fall back to an invented
-    // location — the opposite of what was promised to the client, so stop and say so.
-    if (creationMode === 'video' && activePack && formData.locationMode === 'real_provided' && files.storeImage.length === 0) {
+    // location — the opposite of what was promised to the client, so stop and say so. Every video
+    // ad, not only a special-category one: the human-model ad is shot in the same photographs now.
+    if (creationMode === 'video' && formData.locationMode === 'real_provided' && files.storeImage.length === 0) {
       await showAlert({
         title: "Location photos missing",
-        description: `You chose to use the client's real location for this ${activePack.label} ad, but no photos are attached. Upload them into "Store / Office Image", or switch to "No — create AI background".`,
+        description: `You chose to use the client's real location for this ${activePack ? `${activePack.label} ` : ''}ad, but no photos are attached. Upload them into "Store / Office Image", or switch the Background to "AI — build the location".`,
         confirmText: "OK",
       });
       return;
     }
-    abortControllerRef.current = new AbortController();
+    /**
+     * This run's own controller, held in a local as well as the shared ref.
+     *
+     * The callbacks used to read `abortControllerRef.current`, which after Stop-then-Start points at
+     * the NEW run's controller — so the stopped run saw an un-aborted signal, kept writing its step
+     * text and partial outputs over the new run, and on finishing cleared the ref and disabled the
+     * new run's Stop button. Every check below asks about THIS run and nothing else.
+     */
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const stopped = () => controller.signal.aborted;
+    const runStartedAt = Date.now();
+    const runProfile = currentRunProfile();
     setErrorModalDismissed(false);
     setStatus({ step: 'Initializing...', isProcessing: true, error: null, progress: 0 });
     setOutputs(null);
+    setActiveRun({ id: runStartedAt, profile: runProfile, checkpoints: [{ percent: 0, at: runStartedAt }], facts: currentRunFacts() });
+    setMissionDone({});
+    setGuideOpen(false);
     setTimeout(() => outputPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+    /** Each reported percent is a checkpoint the countdown re-anchors on. */
+    const checkpoints: Checkpoint[] = [{ percent: 0, at: runStartedAt }];
+    const onRunProgress = (step: string, progress: number) => {
+      if (stopped()) throw new Error('Generation stopped by user');
+      setStatus(prev => ({ ...prev, step, progress }));
+      if (progress !== checkpoints[checkpoints.length - 1].percent) {
+        checkpoints.push({ percent: progress, at: Date.now() });
+        const snapshot = [...checkpoints];
+        setActiveRun(prev => (prev && prev.id === runStartedAt ? { ...prev, checkpoints: snapshot } : prev));
+      }
+    };
     try {
       let generatedResult: GeneratedOutputs;
       if (creationMode === 'poster') {
-        generatedResult = await generatePosterConcepts(formData, files, (step, progress) => {
-          if (abortControllerRef.current?.signal.aborted) throw new Error('Generation stopped by user');
-          setStatus(prev => ({ ...prev, step, progress }));
-        });
+        generatedResult = await generatePosterConcepts(formData, files, onRunProgress);
       } else {
-        generatedResult = await generateAdAssets(formData, files, (step, progress) => {
-          if (abortControllerRef.current?.signal.aborted) throw new Error('Generation stopped by user');
-          setStatus(prev => ({ ...prev, step, progress }));
-        }, {
+        generatedResult = await generateAdAssets(formData, files, onRunProgress, {
           includeProductsInHeader,
           customScript: useCustomScript ? customScript : undefined,
-          onPartialResult: (partial) => setOutputs(partial)
+          // A partial that lands after Stop belongs to a run the member has already abandoned.
+          onPartialResult: (partial) => { if (!stopped()) setOutputs(partial); }
         });
       }
+      // The model calls cannot be cancelled mid-flight, so a stopped run can still finish. Its result
+      // is not what the member is looking at any more.
+      if (stopped()) throw new Error('Generation stopped by user');
       setOutputs(generatedResult);
       setStatus(prev => ({ ...prev, isProcessing: false, step: 'Completed', progress: 100 }));
+      // Teach the countdown how long this browser's runs really take. See utils/generationEta.
+      const timing = measureRun(runProfile, checkpoints, Date.now());
+      if (timing) saveRunTiming(timing);
 
       // Auto-save to history. A new generation is a new version, so it always starts a new document;
       // Save after this updates that same document rather than duplicating it.
@@ -677,10 +762,14 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
         }
       }
     } catch (error: any) {
-      const isStopped = error.message?.includes('stopped by user');
-      setStatus(prev => ({ ...prev, isProcessing: false, error: isStopped ? 'Generation stopped.' : (error.message || "An unexpected error occurred.") }));
+      const isStopped = error.message?.includes('stopped by user') || stopped();
+      // A run the member stopped and then replaced must not write its error over the new one.
+      if (abortControllerRef.current === controller || !isStopped) {
+        setStatus(prev => ({ ...prev, isProcessing: false, error: isStopped ? 'Generation stopped.' : (error.message || "An unexpected error occurred.") }));
+      }
     } finally {
-      abortControllerRef.current = null;
+      // Only this run's own controller — clearing a newer run's would disable its Stop button.
+      if (abortControllerRef.current === controller) abortControllerRef.current = null;
     }
   };
 
@@ -1571,6 +1660,10 @@ clip-2[8-16sec]: second spoken line`}</pre>
                     <div className="flex items-center gap-2 text-xs">
                       <Wand2 className={cn("w-3.5 h-3.5 text-blue-500", status.isProcessing && "animate-pulse")} />
                       <span className={cn(status.isProcessing && "animate-pulse", isDark ? "text-slate-400" : "text-slate-600")}>{status.step}</span>
+                      {/* The workspace leaves at the first asset, but the run goes on — so the countdown stays here. */}
+                      {status.isProcessing && activeRun && !showMission && (
+                        <RunCountdown run={activeRun} active isDark={isDark} variant="inline" />
+                      )}
                       <span className={cn("font-mono font-bold text-[11px] px-1.5 py-0.5 rounded-md",
                         isDark ? "bg-slate-800 text-cyan-400" : "bg-slate-100 text-blue-600")}>{Math.round(status.progress)}%</span>
                     </div>
@@ -1581,14 +1674,38 @@ clip-2[8-16sec]: second spoken line`}</pre>
                 </div>
               )}
 
-              {outputs && (
-                <div className="space-y-6">
+              {/*
+                One space, three occupants: the Mission Workspace while nothing usable has arrived, the
+                assets from the first one onward, and the welcome card before any run. `mode="wait"` lets
+                the workspace finish dissolving before the assets rise into the same place, so the two
+                never stack and nothing jumps.
+              */}
+              <AnimatePresence mode="wait" initial={false}>
+              {outputs && showAssets ? (
+                <motion.div
+                  key="assets"
+                  className="space-y-6"
+                  initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0, transition: { duration: reduceMotion ? 0.2 : 0.45, ease: [0.22, 1, 0.36, 1] } }}
+                  exit={{ opacity: 0, transition: { duration: 0.15 } }}
+                >
                   <div className="flex items-center justify-between mb-2">
                     <h2 className={cn("text-lg sm:text-xl font-extrabold tracking-tight", BRAND_TEXT)}>
                       Generated Assets
                       {viewingSavedItem && <span className="ml-2 text-sm font-normal text-slate-500">(Viewing Saved)</span>}
                     </h2>
                     <div className="flex items-center space-x-2">
+                      {/* Where the workspace went. It pulses while the run is still going, just after the
+                          workspace has stepped aside, so the member sees where to find it again. */}
+                      <button type="button" onClick={() => setGuideOpen(true)} data-test="ai-guide-button"
+                        className={cn("relative flex items-center gap-1 text-sm font-semibold px-3 py-1.5 rounded-lg transition-all active:scale-[0.98]",
+                          isDark ? "bg-violet-900/30 text-violet-300 hover:bg-violet-900/50" : "bg-violet-50 text-violet-700 hover:bg-violet-100",
+                          status.isProcessing && "ring-2 ring-violet-400/60")}>
+                        {status.isProcessing && !reduceMotion && (
+                          <span aria-hidden className="absolute inset-0 rounded-lg ring-2 ring-violet-400/50 animate-ping" />
+                        )}
+                        <Sparkles className="w-4 h-4" /><span>AI Guide</span>
+                      </button>
                       <button onClick={handleSave} disabled={isSaving || saveSuccess}
                         className={cn("flex items-center space-x-1 text-sm font-medium px-3 py-1.5 rounded-lg transition-all",
                           saveSuccess ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
@@ -1842,10 +1959,14 @@ clip-2[8-16sec]: second spoken line`}</pre>
                       </div>
                     </div>
                   )}
-                </div>
-              )}
-
-              {!outputs && !status.isProcessing && (
+                </motion.div>
+              ) : showMission && activeRun ? (
+                <motion.div key={`mission-${activeRun.id}`} {...missionMotion(reduceMotion)} className="space-y-3">
+                  <h2 className={cn("text-lg sm:text-xl font-extrabold tracking-tight", BRAND_TEXT)}>Generated Assets</h2>
+                  <MissionWorkspace run={activeRun} done={missionDone} onToggle={toggleMission} isDark={isDark} />
+                </motion.div>
+              ) : !status.isProcessing ? (
+                <motion.div key="welcome" initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { duration: 0.25 } }} exit={{ opacity: 0, transition: { duration: 0.15 } }}>
                 <div className={cn("rounded-2xl border p-8 sm:p-12 text-center shadow-xl",
                   isDark ? "bg-slate-900/70 border-slate-800 shadow-black/20 backdrop-blur" : "bg-white/90 border-slate-200 shadow-slate-200/60 backdrop-blur")}>
                   <div className={cn("w-16 h-16 mx-auto mb-5 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-blue-600/25", BRAND_GRADIENT)}>
@@ -1867,7 +1988,21 @@ clip-2[8-16sec]: second spoken line`}</pre>
                     ))}
                   </div>
                 </div>
-              )}
+                </motion.div>
+              ) : null}
+              </AnimatePresence>
+
+              <AIGuideSheet
+                open={guideOpen}
+                onOpenChange={setGuideOpen}
+                run={activeRun}
+                processing={status.isProcessing}
+                facts={activeRun && !viewingSavedItem ? activeRun.facts : currentRunFacts()}
+                outputs={outputs}
+                done={missionDone}
+                onToggle={toggleMission}
+                isDark={isDark}
+              />
             </div>
           </div>
         </main>

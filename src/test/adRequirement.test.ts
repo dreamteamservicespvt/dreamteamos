@@ -45,8 +45,27 @@ describe("durationForSale", () => {
 
   it("maps cinematic and wishes packages too", () => {
     expect(durationForSale("cinematic", "45 Seconds + Poster")).toBe("48s");
+    // Wishes sells the Promotional list, so it builds the Promotional lengths.
+    expect(durationForSale("wishes", "15 Seconds + Poster")).toBe("16s");
+    expect(durationForSale("wishes", "30 Seconds + Poster")).toBe("32s");
+    expect(durationForSale("wishes", "45 Seconds + Poster")).toBe("48s");
+    expect(durationForSale("wishes", "1 Minute + Poster")).toBe("64s");
+  });
+
+  /**
+   * Sales saved before Wishes took the Promotional list still say "20 Seconds" and "40 Seconds".
+   * Neither label is on the list any more, and the price fallback gets the second one wrong:
+   * ₹999 on today's Wishes list is "30 Seconds + Poster", which owes a poster nobody sold.
+   */
+  it("still builds a retired Wishes package at the length that was sold", () => {
+    expect(durationForSale("wishes", "20 Seconds", 499)).toBe("20s");
+    expect(durationForSale("wishes", "40 Seconds", 999)).toBe("40s");
     expect(durationForSale("wishes", "20 Seconds")).toBe("20s");
     expect(durationForSale("wishes", "40 Seconds")).toBe("40s");
+  });
+
+  it("does not let a retired Wishes label leak into another category", () => {
+    expect(durationForSale("promotional", "40 Seconds", 999)).toBe("32s");
   });
 
   it("falls back to the amount when the package label no longer matches", () => {

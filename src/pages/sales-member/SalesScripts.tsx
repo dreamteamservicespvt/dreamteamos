@@ -258,43 +258,63 @@ function buildTabs(greeting: string, userName: string, festivalName: string): Sc
           icon: Megaphone,
           content: (
             <>
+              {/* Wishes sells the Promotional packages (utils/serviceCatalog PROMOTIONAL_PACKAGES), so the
+                  pitch quotes the same four lengths and prices the member will pick in Add Sale. */}
               <Line>
-                "Sir, ippudu entante maa daggara <strong>two packages</strong> unnayi sir. Okati 'Only {f}{" "}
-                wishes', Inkokati '{f} wishes along with business promotion ad'."
+                "Sir, ippudu entante maa daggara {f} wishes ki <strong>four packages</strong> unnayi sir —
+                15 seconds, 30 seconds, 45 seconds, and 1 minute. Prathi package lo video tho patu oka{" "}
+                <strong>poster</strong> kuda vasthundi sir. Anni videos lo first mee business tharapununchi mee
+                customers ki {f} wishes vasthayi, tharvatha mee business gurinchi."
               </Line>
 
-              <Label>Explaining ₹499 Package (20 sec)</Label>
+              <Label>Explaining ₹499 Package (15 sec + Poster)</Label>
               <Line>
-                "First package — Only {f} wishes lo manaki <strong>20 seconds video</strong>{" "}
-                vasthundhi. Dentlo mee business tharapununchi mee customers ki festival wishes cheppi 10 seconds
-                vasthundhi, tharvatha next 5 seconds mee business gurinchi short info vasthudhi, and last lo festival
-                theme video mee branding tho vastundi. Idi manaki 20 seconds vastundi — <strong>package ₹499</strong>{" "}
-                sir."
+                "First package — <strong>15 seconds video</strong> sir. Starting lo mee business tharapununchi mee
+                customers ki {f} wishes cheppi, tharvatha mee business gurinchi short info, and last lo mimmalni ela
+                sampradinchalo vasthundi. Deenitho patu oka {f} poster kuda vasthundi. Idi{" "}
+                <strong>package ₹499</strong> sir."
               </Line>
 
-              <Label>Explaining ₹999 Package (40 sec)</Label>
+              <Label>Explaining ₹999 Package (30 sec + Poster)</Label>
               <Line>
                 "Idaa kakunda… Evaraithe ee {f} ki wishes tho patu valla business ni kuda promote
-                chesukundam anukuntunnaro, valla kosam pettinde '{f} wishes along with business
-                promotion ad' sir. Idi <strong>40 seconds</strong> sir. Deentlo mee business tharapununchi mee customers
-                ki wishes cheppina tharvatha, mee business enti, meeru provide chese services enti, mee products enti,
-                mee offers enti, mee address ekkada, mimmalni ela sampradinchali — idantha kuda e video lo convey
-                avuthundi sir. Idi manaki 40 seconds vastundi — <strong>package ₹999</strong> sir."
+                chesukundam anukuntunnaro, valla kosam <strong>30 seconds</strong> package sir. Wishes cheppina
+                tharvatha mee business enti, meeru provide chese services enti, mee offers enti, mee address ekkada,
+                mimmalni ela sampradinchali — idantha kuda e video lo convey avuthundi, plus oka poster. Idi{" "}
+                <strong>package ₹999</strong> sir."
+              </Line>
+
+              <Label>Explaining ₹1,499 and ₹1,999 Packages (45 sec / 1 min + Poster)</Label>
+              <Line>
+                "Inka detailed ga kavali ante — mee products, mee speciality, mee customers ki meeru ichhe benefits
+                anni cover avvali ante — <strong>45 seconds (₹1,499)</strong> and{" "}
+                <strong>1 minute (₹1,999)</strong> packages unnayi sir. Rendu lo kuda {f} wishes tho start ayyi,
+                poster kuda vasthundi."
               </Line>
 
               <PriceTable
-                headers={["Package", "Duration", "Price"]}
+                headers={["Package", "What the client gets", "Price"]}
                 rows={
                   <>
                     <tr className="border-b border-border">
-                      <td className="py-2 px-3 text-sm">Only Wishes</td>
-                      <td className="py-2 px-3 text-sm">20 sec</td>
+                      <td className="py-2 px-3 text-sm">15 Seconds + Poster</td>
+                      <td className="py-2 px-3 text-sm">Wishes + short business intro</td>
                       <td className="py-2 px-3 text-sm font-semibold">₹499</td>
                     </tr>
-                    <tr>
-                      <td className="py-2 px-3 text-sm">Wishes + Business Promotion</td>
-                      <td className="py-2 px-3 text-sm">40 sec</td>
+                    <tr className="border-b border-border">
+                      <td className="py-2 px-3 text-sm">30 Seconds + Poster</td>
+                      <td className="py-2 px-3 text-sm">Wishes + business promotion</td>
                       <td className="py-2 px-3 text-sm font-semibold">₹999</td>
+                    </tr>
+                    <tr className="border-b border-border">
+                      <td className="py-2 px-3 text-sm">45 Seconds + Poster</td>
+                      <td className="py-2 px-3 text-sm">Wishes + detailed promotion</td>
+                      <td className="py-2 px-3 text-sm font-semibold">₹1,499</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3 text-sm">1 Minute + Poster</td>
+                      <td className="py-2 px-3 text-sm">Wishes + full promotion</td>
+                      <td className="py-2 px-3 text-sm font-semibold">₹1,999</td>
                     </tr>
                   </>
                 }
@@ -2198,8 +2218,8 @@ export default function SalesScripts() {
         <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="bg-background border border-border rounded-lg p-3">
             <p className="text-xs font-semibold text-muted-foreground mb-1">Festival Wishes</p>
-            <p className="text-sm">Only Wishes: <strong>₹499</strong> (20s)</p>
-            <p className="text-sm">Wishes + Promotion: <strong>₹999</strong> (40s)</p>
+            <p className="text-sm">Same packages as Promotional, each + Poster</p>
+            <p className="text-sm"><strong>₹499</strong> (15s) · <strong>₹999</strong> (30s) · <strong>₹1,499</strong> (45s) · <strong>₹1,999</strong> (1 min)</p>
           </div>
           <div className="bg-background border border-border rounded-lg p-3">
             <p className="text-xs font-semibold text-muted-foreground mb-1">Digital Marketing (Single Campaign)</p>

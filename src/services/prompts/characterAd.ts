@@ -3,6 +3,7 @@ import {
   MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE, wordBudgetFor,
 } from "@/utils/dialogueFormat";
 import { CLIP_SECONDS } from "@/utils/voiceOverFormat";
+import { packLocationSubject, packStagingRole, realLocationFormula } from "./realLocation";
 
 /**
  * Prompts for character-pack ads — two cartoon characters talking to each other inside a real
@@ -1059,21 +1060,10 @@ The attached logo is the only text anywhere in the frame — never invent other 
 
 No logo was provided. Do not invent one, and do not put any text, signage or lettering in the frame.`;
 
+  // The shared real-premises formula (prompts/realLocation) — the same block the human-model frame
+  // prompt reads, told who it is placing so a lone deity is never lit as "the two characters".
   const locationBlock = locationMode === "real_provided"
-    ? `===== LOCATION: THE CLIENT'S REAL PHOTOGRAPHS (AUTHORITATIVE) =====
-
-Real photographs of this business are attached. They are the ground truth for every clip.
-
-• Each clip has been assigned ONE specific photograph — build that clip's frame from THAT photo.
-• REPRODUCE the real place: its actual architecture, counters, shelving, stock, signage, flooring,
-  wall colours and fixtures. Do not redesign, tidy, upgrade, or re-imagine it.
-• MATCH that photo's own lighting — direction, hardness and colour temperature — when lighting the
-  two characters, so they look photographed in that room rather than pasted onto it.
-• MATCH the camera perspective and eye level of the photo. The characters must sit correctly in
-  that space, standing on the actual floor, at believable scale against real objects.
-• Keep the business's real signage and branding legible exactly as photographed.
-
-${locationPlan}`
+    ? realLocationFormula(packLocationSubject(pack), locationPlan)
     : `===== LOCATION: GENERATED FROM THE BUSINESS PROFILE =====
 
 No client photographs were provided, so build a believable, photoreal location for this exact kind
@@ -1082,7 +1072,7 @@ stock, real fixtures, real wear — never a showroom render or an empty studio s
 
 ${locationPlan}`;
 
-  return `You are a world-class advertising art director who stages CARTOON CHARACTERS inside REAL
+  return `You are a world-class advertising art director who stages ${packStagingRole(pack)} inside REAL
 photographed business locations for television commercials.
 
 YOUR TASK: Write ${segmentCount} image-generation prompts — one per ${CLIP_SECONDS}-second

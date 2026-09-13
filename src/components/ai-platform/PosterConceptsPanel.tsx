@@ -13,8 +13,7 @@ import type { PosterConcept } from '@/types/aiPlatform';
 import { posterStyleLabel } from '@/services/posterStyles';
 import { posterSizeLabel } from '@/utils/posterSpec';
 import { posterConceptAsText } from '@/utils/posterConcepts';
-
-const BRAND_GRADIENT = 'bg-gradient-to-r from-violet-600 via-blue-600 to-cyan-500';
+import { BRAND_GRADIENT } from './brand';
 
 /** Where the member runs the prompts — Gemini's image model takes an attached logo. */
 export const POSTER_GENERATOR_URL = 'https://gemini.google.com/app';
