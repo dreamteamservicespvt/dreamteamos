@@ -2382,6 +2382,7 @@ ${isLatin ? `1. Spoken content must be clean, natural, conversational English.
 4. Every clip must contain BETWEEN ${WORD_BAND} spoken words. Fewer than ${MIN_WORDS_PER_CLIP} leaves dead air; more than ${MAX_WORDS_PER_CLIP} cannot be spoken in 8 seconds. This is mandatory.
 5. Punctuation marks do not count as words.
 6. Every clip must be concise, complete and meaningful. End the sentence where it naturally ends inside the band — never pad a line to reach a number and never cut a thought in half to stay under one.
+7. Keep it SHORT. Each clip is ONE short spoken sentence — never two sentences squeezed into one clip, never a long run-on line. If a clip needs more than ${MAX_WORDS_PER_CLIP} words, it is carrying two ideas: keep the stronger one.
 
 ===== QUALITY BAR =====
 
@@ -2738,8 +2739,8 @@ export const VEO_SEGMENT_SYSTEM_PROMPT = (segmentCount: number, gender: string =
 export const modelVeoSubject = (gender: string = 'female') => {
   const p = getModelProfile(gender);
   return p.isMale
-    ? { voice: 'a warm, confident male voice', identityLock: 'his face (100% face match), his hair, his outfit, the logo and the location' }
-    : { voice: 'a very sweet, warm, confident female voice', identityLock: 'her face (100% face match), her hair, her outfit, the logo and the location' };
+    ? { voice: 'a warm, confident male voice', identityLock: 'his face (100% face match), his hair, his outfit, the logo and the location', cast: 'He', castPlural: false }
+    : { voice: 'a very sweet, warm, confident female voice', identityLock: 'her face (100% face match), her hair, her outfit, the logo and the location', cast: 'She', castPlural: false };
 };
 
 export const POSTER_SYSTEM_PROMPT = (

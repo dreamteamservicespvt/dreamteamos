@@ -1222,7 +1222,11 @@ export const packVeoSubject = (pack: CharacterPack) => {
     solo ? "" : "Only the speaking character's mouth moves; the other listens and reacts in their own way.",
     cartoon ? "Voices are strict: only the original voices from the show — never a narrator, a new voice actor or a different accent." : "",
   ].filter(Boolean).join("\n");
-  return { identityLock, speech, performanceNotes };
+  /** Who the movement rules address — "Both characters", "Ganesha", "The business owner". */
+  const cast = solo
+    ? person ? `The ${pack.characters[0].name.toLowerCase()}` : pack.characters[0].name
+    : "Both characters";
+  return { identityLock, speech, performanceNotes, cast, castPlural: !solo, twoHander: !solo };
 };
 
 // ── 4 · Location index: read the client's photos before assigning them ────────────────────────

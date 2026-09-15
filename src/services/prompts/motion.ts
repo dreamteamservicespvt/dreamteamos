@@ -109,48 +109,57 @@ export interface ClipMotionPlan {
   fallbackBeats: [string, string, string];
 }
 
+/**
+ * What the body and hands do in each kind of clip. Every one moves — the team's rule is that nobody
+ * stands like a statue — so each gesture flows into the next movement instead of "returning to rest".
+ */
 const GESTURE: Record<ClipRole, string> = {
-  message: "keeps the composed front stance for the opening; on the business name, one warm welcoming open-palm "
-    + "gesture toward the camera, then the hands settle back to rest",
-  wish: "hands come together in a warm namaste on the greeting, with a gentle smile and a small bow of the head",
-  proof: "an open hand presents the real product, counter or zone being spoken about, then returns to rest as the "
-    + "face comes back to camera",
-  trust: "a light hand to the chest on the promise, followed by a small, confident nod",
-  cta: "both palms open outward toward the viewer in an invitation, then a warm nod and smile to close",
-  message_cta: "a welcoming open-palm gesture on the business name, then both palms open toward the viewer in an "
-    + "invitation on the call to action",
+  message: "opens in a composed, confident stance that is alive, never frozen — a slight lean toward the camera and an "
+    + "easy weight shift; on the business name, a warm welcoming open-palm gesture toward the camera, then the hand "
+    + "presents the premises behind as the promise is spoken",
+  wish: "steps in warmly, hands come together in a namaste on the greeting with a small bow of the head, then open "
+    + "outward in a warm, celebratory gesture",
+  proof: "turns the shoulders toward the real product, counter or zone being spoken about, presents it with an open "
+    + "hand or points to it on its name, then turns back to camera with an emphatic hand on the benefit",
+  trust: "leans in slightly, a hand to the chest on the promise, then an open, reassuring palm toward the viewer with "
+    + "a confident nod",
+  cta: "takes a small step toward the camera, both palms open outward in an invitation, then an inviting wave toward "
+    + "the viewer with a warm nod and smile",
+  message_cta: "a welcoming open-palm gesture on the business name while leaning in, then both palms open toward the "
+    + "viewer in an invitation on the call to action",
 };
 
+/** Fallback beats. Each one has a body movement AND a hand action — never a beat of standing still. */
 const BEATS: Record<ClipRole, [string, string, string]> = {
   message: [
-    "composed stance, warm smile, eyes to the lens as the line begins",
-    "one welcoming open-palm gesture toward the camera on the business name",
-    "hands settle back to rest, confident nod on the promise",
+    "composed but alive: a slight lean toward the camera and a weight shift, warm smile, eyes to the lens as the line begins",
+    "a welcoming open-palm gesture toward the camera on the business name, shoulders opening",
+    "the hand sweeps gently to present the premises behind on the promise, with a confident nod",
   ],
   wish: [
-    "warm smile, eyes to the lens as the greeting begins",
+    "a warm step forward with a bright smile, eyes to the lens as the greeting begins",
     "hands come together in a namaste with a small bow of the head",
-    "hands lower gently, a heartfelt smile holds",
+    "hands open outward in a warm, celebratory gesture, body turning slightly with joy",
   ],
   proof: [
-    "eyes to the lens, an easy half-turn of the shoulders toward what is being shown",
-    "an open hand presents the real product or zone as it is named",
-    "the hand returns to rest and the face comes back to camera with a small nod",
+    "an easy half-turn of the shoulders toward what is being shown, one hand lifting toward it",
+    "an open hand presents the real product or zone as it is named, body leaning slightly toward it",
+    "turns back to camera with an emphatic hand gesture on the benefit and a small nod",
   ],
   trust: [
-    "steady, sincere expression, eyes to the lens",
-    "a light hand to the chest on the promise",
-    "a small confident nod, the hand lowers",
+    "leans in slightly with a sincere expression, eyes to the lens",
+    "a hand to the chest on the promise, shoulders relaxed and open",
+    "an open, reassuring palm toward the viewer with a confident nod",
   ],
   cta: [
-    "a bright smile, eyes to the lens",
+    "a small step toward the camera with a bright smile, eyes to the lens",
     "both palms open outward toward the viewer in an invitation",
-    "a warm nod and a held smile as the line ends",
+    "an inviting wave toward the viewer, a warm nod and smile as the line ends",
   ],
   message_cta: [
-    "composed stance, warm smile, eyes to the lens",
+    "a slight lean toward the camera with a warm smile, eyes to the lens",
     "a welcoming open-palm gesture on the business name",
-    "both palms open toward the viewer on the invitation, then a warm nod",
+    "both palms open toward the viewer on the invitation, with a small step forward and a warm nod",
   ],
 };
 
@@ -266,6 +275,34 @@ export interface VeoPromptInput {
   speech: VeoSpeech[];
   /** Extra performance notes that always apply — a character's own direction. */
   performanceNotes?: string;
+  /**
+   * Who performs, as the movement rules address them: "She", "He", "Both characters", "Ganesha".
+   * Defaults to "The cast".
+   */
+  cast?: string;
+  /** True when `cast` takes a plural verb ("Both characters are"). */
+  castPlural?: boolean;
+  /** A two-hander: the character who is listening must move too. */
+  twoHander?: boolean;
+}
+
+/**
+ * The movement the video must have — written into EVERY Veo prompt, in code, word for word.
+ *
+ * The team's standing instruction: the cast never stands like a statue, and every clip carries
+ * appropriate hand gestures and body language. Left to the direction call it came through as three
+ * tidy beats that Veo could still perform with a planted, stiff body and only the mouth moving. So
+ * it is not left to anyone: this block is assembled into the prompt itself, stated as mandatory, and
+ * backed by the matching negatives.
+ */
+export function movementRules(cast = "The cast", plural = false, twoHander = false): string {
+  const is = plural ? "are" : "is";
+  return `MOVEMENT — MANDATORY, NEVER LIKE A STATUE:
+${cast} ${is} alive and in motion for the whole 8 seconds, performing actions — never standing still like a statue, a mannequin or a cardboard cut-out. The body moves with the words: shift the weight, turn the shoulders, lean in on the important words, take a small natural step or half-turn, and react with the head and face. There is never a moment when only the mouth moves.${twoHander ? `
+The character who is listening keeps moving too — nodding, reacting, gesturing, turning toward the speaker — never frozen while the other one talks.` : ""}
+
+HAND GESTURES AND BODY LANGUAGE — MANDATORY IN THIS CLIP:
+Appropriate, clearly visible hand gestures on the key words of the line — presenting the product or place with an open hand, pointing to what is being spoken about, open palms on a promise, counting on the fingers, a hand to the chest for trust, an inviting wave toward the viewer. Each gesture is smooth and natural and flows into the next movement. Body language is open, warm and confident, and matches the meaning of every word, so the body tells the same story as the voice.`;
 }
 
 const clean = (value: unknown, max = 600): string =>
@@ -306,7 +343,7 @@ export function resolveDirection(plan: ClipMotionPlan, direction?: Partial<VeoDi
  * contribution is limited to the direction it is actually good at.
  */
 export function assembleVeoPrompt(input: VeoPromptInput): string {
-  const { aspectRatio, plan, identityLock, language, speech, performanceNotes } = input;
+  const { aspectRatio, plan, identityLock, language, speech, performanceNotes, cast, castPlural, twoHander } = input;
   const d = resolveDirection(plan, input.direction);
   const orientation = aspectRatio === "16:9" ? "horizontal" : "vertical";
 
@@ -320,7 +357,9 @@ export function assembleVeoPrompt(input: VeoPromptInput): string {
 
 CAMERA — ${plan.camera.name}: ${d.camera}. Smooth, motivated and cinematic, like a premium commercial reel. No cuts.
 
-PERFORMANCE:
+${movementRules(cast, castPlural, twoHander)}
+
+PERFORMANCE (the actions, timed to the words):
 • ${BEAT_TIMES[0]}: ${d.beats[0]}
 • ${BEAT_TIMES[1]}: ${d.beats[1]}
 • ${BEAT_TIMES[2]}: ${d.beats[2]}
@@ -335,6 +374,7 @@ Negative prompt:
 No text on screen, no subtitles, no watermark
 No background music, pure studio voice-over, crystal clear voice, no echo
 No static or locked-off camera, no frozen pose, no cuts or scene change
+No standing still like a statue, no stiff or mannequin body, no hands hanging lifeless, no talking head where only the mouth moves
 No change to the face, hair, outfit, logo or location from the attached frame
 No extra people speaking, no new voices`;
 }
@@ -363,7 +403,7 @@ FOR EACH CLIP YOU RECEIVE:
 
 WRITE, PER CLIP:
 1. camera — ONE sentence: the planned move made specific to THIS frame. Say the starting framing, the ending framing, the pace, and what the move reveals or tightens on — named from real objects in the FRAME. The move must be motivated by the line (move closer on the promise, reveal the zone as it is named).
-2. beats — exactly THREE short actions timed 0–2s, 2–5s and 5–8s. Place each gesture on the words it belongs to: work out roughly which part of the LINE falls in each window and act on it. Gestures point at, present or touch REAL objects named in the FRAME. Include expression and eye-line in each beat.
+2. beats — exactly THREE short actions timed 0–2s, 2–5s and 5–8s. EVERY beat must contain BOTH a body movement (a lean, a weight shift, a shoulder turn, a small step, a head movement) AND a hand gesture or hand action — never a beat where the subject only stands or only talks. Place each gesture on the words it belongs to: work out roughly which part of the LINE falls in each window and act on it. Gestures point at, present or touch REAL objects named in the FRAME. Include expression and eye-line in each beat.
 3. sceneLife — one short phrase of subtle, real VISUAL movement in that location: steam, a ceiling fan, a customer walking past in the background, light shifting through a window. Movement only — never a sound, because the audio is the voice alone. Nothing that speaks, nothing with text, nothing that is not plausible in that frame.
 
 RULES:
@@ -371,9 +411,10 @@ RULES:
 • Never describe the face, hair, skin, outfit or jewellery — they are locked by the attached frame.
 • Never invent objects, signage or people that are not plausible in the FRAME.
 • The logo must stay visible and unchanged; never move the camera so the logo leaves the frame for good.
-• Movement is premium and controlled — confident, never shaky, never exaggerated or theatrical.
-• Clip 1 opens composed: the stance stays composed, the welcoming gesture lands on the business name.
-• Hands stay anatomically natural; gestures are one clear movement each, then rest.
+• NEVER LIKE A STATUE. The cast performs actions for the whole 8 seconds: the body is always in motion with the words, with appropriate hand gestures and open body language. A subject who stands planted and only moves the mouth is a failed direction.
+• Movement is premium and controlled — confident and natural, never shaky, never exaggerated or theatrical.
+• Clip 1 opens composed but alive, never statue-still: a slight lean and weight shift, and the welcoming gesture lands on the business name.
+• Hands stay anatomically natural; each gesture is one clear movement that flows into the next — hands never hang lifeless.
 • Frame for ${options.aspectRatio}.${options.characterDirection ? `
 
 ${options.characterDirection}

@@ -8,7 +8,7 @@ import { CLIP_SECONDS, clipLabel } from "./voiceOverFormat";
  * — it is an ordered exchange.
  *
  * ── The 8-second budget ───────────────────────────────────────────────────────────────────────
- * Every clip carries 18–22 spoken words (≈2.25–2.75 words/sec), whoever speaks them. In a
+ * Every clip carries 18–20 spoken words (≈2.25–2.5 words/sec), whoever speaks them. In a
  * two-hander the clip total stays inside that band — that is what keeps every clip landing on
  * 8 seconds — while the split between the two characters is allowed to breathe.
  *
@@ -35,15 +35,15 @@ import { CLIP_SECONDS, clipLabel } from "./voiceOverFormat";
  * Telugu sentence is immediately audible. A band lands on the same 8 seconds while letting the
  * sentence end where it naturally ends.
  *
- * 18–22 for every ad, single voice or two-hander. It was an exact 18 for a single voice and 18–20
- * for characters; 22 is the ceiling the team set, the fastest that still sounds like a person
- * speaking rather than reading. The normal voice-over validator, its repair and review prompts, the
- * character prompts and the Script Duration Checker all read these two numbers.
+ * 18–20 for every ad, single voice or two-hander — the team's call. A ceiling of 22 was tried and
+ * the clips came out too long to say comfortably in eight seconds. The normal voice-over validator,
+ * its repair and review prompts, the refine editor, the character prompts and the Script Duration
+ * Checker all read these two numbers, so this is the one place to change it.
  */
 export const MIN_WORDS_PER_CLIP = 18;
-export const MAX_WORDS_PER_CLIP = 22;
+export const MAX_WORDS_PER_CLIP = 20;
 /** The pace a clip is planned at — the middle of the band. Used to estimate clips from raw text. */
-export const TARGET_WORDS_PER_CLIP = 20;
+export const TARGET_WORDS_PER_CLIP = 19;
 /** A single character's share. The two lines must still total inside the clip band above. */
 export const MIN_WORDS_PER_LINE = 8;
 export const MAX_WORDS_PER_LINE = 12;
@@ -59,7 +59,7 @@ export interface WordBudget {
  * The word budget for a clip, given how many people speak in it.
  *
  * ── Why this is not a constant ────────────────────────────────────────────────────
- * The CLIP band is a timing rule: eight seconds of speech is 18–22 words whoever says them. The
+ * The CLIP band is a timing rule: eight seconds of speech is 18–20 words whoever says them. The
  * LINE band only ever existed to split that between two speakers.
  *
  * The catalogue now holds entries with a single speaker, and on those the two bands were applied

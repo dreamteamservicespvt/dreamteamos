@@ -32,8 +32,8 @@ describe("the motion plan", () => {
   it("pushes in on clip 1 with a welcoming gesture on the business name", () => {
     const [first] = planClipMotion(4, "commercial");
     expect(first.camera.key).toBe("push_in");
-    expect(first.gesture).toMatch(/composed front stance/);
-    expect(first.gesture).toMatch(/on the business name, one warm welcoming open-palm gesture/);
+    expect(first.gesture).toMatch(/composed, confident stance that is alive, never frozen/);
+    expect(first.gesture).toMatch(/on the business name, a warm welcoming open-palm gesture/);
   });
 
   it("pulls back to the premises for the call to action", () => {
@@ -175,13 +175,72 @@ describe("the Veo prompt", () => {
   });
 });
 
+/**
+ * The team's standing rule: the cast never stands like a statue, and every clip has appropriate hand
+ * gestures and body language. It is written into every assembled prompt by code, so it cannot be lost.
+ */
+describe("movement is mandatory in every Veo prompt", () => {
+  const plan = planClipMotion(4, "commercial");
+  const model = modelVeoSubject("female");
+  const prompts = plan.map((p) => assembleVeoPrompt({
+    aspectRatio: "9:16", plan: p, identityLock: model.identityLock, language: "Telugu",
+    speech: [{ voice: model.voice, line: "line" }], cast: model.cast, castPlural: model.castPlural,
+  }));
+
+  it("says the cast must move and never stand like a statue, in every clip", () => {
+    for (const p of prompts) {
+      expect(p).toContain("MOVEMENT — MANDATORY, NEVER LIKE A STATUE:");
+      expect(p).toContain("She is alive and in motion for the whole 8 seconds, performing actions — never standing still like a statue");
+      expect(p).toContain("There is never a moment when only the mouth moves");
+    }
+  });
+
+  it("demands appropriate hand gestures and body language, in every clip", () => {
+    for (const p of prompts) {
+      expect(p).toContain("HAND GESTURES AND BODY LANGUAGE — MANDATORY IN THIS CLIP:");
+      expect(p).toMatch(/Appropriate, clearly visible hand gestures on the key words/);
+      expect(p).toMatch(/Body language is open, warm and confident, and matches the meaning of every word/);
+    }
+  });
+
+  it("backs it with negatives", () => {
+    expect(prompts[0]).toContain("No standing still like a statue, no stiff or mannequin body, no hands hanging lifeless, no talking head where only the mouth moves");
+  });
+
+  it("keeps the movement even when the director call returned nothing", () => {
+    for (const beat of plan.flatMap((p) => p.fallbackBeats)) {
+      expect(beat).not.toMatch(/return(s)? to rest|settle(s)? back to rest/);
+    }
+  });
+
+  it("makes the listening character move too in a two-hander", () => {
+    const pack = getCharacterPack("duo_motu_patlu")!;
+    const s = packVeoSubject(pack);
+    const p = assembleVeoPrompt({
+      aspectRatio: "9:16", plan: plan[1], identityLock: s.identityLock, language: "Telugu",
+      speech: s.speech([{ name: "Motu", text: "a" }, { name: "Patlu", text: "b" }]),
+      cast: s.cast, castPlural: s.castPlural, twoHander: s.twoHander,
+    });
+    expect(p).toContain("Both characters are alive and in motion");
+    expect(p).toContain("The character who is listening keeps moving too");
+  });
+
+  it("addresses a single deity by name", () => {
+    const s = packVeoSubject(getCharacterPack("god_ganesha")!);
+    expect(s.cast).toBe("Ganesha");
+    expect(s.twoHander).toBe(false);
+  });
+});
+
 describe("the director call", () => {
   it("directs from the frame, never re-describes the person, and never cuts", () => {
     const p = VEO_SEGMENT_SYSTEM_PROMPT(4, "female");
     expect(p).toContain("FRAME — the prompt the still was generated from");
     expect(p).toContain("One continuous shot. Never a cut");
     expect(p).toContain("Never describe the face, hair, skin, outfit or jewellery");
-    expect(p).toContain("Clip 1 opens composed: the stance stays composed, the welcoming gesture lands on the business name");
+    expect(p).toContain("Clip 1 opens composed but alive, never statue-still");
+    expect(p).toContain("EVERY beat must contain BOTH a body movement");
+    expect(p).toContain("NEVER LIKE A STATUE");
   });
 
   it("reads its JSON reply by clip number, and survives a broken one", () => {

@@ -156,20 +156,27 @@ export function issuesForClip(issues: string[], index: number, clipCount: number
 /**
  * What to do about a clip's problems, in editor's terms.
  *
- * A bare "must be 18–22 words, has 16" was repeated to the repair model twice and it came back 16 both
+ * A bare "must be 18–20 words, has 16" was repeated to the repair model twice and it came back 16 both
  * times. Saying which direction and by how much — and with what, so it is not padding — is what gets
  * the count fixed without losing the line.
  */
 export function repairDirection(issues: string[], min: number, max: number): string {
   return issues.map((issue) => {
-    const count = issue.match(/but it has (\d+)/);
+    // Both validators' wording: "…, but it has 16." (single voice) and "… but has 6." (dialogue).
+    const count = issue.match(/but (?:it )?has (\d+)/);
     if (!count) return issue;
     const has = Number(count[1]);
-    if (has < min) {
-      return `It has ${has} spoken words; it needs ${min}–${max}. ADD ${min - has} to ${max - has} words by carrying one more real, `
+    // A dialogue LINE carries its own band ("Motu's line must be 8-12 words"); use it, not the clip's.
+    const stated = issue.match(/(\d+)\s*[–-]\s*(\d+)/);
+    const lo = stated ? Number(stated[1]) : min;
+    const hi = stated ? Number(stated[2]) : max;
+    const who = issue.match(/: (.+?)'s line/)?.[1];
+    const subject = who ? `${who}'s line has` : "It has";
+    if (has < lo) {
+      return `${subject} ${has} spoken words; it needs ${lo}–${hi}. ADD ${lo - has} to ${hi - has} words by carrying one more real, `
         + `specific fact from the business information in the same sentence — never filler, never a repeated word.`;
     }
-    return `It has ${has} spoken words; it needs ${min}–${max}. CUT ${has - max} to ${has - min} words by tightening the sentence — `
+    return `${subject} ${has} spoken words; it needs ${lo}–${hi}. CUT ${has - hi} to ${has - lo} words by tightening the sentence — `
       + `keep the business name, the promise and every fact, drop only the words that carry nothing.`;
   }).join(" ");
 }

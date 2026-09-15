@@ -89,7 +89,7 @@ describe("the voice-over prompt", () => {
     expect(commercial).toContain("Clip 1 passes the test");
   });
 
-  it("uses the 18–22 word band", () => {
+  it("uses the 18–20 word band", () => {
     expect(commercial).toContain(`BETWEEN ${MIN_WORDS_PER_CLIP} to ${MAX_WORDS_PER_CLIP} spoken words`);
     expect(commercial).toContain(`Every clip has between ${MIN_WORDS_PER_CLIP} to ${MAX_WORDS_PER_CLIP} spoken words`);
   });

@@ -91,7 +91,8 @@ RULES THE EDITED CLIPS MUST STILL OBEY:
 ${dialogue
   ? `• Each clip is ${solo ? `ONE line from ${speakers![0].name}` : `exactly ${speakers!.length} lines, ${speakers!.map((s) => s.name).join(" then ")}, in that order`}. ${solo ? "" : `Never merge them into one voice, never drop or reorder a character.`}
 • ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words per clip${solo ? "" : `, each line ${MIN_WORDS_PER_LINE}–${MAX_WORDS_PER_LINE} words`}.`
-  : `• Between ${MIN_WORDS_PER_CLIP} and ${MAX_WORDS_PER_CLIP} spoken words per clip — tighten or complete the thought, never pad and never cut a sentence in half.`}
+  : `• Between ${MIN_WORDS_PER_CLIP} and ${MAX_WORDS_PER_CLIP} spoken words per clip — tighten or complete the thought, never pad and never cut a sentence in half.
+• ONE short spoken sentence per clip — never two sentences, never a long run-on line.`}
 • ${isLatin ? "No digits in spoken content." : `No Latin letters and no digits in spoken content.`}
 • Never speak a phone number or contact number.
 • A call to action ("call", "visit", "contact") only in the FINAL clip (clip ${clipCount}).${isTelugu && !dialogue ? ` The final clip must still end with ${finalCta}` : ""}
@@ -107,12 +108,13 @@ ${dialogue
 /** The system prompt for editing finished Veo prompts without losing their shape or their dialogue. */
 export const VEO_REFINE_SYSTEM_PROMPT = `You are a precise EDITOR of Veo 3 video prompts. You are not writing new prompts.
 
-Each prompt you receive has a fixed shape: an opening line, a CAMERA line, a PERFORMANCE block with three timed beats, a SPEECH block with the spoken line in quotes, a SCENE LIFE line, and a Negative prompt. Apply ONLY the member's requested change and keep everything else word for word.
+Each prompt you receive has a fixed shape: an opening line, a CAMERA line, a MOVEMENT block, a HAND GESTURES AND BODY LANGUAGE block, a PERFORMANCE block with three timed beats, a SPEECH block with the spoken line in quotes, a SCENE LIFE line, and a Negative prompt. Apply ONLY the member's requested change and keep everything else word for word.
 
 RULES:
 • Keep the shape and every heading exactly.
 • Never change, translate or re-punctuate anything inside the quotation marks of the SPEECH block — that is the recorded dialogue.
 • Keep it one continuous 8-second shot with a moving camera; never add cuts, never make the camera static unless the member explicitly asks.
+• Never remove or weaken the MOVEMENT and HAND GESTURES AND BODY LANGUAGE blocks, or the negatives against standing like a statue — the cast always moves, with appropriate hand gestures and body language.
 • Never describe the face, hair, outfit or jewellery — they come from the attached frame.
 
 Return the edited prompts only, separated by ###SEGMENT### when there is more than one. No explanations.`;

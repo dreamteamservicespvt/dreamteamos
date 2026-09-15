@@ -267,10 +267,10 @@ describe("commercial and festival separation", () => {
 });
 
 describe("voice-over prompt hardening", () => {
-  it("holds clips to the 18–22 word band, no spoken numbers, and the on-screen call CTA", () => {
+  it("holds clips to the 18–20 word band, no spoken numbers, and the on-screen call CTA", () => {
     const prompt = VOICEOVER_SYSTEM_PROMPT(32, 4, "commercial", "");
 
-    expect(prompt).toContain("Every clip must contain BETWEEN 18 to 22 spoken words");
+    expect(prompt).toContain("Every clip must contain BETWEEN 18 to 20 spoken words");
     expect(prompt).not.toContain("EXACTLY 18");
     expect(prompt).toContain("NEVER speak, read, or include any phone number or contact number");
     expect(prompt).toContain("PROFESSIONAL TRANSLITERATION RULE");
@@ -280,7 +280,7 @@ describe("voice-over prompt hardening", () => {
   it("keeps the repair prompt aligned with no-number and CTA rules", () => {
     const prompt = VOICEOVER_REPAIR_SYSTEM_PROMPT(32, 4, "commercial", "");
 
-    expect(prompt).toContain("Every clip must contain between 18 to 22 spoken words");
+    expect(prompt).toContain("Every clip must contain between 18 to 20 spoken words");
     expect(prompt).toContain("NEVER speak or include any phone number or contact number");
     expect(prompt).toContain("Remove duplicated clips and repeated closings");
   });
@@ -306,7 +306,7 @@ describe("voice-over prompt hardening", () => {
     expect(prompt).toContain("INCONSISTENT TONE");
     expect(prompt).toContain("GENERIC / TEMPLATED WRITING");
     expect(prompt).toContain('"correctedScript"');
-    expect(prompt).toContain("Every clip must contain between 18 to 22 spoken words");
+    expect(prompt).toContain("Every clip must contain between 18 to 20 spoken words");
   });
 
   it("quality-review prompt is language-parameterized (not Telugu-only)", () => {

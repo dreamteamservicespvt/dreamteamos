@@ -76,7 +76,7 @@ describe("the edit", () => {
     const p = VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT({ language: "Telugu", clipCount: 4, adType: "commercial" });
     expect(p).toContain("You are NOT writing a new script");
     expect(p).toContain("Every clip not in the plan is not yours to touch");
-    expect(p).toContain("Between 18 and 22 spoken words per clip");
+    expect(p).toContain("Between 18 and 20 spoken words per clip");
     expect(p).toContain("Clip 1 must still carry the core message");
     expect(p).not.toMatch(/write the \d+ clips now/i);
   });
@@ -106,7 +106,7 @@ describe("merging", () => {
   });
 
   it("rejects an edit only for problems it created", () => {
-    const before = ["Clip 4 must contain 18–22 spoken words, but it has 23."];
+    const before = ["Clip 4 must contain 18–20 spoken words, but it has 23."];
     expect(introducedIssues(before, [...before])).toEqual([]);
     expect(introducedIssues(before, [...before, "Clip 2 leaks CTA or contact language before the final clip."]))
       .toEqual(["Clip 2 leaks CTA or contact language before the final clip."]);
@@ -115,12 +115,12 @@ describe("merging", () => {
 
 /**
  * The generator's repair fixes only failing clips. The first live run left clips at 16 and 17 words
- * after two whole-script repairs were told only "must contain 18–22, but it has 16".
+ * after two whole-script repairs were told only "must contain 18–20, but it has 16".
  */
 describe("repairing only the clips that failed", () => {
   const issues = [
-    "Clip 2 must contain 18–22 spoken words, but it has 17.",
-    "Clip 4 must contain 18–22 spoken words, but it has 16.",
+    "Clip 2 must contain 18–20 spoken words, but it has 17.",
+    "Clip 4 must contain 18–20 spoken words, but it has 16.",
     "Final clip must include the on-screen call CTA: x",
   ];
 
@@ -135,9 +135,22 @@ describe("repairing only the clips that failed", () => {
   });
 
   it("says which way to fix a word count, by how much, and with what", () => {
-    expect(repairDirection([issues[1]], 18, 22)).toMatch(/It has 16 spoken words; it needs 18–22\. ADD 2 to 6 words by carrying one more real/);
-    expect(repairDirection(["Clip 1 must contain 18–22 spoken words, but it has 25."], 18, 22)).toMatch(/CUT 3 to 7 words .* keep the business name, the promise/);
+    expect(repairDirection([issues[1]], 18, 20)).toMatch(/It has 16 spoken words; it needs 18–20\. ADD 2 to 4 words by carrying one more real/);
+    expect(repairDirection(["Clip 1 must contain 18–20 spoken words, but it has 25."], 18, 20)).toMatch(/CUT 5 to 7 words .* keep the business name, the promise/);
     expect(repairDirection(["Clip 2 leaks CTA or contact language before the final clip."], 18, 22)).toBe("Clip 2 leaks CTA or contact language before the final clip.");
+  });
+});
+
+// The character validator words it "…but has 16." and gives a line its own band.
+describe("repairing a two-character clip", () => {
+  it("reads the dialogue validator's clip wording", () => {
+    expect(repairDirection(["Clip 4 must contain 18-20 spoken words across both characters, but has 16."], 18, 20))
+      .toMatch(/^It has 16 spoken words; it needs 18–20\. ADD 2 to 4 words/);
+  });
+
+  it("uses a line's own band, and names whose line it is", () => {
+    expect(repairDirection(["Clip 2: Motu's line must be 8-12 words but has 6."], 18, 20))
+      .toMatch(/^Motu's line has 6 spoken words; it needs 8–12\. ADD 2 to 6 words/);
   });
 });
 

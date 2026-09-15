@@ -61,7 +61,7 @@ import { DEFAULT_POSTER_SIZE } from "@/utils/posterSpec";
 import { finalizePosterConcepts, normalizePosterConcept, parsePosterConcepts } from "@/utils/posterConcepts";
 import {
   parseDialogueClips, validateDialogueClips, formatDialogueScript, applyNameSpellings,
-  type DialogueClip, wordBudgetFor, MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, TARGET_WORDS_PER_CLIP,
+  type DialogueClip, wordBudgetFor, countSpokenWords, MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, TARGET_WORDS_PER_CLIP,
 } from "@/utils/dialogueFormat";
 import {
   assignPhotosToClips, describeClipLocations, attachmentDirective, parseLocationIndex, splitAttachmentDirective,
@@ -172,7 +172,10 @@ const deadModels = new Set<string>();
  * not the model: Google stopped offering gemini-2.5-flash "to new users", so a key from a newer project
  * gets 404 while every older key still serves it. In live testing key 2 was one of those — its single
  * 404 removed gemini-2.5-flash for all 30 keys, and every generation, script, frame and video prompt
- * then ran on the lite models instead. A model is now retired only when no key can reach it.
+ * then ran on the lite models instead. A "not available to new users" 404 now retires the model for that
+ * key only; any other 404 ("is no longer available", "not found") means Google retired the model itself,
+ * and it is dropped for every key at once — trying a retired model on each of 30 keys first used up the
+ * whole retry budget in live testing.
  */
 const deadModelKeys = new Set<string>();
 const modelKeyId = (keyIndex: number, model: string) => `${keyIndex}|${model}`;
@@ -250,9 +253,12 @@ const callWithFallback = async <T>(
         errorMessage.includes('models/') && errorMessage.includes('not');
       
       if (isModelNotFound) {
+        // Only "no longer available to new users" is about the key; older keys still serve the model.
+        const keySpecific = /new users/i.test(errorMessage);
         deadModelKeys.add(modelKeyId(currentKeyIndex, model));
-        // Another key may still serve this model — try it there before giving the model up.
-        const keysWithModel = API_KEYS.map((_, k) => k).filter(k => !deadModelKeys.has(modelKeyId(k, model)));
+        const keysWithModel = keySpecific
+          ? API_KEYS.map((_, k) => k).filter(k => !deadModelKeys.has(modelKeyId(k, model)))
+          : [];
         if (keysWithModel.length > 0) {
           const next = keysWithModel.find(k => k > currentKeyIndex) ?? keysWithModel[0];
           console.warn(`Model "${model}" is not available on API key ${currentKeyIndex + 1}; trying it on key ${next + 1}.`);
@@ -260,7 +266,7 @@ const callWithFallback = async <T>(
           await new Promise(r => setTimeout(r, 300));
           continue;
         }
-        console.error(`Model "${model}" is not available on any API key (404). Removing from rotation.`);
+        console.error(`Model "${model}" is not available (404)${keySpecific ? " on any API key" : ""}. Removing from rotation.`);
         deadModels.add(model);
         if (aliveModelCount() === 0) {
           throw new Error(`All models are dead. Last error: ${errorMessage}`);
@@ -1932,6 +1938,65 @@ Return only the repaired ${segmentCount} clips.`;
       } else break;
     }
 
+    /**
+     * Whatever is still wrong inside individual clips — a clip under the 18-word floor, one line too
+     * short — is fixed clip by clip, the same way a normal ad's script is (repairFailingClips). The
+     * whole-script repair above gave up on a 16-word closing clip in live testing; this edits only that
+     * clip, shows the model its lines counted, and keeps any fix that gets closer to the band.
+     */
+    const nameOfKey = new Map(packSpeakerList.map(s => [s.key, s.name]));
+    const distanceOf = (list: DialogueClip[]) => wordBandDistance(
+      list.map(c => c.reduce((sum, l) => sum + countSpokenWords(l.text), 0)), budget.minClip, budget.maxClip,
+    );
+    const speakerKeyOf = (raw: string, position: number) => {
+      const t = raw.trim().toLowerCase();
+      return packSpeakerList.find(s => s.key === t || s.name.toLowerCase() === t)?.key ?? packSpeakerList[position]?.key ?? t;
+    };
+    for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES + 1 && issues.length > 0; pass++) {
+      const targets = clipIndexesFromIssues(issues, segmentCount);
+      if (targets.length === 0 || clips.length !== segmentCount) break;
+      const userPrompt = `SCRIPT (the whole script, for context):
+${clips.map((c, i) => `Clip ${i + 1}:\n${c.map(l => `  [${nameOfKey.get(l.speaker) ?? l.speaker}]: ${l.text}`).join('\n')}`).join('\n\n')}
+
+BUSINESS INFORMATION:
+${JSON.stringify(businessInfo, null, 2)}
+
+EDIT PLAN — fix these clips only, keeping their meaning and both speakers:
+${targets.map(i => `- Clip ${i + 1}: ${repairDirection(issuesForClip(issues, i, segmentCount), budget.minClip, budget.maxClip)}
+  Its lines as they stand — ${clips[i].map(l => `${nameOfKey.get(l.speaker) ?? l.speaker}: ${numberedWords(l.text.split(/\s+/).filter(Boolean))}`).join('  |  ')}
+  The clip must total ${budget.minClip}–${budget.maxClip} words. Count your rewritten lines the same way before you return them.`).join('\n')}
+
+Return ONLY the JSON for clip${targets.length === 1 ? '' : 's'} ${targets.map(i => i + 1).join(', ')}.`;
+      try {
+        const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
+          model,
+          contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+          config: {
+            systemInstruction: buildLanguageDirective(formData) + VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT({
+              language: formData.language || 'Telugu',
+              clipCount: segmentCount,
+              adType: formData.adType,
+              festivalName: formData.festivalName,
+              brief: coreMessage,
+              speakers: packSpeakerList,
+            }),
+            responseMimeType: 'application/json',
+          },
+        }));
+        const edits = new Map([...parseClipDialogueEdits(response.text || '', targets)].map(([i, ls]) =>
+          [i, ls.map((l, p) => ({ speaker: speakerKeyOf(l.speaker, p), text: l.text }))] as [number, DialogueClip]));
+        if (edits.size === 0) break;
+        const candidate = fixNames(mergeClipEdits(clips, edits));
+        const candidateIssues = checkDialogue(candidate);
+        if (!isBetterRepair({ issues, distance: distanceOf(clips) }, { issues: candidateIssues, distance: distanceOf(candidate) })) break;
+        clips = candidate;
+        issues = candidateIssues;
+      } catch (err) {
+        console.warn('Clip-level dialogue repair failed; keeping the script as it was.', err);
+        break;
+      }
+    }
+
     if (issues.length > 0) console.warn('Character dialogue issues remain after repair:', issues);
     return clips;
   };
@@ -2837,6 +2902,9 @@ Return the JSON array for all ${clips.length} clips, numbered 1 to ${clips.lengt
     language,
     speech: c.speech,
     performanceNotes: packSubject?.performanceNotes,
+    cast: packSubject ? packSubject.cast : modelSubject.cast,
+    castPlural: packSubject ? packSubject.castPlural : modelSubject.castPlural,
+    twoHander: packSubject?.twoHander ?? false,
   }));
 };
 
@@ -3196,7 +3264,7 @@ export const countScriptWords = (scriptText: string): number =>
 
 /**
  * How many 8-second clips the pasted text naturally fills, at the platform's planned pace — the
- * middle of the 18–22 word band. Used to pre-select "Auto" in the tool before any API call is made.
+ * middle of the 18–20 word band. Used to pre-select "Auto" in the tool before any API call is made.
  */
 export const suggestClipCount = (scriptText: string): number => {
   const words = countScriptWords(scriptText);
