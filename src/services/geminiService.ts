@@ -32,6 +32,7 @@ import {
   CHARACTER_MULTI_FRAME_SYSTEM_PROMPT,
   CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT,
   LOCATION_INDEX_SYSTEM_PROMPT,
+  packPerformer,
   packVeoSubject,
   wardrobeDirective,
 } from "./prompts/characterAd";
@@ -39,7 +40,10 @@ import {
   CORE_MESSAGE_SYSTEM_PROMPT, fallbackCoreMessageBrief, parseCoreMessageBrief, type CoreMessageBrief,
 } from "./prompts/coreMessage";
 import {
-  assembleVeoPrompt, parseVeoDirections, planClipMotion, spokenLinesIn, withMotionComposition,
+  dialogueHardWordIssues, hardWordIssues, isHardWordIssue, toSpokenEndings,
+} from "./prompts/everydaySpeech";
+import {
+  assembleVeoPrompt, parseVeoDirections, planClipMotion, spokenLinesIn, walkPath, withMotionComposition,
   type ClipMotionPlan, type VeoSpeech,
 } from "./prompts/motion";
 import {
@@ -585,8 +589,19 @@ IMPORTANT:
 
 // ── Voice-over refine: understand, edit only what was asked, prove nothing else broke ─────────────
 
-/** The editor returned the clip unchanged — which, in practice, means the script already said it. */
-const ALREADY_SAYS_IT = 'The script already says this, so the editor left it as it was. If you want it said differently, describe how.';
+/**
+ * The editor handed the planned clip back unchanged, twice.
+ *
+ * This used to say "the script already says this" — but a script that already says it is caught by
+ * the plan (alreadyDone) before any edit. What reaches here is an edit the rules would not allow: a
+ * live "make the closing line warmer" was planned as a rewrite of the fixed call line.
+ */
+const NO_CHANGE_MADE = 'The editor could not make that change without breaking one of the script\'s fixed rules, so the script is as it was. Try describing the change another way.';
+
+/** The corrective message when an edit hands the planned clips back word for word. */
+const unchangedCorrection = (clips: number[], changes: Record<number, string>) =>
+  `- You handed clip${clips.length === 1 ? '' : 's'} ${clips.map(i => i + 1).join(', ')} back word for word as ${clips.length === 1 ? 'it was' : 'they were'}. `
+  + `The member must be able to hear the change the plan asks for: ${clips.map(i => `clip ${i + 1} — ${changes[i] || 'apply the request'}`).join('; ')}. Make it now, within the rules.`;
 
 export interface VoiceOverRefineResult {
   /** The script after the refine — the original, untouched, when nothing was applied. */
@@ -651,7 +666,12 @@ export const refineVoiceOver = async (params: {
     model,
     contents: [{ role: 'user', parts: [{ text: `SCRIPT:\n${numbered}\n\nREQUEST:\n"${instruction}"\n\nReturn the JSON plan.` }] }],
     config: {
-      systemInstruction: VOICEOVER_REFINE_PLAN_SYSTEM_PROMPT({ language, clipCount: count, forcedClip: forced === null ? null : forced + 1 }),
+      systemInstruction: VOICEOVER_REFINE_PLAN_SYSTEM_PROMPT({
+        language,
+        clipCount: count,
+        forcedClip: forced === null ? null : forced + 1,
+        closingLine: !pack && isTeluguScript(language) ? `"${FINAL_SCREEN_CTA}"` : undefined,
+      }),
       responseMimeType: 'application/json',
     },
   }));
@@ -691,15 +711,28 @@ Return ONLY the JSON for clip${plan.clips.length === 1 ? '' : 's'} ${plan.clips.
   }))).text || '';
 
   // ── 3 & 4. Merge and check, with one corrective attempt ──
+  // The business's own names are never "hard words", whatever they contain.
+  const ownBrief = params.coreMessage ?? fallbackCoreMessageBrief(businessInfo);
+  const ownNames = [ownBrief.businessName, ownBrief.place].filter(Boolean);
+  /**
+   * A hard word the edit brought in earns the corrective attempt, but never refuses the member's
+   * change: losing what they asked for over one formal word is worse than the word.
+   */
+  const blocking = (problems: string[]) => problems.filter(p => !isHardWordIssue(p));
+  const isBetterAttempt = (was: { problems: string[] }, now: { problems: string[] }) =>
+    blocking(now.problems).length < blocking(was.problems).length
+    || (blocking(now.problems).length === blocking(was.problems).length && now.problems.length < was.problems.length);
+
   if (!pack) {
-    const before = validateVoiceOverSegments(formatVoiceOverScript(lines), lines, count, language);
+    const everyday = { names: ownNames };
+    const before = validateVoiceOverSegments(formatVoiceOverScript(lines), lines, count, language, everyday);
     const attempt = (raw: string) => {
-      const edits = new Map([...parseClipTextEdits(raw, plan.clips)].map(([i, t]) => [i, cleanScriptText(t)] as [number, string]));
+      const edits = new Map([...parseClipTextEdits(raw, plan.clips)].map(([i, t]) => [i, cleanScriptText(toSpokenEndings(t, language))] as [number, string]));
       const merged = mergeClipEdits(lines, edits);
       const formatted = formatVoiceOverScript(merged);
       const problems = edits.size === 0
         ? ['Your reply contained no usable clips in the required JSON.']
-        : introducedIssues(before, validateVoiceOverSegments(formatted, merged, count, language));
+        : introducedIssues(before, validateVoiceOverSegments(formatted, merged, count, language, everyday));
       return { merged, formatted, problems };
     };
     let result = attempt(await edit());
@@ -711,13 +744,22 @@ Return ONLY the JSON for clip${plan.clips.length === 1 ? '' : 's'} ${plan.clips.
           ? `- Clip ${i + 1}: ${repairDirection(clipProblems, MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP)}\n  As you wrote it — ${numberedWords(tokenizeWords(result.merged[i]))}`
           : '';
       }).filter(Boolean).concat(result.problems.filter(p => clipIndexesFromIssues([p], count).length === 0).map(p => `- ${p}`));
-      result = attempt(await edit(correction.join('\n')));
+      const retry = attempt(await edit(correction.join('\n')));
+      if (isBetterAttempt(result, retry)) result = retry;
     }
-    if (result.problems.length > 0) {
-      return unchanged(`The change could not be made without breaking the script: ${result.problems.join(' ')}`, plan.understood);
+    if (blocking(result.problems).length > 0) {
+      return unchanged(`The change could not be made without breaking the script: ${blocking(result.problems).join(' ')}`, plan.understood);
     }
-    const changed = changedClipIndexes(lines, result.merged);
-    if (changed.length === 0) return unchanged(ALREADY_SAYS_IT, plan.understood);
+    let changed = changedClipIndexes(lines, result.merged);
+    if (changed.length === 0) {
+      // The plan asked for a change and the edit handed the clip back as it was — once more, saying so.
+      const again = attempt(await edit(unchangedCorrection(plan.clips, plan.changes)));
+      if (blocking(again.problems).length === 0 && changedClipIndexes(lines, again.merged).length > 0) {
+        result = again;
+        changed = changedClipIndexes(lines, again.merged);
+      }
+    }
+    if (changed.length === 0) return unchanged(NO_CHANGE_MADE, plan.understood);
     return { script: result.formatted, changed, understood: plan.understood };
   }
 
@@ -733,7 +775,7 @@ Return ONLY the JSON for clip${plan.clips.length === 1 ? '' : 's'} ${plan.clips.
     maxWordsPerClip: budget.maxClip,
     minWordsPerLine: budget.minLine,
     maxWordsPerLine: budget.maxLine,
-  });
+  }).concat(dialogueHardWordIssues(clips, language, ownNames, k => nameOf.get(k) ?? k));
   /** A speaker as the model wrote it — key, name, or position — resolved to the pack's own key. */
   const speakerKey = (raw: string, position: number) => {
     const t = raw.trim().toLowerCase();
@@ -742,7 +784,7 @@ Return ONLY the JSON for clip${plan.clips.length === 1 ? '' : 's'} ${plan.clips.
   const before = check(dialogue);
   const attempt = (raw: string) => {
     const edits = new Map([...parseClipDialogueEdits(raw, plan.clips)].map(([i, ls]) =>
-      [i, ls.map((l, p) => ({ speaker: speakerKey(l.speaker, p), text: l.text }))] as [number, DialogueClip]));
+      [i, ls.map((l, p) => ({ speaker: speakerKey(l.speaker, p), text: toSpokenEndings(l.text, language) }))] as [number, DialogueClip]));
     const merged = applyNameSpellings(mergeClipEdits(dialogue, edits), spellings);
     const problems = edits.size === 0
       ? ['Your reply contained no usable clips in the required JSON.']
@@ -750,12 +792,23 @@ Return ONLY the JSON for clip${plan.clips.length === 1 ? '' : 's'} ${plan.clips.
     return { merged, problems };
   };
   let result = attempt(await edit());
-  if (result.problems.length > 0) result = attempt(await edit(result.problems.map(p => `- ${p}`).join('\n')));
   if (result.problems.length > 0) {
-    return unchanged(`The change could not be made without breaking the ${pack.label} script: ${result.problems.join(' ')}`, plan.understood);
+    const retry = attempt(await edit(result.problems.map(p => `- ${p}`).join('\n')));
+    if (isBetterAttempt(result, retry)) result = retry;
   }
-  const changed = changedClipIndexes(dialogue, result.merged, (a, b) => JSON.stringify(a) === JSON.stringify(b));
-  if (changed.length === 0) return unchanged(ALREADY_SAYS_IT, plan.understood);
+  if (blocking(result.problems).length > 0) {
+    return unchanged(`The change could not be made without breaking the ${pack.label} script: ${blocking(result.problems).join(' ')}`, plan.understood);
+  }
+  const sameClip = (a: DialogueClip, b: DialogueClip) => JSON.stringify(a) === JSON.stringify(b);
+  let changed = changedClipIndexes(dialogue, result.merged, sameClip);
+  if (changed.length === 0) {
+    const again = attempt(await edit(unchangedCorrection(plan.clips, plan.changes)));
+    if (blocking(again.problems).length === 0 && changedClipIndexes(dialogue, again.merged, sameClip).length > 0) {
+      result = again;
+      changed = changedClipIndexes(dialogue, again.merged, sameClip);
+    }
+  }
+  if (changed.length === 0) return unchanged(NO_CHANGE_MADE, plan.understood);
   return { script: formatDialogueScript(result.merged, speakers), changed, understood: plan.understood };
 };
 
@@ -1461,7 +1514,18 @@ const hasAdjacentRepeatedWords = (text: string): boolean => {
   return false;
 };
 
-const validateVoiceOverSegments = (rawScript: string, segments: string[], segmentCount: number, language?: string): string[] => {
+/**
+ * `everyday` turns on the hard-word check (see prompts/everydaySpeech) with the business's own names,
+ * which are never flagged. Only for scripts the platform writes — a member's own pasted script, and
+ * the Tools page's conversion loop, which rewrites the whole script per issue, are left without it.
+ */
+const validateVoiceOverSegments = (
+  rawScript: string,
+  segments: string[],
+  segmentCount: number,
+  language?: string,
+  everyday?: { names: string[] },
+): string[] => {
   const issues: string[] = [];
   const structuredSegmentCount = getStructuredSegmentLineCount(rawScript);
   const seenSegments = new Map<string, number>();
@@ -1520,6 +1584,8 @@ const validateVoiceOverSegments = (rawScript: string, segments: string[], segmen
       seenSegments.set(normalizedSegmentKey, clipNumber);
     }
   });
+
+  if (everyday) issues.push(...hardWordIssues(segments, language, everyday.names));
 
   // Every ad must close with the on-screen call CTA (no spoken phone number). The exact wording
   // is only pinned for Telugu — every other language is told to write its own native equivalent
@@ -1762,6 +1828,16 @@ export const generateAdAssets = async (
     ? preSplitCustomClips.length
     : Math.round(formData.duration / 8);
   const effectiveDuration = segmentCount * CLIP_SECONDS;
+
+  /**
+   * Everyday words (prompts/everydaySpeech): hard words are checked and repaired, and written verb
+   * endings are made spoken, in every script the platform writes. A member's own script keeps the
+   * member's own words.
+   */
+  const everyday = customScript?.trim()
+    ? undefined
+    : { names: [coreMessage?.businessName, coreMessage?.place].filter(Boolean) as string[] };
+  const spoken = (script: string) => (everyday ? toSpokenEndings(script, formData.language) : script);
   let voiceOverScript: string;
   let parsedSegments: string[];
 
@@ -1871,6 +1947,9 @@ export const generateAdAssets = async (
      * prompt re-imposed the same impossible pair. See wordBudgetFor.
      */
     const budget = wordBudgetFor(packSpeakerList.length);
+    const speakerName = (key: string) => packSpeakerList.find(s => s.key === key)?.name ?? key;
+    // The town, in both spellings, joins the business's names: a name is never a hard word.
+    const ownNames = [...(everyday?.names ?? []), placeName, spokenPlace].filter(Boolean) as string[];
     const checkDialogue = (clips: DialogueClip[]) =>
       validateDialogueClips(clips, segmentCount, packSpeakerList, {
         characterNames,
@@ -1879,7 +1958,10 @@ export const generateAdAssets = async (
         maxWordsPerClip: budget.maxClip,
         minWordsPerLine: budget.minLine,
         maxWordsPerLine: budget.maxLine,
-      });
+      }).concat(dialogueHardWordIssues(clips, formData.language, ownNames, speakerName));
+    /** Written verb endings made spoken, in code — see toSpokenEndings. */
+    const spokenLines = (clips: DialogueClip[]): DialogueClip[] =>
+      clips.map(clip => clip.map(line => ({ ...line, text: toSpokenEndings(line.text, formData.language) })));
 
     // The spelling the script must use: the native form when we could get one, else the Latin name.
     const promptPlace = spokenPlace || placeName;
@@ -1901,7 +1983,7 @@ export const generateAdAssets = async (
       config: { systemInstruction: systemPrompt },
     }));
 
-    let clips = fixNames(parseDialogueClips(response.text || '', aliases));
+    let clips = spokenLines(fixNames(parseDialogueClips(response.text || '', aliases)));
     let issues = checkDialogue(clips);
 
     for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES && issues.length > 0; pass++) {
@@ -1929,7 +2011,7 @@ Return only the repaired ${segmentCount} clips.`;
         },
       }));
 
-      const next = fixNames(parseDialogueClips(repaired.text || '', aliases));
+      const next = spokenLines(fixNames(parseDialogueClips(repaired.text || '', aliases)));
       // Only accept a repair that genuinely improves things — a worse rewrite is discarded.
       const nextIssues = checkDialogue(next);
       if (next.length > 0 && nextIssues.length < issues.length) {
@@ -1986,7 +2068,7 @@ Return ONLY the JSON for clip${targets.length === 1 ? '' : 's'} ${targets.map(i 
         const edits = new Map([...parseClipDialogueEdits(response.text || '', targets)].map(([i, ls]) =>
           [i, ls.map((l, p) => ({ speaker: speakerKeyOf(l.speaker, p), text: l.text }))] as [number, DialogueClip]));
         if (edits.size === 0) break;
-        const candidate = fixNames(mergeClipEdits(clips, edits));
+        const candidate = spokenLines(fixNames(mergeClipEdits(clips, edits)));
         const candidateIssues = checkDialogue(candidate);
         if (!isBetterRepair({ issues, distance: distanceOf(clips) }, { issues: candidateIssues, distance: distanceOf(candidate) })) break;
         clips = candidate;
@@ -2047,8 +2129,8 @@ Return ONLY the JSON for clip${targets.length === 1 ? '' : 's'} ${targets.map(i 
         const edits = new Map([...parseClipTextEdits(response.text || '', targets)].map(([i, t]) => [i, cleanScriptText(t)] as [number, string]));
         if (edits.size === 0) break;
         const merged = mergeClipEdits(best.segments, edits);
-        const candidate = normalizeAndFormatVoiceOver(formatVoiceOverScript(merged), segmentCount);
-        const candidateIssues = validateVoiceOverSegments(candidate.rawScript, candidate.segments, segmentCount, formData.language);
+        const candidate = normalizeAndFormatVoiceOver(spoken(formatVoiceOverScript(merged)), segmentCount);
+        const candidateIssues = validateVoiceOverSegments(candidate.rawScript, candidate.segments, segmentCount, formData.language, everyday);
         const candidateDistance = distanceOf(candidate.segments);
         // Keep a fix that gets closer even when it does not clear the issue outright; stop only when a
         // pass makes nothing better.
@@ -2065,8 +2147,8 @@ Return ONLY the JSON for clip${targets.length === 1 ? '' : 's'} ${targets.map(i 
   };
 
   const applyVoiceOverRepairIfNeeded = async (candidateScript: string) => {
-    let normalizedVoiceOver = normalizeAndFormatVoiceOver(candidateScript, segmentCount);
-    let voiceOverIssues = validateVoiceOverSegments(normalizedVoiceOver.rawScript, normalizedVoiceOver.segments, segmentCount, formData.language);
+    let normalizedVoiceOver = normalizeAndFormatVoiceOver(spoken(candidateScript), segmentCount);
+    let voiceOverIssues = validateVoiceOverSegments(normalizedVoiceOver.rawScript, normalizedVoiceOver.segments, segmentCount, formData.language, everyday);
 
     // Problems inside clips are fixed clip by clip; only a script-level problem (a wrong clip count)
     // still needs the whole script rewritten.
@@ -2100,8 +2182,8 @@ Return only the repaired ${segmentCount} clip lines.`;
         });
       });
 
-      normalizedVoiceOver = normalizeAndFormatVoiceOver(repairResponse.text || normalizedVoiceOver.formatted, segmentCount);
-      voiceOverIssues = validateVoiceOverSegments(normalizedVoiceOver.rawScript, normalizedVoiceOver.segments, segmentCount, formData.language);
+      normalizedVoiceOver = normalizeAndFormatVoiceOver(spoken(repairResponse.text || normalizedVoiceOver.formatted), segmentCount);
+      voiceOverIssues = validateVoiceOverSegments(normalizedVoiceOver.rawScript, normalizedVoiceOver.segments, segmentCount, formData.language, everyday);
     }
 
     // Whatever the whole-script repair left inside individual clips gets the clip-level fix too.
@@ -2310,7 +2392,7 @@ Segment 2: <text>
    * How every clip moves — decided once, here, from what each clip is for (prompts/motion). The frame
    * prompts compose each still for its move, and the video prompts are then written to perform it.
    */
-  const motionPlan = planClipMotion(segmentCount, formData.adType);
+  const motionPlan = planClipMotion(segmentCount, formData.adType, packPerformer(pack));
 
   // --- Steps 3-6 run CONCURRENTLY: Main Frame, Header (local), Poster, Veo ---
   onProgress("Generating Main Frame, Poster & Video prompts...", 45);
@@ -2650,7 +2732,9 @@ ${realPremisesDirective}${maleCastingOverride}${commercialMainFramePriorityNote}
      */
     // Every frame carries the composition for the camera move its video will perform — stamped in
     // code, because the frame model drops it when asked (prompts/motion withMotionComposition).
-    mainFramePrompts = mainFramePrompts.map((prompt, i) => withMotionComposition(prompt, motionPlan[i]));
+    // A model ad's clip 1 keeps its hero pose — the face every later frame is matched to.
+    mainFramePrompts = mainFramePrompts.map((prompt, i) =>
+      withMotionComposition(prompt, motionPlan[i], { keepPose: !pack && i === 0 }));
 
     if (clipPhotoPlan.length > 0) {
       mainFramePrompts = mainFramePrompts.map((prompt, i) => {
@@ -2859,9 +2943,13 @@ const writeVeoPrompts = async (formData: AdFormData, clipCount: number, clips: V
   const pack = getCharacterPack(formData.characterPack);
   const aspectRatio = formData.aspectRatio === '16:9' ? '16:9' : '9:16';
   const language = formData.language || 'Telugu';
-  const plan: ClipMotionPlan[] = planClipMotion(Math.max(clipCount, ...clips.map(c => c.index + 1)), formData.adType);
+  const plan: ClipMotionPlan[] = planClipMotion(Math.max(clipCount, ...clips.map(c => c.index + 1)), formData.adType, packPerformer(pack));
   const packSubject = pack ? packVeoSubject(pack) : null;
   const modelSubject = modelVeoSubject(formData.gender || 'female');
+  /** Who walks, as the director reads the planned path: "Motu and Patlu walk…", "The model walks…". */
+  const director = pack
+    ? { who: pack.characters.map(c => c.name).join(' and '), plural: pack.characters.length > 1 }
+    : { who: 'The model', plural: false };
 
   let directions: ReturnType<typeof parseVeoDirections> = clips.map(() => null);
   if (API_KEYS.length > 0) {
@@ -2877,6 +2965,7 @@ ${clips.map((c, k) => {
 FRAME:
 ${frame || '(no frame prompt available — direct from the line and the planned move)'}
 LINE: ${c.lineForDirector}
+PLANNED WALK: ${p.walk.name} — ${walkPath(p, director.who, director.plural)}
 PLANNED MOVE: ${p.camera.name} — ${p.camera.action}
 GESTURE INTENT: ${p.gesture}`;
 }).join('\n\n')}
@@ -2905,6 +2994,8 @@ Return the JSON array for all ${clips.length} clips, numbered 1 to ${clips.lengt
     cast: packSubject ? packSubject.cast : modelSubject.cast,
     castPlural: packSubject ? packSubject.castPlural : modelSubject.castPlural,
     twoHander: packSubject?.twoHander ?? false,
+    walkManner: packSubject?.walkManner,
+    handGestures: packSubject?.handGestures,
   }));
 };
 

@@ -5,7 +5,11 @@ import {
 import { CLIP_SECONDS } from "@/utils/voiceOverFormat";
 import { packLocationSubject, packStagingRole, realLocationFormula } from "./realLocation";
 import { coreMessageBlock, type CoreMessageBrief } from "./coreMessage";
-import { VEO_DIRECTION_SYSTEM_PROMPT, framingForMotion, type ClipMotionPlan } from "./motion";
+import { everydaySpeechRules } from "./everydaySpeech";
+import {
+  HAND_GESTURES, VEO_DIRECTION_SYSTEM_PROMPT, WALK_MANNER, compositionFor, framingForMotion, withoutStillness,
+  type ClipMotionPlan, type Performer,
+} from "./motion";
 
 /**
  * Prompts for character-pack ads — two cartoon characters talking to each other inside a real
@@ -166,19 +170,30 @@ export const characterDirectionBlock = (
   pack: CharacterPack,
   scope: DirectionScope = "video",
 ): string => {
+  /**
+   * ── Why the VIDEO prompt gets no camera and no stillness ────────────────────────────────────
+   * The catalogue's camera and body direction was written for held frames — "tripod-locked with
+   * absolutely no movement", "Patlu stays planted and completely still", Shiva "a still frame with a
+   * moving mouth is correct here" — and the video director was told to follow it, which is exactly why
+   * the special-category videos stayed static. The camera now belongs to the motion plan (prompts/
+   * motion), and every clause that orders stillness is taken out of what the director reads. What
+   * makes the character THEM — manner, gestures, expressions, what a deity must never touch — stays.
+   */
   const all: [string, string | undefined, DirectionScope[]][] = [
     ["VOICE & MODULATION", pack.voiceDirection, ["script", "video"]],
     ["FACIAL EXPRESSION", pack.expressionDirection, ["script", "frame", "video"]],
     ["EYES & GAZE", pack.eyeDirection, ["script", "frame", "video"]],
     ["HAND GESTURES", pack.gestureDirection, ["script", "frame", "video"]],
     ["BODY LANGUAGE", pack.bodyLanguage, ["video"]],
-    ["CAMERA & CINEMATIC DIRECTION", pack.cameraDirection, ["frame", "video"]],
+    ["CAMERA & CINEMATIC DIRECTION", pack.cameraDirection, ["frame"]],
     ["BACKGROUND", pack.backgroundDirection, ["frame", "video"]],
     ["SCRIPT STYLE", pack.scriptStyle, ["script"]],
   ];
 
   const lines = all
     .filter(([, v, scopes]) => !!(v && v.trim()) && scopes.includes(scope))
+    .map(([k, v]) => [k, scope === "video" ? withoutStillness(v as string) : (v as string)] as const)
+    .filter(([, v]) => !!v.trim())
     .map(([k, v]) => `${k}: ${v}`);
 
   if (lines.length === 0) return "";
@@ -686,7 +701,7 @@ ${isLatin
 3. Never stiff, bookish, or corporate. These are cartoon characters talking, not a brochure.`
   : `1. Spoken content must be 100% correct, native, pixel-perfect ${lang} script. No Latin letters in spoken content (English-origin words are allowed only when written in ${lang} script).
 2. Brand names must be transliterated into ${lang} script naturally.
-3. Prefer the SIMPLE everyday English business word written in ${lang} script over a heavy literary ${lang} translation — write how a popular ${lang} cartoon actually speaks.
+3. Use the words people in the town actually say — everyday ${lang}, or the English word everyone already uses, written in ${lang} script — never a heavy literary ${lang} translation. Write how a popular ${lang} cartoon actually speaks: the way kids and grandparents both talk.
 4. Never archaic, devotional, bookish, or government-style ${lang}.`}
 ${solo ? `5. ${first.name} speaks in their own register throughout — see the performance direction above.` : `5. ${first.name} speaks in short, excited, simple words. ${second.name} speaks in calm, clear,
    informative words. Their two voices must sound DIFFERENT on the page.
@@ -696,6 +711,8 @@ ${spellings.map((s) => `     ${s.name} → ${s.spelling}`).join("\n")}
    Never any other spelling of these names, and never in Latin letters. If a name is not spoken in a line, do not add it.`
   : ""}
 `}
+
+${everydaySpeechRules(lang)}
 
 ===== CONTENT TRUTH RULES =====
 
@@ -875,6 +892,9 @@ ${isFestival
 • Total duration is ${duration} seconds; never add or remove clips${spellings.length > 0
   ? `\n• A spoken character name is written EXACTLY as: ${spellings.map((s) => `${s.name} → ${s.spelling}`).join(", ")}`
   : ""}
+• When a problem names a hard word, swap it for the everyday word it gives
+
+${everydaySpeechRules(language)}
 
 Return ONLY the corrected clip lines, nothing else.`;
 };
@@ -999,6 +1019,7 @@ function clipShotPlan(
     const n = i + 1;
     const line = clipSummaries[i] ? `\n   🗣️ THIS CLIP'S LINE: ${clipSummaries[i]}` : "";
     const motion = motionPlan[i] ? `\n   ${framingForMotion(motionPlan[i])}` : "";
+    const composition = motionPlan[i] ? compositionFor(motionPlan[i]) : "";
     const head = `**CLIP ${n} — ${shot.name}**
    📍 ZONE: ${shot.zone}
    🎥 CAMERA: ${shot.camera}
@@ -1012,7 +1033,7 @@ function clipShotPlan(
    Open by naming the photograph or generated zone this clip uses, then ${solo ? cast : `the two characters`} by name
    only, then the real fixtures and stock actually visible around them, then the light in that
    space, then the ${aspectRatio} ${orientation} framing.${hasLogo ? " Place the attached logo where it would really be installed in this zone." : ""}${motionPlan[i] ? `
-   Compose it for the camera move this frame will be animated with: ${motionPlan[i].camera.framing}.` : ""}
+   Compose it as the first moment of this clip's walk: ${composition}.` : ""}
    This frame sets the look for the whole ad — the grade, the light and the finish that every later
    clip has to match.`;
     }
@@ -1025,7 +1046,7 @@ function clipShotPlan(
    frame, unchanged" — and then spend the rest of the prompt ONLY on what genuinely changes:
    the new zone and the real objects in it, the new staging and gestures, the new camera angle,
    and how the light differs in this part of the premises.${motionPlan[i] ? `
-   Include, in plain words, the composition for this clip's camera move: ${motionPlan[i].camera.framing}.` : ""}
+   Include, in plain words, the first moment of this clip's walk: ${composition}.` : ""}
    Keep it SHORT: 60–90 words. Anything you re-describe is something the generator is free to
    redraw differently, which is exactly how the characters drift between clips.`;
   }).join("\n\n");
@@ -1103,7 +1124,12 @@ different aspect ratio.
 
 ${characterCastBlock(pack, wardrobe)}
 
-${characterDirectionBlock(pack, "frame")}
+${characterDirectionBlock(pack, "frame")}${motionPlan.length ? `
+
+Every clip's video WALKS: ${solo ? cast : "the characters"} walk${solo ? "s" : ""} through the business while talking, with a
+moving camera. Where the direction above asks for a planted stance, a held or locked-off frame, or no
+movement, this ad's walk wins — each frame is the first moment of its clip's walk (see each clip's 🎬
+note), with the body caught in motion. Everything else in that direction still applies.` : ""}
 
 ${locationBlock}
 
@@ -1187,7 +1213,16 @@ export const CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT = (
     aspectRatio,
     subject: cast,
     characterDirection: characterDirectionBlock(pack, "video"),
+    performer: packPerformer(pack),
   });
+};
+
+/** How a pack's cast performs a walk: a deity blesses, a cartoon walks its own way, a person naturally. */
+export const packPerformer = (pack: CharacterPack | null | undefined): Performer => {
+  if (!pack) return "person";
+  if (pack.family === "god") return "deity";
+  if (pack.family === "duo" || pack.family === "solo") return "cartoon";
+  return "person";
 };
 
 /**
@@ -1226,7 +1261,13 @@ export const packVeoSubject = (pack: CharacterPack) => {
   const cast = solo
     ? person ? `The ${pack.characters[0].name.toLowerCase()}` : pack.characters[0].name
     : "Both characters";
-  return { identityLock, speech, performanceNotes, cast, castPlural: !solo, twoHander: !solo };
+  const performer = packPerformer(pack);
+  /** A custom character is nobody's show — it walks its own way, not "the way the audience knows". */
+  const walkManner = pack.family === "custom" ? "in the character's own natural way" : WALK_MANNER[performer];
+  return {
+    identityLock, speech, performanceNotes, cast, castPlural: !solo, twoHander: !solo,
+    performer, walkManner, handGestures: HAND_GESTURES[performer],
+  };
 };
 
 // ── 4 · Location index: read the client's photos before assigning them ────────────────────────

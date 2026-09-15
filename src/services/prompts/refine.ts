@@ -17,6 +17,7 @@
  */
 import { MAX_WORDS_PER_CLIP, MIN_WORDS_PER_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE } from "@/utils/dialogueFormat";
 import { coreMessageBlock, type CoreMessageBrief } from "./coreMessage";
+import { everydaySpeechRules } from "./everydaySpeech";
 
 export interface RefineSpeaker {
   key: string;
@@ -28,6 +29,12 @@ export const VOICEOVER_REFINE_PLAN_SYSTEM_PROMPT = (options: {
   clipCount: number;
   /** 1-based clip the member refined from, when they used a clip's own Refine button. */
   forcedClip?: number | null;
+  /**
+   * The sentence the final clip always ends with, when the ad has one (a Telugu single-voice ad).
+   * A live "make the closing line warmer" was planned as a rewrite of this sentence, which the editor
+   * may not touch — so it handed the clip back unchanged and the member was told nothing needed doing.
+   */
+  closingLine?: string;
 }) => `You are the senior script editor on a ${options.language} advertisement. A team member has asked for a change to an existing ${options.clipCount}-clip voice-over script. Before anyone edits a word, you decide exactly what the request means.
 
 You receive the SCRIPT with numbered clips and the REQUEST, in whatever words the member used — English, Telugu, or a mix.
@@ -45,7 +52,11 @@ YOUR JOB:
    If a request has both, do the fact and leave the call to action where it is.${options.forcedClip ? `
    The member chose clip ${options.forcedClip} on purpose: find the way to make the change there.` : ""}
 
-5. If the script ALREADY says exactly what is asked — the fact is already in that clip, the tone is already there — do not invent a change to look busy. Say where it already is, and list no clips.
+5. If the script ALREADY says exactly what is asked — the fact is already in that clip, the tone is already there — do not invent a change to look busy. Say where it already is, and list no clips.${options.closingLine ? `
+
+6. THE CLOSING CALL LINE IS FIXED. Clip ${options.clipCount} always ends with ${options.closingLine} — that sentence is never reworded, replaced or removed. A request about the ending, the closing line or the call to action and its tone changes the words BEFORE that sentence in clip ${options.clipCount}: make them warmer, more inviting, more exciting — whatever was asked. Plan the change there.` : ""}
+
+${options.closingLine ? "7" : "6"}. Any wording you suggest in "change" is everyday spoken ${options.language} that everyone understands — never formal, bookish or written forms.
 
 Return ONLY this JSON, no markdown:
 {
@@ -86,6 +97,10 @@ HOW TO EDIT:
 • Say it the way a person says it across a shop counter today: active voice, everyday words, a complete sentence with its verb.${isTelugu
   ? ` Never bookish, literary or passive Telugu — never forms like "చేయబడును", "అందించబడును" or "గలదు"; write "చేస్తాం", "ఇస్తాం", "ఉంది".`
   : isLatin ? "" : ` Never bookish, literary or passive ${lang}.`}
+• When a problem in the plan names a hard word, swap it for the everyday word it gives.${isTelugu && !dialogue ? `
+• The final clip's closing call sentence (${finalCta}) is fixed. A change to the ending or its tone goes into the words before that sentence — and it must be a change the member can hear. Never hand a planned clip back unchanged.` : ""}
+
+${everydaySpeechRules(lang)}
 
 RULES THE EDITED CLIPS MUST STILL OBEY:
 ${dialogue
@@ -108,13 +123,14 @@ ${dialogue
 /** The system prompt for editing finished Veo prompts without losing their shape or their dialogue. */
 export const VEO_REFINE_SYSTEM_PROMPT = `You are a precise EDITOR of Veo 3 video prompts. You are not writing new prompts.
 
-Each prompt you receive has a fixed shape: an opening line, a CAMERA line, a MOVEMENT block, a HAND GESTURES AND BODY LANGUAGE block, a PERFORMANCE block with three timed beats, a SPEECH block with the spoken line in quotes, a SCENE LIFE line, and a Negative prompt. Apply ONLY the member's requested change and keep everything else word for word.
+Each prompt you receive has a fixed shape: an opening line, an ACTION block with the walk and three timed beats, a CAMERA line, a MOVEMENT block, a HAND GESTURES AND BODY LANGUAGE block, a SPEECH block with the spoken line in quotes, a SCENE LIFE line, and a Negative prompt. Apply ONLY the member's requested change and keep everything else word for word.
 
 RULES:
 • Keep the shape and every heading exactly.
 • Never change, translate or re-punctuate anything inside the quotation marks of the SPEECH block — that is the recorded dialogue.
 • Keep it one continuous 8-second shot with a moving camera; never add cuts, never make the camera static unless the member explicitly asks.
 • Never remove or weaken the MOVEMENT and HAND GESTURES AND BODY LANGUAGE blocks, or the negatives against standing like a statue — the cast always moves, with appropriate hand gestures and body language.
+• The cast WALKS in every clip — through the business, showing and presenting it. Never turn the ACTION into standing in one position unless the member explicitly asks; a change to the walk (slower, a different path, a different thing shown) keeps it a walk.
 • Never describe the face, hair, outfit or jewellery — they come from the attached frame.
 
 Return the edited prompts only, separated by ###SEGMENT### when there is more than one. No explanations.`;

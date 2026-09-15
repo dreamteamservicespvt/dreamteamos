@@ -486,10 +486,11 @@ describe("veo prompt", () => {
     expect(assembled).toContain(`CAMERA — ${plan[1].camera.name}`);
   });
 
-  it("gives the director the character's own performance direction", () => {
+  // The camera belongs to the motion plan now: the catalogue's held-frame camera kept the videos static.
+  it("gives the director the character's own performance direction, but not its held-frame camera", () => {
     expect(p).toContain("HOW THIS CHARACTER PERFORMS");
     expect(p).toMatch(/HAND GESTURES:/);
-    expect(p).toMatch(/CAMERA & CINEMATIC DIRECTION:/);
+    expect(p).not.toMatch(/CAMERA & CINEMATIC DIRECTION:/);
   });
 
   it("attributes each line to the right character, in its half of the clip", () => {

@@ -55,6 +55,24 @@ describe("the plan", () => {
     expect(parseRefinePlan("garbage", 4).clips).toEqual([]);
   });
 
+  // Live: "make the closing line warmer" was planned as a rewrite of the fixed call line, the editor
+  // could not touch it, and the member was told nothing needed doing.
+  it("tells the planner the closing call line is fixed and the ending changes before it", () => {
+    const line = '"మరిన్ని వివరాల కోసం స్క్రీన్‌పై ఉన్న నంబర్‌కు ఇప్పుడే కాల్ చేయండి."';
+    const p = VOICEOVER_REFINE_PLAN_SYSTEM_PROMPT({ language: "Telugu", clipCount: 4, closingLine: line });
+    expect(p).toContain(`THE CLOSING CALL LINE IS FIXED. Clip 4 always ends with ${line}`);
+    expect(p).toContain("changes the words BEFORE that sentence in clip 4");
+    expect(p).toContain("7. Any wording you suggest in \"change\" is everyday spoken Telugu");
+    // A character ad has no fixed line.
+    expect(VOICEOVER_REFINE_PLAN_SYSTEM_PROMPT({ language: "Telugu", clipCount: 4 })).not.toContain("THE CLOSING CALL LINE IS FIXED");
+  });
+
+  it("tells the editor to change the ending before the fixed line, never to hand a clip back", () => {
+    const p = VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT({ language: "Telugu", clipCount: 4, adType: "commercial" });
+    expect(p).toContain("A change to the ending or its tone goes into the words before that sentence");
+    expect(p).toContain("Never hand a planned clip back unchanged.");
+  });
+
   it("tells the planner a clip's own refine is locked to that clip", () => {
     expect(VOICEOVER_REFINE_PLAN_SYSTEM_PROMPT({ language: "Telugu", clipCount: 4, forcedClip: 2 })).toContain("the change is to clip 2 ONLY");
     expect(VOICEOVER_REFINE_PLAN_SYSTEM_PROMPT({ language: "Telugu", clipCount: 4 })).toMatch(/A request about content/);

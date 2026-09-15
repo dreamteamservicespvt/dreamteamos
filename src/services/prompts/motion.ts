@@ -1,166 +1,343 @@
 /**
  * How every clip MOVES — decided once, in code, and shared by the frame prompt and the video prompt.
  *
- * ── Why the videos came out static ──────────────────────────────────────────────────────────────
- * Three things made it close to impossible to get anything else. The video prompt for a model ad
- * said "same location", "direct eye contact at all times", and offered the same four gestures for
- * every ad, and never mentioned the camera. The special-category video prompt went further and said
+ * ── Why the videos came out static, the first time ──────────────────────────────────────────────
+ * The video prompt for a model ad said "same location", "direct eye contact at all times", offered the
+ * same four gestures for every ad, and never mentioned the camera. The special-category prompt said
  * "Camera holds steady, single continuous shot". And the video prompts were written in parallel with
- * the frame prompts, so they never knew which frame they were animating — what was in it, where the
- * model stood, what there was to gesture at.
+ * the frame prompts, so they never knew which frame they were animating.
  *
- * ── What changes ─────────────────────────────────────────────────────────────────────────────────
- * Each clip gets ONE motivated camera move and a gesture intent, chosen from what the clip is FOR
- * (the core message, a proof, trust, the call to action). The frame prompt is told the move so the
- * still is composed to be moved through — lead room for a track, headroom for a rise, a foreground
- * edge for parallax. The video prompt is then written from that exact frame, with the move and the
- * gestures timed against the spoken line.
+ * ── Why they were still close to static, the second time ────────────────────────────────────────
+ * Every clip then got a camera move and mandatory gestures, and the videos still came back as a
+ * presenter standing in one spot, explaining. Four reasons:
+ *   1. Nobody walked. The most any clip asked of the body was "a small step or half-turn". Someone
+ *      planted in one position is a talking head, however well the hands move.
+ *   2. The camera moves were timid — "about a metre", "15 to 20 degrees", "one easy step" — and Veo
+ *      renders a move that small as a shot that barely moves.
+ *   3. The frames were portraits: a centred close mid-shot, "holding this pose", nothing to walk into.
+ *   4. The character catalogue told the director the opposite: "Patlu stays planted and completely
+ *      still", Shiva "a still frame with a moving mouth is correct here", "tripod-locked with
+ *      absolutely no movement" — and the director was told to follow it.
  *
- * The plan is deterministic on purpose. A model asked to "vary the camera" chooses a push-in for
- * every clip; code guarantees no two neighbouring clips move the same way, and a regenerated clip
- * gets the same move it had, so a refine never changes the shot out from under a finished frame.
+ * ── What every clip has now ──────────────────────────────────────────────────────────────────────
+ * A WALK: a path through the business — walking in toward the camera, along the counter, to the
+ * product to show it, leading the viewer in, stepping out into a reveal, walking out to invite. The
+ * camera move is chosen to travel WITH that walk and is big enough to see: a leading dolly, a side
+ * track of metres, a 45–60° arc, a gimbal follow, a crane-up, a pull-back reveal. The frame is composed
+ * as the first moment of the walk; the director writes the walk against the real things in the frame;
+ * and code throws away any direction that comes back standing still (resolveDirection).
+ *
+ * The plan is deterministic on purpose: code guarantees no two neighbouring clips walk or move alike,
+ * and a regenerated clip gets the same walk it had, so a refine never changes the shot under a frame.
  *
  * One continuous shot per clip, always. A cut inside an 8-second clip made from a single still is
- * where face identity breaks, so "dynamic" here means a moving camera and a living performance, not
- * editing.
+ * where face identity breaks, so "dynamic" means a walking cast and a moving camera, not editing.
  */
 
 export type ClipRole = "message" | "proof" | "trust" | "cta" | "wish" | "message_cta";
 
+/** Who performs, because a deity walks and gestures differently from a person or a cartoon. */
+export type Performer = "person" | "cartoon" | "deity";
+
 export type CameraMoveKey =
-  | "push_in"
-  | "lateral_track"
+  | "leading_dolly"
+  | "side_track"
   | "arc"
-  | "pedestal_rise"
-  | "handheld_follow"
-  | "pull_back";
+  | "gimbal_follow"
+  | "crane_reveal"
+  | "pull_back_reveal";
 
 export interface CameraMove {
   key: CameraMoveKey;
-  /** Short name a member reads, e.g. "Slow push-in". */
+  /** Short name a member reads, e.g. "Leading dolly (walk-and-talk)". */
   name: string;
   /** What the camera does across the 8 seconds, in director's words for the video prompt. */
   action: string;
-  /** How the still must be composed so this move works, for the frame prompt. */
+  /** What the still needs so this move has something to travel through, for the frame prompt. */
   framing: string;
 }
 
 export const CAMERA_MOVES: Record<CameraMoveKey, CameraMove> = {
-  push_in: {
-    key: "push_in",
-    name: "Slow push-in",
-    action: "a slow, steady dolly push-in across the full 8 seconds, from a medium shot to a medium close-up, "
-      + "ending close enough to feel personal",
-    framing: "a medium shot with the subject centred and clear breathing room on every side, so the camera can "
-      + "move in without ever cropping the head, the hands or the logo",
+  leading_dolly: {
+    key: "leading_dolly",
+    name: "Leading dolly (walk-and-talk)",
+    action: "the camera dollies backward ahead of the walk at the same pace for the whole clip, holding a steady "
+      + "medium-wide shot as the cast come toward it with the premises flowing past behind them, then eases to a "
+      + "stop in a medium shot on the promise",
+    framing: "a clear, open path of floor between the subject and the camera for the walk toward it, with real depth "
+      + "behind — counters, stock, the logo — so the premises flow past as they come",
   },
-  lateral_track: {
-    key: "lateral_track",
-    name: "Lateral tracking shot",
-    action: "a smooth sideways dolly track of about a metre, parallel to the subject, the real zone behind and "
-      + "beside them sliding into view while a foreground edge passes the lens",
-    framing: "the subject on the third opposite the direction the camera will travel, with lead room ahead of them, "
-      + "and a real foreground element — a counter edge, a shelf end, a display — at the near edge of the frame for parallax",
+  side_track: {
+    key: "side_track",
+    name: "Side tracking shot",
+    action: "the camera tracks sideways alongside the walk at the same pace for two to three metres, parallel to the "
+      + "counter or display, foreground objects sliding past the lens and the products passing behind",
+    framing: "the counter or display running across the frame in the direction of the walk, lead room ahead of the "
+      + "subject along it, and a real foreground edge at the near side of the frame for parallax",
   },
   arc: {
     key: "arc",
-    name: "Slow arc",
-    action: "a gentle 15 to 20 degree arc around the subject at eye level, the background shifting behind them "
-      + "while their face stays to camera",
-    framing: "the subject slightly off-centre with real depth behind them — fixtures at two or three different "
-      + "distances — so the arc reveals parallax",
+    name: "Arc around the reveal",
+    action: "the camera arcs 45 to 60 degrees around the cast as they walk up to the product or feature, ending on a "
+      + "hero angle that shows them and it together",
+    framing: "the product or feature they will show clearly visible and well lit, a step or two from the subject, with "
+      + "real depth behind so the arc reveals parallax",
   },
-  pedestal_rise: {
-    key: "pedestal_rise",
-    name: "Pedestal rise",
-    action: "the camera rises smoothly from chest height to eye level as the line builds, revealing more of the "
-      + "premises behind the subject",
-    framing: "the camera just below chest height, with headroom above the subject and the upper part of the "
-      + "premises and the logo in view, so the rise has something real to reveal",
+  gimbal_follow: {
+    key: "gimbal_follow",
+    name: "Gimbal follow",
+    action: "a smooth gimbal follow a step behind and to the side at shoulder height as the cast lead the way into the "
+      + "premises, then they turn back to the lens and the camera settles in a medium shot facing them",
+    framing: "the premises opening up ahead of the subject with a clear walkway into them, the camera at shoulder height",
   },
-  handheld_follow: {
-    key: "handheld_follow",
-    name: "Handheld follow",
-    action: "a smooth stabilised handheld follow as the subject takes one easy step and turns back to camera — "
-      + "alive and close, never shaky",
-    framing: "a clear stretch of real floor beside the subject so they can take a step, with the camera at eye level",
+  crane_reveal: {
+    key: "crane_reveal",
+    name: "Crane-up reveal",
+    action: "the camera starts low at waist height and cranes up to eye level as the cast step forward into the open, "
+      + "revealing the full premises around and behind them",
+    framing: "a low camera at waist height, a real foreground element beside the subject, and the upper premises and the "
+      + "logo in frame above them for the crane to reveal",
   },
-  pull_back: {
-    key: "pull_back",
-    name: "Gentle pull-back",
-    action: "a slow pull-back from a medium close-up to a medium-wide shot, ending on the subject framed by the "
-      + "real premises and the logo",
-    framing: "a medium close-up with the logo and a readable slice of the real premises already in frame around the "
-      + "subject, so pulling back reveals the real place rather than inventing one",
+  pull_back_reveal: {
+    key: "pull_back_reveal",
+    name: "Pull-back reveal",
+    action: "the camera dollies back and rises gently as the cast walk toward it, widening from a medium shot to a "
+      + "wide shot that reveals the whole storefront and the logo",
+    framing: "the entrance or shop front around the subject with the logo readable, and room around them for the camera "
+      + "to widen into",
   },
 };
 
-/** Middle clips rotate through these, never repeating a neighbour. */
-const MIDDLE_MOVES: CameraMoveKey[] = ["lateral_track", "arc", "pedestal_rise", "handheld_follow"];
+export type WalkKey = "walk_in" | "walk_along" | "walk_to_show" | "lead_the_way" | "step_out_reveal" | "walk_invite";
+
+export interface Walk {
+  key: WalkKey;
+  /** Short name a member reads, e.g. "Walk-in toward the camera". */
+  name: string;
+  /**
+   * The path through the clip, for the video prompt — a template: {Cast} is who walks, {s} and {es}
+   * the verb endings that agree with them ("She walks", "Both characters walk").
+   */
+  path: string;
+  /** The same path for a deity, who blesses what a person would show. */
+  deityPath?: string;
+  /** The first moment of the walk, for the frame prompt: where the cast is and how the body is caught. */
+  start: string;
+  /** The camera move that travels with this walk. */
+  camera: CameraMoveKey;
+}
+
+export const WALKS: Record<WalkKey, Walk> = {
+  walk_in: {
+    key: "walk_in",
+    name: "Walk-in toward the camera",
+    path: "{Cast} walk{s} three or four unhurried steps toward the camera from deeper inside the premises, talking "
+      + "while walking — a natural walk-and-talk — and arrive{s} in a medium shot on the promise",
+    start: "three-quarter body (head to knees), facing the camera with the weight moving onto the front foot as the "
+      + "first step begins, hands relaxed and natural",
+    camera: "leading_dolly",
+  },
+  walk_along: {
+    key: "walk_along",
+    name: "Walk along the counter",
+    path: "{Cast} walk{s} along the counter or display for three or four steps, talking while walking and showing the "
+      + "products along the way, then turn{s} to the camera",
+    deityPath: "{Cast} walk{s} slowly along the counter or display for three or four steps, blessing the counter and "
+      + "the stock along the way, then turn{s} to the camera",
+    start: "three-quarter body at one end of the counter or display, turned a quarter toward the direction of the "
+      + "walk and caught mid-step, one hand relaxed toward the display",
+    camera: "side_track",
+  },
+  walk_to_show: {
+    key: "walk_to_show",
+    name: "Walk to the product and show it",
+    path: "{Cast} walk{s} two or three steps to the real product or feature the line is about, show{s} it to the "
+      + "camera on arrival, then turn{s} back to the lens",
+    deityPath: "{Cast} walk{s} slowly to the heart of the business the line is about and raise{s} the blessing palm "
+      + "over it, then turn{s} back to the lens",
+    start: "three-quarter body a step away from the real product or feature, turning toward it, one hand lifting "
+      + "toward it",
+    camera: "arc",
+  },
+  lead_the_way: {
+    key: "lead_the_way",
+    name: "Lead the viewer in",
+    path: "{Cast} lead{s} the way three or four steps deeper into the premises, glancing back to beckon the viewer "
+      + "along, then turn{s} back to face the camera",
+    start: "three-quarter body walking into the premises at a three-quarter back angle, looking back over the "
+      + "shoulder to the camera with the face clearly visible, one hand lifting to beckon",
+    camera: "gimbal_follow",
+  },
+  step_out_reveal: {
+    key: "step_out_reveal",
+    name: "Step out into the reveal",
+    path: "{Cast} step{s} out from beside the foreground into the open and keep{s} walking forward two or three steps "
+      + "as the premises open up behind",
+    start: "three-quarter body stepping forward out from beside a real foreground element, caught mid-stride, eyes "
+      + "to the camera",
+    camera: "crane_reveal",
+  },
+  walk_invite: {
+    key: "walk_invite",
+    name: "Walk out to invite",
+    path: "{Cast} walk{s} three or four steps toward the camera and the entrance with an inviting wave, and stop{s} "
+      + "close for the invitation",
+    start: "three-quarter body near the entrance, walking toward the camera and caught mid-stride, one hand lifting "
+      + "in an inviting wave",
+    camera: "pull_back_reveal",
+  },
+};
+
+/** Middle clips rotate through these walks, never repeating a neighbour. */
+const MIDDLE_WALKS: WalkKey[] = ["walk_along", "walk_to_show", "lead_the_way", "step_out_reveal"];
 
 export interface ClipMotionPlan {
   /** 0-based clip index. */
   clip: number;
   role: ClipRole;
+  walk: Walk;
   camera: CameraMove;
   /** What the hands and body do, and on which words. */
   gesture: string;
-  /** Timed beats used when the video direction call fails — always usable on their own. */
+  /** Timed beats used when the video direction call fails — always walking, always usable on their own. */
   fallbackBeats: [string, string, string];
+  performer: Performer;
 }
 
-/**
- * What the body and hands do in each kind of clip. Every one moves — the team's rule is that nobody
- * stands like a statue — so each gesture flows into the next movement instead of "returning to rest".
- */
+/** What the body and hands achieve in each kind of clip — every one of them on the move. */
 const GESTURE: Record<ClipRole, string> = {
-  message: "opens in a composed, confident stance that is alive, never frozen — a slight lean toward the camera and an "
-    + "easy weight shift; on the business name, a warm welcoming open-palm gesture toward the camera, then the hand "
-    + "presents the premises behind as the promise is spoken",
-  wish: "steps in warmly, hands come together in a namaste on the greeting with a small bow of the head, then open "
-    + "outward in a warm, celebratory gesture",
-  proof: "turns the shoulders toward the real product, counter or zone being spoken about, presents it with an open "
-    + "hand or points to it on its name, then turns back to camera with an emphatic hand on the benefit",
-  trust: "leans in slightly, a hand to the chest on the promise, then an open, reassuring palm toward the viewer with "
-    + "a confident nod",
-  cta: "takes a small step toward the camera, both palms open outward in an invitation, then an inviting wave toward "
-    + "the viewer with a warm nod and smile",
-  message_cta: "a welcoming open-palm gesture on the business name while leaning in, then both palms open toward the "
-    + "viewer in an invitation on the call to action",
+  message: "walks in toward the camera; on the business name, a warm welcoming open-palm gesture, then the arm "
+    + "presents the premises as the promise is spoken",
+  wish: "walks in warmly; hands come together in a namaste with a small bow on the greeting, then open outward in a "
+    + "warm, celebratory gesture",
+  proof: "walks to what is being spoken about and shows it — presents, points to, picks up, holds up or touches the "
+    + "real product, counter or work — then turns to camera with an emphatic hand on the benefit",
+  trust: "walks toward the viewer with sincerity; a hand to the chest on the promise, then an open, reassuring palm "
+    + "with a confident nod",
+  cta: "walks toward the camera and the entrance; both palms open in invitation, then a beckoning come-in gesture "
+    + "toward the viewer",
+  message_cta: "walks in; a welcoming open-palm gesture on the business name, then both palms open toward the viewer "
+    + "in an invitation on the call to action",
 };
 
-/** Fallback beats. Each one has a body movement AND a hand action — never a beat of standing still. */
-const BEATS: Record<ClipRole, [string, string, string]> = {
-  message: [
-    "composed but alive: a slight lean toward the camera and a weight shift, warm smile, eyes to the lens as the line begins",
-    "a welcoming open-palm gesture toward the camera on the business name, shoulders opening",
-    "the hand sweeps gently to present the premises behind on the promise, with a confident nod",
+/** A deity walks slowly and blesses — it never handles or presents what the business sells. */
+const DEITY_GESTURE: Record<ClipRole, string> = {
+  message: "walks in toward the camera with slow, majestic steps; the blessing palm rises toward the viewer on the "
+    + "business name, then turns to bless the premises as the promise is spoken",
+  wish: "walks in with slow, graceful steps; the blessing palm rises on the greeting, then both hands open outward in "
+    + "a festive blessing",
+  proof: "walks slowly to what is being spoken about and blesses it — the blessing palm raised over it, never "
+    + "touching, holding or presenting it — then turns to the viewer",
+  trust: "walks toward the viewer with serene steps; the blessing palm toward the viewer on the promise, with a "
+    + "gentle nod",
+  cta: "walks toward the camera and the entrance; both palms open in blessing and welcome, then a gentle beckoning "
+    + "gesture toward the viewer",
+  message_cta: "walks in with slow, majestic steps; the blessing palm rises on the business name, then both palms "
+    + "open toward the viewer in welcome on the call to action",
+};
+
+/** Fallback beats for each walk. Every beat travels or turns AND has a hand action. */
+const WALK_BEATS: Record<WalkKey, [string, string, string]> = {
+  walk_in: [
+    "walks toward the camera with a confident, easy stride, a warm smile, eyes to the lens as the line begins",
+    "still walking, a welcoming open-palm gesture toward the camera on the business name, then the arm sweeps back to "
+      + "present the premises",
+    "arrives in a medium shot and stops with a small lean in, an emphatic hand on the promise and a confident nod",
   ],
-  wish: [
-    "a warm step forward with a bright smile, eyes to the lens as the greeting begins",
-    "hands come together in a namaste with a small bow of the head",
-    "hands open outward in a warm, celebratory gesture, body turning slightly with joy",
+  walk_along: [
+    "walks along the counter or display with an easy stride, glancing at what is passing and gesturing toward it with "
+      + "an open hand",
+    "keeps walking and presents the real products or work area with a sweeping open-hand gesture as they are named",
+    "turns the shoulders to the lens mid-step, an emphatic hand gesture on the benefit and a smile",
   ],
-  proof: [
-    "an easy half-turn of the shoulders toward what is being shown, one hand lifting toward it",
-    "an open hand presents the real product or zone as it is named, body leaning slightly toward it",
-    "turns back to camera with an emphatic hand gesture on the benefit and a small nod",
+  walk_to_show: [
+    "walks two or three steps to the real product or feature, one hand already reaching toward it",
+    "arrives and shows it — picks it up, holds it up or touches it — presenting it toward the camera as it is named",
+    "turns back to the lens, still presenting it, with an emphatic gesture on the benefit and a confident nod",
   ],
-  trust: [
-    "leans in slightly with a sincere expression, eyes to the lens",
-    "a hand to the chest on the promise, shoulders relaxed and open",
-    "an open, reassuring palm toward the viewer with a confident nod",
+  lead_the_way: [
+    "walks deeper into the premises, looking back over the shoulder with a beckoning hand — come with me",
+    "keeps walking and points out the real work area or stock with an open hand as it is named",
+    "turns fully back to the lens and opens both arms to present the space, with a warm smile",
   ],
-  cta: [
-    "a small step toward the camera with a bright smile, eyes to the lens",
-    "both palms open outward toward the viewer in an invitation",
-    "an inviting wave toward the viewer, a warm nod and smile as the line ends",
+  step_out_reveal: [
+    "steps out from beside the foreground into the open with a confident stride, eyes to the lens",
+    "keeps walking forward, one arm sweeping wide to present the premises opening up behind",
+    "stops, a hand to the chest on the promise, then an open, reassuring palm toward the viewer",
   ],
-  message_cta: [
-    "a slight lean toward the camera with a warm smile, eyes to the lens",
-    "a welcoming open-palm gesture on the business name",
-    "both palms open toward the viewer on the invitation, with a small step forward and a warm nod",
+  walk_invite: [
+    "walks toward the camera with a bright smile and an inviting wave",
+    "keeps coming forward, both palms opening outward on the invitation",
+    "stops close, a beckoning come-in gesture toward the viewer and a warm nod as the line ends",
   ],
+};
+
+const DEITY_WALK_BEATS: Record<WalkKey, [string, string, string]> = {
+  walk_in: [
+    "walks toward the camera with slow, graceful, majestic steps, a serene smile, eyes to the lens as the line begins",
+    "still walking, the blessing palm rises toward the viewer on the business name",
+    "arrives in a medium shot and turns a quarter toward the premises, the blessing palm extended over the business, "
+      + "a gentle nod",
+  ],
+  walk_along: [
+    "walks slowly along the counter with graceful steps, gazing over the business with a serene smile",
+    "the blessing palm passes over the counter and the stock as they are named, blessing them",
+    "turns to the lens mid-step, the blessing palm toward the viewer, a gentle nod",
+  ],
+  walk_to_show: [
+    "walks slowly toward the heart of the business, the blessing hand beginning to rise",
+    "arrives beside it and raises the blessing palm over it — never touching it — as it is named",
+    "turns back to the lens with the palm open toward the viewer and a serene nod",
+  ],
+  lead_the_way: [
+    "walks gracefully deeper into the premises, glancing back to the lens with a gentle beckoning hand",
+    "keeps walking, the blessing palm sweeping over the work area as it is named",
+    "turns fully back to the lens, both hands opening in blessing over the whole space",
+  ],
+  step_out_reveal: [
+    "steps forward from beside the foreground into the open with a slow, majestic stride, eyes to the lens",
+    "keeps walking forward as the premises open up behind, one arm lifting in blessing over them",
+    "stops, the blessing palm toward the viewer on the promise, a serene nod",
+  ],
+  walk_invite: [
+    "walks slowly toward the camera with a serene smile, the blessing palm raised",
+    "keeps coming forward, both palms opening outward in blessing and welcome",
+    "stops close, a gentle beckoning gesture of welcome toward the viewer and a serene nod as the line ends",
+  ],
+};
+
+/** Roles whose beats are their own rather than their walk's — the greeting, and the one-clip ad. */
+const ROLE_BEATS: Partial<Record<ClipRole, Record<"person" | "deity", [string, string, string]>>> = {
+  wish: {
+    person: [
+      "walks toward the camera with a bright, festive smile, eyes to the lens as the greeting begins",
+      "stops, hands come together in a namaste with a small bow of the head",
+      "hands open outward in a warm, celebratory gesture, stepping forward with joy",
+    ],
+    deity: [
+      "walks toward the camera with slow, graceful steps and a serene smile as the greeting begins",
+      "the blessing palm rises toward the viewer on the wish",
+      "both hands open outward in a festive blessing over the viewer, a gentle nod",
+    ],
+  },
+  message_cta: {
+    person: [
+      "walks toward the camera with a confident stride and a warm smile, eyes to the lens",
+      "still walking, a welcoming open-palm gesture on the business name",
+      "stops close, both palms opening toward the viewer in an invitation, a warm nod",
+    ],
+    deity: [
+      "walks toward the camera with slow, majestic steps and a serene smile, eyes to the lens",
+      "still walking, the blessing palm rises on the business name",
+      "stops close, both palms opening toward the viewer in blessing and welcome, a gentle nod",
+    ],
+  },
+};
+
+/** The trust clip's last beat, whatever its walk — the promise lands on the chest, or in the blessing. */
+const TRUST_LAST_BEAT = {
+  person: "stops and turns to the lens, a hand to the chest on the promise, then an open, reassuring palm toward the viewer",
+  deity: "stops and turns to the lens, the blessing palm toward the viewer on the promise, a serene nod",
 };
 
 /** What each clip is for, from where it sits in the ad. */
@@ -180,69 +357,137 @@ export function clipRoles(segmentCount: number, adType: string): ClipRole[] {
   });
 }
 
+function beatsFor(role: ClipRole, walk: WalkKey, performer: Performer): [string, string, string] {
+  const kind = performer === "deity" ? "deity" : "person";
+  const own = ROLE_BEATS[role]?.[kind];
+  if (own) return [...own];
+  const beats: [string, string, string] = [...(kind === "deity" ? DEITY_WALK_BEATS : WALK_BEATS)[walk]];
+  if (role === "trust") beats[2] = TRUST_LAST_BEAT[kind];
+  return beats;
+}
+
 /**
- * The camera move and gesture for every clip.
+ * The walk, camera move and gesture for every clip.
  *
- * Clip 1 always pushes in — the team's call: the composed opening, moving closer as the business
- * introduces itself. The last clip pulls back to the premises for the invitation. The middle clips
- * rotate through the rest so no two neighbours move alike.
+ * Clip 1 walks in toward the camera — the business introducing itself, coming to meet the viewer.
+ * The last clip walks out to invite, the camera pulling back to the storefront. The middle clips
+ * rotate through the other walks so no two neighbours move alike.
  */
-export function planClipMotion(segmentCount: number, adType: string): ClipMotionPlan[] {
+export function planClipMotion(segmentCount: number, adType: string, performer: Performer = "person"): ClipMotionPlan[] {
   const roles = clipRoles(segmentCount, adType);
   const n = roles.length;
-  let previous: CameraMoveKey | null = null;
+  let previous: WalkKey | null = null;
   let rotation = 0;
   return roles.map((role, i) => {
-    let key: CameraMoveKey;
-    if (i === 0) key = "push_in";
-    else if (i === n - 1) key = "pull_back";
+    let key: WalkKey;
+    if (i === 0) key = "walk_in";
+    else if (i === n - 1) key = "walk_invite";
     else {
-      key = MIDDLE_MOVES[rotation % MIDDLE_MOVES.length];
+      key = MIDDLE_WALKS[rotation % MIDDLE_WALKS.length];
       rotation += 1;
       if (key === previous) {
-        key = MIDDLE_MOVES[rotation % MIDDLE_MOVES.length];
+        key = MIDDLE_WALKS[rotation % MIDDLE_WALKS.length];
         rotation += 1;
       }
     }
     previous = key;
+    const walk = WALKS[key];
     return {
       clip: i,
       role,
-      camera: CAMERA_MOVES[key],
-      gesture: GESTURE[role],
-      fallbackBeats: BEATS[role],
+      walk,
+      camera: CAMERA_MOVES[walk.camera],
+      gesture: (performer === "deity" ? DEITY_GESTURE : GESTURE)[role],
+      fallbackBeats: beatsFor(role, key, performer),
+      performer,
     };
   });
 }
 
-/** The line a frame prompt carries so the still is composed for the move it will be animated with. */
+/** A walk template with its performer filled in: "She walks…", "Both characters walk…". */
+export function fillCast(template: string, cast = "The cast", plural = false): string {
+  return template
+    .replace(/\{Cast\}/g, cast)
+    .replace(/\{es\}/g, plural ? "" : "es")
+    .replace(/\{s\}/g, plural ? "" : "s");
+}
+
+/** The path this clip's cast walks, in words for the video prompt. */
+export function walkPath(plan: ClipMotionPlan, cast = "The cast", plural = false): string {
+  const template = plan.performer === "deity" && plan.walk.deityPath ? plan.walk.deityPath : plan.walk.path;
+  return fillCast(template, cast, plural);
+}
+
+/** How the still must be composed for this clip's walk and camera move. */
+export function compositionFor(plan: ClipMotionPlan): string {
+  return `${plan.walk.start}; ${plan.camera.framing}`;
+}
+
+/** The line a frame prompt carries so the still is the first moment of the clip's walk. */
 export function framingForMotion(plan: ClipMotionPlan | undefined): string {
   if (!plan) return "";
-  return `🎬 CAMERA MOVE THIS FRAME WILL BE ANIMATED WITH: ${plan.camera.name}. Compose the still for it — `
-    + `${plan.camera.framing}. Hands relaxed and natural, ready to move — never frozen or rigid.`;
+  return `🎬 THIS FRAME STARTS A WALK — ${plan.walk.name}, filmed with a ${plan.camera.name}. Compose the still as `
+    + `the first moment of it: ${compositionFor(plan)}. The body is caught in natural motion, like a candid frame from a walking shot.`;
 }
 
 /** The heading of the composition line code adds to a finished frame prompt. */
 export const MOTION_COMPOSITION_HEADING = "COMPOSITION FOR MOTION";
 
 /**
- * A finished frame prompt, guaranteed to carry its clip's composition for the camera move.
+ * A finished frame prompt, guaranteed to carry its clip's composition for the walk.
  *
  * Asking was not enough. In live runs the short continuation frames — capped at 100–200 words and
- * given a fixed list of sections — dropped the composition note on most clips, so the still the video
- * was animated from had no lead room for a track and no foreground edge for parallax. Stamped in code
- * it is always there, the same way the "attach this photo" directive is. Idempotent: a prompt that
- * already carries it is returned unchanged.
+ * given a fixed list of sections — dropped the composition note on most clips. Stamped in code it is
+ * always there, the same way the "attach this photo" directive is. Idempotent: a prompt that already
+ * carries it is returned unchanged.
+ *
+ * `keepPose` is for a model ad's hero frame: its pose is the identity anchor every later frame copies,
+ * so it keeps it, and only the open path for the walk its video starts is added.
  */
-export function withMotionComposition(prompt: string, plan: ClipMotionPlan | undefined): string {
+export function withMotionComposition(
+  prompt: string,
+  plan: ClipMotionPlan | undefined,
+  options: { keepPose?: boolean } = {},
+): string {
   if (!plan || !prompt.trim() || prompt.includes(MOTION_COMPOSITION_HEADING)) return prompt;
-  return `${prompt.trimEnd()}\n\n${MOTION_COMPOSITION_HEADING}: ${plan.camera.framing}. Hands relaxed and natural, ready to move — never frozen or rigid.`;
+  if (options.keepPose) {
+    return `${prompt.trimEnd()}\n\n${MOTION_COMPOSITION_HEADING}: this pose starts a walk (${plan.walk.name}) — `
+      + `${plan.camera.framing}.`;
+  }
+  return `${prompt.trimEnd()}\n\n${MOTION_COMPOSITION_HEADING}: the first moment of a walk (${plan.walk.name}) — `
+    + `${compositionFor(plan)}. Caught in natural motion, like a candid frame from a walking shot, hands relaxed and natural.`;
+}
+
+/**
+ * Character direction with the stillness taken out.
+ *
+ * The catalogue was written for held frames — "Patlu stays planted and completely still", "the body
+ * barely moves", "tripod-locked with absolutely no movement" — and the director followed it, which is
+ * how the special-category videos stayed static. Every clause that orders stillness is dropped; the
+ * rest — the character's manner, gestures, expressions, what a deity must never touch — is kept.
+ */
+const STILLNESS = /\b(?:still(?:ness)?|planted|rooted|motionless|unmoving|at rest|returns? to rest|locked(?:[- ]off)?|tripod|on sticks|never walks?|walks? within|no step|no sway|no weight shift|no shoulder movement|no pacing|does not move|do not move|doesn't move|has not moved|barely moves|without moving|no movement|stays put|stationary|held frame|use none|any motion at all|absence of gesture|do not punctuate)\b/i;
+
+export function withoutStillness(text: string): string {
+  if (!text) return "";
+  return text
+    .split(/(?<=[.;!?])\s+/)
+    .map((sentence) => {
+      const kept = sentence.split(/\s+—\s+/).filter((part) => !STILLNESS.test(part));
+      if (kept.length === 0) return "";
+      const joined = kept.join(" — ");
+      return /[.;!?]$/.test(joined) ? joined : `${joined}.`;
+    })
+    .filter(Boolean)
+    .join(" ");
 }
 
 // ── The video prompt ───────────────────────────────────────────────────────────────────────────
 
 /** What the director call writes for one clip. Everything else in the prompt is assembled in code. */
 export interface VeoDirection {
+  /** The walk, specific to this frame: from where to where, past what, what is shown. */
+  path: string;
   /** The move, specific to this frame: start framing, end framing, what is revealed. */
   camera: string;
   /** Three beats: 0–2s, 2–5s, 5–8s. */
@@ -282,27 +527,58 @@ export interface VeoPromptInput {
   cast?: string;
   /** True when `cast` takes a plural verb ("Both characters are"). */
   castPlural?: boolean;
-  /** A two-hander: the character who is listening must move too. */
+  /** A two-hander: both walk together, and the character who is listening moves too. */
   twoHander?: boolean;
+  /** How they walk — "with a confident, easy, natural stride". Defaults by performer. */
+  walkManner?: string;
+  /** Which hand gestures fit this performer. Defaults by performer. */
+  handGestures?: string;
 }
+
+/** How each kind of performer walks, unless the subject says otherwise. */
+export const WALK_MANNER: Record<Performer, string> = {
+  person: "with a confident, easy, natural stride",
+  cartoon: "in their own signature way from the show — the walk the audience knows them by",
+  deity: "with slow, graceful, majestic steps — serene and unhurried, never rushed",
+};
+
+/** The gestures that fit each kind of performer, unless the subject says otherwise. */
+export const HAND_GESTURES: Record<Performer, string> = {
+  person: "showing and presenting the business with an open hand, pointing to what is being spoken about, picking up, "
+    + "holding up or touching the product, open palms on a promise, counting on the fingers, a hand to the chest for "
+    + "trust, beckoning the viewer to come along, an inviting wave toward the viewer",
+  cartoon: "showing and presenting the business with an open hand, pointing to what is being spoken about, picking up, "
+    + "holding up or touching the product, open palms on a promise, counting on the fingers, a hand to the chest for "
+    + "trust, beckoning the viewer to come along, an inviting wave toward the viewer",
+  deity: "blessing gestures — the blessing palm (abhaya mudra) raised toward the business and the viewer, a slow open "
+    + "palm passing over the counter and the stock in blessing, both hands opening in welcome — never touching, "
+    + "holding, pointing at or presenting products, money or a phone",
+};
 
 /**
  * The movement the video must have — written into EVERY Veo prompt, in code, word for word.
  *
- * The team's standing instruction: the cast never stands like a statue, and every clip carries
- * appropriate hand gestures and body language. Left to the direction call it came through as three
- * tidy beats that Veo could still perform with a planted, stiff body and only the mouth moving. So
- * it is not left to anyone: this block is assembled into the prompt itself, stated as mandatory, and
- * backed by the matching negatives.
+ * The team's standing instruction: the cast walks through the business while talking, showing and
+ * presenting it, with appropriate hand gestures and body language — never standing in one position
+ * explaining. Left to the direction call it came through as tidy beats Veo could still perform with
+ * a planted body, so it is not left to anyone: this block is assembled into the prompt itself, stated
+ * as mandatory, and backed by the matching negatives.
  */
-export function movementRules(cast = "The cast", plural = false, twoHander = false): string {
+export function movementRules(
+  cast = "The cast",
+  plural = false,
+  twoHander = false,
+  manner: string = WALK_MANNER.person,
+  gestures: string = HAND_GESTURES.person,
+): string {
   const is = plural ? "are" : "is";
+  const s = plural ? "" : "s";
   return `MOVEMENT — MANDATORY, NEVER LIKE A STATUE:
-${cast} ${is} alive and in motion for the whole 8 seconds, performing actions — never standing still like a statue, a mannequin or a cardboard cut-out. The body moves with the words: shift the weight, turn the shoulders, lean in on the important words, take a small natural step or half-turn, and react with the head and face. There is never a moment when only the mouth moves.${twoHander ? `
-The character who is listening keeps moving too — nodding, reacting, gesturing, turning toward the speaker — never frozen while the other one talks.` : ""}
+${cast} ${is} walking and in motion for the whole 8 seconds — walking through the business, turning, showing and presenting it — never standing in one single position while explaining, never still like a statue, a mannequin or a cardboard cut-out. ${cast} walk${s} ${manner}, talking while walking like a real walk-and-talk reel, and the body moves with the words: the weight shifts, the shoulders turn, a lean in on the important words, the head and face react. There is never a moment when only the mouth moves.${twoHander ? `
+Both characters walk together, side by side, through the business. The character who is listening keeps moving too — walking along, nodding, reacting, gesturing, turning toward the speaker — never frozen while the other one talks.` : ""}
 
 HAND GESTURES AND BODY LANGUAGE — MANDATORY IN THIS CLIP:
-Appropriate, clearly visible hand gestures on the key words of the line — presenting the product or place with an open hand, pointing to what is being spoken about, open palms on a promise, counting on the fingers, a hand to the chest for trust, an inviting wave toward the viewer. Each gesture is smooth and natural and flows into the next movement. Body language is open, warm and confident, and matches the meaning of every word, so the body tells the same story as the voice.`;
+Appropriate, clearly visible hand gestures on the key words of the line — ${gestures}. Each gesture is smooth and natural and flows into the next movement. Body language is open, warm and confident, and matches the meaning of every word, so the body tells the same story as the voice.`;
 }
 
 const clean = (value: unknown, max = 600): string =>
@@ -321,49 +597,102 @@ const unterminated = (value: string) => value.replace(/[\s.;,]+$/, "");
 const unlabelled = (value: string) => value.replace(/^\s*(?:beat\s*\d+\s*[:.-]\s*)?\(?\d+\s*[–-]\s*\d+\s*s(?:ec(?:onds?)?)?\)?\s*[:.–-]?\s*/i, "");
 
 /**
- * A usable direction for one clip: the model's where it is usable, the plan's where it is not.
- * Field by field, so one missing beat does not throw away a good camera sentence.
+ * A direction with the spoken words taken out of it.
+ *
+ * In live runs the director quoted the dialogue inside the actions — "lifting a palm on the words
+ * 'శ్రీ సాయి టూ వీలర్ సర్వీస్ సెంటర్'", "while starting the line 'అరే గణేశ…'". The line is already
+ * in the SPEECH block, once; a second copy in the action invites Veo to say it twice or put it on
+ * screen as text. A quoted run of non-Latin script is removed, with the "as he speaks" / "on the words"
+ * lead-in it leaves hanging.
  */
-export function resolveDirection(plan: ClipMotionPlan, direction?: Partial<VeoDirection> | null): VeoDirection {
-  const camera = unterminated(clean(direction?.camera)) || unterminated(plan.camera.action);
+export function withoutQuotedSpeech(value: string): string {
+  if (!value) return value;
+  const quoted = /\s*['"‘“][^'"‘“’”]*[^\x00-ɏ -⁯\s][^'"‘“’”]*['"’”]/g;
+  if (!quoted.test(value)) return value;
+  const leadIn = "(?:(?:while|as|and|when)\\s+)?(?:(?:he|she|they|it)\\s+)?"
+    + "(?:starting|beginning|delivering|speaking|speaks|speak|says|saying|finishes|finishing|concludes|concluding|completes)?"
+    + "\\s*(?:on\\s+|for\\s+|with\\s+)?(?:the\\s+)?(?:words|line|phrase)?";
+  return value
+    .replace(quoted, "")
+    // A lead-in left in the middle of the sentence: "lifts on the words, showing…"
+    .replace(/\s+(?:on|with|at|for)\s+the\s+(?:words|line|phrase)(?=\s*[,;])/gi, "")
+    // …or at its end: "gazing into the lens while starting the line", "toward the display for".
+    .replace(new RegExp(`\\s*,?\\s*${leadIn}\\s*(?:for)?\\s*$`, "i"), "")
+    .replace(/\s+,/g, ",")
+    .trim();
+}
+
+/** A direction that walks: some travelling verb is in it. */
+const TRAVELS = /\b(?:walk|walks|walking|stride|strides|striding|step|steps|stepping|stroll|strolls|strolling|leads?|leading|glides?|gliding|bounces?|bouncing|waddles?|waddling|scampers?|scampering|marches|marching|approach(?:es)?|approaching|comes? toward|moves? (?:toward|along|through|into))\b/i;
+
+/** A direction that stands still — what the catalogue kept pulling the director toward. */
+const STANDS_STILL = /\b(?:stands? still|standing still|remains? (?:still|standing|in place)|stays? (?:still|planted|put|in place|rooted)|planted|rooted|motionless|stationary|locked[- ]off|locks? there|tripod|on sticks|holds? (?:absolutely )?still|does not move|doesn't move|without moving|no movement|barely perceptible|frozen|freezes)\b/i;
+
+/**
+ * A usable direction for one clip: the model's where it is usable, the plan's where it is not.
+ * Field by field, so one bad beat does not throw away a good camera sentence.
+ *
+ * "Usable" now means MOVING. A path that does not travel, a camera that locks off, or beats that
+ * stand still are replaced by the plan's — whatever a character's catalogue entry said.
+ */
+export function resolveDirection(plan: ClipMotionPlan, direction?: Partial<VeoDirection> | null, cast = "The cast", plural = false): VeoDirection {
+  const planPath = walkPath(plan, cast, plural);
+  const modelPath = unterminated(withoutQuotedSpeech(clean(direction?.path, 400)));
+  const path = modelPath && TRAVELS.test(modelPath) && !STANDS_STILL.test(modelPath) ? modelPath : planPath;
+
+  const modelCamera = unterminated(clean(direction?.camera));
+  const camera = modelCamera && !STANDS_STILL.test(modelCamera) ? modelCamera : unterminated(plan.camera.action);
+
   const modelBeats = Array.isArray(direction?.beats)
-    ? direction!.beats.map((b) => unterminated(unlabelled(clean(b, 300)))).filter(Boolean)
+    ? direction!.beats.map((b) => unterminated(withoutQuotedSpeech(unlabelled(clean(b, 300))))).filter(Boolean)
     : [];
-  const beats = modelBeats.length === 3 ? modelBeats : [...plan.fallbackBeats];
+  const beatsMove = modelBeats.length === 3
+    && !modelBeats.some((b) => STANDS_STILL.test(b))
+    && modelBeats.some((b) => TRAVELS.test(b));
+  const beats = beatsMove ? modelBeats : [...plan.fallbackBeats];
+
   const sceneLife = unterminated(clean(direction?.sceneLife, 300))
     || "subtle, natural life in the real premises — soft light shifts and gentle background movement true to this place";
-  return { camera, beats, sceneLife };
+  return { path, camera, beats, sceneLife };
 }
+
+const capitalised = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 /**
  * The finished Veo 3 prompt for one clip.
  *
- * Assembled in code rather than written by the model, so the parts that must never drift — the exact
- * spoken line, the continuous shot, the identity lock, the negatives — are guaranteed, and the model's
- * contribution is limited to the direction it is actually good at.
+ * Assembled in code rather than written by the model, so the parts that must never drift — the walk,
+ * the exact spoken line, the continuous shot, the identity lock, the negatives — are guaranteed, and
+ * the model's contribution is limited to the direction it is actually good at. The walk comes first:
+ * Veo weighs the start of a prompt most, and the start used to be the rules, not the action.
  */
 export function assembleVeoPrompt(input: VeoPromptInput): string {
   const { aspectRatio, plan, identityLock, language, speech, performanceNotes, cast, castPlural, twoHander } = input;
-  const d = resolveDirection(plan, input.direction);
+  const who = cast || "The cast";
+  const plural = !!castPlural;
+  const d = resolveDirection(plan, input.direction, who, plural);
   const orientation = aspectRatio === "16:9" ? "horizontal" : "vertical";
+  const manner = input.walkManner || WALK_MANNER[plan.performer];
+  const gestures = input.handGestures || HAND_GESTURES[plan.performer];
 
   const speechLines = speech.map((s) => {
-    const who = s.speaker ? `${s.speaker}, ` : "";
+    const speaker = s.speaker ? `${s.speaker}, ` : "";
     const at = s.at ? `${s.at} — ` : "";
-    return `${at}${who}${s.voice}, speaking ${language}, perfectly lip-synced:\n"${s.line}"`;
+    return `${at}${speaker}${s.voice}, speaking ${language}, perfectly lip-synced:\n"${s.line}"`;
   }).join("\n\n");
 
   return `${aspectRatio} ${orientation} video, one continuous 8-second shot. Animate the attached frame, keeping ${identityLock} exactly as they are.
 
-CAMERA — ${plan.camera.name}: ${d.camera}. Smooth, motivated and cinematic, like a premium commercial reel. No cuts.
-
-${movementRules(cast, castPlural, twoHander)}
-
-PERFORMANCE (the actions, timed to the words):
+ACTION — WALK, SHOW AND PRESENT (${plan.walk.name}):
+${capitalised(d.path)}.
 • ${BEAT_TIMES[0]}: ${d.beats[0]}
 • ${BEAT_TIMES[1]}: ${d.beats[1]}
 • ${BEAT_TIMES[2]}: ${d.beats[2]}
 Eye contact with the lens on the key phrases, with brief natural glances toward what is being shown. Natural blinks and breathing, hands anatomically natural.${performanceNotes ? `\n${performanceNotes}` : ""}
+
+CAMERA — ${plan.camera.name}: ${d.camera}. The camera moves with the walk from the first second to the last — a clearly visible, smooth, cinematic move like a premium commercial reel. No cuts.
+
+${movementRules(who, plural, twoHander, manner, gestures)}
 
 SPEECH:
 ${speechLines}
@@ -374,6 +703,7 @@ Negative prompt:
 No text on screen, no subtitles, no watermark
 No background music, pure studio voice-over, crystal clear voice, no echo
 No static or locked-off camera, no frozen pose, no cuts or scene change
+No standing in one spot for the whole clip, no feet planted in place, no presenter frozen in position while explaining
 No standing still like a statue, no stiff or mannequin body, no hands hanging lifeless, no talking head where only the mouth moves
 No change to the face, hair, outfit, logo or location from the attached frame
 No extra people speaking, no new voices`;
@@ -389,41 +719,49 @@ export const VEO_DIRECTION_SYSTEM_PROMPT = (options: {
   aspectRatio: "9:16" | "16:9";
   /** "the model" or the cast, e.g. "Motu and Patlu". */
   subject: string;
-  /** A character's own performance and camera direction, when there is one. */
+  /** A character's own performance direction, when there is one — already stripped of stillness. */
   characterDirection?: string;
+  /** A deity walks slowly and blesses rather than presenting. */
+  performer?: Performer;
 }) => `You are a world-class commercial director and the cinematographer behind India's best-performing ad reels. You direct image-to-video: each clip is an 8-second Veo 3 video animated from ONE attached still frame.
 
-YOUR TASK: for each of the ${options.clipCount} clips, write the direction that turns its still frame into a dynamic, premium shot — a moving camera and a living performance — without breaking what the frame already fixed.
+YOUR TASK: for each of the ${options.clipCount} clips, write the direction that turns its still frame into a purely dynamic shot — ${options.subject} WALKING through the business while talking, showing and presenting it, with a camera that moves with the walk — without breaking what the frame already fixed.
+
+THE STANDARD: a real walk-and-talk commercial reel. A presenter standing in one position and explaining is a failed clip, however good the hands are.
 
 FOR EACH CLIP YOU RECEIVE:
-• FRAME — the prompt the still was generated from: where ${options.subject} stands, the real zone, the objects in view, the framing.
+• FRAME — the prompt the still was generated from: where ${options.subject} is, the real zone, the objects in view, the framing.
 • LINE — exactly what is spoken in this clip.
-• PLANNED MOVE — the camera move decided for this clip. Use it; make it specific to this frame.
-• GESTURE INTENT — what the performance must achieve, and on which words.
+• PLANNED WALK — the path through this clip. Use it; make it specific to this frame.
+• PLANNED MOVE — the camera move that travels with the walk. Use it; make it specific to this frame.
+• GESTURE INTENT — what the hands and body must achieve, and on which words.
 
 WRITE, PER CLIP:
-1. camera — ONE sentence: the planned move made specific to THIS frame. Say the starting framing, the ending framing, the pace, and what the move reveals or tightens on — named from real objects in the FRAME. The move must be motivated by the line (move closer on the promise, reveal the zone as it is named).
-2. beats — exactly THREE short actions timed 0–2s, 2–5s and 5–8s. EVERY beat must contain BOTH a body movement (a lean, a weight shift, a shoulder turn, a small step, a head movement) AND a hand gesture or hand action — never a beat where the subject only stands or only talks. Place each gesture on the words it belongs to: work out roughly which part of the LINE falls in each window and act on it. Gestures point at, present or touch REAL objects named in the FRAME. Include expression and eye-line in each beat.
-3. sceneLife — one short phrase of subtle, real VISUAL movement in that location: steam, a ceiling fan, a customer walking past in the background, light shifting through a window. Movement only — never a sound, because the audio is the voice alone. Nothing that speaks, nothing with text, nothing that is not plausible in that frame.
+1. path — ONE sentence: the planned walk made specific to THIS frame. From where to where, past which real things, and what is shown on arrival — every place and object named from the FRAME. At least three steps, starting in the first second from exactly where the frame has them.
+2. camera — ONE sentence: the planned move made specific to THIS frame and tied to the walk — the starting framing, the direction and distance it travels with them, the ending framing, and what it reveals. A clearly visible move, never a barely perceptible drift.
+3. beats — exactly THREE short actions timed 0–2s, 2–5s and 5–8s. EVERY beat has the body travelling or turning (walking, stepping, turning toward what is shown or back to the lens) AND a hand action — showing, presenting, pointing to, picking up, holding up or touching a REAL object named in the FRAME, beckoning, an open palm on a promise. Place each gesture on the words it belongs to: work out roughly which part of the LINE falls in each window, and name that moment in plain English ("on the business name", "on the free delivery", "as the line ends") — NEVER quote the spoken words in path or beats. The line is spoken once, from its own block; a quoted copy inside an action gets said twice or written on screen. Include expression and eye-line.
+4. sceneLife — one short phrase of subtle, real VISUAL movement in that location: steam, a ceiling fan, a customer walking past in the background, light shifting through a window. Movement only — never a sound, because the audio is the voice alone. Nothing that speaks, nothing with text, nothing that is not plausible in that frame.
 
 RULES:
+• WALK IN EVERY CLIP — NEVER LIKE A STATUE. ${options.subject} never stays in one position for the whole clip: never planted, never a talking head. Talking while walking is the look.
+• SHOW THE BUSINESS. The walk passes, reaches and presents the real things the line is about — the products, the counter, the work, the premises.
 • One continuous shot. Never a cut, a zoom-crash, a whip pan or a scene change.
 • Never describe the face, hair, skin, outfit or jewellery — they are locked by the attached frame.
 • Never invent objects, signage or people that are not plausible in the FRAME.
 • The logo must stay visible and unchanged; never move the camera so the logo leaves the frame for good.
-• NEVER LIKE A STATUE. The cast performs actions for the whole 8 seconds: the body is always in motion with the words, with appropriate hand gestures and open body language. A subject who stands planted and only moves the mouth is a failed direction.
 • Movement is premium and controlled — confident and natural, never shaky, never exaggerated or theatrical.
-• Clip 1 opens composed but alive, never statue-still: a slight lean and weight shift, and the welcoming gesture lands on the business name.
+• Clip 1 walks in: from the pose in the frame, ${options.subject} walks toward the camera, and the welcoming gesture lands on the business name.
 • Hands stay anatomically natural; each gesture is one clear movement that flows into the next — hands never hang lifeless.
-• Frame for ${options.aspectRatio}.${options.characterDirection ? `
+• Frame for ${options.aspectRatio}.${options.performer === "deity" ? `
+• A deity walks slowly and majestically, and every gesture is a blessing — never touching, holding, pointing at or presenting products, money or a phone.` : ""}${options.characterDirection ? `
 
 ${options.characterDirection}
 
-Use that direction for how the characters move, react and look. The speaking character performs the line; the other listens and reacts in their own way.` : ""}
+Use that direction for HOW the characters move — their manner, pace, gestures, expressions and look. It never makes them stand still or the camera hold still: the planned walk and camera move always win. The speaking character performs the line; the other listens and reacts in their own way while walking along.` : ""}
 
 Return ONLY a JSON array, one object per clip, in clip order, no markdown:
 [
-  { "clip": 1, "camera": "", "beats": ["", "", ""], "sceneLife": "" }
+  { "clip": 1, "path": "", "camera": "", "beats": ["", "", ""], "sceneLife": "" }
 ]`;
 
 /** Reads the director call's reply into one direction per clip, by clip number. Unusable → empty. */
@@ -437,11 +775,11 @@ export function parseVeoDirections(raw: string, clipCount: number): (Partial<Veo
     rows.forEach((row: any, position: number) => {
       const index = Number.isInteger(row?.clip) ? row.clip - 1 : position;
       if (index >= 0 && index < clipCount && row && typeof row === "object") {
-        out[index] = { camera: row.camera, beats: row.beats, sceneLife: row.sceneLife };
+        out[index] = { path: row.path, camera: row.camera, beats: row.beats, sceneLife: row.sceneLife };
       }
     });
   } catch {
-    // Unusable reply: every clip falls back to its plan, which is still a moving, directed shot.
+    // Unusable reply: every clip falls back to its plan, which is still a walking, moving shot.
   }
   return out;
 }

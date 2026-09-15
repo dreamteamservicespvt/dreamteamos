@@ -1,7 +1,8 @@
 import { AdType } from '@/types/aiPlatform';
 import { MAX_WORDS_PER_CLIP, MIN_WORDS_PER_CLIP } from '@/utils/dialogueFormat';
 import { coreMessageBlock, type CoreMessageBrief } from './prompts/coreMessage';
-import { VEO_DIRECTION_SYSTEM_PROMPT, framingForMotion, type ClipMotionPlan } from './prompts/motion';
+import { everydaySpeechRules } from './prompts/everydaySpeech';
+import { VEO_DIRECTION_SYSTEM_PROMPT, compositionFor, framingForMotion, type ClipMotionPlan } from './prompts/motion';
 
 /** The spoken-word band every clip is held to, as prompts say it. See utils/dialogueFormat. */
 const WORD_BAND = `${MIN_WORDS_PER_CLIP} to ${MAX_WORDS_PER_CLIP}`;
@@ -1904,15 +1905,17 @@ Each chosen spot must match the exact service claim, business proof point, or em
 • **Electrical/Hardware:** Service counter → Equipment display → Tool showcase area → Workstation/demo zone → Branded reception feature wall
 • **Default:** Reception → Product/service showcase → Logo/brand wall → Work area → Entrance/closing zone`}
 
-${motionPlan?.length ? `===== FRAMES BUILT FOR MOTION (EVERY FRAME BECOMES A MOVING VIDEO) =====
+${motionPlan?.length ? `===== FRAMES BUILT FOR MOTION (EVERY FRAME BECOMES A WALKING, MOVING VIDEO) =====
 
-Each frame below is the FIRST frame of an 8-second video that will be animated with a real camera move and a live performance. A frame composed like a flat passport photo gives a flat, static video. Compose every frame so it can move:
+Each frame below is the FIRST moment of an 8-second video in which the ambassador WALKS through the business while talking — showing and presenting it — with a camera that moves with the walk. A frame composed like a passport photo — centred, planted, holding a pose — gives a static video of someone standing and explaining. Compose every frame as the start of its walk:
 
-• DEPTH: real objects at two or three distances — a foreground edge (a counter corner, shelf end, plant or display) near the lens, the subject in the middle ground, the premises behind — so a moving camera shows parallax.
-• ROOM FOR THE MOVE: follow each clip's 🎬 CAMERA MOVE note exactly — lead room for a track, headroom for a rise, breathing room for a push-in, a readable slice of the premises around the subject for a pull-back.
-• READY TO PERFORM: the subject stands naturally, weight settled, hands relaxed and ready to gesture — never stiff, frozen or mannequin-posed. Clip 1 keeps its composed front stance; composed is not frozen.
-• REAL THINGS WITHIN REACH: the product, counter or equipment the clip talks about sits close enough for a natural open-hand gesture toward it.
+• THE FIRST MOMENT OF A WALK: follow each clip's 🎬 WALK note exactly — the body caught mid-step or with the weight moving onto the front foot, turned toward where the walk goes, hands relaxed and natural — like a candid frame taken from a walking shot.
+• A PATH: open floor in the direction of the walk, with nothing blocking it.
+• THREE-QUARTER BODY (head to knees) so the walk reads — with the face still large, clear and evenly lit.
+• DEPTH: real objects at two or three distances — a foreground edge (a counter corner, shelf end, plant or display) near the lens, the subject in the middle ground, the premises behind — so the moving camera shows parallax.
+• THE THING TO SHOW within a few steps: the product, counter or equipment the clip talks about, close enough to walk to and present.
 • SHARP, EVEN LIGHT on the subject and the logo, so motion never drops them into shadow.
+• Clip 1 keeps its hero framing and pose, with an open path of floor toward the camera: the video starts the walk from it.
 
 ` : ''}===== FRAME-BY-FRAME GENERATION RULES =====
 
@@ -1933,8 +1936,25 @@ ${Array.from({ length: segmentCount }, (_, i) => {
     ? `the space in the client's photograph assigned to Clip 1 (${photoFor(0)})`
     : `the real [BUSINESS TYPE] reception background built from the business details and 100% relatable to this exact business (its real equipment, products, displays, and service cues so a viewer instantly recognises what it does)`;
 
-  /** This clip's planned move, as a composition note. Empty when no plan was supplied. */
-  const motionNote = motionPlan?.[i] ? `\n   ${framingForMotion(motionPlan[i])}` : '';
+  /**
+   * This clip's walk, as a composition note. Empty when no plan was supplied.
+   *
+   * Clip 1 keeps the hero pose: every later frame takes its face from clip 1's image, and a clean,
+   * front-on standing frame is the best identity anchor there is. Its video starts the walk from that
+   * pose, so its note asks only for the open path. Every later clip is caught mid-walk — the walk
+   * decides its pose, and its shot widens to three-quarter body so the walk reads.
+   */
+  const plan = motionPlan?.[i];
+  const motionNote = plan
+    ? `\n   ${clipNum === 1
+      ? `🎬 THIS FRAME STARTS A WALK — ${plan.walk.name}, filmed with a ${plan.camera.name}. Keep the hero framing and pose exactly; compose ${plan.camera.framing}.`
+      : framingForMotion(plan)}`
+    : '';
+  const walking = !!plan && clipNum > 1;
+  const clipCamera = walking
+    ? `Three-quarter shot (head to knees) at eye level, the ${p.personYoung} dominant at roughly 60–70% of the frame height — ${plan!.camera.framing}`
+    : camera;
+  const clipPose = walking ? `${plan!.walk.start} — ${shot.pose}` : shot.pose;
 
   if (clipNum === 1) {
     return `**CLIP ${clipNum} — ${shot.name} (Full standalone prompt)**
@@ -1945,8 +1965,8 @@ ${Array.from({ length: segmentCount }, (_, i) => {
     🪧 LOGO SURFACE: ${logoSurface}${motionNote}
    
    ${adType !== AdType.FESTIVAL ? `Generate a COMPLETE standalone first-frame image prompt EXACTLY in the base format above (the headers: Create an ultra-realistic promotional portrait…, Main Character, Pose, Background, Visual Style, Composition, Important).
-   Keep it clean and concise — about 200–300 words, simple bullet lines, no extra sections, no negative list.${motionPlan?.[i] ? `
-   In the Composition section, write the composition for this clip's camera move in plain words: ${motionPlan[i].camera.framing}.` : ''}
+   Keep it clean and concise — about 200–300 words, simple bullet lines, no extra sections, no negative list.${plan ? `
+   In the Composition section, write in plain words the open path for the walk this frame starts: ${plan.camera.framing}.` : ''}
    Describe the ${p.personYoung} (with ${p.isMale ? 'minimal masculine accessories only — ' + p.jewellery : 'elegant jewellery — ' + (attireType === 'traditional' ? 'necklace/chain, earrings, bangles, finger ring, and a small bindi on the forehead' : 'finger ring, necklace/chain, earrings, watch, and NO bindi on the forehead')}), the formal front-clasp pose, ${heroBackdrop}, and ${brand.ref} fully visible on ${realLocation ? 'a real surface in that photograph' : 'the reception wall'}.
    ${realLocation ? `The pose and mood must directly match Clip ${clipNum}'s voice-over line — the place is the photograph, reproduced exactly as it is` : `The reception, visible business cues, pose, and mood must directly match Clip ${clipNum}'s voice-over line`}, and ${brand.ref} must feel physically installed on ${logoSurface} — pixel-perfect and unchanged, mounted in the upper background, fully readable and fully visible in one piece, with nothing blocking, cropping, or altering it.
    ${brand.isNameBoard ? brand.ref.charAt(0).toUpperCase() + brand.ref.slice(1) : 'The attached logo'} must be the ONLY text in the image — do NOT invent any other logo, signage, banners, taglines, mission lines, service lists, dates, or academic years, and do NOT add empty/blank boards, frames, certificates, brochures, posters, standees, or blank screens (empty placeholders look like cardboard) — keep walls and surfaces clean. Keep it perfectly sharp and in focus (not blurred by depth of field) so all its text is clearly readable.
@@ -1955,16 +1975,16 @@ ${Array.from({ length: segmentCount }, (_, i) => {
    This is the ONLY clip where you fully describe the model's physical appearance.
   ${realLocation ? `The pose energy and emotional tone must directly match Clip ${clipNum}'s voice-over line; the location is the photograph, reproduced as it is, with any festival cues layered onto it rather than replacing it.` : `The chosen location, visible business cues, pose energy, and emotional tone must directly match Clip ${clipNum}'s voice-over line.`}
     The logo must feel physically installed on ${logoSurface}, with believable depth, reflections, and material behavior.
-  Include ALL sections: SUBJECT, FACE, MAKEUP, EXPRESSION, HAIR, ATTIRE, JEWELLERY, ENVIRONMENT, LOGO PLACEMENT, CAMERA, OVERALL RESULT.${motionPlan?.[i] ? `
-  In CAMERA, write the composition for this clip's camera move in plain words: ${motionPlan[i].camera.framing}.` : ''}
+  Include ALL sections: SUBJECT, FACE, MAKEUP, EXPRESSION, HAIR, ATTIRE, JEWELLERY, ENVIRONMENT, LOGO PLACEMENT, CAMERA, OVERALL RESULT.${plan ? `
+  In CAMERA, write in plain words the open path for the walk this frame starts: ${plan.camera.framing}.` : ''}
    The subject must occupy roughly 70% of the frame, maintain direct eye contact with the camera, and ${brand.ref} must appear fully visible in the upper background without any alteration.
    Target length: 500-800 words.`}`;
   }
   
   return `**CLIP ${clipNum} — ${shot.name} (⚠️ DO NOT RE-DESCRIBE THE MODEL)**
    📍 LOCATION: ${location}
-   🎥 CAMERA: ${camera}
-   🧍 POSE: ${shot.pose}
+   🎥 CAMERA: ${clipCamera}
+   🧍 POSE: ${clipPose}
    🎯 PURPOSE: ${shot.purpose}
     🪧 LOGO SURFACE: ${logoSurface}${motionNote}
    
@@ -1993,15 +2013,15 @@ ${Array.from({ length: segmentCount }, (_, i) => {
    • 😊 The new EXPRESSION — emotional tone matching Clip ${clipNum}'s voice-over script
    • 🎥 The new CAMERA ANGLE and composition
   • 💡 How lighting naturally differs at this new spot (e.g., near window = warm, interior = ambient) while still preserving the realism formula
-  • 👁️ Mandatory direct eye contact to the camera while holding this new pose
-  • 🪧 ${brand.isNameBoard ? 'The business name board' : 'The attached logo'} placed on this clip's believable physical surface — ${logoSurface} — small-to-medium, sharp and clearly readable, fully visible, physically installed, and completely unmodified${brand.isNameBoard && brand.name ? ` (it must read exactly "${brand.name}")` : ''}${motionPlan?.[i] ? `
-  • 🎬 COMPOSITION FOR THE MOVE (write it into the prompt in plain words — this still becomes a moving video): ${motionPlan[i].camera.framing}` : ''}
+  • 👁️ ${walking ? 'Eyes to the camera — or glancing back to it over the shoulder — caught in natural motion, like a candid frame from a walking shot' : 'Mandatory direct eye contact to the camera while holding this new pose'}
+  • 🪧 ${brand.isNameBoard ? 'The business name board' : 'The attached logo'} placed on this clip's believable physical surface — ${logoSurface} — small-to-medium, sharp and clearly readable, fully visible, physically installed, and completely unmodified${brand.isNameBoard && brand.name ? ` (it must read exactly "${brand.name}")` : ''}${plan ? `
+  • 🎬 THE FIRST MOMENT OF THE WALK (write it into the prompt in plain words — this still becomes a walking, moving video): ${compositionFor(plan)}` : ''}
 
    WHY THIS MATTERS: Any model description — even saying "beautiful ${p.person}" or "silk saree" — will cause the AI image generator to create a COMPLETELY DIFFERENT person. The model's identity is LOCKED from Clip 1. You ONLY control the scene around ${p.object}.
    
    **OUTPUT LENGTH FOR THIS CLIP: 100-200 words MAXIMUM.**
   **DO NOT include these section headers: SUBJECT, FACE, MAKEUP, EXPRESSION, HAIR, ATTIRE, JEWELLERY, PRODUCT IMAGES PLACEMENT, OVERALL RESULT.**
-   **ONLY include: one model reference line + POSE + NEW LOCATION/ENVIRONMENT + CAMERA/LIGHTING + MOOD${motionPlan?.[i] ? ' + COMPOSITION FOR THE MOVE' : ''}.**`;
+   **ONLY include: one model reference line + POSE + NEW LOCATION/ENVIRONMENT + CAMERA/LIGHTING + MOOD${plan ? ' + THE FIRST MOMENT OF THE WALK' : ''}.**`;
 }).join('\n\n')}
 
 ===== VISUAL VARIATION RULES — THE DIRECTOR'S CHECKLIST =====
@@ -2320,7 +2340,7 @@ Create a natural, persuasive script that sounds like a REAL premium TV / Meta co
 
 ===== TARGET AUDIENCE =====
 
-Real customers of this business — including business owners, shop owners, retail stores, service providers, and small & medium businesses${isTelugu ? ' in Andhra Pradesh & Telangana' : ''}. Speak directly to them, in the words they actually use every day.
+Real customers of this business — the ordinary people of the town${isTelugu ? ' in Andhra Pradesh & Telangana' : ''}: families, shop owners, workers, students and elders alike. Speak directly to them, in the words they actually use every day, so every one of them understands every word on the first listen.
 
 ===== TONE =====
 
@@ -2351,8 +2371,10 @@ ${isLatin ? `1. Spoken content must be clean, natural, conversational English.
 3. Use English-origin words only when ${lang} speakers genuinely say them in everyday premium ad speech, and write them only in ${lang} script.
 4. Do NOT force awkward hybrid lines. If a natural ${lang} phrase is stronger, use it.
 5. Do NOT use archaic, bookish, devotional, or government-style ${lang}.
-6. Write how a polished ${lang} commercial voice artist would actually speak today.
-7. SIMPLE-WORD / PROFESSIONAL TRANSLITERATION RULE (IMPORTANT — APPLIES TO EVERY LANGUAGE): For a modern, professional ad tone, prefer commonly-spoken SIMPLE English business/professional words written in ${lang} script instead of heavy, complex, literary, or purist ${lang} translations that ordinary listeners find hard. For example, in Telugu use "ఫ్రీ బ్రేక్‌ఫాస్ట్" not "ఉచిత అల్పాహారం"; "న్యూ బిల్డింగ్" not "నూతన భవనం"; "బ్రైట్ ఫ్యూచర్" not "బంగారు భవిత"; "ఇండస్ట్రీ ట్రైనింగ్" not "పరిశ్రమలో ప్రత్యక్ష శిక్షణ". Apply the SAME principle to ${lang}: whenever the pure/complex ${lang} word is hard, swap in the simple everyday English word written in ${lang} script, exactly as urban ${lang} ads actually speak.`}
+6. Write how people in the town actually talk to each other today. A warm voice artist delivers it, but every word is the town's own everyday word.
+7. SIMPLE-WORD / PROFESSIONAL TRANSLITERATION RULE (IMPORTANT — APPLIES TO EVERY LANGUAGE): use the word ordinary people actually say — the everyday ${lang} word, or the English word everyone in town already uses, written in ${lang} script — never the heavy, literary, or purist translation. For example, in Telugu use "ఫ్రీ టిఫిన్" not "ఉచిత అల్పాహారం"; "కొత్త బిల్డింగ్" not "నూతన భవనం"; "మంచి ఫ్యూచర్" not "ఉజ్వల భవిష్యత్తు"; "ఫేమస్" not "ప్రసిద్ధి". But never swap a simple everyday ${lang} word for English, and never use English that only city people say. Apply the SAME principle to ${lang}.`}
+
+${everydaySpeechRules(lang)}
 
 ===== CONTENT TRUTH RULES =====
 
@@ -2523,7 +2545,7 @@ export const SCRIPT_TO_VOICEOVER_SYSTEM_PROMPT = (
 You are NOT inventing an ad from a brief. The user has pasted RAW TEXT (rough notes, a WhatsApp message, a plain description, or an amateur script). Your job is to TRANSFORM that raw text into the professional ${duration}-second commercial voice-over script defined above.
 
 1. FACTS COME ONLY FROM THE PASTED TEXT. Use only the business name, services, products, offers, prices, locations, and claims that actually appear in it. Never invent a single detail that is not there.
-2. REWRITE, DO NOT TRANSCRIBE. The pasted text is source material, not the final script. Restructure it completely into the commercial arc (core message → proof → CTA) using premium ad language. Never copy a clumsy sentence through unchanged.
+2. REWRITE, DO NOT TRANSCRIBE. The pasted text is source material, not the final script. Restructure it completely into the commercial arc (core message → proof → CTA) in the everyday spoken language defined above. Never copy a clumsy sentence through unchanged.
 3. LANGUAGE: write the spoken lines in ${lang}, following every language rule above, regardless of what language the pasted text is in. Translate the MEANING; never produce a literal, translated-sounding line.
 4. COVERAGE: every important selling point from the pasted text must survive somewhere across the ${segmentCount} clips. Drop only true filler, greetings, emojis, hashtags, and repetition.
 5. COMPRESSION / EXPANSION: if the pasted text is longer than ${segmentCount} clips can hold, keep the strongest selling points and cut the weakest. If it is shorter, expand it with benefit-led phrasing built strictly from the facts that ARE present — never with invented claims.
@@ -2561,10 +2583,10 @@ export const VOICEOVER_REPAIR_SYSTEM_PROMPT = (
       ? `The FINAL clip must END with a natural English line meaning "For more details, call the number shown on screen now" (short, warm, premium).`
       : `The FINAL clip must END with a natural, native ${lang} sentence meaning "For more details, call the number shown on screen now," written in correct, pixel-perfect ${lang} script.`;
   const transliterationRule = isTelugu
-    ? `PROFESSIONAL TRANSLITERATION: prefer commonly-spoken English business words written in Telugu script over heavy/pure-Telugu translations (e.g., "ఫ్రీ బ్రేక్‌ఫాస్ట్" not "ఉచిత అల్పాహారం"; "న్యూ బిల్డింగ్" not "నూతన భవనం"; "బ్రైట్ ఫ్యూచర్" not "బంగారు భవిత").`
+    ? `EVERYDAY WORDS: use the word ordinary people actually say — everyday Telugu, or the English word everyone in town already uses, in Telugu script — never the heavy/pure-Telugu translation (e.g., "ఫ్రీ టిఫిన్" not "ఉచిత అల్పాహారం"; "కొత్త బిల్డింగ్" not "నూతన భవనం"; "ఫేమస్" not "ప్రసిద్ధి"). When a validation issue names a hard word, swap it for the everyday word it gives.`
     : isLatin
-      ? `Prefer clean, modern, natural English business phrasing over stiff or corporate-jargon wording.`
-      : `PROFESSIONAL TRANSLITERATION: prefer commonly-spoken English business words written in ${lang} script over heavy/pure/literary ${lang} translations, exactly as urban ${lang} ads actually speak.`;
+      ? `Prefer plain, everyday English phrasing over stiff or corporate-jargon wording.`
+      : `EVERYDAY WORDS: use the word ordinary people actually say — everyday ${lang}, or the English word everyone in town already uses, in ${lang} script — never the heavy/pure/literary ${lang} translation.`;
 
   return `You are a ruthless ${lang} commercial script doctor.
 
@@ -2597,10 +2619,12 @@ ${clipLines}
 10. Every clip must contain between ${WORD_BAND} spoken words. Fix a count by tightening or completing the thought, never by padding or cutting a sentence in half.
 11. Remove duplicated clips and repeated closings.
 12. For festival ads, clip 1 must stay only as festival wishes, and all later clips must switch to pure business promotion.
-13. Every clip must be a complete, natural, premium-sounding spoken sentence — never old, literary, textbook, or literally-translated-sounding ${lang}.
+13. Every clip must be a complete, natural spoken sentence in everyday ${lang} — never old, literary, textbook, or literally-translated-sounding ${lang}.
 14. Every clip must sound speakable in roughly 7 to 8 seconds.
 15. Clip ${messageClip} must still carry the core message after the repair: the business name, what it does, and its core promise. Never repair a word count by removing any of those three.
 ${brief ? `\n${coreMessageBlock(brief, messageClip)}\n` : ''}
+${everydaySpeechRules(lang)}
+
 
 ===== QUALITY TARGET =====
 
@@ -2678,7 +2702,7 @@ You will be given a CANDIDATE SCRIPT (already split into numbered clip lines, al
 ===== FAILURE PATTERNS THIS REVIEW EXISTS TO CATCH =====
 
 1. LITERAL TRANSLATION ARTIFACTS — sentences that read as if translated word-for-word from English rather than composed natively in ${lang}. ${isTelugu ? 'Telugu has its own natural word order, idioms, and persuasive sentence patterns — an English ad translated literally into Telugu sounds foreign and stiff, even when every word is technically correct Telugu.' : `${lang} has its own natural word order and idiom — a script that merely reads like translated English sounds foreign and stiff even when grammatically valid.`}
-2. OLD / LITERARY / TEXTBOOK LANGUAGE — ${isTelugu ? 'grandhika (literary) Telugu, Sanskrit-heavy vocabulary, government-notice or textbook phrasing, devotional or overly formal register' : 'archaic, literary, or textbook-formal vocabulary'} — anything that does not match how real people actually speak in casual, modern commercial conversation today.
+2. OLD / LITERARY / TEXTBOOK LANGUAGE — ${isTelugu ? 'grandhika (literary) Telugu, Sanskrit-heavy vocabulary, written verb endings like "చేస్తాము", the passive, government-notice or textbook phrasing, devotional or overly formal register' : 'archaic, literary, or textbook-formal vocabulary'} — anything that does not match how real people actually speak in casual, modern commercial conversation today. A word can be perfectly correct ${lang} and still fail: if an ordinary listener in the town would pause on it, it is the wrong word.
 3. UNNATURAL SENTENCE FORMATION — broken grammar, awkward word order, or hybrid phrases a native speaker would never actually say out loud.
 4. UNNATURAL FLOW — clips that don't connect into one smooth spoken thought, jarring jumps between ideas, or a rhythm that would trip up a voice artist reading it aloud.
 5. INCONSISTENT TONE — energy, formality, or emotional register that shifts oddly between clips instead of staying one coherent voice throughout the whole script.
@@ -2687,9 +2711,13 @@ You will be given a CANDIDATE SCRIPT (already split into numbered clip lines, al
 8. A MESSAGE CLIP THAT DOES NOT LAND — clip ${messageClip} is a teaser, a bare question, a greeting or a slogan, and a stranger who hears only it cannot say who the business is, what it does, and why to choose it.
 9. WASTED WORDS — filler, empty adjectives with no fact behind them, or a line that carries no concrete fact the listener can remember or act on.
 ${brief ? `\n${coreMessageBlock(brief, messageClip)}\n` : ''}
+${everydaySpeechRules(lang)}
+
 ===== YOUR PROCESS (internal reasoning — do not include it in the output) =====
 
 For each clip, silently read it exactly as a voice artist would say it aloud, and ask: "Would a real ${isTelugu ? 'Telugu' : lang}-speaking customer ever hear a real ad talk like this?" If the honest answer is no, it fails and you must rewrite it — natively, not by patching individual words.
+
+Then run the FIRST-LISTEN TEST on every single word. Replace every word from the NEVER list and every other word an ordinary listener in the town would pause on with the word they actually say — keeping the clip inside its word count.
 
 Then run the CLIP ${messageClip} TEST: imagine a stranger hears ONLY clip ${messageClip}, once. Write down, in English, who the business is, what it does, and why to choose it — using only what that clip actually says. If any of the three is missing or vague, clip ${messageClip} fails and must be rewritten until all three are unmistakable.
 
