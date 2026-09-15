@@ -18,7 +18,7 @@ import { AUTO_POSTER_STYLE } from '@/services/posterStyles';
 import { useAssignmentBrief } from '@/hooks/useAssignmentBrief';
 import { briefAsInstructions } from '@/utils/adRequirement';
 import { characterPackGroups, getCharacterPack, isHumanPack, packModelGender } from '@/services/characterPacks';
-import { generateAdAssets, generatePosterConcepts, refinePosterConcept, DEFAULT_POSTER_CONCEPT_COUNT, generateStockImagePrompts, refineStockImagePrompt, generateOverlayTexts, refineSection, regenerateVeoFromVoiceOver, SectionType, extractBusinessNameFromInfo } from '@/services/geminiService';
+import { generateAdAssets, generatePosterConcepts, refinePosterConcept, DEFAULT_POSTER_CONCEPT_COUNT, generateStockImagePrompts, refineStockImagePrompt, generateOverlayTexts, refineSection, refineVoiceOver, refineVeoPrompts, regenerateVeoForClips, SectionType, extractBusinessNameFromInfo } from '@/services/geminiService';
 import { collection, addDoc, getDocs, getDoc, query, where, serverTimestamp, doc, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/services/firebase';
 import { useAuthStore } from '@/store/authStore';
@@ -37,6 +37,7 @@ import { measureRun, saveRunTiming, type Checkpoint, type RunProfile } from '@/u
 import { hasGeneratedAsset, type GenerationRun, type RunFacts } from './generation/run';
 import { MissionWorkspace, RunCountdown, missionMotion } from './generation/MissionWorkspace';
 import { AIGuideSheet } from './generation/AIGuideSheet';
+import { RefineRevisionBanner, type VoiceOverRevision } from './RefineRevisionBanner';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 // DTS brand system (violet → blue → cyan, from "JUST DREAM BIG, WE BUILD IT").
 import { BRAND_GRADIENT, BRAND_GRADIENT_HOVER, BRAND_TEXT } from './brand';
@@ -138,6 +139,10 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   const showMission = status.isProcessing && !!activeRun && !firstAssetIn;
   const showAssets = firstAssetIn;
   const [refiningSection, setRefiningSection] = useState<SectionType | null>(null);
+  /** The single clip being refined, when a refine was started from a clip's own button. */
+  const [refiningClip, setRefiningClip] = useState<number | null>(null);
+  /** What the last voice-over refine changed, with what Undo restores. */
+  const [voiceOverRevision, setVoiceOverRevision] = useState<VoiceOverRevision | null>(null);
   const [collapsedSections, setCollapsedSections] = useState({
     storeOffice: true, productImages: true, flyersPosters: true, voiceInstructions: true
   });
@@ -454,6 +459,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     stockImagePrompts: o.stockImagePrompts,
     overlayTexts: o.overlayTexts || null,
     posterConcepts: o.posterConcepts || null,
+    // Saved with the script so a refine on a reopened generation holds to the same message.
+    coreMessage: o.coreMessage || null,
     adType: formData.adType,
     festivalName: formData.festivalName,
     characterPack: formData.characterPack || null,
@@ -520,6 +527,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     setCustomFestivalName(savedFestivalName && !isKnownFestival ? savedFestivalName : '');
     generationDocIdRef.current = item.id || null;
     setViewingSavedItem(item);
+    setVoiceOverRevision(null);
     setOutputs({
       businessInfo: item.businessInfo,
       mainFramePrompts: item.mainFramePrompts || [],
@@ -532,6 +540,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       stockImagePrompts: item.stockImagePrompts || null,
       overlayTexts: item.overlayTexts || null,
       posterConcepts: item.posterConcepts || null,
+      coreMessage: item.coreMessage || null,
     });
     setFormData(prev => ({
       ...prev,
@@ -614,15 +623,6 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
         }
       });
 
-      // When the voice-over is refined, regenerate the Veo 3 prompts from the new script
-      if (section === 'voiceOver') {
-        try {
-          const newVeo = await regenerateVeoFromVoiceOver(refinedContent, formData);
-          setOutputs(prev => (prev ? { ...prev, veoPrompts: newVeo } : prev));
-        } catch (e) {
-          console.error('Veo regeneration after voice-over refine failed:', e);
-        }
-      }
     } catch (error: any) {
       // Silently swallowed until now: the spinner stopped, the content did not move, and nobody
       // was told why. A refine is a paid model call — its failure has to be visible.
@@ -634,6 +634,110 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       });
     } finally {
       setRefiningSection(null);
+    }
+  };
+
+  /**
+   * Refines the voice-over — the whole script, or one clip from its own card (`clip`, 0-based).
+   *
+   * Only the clips the request touches change (services/geminiService refineVoiceOver), the member
+   * sees exactly what changed with an Undo, and only those clips' video prompts are re-directed, from
+   * their existing frames.
+   */
+  const handleRefineVoiceOver = async (instruction: string, clip: number | null = null) => {
+    if (!outputs) return;
+    setRefiningSection('voiceOver');
+    setRefiningClip(clip);
+    const before = outputs.voiceOverScript;
+    const previousVeo = outputs.veoPrompts || [];
+    try {
+      const result = await refineVoiceOver({
+        script: before,
+        instruction,
+        clip,
+        formData,
+        businessInfo: outputs.businessInfo,
+        coreMessage: outputs.coreMessage,
+      });
+      if (result.notApplied) {
+        await showAlert({
+          title: "Nothing changed",
+          description: `${result.understood ? `Understood: ${result.understood}\n\n` : ''}${result.notApplied}`,
+          confirmText: "OK",
+        });
+        return;
+      }
+      setOutputs(prev => (prev ? { ...prev, voiceOverScript: result.script } : prev));
+      setVoiceOverRevision({ instruction, understood: result.understood, before, after: result.script, changed: result.changed, previousVeo });
+
+      if (creationMode === 'video' && previousVeo.length > 0) {
+        try {
+          const fresh = await regenerateVeoForClips(result.script, formData, outputs.mainFramePrompts || [], result.changed);
+          setOutputs(prev => {
+            // The member may have undone or refined again while these were being written.
+            if (!prev || prev.voiceOverScript !== result.script) return prev;
+            const veoPrompts = [...prev.veoPrompts];
+            fresh.forEach(({ index, prompt }) => { veoPrompts[index] = prompt; });
+            return { ...prev, veoPrompts };
+          });
+        } catch (e) {
+          console.error('Re-directing the video prompts after a voice-over refine failed:', e);
+        }
+      }
+    } catch (error: any) {
+      console.error('Voice-over refinement error:', error);
+      await showAlert({
+        title: "Refinement failed",
+        description: error?.message || "The refinement could not be completed. Your existing script is unchanged — please try again.",
+        confirmText: "OK",
+      });
+    } finally {
+      setRefiningSection(null);
+      setRefiningClip(null);
+    }
+  };
+
+  /** Puts the script and the video prompts back exactly as they were before the last refine. */
+  const handleUndoVoiceOverRevision = () => {
+    if (!voiceOverRevision) return;
+    const { before, previousVeo } = voiceOverRevision;
+    setOutputs(prev => (prev ? { ...prev, voiceOverScript: before, veoPrompts: previousVeo } : prev));
+    setVoiceOverRevision(null);
+  };
+
+  /**
+   * Refines Veo prompts — one clip or all. A prompt whose spoken dialogue the edit altered is kept as
+   * it was, because the video must say what the voice-over says.
+   */
+  const handleRefineVeo = async (instruction: string, clip: number | null = null) => {
+    if (!outputs?.veoPrompts?.length) return;
+    setRefiningSection('veo');
+    setRefiningClip(clip);
+    try {
+      const result = await refineVeoPrompts({ prompts: outputs.veoPrompts, instruction, clip });
+      if (result.changed.length > 0) {
+        setOutputs(prev => (prev ? { ...prev, veoPrompts: result.prompts } : prev));
+      }
+      if (result.changed.length === 0 || result.rejected.length > 0) {
+        const kept = result.rejected.map(i => `Clip ${i + 1}`).join(', ');
+        await showAlert({
+          title: result.changed.length === 0 ? "Nothing changed" : "Partly applied",
+          description: result.rejected.length > 0
+            ? `${kept} kept ${result.rejected.length === 1 ? 'its' : 'their'} original prompt, because the edit changed the spoken dialogue — the video has to say exactly what the voice-over says. Refine the Voice Over Script to change the words.`
+            : "The prompt came back the same. Try describing the change more specifically.",
+          confirmText: "OK",
+        });
+      }
+    } catch (error: any) {
+      console.error('Veo refinement error:', error);
+      await showAlert({
+        title: "Refinement failed",
+        description: error?.message || "The refinement could not be completed. Your existing prompts are unchanged — please try again.",
+        confirmText: "OK",
+      });
+    } finally {
+      setRefiningSection(null);
+      setRefiningClip(null);
     }
   };
 
@@ -716,6 +820,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     setActiveRun({ id: runStartedAt, profile: runProfile, checkpoints: [{ percent: 0, at: runStartedAt }], facts: currentRunFacts() });
     setMissionDone({});
     setGuideOpen(false);
+    setVoiceOverRevision(null);
     setTimeout(() => outputPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
     /** Each reported percent is a checkpoint the countdown re-anchors on. */
     const checkpoints: Checkpoint[] = [{ percent: 0, at: runStartedAt }];
@@ -1792,9 +1897,25 @@ clip-2[8-16sec]: second spoken line`}</pre>
                         quickCopyItems={hasClips ? voiceClips.map((c, i) => formatClipLine(i, c.text)) : undefined}
                         quickCopyLabel="clip-" quickCopyNamespace="voice-over"
                         quickCopyRanges={hasClips ? voiceClips.map((_, i) => `[${clipRange(i)}sec]`) : undefined}>
+                        {/* The message the script was built on, so the member can hold clip 1 to it. */}
+                        {outputs.coreMessage && (outputs.coreMessage.messageLine || outputs.coreMessage.corePromise) && (
+                          <div data-test="core-message" className={cn("mx-4 mt-4 rounded-xl border px-4 py-2.5 text-xs leading-relaxed",
+                            isDark ? "border-violet-500/30 bg-violet-500/[0.06] text-slate-300" : "border-violet-200 bg-violet-50/70 text-slate-600")}>
+                            <span className={cn("mr-1.5 font-bold uppercase tracking-wider text-[10px]", isDark ? "text-violet-300" : "text-violet-700")}>Core message</span>
+                            {outputs.coreMessage.messageLine || `${outputs.coreMessage.businessName} — ${outputs.coreMessage.corePromise}`}
+                          </div>
+                        )}
+                        {voiceOverRevision && voiceOverRevision.after === outputs.voiceOverScript && (
+                          <RefineRevisionBanner revision={voiceOverRevision} isDark={isDark}
+                            onUndo={handleUndoVoiceOverRevision} onDismiss={() => setVoiceOverRevision(null)} />
+                        )}
                         <GeneratedCard title="Voice Over" content={outputs.voiceOverScript} sectionType="voiceOver"
                           showTransliteration showRefinement={true}
-                          onRefine={(i) => handleRefineSection('voiceOver', i)} isRefining={refiningSection === 'voiceOver'} hideTitle />
+                          onRefine={(i) => handleRefineVoiceOver(i)}
+                          onRefineClip={(index, i) => handleRefineVoiceOver(i, index)}
+                          refiningClip={refiningSection === 'voiceOver' ? refiningClip : null}
+                          highlightClips={voiceOverRevision && voiceOverRevision.after === outputs.voiceOverScript ? voiceOverRevision.changed : []}
+                          isRefining={refiningSection === 'voiceOver'} hideTitle />
                       </OutputSection>
                       );
                   })()}
@@ -1805,7 +1926,9 @@ clip-2[8-16sec]: second spoken line`}</pre>
                         isDark={isDark} quickCopyItems={outputs.veoPrompts} quickCopyLabel="clip-" quickCopyNamespace="veo"
                         quickCopyRanges={outputs.veoPrompts.map((_, i) => `[${clipRange(i)}sec]`)}>
                         <GeneratedCard title="Veo" content={outputs.veoPrompts} variant="dropdown" sectionType="veo"
-                          showRefinement={true} onRefine={(i) => handleRefineSection('veo', i)} isRefining={refiningSection === 'veo'} hideTitle />
+                          showRefinement={true} onRefine={(i) => handleRefineVeo(i)}
+                          onRefineItem={(index, i) => handleRefineVeo(i, index)}
+                          isRefining={refiningSection === 'veo'} hideTitle />
                       </OutputSection>
                   )}
 

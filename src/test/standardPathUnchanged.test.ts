@@ -34,14 +34,16 @@ describe("standard voice-over prompt is untouched by the character work", () => 
   });
 });
 
-describe("standard Veo prompt is untouched", () => {
+describe("standard Veo prompt carries no character-pack format", () => {
   const female = VEO_SEGMENT_SYSTEM_PROMPT(4, "female");
   const male = VEO_SEGMENT_SYSTEM_PROMPT(4, "male");
 
-  it("still frames a single presenter speaking to camera", () => {
-    expect(female).toContain("With a very sweet voice she needs to say:");
-    expect(male).toContain("With a warm, confident voice he needs to say:");
-    expect(female).toContain("CRITICAL EYE CONTACT RULE");
+  // The model ad is directed, not frozen: one presenter, a moving camera, gestures timed to the line.
+  it("still directs a single presenter speaking to camera", () => {
+    expect(female).toContain("the model (a woman)");
+    expect(male).toContain("the model (a man)");
+    expect(female).toContain("One continuous shot");
+    expect(female).toContain("PLANNED MOVE");
   });
 
   it("has no cartoon staging or second speaker", () => {

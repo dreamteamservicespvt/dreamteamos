@@ -4,6 +4,8 @@ import {
 } from "@/utils/dialogueFormat";
 import { CLIP_SECONDS } from "@/utils/voiceOverFormat";
 import { packLocationSubject, packStagingRole, realLocationFormula } from "./realLocation";
+import { coreMessageBlock, type CoreMessageBrief } from "./coreMessage";
+import { VEO_DIRECTION_SYSTEM_PROMPT, framingForMotion, type ClipMotionPlan } from "./motion";
 
 /**
  * Prompts for character-pack ads — two cartoon characters talking to each other inside a real
@@ -210,8 +212,8 @@ export const characterNegativesBlock = (pack: CharacterPack): string =>
 const promotionalBeats = (segmentCount: number, first: string, second: string, place: string): string => {
   const solo = first === second;
   const placeAndName = place
-    ? `NAMES THE BUSINESS **and says it is in ${place}**, saying plainly what it does`
-    : `NAMES THE BUSINESS, saying plainly what it does`;
+    ? `NAMES THE BUSINESS **and says it is in ${place}**, saying plainly what it does and the core promise that makes it worth choosing`
+    : `NAMES THE BUSINESS, saying plainly what it does and the core promise that makes it worth choosing`;
 
   if (segmentCount <= 1) {
     return `The single clip must name the business${place ? ` and the town it is in (${place})` : ""}, give one `
@@ -272,8 +274,8 @@ const festivalBeats = (
   const occasion = (festival || "").trim() || "the festival";
   const bare = (festival || "").trim() || "festival";
   const placeAndName = place
-    ? `NAMES THE BUSINESS **and says it is in ${place}**, saying plainly what it does`
-    : `NAMES THE BUSINESS, saying plainly what it does`;
+    ? `NAMES THE BUSINESS **and says it is in ${place}**, saying plainly what it does and the core promise that makes it worth choosing`
+    : `NAMES THE BUSINESS, saying plainly what it does and the core promise that makes it worth choosing`;
 
   /** Clip 1 is the greeting itself, and it is the only clip the names are allowed in. */
   const wishes = solo
@@ -341,6 +343,8 @@ export const CHARACTER_VOICEOVER_SYSTEM_PROMPT = (
   language: string = "Telugu",
   /** The town / village the business is in. Empty when unknown — then no place is mentioned. */
   placeName: string = "",
+  /** The core message decided before writing — see prompts/coreMessage. */
+  brief: CoreMessageBrief | null = null,
 ): string => {
   const lang = (language || "Telugu").trim() || "Telugu";
   const place = (placeName || "").trim();
@@ -488,6 +492,8 @@ on "${first.name}" or "${second.name}" is a word the client did not get. The vie
 talking; they cannot know the business unless it is said. So the BUSINESS's name is the one that
 gets repeated.
 `}
+
+${coreMessageBlock(brief, isFestival && segmentCount > 1 ? 2 : 1)}
 
 CLIP-BY-CLIP STRUCTURE:
 
@@ -900,6 +906,8 @@ export interface CharacterFramePromptInput {
    * cartoons, who come dressed.
    */
   wardrobe?: string;
+  /** The camera move each clip's video will be animated with, so each still is composed for it. */
+  motionPlan?: ClipMotionPlan[];
 }
 
 /**
@@ -984,15 +992,18 @@ function clipShotPlan(
   cast: string,
   /** True when only one character is in the ad — see the note in the frame builder. */
   solo: boolean,
+  /** The move each clip's video will be animated with — see prompts/motion. */
+  motionPlan: ClipMotionPlan[] = [],
 ): string {
   return shots.map((shot, i) => {
     const n = i + 1;
     const line = clipSummaries[i] ? `\n   🗣️ THIS CLIP'S LINE: ${clipSummaries[i]}` : "";
+    const motion = motionPlan[i] ? `\n   ${framingForMotion(motionPlan[i])}` : "";
     const head = `**CLIP ${n} — ${shot.name}**
    📍 ZONE: ${shot.zone}
    🎥 CAMERA: ${shot.camera}
    🎭 STAGING: ${shot.staging}
-   🎯 PURPOSE: ${shot.purpose}${line}`;
+   🎯 PURPOSE: ${shot.purpose}${line}${motion}`;
 
     if (n === 1) {
       return `${head}
@@ -1000,7 +1011,8 @@ function clipShotPlan(
    Write a COMPLETE standalone prompt for this frame, about 90–120 words, as one flowing paragraph.
    Open by naming the photograph or generated zone this clip uses, then ${solo ? cast : `the two characters`} by name
    only, then the real fixtures and stock actually visible around them, then the light in that
-   space, then the ${aspectRatio} ${orientation} framing.${hasLogo ? " Place the attached logo where it would really be installed in this zone." : ""}
+   space, then the ${aspectRatio} ${orientation} framing.${hasLogo ? " Place the attached logo where it would really be installed in this zone." : ""}${motionPlan[i] ? `
+   Compose it for the camera move this frame will be animated with: ${motionPlan[i].camera.framing}.` : ""}
    This frame sets the look for the whole ad — the grade, the light and the finish that every later
    clip has to match.`;
     }
@@ -1012,7 +1024,8 @@ function clipShotPlan(
    Write ONE line referring to it — "the same ${cast} exactly as in the attached reference
    frame, unchanged" — and then spend the rest of the prompt ONLY on what genuinely changes:
    the new zone and the real objects in it, the new staging and gestures, the new camera angle,
-   and how the light differs in this part of the premises.
+   and how the light differs in this part of the premises.${motionPlan[i] ? `
+   Include, in plain words, the composition for this clip's camera move: ${motionPlan[i].camera.framing}.` : ""}
    Keep it SHORT: 60–90 words. Anything you re-describe is something the generator is free to
    redraw differently, which is exactly how the characters drift between clips.`;
   }).join("\n\n");
@@ -1024,7 +1037,7 @@ export const CHARACTER_MULTI_FRAME_SYSTEM_PROMPT = (
 ): string => {
   const {
     segmentCount, clipSummaries, locationMode, locationPlan,
-    aspectRatio, adType, festivalName, hasLogo = false, businessContext = "", wardrobe,
+    aspectRatio, adType, festivalName, hasLogo = false, businessContext = "", wardrobe, motionPlan = [],
   } = input;
   const clipContext = clipSummaries.map((s, i) => `  Clip ${i + 1}: ${s}`).join("\n");
   const orientation = aspectRatio === "16:9" ? "horizontal (landscape)" : "vertical (portrait)";
@@ -1125,7 +1138,7 @@ ${solo
 
 ===== THE SHOT PLAN — WRITE THESE ${segmentCount} PROMPTS =====
 
-${clipShotPlan(segmentCount, clipSummaries, shots, hasLogo, aspectRatio, orientation, cast, solo)}
+${clipShotPlan(segmentCount, clipSummaries, shots, hasLogo, aspectRatio, orientation, cast, solo, motionPlan)}
 
 ===== OUTPUT FORMAT =====
 
@@ -1154,66 +1167,62 @@ ${businessContext ? `===== BUSINESS CONTEXT =====\n${businessContext}` : ""}`;
 // ── 3 · Veo: the talking two-hander ───────────────────────────────────────────────────────────
 
 /**
- * Short on purpose.
+ * The system prompt for the Veo direction call on a special-category ad — see prompts/motion.
  *
- * The first version of this asked for the scene, both characters in full, the exchange, performance
- * direction and camera work — and produced prompts so long the member could not read them, for no
- * gain: Veo needs the line, the place and who says it. This mirrors the standard ad's Veo prompt
- * (services/prompts.ts VEO_SEGMENT_SYSTEM_PROMPT) — a fixed shape with the words dropped in.
+ * It used to be the whole Veo prompt, and it ended every clip with "Camera holds steady, single
+ * continuous shot". Every character in the catalogue carries its own camera, gesture, gaze and body
+ * direction written for video, and this prompt never passed any of it on — so a Motu and Patlu ad
+ * and a Lord Shiva ad came out equally frozen. The direction call now receives that performance
+ * direction, each clip's frame and planned move, and writes a moving, performed shot; the finished
+ * prompt, with the exact dialogue and voices, is assembled in code (packVeoSubject + assembleVeoPrompt).
  */
 export const CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT = (
   pack: CharacterPack,
   segmentCount: number,
   aspectRatio: "9:16" | "16:9" = "9:16",
 ): string => {
-  const [first] = pack.characters;
-  /**
-   * The second speaker, or the first again when there is only one.
-   *
-   * Twenty-three of the thirty-two catalogue entries have a single speaker — a deity, one
-   * cartoon, the client’s own face — and on those `pack.characters[1]` is undefined. Every
-   * prompt builder in this file reads `second.name`, so an unguarded destructure throws
-   * “Cannot read properties of undefined (reading ‘name’)” before a single prompt is built,
-   * which stops the member’s job dead with no way past it.
-   */
-  const second = pack.characters[1] ?? first;
-  /** True when this ad has one voice in it. Prose that describes a two-hander is branched on it. */
-  const solo = pack.characters.length === 1;
   const cast = pack.characters.map((c) => c.name).join(" and ");
-  const orientation = aspectRatio === "16:9" ? "horizontal" : "vertical";
+  return VEO_DIRECTION_SYSTEM_PROMPT({
+    clipCount: segmentCount,
+    aspectRatio,
+    subject: cast,
+    characterDirection: characterDirectionBlock(pack, "video"),
+  });
+};
 
-  return `You are an expert at formatting video generation prompts for Veo 3.
-
-YOUR TASK: Generate ${segmentCount} copy-paste-ready Veo 3 prompts, one per ${CLIP_SECONDS}-second clip.
-INPUT: each clip's two-line dialogue, ${first.name} first, then ${second.name}.
-
-EACH CLIP'S FRAME IMAGE IS ATTACHED. Veo animates that image, so the characters, the location and
-the light already exist. Describing them back only gives the model a vaguer second version to drift
-towards. Write what MOVES and what is HEARD — nothing else.
-
-Output each clip in this EXACT FORMAT:
-
-${aspectRatio} ${orientation} video. Animate the attached frame, keeping it exactly as it is.
-
-${first.name} says, in the original ${first.name} voice from the show: "\${${first.name}'s line}"
-${solo ? "" : `Then ${second.name} replies, in the original ${second.name} voice from the show: "\${${second.name}'s line}"`}
-
-${solo ? `Only ${first.name}'s mouth moves, in sync with the line. Camera holds steady, single continuous shot.` : `Only the speaking character's mouth moves; the other listens and reacts. Camera holds steady, single continuous shot.`}
-
-Negative prompt:
-No text on the screen, no subtitles, no watermark
-No background music, pure studio voice over, crystal clear voice, no echos
-No new or different voices, no narrator, no dubbing accent
-No change to the characters, location or framing from the attached image
-
-RULES:
-• NEVER describe the location, characters, lighting or composition — the attached frame IS all of that. Most important rule here.
-• Keep each prompt SHORT — the shape above, nothing more.
-• VOICES ARE STRICT: only the original ${cast} voice${solo ? "" : "s"} from the show — ${pack.characters.map((c) => `${c.name} ${c.voice}`).join(", ")}. Never a narrator, a new voice actor, or a different accent.
-• Use the dialogue lines EXACTLY as given — do not rewrite, translate or shorten them.
-• Only the dialogue changes between clips; every clip has its own attached frame.
-
-Provide ONLY the prompts. Separator between segments: "###SEGMENT###"`;
+/**
+ * Who speaks in a special-category clip, how they sound, and what the video must never change.
+ *
+ * A cartoon is voiced in its own voice from the show; a deity or a person in the voice the catalogue
+ * gives them. In a two-hander the first speaker has the first half of the clip and the second the
+ * rest, and only the one speaking moves their mouth.
+ */
+export const packVeoSubject = (pack: CharacterPack) => {
+  const solo = pack.characters.length === 1;
+  const cartoon = pack.family === "duo" || pack.family === "solo";
+  const person = pack.family === "human";
+  const identityLock = person
+    ? "the person's face (100% face match), their hair, their outfit, the logo and the location"
+    : solo
+      ? "the character exactly as drawn, the logo and the location"
+      : "both characters exactly as drawn, the logo and the location";
+  const voiceOf = (name: string, voice: string) => cartoon
+    ? `the original ${name} voice from the show (${voice})`
+    : voice;
+  const speech = (lines: { name: string; text: string }[]) => lines.map((line, i) => {
+    const character = pack.characters.find((c) => c.name === line.name) ?? pack.characters[i] ?? pack.characters[0];
+    return {
+      speaker: solo ? undefined : character.name,
+      voice: voiceOf(character.name, character.voice),
+      line: line.text,
+      at: solo ? undefined : lines.length === 2 ? (i === 0 ? "0–4s" : "4–8s") : undefined,
+    };
+  });
+  const performanceNotes = [
+    solo ? "" : "Only the speaking character's mouth moves; the other listens and reacts in their own way.",
+    cartoon ? "Voices are strict: only the original voices from the show — never a narrator, a new voice actor or a different accent." : "",
+  ].filter(Boolean).join("\n");
+  return { identityLock, speech, performanceNotes };
 };
 
 // ── 4 · Location index: read the client's photos before assigning them ────────────────────────

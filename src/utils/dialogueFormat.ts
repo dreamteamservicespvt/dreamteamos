@@ -8,11 +8,9 @@ import { CLIP_SECONDS, clipLabel } from "./voiceOverFormat";
  * — it is an ordered exchange.
  *
  * ── The 8-second budget ───────────────────────────────────────────────────────────────────────
- * The single-speaker pipeline is calibrated at exactly 18 spoken words per 8-second clip
- * (≈2.25 words/sec). A two-hander loses roughly half a second to the hand-off beat between
- * speakers, so the same 8 seconds carries ~16 words. Splitting that gives 7–9 words per character.
- * The clip total is exact — that is what keeps every clip landing on 8 seconds — while the split
- * between the two characters is allowed to breathe.
+ * Every clip carries 18–22 spoken words (≈2.25–2.75 words/sec), whoever speaks them. In a
+ * two-hander the clip total stays inside that band — that is what keeps every clip landing on
+ * 8 seconds — while the split between the two characters is allowed to breathe.
  *
  * ── Two representations, one source of truth ──────────────────────────────────────────────────
  * Same split-brain approach voiceOverFormat already uses, for the same reason: parsing, validation
@@ -31,14 +29,21 @@ import { CLIP_SECONDS, clipLabel } from "./voiceOverFormat";
  */
 
 /**
- * Spoken words per clip, shared across both characters — a range, not a single number.
+ * Spoken words per 8-second clip — a range, not a single number, and the ONE definition of it.
  *
  * An exact count forced the writer to pad or amputate a line that was otherwise right, and a padded
- * Telugu sentence is immediately audible. A narrow band lands on the same 8 seconds while letting
- * the sentence end where it naturally ends.
+ * Telugu sentence is immediately audible. A band lands on the same 8 seconds while letting the
+ * sentence end where it naturally ends.
+ *
+ * 18–22 for every ad, single voice or two-hander. It was an exact 18 for a single voice and 18–20
+ * for characters; 22 is the ceiling the team set, the fastest that still sounds like a person
+ * speaking rather than reading. The normal voice-over validator, its repair and review prompts, the
+ * character prompts and the Script Duration Checker all read these two numbers.
  */
 export const MIN_WORDS_PER_CLIP = 18;
-export const MAX_WORDS_PER_CLIP = 20;
+export const MAX_WORDS_PER_CLIP = 22;
+/** The pace a clip is planned at — the middle of the band. Used to estimate clips from raw text. */
+export const TARGET_WORDS_PER_CLIP = 20;
 /** A single character's share. The two lines must still total inside the clip band above. */
 export const MIN_WORDS_PER_LINE = 8;
 export const MAX_WORDS_PER_LINE = 12;
@@ -54,11 +59,11 @@ export interface WordBudget {
  * The word budget for a clip, given how many people speak in it.
  *
  * ── Why this is not a constant ────────────────────────────────────────────────────
- * The CLIP band is a timing rule: eight seconds of speech is 18–20 words whoever says them. The
+ * The CLIP band is a timing rule: eight seconds of speech is 18–22 words whoever says them. The
  * LINE band only ever existed to split that between two speakers.
  *
  * The catalogue now holds entries with a single speaker, and on those the two bands were applied
- * unchanged — so one line was told to be 8–12 words while its clip had to total 18–20. Nothing can
+ * unchanged — so one line was told to be 8–12 words while its clip had to total 18 or more. Nothing can
  * satisfy both, so every clip of every solo ad failed validation and fell into the repair loop,
  * which then re-imposed the same impossible pair. With one speaker the line IS the clip, so it
  * inherits the clip band.

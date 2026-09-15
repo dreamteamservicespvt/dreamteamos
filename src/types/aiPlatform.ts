@@ -1,3 +1,5 @@
+import type { CoreMessageBrief } from '@/services/prompts/coreMessage';
+
 export enum AdType {
   COMMERCIAL = 'commercial',
   FESTIVAL = 'festival'
@@ -135,6 +137,11 @@ export interface GeneratedOutputs {
   overlayTexts?: OverlayTextItem[] | null;
   /** Poster Creation output — absent on video generations. */
   posterConcepts?: PosterConcept[] | null;
+  /**
+   * The core message the script was built on, decided from the client information, the Assets &
+   * Files and the Configuration before writing. Kept so a refine holds to the same message.
+   */
+  coreMessage?: CoreMessageBrief | null;
 }
 
 export interface GenerationStatus {

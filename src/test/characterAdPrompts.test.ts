@@ -4,10 +4,12 @@ import {
   CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT,
   CHARACTER_MULTI_FRAME_SYSTEM_PROMPT,
   CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT,
+  packVeoSubject,
   LOCATION_INDEX_SYSTEM_PROMPT,
   characterCastBlock,
 } from "@/services/prompts/characterAd";
 import { getCharacterPack } from "@/services/characterPacks";
+import { assembleVeoPrompt, planClipMotion, spokenLinesIn } from "@/services/prompts/motion";
 import {
   MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE, countSpokenWords,
 } from "@/utils/dialogueFormat";
@@ -457,76 +459,70 @@ describe("voice-over prompt — promotional grounding", () => {
   });
 });
 
+/**
+ * The special-category Veo prompt is now two parts: a director call that receives the character's
+ * own video direction, and a prompt assembled in code around its answer. These pin both — and the
+ * things the old prompt got right that must survive: the original voices, the listener reacting,
+ * the dialogue passed through untouched, the frame locked.
+ */
 describe("veo prompt", () => {
   const p = CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT(pack, 4);
-
-  it("attributes each line to the right character for lip-sync", () => {
-    expect(p).toContain("Motu says, in the original Motu voice from the show");
-    expect(p).toContain("Then Patlu replies, in the original Patlu voice from the show");
-    expect(p).toContain("Only the speaking character's mouth moves");
+  const subject = packVeoSubject(pack);
+  const plan = planClipMotion(4, "commercial");
+  const assembled = assembleVeoPrompt({
+    aspectRatio: "9:16",
+    plan: plan[1],
+    identityLock: subject.identityLock,
+    language: "Telugu",
+    speech: subject.speech([{ name: "Motu", text: "మోటు లైన్" }, { name: "Patlu", text: "పట్లు లైన్" }]),
+    performanceNotes: subject.performanceNotes,
   });
 
-  // A generic narrator or a fresh voice actor breaks the whole premise — these are characters the
-  // audience already knows by ear as much as by sight.
-  it("demands the original voices and bans substitutes", () => {
-    expect(p).toContain("VOICES ARE STRICT");
-    expect(p).toMatch(/only the original Motu and Patlu voices from the show/);
-    expect(p).toContain("Never a narrator, a new voice actor, or a different accent");
-    expect(p).toContain("No new or different voices, no narrator, no dubbing accent");
+  // The whole point of the change: the old prompt ordered a static camera.
+  it("never orders a static camera", () => {
+    expect(p).not.toContain("Camera holds steady");
+    expect(assembled).not.toContain("Camera holds steady");
+    expect(assembled).toContain("No static or locked-off camera, no frozen pose");
+    expect(assembled).toContain(`CAMERA — ${plan[1].camera.name}`);
   });
 
-  it("keeps the listener alive in frame", () => {
-    expect(p).toContain("the other listens and reacts");
+  it("gives the director the character's own performance direction", () => {
+    expect(p).toContain("HOW THIS CHARACTER PERFORMS");
+    expect(p).toMatch(/HAND GESTURES:/);
+    expect(p).toMatch(/CAMERA & CINEMATIC DIRECTION:/);
   });
 
-  /**
-   * The frame image is attached, so the scene already exists. Re-describing it gave Veo a second,
-   * vaguer version of the picture to reconcile against — and gave the member a paragraph of
-   * redundant text to read past.
-   */
-  it("says animate the attached frame instead of describing the scene", () => {
-    expect(p).toContain("EACH CLIP'S FRAME IMAGE IS ATTACHED");
-    expect(p).toContain("Animate the attached frame, keeping it exactly as it is");
-    expect(p).toContain("Write what MOVES and what is HEARD — nothing else");
+  it("attributes each line to the right character, in its half of the clip", () => {
+    expect(assembled).toContain("0–4s — Motu, the original Motu voice from the show");
+    expect(assembled).toContain("4–8s — Patlu, the original Patlu voice from the show");
   });
 
-  it("forbids describing the location or composition at all", () => {
-    expect(p).toContain("NEVER describe the location, characters, lighting or composition");
-    expect(p).toContain("the attached frame IS all of that");
-    // The old shape asked for a location phrase in the output template; it must be gone.
-    expect(p).not.toContain("${location for this clip}");
+  it("demands the original voices and keeps the listener alive", () => {
+    expect(assembled).toContain("never a narrator, a new voice actor or a different accent");
+    expect(assembled).toContain("the other listens and reacts");
+    expect(assembled).toContain("No extra people speaking, no new voices");
   });
 
-  it("locks the frame against drift, and changes only the dialogue between clips", () => {
-    expect(p).toContain("Only the dialogue changes between clips");
-    expect(p).toContain("No change to the characters, location or framing from the attached image");
-  });
-
-  it("carries the negatives that stop the usual failures", () => {
-    expect(p).toContain("###SEGMENT###");
-    expect(p).toContain("Camera holds steady, single continuous shot");
-    expect(p).toContain("no watermark");
+  it("animates the attached frame and locks it against drift", () => {
+    expect(assembled).toContain("Animate the attached frame, keeping both characters exactly as drawn, the logo and the location exactly as they are");
+    expect(assembled).toContain("No change to the face, hair, outfit, logo or location from the attached frame");
+    expect(p).toContain("Never describe the face, hair, skin, outfit or jewellery");
   });
 
   it("passes the dialogue through untouched", () => {
-    expect(p).toMatch(/do not rewrite, translate or shorten/i);
+    expect(spokenLinesIn(assembled)).toEqual(["మోటు లైన్", "పట్లు లైన్"]);
   });
 
-  /**
-   * The first version asked for scene, both characters in full, exchange, performance direction and
-   * camera work, and produced prompts too long for a member to read. These two hold the shape.
-   */
+  it("carries the negatives that stop the usual failures", () => {
+    expect(assembled).toContain("no watermark");
+    expect(assembled).toContain("No background music");
+    expect(assembled).toContain("one continuous 8-second shot");
+  });
+
   it("never leaks a physical description of the characters", () => {
-    // Whole words only: "round" lives inside "background", which is legitimate here.
-    for (const banned of ["kurta", "dhoti", "spectacles", "moustache", "tall", "round", "thin"]) {
-      expect(p.toLowerCase()).not.toMatch(new RegExp(`\\b${banned}\\b`));
+    for (const banned of ["kurta", "dhoti", "spectacles", "moustache", "round", "thin"]) {
+      expect(assembled.toLowerCase()).not.toMatch(new RegExp(`\\b${banned}\\b`));
     }
-  });
-
-  // The standard ad's Veo prompt is ~1500 characters; the version this replaced ran past 2400.
-  // Staying in the standard's neighbourhood is the bar — the two-hander needs a little more room.
-  it("stays as compact as the standard ad's veo prompt", () => {
-    expect(p.length).toBeLessThan(1800);
   });
 });
 

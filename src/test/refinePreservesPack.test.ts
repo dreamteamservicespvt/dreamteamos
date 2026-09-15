@@ -55,7 +55,9 @@ describe("the prompt a refine is given", () => {
   it("differs between a pack ad and a normal one — Veo", () => {
     const packPrompt = CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT(pack, 2, "9:16");
     const normal = VEO_SEGMENT_SYSTEM_PROMPT(2, "female");
-    expect(packPrompt).toContain("Animate the attached frame");
+    // The pack prompt carries the characters' own video direction; the normal one never mentions them.
+    expect(packPrompt).toContain("HOW THIS CHARACTER PERFORMS");
+    expect(packPrompt).toContain("Motu and Patlu");
     expect(normal).not.toMatch(/motu|patlu/i);
   });
 

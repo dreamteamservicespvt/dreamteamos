@@ -18,11 +18,11 @@ const POSTER: RunProfile = { ...VIDEO, mode: "poster", conceptCount: 3 };
 
 describe("the plan", () => {
   it("follows the video checkpoints the generator actually reports", () => {
-    expect(planFor(VIDEO).map((s) => s.from)).toEqual([0, 10, 20, 45]);
+    expect(planFor(VIDEO).map((s) => s.from)).toEqual([0, 10, 15, 20, 45, 85]);
   });
 
   it("adds the location-scouting stretch only when the ad is shot on location", () => {
-    expect(planFor({ ...VIDEO, locationPhotos: 5 }).map((s) => s.from)).toEqual([0, 10, 20, 40, 45]);
+    expect(planFor({ ...VIDEO, locationPhotos: 5 }).map((s) => s.from)).toEqual([0, 10, 15, 20, 40, 45, 85]);
   });
 
   it("follows the poster checkpoints, with the fill-in pass optional", () => {
@@ -68,14 +68,14 @@ describe("the estimate", () => {
 
   // A stretch that overran is still running; the signals cannot say for how much longer.
   it("floors an overrun stretch at zero rather than going negative", () => {
-    const assetsOnly = plan.find((s) => s.key === "video.assets")!.baselineMs;
+    const ahead = plan.find((s) => s.key === "video.assets")!.baselineMs + plan.find((s) => s.key === "video.direct")!.baselineMs;
     const late = estimateRemainingMs(plan, [{ percent: 20, at: 0 }], 10 * 60_000);
-    expect(late).toBe(assetsOnly);
+    expect(late).toBe(ahead);
   });
 
   it("re-anchors on each checkpoint, from what is actually known", () => {
-    const assets = plan.find((s) => s.key === "video.assets")!.baselineMs;
-    expect(estimateRemainingMs(plan, [{ percent: 20, at: 0 }, { percent: 45, at: 90_000 }], 90_000)).toBe(assets);
+    const rest = plan.find((s) => s.key === "video.assets")!.baselineMs + plan.find((s) => s.key === "video.direct")!.baselineMs;
+    expect(estimateRemainingMs(plan, [{ percent: 20, at: 0 }, { percent: 45, at: 90_000 }], 90_000)).toBe(rest);
   });
 
   it("is zero once the run reports 100", () => {
@@ -91,7 +91,7 @@ describe("the estimate", () => {
   });
 
   it("applies this browser's calibrated speed", () => {
-    const slow = estimateRemainingMs(plan, [{ percent: 45, at: 0 }], 0, { "video.assets": 2 });
+    const slow = estimateRemainingMs(plan, [{ percent: 45, at: 0 }], 0, { "video.assets": 2, "video.direct": 2 });
     const normal = estimateRemainingMs(plan, [{ percent: 45, at: 0 }], 0);
     expect(slow).toBe(normal * 2);
   });

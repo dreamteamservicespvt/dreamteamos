@@ -21,6 +21,20 @@ interface GeneratedCardProps {
   hideTitle?: boolean;
   /** Per-clip "attach this photo", resolved to the real uploaded image. Indexed like `content`. */
   attachments?: (PromptAttachment | null)[];
+  /**
+   * Refine ONE voice-over clip from its own card (0-based index). Only that clip can change — see
+   * services/geminiService refineVoiceOver.
+   */
+  onRefineClip?: (index: number, instructions: string) => void;
+  /** The clip being refined right now, so its card shows the spinner. */
+  refiningClip?: number | null;
+  /** Clips the last refine changed, briefly highlighted so the member sees where to look. */
+  highlightClips?: number[];
+  /**
+   * Refine the SELECTED item of a dropdown card (0-based) — a Veo prompt for one clip. When set, the
+   * refine box offers "this clip" beside "all clips".
+   */
+  onRefineItem?: (index: number, instructions: string) => void;
 }
 
 const cleanCodeBlocks = (text: string): string => {
@@ -59,7 +73,8 @@ export const parseVoiceOverClips = (text: string): VoiceClip[] => {
 
 export const GeneratedCard: React.FC<GeneratedCardProps> = ({ 
   title, content, isJson, variant = 'default', showTransliteration = false,
-  showRefinement = false, onRefine, isRefining = false, sectionType, hideTitle = false, attachments
+  showRefinement = false, onRefine, isRefining = false, sectionType, hideTitle = false, attachments,
+  onRefineClip, refiningClip = null, highlightClips = [], onRefineItem,
 }) => {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
@@ -72,6 +87,9 @@ export const GeneratedCard: React.FC<GeneratedCardProps> = ({
   const [isTransliterating, setIsTransliterating] = useState(false);
   const [transliterationCache, setTransliterationCache] = useState<Record<string, string>>({});
   const [copiedClipLabel, setCopiedClipLabel] = useState<string | null>(null);
+  /** The voice-over clip whose own refine box is open, and what is typed in it. */
+  const [clipRefineOpen, setClipRefineOpen] = useState<number | null>(null);
+  const [clipRefineText, setClipRefineText] = useState('');
 
   const items = Array.isArray(content) ? content : [content];
   const currentContent = items[selectedIndex];
@@ -140,6 +158,23 @@ export const GeneratedCard: React.FC<GeneratedCardProps> = ({
     }
   };
 
+  /** "This clip only" from a dropdown card's refine box. */
+  const handleRefineItemSubmit = () => {
+    if (refineText.trim() && onRefineItem) {
+      onRefineItem(selectedIndex, refineText.trim());
+      setRefineText('');
+      setShowRefineInput(false);
+    }
+  };
+
+  const handleClipRefineSubmit = (index: number) => {
+    if (clipRefineText.trim() && onRefineClip) {
+      onRefineClip(index, clipRefineText.trim());
+      setClipRefineText('');
+      setClipRefineOpen(null);
+    }
+  };
+
   const ActionBar = () => (
     <div className={cn("px-4 py-2 border-b flex justify-between items-center gap-3 flex-wrap", isDark ? "border-slate-700" : "border-slate-200")}>
       <div className="flex items-center gap-2 min-w-0 flex-wrap">
@@ -147,7 +182,7 @@ export const GeneratedCard: React.FC<GeneratedCardProps> = ({
           <div className="flex items-center gap-2 flex-wrap">
             {items.map((_, idx) => {
               const isSelected = selectedIndex === idx;
-              const label = sectionType === 'mainFrame' ? `Clip ${idx + 1}` : `Segment ${idx + 1}`;
+              const label = sectionType === 'mainFrame' || sectionType === 'veo' ? `Clip ${idx + 1}` : `Segment ${idx + 1}`;
 
               return (
                 <button
@@ -216,15 +251,32 @@ export const GeneratedCard: React.FC<GeneratedCardProps> = ({
         <div className={cn("px-4 py-3 border-b", isDark ? "bg-blue-900/20 border-blue-900/30" : "bg-blue-50 border-blue-100")}>
           <div className="flex items-start space-x-2">
             <textarea value={refineText} onChange={(e) => setRefineText(e.target.value)}
-              placeholder="Type your changes or additional requirements here..."
+              data-test={`refine-input-${sectionType ?? 'section'}`}
+              placeholder={sectionType === 'voiceOver'
+                ? 'Describe the change — e.g. "clip 1 should mention 20 years of experience" or "use simpler words". Only the clips it touches change.'
+                : onRefineItem && items.length > 1
+                  ? `Describe the change — apply it to Clip ${selectedIndex + 1} only, or to all clips.`
+                  : "Type your changes or additional requirements here..."}
               className={cn("flex-1 text-sm border rounded-lg px-3 py-2 focus:ring-2 outline-none resize-none",
                 isDark ? "bg-slate-800 border-blue-800 text-slate-200 placeholder-slate-500 focus:ring-blue-700" : "bg-white border-blue-200 text-slate-700 focus:ring-blue-300"
               )} rows={2} disabled={isRefining} />
             <div className="flex flex-col space-y-1">
+              {onRefineItem && variant === 'dropdown' && items.length > 1 && (
+                <button onClick={handleRefineItemSubmit} disabled={!refineText.trim() || isRefining}
+                  data-test="refine-this-clip"
+                  title={`Apply to Clip ${selectedIndex + 1} only`}
+                  className={cn("px-2 py-1.5 rounded-lg text-[11px] font-semibold whitespace-nowrap transition-colors",
+                    refineText.trim() && !isRefining ? "bg-blue-600 text-white hover:bg-blue-700" : (isDark ? "bg-slate-700 text-slate-500 cursor-not-allowed" : "bg-slate-200 text-slate-400 cursor-not-allowed")
+                  )}>Clip {selectedIndex + 1}</button>
+              )}
               <button onClick={handleRefineSubmit} disabled={!refineText.trim() || isRefining}
+                data-test="refine-submit"
+                title={onRefineItem && variant === 'dropdown' && items.length > 1 ? 'Apply to all clips' : 'Refine'}
                 className={cn("p-2 rounded-lg transition-colors",
                   refineText.trim() && !isRefining ? "bg-blue-600 text-white hover:bg-blue-700" : (isDark ? "bg-slate-700 text-slate-500 cursor-not-allowed" : "bg-slate-200 text-slate-400 cursor-not-allowed")
-                )}><Send className="w-4 h-4" /></button>
+                )}>{onRefineItem && variant === 'dropdown' && items.length > 1
+                  ? <span className="text-[11px] font-semibold whitespace-nowrap">All clips</span>
+                  : <Send className="w-4 h-4" />}</button>
               <button onClick={() => { setShowRefineInput(false); setRefineText(''); }}
                 className={cn("p-2 rounded-lg transition-colors", isDark ? "bg-slate-700 text-slate-400 hover:bg-slate-600" : "bg-slate-200 text-slate-500 hover:bg-slate-300")}
               ><X className="w-4 h-4" /></button>
@@ -243,10 +295,37 @@ export const GeneratedCard: React.FC<GeneratedCardProps> = ({
             {voiceOverClips.map((clip, index) => {
               const label = clipLabel(index);
               const isClipCopied = copiedClipLabel === label;
+              const isThisRefining = isRefining && refiningClip === index;
+              const refineOpen = clipRefineOpen === index;
+              const highlighted = highlightClips.includes(index);
               return (
-                <div key={label} className={cn("rounded-lg border overflow-hidden", isDark ? "border-slate-700" : "border-slate-200")}>
+                <div key={label} data-test={`voice-clip-${index + 1}`}
+                  className={cn("rounded-lg border overflow-hidden transition-shadow",
+                    highlighted
+                      ? (isDark ? "border-emerald-500/60 ring-1 ring-emerald-500/40" : "border-emerald-400 ring-1 ring-emerald-300")
+                      : (isDark ? "border-slate-700" : "border-slate-200"))}>
                   <div className={cn("flex items-center justify-between px-3 py-1.5 border-b", isDark ? "bg-slate-700/50 border-slate-600" : "bg-slate-50 border-slate-200")}>
-                    <span className={cn("text-xs font-semibold tracking-wide font-mono", isDark ? "text-slate-300" : "text-slate-600")}>{label}</span>
+                    <span className={cn("text-xs font-semibold tracking-wide font-mono", isDark ? "text-slate-300" : "text-slate-600")}>
+                      {label}
+                      {highlighted && <span className={cn("ml-2 font-sans normal-case tracking-normal text-[10px] font-bold", isDark ? "text-emerald-300" : "text-emerald-600")}>updated</span>}
+                    </span>
+                    <div className="flex items-center gap-1">
+                    {onRefineClip && (
+                      <button
+                        onClick={() => { setClipRefineOpen(refineOpen ? null : index); setClipRefineText(''); }}
+                        disabled={isRefining}
+                        data-test={`refine-clip-${index + 1}`}
+                        className={cn(
+                          "flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded transition-colors",
+                          refineOpen ? (isDark ? "text-blue-400 bg-blue-900/30" : "text-blue-600 bg-blue-50")
+                            : (isDark ? "text-slate-400 hover:text-blue-400 hover:bg-blue-900/30" : "text-slate-500 hover:text-blue-600 hover:bg-blue-50"),
+                          isRefining && "opacity-50 cursor-not-allowed"
+                        )}
+                      >
+                        {isThisRefining ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                        <span>{isThisRefining ? 'Refining...' : 'Refine'}</span>
+                      </button>
+                    )}
                     <button
                       onClick={() => handleClipCopy(index, clip.text)}
                       className={cn(
@@ -259,11 +338,45 @@ export const GeneratedCard: React.FC<GeneratedCardProps> = ({
                       {isClipCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                       <span>{isClipCopied ? 'Copied' : 'Copy'}</span>
                     </button>
+                    </div>
                   </div>
                   {/* pre-wrap so a two-speaker clip keeps its [Motu]/[Patlu] lines apart. */}
                   <p className={cn("px-3 py-2.5 text-sm leading-relaxed whitespace-pre-wrap", isDark ? "text-slate-300" : "text-slate-700")}>
                     {clip.text}
                   </p>
+                  {refineOpen && (
+                    <div className={cn("px-3 pb-3", isDark ? "bg-slate-800" : "bg-white")}>
+                      <div className="flex items-start gap-2">
+                        <textarea
+                          autoFocus
+                          value={clipRefineText}
+                          onChange={(e) => setClipRefineText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleClipRefineSubmit(index);
+                            if (e.key === 'Escape') setClipRefineOpen(null);
+                          }}
+                          data-test={`refine-clip-input-${index + 1}`}
+                          rows={2}
+                          disabled={isRefining}
+                          placeholder={`What should change in ${label}? Only this clip changes.`}
+                          className={cn("flex-1 text-sm border rounded-lg px-3 py-2 focus:ring-2 outline-none resize-none",
+                            isDark ? "bg-slate-900 border-blue-800 text-slate-200 placeholder-slate-500 focus:ring-blue-700" : "bg-white border-blue-200 text-slate-700 focus:ring-blue-300")}
+                        />
+                        <div className="flex flex-col gap-1">
+                          <button onClick={() => handleClipRefineSubmit(index)} disabled={!clipRefineText.trim() || isRefining}
+                            data-test={`refine-clip-submit-${index + 1}`}
+                            className={cn("p-2 rounded-lg transition-colors",
+                              clipRefineText.trim() && !isRefining ? "bg-blue-600 text-white hover:bg-blue-700" : (isDark ? "bg-slate-700 text-slate-500 cursor-not-allowed" : "bg-slate-200 text-slate-400 cursor-not-allowed"))}>
+                            <Send className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => setClipRefineOpen(null)}
+                            className={cn("p-2 rounded-lg transition-colors", isDark ? "bg-slate-700 text-slate-400 hover:bg-slate-600" : "bg-slate-200 text-slate-500 hover:bg-slate-300")}>
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}

@@ -1,4 +1,10 @@
 import { AdType } from '@/types/aiPlatform';
+import { MAX_WORDS_PER_CLIP, MIN_WORDS_PER_CLIP } from '@/utils/dialogueFormat';
+import { coreMessageBlock, type CoreMessageBrief } from './prompts/coreMessage';
+import { VEO_DIRECTION_SYSTEM_PROMPT, framingForMotion, type ClipMotionPlan } from './prompts/motion';
+
+/** The spoken-word band every clip is held to, as prompts say it. See utils/dialogueFormat. */
+const WORD_BAND = `${MIN_WORDS_PER_CLIP} to ${MAX_WORDS_PER_CLIP}`;
 
 const escapeKeywordForRegex = (keyword: string): string => (
   keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')
@@ -1735,7 +1741,12 @@ export const MULTI_FRAME_SYSTEM_PROMPT = (
    * prompt that both orders a new zone per line and forbids inventing zones is resolved by the model
    * in favour of whichever instruction it read most often, and that was never the photographs.
    */
-  realLocation?: { formula: string; clips: string[] }
+  realLocation?: { formula: string; clips: string[] },
+  /**
+   * The camera move each clip's video will be animated with (prompts/motion). The still is composed
+   * for it — lead room for a track, headroom for a rise — so the video has somewhere to move.
+   */
+  motionPlan?: ClipMotionPlan[]
 ) => {
   const p = getModelProfile(gender);
   const brand = getBrandMark(noLogo, logoName);
@@ -1893,7 +1904,17 @@ Each chosen spot must match the exact service claim, business proof point, or em
 • **Electrical/Hardware:** Service counter → Equipment display → Tool showcase area → Workstation/demo zone → Branded reception feature wall
 • **Default:** Reception → Product/service showcase → Logo/brand wall → Work area → Entrance/closing zone`}
 
-===== FRAME-BY-FRAME GENERATION RULES =====
+${motionPlan?.length ? `===== FRAMES BUILT FOR MOTION (EVERY FRAME BECOMES A MOVING VIDEO) =====
+
+Each frame below is the FIRST frame of an 8-second video that will be animated with a real camera move and a live performance. A frame composed like a flat passport photo gives a flat, static video. Compose every frame so it can move:
+
+• DEPTH: real objects at two or three distances — a foreground edge (a counter corner, shelf end, plant or display) near the lens, the subject in the middle ground, the premises behind — so a moving camera shows parallax.
+• ROOM FOR THE MOVE: follow each clip's 🎬 CAMERA MOVE note exactly — lead room for a track, headroom for a rise, breathing room for a push-in, a readable slice of the premises around the subject for a pull-back.
+• READY TO PERFORM: the subject stands naturally, weight settled, hands relaxed and ready to gesture — never stiff, frozen or mannequin-posed. Clip 1 keeps its composed front stance; composed is not frozen.
+• REAL THINGS WITHIN REACH: the product, counter or equipment the clip talks about sits close enough for a natural open-hand gesture toward it.
+• SHARP, EVEN LIGHT on the subject and the logo, so motion never drops them into shadow.
+
+` : ''}===== FRAME-BY-FRAME GENERATION RULES =====
 
 ${Array.from({ length: segmentCount }, (_, i) => {
   const clipNum = i + 1;
@@ -1912,16 +1933,20 @@ ${Array.from({ length: segmentCount }, (_, i) => {
     ? `the space in the client's photograph assigned to Clip 1 (${photoFor(0)})`
     : `the real [BUSINESS TYPE] reception background built from the business details and 100% relatable to this exact business (its real equipment, products, displays, and service cues so a viewer instantly recognises what it does)`;
 
+  /** This clip's planned move, as a composition note. Empty when no plan was supplied. */
+  const motionNote = motionPlan?.[i] ? `\n   ${framingForMotion(motionPlan[i])}` : '';
+
   if (clipNum === 1) {
     return `**CLIP ${clipNum} — ${shot.name} (Full standalone prompt)**
    📍 LOCATION: ${location}
    🎥 CAMERA: ${camera}
    🧍 POSE: ${shot.pose}
    🎯 PURPOSE: ${shot.purpose}
-    🪧 LOGO SURFACE: ${logoSurface}
+    🪧 LOGO SURFACE: ${logoSurface}${motionNote}
    
    ${adType !== AdType.FESTIVAL ? `Generate a COMPLETE standalone first-frame image prompt EXACTLY in the base format above (the headers: Create an ultra-realistic promotional portrait…, Main Character, Pose, Background, Visual Style, Composition, Important).
-   Keep it clean and concise — about 200–300 words, simple bullet lines, no extra sections, no negative list.
+   Keep it clean and concise — about 200–300 words, simple bullet lines, no extra sections, no negative list.${motionPlan?.[i] ? `
+   In the Composition section, write the composition for this clip's camera move in plain words: ${motionPlan[i].camera.framing}.` : ''}
    Describe the ${p.personYoung} (with ${p.isMale ? 'minimal masculine accessories only — ' + p.jewellery : 'elegant jewellery — ' + (attireType === 'traditional' ? 'necklace/chain, earrings, bangles, finger ring, and a small bindi on the forehead' : 'finger ring, necklace/chain, earrings, watch, and NO bindi on the forehead')}), the formal front-clasp pose, ${heroBackdrop}, and ${brand.ref} fully visible on ${realLocation ? 'a real surface in that photograph' : 'the reception wall'}.
    ${realLocation ? `The pose and mood must directly match Clip ${clipNum}'s voice-over line — the place is the photograph, reproduced exactly as it is` : `The reception, visible business cues, pose, and mood must directly match Clip ${clipNum}'s voice-over line`}, and ${brand.ref} must feel physically installed on ${logoSurface} — pixel-perfect and unchanged, mounted in the upper background, fully readable and fully visible in one piece, with nothing blocking, cropping, or altering it.
    ${brand.isNameBoard ? brand.ref.charAt(0).toUpperCase() + brand.ref.slice(1) : 'The attached logo'} must be the ONLY text in the image — do NOT invent any other logo, signage, banners, taglines, mission lines, service lists, dates, or academic years, and do NOT add empty/blank boards, frames, certificates, brochures, posters, standees, or blank screens (empty placeholders look like cardboard) — keep walls and surfaces clean. Keep it perfectly sharp and in focus (not blurred by depth of field) so all its text is clearly readable.
@@ -1930,7 +1955,8 @@ ${Array.from({ length: segmentCount }, (_, i) => {
    This is the ONLY clip where you fully describe the model's physical appearance.
   ${realLocation ? `The pose energy and emotional tone must directly match Clip ${clipNum}'s voice-over line; the location is the photograph, reproduced as it is, with any festival cues layered onto it rather than replacing it.` : `The chosen location, visible business cues, pose energy, and emotional tone must directly match Clip ${clipNum}'s voice-over line.`}
     The logo must feel physically installed on ${logoSurface}, with believable depth, reflections, and material behavior.
-  Include ALL sections: SUBJECT, FACE, MAKEUP, EXPRESSION, HAIR, ATTIRE, JEWELLERY, ENVIRONMENT, LOGO PLACEMENT, CAMERA, OVERALL RESULT.
+  Include ALL sections: SUBJECT, FACE, MAKEUP, EXPRESSION, HAIR, ATTIRE, JEWELLERY, ENVIRONMENT, LOGO PLACEMENT, CAMERA, OVERALL RESULT.${motionPlan?.[i] ? `
+  In CAMERA, write the composition for this clip's camera move in plain words: ${motionPlan[i].camera.framing}.` : ''}
    The subject must occupy roughly 70% of the frame, maintain direct eye contact with the camera, and ${brand.ref} must appear fully visible in the upper background without any alteration.
    Target length: 500-800 words.`}`;
   }
@@ -1940,7 +1966,7 @@ ${Array.from({ length: segmentCount }, (_, i) => {
    🎥 CAMERA: ${camera}
    🧍 POSE: ${shot.pose}
    🎯 PURPOSE: ${shot.purpose}
-    🪧 LOGO SURFACE: ${logoSurface}
+    🪧 LOGO SURFACE: ${logoSurface}${motionNote}
    
    **⛔ FORBIDDEN — DO NOT WRITE ANY OF THESE FOR CLIP ${clipNum}:**
    You must NOT mention, describe, or reference ANY of the following words/concepts for the model:
@@ -1968,13 +1994,14 @@ ${Array.from({ length: segmentCount }, (_, i) => {
    • 🎥 The new CAMERA ANGLE and composition
   • 💡 How lighting naturally differs at this new spot (e.g., near window = warm, interior = ambient) while still preserving the realism formula
   • 👁️ Mandatory direct eye contact to the camera while holding this new pose
-  • 🪧 ${brand.isNameBoard ? 'The business name board' : 'The attached logo'} placed on this clip's believable physical surface — ${logoSurface} — small-to-medium, sharp and clearly readable, fully visible, physically installed, and completely unmodified${brand.isNameBoard && brand.name ? ` (it must read exactly "${brand.name}")` : ''}
+  • 🪧 ${brand.isNameBoard ? 'The business name board' : 'The attached logo'} placed on this clip's believable physical surface — ${logoSurface} — small-to-medium, sharp and clearly readable, fully visible, physically installed, and completely unmodified${brand.isNameBoard && brand.name ? ` (it must read exactly "${brand.name}")` : ''}${motionPlan?.[i] ? `
+  • 🎬 COMPOSITION FOR THE MOVE (write it into the prompt in plain words — this still becomes a moving video): ${motionPlan[i].camera.framing}` : ''}
 
    WHY THIS MATTERS: Any model description — even saying "beautiful ${p.person}" or "silk saree" — will cause the AI image generator to create a COMPLETELY DIFFERENT person. The model's identity is LOCKED from Clip 1. You ONLY control the scene around ${p.object}.
    
    **OUTPUT LENGTH FOR THIS CLIP: 100-200 words MAXIMUM.**
   **DO NOT include these section headers: SUBJECT, FACE, MAKEUP, EXPRESSION, HAIR, ATTIRE, JEWELLERY, PRODUCT IMAGES PLACEMENT, OVERALL RESULT.**
-   **ONLY include: one model reference line + POSE + NEW LOCATION/ENVIRONMENT + CAMERA/LIGHTING + MOOD.**`;
+   **ONLY include: one model reference line + POSE + NEW LOCATION/ENVIRONMENT + CAMERA/LIGHTING + MOOD${motionPlan?.[i] ? ' + COMPOSITION FOR THE MOVE' : ''}.**`;
 }).join('\n\n')}
 
 ===== VISUAL VARIATION RULES — THE DIRECTOR'S CHECKLIST =====
@@ -2250,7 +2277,21 @@ export const getToneForAdType = (adType: string) =>
     ? 'Warm, celebratory, festive, heartfelt'
     : 'Professional, confident, trustworthy, persuasive';
 
-export const VOICEOVER_SYSTEM_PROMPT = (duration: number, segmentCount: number, adType: string, festivalName: string, language: string = '', gender: string = 'female') => {
+export const VOICEOVER_SYSTEM_PROMPT = (
+  duration: number,
+  segmentCount: number,
+  adType: string,
+  festivalName: string,
+  language: string = '',
+  gender: string = 'female',
+  /**
+   * The core message decided before writing (prompts/coreMessage). When present, the clip that
+   * carries it — clip 1, or clip 2 after a festival greeting — must land it; see coreMessageBlock.
+   */
+  brief: CoreMessageBrief | null = null,
+) => {
+  /** Where the core message is spoken. A festival ad spends clip 1 on the greeting. */
+  const messageClip = adType === 'festival' && segmentCount > 1 ? 2 : 1;
   const clipLines = Array.from({ length: segmentCount }, (_, index) => {
    const start = index * 8;
    const end = start + 8;
@@ -2337,10 +2378,10 @@ ${isLatin ? `1. Spoken content must be clean, natural, conversational English.
 
 1. Total duration = ${duration} seconds.
 2. Total clips = ${segmentCount}, each representing 8 seconds.
-3. Every clip must sound natural when read aloud in 6 to 7 seconds.
-4. Every clip must contain EXACTLY 18 spoken words. This is mandatory.
+3. Every clip must sound natural when read aloud in 7 to 8 seconds.
+4. Every clip must contain BETWEEN ${WORD_BAND} spoken words. Fewer than ${MIN_WORDS_PER_CLIP} leaves dead air; more than ${MAX_WORDS_PER_CLIP} cannot be spoken in 8 seconds. This is mandatory.
 5. Punctuation marks do not count as words.
-6. Every clip must be concise, complete, meaningful, and still hit exactly 18 words.
+6. Every clip must be concise, complete and meaningful. End the sentence where it naturally ends inside the band — never pad a line to reach a number and never cut a thought in half to stay under one.
 
 ===== QUALITY BAR =====
 
@@ -2400,6 +2441,8 @@ Extract and use only verified information from the provided inputs:
 4. Lead with what makes THIS business worth choosing, in plain words a real customer would connect with — benefits and outcomes, not a feature/service list dump.
 5. Word formation must be smooth, natural, and impactful when spoken aloud — no awkward, robotic, or literally-translated phrasing; every line should sound like a real premium ad, not a machine translation.
 
+${coreMessageBlock(brief, messageClip)}
+
 ===== SCRIPT STRUCTURE =====
 
 ${adType === 'festival' ? `FESTIVAL MODE:
@@ -2407,18 +2450,20 @@ ${adType === 'festival' ? `FESTIVAL MODE:
 • Clip 1 should use this idea clearly and naturally${isTelugu ? `: "{Business Name} తరఫున మీకు మరియు మీ కుటుంబానికి ${festivalName} హృదయపూర్వక శుభాకాంక్షలు"` : `, written in native ${lang}: warm ${festivalName} wishes to you and your family on behalf of {Business Name}`}
 • Clip 1 must contain zero business promotion.
 • From Clip 2 onward, remove festival language completely and switch to pure business promotion.
-• Do NOT mix wishes and promotion in the same clip.` : `COMMERCIAL MODE (build a real TV-commercial story arc across the clips):
-• Clip 1 (${0}-${8}) = a strong, attention-grabbing OPENING HOOK. No CTA, no contact details.
-• Then touch the customer's real PROBLEM or DESIRE, and introduce THIS business as the SOLUTION naturally (across Clip 2 and any middle clips).
-• Highlight the ONE main BENEFIT that makes this business worth choosing.
+${segmentCount > 1 ? `• Clip 2 is the CORE MESSAGE clip: in one breath, the business name, what it does, and its core promise — the first thing the viewer hears once the greeting ends.\n` : ''}• Do NOT mix wishes and promotion in the same clip.` : `COMMERCIAL MODE (a real TV-commercial arc, built on the core message):
+• Clip 1 (${0}-${8}) = THE CORE MESSAGE. In one natural breath the listener hears the business NAME, WHAT it does, and its CORE PROMISE — the single strongest reason to choose it. It may open with energy or a punchy phrase, but the hook serves the message and never replaces it. No CTA, no contact details.
+• Clip 1 is NEVER a bare question, a greeting, a welcome, a slogan, or a teaser that hides who the business is.
+• Middle clips = PROOF. Each carries ONE concrete, different proof of the promise from the business information, in the order that builds the case — never a service-list dump, never a repeat of clip 1.
 • Every non-final clip carries only ONE clear selling idea — no CTA and no contact reference.
-• The final clip (${finalStart}-${finalEnd}) = a clear, confident CALL-TO-ACTION only.`}
+• The final clip (${finalStart}-${finalEnd}) = a clear, confident CALL-TO-ACTION, worded for this business, ending with the on-screen call line.`}
 
-${segmentCount === 2 ? `TWO-CLIP MODE:
-• Clip 1 = hook + core benefit or wish depending on ad type
-• Clip 2 = brand authority + one strong benefit + exact final CTA phrase
+${segmentCount === 1 ? `ONE-CLIP MODE:
+• The single clip carries the core message AND ends with the exact final CTA phrase — name, what they do, the promise, then the call line.` : segmentCount === 2 ? `TWO-CLIP MODE:
+• Clip 1 = ${adType === 'festival' ? 'the festival wish' : 'the core message: name + what they do + the core promise'}
+• Clip 2 = ${adType === 'festival' ? 'the core message in brief + exact final CTA phrase' : 'the strongest proof of that promise + exact final CTA phrase'}
 • Do NOT overload Clip 2 with too many claims.` : `MULTI-CLIP MODE:
-• Non-final clips = hook, authority, benefits, trust
+• Clip ${messageClip} = the core message
+• The clips after it = proof, one concrete fact each, strongest first
 • Final clip only = CTA, contact, and optional address if explicitly provided`}
 
 ===== DELIVERY PUNCTUATION RULE =====
@@ -2440,11 +2485,13 @@ Verify all of the following before writing the final answer:
 • No CTA before the final clip
 • No contact reference before the final clip
 • ${isLatin ? 'No digits inside spoken content (spell numbers as words)' : `No Latin letters or digits inside spoken content — only native ${lang} script`}
-• Every clip has exactly 18 spoken words
+• Every clip has between ${WORD_BAND} spoken words
 • No phone number or contact number is spoken anywhere in the script
 • The final clip ends with the exact on-screen call CTA line
 • No duplicate clips
 • Every clip is natural, premium, and speakable
+• Clip ${messageClip} passes the test: a stranger hearing only clip ${messageClip} can say who the business is, what it does, and why to choose it
+• Every clip carries at least one concrete fact — no filler words, no empty adjectives
 
 Output ONLY the ${segmentCount} clip lines.`;
 };
@@ -2475,16 +2522,25 @@ export const SCRIPT_TO_VOICEOVER_SYSTEM_PROMPT = (
 You are NOT inventing an ad from a brief. The user has pasted RAW TEXT (rough notes, a WhatsApp message, a plain description, or an amateur script). Your job is to TRANSFORM that raw text into the professional ${duration}-second commercial voice-over script defined above.
 
 1. FACTS COME ONLY FROM THE PASTED TEXT. Use only the business name, services, products, offers, prices, locations, and claims that actually appear in it. Never invent a single detail that is not there.
-2. REWRITE, DO NOT TRANSCRIBE. The pasted text is source material, not the final script. Restructure it completely into the commercial arc (hook → problem/desire → solution → benefit → CTA) using premium ad language. Never copy a clumsy sentence through unchanged.
+2. REWRITE, DO NOT TRANSCRIBE. The pasted text is source material, not the final script. Restructure it completely into the commercial arc (core message → proof → CTA) using premium ad language. Never copy a clumsy sentence through unchanged.
 3. LANGUAGE: write the spoken lines in ${lang}, following every language rule above, regardless of what language the pasted text is in. Translate the MEANING; never produce a literal, translated-sounding line.
 4. COVERAGE: every important selling point from the pasted text must survive somewhere across the ${segmentCount} clips. Drop only true filler, greetings, emojis, hashtags, and repetition.
 5. COMPRESSION / EXPANSION: if the pasted text is longer than ${segmentCount} clips can hold, keep the strongest selling points and cut the weakest. If it is shorter, expand it with benefit-led phrasing built strictly from the facts that ARE present — never with invented claims.
-6. The word-count contract is absolute: EXACTLY ${segmentCount} clips, EXACTLY 18 spoken words in each one.
+6. The word-count contract is absolute: EXACTLY ${segmentCount} clips, between ${WORD_BAND} spoken words in each one.
 
 Output ONLY the ${segmentCount} clip lines in the required timestamp format.`;
 };
 
-export const VOICEOVER_REPAIR_SYSTEM_PROMPT = (duration: number, segmentCount: number, adType: string, festivalName: string, language: string = 'Telugu') => {
+export const VOICEOVER_REPAIR_SYSTEM_PROMPT = (
+  duration: number,
+  segmentCount: number,
+  adType: string,
+  festivalName: string,
+  language: string = 'Telugu',
+  /** The core message, so a word-count fix cannot quietly strip it out of the message clip. */
+  brief: CoreMessageBrief | null = null,
+) => {
+  const messageClip = adType === 'festival' && segmentCount > 1 ? 2 : 1;
   const clipLines = Array.from({ length: segmentCount }, (_, index) => {
     const start = index * 8;
     const end = start + 8;
@@ -2537,11 +2593,13 @@ ${clipLines}
 7. NEVER speak or include any phone number or contact number anywhere — no English digit names, no native counting words, no number at all. The number is shown on screen, not spoken.
 8. ${finalCtaLine}
 9. ${transliterationRule}
-10. Every clip must contain EXACTLY 18 spoken words.
+10. Every clip must contain between ${WORD_BAND} spoken words. Fix a count by tightening or completing the thought, never by padding or cutting a sentence in half.
 11. Remove duplicated clips and repeated closings.
 12. For festival ads, clip 1 must stay only as festival wishes, and all later clips must switch to pure business promotion.
 13. Every clip must be a complete, natural, premium-sounding spoken sentence — never old, literary, textbook, or literally-translated-sounding ${lang}.
-14. Every clip must sound speakable in roughly 6 to 7 seconds.
+14. Every clip must sound speakable in roughly 7 to 8 seconds.
+15. Clip ${messageClip} must still carry the core message after the repair: the business name, what it does, and its core promise. Never repair a word count by removing any of those three.
+${brief ? `\n${coreMessageBlock(brief, messageClip)}\n` : ''}
 
 ===== QUALITY TARGET =====
 
@@ -2595,7 +2653,13 @@ Return only the repaired ${segmentCount} clip lines.`;
  * This is intentionally language-parameterized and reusable — it is not a one-off Telugu patch.
  * Any current or future target language runs through the exact same native-speaker QA gate.
  */
-export const VOICEOVER_QUALITY_REVIEW_SYSTEM_PROMPT = (language: string = 'Telugu') => {
+export const VOICEOVER_QUALITY_REVIEW_SYSTEM_PROMPT = (
+  language: string = 'Telugu',
+  /** The core message the script was written to deliver, so the reviewer can hold clip 1 to it. */
+  brief: CoreMessageBrief | null = null,
+  /** 1 for a normal ad; 2 when clip 1 is a festival greeting. */
+  messageClip: number = 1,
+) => {
   const lang = (language || 'Telugu').trim() || 'Telugu';
   const isTelugu = lang.toLowerCase() === 'telugu';
   const isLatin = lang.toLowerCase() === 'english';
@@ -2619,15 +2683,19 @@ You will be given a CANDIDATE SCRIPT (already split into numbered clip lines, al
 5. INCONSISTENT TONE — energy, formality, or emotional register that shifts oddly between clips instead of staying one coherent voice throughout the whole script.
 6. WEAK COMMERCIAL COPYWRITING — missing hook, no clear benefit, no emotional pull, generic claims, or a flat CTA — anything that reads like a description instead of a sales script engineered to convert on Meta Ads / YouTube / Instagram Reels / TV.
 7. GENERIC / TEMPLATED WRITING — lines that could be dropped into any other business's ad unchanged instead of using THIS business's real, specific details.
-
+8. A MESSAGE CLIP THAT DOES NOT LAND — clip ${messageClip} is a teaser, a bare question, a greeting or a slogan, and a stranger who hears only it cannot say who the business is, what it does, and why to choose it.
+9. WASTED WORDS — filler, empty adjectives with no fact behind them, or a line that carries no concrete fact the listener can remember or act on.
+${brief ? `\n${coreMessageBlock(brief, messageClip)}\n` : ''}
 ===== YOUR PROCESS (internal reasoning — do not include it in the output) =====
 
 For each clip, silently read it exactly as a voice artist would say it aloud, and ask: "Would a real ${isTelugu ? 'Telugu' : lang}-speaking customer ever hear a real ad talk like this?" If the honest answer is no, it fails and you must rewrite it — natively, not by patching individual words.
 
+Then run the CLIP ${messageClip} TEST: imagine a stranger hears ONLY clip ${messageClip}, once. Write down, in English, who the business is, what it does, and why to choose it — using only what that clip actually says. If any of the three is missing or vague, clip ${messageClip} fails and must be rewritten until all three are unmistakable.
+
 ===== MECHANICAL CONTRACT THE REWRITE MUST STILL OBEY (never break these while improving the language) =====
 
 • Exactly the same number of clip lines as the candidate, in the exact same "START-END: text" format.
-• Every clip must contain EXACTLY 18 spoken words (punctuation not counted).
+• Every clip must contain between ${WORD_BAND} spoken words (punctuation not counted).
 • Spoken content in pure, correct ${scriptWord} only — ${isLatin ? 'no digits' : 'no Latin letters or digits'} inside spoken content.
 • No phone/contact number is ever spoken. CTA and contact references appear ONLY in the final clip.
 • The final clip must end with ${finalCtaLine}
@@ -2641,50 +2709,37 @@ Output ONLY a valid JSON object. No markdown, no code fences, no commentary outs
   "pass": <true if the candidate already met every standard above with no meaningful native-speaker complaint, false otherwise>,
   "score": <0-100 integer — your honest native-speaker quality score>,
   "issues": ["<short, specific issue you found>", "..."],
+  "messageClipTest": { "who": "<who, from clip ${messageClip} alone>", "what": "<what they do, from clip ${messageClip} alone>", "why": "<the reason to choose them, from clip ${messageClip} alone>", "pass": <true only if all three are clear from clip ${messageClip} in correctedScript> },
   "correctedScript": "<the FINAL production-ready script, in the exact clip-line format, with every issue you found already fixed>"
 }
 
 Always populate "correctedScript" with your best, final, ready-to-record version — even when pass is true, tighten and polish it one more time. Never return the candidate unchanged if you can make it sound more natural, more native, and more persuasive while staying 100% truthful to the business information. If the candidate is already flawless, correctedScript may be identical to it.`;
 };
 
-export const VEO_SEGMENT_SYSTEM_PROMPT = (segmentCount: number, gender: string = 'female') => {
+/**
+ * The system prompt for the Veo direction call on a model ad — see prompts/motion.
+ *
+ * It used to BE the Veo prompt template: "with appropriate gestures in same location", eye contact
+ * "at all times", the same four gestures for every ad, and not one word about the camera — which is
+ * exactly the static video the team kept getting. The model now writes only the direction for each
+ * clip (the camera move made specific to its frame, three timed beats, the life in the scene), from
+ * the frame prompt it is animating, and code assembles the finished prompt around it.
+ */
+export const VEO_SEGMENT_SYSTEM_PROMPT = (segmentCount: number, gender: string = 'female', aspectRatio: '9:16' | '16:9' = '9:16') => {
   const p = getModelProfile(gender);
-  const voiceLine = p.isMale
-    ? `With a warm, confident voice he needs to say:`
-    : `With a very sweet voice she needs to say:`;
-  return `You are an expert at formatting video generation prompts for Veo 3.
+  return VEO_DIRECTION_SYSTEM_PROMPT({
+    clipCount: segmentCount,
+    aspectRatio,
+    subject: p.isMale ? 'the model (a man)' : 'the model (a woman)',
+  });
+};
 
-YOUR TASK: Generate ${segmentCount} copy-paste-ready Veo 3 prompts.
-
-INPUT PROVIDED:
-• Voice-over script segments (already generated)
-
-CRITICAL INSTRUCTIONS:
-You must output each segment in this EXACT FORMAT:
-
-${voiceLine}
-
-"\${voiceOverSegment}"
-
-with appropriate gestures in same location don't change face 100% face match. \${specificGestures}
-
-Negative prompt:
-No text on the screen
-No background music , pure studio type voice over script , crystall clear voice, no echos,--
-
-GUIDELINES FOR GESTURES:
-Segment 1: Warm welcoming smile, slight head tilt, hands clasped or inviting, maintaining direct eye contact with the camera throughout.
-Segment 2: Confident professional posture, hand gestures explaining a concept, maintaining direct eye contact with the camera throughout.
-Segment 3: Enthusiastic expression, expressive hands showing scale or quality, maintaining direct eye contact with the camera throughout.
-Segment 4: Grateful expression, bowing slightly or namaste gesture, warm closing smile, maintaining direct eye contact with the camera throughout.
-
-CRITICAL EYE CONTACT RULE: In EVERY segment, the model MUST maintain direct eye contact with the camera — looking straight into the lens at all times. This is NON-NEGOTIABLE.
-
-OUTPUT FORMAT:
-Provide ONLY the prompts. Do not include the Main Frame description.
-Ensure strict adherence to the format above.
-Separator between segments: "###SEGMENT###"
-`;
+/** The voice and the things a model-ad clip must never change, for assembleVeoPrompt. */
+export const modelVeoSubject = (gender: string = 'female') => {
+  const p = getModelProfile(gender);
+  return p.isMale
+    ? { voice: 'a warm, confident male voice', identityLock: 'his face (100% face match), his hair, his outfit, the logo and the location' }
+    : { voice: 'a very sweet, warm, confident female voice', identityLock: 'her face (100% face match), her hair, her outfit, the logo and the location' };
 };
 
 export const POSTER_SYSTEM_PROMPT = (

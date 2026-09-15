@@ -7,7 +7,7 @@ import {
 import AIPlatformApp from '@/components/ai-platform/AIPlatformApp';
 import {
   extractScriptFromImage, convertToVoiceOverScript, suggestClipCount, countScriptWords,
-  detectScriptLanguage, extractBusinessNameFromInfo, WORDS_PER_CLIP, type ScriptConversion,
+  detectScriptLanguage, extractBusinessNameFromInfo, WORD_BAND, type ScriptConversion,
 } from '@/services/geminiService';
 import { db } from '@/services/firebase';
 import type { SavedGeneration } from '@/components/ai-platform/SavedItems';
@@ -394,7 +394,7 @@ export default function Tools() {
                   )}
                   {resolvedClipCount > 0 && (
                     <p className="mt-2 text-[11px] text-muted-foreground">
-                      Output: <span className="font-medium text-foreground">{resolvedClipCount} clips × 8s = {resolvedClipCount * 8}s</span>, {WORDS_PER_CLIP} words per clip (ads-platform formula)
+                      Output: <span className="font-medium text-foreground">{resolvedClipCount} clips × 8s = {resolvedClipCount * 8}s</span>, {WORD_BAND.min}–{WORD_BAND.max} words per clip (ads-platform formula)
                     </p>
                   )}
                 </div>
@@ -486,7 +486,7 @@ export default function Tools() {
                           <div className="flex items-center justify-between gap-2 mb-1.5">
                             <span className="text-xs font-bold text-primary font-mono">{clip.label}</span>
                             <div className="flex items-center gap-2">
-                              <span className={`text-[10px] ${clip.wordCount === WORDS_PER_CLIP ? 'text-muted-foreground' : 'text-amber-600 dark:text-amber-400 font-medium'}`}>
+                              <span className={`text-[10px] ${clip.wordCount >= WORD_BAND.min && clip.wordCount <= WORD_BAND.max ? 'text-muted-foreground' : 'text-amber-600 dark:text-amber-400 font-medium'}`}>
                                 {clip.wordCount} words
                               </span>
                               <button onClick={() => handleCopyClip(idx, clip.label, clip.text)}

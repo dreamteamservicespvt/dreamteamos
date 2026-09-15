@@ -10,6 +10,7 @@ import {
   SCRIPT_TO_VOICEOVER_SYSTEM_PROMPT,
   VOICEOVER_QUALITY_REVIEW_SYSTEM_PROMPT,
   VEO_SEGMENT_SYSTEM_PROMPT,
+  modelVeoSubject,
   STOCK_IMAGE_SYSTEM_PROMPT,
   OVERLAY_TEXT_SYSTEM_PROMPT,
   EXTRACTION_SYSTEM_PROMPT,
@@ -31,8 +32,23 @@ import {
   CHARACTER_MULTI_FRAME_SYSTEM_PROMPT,
   CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT,
   LOCATION_INDEX_SYSTEM_PROMPT,
+  packVeoSubject,
   wardrobeDirective,
 } from "./prompts/characterAd";
+import {
+  CORE_MESSAGE_SYSTEM_PROMPT, fallbackCoreMessageBrief, parseCoreMessageBrief, type CoreMessageBrief,
+} from "./prompts/coreMessage";
+import {
+  assembleVeoPrompt, parseVeoDirections, planClipMotion, spokenLinesIn, withMotionComposition,
+  type ClipMotionPlan, type VeoSpeech,
+} from "./prompts/motion";
+import {
+  VEO_REFINE_SYSTEM_PROMPT, VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT, VOICEOVER_REFINE_PLAN_SYSTEM_PROMPT,
+} from "./prompts/refine";
+import {
+  changedClipIndexes, clipIndexesFromIssues, introducedIssues, isBetterRepair, issuesForClip, mergeClipEdits,
+  numberedWords, parseClipDialogueEdits, parseClipTextEdits, parseRefinePlan, repairDirection, wordBandDistance,
+} from "@/utils/voiceOverRefine";
 import {
   getCharacterPack, packSpeakers, packSpeakerAliases, packNameSpellings, isHumanPack, packModelGender,
   type CharacterPack,
@@ -45,10 +61,10 @@ import { DEFAULT_POSTER_SIZE } from "@/utils/posterSpec";
 import { finalizePosterConcepts, normalizePosterConcept, parsePosterConcepts } from "@/utils/posterConcepts";
 import {
   parseDialogueClips, validateDialogueClips, formatDialogueScript, applyNameSpellings,
-  type DialogueClip, wordBudgetFor,
+  type DialogueClip, wordBudgetFor, MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, TARGET_WORDS_PER_CLIP,
 } from "@/utils/dialogueFormat";
 import {
-  assignPhotosToClips, describeClipLocations, attachmentDirective, parseLocationIndex,
+  assignPhotosToClips, describeClipLocations, attachmentDirective, parseLocationIndex, splitAttachmentDirective,
   type LocationPhoto,
 } from "@/utils/locationAssignment";
 import { MODEL_LOCATION_SUBJECT, clipLocationLabel, realLocationFormula } from "./prompts/realLocation";
@@ -149,6 +165,18 @@ const MODEL_LIST: string[] = [
 // Track permanently dead models (404 / not found) — removed for this session
 const deadModels = new Set<string>();
 
+/**
+ * Models unavailable on ONE key, as "keyIndex|model".
+ *
+ * A 404 used to kill the model for the whole session and every key. But a 404 is often about the key,
+ * not the model: Google stopped offering gemini-2.5-flash "to new users", so a key from a newer project
+ * gets 404 while every older key still serves it. In live testing key 2 was one of those — its single
+ * 404 removed gemini-2.5-flash for all 30 keys, and every generation, script, frame and video prompt
+ * then ran on the lite models instead. A model is now retired only when no key can reach it.
+ */
+const deadModelKeys = new Set<string>();
+const modelKeyId = (keyIndex: number, model: string) => `${keyIndex}|${model}`;
+
 let currentModelIndex = 0;
 
 const getCurrentModel = (): string => {
@@ -222,7 +250,17 @@ const callWithFallback = async <T>(
         errorMessage.includes('models/') && errorMessage.includes('not');
       
       if (isModelNotFound) {
-        console.error(`Model "${model}" is permanently dead (404). Removing from rotation.`);
+        deadModelKeys.add(modelKeyId(currentKeyIndex, model));
+        // Another key may still serve this model — try it there before giving the model up.
+        const keysWithModel = API_KEYS.map((_, k) => k).filter(k => !deadModelKeys.has(modelKeyId(k, model)));
+        if (keysWithModel.length > 0) {
+          const next = keysWithModel.find(k => k > currentKeyIndex) ?? keysWithModel[0];
+          console.warn(`Model "${model}" is not available on API key ${currentKeyIndex + 1}; trying it on key ${next + 1}.`);
+          currentKeyIndex = next;
+          await new Promise(r => setTimeout(r, 300));
+          continue;
+        }
+        console.error(`Model "${model}" is not available on any API key (404). Removing from rotation.`);
         deadModels.add(model);
         if (aliveModelCount() === 0) {
           throw new Error(`All models are dead. Last error: ${errorMessage}`);
@@ -349,6 +387,47 @@ const buildLanguageDirective = (formData: AdFormData): string => {
 // Pixel-perfect refine: change ONLY what the user asked, keep everything else identical.
 const REFINE_EDIT_DIRECTIVE = `You are a precise prompt EDITOR (not a re-generator). Apply ONLY the user's requested change to the given content and keep EVERYTHING else exactly the same, word-for-word. Do NOT rewrite, restructure, reorder, shorten, expand, or "improve" any part the user did not ask about. Make the smallest possible edit that fully satisfies the request, and preserve all existing separators, structure, and formatting.\n\n`;
 
+/**
+ * Decides the ad's core message before a line is written — see prompts/coreMessage.
+ *
+ * Built from everything the member gave the platform: the business information extracted from the
+ * Assets & Files, the member's written brief, and the Configuration. A failed or unreadable call
+ * never stops a generation; it falls back to a brief assembled from the extracted profile.
+ */
+export const deriveCoreMessage = async (businessInfo: any, formData: AdFormData): Promise<CoreMessageBrief> => {
+  const pack = getCharacterPack(formData.characterPack);
+  const configuration = [
+    `Ad type: ${formData.adType}${formData.adType === 'festival' && formData.festivalName ? ` — ${formData.festivalName}` : ''}`,
+    `Spoken language: ${formData.language || 'Telugu'}`,
+    `Length: ${Math.max(1, Math.round((formData.duration || 32) / CLIP_SECONDS))} clips of ${CLIP_SECONDS} seconds`,
+    `Special category: ${pack ? pack.label : 'none — a model presents the business'}`,
+    `Background: ${formData.locationMode === 'real_provided' ? "the client's own premises, from their photographs" : 'built for the business'}`,
+  ].join('\n');
+  const brief = formData.textInstructions?.trim();
+
+  if (API_KEYS.length > 0) {
+    try {
+      const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
+        model,
+        contents: [{ role: 'user', parts: [{ text:
+`BUSINESS INFORMATION (extracted from the client's Assets & Files):
+${JSON.stringify(businessInfo, null, 2)}
+${brief ? `\nTHE MEMBER'S WRITTEN BRIEF (the client's own instructions — these come first):\n${brief}\n` : ''}
+AD CONFIGURATION:
+${configuration}
+
+Decide the core message now and return the JSON.` }] }],
+        config: { systemInstruction: CORE_MESSAGE_SYSTEM_PROMPT, responseMimeType: 'application/json' },
+      }));
+      const parsed = parseCoreMessageBrief(response.text || '');
+      if (parsed) return parsed;
+    } catch (err) {
+      console.warn('Core message step failed; building the brief from the extracted profile.', err);
+    }
+  }
+  return fallbackCoreMessageBrief(businessInfo);
+};
+
 // Function to refine a specific section
 export const refineSection = async (
   sectionType: SectionType,
@@ -375,6 +454,19 @@ export const refineSection = async (
    */
   const pack = getCharacterPack(formData.characterPack);
   const packSpeakerList = pack ? packSpeakers(pack) : [];
+
+  /**
+   * The voice-over and the video prompts have their own refine flows, which understand the request
+   * and change only what it touches (refineVoiceOver, refineVeoPrompts). This whole-section entry
+   * point is kept for callers that still pass a section as one string.
+   */
+  if (sectionType === 'voiceOver') {
+    return (await refineVoiceOver({ script: currentContent, instruction: additionalInstructions, formData, businessInfo })).script;
+  }
+  if (sectionType === 'veo') {
+    const prompts = currentContent.split(/###\s*SEGMENT\s*###/i).map(p => p.trim()).filter(Boolean);
+    return (await refineVeoPrompts({ prompts, instruction: additionalInstructions })).prompts.join('\n###SEGMENT###\n');
+  }
 
   switch (sectionType) {
     case 'mainFrame':
@@ -464,69 +556,6 @@ IMPORTANT:
 - Output ONLY the refined plain-text prompt, no explanations`;
       break;
 
-    case 'voiceOver': {
-      // The script the member is looking at is the authority on its own length. A pack script that
-      // was generated for a longer package, or a custom script the business supplied, must not be
-      // silently re-cut to whatever the duration field currently says.
-      const scriptClips = parseLabeledClips(currentContent).length;
-      const segmentCount = scriptClips > 0 ? scriptClips : Math.ceil(formData.duration / 8);
-      /*
-        A pack refine gets the EDIT prompt, never the generator.
-
-        The generator prompt knows the two-hander contract, which is why it was used here — but it
-        ends by asking for a script to be written, and a model handed a script plus "write the clips
-        now" writes a new one. That rewrite is where the two characters got flattened into a single
-        promotional voice-over. CHARACTER_VOICEOVER_REFINE_SYSTEM_PROMPT states the same contract as
-        something to preserve and the job as an edit.
-      */
-      systemPrompt = REFINE_EDIT_DIRECTIVE + buildLanguageDirective(formData) + (pack
-        ? CHARACTER_VOICEOVER_REFINE_SYSTEM_PROMPT(pack, segmentCount, formData.language)
-        : VOICEOVER_SYSTEM_PROMPT(formData.duration, segmentCount, formData.adType, formData.festivalName, formData.language, formData.gender || 'female'));
-      userPrompt = `You previously generated this Voice Over script:
-
----CURRENT SCRIPT---
-${currentContent}
----END CURRENT SCRIPT---
-
-The user wants the following changes/additions:
-"${additionalInstructions}"
-
-IMPORTANT:
-- Apply ONLY the requested changes to the existing script
-- Keep the same structure and duration
-- Maintain the ${formData.language || 'Telugu'} language
-${pack ? `- This is a ${pack.label} two-character script. KEEP the exchange exactly as it is built:
-  every clip has ${packSpeakerList.length} lines, ${packSpeakerList[0]?.name} first and ${packSpeakerList[1]?.name} second,
-  each line labelled. NEVER merge them into one voice, never drop a character, never reorder them.
-- Return it in the SAME shape you were given: a "clip-N[start-endsec]:" header, then one labelled
-  line per character underneath it.` : ''}
-- Output ONLY the refined script, no explanations`;
-      break;
-    }
-
-    case 'veo': {
-      const segCount = Math.ceil(formData.duration / 8);
-      systemPrompt = REFINE_EDIT_DIRECTIVE + (pack
-        ? CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT(pack, segCount, formData.aspectRatio === '16:9' ? '16:9' : '9:16')
-        : VEO_SEGMENT_SYSTEM_PROMPT(segCount, formData.gender || 'female'));
-      userPrompt = `You previously generated these Veo prompts:
-
----CURRENT PROMPTS---
-${currentContent}
----END CURRENT PROMPTS---
-
-The user wants the following changes/additions:
-"${additionalInstructions}"
-
-IMPORTANT:
-- Apply ONLY the requested changes to the existing prompts
-- Keep the same structure and segment count
-${pack ? `- These are ${pack.label} clips. Keep both characters and their attributed lines exactly as they are, and keep every prompt animating its attached frame — do NOT turn them into descriptions of a scene or a human presenter.` : ''}
-- Output ONLY the refined prompts, no explanations
-- Use ###SEGMENT### separator between segments`;
-      break;
-    }
-
     default:
       throw new Error(`Unknown section type: ${sectionType}`);
   }
@@ -545,53 +574,234 @@ ${pack ? `- These are ${pack.label} clips. Keep both characters and their attrib
 
   const refined = response.text || currentContent;
 
-  /**
-   * Put a refined pack script back into the exact shape the rest of the app reads — and refuse to
-   * accept one that is no longer a two-hander.
-   *
-   * The editor is ASKED to preserve the two-speaker layout, which is not the same as guaranteed. It
-   * may come back with the labels spaced differently or the clip header missing its colon, and that
-   * colon is what the AI Platform's clip splitter needs to break the script into cards at all.
-   * Re-parsing and re-formatting makes the output canonical no matter how it was written, and
-   * re-applies the fixed name spellings while we are at it.
-   *
-   * When the reply is NOT a two-hander the old code kept it anyway, on the reasoning that a lost
-   * edit is worse than an odd-reading script. That reasoning was wrong in this one case: what
-   * "odd-reading" meant in practice was the member's Motu & Patlu ad silently turning into an
-   * ordinary single-voice promotional script — the whole thing the client paid for, gone, with no
-   * way back to it. So a reply that has lost the format is rejected and the original script is kept.
-   * The member loses one attempt and can refine again; they do not lose the ad.
-   */
-  if (sectionType === 'voiceOver' && pack) {
-    const canonical = (text: string): string | null => {
-      const clips = parseDialogueClips(text, packSpeakerAliases(pack));
-      if (clips.length === 0 || !clips.every(c => c.length === packSpeakerList.length)) return null;
-      return formatDialogueScript(
-        applyNameSpellings(clips, packNameSpellings(pack, formData.language)),
-        packSpeakerList,
-      );
-    };
+  return refined;
+};
 
-    const first = canonical(refined);
-    if (first) return first;
+// ── Voice-over refine: understand, edit only what was asked, prove nothing else broke ─────────────
 
-    // One corrective attempt, told exactly what it did wrong. Models that flatten a two-hander
-    // usually do it once and get it right when the failure is named.
-    const retry = await callWithFallback(async (ai, model) => ai.models.generateContent({
-      model,
-      contents: [{ role: 'user', parts: [{ text: `${userPrompt}
+/** The editor returned the clip unchanged — which, in practice, means the script already said it. */
+const ALREADY_SAYS_IT = 'The script already says this, so the editor left it as it was. If you want it said differently, describe how.';
 
-⚠️ YOUR PREVIOUS REPLY WAS REJECTED. It was not a ${pack.label} two-character script — the exchange
-between ${packSpeakerList.map(s => s.name).join(' and ')} was lost. Do it again: apply the SAME
-requested change to the SAME script, and return every clip as exactly ${packSpeakerList.length}
-labelled lines, ${packSpeakerList[0]?.name} first.` }] }],
-      config: { systemInstruction: systemPrompt },
-    }));
+export interface VoiceOverRefineResult {
+  /** The script after the refine — the original, untouched, when nothing was applied. */
+  script: string;
+  /** 0-based clips whose words changed. */
+  changed: number[];
+  /** What the member asked for, as the editor understood it. */
+  understood: string;
+  /** Set when nothing was applied, with a reason the member can act on. */
+  notApplied?: string;
+}
 
-    return canonical(retry.text || '') ?? currentContent;
+/**
+ * Refines a voice-over script — the whole script, or one clip from its own Refine button.
+ *
+ * 1. PLAN: the request is read against the numbered script and resolved to the clips it touches
+ *    (VOICEOVER_REFINE_PLAN_SYSTEM_PROMPT). A clip's own button fixes the plan to that clip.
+ * 2. EDIT: only those clips are rewritten, returned as JSON by clip number.
+ * 3. MERGE: edited clips go back into the untouched script in code — every other clip is exactly what
+ *    it was, because it never went through a model.
+ * 4. CHECK: the result is validated, and only problems the edit CREATED count (utils/voiceOverRefine).
+ *    One corrective attempt is made with those problems named; if it still breaks the script, nothing
+ *    is saved and the member is told why.
+ */
+export const refineVoiceOver = async (params: {
+  script: string;
+  instruction: string;
+  /** 0-based clip, when refining one clip. */
+  clip?: number | null;
+  formData: AdFormData;
+  businessInfo: any;
+  coreMessage?: CoreMessageBrief | null;
+}): Promise<VoiceOverRefineResult> => {
+  if (API_KEYS.length === 0) {
+    throw new Error("No API keys configured. Please set API_KEY_1, API_KEY_2, etc. in your environment.");
+  }
+  const { script, instruction, formData, businessInfo } = params;
+  const forced = typeof params.clip === 'number' ? params.clip : null;
+  const language = formData.language || 'Telugu';
+  const pack = getCharacterPack(formData.characterPack);
+  const speakers = pack ? packSpeakers(pack) : [];
+  const nameOf = new Map(speakers.map(s => [s.key, s.name]));
+  const unchanged = (notApplied: string, understood = ''): VoiceOverRefineResult => ({ script, changed: [], understood, notApplied });
+
+  // ── The script as clips ──
+  const dialogue: DialogueClip[] = pack ? parseDialogueClips(script, packSpeakerAliases(pack)) : [];
+  const labelled = pack ? [] : parseLabeledClips(script).map(cleanScriptText);
+  const lines: string[] = pack
+    ? []
+    : labelled.length > 0 ? labelled : normalizeAndFormatVoiceOver(script, Math.max(1, Math.round(formData.duration / CLIP_SECONDS))).segments;
+  const texts = pack
+    ? dialogue.map(c => c.map(l => `[${nameOf.get(l.speaker) ?? l.speaker}]: ${l.text}`).join('\n'))
+    : lines;
+  const count = texts.length;
+  if (count === 0) return unchanged('The script could not be read into clips, so there was nothing to refine.');
+  if (forced !== null && (forced < 0 || forced >= count)) return unchanged(`This script has no clip ${forced + 1}.`);
+
+  const numbered = texts.map((t, i) => `Clip ${i + 1} (${i * CLIP_SECONDS}-${(i + 1) * CLIP_SECONDS}s):\n${t}`).join('\n\n');
+
+  // ── 1. Plan ──
+  const planResponse = await callWithFallback(async (ai, model) => ai.models.generateContent({
+    model,
+    contents: [{ role: 'user', parts: [{ text: `SCRIPT:\n${numbered}\n\nREQUEST:\n"${instruction}"\n\nReturn the JSON plan.` }] }],
+    config: {
+      systemInstruction: VOICEOVER_REFINE_PLAN_SYSTEM_PROMPT({ language, clipCount: count, forcedClip: forced === null ? null : forced + 1 }),
+      responseMimeType: 'application/json',
+    },
+  }));
+  const plan = parseRefinePlan(planResponse.text || '', count, forced);
+  if (plan.notPossible) return unchanged(plan.notPossible, plan.understood);
+  if (plan.alreadyDone) return unchanged(`Nothing needed changing — ${plan.alreadyDone}.`, plan.understood);
+  if (plan.clips.length === 0) {
+    return unchanged('The request did not point to anything in the script to change. Say which clip, or what should be different.', plan.understood);
   }
 
-  return refined;
+  // ── 2. Edit ──
+  const editSystem = buildLanguageDirective(formData) + VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT({
+    language,
+    clipCount: count,
+    adType: formData.adType,
+    festivalName: formData.festivalName,
+    brief: params.coreMessage ?? null,
+    speakers: pack ? speakers : undefined,
+  });
+  const editPrompt = (correction = '') => `SCRIPT (the whole script, for context):
+${numbered}
+
+BUSINESS INFORMATION:
+${JSON.stringify(businessInfo, null, 2)}
+
+REQUEST (the member's own words):
+"${instruction}"
+
+EDIT PLAN — change these clips only:
+${plan.clips.map(i => `- Clip ${i + 1}: ${plan.changes[i] || 'apply the request to this clip'}`).join('\n')}
+${correction ? `\n⚠️ YOUR PREVIOUS EDIT WAS REJECTED:\n${correction}\nDo the same edit again and fix exactly those problems.\n` : ''}
+Return ONLY the JSON for clip${plan.clips.length === 1 ? '' : 's'} ${plan.clips.map(i => i + 1).join(', ')}.`;
+  const edit = async (correction = '') => (await callWithFallback(async (ai, model) => ai.models.generateContent({
+    model,
+    contents: [{ role: 'user', parts: [{ text: editPrompt(correction) }] }],
+    config: { systemInstruction: editSystem, responseMimeType: 'application/json' },
+  }))).text || '';
+
+  // ── 3 & 4. Merge and check, with one corrective attempt ──
+  if (!pack) {
+    const before = validateVoiceOverSegments(formatVoiceOverScript(lines), lines, count, language);
+    const attempt = (raw: string) => {
+      const edits = new Map([...parseClipTextEdits(raw, plan.clips)].map(([i, t]) => [i, cleanScriptText(t)] as [number, string]));
+      const merged = mergeClipEdits(lines, edits);
+      const formatted = formatVoiceOverScript(merged);
+      const problems = edits.size === 0
+        ? ['Your reply contained no usable clips in the required JSON.']
+        : introducedIssues(before, validateVoiceOverSegments(formatted, merged, count, language));
+      return { merged, formatted, problems };
+    };
+    let result = attempt(await edit());
+    if (result.problems.length > 0) {
+      // Name each problem with its fix, and show the clip's words counted, so the retry can see the number.
+      const correction = plan.clips.map(i => {
+        const clipProblems = issuesForClip(result.problems, i, count);
+        return clipProblems.length
+          ? `- Clip ${i + 1}: ${repairDirection(clipProblems, MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP)}\n  As you wrote it — ${numberedWords(tokenizeWords(result.merged[i]))}`
+          : '';
+      }).filter(Boolean).concat(result.problems.filter(p => clipIndexesFromIssues([p], count).length === 0).map(p => `- ${p}`));
+      result = attempt(await edit(correction.join('\n')));
+    }
+    if (result.problems.length > 0) {
+      return unchanged(`The change could not be made without breaking the script: ${result.problems.join(' ')}`, plan.understood);
+    }
+    const changed = changedClipIndexes(lines, result.merged);
+    if (changed.length === 0) return unchanged(ALREADY_SAYS_IT, plan.understood);
+    return { script: result.formatted, changed, understood: plan.understood };
+  }
+
+  const budget = wordBudgetFor(speakers.length);
+  const spellings = packNameSpellings(pack, language);
+  const characterNames = speakers.map(s => ({
+    name: s.name,
+    tokens: [s.name, ...spellings.filter(sp => sp.name === s.name).map(sp => sp.spelling)],
+  }));
+  const check = (clips: DialogueClip[]) => validateDialogueClips(clips, count, speakers, {
+    characterNames,
+    minWordsPerClip: budget.minClip,
+    maxWordsPerClip: budget.maxClip,
+    minWordsPerLine: budget.minLine,
+    maxWordsPerLine: budget.maxLine,
+  });
+  /** A speaker as the model wrote it — key, name, or position — resolved to the pack's own key. */
+  const speakerKey = (raw: string, position: number) => {
+    const t = raw.trim().toLowerCase();
+    return speakers.find(s => s.key === t || s.name.toLowerCase() === t)?.key ?? speakers[position]?.key ?? t;
+  };
+  const before = check(dialogue);
+  const attempt = (raw: string) => {
+    const edits = new Map([...parseClipDialogueEdits(raw, plan.clips)].map(([i, ls]) =>
+      [i, ls.map((l, p) => ({ speaker: speakerKey(l.speaker, p), text: l.text }))] as [number, DialogueClip]));
+    const merged = applyNameSpellings(mergeClipEdits(dialogue, edits), spellings);
+    const problems = edits.size === 0
+      ? ['Your reply contained no usable clips in the required JSON.']
+      : introducedIssues(before, check(merged));
+    return { merged, problems };
+  };
+  let result = attempt(await edit());
+  if (result.problems.length > 0) result = attempt(await edit(result.problems.map(p => `- ${p}`).join('\n')));
+  if (result.problems.length > 0) {
+    return unchanged(`The change could not be made without breaking the ${pack.label} script: ${result.problems.join(' ')}`, plan.understood);
+  }
+  const changed = changedClipIndexes(dialogue, result.merged, (a, b) => JSON.stringify(a) === JSON.stringify(b));
+  if (changed.length === 0) return unchanged(ALREADY_SAYS_IT, plan.understood);
+  return { script: formatDialogueScript(result.merged, speakers), changed, understood: plan.understood };
+};
+
+/**
+ * Refines Veo prompts — one clip or all of them — without losing their shape or their dialogue.
+ *
+ * The spoken line inside each prompt is the recorded dialogue; a refine that changes it would put
+ * words in the video the voice-over never says. So every prompt that comes back is checked against
+ * the one that went in, and any whose dialogue moved is kept as it was.
+ */
+export const refineVeoPrompts = async (params: {
+  prompts: string[];
+  instruction: string;
+  /** 0-based clip to refine; omit to apply the request to every clip. */
+  clip?: number | null;
+}): Promise<{ prompts: string[]; changed: number[]; rejected: number[] }> => {
+  if (API_KEYS.length === 0) {
+    throw new Error("No API keys configured. Please set API_KEY_1, API_KEY_2, etc. in your environment.");
+  }
+  const { prompts, instruction } = params;
+  const targets = typeof params.clip === 'number' ? [params.clip] : prompts.map((_, i) => i);
+  const selected = targets.filter(i => i >= 0 && i < prompts.length);
+  if (selected.length === 0) return { prompts, changed: [], rejected: [] };
+
+  const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
+    model,
+    contents: [{ role: 'user', parts: [{ text: `PROMPTS (${selected.length}, separated by ###SEGMENT###):
+
+${selected.map(i => prompts[i]).join('\n###SEGMENT###\n')}
+
+REQUEST:
+"${instruction}"
+
+Return the ${selected.length} edited prompt${selected.length === 1 ? '' : 's'} in the same order${selected.length === 1 ? '' : ', separated by ###SEGMENT###'}.` }] }],
+    config: { systemInstruction: VEO_REFINE_SYSTEM_PROMPT },
+  }));
+
+  const edited = parseVeoSegmentPrompts(response.text || '', selected.length);
+  const next = [...prompts];
+  const changed: number[] = [];
+  const rejected: number[] = [];
+  selected.forEach((index, k) => {
+    const candidate = (edited[k] || '').trim();
+    const keptDialogue = JSON.stringify(spokenLinesIn(candidate)) === JSON.stringify(spokenLinesIn(prompts[index]));
+    if (!candidate || !keptDialogue) {
+      rejected.push(index);
+    } else if (candidate !== prompts[index].trim()) {
+      next[index] = candidate;
+      changed.push(index);
+    }
+  });
+  return { prompts: next, changed, rejected };
 };
 
 const HOME_INTERIOR_MARKERS = [
@@ -1282,8 +1492,9 @@ const validateVoiceOverSegments = (rawScript: string, segments: string[], segmen
       issues.push(`Clip ${clipNumber} contains repeated adjacent words.`);
     }
 
-    if (words.length !== 18) {
-      issues.push(`Clip ${clipNumber} must contain exactly 18 spoken words, but it has ${words.length}.`);
+    // The band, not a single number — see utils/dialogueFormat.
+    if (words.length < MIN_WORDS_PER_CLIP || words.length > MAX_WORDS_PER_CLIP) {
+      issues.push(`Clip ${clipNumber} must contain ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words, but it has ${words.length}.`);
     }
 
     if (!isFinalClip && CTA_OR_CONTACT_PATTERN.test(segment)) {
@@ -1529,6 +1740,11 @@ export const generateAdAssets = async (
   emitPartial({});
 
   // --- Step 2: Voice Over Script ---
+  // --- Step 1b: the core message, decided before the script is written (prompts/coreMessage) ---
+  onProgress("Finding the client's core message...", 15);
+  const coreMessage = await deriveCoreMessage(businessInfo, formData);
+  emitPartial({ coreMessage });
+
   onProgress(customScript ? "Processing custom script..." : "Writing Voice Over script...", 20);
 
   // A business-provided script pasted in the `clip-1[0-8sec]: …` format is authoritative: its
@@ -1664,6 +1880,7 @@ export const generateAdAssets = async (
 
     const systemPrompt = CHARACTER_VOICEOVER_SYSTEM_PROMPT(
       pack, effectiveDuration, segmentCount, formData.adType, formData.festivalName, formData.language, promptPlace,
+      coreMessage,
     );
     const userPrompt = `Write the ${segmentCount}-clip cartoon dialogue script for:
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
@@ -1719,12 +1936,84 @@ Return only the repaired ${segmentCount} clips.`;
     return clips;
   };
 
+  /**
+   * Fixes ONLY the clips that failed validation, and keeps a fix only if it leaves fewer problems.
+   *
+   * The whole-script repair below rewrites every clip to fix one, which is how a script with a
+   * perfect clip 1 and one short closing line could come back with clip 1's message gone. And it
+   * accepted whatever it got back, better or worse. Clip-scoped problems — word counts, a leaked call
+   * to action, spoken digits — are now repaired clip by clip with the same edit contract a member's
+   * refine uses, with the direction and size of each word-count fix spelled out.
+   */
+  const repairFailingClips = async (current: ReturnType<typeof normalizeAndFormatVoiceOver>, issues: string[]) => {
+    let best = current;
+    let bestIssues = issues;
+    const distanceOf = (segments: string[]) =>
+      wordBandDistance(segments.map(s => tokenizeWords(s).length), MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP);
+    let bestDistance = distanceOf(best.segments);
+    for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES + 1 && bestIssues.length > 0; pass++) {
+      const targets = clipIndexesFromIssues(bestIssues, segmentCount);
+      if (targets.length === 0 || best.segments.length !== segmentCount) break;
+      const systemInstruction = buildLanguageDirective(formData) + VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT({
+        language: formData.language || 'Telugu',
+        clipCount: segmentCount,
+        adType: formData.adType,
+        festivalName: formData.festivalName,
+        brief: coreMessage,
+      });
+      const userPrompt = `SCRIPT (the whole script, for context):
+${best.segments.map((s, i) => `Clip ${i + 1}: ${s}`).join('\n')}
+
+BUSINESS INFORMATION:
+${JSON.stringify(businessInfo, null, 2)}
+
+EDIT PLAN — fix these clips only, keeping their meaning:
+${targets.map(i => `- Clip ${i + 1}: ${repairDirection(issuesForClip(bestIssues, i, segmentCount), MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP)}
+  Its words as they stand — ${numberedWords(tokenizeWords(best.segments[i]))}
+  Count your rewritten clip the same way before you return it.`).join('\n')}
+
+Return ONLY the JSON for clip${targets.length === 1 ? '' : 's'} ${targets.map(i => i + 1).join(', ')}.`;
+      try {
+        const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
+          model,
+          contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+          config: { systemInstruction, responseMimeType: 'application/json' },
+        }));
+        const edits = new Map([...parseClipTextEdits(response.text || '', targets)].map(([i, t]) => [i, cleanScriptText(t)] as [number, string]));
+        if (edits.size === 0) break;
+        const merged = mergeClipEdits(best.segments, edits);
+        const candidate = normalizeAndFormatVoiceOver(formatVoiceOverScript(merged), segmentCount);
+        const candidateIssues = validateVoiceOverSegments(candidate.rawScript, candidate.segments, segmentCount, formData.language);
+        const candidateDistance = distanceOf(candidate.segments);
+        // Keep a fix that gets closer even when it does not clear the issue outright; stop only when a
+        // pass makes nothing better.
+        if (!isBetterRepair({ issues: bestIssues, distance: bestDistance }, { issues: candidateIssues, distance: candidateDistance })) break;
+        best = candidate;
+        bestIssues = candidateIssues;
+        bestDistance = candidateDistance;
+      } catch (err) {
+        console.warn('Clip-level voice-over repair failed; keeping the script as it was.', err);
+        break;
+      }
+    }
+    return { normalized: best, issues: bestIssues };
+  };
+
   const applyVoiceOverRepairIfNeeded = async (candidateScript: string) => {
     let normalizedVoiceOver = normalizeAndFormatVoiceOver(candidateScript, segmentCount);
     let voiceOverIssues = validateVoiceOverSegments(normalizedVoiceOver.rawScript, normalizedVoiceOver.segments, segmentCount, formData.language);
 
-    for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES && voiceOverIssues.length > 0; pass++) {
-      const repairSystemPrompt = buildLanguageDirective(formData) + VOICEOVER_REPAIR_SYSTEM_PROMPT(effectiveDuration, segmentCount, formData.adType, formData.festivalName, formData.language);
+    // Problems inside clips are fixed clip by clip; only a script-level problem (a wrong clip count)
+    // still needs the whole script rewritten.
+    const scriptLevel = (issues: string[]) => issues.some(i => !/^(Clip \d+|Final clip)\b/.test(i));
+    if (voiceOverIssues.length > 0 && !scriptLevel(voiceOverIssues)) {
+      const fixed = await repairFailingClips(normalizedVoiceOver, voiceOverIssues);
+      normalizedVoiceOver = fixed.normalized;
+      voiceOverIssues = fixed.issues;
+    }
+
+    for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES && voiceOverIssues.length > 0 && scriptLevel(voiceOverIssues); pass++) {
+      const repairSystemPrompt = buildLanguageDirective(formData) + VOICEOVER_REPAIR_SYSTEM_PROMPT(effectiveDuration, segmentCount, formData.adType, formData.festivalName, formData.language, coreMessage);
       const repairUserPrompt = `Repair this ${formData.language || 'Telugu'} voice-over script using only verified business facts.
 
 BUSINESS INFORMATION:
@@ -1750,6 +2039,13 @@ Return only the repaired ${segmentCount} clip lines.`;
       voiceOverIssues = validateVoiceOverSegments(normalizedVoiceOver.rawScript, normalizedVoiceOver.segments, segmentCount, formData.language);
     }
 
+    // Whatever the whole-script repair left inside individual clips gets the clip-level fix too.
+    if (voiceOverIssues.length > 0 && !scriptLevel(voiceOverIssues)) {
+      const fixed = await repairFailingClips(normalizedVoiceOver, voiceOverIssues);
+      normalizedVoiceOver = fixed.normalized;
+      voiceOverIssues = fixed.issues;
+    }
+
     if (voiceOverIssues.length > 0) {
       console.warn('Voice-over validation issues remain after repair:', voiceOverIssues);
     }
@@ -1766,7 +2062,12 @@ Return only the repaired ${segmentCount} clip lines.`;
   // drifted from the word-count/format contract the rest of the app depends on. Only applied to
   // AI-generated scripts — never to a user's own pasted custom script, which must keep the user's
   // original wording untouched.
-  const MAX_QUALITY_REVIEW_PASSES = 1;
+  /**
+   * A second pass runs only when the first one's own clip-1 test still failed on its corrected
+   * script — the case this review now exists for. A clean first pass costs one call, as before.
+   */
+  const MAX_QUALITY_REVIEW_PASSES = 2;
+  const messageClip = formData.adType === 'festival' && segmentCount > 1 ? 2 : 1;
   const runVoiceOverQualityReview = async (candidateFormatted: string): Promise<string> => {
     let reviewed = candidateFormatted;
     for (let pass = 0; pass < MAX_QUALITY_REVIEW_PASSES; pass++) {
@@ -1775,14 +2076,14 @@ Return only the repaired ${segmentCount} clip lines.`;
           return await ai.models.generateContent({
             model,
             contents: [{ role: 'user', parts: [{ text:
-`CANDIDATE SCRIPT (already mechanically valid — ${segmentCount} clips, 18 words each):
+`CANDIDATE SCRIPT (already mechanically checked — ${segmentCount} clips, ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} words each):
 ${reviewed}
 
 BUSINESS INFORMATION:
 ${JSON.stringify(businessInfo, null, 2)}
 
 Review it now and return the JSON verdict.` }] }],
-            config: { systemInstruction: VOICEOVER_QUALITY_REVIEW_SYSTEM_PROMPT(formData.language), responseMimeType: "application/json" }
+            config: { systemInstruction: VOICEOVER_QUALITY_REVIEW_SYSTEM_PROMPT(formData.language, coreMessage, messageClip), responseMimeType: "application/json" }
           });
         });
         const parsed = JSON.parse(reviewResponse.text || '{}');
@@ -1791,7 +2092,9 @@ Review it now and return the JSON verdict.` }] }],
           if (Array.isArray(parsed.issues) && parsed.issues.length > 0) {
             console.info(`Voice-over quality review (pass ${pass + 1}) — score ${parsed.score ?? '?'}, fixed:`, parsed.issues);
           }
-          if (parsed.pass === true) break;
+          // Done when the corrected script lands the message. An explicit failed clip test earns one
+          // more pass on the corrected script; a review that does not report the test is trusted.
+          if (parsed.messageClipTest?.pass !== false) break;
         } else {
           break; // malformed response — keep the mechanically-repaired script rather than risk corrupting it
         }
@@ -1855,7 +2158,7 @@ Segment 2: <text>
     voiceOverScript = repairedVoiceOver.formatted;
   } else {
     // Auto-generate voice-over script
-    const scriptSystemPrompt = buildLanguageDirective(formData) + VOICEOVER_SYSTEM_PROMPT(effectiveDuration, segmentCount, formData.adType, formData.festivalName, formData.language, formData.gender || 'female');
+    const scriptSystemPrompt = buildLanguageDirective(formData) + VOICEOVER_SYSTEM_PROMPT(effectiveDuration, segmentCount, formData.adType, formData.festivalName, formData.language, formData.gender || 'female', coreMessage);
     const scriptUserPrompt = `Generate a ${effectiveDuration}-second ${formData.language || 'Telugu'} voice-over script for:
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
   AD TYPE: ${formData.adType}
@@ -1938,6 +2241,12 @@ Segment 2: <text>
   const usingClientPhotos = formData.locationMode === 'real_provided' && clientLocations.length > 0;
   const clipPhotoPlan = usingClientPhotos ? assignPhotosToClips(segmentCount, clientLocations) : [];
 
+  /**
+   * How every clip moves — decided once, here, from what each clip is for (prompts/motion). The frame
+   * prompts compose each still for its move, and the video prompts are then written to perform it.
+   */
+  const motionPlan = planClipMotion(segmentCount, formData.adType);
+
   // --- Steps 3-6 run CONCURRENTLY: Main Frame, Header (local), Poster, Veo ---
   onProgress("Generating Main Frame, Poster & Video prompts...", 45);
 
@@ -1976,6 +2285,7 @@ Segment 2: <text>
         hasLogo: !!files.logo,
         businessContext: serializedBusinessInfo,
         wardrobe: packWardrobe(pack, formData),
+        motionPlan,
       })
     : buildRatioDirective(formData) + buildNameBoardDirective(formData, businessInfo) + MULTI_FRAME_SYSTEM_PROMPT(
     formData.attireType,
@@ -1996,6 +2306,7 @@ Segment 2: <text>
           clips: clipPhotoPlan.map((plan) => clipLocationLabel(plan, clientLocations)),
         }
       : undefined,
+    motionPlan,
   );
 
   const isCommercialMainFrame = formData.adType !== 'festival';
@@ -2272,6 +2583,10 @@ ${realPremisesDirective}${maleCastingOverride}${commercialMainFramePriorityNote}
      * photo to everything. The mapping is already decided in `clipPhotoPlan`, so this just says it
      * out loud, in code rather than trusting the model to have repeated it.
      */
+    // Every frame carries the composition for the camera move its video will perform — stamped in
+    // code, because the frame model drops it when asked (prompts/motion withMotionComposition).
+    mainFramePrompts = mainFramePrompts.map((prompt, i) => withMotionComposition(prompt, motionPlan[i]));
+
     if (clipPhotoPlan.length > 0) {
       mainFramePrompts = mainFramePrompts.map((prompt, i) => {
         const plan = clipPhotoPlan[i];
@@ -2361,53 +2676,24 @@ ${realPremisesDirective}${maleCastingOverride}${commercialMainFramePriorityNote}
   })();
 
   // --- Step 6: Veo 3 Segment Prompts — runs concurrently ---
-  const veoPromise = (async (): Promise<string[]> => {
-  const veoSystemPrompt = pack
-    ? CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT(pack, segmentCount, formData.aspectRatio === '16:9' ? '16:9' : '9:16')
-    : VEO_SEGMENT_SYSTEM_PROMPT(segmentCount, formData.gender || 'female');
-
   /**
-   * A pack clip is animated FROM its main-frame image, which the member attaches alongside the
-   * prompt — so the scene is already fixed and visible. The model is given the dialogue and
-   * nothing else: describing the location here only produced a paragraph re-stating the picture,
-   * which the member had to read past and Veo had to reconcile against the real frame.
+   * The video prompts are written AFTER the frames, from them.
+   *
+   * They used to run in parallel with the frame prompts and never saw them — so a video prompt could
+   * not know where the model stood, what was in reach to gesture at, or how the still was composed
+   * for its camera move. Each clip is now directed from its own finished frame prompt, its line and
+   * its planned move (writeVeoPrompts). It costs the frames' duration in waiting; the poster still
+   * runs alongside.
    */
-  const veoUserPrompt = pack
-    ? `Generate Veo 3 prompts for all ${segmentCount} clips of this two-character cartoon ad.
-Each clip's frame image is attached separately by the member, so write motion and speech only.
-
-${dialogueClips.map((clip, i) => {
-      const nameOf = new Map(packSpeakerList.map(s => [s.key, s.name]));
-      const lines = clip.map(l => `  ${nameOf.get(l.speaker) ?? l.speaker}: "${l.text}"`).join('\n');
-      return `CLIP ${i + 1} (${i * CLIP_SECONDS}-${(i + 1) * CLIP_SECONDS}s)\n${lines}`;
-    }).join('\n\n')}
-
-Generate ${segmentCount} complete Veo 3 prompts now.`
-    : `Generate Veo 3 prompts for all segments.
-  VOICE-OVER SEGMENTS: ${parsedSegments.map((s, i) => `Segment ${i+1}: ${s}`).join('\n')}
-  Generate ${segmentCount} complete Veo 3 prompts now.`;
-
-  const veoResponse = await callWithFallback(async (ai, model) => {
-    return await ai.models.generateContent({
-      model,
-      contents: [
-          { role: 'user', parts: [{ text: veoUserPrompt }] }
-      ],
-      config: {
-          systemInstruction: veoSystemPrompt,
-      }
-    });
+  const veoPromise = mainFramePromise.then(async (frames): Promise<string[]> => {
+    onProgress("Directing camera moves and performance for each clip...", 85);
+    const { count, clips } = veoClipsFromScript(voiceOverScript, formData, frames);
+    const prompts = await writeVeoPrompts(formData, count, clips);
+    emitPartial({ veoPrompts: prompts });
+    return prompts;
   });
 
-  const veoPromptsText = veoResponse.text || "";
-
-  // Always return EXACTLY segmentCount prompts (parser pads/truncates to match).
-  const finalVeoPrompts = parseVeoSegmentPrompts(veoPromptsText, segmentCount);
-  emitPartial({ veoPrompts: finalVeoPrompts });
-  return finalVeoPrompts;
-  })();
-
-  // Run Main Frame, Poster, and Veo prompt generation concurrently (independent steps)
+  // Frames and poster run concurrently; the video prompts follow the frames (see veoPromise).
   const [mainFramePromptsResult, posterPromptResult, veoPromptsResult] = await Promise.all([
     mainFramePromise,
     posterPromise,
@@ -2425,8 +2711,149 @@ Generate ${segmentCount} complete Veo 3 prompts now.`
     veoPrompts: veoPromptsResult,
     hasProductImages,
     productImageCount,
-    stockImagePrompts: null // Generated on-demand by user after main process
+    stockImagePrompts: null, // Generated on-demand by user after main process
+    coreMessage,
   };
+};
+
+// ── Veo 3 prompts: directed from each clip's frame ──────────────────────────────────────────────
+
+/** One clip to direct: what is spoken, and the frame prompt its still was generated from. */
+interface VeoClipInput {
+  /** 0-based clip index in the ad. */
+  index: number;
+  framePrompt: string;
+  speech: VeoSpeech[];
+  /** The line as the director call reads it, speaker-labelled in a character ad. */
+  lineForDirector: string;
+}
+
+/** Long frame prompts are cut for the director call; what matters — place, pose, props — comes first. */
+const FRAME_CONTEXT_LIMIT = 2600;
+
+/**
+ * The clips of a script, ready to direct.
+ *
+ * Reads the script itself — a single-voice script by its clip labels, a character script as dialogue
+ * — so a refined or pasted script is directed exactly as it now reads. `indexes` limits it to the
+ * clips that need new prompts.
+ */
+const veoClipsFromScript = (
+  script: string,
+  formData: AdFormData,
+  mainFramePrompts: string[] = [],
+  indexes?: number[],
+): { count: number; clips: VeoClipInput[] } => {
+  const pack = getCharacterPack(formData.characterPack);
+  const frameFor = (i: number) => splitAttachmentDirective(mainFramePrompts[i] || '').body.trim();
+  let all: VeoClipInput[];
+
+  if (pack) {
+    const nameOf = new Map(packSpeakers(pack).map(s => [s.key, s.name]));
+    const subject = packVeoSubject(pack);
+    all = parseDialogueClips(script, packSpeakerAliases(pack)).map((clip, i) => {
+      const lines = clip.map(l => ({ name: nameOf.get(l.speaker) ?? l.speaker, text: l.text }));
+      return {
+        index: i,
+        framePrompt: frameFor(i),
+        speech: subject.speech(lines),
+        lineForDirector: lines.map(l => `${l.name}: "${l.text}"`).join('  /  '),
+      };
+    });
+  } else {
+    const labelled = parseLabeledClips(script);
+    const segments = labelled.length > 0
+      ? labelled.map(cleanScriptText)
+      : normalizeAndFormatVoiceOver(script, Math.max(1, Math.round(formData.duration / CLIP_SECONDS))).segments;
+    const { voice } = modelVeoSubject(formData.gender || 'female');
+    all = segments.map((line, i) => ({
+      index: i,
+      framePrompt: frameFor(i),
+      speech: [{ voice, line }],
+      lineForDirector: `"${line}"`,
+    }));
+  }
+
+  return {
+    count: all.length,
+    clips: indexes ? all.filter(c => indexes.includes(c.index)) : all,
+  };
+};
+
+/**
+ * Writes the finished Veo 3 prompt for each clip.
+ *
+ * One director call returns, per clip, the planned camera move made specific to that frame, three
+ * beats timed to the line, and the life in the scene (prompts/motion VEO_DIRECTION_SYSTEM_PROMPT).
+ * The prompt itself is assembled in code around that direction, so the exact spoken line, the
+ * continuous shot, the identity lock and the negatives cannot drift. If the call fails or a clip's
+ * direction is unusable, that clip is assembled from its motion plan — still a moving, directed shot.
+ */
+const writeVeoPrompts = async (formData: AdFormData, clipCount: number, clips: VeoClipInput[]): Promise<string[]> => {
+  if (clips.length === 0) return [];
+  const pack = getCharacterPack(formData.characterPack);
+  const aspectRatio = formData.aspectRatio === '16:9' ? '16:9' : '9:16';
+  const language = formData.language || 'Telugu';
+  const plan: ClipMotionPlan[] = planClipMotion(Math.max(clipCount, ...clips.map(c => c.index + 1)), formData.adType);
+  const packSubject = pack ? packVeoSubject(pack) : null;
+  const modelSubject = modelVeoSubject(formData.gender || 'female');
+
+  let directions: ReturnType<typeof parseVeoDirections> = clips.map(() => null);
+  if (API_KEYS.length > 0) {
+    const systemInstruction = pack
+      ? CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT(pack, clips.length, aspectRatio)
+      : VEO_SEGMENT_SYSTEM_PROMPT(clips.length, formData.gender || 'female', aspectRatio);
+    const userPrompt = `Direct these ${clips.length} clip${clips.length === 1 ? '' : 's'}.
+
+${clips.map((c, k) => {
+  const p = plan[c.index];
+  const frame = c.framePrompt.length > FRAME_CONTEXT_LIMIT ? `${c.framePrompt.slice(0, FRAME_CONTEXT_LIMIT)}…` : c.framePrompt;
+  return `CLIP ${k + 1} (clip ${c.index + 1} of the ad, ${c.index * CLIP_SECONDS}-${(c.index + 1) * CLIP_SECONDS}s)
+FRAME:
+${frame || '(no frame prompt available — direct from the line and the planned move)'}
+LINE: ${c.lineForDirector}
+PLANNED MOVE: ${p.camera.name} — ${p.camera.action}
+GESTURE INTENT: ${p.gesture}`;
+}).join('\n\n')}
+
+Return the JSON array for all ${clips.length} clips, numbered 1 to ${clips.length} in the order above.`;
+    try {
+      const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
+        model,
+        contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+        config: { systemInstruction, responseMimeType: 'application/json' },
+      }));
+      directions = parseVeoDirections(response.text || '', clips.length);
+    } catch (err) {
+      console.warn('Veo direction call failed; assembling each clip from its motion plan.', err);
+    }
+  }
+
+  return clips.map((c, k) => assembleVeoPrompt({
+    aspectRatio,
+    plan: plan[c.index],
+    direction: directions[k],
+    identityLock: packSubject ? packSubject.identityLock : modelSubject.identityLock,
+    language,
+    speech: c.speech,
+    performanceNotes: packSubject?.performanceNotes,
+  }));
+};
+
+/**
+ * New Veo prompts for some or all clips of a script — after a voice-over refine, only the clips whose
+ * line changed. Each is directed from that clip's existing frame prompt, so the move still suits the
+ * still it will animate.
+ */
+export const regenerateVeoForClips = async (
+  voiceOverScript: string,
+  formData: AdFormData,
+  mainFramePrompts: string[],
+  indexes?: number[],
+): Promise<{ index: number; prompt: string }[]> => {
+  const { count, clips } = veoClipsFromScript(voiceOverScript, formData, mainFramePrompts, indexes);
+  const prompts = await writeVeoPrompts(formData, count, clips);
+  return clips.map((c, k) => ({ index: c.index, prompt: prompts[k] }));
 };
 
 // --- Poster Design Prompt (On-Demand, User-Triggered, Separate Section) ---
@@ -2471,85 +2898,6 @@ export const generatePosterPrompt = async (
   });
 
   return (posterResponse.text || "").trim();
-};
-
-// --- Regenerate Veo prompts from a (refined) voice-over script ---
-/**
- * Used so that refining the Voice Over script also updates the Veo 3 segment prompts.
- *
- * ── Why this knows about character packs ──────────────────────────────────────────────────────
- * It did not, and it runs automatically after EVERY voice-over refine. So a member who adjusted one
- * line of a Motu & Patlu script got their video prompts silently rebuilt by the human-model
- * pipeline: the cartoon duo replaced by a presenter, the attached-frame instruction gone, an
- * ordinary promotional ad where a two-hander had been. Every other branch of the pack had been
- * fixed; this one was reached only through a refine, which is exactly where the report came from.
- *
- * The two paths need genuinely different inputs, not just a different prompt. A normal script is
- * one line per clip, so `normalizeAndFormatVoiceOver` (the single-speaker normaliser) is right for
- * it — and would flatten a two-hander's exchange into one run-on line if it were used on one. A
- * pack script is parsed as dialogue instead and handed over speaker by speaker.
- */
-export const regenerateVeoFromVoiceOver = async (
-  voiceOverScript: string,
-  formData: AdFormData
-): Promise<string[]> => {
-  if (API_KEYS.length === 0) {
-    throw new Error("No API keys configured. Please set API_KEY_1, API_KEY_2, etc. in your environment.");
-  }
-
-  const pack = getCharacterPack(formData.characterPack);
-
-  // The script is the authority on clip count — a business-supplied custom script can be longer
-  // or shorter than the Video Duration setting, and the Veo prompts must match it 1:1.
-  const scriptClips = parseLabeledClips(voiceOverScript).length;
-  const segmentCount = scriptClips > 0 ? scriptClips : Math.round(formData.duration / 8);
-
-  let veoSystemPrompt: string;
-  let veoUserPrompt: string;
-
-  if (pack) {
-    const speakers = packSpeakers(pack);
-    const nameOf = new Map(speakers.map(s => [s.key, s.name]));
-    const clips = parseDialogueClips(voiceOverScript, packSpeakerAliases(pack));
-    const dialogueCount = clips.length > 0 ? clips.length : segmentCount;
-
-    veoSystemPrompt = CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT(
-      pack, dialogueCount, formData.aspectRatio === '16:9' ? '16:9' : '9:16',
-    );
-    veoUserPrompt = `Generate Veo 3 prompts for all ${dialogueCount} clips of this two-character cartoon ad.
-Each clip's frame image is attached separately by the member, so write motion and speech only.
-
-${clips.map((clip, i) => {
-      const lines = clip.map(l => `  ${nameOf.get(l.speaker) ?? l.speaker}: "${l.text}"`).join('\n');
-      return `CLIP ${i + 1} (${i * CLIP_SECONDS}-${(i + 1) * CLIP_SECONDS}s)\n${lines}`;
-    }).join('\n\n')}
-
-Generate ${dialogueCount} complete Veo 3 prompts now.`;
-
-    const packResponse = await callWithFallback(async (ai, model) => ai.models.generateContent({
-      model,
-      contents: [{ role: 'user', parts: [{ text: veoUserPrompt }] }],
-      config: { systemInstruction: veoSystemPrompt },
-    }));
-    return parseVeoSegmentPrompts(packResponse.text || "", dialogueCount);
-  }
-
-  const { segments } = normalizeAndFormatVoiceOver(voiceOverScript, segmentCount);
-  veoSystemPrompt = VEO_SEGMENT_SYSTEM_PROMPT(segmentCount, formData.gender || 'female');
-  veoUserPrompt = `Generate Veo 3 prompts for all segments.
-  VOICE-OVER SEGMENTS: ${segments.map((s, i) => `Segment ${i + 1}: ${s}`).join('\n')}
-  Generate ${segmentCount} complete Veo 3 prompts now.`;
-
-  const veoResponse = await callWithFallback(async (ai, model) => {
-    return await ai.models.generateContent({
-      model,
-      contents: [{ role: 'user', parts: [{ text: veoUserPrompt }] }],
-      config: { systemInstruction: veoSystemPrompt }
-    });
-  });
-
-  const veoPromptsText = veoResponse.text || "";
-  return parseVeoSegmentPrompts(veoPromptsText, segmentCount);
 };
 
 // --- Stock Image Prompts (On-Demand, User-Triggered) ---
@@ -2838,15 +3186,17 @@ export interface ScriptConversion {
 }
 
 /** Words per clip in the ads-platform voice-over formula (see VOICEOVER_SYSTEM_PROMPT). */
-export const WORDS_PER_CLIP = 18;
+export const WORDS_PER_CLIP = TARGET_WORDS_PER_CLIP;
+/** The spoken-word band a clip must land in. */
+export const WORD_BAND = { min: MIN_WORDS_PER_CLIP, max: MAX_WORDS_PER_CLIP } as const;
 
 /** Word count of raw pasted text, ignoring punctuation and decorative characters. */
 export const countScriptWords = (scriptText: string): number =>
   tokenizeWords(cleanScriptText(scriptText || '')).length;
 
 /**
- * How many 8-second clips the pasted text naturally fills, at the platform's 18-words-per-clip
- * pace. Used to pre-select "Auto" in the tool before any API call is made.
+ * How many 8-second clips the pasted text naturally fills, at the platform's planned pace — the
+ * middle of the 18–22 word band. Used to pre-select "Auto" in the tool before any API call is made.
  */
 export const suggestClipCount = (scriptText: string): number => {
   const words = countScriptWords(scriptText);
@@ -2929,7 +3279,7 @@ export const convertToVoiceOverScript = async (
 ${cleanScriptText(source)}
 
 Rewrite it as a ${segmentCount * CLIP_SECONDS}-second ${language} commercial voice-over script.
-Output exactly ${segmentCount} clip lines, exactly ${WORDS_PER_CLIP} spoken words each, using only the facts above.`;
+Output exactly ${segmentCount} clip lines, ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words each, using only the facts above.`;
 
   const response = await callWithFallback(async (ai, model) => {
     return await ai.models.generateContent({

@@ -101,10 +101,12 @@ describe("the member's tasks", () => {
 });
 
 describe("DTS's stages", () => {
-  it("follows the run through the brief, the voice-over and the assets", () => {
+  it("follows the run through the brief, the core message, the voice-over, the frames and the video direction", () => {
     const at = (percent: number) => missionStages(PROFILE, [{ percent, at: 0 }]).map((s) => `${s.label}:${s.state}`);
-    expect(at(10)).toEqual(["Reading the brief:active", "Voice-over:upcoming", "Frames, poster & video prompts:upcoming"]);
-    expect(at(20)).toEqual(["Reading the brief:done", "Voice-over:active", "Frames, poster & video prompts:upcoming"]);
+    expect(at(10)).toEqual(["Reading the brief:active", "Core message:upcoming", "Voice-over:upcoming", "Frames & poster:upcoming", "Video direction:upcoming"]);
+    expect(at(15)).toEqual(["Reading the brief:done", "Core message:active", "Voice-over:upcoming", "Frames & poster:upcoming", "Video direction:upcoming"]);
+    expect(at(20)).toEqual(["Reading the brief:done", "Core message:done", "Voice-over:active", "Frames & poster:upcoming", "Video direction:upcoming"]);
+    expect(at(85)).toEqual(["Reading the brief:done", "Core message:done", "Voice-over:done", "Frames & poster:done", "Video direction:active"]);
     expect(at(100).every((s) => s.endsWith(":done"))).toBe(true);
   });
 

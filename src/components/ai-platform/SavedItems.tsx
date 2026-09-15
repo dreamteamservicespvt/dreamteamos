@@ -7,6 +7,7 @@ import { db } from '@/services/firebase';
 import { extractBusinessNameFromInfo } from '@/services/geminiService';
 import { useConfirm } from '@/hooks/useConfirm';
 import type { PosterConcept } from '@/types/aiPlatform';
+import type { CoreMessageBrief } from '@/services/prompts/coreMessage';
 
 const getBusinessName = (item: SavedGeneration) => {
   if (item.businessName && item.businessName !== 'Untitled') return item.businessName;
@@ -28,6 +29,8 @@ export interface SavedGeneration {
   veoPrompts: string[];
   stockImagePrompts?: any[] | null;
   overlayTexts?: any[] | null;
+  /** The core message the script was built on — absent on generations saved before it existed. */
+  coreMessage?: CoreMessageBrief | null;
   adType: string;
   festivalName?: string;
   gender?: string;

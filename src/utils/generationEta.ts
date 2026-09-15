@@ -92,9 +92,14 @@ export function planFor(profile: RunProfile): Segment[] {
   return [
     { key: "video.prep", from: 0, baselineMs: s(1) },
     { key: "video.extract", from: 10, baselineMs: s(7 + 1.2 * files) },
+    // The core message is decided before the script is written (prompts/coreMessage).
+    { key: "video.message", from: 15, baselineMs: s(6) },
     { key: "video.script", from: 20, baselineMs: s(script) },
     ...(scouting ? [{ key: "video.scout", from: 40, baselineMs: s(5 + 1.5 * profile.locationPhotos) }] : []),
-    { key: "video.assets", from: 45, baselineMs: s(24 + 3.5 * clips + (profile.characterPack ? 6 : 0)) },
+    // Frames and poster, concurrently.
+    { key: "video.assets", from: 45, baselineMs: s(20 + 3 * clips + (profile.characterPack ? 6 : 0)) },
+    // The video prompts, directed from the finished frames.
+    { key: "video.direct", from: 85, baselineMs: s(8 + 1.5 * clips) },
   ];
 }
 

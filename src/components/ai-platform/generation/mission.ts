@@ -87,8 +87,8 @@ export function buildMissionTasks(facts: RunFacts): MissionTask[] {
       id: "paste",
       kind: "info",
       title: "Paste each prompt as it lands",
-      detail: "The voice-over arrives first, then the frames, poster and video prompts. Copy each Main Frame "
-        + "prompt into its own tab — the AI Guide keeps this list open beside you.",
+      detail: "The voice-over arrives first, then the frames and poster, then the video prompts directed from "
+        + "those frames. Copy each Main Frame prompt into its own tab — the AI Guide keeps this list open beside you.",
     },
   ];
   return tasks;
@@ -174,9 +174,11 @@ export interface MissionStage {
 const STAGE_OF: Record<string, { key: string; label: string }> = {
   "video.prep": { key: "brief", label: "Reading the brief" },
   "video.extract": { key: "brief", label: "Reading the brief" },
+  "video.message": { key: "message", label: "Core message" },
   "video.script": { key: "script", label: "Voice-over" },
   "video.scout": { key: "scout", label: "Location scout" },
-  "video.assets": { key: "assets", label: "Frames, poster & video prompts" },
+  "video.assets": { key: "assets", label: "Frames & poster" },
+  "video.direct": { key: "direct", label: "Video direction" },
   "poster.prep": { key: "brief", label: "Reading the brief" },
   "poster.extract": { key: "brief", label: "Reading the brief" },
   "poster.handoff": { key: "brief", label: "Reading the brief" },

@@ -197,7 +197,7 @@ describe("validation — the 8-second two-hander contract", () => {
   it("enforces the clip word band at both ends", () => {
     const short = validateDialogueClips([clipOf(8, 9)], 1, speakers); // 17 — under
     expect(short.some(i => i.includes(`${MIN_WORDS_PER_CLIP}-${MAX_WORDS_PER_CLIP} spoken words`))).toBe(true);
-    const long = validateDialogueClips([clipOf(11, 10)], 1, speakers); // 21 — over
+    const long = validateDialogueClips([clipOf(12, 11)], 1, speakers); // 23 — over
     expect(long.some(i => i.includes(`${MIN_WORDS_PER_CLIP}-${MAX_WORDS_PER_CLIP} spoken words`))).toBe(true);
   });
 
@@ -205,6 +205,8 @@ describe("validation — the 8-second two-hander contract", () => {
     expect(validateDialogueClips([clipOf(9, 9)], 1, speakers)).toEqual([]);   // 18
     expect(validateDialogueClips([clipOf(9, 10)], 1, speakers)).toEqual([]);  // 19
     expect(validateDialogueClips([clipOf(10, 10)], 1, speakers)).toEqual([]); // 20
+    expect(validateDialogueClips([clipOf(11, 10)], 1, speakers)).toEqual([]); // 21
+    expect(validateDialogueClips([clipOf(11, 11)], 1, speakers)).toEqual([]); // 22 — the ceiling the team set
   });
 
   it("allows an uneven split that still lands inside the band", () => {
