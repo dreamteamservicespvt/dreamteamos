@@ -2,6 +2,7 @@ import { AdType } from '@/types/aiPlatform';
 import { MAX_WORDS_PER_CLIP, MIN_WORDS_PER_CLIP } from '@/utils/dialogueFormat';
 import { coreMessageBlock, type CoreMessageBrief } from './prompts/coreMessage';
 import { everydaySpeechRules } from './prompts/everydaySpeech';
+import { wishAudienceRule, wishOpeningLine } from './prompts/festivalWish';
 import { VEO_DIRECTION_SYSTEM_PROMPT, compositionFor, framingForMotion, type ClipMotionPlan } from './prompts/motion';
 
 /** The spoken-word band every clip is held to, as prompts say it. See utils/dialogueFormat. */
@@ -1854,7 +1855,7 @@ ${realLocation
 ${realLocation.formula}
 
 THIS OVERRIDES EVERY LOCATION INSTRUCTION IN THIS PROMPT. Wherever the base prompt above or the shot plan below says reception, front desk, logo wall, product display, consultation zone, "choose the zone that proves the line", "a different area of the business", or describes an environment for this type of business — that clip's location is its assigned photograph instead. The shot plan still decides the camera, the pose, the purpose and the mood of each clip. It no longer decides where the clip is.`
-  : `Think of this as a ₹20-lakh national TV commercial shoot where the brand ambassador MOVES THROUGH different areas of the business establishment. Each clip = a DIFFERENT LOCATION within the SAME office/store/premises.`}
+  : `Think of this as a ₹20-lakh national TV commercial shoot filmed as ONE CONTINUOUS WALK-THROUGH of the business: the ambassador walks through the premises and the camera goes with her, and the clips are that one walk cut into ${segmentCount} pieces. Each clip carries on a few steps further along the SAME path, inside the SAME premises — never a jump to an unrelated place.`}
 
 TOTAL CLIPS: ${segmentCount}
 EACH CLIP DURATION: 8 seconds
@@ -1872,13 +1873,19 @@ The consistency rule is: same woman within this campaign; different businesses s
 
 ===== THE DIRECTOR'S SHOT PLAN =====
 
-${realLocation ? `**GOLDEN RULE (ON LOCATION): Every clip is set in the client's photograph assigned to it — never an invented zone, never a "typical" interior for this kind of business, and never the same photograph behind two clips. The voice-over decides the pose, the gesture and the mood inside that photographed space.**` : `**GOLDEN RULE: The model must appear at a DIFFERENT physical location within the same business environment in EVERY clip, and each chosen location must be the best visual proof for that clip's exact voice-over message.**`}
+${realLocation ? `**GOLDEN RULE (ON LOCATION): Every clip is set in the client's photograph assigned to it — never an invented zone, never a "typical" interior for this kind of business, and never the same photograph behind two clips. The voice-over decides the pose, the gesture and the mood inside that photographed space. Treat the photographs as ONE shop seen from different spots: keep the same light, the same colour grade and the same finish across all of them, so the cuts read as one continuous visit rather than different buildings.**` : `**GOLDEN RULE: All ${segmentCount} clips happen in ONE CONTINUOUS SPACE — the same premises, seen as the ambassador walks through it. Each clip shows the part of that space the line is about, a few steps on from the last one. The camera angle and the part of the room in view change between clips; the PLACE never jumps.**`}
 ${realLocation ? '' : `
-Just like in real TV commercials — the actress doesn't stand in one spot for 30 seconds. She MOVES through the business:
-• From the reception → to the product display → to the logo wall → to the consultation area → back to the entrance
-• Each location reveals a DIFFERENT aspect of the business
-• Each location must be selected because it supports the meaning of that clip's script, not just because it looks premium
-• The viewer sees the FULL business through the model's journey
+Just like in real TV commercials — the actress doesn't stand in one spot for 30 seconds, and she does not teleport either. She WALKS through the business, in order:
+• Reception → a few steps on to the product display → a few steps on to the work area → on to the closing spot — one connected path, each stop adjoining the last
+• Each stop reveals a different aspect of the business, and must support the meaning of that clip's script
+• The viewer sees the FULL business as one continuous journey through it
+
+**CONTINUITY BETWEEN CLIPS (THIS IS WHAT MAKES THE VIDEO FLOW — MANDATORY):**
+• Clip N+1 begins where clip N ended: the ambassador is a few steps further along the same path, in the SAME room or the area directly next to it.
+• CARRY SOMETHING OVER: at least one real thing from the previous clip's frame — the counter, a shelf run, a doorway, a pillar, the logo wall — is still visible somewhere in the next clip's frame, even if only at the edge or in the background.
+• The light, the colour grade, the floor, the wall finish and the time of day are IDENTICAL in every clip. Never a warm room after a cool room, never daylight after night.
+• Never cut to an unrelated zone, another floor, another branch, another building, or outdoors. If a viewer would ask "where are we now?", the frame is WRONG.
+• What changes between clips is the ANGLE and how much of the space is in view — not the place.
 
 ${adType === AdType.FESTIVAL ? '' : `**COMMERCIAL LOCATION DENSITY RULE:**
 Every commercial clip must keep the real business premises as the dominant base layer, then add the strongest business-proof layer for that line.
@@ -1912,6 +1919,7 @@ Each frame below is the FIRST moment of an 8-second video in which the ambassado
 • THE FIRST MOMENT OF A WALK: follow each clip's 🎬 WALK note exactly — the body caught mid-step or with the weight moving onto the front foot, turned toward where the walk goes, hands relaxed and natural — like a candid frame taken from a walking shot.
 • A PATH: open floor in the direction of the walk, with nothing blocking it.
 • THREE-QUARTER BODY (head to knees) so the walk reads — with the face still large, clear and evenly lit.
+• A HEIGHT REFERENCE: a fixed real thing behind her — the counter edge, a door frame, a shelf line — that her height can be read against in every clip, so the video has something to hold her size to. Keep her feet and the floor visible wherever the framing allows.
 • DEPTH: real objects at two or three distances — a foreground edge (a counter corner, shelf end, plant or display) near the lens, the subject in the middle ground, the premises behind — so the moving camera shows parallax.
 • THE THING TO SHOW within a few steps: the product, counter or equipment the clip talks about, close enough to walk to and present.
 • SHARP, EVEN LIGHT on the subject and the logo, so motion never drops them into shadow.
@@ -2028,7 +2036,7 @@ ${Array.from({ length: segmentCount }, (_, i) => {
 ===== VISUAL VARIATION RULES — THE DIRECTOR'S CHECKLIST =====
 
 **WHAT MUST CHANGE between every clip (MANDATORY):**
-${realLocation ? `• **📍 MODEL'S PHYSICAL LOCATION** — the client's photograph assigned to that clip, reproduced as photographed (THIS IS THE MOST IMPORTANT CHANGE — and the client decided it, not you)` : `• **📍 MODEL'S PHYSICAL LOCATION** — she must be at a DIFFERENT spot within the same business (THIS IS THE MOST IMPORTANT CHANGE)`}
+${realLocation ? `• **📍 MODEL'S PHYSICAL LOCATION** — the client's photograph assigned to that clip, reproduced as photographed (and the client decided it, not you), with the same light and grade across all of them so it reads as one shop` : `• **📍 HOW FAR ALONG THE WALK SHE IS** — a few steps further into the SAME continuous space, with something from the previous frame still visible. Never a jump to an unrelated place`}
 • **🎥 Camera angle & composition** — match the shot type (establishing, showcase, trust, detail, closing)
 • **🧍 Subject POSE** — body angle, hand position, body interaction with the new location's elements
 • **😊 Subject EXPRESSION** — match the script mood (welcoming → proud → trustworthy → warm → inviting)
@@ -2471,7 +2479,8 @@ ${coreMessageBlock(brief, messageClip)}
 
 ${adType === 'festival' ? `FESTIVAL MODE:
 • Clip 1 (${0}-${8}) must be pure festival wishes only.
-• Clip 1 should use this idea clearly and naturally${isTelugu ? `: "{Business Name} తరఫున మీకు మరియు మీ కుటుంబానికి ${festivalName} హృదయపూర్వక శుభాకాంక్షలు"` : `, written in native ${lang}: warm ${festivalName} wishes to you and your family on behalf of {Business Name}`}
+• Clip 1 opens with the address and follows this shape clearly and naturally: ${wishOpeningLine(festivalName, lang)}
+• ${wishAudienceRule(festivalName, lang)}
 • Clip 1 must contain zero business promotion.
 • From Clip 2 onward, remove festival language completely and switch to pure business promotion.
 ${segmentCount > 1 ? `• Clip 2 is the CORE MESSAGE clip: in one breath, the business name, what it does, and its core promise — the first thing the viewer hears once the greeting ends.\n` : ''}• Do NOT mix wishes and promotion in the same clip.` : `COMMERCIAL MODE (a real TV-commercial arc, built on the core message):
@@ -2619,7 +2628,7 @@ ${clipLines}
 9. ${transliterationRule}
 10. Every clip must contain between ${WORD_BAND} spoken words. Fix a count by tightening or completing the thought, never by padding or cutting a sentence in half.
 11. Remove duplicated clips and repeated closings.
-12. For festival ads, clip 1 must stay only as festival wishes, and all later clips must switch to pure business promotion.
+12. For festival ads, clip 1 must stay only as festival wishes, and all later clips must switch to pure business promotion.${adType === 'festival' ? ' ' + wishAudienceRule(festivalName, lang) : ''}
 13. Every clip must be a complete, natural spoken sentence in everyday ${lang} — never old, literary, textbook, or literally-translated-sounding ${lang}.
 14. Every clip must sound speakable in roughly 7 to 8 seconds.
 15. Clip ${messageClip} must still carry the core message after the repair: the business name, what it does, and its core promise. Never repair a word count by removing any of those three.
@@ -2648,7 +2657,7 @@ Strictly avoid:
 ===== STRUCTURE =====
 
 ${adType === 'festival' ? `FESTIVAL MODE:
-• Clip 1 (${0}-${8}) = festival wishes only
+• Clip 1 (${0}-${8}) = festival wishes only — ${wishAudienceRule(festivalName, lang)}
 • Clip 2 onward = business promotion only` : `COMMERCIAL MODE:
 • Clip 1 (${0}-${8}) = hook
 • Middle clips = authority, benefit, trust
@@ -2866,20 +2875,14 @@ These should look like they were created by a WORLD-CLASS GRAPHIC DESIGNER:
 **FOR GRAPHIC DESIGN IMAGES:**
 "Create a hyper-realistic 9:16 vertical portrait of [DESIGN CONCEPT]. World-class graphic design, Behance/Dribbble featured quality. [TYPOGRAPHY: Bold [Font Style] headline reading '[EXACT TEXT]', [secondary text description] in [font style]]. [LAYOUT: text positioned at [top/center/bottom], [alignment style]]. [COLOR PALETTE: specific colors with purpose]. [DESIGN ELEMENTS: geometric shapes, gradients, textures, patterns, etc.]. [VISUAL STYLE: minimalist, editorial, corporate, luxurious, etc.]. Premium agency-level execution. Every pixel intentional."
 
-===== TIMING & PLACEMENT (CRITICAL FOR VIDEO EDITORS) =====
+===== WHERE IT GOES, AND WHAT IT MUST SHOW =====
 
-You MUST analyze the voice-over script segment-by-segment and provide EXACT placement instructions:
+Image N is cut over clip N of the voice-over — the app adds the exact clip number and second range, so you do not calculate them. What you decide is WHAT IS IN the image, and it is bound to that clip's words:
 
-1. Identify which SEGMENT NUMBER the image belongs to (Segment 1, 2, 3, etc.)
-2. Calculate the EXACT SECOND RANGE based on 8-second segments:
-   - Segment 1 = 0s–8s
-   - Segment 2 = 8s–16s
-   - Segment 3 = 16s–24s
-   - Segment 4 = 24s–32s
-   - Segment 5 = 32s–40s
-   - etc.
-3. Specify WHERE WITHIN the segment to INSERT the image (e.g., "at 10s" or "from 18s to 20s")
-4. Tell the editor EXACTLY how to use it in the timeline
+1. The image shows exactly what that clip's line is about — the product, the work, the offer, the moment named in THOSE words. Nothing from another clip, nothing the script never mentions.
+2. It stays in the same world as the ad: the same kind of business, the same kind of premises, the same products and the same customers. A viewer must feel it was shot on the same day, in the same place, as the rest of the ad.
+3. NO generic stock clichés — no boardroom handshakes, no skyscrapers, no foreign offices, no unrelated lifestyle shots. If the image could sit in any other business's ad, it is wrong.
+4. Say in "whyItFits" which words of that clip's line the image is showing, and in "usage" how the editor cuts it in (full-screen B-roll, overlay, split-screen) and for how long.
 
 ===== CULTURAL THEME (FROM USER INPUT) =====
 
@@ -2893,16 +2896,13 @@ Return a JSON array:
     "id": 1,
     "type": "photo" OR "graphic",
     "concept": "[3-5 word concept — e.g., 'Hero Product Close-up' or 'Trust Statistics Infographic']",
-    "timing": "Segment 2 (8s–16s)",
     "prompt": "[FULL DETAILED PROMPT following the structure above]",
-    "usage": "Insert at 0:10 as full-screen B-roll for 2 seconds",
-    "insertAt": "0:10"
+    "usage": "[how the editor cuts it in — e.g., 'full-screen B-roll for 2 seconds']",
+    "whyItFits": "[the words of that clip's line this image shows]"
   }
 ]
 
-TIMING FORMAT: Always "Segment X (Xs–Ys)" — e.g., "Segment 3 (16s–24s)"
-USAGE FORMAT: Always start with "Insert at M:SS" followed by the type (full-screen B-roll / overlay / split-screen) and duration — e.g., "Insert at 0:18 as full-screen B-roll for 2 seconds"
-INSERTAT FORMAT: Always "M:SS" — e.g., "0:10", "0:24", "0:33"
+"id" IS THE CLIP NUMBER: image 1 belongs to clip 1, image 2 to clip 2, and so on, in the order the clips were given to you.
 
 ===== QUALITY CHECKLIST =====
 
@@ -2913,8 +2913,8 @@ Before outputting, verify each prompt:
 ✓ For graphics: specifies exact typography, layout, design style
 ✓ Could genuinely be featured on Behance/Dribbble or win awards
 ✓ Serves a clear editorial purpose in the video
-✓ Has EXACT timing with segment number and second range
-✓ Has EXACT insert point (e.g., "Insert at 0:18")
+✓ Shows what ITS OWN clip's line is about, and says so in "whyItFits"
+✓ Could not be dropped into another business's ad unchanged
 ✓ People and settings match the specified CULTURAL THEME
 
 IMPORTANT:
@@ -2923,7 +2923,7 @@ IMPORTANT:
 - Generate only what the script genuinely needs (1-5 images)
 - Each image must be DISTINCTLY different and serve a unique purpose
 - Think like an award-winning creative director — every image should elevate the brand
-- EVERY image must have exact second-level timing for the video editor`;
+- EVERY image is tied to its own clip's spoken words, and to this business's real world`;
 
 
 export const OVERLAY_TEXT_SYSTEM_PROMPT = (language: string = 'Telugu') => `You are a senior short-form video editor who edits in CapCut. You design ON-SCREEN TEXT OVERLAYS for a voice-over driven ad.

@@ -147,8 +147,9 @@ describe("main-frame prompt", () => {
 
   it("ties each clip's background to what is being said in it", () => {
     const p = frame();
-    expect(p).toContain("A DIFFERENT PLACE EVERY CLIP");
+    expect(p).toContain("ONE CONTINUOUS WALK THROUGH THE BUSINESS");
     expect(p).toContain("the background must prove the line");
+    expect(p).toContain("Clip N+1 starts where clip N ended");
     expect(p).toContain("Clip 1: Motu asks about prices");
     expect(p).toContain("Clip 2: Motu asks about range");
   });

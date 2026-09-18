@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Wand2, Sparkles, Layout, Type, Rocket, AlertCircle,
-  Loader2, Save, Check, Camera, Video, PenTool, ChevronDown, Copy,
+  Loader2, Save, Check, Camera, Clapperboard, Video, PenTool, ChevronDown, Copy,
   ExternalLink, StopCircle, ArrowLeft, CheckCircle2, Home, Ratio, Languages, Type as TypeIcon, Music
 } from 'lucide-react';
+import { spokenOnly } from '@/utils/clipPlacement';
 import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
 import { FileUpload } from './FileUpload';
@@ -1993,6 +1994,27 @@ clip-2[8-16sec]: second spoken line`}</pre>
                                     <span>{copiedStockIdx === idx ? 'Copied' : 'Copy'}</span>
                                   </button>
                                 </div>
+                                {/* Where it goes: the clip, its seconds and the line it is cut over (utils/clipPlacement). */}
+                                <div className={cn("mb-2 rounded-lg border px-2.5 py-2", isDark ? "bg-slate-800/60 border-slate-600" : "bg-white border-slate-200")}>
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <Clapperboard className="w-3.5 h-3.5 text-teal-500 flex-shrink-0" />
+                                    <span className={cn("text-[11px] font-bold uppercase tracking-wide", isDark ? "text-teal-300" : "text-teal-700")}>
+                                      {item.timing || `Clip ${item.clip || item.id || idx + 1}`}
+                                    </span>
+                                    {item.usage && (
+                                      <span className={cn("text-[11px]", isDark ? "text-slate-400" : "text-slate-500")}>· {item.usage}</span>
+                                    )}
+                                  </div>
+                                  {item.line && (
+                                    <p className={cn("mt-1 text-xs leading-relaxed", isDark ? "text-slate-300" : "text-slate-600")}>
+                                      <span className={cn("font-medium", isDark ? "text-slate-400" : "text-slate-500")}>Cut over: </span>
+                                      &ldquo;{spokenOnly(item.line)}&rdquo;
+                                    </p>
+                                  )}
+                                  {item.whyItFits && (
+                                    <p className={cn("mt-0.5 text-[11px] italic", isDark ? "text-slate-400" : "text-slate-500")}>{item.whyItFits}</p>
+                                  )}
+                                </div>
                                 <p className={cn("text-sm leading-relaxed", isDark ? "text-slate-300" : "text-slate-600")}>{item.prompt}</p>
                                 {/* #10 — per-image refine */}
                                 {stockRefineIdx === idx ? (
@@ -2061,7 +2083,14 @@ clip-2[8-16sec]: second spoken line`}</pre>
                         {outputs.overlayTexts && outputs.overlayTexts.length > 0 && (
                           Array.from(new Set(outputs.overlayTexts.map((o: any) => Number(o.clip) || 0))).sort((a: number, b: number) => a - b).map((clip: number) => (
                             <div key={clip} className="mb-3 last:mb-0">
-                              <p className={cn("text-[11px] font-semibold uppercase tracking-wide mb-1.5", isDark ? "text-slate-400" : "text-slate-500")}>Clip {clip}</p>
+                              <p className={cn("text-[11px] font-semibold uppercase tracking-wide mb-0.5", isDark ? "text-slate-400" : "text-slate-500")}>
+                                {outputs.overlayTexts!.find((o: any) => (Number(o.clip) || 0) === clip)?.timing || `Clip ${clip}`}
+                              </p>
+                              {outputs.overlayTexts!.find((o: any) => (Number(o.clip) || 0) === clip)?.line && (
+                                <p className={cn("text-xs mb-1.5 leading-relaxed", isDark ? "text-slate-400" : "text-slate-500")}>
+                                  &ldquo;{spokenOnly(outputs.overlayTexts!.find((o: any) => (Number(o.clip) || 0) === clip)!.line)}&rdquo;
+                                </p>
+                              )}
                               {outputs.overlayTexts!.filter((o: any) => (Number(o.clip) || 0) === clip).map((o: any, i: number) => (
                                 <div key={i} className={cn("flex items-center justify-between gap-2 rounded-lg border p-2.5 mb-1.5", isDark ? "bg-slate-700/50 border-slate-600" : "bg-slate-50 border-slate-200")}>
                                   <div className="flex items-center gap-2 min-w-0">

@@ -42,6 +42,8 @@ import {
 import {
   dialogueHardWordIssues, hardWordIssues, isHardWordIssue, toSpokenEndings,
 } from "./prompts/everydaySpeech";
+import { WISH_AUDIENCE_TELUGU, wishAudienceIssues } from "./prompts/festivalWish";
+import { clipPlacements, spokenOnly, withPlacements } from "@/utils/clipPlacement";
 import {
   assembleVeoPrompt, parseVeoDirections, planClipMotion, spokenLinesIn, walkPath, withMotionComposition,
   type ClipMotionPlan, type VeoSpeech,
@@ -725,14 +727,15 @@ Return ONLY the JSON for clip${plan.clips.length === 1 ? '' : 's'} ${plan.clips.
 
   if (!pack) {
     const everyday = { names: ownNames };
-    const before = validateVoiceOverSegments(formatVoiceOverScript(lines), lines, count, language, everyday);
+    const wishClip = formData.adType === 'festival' ? 1 : undefined;
+    const before = validateVoiceOverSegments(formatVoiceOverScript(lines), lines, count, language, everyday, wishClip);
     const attempt = (raw: string) => {
       const edits = new Map([...parseClipTextEdits(raw, plan.clips)].map(([i, t]) => [i, cleanScriptText(toSpokenEndings(t, language))] as [number, string]));
       const merged = mergeClipEdits(lines, edits);
       const formatted = formatVoiceOverScript(merged);
       const problems = edits.size === 0
         ? ['Your reply contained no usable clips in the required JSON.']
-        : introducedIssues(before, validateVoiceOverSegments(formatted, merged, count, language, everyday));
+        : introducedIssues(before, validateVoiceOverSegments(formatted, merged, count, language, everyday, wishClip));
       return { merged, formatted, problems };
     };
     let result = attempt(await edit());
@@ -1525,6 +1528,8 @@ const validateVoiceOverSegments = (
   segmentCount: number,
   language?: string,
   everyday?: { names: string[] },
+  /** 1-based clip carrying the festival wish, when this ad has one — see prompts/festivalWish. */
+  wishClip?: number,
 ): string[] => {
   const issues: string[] = [];
   const structuredSegmentCount = getStructuredSegmentLineCount(rawScript);
@@ -1586,6 +1591,7 @@ const validateVoiceOverSegments = (
   });
 
   if (everyday) issues.push(...hardWordIssues(segments, language, everyday.names));
+  if (wishClip) issues.push(...wishAudienceIssues(segments[wishClip - 1] || '', wishClip, language));
 
   // Every ad must close with the on-screen call CTA (no spoken phone number). The exact wording
   // is only pinned for Telugu — every other language is told to write its own native equivalent
@@ -1939,6 +1945,20 @@ export const generateAdAssets = async (
         }]
       : [];
     /**
+     * A festival ad greets the business's own people by name — మిత్రులు, శ్రేయోభిలాషులు, కస్టమర్లు —
+     * so each group is required in the wish clip, the same way the town is required in its own.
+     */
+    if (formData.adType === 'festival' && isTeluguScript(formData.language)) {
+      for (const group of WISH_AUDIENCE_TELUGU) {
+        requiredPhrases.push({
+          label: `The ${group.english} in the wish ("${group.spoken}")`,
+          tokens: [group.stem],
+          clip: 1,
+          hint: `The wish greets all three: "${WISH_AUDIENCE_TELUGU.map((g) => g.spoken).join(", ")}".`,
+        });
+      }
+    }
+    /**
      * Validated against the budget for THIS cast.
      *
      * The default bands assume two speakers: 18-20 words a clip, 8-12 a line. On a single-speaker
@@ -2034,7 +2054,16 @@ Return only the repaired ${segmentCount} clips.`;
       const t = raw.trim().toLowerCase();
       return packSpeakerList.find(s => s.key === t || s.name.toLowerCase() === t)?.key ?? packSpeakerList[position]?.key ?? t;
     };
-    for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES + 1 && issues.length > 0; pass++) {
+    /**
+     * One wasted pass is not a reason to give up.
+     *
+     * A live run finished with two clips at 17 words because the first pass came back no better and
+     * the loop stopped there. Counting words in Telugu script is exactly what these models are worst
+     * at, and asking the same clip again usually lands it — so a pass that improves nothing costs a
+     * strike, and only the second strike in a row ends the repair.
+     */
+    let barren = 0;
+    for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES + 2 && issues.length > 0 && barren < 2; pass++) {
       const targets = clipIndexesFromIssues(issues, segmentCount);
       if (targets.length === 0 || clips.length !== segmentCount) break;
       const userPrompt = `SCRIPT (the whole script, for context):
@@ -2070,7 +2099,11 @@ Return ONLY the JSON for clip${targets.length === 1 ? '' : 's'} ${targets.map(i 
         if (edits.size === 0) break;
         const candidate = spokenLines(fixNames(mergeClipEdits(clips, edits)));
         const candidateIssues = checkDialogue(candidate);
-        if (!isBetterRepair({ issues, distance: distanceOf(clips) }, { issues: candidateIssues, distance: distanceOf(candidate) })) break;
+        if (!isBetterRepair({ issues, distance: distanceOf(clips) }, { issues: candidateIssues, distance: distanceOf(candidate) })) {
+          barren += 1;
+          continue;
+        }
+        barren = 0;
         clips = candidate;
         issues = candidateIssues;
       } catch (err) {
@@ -2098,7 +2131,8 @@ Return ONLY the JSON for clip${targets.length === 1 ? '' : 's'} ${targets.map(i 
     const distanceOf = (segments: string[]) =>
       wordBandDistance(segments.map(s => tokenizeWords(s).length), MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP);
     let bestDistance = distanceOf(best.segments);
-    for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES + 1 && bestIssues.length > 0; pass++) {
+    let barren = 0;
+    for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES + 2 && bestIssues.length > 0 && barren < 2; pass++) {
       const targets = clipIndexesFromIssues(bestIssues, segmentCount);
       if (targets.length === 0 || best.segments.length !== segmentCount) break;
       const systemInstruction = buildLanguageDirective(formData) + VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT({
@@ -2130,11 +2164,15 @@ Return ONLY the JSON for clip${targets.length === 1 ? '' : 's'} ${targets.map(i 
         if (edits.size === 0) break;
         const merged = mergeClipEdits(best.segments, edits);
         const candidate = normalizeAndFormatVoiceOver(spoken(formatVoiceOverScript(merged)), segmentCount);
-        const candidateIssues = validateVoiceOverSegments(candidate.rawScript, candidate.segments, segmentCount, formData.language, everyday);
+        const candidateIssues = validateVoiceOverSegments(candidate.rawScript, candidate.segments, segmentCount, formData.language, everyday, formData.adType === 'festival' ? 1 : undefined);
         const candidateDistance = distanceOf(candidate.segments);
         // Keep a fix that gets closer even when it does not clear the issue outright; stop only when a
         // pass makes nothing better.
-        if (!isBetterRepair({ issues: bestIssues, distance: bestDistance }, { issues: candidateIssues, distance: candidateDistance })) break;
+        if (!isBetterRepair({ issues: bestIssues, distance: bestDistance }, { issues: candidateIssues, distance: candidateDistance })) {
+          barren += 1;
+          continue;
+        }
+        barren = 0;
         best = candidate;
         bestIssues = candidateIssues;
         bestDistance = candidateDistance;
@@ -2148,7 +2186,7 @@ Return ONLY the JSON for clip${targets.length === 1 ? '' : 's'} ${targets.map(i 
 
   const applyVoiceOverRepairIfNeeded = async (candidateScript: string) => {
     let normalizedVoiceOver = normalizeAndFormatVoiceOver(spoken(candidateScript), segmentCount);
-    let voiceOverIssues = validateVoiceOverSegments(normalizedVoiceOver.rawScript, normalizedVoiceOver.segments, segmentCount, formData.language, everyday);
+    let voiceOverIssues = validateVoiceOverSegments(normalizedVoiceOver.rawScript, normalizedVoiceOver.segments, segmentCount, formData.language, everyday, formData.adType === 'festival' ? 1 : undefined);
 
     // Problems inside clips are fixed clip by clip; only a script-level problem (a wrong clip count)
     // still needs the whole script rewritten.
@@ -2183,7 +2221,7 @@ Return only the repaired ${segmentCount} clip lines.`;
       });
 
       normalizedVoiceOver = normalizeAndFormatVoiceOver(spoken(repairResponse.text || normalizedVoiceOver.formatted), segmentCount);
-      voiceOverIssues = validateVoiceOverSegments(normalizedVoiceOver.rawScript, normalizedVoiceOver.segments, segmentCount, formData.language, everyday);
+      voiceOverIssues = validateVoiceOverSegments(normalizedVoiceOver.rawScript, normalizedVoiceOver.segments, segmentCount, formData.language, everyday, formData.adType === 'festival' ? 1 : undefined);
     }
 
     // Whatever the whole-script repair left inside individual clips gets the clip-level fix too.
@@ -3092,10 +3130,13 @@ export const generateStockImagePrompts = async (
     ? `The voice-over has ${clipCount} clips (each ~8 seconds). Generate EXACTLY ${clipCount} B-roll image prompts — ONE per clip, in clip order. Each image MUST visually match the meaning of THAT clip's spoken line and be a hyper-realistic, highly relatable real-world shot for editing over that clip.`
     : `Generate ONLY the stock image prompts that this specific script needs (1-5 maximum). Do NOT always give 5 — analyze the script and provide only what's genuinely needed for editing.`;
 
+  const placements = clipPlacements(voiceOverScript, clipCount);
+  const clipLines = placements.map((p) => `${p.timing}: "${spokenOnly(p.line)}"`).join(String.fromCharCode(10));
+
   const userPrompt = `Analyze this voice-over script and generate stock image prompts for B-roll / cutaway shots to use during video editing.
 
-VOICE-OVER SCRIPT:
-${voiceOverScript}
+VOICE-OVER SCRIPT, CLIP BY CLIP (each image is cut over ONE of these clips, in this order):
+${clipLines || voiceOverScript}
 
 BUSINESS INFORMATION:
 ${JSON.stringify(businessInfo, null, 2)}
@@ -3110,7 +3151,12 @@ OUTPUT ASPECT RATIO (MANDATORY): Every B-roll image MUST be ${ratio} ${orient}. 
 
 ${countInstruction}
 
-For each item return an object with: "id" (clip number), "concept" (short label), "timing" (which clip / second range), "prompt" (the full image prompt), "usage" (how the editor uses it).`;
+EVERY IMAGE MUST BELONG TO ITS CLIP:
+• Image N is cut over clip N and must show exactly what clip N's line says — the product, the work, the offer or the moment named in THOSE words. If the line is about same-day service, the image is that service happening; if it is about free delivery, it is that delivery.
+• Keep it in the same world as the ad: the same kind of business, the same kind of Indian town premises, the same products, the same customers. Never a stock cliché that could sit in any other ad — no boardroom handshakes, no skyscrapers, no foreign offices, no unrelated lifestyle shots.
+• Say in "whyItFits" which words of that clip's line the image is showing.
+
+For each item return an object with: "id" (clip number), "concept" (short label), "prompt" (the full image prompt), "usage" (how the editor uses it, e.g. "full-screen B-roll for 2 seconds"), "whyItFits" (the words of that clip's line this image shows).`;
 
   const response = await callWithFallback(async (ai, model) => {
     return await ai.models.generateContent({
@@ -3128,9 +3174,11 @@ For each item return an object with: "id" (clip number), "concept" (short label)
   const text = response.text || "[]";
   try {
     const parsed = JSON.parse(text);
-    return Array.isArray(parsed) ? parsed : [parsed];
+    const items = Array.isArray(parsed) ? parsed : [parsed];
+    // Which clip each image plays over, and the line it plays under, stamped from the script itself.
+    return withPlacements(items, placements);
   } catch {
-    return [{ id: 1, concept: "Parse Error", timing: "N/A", prompt: text, usage: "Manual review needed" }];
+    return [{ id: 1, concept: "Parse Error", prompt: text, usage: "Manual review needed", ...(placements[0] || {}) }];
   }
 };
 
@@ -3244,7 +3292,7 @@ Generate the on-screen overlay texts now.` }] }],
   // items arrive in script order, so this keeps overlays grouped with their real clip
   // instead of vanishing or rendering a garbled "Clip name".
   let lastClip = 1;
-  return parsed
+  const healed = parsed
     .map((item) => {
       const digits = String(item?.clip ?? '').match(/\d+/);
       const candidate = digits ? parseInt(digits[0], 10) : NaN;
@@ -3255,6 +3303,10 @@ Generate the on-screen overlay texts now.` }] }],
       return { ...item, clip };
     })
     .sort((a, b) => a.clip - b.clip);
+
+  // The seconds and the spoken line each overlay sits over, so the editor is not holding the script
+  // in their head while placing it (see utils/clipPlacement).
+  return withPlacements(healed, clipPlacements(voiceOverScript, clipCount), (item) => item.clip);
 };
 
 // Transliterate Telugu voice-over script to English using Gemini AI

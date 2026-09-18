@@ -6,6 +6,7 @@ import { CLIP_SECONDS } from "@/utils/voiceOverFormat";
 import { packLocationSubject, packStagingRole, realLocationFormula } from "./realLocation";
 import { coreMessageBlock, type CoreMessageBrief } from "./coreMessage";
 import { everydaySpeechRules } from "./everydaySpeech";
+import { wishAudienceRule } from "./festivalWish";
 import {
   HAND_GESTURES, VEO_DIRECTION_SYSTEM_PROMPT, WALK_MANNER, compositionFor, framingForMotion, withoutStillness,
   type ClipMotionPlan, type Performer,
@@ -279,6 +280,8 @@ const festivalBeats = (
   second: string,
   place: string,
   festival: string,
+  /** The ad's language, so the wish is addressed in the words that language uses. */
+  language: string,
 ): string => {
   const solo = first === second;
   /**
@@ -296,12 +299,13 @@ const festivalBeats = (
   const wishes = solo
     ? `Clip 1 — THE WISHES (NOT A HOOK, NOT A SELL): ${first} wishes the viewer and their family a `
       + `happy ${bare} ON BEHALF OF THE BUSINESS, naming the business as the one sending the `
-      + `wish. This clip carries the one and only mention of ${first}'s name.`
+      + `wish. ${wishAudienceRule(festival, language)} This clip carries the one and only mention of `
+      + `${first}'s name.`
     : `Clip 1 — THE WISHES (NOT A HOOK, NOT A SELL): ${first} greets ${second} BY NAME about `
       + `${occasion}, and ${second} answers with "${first}" and wishes the viewer and their family a `
       + `happy ${bare} ON BEHALF OF THE BUSINESS, naming the business as the one sending the `
-      + `wish. This clip carries the one and only mention of each name — no clip after this may use `
-      + `either again.`;
+      + `wish. ${wishAudienceRule(festival, language)} This clip carries the one and only mention of `
+      + `each name — no clip after this may use either again.`;
 
   const nothingElse = `Clip 1 CONTAINS NOTHING ELSE. No product, no service, no offer, no price, no `
     + `speciality, no reason to buy, no call to action${place ? `, and not the town "${place}"` : ""}. `
@@ -513,7 +517,7 @@ ${coreMessageBlock(brief, isFestival && segmentCount > 1 ? 2 : 1)}
 CLIP-BY-CLIP STRUCTURE:
 
 ${isFestival
-  ? festivalBeats(segmentCount, first.name, second.name, place, festivalName)
+  ? festivalBeats(segmentCount, first.name, second.name, place, festivalName, lang)
   : promotionalBeats(segmentCount, first.name, second.name, place)}
 
 ${place
@@ -1139,16 +1143,25 @@ ${logoBlock}
 
 ${clipContext}
 
-===== THE ONE RULE THAT MATTERS MOST: A DIFFERENT PLACE EVERY CLIP =====
+===== THE ONE RULE THAT MATTERS MOST: ONE CONTINUOUS WALK THROUGH THE BUSINESS =====
 
 Every clip is set INSIDE the business — indoors, among its real fixtures. Never the street, the
 footpath, the car park or the outside of the building, and never a shot looking in from outside.
 
-Every clip must be set in a DIFFERENT part of the business, and that part must be chosen to match
-what the characters are SAYING in that clip. If they are talking about the product range, stand
-them at the shelves. If they are talking about service, stand them at the counter. If they are
-welcoming, put them at the entrance. Never repeat a location, and never pick a zone at random —
-the background must prove the line.
+All ${segmentCount} clips are ONE walk through that one space, cut into pieces. Each clip shows the part
+of the business the characters are TALKING about in that clip — shelves for the product range, the
+counter for service, the display for what is new — and the background must prove the line. But each
+part must ADJOIN the last: clip N+1 picks up a few steps further along the same path.
+
+CONTINUITY (WHAT MAKES THE VIDEO FLOW — MANDATORY):
+• Clip N+1 starts where clip N ended, in the same room or the area directly next to it.
+• At least one real thing from the previous clip's frame — the counter, a shelf run, a doorway, a
+  pillar, the logo — is still visible in the next clip's frame, even if only at the edge.
+• The light, the colour grade, the floor and the wall finish are IDENTICAL in every clip.
+• Never a jump to an unrelated zone, another floor, another branch or another building. If a viewer
+  would ask "where are we now?", the frame is WRONG.
+• What changes between clips is the angle and how much of the space is in view — never the place.
+Never repeat the same framing twice, and never pick a zone at random.
 
 ===== ${solo ? `STAGING ${cast.toUpperCase()}` : "STAGING BOTH CHARACTERS"} =====
 

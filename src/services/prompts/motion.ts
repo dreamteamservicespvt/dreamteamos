@@ -61,9 +61,9 @@ export const CAMERA_MOVES: Record<CameraMoveKey, CameraMove> = {
   leading_dolly: {
     key: "leading_dolly",
     name: "Leading dolly (walk-and-talk)",
-    action: "the camera dollies backward ahead of the walk at the same pace for the whole clip, holding a steady "
-      + "medium-wide shot as the cast come toward it with the premises flowing past behind them, then eases to a "
-      + "stop in a medium shot on the promise",
+    action: "the camera dollies backward ahead of the walk at EXACTLY the walking pace, holding the same distance "
+      + "and the same framing for the whole clip — the cast stay the SAME SIZE in frame from the first second to the "
+      + "last, never growing as they come forward — while the premises flow past behind them",
     framing: "a clear, open path of floor between the subject and the camera for the walk toward it, with real depth "
       + "behind — counters, stock, the logo — so the premises flow past as they come",
   },
@@ -71,38 +71,43 @@ export const CAMERA_MOVES: Record<CameraMoveKey, CameraMove> = {
     key: "side_track",
     name: "Side tracking shot",
     action: "the camera tracks sideways alongside the walk at the same pace for two to three metres, parallel to the "
-      + "counter or display, foreground objects sliding past the lens and the products passing behind",
+      + "counter or display and always the same distance from the cast, so they stay the SAME SIZE in frame while "
+      + "foreground objects slide past the lens and the products pass behind",
     framing: "the counter or display running across the frame in the direction of the walk, lead room ahead of the "
       + "subject along it, and a real foreground edge at the near side of the frame for parallax",
   },
   arc: {
     key: "arc",
     name: "Arc around the reveal",
-    action: "the camera arcs 45 to 60 degrees around the cast as they walk up to the product or feature, ending on a "
-      + "hero angle that shows them and it together",
+    action: "the camera arcs 45 to 60 degrees around the cast at a FIXED radius — exactly the same distance all the "
+      + "way round, so they stay the SAME SIZE in frame and never come nearer or further — ending on a hero angle "
+      + "that shows them and the product together",
     framing: "the product or feature they will show clearly visible and well lit, a step or two from the subject, with "
       + "real depth behind so the arc reveals parallax",
   },
   gimbal_follow: {
     key: "gimbal_follow",
     name: "Gimbal follow",
-    action: "a smooth gimbal follow a step behind and to the side at shoulder height as the cast lead the way into the "
-      + "premises, then they turn back to the lens and the camera settles in a medium shot facing them",
+    action: "a smooth gimbal follow a step behind and to the side at shoulder height, holding exactly that distance "
+      + "as the cast lead the way into the premises so they stay the SAME SIZE in frame, then they turn back to the "
+      + "lens and the camera settles facing them at that same distance",
     framing: "the premises opening up ahead of the subject with a clear walkway into them, the camera at shoulder height",
   },
   crane_reveal: {
     key: "crane_reveal",
     name: "Crane-up reveal",
-    action: "the camera starts low at waist height and cranes up to eye level as the cast step forward into the open, "
-      + "revealing the full premises around and behind them",
+    action: "the camera rises from waist height to eye level while keeping exactly its distance from the cast — the "
+      + "angle changes, their size in frame does not — as they step forward into the open and the premises open up "
+      + "behind them",
     framing: "a low camera at waist height, a real foreground element beside the subject, and the upper premises and the "
       + "logo in frame above them for the crane to reveal",
   },
   pull_back_reveal: {
     key: "pull_back_reveal",
     name: "Pull-back reveal",
-    action: "the camera dollies back and rises gently as the cast walk toward it, widening from a medium shot to a "
-      + "wide shot that reveals the whole inside of the business around them, with the logo in view",
+    action: "the camera eases back at the same pace as the cast walk toward it, so they stay the SAME SIZE in frame "
+      + "while more and more of the shop comes into view around them, ending with the inside of the business and the "
+      + "logo open around them",
     framing: "the inside of the business open around the subject with the logo readable, and room around them for the "
       + "camera to widen into",
   },
@@ -131,7 +136,7 @@ export const WALKS: Record<WalkKey, Walk> = {
   walk_in: {
     key: "walk_in",
     name: "Walk-in toward the camera",
-    path: "{Cast} walk{s} three or four unhurried steps toward the camera from deeper inside the shop floor, talking "
+    path: "{Cast} walk{s} two or three unhurried steps toward the camera from deeper inside the shop floor, talking "
       + "while walking — a natural walk-and-talk — and arrive{s} in a medium shot on the promise, still inside the business",
     start: "three-quarter body (head to knees), facing the camera with the weight moving onto the front foot as the "
       + "first step begins, hands relaxed and natural",
@@ -180,7 +185,7 @@ export const WALKS: Record<WalkKey, Walk> = {
   walk_invite: {
     key: "walk_invite",
     name: "Walk out to invite",
-    path: "{Cast} walk{s} three or four steps toward the camera across the shop floor with an inviting wave, and "
+    path: "{Cast} walk{s} two or three steps toward the camera across the shop floor with an inviting wave, and "
       + "stop{s} close for the invitation, still inside the business",
     start: "three-quarter body on the shop floor inside the business, walking toward the camera and caught "
       + "mid-stride, one hand lifting in an inviting wave",
@@ -418,9 +423,19 @@ export function walkPath(plan: ClipMotionPlan, cast = "The cast", plural = false
   return fillCast(template, cast, plural);
 }
 
-/** How the still must be composed for this clip's walk and camera move. */
+/**
+ * How the still must be composed for this clip's walk and camera move.
+ *
+ * Drawn characters and deities are framed head to FEET: their height and build are the identity, and a
+ * frame that crops the legs leaves the video to invent them, which is where a short character starts
+ * growing. A real person keeps the three-quarter framing — their face has to stay big enough to match.
+ */
 export function compositionFor(plan: ClipMotionPlan): string {
-  return `${plan.walk.start}; ${plan.camera.framing}`;
+  const start = plan.performer === "person"
+    ? plan.walk.start
+    : plan.walk.start.replace(/three-quarter body( (head to knees))?/, "the full figure from head to feet");
+  return `${start}; ${plan.camera.framing}; and a fixed vertical reference behind them — a counter edge, a door `
+    + `frame or a shelf line — that their height can be read against, with their feet and the floor visible`;
 }
 
 /** The line a frame prompt carries so the still is the first moment of the clip's walk. */
@@ -569,7 +584,10 @@ export const HAND_GESTURES: Record<Performer, string> = {
 export function identityRules(identityLock: string, cast = "The cast", twoHander = false): string {
   return `LOCKED — THE LOOK COMES ENTIRELY FROM THE ATTACHED FRAME:
 The attached frame is the first frame of this video. Keep ${identityLock} exactly as they are in it, in every frame: the same face, the same hair, the same clothes in the same colours, patterns and details, the same footwear, accessories and props, and the same height, build and body proportions${twoHander ? ", including the size and height difference between the two characters" : ""}. Only the movement is new — nothing about how anyone LOOKS may change.
-Walking changes how near ${cast} ${twoHander ? "are" : "is"} to the camera, never the size of anyone: nobody grows taller or shorter, thinner or heavier, no outfit changes colour, shape or style, nothing is added or taken away, and the logo stays the same logo, in the same place, unchanged.`;
+Walking changes where ${cast} ${twoHander ? "are" : "is"} in the room, never the size of anyone: nobody grows taller or shorter, thinner or heavier, no outfit changes colour, shape or style, nothing is added or taken away, and the logo stays the same logo, in the same place, unchanged.
+
+SIZE ON SCREEN — LOCKED, THE THING THAT KEEPS SLIPPING:
+${cast} stay the SAME SIZE in the frame from the first second to the last. The camera travels with the walk and holds its distance, so nobody gets bigger walking toward it or smaller walking away, and each head stays at the same height against the counter, shelf or door frame behind them. Heights and builds are measured off the attached frame and never re-imagined between one second and the next${twoHander ? ", and the height and build difference between the two characters is exactly what the frame shows — one never catches up with the other" : ""}. Feet stay on the floor, posture and stride stay the same, and nobody crouches, stretches or is re-proportioned to fit the shot.`;
 }
 
 /**
@@ -708,6 +726,7 @@ ${capitalised(d.path)}.
 • ${BEAT_TIMES[0]}: ${d.beats[0]}
 • ${BEAT_TIMES[1]}: ${d.beats[1]}
 • ${BEAT_TIMES[2]}: ${d.beats[2]}
+Through all three beats nothing about them changes — the same faces, the same clothes in the same colours, the same heights and builds, the same size in frame. Only their position in the room changes.
 Eye contact with the lens on the key phrases, with brief natural glances toward what is being shown. Natural blinks and breathing, hands anatomically natural.${performanceNotes ? `\n${performanceNotes}` : ""}
 
 CAMERA — ${plan.camera.name}: ${d.camera}. The camera moves with the walk from the first second to the last — a clearly visible, smooth, cinematic move like a premium commercial reel. No cuts.
@@ -726,7 +745,8 @@ No static or locked-off camera, no frozen pose, no cuts or scene change
 No standing in one spot for the whole clip, no feet planted in place, no presenter frozen in position while explaining
 No standing still like a statue, no stiff or mannequin body, no hands hanging lifeless, no talking head where only the mouth moves
 No walking out of the business, no street, footpath, car park or outside shot, no entering or leaving through the door, no change of location
-No change of height, build or body proportions — nobody taller, shorter, slimmer or heavier than in the frame
+No change in size on screen — nobody grows or shrinks as they walk, no zoom or lens change that resizes them
+No change of height, build or body proportions — nobody taller, shorter, slimmer or heavier than in the frame, no change to the height difference between characters
 No costume change — no different clothes, colours, patterns, footwear or accessories, nothing added or taken away
 No redrawn, restyled or different-looking cast, no face morphing, no swapped or extra characters
 No change to the face, hair, outfit, logo or location from the attached frame
@@ -762,7 +782,7 @@ FOR EACH CLIP YOU RECEIVE:
 
 WRITE, PER CLIP:
 1. path — ONE sentence: the planned walk made specific to THIS frame. From where to where, past which real things, and what is shown on arrival — every place and object named from the FRAME. At least three steps, starting in the first second from exactly where the frame has them.
-2. camera — ONE sentence: the planned move made specific to THIS frame and tied to the walk — the starting framing, the direction and distance it travels with them, the ending framing, and what it reveals. A clearly visible move, never a barely perceptible drift.
+2. camera — ONE sentence: the planned move made specific to THIS frame and tied to the walk — the direction it travels with them, what it reveals, and the fixed real thing behind them (a counter edge, a door frame, a shelf line) their height stays measured against. The camera holds its DISTANCE for the whole clip so the cast stay the same size in frame: it travels WITH the walk, never toward or away from it, and never zooms. A clearly visible move, never a barely perceptible drift.
 3. beats — exactly THREE short actions timed 0–2s, 2–5s and 5–8s. EVERY beat has the body travelling or turning (walking, stepping, turning toward what is shown or back to the lens) AND a hand action — showing, presenting, pointing to, picking up, holding up or touching a REAL object named in the FRAME, beckoning, an open palm on a promise. Place each gesture on the words it belongs to: work out roughly which part of the LINE falls in each window, and name that moment in plain English ("on the business name", "on the free delivery", "as the line ends") — NEVER quote the spoken words in path or beats. The line is spoken once, from its own block; a quoted copy inside an action gets said twice or written on screen. Include expression and eye-line.
 4. sceneLife — one short phrase of subtle, real VISUAL movement in that location: steam, a ceiling fan, a customer walking past in the background, light shifting through a window. Movement only — never a sound, because the audio is the voice alone. Nothing that speaks, nothing with text, nothing that is not plausible in that frame.
 
@@ -771,6 +791,7 @@ RULES:
 • SHOW THE BUSINESS. The walk passes, reaches and presents the real things the line is about — the products, the counter, the work, the premises.
 • INSIDE THE BUSINESS ONLY. Every step happens inside the premises the FRAME shows, between its real fixtures. Never outside on the street or the footpath, never walking in through the door from outside, never leaving that space.
 • YOU DIRECT MOVEMENT ONLY. Never change how anyone looks: no wardrobe change, no different clothes or colours, no change of height, build or proportions. Those come from the frame and are locked.
+• SAME SIZE IN FRAME, ALWAYS. Never direct a move that makes the cast bigger or smaller — no walking into a close-up, no pulling out to a wide shot around them, no zoom. Changing their size on screen is what makes heights and clothes drift, so the camera keeps its distance and the walk happens inside a steady frame.
 • One continuous shot. Never a cut, a zoom-crash, a whip pan or a scene change.
 • Never describe the face, hair, skin, outfit or jewellery — they are locked by the attached frame.
 • Never invent objects, signage or people that are not plausible in the FRAME.

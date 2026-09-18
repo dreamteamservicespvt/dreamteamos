@@ -89,8 +89,8 @@ describe("the motion plan", () => {
 
   it("writes the path for whoever walks", () => {
     const plan = planClipMotion(4, "commercial");
-    expect(walkPath(plan[0], "She")).toMatch(/^She walks three or four unhurried steps toward the camera .* and arrives in a medium shot/);
-    expect(walkPath(plan[0], "Both characters", true)).toMatch(/^Both characters walk three or four unhurried steps .* and arrive in a medium shot/);
+    expect(walkPath(plan[0], "She")).toMatch(/^She walks two or three unhurried steps toward the camera .* and arrives in a medium shot/);
+    expect(walkPath(plan[0], "Both characters", true)).toMatch(/^Both characters walk two or three unhurried steps .* and arrive in a medium shot/);
   });
 });
 
@@ -168,7 +168,7 @@ describe("the Veo prompt", () => {
   it("walks, moves the camera, times the performance and keeps the line exact — with no direction at all", () => {
     const p = build(null);
     expect(p).toContain("one continuous 8-second shot");
-    expect(p).toContain(`ACTION — WALK, SHOW AND PRESENT (${WALKS.walk_in.name}):\nShe walks three or four unhurried steps toward the camera`);
+    expect(p).toContain(`ACTION — WALK, SHOW AND PRESENT (${WALKS.walk_in.name}):\nShe walks two or three unhurried steps toward the camera`);
     expect(p).toContain(`CAMERA — ${CAMERA_MOVES.leading_dolly.name}: ${CAMERA_MOVES.leading_dolly.action}. The camera moves with the walk from the first second to the last`);
     expect(p).toMatch(/• 0–2s: .+\n• 2–5s: .+\n• 5–8s: .+/);
     expect(spokenLinesIn(p)).toEqual([line]);
@@ -275,7 +275,7 @@ describe("the Veo prompt", () => {
     expect(p).toContain("LOCKED — THE LOOK COMES ENTIRELY FROM THE ATTACHED FRAME:");
     expect(p).toContain("The attached frame is the first frame of this video");
     expect(p).toContain("the same height, build and body proportions");
-    expect(p).toContain("Walking changes how near She is to the camera, never the size of anyone: nobody grows taller or shorter, thinner or heavier");
+    expect(p).toContain("Walking changes where She is in the room, never the size of anyone: nobody grows taller or shorter, thinner or heavier");
     expect(p).toContain("No change of height, build or body proportions — nobody taller, shorter, slimmer or heavier than in the frame");
     expect(p).toContain("No costume change — no different clothes, colours, patterns, footwear or accessories, nothing added or taken away");
     expect(p).toContain("No redrawn, restyled or different-looking cast, no face morphing, no swapped or extra characters");
@@ -290,7 +290,8 @@ describe("the Veo prompt", () => {
       cast: s.cast, castPlural: s.castPlural, twoHander: s.twoHander,
     });
     expect(p).toContain("including the size and height difference between the two characters");
-    expect(p).toContain("Walking changes how near Both characters are to the camera");
+    expect(p).toContain("Walking changes where Both characters are in the room");
+    expect(p).toContain("the height and build difference between the two characters is exactly what the frame shows — one never catches up with the other");
   });
 
   // The ad is shot inside the client's shop; walking in off the street is a different business.
@@ -298,11 +299,43 @@ describe("the Veo prompt", () => {
     for (const p of plan.map((clip) => build(null, clip.clip))) {
       expect(p).toContain("Every step stays INSIDE the business, in the same space the attached frame shows");
       expect(p).toContain("never walks out of the shop, never walks in from the street");
+      expect(p).toContain("SIZE ON SCREEN — LOCKED, THE THING THAT KEEPS SLIPPING:");
       expect(p).toContain("No walking out of the business, no street, footpath, car park or outside shot");
     }
     expect(walkPath(plan[3], "She")).toContain("still inside the business");
-    expect(CAMERA_MOVES.pull_back_reveal.action).toContain("the whole inside of the business");
+    expect(CAMERA_MOVES.pull_back_reveal.action).toContain("the inside of the business and the logo open around them");
     expect(JSON.stringify(WALKS)).not.toMatch(/the entrance|storefront/);
+  });
+
+  /**
+   * Live videos still drifted: heights grew and outfits changed WHILE WALKING. A change of size on
+   * screen is a redraw, and a redraw is where a character is re-imagined — so every move now holds its
+   * distance and the cast stay the same size from the first second to the last.
+   */
+  it("keeps the cast the same size on screen, in every clip", () => {
+    for (const clip of plan) {
+      const p = build(null, clip.clip);
+      expect(p).toContain("stay the SAME SIZE in the frame from the first second to the last");
+      expect(p).toContain("each head stays at the same height against the counter, shelf or door frame behind them");
+      expect(p).toContain("Through all three beats nothing about them changes");
+      expect(p).toContain("No change in size on screen — nobody grows or shrinks as they walk, no zoom or lens change that resizes them");
+      expect(clip.camera.action).toMatch(/SAME SIZE in frame|same distance|keeping exactly its distance|holding exactly that distance|FIXED radius/);
+    }
+  });
+
+  it("tells the director never to direct a move that resizes them", () => {
+    const p = VEO_SEGMENT_SYSTEM_PROMPT(4, "female");
+    expect(p).toContain("SAME SIZE IN FRAME, ALWAYS");
+    expect(p).toContain("no walking into a close-up, no pulling out to a wide shot around them, no zoom");
+    expect(p).toContain("their height stays measured against");
+  });
+
+  it("frames a drawn character head to feet, and a real person three-quarter", () => {
+    const cartoon = planClipMotion(4, "commercial", "cartoon")[0];
+    expect(compositionFor(cartoon)).toContain("the full figure from head to feet");
+    expect(compositionFor(cartoon)).toContain("a fixed vertical reference behind them");
+    expect(compositionFor(plan[0])).toContain("three-quarter body (head to knees)");
+    expect(compositionFor(plan[0])).toContain("their height can be read against");
   });
 
   it("gives a two-hander each speaker their half of the clip", () => {

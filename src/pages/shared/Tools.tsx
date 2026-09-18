@@ -807,7 +807,9 @@ export default function Tools() {
                   {viewingItem.stockImagePrompts.map((sp: any, idx: number) => (
                     <div key={idx} className="bg-background border border-border rounded-lg p-3">
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-bold text-primary">{sp.concept || `Stock ${idx + 1}`}</span>
+                        <span className="text-xs font-bold text-primary">
+                          {sp.timing ? `${sp.timing} · ` : ""}{sp.concept || `Stock ${idx + 1}`}
+                        </span>
                         <button onClick={() => handleCopyHistorySection(`stock-${idx}`, sp.prompt || JSON.stringify(sp))}
                           className="p-1 rounded hover:bg-accent transition-colors">
                           {copiedHistorySection === `stock-${idx}`

@@ -121,6 +121,12 @@ export interface OverlayTextItem {
   text: string;
   /** Suggested CapCut-searchable sound effect name */
   soundEffect: string;
+  /** "Clip 2 · 8–16s" — where it goes, stamped from the script (utils/clipPlacement) */
+  timing?: string;
+  /** The spoken line this overlay sits over */
+  line?: string;
+  start?: number;
+  end?: number;
 }
 
 export interface GeneratedOutputs {
