@@ -10,6 +10,7 @@
  * screen can never drift from the timing in the prompt.
  */
 import { CLIP_SECONDS, parseLabeledClips } from "./voiceOverFormat";
+import { cueForWords, cueLabel, type Cue } from "./wordTiming";
 
 export interface ClipPlacement {
   /** 1-based clip number. */
@@ -53,6 +54,23 @@ export function clipPlacements(voiceOverScript: string, clipCount?: number): Cli
  * `clipOf` reads whichever field the generator used (a B-roll's `id`, an overlay's `clip`); anything
  * unreadable falls back to the item's position, which is the order both generators write in.
  */
+/**
+ * The same items, each also carrying WHEN it belongs on the timeline.
+ *
+ * The model says which words an overlay or image is anchored to; the seconds are worked out here from
+ * the clip's own line, so the timecode an editor reads can never disagree with the script. Words that
+ * are not in the line fall back to the whole clip, and the cue says so.
+ */
+export function withCues<T extends Record<string, any>>(
+  items: (T & Partial<ClipPlacement>)[],
+): (T & Partial<ClipPlacement> & { cue?: Cue; cueLabel?: string })[] {
+  return items.map((item) => {
+    if (typeof item.line !== "string" || typeof item.start !== "number" || typeof item.end !== "number") return item;
+    const cue = cueForWords(item.line, String(item.fromWord ?? ""), String(item.toWord ?? ""), item.start, item.end);
+    return { ...item, cue, cueLabel: cueLabel(cue), fromWord: cue.fromWord, toWord: cue.toWord };
+  });
+}
+
 export function withPlacements<T extends Record<string, any>>(
   items: T[],
   placements: ClipPlacement[],

@@ -43,7 +43,7 @@ import {
   dialogueHardWordIssues, hardWordIssues, isHardWordIssue, toSpokenEndings,
 } from "./prompts/everydaySpeech";
 import { WISH_AUDIENCE_TELUGU, wishAudienceIssues } from "./prompts/festivalWish";
-import { clipPlacements, spokenOnly, withPlacements } from "@/utils/clipPlacement";
+import { clipPlacements, spokenOnly, withCues, withPlacements } from "@/utils/clipPlacement";
 import {
   assembleVeoPrompt, parseVeoDirections, planClipMotion, spokenLinesIn, walkPath, withMotionComposition,
   type ClipMotionPlan, type VeoSpeech,
@@ -3175,8 +3175,9 @@ For each item return an object with: "id" (clip number), "concept" (short label)
   try {
     const parsed = JSON.parse(text);
     const items = Array.isArray(parsed) ? parsed : [parsed];
-    // Which clip each image plays over, and the line it plays under, stamped from the script itself.
-    return withPlacements(items, placements);
+    // Which clip each image plays over, the line it plays under, and the exact seconds its words fall
+    // in — all stamped from the script itself (utils/clipPlacement, utils/wordTiming).
+    return withCues(withPlacements(items, placements));
   } catch {
     return [{ id: 1, concept: "Parse Error", prompt: text, usage: "Manual review needed", ...(placements[0] || {}) }];
   }
@@ -3240,6 +3241,20 @@ const toNumberedClipScript = (script: string): { numberedScript: string; clipCou
   if (current !== null) clips.push(current.trim());
 
   if (clips.length === 0) {
+    /**
+     * A two-character script is labelled "clip-1[0-8sec]:" with the speakers on the lines below, which
+     * the time-range pattern above never matches. Everything then arrived as ONE clip, so every overlay
+     * in a character ad was pinned to clip 1 and would have been stacked on the first eight seconds.
+     * parseLabeledClips reads both shapes.
+     */
+    const oneLine = (text: string) => text.split(String.fromCharCode(10)).map((l) => l.trim()).filter(Boolean).join(' ');
+    const labelled = parseLabeledClips(script || '').map(oneLine).filter(Boolean);
+    if (labelled.length > 0) {
+      return {
+        numberedScript: labelled.map((text, i) => `Clip ${i + 1}: ${text}`).join(String.fromCharCode(10)),
+        clipCount: labelled.length,
+      };
+    }
     const whole = (script || '').trim();
     return { numberedScript: whole ? `Clip 1: ${whole}` : '', clipCount: whole ? 1 : 0 };
   }
@@ -3306,7 +3321,7 @@ Generate the on-screen overlay texts now.` }] }],
 
   // The seconds and the spoken line each overlay sits over, so the editor is not holding the script
   // in their head while placing it (see utils/clipPlacement).
-  return withPlacements(healed, clipPlacements(voiceOverScript, clipCount), (item) => item.clip);
+  return withCues(withPlacements(healed, clipPlacements(voiceOverScript, clipCount), (item) => item.clip));
 };
 
 // Transliterate Telugu voice-over script to English using Gemini AI

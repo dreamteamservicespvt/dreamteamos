@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Wand2, Sparkles, Layout, Type, Rocket, AlertCircle,
-  Loader2, Save, Check, Camera, Clapperboard, Video, PenTool, ChevronDown, Copy,
+  Loader2, Save, Check, Camera, Clapperboard, Clock, Video, PenTool, ChevronDown, Copy,
   ExternalLink, StopCircle, ArrowLeft, CheckCircle2, Home, Ratio, Languages, Type as TypeIcon, Music
 } from 'lucide-react';
 import { spokenOnly } from '@/utils/clipPlacement';
@@ -183,6 +183,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
    * with a regenerate), and the team's history listed every one of them.
    */
   const generationDocIdRef = useRef<string | null>(null);
+  /** A fingerprint of what the open document already holds — see the autosave effect below. */
+  const savedFingerprintRef = useRef<string>('');
   const [selectedFestivalOption, setSelectedFestivalOption] = useState<string>('');
   const [customFestivalName, setCustomFestivalName] = useState<string>('');
   const [customScript, setCustomScript] = useState<string>('');
@@ -495,11 +497,43 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       id = ref.id;
       generationDocIdRef.current = id;
     }
+    savedFingerprintRef.current = JSON.stringify(payload);
     if (assignmentId) {
       await updateDoc(doc(db, 'work_assignments', assignmentId), { savedGenerationId: id });
     }
     return id;
   };
+
+  /**
+   * Everything generated AFTER the first save, saved by itself.
+   *
+   * Only the initial generation and the Save button ever wrote to Firestore, and B-roll prompts,
+   * overlay texts, poster concepts and refines are all made later, on demand — they lived in React
+   * state and were gone the next time the ad was opened. This writes the whole generation whenever it
+   * changes, a second after the change settles, to the SAME document. It never fires while a
+   * generation is running (the outputs are still partial), never before the first save has given us a
+   * document, and never when nothing actually differs from what is already stored.
+   */
+  useEffect(() => {
+    if (!user || !outputs || !generationDocIdRef.current || status.isProcessing) return;
+    const fingerprint = JSON.stringify(generationPayload(outputs));
+    if (!savedFingerprintRef.current) {
+      // First sight of a reopened document: treat what is on screen as what is stored.
+      savedFingerprintRef.current = fingerprint;
+      return;
+    }
+    if (fingerprint === savedFingerprintRef.current) return;
+    const timer = setTimeout(async () => {
+      try {
+        await persistGeneration(outputs);
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 2000);
+      } catch (e) {
+        console.error('Auto-save of the generated sections failed:', e);
+      }
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [outputs, user, status.isProcessing]);
 
   const handleSave = async () => {
     if (!user || !outputs) return;
@@ -527,6 +561,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     setSelectedFestivalOption(savedFestivalName ? (isKnownFestival ? savedFestivalName : CUSTOM_FESTIVAL_OPTION) : '');
     setCustomFestivalName(savedFestivalName && !isKnownFestival ? savedFestivalName : '');
     generationDocIdRef.current = item.id || null;
+    savedFingerprintRef.current = '';
     setViewingSavedItem(item);
     setVoiceOverRevision(null);
     setOutputs({
@@ -2005,6 +2040,14 @@ clip-2[8-16sec]: second spoken line`}</pre>
                                       <span className={cn("text-[11px]", isDark ? "text-slate-400" : "text-slate-500")}>· {item.usage}</span>
                                     )}
                                   </div>
+                                  {item.cueLabel && (
+                                    <div className={cn("mt-1 flex items-start gap-1.5 rounded-md px-2 py-1", isDark ? "bg-teal-900/25" : "bg-teal-50")}>
+                                      <Clock className="w-3 h-3 mt-0.5 text-teal-500 flex-shrink-0" />
+                                      <span className={cn("text-[11px] font-medium leading-relaxed", isDark ? "text-teal-200" : "text-teal-800")}>
+                                        Show {item.cueLabel}
+                                      </span>
+                                    </div>
+                                  )}
                                   {item.line && (
                                     <p className={cn("mt-1 text-xs leading-relaxed", isDark ? "text-slate-300" : "text-slate-600")}>
                                       <span className={cn("font-medium", isDark ? "text-slate-400" : "text-slate-500")}>Cut over: </span>
@@ -2092,7 +2135,8 @@ clip-2[8-16sec]: second spoken line`}</pre>
                                 </p>
                               )}
                               {outputs.overlayTexts!.filter((o: any) => (Number(o.clip) || 0) === clip).map((o: any, i: number) => (
-                                <div key={i} className={cn("flex items-center justify-between gap-2 rounded-lg border p-2.5 mb-1.5", isDark ? "bg-slate-700/50 border-slate-600" : "bg-slate-50 border-slate-200")}>
+                                <div key={i} className={cn("rounded-lg border p-2.5 mb-1.5", isDark ? "bg-slate-700/50 border-slate-600" : "bg-slate-50 border-slate-200")}>
+                                  <div className="flex items-center justify-between gap-2">
                                   <div className="flex items-center gap-2 min-w-0">
                                     <TypeIcon className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
                                     <span className={cn("font-medium text-sm truncate", isDark ? "text-slate-200" : "text-slate-700")}>{o.text}</span>
@@ -2100,6 +2144,16 @@ clip-2[8-16sec]: second spoken line`}</pre>
                                   <span className={cn("inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-full flex-shrink-0", isDark ? "bg-slate-800 text-amber-300 border border-amber-700/40" : "bg-amber-100 text-amber-700")}>
                                     <Music className="w-3 h-3" /> {o.soundEffect}
                                   </span>
+                                  </div>
+                                  {/* When it comes up, in words and in seconds (utils/wordTiming). */}
+                                  {o.cueLabel && (
+                                    <div className={cn("mt-1.5 flex items-start gap-1.5 rounded-md px-2 py-1", isDark ? "bg-amber-900/20" : "bg-amber-50")}>
+                                      <Clock className="w-3 h-3 mt-0.5 text-amber-500 flex-shrink-0" />
+                                      <span className={cn("text-[11px] font-medium leading-relaxed", isDark ? "text-amber-200" : "text-amber-800")}>
+                                        {o.cueLabel}
+                                      </span>
+                                    </div>
+                                  )}
                                 </div>
                               ))}
                             </div>

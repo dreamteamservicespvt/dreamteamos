@@ -127,6 +127,12 @@ export interface OverlayTextItem {
   line?: string;
   start?: number;
   end?: number;
+  /** The words it comes up on and comes off on, quoted from that line (utils/wordTiming) */
+  fromWord?: string;
+  toWord?: string;
+  /** "0:09.2 → 0:11.0 · from “X” to “Y”" — the whole instruction an editor reads */
+  cueLabel?: string;
+  cue?: { start: number; end: number; fromWord: string; toWord: string; matched: boolean };
 }
 
 export interface GeneratedOutputs {

@@ -2883,6 +2883,7 @@ Image N is cut over clip N of the voice-over — the app adds the exact clip num
 2. It stays in the same world as the ad: the same kind of business, the same kind of premises, the same products and the same customers. A viewer must feel it was shot on the same day, in the same place, as the rest of the ad.
 3. NO generic stock clichés — no boardroom handshakes, no skyscrapers, no foreign offices, no unrelated lifestyle shots. If the image could sit in any other business's ad, it is wrong.
 4. Say in "whyItFits" which words of that clip's line the image is showing, and in "usage" how the editor cuts it in (full-screen B-roll, overlay, split-screen) and for how long.
+5. ANCHOR IT TO THE WORDS. "fromWord" is the exact word in that clip's line where the image should COME UP, and "toWord" the exact word where it should come OFF. Copy both words character for character out of the line as it is written — the same script, the same spelling, no translation, no transliteration, no punctuation added. The app turns those two words into a timecode for the editor, so a word that is not in the line loses the cue.
 
 ===== CULTURAL THEME (FROM USER INPUT) =====
 
@@ -2898,7 +2899,9 @@ Return a JSON array:
     "concept": "[3-5 word concept — e.g., 'Hero Product Close-up' or 'Trust Statistics Infographic']",
     "prompt": "[FULL DETAILED PROMPT following the structure above]",
     "usage": "[how the editor cuts it in — e.g., 'full-screen B-roll for 2 seconds']",
-    "whyItFits": "[the words of that clip's line this image shows]"
+    "whyItFits": "[the words of that clip's line this image shows]",
+    "fromWord": "[the exact word in that clip's line where the image comes up]",
+    "toWord": "[the exact word where it comes off]"
   }
 ]
 
@@ -2946,9 +2949,16 @@ CLIP OVERLAY COUNT (READ CAREFULLY — DEFAULT IS ONE):
 - For each overlay, suggest ONE "soundEffect" that is a COMMON, SEARCHABLE term in CapCut's sound-effects search — e.g. "whoosh", "swoosh transition", "pop", "ding", "notification", "cash register", "camera shutter", "sparkle", "boom impact", "riser", "click", "applause". Use the kind of short term that returns results when typed into CapCut search.
 - Match the sound effect to the meaning/mood of that overlay (e.g. an offer/price → "cash register" or "ding"; a transition/hook → "whoosh"; excitement → "sparkle" or "applause").
 
+WHEN IT APPEARS (THE PART AN EDITOR CANNOT GUESS):
+- Every overlay is tied to the WORDS it belongs with. "fromWord" is the exact word in that clip's line where the text should come up on screen, and "toWord" the exact word where it comes off.
+- Copy both words character for character out of that clip's line as it is written — the same script, the same spelling, no translation, no transliteration, nothing added. The overlay text itself stays in English; these two words are quoted from the spoken line.
+- Put the overlay where the viewer HEARS it: the price overlay comes up on the price word, the brand overlay on the business name, the offer overlay on the offer words, the call to action on the closing words.
+- A key point spoken in two or three words can span them: fromWord the first of them, toWord the last. A single word can be both.
+- The app turns those two words into an exact timecode for the editor, so a word that is not in that clip's line loses the cue.
+
 OUTPUT FORMAT (STRICT):
 - Output ONLY a valid JSON array. No markdown, no code block, no commentary.
-- Each element: { "clip": <the exact clip number N copied from its "Clip N:" label, integer only>, "text": "<short overlay text in ENGLISH>", "soundEffect": "<capcut-searchable sfx term>" }
+- Each element: { "clip": <the exact clip number N copied from its "Clip N:" label, integer only>, "text": "<short overlay text in ENGLISH>", "soundEffect": "<capcut-searchable sfx term>", "fromWord": "<the exact word from that clip's line where it comes up>", "toWord": "<the exact word where it comes off>" }
 - Order strictly by clip number ascending, then by appearance within the clip.
 - If a clip has no overlay, simply include no entries for it.
 - Before finalizing, self-check: does every "clip" value match a real "Clip N:" label from the input, and are entries grouped in ascending clip order with no gaps or reordering? Fix silently before you output.`;

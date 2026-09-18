@@ -103,3 +103,27 @@ describe("one continuous space", () => {
     expect(p).toContain("the background must prove the line");
   });
 });
+
+/**
+ * A two-character script labels its clips "clip-1[0-8sec]:" with the speakers below. The overlay
+ * numbering only understood the single-voice "0-8:" shape, so a live Motu-and-Patlu ad came back with
+ * all seven overlays pinned to clip 1 — every one of them stacked on the first eight seconds.
+ */
+describe("a two-character script's clips are found too", () => {
+  const dialogue = [
+    "clip-1[0-8sec]:", "  [Motu]:  ఎంత బాగున్నాయి!", "  [Patlu]: ఇది లక్ష్మీ స్వీట్స్.", "",
+    "clip-2[8-16sec]:", "  [Motu]:  కేకులు కూడా ఉన్నాయా?", "  [Patlu]: అవును, ఫ్రెష్ కేకులు.", "",
+    "clip-3[16-24sec]:", "  [Motu]:  మరి ఆలస్యం ఎందుకు?", "  [Patlu]: ఇప్పుడే రండి.",
+  ].join("\n");
+
+  it("reads every clip, not one", () => {
+    const placements = clipPlacements(dialogue);
+    expect(placements.map((p) => p.timing)).toEqual(["Clip 1 · 0–8s", "Clip 2 · 8–16s", "Clip 3 · 16–24s"]);
+  });
+
+  it("spreads overlays across the clips they belong to", () => {
+    const overlays = [{ clip: 1, text: "A" }, { clip: 2, text: "B" }, { clip: 3, text: "C" }];
+    expect(withPlacements(overlays, clipPlacements(dialogue), (o) => o.clip).map((o) => o.timing))
+      .toEqual(["Clip 1 · 0–8s", "Clip 2 · 8–16s", "Clip 3 · 16–24s"]);
+  });
+});
