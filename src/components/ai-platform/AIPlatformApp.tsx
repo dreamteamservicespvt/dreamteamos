@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Wand2, Sparkles, Layout, Type, Rocket, AlertCircle,
-  Loader2, Save, Check, Camera, Clapperboard, Clock, Video, PenTool, ChevronDown, Copy,
+  Loader2, Save, Check, Camera, Video, PenTool, ChevronDown, Copy,
   ExternalLink, StopCircle, ArrowLeft, CheckCircle2, Home, Ratio, Languages, Type as TypeIcon, Music
 } from 'lucide-react';
-import { spokenOnly } from '@/utils/clipPlacement';
+import { cueRange, cueWords } from '@/utils/wordTiming';
 import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
 import { FileUpload } from './FileUpload';
@@ -2029,34 +2029,19 @@ clip-2[8-16sec]: second spoken line`}</pre>
                                     <span>{copiedStockIdx === idx ? 'Copied' : 'Copy'}</span>
                                   </button>
                                 </div>
-                                {/* Where it goes: the clip, its seconds and the line it is cut over (utils/clipPlacement). */}
-                                <div className={cn("mb-2 rounded-lg border px-2.5 py-2", isDark ? "bg-slate-800/60 border-slate-600" : "bg-white border-slate-200")}>
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <Clapperboard className="w-3.5 h-3.5 text-teal-500 flex-shrink-0" />
-                                    <span className={cn("text-[11px] font-bold uppercase tracking-wide", isDark ? "text-teal-300" : "text-teal-700")}>
-                                      {item.timing || `Clip ${item.clip || item.id || idx + 1}`}
-                                    </span>
-                                    {item.usage && (
-                                      <span className={cn("text-[11px]", isDark ? "text-slate-400" : "text-slate-500")}>· {item.usage}</span>
-                                    )}
-                                  </div>
-                                  {item.cueLabel && (
-                                    <div className={cn("mt-1 flex items-start gap-1.5 rounded-md px-2 py-1", isDark ? "bg-teal-900/25" : "bg-teal-50")}>
-                                      <Clock className="w-3 h-3 mt-0.5 text-teal-500 flex-shrink-0" />
-                                      <span className={cn("text-[11px] font-medium leading-relaxed", isDark ? "text-teal-200" : "text-teal-800")}>
-                                        Show {item.cueLabel}
-                                      </span>
-                                    </div>
-                                  )}
-                                  {item.line && (
-                                    <p className={cn("mt-1 text-xs leading-relaxed", isDark ? "text-slate-300" : "text-slate-600")}>
-                                      <span className={cn("font-medium", isDark ? "text-slate-400" : "text-slate-500")}>Cut over: </span>
-                                      &ldquo;{spokenOnly(item.line)}&rdquo;
-                                    </p>
-                                  )}
-                                  {item.whyItFits && (
-                                    <p className={cn("mt-0.5 text-[11px] italic", isDark ? "text-slate-400" : "text-slate-500")}>{item.whyItFits}</p>
-                                  )}
+                                {/* Where it goes, in one line: the clip, and the words to show the image between. */}
+                                <div className={cn("mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg px-2.5 py-1.5", isDark ? "bg-teal-900/20" : "bg-teal-50")}>
+                                  <span className={cn("text-[11px] font-bold uppercase tracking-wide", isDark ? "text-teal-300" : "text-teal-700")}>
+                                    {item.timing || `Clip ${item.clip || item.id || idx + 1}`}
+                                  </span>
+                                  {item.cue ? (
+                                    <>
+                                      <span className={cn("text-xs font-medium", isDark ? "text-teal-100" : "text-teal-900")}>{cueWords(item.cue)}</span>
+                                      <span className={cn("text-[11px] tabular-nums", isDark ? "text-teal-400/80" : "text-teal-600")}>{cueRange(item.cue)}</span>
+                                    </>
+                                  ) : item.cueLabel ? (
+                                    <span className={cn("text-xs font-medium", isDark ? "text-teal-100" : "text-teal-900")}>{item.cueLabel}</span>
+                                  ) : null}
                                 </div>
                                 <p className={cn("text-sm leading-relaxed", isDark ? "text-slate-300" : "text-slate-600")}>{item.prompt}</p>
                                 {/* #10 — per-image refine */}
@@ -2126,32 +2111,29 @@ clip-2[8-16sec]: second spoken line`}</pre>
                         {outputs.overlayTexts && outputs.overlayTexts.length > 0 && (
                           Array.from(new Set(outputs.overlayTexts.map((o: any) => Number(o.clip) || 0))).sort((a: number, b: number) => a - b).map((clip: number) => (
                             <div key={clip} className="mb-3 last:mb-0">
-                              <p className={cn("text-[11px] font-semibold uppercase tracking-wide mb-0.5", isDark ? "text-slate-400" : "text-slate-500")}>
+                              <p className={cn("text-[11px] font-semibold uppercase tracking-wide mb-1.5", isDark ? "text-slate-400" : "text-slate-500")}>
                                 {outputs.overlayTexts!.find((o: any) => (Number(o.clip) || 0) === clip)?.timing || `Clip ${clip}`}
                               </p>
-                              {outputs.overlayTexts!.find((o: any) => (Number(o.clip) || 0) === clip)?.line && (
-                                <p className={cn("text-xs mb-1.5 leading-relaxed", isDark ? "text-slate-400" : "text-slate-500")}>
-                                  &ldquo;{spokenOnly(outputs.overlayTexts!.find((o: any) => (Number(o.clip) || 0) === clip)!.line)}&rdquo;
-                                </p>
-                              )}
                               {outputs.overlayTexts!.filter((o: any) => (Number(o.clip) || 0) === clip).map((o: any, i: number) => (
                                 <div key={i} className={cn("rounded-lg border p-2.5 mb-1.5", isDark ? "bg-slate-700/50 border-slate-600" : "bg-slate-50 border-slate-200")}>
                                   <div className="flex items-center justify-between gap-2">
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <TypeIcon className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-                                    <span className={cn("font-medium text-sm truncate", isDark ? "text-slate-200" : "text-slate-700")}>{o.text}</span>
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <TypeIcon className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                                      <span className={cn("font-medium text-sm truncate", isDark ? "text-slate-200" : "text-slate-700")}>{o.text}</span>
+                                    </div>
+                                    <span className={cn("inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-full flex-shrink-0", isDark ? "bg-slate-800 text-amber-300 border border-amber-700/40" : "bg-amber-100 text-amber-700")}>
+                                      <Music className="w-3 h-3" /> {o.soundEffect}
+                                    </span>
                                   </div>
-                                  <span className={cn("inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-full flex-shrink-0", isDark ? "bg-slate-800 text-amber-300 border border-amber-700/40" : "bg-amber-100 text-amber-700")}>
-                                    <Music className="w-3 h-3" /> {o.soundEffect}
-                                  </span>
-                                  </div>
-                                  {/* When it comes up, in words and in seconds (utils/wordTiming). */}
-                                  {o.cueLabel && (
-                                    <div className={cn("mt-1.5 flex items-start gap-1.5 rounded-md px-2 py-1", isDark ? "bg-amber-900/20" : "bg-amber-50")}>
-                                      <Clock className="w-3 h-3 mt-0.5 text-amber-500 flex-shrink-0" />
-                                      <span className={cn("text-[11px] font-medium leading-relaxed", isDark ? "text-amber-200" : "text-amber-800")}>
-                                        {o.cueLabel}
+                                  {/* The words to put it between, and the seconds they fall in. */}
+                                  {(o.cue || o.cueLabel) && (
+                                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 pl-5">
+                                      <span className={cn("text-xs font-medium", isDark ? "text-amber-200" : "text-amber-800")}>
+                                        {o.cue ? cueWords(o.cue) : o.cueLabel}
                                       </span>
+                                      {o.cue && (
+                                        <span className={cn("text-[11px] tabular-nums", isDark ? "text-slate-400" : "text-slate-500")}>{cueRange(o.cue)}</span>
+                                      )}
                                     </div>
                                   )}
                                 </div>

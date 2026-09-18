@@ -148,6 +148,14 @@ export function timecode(seconds: number): string {
   return `${minutes}:${rest < 10 ? "0" : ""}${rest.toFixed(1)}`;
 }
 
+/** Just the words an editor listens for: from this word to that one. */
+export function cueWords(cue: Cue): string {
+  return cue.matched ? `from “${cue.fromWord}” to “${cue.toWord}”` : "across the whole clip";
+}
+
+/** Just the seconds, as a range: 0:06.4 → 0:08.0. */
+export const cueRange = (cue: Cue): string => `${timecode(cue.start)} → ${timecode(cue.end)}`;
+
 /** The whole instruction in one line: when to cut, and which words to listen for. */
 export function cueLabel(cue: Cue): string {
   const when = `${timecode(cue.start)} → ${timecode(cue.end)}`;
