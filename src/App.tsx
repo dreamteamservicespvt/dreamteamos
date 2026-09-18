@@ -88,6 +88,8 @@ import ClientChat, { ClientChatResume } from "@/pages/client/ClientChat";
 import VerifyEmployee from "@/pages/public/VerifyEmployee";
 import JoinOnboarding from "@/pages/onboarding/JoinOnboarding";
 import Chat from "@/pages/shared/Chat";
+import SocialMedia from "@/pages/shared/SocialMedia";
+import SmmCampaignPage from "@/pages/shared/SmmCampaignPage";
 import Meeting from "@/pages/shared/Meeting";
 import AdminChatMonitor from "@/pages/shared/AdminChatMonitor";
 import { Loader2 } from "lucide-react";
@@ -153,6 +155,23 @@ const App = () => (
               has no account, because the account is what they get for signing. Offer letter, then
               joining letter, then their login — all behind a 4-digit code. */}
           <Route path="/join/:inviteId" element={<JoinOnboarding />} />
+
+          {/*
+            Social Media Management — one route, six roles.
+
+            Deliberately NOT role-prefixed like the rest of the app. Everybody on a monthly client
+            looks at the same page and the same month, and a prefixed path would need six copies of
+            each route plus a way for a notification to guess which one its recipient is allowed to
+            open — which is precisely the bug that once signed people out when they answered a call
+            (see the header of RootRedirect). One path is right for everyone, and the page scopes
+            itself to what the reader may see.
+          */}
+          <Route element={<AppLayout allowedRoles={[
+            "main_admin", "tech_admin", "sales_admin", "tech_member", "sales_member", "tech_team_leader",
+          ]} />}>
+            <Route path="/smm" element={<SocialMedia />} />
+            <Route path="/smm/:campaignId" element={<SmmCampaignPage />} />
+          </Route>
 
           {/* Main Admin */}
           <Route element={<AppLayout allowedRoles={["main_admin"]} />}>

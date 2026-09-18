@@ -54,7 +54,10 @@ export default function FieldHint({ text, testId }: { text: string; testId?: str
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         onBlur={() => setHovered(false)}
-        className="inline-flex items-center text-muted-foreground/70 transition-colors hover:text-primary"
+        /* An explicit 24px box around a 12px glyph, with a negative margin cancelling it again so
+           the icon sits exactly where it always did. Before this the ⓘ was the bare icon — a 12px
+           target on the form the sales team taps most, on a phone, mid-call. */
+        className="-m-1.5 inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground/70 transition-colors hover:text-primary"
       >
         <Info size={12} />
       </button>

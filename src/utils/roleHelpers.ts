@@ -4,7 +4,7 @@ import {
   Settings, BookOpen, FolderOpen, Target, User, BarChart3,
   ClipboardList, Briefcase, Wrench, FileCheck, MessageSquare, Video, Eye, Film, ScrollText, CalendarClock, Trophy, History,
   ShoppingBag, Contact, Star, GraduationCap, LayoutGrid, PiggyBank, Banknote, Wand2, Search,
-  MessageSquarePlus,
+  MessageSquarePlus, Megaphone,
 } from "lucide-react";
 
 export interface NavItem {
@@ -25,6 +25,9 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "Tech Department", path: "/main-admin/tech", icon: Code },
     { title: "Business Development", path: "/main-admin/sales", icon: Phone },
     { title: "Clients", path: "/main-admin/clients", icon: Contact },
+    // Monthly retainers. A top-level link for every role that touches one: a month that is
+    // behind is only ever fixed by somebody noticing, and nobody notices a submenu.
+    { title: "Social Media", path: "/smm", icon: Megaphone },
     { title: "Session History", path: "/main-admin/sessions", icon: Clock },
     { title: "Accounts", path: "/main-admin/accounts", icon: Wallet },
     { title: "Profit & Loss", path: "/main-admin/profit", icon: PiggyBank },
@@ -34,6 +37,9 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "Dashboard", path: "/tech-admin/dashboard", icon: LayoutDashboard },
     { title: "Work Assign", path: "/tech-admin/work-assign", icon: ClipboardList },
     { title: "Orders", path: "/tech-admin/orders", icon: ShoppingBag },
+    // Monthly retainers. A top-level link for every role that touches one: a month that is
+    // behind is only ever fixed by somebody noticing, and nobody notices a submenu.
+    { title: "Social Media", path: "/smm", icon: Megaphone },
     { title: "Attendance", path: "/tech-admin/attendance", icon: CalendarClock },
     { title: "Payroll", path: "/tech-admin/payroll", icon: Wallet },
     { title: "My Team", path: "/tech-admin/team", icon: Users },
@@ -73,6 +79,9 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "My Team", path: "/sales-admin/team", icon: Users },
     { title: "Sales Approvals", path: "/sales-admin/approvals", icon: FileCheck },
     { title: "Clients", path: "/sales-admin/clients", icon: Contact },
+    // Monthly retainers. A top-level link for every role that touches one: a month that is
+    // behind is only ever fixed by somebody noticing, and nobody notices a submenu.
+    { title: "Social Media", path: "/smm", icon: Megaphone },
     { title: "Feedback & Upsell", path: "/sales-admin/feedback-upsell", icon: MessageSquarePlus },
     // "Who has this number, and what have we sold them?" — asked several times a week and, until
     // this page, answerable only by hand across three other screens.
@@ -124,6 +133,9 @@ const NAV: Record<UserRole, NavItem[]> = {
   tech_member: [
     { title: "Dashboard", path: "/tech/dashboard", icon: LayoutDashboard },
     { title: "My Work", path: "/tech/my-work", icon: Briefcase },
+    // Monthly retainers. A top-level link for every role that touches one: a month that is
+    // behind is only ever fixed by somebody noticing, and nobody notices a submenu.
+    { title: "Social Media", path: "/smm", icon: Megaphone },
     { title: "Recent Ads", path: "/tech/recent-ads", icon: Film },
     { title: "My Salary", path: "/tech/salary", icon: Wallet },
     {
@@ -143,6 +155,9 @@ const NAV: Record<UserRole, NavItem[]> = {
     // Third, right under the work itself: where a member stands against the room is the thing they
     // check between calls, and it was buried under six links they open once a month.
     { title: "Leaderboard", path: "/sales/leaderboard", icon: Trophy },
+    // Monthly retainers. A top-level link for every role that touches one: a month that is
+    // behind is only ever fixed by somebody noticing, and nobody notices a submenu.
+    { title: "Social Media", path: "/smm", icon: Megaphone },
     // Everything about people who have already bought, in one place. Split across three top-level
     // links it read as three unrelated jobs; it is one — look after the client you sold to.
     {
@@ -182,6 +197,9 @@ const NAV: Record<UserRole, NavItem[]> = {
   ],
   tech_team_leader: [
     { title: "Orders", path: "/team-leader/orders", icon: ShoppingBag },
+    // Monthly retainers. A top-level link for every role that touches one: a month that is
+    // behind is only ever fixed by somebody noticing, and nobody notices a submenu.
+    { title: "Social Media", path: "/smm", icon: Megaphone },
     { title: "Work Assign", path: "/team-leader/work-assign", icon: ClipboardList },
     { title: "Work Done & Reports", path: "/team-leader/work-reports", icon: BarChart3 },
     { title: "Feedback & Upsell", path: "/team-leader/feedback-upsell", icon: MessageSquarePlus },

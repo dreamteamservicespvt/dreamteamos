@@ -54,6 +54,10 @@ import {
 import { CUSTOM_FESTIVAL_OPTION, WISHES_FESTIVALS, isListedFestival } from "@/utils/festivals";
 import { collectedOf, newPayment, withPayment } from "@/utils/salePayments";
 import SaleSection from "@/components/sales/SaleSection";
+import SmmSaleFields, { type SmmSaleValue } from "@/components/sales/SmmSaleFields";
+import {
+  commitmentsForPackage, platformsForPackage, quoteSmm, NO_ADDONS,
+} from "@/utils/smmPricing";
 import FieldHint from "@/components/common/FieldHint";
 import type { Lead, SaleDetail, SaleEditEntry, SalePayment } from "@/types";
 
@@ -110,6 +114,16 @@ function describeSaleChanges(prev: SaleDetail, next: SaleDetail): string[] {
     out.push(`Discount: ${shown(prev)} → ${shown(next)}`);
   }
   if ((prev.amount || 0) !== (next.amount || 0)) out.push(`Amount: ${formatCurrency(prev.amount || 0)} → ${formatCurrency(next.amount || 0)}`);
+  // A month's committed content IS the promise — changing it changes what the tech team owes, so
+  // it is named in the log rather than folded into a price change nobody can interpret later.
+  const smmLine = (i: SaleDetail) => {
+    const c = i.smm?.commitments;
+    if (!c) return "";
+    return `${c.poster || 0} posters, ${c.ai_ad || 0} AI ads, ${c.real_video || 0} real videos`;
+  };
+  if (smmLine(prev) !== smmLine(next)) out.push(`Committed content: ${smmLine(prev) || "—"} → ${smmLine(next) || "—"}`);
+  const smmAccounts = (i: SaleDetail) => (i.smm?.platforms || []).join(", ");
+  if (smmAccounts(prev) !== smmAccounts(next)) out.push(`Accounts: ${smmAccounts(prev) || "—"} → ${smmAccounts(next) || "—"}`);
   if ((prev.promise?.label || "") !== (next.promise?.label || "")) out.push(`Delivery: ${prev.promise?.label || "—"} → ${next.promise?.label || "—"}`);
 
   const pr = prev.requirement || {};
@@ -198,6 +212,38 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
     () => (ed?.discountMode === "amount" ? ed?.discountAmount ?? 0 : ed?.discountPercent ?? 0),
   );
   const [discountTouched, setDiscountTouched] = useState(false);
+  /**
+   * A social-media month, as agreed on the call: which accounts, how much of each kind of content,
+   * how many of the client's own videos we take on, and what they actually agreed to pay.
+   *
+   * Held as one object rather than five pieces of state because it is one decision — the package
+   * seeds all of it, and a member who changes the package expects every part of it to follow.
+   * Starts from the saved sale when editing, so reopening a month shows back exactly what was sold.
+   */
+  const [smmValue, setSmmValue] = useState<SmmSaleValue>(() => {
+    const saved = ed?.smm;
+    const pkg = ed?.packageKey;
+    if (saved) {
+      return {
+        platforms: saved.platforms || [],
+        commitments: saved.commitments,
+        addOns: saved.addOns || NO_ADDONS,
+        priceMode: saved.priceMode || "final",
+        // Shown back in the unit it was agreed in: the price they pay, or the amount off.
+        priceValue: saved.priceMode === "final" ? (ed?.amount || 0) : (ed?.discountAmount || 0),
+      };
+    }
+    return {
+      platforms: platformsForPackage(pkg),
+      commitments: commitmentsForPackage(pkg, NO_ADDONS),
+      addOns: { ...NO_ADDONS },
+      // "What are they paying?" is the question actually asked on a call, so it leads.
+      priceMode: "final",
+      priceValue: 0,
+    };
+  });
+  /** The member has touched the month's plan, so the package must stop re-seeding it under them. */
+  const smmTouched = useRef(!!ed?.smm);
   /**
    * The discount on an ordinary sale, kept apart from the bulk ladder's.
    *
@@ -452,7 +498,42 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
     setCustomAmount(suggestedCustomPrice);
   }, [isCustomService, suggestedCustomPrice, customPriceTouched]);
 
-  const amount = isBulk ? (bulkQuote?.amount ?? 0) : (selectedPkg?.amount || customAmount);
+  /**
+   * A social-media month, priced.
+   *
+   * The package is only half of it — the real videos sold on top are part of the same quote, and
+   * the figure the client agreed is entered directly rather than reverse-engineered into a
+   * discount. `quoteSmm` turns whichever end was typed into the rupees-off the rest of this form
+   * already understands, so the 10% authority rule and the approval hold need no special case.
+   */
+  const isSmm = category === "social_media_management";
+  const smmQuote = useMemo(
+    () => quoteSmm({
+      packageAmount: selectedPkg?.amount || customAmount,
+      addOns: smmValue.addOns,
+      mode: smmValue.priceMode,
+      value: smmValue.priceValue,
+    }),
+    [selectedPkg?.amount, customAmount, smmValue.addOns, smmValue.priceMode, smmValue.priceValue],
+  );
+
+  /**
+   * Re-seed the month's plan when the member picks a different package — but never after they have
+   * changed it themselves. Pro means eight of everything; a member who then agrees ten posters has
+   * made a decision, and having it wiped by an unrelated re-render is how a promise gets lost.
+   */
+  useEffect(() => {
+    if (!isSmm || smmTouched.current || !packageKey) return;
+    setSmmValue((v) => ({
+      ...v,
+      platforms: platformsForPackage(packageKey),
+      commitments: commitmentsForPackage(packageKey, v.addOns),
+    }));
+  }, [isSmm, packageKey]);
+
+  const amount = isSmm
+    ? smmQuote.grossAmount
+    : isBulk ? (bulkQuote?.amount ?? 0) : (selectedPkg?.amount || customAmount);
   const needsCustomAmount = !isBulk && (packages.length === 0 || (selectedPkg && selectedPkg.amount === 0));
 
   /**
@@ -483,8 +564,10 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
    * from the tech team until the sales admin confirms the price.
    */
   const manualDiscountAmount = useMemo(
-    () => (isBulk ? 0 : negotiatedFromInput(manualMode, manualValue, amount)),
-    [isBulk, manualMode, manualValue, amount],
+    // A month's discount is whatever the bargaining left, computed from the quote — the generic
+    // percent/rupees box is not shown for one, so reading it here would always give zero.
+    () => (isSmm ? smmQuote.discountAmount : isBulk ? 0 : negotiatedFromInput(manualMode, manualValue, amount)),
+    [isSmm, smmQuote.discountAmount, isBulk, manualMode, manualValue, amount],
   );
 
   const discount = useMemo(() => discountBreakdown({
@@ -768,11 +851,40 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
         An ordinary sale's negotiated discount, recorded in the unit the member gave it in so the
         approvals screen can show "10% off" or "₹100 off" as it was actually agreed.
       */
-      ...(!isBulk && manualDiscountAmount > 0
+      ...(!isBulk && !isSmm && manualDiscountAmount > 0
         ? {
             discountMode: manualMode,
             discountAmount: manualDiscountAmount,
             discountPercent: amount > 0 ? Math.round((manualDiscountAmount / amount) * 1000) / 10 : 0,
+            discountEdited: true,
+          }
+        : {}),
+      /*
+        A social-media month, as sold.
+
+        `smm` is what the delivery side builds the month's plan from — the accounts, the counts and
+        the real videos — and it is written on every sale of this category, including one edited out
+        of it (as `null`), so a month converted to something else does not leave a plan behind
+        describing work nobody bought.
+
+        The discount is stored exactly as it is for every other sale, in rupees, so the approval
+        rule and the commission maths see nothing new. `discountMode` reports the unit the member
+        actually typed in; a price agreed outright is recorded as rupees off, which is what it is.
+      */
+      smm: isSmm
+        ? {
+            platforms: smmValue.platforms,
+            commitments: smmValue.commitments,
+            addOns: smmValue.addOns,
+            grossAmount: smmQuote.grossAmount,
+            priceMode: smmValue.priceMode,
+          }
+        : null,
+      ...(isSmm && smmQuote.discountAmount > 0
+        ? {
+            discountMode: (smmValue.priceMode === "percent" ? "percent" : "amount") as DiscountMode,
+            discountAmount: smmQuote.discountAmount,
+            discountPercent: smmQuote.discountPercent,
             discountEdited: true,
           }
         : {}),
@@ -1022,6 +1134,17 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
             <option key={p.label} value={p.label}>{packageOptionLabel(p)}</option>
           ))}
         </select>
+      )}
+
+      {/* A social-media month is the one sale where the package is only the starting point: the
+          accounts, the content counts and the real videos on top are all agreed on the same call,
+          and the price is whatever the client committed to at the end of it. */}
+      {isSmm && (
+        <SmmSaleFields
+          packageAmount={selectedPkg?.amount || customAmount}
+          value={smmValue}
+          onChange={(next) => { smmTouched.current = true; setSmmValue(next); }}
+        />
       )}
 
       {/* Bulk videos — quantity drives the price, and the ladder suggests a discount the member may
@@ -1391,7 +1514,9 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
         Bulk orders are excluded on purpose: their discount comes from the volume ladder just above,
         and offering two ways to discount the same order is how the two end up disagreeing.
       */}
-      {!isBulk && amount > 0 && (
+      {/* A month does its own bargaining above, in the units a retainer is actually haggled in.
+          Showing this as well would be two boxes for one discount, disagreeing with each other. */}
+      {!isBulk && !isSmm && amount > 0 && (
         <SaleSection
           testId="manual-discount"
           title="Discount agreed on the call"

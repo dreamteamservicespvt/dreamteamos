@@ -1,5 +1,6 @@
 import type { DiscountApproval, EarnedDiscount } from "@/utils/saleDiscount";
 import type { ClientReview } from "@/types/orderChat";
+import type { SmmContentKind, SmmPlatform } from "@/types/smm";
 
 export type UserRole =
   | "main_admin"
@@ -84,6 +85,19 @@ export interface AppUser {
    * admin as history. A tech_member with this flag is excluded everywhere a "team member" is meant.
    */
   externalCreator?: boolean;
+  /**
+   * Promoted to run the Social Media Management side, on top of whatever role they already hold.
+   *
+   * ── Why a flag and not a role ─────────────────────────────────────────────────────────────────
+   * A `UserRole` decides a person's entire navigation, their landing page and the set of routes
+   * they are allowed to open. Making SMM Leader a role would mean that promoting the best social
+   * media person on the team *took away* the screens they use every day — their work, their
+   * attendance, their salary — and gave them one new page instead. So it is additive: they keep
+   * being a tech member or a team leader, and gain sight of every social-media month in the company
+   * plus the right to assign them. Exactly the shape `externalCreator` uses, for the opposite
+   * purpose.
+   */
+  smmLeader?: boolean;
   /**
    * Company employee ID (e.g. DTS-014), assigned by the Tech Admin from the Payroll page.
    * Purely a human-facing identifier for payslips and records — the uid remains the real key.
@@ -414,6 +428,35 @@ export interface SaleDetail {
   // Edit trail — set the first time the sales member changes a sale after adding it.
   editedAt?: any;
   editLog?: SaleEditEntry[];
+  /**
+   * What a social-media month was actually sold as. Absent on every other category.
+   *
+   * The package alone cannot say it: which accounts were promised, how many of each kind of content,
+   * and how many of the client's own videos we agreed to edit and post on top. All three are agreed
+   * on the call and all three are what the client will hold us to, so they are captured where they
+   * are said rather than guessed by the tech team three days later. See `types/smm`.
+   */
+  smm?: SmmSaleSpec | null;
+}
+
+/**
+ * The social-media month, as agreed on the call.
+ *
+ * `grossAmount` is kept alongside the discount because a month's price is built from a package plus
+ * per-video add-ons, and without the pre-bargain figure there is no way to say afterwards what the
+ * ₹4,000 came off — which is the first question asked when a client wants the same deal next month.
+ */
+export interface SmmSaleSpec {
+  /** The accounts committed. Defaults to the package's own, but what was promised is what counts. */
+  platforms: SmmPlatform[];
+  /** How many posters, AI ads and real videos the month owes. */
+  commitments: Record<SmmContentKind, number>;
+  /** Sold on top of the package: the client's own footage, edited and posted. */
+  addOns: { realVideos: number };
+  /** Package + add-ons, before anything came off. */
+  grossAmount: number;
+  /** Which end the member entered the negotiation from — kept so reopening the sale shows it back. */
+  priceMode: "amount" | "percent" | "final";
 }
 
 /** One recorded edit of a sale, so a change is visible and accountable rather than silent. */
@@ -633,6 +676,16 @@ export interface OrderProgress {
   completedTracks: OrderTrack[];
   log: OrderProgressEntry[];
   completedAt?: any | null;
+  /**
+   * These counters are computed from the month's own plan (`smm_campaigns`), not typed in here.
+   *
+   * Set on a social-media order once its campaign exists. It is what tells the progress panel to
+   * stop offering its number boxes: the plan knows which of the eight posters is made and which is
+   * posted, and a second hand-maintained copy of that on the order could only ever be a way for the
+   * two to disagree. Absent on bulk orders and on every month recorded before this section existed,
+   * both of which keep typing their counts exactly as before.
+   */
+  derived?: boolean;
 }
 
 // ─── Penalty (changes beyond what was committed) ───

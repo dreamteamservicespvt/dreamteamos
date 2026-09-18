@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { getTodayWorkStats, buildCheckoutMessage, ADMIN_WHATSAPP } from "@/utils/attendance";
 import { getWhatsAppUrl } from "@/utils/phone";
 import { driveFolderPath } from "@/utils/driveUpload";
+import SmmDueCard from "@/components/smm/SmmDueCard";
 import type { AppUser, DailyCheckin, WorkAssignment } from "@/types";
 import {
   AlertTriangle, ArrowRight, Clock, LogOut, Loader2, User, Video, UploadCloud, ExternalLink,
@@ -285,6 +286,10 @@ export default function CheckoutModal({ user, todayCheckin, assignments, onClose
           <UploadCloud size={13} className="shrink-0 text-success" />
           Work uploaded to {path.join(" › ")}
         </div>
+
+        {/* The last chance to notice a monthly client's post is due tomorrow — the same list the
+            check-in prompt showed this morning, when there was still a whole day to make it. */}
+        <SmmDueCard onNavigate={onClose} />
 
         {/* Only editable field: Note */}
         <div>

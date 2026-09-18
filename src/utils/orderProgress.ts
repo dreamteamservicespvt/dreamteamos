@@ -146,6 +146,9 @@ export function canEditProgress(
   uid: string | undefined,
 ): boolean {
   if (!progress) return false;
+  // Computed from the month's own plan — see the note on `OrderProgress.derived`. Nobody types
+  // these, including an admin: the plan says which posters exist and which posts are up.
+  if (progress.derived) return false;
   if (role === "tech_admin" || role === "main_admin" || role === "tech_team_leader") return true;
   if (!uid) return false;
   return Object.values(progress.tracks || {}).some((a) => a?.uid === uid);
@@ -167,6 +170,8 @@ export function editableFields(
   uid: string | undefined,
 ): OrderProgressField[] {
   const all = activeFields(progress);
+  // Derived counters have no editor at all — the plan is the only place they can be changed.
+  if (progress.derived) return [];
   if (role === "tech_admin" || role === "main_admin" || role === "tech_team_leader") return all;
   if (!uid) return [];
   const mine = new Set(tracksForMember(progress, uid).flatMap((t) => TRACK_FIELDS[t]));
