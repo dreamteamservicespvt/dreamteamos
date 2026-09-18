@@ -505,7 +505,7 @@ describe("veo prompt", () => {
   });
 
   it("animates the attached frame and locks it against drift", () => {
-    expect(assembled).toContain("Animate the attached frame, keeping both characters exactly as drawn, the logo and the location exactly as they are");
+    expect(assembled).toContain("Keep both characters exactly as drawn, the logo and the location exactly as they are in it");
     expect(assembled).toContain("No change to the face, hair, outfit, logo or location from the attached frame");
     expect(p).toContain("Never describe the face, hair, skin, outfit or jewellery");
   });

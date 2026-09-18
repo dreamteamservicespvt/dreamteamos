@@ -942,7 +942,7 @@ export interface CharacterFramePromptInput {
 const SHOT_DESIGNS = [
   {
     name: "ARRIVAL / ESTABLISHING SHOT",
-    zone: "the entrance, shopfront or main reception — where a real customer would walk in",
+    zone: "just inside the entrance, on the shop floor — the first thing a customer sees after stepping in (indoors, never the street outside)",
     camera: "wide enough to establish the place, the cast full-figure, the business clearly readable behind them",
     staging: "the two have just arrived and are taking the place in — open, welcoming body language turned towards camera",
     purpose: "establish WHERE we are and WHOSE business this is, in one glance",
@@ -970,7 +970,7 @@ const SHOT_DESIGNS = [
   },
   {
     name: "THE CLOSING INVITATION",
-    zone: "back at the entrance, main counter or the most inviting spot in the premises — full circle",
+    zone: "back at the main counter or the most inviting spot inside the premises — full circle, still indoors",
     camera: "clean, warm, slightly wider composition with the business unmistakable around them",
     staging: "both turned to camera, openly inviting the viewer in — the final impression",
     purpose: "end on 'come and visit' — the call to action needs a welcoming frame behind it",
@@ -1140,6 +1140,9 @@ ${logoBlock}
 ${clipContext}
 
 ===== THE ONE RULE THAT MATTERS MOST: A DIFFERENT PLACE EVERY CLIP =====
+
+Every clip is set INSIDE the business — indoors, among its real fixtures. Never the street, the
+footpath, the car park or the outside of the building, and never a shot looking in from outside.
 
 Every clip must be set in a DIFFERENT part of the business, and that part must be chosen to match
 what the characters are SAYING in that clip. If they are talking about the product range, stand

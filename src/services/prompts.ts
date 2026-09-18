@@ -1823,7 +1823,7 @@ export const MULTI_FRAME_SYSTEM_PROMPT = (
     {
       key: 'closing' as const,
       name: 'WARM CLOSING SHOT',
-      location: 'Back near the main area / entrance zone / a warm, inviting spot in the establishment — full circle back to a welcoming position',
+      location: 'Back near the main area, the main counter or the most inviting spot INSIDE the premises — full circle back to a welcoming position, still indoors',
       camera: 'Close mid-shot, standard to very slight high-angle polish, soft and warm composition with roughly 70% model presence — the "come visit us" feel',
       pose: 'Open welcoming gesture — warm smile, slightly open hands or namaste gesture, inviting the viewer — the final impression',
       purpose: 'End on a warm, inviting note. The viewer should feel: "I want to visit this place." This is the closing brand impression.',
@@ -1916,6 +1916,7 @@ Each frame below is the FIRST moment of an 8-second video in which the ambassado
 • THE THING TO SHOW within a few steps: the product, counter or equipment the clip talks about, close enough to walk to and present.
 • SHARP, EVEN LIGHT on the subject and the logo, so motion never drops them into shadow.
 • Clip 1 keeps its hero framing and pose, with an open path of floor toward the camera: the video starts the walk from it.
+• INSIDE THE BUSINESS, ALWAYS: every frame is set indoors, inside the premises — never the street, the footpath, the car park, the outside of the building, or a shot looking in from outside. The walk in each clip happens between the real fixtures inside that space.
 
 ` : ''}===== FRAME-BY-FRAME GENERATION RULES =====
 

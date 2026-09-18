@@ -102,9 +102,9 @@ export const CAMERA_MOVES: Record<CameraMoveKey, CameraMove> = {
     key: "pull_back_reveal",
     name: "Pull-back reveal",
     action: "the camera dollies back and rises gently as the cast walk toward it, widening from a medium shot to a "
-      + "wide shot that reveals the whole storefront and the logo",
-    framing: "the entrance or shop front around the subject with the logo readable, and room around them for the camera "
-      + "to widen into",
+      + "wide shot that reveals the whole inside of the business around them, with the logo in view",
+    framing: "the inside of the business open around the subject with the logo readable, and room around them for the "
+      + "camera to widen into",
   },
 };
 
@@ -131,8 +131,8 @@ export const WALKS: Record<WalkKey, Walk> = {
   walk_in: {
     key: "walk_in",
     name: "Walk-in toward the camera",
-    path: "{Cast} walk{s} three or four unhurried steps toward the camera from deeper inside the premises, talking "
-      + "while walking — a natural walk-and-talk — and arrive{s} in a medium shot on the promise",
+    path: "{Cast} walk{s} three or four unhurried steps toward the camera from deeper inside the shop floor, talking "
+      + "while walking — a natural walk-and-talk — and arrive{s} in a medium shot on the promise, still inside the business",
     start: "three-quarter body (head to knees), facing the camera with the weight moving onto the front foot as the "
       + "first step begins, hands relaxed and natural",
     camera: "leading_dolly",
@@ -180,10 +180,10 @@ export const WALKS: Record<WalkKey, Walk> = {
   walk_invite: {
     key: "walk_invite",
     name: "Walk out to invite",
-    path: "{Cast} walk{s} three or four steps toward the camera and the entrance with an inviting wave, and stop{s} "
-      + "close for the invitation",
-    start: "three-quarter body near the entrance, walking toward the camera and caught mid-stride, one hand lifting "
-      + "in an inviting wave",
+    path: "{Cast} walk{s} three or four steps toward the camera across the shop floor with an inviting wave, and "
+      + "stop{s} close for the invitation, still inside the business",
+    start: "three-quarter body on the shop floor inside the business, walking toward the camera and caught "
+      + "mid-stride, one hand lifting in an inviting wave",
     camera: "pull_back_reveal",
   },
 };
@@ -556,6 +556,23 @@ export const HAND_GESTURES: Record<Performer, string> = {
 };
 
 /**
+ * What the video may NEVER change — written into every Veo prompt, in code, word for word.
+ *
+ * Live videos came back with the cast's height changing mid-clip, a character's build drifting, and
+ * an outfit changing colour between one second and the next. One clause at the top of the prompt
+ * ("keeping X exactly as they are") was not enough: image-to-video re-imagines anything the prompt
+ * does not pin. So the whole look — face, hair, clothes and their colours, footwear, accessories,
+ * height, build, proportions, the size difference between two characters, the logo, the place — is
+ * stated as locked, with the one thing that DOES change (distance from the camera) named so it is not
+ * confused with getting bigger or smaller.
+ */
+export function identityRules(identityLock: string, cast = "The cast", twoHander = false): string {
+  return `LOCKED — THE LOOK COMES ENTIRELY FROM THE ATTACHED FRAME:
+The attached frame is the first frame of this video. Keep ${identityLock} exactly as they are in it, in every frame: the same face, the same hair, the same clothes in the same colours, patterns and details, the same footwear, accessories and props, and the same height, build and body proportions${twoHander ? ", including the size and height difference between the two characters" : ""}. Only the movement is new — nothing about how anyone LOOKS may change.
+Walking changes how near ${cast} ${twoHander ? "are" : "is"} to the camera, never the size of anyone: nobody grows taller or shorter, thinner or heavier, no outfit changes colour, shape or style, nothing is added or taken away, and the logo stays the same logo, in the same place, unchanged.`;
+}
+
+/**
  * The movement the video must have — written into EVERY Veo prompt, in code, word for word.
  *
  * The team's standing instruction: the cast walks through the business while talking, showing and
@@ -574,7 +591,8 @@ export function movementRules(
   const is = plural ? "are" : "is";
   const s = plural ? "" : "s";
   return `MOVEMENT — MANDATORY, NEVER LIKE A STATUE:
-${cast} ${is} walking and in motion for the whole 8 seconds — walking through the business, turning, showing and presenting it — never standing in one single position while explaining, never still like a statue, a mannequin or a cardboard cut-out. ${cast} walk${s} ${manner}, talking while walking like a real walk-and-talk reel, and the body moves with the words: the weight shifts, the shoulders turn, a lean in on the important words, the head and face react. There is never a moment when only the mouth moves.${twoHander ? `
+${cast} ${is} walking and in motion for the whole 8 seconds — walking through the business, turning, showing and presenting it — never standing in one single position while explaining, never still like a statue, a mannequin or a cardboard cut-out. ${cast} walk${s} ${manner}, talking while walking like a real walk-and-talk reel, and the body moves with the words: the weight shifts, the shoulders turn, a lean in on the important words, the head and face react. There is never a moment when only the mouth moves.
+Every step stays INSIDE the business, in the same space the attached frame shows — ${cast} never walk${s} out of the shop, never walk${s} in from the street, and never leave${s} that space or its location.${twoHander ? `
 Both characters walk together, side by side, through the business. The character who is listening keeps moving too — walking along, nodding, reacting, gesturing, turning toward the speaker — never frozen while the other one talks.` : ""}
 
 HAND GESTURES AND BODY LANGUAGE — MANDATORY IN THIS CLIP:
@@ -681,7 +699,9 @@ export function assembleVeoPrompt(input: VeoPromptInput): string {
     return `${at}${speaker}${s.voice}, speaking ${language}, perfectly lip-synced:\n"${s.line}"`;
   }).join("\n\n");
 
-  return `${aspectRatio} ${orientation} video, one continuous 8-second shot. Animate the attached frame, keeping ${identityLock} exactly as they are.
+  return `${aspectRatio} ${orientation} video, one continuous 8-second shot, animated from the attached frame.
+
+${identityRules(identityLock, who, !!twoHander)}
 
 ACTION — WALK, SHOW AND PRESENT (${plan.walk.name}):
 ${capitalised(d.path)}.
@@ -705,6 +725,10 @@ No background music, pure studio voice-over, crystal clear voice, no echo
 No static or locked-off camera, no frozen pose, no cuts or scene change
 No standing in one spot for the whole clip, no feet planted in place, no presenter frozen in position while explaining
 No standing still like a statue, no stiff or mannequin body, no hands hanging lifeless, no talking head where only the mouth moves
+No walking out of the business, no street, footpath, car park or outside shot, no entering or leaving through the door, no change of location
+No change of height, build or body proportions — nobody taller, shorter, slimmer or heavier than in the frame
+No costume change — no different clothes, colours, patterns, footwear or accessories, nothing added or taken away
+No redrawn, restyled or different-looking cast, no face morphing, no swapped or extra characters
 No change to the face, hair, outfit, logo or location from the attached frame
 No extra people speaking, no new voices`;
 }
@@ -745,6 +769,8 @@ WRITE, PER CLIP:
 RULES:
 • WALK IN EVERY CLIP — NEVER LIKE A STATUE. ${options.subject} never stays in one position for the whole clip: never planted, never a talking head. Talking while walking is the look.
 • SHOW THE BUSINESS. The walk passes, reaches and presents the real things the line is about — the products, the counter, the work, the premises.
+• INSIDE THE BUSINESS ONLY. Every step happens inside the premises the FRAME shows, between its real fixtures. Never outside on the street or the footpath, never walking in through the door from outside, never leaving that space.
+• YOU DIRECT MOVEMENT ONLY. Never change how anyone looks: no wardrobe change, no different clothes or colours, no change of height, build or proportions. Those come from the frame and are locked.
 • One continuous shot. Never a cut, a zoom-crash, a whip pan or a scene change.
 • Never describe the face, hair, skin, outfit or jewellery — they are locked by the attached frame.
 • Never invent objects, signage or people that are not plausible in the FRAME.

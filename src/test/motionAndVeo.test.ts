@@ -262,8 +262,47 @@ describe("the Veo prompt", () => {
 
   it("locks the face and speaks in the ad's language", () => {
     const p = build(null);
-    expect(p).toContain("keeping her face (100% face match), her hair, her outfit, the logo and the location exactly as they are");
+    expect(p).toContain("Keep her face (100% face match), her hair, her outfit, the logo and the location exactly as they are in it");
     expect(p).toContain("a very sweet, warm, confident female voice, speaking Telugu, perfectly lip-synced");
+  });
+
+  /**
+   * Live videos came back with the cast's height changing mid-clip and an outfit changing colour:
+   * one clause at the top was not enough for image-to-video.
+   */
+  it("locks height, build and clothes, and says what may change", () => {
+    const p = build(null);
+    expect(p).toContain("LOCKED — THE LOOK COMES ENTIRELY FROM THE ATTACHED FRAME:");
+    expect(p).toContain("The attached frame is the first frame of this video");
+    expect(p).toContain("the same height, build and body proportions");
+    expect(p).toContain("Walking changes how near She is to the camera, never the size of anyone: nobody grows taller or shorter, thinner or heavier");
+    expect(p).toContain("No change of height, build or body proportions — nobody taller, shorter, slimmer or heavier than in the frame");
+    expect(p).toContain("No costume change — no different clothes, colours, patterns, footwear or accessories, nothing added or taken away");
+    expect(p).toContain("No redrawn, restyled or different-looking cast, no face morphing, no swapped or extra characters");
+  });
+
+  it("locks the size difference between two characters", () => {
+    const pack = getCharacterPack("duo_motu_patlu")!;
+    const s = packVeoSubject(pack);
+    const p = assembleVeoPrompt({
+      aspectRatio: "9:16", plan: plan[1], identityLock: s.identityLock, language: "Telugu",
+      speech: s.speech([{ name: "Motu", text: "a" }, { name: "Patlu", text: "b" }]),
+      cast: s.cast, castPlural: s.castPlural, twoHander: s.twoHander,
+    });
+    expect(p).toContain("including the size and height difference between the two characters");
+    expect(p).toContain("Walking changes how near Both characters are to the camera");
+  });
+
+  // The ad is shot inside the client's shop; walking in off the street is a different business.
+  it("keeps every step inside the business", () => {
+    for (const p of plan.map((clip) => build(null, clip.clip))) {
+      expect(p).toContain("Every step stays INSIDE the business, in the same space the attached frame shows");
+      expect(p).toContain("never walks out of the shop, never walks in from the street");
+      expect(p).toContain("No walking out of the business, no street, footpath, car park or outside shot");
+    }
+    expect(walkPath(plan[3], "She")).toContain("still inside the business");
+    expect(CAMERA_MOVES.pull_back_reveal.action).toContain("the whole inside of the business");
+    expect(JSON.stringify(WALKS)).not.toMatch(/the entrance|storefront/);
   });
 
   it("gives a two-hander each speaker their half of the clip", () => {
@@ -364,6 +403,8 @@ describe("the director call", () => {
     expect(p).toContain("Clip 1 walks in");
     expect(p).toContain("EVERY beat has the body travelling or turning");
     expect(p).toContain("WALK IN EVERY CLIP — NEVER LIKE A STATUE");
+    expect(p).toContain("INSIDE THE BUSINESS ONLY");
+    expect(p).toContain("YOU DIRECT MOVEMENT ONLY. Never change how anyone looks");
     expect(p).toContain("NEVER quote the spoken words in path or beats");
     expect(p).toContain('"path": ""');
   });

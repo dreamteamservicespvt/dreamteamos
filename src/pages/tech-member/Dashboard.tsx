@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { performCheckIn } from "@/utils/attendance";
 import CheckoutModal from "@/components/attendance/CheckoutModal";
+import DailyDriveCard from "@/components/attendance/DailyDriveCard";
 import MyDayCalendar from "@/components/attendance/MyDayCalendar";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirm } from "@/hooks/useConfirm";
@@ -263,6 +264,9 @@ export default function TechMemberDashboard() {
           </AnimatePresence>
         </div>
       </motion.div>
+
+      {/* The day's Drive upload — the standing instruction, where the day starts */}
+      <DailyDriveCard user={user} uploaded={!!todayCheckin?.workUploadedConfirmed} />
 
       {/* Today's official attendance status */}
       {todayAttendance && (
