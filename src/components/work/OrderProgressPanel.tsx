@@ -11,7 +11,8 @@
  * two "+1"s from the same stale 4 silently becomes 6.
  */
 import { useState } from "react";
-import { CheckCircle2, Loader2, Users, ChevronDown, ChevronUp } from "lucide-react";
+import { Link } from "react-router-dom";
+import { CheckCircle2, Loader2, Users, ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
 import {
   activeFields, activeTracks, editableFields, isTrackComplete, isProgressComplete,
   progressPercent, PROGRESS_FIELD_LABELS, TRACK_FIELDS,
@@ -107,6 +108,21 @@ export default function OrderProgressPanel({ order, user, members, compact = fal
           style={{ width: `${percent}%` }}
         />
       </div>
+
+      {/*
+        A month with a plan is not counted here any more — it is counted from the plan itself, and
+        this is the way in to it. Without the link the two screens are strangers: the queue says
+        "3 of 8" and gives no clue where the other five are, or who owes them.
+      */}
+      {progress.derived && (
+        <Link
+          to={`/smm/${order.id}`}
+          data-test="order-progress-smm-link"
+          className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-purple-600 underline-offset-2 hover:underline dark:text-purple-400"
+        >
+          <ExternalLink size={11} /> Open this month's plan
+        </Link>
+      )}
 
       {open && (
         <>

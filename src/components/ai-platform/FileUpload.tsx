@@ -3,6 +3,16 @@ import { X, FileAudio, FileText, Image as ImageIcon, Plus } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
 
+/**
+ * The biggest image the generator will take.
+ *
+ * Every uploaded image is base64-encoded into the model request, so a 40MB photo off a phone is
+ * minutes of upload on a site connection followed by a failure the member cannot explain. Ten
+ * megabytes is far above any screenshot or logo and well below where the request breaks.
+ */
+export const MAX_IMAGE_MB = 10;
+const MAX_IMAGE_BYTES = MAX_IMAGE_MB * 1024 * 1024;
+
 interface FileUploadProps {
   label: string;
   accept: string;
@@ -39,7 +49,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   };
   const [internalFiles, setInternalFiles] = useState<File[]>(getFilesFromValue);
   const files = value !== undefined ? getFilesFromValue() : internalFiles;
-  /** Set when the member just tried to upload a PDF — explains what to do instead. */
+  /** Set when a file was just refused — says which, and what to do instead. */
   const [pdfNotice, setPdfNotice] = useState<string | null>(null);
 
   const hasReachedMax = maxFiles !== undefined && files.length >= maxFiles;
@@ -47,6 +57,9 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   // Image preview thumbnails (object URLs), cleaned up when files change/unmount
   const isImageFile = (f: File) => f.type.startsWith('image/');
   const isPdf = (f: File) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
+  const isVideo = (f: File) => f.type.startsWith('video/') || /\.(mp4|mov|avi|mkv|webm|m4v|3gp|wmv|flv)$/i.test(f.name);
+  /** Whether THIS slot is an image slot — the voice and text slots are not, and keep their own rules. */
+  const wantsImages = accept.includes('image');
   const previewUrls = useMemo(
     () => files.map((f) => (isImageFile(f) ? URL.createObjectURL(f) : null)),
     [files]
@@ -58,14 +71,41 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const all = Array.from(e.target.files);
-      // PDFs are refused everywhere: the pipeline reads images and plain text, so a PDF silently
-      // contributed nothing to the ad. Rejecting it loudly, with the two things that DO work, beats
-      // letting the member believe the client's brochure was used.
-      const incoming = all.filter((f) => !isPdf(f));
-      const rejected = all.length - incoming.length;
-      setPdfNotice(rejected > 0
-        ? `PDF${rejected === 1 ? '' : 's'} can't be used here. Take a screenshot of the pages you need and upload those as images, or copy the text out and paste it into the text box.`
-        : null);
+
+      /*
+        What this slot will actually take, and why each refusal is loud.
+
+        The generator reads images and plain text. A PDF or a video contributes NOTHING to the ad —
+        it is uploaded, it is counted, and the member goes on believing the client's brochure or
+        shop video was used. So anything the pipeline cannot read is refused at the door, named,
+        and paired with the thing that does work.
+
+        The size cap is the other half: a 40MB photo straight off a phone is base64-encoded into the
+        model request, where it costs a minute of upload on a site connection and then fails. Ten
+        megabytes is far above any screenshot and below the point where it breaks.
+      */
+      const reasons: string[] = [];
+      const incoming = all.filter((f) => {
+        if (isPdf(f)) {
+          reasons.push(`${f.name} is a PDF — screenshot the pages you need and upload those, or paste the text into the box.`);
+          return false;
+        }
+        if (isVideo(f)) {
+          reasons.push(`${f.name} is a video — only images can be used here. Upload a frame from it instead.`);
+          return false;
+        }
+        if (wantsImages && !isImageFile(f)) {
+          reasons.push(`${f.name} is not an image — this box takes photos and screenshots only.`);
+          return false;
+        }
+        if (isImageFile(f) && f.size > MAX_IMAGE_BYTES) {
+          reasons.push(`${f.name} is ${(f.size / 1024 / 1024).toFixed(1)}MB — images must be under ${MAX_IMAGE_MB}MB. Resize it or send a screenshot.`);
+          return false;
+        }
+        return true;
+      });
+
+      setPdfNotice(reasons.length > 0 ? reasons.join(' ') : null);
       if (incoming.length === 0) { e.target.value = ''; appendModeRef.current = false; return; }
 
       if (appendModeRef.current && canAddMore) {

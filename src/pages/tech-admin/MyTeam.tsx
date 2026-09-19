@@ -9,7 +9,7 @@ import { useAuthStore } from "@/store/authStore";
 import { normalizePhone, formatPhoneDisplay, getWhatsAppUrl, getCallUrl, phoneMatchesQuery } from "@/utils/phone";
 import type { AppUser, DailyCheckin, WorkAssignment } from "@/types";
 import { formatCurrency } from "@/utils/formatters";
-import { Users, Plus, X, Loader2, Eye, EyeOff, UserCheck, UserX, Trash2, Phone, MessageCircle, Pencil, Share2, Search, LogIn, LogOut, Sparkles, BarChart3, Wand2, Film, ExternalLink, KeyRound } from "lucide-react";
+import { Users, Plus, X, Loader2, Eye, EyeOff, UserCheck, UserX, Trash2, Phone, MessageCircle, Pencil, Share2, Search, LogIn, LogOut, Sparkles, BarChart3, Wand2, Film, ExternalLink, KeyRound, Megaphone } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import EditMemberModal from "@/components/EditMemberModal";
@@ -198,6 +198,30 @@ export default function TechAdminMyTeam() {
    * platform only to create their own ads. Marking them removes them from every team list, report
    * and payroll (they stay only here); they get access to just the ad-creation tool.
    */
+  /**
+   * Promote somebody to run the social-media side, without taking anything away from them.
+   *
+   * An SMM Leader keeps their existing role — their work, their attendance, their salary screens —
+   * and gains sight of every monthly client in the company plus the right to assign them. That is
+   * why it is a flag rather than a role: making it a role would mean the best social-media person
+   * on the team loses the screens they use every day the moment they are promoted.
+   */
+  const toggleSmmLeader = async (member: AppUser) => {
+    const next = !member.smmLeader;
+    try {
+      await updateDoc(doc(db, "users", member.uid), { smmLeader: next, updatedAt: serverTimestamp() });
+      setMembers((prev) => prev.map((m) => m.uid === member.uid ? { ...m, smmLeader: next } : m));
+      toast({
+        title: next ? "Promoted to SMM Leader" : "No longer SMM Leader",
+        description: next
+          ? `${member.name} now sees and assigns every social media month, on top of their own work.`
+          : `${member.name} sees only the social media months they are on.`,
+      });
+    } catch {
+      toast({ title: "Error", description: "Failed to update.", variant: "destructive" });
+    }
+  };
+
   const toggleExternalCreator = async (member: AppUser) => {
     const next = !member.externalCreator;
     try {
@@ -521,6 +545,13 @@ export default function TechAdminMyTeam() {
                           <button onClick={() => setAdsHistoryMember(m)} title="Ads history"
                             className="w-8 h-8 rounded-md inline-flex items-center justify-center text-muted-foreground hover:text-amber-600 hover:bg-amber-500/10 transition-colors">
                             <Film size={15} />
+                          </button>
+                        )}
+                        {!m.externalCreator && (
+                          <button onClick={() => toggleSmmLeader(m)} data-test="smm-leader-toggle"
+                            title={m.smmLeader ? "Remove SMM Leader" : "Promote to SMM Leader (sees every social media month)"}
+                            className={`w-8 h-8 rounded-md inline-flex items-center justify-center transition-colors ${m.smmLeader ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-primary hover:bg-primary/10"}`}>
+                            <Megaphone size={15} />
                           </button>
                         )}
                         {m.role === "tech_member" && (

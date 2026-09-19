@@ -12,6 +12,7 @@ import { normalizePhone } from "@/utils/phone";
 import SalaryTimeline from "@/components/SalaryTimeline";
 import SalesDayCalendar from "@/components/sales/SalesDayCalendar";
 import MemberAgreements from "@/components/agreement/MemberAgreements";
+import ThemeSelector from "@/components/ThemeSelector";
 import MyEmploymentPanel from "@/components/hr/MyEmploymentPanel";
 import { saveMemberPassword } from "@/services/memberCredentials";
 import ProfilePhotoUpload from "@/components/ProfilePhotoUpload";
@@ -239,6 +240,10 @@ export default function MyProfile() {
           {changingPw ? "Changing..." : "Update Password"}
         </button>
       </div>
+
+      {/* Light, dark or system. Tech members and admins have had this on their own account
+          pages; the sales members' profile was the one that never got it. */}
+      <ThemeSelector />
     </div>
   );
 }

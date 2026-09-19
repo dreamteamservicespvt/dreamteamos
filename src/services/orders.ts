@@ -16,6 +16,7 @@ import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import { logTechActivity, type ActivityActor } from "@/services/activityLog";
 import { ensureSaleOrderChat, deleteOrderChat } from "@/services/orderChat";
+import { ensureCampaignForOrder, campaignInputFromSale } from "@/services/smm";
 import { normalizePhone, phoneLockId } from "@/utils/phone";
 import { isAdCategory, productionCategory, categoryLabel as serviceCategoryLabel } from "@/utils/serviceCatalog";
 import { releasedToTech } from "@/utils/saleDiscount";
@@ -268,6 +269,33 @@ export async function upsertOrderForSale(params: {
         soldByName,
         promise: item.promise ?? null,
       }).catch(() => { /* the order exists either way */ });
+    }
+
+    /**
+     * A social-media month gets its plan the moment it is sold.
+     *
+     * Not at assignment time, which is where it would be more convenient to put it: the plan is
+     * what was PROMISED, and the person who knows that is the one who just got off the phone. By
+     * the time the month reaches the tech team it is a checklist of eight posters and eight ads on
+     * the right accounts, waiting for titles and dates, rather than a package name somebody has to
+     * interpret. Idempotent, and never fatal — see `ensureCampaignForOrder`.
+     */
+    if (item.category === "social_media_management") {
+      await ensureCampaignForOrder(campaignInputFromSale({
+        order: {
+          id,
+          leadId: lead.id,
+          saleItemKey: saleFields.saleItemKey,
+          clientPhone: phone,
+          clientPhoneId: saleFields.clientPhoneId,
+          clientName: saleFields.clientName,
+          businessName: saleFields.businessName,
+          soldBy: lead.assignedTo,
+          salesAdminId,
+        },
+        item,
+        soldByName,
+      }));
     }
 
     /**
@@ -1136,6 +1164,34 @@ export async function setOrderTracks(params: {
   await updateDoc(doc(db, "orders", order.id), {
     progress: { ...order.progress, tracks },
     updatedAt: serverTimestamp(),
+  });
+
+  /**
+   * A social-media month's plan follows the same assignment.
+   *
+   * Assignment stays one action on the Orders queue rather than becoming two — one here and one on
+   * the campaign — because two ways to say who is on a month is two ways for them to disagree, and
+   * the member whose name is on only one of them is the one who never gets reminded.
+   */
+  if (order.progress.kind === "smm") {
+    await mirrorTracksToCampaign(order.id, tracks).catch(() => { /* the order is assigned either way */ });
+  }
+}
+
+/** The order's three tracks, as the campaign's three seats. Assistants are left alone. */
+async function mirrorTracksToCampaign(
+  orderId: string,
+  tracks: Partial<Record<OrderTrack, { uid: string; name: string }>>,
+): Promise<void> {
+  const { fetchCampaign, setCampaignTeam } = await import("@/services/smm");
+  const campaign = await fetchCampaign(orderId);
+  if (!campaign) return;
+  await setCampaignTeam(orderId, {
+    ...campaign.team,
+    creator: tracks.ad_creation ?? campaign.team.creator ?? null,
+    publisher: tracks.social_upload ?? campaign.team.publisher ?? null,
+    marketer: tracks.digital_marketing ?? campaign.team.marketer ?? null,
+    assistants: campaign.team.assistants || [],
   });
 }
 

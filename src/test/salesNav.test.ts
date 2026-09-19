@@ -20,8 +20,11 @@ const allPaths = (items: NavItem[]): string[] =>
 
 describe("what a sales member sees, in order", () => {
   it("opens on the work, with the leaderboard third", () => {
-    expect(titles(nav()).slice(0, 5)).toEqual([
-      "Dashboard", "My Leads", "Leaderboard", "Clients", "Salary",
+    expect(titles(nav()).slice(0, 6)).toEqual([
+      // Social Media sits fourth, straight after the leaderboard: a monthly client is the only kind
+      // whose work continues after the sale, so their seller needs it near the top of the day
+      // rather than inside a group they open once a week.
+      "Dashboard", "My Leads", "Leaderboard", "Social Media", "Clients", "Salary",
     ]);
   });
 

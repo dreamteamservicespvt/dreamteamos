@@ -3725,3 +3725,82 @@ function resolveRealAddress(info: any, businessName: string): string {
   }
   return addr;
 }
+
+/* ── Meta ads dashboard → the three numbers a client is told ───────────────────────────────── */
+
+/** What one day of a Meta campaign is worth reading off a dashboard screenshot. */
+export interface MetaAdsReading {
+  leads: number | null;
+  spend: number | null;
+  costPerResult: number | null;
+  reach: number | null;
+  /** The date on the screenshot, `yyyy-MM-dd`, when the dashboard showed one. */
+  date: string | null;
+}
+
+/**
+ * Read a Meta Ads Manager screenshot.
+ *
+ * ── Why this is a convenience and never a dependency ──────────────────────────────────────────
+ * The daily ad report is three numbers a member copies off a phone screenshot into three boxes,
+ * and copying three numbers thirty times a month is exactly the kind of task people start skipping
+ * around the tenth. So the screenshot is read and the boxes are pre-filled — but the boxes are
+ * always there, always editable, and a failed read is a shrug rather than an error: the member
+ * types what they can see, which is what they were doing before.
+ *
+ * The screenshot itself is uploaded and kept either way. It is the proof behind numbers that end up
+ * in a client's own report, and a number with no source is a number somebody will eventually argue
+ * about.
+ */
+export const readMetaAdsReport = async (imageFile: File): Promise<MetaAdsReading> => {
+  const base64 = await fileToBase64(imageFile);
+
+  const response = await callWithFallback(async (ai, model) => {
+    return await ai.models.generateContent({
+      model,
+      contents: [{
+        role: 'user',
+        parts: [
+          { inlineData: { mimeType: imageFile.type, data: base64 } },
+          {
+            text:
+              'This is a screenshot of a Meta (Facebook/Instagram) Ads Manager report. Read it and return JSON with:\n' +
+              '"leads" — the number of results / leads / messaging conversations started (a whole number),\n' +
+              '"spend" — the amount spent, as a plain number in rupees with no symbol or commas,\n' +
+              '"costPerResult" — the cost per result, as a plain number in rupees,\n' +
+              '"reach" — the reach or impressions if shown, as a whole number,\n' +
+              '"date" — the date the figures are for in yyyy-MM-dd form, if the screenshot shows one.\n\n' +
+              'Use null for anything the screenshot does not show. Never guess a figure that is not visible.'
+          }
+        ]
+      }],
+      config: {
+        systemInstruction:
+          'You read advertising dashboards precisely. You report only figures that are actually visible in the image, ' +
+          'and you use null for anything that is not. You never estimate, infer or average.',
+        responseMimeType: 'application/json'
+      }
+    });
+  });
+
+  const num = (v: unknown): number | null => {
+    if (v === null || v === undefined || v === '') return null;
+    const n = Number(String(v).replace(/[^0-9.]/g, ''));
+    return Number.isFinite(n) ? n : null;
+  };
+
+  try {
+    const raw = JSON.parse(response.text || '{}');
+    const date = typeof raw.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.date) ? raw.date : null;
+    return {
+      leads: num(raw.leads),
+      spend: num(raw.spend),
+      costPerResult: num(raw.costPerResult),
+      reach: num(raw.reach),
+      date,
+    };
+  } catch {
+    // Nothing readable. The member types the three numbers, exactly as they did before this existed.
+    return { leads: null, spend: null, costPerResult: null, reach: null, date: null };
+  }
+};

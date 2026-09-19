@@ -6,6 +6,7 @@ import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { useToast } from "@/hooks/use-toast";
 import { getTodayWorkStats, performCheckIn } from "@/utils/attendance";
+import SmmDueCard from "@/components/smm/SmmDueCard";
 import type { WorkAssignment } from "@/types";
 import { LogIn, Loader2, Sun } from "lucide-react";
 
@@ -97,6 +98,11 @@ export default function DailyCheckinPrompt() {
                 <p className="text-[10px] text-muted-foreground">Done Today</p>
               </div>
             </div>
+
+            {/* What this member's monthly clients need in the next three days. There is no
+                scheduler on this stack, so the reminder is attached to the one screen a tech member
+                cannot get past — see components/smm/SmmDueCard. */}
+            <SmmDueCard />
 
             <p className="text-[11px] text-muted-foreground">
               Checking in is required to continue. It records your attendance and sends your work status to the admin on WhatsApp.

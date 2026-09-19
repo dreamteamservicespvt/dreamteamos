@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { Outlet, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useAuthStore } from "@/store/authStore";
@@ -8,12 +8,23 @@ import Topbar from "./Topbar";
 import { Loader2 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { initFCM, onForegroundMessage } from "@/services/fcm";
-import VideoCallManager from "@/components/chat/VideoCallManager";
-import DailyCheckinPrompt from "@/components/attendance/DailyCheckinPrompt";
-import ProfileCompletionPrompt from "@/components/profile/ProfileCompletionPrompt";
-import MandatoryAgreementGate from "@/components/agreement/MandatoryAgreementGate";
-import UpdatePopup from "@/components/layout/UpdatePopup";
-import BirthdayGreeting from "@/components/BirthdayGreeting";
+/**
+ * The overlays, fetched after the page they sit on top of.
+ *
+ * None of these is part of the first paint — they are a call that may ring, a prompt that may be
+ * due, a gate that may apply. Imported eagerly they dragged their whole dependency trees into the
+ * first download: the agreement gate alone pulls the PDF writer and the HTML-to-canvas renderer,
+ * about a megabyte, onto the screen of every member who has nothing to sign.
+ *
+ * `lazy` with no Suspense boundary of its own is deliberate — each renders `null` until it has
+ * something to show anyway, and the Suspense around the routes in App.tsx covers them.
+ */
+const VideoCallManager = lazy(() => import("@/components/chat/VideoCallManager"));
+const DailyCheckinPrompt = lazy(() => import("@/components/attendance/DailyCheckinPrompt"));
+const ProfileCompletionPrompt = lazy(() => import("@/components/profile/ProfileCompletionPrompt"));
+const MandatoryAgreementGate = lazy(() => import("@/components/agreement/MandatoryAgreementGate"));
+const UpdatePopup = lazy(() => import("@/components/layout/UpdatePopup"));
+const BirthdayGreeting = lazy(() => import("@/components/BirthdayGreeting"));
 import { registerBackButton } from "@/services/capacitor-plugins";
 import { isNative } from "@/utils/platform";
 import { EXTERNAL_CREATOR_ROUTES } from "@/utils/roleHelpers";
@@ -59,6 +70,12 @@ export default function AppLayout({ allowedRoles }: AppLayoutProps) {
   const isMobile = useIsMobile();
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  // Close mobile sidebar whenever the route changes — the most reliable way to ensure
+  // the drawer never stays open after a navigation, even if a touch/click handler misfires.
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location.pathname]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -91,9 +108,10 @@ export default function AppLayout({ allowedRoles }: AppLayoutProps) {
         <main className="flex-1 p-4 md:p-6 overflow-x-hidden overflow-y-auto">
           {/* Above the page, not inside it: a birthday belongs to the whole company, so it shows
               wherever someone happens to be working. External creators are not colleagues. */}
-          {!user.externalCreator && <BirthdayGreeting />}
+          {!user.externalCreator && <Suspense fallback={null}><BirthdayGreeting /></Suspense>}
           <Outlet />
         </main>
+        <Suspense fallback={null}>
         <VideoCallManager />
         {user.role === "tech_member" && !user.externalCreator && <DailyCheckinPrompt />}
         {/* Asks employees once a day for whatever the company still needs from them, until it
@@ -101,6 +119,7 @@ export default function AppLayout({ allowedRoles }: AppLayoutProps) {
         <ProfileCompletionPrompt />
         <MandatoryAgreementGate />
         <UpdatePopup />
+        </Suspense>
       </div>
     </div>
   );

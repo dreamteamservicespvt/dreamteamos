@@ -588,3 +588,202 @@ collections are bounded to one ~30-day pay period rather than the whole org.
   made `SalesEarningsCard` look permanently stuck loading in the harness only; made the fake
   deliver via `queueMicrotask` to match real Firestore's always-async callback, and the card
   rendered correctly (₹18,462) — confirming it was a harness fidelity gap, not an app bug.
+
+## Session — 2026-09-18 (Social Media Management)
+
+**What the section is.** A monthly retainer is not an order, and the app only knew it as four
+counters on the order (`OrderProgress`, `kind:"smm"` — 8 ads, 8 posters, 16 posts, 8 campaigns).
+Those four numbers could not say WHAT the posts are, WHEN they go up, on WHICH account, whether the
+client APPROVED them, what the ads cost or returned, what the client was told, or why a week went
+by. So a sold month now gets a document of its own and every screen reads from it. Design doc:
+`docs/superpowers/specs/2026-09-18-social-media-management-design.md`.
+
+**Data.** New collection `smm_campaigns/{orderId}` — doc id IS the order id, same reasoning as
+`utils/orderChatId` (deterministic, survives re-verify/unassign/reassign). NOT a field on the order:
+the Orders queue streams orders to the whole tech department and a month's plan churns several times
+a day — that is a free-tier quota decision. Also `smm_templates` (saved client message wording,
+company-wide). `AppUser.smmLeader?: boolean` is an ADDITIVE flag (like `externalCreator`), never a
+new `UserRole` — a role would strip the promoted person's own work/attendance/salary screens.
+
+**Sale side (extends the EXISTING Social Media Management package, no new category).** `SaleForm`
+shows `components/sales/SmmSaleFields` only for `social_media_management`: committed accounts
+(pre-ticked from the package's `platforms`), committed content counts (pre-filled from
+`deliverables`), and the real-video add-on at `SMM_REAL_VIDEO_RATE = 500` (editing + posting).
+Price is entered from EITHER end — "they pay" / "₹ off" / "% off" — and `utils/smmPricing.quoteSmm`
+turns whichever was typed into the rupees-off the rest of the app already understands, so the 10%
+authority rule, the approval hold and commission need no special case. Saved on the sale as
+`SaleDetail.smm` (`SmmSaleSpec`). **Gotcha fixed during build:** an empty "they pay" box read as
+₹0 committed → 100% off on every new month; `mode:"final"` with `value <= 0` now means "not
+bargained yet".
+
+**The order's counters are now DERIVED.** `services/smm.syncOrderProgress` recomputes
+`progress.targets`/`progress.done` from the plan after every mutation and sets `progress.derived`.
+`utils/orderProgress.canEditProgress`/`editableFields` return nothing for a derived progress, and
+`OrderProgressPanel` shows a link to the month instead of number boxes. `targetsFromCommitments`
+reproduces the catalogue quota EXACTLY for a stock package (8 posters + 8 AI ads = 8 videos, 8
+posters, 16 posts, 16 stories, 8 run), so `collectReadiness` (balance-collect gate) and
+`techProductivity` (tech payroll) keep working untouched.
+
+**The rule that is enforced, not remembered.** Nothing is posted without approval:
+`setItemStatus` THROWS for `scheduled`/`posted` unless `approval.state === "approved"`, and the UI
+disables those buttons (`utils/smmPlan.canPublish`). Every ask is stamped (`askedAt`), every
+follow-up appended (`chases`), every answer stamped (`respondedAt`) — `clientWaitSummary` turns that
+into "N days of this month were spent waiting for approvals", which goes on EVERY monthly report,
+not just the difficult ones. That is the answer to "you didn't do the work".
+
+**Writes are transactional.** The plan is an array in one document, so every mutation goes through
+`mutateCampaign` → `runTransaction` → merge by item id. Two members editing two different posts is
+the normal case; a naive array write would silently lose one of them.
+
+**Reminders.** No scheduler on this stack (same as `notifyDueOrdersOnOpen`), so
+`components/smm/SmmDueCard` is mounted in `DailyCheckinPrompt` AND `CheckoutModal` — the two screens
+a tech member cannot avoid. 3-day window; push deduped per item per day
+(`smmReminders.dueNotificationKey`). Stuck approvals and budget shortfalls nudge the SELLER, not the
+tech member — the seller is who the client answers to.
+
+**Routes/nav.** ONE route pair `/smm` and `/smm/:campaignId`, allowed for all six roles, NOT
+role-prefixed — a notification link cannot guess which prefix its recipient may open (that is the
+bug that once signed people out when they answered a call). Nav entry "Social Media" added for
+main_admin, tech_admin, sales_admin, tech_member, sales_member, tech_team_leader. SMM Leader is
+promoted from Tech Admin → My Team (Megaphone button).
+
+**Gemini.** `readMetaAdsReport(file)` in `geminiService.ts` reads leads/spend/cost-per-result/reach
+off a Meta dashboard screenshot to pre-fill the day report. A convenience only — the boxes are
+always there and a failed read is a shrug; the screenshot is uploaded either way as the proof.
+
+### How it was verified
+- `npx tsc -p tsconfig.check.json --noEmit` and `npm run build` — clean (only the pre-existing
+  `VideoCallManager` Capacitor error).
+- `npx vitest run` — full suite green; 5 new files, ~100 new tests (`smmPricing`, `smmPlan`,
+  `smmReminders`, `smmMessages`, `smmService`, `smmSaleForm`). `salesNav.test.ts` updated for the
+  new nav entry.
+- **Real browser**, throwaway harness (deleted): `.smm-harness/` aliased `firebase/firestore` and
+  `@/services/firebase` to an in-memory fake and mounted the REAL pages; a Playwright script drove
+  44 checks across admin/seller/tech/junior/SMM-leader, desktop and 390px, all passing — including
+  the approval gate refusing to post and then unlocking, the order's derived counters moving, the
+  monthly report rendering with no placeholders left, the per-day budget override, and the check-in
+  reminder listing only the 3-day window. Two real UI bugs were found and fixed this way: a
+  truncated "sold by <name>" on the campaign card, and the report panel running to a 1,230px measure.
+
+### Follow-up — a month with no sale behind it
+A client who comes to us directly never had a way into this section, because a campaign was created
+only by `upsertOrderForSale`. `services/smm.createDirectCampaign` fixes that: an SMM leader, tech
+admin, sales admin, main admin or tech team leader (`utils/smmPlan.isSmmOverseer`) gets a **Start a
+month** button on `/smm` which opens `components/smm/SmmNewCampaignDialog`. It reuses
+`components/sales/SmmSaleFields` outright — the accounts, the content counts and the price are the
+same three decisions whoever the month came from — and adds the client's name, business and number,
+which a sale would have carried in from the lead.
+
+`SmmCampaign.origin` is `"sale" | "direct"` (absent = sale, i.e. everything recorded before this).
+A direct month has `orderId: ""`, so: `syncOrderProgress` returns early (nothing to write back to),
+the "Their chat" button is hidden (there is no `order_chats` room), and the card/header say
+**"added by"** rather than "sold by" — a month nobody sold must not look like a commission. The
+creator becomes `soldBy`, because approvals still get chased, ad money still gets asked for and the
+renewal still gets pitched, and all three belong to a person.
+
+### Follow-up — responsive sweep, and what it found
+Driven in Chromium across **6 widths × 11 surfaces (181 checks)**, asserting no sideways page
+scroll, nothing painted past the right edge (skipping deliberate scrollers), and no control under
+24px on a phone. Four real bugs, all fixed:
+
+1. **`SmmCampaignCard` overflowed the screen on a phone.** It is a grid item, and a grid item's
+   default `min-width: auto` refuses to shrink below its content — so a long business name dragged
+   the whole card off-screen even though the heading inside was already truncating. `min-w-0` on the
+   card. **Remember this shape: `truncate` inside a grid/flex item does nothing without `min-w-0`
+   on the item itself.**
+2. **The content table appeared at `md` (768px) but needs ~930px**, so tablets got a table they had
+   to scroll sideways. Moved to `lg`, cards carry on below it, and the table kept an
+   `overflow-x-auto` for a narrow desktop window.
+3. **Icon-only controls were 11–13px tall** (the ad table's pencil, the budget row's bin, the item
+   dialog's checkboxes and remove link, the campaign header's back link and "Change"). All given a
+   real box; checkboxes made `h-4 w-4` inside a `py-1.5` label, which is the actual tap target.
+4. **`components/common/FieldHint`'s ⓘ was a bare 12px glyph** — app-wide, on the form the sales
+   team taps most, on a phone, mid-call. Now `h-6 w-6` with `-m-1.5` cancelling it, so the icon sits
+   exactly where it did and the target is 24px. This one is shared: it changes every hint in the app.
+
+Also fixed while looking: `DueChip` said "Posted" beside a chip already saying "Posted" — it now
+says when it went up ("Up 6d ago"); the report and money panels were running to a 1,230px measure on
+a desktop (`max-w-3xl`); and the report's singular/plural ("1 day ... were spent").
+
+Final state: `npx vitest run` 2529/2529 across 161 files, `npm run build` clean, browser drive
+39/39 and responsive sweep 181/181. Remaining lint in `src/types/smm.ts` is 15 `at: any` timestamp
+fields — deliberately the same idiom `src/types/index.ts` uses for every timestamp in the app.
+
+### Follow-up — the item dialog, from real use
+Six changes, all from watching the section actually used:
+
+1. **Autosave replaced the Save button.** `SmmItemDialog` now writes every field ~900ms after it
+   stops changing, and the header says "Saving… / Saved" where the button was. The button was the
+   commonest way to lose work: type a title, tap the backdrop, gone. A `skipFirst` ref stops the
+   mount pass writing straight back (which would cost a write every time anybody merely opened a
+   post, and stamp "saved" on a dialog nobody touched).
+2. **`DEFAULT_UPLOAD_TIME = "06:00"`** in `utils/smmPlan` — new rows arrive with it, so nobody types
+   the same four characters onto thirty items a month.
+3. **"Pre-scheduled in the app" and "Also a story" are gone.** Both are `@deprecated` on the type
+   (older items still carry them) and `blankItem` no longer writes them. **Consequence that had to
+   be handled:** `story` fed `progress.stories`, so `targetsFromCommitments` now returns
+   `stories: 0` — a target nothing can ever move would leave every month permanently incomplete and
+   pinned to the top of the Orders queue.
+4. **Live links are per account.** `SmmContentItem.postUrls?: Partial<Record<SmmPlatform, string>>`;
+   one box per account the post is actually on. `smmPlan.postLinks()` folds the legacy single
+   `postUrl` into the same shape, so older items keep working with no migration. The content table's
+   "Scheduled" column became **Links** — a count when they are in, an amber "none" when a posted row
+   has none, which is exactly the row whose update never went out.
+5. **`postingUpdateMessage`** (`posting_update` template kind) — "✅ Posted — <business>" with a line
+   per account. The button is held until at least one link is pasted, and it names only the accounts
+   that actually have one.
+6. **`SmmStageBar`** replaces four identical buttons: a left-to-right track, ticks behind the current
+   stage, and a padlock on Scheduled/Posted until the approval is recorded. The ad form gained
+   **"Promote something you just posted"** — chips of the most recent live posts that name the
+   campaign and scope the run in one tap; the free-text name is still there underneath.
+
+Verified: `npx vitest run` 2540/2540 across 161 files, `npm run build` clean, and a Chromium drive
+of 36 checks covering autosave (including the type → close → still-there case), the stage locks, the
+per-account links, the legacy link, the update message carrying both URLs, the ad suggestions, and
+the dialog at 390px.
+
+## Session — 2026-09-19 (money trail, dialog polish, upload limits, load time)
+
+**1. Ad money now records HOW it reached Meta.** `SmmBudgetPayment` gained
+`route: "direct" | "via_us"` (absent = direct, which is every payment recorded before this),
+`clientProofUrl` and `metaProofUrl`; `screenshotUrl` is kept and read but never written.
+`direct` is the default and the ordinary case — the client's card is on the ad account. `via_us`
+is the one that needs watching: their money is in OUR account until somebody funds the ad account,
+so it needs two proofs and the gap between them is real. `budgetLedger` gained **`heldByUs`** (via_us
+payments with no `metaProofUrl`) and `awaitingForward`, surfaced as a fourth figure and a warning.
+`attachMetaProof` exists separately from `addBudgetPayment` because the two legs genuinely happen
+hours apart. `addBudgetPayment` now takes `atMs` — clients pay on a Sunday and it gets typed in on
+Monday, and the day the money moved is the day the report has to agree with. New component
+`SmmBudgetPaymentForm`; the list shows date+time, route, and a link per proof leg
+(`smmPlan.paymentProofs`), newest first.
+
+**2. Item dialog.** The Client approval block is now a **fold** (`smm-approval-toggle`) — it was
+sitting open on every post, putting a green and a red button between the post's details and its
+stage, including on posts nobody had made yet. It opens by itself only when the approval IS the
+outstanding thing (`waiting` / `changes`), and the collapsed header still states where it stands.
+The ads day table now takes **Leads / Spent / Per result inline** (`saveFigure`), writing one figure
+and leaving that day's other two alone; typing into an unreported day creates it with the rest at
+zero. Cost per result is deliberately never recomputed from spend ÷ leads — it is Meta's own figure
+and what the client is shown.
+
+**3. AdGen uploads.** `components/ai-platform/FileUpload` now refuses videos (by MIME **and** by
+extension — Android pickers hand over an empty `type` surprisingly often), PDFs, anything that is
+not an image on an image slot, and any image over `MAX_IMAGE_MB = 10`. Each refusal names the file
+and the thing that does work. Good files in a mixed selection still go through. The audio and text
+slots keep their own rules.
+
+**4. Load time: 6,098 KB in one file → 1,252 KB across 3.** Two changes:
+ - **Every page is `lazy()` in App.tsx** (83 of them) behind one `Suspense`, plus the six overlay
+   components in `AppLayout` (the agreement gate alone dragged jspdf + html2canvas, ~1MB, onto the
+   screen of every member with nothing to sign).
+ - **`manualChunks` names only `vendor-react` and `vendor-firebase`.** This is the trap worth
+   remembering: **naming a manual chunk pulls it into the ENTRY the moment anything eager touches
+   one symbol from it.** An earlier pass named vendor-docs and vendor-charts and ended up
+   *preloading* the PDF writer and the charting library on the login screen. Left unnamed, rollup
+   puts a library in the lazy route chunk that actually uses it.
+   Verified in Chromium: `/login` transfers 1,252 KB of JS in 3 files and renders cleanly.
+
+Verified: `npx vitest run` 2562/2562 across 162 files, `npm run build` clean, and two Chromium
+drives — 41 checks on the money/dialog/ads changes (including uploading a forward proof clearing
+`heldByUs`, and correcting one ad figure leaving the other two alone) and a real first-load
+measurement of the production build.

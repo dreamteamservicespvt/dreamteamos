@@ -103,10 +103,12 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         {mobileOpen && (
           <>
             <motion.div
+              key="sidebar-backdrop"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={onMobileClose}
+              onTouchEnd={(e) => { e.preventDefault(); onMobileClose(); }}
               /* z-[60]/z-[61] rather than z-40/z-50: the page's own dropdowns are absolute at
                   z-50, so at the old level the two tied and DOM order decided — page content
                   renders after the drawer, so an open day-picker painted straight through the
@@ -115,12 +117,14 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               className="fixed inset-0 bg-black/50 z-[60]"
             />
             <motion.aside
+              key="sidebar-drawer"
               initial={{ x: -280 }}
               animate={{ x: 0 }}
               exit={{ x: -280 }}
               transition={{ duration: 0.2, ease: "easeInOut" }}
               className="fixed left-0 top-0 h-[100dvh] w-[280px] bg-card border-r border-border flex flex-col z-[61] overflow-hidden"
               style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+              onClick={(e) => e.stopPropagation()}
             >
               <div className="h-14 flex items-center px-4 border-b border-border justify-between shrink-0">
                 <Link to={homeRoute} onClick={handleNavClick} title="Go to dashboard" data-test="sidebar-logo">

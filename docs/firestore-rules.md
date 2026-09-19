@@ -136,6 +136,18 @@ service cloud.firestore {
       }
     }
 
+    // ── Social Media Management ────────────────────────────────────────────────────────────────
+    // A sold month's plan, its ads and its money (`smm_campaigns/{orderId}`), and the message
+    // wording the team keeps (`smm_templates`). Staff-only, deliberately: unlike a client chat,
+    // NOTHING here is ever shown to the customer directly. They are sent a message that was built
+    // from it — the monthly report, the day's ad figures — and the message is what they see. There
+    // is no guest surface, so there is no guest rule, and the catch-all below is the whole of it.
+    //
+    // Scoping is done by the queries, not by the rules: a member reads
+    // `where('watchers','array-contains',uid)` and an admin reads the active set. That is a quota
+    // decision (see services/smm), not a security boundary — every one of these documents is
+    // readable by any signed-in member of staff, the same as orders and work assignments.
+
     // ── Everything else the app runs on ────────────────────────────────────────────────────────
     // Staff-only, which is what it always should have been. Nothing outside this file needs it.
     match /{document=**} {
