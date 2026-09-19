@@ -12,10 +12,10 @@
  */
 import { useMemo, useState } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Plus, Sparkles, Image as ImageIcon, Video, ChevronRight } from "lucide-react";
+import { Plus, Sparkles, Image as ImageIcon, Video, ChevronRight, Link2 } from "lucide-react";
 import { addItems } from "@/services/smm";
 import { useToast } from "@/hooks/use-toast";
-import { isoDay } from "@/utils/smmPlan";
+import { isoDay, postLinks } from "@/utils/smmPlan";
 import { SMM_CONTENT_KINDS, type SmmCampaign, type SmmContentItem, type SmmContentKind } from "@/types/smm";
 import { DueChip, PlatformChips, StatusChip } from "@/components/smm/SmmChips";
 
@@ -104,7 +104,7 @@ export default function SmmContentTable({ campaign, canEdit, onOpen }: {
                   <th className="px-3 py-2 text-left font-medium">Content</th>
                   <th className="px-3 py-2 text-left font-medium">Upload</th>
                   <th className="px-3 py-2 text-left font-medium">Accounts</th>
-                  <th className="px-3 py-2 text-left font-medium">Scheduled</th>
+                  <th className="px-3 py-2 text-left font-medium">Links</th>
                   <th className="px-3 py-2 text-left font-medium">Status</th>
                   <th className="px-3 py-2 text-left font-medium">Who</th>
                   <th className="w-8" />
@@ -134,7 +134,21 @@ export default function SmmContentTable({ campaign, canEdit, onOpen }: {
                         <DueChip item={item} today={today} />
                       </td>
                       <td className="px-3 py-2"><PlatformChips platforms={item.platforms} /></td>
-                      <td className="px-3 py-2 text-xs text-muted-foreground">{item.scheduled ? "Yes" : "Manual"}</td>
+                      <td className="px-3 py-2">
+                        {/* Only a posted row owes links, and a posted row WITHOUT them is the one
+                            worth spotting — that is the update the group never got. */}
+                        {item.status !== "posted" ? (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        ) : postLinks(item).length > 0 ? (
+                          <span className="inline-flex items-center gap-1 text-xs text-success">
+                            <Link2 size={12} /> {postLinks(item).length}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs text-warning" title="Posted, but no link pasted yet">
+                            <Link2 size={12} /> none
+                          </span>
+                        )}
+                      </td>
                       <td className="px-3 py-2"><StatusChip status={item.status} /></td>
                       <td className="px-3 py-2 text-xs text-muted-foreground">
                         {item.makerName || "—"}

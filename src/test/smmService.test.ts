@@ -185,7 +185,7 @@ describe("the order's counters follow the plan", () => {
     const progress = store["orders/o1"].progress;
     expect(progress.kind).toBe("smm");
     expect(progress.derived).toBe(true);
-    expect(progress.targets).toEqual({ ads: 0, posters: 2, posted: 2, stories: 2, campaigns: 0 });
+    expect(progress.targets).toEqual({ ads: 0, posters: 2, posted: 2, stories: 0, campaigns: 0 });
     expect(progress.done.posters).toBe(1);
     expect(progress.done.posted).toBe(1);
   });

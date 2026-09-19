@@ -11,13 +11,22 @@
 import { useMemo, useState } from "react";
 import {
   Plus, Megaphone, Loader2, Play, Pause, Square, Trash2, IndianRupee, Pencil, BarChart3,
+  Image as ImageIcon, Sparkles, Video,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { addAdRun, removeAdRun, setDayBudget, updateAdRun } from "@/services/smm";
 import { formatCurrency } from "@/utils/formatters";
 import { adRunDays, adTotals, budgetForDay, isoDay, itemsForRun, plannedSpend } from "@/utils/smmPlan";
 import { SMM_CONTENT_KINDS, type SmmAdRun, type SmmCampaign, type SmmContentKind } from "@/types/smm";
+import type { LucideIcon } from "lucide-react";
 import SmmAdReportDialog from "@/components/smm/SmmAdReportDialog";
+
+/** The same three marks the content table uses, so a suggestion looks like the row it came from. */
+const KIND_ICON: Record<SmmContentKind, LucideIcon> = {
+  poster: ImageIcon,
+  ai_ad: Sparkles,
+  real_video: Video,
+};
 
 const STATUS_TONE: Record<SmmAdRun["status"], string> = {
   planned: "bg-muted text-muted-foreground",
@@ -235,6 +244,34 @@ function NewRunForm({ campaign, onDone }: { campaign: SmmCampaign; onDone: () =>
     [campaign.items, kind],
   );
 
+  /**
+   * What the team is most likely to be promoting: the things that just went up.
+   *
+   * An ad campaign is almost always run on a post that is already live — you boost the Dussehra
+   * poster the morning after it goes out. Typing its name again from memory is both a chore and a
+   * way to end up with a campaign called "dusera" that nobody can match to anything. Newest first,
+   * six at most: this is a shortcut, not a second content list.
+   */
+  const recentlyPosted = useMemo(() => {
+    const ms = (v: unknown) => {
+      const t = v as { toMillis?: () => number; seconds?: number } | null;
+      if (!t) return 0;
+      if (typeof t.toMillis === "function") return t.toMillis();
+      return typeof t.seconds === "number" ? t.seconds * 1000 : 0;
+    };
+    return campaign.items
+      .filter((i) => i.status === "posted" && i.title?.trim())
+      .sort((a, b) => (ms(b.postedAt) - ms(a.postedAt)) || (b.uploadDate || "").localeCompare(a.uploadDate || ""))
+      .slice(0, 6);
+  }, [campaign.items]);
+
+  /** Picking a live post names the campaign after it AND scopes the run to it, in one tap. */
+  const promoteThis = (item: (typeof campaign.items)[number]) => {
+    setName(item.title.trim());
+    setKind(item.kind);
+    setItemIds([item.id]);
+  };
+
   const save = async () => {
     setSaving(true);
     try {
@@ -256,13 +293,45 @@ function NewRunForm({ campaign, onDone }: { campaign: SmmCampaign; onDone: () =>
 
   return (
     <div data-test="smm-new-run" className="space-y-2.5 rounded-lg border border-primary/40 bg-primary/5 p-3">
-      <input
-        value={name}
-        data-test="smm-run-name"
-        onChange={(e) => setName(e.target.value)}
-        placeholder="Campaign name (e.g. Diwali offer)"
-        className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
-      />
+      {/* The shortcut first, the free-text box under it — because the common case is boosting
+          something that is already live, not inventing a name. */}
+      {recentlyPosted.length > 0 && (
+        <div data-test="smm-run-suggestions">
+          <label className="text-[11px] font-medium text-muted-foreground">Promote something you just posted</label>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {recentlyPosted.map((i) => {
+              const picked = itemIds.length === 1 && itemIds[0] === i.id;
+              const Icon = KIND_ICON[i.kind];
+              return (
+                <button
+                  key={i.id}
+                  type="button"
+                  data-test={`smm-run-suggest-${i.id}`}
+                  aria-pressed={picked}
+                  onClick={() => promoteThis(i)}
+                  className={`inline-flex h-8 max-w-full items-center gap-1.5 rounded-md border px-2.5 text-[11px] font-medium transition-colors ${
+                    picked ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+                  }`}
+                >
+                  <Icon size={11} className="shrink-0" />
+                  <span className="truncate">{i.title}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div>
+        <label className="text-[11px] font-medium text-muted-foreground">Campaign name</label>
+        <input
+          value={name}
+          data-test="smm-run-name"
+          onChange={(e) => setName(e.target.value)}
+          placeholder={recentlyPosted.length > 0 ? "Or type your own" : "e.g. Diwali offer"}
+          className="mt-1 h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
+        />
+      </div>
 
       <div>
         <label className="text-[11px] font-medium text-muted-foreground">What are we promoting?</label>

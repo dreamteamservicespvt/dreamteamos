@@ -97,16 +97,24 @@ export function buildInitialItems(
   return out;
 }
 
+/**
+ * When a post goes up unless somebody says otherwise.
+ *
+ * Six in the morning: the team posts first thing, and typing the same four characters onto thirty
+ * items a month is exactly the sort of chore that ends with half of them left blank. Set here
+ * rather than in the dialog so a row created from the table, from the quota, or from anywhere else
+ * arrives with the same time on it.
+ */
+export const DEFAULT_UPLOAD_TIME = "06:00";
+
 export function blankItem(kind: SmmContentKind, platforms: SmmPlatform[], extra = false): SmmContentItem {
   return {
     id: newItemId(kind),
     kind,
     title: "",
     uploadDate: null,
-    uploadTime: null,
+    uploadTime: DEFAULT_UPLOAD_TIME,
     platforms: [...platforms],
-    scheduled: false,
-    story: false,
     status: "planned",
     approval: { state: "not_sent", askedAt: null, respondedAt: null, note: null, byName: null, chases: [] },
     makerUid: null,
@@ -117,7 +125,7 @@ export function blankItem(kind: SmmContentKind, platforms: SmmPlatform[], extra 
     extraCharge: extra ? "unbilled" : null,
     extraAmount: null,
     postedAt: null,
-    postUrl: null,
+    postUrls: null,
     notes: null,
   };
 }
@@ -170,6 +178,28 @@ export function isOverdue(item: SmmContentItem, today: string): boolean {
 export function daysUntilDue(item: SmmContentItem, today: string): number | null {
   if (!item.uploadDate) return null;
   return daysBetween(today, item.uploadDate);
+}
+
+/**
+ * Where this piece actually went live, one entry per account.
+ *
+ * Folds the single `postUrl` older items carry into the same shape, so the dialog, the update
+ * message and any later report all read one list and nobody has to remember there were two shapes.
+ * Only accounts the item was actually posted to appear — a blank box is not a link.
+ */
+export function postLinks(item: SmmContentItem): { platform: SmmPlatform; label: string; url: string }[] {
+  const out: { platform: SmmPlatform; label: string; url: string }[] = [];
+  for (const { key, label } of SMM_PLATFORMS) {
+    if (!item.platforms?.includes(key)) continue;
+    const url = item.postUrls?.[key]?.trim();
+    if (url) out.push({ platform: key, label, url });
+  }
+  // An item from before links were per-account: show the one it has, against its first account.
+  if (out.length === 0 && item.postUrl?.trim() && item.platforms?.length) {
+    const first = SMM_PLATFORMS.find((p) => item.platforms.includes(p.key));
+    if (first) out.push({ platform: first.key, label: first.label, url: item.postUrl.trim() });
+  }
+  return out;
 }
 
 /** Everyone who should be reminded about this piece — whoever makes it and whoever posts it. */
@@ -437,7 +467,13 @@ export function targetsFromCommitments(commitments: Record<SmmContentKind, numbe
   const posters = Math.max(0, Math.floor(commitments.poster || 0));
   const videos = Math.max(0, Math.floor(commitments.ai_ad || 0)) + Math.max(0, Math.floor(commitments.real_video || 0));
   const pieces = posters + videos;
-  return { ads: videos, posters, posted: pieces, stories: pieces, campaigns: videos };
+  /*
+    `stories: 0` on purpose. Stories were a tick box on each item, and the box has gone — so nothing
+    can ever move that counter. Leaving a target on it would mean every month sat permanently
+    incomplete and pinned to the top of the Orders queue, which is precisely the failure the
+    counters exist to prevent. A zero target is simply not shown (see `activeFields`).
+  */
+  return { ads: videos, posters, posted: pieces, stories: 0, campaigns: videos };
 }
 
 export function derivedProgressCounts(campaign: Pick<SmmCampaign, "items" | "ads">): OrderProgressCounts {

@@ -17,7 +17,8 @@
 
 import { formatCurrency } from "@/utils/formatters";
 import {
-  adTotals, allAdReports, budgetLedger, clientWaitSummary, extraWork, fulfilment, postsByPlatform,
+  adTotals, allAdReports, budgetLedger, clientWaitSummary, extraWork, fulfilment, postLinks,
+  postsByPlatform,
 } from "@/utils/smmPlan";
 import { SMM_CONTENT_KINDS, SMM_PLATFORMS } from "@/types/smm";
 import type { SmmAdDayReport, SmmAdRun, SmmCampaign, SmmContentItem, SmmTemplateKind } from "@/types/smm";
@@ -38,6 +39,7 @@ export const TEMPLATE_TOKENS: Record<SmmTemplateKind, string[]> = {
   renewal: ["client", "business", "month", "posted", "committed", "leads", "spend", "cpr"],
   extra_work: ["client", "business", "title", "kind", "amount"],
   reminder: ["client", "business", "title", "kind", "days"],
+  posting_update: ["client", "business", "title", "kind", "date", "time", "platforms", "links"],
   custom: ["client", "business", "month"],
 };
 
@@ -104,6 +106,19 @@ export const DEFAULT_TEMPLATES: Record<SmmTemplateKind, string> = {
     "Hello {client}, 🙏\n\n" +
     "Just a gentle reminder about the {kind} for {business} — *{title}*. We are waiting on your approval to schedule it ({days} days now), and we would not want your posting schedule to slip.\n\n" +
     "A simple yes is enough and we will take it from there. 🙂",
+
+  /**
+   * Sent to the group the moment something goes live, not to the client.
+   *
+   * Short on purpose: it is read on a phone by people who want to know one thing — is it up, and
+   * where. The links carry an account name each, because "here is the link" is useless when the
+   * post went on two accounts and only one link arrived.
+   */
+  posting_update:
+    "✅ *Posted — {business}*\n\n" +
+    "{kind}: *{title}*\n" +
+    "Live on {platforms} · {date}{time}\n\n" +
+    "{links}",
 
   custom: "Hello {client},\n\n",
 };
@@ -235,6 +250,34 @@ export function extraWorkMessage(
     kind: kindLabel(item.kind).toLowerCase(),
     amount: item.extraAmount ? formatCurrency(item.extraAmount) : "—",
     chargeLine,
+  });
+}
+
+/**
+ * "It's up — here it is."
+ *
+ * Sent to the group the moment something goes live, with a link per account. This is the message
+ * the team was writing out by hand every time, which is why half of them went out with one link
+ * when the post was on two accounts. The links come from the item itself, so it cannot list an
+ * account nobody actually posted to.
+ */
+export function postingUpdateMessage(
+  campaign: SmmCampaign,
+  item: SmmContentItem,
+  body = DEFAULT_TEMPLATES.posting_update,
+): string {
+  const links = postLinks(item);
+  return renderTemplate(body, {
+    ...baseTokens(campaign),
+    title: item.title?.trim() || kindLabel(item.kind),
+    kind: kindLabel(item.kind),
+    date: dateLabel(item.uploadDate),
+    time: item.uploadTime ? ` ${item.uploadTime}` : "",
+    // The accounts it actually went live on, which is not always every account it was planned for.
+    platforms: links.length ? links.map((l) => l.label).join(" + ") : platformLabels(item.platforms || []),
+    links: links.length
+      ? links.map((l) => `${l.label}: ${l.url}`).join("\n")
+      : "_Links to follow._",
   });
 }
 

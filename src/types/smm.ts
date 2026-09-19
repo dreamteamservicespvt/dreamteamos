@@ -132,9 +132,17 @@ export interface SmmContentItem {
   uploadTime: string | null;
   /** Which of the committed accounts this one goes on. */
   platforms: SmmPlatform[];
-  /** Queued in the platform's own scheduler, rather than posted by hand on the day. */
-  scheduled: boolean;
-  /** Posted to stories as well as the feed. A month owes twice as many stories as videos. */
+  /**
+   * @deprecated No longer asked for, and nothing reads it.
+   *
+   * Both of these were tick boxes in the item dialog and both were noise: the team schedules in
+   * whatever way suits the account on the day, and a story is not a thing anybody was counting
+   * separately. Kept on the type only because items written while they existed still carry them —
+   * a new item leaves them alone. See `targetsFromCommitments` for the counter that came off with
+   * `story`.
+   */
+  scheduled?: boolean;
+  /** @deprecated See `scheduled`. */
   story?: boolean;
   status: SmmItemStatus;
   approval: SmmApproval;
@@ -153,7 +161,22 @@ export interface SmmContentItem {
   extraCharge?: SmmExtraCharge | null;
   extraAmount?: number | null;
   postedAt?: any | null;
-  /** Where it went live, when somebody pastes the link back. */
+  /**
+   * Where it went live, one link per account.
+   *
+   * ── Why a link per account rather than one ────────────────────────────────────────────────────
+   * A single post goes up on Instagram AND Facebook, and those are two different URLs. One field
+   * meant the second one was pasted after a comma, or lost. They are also the whole point of the
+   * update we send the group once something is live — "it's up, here it is" is only useful if the
+   * "here" covers every account the client is paying for.
+   */
+  postUrls?: Partial<Record<SmmPlatform, string>> | null;
+  /**
+   * The single link items carried before `postUrls` existed.
+   *
+   * Still read, never written: `smmPlan.postLinks` folds it in so an older item keeps showing the
+   * link somebody pasted, without a migration.
+   */
   postUrl?: string | null;
   notes?: string | null;
   createdAt?: any;
@@ -332,6 +355,7 @@ export type SmmTemplateKind =
   | "renewal"
   | "extra_work"
   | "reminder"
+  | "posting_update"
   | "custom";
 
 export const SMM_TEMPLATE_KINDS: { key: SmmTemplateKind; label: string }[] = [
@@ -341,6 +365,7 @@ export const SMM_TEMPLATE_KINDS: { key: SmmTemplateKind; label: string }[] = [
   { key: "renewal", label: "Renewal" },
   { key: "extra_work", label: "Extra work" },
   { key: "reminder", label: "Reminder" },
+  { key: "posting_update", label: "Posted — update" },
   { key: "custom", label: "Other" },
 ];
 

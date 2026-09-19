@@ -214,7 +214,7 @@ export default function SmmCampaignPage() {
           user={user}
           members={canAssign ? members : []}
           onClose={() => setOpenItem(null)}
-          onMessage={(text) => setMessage({ text, kind: "approval_request" })}
+          onMessage={(text, kind) => setMessage({ text, kind })}
         />
       )}
 

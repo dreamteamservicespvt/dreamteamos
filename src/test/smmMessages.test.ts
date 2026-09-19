@@ -8,7 +8,8 @@
 import { describe, it, expect } from "vitest";
 import {
   DEFAULT_TEMPLATES, approvalChaseMessage, approvalRequestMessage, budgetTopUpMessage,
-  dailyAdReportMessage, extraWorkMessage, monthlyReportMessage, renderTemplate, renewalMessage,
+  dailyAdReportMessage, extraWorkMessage, monthlyReportMessage, postingUpdateMessage,
+  renderTemplate, renewalMessage,
 } from "@/utils/smmMessages";
 import { blankItem, cycleFromStart } from "@/utils/smmPlan";
 import type { SmmAdRun, SmmCampaign, SmmContentItem } from "@/types/smm";
@@ -190,5 +191,50 @@ describe("the built-in library", () => {
     for (const body of Object.values(DEFAULT_TEMPLATES)) {
       expect(body.trim().length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("the posting update the group gets", () => {
+  it("lists every account with its own link", () => {
+    const text = postingUpdateMessage(campaign(), item({
+      title: "Dussehra offer",
+      uploadDate: "2026-09-22",
+      uploadTime: "06:00",
+      status: "posted",
+      platforms: ["instagram", "facebook"],
+      postUrls: { instagram: "https://ig.com/p/1", facebook: "https://fb.com/p/2" },
+    }));
+    noPlaceholders(text);
+    expect(text).toContain("Dussehra offer");
+    expect(text).toContain("Instagram: https://ig.com/p/1");
+    expect(text).toContain("Facebook: https://fb.com/p/2");
+    expect(text).toContain("Instagram + Facebook");
+  });
+
+  it("names only the accounts it actually went live on", () => {
+    // Planned for two, only one link pasted — the update must not claim the other.
+    const text = postingUpdateMessage(campaign(), item({
+      title: "Gold rate",
+      status: "posted",
+      platforms: ["instagram", "facebook"],
+      postUrls: { instagram: "https://ig.com/p/1" },
+    }));
+    expect(text).toContain("Instagram: https://ig.com/p/1");
+    expect(text).not.toContain("Facebook:");
+  });
+
+  it("still reads properly before any link has been pasted", () => {
+    const text = postingUpdateMessage(campaign(), item({
+      title: "Gold rate", status: "posted", platforms: ["instagram"],
+    }));
+    noPlaceholders(text);
+    expect(text).toMatch(/Links to follow/);
+  });
+
+  it("works from the single link an older item carries", () => {
+    const text = postingUpdateMessage(campaign(), item({
+      title: "Old one", status: "posted", platforms: ["instagram"], postUrl: "https://ig.com/old",
+    }));
+    expect(text).toContain("Instagram: https://ig.com/old");
   });
 });

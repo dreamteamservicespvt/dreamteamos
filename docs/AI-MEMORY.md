@@ -708,3 +708,36 @@ a desktop (`max-w-3xl`); and the report's singular/plural ("1 day ... were spent
 Final state: `npx vitest run` 2529/2529 across 161 files, `npm run build` clean, browser drive
 39/39 and responsive sweep 181/181. Remaining lint in `src/types/smm.ts` is 15 `at: any` timestamp
 fields — deliberately the same idiom `src/types/index.ts` uses for every timestamp in the app.
+
+### Follow-up — the item dialog, from real use
+Six changes, all from watching the section actually used:
+
+1. **Autosave replaced the Save button.** `SmmItemDialog` now writes every field ~900ms after it
+   stops changing, and the header says "Saving… / Saved" where the button was. The button was the
+   commonest way to lose work: type a title, tap the backdrop, gone. A `skipFirst` ref stops the
+   mount pass writing straight back (which would cost a write every time anybody merely opened a
+   post, and stamp "saved" on a dialog nobody touched).
+2. **`DEFAULT_UPLOAD_TIME = "06:00"`** in `utils/smmPlan` — new rows arrive with it, so nobody types
+   the same four characters onto thirty items a month.
+3. **"Pre-scheduled in the app" and "Also a story" are gone.** Both are `@deprecated` on the type
+   (older items still carry them) and `blankItem` no longer writes them. **Consequence that had to
+   be handled:** `story` fed `progress.stories`, so `targetsFromCommitments` now returns
+   `stories: 0` — a target nothing can ever move would leave every month permanently incomplete and
+   pinned to the top of the Orders queue.
+4. **Live links are per account.** `SmmContentItem.postUrls?: Partial<Record<SmmPlatform, string>>`;
+   one box per account the post is actually on. `smmPlan.postLinks()` folds the legacy single
+   `postUrl` into the same shape, so older items keep working with no migration. The content table's
+   "Scheduled" column became **Links** — a count when they are in, an amber "none" when a posted row
+   has none, which is exactly the row whose update never went out.
+5. **`postingUpdateMessage`** (`posting_update` template kind) — "✅ Posted — <business>" with a line
+   per account. The button is held until at least one link is pasted, and it names only the accounts
+   that actually have one.
+6. **`SmmStageBar`** replaces four identical buttons: a left-to-right track, ticks behind the current
+   stage, and a padlock on Scheduled/Posted until the approval is recorded. The ad form gained
+   **"Promote something you just posted"** — chips of the most recent live posts that name the
+   campaign and scope the run in one tap; the free-text name is still there underneath.
+
+Verified: `npx vitest run` 2540/2540 across 161 files, `npm run build` clean, and a Chromium drive
+of 36 checks covering autosave (including the type → close → still-there case), the stage locks, the
+per-account links, the legacy link, the update message carrying both URLs, the ad suggestions, and
+the dialog at 390px.

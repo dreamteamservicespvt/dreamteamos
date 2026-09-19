@@ -13,7 +13,7 @@ import {
   campaignHeadline, clientWaitSummary, cycleFromStart, daysBetween, daysLeftInCycle,
   daysUntilDue, derivedProgressCounts, extraWork, fulfilment, isMade, isOverdue, isPosted,
   isSmmOverseer, itemsForRun, postsByPlatform, smmWatchers, targetsFromCommitments, teamMembers,
-  adTotals, adRunDays, budgetForDay, plannedSpend,
+  adTotals, adRunDays, budgetForDay, plannedSpend, postLinks, DEFAULT_UPLOAD_TIME,
 } from "@/utils/smmPlan";
 import { isProgressComplete, progressPercent } from "@/utils/orderProgress";
 import { collectReadiness } from "@/utils/collectReadiness";
@@ -282,17 +282,19 @@ describe("extra work", () => {
 
 describe("the order's own counters, derived", () => {
   it("reproduces exactly what the catalogue quota already said for a stock package", () => {
-    // Pro is 8 videos, 8 posters, 16 posts, 16 stories and 8 run — see utils/serviceCatalog.
+    // Pro is 8 videos, 8 posters and 16 posts — see utils/serviceCatalog. Stories are zero: the
+    // per-item tick box that fed that counter has gone, so a target on it could never be met and
+    // would pin every month to the top of the Orders queue for ever.
     expect(targetsFromCommitments({ poster: 8, ai_ad: 8, real_video: 0 }))
-      .toEqual({ ads: 8, posters: 8, posted: 16, stories: 16, campaigns: 8 });
+      .toEqual({ ads: 8, posters: 8, posted: 16, stories: 0, campaigns: 8 });
   });
 
   it("owes more the moment real videos are sold on top", () => {
     expect(targetsFromCommitments({ poster: 8, ai_ad: 8, real_video: 3 }))
-      .toEqual({ ads: 11, posters: 8, posted: 19, stories: 19, campaigns: 11 });
+      .toEqual({ ads: 11, posters: 8, posted: 19, stories: 0, campaigns: 11 });
   });
 
-  it("counts made, posted, stories and promoted pieces off the plan", () => {
+  it("counts made, posted and promoted pieces off the plan", () => {
     const promoted = item({ kind: "ai_ad", status: "posted", story: true });
     const c = campaign({
       items: [
@@ -308,6 +310,7 @@ describe("the order's own counters, derived", () => {
       }],
     });
     expect(derivedProgressCounts(c)).toEqual({ ads: 1, posters: 2, posted: 2, stories: 1, campaigns: 1 });
+    // `stories` still counts a legacy item that carries the old flag; nothing writes it any more.
   });
 
   it("does not count a campaign that has only been planned", () => {
@@ -398,5 +401,60 @@ describe("the one line on a card", () => {
       items: [item({ status: "posted" }), item({ approval: { state: "waiting", askedAt: Date.now(), chases: [] } })],
     });
     expect(campaignHeadline(c, "2026-09-25")).toBe("1 of 2 posted · 1 waiting on client · ends in 6 days");
+  });
+});
+
+describe("a new row arrives ready to use", () => {
+  it("carries the default upload time, so nobody types 06:00 thirty times a month", () => {
+    expect(blankItem("poster", [...PLATFORMS]).uploadTime).toBe(DEFAULT_UPLOAD_TIME);
+    expect(DEFAULT_UPLOAD_TIME).toBe("06:00");
+    expect(buildInitialItems({ poster: 3, ai_ad: 0, real_video: 0 }, []).every((i) => i.uploadTime === "06:00")).toBe(true);
+  });
+
+  it("no longer carries the two tick boxes that were removed", () => {
+    const fresh = blankItem("poster", [...PLATFORMS]);
+    expect(fresh.scheduled).toBeUndefined();
+    expect(fresh.story).toBeUndefined();
+  });
+});
+
+describe("where a post actually went live", () => {
+  it("returns one link per account, in the app's own account order", () => {
+    const links = postLinks(item({
+      platforms: ["instagram", "facebook"],
+      postUrls: { facebook: "https://fb.com/p/2", instagram: "https://ig.com/p/1" },
+    }));
+    expect(links.map((l) => l.platform)).toEqual(["instagram", "facebook"]);
+    expect(links.map((l) => l.url)).toEqual(["https://ig.com/p/1", "https://fb.com/p/2"]);
+  });
+
+  it("ignores a box somebody left blank", () => {
+    const links = postLinks(item({
+      platforms: ["instagram", "facebook"],
+      postUrls: { instagram: "https://ig.com/p/1", facebook: "   " },
+    }));
+    expect(links).toHaveLength(1);
+    expect(links[0].platform).toBe("instagram");
+  });
+
+  it("ignores a link for an account this post was never on", () => {
+    const links = postLinks(item({
+      platforms: ["instagram"],
+      postUrls: { instagram: "https://ig.com/p/1", youtube: "https://yt.com/p/9" },
+    }));
+    expect(links.map((l) => l.platform)).toEqual(["instagram"]);
+  });
+
+  it("still shows the single link an older item carries, with no migration", () => {
+    const links = postLinks(item({
+      platforms: ["instagram", "facebook"],
+      postUrl: "https://ig.com/old",
+      postUrls: null,
+    }));
+    expect(links).toEqual([{ platform: "instagram", label: "Instagram", url: "https://ig.com/old" }]);
+  });
+
+  it("says nothing when nothing has been pasted", () => {
+    expect(postLinks(item({ platforms: ["instagram"] }))).toEqual([]);
   });
 });
