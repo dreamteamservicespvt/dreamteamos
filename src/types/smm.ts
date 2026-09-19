@@ -231,13 +231,39 @@ export interface SmmAdRun {
 }
 
 /** Money the client put in to fund the ad spend. Some pay weekly, some top up daily. */
+/**
+ * How the client's ad money reached Meta.
+ *
+ * `direct` is the ordinary case and the default: the client puts their own card on the ad account
+ * and Meta bills them. Nothing passes through us, so there is one payment and one proof.
+ *
+ * `via_us` is the case that needs watching. The client pays US, and we are then holding their money
+ * until somebody actually funds the ad account — so it needs TWO proofs, one for each leg, and the
+ * gap between them is money of the client's sitting in our account. That gap is what
+ * `budgetLedger.heldByUs` counts, and it is the number worth chasing.
+ */
+export type SmmPaymentRoute = "direct" | "via_us";
+
 export interface SmmBudgetPayment {
   id: string;
   amount: number;
+  /** When the money actually moved — typed in, not assumed to be now. Clients pay on a Sunday. */
   at: any;
   /** "GPay", "cash", "bank" — whatever they said. */
   method?: string | null;
   note?: string | null;
+  /** Absent on payments recorded before the route was asked for; those all read as `direct`. */
+  route?: SmmPaymentRoute;
+  /**
+   * The client's own payment — to Meta on a `direct` payment, to us on a `via_us` one.
+   *
+   * `screenshotUrl` is what this was called before there were two legs. `paymentProofs` reads both,
+   * so nothing recorded earlier loses its evidence.
+   */
+  clientProofUrl?: string | null;
+  /** Us funding the ad account. Only ever on a `via_us` payment, and absent until we have done it. */
+  metaProofUrl?: string | null;
+  /** @deprecated The single proof this carried before the two legs existed. Read, never written. */
   screenshotUrl?: string | null;
   byName: string;
 }

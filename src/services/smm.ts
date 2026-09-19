@@ -32,7 +32,7 @@ import { normalizePhone, phoneLockId } from "@/utils/phone";
 import { POSTABLE_STATUSES } from "@/types/smm";
 import type {
   SmmAdDayReport, SmmAdRun, SmmBudgetPayment, SmmCampaign, SmmContentItem, SmmContentKind,
-  SmmItemStatus, SmmPlatform, SmmRenewalState, SmmTeam,
+  SmmItemStatus, SmmPaymentRoute, SmmPlatform, SmmRenewalState, SmmTeam,
 } from "@/types/smm";
 import type { AppUser, Order, OrderProgress, SaleDetail } from "@/types";
 
@@ -679,22 +679,65 @@ export async function removeAdDayReport(campaignId: string, runId: string, date:
 
 /* ── The client's ad money ──────────────────────────────────────────────────────────────────── */
 
+/**
+ * Record ad money the client has put behind the campaign.
+ *
+ * `atMs` is passed rather than assumed, because clients pay on a Sunday and it gets written down on
+ * a Monday — and the day the money moved is the day the report has to agree with. It defaults to
+ * now, which is the common case.
+ */
 export async function addBudgetPayment(
   campaignId: string,
-  input: { amount: number; method?: string | null; note?: string | null; screenshotUrl?: string | null },
+  input: {
+    amount: number;
+    route?: SmmPaymentRoute;
+    method?: string | null;
+    note?: string | null;
+    clientProofUrl?: string | null;
+    metaProofUrl?: string | null;
+    /** Epoch ms the money actually moved. Defaults to now. */
+    atMs?: number | null;
+  },
   actor: SmmActor,
 ): Promise<void> {
+  const route: SmmPaymentRoute = input.route === "via_us" ? "via_us" : "direct";
   await mutateCampaign(campaignId, (c) => ({
     budgetPayments: [...c.budgetPayments, {
       id: newItemId("pay"),
       amount: Math.max(0, Math.round(input.amount) || 0),
-      at: Timestamp.now(),
+      at: input.atMs ? Timestamp.fromMillis(input.atMs) : Timestamp.now(),
       method: input.method ?? null,
       note: input.note ?? null,
-      screenshotUrl: input.screenshotUrl ?? null,
+      route,
+      clientProofUrl: input.clientProofUrl ?? null,
+      // A direct payment never has a second leg: the client paid Meta, we were not involved.
+      metaProofUrl: route === "via_us" ? (input.metaProofUrl ?? null) : null,
       byName: actor.name,
     } as SmmBudgetPayment],
   }));
+}
+
+/**
+ * Prove that money the client paid US actually reached the ad account.
+ *
+ * Separate from recording the payment because the two legs genuinely happen at different times —
+ * the client pays in the evening, somebody funds the account the next morning — and the gap between
+ * them is exactly what `budgetLedger.heldByUs` is counting.
+ */
+export async function attachMetaProof(
+  campaignId: string,
+  paymentId: string,
+  metaProofUrl: string | null,
+): Promise<void> {
+  await mutateCampaign(campaignId, (c) => {
+    let found = false;
+    const budgetPayments = c.budgetPayments.map((p) => {
+      if (p.id !== paymentId) return p;
+      found = true;
+      return { ...p, metaProofUrl: metaProofUrl || null };
+    });
+    return found ? { budgetPayments } : null;
+  });
 }
 
 export async function removeBudgetPayment(campaignId: string, paymentId: string): Promise<void> {

@@ -9,7 +9,8 @@
 
 import {
   SMM_CONTENT_KINDS, SMM_PLATFORMS,
-  type SmmAdDayReport, type SmmAdRun, type SmmApproval, type SmmCampaign, type SmmContentItem,
+  type SmmAdDayReport, type SmmAdRun, type SmmApproval, type SmmBudgetPayment, type SmmCampaign,
+  type SmmContentItem,
   type SmmContentKind, type SmmCycle, type SmmItemStatus, type SmmPlatform, type SmmTeam,
 } from "@/types/smm";
 import type { OrderProgressCounts } from "@/types";
@@ -400,6 +401,17 @@ export interface BudgetLedger {
   nextDayNeed: number;
   /** Not enough left to run tomorrow. The one number worth interrupting somebody for. */
   short: boolean;
+  /**
+   * The client's money we are sitting on: paid to us, not yet proved as forwarded to Meta.
+   *
+   * It is not ours and it is not working — an ad account with no funds in it while the client
+   * believes they have paid is the worst version of this going wrong, because they will only find
+   * out when the ads stop. Counted from the payments that took the `via_us` route and have no
+   * `metaProofUrl` against them yet.
+   */
+  heldByUs: number;
+  /** Those payments, so the panel can point at the exact ones still to forward. */
+  awaitingForward: SmmBudgetPayment[];
 }
 
 /**
@@ -418,7 +430,31 @@ export function budgetLedger(campaign: Pick<SmmCampaign, "ads" | "budgetPayments
     .filter((run) => run.status === "running" && adRunDays(run).includes(tomorrow))
     .reduce((n, run) => n + budgetForDay(run, tomorrow), 0);
   const balance = Math.round((funded - spent) * 100) / 100;
-  return { funded, spent, balance, nextDayNeed, short: nextDayNeed > 0 && balance < nextDayNeed };
+
+  // Paid to us, with no proof yet that it reached the ad account.
+  const awaitingForward = (campaign.budgetPayments || [])
+    .filter((p) => p.route === "via_us" && !p.metaProofUrl);
+  const heldByUs = awaitingForward.reduce((n, p) => n + (Number(p.amount) || 0), 0);
+
+  return {
+    funded, spent, balance, nextDayNeed,
+    short: nextDayNeed > 0 && balance < nextDayNeed,
+    heldByUs, awaitingForward,
+  };
+}
+
+/**
+ * Every proof attached to one payment, in the order the money moved.
+ *
+ * Folds the single `screenshotUrl` older payments carry into the same shape, so a row rendered
+ * today shows the evidence somebody uploaded a month ago without anything having to be migrated.
+ */
+export function paymentProofs(p: SmmBudgetPayment): { label: string; url: string }[] {
+  const out: { label: string; url: string }[] = [];
+  const client = p.clientProofUrl || p.screenshotUrl;
+  if (client) out.push({ label: p.route === "via_us" ? "Client → us" : "Client → Meta", url: client });
+  if (p.metaProofUrl) out.push({ label: "Us → Meta", url: p.metaProofUrl });
+  return out;
 }
 
 /* ── Extra work ─────────────────────────────────────────────────────────────────────────────── */

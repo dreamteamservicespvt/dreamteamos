@@ -13,11 +13,11 @@ import {
   campaignHeadline, clientWaitSummary, cycleFromStart, daysBetween, daysLeftInCycle,
   daysUntilDue, derivedProgressCounts, extraWork, fulfilment, isMade, isOverdue, isPosted,
   isSmmOverseer, itemsForRun, postsByPlatform, smmWatchers, targetsFromCommitments, teamMembers,
-  adTotals, adRunDays, budgetForDay, plannedSpend, postLinks, DEFAULT_UPLOAD_TIME,
+  adTotals, adRunDays, budgetForDay, plannedSpend, postLinks, paymentProofs, DEFAULT_UPLOAD_TIME,
 } from "@/utils/smmPlan";
 import { isProgressComplete, progressPercent } from "@/utils/orderProgress";
 import { collectReadiness } from "@/utils/collectReadiness";
-import type { SmmAdRun, SmmCampaign, SmmContentItem } from "@/types/smm";
+import type { SmmAdRun, SmmBudgetPayment, SmmCampaign, SmmContentItem } from "@/types/smm";
 import type { Order } from "@/types";
 
 const PLATFORMS = ["instagram", "facebook"] as const;
@@ -456,5 +456,58 @@ describe("where a post actually went live", () => {
 
   it("says nothing when nothing has been pasted", () => {
     expect(postLinks(item({ platforms: ["instagram"] }))).toEqual([]);
+  });
+});
+
+describe("how the client's ad money reached Meta", () => {
+  const pay = (over: Partial<SmmBudgetPayment> = {}): SmmBudgetPayment => ({
+    id: `p${Math.random()}`, amount: 1000, at: null, byName: "Anita", ...over,
+  });
+
+  it("counts money paid to us and not yet forwarded as held by us", () => {
+    const c = campaign({
+      budgetPayments: [
+        pay({ amount: 5000, route: "via_us" }),
+        pay({ amount: 2000, route: "via_us", metaProofUrl: "https://proof/2" }),
+        pay({ amount: 3000, route: "direct" }),
+      ],
+    });
+    const ledger = budgetLedger(c, "2026-09-10");
+    expect(ledger.funded).toBe(10000);       // every route funds the ads
+    expect(ledger.heldByUs).toBe(5000);      // only the one with no forward proof
+    expect(ledger.awaitingForward).toHaveLength(1);
+  });
+
+  it("treats a payment recorded before routes existed as paid directly", () => {
+    const c = campaign({ budgetPayments: [pay({ amount: 4000 })] });
+    const ledger = budgetLedger(c, "2026-09-10");
+    expect(ledger.funded).toBe(4000);
+    expect(ledger.heldByUs).toBe(0);
+  });
+
+  it("never treats a direct payment as money we are sitting on", () => {
+    // A direct payment has no second leg to prove, so it can never be "awaiting forward".
+    const c = campaign({ budgetPayments: [pay({ route: "direct", metaProofUrl: null })] });
+    expect(budgetLedger(c, "2026-09-10").heldByUs).toBe(0);
+  });
+
+  it("labels each proof by the leg it belongs to", () => {
+    expect(paymentProofs(pay({ route: "direct", clientProofUrl: "https://a" })))
+      .toEqual([{ label: "Client → Meta", url: "https://a" }]);
+
+    expect(paymentProofs(pay({ route: "via_us", clientProofUrl: "https://a", metaProofUrl: "https://b" })))
+      .toEqual([
+        { label: "Client → us", url: "https://a" },
+        { label: "Us → Meta", url: "https://b" },
+      ]);
+  });
+
+  it("still shows the single proof an older payment carries", () => {
+    expect(paymentProofs(pay({ screenshotUrl: "https://old" })))
+      .toEqual([{ label: "Client → Meta", url: "https://old" }]);
+  });
+
+  it("shows nothing rather than a broken link when no proof was uploaded", () => {
+    expect(paymentProofs(pay())).toEqual([]);
   });
 });

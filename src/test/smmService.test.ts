@@ -47,7 +47,7 @@ vi.mock("firebase/firestore", () => ({
     }),
     update: (ref: any, patch: any) => { store[ref.path] = { ...store[ref.path], ...patch }; },
   }),
-  Timestamp,
+  Timestamp: { ...Timestamp, fromMillis: (ms: number) => ({ seconds: Math.floor(ms / 1000) }) },
 }));
 
 const smm = await import("@/services/smm");
@@ -398,5 +398,51 @@ describe("a month that never came through a sale", () => {
     expect(store[`smm_campaigns/${id}`].clientPhone).toBe("+919876543210");
     // A business nobody named is the client's own name — a blank headline is unusable on the board.
     expect(store[`smm_campaigns/${id}`].businessName).toBe("Meena");
+  });
+});
+
+describe("recording the client's ad money", () => {
+  it("defaults to the client having paid Meta themselves", async () => {
+    seed();
+    await smm.addBudgetPayment("o1", { amount: 5000, clientProofUrl: "https://a" }, ACTOR);
+    const p = campaign().budgetPayments[0];
+    expect(p.route).toBe("direct");
+    expect(p.clientProofUrl).toBe("https://a");
+    // A direct payment has no second leg — storing one would invent a transfer that never happened.
+    expect(p.metaProofUrl).toBeNull();
+  });
+
+  it("keeps both legs when the money came through us", async () => {
+    seed();
+    await smm.addBudgetPayment("o1", {
+      amount: 5000, route: "via_us", clientProofUrl: "https://client", metaProofUrl: "https://meta",
+    }, ACTOR);
+    const p = campaign().budgetPayments[0];
+    expect(p.route).toBe("via_us");
+    expect(p.clientProofUrl).toBe("https://client");
+    expect(p.metaProofUrl).toBe("https://meta");
+  });
+
+  it("records the day the money actually moved, not the day it was typed in", async () => {
+    seed();
+    const sunday = Date.parse("2026-09-13T19:30:00");
+    await smm.addBudgetPayment("o1", { amount: 1000, atMs: sunday }, ACTOR);
+    expect(campaign().budgetPayments[0].at.seconds).toBe(Math.floor(sunday / 1000));
+  });
+
+  it("lets the forward proof arrive later, which is when it actually happens", async () => {
+    seed();
+    await smm.addBudgetPayment("o1", { amount: 5000, route: "via_us", clientProofUrl: "https://client" }, ACTOR);
+    const id = campaign().budgetPayments[0].id;
+    expect(campaign().budgetPayments[0].metaProofUrl).toBeNull();
+
+    await smm.attachMetaProof("o1", id, "https://meta");
+    expect(campaign().budgetPayments[0].metaProofUrl).toBe("https://meta");
+  });
+
+  it("does nothing for a payment that is no longer there", async () => {
+    seed();
+    await smm.attachMetaProof("o1", "gone", "https://meta");
+    expect(campaign().budgetPayments).toHaveLength(0);
   });
 });

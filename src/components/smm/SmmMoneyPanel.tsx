@@ -14,11 +14,15 @@
  * than an invoice nobody sent.
  */
 import { useState } from "react";
-import { IndianRupee, Loader2, Plus, Trash2, AlertTriangle, Gift, Receipt, Send } from "lucide-react";
+import {
+  Loader2, Plus, Trash2, AlertTriangle, Gift, Receipt, Send, Upload, Image as ImageIcon,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { addBudgetPayment, removeBudgetPayment, setExtraCharge } from "@/services/smm";
+import { attachMetaProof, removeBudgetPayment, setExtraCharge } from "@/services/smm";
+import { uploadToCloudinary } from "@/services/cloudinary";
+import SmmBudgetPaymentForm from "@/components/smm/SmmBudgetPaymentForm";
 import { formatCurrency } from "@/utils/formatters";
-import { budgetLedger, extraWork, isoDay } from "@/utils/smmPlan";
+import { budgetLedger, extraWork, isoDay, paymentProofs } from "@/utils/smmPlan";
 import { budgetTopUpMessage, extraWorkMessage } from "@/utils/smmMessages";
 import { SMM_CONTENT_KINDS, type SmmCampaign } from "@/types/smm";
 
@@ -33,25 +37,27 @@ export default function SmmMoneyPanel({ campaign, canEdit, actorName, actorUid, 
   const today = isoDay(new Date());
   const ledger = budgetLedger(campaign, today);
   const extras = extraWork(campaign.items);
-  const [amount, setAmount] = useState("");
-  const [method, setMethod] = useState("");
-  const [busy, setBusy] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  /** The payment whose "us to Meta" screenshot is uploading right now. */
+  const [forwarding, setForwarding] = useState<string | null>(null);
   /** The seller owns the money conversation — see the note on the extra-work notification. */
   const isSeller = campaign.soldBy === actorUid;
 
-  const addPayment = async () => {
-    const n = Math.round(Number(amount) || 0);
-    if (n <= 0) { toast({ title: "How much?", description: "Enter the amount the client put in.", variant: "destructive" }); return; }
-    setBusy("pay");
-    try {
-      await addBudgetPayment(campaign.id, { amount: n, method: method.trim() || null }, { uid: actorUid, name: actorName });
-      setAmount(""); setMethod("");
-      toast({ title: "Recorded" });
-    } catch {
-      toast({ title: "Not saved", description: "Try again.", variant: "destructive" });
-    } finally {
-      setBusy(null);
-    }
+  /** Epoch ms from whichever timestamp shape a payment happens to carry. */
+  const paymentMs = (at: unknown): number => {
+    const t = at as { toMillis?: () => number; seconds?: number } | null;
+    if (!t) return 0;
+    if (typeof t.toMillis === "function") return t.toMillis();
+    return typeof t.seconds === "number" ? t.seconds * 1000 : 0;
+  };
+
+  /** "19 Sept 2026, 6:05 pm" — the day and the time the money moved. */
+  const stampLabel = (at: unknown): string => {
+    const ms = paymentMs(at);
+    if (!ms) return "date not recorded";
+    return new Date(ms).toLocaleString("en-IN", {
+      day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
+    });
   };
 
   return (
@@ -60,17 +66,22 @@ export default function SmmMoneyPanel({ campaign, canEdit, actorName, actorUid, 
       <section>
         <h3 className="mb-2 text-sm font-semibold text-foreground">Client's ad budget</h3>
 
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {[
             { label: "Put in", value: ledger.funded },
             { label: "Spent", value: ledger.spent },
             { label: "Left", value: ledger.balance },
+            { label: "With us", value: ledger.heldByUs },
           ].map(({ label, value }) => (
             <div key={label} className="rounded-lg border border-border bg-card p-2.5 text-center">
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
               <p
                 data-test={`smm-budget-${label.toLowerCase().replace(/\s/g, "-")}`}
-                className={`mt-0.5 font-mono text-sm font-semibold ${label === "Left" && ledger.balance < 0 ? "text-destructive" : "text-foreground"}`}
+                className={`mt-0.5 font-mono text-sm font-semibold ${
+                  label === "Left" && ledger.balance < 0 ? "text-destructive"
+                  : label === "With us" && ledger.heldByUs > 0 ? "text-warning"
+                  : "text-foreground"
+                }`}
               >
                 {formatCurrency(value)}
               </p>
@@ -94,61 +105,124 @@ export default function SmmMoneyPanel({ campaign, canEdit, actorName, actorUid, 
           </div>
         )}
 
-        {canEdit && (
-          <div className="mt-2 flex gap-2">
-            <div className="relative flex-1">
-              <IndianRupee size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input
-                type="number"
-                min={0}
-                value={amount}
-                data-test="smm-budget-amount"
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="Amount the client added"
-                className="h-9 w-full rounded-md border border-border bg-background pl-7 pr-2 text-sm text-foreground outline-none focus:border-primary"
-              />
-            </div>
-            <input
-              value={method}
-              data-test="smm-budget-method"
-              onChange={(e) => setMethod(e.target.value)}
-              placeholder="How"
-              className="h-9 w-24 rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-primary"
-            />
-            <button
-              onClick={addPayment}
-              disabled={busy === "pay"}
-              data-test="smm-budget-add"
-              className="inline-flex h-9 items-center gap-1 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-            >
-              {busy === "pay" ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} Add
-            </button>
+        {/* Paid to us but not yet proved as forwarded — their money, in our account, doing nothing. */}
+        {ledger.heldByUs > 0 && (
+          <div data-test="smm-budget-held" className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 p-2.5 text-xs text-warning">
+            <AlertTriangle size={14} className="shrink-0" />
+            <span className="flex-1">
+              <strong>{formatCurrency(ledger.heldByUs)}</strong> was paid to us and has no proof of
+              reaching the ad account yet
+              {ledger.awaitingForward.length > 1 ? ` (${ledger.awaitingForward.length} payments)` : ""}.
+            </span>
           </div>
         )}
 
+        {canEdit && (
+          adding
+            ? <SmmBudgetPaymentForm campaignId={campaign.id} actor={{ uid: actorUid, name: actorName }} onDone={() => setAdding(false)} />
+            : (
+              <button
+                data-test="smm-budget-open"
+                onClick={() => setAdding(true)}
+                className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-md border border-border px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+              >
+                <Plus size={13} /> Record a payment
+              </button>
+            )
+        )}
+
         {campaign.budgetPayments.length > 0 && (
-          <ul className="mt-2 space-y-1">
-            {[...campaign.budgetPayments].reverse().map((p) => (
-              <li key={p.id} className="flex items-center justify-between gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs">
-                <span className="text-foreground">
-                  {formatCurrency(p.amount)}
-                  {p.method ? <span className="text-muted-foreground"> · {p.method}</span> : null}
-                  <span className="text-muted-foreground"> · {p.byName}</span>
-                </span>
-                {canEdit && (
-                  <button
-                    onClick={() => removeBudgetPayment(campaign.id, p.id)}
-                    /* Same as the ad table's pencil: the glyph is 12px, the target is 28px. */
-                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                    aria-label="Remove this payment"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                )}
-              </li>
-            ))}
+          <ul className="mt-2 space-y-1.5">
+            {/* Newest money first. Insertion order is not date order once anybody back-dates a
+                payment, and a ledger that jumps about is one nobody can reconcile against a bank
+                statement. */}
+            {[...campaign.budgetPayments]
+              .sort((a, b) => paymentMs(b.at) - paymentMs(a.at))
+              .map((p) => {
+              const proofs = paymentProofs(p);
+              const viaUs = p.route === "via_us";
+              const toForward = viaUs && !p.metaProofUrl;
+              return (
+                <li
+                  key={p.id}
+                  data-test="smm-payment-row"
+                  className={`rounded-md border px-2.5 py-2 text-xs ${toForward ? "border-warning/40 bg-warning/5" : "border-border bg-card"}`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-mono text-sm font-semibold text-foreground">{formatCurrency(p.amount)}</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {stampLabel(p.at)}
+                        {p.method ? ` · ${p.method}` : ""}
+                        {` · ${p.byName}`}
+                      </p>
+                      {p.note && <p className="mt-0.5 text-[11px] italic text-muted-foreground">{p.note}</p>}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${viaUs ? "bg-warning/15 text-warning" : "bg-muted text-muted-foreground"}`}>
+                        {viaUs ? "Paid to us" : "Paid Meta directly"}
+                      </span>
+                      {canEdit && (
+                        <button
+                          onClick={() => removeBudgetPayment(campaign.id, p.id)}
+                          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                          aria-label="Remove this payment"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    {proofs.map((pr) => (
+                      <a
+                        key={pr.label}
+                        href={pr.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        data-test="smm-payment-proof"
+                        className="inline-flex h-6 items-center gap-1 rounded border border-border px-2 text-[10px] text-foreground transition-colors hover:bg-accent"
+                      >
+                        <ImageIcon size={10} /> {pr.label}
+                      </a>
+                    ))}
+                    {/* The second leg, added whenever it actually happens — which is rarely the
+                        same moment the client paid. */}
+                    {toForward && canEdit && (
+                      <label
+                        data-test={`smm-forward-proof-${p.id}`}
+                        className="inline-flex h-6 cursor-pointer items-center gap-1 rounded border border-warning/50 bg-warning/10 px-2 text-[10px] font-medium text-warning transition-colors hover:bg-warning/20"
+                      >
+                        {forwarding === p.id ? <Loader2 size={10} className="animate-spin" /> : <Upload size={10} />}
+                        {forwarding === p.id ? "Uploading…" : "Add us → Meta proof"}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={async (e) => {
+                            const f = e.target.files?.[0];
+                            if (!f) return;
+                            setForwarding(p.id);
+                            try {
+                              await attachMetaProof(campaign.id, p.id, await uploadToCloudinary(f));
+                              toast({ title: "Forwarded", description: "Marked as paid on to Meta." });
+                            } catch {
+                              toast({ title: "Upload failed", description: "Try again.", variant: "destructive" });
+                            } finally {
+                              setForwarding(null);
+                            }
+                          }}
+                        />
+                      </label>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
+
       </section>
 
       {/* ── Extra work ───────────────────────────────────────────────────────────────────── */}

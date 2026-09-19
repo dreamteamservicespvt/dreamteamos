@@ -14,10 +14,13 @@ import {
   Image as ImageIcon, Sparkles, Video,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { addAdRun, removeAdRun, setDayBudget, updateAdRun } from "@/services/smm";
+import { addAdRun, removeAdRun, saveAdDayReport, setDayBudget, updateAdRun } from "@/services/smm";
 import { formatCurrency } from "@/utils/formatters";
 import { adRunDays, adTotals, budgetForDay, isoDay, itemsForRun, plannedSpend } from "@/utils/smmPlan";
-import { SMM_CONTENT_KINDS, type SmmAdRun, type SmmCampaign, type SmmContentKind } from "@/types/smm";
+import {
+  SMM_CONTENT_KINDS,
+  type SmmAdDayReport, type SmmAdRun, type SmmCampaign, type SmmContentKind,
+} from "@/types/smm";
 import type { LucideIcon } from "lucide-react";
 import SmmAdReportDialog from "@/components/smm/SmmAdReportDialog";
 
@@ -46,6 +49,45 @@ export default function SmmAdsPanel({ campaign, canEdit, actorName, onMessage }:
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [reportFor, setReportFor] = useState<{ run: SmmAdRun; date?: string } | null>(null);
+
+  /**
+   * Write one figure of one day, leaving that day's other two alone.
+   *
+   * A day with no report yet is created by the first figure typed into it, with the other two at
+   * zero — which is the honest reading of "11 leads, nothing else entered yet" and stops the row
+   * refusing to accept anything until somebody opens the dialog.
+   *
+   * Cost per result is deliberately NOT recomputed from spend ÷ leads: it is Meta's own number,
+   * it is what the client is shown, and the two do not always agree to the rupee.
+   */
+  const saveFigure = async (
+    run: SmmAdRun,
+    date: string,
+    field: "leads" | "spend" | "costPerResult",
+    raw: string,
+    existing: SmmAdDayReport | undefined,
+  ) => {
+    const trimmed = raw.trim();
+    // An emptied box on a day that was never reported is a no-op, not a report of zeros.
+    if (!trimmed && !existing) return;
+    const next = Math.max(0, Number(trimmed) || 0);
+    if (existing && Number(existing[field] ?? 0) === next) return;
+
+    try {
+      await saveAdDayReport(campaign.id, run.id, {
+        date,
+        leads: existing?.leads ?? 0,
+        spend: existing?.spend ?? 0,
+        costPerResult: existing?.costPerResult ?? 0,
+        reach: existing?.reach ?? null,
+        screenshotUrl: existing?.screenshotUrl ?? null,
+        byName: actorName,
+        [field]: field === "leads" ? Math.round(next) : next,
+      });
+    } catch {
+      toast({ title: "Not saved", description: "Couldn't update that figure. Try again.", variant: "destructive" });
+    }
+  };
   const [openRun, setOpenRun] = useState<string | null>(campaign.ads[0]?.id || null);
 
   return (
@@ -167,9 +209,42 @@ export default function SmmAdsPanel({ campaign, canEdit, actorName, onMessage }:
                                 </span>
                               )}
                             </td>
-                            <td className="py-1.5 text-right font-mono text-foreground">{report ? report.leads : "—"}</td>
-                            <td className="py-1.5 text-right font-mono text-foreground">{report ? formatCurrency(report.spend) : "—"}</td>
-                            <td className="py-1.5 text-right font-mono text-foreground">{report ? formatCurrency(report.costPerResult) : "—"}</td>
+                            {/*
+                              Typed straight in, like the budget beside them.
+
+                              The dialog is still there for the day you are reading a dashboard
+                              screenshot — but correcting one number in yesterday's row should not
+                              mean reopening a form and re-entering the other two, which is how a
+                              day ends up with a fixed lead count and a stale spend.
+                            */}
+                            {([
+                              { field: "leads" as const, value: report?.leads },
+                              { field: "spend" as const, value: report?.spend },
+                              { field: "costPerResult" as const, value: report?.costPerResult },
+                            ]).map(({ field, value }) => (
+                              <td key={field} className="py-1.5 text-right">
+                                {canEdit ? (
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step={field === "leads" ? 1 : "any"}
+                                    data-test={`smm-day-${field}-${d}`}
+                                    /* Keyed on the stored value so a save elsewhere refreshes the
+                                       box, and uncontrolled so typing is never fought by a render. */
+                                    key={`${d}-${field}-${value ?? ""}`}
+                                    defaultValue={value ?? ""}
+                                    placeholder="—"
+                                    onBlur={(e) => saveFigure(run, d, field, e.target.value, report)}
+                                    onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                                    className="h-6 w-16 rounded border border-border bg-card px-1 text-right font-mono text-[11px] text-foreground outline-none focus:border-primary"
+                                  />
+                                ) : (
+                                  <span className="font-mono text-foreground">
+                                    {value === undefined ? "—" : field === "leads" ? value : formatCurrency(value)}
+                                  </span>
+                                )}
+                              </td>
+                            ))}
                             <td className="py-1.5 text-right">
                               {canEdit && (
                                 <button

@@ -14,7 +14,9 @@
  * says when it last did. Debounced rather than per-keystroke so a title costs one write, not forty.
  */
 import { useEffect, useRef, useState } from "react";
-import { X, Loader2, Send, Check, Trash2, Phone, Link2, CloudUpload } from "lucide-react";
+import {
+  X, Loader2, Send, Check, Trash2, Phone, Link2, CloudUpload, ChevronDown,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   addApprovalChase, assignItem, recordApproval, removeItem, requestApproval, setItemStatus,
@@ -62,6 +64,15 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
   );
   const [approvalNote, setApprovalNote] = useState("");
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  /**
+   * Folded unless the approval IS the outstanding thing.
+   *
+   * A post sitting with the client, or one they have come back on, is a post somebody opened this
+   * dialog to deal with — so it opens ready. Everything else opens closed.
+   */
+  const [approvalOpen, setApprovalOpen] = useState(
+    () => item.approval?.state === "waiting" || item.approval?.state === "changes",
+  );
   const [saving, setSaving] = useState(false);
 
   const kindLabel = SMM_CONTENT_KINDS.find((k) => k.key === item.kind)?.singular || item.kind;
@@ -258,11 +269,36 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
         </div>
 
         {/* ── Client approval ────────────────────────────────────────────────────────────── */}
-        <div className="mt-4 rounded-lg border border-border bg-background p-3">
-          <p className="text-xs font-semibold text-foreground">Client approval</p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
-            Nothing goes up without it. {waiting ? `Waiting ${waitDays} day${waitDays === 1 ? "" : "s"}.` : approved ? `Approved${item.approval?.byName ? ` — recorded by ${item.approval.byName}` : ""}.` : "Not sent yet."}
-          </p>
+        {/*
+          Folded away, because the approval is a STAGE of the job rather than a field of it. Left
+          open it put four buttons — two of them green and red — between the post's own details and
+          where it has got to, on every post, including ones nobody has made yet. The header still
+          states where the approval stands, so folding it hides the controls and never the answer.
+        */}
+        <div className="mt-4 rounded-lg border border-border bg-background">
+          <button
+            type="button"
+            data-test="smm-approval-toggle"
+            aria-expanded={approvalOpen}
+            onClick={() => setApprovalOpen((v) => !v)}
+            className="flex w-full items-center gap-2 p-3 text-left"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block text-xs font-semibold text-foreground">Client approval</span>
+              <span className={`block truncate text-[11px] ${waiting ? "text-warning" : approved ? "text-success" : "text-muted-foreground"}`}>
+                {waiting
+                  ? `Waiting ${waitDays} day${waitDays === 1 ? "" : "s"}`
+                  : approved
+                    ? `Approved${item.approval?.byName ? ` · ${item.approval.byName}` : ""}`
+                    : "Not sent yet — tap to record it"}
+              </span>
+            </span>
+            <ChevronDown size={15} className={`shrink-0 text-muted-foreground transition-transform ${approvalOpen ? "rotate-180" : ""}`} />
+          </button>
+
+          {approvalOpen && (
+          <div data-test="smm-approval-body" className="border-t border-border/60 p-3">
+          <p className="text-[11px] text-muted-foreground">Nothing goes up without it.</p>
           {item.approval?.note && (
             <p className="mt-1 rounded bg-muted/60 px-2 py-1 text-[11px] italic text-foreground">“{item.approval.note}”</p>
           )}
@@ -319,6 +355,8 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
                 </button>
               </div>
             </>
+          )}
+          </div>
           )}
         </div>
 

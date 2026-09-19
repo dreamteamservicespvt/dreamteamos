@@ -741,3 +741,49 @@ Verified: `npx vitest run` 2540/2540 across 161 files, `npm run build` clean, an
 of 36 checks covering autosave (including the type → close → still-there case), the stage locks, the
 per-account links, the legacy link, the update message carrying both URLs, the ad suggestions, and
 the dialog at 390px.
+
+## Session — 2026-09-19 (money trail, dialog polish, upload limits, load time)
+
+**1. Ad money now records HOW it reached Meta.** `SmmBudgetPayment` gained
+`route: "direct" | "via_us"` (absent = direct, which is every payment recorded before this),
+`clientProofUrl` and `metaProofUrl`; `screenshotUrl` is kept and read but never written.
+`direct` is the default and the ordinary case — the client's card is on the ad account. `via_us`
+is the one that needs watching: their money is in OUR account until somebody funds the ad account,
+so it needs two proofs and the gap between them is real. `budgetLedger` gained **`heldByUs`** (via_us
+payments with no `metaProofUrl`) and `awaitingForward`, surfaced as a fourth figure and a warning.
+`attachMetaProof` exists separately from `addBudgetPayment` because the two legs genuinely happen
+hours apart. `addBudgetPayment` now takes `atMs` — clients pay on a Sunday and it gets typed in on
+Monday, and the day the money moved is the day the report has to agree with. New component
+`SmmBudgetPaymentForm`; the list shows date+time, route, and a link per proof leg
+(`smmPlan.paymentProofs`), newest first.
+
+**2. Item dialog.** The Client approval block is now a **fold** (`smm-approval-toggle`) — it was
+sitting open on every post, putting a green and a red button between the post's details and its
+stage, including on posts nobody had made yet. It opens by itself only when the approval IS the
+outstanding thing (`waiting` / `changes`), and the collapsed header still states where it stands.
+The ads day table now takes **Leads / Spent / Per result inline** (`saveFigure`), writing one figure
+and leaving that day's other two alone; typing into an unreported day creates it with the rest at
+zero. Cost per result is deliberately never recomputed from spend ÷ leads — it is Meta's own figure
+and what the client is shown.
+
+**3. AdGen uploads.** `components/ai-platform/FileUpload` now refuses videos (by MIME **and** by
+extension — Android pickers hand over an empty `type` surprisingly often), PDFs, anything that is
+not an image on an image slot, and any image over `MAX_IMAGE_MB = 10`. Each refusal names the file
+and the thing that does work. Good files in a mixed selection still go through. The audio and text
+slots keep their own rules.
+
+**4. Load time: 6,098 KB in one file → 1,252 KB across 3.** Two changes:
+ - **Every page is `lazy()` in App.tsx** (83 of them) behind one `Suspense`, plus the six overlay
+   components in `AppLayout` (the agreement gate alone dragged jspdf + html2canvas, ~1MB, onto the
+   screen of every member with nothing to sign).
+ - **`manualChunks` names only `vendor-react` and `vendor-firebase`.** This is the trap worth
+   remembering: **naming a manual chunk pulls it into the ENTRY the moment anything eager touches
+   one symbol from it.** An earlier pass named vendor-docs and vendor-charts and ended up
+   *preloading* the PDF writer and the charting library on the login screen. Left unnamed, rollup
+   puts a library in the lazy route chunk that actually uses it.
+   Verified in Chromium: `/login` transfers 1,252 KB of JS in 3 files and renders cleanly.
+
+Verified: `npx vitest run` 2562/2562 across 162 files, `npm run build` clean, and two Chromium
+drives — 41 checks on the money/dialog/ads changes (including uploading a forward proof clearing
+`heldByUs`, and correcting one ad figure leaving the other two alone) and a real first-load
+measurement of the production build.

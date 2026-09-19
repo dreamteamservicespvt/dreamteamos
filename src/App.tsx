@@ -1,3 +1,4 @@
+import { Suspense, lazy } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -9,91 +10,108 @@ import { useAuthStore } from "@/store/authStore";
 import { defaultRouteForUser } from "@/utils/roleHelpers";
 import Login from "@/pages/auth/Login";
 import AppLayout from "@/components/layout/AppLayout";
-import MainAdminDashboard from "@/pages/main-admin/Dashboard";
-import TeamManagement from "@/pages/main-admin/TeamManagement";
-import RevenueOverview from "@/pages/main-admin/RevenueOverview";
-import TechDepartment from "@/pages/main-admin/TechDepartment";
-import SalesDepartment from "@/pages/main-admin/SalesDepartment";
-import SessionHistory from "@/pages/main-admin/SessionHistory";
-import Accounts from "@/pages/main-admin/Accounts";
-import MainAdminSettings from "@/pages/main-admin/Settings";
-import TechMemberDashboard from "@/pages/tech-member/Dashboard";
-import CreateAd from "@/pages/tech-member/CreateAd";
-import TechMemberTraining from "@/pages/tech-member/Training";
-import TechMemberProfile from "@/pages/tech-member/MyProfile";
-import MyWork from "@/pages/tech-member/MyWork";
-import TechMemberMyAnalytics from "@/pages/tech-member/MyAnalytics";
-import RecentAds from "@/pages/tech-member/RecentAds";
-import MyLeads from "@/pages/sales-member/MyLeads";
-import SalesMemberDashboard from "@/pages/sales-member/Dashboard";
-import MyPerformance from "@/pages/sales-member/MyPerformance";
-import SalesMemberTraining from "@/pages/sales-member/Training";
-import SalesMemberProfile from "@/pages/sales-member/MyProfile";
-import SalesScripts from "@/pages/sales-member/SalesScripts";
-import MyReviews from "@/pages/sales-member/MyReviews";
-import SalesClientChats from "@/pages/sales-member/ClientChats";
-import SalesMyClients from "@/pages/sales-member/MyClients";
-import SalesMemberActivityHistory from "@/pages/sales-member/ActivityHistory";
-import SalesMemberSettlements from "@/pages/sales-member/Settlements";
-import SalesAdminDashboard from "@/pages/sales-admin/Dashboard";
-import SalesAdminMyTeam from "@/pages/sales-admin/MyTeam";
-import LeadsManagement from "@/pages/sales-admin/LeadsManagement";
-import SalesApprovals from "@/pages/sales-admin/SalesApprovals";
-import ClientLookup from "@/pages/sales-admin/ClientLookup";
-import Settlements from "@/pages/sales-admin/Settlements";
-import MemberSalesHistory from "@/pages/sales-admin/MemberSalesHistory";
-import MemberLeadsDetail from "@/pages/sales-admin/MemberLeadsDetail";
-import SalesTrainingModules from "@/pages/sales-admin/TrainingModules";
-import SalesAdminSessionHistory from "@/pages/sales-admin/SessionHistory";
-import SalesAdminSettings from "@/pages/sales-admin/Settings";
-import SalesAnalytics from "@/pages/sales-admin/Analytics";
-import ScheduleNumbers from "@/pages/sales-admin/ScheduleNumbers";
-import SalesAdminActivityHistory from "@/pages/sales-admin/ActivityHistory";
-import Leaderboard from "@/pages/shared/Leaderboard";
-import TechAdminDashboard from "@/pages/tech-admin/Dashboard";
-import TechAdminMyTeam from "@/pages/tech-admin/MyTeam";
-import DriveManagement from "@/pages/tech-admin/DriveManagement";
-import TechTrainingModules from "@/pages/tech-admin/TrainingModules";
-import TechAdminSessionHistory from "@/pages/tech-admin/SessionHistory";
-import TechActivityHistory from "@/pages/tech-admin/ActivityHistory";
-import TechAdminSettings from "@/pages/tech-admin/Settings";
-import TechAdminMemberHistory from "@/pages/tech-admin/MemberHistory";
-import TechAdminMemberAnalytics from "@/pages/tech-admin/MemberAnalytics";
-import WorkAssign from "@/pages/tech-admin/WorkAssign";
-import Orders from "@/pages/tech-admin/Orders";
-import Clients from "@/pages/shared/Clients";
-import FeedbackUpsell from "@/pages/shared/FeedbackUpsell";
-import MemberAssignments from "@/pages/tech-admin/MemberAssignments";
-import TeamLeaderWorkAssign from "@/pages/tech-team-leader/WorkAssign";
-import TeamLeaderMemberAssignments from "@/pages/tech-team-leader/MemberAssignments";
-import TeamAttendance from "@/pages/shared/TeamAttendance";
-import MemberProfileDetail from "@/pages/shared/MemberProfileDetail";
-import HrCenter from "@/pages/shared/HrCenter";
-import Tools from "@/pages/shared/Tools";
-import WorkReports from "@/pages/shared/WorkReports";
-import Payroll from "@/pages/shared/Payroll";
-import Profit from "@/pages/shared/Profit";
-import SalesPayroll from "@/pages/sales-admin/Payroll";
-import SalesMySalary from "@/pages/sales-member/MySalary";
-import CinematicAds from "@/pages/tech-admin/CinematicAds";
-import AccountsDashboard from "@/pages/accounts-admin/Dashboard";
-import RevenueSummary from "@/pages/accounts-admin/RevenueSummary";
-import DailyExpenses from "@/pages/accounts-admin/DailyExpenses";
-import SalaryManagement from "@/pages/accounts-admin/SalaryManagement";
-import PlaceholderPage from "@/pages/PlaceholderPage";
-import MySalaryPage from "@/pages/shared/MySalary";
-import MySalaryDashboard from "@/pages/tech-member/MySalaryDashboard";
-import NotFound from "@/pages/NotFound";
-import ClientChat, { ClientChatResume } from "@/pages/client/ClientChat";
-import VerifyEmployee from "@/pages/public/VerifyEmployee";
-import JoinOnboarding from "@/pages/onboarding/JoinOnboarding";
-import Chat from "@/pages/shared/Chat";
-import SocialMedia from "@/pages/shared/SocialMedia";
-import SmmCampaignPage from "@/pages/shared/SmmCampaignPage";
-import Meeting from "@/pages/shared/Meeting";
-import AdminChatMonitor from "@/pages/shared/AdminChatMonitor";
 import { Loader2 } from "lucide-react";
 import AppUpdateBanner from "@/components/layout/AppUpdateBanner";
+
+
+/**
+ * Every page is its own chunk, fetched when somebody actually goes there.
+ *
+ * ── Why this matters more here than on most apps ──────────────────────────────────
+ * Importing all sixty pages at the top of this file meant one bundle carrying the ad generator,
+ * its prompt library, the charting library, the document writers and the video-call stack — all of
+ * it downloaded and parsed before a sales member on a phone could see their leads, and none of it
+ * used on that screen. A member who never opens the AI platform was paying for it on every single
+ * load, on a mobile connection.
+ *
+ * `lazy` turns each one into a separate file. The first screen ships with what the first screen
+ * needs; the ad generator arrives when somebody opens the ad generator. `Suspense` below covers
+ * the moment in between, and the router keeps every path exactly as it was.
+ */
+const MainAdminDashboard = lazy(() => import("@/pages/main-admin/Dashboard"));
+const TeamManagement = lazy(() => import("@/pages/main-admin/TeamManagement"));
+const RevenueOverview = lazy(() => import("@/pages/main-admin/RevenueOverview"));
+const TechDepartment = lazy(() => import("@/pages/main-admin/TechDepartment"));
+const SalesDepartment = lazy(() => import("@/pages/main-admin/SalesDepartment"));
+const SessionHistory = lazy(() => import("@/pages/main-admin/SessionHistory"));
+const Accounts = lazy(() => import("@/pages/main-admin/Accounts"));
+const MainAdminSettings = lazy(() => import("@/pages/main-admin/Settings"));
+const TechMemberDashboard = lazy(() => import("@/pages/tech-member/Dashboard"));
+const CreateAd = lazy(() => import("@/pages/tech-member/CreateAd"));
+const TechMemberTraining = lazy(() => import("@/pages/tech-member/Training"));
+const TechMemberProfile = lazy(() => import("@/pages/tech-member/MyProfile"));
+const MyWork = lazy(() => import("@/pages/tech-member/MyWork"));
+const TechMemberMyAnalytics = lazy(() => import("@/pages/tech-member/MyAnalytics"));
+const RecentAds = lazy(() => import("@/pages/tech-member/RecentAds"));
+const MyLeads = lazy(() => import("@/pages/sales-member/MyLeads"));
+const SalesMemberDashboard = lazy(() => import("@/pages/sales-member/Dashboard"));
+const MyPerformance = lazy(() => import("@/pages/sales-member/MyPerformance"));
+const SalesMemberTraining = lazy(() => import("@/pages/sales-member/Training"));
+const SalesMemberProfile = lazy(() => import("@/pages/sales-member/MyProfile"));
+const SalesScripts = lazy(() => import("@/pages/sales-member/SalesScripts"));
+const MyReviews = lazy(() => import("@/pages/sales-member/MyReviews"));
+const SalesClientChats = lazy(() => import("@/pages/sales-member/ClientChats"));
+const SalesMyClients = lazy(() => import("@/pages/sales-member/MyClients"));
+const SalesMemberActivityHistory = lazy(() => import("@/pages/sales-member/ActivityHistory"));
+const SalesMemberSettlements = lazy(() => import("@/pages/sales-member/Settlements"));
+const SalesAdminDashboard = lazy(() => import("@/pages/sales-admin/Dashboard"));
+const SalesAdminMyTeam = lazy(() => import("@/pages/sales-admin/MyTeam"));
+const LeadsManagement = lazy(() => import("@/pages/sales-admin/LeadsManagement"));
+const SalesApprovals = lazy(() => import("@/pages/sales-admin/SalesApprovals"));
+const ClientLookup = lazy(() => import("@/pages/sales-admin/ClientLookup"));
+const Settlements = lazy(() => import("@/pages/sales-admin/Settlements"));
+const MemberSalesHistory = lazy(() => import("@/pages/sales-admin/MemberSalesHistory"));
+const MemberLeadsDetail = lazy(() => import("@/pages/sales-admin/MemberLeadsDetail"));
+const SalesTrainingModules = lazy(() => import("@/pages/sales-admin/TrainingModules"));
+const SalesAdminSessionHistory = lazy(() => import("@/pages/sales-admin/SessionHistory"));
+const SalesAdminSettings = lazy(() => import("@/pages/sales-admin/Settings"));
+const SalesAnalytics = lazy(() => import("@/pages/sales-admin/Analytics"));
+const ScheduleNumbers = lazy(() => import("@/pages/sales-admin/ScheduleNumbers"));
+const SalesAdminActivityHistory = lazy(() => import("@/pages/sales-admin/ActivityHistory"));
+const Leaderboard = lazy(() => import("@/pages/shared/Leaderboard"));
+const TechAdminDashboard = lazy(() => import("@/pages/tech-admin/Dashboard"));
+const TechAdminMyTeam = lazy(() => import("@/pages/tech-admin/MyTeam"));
+const DriveManagement = lazy(() => import("@/pages/tech-admin/DriveManagement"));
+const TechTrainingModules = lazy(() => import("@/pages/tech-admin/TrainingModules"));
+const TechAdminSessionHistory = lazy(() => import("@/pages/tech-admin/SessionHistory"));
+const TechActivityHistory = lazy(() => import("@/pages/tech-admin/ActivityHistory"));
+const TechAdminSettings = lazy(() => import("@/pages/tech-admin/Settings"));
+const TechAdminMemberHistory = lazy(() => import("@/pages/tech-admin/MemberHistory"));
+const TechAdminMemberAnalytics = lazy(() => import("@/pages/tech-admin/MemberAnalytics"));
+const WorkAssign = lazy(() => import("@/pages/tech-admin/WorkAssign"));
+const Orders = lazy(() => import("@/pages/tech-admin/Orders"));
+const Clients = lazy(() => import("@/pages/shared/Clients"));
+const FeedbackUpsell = lazy(() => import("@/pages/shared/FeedbackUpsell"));
+const MemberAssignments = lazy(() => import("@/pages/tech-admin/MemberAssignments"));
+const TeamLeaderWorkAssign = lazy(() => import("@/pages/tech-team-leader/WorkAssign"));
+const TeamLeaderMemberAssignments = lazy(() => import("@/pages/tech-team-leader/MemberAssignments"));
+const TeamAttendance = lazy(() => import("@/pages/shared/TeamAttendance"));
+const MemberProfileDetail = lazy(() => import("@/pages/shared/MemberProfileDetail"));
+const HrCenter = lazy(() => import("@/pages/shared/HrCenter"));
+const Tools = lazy(() => import("@/pages/shared/Tools"));
+const WorkReports = lazy(() => import("@/pages/shared/WorkReports"));
+const Payroll = lazy(() => import("@/pages/shared/Payroll"));
+const Profit = lazy(() => import("@/pages/shared/Profit"));
+const SalesPayroll = lazy(() => import("@/pages/sales-admin/Payroll"));
+const SalesMySalary = lazy(() => import("@/pages/sales-member/MySalary"));
+const CinematicAds = lazy(() => import("@/pages/tech-admin/CinematicAds"));
+const AccountsDashboard = lazy(() => import("@/pages/accounts-admin/Dashboard"));
+const RevenueSummary = lazy(() => import("@/pages/accounts-admin/RevenueSummary"));
+const DailyExpenses = lazy(() => import("@/pages/accounts-admin/DailyExpenses"));
+const SalaryManagement = lazy(() => import("@/pages/accounts-admin/SalaryManagement"));
+const PlaceholderPage = lazy(() => import("@/pages/PlaceholderPage"));
+const MySalaryPage = lazy(() => import("@/pages/shared/MySalary"));
+const MySalaryDashboard = lazy(() => import("@/pages/tech-member/MySalaryDashboard"));
+const NotFound = lazy(() => import("@/pages/NotFound"));
+const VerifyEmployee = lazy(() => import("@/pages/public/VerifyEmployee"));
+const JoinOnboarding = lazy(() => import("@/pages/onboarding/JoinOnboarding"));
+const Chat = lazy(() => import("@/pages/shared/Chat"));
+const SocialMedia = lazy(() => import("@/pages/shared/SocialMedia"));
+const SmmCampaignPage = lazy(() => import("@/pages/shared/SmmCampaignPage"));
+const Meeting = lazy(() => import("@/pages/shared/Meeting"));
+const AdminChatMonitor = lazy(() => import("@/pages/shared/AdminChatMonitor"));
+const ClientChat = lazy(() => import("@/pages/client/ClientChat"));
+const ClientChatResume = lazy(() => import("@/pages/client/ClientChat").then((m) => ({ default: m.ClientChatResume })));
 
 const queryClient = new QueryClient();
 
@@ -107,6 +125,15 @@ const queryClient = new QueryClient();
  * open, so answering a call signed them out. Sending everyone to "/" and forwarding both the route
  * and the parameters is the version that cannot be wrong about who is reading it.
  */
+/** Shown while a route's chunk is downloading. Deliberately identical to AppLayout's own loader. */
+function RouteFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <Loader2 className="animate-spin text-primary" size={32} />
+    </div>
+  );
+}
+
 function RootRedirect() {
   const { loading } = useAuth();
   const user = useAuthStore((s) => s.user);
@@ -134,6 +161,9 @@ const App = () => (
         {/* Inside the router so it can tell the login screen (safe to update instantly) from a
             page where someone may have unsaved work. */}
         <AppUpdateBanner />
+        {/* The half-second while a page's own chunk arrives. Same mark the shell uses, so a
+            navigation never flashes something unfamiliar. */}
+        <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/" element={<RootRedirect />} />
           <Route path="/login" element={<Login />} />
@@ -326,6 +356,7 @@ const App = () => (
 
           <Route path="*" element={<NotFound />} />
         </Routes>
+        </Suspense>
       </BrowserRouter>
     </TooltipProvider>
     </ThemeProvider>
