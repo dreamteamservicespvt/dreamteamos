@@ -70,6 +70,12 @@ export default function AppLayout({ allowedRoles }: AppLayoutProps) {
   const isMobile = useIsMobile();
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  // Close mobile sidebar whenever the route changes — the most reliable way to ensure
+  // the drawer never stays open after a navigation, even if a touch/click handler misfires.
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location.pathname]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
