@@ -36,6 +36,21 @@ interface AppLayoutProps {
   allowedRoles?: UserRole[];
 }
 
+/**
+ * The moment a page's chunk is in flight.
+ *
+ * Deliberately understated: it occupies the content area only, and it is centred in roughly where
+ * a page's first content lands, so a cached chunk (the common case) reads as a beat rather than a
+ * flash. The shell around it never moves.
+ */
+function PageFallback() {
+  return (
+    <div className="flex min-h-[40vh] items-center justify-center" data-test="page-fallback">
+      <Loader2 size={26} className="animate-spin text-primary/70" />
+    </div>
+  );
+}
+
 export default function AppLayout({ allowedRoles }: AppLayoutProps) {
   const { loading } = useAuth();
   const user = useAuthStore((s) => s.user);
@@ -109,7 +124,23 @@ export default function AppLayout({ allowedRoles }: AppLayoutProps) {
           {/* Above the page, not inside it: a birthday belongs to the whole company, so it shows
               wherever someone happens to be working. External creators are not colleagues. */}
           {!user.externalCreator && <Suspense fallback={null}><BirthdayGreeting /></Suspense>}
-          <Outlet />
+          {/*
+            The page's own chunk loads HERE, not around the whole app.
+
+            ── Why the boundary sits inside the shell ──────────────────────────────────────────
+            It used to sit around <Routes> in App.tsx, which meant a suspending page replaced the
+            ENTIRE tree — sidebar, topbar and all — with a full-screen spinner. Three things went
+            wrong at once: the screen flashed on every navigation; the mobile drawer was torn out
+            mid-animation instead of sliding shut; and AppLayout itself unmounted, taking the
+            session-long "my leads" / "my orders" listeners with it and re-subscribing on every
+            single page change — the exact free-tier read cost those listeners were moved here to
+            avoid (see useMyLeads.ts).
+
+            Inside the shell, only the content area waits. The chrome never blinks.
+          */}
+          <Suspense fallback={<PageFallback />}>
+            <Outlet />
+          </Suspense>
         </main>
         <Suspense fallback={null}>
         <VideoCallManager />

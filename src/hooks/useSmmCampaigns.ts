@@ -29,7 +29,19 @@ export function useSmmCampaigns(user: SmmViewer | null | undefined) {
   useEffect(() => {
     if (!uid) { setCampaigns([]); setLoading(false); return; }
     setLoading(true);
-    const handle = (list: SmmCampaign[]) => { setCampaigns(list); setLoading(false); };
+    const handle = (list: SmmCampaign[]) => {
+      /*
+        A month whose ORDER was removed is gone, not filed under "Finished".
+
+        Filtered here rather than in the query because a member's read is
+        `watchers array-contains uid`, and Firestore will not take an inequality on another field
+        alongside that without a composite index this does not need — a member is on a handful of
+        months, so the browser can do it for nothing. The overseer's read is already scoped to
+        active, so this only ever removes one from the member's own list.
+      */
+      setCampaigns(list.filter((c) => c.status !== "removed"));
+      setLoading(false);
+    };
     return overseer ? watchActiveCampaigns(handle) : watchMyCampaigns(uid, handle);
   }, [uid, overseer]);
 
@@ -54,7 +66,12 @@ export function useSmmCampaign(id: string | undefined) {
   useEffect(() => {
     if (!id) { setCampaign(null); setLoading(false); return; }
     setLoading(true);
-    return watchCampaign(id, (c) => { setCampaign(c); setLoading(false); });
+    // A removed month reads as "not available to you" — which is what it is. Somebody following an
+    // old notification link to one should be told it is gone, not shown a plan they cannot act on.
+    return watchCampaign(id, (c) => {
+      setCampaign(c && c.status === "removed" ? null : c);
+      setLoading(false);
+    });
   }, [id]);
 
   return { campaign, loading };

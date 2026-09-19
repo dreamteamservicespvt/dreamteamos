@@ -16,7 +16,10 @@ import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import { logTechActivity, type ActivityActor } from "@/services/activityLog";
 import { ensureSaleOrderChat, deleteOrderChat } from "@/services/orderChat";
-import { ensureCampaignForOrder, campaignInputFromSale } from "@/services/smm";
+import {
+  ensureCampaignForOrder, campaignInputFromSale, setCampaignRemovedForOrders,
+  deleteCampaignsForOrders,
+} from "@/services/smm";
 import { normalizePhone, phoneLockId } from "@/utils/phone";
 import { isAdCategory, productionCategory, categoryLabel as serviceCategoryLabel } from "@/utils/serviceCatalog";
 import { releasedToTech } from "@/utils/saleDiscount";
@@ -387,6 +390,7 @@ export async function cancelOrderForSale(params: {
     // Nothing has started yet: the order can simply go.
     if (order.status === "unassigned") {
       await deleteDoc(ref);
+      await deleteCampaignsForOrders([id]);
       return;
     }
 
@@ -397,6 +401,10 @@ export async function cancelOrderForSale(params: {
       ...(deletedByName ? { saleDeleted: true, saleDeletedByName: deletedByName, saleDeletedAt: Timestamp.now() } : {}),
       updatedAt: serverTimestamp(),
     });
+
+    // A cancelled order is a dead job, so its month comes off everybody's board too. Reversible:
+    // re-approving the sale runs `upsertOrderForSale`, which revives both.
+    await setCampaignRemovedForOrders([id], true);
 
     if (order.workAssignmentId && deletedByName) {
       try {
@@ -664,6 +672,14 @@ export async function deleteOrders(orders: Order[], actor?: ActivityActor | null
     if (n >= BATCH_LIMIT) { await batch.commit(); batch = writeBatch(db); n = 0; }
   }
   if (n > 0) await batch.commit();
+
+  /*
+    A social-media month belongs to its order. Removing the order without it left the assigned
+    member still looking at the client on their Social Media list, still being reminded about its
+    posts, and still able to record work against a job that no longer exists.
+  */
+  await setCampaignRemovedForOrders(orders.map((o) => o.id), true);
+
   await logTechActivity({
     actor, action: "deleted_orders",
     details: { count: total, orders: summariseOrders(orders) },
@@ -714,6 +730,11 @@ export async function restoreOrders(orders: Order[], actor?: ActivityActor | nul
     if (n >= BATCH_LIMIT) { await batch.commit(); batch = writeBatch(db); n = 0; }
   }
   if (n > 0) await batch.commit();
+
+  // The month comes back with the order. Only one this took away, though — a month that had
+  // genuinely finished or renewed keeps the status it earned.
+  await setCampaignRemovedForOrders(orders.map((o) => o.id), false);
+
   await logTechActivity({
     actor, action: "restored_orders",
     details: { count: total, orders: summariseOrders(orders) },
@@ -762,6 +783,10 @@ export async function purgeOrders(orders: Order[], actor?: ActivityActor | null)
    * behind, and the chat is part of "nothing".
    */
   await Promise.all(orders.map((o) => deleteOrderChat(o.id)));
+
+  // And the month's plan, for the same reason: this deletion leaves nothing behind, and a campaign
+  // keyed on an order id that no longer resolves is exactly the kind of nothing it must not leave.
+  await deleteCampaignsForOrders(orders.map((o) => o.id));
 
   return total;
 }
