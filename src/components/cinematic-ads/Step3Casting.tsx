@@ -1,8 +1,9 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { useCinematicAdsStore } from "@/store/cinematicAdsStore";
 import { extractCharacters } from "@/services/cinematicAdsService";
-import type { CastCharacter, CharacterImage } from "@/types/cinematicAds";
+import type { CastCharacter } from "@/types/cinematicAds";
+import AssetUploadTile from "./AssetUploadTile";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -25,11 +26,13 @@ import {
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 
-export default function Step2Casting() {
+export default function Step3Casting() {
   const {
     project,
     setCharacters,
     updateCharacter,
+    setCharacterImage,
+    toggleCharacterImageApproval,
     confirmCast,
     setProcessing,
     processing,
@@ -39,7 +42,6 @@ export default function Step2Casting() {
   const [expandedChar, setExpandedChar] = useState<string | null>(null);
   const [editingPrompt, setEditingPrompt] = useState<string | null>(null);
   const [promptEdits, setPromptEdits] = useState<Record<string, string>>({});
-  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
 
   const selectedStory = project?.stories.find((s) => s.id === project?.selectedStoryId);
@@ -48,7 +50,7 @@ export default function Step2Casting() {
     if (!project?.clientBrief || !selectedStory) return;
     setProcessing(true, "Analyzing story and identifying characters…");
     try {
-      const chars = await extractCharacters(selectedStory, project?.clientBrief);
+      const chars = await extractCharacters(selectedStory, project.clientBrief, project.adFormat);
       setCharacters(chars);
       toast.success(`${chars.length} characters identified!`);
     } catch (err: any) {
@@ -59,36 +61,17 @@ export default function Step2Casting() {
     }
   }, [project, selectedStory, setCharacters, setProcessing]);
 
-  const handleImageUpload = useCallback(
-    (charId: string, imageId: string, file: File) => {
-      const char = project?.characters.find((c) => c.id === charId);
-      if (!char) return;
-      const url = URL.createObjectURL(file);
-      const updatedImages = char.images.map((img) =>
-        img.id === imageId
-          ? {
-              ...img,
-              file,
-              url,
-              versions: [...img.versions, { file, url, timestamp: Date.now() }],
-            }
-          : img,
-      );
-      updateCharacter(charId, { images: updatedImages });
+  /**
+   * Cast references are hosted, not held in memory.
+   *
+   * These used to be `URL.createObjectURL` blobs, which die with the tab — so the faces
+   * the whole ad depends on vanished on a refresh, along with their approvals.
+   */
+  const handleImageUploaded = useCallback(
+    (charId: string, imageId: string, url: string) => {
+      setCharacterImage(charId, imageId, url);
     },
-    [project, updateCharacter],
-  );
-
-  const handleApproveImage = useCallback(
-    (charId: string, imageId: string, approved: boolean) => {
-      const char = project?.characters.find((c) => c.id === charId);
-      if (!char) return;
-      const updatedImages = char.images.map((img) =>
-        img.id === imageId ? { ...img, approved } : img,
-      );
-      updateCharacter(charId, { images: updatedImages });
-    },
-    [project, updateCharacter],
+    [setCharacterImage],
   );
 
   const handleSavePrompt = useCallback(
@@ -114,7 +97,7 @@ export default function Step2Casting() {
       return;
     }
     confirmCast();
-    toast.success("Cast approved! Proceeding to Frame Generation.");
+    toast.success("Cast approved — on to the clips.");
   }, [allImagesApproved, confirmCast]);
 
   /**
@@ -283,13 +266,14 @@ export default function Step2Casting() {
                         </p>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           {char.images.map((img) => (
-                            <ImageSlot
+                            <AssetUploadTile
                               key={img.id}
-                              image={img}
-                              charId={char.id}
-                              onUpload={handleImageUpload}
-                              onApprove={handleApproveImage}
-                              fileInputRefs={fileInputRefs}
+                              label={img.label}
+                              url={img.url}
+                              approved={img.approved}
+                              onUploaded={(url) => handleImageUploaded(char.id, img.id, url)}
+                              onToggleApproved={() => toggleCharacterImageApproval(char.id, img.id)}
+                              onClear={() => handleImageUploaded(char.id, img.id, "")}
                             />
                           ))}
                         </div>
@@ -307,82 +291,8 @@ export default function Step2Casting() {
       {project?.characters.length > 0 && !project?.castConfirmed && (
         <Button className="w-full gap-2" size="lg" onClick={handleConfirm}>
           <ChevronRight className="w-5 h-5" />
-          Approve All Cast & Proceed to Frame Generation
+          Approve cast and continue to Clips
         </Button>
-      )}
-    </div>
-  );
-}
-
-function ImageSlot({
-  image,
-  charId,
-  onUpload,
-  onApprove,
-  fileInputRefs,
-}: {
-  image: CharacterImage;
-  charId: string;
-  onUpload: (charId: string, imageId: string, file: File) => void;
-  onApprove: (charId: string, imageId: string, approved: boolean) => void;
-  fileInputRefs: React.MutableRefObject<Record<string, HTMLInputElement | null>>;
-}) {
-  const inputKey = `${charId}-${image.id}`;
-
-  return (
-    <div className="space-y-1.5">
-      <p className="text-xs font-medium">{image.label}</p>
-      <div
-        className={cn(
-          "border-2 border-dashed rounded-lg aspect-square flex flex-col items-center justify-center cursor-pointer transition-colors relative overflow-hidden",
-          image.approved
-            ? "border-green-500 bg-green-500/5"
-            : image.url
-              ? "border-muted-foreground/30"
-              : "border-muted-foreground/20 hover:border-primary/50",
-        )}
-        onClick={() => fileInputRefs.current[inputKey]?.click()}
-      >
-        {image.url ? (
-          <img src={image.url} alt={image.label} className="w-full h-full object-cover" />
-        ) : (
-          <>
-            <Upload className="w-6 h-6 text-muted-foreground mb-1" />
-            <span className="text-[10px] text-muted-foreground">Upload</span>
-          </>
-        )}
-        <input
-          ref={(el) => { fileInputRefs.current[inputKey] = el; }}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) onUpload(charId, image.id, file);
-            e.target.value = "";
-          }}
-        />
-      </div>
-      {image.url && (
-        <div className="flex gap-1">
-          <Button
-            variant={image.approved ? "default" : "outline"}
-            size="sm"
-            className="flex-1 h-7 text-xs gap-1"
-            onClick={() => onApprove(charId, image.id, !image.approved)}
-          >
-            {image.approved ? <Check className="w-3 h-3" /> : null}
-            {image.approved ? "Approved" : "Approve"}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => fileInputRefs.current[inputKey]?.click()}
-          >
-            <RefreshCw className="w-3 h-3" />
-          </Button>
-        </div>
       )}
     </div>
   );

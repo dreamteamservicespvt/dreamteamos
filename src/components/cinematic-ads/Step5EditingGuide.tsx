@@ -53,7 +53,7 @@ export default function Step5EditingGuide() {
     if (!project?.clientBrief || !selectedStory) return;
     setProcessing(true, "Generating comprehensive editing guide…");
     try {
-      const generated = await generateEditingGuide(selectedStory, project?.animationPrompts, project?.clientBrief);
+      const generated = await generateEditingGuide(selectedStory, project.clips, project.clientBrief);
       setEditingGuide(generated);
       toast.success("Editing guide generated!");
     } catch (err: any) {

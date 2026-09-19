@@ -107,25 +107,25 @@ export default function ProjectAssetsPanel() {
               )}
             </AssetSection>
 
-            {/* Step 3: Scene Frames */}
-            <AssetSection step={3} title="Scene Frames">
-              {project.sceneFrames.length > 0 ? (
+            {/* Step 4: Clip Frames */}
+            <AssetSection step={4} title="Clip Frames">
+              {project.clips.some((c) => c.imagePrompts.some((ip) => ip.imageUrl)) ? (
                 <div className="grid grid-cols-3 gap-2">
-                  {project.sceneFrames.flatMap((frame) =>
-                    frame.images
-                      .filter((img) => img.url)
-                      .map((img) => (
-                        <div key={img.id} className="relative">
+                  {project.clips.flatMap((clip) =>
+                    clip.imagePrompts
+                      .filter((ip) => ip.imageUrl)
+                      .map((ip) => (
+                        <div key={ip.id} className="relative min-w-0">
                           <img
-                            src={img.url!}
-                            alt={img.label}
+                            src={ip.imageUrl!}
+                            alt={ip.label}
                             className={cn(
                               "w-full aspect-video rounded border object-cover",
-                              img.approved && "ring-1 ring-green-500",
+                              ip.approved && "ring-1 ring-green-500",
                             )}
                           />
                           <span className="absolute bottom-0 left-0 right-0 bg-black/70 text-[7px] text-white text-center px-0.5 truncate rounded-b">
-                            S{frame.sceneNumber} - {img.label}
+                            C{clip.clipNumber} - {ip.label}
                           </span>
                         </div>
                       )),
@@ -138,21 +138,21 @@ export default function ProjectAssetsPanel() {
 
             {/* Step 4: Animated Clips */}
             <AssetSection step={4} title="Animated Clips">
-              {project.animationPrompts.some((a) => a.clipUrl) ? (
+              {project.clips.some((c) => c.clipUrl) ? (
                 <div className="space-y-2">
-                  {project.animationPrompts
-                    .filter((a) => a.clipUrl)
-                    .map((a) => (
-                      <div key={a.sceneNumber} className="space-y-1">
-                        <div className="flex items-center gap-2 text-xs">
-                          <Video className="w-3 h-3 text-muted-foreground" />
-                          <span>Scene {a.sceneNumber}</span>
-                          {a.approved && (
-                            <Badge className="text-[8px] bg-green-600">Approved</Badge>
+                  {project.clips
+                    .filter((c) => c.clipUrl)
+                    .map((c) => (
+                      <div key={c.id} className="space-y-1 min-w-0">
+                        <div className="flex items-center gap-2 text-xs min-w-0">
+                          <Video className="w-3 h-3 text-muted-foreground shrink-0" />
+                          <span className="truncate">Clip {c.clipNumber} — {c.title}</span>
+                          {c.approved && (
+                            <Badge className="text-[8px] bg-green-600 shrink-0">Approved</Badge>
                           )}
                         </div>
                         <video
-                          src={a.clipUrl!}
+                          src={c.clipUrl!}
                           className="w-full aspect-video rounded border bg-black"
                           muted
                         />

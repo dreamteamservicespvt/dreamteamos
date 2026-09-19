@@ -101,92 +101,91 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
     return (
       <AnimatePresence>
         {mobileOpen && (
-          <>
-            <motion.div
-              key="sidebar-backdrop"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={onMobileClose}
-              onTouchEnd={(e) => { e.preventDefault(); onMobileClose(); }}
-              /* z-[60]/z-[61] rather than z-40/z-50: the page's own dropdowns are absolute at
-                  z-50, so at the old level the two tied and DOM order decided — page content
-                  renders after the drawer, so an open day-picker painted straight through the
-                  navigation covering it. Anything that BLOCKS (the check-in gate, the agreement
-                  gate) covers the menu button itself, so the drawer can never open over one. */
-              className="fixed inset-0 bg-black/50 z-[60]"
-            />
-            <motion.aside
-              key="sidebar-drawer"
-              initial={{ x: -280 }}
-              animate={{ x: 0 }}
-              exit={{ x: -280 }}
-              transition={{ duration: 0.2, ease: "easeInOut" }}
-              className="fixed left-0 top-0 h-[100dvh] w-[280px] bg-card border-r border-border flex flex-col z-[61] overflow-hidden"
-              style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="h-14 flex items-center px-4 border-b border-border justify-between shrink-0">
-                <Link to={homeRoute} onClick={handleNavClick} title="Go to dashboard" data-test="sidebar-logo">
-                  <BrandLogo className="h-9 w-auto" />
-                </Link>
-                <button onClick={onMobileClose} className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
-                  <X size={18} />
+          <motion.div
+            key="sidebar-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2, ease: "easeInOut" }}
+            onClick={onMobileClose}
+            /* z-[60]/z-[61] rather than z-40/z-50: the page's own dropdowns are absolute at
+                z-50, so at the old level the two tied and DOM order decided — page content
+                renders after the drawer, so an open day-picker painted straight through the
+                navigation covering it. Anything that BLOCKS (the check-in gate, the agreement
+                gate) covers the menu button itself, so the drawer can never open over one. */
+            className="fixed inset-0 bg-black/50 z-[60]"
+          />
+        )}
+        {mobileOpen && (
+          <motion.aside
+            key="sidebar-drawer"
+            initial={{ x: -280 }}
+            animate={{ x: 0 }}
+            exit={{ x: -280 }}
+            transition={{ duration: 0.2, ease: "easeInOut" }}
+            className="fixed left-0 top-0 h-[100dvh] w-[280px] bg-card border-r border-border flex flex-col z-[61] overflow-hidden"
+            style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+          >
+            <div className="h-14 flex items-center px-4 border-b border-border justify-between shrink-0">
+              <Link to={homeRoute} onClick={handleNavClick} title="Go to dashboard" data-test="sidebar-logo">
+                <BrandLogo className="h-9 w-auto" />
+              </Link>
+              <button onClick={onMobileClose} className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+            <nav className="flex-1 py-3 px-2 space-y-1 overflow-y-auto min-h-0">
+              {navItems.map((item) => {
+                if (item.children) {
+                  const isOpen = openGroups[item.title] ?? isChildActive(item);
+                  return (
+                    <div key={item.title}>
+                      <button onClick={() => toggleGroup(item.title)}
+                        className={`w-full flex items-center gap-3 px-3 h-10 rounded-lg transition-colors ${isChildActive(item) ? "text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"}`}>
+                        <item.icon size={18} className="shrink-0" />
+                        <span className="text-sm font-medium truncate flex-1 text-left">{item.title}</span>
+                        <ChevronDown size={14} className={`shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                      </button>
+                      <AnimatePresence initial={false}>
+                        {isOpen && (
+                          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden pl-3 space-y-1">
+                            {item.children.map((child) => {
+                              const active = location.pathname === child.path;
+                              return (
+                                <Link key={child.path} to={child.path!} onClick={handleNavClick}
+                                  className={`flex items-center gap-3 px-3 h-9 rounded-lg transition-all duration-150 relative ${active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"}`}>
+                                  <child.icon size={16} className="shrink-0" />
+                                  <span className="text-sm font-medium truncate">{child.title}</span>
+                                </Link>
+                              );
+                            })}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  );
+                }
+                const active = location.pathname === item.path;
+                return (
+                  <Link key={item.path} to={item.path!} onClick={handleNavClick}
+                    className={`flex items-center gap-3 px-3 h-10 rounded-lg transition-all duration-150 relative ${active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"}`}>
+                    {active && <motion.div layoutId="sidebar-active-mobile" className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-primary rounded-r-full" transition={{ duration: 0.2 }} />}
+                    <item.icon size={18} className="shrink-0" />
+                    <span className="text-sm font-medium truncate">{item.title}</span>
+                  </Link>
+                );
+              })}
+            </nav>
+            <div className="border-t border-border p-3 shrink-0 space-y-2">
+              <InstallAppButton />
+              <div className="flex items-center gap-3">
+                <UserBlock user={user} onNavigate={handleNavClick} />
+                <button onClick={handleLogout} className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors" title="Logout">
+                  <LogOut size={16} />
                 </button>
               </div>
-              <nav className="flex-1 py-3 px-2 space-y-1 overflow-y-auto min-h-0">
-                {navItems.map((item) => {
-                  if (item.children) {
-                    const isOpen = openGroups[item.title] ?? isChildActive(item);
-                    return (
-                      <div key={item.title}>
-                        <button onClick={() => toggleGroup(item.title)}
-                          className={`w-full flex items-center gap-3 px-3 h-10 rounded-lg transition-colors ${isChildActive(item) ? "text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"}`}>
-                          <item.icon size={18} className="shrink-0" />
-                          <span className="text-sm font-medium truncate flex-1 text-left">{item.title}</span>
-                          <ChevronDown size={14} className={`shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
-                        </button>
-                        <AnimatePresence initial={false}>
-                          {isOpen && (
-                            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden pl-3 space-y-1">
-                              {item.children.map((child) => {
-                                const active = location.pathname === child.path;
-                                return (
-                                  <Link key={child.path} to={child.path!} onClick={handleNavClick}
-                                    className={`flex items-center gap-3 px-3 h-9 rounded-lg transition-all duration-150 relative ${active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"}`}>
-                                    <child.icon size={16} className="shrink-0" />
-                                    <span className="text-sm font-medium truncate">{child.title}</span>
-                                  </Link>
-                                );
-                              })}
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </div>
-                    );
-                  }
-                  const active = location.pathname === item.path;
-                  return (
-                    <Link key={item.path} to={item.path!} onClick={handleNavClick}
-                      className={`flex items-center gap-3 px-3 h-10 rounded-lg transition-all duration-150 relative ${active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"}`}>
-                      {active && <motion.div layoutId="sidebar-active-mobile" className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-primary rounded-r-full" transition={{ duration: 0.2 }} />}
-                      <item.icon size={18} className="shrink-0" />
-                      <span className="text-sm font-medium truncate">{item.title}</span>
-                    </Link>
-                  );
-                })}
-              </nav>
-              <div className="border-t border-border p-3 shrink-0 space-y-2">
-                <InstallAppButton />
-                <div className="flex items-center gap-3">
-                  <UserBlock user={user} onNavigate={handleNavClick} />
-                  <button onClick={handleLogout} className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors" title="Logout">
-                    <LogOut size={16} />
-                  </button>
-                </div>
-              </div>
-            </motion.aside>
-          </>
+            </div>
+          </motion.aside>
         )}
       </AnimatePresence>
     );

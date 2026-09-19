@@ -79,6 +79,16 @@ service cloud.firestore {
     // Hiring invites are reached only through /api/onboarding, which checks the candidate's code.
     match /onboarding_invites/{id} { allow read, write: if isAdmin(); }
 
+    // ── Cinematic ad projects ──────────────────────────────────────────────────────────────────
+    // A project holds the client's brief, the story and every generated prompt. Staff only, and
+    // a member reaches only their own projects; managers can open any of them to pick up work.
+    match /cinematic_projects/{projectId} {
+      allow read:   if isStaff() && (resource.data.createdBy == request.auth.uid || isManager());
+      allow create: if isStaff() && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isStaff() && (resource.data.createdBy == request.auth.uid || isManager());
+      allow delete: if isStaff() && (resource.data.createdBy == request.auth.uid || isAdmin());
+    }
+
     // ── The client order chat ──────────────────────────────────────────────────────────────────
     match /order_chats/{chatId} {
       function isGuestOfThisChat() {

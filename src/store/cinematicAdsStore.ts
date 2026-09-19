@@ -1,27 +1,37 @@
 import { create } from "zustand";
 import type {
-  PipelineStepNumber,
-  StepCompletionStatus,
-  UploadedFile,
-  TargetPlatform,
-  ClientBrief,
-  Story,
+  AdFormatSelection,
   CastCharacter,
-  SceneFrame,
-  AnimationPrompt,
-  EditingGuide,
-  ReviewFeedback,
-  Deliverable,
   CinematicAdsProject,
+  CinematicProjectSummary,
+  Clip,
+  ClipType,
+  ClientBrief,
+  Deliverable,
+  EditingGuide,
+  PipelineStepNumber,
+  ReviewFeedback,
+  Story,
+  StoryboardBoard,
+  TargetPlatform,
+  UploadedFile,
 } from "@/types/cinematicAds";
+import { effectiveAdFormatPreset, emptyAdFormatSelection } from "@/types/cinematicAds";
+import { clampPanelCount } from "@/utils/cinematicAds";
+import { deleteProject, listProjects, loadProject, saveProject } from "@/services/cinematicProjects";
 
-function createEmptyProject(userId?: string): CinematicAdsProject {
+function createEmptyProject(userId?: string, name?: string): CinematicAdsProject {
   return {
+    name: name || "Untitled project",
     createdBy: userId || "",
     createdAt: Date.now(),
     updatedAt: Date.now(),
     currentStep: 0,
     stepsCompleted: { 0: false, 1: false, 2: false, 3: false, 4: false, 5: false, 6: false },
+    adFormat: emptyAdFormatSelection(),
+    businessInformation: "",
+    clientRequirement: "",
+    ourNote: "",
     uploadedFiles: [],
     selectedPlatforms: [],
     selectedDuration: 30,
@@ -34,18 +44,18 @@ function createEmptyProject(userId?: string): CinematicAdsProject {
     storyVersionHistory: [],
     selectedStoryId: null,
     storyConfirmed: false,
+    storyboard: null,
+    storyboardConfirmed: false,
     characters: [],
     castConfirmed: false,
-    sceneFrames: [],
-    framesConfirmed: false,
-    animationPrompts: [],
-    animationConfirmed: false,
+    clips: [],
+    clipsConfirmed: false,
     editingGuide: null,
     editingGuideConfirmed: false,
     feedbackRounds: [],
     deliverables: [
       { id: "d-1", label: "Final ad in all required platform formats", ready: false },
-      { id: "d-2", label: "Thumbnail image (from best frame)", ready: false },
+      { id: "d-2", label: "Thumbnail image (from the best frame)", ready: false },
       { id: "d-3", label: "Project assets package (all frames, cast images, story doc)", ready: false },
       { id: "d-4", label: "Social media caption suggestions", ready: false },
     ],
@@ -53,22 +63,54 @@ function createEmptyProject(userId?: string): CinematicAdsProject {
   };
 }
 
+/**
+ * The step after the storyboard gate.
+ *
+ * A no-people format has nothing to cast, and parking the operator on an empty Casting
+ * screen reads as a broken pipeline, so that step is skipped outright.
+ */
+export function stepAfterStoryboard(project: CinematicAdsProject): PipelineStepNumber {
+  return effectiveAdFormatPreset(project.adFormat).castingRequirement === "none" ? 4 : 3;
+}
+
+export function castingIsSkipped(project: CinematicAdsProject | null): boolean {
+  if (!project) return false;
+  return effectiveAdFormatPreset(project.adFormat).castingRequirement === "none";
+}
+
 interface CinematicAdsState {
   project: CinematicAdsProject | null;
+  projects: CinematicProjectSummary[];
+  projectsLoading: boolean;
   assetsOpen: boolean;
   processing: boolean;
   processingMessage: string;
+  saving: boolean;
+  saveError: string | null;
 
-  // Actions
-  initProject: (userId?: string) => void;
+  // Project lifecycle
+  initProject: (userId?: string, name?: string) => void;
+  newProject: (userId: string, name: string) => Promise<void>;
+  openProject: (id: string) => Promise<void>;
+  closeProject: () => void;
+  refreshProjects: (userId: string) => Promise<void>;
+  removeProject: (id: string) => Promise<void>;
+  renameProject: (name: string) => void;
+  saveNow: () => Promise<void>;
+
   setAssetsOpen: (open: boolean) => void;
   setProcessing: (processing: boolean, message?: string) => void;
   goToStep: (step: PipelineStepNumber) => void;
   confirmStep: (step: PipelineStepNumber) => void;
 
   // Step 0
+  setAdFormat: (selection: AdFormatSelection) => void;
+  setBusinessInformation: (text: string) => void;
+  setClientRequirement: (text: string) => void;
+  setOurNote: (text: string) => void;
   addFiles: (files: UploadedFile[]) => void;
   removeFile: (fileId: string) => void;
+  setFileUrl: (fileId: string, url: string) => void;
   setPlatforms: (platforms: TargetPlatform[]) => void;
   setDuration: (duration: number | "custom") => void;
   setCustomDuration: (duration: number) => void;
@@ -86,357 +128,380 @@ interface CinematicAdsState {
   pushStoryVersionHistory: (stories: Story[]) => void;
 
   // Step 2
-  setCharacters: (characters: CastCharacter[]) => void;
-  updateCharacter: (characterId: string, character: Partial<CastCharacter>) => void;
-  confirmCast: () => void;
+  setStoryboardBoards: (boards: StoryboardBoard[]) => void;
+  setBoardImage: (boardId: string, url: string) => void;
+  setStoryboardChangeNote: (note: string) => void;
+  approveStoryboard: () => void;
+  sendStoryboardBack: () => void;
 
   // Step 3
-  setSceneFrames: (frames: SceneFrame[]) => void;
-  updateSceneFrame: (sceneNumber: number, frame: Partial<SceneFrame>) => void;
-  confirmFrames: () => void;
+  setCharacters: (characters: CastCharacter[]) => void;
+  updateCharacter: (characterId: string, character: Partial<CastCharacter>) => void;
+  setCharacterImage: (characterId: string, imageId: string, url: string) => void;
+  toggleCharacterImageApproval: (characterId: string, imageId: string) => void;
+  confirmCast: () => void;
 
   // Step 4
-  setAnimationPrompts: (prompts: AnimationPrompt[]) => void;
-  updateAnimationPrompt: (sceneNumber: number, prompt: Partial<AnimationPrompt>) => void;
-  confirmAnimation: () => void;
+  setClips: (clips: Clip[]) => void;
+  updateClip: (clipId: string, patch: Partial<Clip>) => void;
+  setClipType: (clipId: string, clipType: ClipType, panelCount?: number) => void;
+  setClipImage: (clipId: string, imagePromptId: string, url: string) => void;
+  toggleClipImageApproval: (clipId: string, imagePromptId: string) => void;
+  setClipVideo: (clipId: string, url: string) => void;
+  toggleClipQc: (clipId: string, item: string) => void;
+  confirmClips: () => void;
 
   // Step 5
   setEditingGuide: (guide: EditingGuide) => void;
   confirmEditingGuide: () => void;
 
   // Step 6
-  setFinalVideo: (url: string, file?: File) => void;
+  setFinalVideo: (url: string) => void;
   addFeedbackRound: (feedback: ReviewFeedback) => void;
   toggleDeliverable: (id: string) => void;
+  setDeliverableUrl: (id: string, url: string) => void;
   markDelivered: () => void;
 
   resetProject: () => void;
 }
 
-export const useCinematicAdsStore = create<CinematicAdsState>((set, get) => ({
-  project: null,
-  assetsOpen: false,
-  processing: false,
-  processingMessage: "",
+/**
+ * Autosave.
+ *
+ * Every mutation goes through `patch`, which schedules one write a couple of seconds
+ * later. Typing in a textarea fires a mutation per keystroke, so writing on each one
+ * would spend the day's Firestore quota on a single brief.
+ */
+const SAVE_DEBOUNCE_MS = 2000;
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
-  initProject: (userId) => set({ project: createEmptyProject(userId) }),
+export const useCinematicAdsStore = create<CinematicAdsState>((set, get) => {
+  /** Apply a change to the project and schedule a save. */
+  const patch = (fn: (p: CinematicAdsProject) => CinematicAdsProject, { save = true } = {}) => {
+    const current = get().project;
+    if (!current) return;
+    set({ project: { ...fn(current), updatedAt: Date.now() } });
+    if (save) scheduleSave();
+  };
 
-  setAssetsOpen: (open) => set({ assetsOpen: open }),
+  const scheduleSave = () => {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      void get().saveNow();
+    }, SAVE_DEBOUNCE_MS);
+  };
 
-  setProcessing: (processing, message = "") => set({ processing, processingMessage: message }),
+  return {
+    project: null,
+    projects: [],
+    projectsLoading: false,
+    assetsOpen: false,
+    processing: false,
+    processingMessage: "",
+    saving: false,
+    saveError: null,
 
-  goToStep: (step) =>
-    set((s) => {
-      if (!s.project) return s;
-      return { project: { ...s.project, currentStep: step, updatedAt: Date.now() } };
-    }),
+    initProject: (userId, name) => set({ project: createEmptyProject(userId, name) }),
 
-  confirmStep: (step) =>
-    set((s) => {
-      if (!s.project) return s;
-      const next = Math.min(step + 1, 6) as PipelineStepNumber;
-      return {
-        project: {
-          ...s.project,
-          stepsCompleted: { ...s.project.stepsCompleted, [step]: true },
-          currentStep: next,
-          updatedAt: Date.now(),
-        },
-      };
-    }),
+    newProject: async (userId, name) => {
+      const project = createEmptyProject(userId, name);
+      set({ project, saveError: null });
+      try {
+        const id = await saveProject(project);
+        set((s) => (s.project ? { project: { ...s.project, id } } : s));
+      } catch (err: any) {
+        set({ saveError: err?.message || "Could not create the project" });
+      }
+    },
 
-  // Step 0
-  addFiles: (files) =>
-    set((s) => {
-      if (!s.project) return s;
-      return { project: { ...s.project, uploadedFiles: [...s.project.uploadedFiles, ...files], updatedAt: Date.now() } };
-    }),
+    openProject: async (id) => {
+      set({ projectsLoading: true });
+      try {
+        const project = await loadProject(id);
+        if (project) set({ project, saveError: null });
+      } finally {
+        set({ projectsLoading: false });
+      }
+    },
 
-  removeFile: (fileId) =>
-    set((s) => {
-      if (!s.project) return s;
-      return {
-        project: {
-          ...s.project,
-          uploadedFiles: s.project.uploadedFiles.filter((f) => f.id !== fileId),
-          updatedAt: Date.now(),
-        },
-      };
-    }),
+    closeProject: () => {
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = null;
+      set({ project: null });
+    },
 
-  setPlatforms: (platforms) =>
-    set((s) => {
-      if (!s.project) return s;
-      return { project: { ...s.project, selectedPlatforms: platforms, updatedAt: Date.now() } };
-    }),
+    refreshProjects: async (userId) => {
+      set({ projectsLoading: true });
+      try {
+        set({ projects: await listProjects(userId) });
+      } catch (err: any) {
+        set({ saveError: err?.message || "Could not load projects" });
+      } finally {
+        set({ projectsLoading: false });
+      }
+    },
 
-  setDuration: (duration) =>
-    set((s) => {
-      if (!s.project) return s;
-      return { project: { ...s.project, selectedDuration: duration, updatedAt: Date.now() } };
-    }),
+    removeProject: async (id) => {
+      await deleteProject(id);
+      set((s) => ({
+        projects: s.projects.filter((p) => p.id !== id),
+        project: s.project?.id === id ? null : s.project,
+      }));
+    },
 
-  setCustomDuration: (duration) =>
-    set((s) => {
-      if (!s.project) return s;
-      return { project: { ...s.project, customDuration: duration, updatedAt: Date.now() } };
-    }),
+    renameProject: (name) => patch((p) => ({ ...p, name })),
 
-  setLanguage: (language) =>
-    set((s) => {
-      if (!s.project) return s;
-      return { project: { ...s.project, selectedLanguage: language, updatedAt: Date.now() } };
-    }),
+    saveNow: async () => {
+      const project = get().project;
+      if (!project) return;
+      if (saveTimer) {
+        clearTimeout(saveTimer);
+        saveTimer = null;
+      }
+      set({ saving: true });
+      try {
+        const id = await saveProject(project);
+        set((s) => ({
+          saving: false,
+          saveError: null,
+          project: s.project && !s.project.id ? { ...s.project, id } : s.project,
+        }));
+      } catch (err: any) {
+        set({ saving: false, saveError: err?.message || "Could not save" });
+      }
+    },
 
-  setDialectNotes: (notes) =>
-    set((s) => {
-      if (!s.project) return s;
-      return { project: { ...s.project, dialectNotes: notes, updatedAt: Date.now() } };
-    }),
+    setAssetsOpen: (open) => set({ assetsOpen: open }),
+    setProcessing: (processing, message = "") => set({ processing, processingMessage: message }),
 
-  setBrief: (brief) =>
-    set((s) => {
-      if (!s.project) return s;
-      return { project: { ...s.project, clientBrief: brief, updatedAt: Date.now() } };
-    }),
+    goToStep: (step) => patch((p) => ({ ...p, currentStep: step }), { save: false }),
 
-  updateBrief: (partial) =>
-    set((s) => {
-      if (!s.project || !s.project.clientBrief) return s;
-      return {
-        project: { ...s.project, clientBrief: { ...s.project.clientBrief, ...partial }, updatedAt: Date.now() },
-      };
-    }),
+    confirmStep: (step) =>
+      patch((p) => ({
+        ...p,
+        stepsCompleted: { ...p.stepsCompleted, [step]: true },
+        currentStep: Math.min(step + 1, 6) as PipelineStepNumber,
+      })),
 
-  confirmBrief: () =>
-    set((s) => {
-      if (!s.project) return s;
-      return {
-        project: {
-          ...s.project,
-          briefConfirmed: true,
-          stepsCompleted: { ...s.project.stepsCompleted, 0: true },
-          currentStep: 1,
-          updatedAt: Date.now(),
-        },
-      };
-    }),
+    // ── Step 0 ──
+    setAdFormat: (selection) => patch((p) => ({ ...p, adFormat: selection })),
+    setBusinessInformation: (text) => patch((p) => ({ ...p, businessInformation: text })),
+    setClientRequirement: (text) => patch((p) => ({ ...p, clientRequirement: text })),
+    setOurNote: (text) => patch((p) => ({ ...p, ourNote: text })),
 
-  // Step 1
-  setStories: (stories) =>
-    set((s) => {
-      if (!s.project) return s;
-      return { project: { ...s.project, stories, updatedAt: Date.now() } };
-    }),
+    addFiles: (files) => patch((p) => ({ ...p, uploadedFiles: [...p.uploadedFiles, ...files] })),
+    removeFile: (fileId) => patch((p) => ({ ...p, uploadedFiles: p.uploadedFiles.filter((f) => f.id !== fileId) })),
+    setFileUrl: (fileId, url) =>
+      patch((p) => ({
+        ...p,
+        uploadedFiles: p.uploadedFiles.map((f) => (f.id === fileId ? { ...f, url } : f)),
+      })),
 
-  updateStory: (storyId, story) =>
-    set((s) => {
-      if (!s.project) return s;
-      return {
-        project: {
-          ...s.project,
-          stories: s.project.stories.map((st) => (st.id === storyId ? story : st)),
-          updatedAt: Date.now(),
-        },
-      };
-    }),
+    setPlatforms: (platforms) => patch((p) => ({ ...p, selectedPlatforms: platforms })),
+    setDuration: (duration) => patch((p) => ({ ...p, selectedDuration: duration })),
+    setCustomDuration: (duration) => patch((p) => ({ ...p, customDuration: duration })),
+    setLanguage: (language) => patch((p) => ({ ...p, selectedLanguage: language })),
+    setDialectNotes: (notes) => patch((p) => ({ ...p, dialectNotes: notes })),
+    setBrief: (brief) => patch((p) => ({ ...p, clientBrief: brief })),
+    updateBrief: (partial) =>
+      patch((p) => (p.clientBrief ? { ...p, clientBrief: { ...p.clientBrief, ...partial } } : p)),
 
-  selectStory: (storyId) =>
-    set((s) => {
-      if (!s.project) return s;
-      return { project: { ...s.project, selectedStoryId: storyId, updatedAt: Date.now() } };
-    }),
+    confirmBrief: () =>
+      patch((p) => ({
+        ...p,
+        briefConfirmed: true,
+        // A project named by hand keeps its name; an untitled one takes the business name.
+        name: p.name === "Untitled project" && p.clientBrief?.businessName ? p.clientBrief.businessName : p.name,
+        stepsCompleted: { ...p.stepsCompleted, 0: true },
+        currentStep: 1,
+      })),
 
-  confirmStory: () =>
-    set((s) => {
-      if (!s.project) return s;
-      return {
-        project: {
-          ...s.project,
-          storyConfirmed: true,
-          stepsCompleted: { ...s.project.stepsCompleted, 1: true },
-          currentStep: 2,
-          updatedAt: Date.now(),
-        },
-      };
-    }),
+    // ── Step 1 ──
+    setStories: (stories) => patch((p) => ({ ...p, stories })),
+    updateStory: (storyId, story) =>
+      patch((p) => ({ ...p, stories: p.stories.map((s) => (s.id === storyId ? story : s)) })),
+    selectStory: (storyId) => patch((p) => ({ ...p, selectedStoryId: storyId })),
+    pushStoryVersionHistory: (stories) =>
+      patch((p) => ({ ...p, storyVersionHistory: [...p.storyVersionHistory, stories] })),
 
-  pushStoryVersionHistory: (stories) =>
-    set((s) => {
-      if (!s.project) return s;
-      return {
-        project: {
-          ...s.project,
-          storyVersionHistory: [...s.project.storyVersionHistory, stories],
-          updatedAt: Date.now(),
-        },
-      };
-    }),
+    confirmStory: () =>
+      patch((p) => ({
+        ...p,
+        storyConfirmed: true,
+        stepsCompleted: { ...p.stepsCompleted, 1: true },
+        currentStep: 2,
+        // A changed story invalidates the board that was drawn from the old one.
+        storyboard: null,
+        storyboardConfirmed: false,
+      })),
 
-  // Step 2
-  setCharacters: (characters) =>
-    set((s) => {
-      if (!s.project) return s;
-      return { project: { ...s.project, characters, updatedAt: Date.now() } };
-    }),
+    // ── Step 2 ──
+    setStoryboardBoards: (boards) =>
+      patch((p) => ({ ...p, storyboard: { boards, approved: false, changeNote: p.storyboard?.changeNote || "" } })),
 
-  updateCharacter: (characterId, character) =>
-    set((s) => {
-      if (!s.project) return s;
-      return {
-        project: {
-          ...s.project,
-          characters: s.project.characters.map((c) => (c.id === characterId ? { ...c, ...character } : c)),
-          updatedAt: Date.now(),
-        },
-      };
-    }),
+    setBoardImage: (boardId, url) =>
+      patch((p) =>
+        p.storyboard
+          ? {
+              ...p,
+              storyboard: {
+                ...p.storyboard,
+                boards: p.storyboard.boards.map((b) => (b.id === boardId ? { ...b, imageUrl: url } : b)),
+              },
+            }
+          : p,
+      ),
 
-  confirmCast: () =>
-    set((s) => {
-      if (!s.project) return s;
-      return {
-        project: {
-          ...s.project,
-          castConfirmed: true,
-          stepsCompleted: { ...s.project.stepsCompleted, 2: true },
-          currentStep: 3,
-          updatedAt: Date.now(),
-        },
-      };
-    }),
+    setStoryboardChangeNote: (note) =>
+      patch((p) => (p.storyboard ? { ...p, storyboard: { ...p.storyboard, changeNote: note } } : p)),
 
-  // Step 3
-  setSceneFrames: (frames) =>
-    set((s) => {
-      if (!s.project) return s;
-      return { project: { ...s.project, sceneFrames: frames, updatedAt: Date.now() } };
-    }),
+    approveStoryboard: () =>
+      patch((p) => ({
+        ...p,
+        storyboard: p.storyboard ? { ...p.storyboard, approved: true } : p.storyboard,
+        storyboardConfirmed: true,
+        stepsCompleted: { ...p.stepsCompleted, 2: true },
+        currentStep: stepAfterStoryboard(p),
+      })),
 
-  updateSceneFrame: (sceneNumber, frame) =>
-    set((s) => {
-      if (!s.project) return s;
-      return {
-        project: {
-          ...s.project,
-          sceneFrames: s.project.sceneFrames.map((f) =>
-            f.sceneNumber === sceneNumber ? { ...f, ...frame } : f,
-          ),
-          updatedAt: Date.now(),
-        },
-      };
-    }),
+    sendStoryboardBack: () =>
+      patch((p) => ({
+        ...p,
+        storyboardConfirmed: false,
+        storyConfirmed: false,
+        stepsCompleted: { ...p.stepsCompleted, 1: false, 2: false },
+        currentStep: 1,
+      })),
 
-  confirmFrames: () =>
-    set((s) => {
-      if (!s.project) return s;
-      return {
-        project: {
-          ...s.project,
-          framesConfirmed: true,
-          stepsCompleted: { ...s.project.stepsCompleted, 3: true },
-          currentStep: 4,
-          updatedAt: Date.now(),
-        },
-      };
-    }),
+    // ── Step 3 ──
+    setCharacters: (characters) => patch((p) => ({ ...p, characters })),
+    updateCharacter: (characterId, character) =>
+      patch((p) => ({
+        ...p,
+        characters: p.characters.map((c) => (c.id === characterId ? { ...c, ...character } : c)),
+      })),
 
-  // Step 4
-  setAnimationPrompts: (prompts) =>
-    set((s) => {
-      if (!s.project) return s;
-      return { project: { ...s.project, animationPrompts: prompts, updatedAt: Date.now() } };
-    }),
+    setCharacterImage: (characterId, imageId, url) =>
+      patch((p) => ({
+        ...p,
+        characters: p.characters.map((c) =>
+          c.id === characterId
+            ? {
+                ...c,
+                images: c.images.map((img) =>
+                  img.id === imageId
+                    ? { ...img, url, versions: [...(img.versions || []), { url, timestamp: Date.now() }] }
+                    : img,
+                ),
+              }
+            : c,
+        ),
+      })),
 
-  updateAnimationPrompt: (sceneNumber, prompt) =>
-    set((s) => {
-      if (!s.project) return s;
-      return {
-        project: {
-          ...s.project,
-          animationPrompts: s.project.animationPrompts.map((p) =>
-            p.sceneNumber === sceneNumber ? { ...p, ...prompt } : p,
-          ),
-          updatedAt: Date.now(),
-        },
-      };
-    }),
+    toggleCharacterImageApproval: (characterId, imageId) =>
+      patch((p) => ({
+        ...p,
+        characters: p.characters.map((c) =>
+          c.id === characterId
+            ? { ...c, images: c.images.map((img) => (img.id === imageId ? { ...img, approved: !img.approved } : img)) }
+            : c,
+        ),
+      })),
 
-  confirmAnimation: () =>
-    set((s) => {
-      if (!s.project) return s;
-      return {
-        project: {
-          ...s.project,
-          animationConfirmed: true,
-          stepsCompleted: { ...s.project.stepsCompleted, 4: true },
-          currentStep: 5,
-          updatedAt: Date.now(),
-        },
-      };
-    }),
+    confirmCast: () =>
+      patch((p) => ({
+        ...p,
+        castConfirmed: true,
+        stepsCompleted: { ...p.stepsCompleted, 3: true },
+        currentStep: 4,
+      })),
 
-  // Step 5
-  setEditingGuide: (guide) =>
-    set((s) => {
-      if (!s.project) return s;
-      return { project: { ...s.project, editingGuide: guide, updatedAt: Date.now() } };
-    }),
+    // ── Step 4 ──
+    setClips: (clips) => patch((p) => ({ ...p, clips })),
+    updateClip: (clipId, clipPatch) =>
+      patch((p) => ({ ...p, clips: p.clips.map((c) => (c.id === clipId ? { ...c, ...clipPatch } : c)) })),
 
-  confirmEditingGuide: () =>
-    set((s) => {
-      if (!s.project) return s;
-      return {
-        project: {
-          ...s.project,
-          editingGuideConfirmed: true,
-          stepsCompleted: { ...s.project.stepsCompleted, 5: true },
-          currentStep: 6,
-          updatedAt: Date.now(),
-        },
-      };
-    }),
+    setClipType: (clipId, clipType, panelCount) =>
+      patch((p) => ({
+        ...p,
+        clips: p.clips.map((c) =>
+          c.id === clipId
+            ? { ...c, clipType, panelCount: clipType === "storyboard" ? clampPanelCount(panelCount ?? c.panelCount) : undefined }
+            : c,
+        ),
+      })),
 
-  // Step 6
-  setFinalVideo: (url, file) =>
-    set((s) => {
-      if (!s.project) return s;
-      return { project: { ...s.project, finalVideo: file, finalVideoUrl: url, updatedAt: Date.now() } };
-    }),
+    setClipImage: (clipId, imagePromptId, url) =>
+      patch((p) => ({
+        ...p,
+        clips: p.clips.map((c) =>
+          c.id === clipId
+            ? { ...c, imagePrompts: c.imagePrompts.map((ip) => (ip.id === imagePromptId ? { ...ip, imageUrl: url } : ip)) }
+            : c,
+        ),
+      })),
 
-  addFeedbackRound: (feedback) =>
-    set((s) => {
-      if (!s.project) return s;
-      return {
-        project: {
-          ...s.project,
-          feedbackRounds: [...s.project.feedbackRounds, feedback],
-          updatedAt: Date.now(),
-        },
-      };
-    }),
+    toggleClipImageApproval: (clipId, imagePromptId) =>
+      patch((p) => ({
+        ...p,
+        clips: p.clips.map((c) =>
+          c.id === clipId
+            ? {
+                ...c,
+                imagePrompts: c.imagePrompts.map((ip) =>
+                  ip.id === imagePromptId ? { ...ip, approved: !ip.approved } : ip,
+                ),
+              }
+            : c,
+        ),
+      })),
 
-  toggleDeliverable: (id) =>
-    set((s) => {
-      if (!s.project) return s;
-      const deliverables = s.project.deliverables.map((d) =>
-        d.id === id ? { ...d, ready: !d.ready } : d,
-      );
-      return { project: { ...s.project, deliverables, updatedAt: Date.now() } };
-    }),
+    setClipVideo: (clipId, url) =>
+      patch((p) => ({ ...p, clips: p.clips.map((c) => (c.id === clipId ? { ...c, clipUrl: url } : c)) })),
 
-  markDelivered: () =>
-    set((s) => {
-      if (!s.project) return s;
-      return {
-        project: {
-          ...s.project,
-          delivered: true,
-          stepsCompleted: { ...s.project.stepsCompleted, 6: true },
-          updatedAt: Date.now(),
-        },
-      };
-    }),
+    toggleClipQc: (clipId, item) =>
+      patch((p) => ({
+        ...p,
+        clips: p.clips.map((c) =>
+          c.id === clipId ? { ...c, qcChecklist: { ...c.qcChecklist, [item]: !c.qcChecklist[item] } } : c,
+        ),
+      })),
 
-  resetProject: () => set({ project: null }),
-}));
+    confirmClips: () =>
+      patch((p) => ({
+        ...p,
+        clipsConfirmed: true,
+        stepsCompleted: { ...p.stepsCompleted, 4: true },
+        currentStep: 5,
+      })),
+
+    // ── Step 5 ──
+    setEditingGuide: (guide) => patch((p) => ({ ...p, editingGuide: guide })),
+    confirmEditingGuide: () =>
+      patch((p) => ({
+        ...p,
+        editingGuideConfirmed: true,
+        stepsCompleted: { ...p.stepsCompleted, 5: true },
+        currentStep: 6,
+      })),
+
+    // ── Step 6 ──
+    setFinalVideo: (url) => patch((p) => ({ ...p, finalVideoUrl: url })),
+    addFeedbackRound: (feedback) => patch((p) => ({ ...p, feedbackRounds: [...p.feedbackRounds, feedback] })),
+    toggleDeliverable: (id) =>
+      patch((p) => ({
+        ...p,
+        deliverables: p.deliverables.map((d: Deliverable) => (d.id === id ? { ...d, ready: !d.ready } : d)),
+      })),
+    setDeliverableUrl: (id, url) =>
+      patch((p) => ({ ...p, deliverables: p.deliverables.map((d) => (d.id === id ? { ...d, url, ready: true } : d)) })),
+    markDelivered: () =>
+      patch((p) => ({ ...p, delivered: true, stepsCompleted: { ...p.stepsCompleted, 6: true } })),
+
+    resetProject: () => {
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = null;
+      set((s) => ({ project: createEmptyProject(s.project?.createdBy) }));
+    },
+  };
+});
