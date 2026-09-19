@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { LOWER_THIRD_SYSTEM_PROMPT } from "@/services/prompts/lowerThird";
 import {
-  HEADER_SYSTEM_PROMPT, POSTER_SYSTEM_PROMPT, MAIN_FRAME_SYSTEM_PROMPT, getBrandMark,
+  POSTER_SYSTEM_PROMPT, MAIN_FRAME_SYSTEM_PROMPT, getBrandMark,
   buildBrandMarkDirective,
 } from "@/services/prompts";
 
@@ -46,9 +47,12 @@ describe("getBrandMark", () => {
   });
 });
 
-describe("HEADER_SYSTEM_PROMPT", () => {
-  const withLogo = HEADER_SYSTEM_PROMPT("commercial", "", false, "");
-  const noLogo = HEADER_SYSTEM_PROMPT("commercial", "", true, NAME);
+describe("LOWER_THIRD_SYSTEM_PROMPT", () => {
+  const label = (noLogo: boolean) => LOWER_THIRD_SYSTEM_PROMPT({
+    businessType: "realestate", adType: "commercial", noLogo, contactCount: 2, hasAddress: true,
+  });
+  const withLogo = label(false);
+  const noLogo = label(true);
 
   it("asks for the attached logo when one exists", () => {
     expect(withLogo).toMatch(ASKS_FOR_A_LOGO);
@@ -59,25 +63,27 @@ describe("HEADER_SYSTEM_PROMPT", () => {
   });
 
   /**
-   * The header already has the business name as its hero element. Filling the empty logo slot
-   * with a "name wordmark" therefore printed the same name twice, in two boxes side by side —
-   * which is what members saw and reported. A header with no logo has one box FEWER.
+   * The label already has the business name as its hero. Filling the empty logo slot with a "name
+   * wordmark" printed the same name twice, side by side — which is what members reported. A label
+   * with no logo has one element FEWER.
    */
-  it("drops the brand box entirely rather than filling it with the name again", () => {
-    expect(noLogo).not.toMatch(/BRAND container|LOGO container/);
+  it("drops the brand circle entirely rather than filling it with the name again", () => {
+    expect(noLogo).not.toMatch(/logo container/i);
     expect(noLogo).not.toMatch(/NAME WORDMARK/);
-    expect(noLogo).toMatch(/NO brand box/);
+    expect(noLogo).toMatch(/NO brand circle and no brand container of any kind/);
+    expect(noLogo).toMatch(/THIS BUSINESS HAS NO BRAND IMAGE FILE/);
   });
 
   it("says the name goes in exactly one place", () => {
-    expect(noLogo).toMatch(/must appear EXACTLY ONCE/);
+    expect(noLogo).toMatch(/it is the only branding/);
+    expect(noLogo).toMatch(/Never repeat the name anywhere else/);
   });
 
   it("gives the freed space to the business name instead of leaving a gap", () => {
-    expect(noLogo).toMatch(/LEFT \+ CENTRE/);
-    expect(noLogo).toMatch(/flush against the left inner edge/);
-    // Nothing is left aligning against a box that no longer exists.
-    expect(noLogo).not.toMatch(/The (LOGO|BRAND) box, the NAME container/);
+    expect(noLogo).toMatch(/starts at the left edge of the label and runs wider/);
+    expect(noLogo).toMatch(/it is the only branding/);
+    // Nothing is left aligning against a container that no longer exists.
+    expect(noLogo).not.toMatch(/inside a premium circular/);
   });
 
   it("still forbids inventing an emblem to fill the space", () => {
@@ -85,19 +91,18 @@ describe("HEADER_SYSTEM_PROMPT", () => {
     expect(noLogo).toMatch(/never invent an emblem, icon, monogram or symbol/i);
   });
 
-  it("keeps the logo box, and its alignment, when a logo does exist", () => {
-    expect(withLogo).toMatch(/LOGO container/);
-    expect(withLogo).toMatch(/- LEFT: a square \/ rounded-square LOGO container/);
-    expect(withLogo).toMatch(/The LOGO box, the NAME container, and the CONTACT pills/);
-    expect(withLogo).toMatch(/- CENTRE: a large rounded-rectangle container/);
+  it("keeps the brand circle, and the untouched logo, when a logo does exist", () => {
+    expect(withLogo).toMatch(/- LEFT: the attached logo, used EXACTLY as provided/);
+    expect(withLogo).toMatch(/premium circular .or softly rounded. glass container/);
+    expect(withLogo).toMatch(/- CENTRE: the BUSINESS NAME and nothing else/);
   });
 
   it("keeps the layout, the adaptive rules and the no-fabrication rules intact", () => {
     for (const prompt of [withLogo, noLogo]) {
-      expect(prompt).toMatch(/EXACT LAYOUT/);
-      expect(prompt).toMatch(/ADAPTIVE RULES/);
-      expect(prompt).toMatch(/NEVER invent, guess, autocomplete, or fabricate/);
-      expect(prompt).toMatch(/BUSINESS NAME: the visual hero/);
+      expect(prompt).toMatch(/LAYOUT . FIVE ZONES/);
+      expect(prompt).toMatch(/TWO evenly stacked pills/);
+      expect(prompt).toMatch(/NEVER invent, guess or complete a value/);
+      expect(prompt).toMatch(/the hero of the label/);
     }
   });
 });
@@ -179,14 +184,14 @@ describe("buildBrandMarkDirective", () => {
  * member actually pastes is the directive AND the system prompt together. Both halves have to be
  * clean, which is the composition this checks.
  */
-describe("the assembled header prompt", () => {
+describe("the assembled label prompt", () => {
   /** Directive + design rules + the content block, exactly as geminiService joins them. */
   const assembled = (noLogo: boolean) =>
     buildBrandMarkDirective(noLogo, NAME, "header")
-    + HEADER_SYSTEM_PROMPT("commercial", "", noLogo, NAME)
+    + LOWER_THIRD_SYSTEM_PROMPT({ businessType: "default", adType: "commercial", noLogo, contactCount: 1, hasAddress: true })
     + "\n\nREAL CONTENT TO PLACE:\n"
     + (noLogo
-      ? "NO BRAND IMAGE — this header has no logo box and no brand tile; the NAME below is the only branding, and it appears exactly once"
+      ? "NO BRAND IMAGE — this label has no logo circle and no brand tile; the NAME below is the only branding, and it appears exactly once"
       : "LOGO = use the attached logo image exactly as provided, unchanged")
     + `\nNAME = ${NAME}`;
 

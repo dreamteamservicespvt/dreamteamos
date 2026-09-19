@@ -5,7 +5,6 @@ import {
   CLIP_PRESETS, CLIP_SECONDS, DURATIONS, clipChoiceLabel, durationChoiceLabel, getClipCount,
   humanDuration, secondsForClips,
 } from "@/utils/assignmentDuration";
-import { HEADER_BAND_PERCENT, HEADER_SYSTEM_PROMPT } from "@/services/prompts";
 import { WISHES_FESTIVALS, WISHES_OCCASION_GROUPS, isListedFestival } from "@/utils/festivals";
 import DurationPicker from "@/components/work/DurationPicker";
 import OccasionPicker from "@/components/work/OccasionPicker";
@@ -201,37 +200,3 @@ describe("the occasion a wishes video is for", () => {
   });
 });
 
-/**
- * The header band's height was one soft clause ("about the top 7%") inside a paragraph that also
- * said the band "FILLS the top of the frame COMPLETELY" and called the business name "the visual
- * hero". An image model resolving that drew a header two or three times too tall.
- */
-describe("the ad header's height", () => {
-  const prompt = () => HEADER_SYSTEM_PROMPT("promotional", "", false, "ACME");
-
-  it("states the ceiling in percent and in pixels", () => {
-    expect(prompt()).toContain(`TOP ${HEADER_BAND_PERCENT}% OF THE FRAME HEIGHT`);
-    expect(prompt()).toContain("134 px");
-  });
-
-  it("says what to do when the content will not fit — shrink it, never grow the band", () => {
-    expect(prompt()).toMatch(/SHRINK THE CONTENTS/);
-    expect(prompt()).toMatch(/NEVER grow the band/);
-  });
-
-  it("no longer tells the model to fill the top of the frame completely", () => {
-    // The exact sentence that outweighed the 7%.
-    expect(prompt()).not.toContain("FILLS the top of the frame COMPLETELY");
-    expect(prompt()).toContain("WIDTH ONLY");
-  });
-
-  it("repeats the bound as the closing instruction", () => {
-    const closing = prompt().slice(-600);
-    expect(closing).toContain(`TOP ${HEADER_BAND_PERCENT}% ONLY`);
-  });
-
-  it("holds for a no-logo header too", () => {
-    const noLogo = HEADER_SYSTEM_PROMPT("promotional", "", true, "");
-    expect(noLogo).toContain(`TOP ${HEADER_BAND_PERCENT}% OF THE FRAME HEIGHT`);
-  });
-});

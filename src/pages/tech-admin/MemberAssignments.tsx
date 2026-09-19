@@ -101,7 +101,7 @@ function WorkPreview({ assignmentId }: { assignmentId: string }) {
     <div className="mt-4 pt-4 border-t border-border space-y-3">
       <h4 className="text-sm font-semibold text-foreground">AI Platform Output Preview</h4>
       <div className="p-3 bg-muted/30 rounded-lg border border-border text-xs text-muted-foreground space-y-2 max-h-48 overflow-y-auto">
-        <p><strong className="text-foreground">Header:</strong> {generation.headerPrompt}</p>
+        <p><strong className="text-foreground">Brand label:</strong> {generation.headerPrompt}</p>
         <p><strong className="text-foreground">Voice Over:</strong> {generation.voiceOverScript}</p>
         {generation.veoPrompts && generation.veoPrompts.length > 0 && (
           <div>

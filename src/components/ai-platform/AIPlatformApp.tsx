@@ -1901,10 +1901,10 @@ clip-2[8-16sec]: second spoken line`}</pre>
                   )}
 
                   {creationMode === 'video' && outputs.headerPrompt && (
-                      <OutputSection title="2. Header Prompt" sectionKey="header"
+                      <OutputSection title="2. Brand Label (Lower Third)" sectionKey="header"
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                         isDark={isDark} copyContent={outputs.headerPrompt}>
-                        <GeneratedCard title="Header" content={outputs.headerPrompt} sectionType="header"
+                        <GeneratedCard title="Brand Label" content={outputs.headerPrompt} sectionType="header"
                           showRefinement={true} onRefine={(i) => handleRefineSection('header', i)} isRefining={refiningSection === 'header'} hideTitle />
                       </OutputSection>
                   )}

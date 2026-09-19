@@ -714,7 +714,7 @@ export default function Tools() {
           {/* Sections */}
           {[
             { key: 'mainFrame', title: `Main Frame Prompts (${viewingItem.mainFramePrompts?.length || 0} Clips)`, content: viewingItem.mainFramePrompts, isArray: true },
-            { key: 'header', title: 'Header Prompt', content: viewingItem.headerPrompt, isArray: false },
+            { key: 'header', title: 'Brand Label (Lower Third)', content: viewingItem.headerPrompt, isArray: false },
             { key: 'poster', title: 'Poster Design (JSON)', content: viewingItem.posterPrompt, isArray: false },
             { key: 'voiceOver', title: 'Voice Over Script', content: viewingItem.voiceOverScript, isArray: false },
             { key: 'veo', title: `VEO Prompts (${viewingItem.veoPrompts?.length || 0} Segments)`, content: viewingItem.veoPrompts, isArray: true },

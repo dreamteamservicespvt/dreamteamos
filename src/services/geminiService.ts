@@ -3,7 +3,7 @@ import { AdFormData, FileStore, GeneratedOutputs, PosterConcept } from "@/types/
 import { 
   MAIN_FRAME_SYSTEM_PROMPT,
   MULTI_FRAME_SYSTEM_PROMPT,
-  HEADER_SYSTEM_PROMPT, 
+
   POSTER_SYSTEM_PROMPT,
   VOICEOVER_SYSTEM_PROMPT,
   VOICEOVER_REPAIR_SYSTEM_PROMPT,
@@ -44,6 +44,13 @@ import {
 } from "./prompts/everydaySpeech";
 import { WISH_AUDIENCE_TELUGU, wishAudienceIssues } from "./prompts/festivalWish";
 import { clipPlacements, spokenOnly, withCues, withPlacements } from "@/utils/clipPlacement";
+import { LOWER_THIRD_SYSTEM_PROMPT } from "./prompts/lowerThird";
+
+/** Three numbers still read as pills at video size; a fourth does not. */
+const MAX_LABEL_CONTACTS = 3;
+/** A number the client gave as their WhatsApp gets its own green pill on the label. */
+const hasWhatsAppNumber = (businessInfo: any): boolean =>
+  /whatss*app/i.test(JSON.stringify(businessInfo ?? {}));
 import {
   assembleVeoPrompt, parseVeoDirections, planClipMotion, spokenLinesIn, walkPath, withMotionComposition,
   type ClipMotionPlan, type VeoSpeech,
@@ -528,10 +535,17 @@ ${pack
       break;
 
     case 'header':
-      systemPrompt = REFINE_EDIT_DIRECTIVE + buildRatioDirective(formData)
+      systemPrompt = REFINE_EDIT_DIRECTIVE
         + buildNameBoardDirective(formData, businessInfo, 'header')
-        + HEADER_SYSTEM_PROMPT(formData.adType, formData.festivalName, formData.noLogo || false, resolveNameBoardText(formData, businessInfo));
-      userPrompt = `You previously generated this Header prompt:
+        + LOWER_THIRD_SYSTEM_PROMPT({
+          businessType: detectBusinessType(JSON.stringify(businessInfo ?? {})),
+          adType: formData.adType,
+          festivalName: formData.festivalName,
+          noLogo: formData.noLogo || false,
+          contactCount: extractContactsFromInfo(businessInfo).slice(0, MAX_LABEL_CONTACTS).length,
+          hasAddress: !!resolveRealAddress(businessInfo, extractBusinessNameFromInfo(businessInfo)),
+        });
+      userPrompt = `You previously generated this brand label prompt:
 
 ---CURRENT PROMPT---
 ${currentContent}
@@ -2785,33 +2799,42 @@ ${realPremisesDirective}${maleCastingOverride}${commercialMainFramePriorityNote}
     return mainFramePrompts;
   })();
 
-  // --- Step 4: Header Prompt (local — no API call) ---
+  // --- Step 4: Brand Label / lower third (local — no API call) ---
 
   const headerNameBoardText = resolveNameBoardText(formData, businessInfo);
-  const headerSystemPrompt = buildRatioDirective(formData)
-    + buildNameBoardDirective(formData, businessInfo, 'header')
-    + HEADER_SYSTEM_PROMPT(formData.adType, formData.festivalName, formData.noLogo || false, headerNameBoardText);
   // Extract ONLY logo/name/contacts/address — never dump the full business JSON or any other data.
   const headerBusinessName = extractBusinessNameFromInfo(businessInfo);
-  const headerContacts = extractContactsFromInfo(businessInfo).slice(0, 2);
+  const headerContacts = extractContactsFromInfo(businessInfo).slice(0, MAX_LABEL_CONTACTS);
   const headerAddress = resolveRealAddress(businessInfo, headerBusinessName);
+  // No ratio directive here: a label is a tightly cropped strip laid over a video, not a video frame.
+  const headerSystemPrompt = buildNameBoardDirective(formData, businessInfo, 'header')
+    + LOWER_THIRD_SYSTEM_PROMPT({
+      businessType: detectBusinessType(serializedBusinessInfo),
+      adType: formData.adType,
+      festivalName: formData.festivalName,
+      noLogo: formData.noLogo || false,
+      contactCount: headerContacts.length,
+      hasAddress: !!headerAddress,
+      hasWhatsApp: hasWhatsAppNumber(businessInfo),
+      // The client's own photographs may sit at the right edge; with none, the label stays graphic.
+      hasPremisesPhoto: (files.storeImage?.length || 0) > 0,
+    });
   const headerValueLines = [
     // This block is the literal text the member copies into the image generator, so a "LOGO ="
     // line here asked for a logo file that was never uploaded however the rules above were worded.
     // In no-logo mode there is no brand line AT ALL: a "BRAND MARK = <business name>" line sitting
     // above "NAME = <business name>" is what put the same name in two boxes in the finished header.
     formData.noLogo
-      ? 'NO BRAND IMAGE — this header has no logo box and no brand tile; the NAME below is the only branding, and it appears exactly once'
+      ? 'NO BRAND IMAGE — this label has no logo circle and no brand tile; the NAME below is the only branding, and it appears exactly once'
       : 'LOGO = use the attached logo image exactly as provided, unchanged',
     headerBusinessName ? `NAME = ${headerBusinessName}` : '',
-    headerContacts[0] ? `CONTACT 1 = ${headerContacts[0]}` : '',
-    headerContacts[1] ? `CONTACT 2 = ${headerContacts[1]}` : '',
+    ...headerContacts.map((number, i) => `CONTACT ${i + 1} = ${number}`),
     headerAddress ? `ADDRESS = ${headerAddress}` : '',
   ].filter(Boolean);
   // Explicit negatives for missing fields, so the image generator never fabricates them.
   const headerMissingLines: string[] = [];
-  if (headerContacts.length === 0) headerMissingLines.push('NO CONTACT NUMBER provided — do NOT show any contact pill and do NOT invent, guess, autocomplete, or fabricate any phone number.');
-  if (!headerAddress) headerMissingLines.push('NO ADDRESS provided — do NOT show any address bar and do NOT invent, guess, autocomplete, or fabricate any address, street, area, city, pincode, or location. Close that space cleanly.');
+  if (headerContacts.length === 0) headerMissingLines.push('NO CONTACT NUMBER provided — do NOT show any contact pill and do NOT invent, guess, autocomplete, or fabricate any phone number. The raised right module stays, because it must still cover the watermark.');
+  if (!headerAddress) headerMissingLines.push('NO ADDRESS provided — do NOT show any address strip and do NOT invent, guess, autocomplete, or fabricate any address, street, area, city, pincode, or location. Close that space cleanly.');
   const headerPrompt = [
     headerSystemPrompt,
     "",
@@ -2820,7 +2843,7 @@ ${realPremisesDirective}${maleCastingOverride}${commercialMainFramePriorityNote}
     ...(headerMissingLines.length ? ["", "MISSING FIELDS (STRICT — NEVER FABRICATE THESE):", ...headerMissingLines] : []),
   ].join('\n');
 
-  // Emit partial result: header ready
+  // Emit partial result: the brand label is ready
   emitPartial({ headerPrompt });
 
   // --- Step 5: Poster Design Prompt (JSON) — runs concurrently ---

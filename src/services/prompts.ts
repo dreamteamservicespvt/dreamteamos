@@ -2205,102 +2205,13 @@ Do NOT wrap individual prompts in code blocks — output them as plain text sepa
  * The percentages contradicting it have been rewritten to say what they actually meant: full
  * WIDTH, not full height.
  */
-export const HEADER_BAND_PERCENT = 7;
+/**
+ * The top-strip HEADER prompt used to live here.
+ *
+ * It was replaced by the brand label — a transparent lower third laid over the BOTTOM of a finished
+ * video, whose raised right module covers the watermark in that corner. See prompts/lowerThird.
+ */
 
-/** A concrete canvas to measure the band against — a percentage alone is easy to eyeball wrong. */
-const HEADER_REFERENCE_CANVAS = '1080 x 1920';
-const HEADER_REFERENCE_PX = Math.round(1920 * (HEADER_BAND_PERCENT / 100));
-
-export const HEADER_SYSTEM_PROMPT = (
-  _adType: string,
-  _festivalName: string,
-  noLogo: boolean = false,
-  logoName: string = '',
-) => {
-    /**
-     * A header without a logo has ONE box fewer — it does not swap in a substitute.
-     *
-     * It used to: a missing logo became a "NAME WORDMARK" in the left brand container, while the
-     * centre container already held the BUSINESS NAME as its hero. The result printed the same
-     * business name twice, side by side, in two boxes. What a designer actually does with no logo
-     * is drop the mark and let the name run wider — which is also the only arrangement in which
-     * the name is unambiguously the hero.
-     */
-    const brand = getBrandMark(noLogo, logoName, 'layout');
-    const markSlot = noLogo
-      ? ''
-      : `\n- LEFT: a square / rounded-square LOGO container holding ${brand.ref} (used exactly as provided, unchanged).`;
-    const nameSlot = noLogo
-      ? `- LEFT + CENTRE: ONE wide rounded-rectangle container holding the BUSINESS NAME as the hero element. It starts flush against the left inner edge of the band and runs across to the contact pills, taking the full left side — this design has NO brand box, so the name occupies that space instead.`
-      : `- CENTRE: a large rounded-rectangle container with the BUSINESS NAME as the hero element.`;
-    const rowAlign = noLogo
-      ? `The NAME container and the CONTACT pills must share the SAME height and baseline and align evenly in one neat row.`
-      : `The LOGO box, the NAME container, and the CONTACT pills must share the SAME height and baseline and align evenly in one neat row.`;
-    const insideBand = noLogo
-      ? `the NAME container and CONTACT pills keep their rounded premium shapes`
-      : `the LOGO box, NAME container, and CONTACT pills keep their rounded premium shapes`;
-    const markBox = noLogo
-      ? ''
-      : `\n- LOGO container: premium with subtle depth, fully inside the frame, never clipped, never a plain white box.`;
-    const colourSource = noLogo
-      ? `Use the business's own brand colours (from the brand palette provided) as the base.`
-      : `Use the brand / logo colours as the base.`;
-    const elementList = noLogo
-      ? `the business name, the contact number(s), and a real address`
-      : `the logo, the business name, the contact number(s), and a real address`;
-    const nothingBeyond = noLogo
-      ? `nothing beyond the business name, contacts, and a real address`
-      : `nothing beyond logo, name, contacts, and a real address`;
-    const noLogoRule = noLogo
-      ? `\n- THIS BUSINESS HAS NO BRAND IMAGE FILE, and none will be supplied. This header has NO brand box, brand tile, wordmark panel or badge of any kind — do NOT draw one, do NOT leave room for one, and never invent an emblem, icon, monogram or symbol to fill one. The BUSINESS NAME container is the entire branding, and the business name must appear EXACTLY ONCE in the whole header: never repeat it in a second container, beside the name, as a watermark, or inside the address bar.`
-      : '';
-
-    return `Design a PREMIUM, BUSINESS-THEMED HEADER for a 9:16 vertical advertisement.
-
-CANVAS & SIZE (FULL-BLEED TOP STRIP — NO OUTER PADDING):
-- HEIGHT — THE SINGLE MOST IMPORTANT RULE, NON-NEGOTIABLE: the ENTIRE header — brand row AND address bar together — occupies the TOP ${HEADER_BAND_PERCENT}% OF THE FRAME HEIGHT AND NOTHING MORE. On a ${HEADER_REFERENCE_CANVAS} canvas that is a strip about ${HEADER_REFERENCE_PX} px tall. Measure it: from the top edge down, the band ends at ${HEADER_BAND_PERCENT}% of the total height. The remaining ${100 - HEADER_BAND_PERCENT}% of the frame below it stays completely EMPTY / BLANK.
-- ${HEADER_BAND_PERCENT}% IS A CEILING, NOT A TARGET: the band may be slightly SHORTER, never taller. It must NOT be 10%, NOT 15%, NOT 20%, and NOT a large top panel. If the name, pills or address will not fit inside ${HEADER_BAND_PERCENT}%, SHRINK THE CONTENTS — reduce the type size, tighten the inner padding, slim the pills — and NEVER grow the band to fit them. A taller, roomier, more "balanced" header is WRONG even if it looks better.
-- It FILLS THE FULL WIDTH (left edge to right edge) and starts flush at the very TOP edge. "Fills completely" refers to the WIDTH ONLY — it must never be read as filling the height.
-- FULL-BLEED (IMPORTANT): there must be NO outer margin, NO padding, and NO gap around the header band, and it must NOT look like a floating rounded card with empty space around it. The band reaches the TOP, LEFT, and RIGHT edges of the canvas; do NOT round the top-left or top-right outer corners (only the bottom edge of the band may be softly finished).
-- Inside the band, ${insideBand}, with comfortable INNER spacing so no element is clipped or cramped — elements are padded INSIDE the full-bleed band, while the band itself has no outer padding.
-
-EXACT LAYOUT (keep this structure — do not move or change it):${markSlot}
-${nameSlot}
-- RIGHT: the contact number(s) as premium pill / button(s), stacked vertically.
-- BOTTOM: a SLIM full-width ADDRESS bar, tightly attached under the row above as part of the SAME header unit (NOT a separate thick band), with the address text CENTER-aligned.
-- ${rowAlign}
-
-ADAPTIVE RULES (IMPORTANT):
-- Contacts: if TWO numbers are given, show two evenly-stacked pills that fill the right side neatly. If only ONE number is given, show a single comfortably-sized pill centered on the right with balanced spacing and NO empty glow panel and NO blank gap. If NO number is given, remove the contact area entirely and let the BUSINESS NAME grow larger / wider to fill that space. Show AT MOST TWO contact numbers and reproduce each number EXACTLY as provided, digit-for-digit — NEVER change, swap, add, drop, reorder, or invent any digit, and never make up a number.
-- Address: the address bar is ONLY for a real street / postal address. ALWAYS center-align the address text and ALWAYS keep the ENTIRE address on ONE SINGLE LINE — STRICTLY never wrap it, never break it, and never let it run onto a second line. If the address is long, shrink the address text size as much as needed so the whole address fits on that single line; if short, keep it centered at a comfortable size. If NO real address is given — or the provided value is just the business name or a vague label — OMIT the address bar completely and collapse the space. NEVER repeat the business name inside the address bar.
-
-BUSINESS-THEMED GRAPHIC DESIGN (MANDATORY — this was missing before):
-- The header MUST contain clear, tasteful GRAPHIC DESIGN ELEMENTS that match the business category — not just a plain coloured band. Render subtle themed motifs / decorative graphics inside the header:
-  - Education / college / school → academic motifs (graduation cap, open book, laurel wreath, knowledge / line-art).
-  - Hospital / clinic → medical motifs (cross, heartbeat line, caduceus), clean healthcare feel.
-  - Technology → circuit / grid / digital line-art.
-  - Retail / store → premium commerce / shopping motifs.
-  - Gym / fitness → dynamic energy / motion lines.
-  - Restaurant / food → luxury hospitality / culinary motifs.
-  - Any other category → fitting motifs for that exact industry.
-- Place these themed graphics as soft decorative accents (in the corners, behind the name, or as a faint watermark pattern) that clearly signal the business type while keeping all text fully readable.
-
-PREMIUM FINISH:
-- ${colourSource} Add rich gradients, premium soft shadows, tasteful glassmorphism, subtle metallic / gold highlights, and gentle depth and lighting so it feels dimensional — never a flat band, wireframe, form, dashboard, or plain bordered boxes.${markBox}
-- BUSINESS NAME: the visual hero — premium typography, elegant treatment, strong hierarchy, perfectly spelled and readable.
-- CONTACT pills: premium gradient / glass buttons with a small phone icon and a soft shadow.
-- ADDRESS bar: slim and integrated, with a subtle gradient / glass treatment and a small location-pin icon — never a thick separate rectangle. The address text stays on ONE single line always (shrink the text to fit), never wrapped onto a second line.
-
-CONTENT RULES (STRICT):
-- Place ONLY these elements: ${elementList} — using EXACTLY the values provided to you.
-- Use ONLY the values that are provided. If a value is not provided, simply leave that element out — do NOT draw an empty box and do NOT write words like "not provided", "N/A", or any placeholder.
-- NEVER invent, guess, autocomplete, or fabricate any value — especially NEVER make up an address, street, area, city, pincode, or phone number. If the address (or a contact number) is not given to you, that element does NOT exist: do NOT draw its bar / pill and do NOT place any text for it. A field that is missing must be completely absent, not faked.
-- No taglines, no offers, no services, no extra text — ${nothingBeyond}.
-- All text must be crisp, perfectly spelled, and clearly readable.${noLogoRule}
-
-FINAL CHECK BEFORE YOU RENDER (the one thing that is most often wrong):
-- Measure the header's height against the whole frame. It must be the TOP ${HEADER_BAND_PERCENT}% ONLY — a slim full-width strip, about ${HEADER_REFERENCE_PX} px on a ${HEADER_REFERENCE_CANVAS} canvas — with the other ${100 - HEADER_BAND_PERCENT}% of the frame left completely blank. If your header is taller than that, redraw it smaller: shrink the text and the padding, never the empty space below.`;
-};
 export const getToneForAdType = (adType: string) =>
   adType === AdType.FESTIVAL
     ? 'Warm, celebratory, festive, heartfelt'
