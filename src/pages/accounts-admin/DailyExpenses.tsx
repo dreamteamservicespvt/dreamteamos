@@ -10,7 +10,7 @@ import { useConfirm } from "@/hooks/useConfirm";
 
 interface Expense {
   id: string;
-  addedBy: string;
+  addedBy: string; 
   date: string;
   category: string;
   description: string;
