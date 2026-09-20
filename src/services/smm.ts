@@ -18,8 +18,8 @@
  */
 
 import {
-  collection, doc, getDoc, onSnapshot, query, runTransaction, serverTimestamp, setDoc, where,
-  Timestamp, updateDoc,
+  collection, deleteDoc, doc, getDoc, onSnapshot, query, runTransaction, serverTimestamp, setDoc,
+  where, Timestamp, updateDoc,
 } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
@@ -91,7 +91,17 @@ export async function ensureCampaignForOrder(input: CreateCampaignInput): Promis
     const snap = await getDoc(ref);
 
     if (snap.exists()) {
+      const existing = snap.data() as SmmCampaign;
       await updateDoc(ref, {
+        /*
+          A month taken off the board with its order comes back with it.
+
+          `cancelOrderForSale` marks the campaign `removed` when a sale is deleted or over-discounted
+          past the member's authority; re-approving the sale calls this again, so this is where it
+          has to be revived. Only `removed` is reversed — a month that genuinely finished or renewed
+          keeps the status it earned.
+        */
+        ...(existing.status === "removed" ? { status: "active" as const } : {}),
         clientName: input.clientName,
         businessName: input.businessName,
         clientPhone: input.clientPhone,
@@ -805,6 +815,58 @@ export async function setRenewal(
 
 export async function setCampaignStatus(campaignId: string, status: SmmCampaign["status"]): Promise<void> {
   await mutateCampaign(campaignId, () => ({ status }));
+}
+
+/**
+ * Take a month off the board with the order it belongs to — or put it back.
+ *
+ * ── Why this exists ──────────────────────────────────────────────────────────────────────────
+ * Removing an order from the tech queue used to leave its month running: the campaign was keyed on
+ * the order, but nothing told it the order had gone. The member who had been assigned kept seeing
+ * the client on their Social Media list, kept being reminded about posts for it, and kept being
+ * able to record work against a job that no longer existed.
+ *
+ * Never throws and never creates: a month that has no campaign (an ordinary ad order, a sale from
+ * before this section existed) is simply not one of these, and removing its order must not fail
+ * because of that.
+ */
+export async function setCampaignRemovedForOrders(
+  orderIds: string[],
+  removed: boolean,
+): Promise<void> {
+  await Promise.all(orderIds.map(async (orderId) => {
+    try {
+      const snap = await getDoc(campaignRef(orderId));
+      if (!snap.exists()) return;
+      const current = snap.data() as SmmCampaign;
+      // Putting one back only ever revives a month this took away; a month that had genuinely
+      // finished or renewed keeps the status it earned.
+      if (!removed && current.status !== "removed") return;
+      await updateDoc(campaignRef(orderId), {
+        status: removed ? "removed" : "active",
+        updatedAt: serverTimestamp(),
+      });
+    } catch (err) {
+      console.error("[smm] setCampaignRemovedForOrders:", err);
+    }
+  }));
+}
+
+/**
+ * Erase the months belonging to orders being purged.
+ *
+ * Purging is the one deletion in the pipeline that leaves nothing behind — the order goes, the
+ * client chat goes, and the month's plan goes with them. Anything less would leave a campaign
+ * pointing at an order id that resolves to nothing.
+ */
+export async function deleteCampaignsForOrders(orderIds: string[]): Promise<void> {
+  await Promise.all(orderIds.map(async (orderId) => {
+    try {
+      await deleteDoc(campaignRef(orderId));
+    } catch (err) {
+      console.error("[smm] deleteCampaignsForOrders:", err);
+    }
+  }));
 }
 
 /* ── Telling people what is due ─────────────────────────────────────────────────────────────── */

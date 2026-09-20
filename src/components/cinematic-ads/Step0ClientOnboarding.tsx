@@ -7,10 +7,12 @@ import {
   TARGET_PLATFORMS,
   DURATION_OPTIONS,
   LANGUAGES,
+  describeAdFormat,
   type UploadedFile,
   type TargetPlatform,
   type ClientBrief,
 } from "@/types/cinematicAds";
+import AdFormatPicker from "./AdFormatPicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -39,6 +41,10 @@ import { toast } from "sonner";
 export default function Step0ClientOnboarding() {
   const {
     project,
+    setAdFormat,
+    setBusinessInformation,
+    setClientRequirement,
+    setOurNote,
     addFiles,
     removeFile,
     setPlatforms,
@@ -99,25 +105,43 @@ export default function Step0ClientOnboarding() {
       toast.error("Please set a valid ad duration");
       return;
     }
+    if (!project?.businessInformation.trim()) {
+      toast.error("Business Information is needed — it is what the whole ad is built from");
+      return;
+    }
 
-    setProcessing(true, "Analyzing client materials and generating brief…");
+    setProcessing(true, "Reading the client materials and writing the brief…");
     try {
-      const brief = await generateClientBrief(
-        project?.uploadedFiles,
-        project?.selectedPlatforms,
-        dur,
-        project?.selectedLanguage,
-        project?.dialectNotes,
-      );
-      setBrief(brief);
-      toast.success("Client brief generated successfully!");
+      const result = await generateClientBrief({
+        files: project.uploadedFiles,
+        businessInformation: project.businessInformation,
+        clientRequirement: project.clientRequirement,
+        ourNote: project.ourNote,
+        adFormat: project.adFormat,
+        platforms: project.selectedPlatforms,
+        duration: dur,
+        language: project.selectedLanguage,
+        dialect: project.dialectNotes,
+      });
+      setBrief(result.brief);
+
+      // When the operator asked the AI to choose, record the choice on the selection so
+      // every later step follows THAT format's rules rather than the neutral default.
+      if (result.chosenFormatId) {
+        setAdFormat({
+          ...project.adFormat,
+          aiChosenFormatId: result.chosenFormatId,
+          aiChoiceReason: result.choiceReason,
+        });
+      }
+      toast.success("Client brief ready");
     } catch (err: any) {
       console.error("Brief generation failed:", err);
       toast.error(err?.message || "Failed to generate brief");
     } finally {
       setProcessing(false);
     }
-  }, [project, setBrief, setProcessing]);
+  }, [project, setBrief, setAdFormat, setProcessing]);
 
   const handleConfirmBrief = useCallback(() => {
     if (!project?.clientBrief) return;
@@ -155,6 +179,53 @@ export default function Step0ClientOnboarding() {
 
   return (
     <div className="space-y-6">
+      {/* Type of ad — chosen first because it governs everything after it */}
+      <AdFormatPicker value={project.adFormat} onChange={setAdFormat} />
+
+      {/* What we know, what they asked for, and what we think */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Pencil className="w-5 h-5" />
+            Client Details
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-1.5">
+            <Label className="text-sm font-semibold">Client: Business Information *</Label>
+            <Textarea
+              value={project.businessInformation}
+              onChange={(e) => setBusinessInformation(e.target.value)}
+              placeholder="What the business does, how long they have run it, where they are, who they serve, and what genuinely makes them different from the shop next door."
+              className="min-h-[110px]"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-sm font-semibold">Client Requirement</Label>
+            <Textarea
+              value={project.clientRequirement}
+              onChange={(e) => setClientRequirement(e.target.value)}
+              placeholder="How the client expects the output — in their words. What they asked for, what they showed you, what they said they liked or hated."
+              className="min-h-[90px]"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-sm font-semibold">Our Note</Label>
+            <Textarea
+              value={project.ourNote}
+              onChange={(e) => setOurNote(e.target.value)}
+              placeholder="Your own direction. What angle to take, what to avoid, what the client is wrong about. This is treated as an instruction, not a suggestion."
+              className="min-h-[90px]"
+            />
+            <p className="text-xs text-muted-foreground">
+              Carried into every story and clip prompt as a direct instruction.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Upload Area */}
       <Card>
         <CardHeader>
@@ -365,6 +436,12 @@ export default function Step0ClientOnboarding() {
             </div>
           </CardHeader>
           <CardContent>
+            <div className="mb-3 flex items-center gap-2 flex-wrap text-sm">
+              <span className="text-muted-foreground">Ad type:</span>
+              <Badge variant="outline" className="font-medium">
+                {describeAdFormat(project.adFormat)}
+              </Badge>
+            </div>
             <BriefDisplay
               brief={project?.clientBrief}
               editing={editingBrief}

@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { useCinematicAdsStore } from "@/store/cinematicAdsStore";
+import { uploadToCloudinary } from "@/services/cloudinary";
 import { type ReviewFeedback, type Deliverable } from "@/types/cinematicAds";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -43,13 +44,27 @@ export default function Step6ReviewDelivery() {
   const [feedbackTimestamp, setFeedbackTimestamp] = useState("");
   const [showFeedbackHistory, setShowFeedbackHistory] = useState(false);
   const videoInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
 
 
+  /**
+   * The delivered cut is uploaded, not wrapped in an object URL.
+   *
+   * An object URL dies with the tab, so the finished ad disappeared from a reopened
+   * project even though the project said it had been delivered.
+   */
   const handleVideoUpload = useCallback(
-    (file: File) => {
-      const url = URL.createObjectURL(file);
-      setFinalVideo(url, file);
-      toast.success("Final video uploaded!");
+    async (file: File) => {
+      setUploadingVideo(true);
+      try {
+        const url = await uploadToCloudinary(file);
+        setFinalVideo(url);
+        toast.success("Final video uploaded");
+      } catch (err: any) {
+        toast.error(err?.message || "Could not upload the video");
+      } finally {
+        setUploadingVideo(false);
+      }
     },
     [setFinalVideo],
   );
@@ -168,7 +183,7 @@ export default function Step6ReviewDelivery() {
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];
-              if (file) handleVideoUpload(file);
+              if (file) void handleVideoUpload(file);
               e.target.value = "";
             }}
           />

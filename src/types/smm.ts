@@ -268,7 +268,16 @@ export interface SmmBudgetPayment {
   byName: string;
 }
 
-export type SmmCampaignStatus = "active" | "completed" | "renewed" | "lapsed";
+/**
+ * `removed` is the one that is not about the work.
+ *
+ * The other four describe how a month went. `removed` means its ORDER was taken out of the queue —
+ * a mistaken sale, a client who pulled out, a duplicate — and the month went with it. A removed
+ * campaign is hidden from everybody rather than filed under "Finished", because it was never
+ * finished: it should not be there at all. Restoring the order brings it back to `active`, and
+ * purging the order deletes the campaign outright.
+ */
+export type SmmCampaignStatus = "active" | "completed" | "renewed" | "lapsed" | "removed";
 export type SmmRenewalState = "none" | "pitched" | "won" | "lost";
 
 export interface SmmRenewal {

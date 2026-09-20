@@ -21,6 +21,7 @@ import {
   Share2,
   CheckCircle2,
   History,
+  Mic,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -54,7 +55,7 @@ export default function Step1StoryGeneration() {
       }
       setProcessing(true, `Generating 5 ${tone ? tone + " " : ""}story variations…`);
       try {
-        const stories = await generateStories(project?.clientBrief, tone);
+        const stories = await generateStories(project.clientBrief, project.adFormat, tone);
         setStories(stories);
         toast.success("5 stories generated!");
       } catch (err: any) {
@@ -75,7 +76,7 @@ export default function Step1StoryGeneration() {
 
       setRefiningId(storyId);
       try {
-        const refined = await refineStory(story, project?.clientBrief, feedback);
+        const refined = await refineStory(story, project.clientBrief, project.adFormat, feedback);
         updateStory(storyId, { ...refined, id: storyId });
         setRefineInputs((p) => ({ ...p, [storyId]: "" }));
         toast.success("Story refined!");
@@ -99,7 +100,7 @@ export default function Step1StoryGeneration() {
     (storyId: string) => {
       selectStory(storyId);
       confirmStory();
-      toast.success("Story selected! Proceeding to Casting.");
+      toast.success("Story selected — now draw the storyboard to see how it will look.");
     },
     [selectStory, confirmStory],
   );
@@ -228,6 +229,11 @@ export default function Step1StoryGeneration() {
                         </div>
                         <CardTitle className="text-base">{story.title}</CardTitle>
                         <CardDescription className="mt-1">{story.conceptSummary}</CardDescription>
+                        {story.whyItLands && (
+                          <p className="text-xs mt-2 text-foreground/80 border-l-2 border-primary/50 pl-2">
+                            <span className="font-medium">Why it lands:</span> {story.whyItLands}
+                          </p>
+                        )}
                       </div>
                       <Button variant="ghost" size="icon" onClick={() => setExpandedStory(isExpanded ? null : story.id)}>
                         <ChevronDown
@@ -279,6 +285,37 @@ export default function Step1StoryGeneration() {
                               </div>
                             </div>
                           ))}
+
+                          {/*
+                            The voice over as one block.
+                            A voice artist needs the whole script in front of them, not a
+                            line at a time pulled out of six separate scene cards.
+                          */}
+                          {story.voScript && (
+                            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-sm font-semibold flex items-center gap-1.5">
+                                  <Mic className="w-3.5 h-3.5" />
+                                  Voice Over Script
+                                </p>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 gap-1 text-xs"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(story.voScript || "");
+                                    toast.success("Voice over script copied");
+                                  }}
+                                >
+                                  <Copy className="w-3 h-3" />
+                                  Copy script
+                                </Button>
+                              </div>
+                              <pre className="text-xs whitespace-pre-wrap font-sans leading-relaxed">
+                                {story.voScript}
+                              </pre>
+                            </div>
+                          )}
                         </CardContent>
                       </motion.div>
                     )}
@@ -335,7 +372,9 @@ export default function Step1StoryGeneration() {
 }
 
 function formatStoryText(story: Story): string {
-  let text = `🎬 ${story.title}\n\n${story.conceptSummary}\n\nEmotional Arc: ${story.emotionalArc}\nDuration: ${story.totalDuration} | ${story.numberOfScenes} scenes\n\n`;
+  let text = `🎬 ${story.title}\n\n${story.conceptSummary}\n\nEmotional Arc: ${story.emotionalArc}\n`;
+  if (story.whyItLands) text += `Why it lands: ${story.whyItLands}\n`;
+  text += `Duration: ${story.totalDuration} | ${story.numberOfScenes} scenes\n\n`;
   story.scenes.forEach((s) => {
     text += `--- Scene ${s.sceneNumber} (${s.duration}) ---\n`;
     text += `Visual: ${s.visualDescription}\n`;
@@ -345,5 +384,8 @@ function formatStoryText(story: Story): string {
     text += `Emotion: ${s.emotionalBeat}\n`;
     text += `Sound: ${s.soundDesignNotes}\n\n`;
   });
+  if (story.voScript) {
+    text += `--- VOICE OVER SCRIPT ---\n${story.voScript}\n`;
+  }
   return text;
 }

@@ -346,6 +346,16 @@ const callWithFallback = async <T>(
   throw lastError || new Error("API call failed after all retries");
 };
 
+/**
+ * The key + model rotation used by every Gemini call in the app.
+ *
+ * Exported so other services share this rotation instead of reimplementing it. The
+ * cinematic ads service used to pin `gemini-2.5-flash` with key rotation but no model
+ * fallback, which meant every one of its steps failed outright on an API key whose
+ * project cannot serve that model — the exact case the notes above describe.
+ */
+export const callGeminiWithFallback = callWithFallback;
+
 // Section refinement types
 export type SectionType = 'mainFrame' | 'header' | 'poster' | 'voiceOver' | 'veo';
 

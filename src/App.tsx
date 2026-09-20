@@ -25,8 +25,13 @@ import AppUpdateBanner from "@/components/layout/AppUpdateBanner";
  * load, on a mobile connection.
  *
  * `lazy` turns each one into a separate file. The first screen ships with what the first screen
- * needs; the ad generator arrives when somebody opens the ad generator. `Suspense` below covers
- * the moment in between, and the router keeps every path exactly as it was.
+ * needs; the ad generator arrives when somebody opens the ad generator, and the router keeps every
+ * path exactly as it was.
+ *
+ * The waiting is handled in TWO places, on purpose. A page inside the app suspends against a
+ * boundary inside AppLayout, so the sidebar and topbar stay put; the standalone pages below —
+ * login, a client's chat, a badge, a hiring link — have no shell to preserve and use the outer
+ * boundary here.
  */
 const MainAdminDashboard = lazy(() => import("@/pages/main-admin/Dashboard"));
 const TeamManagement = lazy(() => import("@/pages/main-admin/TeamManagement"));
@@ -125,7 +130,12 @@ const queryClient = new QueryClient();
  * open, so answering a call signed them out. Sending everyone to "/" and forwarding both the route
  * and the parameters is the version that cannot be wrong about who is reading it.
  */
-/** Shown while a route's chunk is downloading. Deliberately identical to AppLayout's own loader. */
+/**
+ * Shown while a STANDALONE page's chunk is downloading — login, a client chat, a badge check.
+ *
+ * Full screen is right for these because there is nothing else on the screen to preserve. Pages
+ * inside the app use the boundary in AppLayout instead, which leaves the shell alone.
+ */
 function RouteFallback() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">

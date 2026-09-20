@@ -33,6 +33,7 @@ vi.mock("firebase/firestore", () => ({
   onSnapshot: vi.fn(),
   serverTimestamp: () => "SERVER_TS",
   setDoc: async (ref: any, data: any) => { store[ref.path] = data; },
+  deleteDoc: async (ref: any) => { delete store[ref.path]; },
   updateDoc: async (ref: any, patch: any) => { store[ref.path] = { ...store[ref.path], ...patch }; },
   getDoc: async (ref: any) => ({
     exists: () => !!store[ref.path],
@@ -444,5 +445,64 @@ describe("recording the client's ad money", () => {
     seed();
     await smm.attachMetaProof("o1", "gone", "https://meta");
     expect(campaign().budgetPayments).toHaveLength(0);
+  });
+});
+
+describe("a month goes with the order it belongs to", () => {
+  it("comes off the board when its order is removed", async () => {
+    seed();
+    await smm.setCampaignRemovedForOrders(["o1"], true);
+    expect(campaign().status).toBe("removed");
+  });
+
+  it("comes back when the order is restored", async () => {
+    seed();
+    await smm.setCampaignRemovedForOrders(["o1"], true);
+    await smm.setCampaignRemovedForOrders(["o1"], false);
+    expect(campaign().status).toBe("active");
+  });
+
+  it("does not resurrect a month that genuinely finished", async () => {
+    seed();
+    await smm.setCampaignStatus("o1", "renewed");
+    // Restoring an order must only undo what removal did — a renewed month keeps what it earned.
+    await smm.setCampaignRemovedForOrders(["o1"], false);
+    expect(campaign().status).toBe("renewed");
+  });
+
+  it("is erased outright when the order is purged", async () => {
+    seed();
+    await smm.deleteCampaignsForOrders(["o1"]);
+    expect(campaign()).toBeUndefined();
+  });
+
+  it("shrugs at an order that never had a month — most orders are one ad", async () => {
+    seed();
+    await expect(smm.setCampaignRemovedForOrders(["no-such-order"], true)).resolves.toBeUndefined();
+    await expect(smm.deleteCampaignsForOrders(["no-such-order"])).resolves.toBeUndefined();
+    expect(campaign().status).toBe("active");
+  });
+
+  it("revives a removed month when its sale is re-approved", async () => {
+    const input = {
+      orderId: "o1", leadId: "l1", saleItemKey: "l1__0",
+      clientPhone: "+919000000000", clientPhoneId: "919000000000",
+      clientName: "Ravi", businessName: "Sri Lakshmi Jewellers",
+      packageKey: "Pro Package", packageLabel: "Pro Package", amount: 20000,
+      platforms: ["instagram"] as const, commitments: { poster: 2, ai_ad: 0, real_video: 0 },
+      soldBy: "seller", soldByName: "Anita", startDate: "2026-09-01",
+    };
+    await smm.ensureCampaignForOrder({ ...input, platforms: ["instagram"] });
+    const firstItem = campaign().items[0];
+    await smm.updateItem("o1", firstItem.id, { title: "Half-built" });
+
+    await smm.setCampaignRemovedForOrders(["o1"], true);
+    expect(campaign().status).toBe("removed");
+
+    // Re-approving the sale runs `upsertOrderForSale` → `ensureCampaignForOrder` again.
+    await smm.ensureCampaignForOrder({ ...input, platforms: ["instagram"] });
+    expect(campaign().status).toBe("active");
+    // And the plan the team had already been filling in survives the round trip.
+    expect(campaign().items[0].title).toBe("Half-built");
   });
 });
