@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   formatCanonicalDialogue, formatDialogueScript, parseDialogueClips,
   validateDialogueClips, countSpokenWords, applyNameSpellings, countNameMentions,
-  MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE,
+  MIN_WORDS_PER_DUO_CLIP, MAX_WORDS_PER_DUO_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE,
   type DialogueClip,
 } from "@/utils/dialogueFormat";
 import { getCharacterPack, packSpeakers, packSpeakerAliases, packNameSpellings, packHighlight } from "@/services/characterPacks";
@@ -60,7 +60,7 @@ describe("formatting", () => {
   });
 
   it("round-trips: format → parse gives back the same clips", () => {
-    const clips = [clipOf(9, 9, "alpha"), clipOf(9, 9, "beta")];
+    const clips = [clipOf(8, 8, "alpha"), clipOf(8, 8, "beta")];
     const parsed = parseDialogueClips(formatCanonicalDialogue(clips), aliases);
     expect(parsed).toHaveLength(2);
     expect(parsed[0].map(l => l.speaker)).toEqual(["motu", "patlu"]);
@@ -68,7 +68,7 @@ describe("formatting", () => {
   });
 
   it("round-trips the display form too", () => {
-    const clips = [clipOf(9, 9, "alpha"), clipOf(9, 9, "beta")];
+    const clips = [clipOf(8, 8, "alpha"), clipOf(8, 8, "beta")];
     const parsed = parseDialogueClips(formatDialogueScript(clips, speakers), aliases);
     expect(parsed).toHaveLength(2);
     expect(parsed[1][1].text).toBe(clips[1][1].text);
@@ -89,7 +89,7 @@ describe("formatting", () => {
   });
 
   it("splits into one card per clip, each keeping both speakers on their own line", () => {
-    const script = formatDialogueScript([clipOf(9, 9, "alpha"), clipOf(9, 9, "beta")], speakers);
+    const script = formatDialogueScript([clipOf(8, 8, "alpha"), clipOf(8, 8, "beta")], speakers);
     const cards = parseLabeledClips(script);
     expect(cards).toHaveLength(2);
     for (const card of cards) {
@@ -154,7 +154,7 @@ describe("parsing tolerates what the model actually emits", () => {
 });
 
 describe("validation — the 8-second two-hander contract", () => {
-  const ok = [clipOf(9, 9, "one"), clipOf(9, 9, "two")];
+  const ok = [clipOf(8, 8, "one"), clipOf(8, 8, "two")];
 
   it("passes a well-formed script", () => {
     expect(validateDialogueClips(ok, 2, speakers)).toEqual([]);
@@ -192,24 +192,26 @@ describe("validation — the 8-second two-hander contract", () => {
 
   /**
    * A band, not a single number: an exact count forced the writer to pad or amputate a line that
-   * was otherwise right, and padded Telugu is immediately audible.
+   * was otherwise right, and padded Telugu is immediately audible. A two-hander's band is lower than a
+   * single voice's — at 18–20 words the second speaker ran out of time and the video model finished the
+   * line in the wrong character's mouth.
    */
-  it("enforces the clip word band at both ends", () => {
-    const short = validateDialogueClips([clipOf(8, 9)], 1, speakers); // 17 — under
-    expect(short.some(i => i.includes(`${MIN_WORDS_PER_CLIP}-${MAX_WORDS_PER_CLIP} spoken words`))).toBe(true);
-    const long = validateDialogueClips([clipOf(11, 10)], 1, speakers); // 21 — over the team's 20-word ceiling
-    expect(long.some(i => i.includes(`${MIN_WORDS_PER_CLIP}-${MAX_WORDS_PER_CLIP} spoken words`))).toBe(true);
+  it("enforces the two-hander clip word band at both ends", () => {
+    const short = validateDialogueClips([clipOf(7, 7)], 1, speakers); // 14 — under
+    expect(short.some(i => i.includes(`${MIN_WORDS_PER_DUO_CLIP}-${MAX_WORDS_PER_DUO_CLIP} spoken words`))).toBe(true);
+    const long = validateDialogueClips([clipOf(9, 9)], 1, speakers); // 18 — a single voice's pace, too much for two
+    expect(long.some(i => i.includes(`${MIN_WORDS_PER_DUO_CLIP}-${MAX_WORDS_PER_DUO_CLIP} spoken words`))).toBe(true);
   });
 
   it("accepts every total inside the band", () => {
-    expect(validateDialogueClips([clipOf(9, 9)], 1, speakers)).toEqual([]);   // 18
-    expect(validateDialogueClips([clipOf(9, 10)], 1, speakers)).toEqual([]);  // 19
-    expect(validateDialogueClips([clipOf(10, 10)], 1, speakers)).toEqual([]); // 20 — the ceiling the team set
+    expect(validateDialogueClips([clipOf(7, 8)], 1, speakers)).toEqual([]);  // 15
+    expect(validateDialogueClips([clipOf(8, 8)], 1, speakers)).toEqual([]);  // 16
+    expect(validateDialogueClips([clipOf(8, 9)], 1, speakers)).toEqual([]);  // 17 — the two-hander ceiling
   });
 
   it("allows an uneven split that still lands inside the band", () => {
-    expect(validateDialogueClips([clipOf(8, 11)], 1, speakers)).toEqual([]);
-    expect(validateDialogueClips([clipOf(12, 8)], 1, speakers)).toEqual([]);
+    expect(validateDialogueClips([clipOf(7, 9)], 1, speakers)).toEqual([]);
+    expect(validateDialogueClips([clipOf(9, 7)], 1, speakers)).toEqual([]);
   });
 
   it("rejects a line outside the per-character range even when the total is right", () => {
@@ -417,16 +419,16 @@ describe("both names, each spoken exactly once across the whole script", () => {
   /** Both names in clip 1 — the greeting — and neither again. This is the shape we want. */
   it("accepts a script that names each character exactly once", () => {
     const clips = [
-      [{ speaker: "motu", text: `Patlu ${words(8)}?` }, { speaker: "patlu", text: `Motu ${words(8)}.` }],
-      clipOf(9, 9, "beta"),
+      [{ speaker: "motu", text: `Patlu ${words(7)}?` }, { speaker: "patlu", text: `Motu ${words(7)}.` }],
+      clipOf(8, 8, "beta"),
     ];
     expect(validateDialogueClips(clips, 2, speakers, { characterNames })).toEqual([]);
   });
 
   it("flags a name said more than once", () => {
     const clips = [
-      [{ speaker: "motu", text: `Patlu ${words(8)}?` }, { speaker: "patlu", text: `Motu ${words(8)}.` }],
-      [{ speaker: "motu", text: `Patlu ${words(8)}?` }, { speaker: "patlu", text: `${words(9)}.` }],
+      [{ speaker: "motu", text: `Patlu ${words(7)}?` }, { speaker: "patlu", text: `Motu ${words(7)}.` }],
+      [{ speaker: "motu", text: `Patlu ${words(7)}?` }, { speaker: "patlu", text: `${words(9)}.` }],
     ];
     const issues = validateDialogueClips(clips, 2, speakers, { characterNames });
     expect(issues.some(i => i.includes("Patlu's name is spoken 2 times"))).toBe(true);
@@ -439,8 +441,8 @@ describe("both names, each spoken exactly once across the whole script", () => {
    */
   it("flags one name said twice while the other is never said", () => {
     const clips = [
-      [{ speaker: "motu", text: `Motu ${words(8)}?` }, { speaker: "patlu", text: `Motu ${words(8)}.` }],
-      clipOf(9, 9, "beta"),
+      [{ speaker: "motu", text: `Motu ${words(7)}?` }, { speaker: "patlu", text: `Motu ${words(7)}.` }],
+      clipOf(8, 8, "beta"),
     ];
     const issues = validateDialogueClips(clips, 2, speakers, { characterNames });
     expect(issues.some(i => i.includes("Motu's name is spoken 2 times"))).toBe(true);
@@ -448,7 +450,7 @@ describe("both names, each spoken exactly once across the whole script", () => {
   });
 
   it("flags a script that names neither of them", () => {
-    const clips = [clipOf(9, 9, "alpha"), clipOf(9, 9, "beta")];
+    const clips = [clipOf(8, 8, "alpha"), clipOf(8, 8, "beta")];
     const issues = validateDialogueClips(clips, 2, speakers, { characterNames });
     expect(issues.some(i => i.includes("Motu's name is never spoken"))).toBe(true);
     expect(issues.some(i => i.includes("Patlu's name is never spoken"))).toBe(true);
@@ -457,8 +459,8 @@ describe("both names, each spoken exactly once across the whole script", () => {
 
   it("counts the fixed Telugu spellings as saying the name", () => {
     const clips = [
-      [{ speaker: "motu", text: `పట్లు ${words(8)}?` }, { speaker: "patlu", text: `మోటూ ${words(8)}.` }],
-      clipOf(9, 9, "beta"),
+      [{ speaker: "motu", text: `పట్లు ${words(7)}?` }, { speaker: "patlu", text: `మోటూ ${words(7)}.` }],
+      clipOf(8, 8, "beta"),
     ];
     expect(validateDialogueClips(clips, 2, speakers, { characterNames })).toEqual([]);
   });
@@ -466,12 +468,12 @@ describe("both names, each spoken exactly once across the whole script", () => {
   // The [Motu]: / [Patlu]: labels are structure, not dialogue — counting them would make every
   // script look compliant while nobody ever said a name out loud.
   it("counts only what is said, never the speaker labels", () => {
-    expect(countNameMentions([clipOf(9, 9, "alpha")], tokens)).toBe(0);
-    expect(countNameMentions([clipOf(9, 9, "Patlu")], tokens)).toBe(1);
+    expect(countNameMentions([clipOf(8, 8, "alpha")], tokens)).toBe(0);
+    expect(countNameMentions([clipOf(8, 8, "Patlu")], tokens)).toBe(1);
   });
 
   it("skips the check entirely when no characters are supplied", () => {
-    const clips = [clipOf(9, 9, "Motu"), clipOf(9, 9, "Motu")];
+    const clips = [clipOf(8, 8, "Motu"), clipOf(8, 8, "Motu")];
     const issues = validateDialogueClips(clips, 2, speakers);
     expect(issues.some(i => i.includes("spoken") || i.includes("never spoken"))).toBe(false);
   });

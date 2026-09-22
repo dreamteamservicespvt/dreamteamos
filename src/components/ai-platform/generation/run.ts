@@ -26,6 +26,11 @@ export interface RunFacts {
   castLabel: string;
   /** Poster mode: how many concepts are being written. */
   conceptCount: number;
+  /**
+   * A Real Owner Face ad: the owner's own photo has to go into every image tab with its prompt,
+   * because the whole identity is copied from it. Optional so older snapshots still read.
+   */
+  ownerFace?: boolean;
 }
 
 export interface GenerationRun {

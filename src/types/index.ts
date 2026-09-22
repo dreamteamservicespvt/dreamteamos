@@ -219,6 +219,12 @@ export interface WorkAssignment {
    * sale so the member's AI Platform opens on the right treatment instead of them having to know.
    */
   characterPack?: string;
+  /**
+   * For the "Custom Character" special category: who or what the character is, in the sales
+   * member's words. The catalogue entry builds the whole cast from this text, so without it there is
+   * no character to make. Carried from the sale; editable by the team leader.
+   */
+  customCharacter?: string;
   /** Whether the client supplied real photos of their premises for that special-category ad. */
   realLocationProvided?: boolean;
   /**
@@ -512,6 +518,12 @@ export interface AdRequirement {
    * attire above are moot — the cast is the duo — so the sales form stops asking for them.
    */
   specialCategory?: string;
+  /**
+   * Who or what a "Custom Character" is — described on the call, because the client is the one who
+   * says it ("Hanuman carrying our rice bag", "a talking mango for our juice shop"). The catalogue's
+   * custom entry derives the whole character from this text. Only meaningful for that entry.
+   */
+  customCharacter?: string;
   /**
    * Where the ad is SET. True when the client is sending photographs of their own premises (the
    * tech member uploads them into the Store/Office slot), false when the location is built from

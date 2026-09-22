@@ -44,9 +44,21 @@ export const MIN_WORDS_PER_CLIP = 18;
 export const MAX_WORDS_PER_CLIP = 20;
 /** The pace a clip is planned at — the middle of the band. Used to estimate clips from raw text. */
 export const TARGET_WORDS_PER_CLIP = 19;
-/** A single character's share. The two lines must still total inside the clip band above. */
-export const MIN_WORDS_PER_LINE = 8;
-export const MAX_WORDS_PER_LINE = 12;
+/**
+ * A two-hander's clip band — deliberately LOWER than a single voice's.
+ *
+ * ── Why two speakers get fewer words ─────────────────────────────────────────────────────────
+ * Two people sharing eight seconds lose time a single voice never does: the hand-off pause, the second
+ * speaker drawing breath, the listener's reaction. At 18–20 words the second line routinely ran out of
+ * time, and that is where the video model cut corners — it finished the line in the wrong character's
+ * mouth, merged the two, or swapped them ("Motu's closing line in Patlu's voice"). 15–17 words gives each
+ * speaker a comfortable half of the clip.
+ */
+export const MIN_WORDS_PER_DUO_CLIP = 15;
+export const MAX_WORDS_PER_DUO_CLIP = 17;
+/** A single character's share in a two-hander. The two lines must still total inside the duo band above. */
+export const MIN_WORDS_PER_LINE = 7;
+export const MAX_WORDS_PER_LINE = 9;
 
 export interface WordBudget {
   minClip: number;
@@ -71,8 +83,8 @@ export interface WordBudget {
 export function wordBudgetFor(speakerCount: number): WordBudget {
   const solo = speakerCount <= 1;
   return {
-    minClip: MIN_WORDS_PER_CLIP,
-    maxClip: MAX_WORDS_PER_CLIP,
+    minClip: solo ? MIN_WORDS_PER_CLIP : MIN_WORDS_PER_DUO_CLIP,
+    maxClip: solo ? MAX_WORDS_PER_CLIP : MAX_WORDS_PER_DUO_CLIP,
     minLine: solo ? MIN_WORDS_PER_CLIP : MIN_WORDS_PER_LINE,
     maxLine: solo ? MAX_WORDS_PER_CLIP : MAX_WORDS_PER_LINE,
   };
@@ -347,11 +359,13 @@ export function validateDialogueClips(
   speakers: Speaker[],
   options: DialogueValidationOptions = {},
 ): string[] {
+  // Unset bands follow the cast size — a two-hander is held to the lower duo band (see wordBudgetFor).
+  const budget = wordBudgetFor(speakers.length);
   const {
-    minWordsPerClip = MIN_WORDS_PER_CLIP,
-    maxWordsPerClip = MAX_WORDS_PER_CLIP,
-    minWordsPerLine = MIN_WORDS_PER_LINE,
-    maxWordsPerLine = MAX_WORDS_PER_LINE,
+    minWordsPerClip = budget.minClip,
+    maxWordsPerClip = budget.maxClip,
+    minWordsPerLine = budget.minLine,
+    maxWordsPerLine = budget.maxLine,
     characterNames = [],
     mentionsPerName = 1,
     requiredPhrases = [],

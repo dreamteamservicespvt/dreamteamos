@@ -59,6 +59,15 @@ export function buildMissionTasks(facts: RunFacts): MissionTask[] {
       tabs: n,
     },
     logoTask(facts, n, "tab"),
+    ...(facts.ownerFace
+      ? [{
+          id: "owner",
+          kind: "check" as const,
+          title: n === 1 ? "Attach the OWNER IMAGE in the tab" : "Attach the OWNER IMAGE in every tab",
+          detail: "This is a Real Owner Face ad: every Main Frame prompt copies the owner's face from the photo you "
+            + "uploaded in UPLOAD OWNER IMAGE. Attach that same photo with each prompt, or the face will be invented.",
+        }]
+      : []),
     facts.onLocation
       ? {
           id: "location",

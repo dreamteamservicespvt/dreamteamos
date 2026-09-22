@@ -12,7 +12,7 @@ import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from "@/types/aiPla
 import { DURATIONS, END_CREDITS_SECONDS, durationFromSeconds, getClipCount, hasPoster, priceForClips } from "./assignmentDuration";
 import { PACKAGES, isAdCategory, categoryLabel, effectiveAdCategory, productionCategory } from "./serviceCatalog";
 import { PRICING } from "./pricing";
-import { getCharacterPack, packHighlight, packModelGender } from "@/services/characterPacks";
+import { getCharacterPack, isCustomPack, isHumanPack, packCastGender, packHighlight, packModelGender } from "@/services/characterPacks";
 import { posterStyleLabel, AUTO_POSTER_STYLE } from "@/services/posterStyles";
 import {
   DEFAULT_POSTER_SIZE, DEFAULT_POSTER_PRICE, POSTER_DURATION, isPosterCategory, posterSizeLabel,
@@ -57,6 +57,49 @@ export function attireForGender(gender: ModelGender, current: AttireType): Attir
 }
 
 /**
+ * The attire a male & female duo can be ordered in — one choice, dressed per person.
+ *
+ * Traditional reads as a designer saree on her and a kurta with a Nehru jacket on him; Professional
+ * as a formal suit on each; Custom as the team's own words for both outfits. "Shirt & pant" is left
+ * out because it only describes the man.
+ */
+export const MIXED_DUO_ATTIRE: AttireType[] = [AttireType.PROFESSIONAL, AttireType.TRADITIONAL, AttireType.CUSTOM];
+
+/**
+ * The attire options a form should offer, given the special category and the Model buttons.
+ *
+ * One rule for every form (the sale form, Work Assign, the assignment editors, the generator): no
+ * pack → by the chosen model; a human entry → by the gender it casts; the male & female duo → the
+ * options that dress both of them.
+ */
+export function attireOptionsFor(characterPack: string | null | undefined, modelGender: ModelGender): AttireType[] {
+  const cast = packCastGender(getCharacterPack(characterPack));
+  if (cast === "mixed") return MIXED_DUO_ATTIRE;
+  return ATTIRE_OPTIONS_BY_GENDER[(cast as ModelGender | null) ?? modelGender];
+}
+
+/** How a form labels who the attire is for — "👩 female", "👨 male", "👩👨 woman & man". */
+export function castLabelFor(characterPack: string | null | undefined, modelGender?: ModelGender | null): string {
+  const pack = getCharacterPack(characterPack);
+  const cast = pack ? packCastGender(pack) : (modelGender || ModelGender.FEMALE);
+  const duo = !!pack && pack.characters.length > 1;
+  if (cast === "mixed") return "👩👨 woman & man";
+  if (cast === "male") return duo ? "👨👨 both men" : "👨 male";
+  return duo ? "👩👩 both women" : "👩 female";
+}
+
+/** True for the entries whose cast the sales member describes in their own words. */
+export function needsCharacterDescription(characterPack?: string | null): boolean {
+  return isCustomPack(getCharacterPack(characterPack));
+}
+
+/** True when a job puts a real person (or two) on screen who can be dressed. */
+export function isDressableSpec(characterPack?: string | null): boolean {
+  const pack = getCharacterPack(characterPack);
+  return !pack || isHumanPack(pack);
+}
+
+/**
  * The model and attire a job actually stores.
  *
  * A human-model special category ("Normal Ad (Female)", "Real Owner Face (Male)"…) decides the
@@ -72,7 +115,9 @@ export function resolveModelSpec(spec: {
 }): { modelGender: ModelGender; attireType: AttireType; customAttire: string } {
   const packGender = packModelGender(getCharacterPack(spec.characterPack));
   const modelGender = (packGender as ModelGender | null) ?? spec.modelGender;
-  const attireType = attireForGender(modelGender, spec.attireType);
+  // A male & female duo has no single gender, so its attire is kept to the options that dress both.
+  const options = attireOptionsFor(spec.characterPack, modelGender);
+  const attireType = options.includes(spec.attireType) ? spec.attireType : (options[0] ?? AttireType.PROFESSIONAL);
   return {
     modelGender,
     attireType,
@@ -149,6 +194,7 @@ export function withRequirementDefaults(requirement?: AdRequirement | null) {
     // greeting video themed for the wrong festival is worse than one nobody has themed yet.
     festival: requirement?.festival?.trim() || "",
     specialCategory: requirement?.specialCategory?.trim() || "",
+    customCharacter: requirement?.customCharacter?.trim() || "",
     // Asked on every ad now, not only a special-category one. An unanswered flag means "no photos
     // coming", which is the safe assumption to build on and what every ad sold before this in fact
     // got — a location built from the business profile.
@@ -184,6 +230,8 @@ export interface AssignmentFormSpec {
   festival: string;
   /** Special-category cartoon duo sold for this job ("" for a normal human-model ad). */
   characterPack: string;
+  /** For the Custom Character category: who the character is, in the sales member's words. */
+  customCharacter: string;
   /** For a pack ad: whether the client is sending photos of their own premises. */
   realLocationProvided: boolean;
   /**
@@ -222,6 +270,7 @@ export function blankAssignmentForm(): AssignmentFormSpec & { assignedTo: string
     requirementNotes: "",
     festival: "",
     characterPack: "",
+    customCharacter: "",
     realLocationProvided: false,
     businessInfo: "",
     businessAddress: "",
@@ -313,7 +362,7 @@ export function assignmentFormFromOrder(order: Order, knownLanguages?: string[])
     businessName: r.businessName || order.businessName || "",
     businessWhatsapp: r.businessWhatsapp || order.clientPhone || "",
     modelGender: r.modelGender,
-    attireType: attireForGender(r.modelGender, r.attireType),
+    attireType: resolveModelSpec({ characterPack: r.specialCategory, modelGender: r.modelGender, attireType: r.attireType }).attireType,
     customAttire: r.customAttire,
     aspectRatio: r.aspectRatio,
     language: known ? r.language : "Custom",
@@ -325,6 +374,7 @@ export function assignmentFormFromOrder(order: Order, knownLanguages?: string[])
     // A pack id sold before that duo was retired would otherwise open the form on a treatment the
     // generator no longer knows; resolving it here degrades to a normal ad instead of failing later.
     characterPack: getCharacterPack(r.specialCategory) ? r.specialCategory : "",
+    customCharacter: needsCharacterDescription(r.specialCategory) ? r.customCharacter : "",
     realLocationProvided: r.realLocationProvided,
     businessInfo: r.businessInfo,
     businessAddress: r.businessAddress,
@@ -355,6 +405,8 @@ export function buildAssignmentRequirementsMessage(a: {
   requirementNotes?: string;
   accessCode?: string;
   characterPack?: string;
+  /** Custom Character only: who the character is. */
+  customCharacter?: string;
   realLocationProvided?: boolean;
   festival?: string;
   /** The sale's client-facing brief — "Business info & what to include". */
@@ -417,8 +469,9 @@ export function buildAssignmentRequirementsMessage(a: {
 
   // A human-model entry ("Normal Ad (Female)"…) still has a person to dress, so its attire is
   // briefed like an ordinary ad's. Deities and cartoons come dressed.
-  const dressable = !pack || pack.family === "human";
+  const dressable = !pack || isHumanPack(pack);
   const packGender = packModelGender(pack);
+  const character = isCustomPack(pack) ? a.customCharacter?.trim() : "";
   return [
     `🎬✨ *NEW AD ASSIGNMENT* ✨🎬`,
     ``,
@@ -438,6 +491,9 @@ export function buildAssignmentRequirementsMessage(a: {
     pack ? `${packHighlight(pack)}` : null,
     // True of a duo and false of the other twenty-three entries — a brief that tells a member two
     // characters speak in an ad with one deity in it is a brief they stop trusting.
+    // The custom entry has no cast of its own — the description IS the character, so it is the
+    // first thing the member must read about this job.
+    character ? `🎭 *Character:* ${character}` : null,
     pack ? (pack.characters.length > 1
       ? `💬 Both characters speak in every clip`
       : `💬 ${pack.characters[0].name} carries every clip alone`) : null,
@@ -446,7 +502,12 @@ export function buildAssignmentRequirementsMessage(a: {
       : `🏙️ *Location:* build it from the business (client sent no photos)`) : null,
     !pack && a.modelGender ? `👤 *Model:* ${a.modelGender === "male" ? "Male" : "Female"}` : null,
     dressable && a.attireType
-      ? `👔 *Attire:* ${attireLabel(attireForGender((packGender as ModelGender | null) ?? ((a.modelGender as ModelGender) || ModelGender.FEMALE), a.attireType as AttireType), a.customAttire)}`
+      // Only a duo names its cast here ("both women") — a single person's attire line reads as before.
+      ? `👔 *Attire${pack && pack.characters.length > 1 ? ` (${castLabelFor(a.characterPack)})` : ""}:* ${attireLabel(resolveModelSpec({
+          characterPack: a.characterPack,
+          modelGender: (packGender as ModelGender | null) ?? ((a.modelGender as ModelGender) || ModelGender.FEMALE),
+          attireType: a.attireType as AttireType,
+        }).attireType, a.customAttire)}`
       : null,
     a.aspectRatio ? `📐 *Ratio:* ${a.aspectRatio}` : null,
     a.language ? `🗣️ *Language:* ${a.language}` : null,

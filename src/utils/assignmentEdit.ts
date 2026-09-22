@@ -17,6 +17,7 @@ import { getClipCount } from "./assignmentDuration";
 import { resolveModelSpec } from "./adRequirement";
 import { DEFAULT_POSTER_SIZE, POSTER_DURATION, isPosterCategory } from "./posterSpec";
 import { AUTO_POSTER_STYLE } from "@/services/posterStyles";
+import { getCharacterPack, isCustomPack } from "@/services/characterPacks";
 
 /** The poster half of an edit form. Carried on every form so switching category keeps it. */
 export interface PosterEditFields {
@@ -45,6 +46,8 @@ export interface CategoryEditForm extends PosterEditFields {
   aspectRatio: "9:16" | "16:9";
   characterPack: string;
   realLocationProvided: boolean;
+  /** Custom Character only: who the character is. Optional so older forms compile unchanged. */
+  customCharacter?: string;
 }
 
 /** The kind-dependent fields to write. Never contains `undefined` — Firestore rejects it. */
@@ -72,6 +75,9 @@ export function categoryDependentPatch(form: CategoryEditForm): Record<string, u
     // Written unconditionally so clearing the special category actually clears it — a spread that
     // omits the field would leave the old duo on the job while the form showed none.
     characterPack: form.characterPack,
+    // The description belongs to the custom entry alone; any other entry clears it, so a job moved
+    // off "Custom Character" does not keep a description nobody will read.
+    customCharacter: isCustomPack(getCharacterPack(form.characterPack)) ? (form.customCharacter || "").trim() : "",
     // Written on every ad, not only a pack one — a normal ad's background is a real field, and
     // gating it on the pack would reset it to "AI" on every unrelated edit.
     realLocationProvided: form.realLocationProvided === true,

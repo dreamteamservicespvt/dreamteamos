@@ -6,7 +6,7 @@ import { deleteDoc, doc } from 'firebase/firestore';
 import { db } from '@/services/firebase';
 import { extractBusinessNameFromInfo } from '@/services/geminiService';
 import { useConfirm } from '@/hooks/useConfirm';
-import type { PosterConcept } from '@/types/aiPlatform';
+import type { PosterConcept, SceneContext, VoiceBrief } from '@/types/aiPlatform';
 import type { CoreMessageBrief } from '@/services/prompts/coreMessage';
 
 const getBusinessName = (item: SavedGeneration) => {
@@ -40,6 +40,14 @@ export interface SavedGeneration {
   creationMode?: string;
   /** Special-category cartoon duo (services/characterPacks id), when this was a pack ad. */
   characterPack?: string | null;
+  /** Custom Character only: who the character is. */
+  customCharacter?: string;
+  /** The FRAME / BACKGROUND INSTRUCTIONS the frames were written against. */
+  frameInstructions?: string;
+  /** The video's context and per-clip background plan — absent on older generations. */
+  sceneContext?: SceneContext | null;
+  /** The client's voice note, heard and understood — absent when none was attached. */
+  voiceBrief?: VoiceBrief | null;
   /** Whether that pack ad used the client's real photos or a generated location. */
   locationMode?: string | null;
   aspectRatio?: string;

@@ -8,6 +8,7 @@ import {
 } from "@/services/prompts/characterAd";
 import {
   MAX_WORDS_PER_CLIP, MAX_WORDS_PER_LINE, MIN_WORDS_PER_CLIP, MIN_WORDS_PER_LINE, wordBudgetFor,
+  MIN_WORDS_PER_DUO_CLIP, MAX_WORDS_PER_DUO_CLIP,
 } from "@/utils/dialogueFormat";
 
 /**
@@ -27,11 +28,13 @@ const script = (id: string) =>
   CHARACTER_VOICEOVER_SYSTEM_PROMPT(getCharacterPack(id)!, 32, 4, "commercial", "", "Telugu", "Bodhan");
 
 describe("the word budget", () => {
-  it("splits a clip between two speakers", () => {
+  // Two speakers lose time to the hand-off, so a two-hander's clip band is lower than a single voice's.
+  it("splits a lower clip band between two speakers", () => {
     expect(wordBudgetFor(2)).toEqual({
-      minClip: MIN_WORDS_PER_CLIP, maxClip: MAX_WORDS_PER_CLIP,
+      minClip: MIN_WORDS_PER_DUO_CLIP, maxClip: MAX_WORDS_PER_DUO_CLIP,
       minLine: MIN_WORDS_PER_LINE, maxLine: MAX_WORDS_PER_LINE,
     });
+    expect(MAX_WORDS_PER_DUO_CLIP).toBeLessThan(MIN_WORDS_PER_CLIP);
   });
 
   it("gives the whole clip to a lone speaker", () => {

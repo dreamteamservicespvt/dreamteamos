@@ -16,7 +16,7 @@
  * Renders grid cells (a fragment), so it drops into the existing form grids unchanged.
  */
 import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from "@/types/aiPlatform";
-import { ATTIRE_LABELS } from "@/utils/adRequirement";
+import { ATTIRE_LABELS, attireOptionsFor, castLabelFor } from "@/utils/adRequirement";
 import { getCharacterPack, isHumanPack, packModelGender } from "@/services/characterPacks";
 
 export interface ModelAttirePatch {
@@ -42,8 +42,8 @@ export default function ModelAttireFields({
   if (pack && !isHumanPack(pack)) return null;
 
   const packGender = packModelGender(pack) as ModelGender | null;
-  const gender = packGender ?? modelGender;
-  const options = ATTIRE_OPTIONS_BY_GENDER[gender];
+  // The male & female duo has no single gender: attireOptionsFor offers what dresses both of them.
+  const options = attireOptionsFor(characterPack, packGender ?? modelGender);
   // An attire left over from the other gender is shown as the first valid option rather than as a
   // blank select; the save path runs the same correction (see resolveModelSpec).
   const shownAttire = options.includes(attireType) ? attireType : options[0];
@@ -90,7 +90,7 @@ export default function ModelAttireFields({
           Attire
           {pack && (
             <span className="ml-1 font-normal text-muted-foreground/70">
-              ({gender === ModelGender.MALE ? "👨 male" : "👩 female"} — set by {pack.label})
+              ({castLabelFor(characterPack)} — set by {pack.label})
             </span>
           )}
         </label>

@@ -68,10 +68,12 @@ export interface PackCharacter {
  * Which shelf of the catalogue an entry sits on. Purely for grouping the picker — the generation
  * pipeline never branches on it, because every entry already carries its own direction.
  */
-export type CharacterFamily = "human" | "god" | "duo" | "solo" | "custom";
+export type CharacterFamily = "human" | "human_duo" | "god" | "duo" | "solo" | "custom";
 
 export const CHARACTER_FAMILY_LABELS: Record<CharacterFamily, string> = {
   human: "Human Model",
+  // Two real people talking about the business — female duo, male duo, or a woman and a man.
+  human_duo: "Human Duo",
   god: "God Promotion",
   duo: "Cartoon Duo",
   solo: "Single Cartoon",
@@ -79,7 +81,7 @@ export const CHARACTER_FAMILY_LABELS: Record<CharacterFamily, string> = {
 };
 
 /** The order the families are offered in — commonest first, escape hatch last. */
-export const CHARACTER_FAMILY_ORDER: CharacterFamily[] = ["human", "god", "duo", "solo", "custom"];
+export const CHARACTER_FAMILY_ORDER: CharacterFamily[] = ["human", "human_duo", "god", "duo", "solo", "custom"];
 
 export interface CharacterPack {
   id: string;
@@ -189,25 +191,67 @@ export function getCharacterPack(id?: string | null): CharacterPack | null {
  * Named explicitly rather than read off the id: an id is a storage key, and a renamed key must not
  * silently turn a man into a woman.
  */
-const HUMAN_PACK_GENDER: Record<string, "female" | "male"> = {
+const HUMAN_PACK_GENDER: Record<string, CastGender> = {
   normal_female: "female",
   normal_male: "male",
   owner_face_female: "female",
   owner_face_male: "male",
+  human_duo_female: "female",
+  human_duo_male: "male",
+  // A woman and a man: each is dressed for their own gender from one attire choice.
+  human_duo_mixed: "mixed",
 };
+
+/** Who a human entry casts: one gender, or — for the male & female duo — both. */
+export type CastGender = "female" | "male" | "mixed";
 
 /** True for an entry that still puts a real person on screen — someone who can be dressed. */
 export function isHumanPack(pack?: CharacterPack | null): boolean {
-  return !!pack && pack.family === "human";
+  return !!pack && (pack.family === "human" || pack.family === "human_duo");
 }
 
 /**
- * The model a human-model entry casts, or null for everything else (and for no pack at all).
+ * Who a human entry casts, or null for a deity, a cartoon or no pack at all.
  * A human entry missing from the table falls back to its id, then to female, the catalogue's default.
  */
-export function packModelGender(pack?: CharacterPack | null): "female" | "male" | null {
+export function packCastGender(pack?: CharacterPack | null): CastGender | null {
   if (!isHumanPack(pack)) return null;
   return HUMAN_PACK_GENDER[pack!.id] ?? (/(^|_)male$/.test(pack!.id) ? "male" : "female");
+}
+
+/**
+ * The single gender a human entry casts, or null for everything else — including the male & female
+ * duo, which casts both and so has no one gender to hand a single-gender form field.
+ */
+export function packModelGender(pack?: CharacterPack | null): "female" | "male" | null {
+  const cast = packCastGender(pack);
+  return cast === "mixed" ? null : cast;
+}
+
+/** The "Custom Character" entry — its cast comes entirely from a typed description. */
+export function isCustomPack(pack?: CharacterPack | null): boolean {
+  return !!pack && pack.family === "custom";
+}
+
+/**
+ * The custom entry with the team's description of the character written into it.
+ *
+ * ── Why the description is folded into the pack ──────────────────────────────────────────────
+ * Every direction field of the custom entry says "read THE DESCRIPTION typed into the Custom Character
+ * box" — and until now there was no such box, so the generator was building a character out of a
+ * sentence nobody had written. Putting the text into the identity anchor and the persona means every
+ * prompt that already reads the pack (the script, the frames, the video director) carries it, with no
+ * second path to keep in step. Any other entry, or an empty description, is returned untouched.
+ */
+export function withCustomCharacter(pack: CharacterPack | null, description?: string | null): CharacterPack | null {
+  const text = (description || "").trim();
+  if (!pack || !isCustomPack(pack) || !text) return pack;
+  const block = `THE DESCRIPTION (typed by the team, exactly as the client asked for it — this IS the character): "${text}"`;
+  return {
+    ...pack,
+    franchise: `${block}\n\n${pack.franchise}`,
+    characters: pack.characters.map((c) => ({ ...c, persona: `${block}\n${c.persona}` })),
+  };
 }
 
 /**

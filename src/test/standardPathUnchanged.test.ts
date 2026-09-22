@@ -43,7 +43,7 @@ describe("standard Veo prompt carries no character-pack format", () => {
     expect(female).toContain("the model (a woman)");
     expect(male).toContain("the model (a man)");
     expect(female).toContain("One continuous shot");
-    expect(female).toContain("PLANNED MOVE");
+    expect(female).toContain("PLANNED CAMERA");
   });
 
   it("has no cartoon staging or second speaker", () => {

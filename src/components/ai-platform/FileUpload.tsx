@@ -1,5 +1,5 @@
 import React, { useRef, useState, useMemo, useEffect } from 'react';
-import { X, FileAudio, FileText, Image as ImageIcon, Plus } from 'lucide-react';
+import { X, FileAudio, FileText, Image as ImageIcon, Plus, UserRound } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
 
@@ -13,6 +13,22 @@ import { cn } from '@/lib/utils';
 export const MAX_IMAGE_MB = 10;
 const MAX_IMAGE_BYTES = MAX_IMAGE_MB * 1024 * 1024;
 
+/**
+ * Where a client's PDF or document goes instead of an upload box.
+ *
+ * The generator reads images and audio. A document dropped here used to be uploaded, counted and
+ * then contribute nothing — the member believed the client's brochure had been used when it had not.
+ * The working route is to let Gemini read the document and paste what it extracted as text, which the
+ * pipeline DOES read, so every refusal names that route.
+ */
+export const DOCUMENT_ROUTE_HINT =
+  'Open it in Gemini, ask it to extract all the business information, and paste the result into the BUSINESS CONTENT box.';
+
+const DOCUMENT_EXTENSIONS = /\.(pdf|docx?|txt|rtf|odt|xlsx?|csv|pptx?|zip|rar|7z|pages|key|numbers)$/i;
+const AUDIO_EXTENSIONS = /\.(mp3|m4a|aac|ogg|oga|opus|wav|flac|amr|weba|3ga)$/i;
+const IMAGE_EXTENSIONS = /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i;
+const VIDEO_EXTENSIONS = /\.(mp4|mov|avi|mkv|webm|m4v|3gp|wmv|flv)$/i;
+
 interface FileUploadProps {
   label: string;
   accept: string;
@@ -22,22 +38,31 @@ interface FileUploadProps {
   required?: boolean;
   helperText?: string;
   value?: File | File[] | null;
+  /**
+   * A slot that must not be missed — the owner's face on a Real Owner Face ad. Drawn larger, in the
+   * brand's warning colour, with a person icon, so it reads as the one thing this ad cannot start without.
+   */
+  emphasis?: 'owner';
 }
 
-export const FileUpload: React.FC<FileUploadProps> = ({ 
-  label, 
-  accept, 
-  multiple = false, 
+export const FileUpload: React.FC<FileUploadProps> = ({
+  label,
+  accept,
+  multiple = false,
   maxFiles,
-  onChange, 
+  onChange,
   required,
   helperText,
-  value
+  value,
+  emphasis,
 }) => {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
   const inputRef = useRef<HTMLInputElement>(null);
   const appendModeRef = useRef(false);
+  /** Depth of nested dragenter/dragleave pairs, so hovering a child element does not flicker the highlight. */
+  const dragDepthRef = useRef(0);
+  const [dragging, setDragging] = useState(false);
 
   const canAddMore = multiple || (maxFiles !== undefined && maxFiles > 1);
 
@@ -55,11 +80,15 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   const hasReachedMax = maxFiles !== undefined && files.length >= maxFiles;
 
   // Image preview thumbnails (object URLs), cleaned up when files change/unmount
-  const isImageFile = (f: File) => f.type.startsWith('image/');
+  const isImageFile = (f: File) => f.type.startsWith('image/') || (!f.type && IMAGE_EXTENSIONS.test(f.name));
+  const isAudioFile = (f: File) => f.type.startsWith('audio/') || AUDIO_EXTENSIONS.test(f.name);
   const isPdf = (f: File) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
-  const isVideo = (f: File) => f.type.startsWith('video/') || /\.(mp4|mov|avi|mkv|webm|m4v|3gp|wmv|flv)$/i.test(f.name);
-  /** Whether THIS slot is an image slot — the voice and text slots are not, and keep their own rules. */
+  const isDocument = (f: File) => DOCUMENT_EXTENSIONS.test(f.name)
+    || /^(application\/(msword|vnd\.|rtf|zip|x-)|text\/)/.test(f.type);
+  const isVideo = (f: File) => f.type.startsWith('video/') || VIDEO_EXTENSIONS.test(f.name);
+  /** What THIS slot is for. The image slots and the voice slot keep their own rules. */
   const wantsImages = accept.includes('image');
+  const wantsAudio = accept.includes('audio');
   const previewUrls = useMemo(
     () => files.map((f) => (isImageFile(f) ? URL.createObjectURL(f) : null)),
     [files]
@@ -68,65 +97,111 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     return () => { previewUrls.forEach((u) => u && URL.revokeObjectURL(u)); };
   }, [previewUrls]);
 
+  /**
+   * One door for every file, however it arrived — the picker or a drop.
+   *
+   * Drag & drop used to do nothing at all: the box SAID "Click to upload or drag & drop" and had no
+   * drop handler, so a dropped file was opened by the browser in place of the app. Dropped files now
+   * pass through exactly the same checks as picked ones, because the picker's `accept` filter does not
+   * apply to a drop — without these checks a drop was the way to get a PDF past the box.
+   *
+   * What this slot will actually take, and why each refusal is loud: the generator reads images and
+   * audio. A PDF, a document or a video contributes NOTHING to the ad — it is uploaded, it is counted,
+   * and the member goes on believing the client's brochure or shop video was used. So anything the
+   * pipeline cannot read is refused at the door, named, and paired with the thing that does work.
+   *
+   * The size cap is the other half: a 40MB photo straight off a phone is base64-encoded into the
+   * model request, where it costs a minute of upload on a site connection and then fails.
+   */
+  const acceptFiles = (all: File[], append: boolean) => {
+    const reasons: string[] = [];
+    const incoming = all.filter((f) => {
+      if (isPdf(f)) {
+        reasons.push(`${f.name} is a PDF — PDFs are not uploaded here. Screenshot the pages you need and upload those, or: ${DOCUMENT_ROUTE_HINT}`);
+        return false;
+      }
+      if (isVideo(f)) {
+        reasons.push(`${f.name} is a video — only images can be used here. Upload a frame from it instead.`);
+        return false;
+      }
+      if (isDocument(f)) {
+        reasons.push(`${f.name} is a document — files like this are not uploaded here. ${DOCUMENT_ROUTE_HINT}`);
+        return false;
+      }
+      if (wantsImages && !isImageFile(f)) {
+        reasons.push(`${f.name} is not an image — this box takes photos and screenshots only.`);
+        return false;
+      }
+      if (wantsAudio && !wantsImages && !isAudioFile(f)) {
+        reasons.push(`${f.name} is not an audio recording — this box takes voice notes only (MP3, M4A, OGG/OPUS, WAV).`);
+        return false;
+      }
+      if (isImageFile(f) && f.size > MAX_IMAGE_BYTES) {
+        reasons.push(`${f.name} is ${(f.size / 1024 / 1024).toFixed(1)}MB — images must be under ${MAX_IMAGE_MB}MB. Resize it or send a screenshot.`);
+        return false;
+      }
+      return true;
+    });
+
+    setPdfNotice(reasons.length > 0 ? reasons.join(' ') : null);
+    if (incoming.length === 0) return;
+
+    if (append && canAddMore) {
+      // Append mode: add new files to existing list
+      let merged = [...files, ...incoming];
+      if (maxFiles !== undefined) merged = merged.slice(0, maxFiles);
+      setInternalFiles(merged);
+      onChange(merged);
+    } else if (canAddMore) {
+      // Replace mode for multi-file
+      let newFiles = incoming;
+      if (maxFiles !== undefined) newFiles = newFiles.slice(0, maxFiles);
+      setInternalFiles(newFiles);
+      onChange(newFiles);
+    } else {
+      // Single file mode
+      setInternalFiles([incoming[0]]);
+      onChange(incoming[0]);
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      const all = Array.from(e.target.files);
-
-      /*
-        What this slot will actually take, and why each refusal is loud.
-
-        The generator reads images and plain text. A PDF or a video contributes NOTHING to the ad —
-        it is uploaded, it is counted, and the member goes on believing the client's brochure or
-        shop video was used. So anything the pipeline cannot read is refused at the door, named,
-        and paired with the thing that does work.
-
-        The size cap is the other half: a 40MB photo straight off a phone is base64-encoded into the
-        model request, where it costs a minute of upload on a site connection and then fails. Ten
-        megabytes is far above any screenshot and below the point where it breaks.
-      */
-      const reasons: string[] = [];
-      const incoming = all.filter((f) => {
-        if (isPdf(f)) {
-          reasons.push(`${f.name} is a PDF — screenshot the pages you need and upload those, or paste the text into the box.`);
-          return false;
-        }
-        if (isVideo(f)) {
-          reasons.push(`${f.name} is a video — only images can be used here. Upload a frame from it instead.`);
-          return false;
-        }
-        if (wantsImages && !isImageFile(f)) {
-          reasons.push(`${f.name} is not an image — this box takes photos and screenshots only.`);
-          return false;
-        }
-        if (isImageFile(f) && f.size > MAX_IMAGE_BYTES) {
-          reasons.push(`${f.name} is ${(f.size / 1024 / 1024).toFixed(1)}MB — images must be under ${MAX_IMAGE_MB}MB. Resize it or send a screenshot.`);
-          return false;
-        }
-        return true;
-      });
-
-      setPdfNotice(reasons.length > 0 ? reasons.join(' ') : null);
-      if (incoming.length === 0) { e.target.value = ''; appendModeRef.current = false; return; }
-
-      if (appendModeRef.current && canAddMore) {
-        // Append mode: add new files to existing list
-        let merged = [...files, ...incoming];
-        if (maxFiles !== undefined) merged = merged.slice(0, maxFiles);
-        setInternalFiles(merged);
-        onChange(merged);
-      } else if (canAddMore) {
-        // Replace mode for multi-file
-        let newFiles = incoming;
-        if (maxFiles !== undefined) newFiles = newFiles.slice(0, maxFiles);
-        setInternalFiles(newFiles);
-        onChange(newFiles);
-      } else {
-        // Single file mode
-        setInternalFiles([incoming[0]]);
-        onChange(incoming[0]);
-      }
-      appendModeRef.current = false;
+      acceptFiles(Array.from(e.target.files), appendModeRef.current);
     }
+    e.target.value = '';
+    appendModeRef.current = false;
+  };
+
+  /** Drag handlers, shared by the empty drop zone and the filled list. */
+  const dragProps = {
+    onDragEnter: (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dragDepthRef.current += 1;
+      setDragging(true);
+    },
+    onDragOver: (e: React.DragEvent) => {
+      // Without preventDefault here the browser refuses the drop and opens the file itself.
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    },
+    onDragLeave: (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+      if (dragDepthRef.current === 0) setDragging(false);
+    },
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dragDepthRef.current = 0;
+      setDragging(false);
+      const dropped = Array.from(e.dataTransfer?.files || []);
+      // A drop onto a slot that already holds files adds to them, like "Add another" does.
+      if (dropped.length > 0) acceptFiles(dropped, files.length > 0);
+    },
   };
 
   const removeFile = (index: number) => {
@@ -151,6 +226,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   };
 
   const getIcon = () => {
+    if (emphasis === 'owner') return <UserRound className="w-9 h-9 text-amber-500" />;
     if (accept.includes('audio')) return <FileAudio className="w-8 h-8 text-purple-500" />;
     if (accept.includes('text') || accept.includes('pdf')) return <FileText className="w-8 h-8 text-blue-500" />;
     return <ImageIcon className="w-8 h-8 text-green-500" />;
@@ -159,7 +235,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   const PdfNotice = () => pdfNotice ? (
     <div
       data-test="pdf-notice"
-      className={cn("mt-2 flex items-start gap-2 rounded-lg border px-3 py-2 text-xs leading-relaxed",
+      className={cn("mt-2 flex items-start gap-2 rounded-lg border px-3 py-2 text-xs leading-relaxed text-left",
         isDark ? "border-amber-600/60 bg-amber-950/30 text-amber-200" : "border-amber-400 bg-amber-50 text-amber-800")}
     >
       <span className="shrink-0">⚠️</span>
@@ -173,31 +249,51 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     </div>
   ) : null;
 
+  const owner = emphasis === 'owner';
+
   return (
     <div className="mb-4">
       {label && (
-        <label className={cn("block text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>
+        <label className={cn("block text-sm font-semibold mb-2", owner && "uppercase tracking-wide",
+          owner ? (isDark ? "text-amber-300" : "text-amber-700") : (isDark ? "text-slate-300" : "text-slate-700"))}>
           {label} {required && <span className="text-red-500">*</span>}
         </label>
       )}
       <input ref={inputRef} type="file" accept={accept} multiple={canAddMore && !maxFiles} onChange={handleFileChange} className="hidden" />
       {files.length === 0 ? (
         <div
+          role="button"
+          tabIndex={0}
+          data-test="drop-zone"
+          data-dragging={dragging ? 'true' : undefined}
           onClick={() => inputRef.current?.click()}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inputRef.current?.click(); } }}
+          {...dragProps}
           className={cn(
-            "group border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer transition-all",
-            isDark
-              ? "border-slate-700 bg-slate-800/50 hover:bg-slate-800 hover:border-blue-500/70 hover:shadow-lg hover:shadow-blue-900/20"
-              : "border-slate-300 bg-white hover:bg-blue-50/40 hover:border-blue-400 hover:shadow-lg hover:shadow-blue-100"
+            "group border-2 border-dashed rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all text-center",
+            owner ? "p-7" : "p-6",
+            dragging
+              ? (isDark ? "border-blue-400 bg-blue-900/30 shadow-lg shadow-blue-900/30" : "border-blue-500 bg-blue-50 shadow-lg shadow-blue-100")
+              : owner
+                ? (isDark ? "border-amber-500/70 bg-amber-950/20 hover:bg-amber-950/30" : "border-amber-400 bg-amber-50/60 hover:bg-amber-50")
+                : isDark
+                  ? "border-slate-700 bg-slate-800/50 hover:bg-slate-800 hover:border-blue-500/70 hover:shadow-lg hover:shadow-blue-900/20"
+                  : "border-slate-300 bg-white hover:bg-blue-50/40 hover:border-blue-400 hover:shadow-lg hover:shadow-blue-100"
           )}
         >
-          <div className="mb-2">{getIcon()}</div>
-          <p className={cn("text-sm font-medium", isDark ? "text-slate-300" : "text-slate-500")}>Click to upload or drag & drop</p>
-          <p className={cn("text-xs mt-1", isDark ? "text-slate-500" : "text-slate-400")}>{helperText || accept}</p>
+          <div className="mb-2 pointer-events-none">{getIcon()}</div>
+          <p className={cn("text-sm font-medium pointer-events-none", isDark ? "text-slate-300" : "text-slate-500")}>
+            {dragging ? 'Drop to upload' : 'Click to upload or drag & drop'}
+          </p>
+          <p className={cn("text-xs mt-1 pointer-events-none", isDark ? "text-slate-500" : "text-slate-400")}>{helperText || accept}</p>
           <PdfNotice />
         </div>
       ) : (
-        <div className="space-y-2">
+        <div
+          {...dragProps}
+          data-test="drop-list"
+          className={cn("space-y-2 rounded-xl transition-all", dragging && (isDark ? "ring-2 ring-blue-400 bg-blue-900/20 p-1" : "ring-2 ring-blue-400 bg-blue-50 p-1"))}
+        >
           {files.map((file, idx) => {
             const previewUrl = previewUrls[idx];
             return (
@@ -225,7 +321,8 @@ export const FileUpload: React.FC<FileUploadProps> = ({
                   </p>
                 </div>
               </div>
-              <button onClick={() => removeFile(idx)} className="p-1 rounded-full hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors flex-shrink-0">
+              <button type="button" onClick={() => removeFile(idx)} aria-label={`Remove ${file.name}`}
+                className="p-1 rounded-full hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors flex-shrink-0">
                 <X className="w-4 h-4 text-red-500" />
               </button>
             </div>
@@ -233,15 +330,17 @@ export const FileUpload: React.FC<FileUploadProps> = ({
           })}
           {canAddMore && !hasReachedMax ? (
             <button
+              type="button"
               onClick={triggerAddAnother}
               className={cn("w-full text-xs text-center py-2 rounded-lg border border-dashed transition-colors flex items-center justify-center gap-1",
                 isDark ? "border-blue-500/50 text-blue-400 hover:border-blue-400 hover:bg-blue-900/20" : "border-blue-300 text-blue-500 hover:border-blue-400 hover:bg-blue-50"
               )}
             >
-              <Plus className="w-3 h-3" /> Add another
+              <Plus className="w-3 h-3" /> Add another — or drop more here
             </button>
           ) : (
             <button
+              type="button"
               onClick={triggerChangeFile}
               className={cn("w-full text-xs text-center py-2 rounded-lg border border-dashed transition-colors",
                 isDark ? "border-slate-600 text-slate-400 hover:border-blue-500" : "border-slate-300 text-slate-500 hover:border-blue-400"
@@ -256,3 +355,4 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     </div>
   );
 };
+

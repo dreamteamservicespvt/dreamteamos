@@ -21,6 +21,7 @@ import type { WorkAssignment, AppUser, DailyCheckin, Order } from '@/types';
 import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from '@/types/aiPlatform';
 import {
   assignmentFormFromOrder, buildAssignmentRequirementsMessage, blankAssignmentForm, categorySwitch, resolveModelSpec,
+  needsCharacterDescription,
 } from '@/utils/adRequirement';
 import ModelAttireFields from '@/components/work/ModelAttireFields';
 import PosterSpecFields from '@/components/work/PosterSpecFields';
@@ -202,8 +203,12 @@ export default function TeamLeaderWorkAssign() {
 
   const resolvedLanguage = () => (form.language === 'Custom' ? (form.customLanguage.trim() || 'Custom') : form.language);
 
+  /** A Custom Character job cannot be made without saying who the character is. */
+  const missingCharacter = !isPosterCategory(form.category)
+    && needsCharacterDescription(form.characterPack) && !form.customCharacter.trim();
+
   const handleCreate = async () => {
-    if (!user || !form.assignedTo) return;
+    if (!user || !form.assignedTo || missingCharacter) return;
     setSubmitting(true);
     try {
       const uniqueId = nextWorkUniqueId(form.category, assignments);
@@ -240,6 +245,7 @@ export default function TeamLeaderWorkAssign() {
         businessAddress: form.businessAddress,
         ...(poster ? { posterSize: form.posterSize, posterStyle: form.posterStyle, posterCount: form.posterCount } : {}),
         characterPack: form.characterPack,
+        customCharacter: form.customCharacter,
         realLocationProvided: form.realLocationProvided,
         order: sourceOrder,
       });
@@ -280,6 +286,7 @@ export default function TeamLeaderWorkAssign() {
         posterStyle: form.posterStyle,
         posterCount: form.posterCount,
         characterPack: poster ? '' : form.characterPack,
+        customCharacter: poster ? '' : form.customCharacter,
         realLocationProvided: form.realLocationProvided,
         accessCode,
       });
@@ -656,6 +663,7 @@ export default function TeamLeaderWorkAssign() {
               <SpecialCategoryFields
                 characterPack={form.characterPack}
                 realLocationProvided={form.realLocationProvided}
+                customCharacter={form.customCharacter}
                 onChange={(patch) => setForm(prev => ({ ...prev, ...patch }))}
               />
             )}
@@ -777,7 +785,7 @@ export default function TeamLeaderWorkAssign() {
                   : `(${getClipCount(form.duration)} clips + ${hasPoster(form.duration) ? 'Poster ' : ''}5s EC)`}
               </span>
             </div>
-            <button onClick={handleCreate} disabled={submitting || !form.assignedTo}
+            <button onClick={handleCreate} disabled={submitting || !form.assignedTo || missingCharacter}
               className="flex items-center space-x-2 px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed">
               {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardList className="w-4 h-4" />}
               <span>{submitting ? 'Creating...' : 'Create Assignment'}</span>

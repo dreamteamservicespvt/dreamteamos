@@ -107,6 +107,10 @@ export function buildClientSaleMessage(lead: Lead, item: SaleDetail): string {
         `🙂 *And one clear photo of the owner's face* — straight on and well lit. This exact face appears in every clip.`,
       );
     }
+    // A custom character is the client's own idea — read it back so they can correct it now.
+    if (pack?.family === "custom" && r.customCharacter?.trim()) {
+      lines.push(``, `🎭 *Your character:* ${r.customCharacter.trim()}`);
+    }
   }
 
   // What the client told us about their business and what they want the ad to carry — the offer,

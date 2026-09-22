@@ -53,7 +53,7 @@ export function useConfirm() {
       <AlertDialogContent className="max-w-sm">
         <AlertDialogHeader>
           {options.title && <AlertDialogTitle>{options.title}</AlertDialogTitle>}
-          <AlertDialogDescription>{options.description}</AlertDialogDescription>
+          <AlertDialogDescription className="whitespace-pre-line">{options.description}</AlertDialogDescription>
         </AlertDialogHeader>
         {options.withInput && (
           <input

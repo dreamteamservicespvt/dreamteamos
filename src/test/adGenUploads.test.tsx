@@ -79,9 +79,28 @@ describe("an image slot", () => {
   });
 
   it("refuses anything that is not an image at all", () => {
-    fireEvent.change(ctx.input, { target: { files: [fileOf("notes.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")] } });
+    fireEvent.change(ctx.input, { target: { files: [fileOf("song.mp3", "audio/mpeg")] } });
     expect(ctx.onChange).not.toHaveBeenCalled();
     expect(notice()).toMatch(/not an image/i);
+  });
+
+  // No document is uploaded anywhere — each refusal names the route that does work.
+  it("refuses a document and sends it through Gemini into BUSINESS CONTENT", () => {
+    fireEvent.change(ctx.input, { target: { files: [fileOf("notes.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")] } });
+    expect(ctx.onChange).not.toHaveBeenCalled();
+    expect(notice()).toMatch(/is a document/i);
+    expect(notice()).toMatch(/Gemini/);
+    expect(notice()).toMatch(/BUSINESS CONTENT/);
+  });
+
+  // The drop zone used to have no drag handlers at all, so a dropped file did nothing.
+  it("takes a file dropped onto the box", () => {
+    const zone = document.querySelector("[data-test=drop-zone]") as HTMLElement;
+    expect(zone).toBeTruthy();
+    fireEvent.dragOver(zone, { dataTransfer: { files: [], types: ["Files"] } });
+    fireEvent.drop(zone, { dataTransfer: { files: [fileOf("shop.jpg", "image/jpeg", MB)], types: ["Files"] } });
+    expect(ctx.onChange).toHaveBeenCalled();
+    expect((ctx.onChange.mock.calls[0][0] as File[]).map((f) => f.name)).toEqual(["shop.jpg"]);
   });
 
   it("keeps the good files out of a mixed selection and names only the bad ones", () => {
@@ -119,11 +138,13 @@ describe("the other slots keep their own rules", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it("still takes a text file on the text slot", () => {
+  // The text-file slot is gone: a document's content goes in as text, via Gemini.
+  it("refuses a text file too, with the Gemini route", () => {
     const onChange = vi.fn();
     render(<FileUpload label="Notes" accept=".txt,.doc,.docx" multiple onChange={onChange} />);
     const input = document.querySelector("input[type=file]") as HTMLInputElement;
     fireEvent.change(input, { target: { files: [fileOf("brief.txt", "text/plain", 20 * 1024)] } });
-    expect(onChange).toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+    expect(notice()).toMatch(/Gemini/);
   });
 });

@@ -47,7 +47,23 @@ export interface AdFormData {
   customAttire?: string;
   duration: number;
   durationMode: 'preset' | 'custom';
+  /**
+   * BUSINESS CONTENT — business details, the words the ad must carry, the call to action, contact
+   * information. What the client sent, typed or pasted (including text Gemini extracted from a PDF).
+   */
   textInstructions: string;
+  /**
+   * FRAME / BACKGROUND INSTRUCTIONS — how the frames should look: the background, the scene, the
+   * style, the lighting and the colours. Kept apart from the business content because the two go to
+   * different places: this steers every frame's background and the scene plan, and when it is empty
+   * the scenes are worked out from the visiting card, the business content and the voice-over.
+   */
+  frameInstructions?: string;
+  /**
+   * What a "Custom Character" special category looks like and who it is, in the sales member's
+   * words. The catalogue entry is written to derive everything from a description; this is it.
+   */
+  customCharacter?: string;
   /** Output aspect ratio for poster / header / main-frame prompts. Default 9:16. */
   aspectRatio: AspectRatio;
   /** Voice-over + on-screen language. Default "Telugu". */
@@ -106,6 +122,12 @@ export type LocationMode = 'real_provided' | 'ai_generated';
 
 export interface FileStore {
   logo: File | null;
+  /**
+   * The business owner's own face, for a Real Owner Face special category. Its own slot rather than
+   * a store photo: on every other ad a client photo is a LOCATION reference, and here this one photo
+   * is the identity the whole ad is built from. Optional so older callers compile unchanged.
+   */
+  ownerImage?: File | null;
   visitingCard: File[];
   storeImage: File[];
   productImages: File[];
@@ -133,6 +155,57 @@ export interface OverlayTextItem {
   /** "0:09.2 → 0:11.0 · from “X” to “Y”" — the whole instruction an editor reads */
   cueLabel?: string;
   cue?: { start: number; end: number; fromWord: string; toWord: string; matched: boolean };
+  /**
+   * The Overlay Text Image Generator's prompt: a short, clean image prompt for a premium 3D
+   * transparent PNG of this overlay's text, themed to the business (or the festival). Absent on
+   * overlays generated before the generator existed, which still show their text.
+   */
+  imagePrompt?: string;
+  /** The look half of imagePrompt — what a Refine Prompt changes; the rest is fixed (utils/overlayImage). */
+  imageDesign?: string;
+}
+
+/**
+ * What the video is really about, and where each clip is set — decided once from the business
+ * content, the frame instructions, the voice-over and the ad type, before any frame is written.
+ * See services/prompts/scenePlan.
+ */
+export interface SceneContext {
+  /** The motive in one line: "Annadanam — free food donation at the temple", "Birthday wishes". */
+  motive: string;
+  /** The kind of video: "business promotion", "temple introduction", "wedding invitation", … */
+  category: string;
+  /** The world the frames belong to: "inside a working bakery", "a decorated temple courtyard". */
+  setting: string;
+  /** The mood the frames and designs carry. */
+  mood: string;
+  /** Things that must never appear because they contradict the motive. */
+  avoid: string[];
+  /**
+   * One background per clip, in clip order — each different, each proving that clip's line — and how
+   * that clip is filmed: its staging (stand and tell, walk and talk, show the product…), camera move,
+   * shot angle and, in a two-hander, whether the camera follows the speaker. The how-to-film fields are
+   * validated against prompts/motion and fall back to the code plan when absent.
+   */
+  clips: {
+    clip: number; background: string; elements: string[];
+    staging?: string; camera?: string; angle?: string; focus?: string;
+  }[];
+}
+
+/**
+ * What the client's voice note says, heard and understood before anything is written.
+ * See geminiService.understandVoiceInstructions.
+ */
+export interface VoiceBrief {
+  /** Word for word, in the language spoken. */
+  transcript: string;
+  /** Plain-English summary of what the client wants. */
+  summary: string;
+  /** Specific requirements the client stated — offers, lines to say, things to show, tone. */
+  requirements: string[];
+  /** Where the voice note and the other material disagree, so nobody silently picks one. */
+  conflicts: string[];
 }
 
 export interface GeneratedOutputs {
@@ -154,6 +227,10 @@ export interface GeneratedOutputs {
    * Files and the Configuration before writing. Kept so a refine holds to the same message.
    */
   coreMessage?: CoreMessageBrief | null;
+  /** The video's context and the per-clip background plan the frames were written against. */
+  sceneContext?: SceneContext | null;
+  /** The client's voice note, transcribed and understood. Absent when none was attached. */
+  voiceBrief?: VoiceBrief | null;
 }
 
 export interface GenerationStatus {

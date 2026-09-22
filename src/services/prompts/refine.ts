@@ -15,7 +15,7 @@
  * Code then puts the edited clips back into the untouched script, so every other clip is byte-for-
  * byte what it was, and validates the result before anything is saved.
  */
-import { MAX_WORDS_PER_CLIP, MIN_WORDS_PER_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE } from "@/utils/dialogueFormat";
+import { MAX_WORDS_PER_CLIP, MIN_WORDS_PER_CLIP, wordBudgetFor } from "@/utils/dialogueFormat";
 import { coreMessageBlock, type CoreMessageBrief } from "./coreMessage";
 import { everydaySpeechRules } from "./everydaySpeech";
 import { wishAudienceRule } from "./festivalWish";
@@ -83,6 +83,8 @@ export const VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT = (options: {
   const messageClip = adType === "festival" && clipCount > 1 ? 2 : 1;
   const dialogue = !!speakers?.length;
   const solo = (speakers?.length ?? 0) === 1;
+  // A two-hander refines to its own, lower band — see utils/dialogueFormat.wordBudgetFor.
+  const budget = wordBudgetFor(speakers?.length || 1);
   const finalCta = isTelugu
     ? `"మరిన్ని వివరాల కోసం స్క్రీన్‌పై ఉన్న నంబర్‌కు ఇప్పుడే కాల్ చేయండి."`
     : `a natural ${lang} sentence meaning "For more details, call the number shown on screen now"`;
@@ -106,7 +108,8 @@ ${everydaySpeechRules(lang)}
 RULES THE EDITED CLIPS MUST STILL OBEY:
 ${dialogue
   ? `• Each clip is ${solo ? `ONE line from ${speakers![0].name}` : `exactly ${speakers!.length} lines, ${speakers!.map((s) => s.name).join(" then ")}, in that order`}. ${solo ? "" : `Never merge them into one voice, never drop or reorder a character.`}
-• ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words per clip${solo ? "" : `, each line ${MIN_WORDS_PER_LINE}–${MAX_WORDS_PER_LINE} words`}.`
+• ${budget.minClip}–${budget.maxClip} spoken words per clip${solo ? "" : `, each line ${budget.minLine}–${budget.maxLine} words`}.
+• Each line belongs to the speaker named on it — never move a line, or part of one, to the other character.`
   : `• Between ${MIN_WORDS_PER_CLIP} and ${MAX_WORDS_PER_CLIP} spoken words per clip — tighten or complete the thought, never pad and never cut a sentence in half.
 • ONE short spoken sentence per clip — never two sentences, never a long run-on line.`}
 • ${isLatin ? "No digits in spoken content." : `No Latin letters and no digits in spoken content.`}
@@ -121,17 +124,42 @@ ${dialogue
   : `{ "clips": [ { "clip": <1-based>, "text": "<the edited spoken line>" } ] }`}`;
 };
 
-/** The system prompt for editing finished Veo prompts without losing their shape or their dialogue. */
-export const VEO_REFINE_SYSTEM_PROMPT = `You are a precise EDITOR of Veo 3 video prompts. You are not writing new prompts.
+/**
+ * Refining finished Veo prompts — step 1: understand the request and compare it with what each prompt
+ * says today, before anything is edited. See utils/veoRefine for why the refine is two steps.
+ */
+export const VEO_REFINE_PLAN_SYSTEM_PROMPT = `You read a member's change request for finished Veo 3 video prompts and decide exactly what has to change in each clip's prompt — before anyone edits anything.
 
-Each prompt you receive has a fixed shape: an opening line, an ACTION block with the walk and three timed beats, a CAMERA line, a MOVEMENT block, a HAND GESTURES AND BODY LANGUAGE block, a SPEECH block with the spoken line in quotes, a SCENE LIFE line, and a Negative prompt. Apply ONLY the member's requested change and keep everything else word for word.
+Each prompt is one 8-second clip animated from an attached still frame. Its sections: an opening line; the identity and world locks; ACTION — PRESENT IN PLACE with three timed beats; CAMERA; the movement and hand-gesture rules; SPEECH (the recorded voice-over, in quotes); SCENE LIFE; the quality rules; and the Negative prompt.
+
+1. UNDERSTAND the request the way a person would — it may be in English, Telugu, Hindi or a mix, short or loosely worded. Say in one plain-English line what the member wants to see different in the video.
+2. COMPARE it with each prompt below: which section decides this (an ACTION beat, the CAMERA line, SCENE LIFE, a negative)? What does that section say right now? Does it already do what was asked?
+3. PLAN the edit for every clip that needs it, naming the section and the concrete new content — e.g. "CAMERA: replace the slow arc with a slow sideways slide to the left", "ACTION beat 2: she lifts the product toward the lens instead of pointing at the shelf", "SCENE LIFE: add steam rising from the tea glasses on the counter".
+
+RULES FOR THE PLAN:
+• The quoted lines under SPEECH are the recorded voice-over and never change. A request to change what is SAID belongs to the Voice Over Script refine — put that in notPossible.
+• The place stays the place in the frame: nobody walks across the room, leaves the shop or goes through a door, and nothing appears that the frame does not show. For a request that needs that ("walk to the counter"), plan the nearest in-place version instead (turn to the counter and present it from where they stand) and say so in understood.
+• How a face, an outfit or the premises LOOK is decided by the frame image, not the video prompt — say so in notPossible.
+• Only the clips the request is about. When the request is for one clip, plan only that clip.
+• When every prompt already does exactly what was asked, list no clips and say where in alreadyDone.
+
+Return ONLY this JSON, no markdown:
+{ "understood": "<one line: what the member wants>", "clips": [ { "clip": <clip number as labelled below>, "change": "<SECTION: the concrete change>" } ], "alreadyDone": "<where the prompts already do it, or empty>", "notPossible": "<what cannot be done and why, or empty>" }`;
+
+/**
+ * Refining finished Veo prompts — step 2: make the planned change and nothing else. The result is
+ * checked in code (utils/veoRefine veoEditProblems) before it replaces anything.
+ */
+export const VEO_REFINE_SYSTEM_PROMPT = `You are a precise EDITOR of Veo 3 video prompts. You are not writing new prompts. For each clip you receive its current prompt and the exact change planned for it: make that change completely and visibly, and keep everything else word for word.
 
 RULES:
-• Keep the shape and every heading exactly.
-• Never change, translate or re-punctuate anything inside the quotation marks of the SPEECH block — that is the recorded dialogue.
-• Keep it one continuous 8-second shot with a moving camera; never add cuts, never make the camera static unless the member explicitly asks.
-• Never remove or weaken the MOVEMENT and HAND GESTURES AND BODY LANGUAGE blocks, or the negatives against standing like a statue — the cast always moves, with appropriate hand gestures and body language.
-• The cast WALKS in every clip — through the business, showing and presenting it. Never turn the ACTION into standing in one position unless the member explicitly asks; a change to the walk (slower, a different path, a different thing shown) keeps it a walk.
+• Make the planned change in full — a member comparing the old and new prompt must see it. Never hand a planned clip back unchanged.
+• Change the section the plan names, plus anything elsewhere that would now contradict it (for example a negative that forbids the new camera move). Everything else stays exactly as it was.
+• Keep every heading, the order of the sections and the Negative prompt.
+• Never change, translate or re-punctuate anything inside the quotation marks under SPEECH — that is the recorded dialogue.
+• It stays one continuous 8-second shot with a slow, smooth, moving camera; never add cuts, and never make the camera static unless the member explicitly asks.
+• Everyone stays where the frame has them — presenting in place, alive, with natural gestures and body language. Never add walking across the room, out of the business or through a door, and nothing appears, vanishes or moves by itself.
 • Never describe the face, hair, outfit or jewellery — they come from the attached frame.
 
-Return the edited prompts only, separated by ###SEGMENT### when there is more than one. No explanations.`;
+Return ONLY this JSON, no markdown:
+{ "clips": [ { "clip": <clip number as labelled>, "prompt": "<the complete edited prompt>" } ] }`;

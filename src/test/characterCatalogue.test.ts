@@ -20,7 +20,7 @@ import {
 describe("the catalogue", () => {
   it("offers every family the sales team sells", () => {
     const families = new Set(CHARACTER_CATALOGUE.map((p) => p.family));
-    expect([...families].sort()).toEqual(["custom", "duo", "god", "human", "solo"]);
+    expect([...families].sort()).toEqual(["custom", "duo", "god", "human", "human_duo", "solo"]);
   });
 
   it("has no duplicate ids", () => {
@@ -69,8 +69,14 @@ describe("the catalogue", () => {
 
   it("gives duos exactly two speakers and everything else exactly one", () => {
     for (const p of CHARACTER_CATALOGUE) {
-      expect(p.characters.length, p.id).toBe(p.family === "duo" ? 2 : 1);
+      expect(p.characters.length, p.id).toBe(p.family === "duo" || p.family === "human_duo" ? 2 : 1);
     }
+  });
+
+  // Sold in Sales, assigned in Work Assign and made in the AI platform — all three read this list.
+  it("sells a male duo, a female duo and a male & female duo", () => {
+    const duos = CHARACTER_CATALOGUE.filter((p) => p.family === "human_duo").map((p) => p.id).sort();
+    expect(duos).toEqual(["human_duo_female", "human_duo_male", "human_duo_mixed"]);
   });
 });
 

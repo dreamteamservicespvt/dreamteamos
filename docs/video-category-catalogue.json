@@ -232,6 +232,162 @@
     ]
   },
   {
+    "family": "Human Duo",
+    "entries": [
+      {
+        "id": "human_duo_female",
+        "label": "Female Duo (Two Women)",
+        "tagline": "Two Indian women talking about the client's business, filmed inside the real premises",
+        "franchise": "No franchise and no borrowed characters. Two newly cast Indian women, both 22-28, of the tier you would see in a national television commercial - two distinct faces invented for THIS client, each locked from clip 1 and reused unchanged for the whole campaign. Never look-alikes of named actresses, never ethnically ambiguous stock models, and never the same face twice in one frame.",
+        "usesClientFace": false,
+        "speakers": [
+          {
+            "key": "friend",
+            "name": "Friend",
+            "emoji": "👩",
+            "teluguSpelling": "",
+            "teluguVariants": [],
+            "voice": "a bright, curious young woman's voice - quick, warm and expressive, the friend who asks what the viewer is wondering",
+            "persona": "An everyday Indian woman who is discovering this business today with her friend. Curious, lively and relatable - she asks the customer's real question or reacts to what she sees in front of her.",
+            "scriptRole": "She speaks FIRST in every clip: a short question, a reaction or a set-up about something real in the business. She never delivers the facts herself - her friend does."
+          },
+          {
+            "key": "host",
+            "name": "Host",
+            "emoji": "👩‍💼",
+            "teluguSpelling": "",
+            "teluguVariants": [],
+            "voice": "a calm, confident, clearly articulated woman's voice - slightly lower and steadier than her friend's, the one who knows the business",
+            "persona": "A poised Indian woman who knows this business well and is proud to show it. Warm, assured and precise - she answers with the real reason to choose it.",
+            "scriptRole": "She speaks SECOND in every clip and answers her friend with one real, specific business fact. In the final clip she delivers the call to action."
+          }
+        ],
+        "styleDirective": "Two photoreal Indian women, both 22-28, standing together inside the client's REAL business premises and shot like a national television commercial. They stand side by side at a natural conversational distance, turned slightly toward each other while still open to the camera. The FRIEND always stands on the LEFT of the frame and the HOST always on the RIGHT, in every single clip. Their outfits are coordinated but clearly different in colour so a viewer never confuses them. Hair rich natural black. Skin keeps visible pores and truthful Indian complexion under camera-ready makeup. Same two women, same faces, same outfits, same positions in every clip - only the zone of the premises changes.",
+        "dialogueRhythm": "Two speakers, one exchange per clip. The Friend speaks first with a short set-up, the Host answers with the business fact; the two lines together fill the 8 seconds with a natural hand-off pause between them. Only the woman speaking moves her mouth; the other listens with a genuine reaction. A sentence never trails across a clip boundary.",
+        "voiceDirection": "Two clearly different women's voices. The Friend: bright, quick, rising on questions, playful warmth. The Host: calm, grounded, slightly lower pitch, clean diction, lands the business name clearly. Both clean studio voices at conversational volume with no reverb, and the difference between them stays audible in every clip.",
+        "expressionDirection": "The Friend's face does the discovering - brows lift and eyes widen on her question or reaction, then a delighted smile as the Host answers. The Host holds a warm, assured smile that opens fully on the business name and on the closing invitation. While one speaks, the other listens visibly: a nod, a smile, an impressed look toward what is being shown.",
+        "eyeDirection": "The speaker looks mostly to the lens with a brief natural glance to her friend at the start of her line; the listener looks at the speaker or at the thing being discussed. On the closing call to action both women look straight into the lens together.",
+        "gestureDirection": "One clear, natural gesture per line, made by the woman who is speaking: the Friend gestures toward what caught her eye, the Host presents it with an open palm or lightly touches the real product or counter within her reach. Gestures stay between waist and chest, fingers anatomically correct, and each returns to rest before the line ends. On the final clip both open their palms toward the viewer in invitation.",
+        "bodyLanguage": "Relaxed, friendly and grounded - two friends who are comfortable together, shoulders loose, weight settled, turned a few degrees toward each other and open to camera. Small natural reactions between lines: a nod, a shared smile, a slight lean toward the product. They stay in their places in the frame; no pacing, no swapping sides.",
+        "cameraDirection": "Composed for the ordered aspect ratio with both women fully in frame from head to knee in every clip, the Friend on the left and the Host on the right. Clip 1 is a balanced two-shot at chest height with the business readable behind them; each later clip is a fresh two-shot in a new zone with a slow, gentle camera move - a slight arc or a slow sideways slide - that never separates them or crops either woman.",
+        "backgroundDirection": "When the client sends no photographs, build the real, operational premises of that exact sector and reuse the SAME establishment in every clip, changing only which functional zone the two women stand in, so each background proves that clip's line. Never a home interior, hotel lobby, studio backdrop or invented certificate wall. The client's logo appears once, installed flat on a wall sign or counter panel facing camera.",
+        "scriptStyle": "A natural two-person conversation about the business, never two announcements. The Friend's line is a short, real question or reaction; the Host's line answers it with one specific, true fact from the business information. The women never call each other 'Friend' or 'Host' - those are labels, not names - and they speak from INSIDE the business: 'here', 'this shop', 'come here', never 'let's go there' or 'go to them'.",
+        "negatives": [
+          "No on-screen text, captions, subtitles, logos-as-text, or watermarks",
+          "No background music - clean studio voice only",
+          "No third person anywhere in frame - no staff, no customers, no reflected or background humans",
+          "Do NOT swap the two women's places - the Friend stays on the left and the Host on the right in every clip",
+          "Do NOT change either woman's face, hair or outfit between clips",
+          "No floating subjects - both women contact the floor with shadows that match the scene",
+          "No morphing, no extra or missing limbs, no distorted faces",
+          "No non-Indian, ethnically ambiguous or generic global stock-model casting",
+          "No home interiors, hotel lobbies, wood-panelled walls, or invented certificate, award or photo walls"
+        ]
+      },
+      {
+        "id": "human_duo_male",
+        "label": "Male Duo (Two Men)",
+        "tagline": "Two Indian men talking about the client's business, filmed inside the real premises",
+        "franchise": "No franchise and no borrowed characters. Two newly cast Indian men, both 26-35, of the tier you would see in a premium national television commercial - two distinct faces invented for THIS client, each locked from clip 1 and reused unchanged for the whole campaign. Never imitations of named actors, never ethnically ambiguous stock models, and never the same face twice in one frame.",
+        "usesClientFace": false,
+        "speakers": [
+          {
+            "key": "friend",
+            "name": "Friend",
+            "emoji": "🧑",
+            "teluguSpelling": "",
+            "teluguVariants": [],
+            "voice": "an energetic, friendly young man's voice - quick, expressive and conversational, the friend who asks what the viewer is wondering",
+            "persona": "An everyday Indian man seeing this business properly for the first time with his friend. Curious, lively and relatable - he asks the customer's real question or reacts to what is in front of him.",
+            "scriptRole": "He speaks FIRST in every clip: a short question, a reaction or a set-up about something real in the business. He never delivers the facts himself - his friend does."
+          },
+          {
+            "key": "host",
+            "name": "Host",
+            "emoji": "👨‍💼",
+            "teluguSpelling": "",
+            "teluguVariants": [],
+            "voice": "a deep, calm, confident man's voice - steady baritone with clean diction, the one who knows the business",
+            "persona": "A composed Indian man who knows this business well and speaks for it with quiet authority. Assured, straightforward and reassuring.",
+            "scriptRole": "He speaks SECOND in every clip and answers with one real, specific business fact. In the final clip he delivers the call to action."
+          }
+        ],
+        "styleDirective": "Two photoreal Indian men, both 26-35, standing together inside the client's REAL business premises, lit and framed like a premium commercial. They stand side by side at a natural conversational distance, angled slightly toward each other and open to camera. The FRIEND always stands on the LEFT of the frame and the HOST always on the RIGHT, in every single clip. Their outfits are coordinated but clearly different in colour so a viewer never confuses them. Hair natural black, neatly groomed. Skin matte with real pores. Same two men, same faces, same outfits, same positions in every clip - only the zone of the premises changes.",
+        "dialogueRhythm": "Two speakers, one exchange per clip. The Friend speaks first with a short set-up, the Host answers with the business fact; together the two lines fill the 8 seconds with a natural hand-off pause between them. Only the man speaking moves his mouth; the other listens and reacts. A sentence never trails across a clip boundary.",
+        "voiceDirection": "Two clearly different men's voices. The Friend: lighter, quicker, energetic, rising on questions. The Host: deeper baritone, level and deliberate, emphasis through pauses rather than volume, lands the business name clearly. Clean studio voices, conversational volume, no reverb, and the difference between them stays audible in every clip.",
+        "expressionDirection": "The Friend's face shows the discovery - raised brows and an impressed grin on his reaction. The Host keeps a confident closed-lip smile that opens on the business name and across the closing invitation, with one small confirming nod on each fact. While one speaks the other listens visibly with a nod or an impressed look at what is shown.",
+        "eyeDirection": "The speaker addresses the lens with a brief glance to his friend as his line begins; the listener watches the speaker or the thing being discussed. On the closing call to action both men look straight into the lens.",
+        "gestureDirection": "One restrained, natural gesture per line from the man speaking: the Friend points out what caught his eye, the Host presents it with an open palm or rests a hand on the real counter or product within his reach. Gestures stay between waist and chest, elbows close, fingers anatomically correct, returning to rest before the line ends. On the final clip both open their palms toward the viewer in invitation.",
+        "bodyLanguage": "Upright, relaxed and grounded - two friends at ease, shoulders loose, weight even, turned a few degrees toward each other and open to camera. Small real reactions between lines: a nod, a shared laugh, a lean toward the product. They keep their places in the frame; no pacing, no swapping sides.",
+        "cameraDirection": "Composed for the ordered aspect ratio with both men in frame from head to knee in every clip, the Friend on the left and the Host on the right. Clip 1 is a centred two-shot at chest height with the reception readable behind them; each later clip is a new two-shot in a different zone with a slow camera move - a gentle arc or a slow sideways slide - that never cuts either man out of frame.",
+        "backgroundDirection": "With no client photographs, construct the honest working premises of that trade at its real scale and keep the SAME establishment across all clips, moving the pair to a zone not yet seen so each background proves that clip's line. Never a home interior, apartment, hotel lobby or coworking corner; never invented certificate, award or photo walls. The client's logo appears once, installed flat on a wall sign or counter panel facing camera.",
+        "scriptStyle": "A natural two-person conversation about the business, never two announcements. The Friend's line is a short, real question or reaction; the Host's line answers it with one specific, true fact from the business information. The men never call each other 'Friend' or 'Host' - those are labels, not names - and they speak from INSIDE the business: 'here', 'this shop', 'come here', never 'let's go there' or 'go to them'.",
+        "negatives": [
+          "No on-screen text, captions, subtitles, logos-as-text, or watermarks",
+          "No background music - clean studio voice only",
+          "No third person anywhere in frame - no staff, no customers, no reflected or background humans",
+          "Do NOT swap the two men's places - the Friend stays on the left and the Host on the right in every clip",
+          "Do NOT change either man's face, hairstyle, beard or outfit between clips",
+          "Do NOT feminise the styling - no makeup look, no necklace, no earrings, no bangles, no bindi",
+          "No floating subjects - both men contact the floor with shadows that match the scene",
+          "No morphing, no extra or missing limbs, no distorted faces",
+          "No home interiors, hotel lobbies, wood-panelled walls, or invented certificate, award or photo walls"
+        ]
+      },
+      {
+        "id": "human_duo_mixed",
+        "label": "Male & Female Duo",
+        "tagline": "An Indian woman and man talking about the client's business, filmed inside the real premises",
+        "franchise": "No franchise and no borrowed characters. A newly cast Indian woman (22-28) and Indian man (28-35), of the tier you would see in a national television commercial - two distinct faces invented for THIS client, each locked from clip 1 and reused unchanged for the whole campaign. Never look-alikes of named actors, never ethnically ambiguous stock models.",
+        "usesClientFace": false,
+        "speakers": [
+          {
+            "key": "friend",
+            "name": "Friend",
+            "emoji": "👩",
+            "teluguSpelling": "",
+            "teluguVariants": [],
+            "voice": "a bright, warm young woman's voice - expressive and curious, the one who asks what the viewer is wondering",
+            "persona": "An everyday Indian woman discovering this business with her companion today. Curious, lively and relatable - she asks the customer's real question or reacts to what she sees.",
+            "scriptRole": "She speaks FIRST in every clip: a short question, a reaction or a set-up about something real in the business. She never delivers the facts herself - he does."
+          },
+          {
+            "key": "host",
+            "name": "Host",
+            "emoji": "👨‍💼",
+            "teluguSpelling": "",
+            "teluguVariants": [],
+            "voice": "a calm, confident man's voice - warm baritone with clear diction, the one who knows the business",
+            "persona": "A composed Indian man who knows this business well and is proud to show it. Assured, friendly and reassuring.",
+            "scriptRole": "He speaks SECOND in every clip and answers her with one real, specific business fact. In the final clip he delivers the call to action."
+          }
+        ],
+        "styleDirective": "One photoreal Indian woman (22-28) and one photoreal Indian man (28-35) standing together inside the client's REAL business premises, shot like a national television commercial. They stand side by side at a respectful, natural conversational distance, angled slightly toward each other and open to camera - a friendly, family-appropriate pairing, never romantic. The WOMAN (Friend) always stands on the LEFT of the frame and the MAN (Host) always on the RIGHT, in every single clip. Their outfits are coordinated in the brand's palette but clearly distinct. Same two people, same faces, same outfits, same positions in every clip - only the zone of the premises changes.",
+        "dialogueRhythm": "Two speakers, one exchange per clip. The woman speaks first with a short set-up, the man answers with the business fact; together the two lines fill the 8 seconds with a natural hand-off pause between them. Only the person speaking moves their mouth; the other listens and reacts. A sentence never trails across a clip boundary.",
+        "voiceDirection": "A woman's voice and a man's voice, unmistakably different. The woman: bright, warm, rising on questions, lively. The man: warm baritone, steady and assured, lands the business name clearly. Clean studio voices at conversational volume with no reverb; the voices never swap between the two people.",
+        "expressionDirection": "The woman's face carries the discovery - lifted brows, bright eyes, a delighted smile as he answers. The man keeps a friendly, confident smile that opens fully on the business name and on the closing invitation, with a small confirming nod on each fact. The listener always reacts visibly, never a frozen face.",
+        "eyeDirection": "The speaker looks mostly into the lens with a brief glance to the other as the line begins; the listener looks at the speaker or at the product being discussed. On the closing call to action both look straight into the lens together.",
+        "gestureDirection": "One clear, natural gesture per line from whoever is speaking: the woman gestures toward what caught her eye, the man presents it with an open palm or rests a hand on the real counter or product within his reach. Gestures stay between waist and chest and return to rest before the line ends. On the final clip both open their palms toward the viewer in a warm invitation. No touching each other.",
+        "bodyLanguage": "Relaxed, friendly and grounded, standing a comfortable distance apart, turned a few degrees toward each other and open to camera. Small natural reactions between lines: a nod, a smile, a lean toward the product. They keep their places in the frame - the woman left, the man right - and never swap sides.",
+        "cameraDirection": "Composed for the ordered aspect ratio with the woman on the left and the man on the right, both in frame from head to knee in every clip. Clip 1 is a balanced two-shot at chest height with the business readable behind them; each later clip is a new two-shot in a different zone with a slow, smooth camera move - a gentle arc or a slow lateral slide - that keeps both fully in frame.",
+        "backgroundDirection": "When the client sends no photographs, build the real, operational premises of that exact sector and reuse the SAME establishment in every clip, moving the pair to a zone not yet shown so each background proves that clip's line. Never a home interior, hotel lobby, studio backdrop or invented certificate wall. The client's logo appears once, installed flat on a wall sign or counter panel facing camera.",
+        "scriptStyle": "A natural two-person conversation about the business, never two announcements and never flirtatious. Her line is a short, real question or reaction; his line answers it with one specific, true fact from the business information. They never call each other 'Friend' or 'Host' - those are labels, not names - and they speak from INSIDE the business: 'here', 'this shop', 'come here', never 'let's go there' or 'go to them'.",
+        "negatives": [
+          "No on-screen text, captions, subtitles, logos-as-text, or watermarks",
+          "No background music - clean studio voice only",
+          "No third person anywhere in frame - no staff, no customers, no reflected or background humans",
+          "Do NOT swap places - the woman stays on the left and the man on the right in every clip",
+          "Do NOT swap their voices - the woman speaks with the woman's voice, the man with the man's voice",
+          "Do NOT change either person's face, hair or outfit between clips",
+          "No romantic, flirtatious or physical-contact staging",
+          "No floating subjects - both contact the floor with shadows that match the scene",
+          "No morphing, no extra or missing limbs, no distorted faces",
+          "No home interiors, hotel lobbies, wood-panelled walls, or invented certificate, award or photo walls"
+        ]
+      }
+    ]
+  },
+  {
     "entries": [
       {
         "id": "god_ganesha",
@@ -1001,7 +1157,7 @@
         "voiceDirection": "Thin, boyish and slightly nasal, starting low and dragging at about two words per second through the complaint with the pitch sagging on the last word. Then a genuine, unrehearsed lift on the discovery — half a tone up, faster, with a small breath of surprise before it. Never theatrical: it should sound like someone who did not know he was being recorded. Final clip only: steadier, clearer, addressed outward.",
         "expressionDirection": "Drooped and defeated through the complaint — brows angled up in the middle, mouth flat, eyes half-closed — and the face holds that through the silent beat. On the discovery the eyes open fully and the brows shoot up before the mouth catches up, so surprise reads a frame early. It settles into relieved, slightly embarrassed gratitude by the clip's end. The final clip closes on a small, sincere, direct smile.",
         "eyeDirection": "Down and unfocused at the floor or his own hands through the complaint — never at the lens. On the discovery the eyes travel up to the real product, price board or counter and widen there. He glances sideways once, as if checking that nobody heard him. Only the closing clip earns direct camera contact, held steadily through the whole final line.",
-        "gestureDirection": "Hands in front of him and fidgeting — turning a phone over, scratching the back of his head, hanging limply — through the complaint. At the discovery one hand lifts and points weakly at the real thing before dropping again. He touches the product tentatively with one hand only, like someone unsure he is allowed to. On the close both hands go still, one raised in a small honest wave.",
+        "gestureDirection": "Hands in front of him and fidgeting — turning a phone over, scratching the back of his head, hanging limply — through the complaint. At the discovery one hand lifts and points weakly at the real thing before dropping again. He touches the product tentatively with one hand only, like someone unsure he is allowed to. On the close both hands go still, both palms open in a small, honest come-in gesture — never a wave goodbye.",
         "bodyLanguage": "Slouched, shoulders rolled forward, feet turned slightly inward, weight sagging onto one leg — the posture of someone who has been putting something off. During the silent beat he leans a shoulder against a real fixture. The discovery straightens him in one movement: shoulders back, chin up. By the closing clip he stands squarely and normally, and the change in posture across the ad must be visible.",
         "cameraDirection": "The camera starts behind him and ends in front of him across the ad. Clip 1: an over-the-shoulder from behind, his back to us and the shop ahead — we are with him, not looking at him. Middle clips: a slow six-second arc from three-quarter-back to profile as he straightens, 50mm at eye level. Final clip: fully frontal, static, medium-close, the business clean behind him. The camera's journey around him mirrors his change of mind.",
         "backgroundDirection": "Begin at the threshold — the entrance seen as a customer arriving sees it, overcast street light outside and warm shop light inside, so stepping in reads as relief. Middle clips move deeper into the premises to where the solution physically lives: the counter, the service desk, the price board. Ordinary, honest, mid-afternoon. No Japanese house, no classroom, no school corridor, no Tokyo street.",

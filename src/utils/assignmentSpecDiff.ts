@@ -40,6 +40,8 @@ export interface AssignmentSpec {
   festival?: string;
   requirementNotes?: string;
   characterPack?: string;
+  /** Custom Character only: who the character is — changing it changes the whole cast. */
+  customCharacter?: string;
   realLocationProvided?: boolean;
   /** Poster jobs: the canvas, the style and how many — each changes what has to be produced. */
   posterSize?: string;
@@ -63,6 +65,7 @@ export function specOf(a: WorkAssignment | null | undefined): AssignmentSpec {
     festival: a.festival,
     requirementNotes: a.requirementNotes,
     characterPack: a.characterPack,
+    customCharacter: a.customCharacter,
     realLocationProvided: a.realLocationProvided,
     posterSize: a.posterSize,
     posterStyle: a.posterStyle,
@@ -88,6 +91,8 @@ export function specSignature(spec: AssignmentSpec): string {
     ...(spec.posterSize || spec.posterStyle || spec.posterCount
       ? [spec.posterSize ?? "", spec.posterStyle ?? "", spec.posterCount ?? 1]
       : []),
+    // Appended the same way: a job with no custom character signs exactly as before.
+    ...(spec.customCharacter?.trim() ? [spec.customCharacter.trim()] : []),
   ]);
 }
 
@@ -122,6 +127,9 @@ export function describeSpecChanges(prev: AssignmentSpec, next: AssignmentSpec):
 
   const nextPack = getCharacterPack(next.characterPack);
   add("Special category", packText(prev.characterPack), packText(next.characterPack));
+  if (prev.customCharacter?.trim() || next.customCharacter?.trim()) {
+    add("Character", plain(prev.customCharacter), plain(next.customCharacter));
+  }
 
   /*
     The background, on every ad.

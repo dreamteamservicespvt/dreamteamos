@@ -18,8 +18,11 @@ import { DEFAULT_POSTER_SIZE, isPosterCategory, isValidPosterSize, posterSizeLab
 import { AUTO_POSTER_STYLE } from '@/services/posterStyles';
 import { useAssignmentBrief } from '@/hooks/useAssignmentBrief';
 import { briefAsInstructions } from '@/utils/adRequirement';
-import { characterPackGroups, getCharacterPack, isHumanPack, packModelGender } from '@/services/characterPacks';
-import { generateAdAssets, generatePosterConcepts, refinePosterConcept, DEFAULT_POSTER_CONCEPT_COUNT, generateStockImagePrompts, refineStockImagePrompt, generateOverlayTexts, refineSection, refineVoiceOver, refineVeoPrompts, regenerateVeoForClips, SectionType, extractBusinessNameFromInfo } from '@/services/geminiService';
+import { GEMINI_URL } from './generation/mission';
+import { characterPackGroups, getCharacterPack, isCustomPack, isHumanPack, packModelGender } from '@/services/characterPacks';
+import { attireOptionsFor, castLabelFor } from '@/utils/adRequirement';
+import { DOCUMENT_ROUTE_HINT } from './FileUpload';
+import { generateAdAssets, generatePosterConcepts, refinePosterConcept, DEFAULT_POSTER_CONCEPT_COUNT, generateStockImagePrompts, refineStockImagePrompt, generateOverlayTexts, refineOverlayImagePrompt, refineSection, refineVoiceOver, refineVeoPrompts, regenerateVeoForClips, SectionType, extractBusinessNameFromInfo } from '@/services/geminiService';
 import { collection, addDoc, getDocs, getDoc, query, where, serverTimestamp, doc, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/services/firebase';
 import { useAuthStore } from '@/store/authStore';
@@ -61,6 +64,15 @@ const ATTIRE_LABELS: Record<AttireType, string> = {
   [AttireType.CUSTOM]: 'Custom (describe below)',
 };
 
+/**
+ * What the member pastes into Gemini alongside a client's PDF or document.
+ *
+ * Documents are not uploaded here (see FileUpload), because the generator cannot read them — but
+ * Gemini can. This asks for exactly the business facts the pipeline reads, in plain text, so the
+ * answer can be pasted straight into BUSINESS CONTENT.
+ */
+const DOCUMENT_EXTRACTION_PROMPT = `Read the attached document carefully and extract ALL of the business information in it, as plain text I can paste into another tool. Include, exactly as written: business name, owner name, what the business does, every product and service, offers / discounts / prices, timings, full address, every phone and WhatsApp number, email, website and social handles, taglines, and any instruction about what the advertisement should say or show. Do not summarise away details, do not invent anything, and write "Not provided" for anything missing. Keep the original language of names and addresses.`;
+
 const cleanPromptForClipboard = (content: string) => {
   return content
     .replace(/^```(?:markdown|json|text|plaintext)?\s*\n?/gim, '')
@@ -77,6 +89,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   const isDark = resolvedTheme === 'dark';
   const user = useAuthStore((s) => s.user);
   const { confirm: showAlert, ConfirmDialog } = useConfirm();
+  const { toast } = useToast();
 
   /**
    * No automatic reload while this screen is open.
@@ -98,6 +111,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     duration: 16,
     durationMode: 'preset',
     textInstructions: '',
+    frameInstructions: '',
+    customCharacter: '',
     aspectRatio: '9:16',
     language: 'Telugu',
     noLogo: false,
@@ -112,7 +127,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   });
 
   const [files, setFiles] = useState<FileStore>({
-    logo: null, visitingCard: [], storeImage: [],
+    logo: null, ownerImage: null, visitingCard: [], storeImage: [],
     productImages: [], flyersPosters: [], voiceRecording: [], textInstructionsFile: []
   });
 
@@ -166,6 +181,11 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   const [refiningStockIdx, setRefiningStockIdx] = useState<number | null>(null);
   const [isGeneratingOverlay, setIsGeneratingOverlay] = useState(false);
   const [overlayError, setOverlayError] = useState<string | null>(null);
+  /** Overlay Text Image Generator — which overlay's prompt was copied / is being refined (index in overlayTexts). */
+  const [copiedOverlayIdx, setCopiedOverlayIdx] = useState<number | null>(null);
+  const [overlayRefineIdx, setOverlayRefineIdx] = useState<number | null>(null);
+  const [overlayRefineText, setOverlayRefineText] = useState('');
+  const [refiningOverlayIdx, setRefiningOverlayIdx] = useState<number | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const outputPanelRef = useRef<HTMLDivElement>(null);
   const [collapsedOutputs, setCollapsedOutputs] = useState<Record<string, boolean>>({});
@@ -253,6 +273,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       // A special category was sold, not chosen here — the member opens straight on the right
       // treatment rather than having to know that this particular job is a cartoon-duo ad.
       ...(a.characterPack ? { characterPack: a.characterPack } : { characterPack: undefined }),
+      // Who a custom character is was said on the sale call; the member builds exactly that one.
+      ...(a.customCharacter ? { customCharacter: a.customCharacter } : {}),
       /*
         Where the ad is set — carried on EVERY ad job now, not only a pack one.
 
@@ -383,6 +405,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
    * an ordinary one, because that is what the client paid for.
    */
   const packLocked = !!assignment?.characterPack && !!activePack;
+  /** A custom character described on the sale is part of what was sold — fixed for the member. */
+  const characterLocked = !!assignment?.customCharacter?.trim() && isCustomPack(activePack);
 
   /**
    * The background was sold too, and it is fixed for whoever is making the ad.
@@ -467,6 +491,10 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     adType: formData.adType,
     festivalName: formData.festivalName,
     characterPack: formData.characterPack || null,
+    customCharacter: formData.customCharacter || '',
+    frameInstructions: formData.frameInstructions || '',
+    sceneContext: o.sceneContext || null,
+    voiceBrief: o.voiceBrief || null,
     locationMode: formData.locationMode || null,
     gender: formData.gender || ModelGender.FEMALE,
     attireType: formData.attireType,
@@ -577,12 +605,16 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       overlayTexts: item.overlayTexts || null,
       posterConcepts: item.posterConcepts || null,
       coreMessage: item.coreMessage || null,
+      sceneContext: item.sceneContext || null,
+      voiceBrief: item.voiceBrief || null,
     });
     setFormData(prev => ({
       ...prev,
       adType: item.adType as AdType,
       festivalName: item.festivalName || '',
       characterPack: item.characterPack || undefined,
+      ...(item.customCharacter !== undefined && !characterLocked ? { customCharacter: item.customCharacter || '' } : {}),
+      ...(item.frameInstructions !== undefined ? { frameInstructions: item.frameInstructions || '' } : {}),
       locationMode: item.locationMode === 'real_provided' || item.locationMode === 'ai_generated' ? item.locationMode : undefined,
       attireType: item.attireType as AttireType,
       ...(item.gender ? { gender: item.gender as ModelGender } : {}),
@@ -708,7 +740,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
 
       if (creationMode === 'video' && previousVeo.length > 0) {
         try {
-          const fresh = await regenerateVeoForClips(result.script, formData, outputs.mainFramePrompts || [], result.changed);
+          const fresh = await regenerateVeoForClips(result.script, formData, outputs.mainFramePrompts || [], result.changed, outputs.sceneContext);
           setOutputs(prev => {
             // The member may have undone or refined again while these were being written.
             if (!prev || prev.voiceOverScript !== result.script) return prev;
@@ -754,15 +786,23 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       if (result.changed.length > 0) {
         setOutputs(prev => (prev ? { ...prev, veoPrompts: result.prompts } : prev));
       }
+      // Say what the request was understood as — the member can tell at once whether it was heard right.
+      const understood = result.understood ? `Understood: ${result.understood}` : '';
       if (result.changed.length === 0 || result.rejected.length > 0) {
         const kept = result.rejected.map(i => `Clip ${i + 1}`).join(', ');
         await showAlert({
           title: result.changed.length === 0 ? "Nothing changed" : "Partly applied",
-          description: result.rejected.length > 0
-            ? `${kept} kept ${result.rejected.length === 1 ? 'its' : 'their'} original prompt, because the edit changed the spoken dialogue — the video has to say exactly what the voice-over says. Refine the Voice Over Script to change the words.`
-            : "The prompt came back the same. Try describing the change more specifically.",
+          description: [
+            understood,
+            result.changed.length > 0 ? `Updated: ${result.changed.map(i => `Clip ${i + 1}`).join(', ')}.` : '',
+            result.rejected.length > 0
+              ? `${kept} kept ${result.rejected.length === 1 ? 'its' : 'their'} original prompt. ${result.notApplied}`
+              : result.notApplied || "The prompt came back the same. Try describing the change more specifically.",
+          ].filter(Boolean).join('\n\n'),
           confirmText: "OK",
         });
+      } else if (understood) {
+        toast({ title: `Veo prompt${result.changed.length === 1 ? '' : 's'} updated — ${result.changed.map(i => `Clip ${i + 1}`).join(', ')}`, description: understood });
       }
     } catch (error: any) {
       console.error('Veo refinement error:', error);
@@ -787,7 +827,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   const currentRunProfile = (): RunProfile => ({
     mode: creationMode === 'poster' ? 'poster' : 'video',
     clipCount: runClipCount(),
-    fileCount: (files.logo ? 1 : 0) + files.visitingCard.length + files.storeImage.length
+    fileCount: (files.logo ? 1 : 0) + (files.ownerImage ? 1 : 0) + files.visitingCard.length + files.storeImage.length
       + files.productImages.length + files.flyersPosters.length + files.voiceRecording.length
       + files.textInstructionsFile.length,
     locationPhotos: creationMode === 'video' && formData.locationMode === 'real_provided' ? files.storeImage.length : 0,
@@ -809,6 +849,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       locationPhotos: onLocation ? files.storeImage.length : 0,
       castLabel: creationMode === 'video' && activePack ? activePack.label : '',
       conceptCount: formData.posterConceptCount || DEFAULT_POSTER_CONCEPT_COUNT,
+      ownerFace: creationMode === 'video' && !!activePack?.usesClientFace,
     };
   };
 
@@ -820,6 +861,16 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     }
     if (creationMode === 'poster' && !isValidPosterSize(formData.posterSize)) {
       await showAlert({ title: "Poster size", description: "Enter a valid custom size — a ratio like 5 : 7, or pixels like 1080 × 1350.", confirmText: "OK" });
+      return;
+    }
+    // The owner's face IS the ad on a Real Owner Face job — without the photo there is nothing to copy.
+    if (creationMode === 'video' && activePack?.usesClientFace && !files.ownerImage) {
+      await showAlert({ title: "Owner image missing", description: "This is a Real Owner Face ad. Upload a clear, front-facing photo of the owner into UPLOAD OWNER IMAGE — every clip reproduces that exact face.", confirmText: "OK" });
+      return;
+    }
+    // A custom character is built entirely from its description.
+    if (creationMode === 'video' && isCustomPack(activePack) && !formData.customCharacter?.trim()) {
+      await showAlert({ title: "Describe the character", description: "Type who or what the custom character is — the whole character, its look, voice and personality, is built from that description.", confirmText: "OK" });
       return;
     }
     if (creationMode === 'video' && formData.adType === AdType.FESTIVAL && !formData.festivalName.trim()) {
@@ -950,7 +1001,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     setStockImageError(null);
     try {
       const clipCount = outputs.veoPrompts?.length || outputs.mainFramePrompts?.length || Math.round(formData.duration / 8);
-      const stockPrompts = await generateStockImagePrompts(outputs.voiceOverScript, outputs.businessInfo, formData.adType, formData.festivalName, stockImageTheme, formData.aspectRatio, clipCount);
+      const stockPrompts = await generateStockImagePrompts(outputs.voiceOverScript, outputs.businessInfo, formData.adType, formData.festivalName, stockImageTheme, formData.aspectRatio, clipCount,
+        { sceneContext: outputs.sceneContext, coreMessage: outputs.coreMessage });
       setOutputs(prev => prev ? { ...prev, stockImagePrompts: stockPrompts } : prev);
     } catch (error: any) {
       setStockImageError(error.message || 'Failed to generate stock image prompts.');
@@ -987,12 +1039,49 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     setIsGeneratingOverlay(true);
     setOverlayError(null);
     try {
-      const items = await generateOverlayTexts(outputs.voiceOverScript, outputs.businessInfo, formData.language);
+      const items = await generateOverlayTexts(outputs.voiceOverScript, outputs.businessInfo, formData.language, overlayDesignContext());
       setOutputs(prev => prev ? { ...prev, overlayTexts: items } : prev);
     } catch (error: any) {
       setOverlayError(error.message || 'Failed to generate overlay texts.');
     } finally {
       setIsGeneratingOverlay(false);
+    }
+  };
+
+  /** What the overlays' 3D look is themed to: the festival's own palette, or the business. */
+  const overlayDesignContext = () => ({
+    adType: formData.adType,
+    festivalName: formData.festivalName,
+    sceneContext: outputs?.sceneContext,
+    coreMessage: outputs?.coreMessage,
+  });
+
+  /** Refine Prompt — changes only the look of one overlay's image; its text and transparency are fixed. */
+  const handleRefineOverlayImage = async (idx: number) => {
+    const item = outputs?.overlayTexts?.[idx];
+    if (!item || !overlayRefineText.trim()) return;
+    setRefiningOverlayIdx(idx);
+    try {
+      const refined = await refineOverlayImagePrompt({
+        text: item.text,
+        currentPrompt: item.imagePrompt || '',
+        currentDesign: item.imageDesign,
+        instruction: overlayRefineText.trim(),
+        businessInfo: outputs?.businessInfo,
+        context: overlayDesignContext(),
+      });
+      setOutputs(prev => {
+        if (!prev?.overlayTexts) return prev;
+        const next = [...prev.overlayTexts];
+        next[idx] = { ...next[idx], ...refined };
+        return { ...prev, overlayTexts: next };
+      });
+      setOverlayRefineIdx(null);
+      setOverlayRefineText('');
+    } catch (error: any) {
+      setOverlayError(error.message || 'Failed to refine the overlay prompt.');
+    } finally {
+      setRefiningOverlayIdx(null);
     }
   };
 
@@ -1134,6 +1223,22 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                   </div>
                 </div>
                 <div className="space-y-4">
+                  {/* A Real Owner Face ad is built from ONE photo — the owner's face. It gets its own
+                      box, first and unmissable, because on every other ad a client photo means a
+                      LOCATION and here it means the identity. */}
+                  {creationMode === 'video' && activePack?.usesClientFace && (
+                    <div data-test="owner-image-slot">
+                      <FileUpload
+                        label="Upload Owner Image"
+                        emphasis="owner"
+                        accept="image/png, image/jpeg, image/webp"
+                        required
+                        value={files.ownerImage || null}
+                        onChange={(f) => setFiles(prev => ({ ...prev, ownerImage: (f as File) || null }))}
+                        helperText="One clear, front-facing, well-lit photo of the owner's face — this exact face appears in every clip"
+                      />
+                    </div>
+                  )}
                   {!formData.noLogo && (
                     <FileUpload label="Business Logo" accept="image/png, image/jpeg" required value={files.logo} onChange={(f) => setFiles(prev => ({ ...prev, logo: f as File }))} helperText="High resolution PNG/JPG" />
                   )}
@@ -1192,14 +1297,61 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     </label>
                   )}
 
-                  {/* Text Instructions */}
+                  {/*
+                    Two boxes, because the two kinds of instruction go to two different places.
+
+                    BUSINESS CONTENT is what the ad SAYS — facts, offers, the call to action, the
+                    numbers. FRAME / BACKGROUND INSTRUCTIONS is how the frames LOOK — the scene, the
+                    style, the light. One box for both meant a sentence about a gold backdrop was read
+                    as a business fact and a sentence about an offer was read as set dressing. Each box
+                    now feeds its own stage (the script / the scene plan and every frame prompt).
+                  */}
                   <div>
-                    <label className={cn("block text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>Business Messages / Text Instructions</label>
-                    <textarea className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none mb-2",
+                    <label className={cn("block text-sm font-semibold mb-1", isDark ? "text-slate-300" : "text-slate-700")}>
+                      [ BUSINESS CONTENT ]
+                    </label>
+                    <p className={cn("text-[11px] mb-2", isDark ? "text-slate-500" : "text-slate-500")}>Business details, text, offers, CTA, contact info — what the ad must say.</p>
+                    <textarea data-test="business-content" className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
                         isDark ? "bg-slate-700 border-slate-600 text-slate-200 placeholder-slate-500 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200"
-                      )} rows={4} placeholder="Paste business messages, requirements, offers..."
+                      )} rows={4} placeholder="e.g. Sri Sai Bakery, Kakinada — fresh cakes daily, custom birthday cakes, free home delivery above ₹500. Call / WhatsApp 98xxxxxxx."
                       value={formData.textInstructions} onChange={(e) => setFormData(prev => ({ ...prev, textInstructions: e.target.value }))} />
-                    <FileUpload label="" accept=".txt,.doc,.docx" multiple value={files.textInstructionsFile} onChange={(f) => setFiles(prev => ({ ...prev, textInstructionsFile: (f ? (Array.isArray(f) ? f : [f]) : []) as File[] }))} helperText="Or upload a text file — for a PDF, paste its text above" />
+                  </div>
+                  <div>
+                    <label className={cn("block text-sm font-semibold mb-1", isDark ? "text-slate-300" : "text-slate-700")}>
+                      [ FRAME / BACKGROUND INSTRUCTIONS ]
+                    </label>
+                    <p className={cn("text-[11px] mb-2", isDark ? "text-slate-500" : "text-slate-500")}>
+                      Describe the frame, background, style, lighting, colours and scene. Leave it empty and the scenes are worked out from the visiting card, the business content and the script.
+                    </p>
+                    <textarea data-test="frame-instructions" className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
+                        isDark ? "bg-slate-700 border-slate-600 text-slate-200 placeholder-slate-500 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200"
+                      )} rows={3} placeholder="e.g. Temple courtyard with devotees being served food on banana leaves, warm morning light, marigold decorations, saffron and gold colours."
+                      value={formData.frameInstructions || ''} onChange={(e) => setFormData(prev => ({ ...prev, frameInstructions: e.target.value }))} />
+                  </div>
+                  {/* Documents are never uploaded — Gemini reads them and the text goes in the box above. */}
+                  <div data-test="document-guidance" className={cn("rounded-xl border-2 px-3.5 py-3 text-xs leading-relaxed",
+                    isDark ? "border-amber-500/60 bg-amber-950/30 text-amber-100" : "border-amber-400 bg-amber-50 text-amber-900")}>
+                    <p className="font-bold uppercase tracking-wide text-[11px] mb-1">📄 Client sent a PDF or any document?</p>
+                    <p>
+                      Do <b>not</b> upload it here — files like PDFs, Word, Excel and text documents are not accepted.
+                      {' '}{DOCUMENT_ROUTE_HINT}
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <a href={GEMINI_URL} target="_blank" rel="noopener noreferrer"
+                        className={cn("inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 font-semibold",
+                          isDark ? "bg-amber-500/20 text-amber-200 hover:bg-amber-500/30" : "bg-amber-200/70 text-amber-900 hover:bg-amber-200")}>
+                        Open Gemini <ExternalLink className="w-3 h-3" />
+                      </a>
+                      <button type="button" data-test="copy-extraction-prompt"
+                        onClick={() => {
+                          void navigator.clipboard.writeText(DOCUMENT_EXTRACTION_PROMPT);
+                          toast({ title: 'Extraction prompt copied', description: 'Paste it into Gemini with the client’s PDF attached, then paste Gemini’s answer into BUSINESS CONTENT.' });
+                        }}
+                        className={cn("inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 font-semibold border",
+                          isDark ? "border-amber-500/50 text-amber-200 hover:bg-amber-500/10" : "border-amber-400 text-amber-900 hover:bg-amber-100")}>
+                        <Copy className="w-3 h-3" /> Copy extraction prompt
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1443,6 +1595,36 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                         <p className={cn("text-xs", isDark ? "text-amber-200" : "text-amber-800")}>
                           <b>{activePack.label}</b> — {activePack.tagline}.{activePack.characters.length > 1 ? ' Both characters speak in every clip.' : ` ${activePack.characters[0].name} presents throughout.`}
                         </p>
+                        {activePack.usesClientFace && (
+                          <p className={cn("mt-1.5 text-[11px] font-semibold", isDark ? "text-amber-300" : "text-amber-800")}>
+                            ↑ Upload the owner's face photo in UPLOAD OWNER IMAGE (Assets &amp; Files) — it is required.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {/* The custom entry is built from this description — see characterPacks.withCustomCharacter. */}
+                    {isCustomPack(activePack) && (
+                      <div className="mt-3">
+                        <label className={cn("block text-sm font-semibold mb-1.5", isDark ? "text-slate-300" : "text-slate-700")}>
+                          Describe the character <span className="text-red-500">*</span>
+                        </label>
+                        {characterLocked ? (
+                          <div className={cn("flex items-start justify-between gap-2 rounded-lg border px-3 py-2.5 text-sm",
+                            isDark ? "bg-slate-700/60 border-slate-600 text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
+                            <span>{formData.customCharacter}</span>
+                            <span className={cn("shrink-0 text-[11px] px-2 py-0.5 rounded-full", isDark ? "bg-blue-900/40 text-blue-300" : "bg-blue-100 text-blue-700")}>🔒 Sold as this</span>
+                          </div>
+                        ) : (
+                          <textarea
+                            data-test="platform-custom-character"
+                            rows={3}
+                            value={formData.customCharacter || ''}
+                            onChange={(e) => setFormData(prev => ({ ...prev, customCharacter: e.target.value }))}
+                            placeholder="Who or what is the character? e.g. Lord Hanuman carrying a sack of our rice; a cheerful talking mango in a chef's cap"
+                            className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none resize-y",
+                              isDark ? "bg-slate-700 border-slate-600 text-slate-200 placeholder-slate-500 focus:ring-amber-800" : "bg-white border-slate-300 text-slate-700 focus:ring-amber-200")}
+                          />
+                        )}
                       </div>
                     )}
                   </div>
@@ -1594,7 +1776,9 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       human-model special category ("Normal Ad (Female)"…), whose gender it follows. */}
                   {creationMode === 'video' && (!activePack || isHumanPack(activePack)) && (
                     <div>
-                      <label className={cn("block text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>Model Attire</label>
+                      <label className={cn("block text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>
+                        Model Attire{activePack ? <span className="ml-1 font-normal text-xs opacity-70">({castLabelFor(formData.characterPack)})</span> : null}
+                      </label>
                       {attireLocked ? (
                         <div className={cn("flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm",
                           isDark ? "bg-slate-700/60 border-slate-600 text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
@@ -1606,7 +1790,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       <select className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
                           isDark ? "bg-slate-700 border-slate-600 text-slate-200 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200"
                         )} value={formData.attireType} onChange={(e) => setFormData(prev => ({ ...prev, attireType: e.target.value as AttireType }))}>
-                        {ATTIRE_OPTIONS_BY_GENDER[(packModelGender(activePack) as ModelGender | null) || formData.gender || ModelGender.FEMALE].map((a) => (
+                        {attireOptionsFor(formData.characterPack, (packModelGender(activePack) as ModelGender | null) || formData.gender || ModelGender.FEMALE).map((a) => (
                           <option key={a} value={a}>{ATTIRE_LABELS[a]}</option>
                         ))}
                       </select>
@@ -1690,10 +1874,26 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                         <div className="mt-2">
                           <div className={cn("mb-2 rounded-lg border px-3 py-2 text-[11px] leading-relaxed",
                             isDark ? "bg-amber-900/20 border-amber-800/50 text-amber-200" : "bg-amber-50 border-amber-200 text-amber-800")}>
-                            <span className="font-semibold">Required format — one clip per line:</span>
-                            <pre className="mt-1 font-mono text-[11px] whitespace-pre-wrap">{`clip-1[0-8sec]: first spoken line
+                            {/* A two-person category cannot guess who says which sentence, so it asks for speaker lines. */}
+                            {activePack && activePack.characters.length > 1 ? (
+                              <>
+                                <span className="font-semibold">Required format — each clip, then who says each line:</span>
+                                <pre data-test="custom-script-duo-format" className="mt-1 font-mono text-[11px] whitespace-pre-wrap">{`clip-1[0-8sec]:
+[${activePack.characters[0].name}]: first line
+[${activePack.characters[1].name}]: reply
+clip-2[8-16sec]:
+[${activePack.characters[0].name}]: …
+[${activePack.characters[1].name}]: …`}</pre>
+                                <span>Your script is used <b>word-for-word</b>, and each person says only their own lines. Without the speaker labels the ad cannot be made, so it will ask you for them.</span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="font-semibold">Required format — one clip per line:</span>
+                                <pre className="mt-1 font-mono text-[11px] whitespace-pre-wrap">{`clip-1[0-8sec]: first spoken line
 clip-2[8-16sec]: second spoken line`}</pre>
-                            <span>Pasted this way, your script is used <b>word-for-word</b> in the Voice Over Script and Veo 3 prompts, and its clip count sets the ad length. Unlabelled text is auto-split instead.</span>
+                                <span>Your script is used <b>word-for-word</b> in the Voice Over Script and Veo 3 prompts, and its clip count sets the ad length. Unlabelled text is only cut into clips at sentence ends; no word is changed.</span>
+                              </>
+                            )}
                           </div>
                           <textarea
                             className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
@@ -1731,7 +1931,7 @@ clip-2[8-16sec]: second spoken line`}</pre>
                                 ) : wordCount > 0 ? (
                                   <>
                                     <div className={cn("font-medium", isDark ? "text-amber-300" : "text-amber-700")}>
-                                      No clip labels found — this text will be auto-split into clips.
+                                      No clip labels found — this text will be cut into clips at sentence ends, word for word.
                                     </div>
                                     <div className="flex items-center justify-between">
                                       <span className={isDark ? "text-slate-300" : "text-slate-600"}>Estimated Duration:</span>
@@ -1887,6 +2087,44 @@ clip-2[8-16sec]: second spoken line`}</pre>
                     </p>
                   )}
 
+                  {/* What the run heard and planned — so the member can check it before using the prompts. */}
+                  {creationMode === 'video' && (outputs.voiceBrief || outputs.sceneContext) && (
+                    <div data-test="run-understanding" className={cn("rounded-2xl border p-4 space-y-3 text-sm",
+                      isDark ? "bg-slate-900/70 border-slate-800 text-slate-300" : "bg-white border-slate-200 text-slate-600")}>
+                      {outputs.voiceBrief && (
+                        <div data-test="voice-brief">
+                          <p className={cn("text-xs font-bold uppercase tracking-wide mb-1", isDark ? "text-violet-300" : "text-violet-700")}>Client voice note — what we understood</p>
+                          {outputs.voiceBrief.summary && <p className="font-medium">{outputs.voiceBrief.summary}</p>}
+                          {outputs.voiceBrief.requirements.length > 0 && (
+                            <ul className="mt-1 list-disc pl-5 space-y-0.5 text-xs">
+                              {outputs.voiceBrief.requirements.map((r, i) => <li key={i}>{r}</li>)}
+                            </ul>
+                          )}
+                          {outputs.voiceBrief.conflicts.length > 0 && (
+                            <p className={cn("mt-1.5 text-xs rounded-md px-2 py-1", isDark ? "bg-amber-900/30 text-amber-200" : "bg-amber-50 text-amber-800")}>
+                              ⚠ Differs from the typed content: {outputs.voiceBrief.conflicts.join(' · ')}
+                            </p>
+                          )}
+                          {outputs.voiceBrief.transcript && (
+                            <details className="mt-1.5 text-xs">
+                              <summary className="cursor-pointer select-none">Word-for-word transcript</summary>
+                              <p className="mt-1 whitespace-pre-wrap break-words">{outputs.voiceBrief.transcript}</p>
+                            </details>
+                          )}
+                        </div>
+                      )}
+                      {outputs.sceneContext && (
+                        <div data-test="scene-plan">
+                          <p className={cn("text-xs font-bold uppercase tracking-wide mb-1", isDark ? "text-teal-300" : "text-teal-700")}>Background plan — one per clip</p>
+                          <p className="text-xs"><b>About:</b> {outputs.sceneContext.motive}{outputs.sceneContext.setting ? <> · <b>Set in:</b> {outputs.sceneContext.setting}</> : null}</p>
+                          <ol className="mt-1 list-decimal pl-5 space-y-0.5 text-xs">
+                            {outputs.sceneContext.clips.map(c => <li key={c.clip} className="break-words">{c.background}</li>)}
+                          </ol>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Video outputs */}
                   {creationMode === 'video' && outputs.mainFramePrompts?.length > 0 && (
                       <OutputSection title={`1. Main Frame Prompts (${outputs.mainFramePrompts.length} Clips)`} sectionKey="mainFrame"
@@ -1901,10 +2139,10 @@ clip-2[8-16sec]: second spoken line`}</pre>
                   )}
 
                   {creationMode === 'video' && outputs.headerPrompt && (
-                      <OutputSection title="2. Brand Label (Lower Third)" sectionKey="header"
+                      <OutputSection title="2. VIDEO BOTTOM LABEL" sectionKey="header"
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                         isDark={isDark} copyContent={outputs.headerPrompt}>
-                        <GeneratedCard title="Brand Label" content={outputs.headerPrompt} sectionType="header"
+                        <GeneratedCard title="Video Bottom Label" content={outputs.headerPrompt} sectionType="header"
                           showRefinement={true} onRefine={(i) => handleRefineSection('header', i)} isRefining={refiningSection === 'header'} hideTitle />
                       </OutputSection>
                   )}
@@ -2072,29 +2310,29 @@ clip-2[8-16sec]: second spoken line`}</pre>
                         </div>
                   )}
 
-                  {/* 7. Overlay Texts (#14) */}
+                  {/* 7. Overlay Text Image Generator — each overlay as a premium 3D transparent PNG prompt */}
                   {creationMode === 'video' && outputs.voiceOverScript && (
-                    <div className={cn("rounded-2xl border overflow-hidden shadow-lg", isDark ? "bg-slate-900/70 border-slate-800 shadow-black/10" : "bg-white border-slate-200 shadow-slate-200/50")}>
-                      <div className={cn("relative px-4 py-3 border-b flex justify-between items-center", isDark ? "bg-slate-900/80 border-slate-800" : "bg-slate-50 border-slate-200")}>
+                    <div data-test="overlay-image-generator" className={cn("rounded-2xl border overflow-hidden shadow-lg", isDark ? "bg-slate-900/70 border-slate-800 shadow-black/10" : "bg-white border-slate-200 shadow-slate-200/50")}>
+                      <div className={cn("relative px-4 py-3 border-b flex justify-between items-center gap-2", isDark ? "bg-slate-900/80 border-slate-800" : "bg-slate-50 border-slate-200")}>
                         <div className={cn("absolute left-0 top-0 bottom-0 w-1", BRAND_GRADIENT)} />
-                        <div className="flex items-center space-x-2 pl-1.5">
-                          <TypeIcon className="w-4 h-4 text-amber-500" />
-                          <h3 className={cn("font-semibold text-sm uppercase tracking-wide", isDark ? "text-slate-200" : "text-slate-800")}>7. Overlay Texts</h3>
+                        <div className="flex items-center space-x-2 pl-1.5 min-w-0">
+                          <TypeIcon className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                          <h3 className={cn("font-semibold text-sm uppercase tracking-wide", isDark ? "text-slate-200" : "text-slate-800")}>7. Overlay Text Image Generator</h3>
                         </div>
-                        {!outputs.overlayTexts && (
-                          <button onClick={handleGenerateOverlayTexts} disabled={isGeneratingOverlay}
-                            className={cn("flex items-center space-x-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all",
-                              isGeneratingOverlay ? (isDark ? "bg-slate-700 text-slate-400 cursor-not-allowed" : "bg-slate-100 text-slate-400")
-                                : (isDark ? "bg-amber-900/40 text-amber-400 hover:bg-amber-900/60 border border-amber-700/50" : "bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200"))}>
-                            {isGeneratingOverlay ? <><Loader2 className="w-3 h-3 animate-spin" /><span>Generating...</span></> : <><Sparkles className="w-3 h-3" /><span>Generate</span></>}
-                          </button>
-                        )}
+                        <button onClick={handleGenerateOverlayTexts} disabled={isGeneratingOverlay}
+                          className={cn("flex items-center space-x-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all flex-shrink-0",
+                            isGeneratingOverlay ? (isDark ? "bg-slate-700 text-slate-400 cursor-not-allowed" : "bg-slate-100 text-slate-400")
+                              : (isDark ? "bg-amber-900/40 text-amber-400 hover:bg-amber-900/60 border border-amber-700/50" : "bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200"))}>
+                          {isGeneratingOverlay
+                            ? <><Loader2 className="w-3 h-3 animate-spin" /><span>Generating...</span></>
+                            : <><Sparkles className="w-3 h-3" /><span>{outputs.overlayTexts ? 'Regenerate' : 'Generate'}</span></>}
+                        </button>
                       </div>
                       <div className="p-4">
                         {!outputs.overlayTexts && !isGeneratingOverlay && (
                           <div className={cn("text-center py-6", isDark ? "text-slate-500" : "text-slate-400")}>
                             <TypeIcon className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                            <p className="text-sm font-medium">On-screen overlay texts (1–3 per clip) with a CapCut sound-effect for each — for editing</p>
+                            <p className="text-sm font-medium">Each key point as a ready image prompt for a premium 3D transparent PNG — themed to the business or the festival — with its CapCut sound effect and the words it comes in on</p>
                           </div>
                         )}
                         {overlayError && (
@@ -2105,36 +2343,72 @@ clip-2[8-16sec]: second spoken line`}</pre>
                         {isGeneratingOverlay && (
                           <div className="flex items-center justify-center py-8 space-x-2">
                             <Loader2 className="w-5 h-5 animate-spin text-amber-500" />
-                            <span className={cn("text-sm", isDark ? "text-slate-400" : "text-slate-500")}>Generating overlay texts...</span>
+                            <span className={cn("text-sm", isDark ? "text-slate-400" : "text-slate-500")}>Designing the overlay images...</span>
                           </div>
                         )}
                         {outputs.overlayTexts && outputs.overlayTexts.length > 0 && (
                           Array.from(new Set(outputs.overlayTexts.map((o: any) => Number(o.clip) || 0))).sort((a: number, b: number) => a - b).map((clip: number) => (
                             <div key={clip} className="mb-3 last:mb-0">
+                              {/* The clip only — the editor places it by the words, not by a timecode. */}
                               <p className={cn("text-[11px] font-semibold uppercase tracking-wide mb-1.5", isDark ? "text-slate-400" : "text-slate-500")}>
-                                {outputs.overlayTexts!.find((o: any) => (Number(o.clip) || 0) === clip)?.timing || `Clip ${clip}`}
+                                Clip {clip}
                               </p>
-                              {outputs.overlayTexts!.filter((o: any) => (Number(o.clip) || 0) === clip).map((o: any, i: number) => (
-                                <div key={i} className={cn("rounded-lg border p-2.5 mb-1.5", isDark ? "bg-slate-700/50 border-slate-600" : "bg-slate-50 border-slate-200")}>
+                              {outputs.overlayTexts!.map((o: any, idx: number) => ({ o, idx })).filter(({ o }) => (Number(o.clip) || 0) === clip).map(({ o, idx }) => (
+                                <div key={idx} data-test="overlay-item" className={cn("rounded-lg border p-2.5 mb-1.5", isDark ? "bg-slate-700/50 border-slate-600" : "bg-slate-50 border-slate-200")}>
                                   <div className="flex items-center justify-between gap-2">
                                     <div className="flex items-center gap-2 min-w-0">
                                       <TypeIcon className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-                                      <span className={cn("font-medium text-sm truncate", isDark ? "text-slate-200" : "text-slate-700")}>{o.text}</span>
+                                      <span className={cn("font-semibold text-sm truncate", isDark ? "text-slate-200" : "text-slate-700")}>{o.text}</span>
                                     </div>
                                     <span className={cn("inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-full flex-shrink-0", isDark ? "bg-slate-800 text-amber-300 border border-amber-700/40" : "bg-amber-100 text-amber-700")}>
                                       <Music className="w-3 h-3" /> {o.soundEffect}
                                     </span>
                                   </div>
-                                  {/* The words to put it between, and the seconds they fall in. */}
-                                  {(o.cue || o.cueLabel) && (
-                                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 pl-5">
-                                      <span className={cn("text-xs font-medium", isDark ? "text-amber-200" : "text-amber-800")}>
-                                        {o.cue ? cueWords(o.cue) : o.cueLabel}
-                                      </span>
-                                      {o.cue && (
-                                        <span className={cn("text-[11px] tabular-nums", isDark ? "text-slate-400" : "text-slate-500")}>{cueRange(o.cue)}</span>
+                                  {/* The words it comes in and goes out on — From → To. */}
+                                  {(o.cue || o.cueLabel || o.fromWord) && (
+                                    <p data-test="overlay-cue" className={cn("mt-1 pl-5 text-xs font-medium", isDark ? "text-amber-200" : "text-amber-800")}>
+                                      {o.cue?.matched
+                                        ? <>From “{o.cue.fromWord}” → To “{o.cue.toWord}”</>
+                                        : o.fromWord && o.toWord ? <>From “{o.fromWord}” → To “{o.toWord}”</> : o.cue ? cueWords(o.cue) : o.cueLabel}
+                                    </p>
+                                  )}
+                                  {o.imagePrompt ? (
+                                    <div className={cn("mt-2 rounded-md border p-2", isDark ? "bg-slate-800/70 border-slate-600" : "bg-white border-slate-200")}>
+                                      <div className="flex items-center justify-between gap-2 mb-1">
+                                        <span className={cn("text-[10px] font-bold uppercase tracking-wide", isDark ? "text-slate-400" : "text-slate-500")}>Generated prompt · 3D transparent PNG</span>
+                                        <button onClick={() => { navigator.clipboard.writeText(o.imagePrompt); setCopiedOverlayIdx(idx); setTimeout(() => setCopiedOverlayIdx(null), 2000); }}
+                                          className={cn("flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors min-h-[24px]",
+                                            copiedOverlayIdx === idx ? (isDark ? "text-green-400 bg-green-900/30" : "text-green-600 bg-green-50")
+                                              : (isDark ? "text-slate-400 hover:text-amber-400" : "text-slate-500 hover:text-amber-600"))}>
+                                          {copiedOverlayIdx === idx ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                                          <span>{copiedOverlayIdx === idx ? 'Copied' : 'Copy'}</span>
+                                        </button>
+                                      </div>
+                                      <p data-test="overlay-image-prompt" className={cn("text-xs leading-relaxed break-words", isDark ? "text-slate-300" : "text-slate-600")}>{o.imagePrompt}</p>
+                                      {overlayRefineIdx === idx ? (
+                                        <div className="mt-2 flex items-center gap-2">
+                                          <input autoFocus value={overlayRefineText} onChange={(e) => setOverlayRefineText(e.target.value)}
+                                            onKeyDown={(e) => { if (e.key === 'Enter') handleRefineOverlayImage(idx); }}
+                                            placeholder="e.g. make it silver with a blue glow"
+                                            className={cn("flex-1 min-w-0 border rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-2",
+                                              isDark ? "bg-slate-800 border-slate-600 text-slate-200 focus:ring-amber-800" : "bg-white border-slate-300 text-slate-700 focus:ring-amber-200")} />
+                                          <button onClick={() => handleRefineOverlayImage(idx)} disabled={refiningOverlayIdx === idx || !overlayRefineText.trim()}
+                                            className="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 inline-flex items-center gap-1">
+                                            {refiningOverlayIdx === idx ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />} Apply
+                                          </button>
+                                          <button onClick={() => { setOverlayRefineIdx(null); setOverlayRefineText(''); }}
+                                            className={cn("text-xs px-2 py-1.5 rounded-lg", isDark ? "text-slate-400 hover:bg-slate-700" : "text-slate-500 hover:bg-slate-100")}>Cancel</button>
+                                        </div>
+                                      ) : (
+                                        <button data-test="overlay-refine" onClick={() => { setOverlayRefineIdx(idx); setOverlayRefineText(''); }}
+                                          className={cn("mt-1.5 inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded transition-colors min-h-[24px]",
+                                            isDark ? "text-amber-400 hover:bg-amber-900/30" : "text-amber-700 hover:bg-amber-50")}>
+                                          <Wand2 className="w-3 h-3" /> Refine Prompt
+                                        </button>
                                       )}
                                     </div>
+                                  ) : (
+                                    <p className={cn("mt-1.5 pl-5 text-[11px]", isDark ? "text-slate-500" : "text-slate-400")}>Made before the image generator — press Regenerate for its image prompt.</p>
                                   )}
                                 </div>
                               ))}

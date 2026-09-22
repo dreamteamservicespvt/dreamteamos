@@ -21,15 +21,17 @@
  * selling sales member on their own sale. The member making the ad reads it and cannot move it;
  * see `backgroundLocked` in AIPlatformApp.
  */
-import { characterPackGroups, getCharacterPack } from '@/services/characterPacks';
+import { characterPackGroups, getCharacterPack, isCustomPack } from '@/services/characterPacks';
 
 interface SpecialCategoryFieldsProps {
   characterPack: string;
   realLocationProvided: boolean;
-  onChange: (patch: { characterPack?: string; realLocationProvided?: boolean }) => void;
+  /** Custom Character only: who the character is. Omit on a form that does not carry it. */
+  customCharacter?: string;
+  onChange: (patch: { characterPack?: string; realLocationProvided?: boolean; customCharacter?: string }) => void;
 }
 
-export default function SpecialCategoryFields({ characterPack, realLocationProvided, onChange }: SpecialCategoryFieldsProps) {
+export default function SpecialCategoryFields({ characterPack, realLocationProvided, customCharacter, onChange }: SpecialCategoryFieldsProps) {
   const pack = getCharacterPack(characterPack);
   /**
    * The id the dropdown should show as selected.
@@ -79,6 +81,28 @@ export default function SpecialCategoryFields({ characterPack, realLocationProvi
               <p className="mt-1.5 text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">
                 <b>The owner’s photo is required.</b> Upload a clear, front-facing photo of the owner —
                 this exact face is reproduced in every clip. Without it there is nothing to build.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* The custom entry is built entirely from this text — see characterPacks.withCustomCharacter. */}
+        {isCustomPack(pack) && customCharacter !== undefined && (
+          <div className="mt-2">
+            <label className="block text-sm font-medium text-muted-foreground mb-1">
+              Describe the character <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              data-test="custom-character"
+              rows={3}
+              value={customCharacter}
+              onChange={(e) => onChange({ customCharacter: e.target.value })}
+              placeholder="Who or what is the character? e.g. “Lord Hanuman carrying a rice bag for our rice mill”, “a cheerful talking mango for our juice shop”, “a friendly village farmer in a white dhoti”"
+              className="w-full border rounded-lg px-3 py-2 text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-primary/20 outline-none resize-y"
+            />
+            {!customCharacter.trim() && (
+              <p className="mt-1 text-[10px] text-amber-700 dark:text-amber-300">
+                Required — the whole character (look, voice, personality) is built from this description.
               </p>
             )}
           </div>

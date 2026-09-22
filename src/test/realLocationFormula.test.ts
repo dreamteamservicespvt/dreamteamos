@@ -154,8 +154,7 @@ describe("a human-model ad shot in the client's photographs", () => {
 describe("a human-model ad with no client photographs", () => {
   it("keeps its own shot plan exactly as before", () => {
     const p = humanModel(false);
-    expect(p).toContain("All 4 clips happen in ONE CONTINUOUS SPACE");
-    expect(p).toContain("CONTINUITY BETWEEN CLIPS");
+    expect(p).toContain("EVERY CLIP HAS ITS OWN BACKGROUND, CHOSEN BY ITS LINE");
     expect(p).toContain("**Medical/Healthcare:**");
     expect(p).toContain("MANDATORY DRIVER OF LOCATION");
     expect(p).not.toContain("THE CLIENT'S REAL PHOTOGRAPHS");

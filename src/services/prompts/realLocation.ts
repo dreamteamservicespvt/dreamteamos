@@ -30,6 +30,7 @@ export interface RealLocationSubject {
  * ad that is an instruction to put a second figure in the frame, which the generator obeys.
  */
 export function packLocationSubject(pack: CharacterPack): RealLocationSubject {
+  if (pack.family === "human_duo") return { who: "the two people", plural: true };
   if (pack.characters.length > 1) return { who: "the two characters", plural: true };
   const name = pack.characters[0]?.name || "character";
   // A deity or a cartoon is a proper name ("Ganesha"). A human entry's name is a role — "Presenter",
@@ -51,6 +52,7 @@ export function packStagingRole(pack: CharacterPack): string {
   switch (pack.family) {
     case "god": return "a DEITY";
     case "human": return "a REAL PERSON";
+    case "human_duo": return "TWO REAL PEOPLE";
     case "solo": return "a CARTOON CHARACTER";
     case "duo": return "CARTOON CHARACTERS";
     default: return pack.characters.length > 1 ? "CHARACTERS" : "a CHARACTER";

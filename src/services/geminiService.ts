@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { AdFormData, FileStore, GeneratedOutputs, PosterConcept } from "@/types/aiPlatform";
+import { AdFormData, FileStore, GeneratedOutputs, PosterConcept, type OverlayTextItem, type SceneContext, type VoiceBrief } from "@/types/aiPlatform";
 import { 
   MAIN_FRAME_SYSTEM_PROMPT,
   MULTI_FRAME_SYSTEM_PROMPT,
@@ -23,8 +23,21 @@ import {
   getRealisticLogoPlacementGuidance,
   getModelProfile,
   buildBrandMarkDirective,
+  getBrandMark,
+  getFestivalTheme,
   type BrandSurface
 } from "./prompts";
+import { SCENE_PLAN_SYSTEM_PROMPT, scenePlanUserPrompt } from "./prompts/scenePlan";
+import { motionChoicesOf, parseScenePlan, repeatedBackgrounds, sceneLineFor, scenePlanBlock, withSceneBackground } from "@/utils/scenePlan";
+import { elsewhereIssue } from "@/utils/speakingPosition";
+import { VOICE_NOTE_SYSTEM_PROMPT, voiceNoteUserPrompt } from "./prompts/voiceNote";
+import { parseVoiceBrief, voiceBriefAsText, voiceBriefForProfile } from "@/utils/voiceBrief";
+import { audioMimeTypeOf } from "@/utils/fileHelpers";
+import { sameWords, splitScriptVerbatim, verbatimScriptText } from "@/utils/customScript";
+import { nameBoardInPlaceOfLogo, withOwnerImageDirective } from "@/utils/frameBrand";
+import { parseClipPromptEdits, sameVeoPrompt, veoEditProblems } from "@/utils/veoRefine";
+import { cleanOverlayDesign, overlayDesignOf, overlayImagePrompt } from "@/utils/overlayImage";
+import { speakableLine } from "@/utils/spokenNumbers";
 import {
   CHARACTER_VOICEOVER_SYSTEM_PROMPT,
   CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT,
@@ -52,19 +65,19 @@ const MAX_LABEL_CONTACTS = 3;
 const hasWhatsAppNumber = (businessInfo: any): boolean =>
   /whatss*app/i.test(JSON.stringify(businessInfo ?? {}));
 import {
-  assembleVeoPrompt, parseVeoDirections, planClipMotion, spokenLinesIn, walkPath, withMotionComposition,
-  type ClipMotionPlan, type VeoSpeech,
+  assembleVeoPrompt, cameraLabel, fillCast, parseVeoDirections, planClipMotion, spokenLinesIn, stagingPath,
+  withMotionComposition, type ClipMotionPlan, type VeoSpeech,
 } from "./prompts/motion";
 import {
-  VEO_REFINE_SYSTEM_PROMPT, VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT, VOICEOVER_REFINE_PLAN_SYSTEM_PROMPT,
+  VEO_REFINE_PLAN_SYSTEM_PROMPT, VEO_REFINE_SYSTEM_PROMPT, VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT, VOICEOVER_REFINE_PLAN_SYSTEM_PROMPT,
 } from "./prompts/refine";
 import {
   changedClipIndexes, clipIndexesFromIssues, introducedIssues, isBetterRepair, issuesForClip, mergeClipEdits,
   numberedWords, parseClipDialogueEdits, parseClipTextEdits, parseRefinePlan, repairDirection, wordBandDistance,
 } from "@/utils/voiceOverRefine";
 import {
-  getCharacterPack, packSpeakers, packSpeakerAliases, packNameSpellings, isHumanPack, packModelGender,
-  type CharacterPack,
+  getCharacterPack, packSpeakers, packSpeakerAliases, packNameSpellings, isHumanPack, packCastGender,
+  withCustomCharacter, type CharacterPack,
 } from "./characterPacks";
 import {
   POSTER_CONCEPT_SYSTEM_PROMPT, POSTER_CONCEPT_USER_PROMPT, POSTER_CONCEPT_REFINE_SYSTEM_PROMPT,
@@ -379,8 +392,18 @@ const buildRatioDirective = (formData: AdFormData): string => {
  */
 const packWardrobe = (pack: CharacterPack | null, formData: AdFormData): string | undefined => {
   if (!pack || !isHumanPack(pack) || !formData.attireType) return undefined;
-  return wardrobeDirective(formData.attireType, formData.customAttire, packModelGender(pack)) || undefined;
+  // The male & female duo is dressed per person from one choice — see wardrobeDirective.
+  return wardrobeDirective(formData.attireType, formData.customAttire, packCastGender(pack)) || undefined;
 };
+
+/**
+ * The special category for a run, with a Custom Character's description written into it.
+ *
+ * One resolver for every call in this file, so the script, the frames, the refines and the video
+ * director all see the same character — see characterPacks.withCustomCharacter.
+ */
+const packFor = (formData: AdFormData): CharacterPack | null =>
+  withCustomCharacter(getCharacterPack(formData.characterPack), formData.customCharacter);
 
 /**
  * Resolves the name-board text: the explicit "logoNameText" if the user typed one, else a
@@ -407,6 +430,26 @@ const buildNameBoardDirective = (
 ): string =>
   buildBrandMarkDirective(!!formData.noLogo, resolveNameBoardText(formData, businessInfo), surface);
 
+/**
+ * What the VIDEO BOTTOM LABEL is designed from beyond the trade: the festival's own theme, and what
+ * this video is about — see prompts/lowerThird.
+ */
+const labelDesignInputs = (formData: AdFormData, sceneContext: SceneContext | null, coreMessage: CoreMessageBrief | null) => {
+  const festival = formData.adType === 'festival' && formData.festivalName?.trim() ? getFestivalTheme(formData.festivalName) : null;
+  return {
+    festivalTheme: festival
+      ? { colors: festival.headerColors, patterns: festival.headerPatterns, elements: festival.culturalElements }
+      : undefined,
+    context: sceneContext || coreMessage
+      ? {
+          motive: sceneContext?.motive,
+          mood: sceneContext?.mood,
+          coreMessage: coreMessage?.corePromise ? `${coreMessage.whatTheyDo ? `${coreMessage.whatTheyDo} — ` : ''}${coreMessage.corePromise}` : undefined,
+        }
+      : undefined,
+  };
+};
+
 const buildLanguageDirective = (formData: AdFormData): string => {
   const lang = (formData.language || 'Telugu').trim();
   if (!lang || lang.toLowerCase() === 'telugu') return '';
@@ -424,7 +467,7 @@ const REFINE_EDIT_DIRECTIVE = `You are a precise prompt EDITOR (not a re-generat
  * never stops a generation; it falls back to a brief assembled from the extracted profile.
  */
 export const deriveCoreMessage = async (businessInfo: any, formData: AdFormData): Promise<CoreMessageBrief> => {
-  const pack = getCharacterPack(formData.characterPack);
+  const pack = packFor(formData);
   const configuration = [
     `Ad type: ${formData.adType}${formData.adType === 'festival' && formData.festivalName ? ` — ${formData.festivalName}` : ''}`,
     `Spoken language: ${formData.language || 'Telugu'}`,
@@ -481,7 +524,7 @@ export const refineSection = async (
    * Every branch below now picks the pack's own prompt when there is one, so an edit can only ever
    * change what was asked for and never the format underneath it.
    */
-  const pack = getCharacterPack(formData.characterPack);
+  const pack = packFor(formData);
   const packSpeakerList = pack ? packSpeakers(pack) : [];
 
   /**
@@ -554,6 +597,7 @@ ${pack
           noLogo: formData.noLogo || false,
           contactCount: extractContactsFromInfo(businessInfo).slice(0, MAX_LABEL_CONTACTS).length,
           hasAddress: !!resolveRealAddress(businessInfo, extractBusinessNameFromInfo(businessInfo)),
+          ...labelDesignInputs(formData, null, null),
         });
       userPrompt = `You previously generated this brand label prompt:
 
@@ -667,7 +711,7 @@ export const refineVoiceOver = async (params: {
   const { script, instruction, formData, businessInfo } = params;
   const forced = typeof params.clip === 'number' ? params.clip : null;
   const language = formData.language || 'Telugu';
-  const pack = getCharacterPack(formData.characterPack);
+  const pack = packFor(formData);
   const speakers = pack ? packSpeakers(pack) : [];
   const nameOf = new Map(speakers.map(s => [s.key, s.name]));
   const unchanged = (notApplied: string, understood = ''): VoiceOverRefineResult => ({ script, changed: [], understood, notApplied });
@@ -754,7 +798,8 @@ Return ONLY the JSON for clip${plan.clips.length === 1 ? '' : 's'} ${plan.clips.
     const wishClip = formData.adType === 'festival' ? 1 : undefined;
     const before = validateVoiceOverSegments(formatVoiceOverScript(lines), lines, count, language, everyday, wishClip);
     const attempt = (raw: string) => {
-      const edits = new Map([...parseClipTextEdits(raw, plan.clips)].map(([i, t]) => [i, cleanScriptText(toSpokenEndings(t, language))] as [number, string]));
+      // A refined line is spoken like every other: numbers as words, మరియు exactly (utils/spokenNumbers).
+      const edits = new Map([...parseClipTextEdits(raw, plan.clips)].map(([i, t]) => [i, speakableLine(cleanScriptText(toSpokenEndings(t, language)), language)] as [number, string]));
       const merged = mergeClipEdits(lines, edits);
       const formatted = formatVoiceOverScript(merged);
       const problems = edits.size === 0
@@ -811,7 +856,7 @@ Return ONLY the JSON for clip${plan.clips.length === 1 ? '' : 's'} ${plan.clips.
   const before = check(dialogue);
   const attempt = (raw: string) => {
     const edits = new Map([...parseClipDialogueEdits(raw, plan.clips)].map(([i, ls]) =>
-      [i, ls.map((l, p) => ({ speaker: speakerKey(l.speaker, p), text: toSpokenEndings(l.text, language) }))] as [number, DialogueClip]));
+      [i, ls.map((l, p) => ({ speaker: speakerKey(l.speaker, p), text: speakableLine(toSpokenEndings(l.text, language), language) }))] as [number, DialogueClip]));
     const merged = applyNameSpellings(mergeClipEdits(dialogue, edits), spellings);
     const problems = edits.size === 0
       ? ['Your reply contained no usable clips in the required JSON.']
@@ -840,54 +885,115 @@ Return ONLY the JSON for clip${plan.clips.length === 1 ? '' : 's'} ${plan.clips.
 };
 
 /**
- * Refines Veo prompts — one clip or all of them — without losing their shape or their dialogue.
+ * Refines Veo prompts — one clip or all of them — by understanding the request first.
  *
- * The spoken line inside each prompt is the recorded dialogue; a refine that changes it would put
- * words in the video the voice-over never says. So every prompt that comes back is checked against
- * the one that went in, and any whose dialogue moved is kept as it was.
+ * 1. PLAN: what the member wants, compared with what each prompt says now, as a concrete change per
+ *    section per clip (prompts/refine VEO_REFINE_PLAN_SYSTEM_PROMPT).
+ * 2. EDIT: only the planned clips, as JSON keyed by clip, so a missing separator can no longer shift
+ *    every prompt by one.
+ * 3. CHECK in code (utils/veoRefine): the spoken dialogue is untouched and no section went missing.
+ *    A clip that fails, or comes back unchanged, is asked once more with the problem named; after
+ *    that it keeps its original prompt.
+ *
+ * The spoken line inside each prompt is the recorded dialogue; a refine that changed it would put
+ * words in the video the voice-over never says.
  */
 export const refineVeoPrompts = async (params: {
   prompts: string[];
   instruction: string;
   /** 0-based clip to refine; omit to apply the request to every clip. */
   clip?: number | null;
-}): Promise<{ prompts: string[]; changed: number[]; rejected: number[] }> => {
+}): Promise<{ prompts: string[]; changed: number[]; rejected: number[]; understood: string; notApplied: string }> => {
   if (API_KEYS.length === 0) {
     throw new Error("No API keys configured. Please set API_KEY_1, API_KEY_2, etc. in your environment.");
   }
   const { prompts, instruction } = params;
-  const targets = typeof params.clip === 'number' ? [params.clip] : prompts.map((_, i) => i);
-  const selected = targets.filter(i => i >= 0 && i < prompts.length);
-  if (selected.length === 0) return { prompts, changed: [], rejected: [] };
+  const forced = typeof params.clip === 'number' && params.clip >= 0 && params.clip < prompts.length ? params.clip : null;
+  const shown = forced !== null ? [forced] : prompts.map((_, i) => i);
+  if (shown.length === 0) return { prompts, changed: [], rejected: [], understood: '', notApplied: '' };
+  const labelled = (indexes: number[]) => indexes.map(i => `=== CLIP ${i + 1} ===\n${prompts[i]}`).join('\n\n');
 
-  const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
-    model,
-    contents: [{ role: 'user', parts: [{ text: `PROMPTS (${selected.length}, separated by ###SEGMENT###):
+  // 1. Understand and compare.
+  let plan = parseRefinePlan('', prompts.length, forced);
+  try {
+    const planResponse = await callWithFallback(async (ai, model) => ai.models.generateContent({
+      model,
+      contents: [{ role: 'user', parts: [{ text: `CURRENT PROMPTS:
 
-${selected.map(i => prompts[i]).join('\n###SEGMENT###\n')}
+${labelled(shown)}
 
-REQUEST:
+REQUEST FROM THE MEMBER:
 "${instruction}"
+${forced !== null ? `\nThis request is for clip ${forced + 1} only.\n` : ''}
+Plan the edit now.` }] }],
+      config: { systemInstruction: VEO_REFINE_PLAN_SYSTEM_PROMPT, responseMimeType: 'application/json' },
+    }));
+    plan = parseRefinePlan(planResponse.text || '', prompts.length, forced);
+  } catch (err) {
+    console.warn('Veo refine planning failed; editing straight from the request.', err);
+  }
+  if (plan.notPossible || plan.alreadyDone) {
+    return { prompts, changed: [], rejected: [], understood: plan.understood, notApplied: plan.notPossible || plan.alreadyDone };
+  }
+  // No usable plan: the request itself is the change, for the clips it was asked for.
+  const targets = plan.clips.length > 0 ? plan.clips : shown;
+  const changeFor = (i: number) => plan.changes[i] || instruction;
 
-Return the ${selected.length} edited prompt${selected.length === 1 ? '' : 's'} in the same order${selected.length === 1 ? '' : ', separated by ###SEGMENT###'}.` }] }],
-    config: { systemInstruction: VEO_REFINE_SYSTEM_PROMPT },
-  }));
+  // 2. Edit — and 3. check.
+  const edit = async (indexes: number[], corrections: Record<number, string> = {}) => {
+    const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
+      model,
+      contents: [{ role: 'user', parts: [{ text: `${indexes.map(i => `=== CLIP ${i + 1} ===
+PLANNED CHANGE: ${changeFor(i)}${corrections[i] ? `\nYOUR LAST EDIT OF THIS CLIP WAS NOT USABLE: ${corrections[i]}` : ''}
+CURRENT PROMPT:
+${prompts[i]}`).join('\n\n')}
 
-  const edited = parseVeoSegmentPrompts(response.text || '', selected.length);
+THE MEMBER'S REQUEST, for context: "${instruction}"
+
+Return the JSON with the complete edited prompt for clip${indexes.length === 1 ? '' : 's'} ${indexes.map(i => i + 1).join(', ')}.` }] }],
+      config: { systemInstruction: VEO_REFINE_SYSTEM_PROMPT, responseMimeType: 'application/json' },
+    }));
+    return parseClipPromptEdits(response.text || '', indexes);
+  };
+
   const next = [...prompts];
   const changed: number[] = [];
-  const rejected: number[] = [];
-  selected.forEach((index, k) => {
-    const candidate = (edited[k] || '').trim();
-    const keptDialogue = JSON.stringify(spokenLinesIn(candidate)) === JSON.stringify(spokenLinesIn(prompts[index]));
-    if (!candidate || !keptDialogue) {
-      rejected.push(index);
-    } else if (candidate !== prompts[index].trim()) {
-      next[index] = candidate;
-      changed.push(index);
+  const problemsOf: Record<number, string> = {};
+  const judge = (edits: Map<number, string>, indexes: number[]) => {
+    for (const i of indexes) {
+      const candidate = edits.get(i) || '';
+      const problems = candidate ? veoEditProblems(prompts[i], candidate) : ['No edited prompt came back for this clip.'];
+      if (problems.length === 0 && sameVeoPrompt(candidate, prompts[i])) {
+        problems.push(`It came back unchanged. Make the planned change: ${changeFor(i)}`);
+      }
+      if (problems.length === 0) {
+        next[i] = candidate;
+        changed.push(i);
+        delete problemsOf[i];
+      } else {
+        problemsOf[i] = problems.join(' ');
+      }
     }
-  });
-  return { prompts: next, changed, rejected };
+  };
+  judge(await edit(targets), targets);
+  const retry = targets.filter(i => problemsOf[i]);
+  if (retry.length > 0) {
+    try {
+      judge(await edit(retry, problemsOf), retry);
+    } catch (err) {
+      console.warn('Veo refine retry failed; those clips keep their prompts.', err);
+    }
+  }
+  const rejected = targets.filter(i => problemsOf[i]).sort((a, b) => a - b);
+  return {
+    prompts: next,
+    changed: changed.sort((a, b) => a - b),
+    rejected,
+    understood: plan.understood,
+    notApplied: rejected.length > 0
+      ? rejected.map(i => `Clip ${i + 1}: ${problemsOf[i]}`).join(' ')
+      : '',
+  };
 };
 
 const HOME_INTERIOR_MARKERS = [
@@ -1136,6 +1242,56 @@ const getMainFramePromptValidationIssues = (
 };
 
 // --- Poster-Only Mode: Extract business info only ---
+/**
+ * Hears the client's voice note(s) on their own — transcribed, understood, compared with the written
+ * material — before any other step reads them. See prompts/voiceNote for why. Null when there is no
+ * recording or it could not be understood; the caller then falls back to attaching the audio as before.
+ */
+export const understandVoiceInstructions = async (
+  recordings: File[],
+  context: { businessContent?: string; frameInstructions?: string },
+): Promise<VoiceBrief | null> => {
+  if (!recordings?.length || API_KEYS.length === 0) return null;
+  try {
+    const parts: any[] = [];
+    for (let i = 0; i < recordings.length; i++) {
+      parts.push({ inlineData: { mimeType: audioMimeTypeOf(recordings[i]), data: await fileToBase64(recordings[i]) } });
+      parts.push({ text: `Voice note ${i + 1} of ${recordings.length}.` });
+    }
+    parts.push({ text: voiceNoteUserPrompt({ ...context, fileCount: recordings.length }) });
+    const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
+      model,
+      contents: [{ role: 'user', parts }],
+      config: { systemInstruction: VOICE_NOTE_SYSTEM_PROMPT, responseMimeType: 'application/json' },
+    }));
+    return parseVoiceBrief(response.text || '');
+  } catch (err) {
+    console.warn('Voice-note understanding failed; attaching the recordings to extraction instead.', err);
+    return null;
+  }
+};
+
+/**
+ * The voice note's part of an extraction request: the understood text when there is one, else the
+ * recordings themselves with a MIME type the model accepts (see fileHelpers.audioMimeTypeOf).
+ */
+const voiceInstructionParts = async (recordings: File[], brief: VoiceBrief | null): Promise<any[]> => {
+  if (!recordings?.length) return [];
+  if (brief) {
+    return [{ text: `CLIENT VOICE INSTRUCTIONS — heard and understood from the client's voice note (these are the client's own words; use every requirement):\n${voiceBriefAsText(brief)}` }];
+  }
+  const parts: any[] = [];
+  for (let i = 0; i < recordings.length; i++) {
+    parts.push({ inlineData: { mimeType: audioMimeTypeOf(recordings[i]), data: await fileToBase64(recordings[i]) } });
+    parts.push({ text: `This is the Client's Voice Instructions (${i + 1} of ${recordings.length}). Listen to all of it, understand what the client is asking for, and capture every requirement, offer, name and instruction in Special Requirements.` });
+  }
+  return parts;
+};
+
+/** How the team's typed BUSINESS CONTENT is labelled for the model — the authoritative facts. */
+const businessContentPart = (text: string) =>
+  ({ text: `BUSINESS CONTENT typed by the team (authoritative — business details, offers, the call to action, contact information): ${text}` });
+
 export const extractBusinessOnly = async (
   formData: AdFormData,
   files: FileStore,
@@ -1148,7 +1304,7 @@ export const extractBusinessOnly = async (
   const parts: any[] = [];
 
   if (formData.textInstructions) {
-    parts.push({ text: `Client Text Instructions: ${formData.textInstructions}` });
+    parts.push(businessContentPart(formData.textInstructions));
   }
   if (files.textInstructionsFile && files.textInstructionsFile.length > 0) {
     for (const textFile of files.textInstructionsFile) {
@@ -1179,10 +1335,10 @@ export const extractBusinessOnly = async (
     }
   }
   if (files.voiceRecording && files.voiceRecording.length > 0) {
-    for (let i = 0; i < files.voiceRecording.length; i++) {
-      parts.push({ inlineData: { mimeType: files.voiceRecording[i].type, data: await fileToBase64(files.voiceRecording[i]) } });
-      parts.push({ text: `This is the Client's Voice Instructions (${i + 1} of ${files.voiceRecording.length}). Listen carefully.` });
-    }
+    const brief = await understandVoiceInstructions(files.voiceRecording, {
+      businessContent: formData.textInstructions, frameInstructions: formData.frameInstructions,
+    });
+    parts.push(...await voiceInstructionParts(files.voiceRecording, brief));
   }
   if (files.flyersPosters && files.flyersPosters.length > 0) {
     for (let i = 0; i < files.flyersPosters.length; i++) {
@@ -1605,6 +1761,10 @@ const validateVoiceOverSegments = (
       issues.push(`Clip ${clipNumber} appears to speak a phone/contact number — remove all spoken numbers and use the on-screen call CTA instead.`);
     }
 
+    // The presenter is on screen INSIDE the business, so no line may send the viewer elsewhere.
+    const elsewhere = elsewhereIssue(clipNumber, segment);
+    if (elsewhere) issues.push(elsewhere);
+
     const normalizedSegmentKey = cleanScriptText(segment).toLowerCase();
     const firstSeenClip = seenSegments.get(normalizedSegmentKey);
     if (typeof firstSeenClip === 'number') {
@@ -1656,13 +1816,23 @@ export const generateAdAssets = async (
     throw new Error("No API keys configured. Please set API_KEY_1, API_KEY_2, etc. in your environment.");
   }
 
+  /**
+   * The client's voice note, heard first and on its own — see understandVoiceInstructions. Its text
+   * goes into extraction and is merged into the business profile, so every later prompt hears it.
+   */
+  const voiceBrief = files.voiceRecording?.length
+    ? (onProgress("Listening to the client's voice note...", 5), await understandVoiceInstructions(files.voiceRecording, {
+        businessContent: formData.textInstructions, frameInstructions: formData.frameInstructions,
+      }))
+    : null;
+
   // Helper to prepare parts
   const prepareParts = async () => {
     const parts: any[] = [];
     
-    // Add text instructions from form
+    // The team's BUSINESS CONTENT box — the facts the ad must carry.
     if (formData.textInstructions) {
-      parts.push({ text: `Client Text Instructions: ${formData.textInstructions}` });
+      parts.push(businessContentPart(formData.textInstructions));
     }
 
     // Add text file content
@@ -1723,18 +1893,8 @@ export const generateAdAssets = async (
       }
     }
 
-    // Process Voice Recording
-    if (files.voiceRecording && files.voiceRecording.length > 0) {
-      for (let i = 0; i < files.voiceRecording.length; i++) {
-        parts.push({
-          inlineData: {
-            mimeType: files.voiceRecording[i].type,
-            data: await fileToBase64(files.voiceRecording[i])
-          }
-        });
-        parts.push({ text: `This is the Client's Voice Instructions (${i + 1} of ${files.voiceRecording.length}). Listen carefully.` });
-      }
-    }
+    // The voice note — its understood text, or the recordings when understanding failed.
+    parts.push(...await voiceInstructionParts(files.voiceRecording || [], voiceBrief));
 
     // Process Flyers / Offer Posters / Brochures
     if (files.flyersPosters && files.flyersPosters.length > 0) {
@@ -1816,6 +1976,10 @@ export const generateAdAssets = async (
     console.warn("Failed to parse JSON directly, using raw text", e);
     businessInfo = { raw: businessInfoText };
   }
+  // The client's own words travel with the profile, so the script, frames and label read them too.
+  if (voiceBrief && businessInfo && typeof businessInfo === 'object') {
+    businessInfo = { ...businessInfo, clientVoiceInstructions: voiceBriefForProfile(voiceBrief) };
+  }
 
   const hasProductImages = files.productImages && files.productImages.length > 0;
   const productImageCount = hasProductImages ? files.productImages.length : 0;
@@ -1849,14 +2013,25 @@ export const generateAdAssets = async (
 
   onProgress(customScript ? "Processing custom script..." : "Writing Voice Over script...", 20);
 
+  // ── Special-category (cartoon duo) ad ───────────────────────────────────────────────────────
+  // A pack swaps in the two-character script/frame/video prompts. When no pack is selected this
+  // is null and every line below behaves exactly as it always has.
+  const pack = packFor(formData);
+  const packSpeakerList = pack ? packSpeakers(pack) : [];
+  let dialogueClips: DialogueClip[] = [];
+
   // A business-provided script pasted in the `clip-1[0-8sec]: …` format is authoritative: its
   // clips are used verbatim (never re-segmented or re-worded), and its clip count — not the
   // Video Duration dropdown — decides how many main-frame and Veo prompts get generated, so the
-  // attached script lands in the Generated Assets exactly as the business wrote it.
+  // attached script lands in the Generated Assets exactly as the business wrote it. A special-category
+  // script with its `[Speaker]:` lines is read the same way, so its clip count wins too.
   const preSplitCustomClips = customScript?.trim() ? parseLabeledClips(customScript) : [];
-  const segmentCount = preSplitCustomClips.length > 0
-    ? preSplitCustomClips.length
-    : Math.round(formData.duration / 8);
+  const pastedDialogue = pack && customScript?.trim() ? parseDialogueClips(customScript, packSpeakerAliases(pack)) : [];
+  const segmentCount = pastedDialogue.length > 0
+    ? pastedDialogue.length
+    : preSplitCustomClips.length > 0
+      ? preSplitCustomClips.length
+      : Math.round(formData.duration / 8);
   const effectiveDuration = segmentCount * CLIP_SECONDS;
 
   /**
@@ -1870,13 +2045,6 @@ export const generateAdAssets = async (
   const spoken = (script: string) => (everyday ? toSpokenEndings(script, formData.language) : script);
   let voiceOverScript: string;
   let parsedSegments: string[];
-
-  // ── Special-category (cartoon duo) ad ───────────────────────────────────────────────────────
-  // A pack swaps in the two-character script/frame/video prompts. When no pack is selected this
-  // is null and every line below behaves exactly as it always has.
-  const pack = getCharacterPack(formData.characterPack);
-  const packSpeakerList = pack ? packSpeakers(pack) : [];
-  let dialogueClips: DialogueClip[] = [];
 
   /**
    * The town this business is in — the one thing that makes a local ad feel local.
@@ -1932,17 +2100,44 @@ export const generateAdAssets = async (
      * one name twice and the other never and still look compliant.
      */
     const spellings = packNameSpellings(pack, formData.language);
-    const characterNames = packSpeakerList.map(speaker => ({
+    /**
+     * Human casts have role labels, not names — "Friend" and "Host" are how the script tells the two
+     * people apart, and requiring either to be said out loud made the two women call each other
+     * "Friend". Only a named character (Motu, Hanuman) has a name the audience must hear.
+     */
+    const characterNames = isHumanPack(pack) ? [] : packSpeakerList.map(speaker => ({
       name: speaker.name,
       tokens: [
         speaker.name,
         ...spellings.filter(s => s.name === speaker.name).map(s => s.spelling),
       ],
     }));
-    // A pasted script already in two-speaker form is authoritative — honour it verbatim. Checked
-    // before the town is resolved so a member's own words never pay for a model call.
-    const pasted = customScript?.trim() ? parseDialogueClips(customScript, aliases) : [];
-    if (pasted.length === segmentCount) return fixNames(pasted);
+    /**
+     * A member's own script is used word for word — see utils/customScript.
+     *
+     * Already in speaker form: exactly as written (the characters' names are not even respelt; the
+     * member chose them). A single-speaker category needs no speaker lines, so its clips — or its
+     * unlabelled text, cut at sentence boundaries — become that character's lines unchanged. A
+     * two-speaker category cannot guess who says which sentence, and guessing is how lines landed in
+     * the wrong character's mouth; it used to throw the script away and write a new one, so now it
+     * asks for the speaker lines instead.
+     */
+    if (customScript?.trim()) {
+      if (pastedDialogue.length > 0) {
+        return pastedDialogue.map(clip => clip.map(line => ({ ...line, text: verbatimScriptText(line.text) })));
+      }
+      if (packSpeakerList.length === 1) {
+        const texts = preSplitCustomClips.length > 0
+          ? preSplitCustomClips.map(verbatimScriptText)
+          : splitScriptVerbatim(customScript, segmentCount);
+        return texts.map(text => [{ speaker: packSpeakerList[0].key, text }]);
+      }
+      const [a, b] = packSpeakerList;
+      throw new Error(
+        `Your script is used word for word, so a two-person ad needs to know who says each line. `
+        + `Write every clip like this and paste it again:\n\nclip-1[0-8sec]:\n[${a.name}]: …\n[${b.name}]: …\nclip-2[8-16sec]:\n[${a.name}]: …\n[${b.name}]: …`,
+      );
+    }
 
     const spokenPlace = await resolveSpokenPlace();
     /**
@@ -2002,7 +2197,11 @@ export const generateAdAssets = async (
         maxWordsPerClip: budget.maxClip,
         minWordsPerLine: budget.minLine,
         maxWordsPerLine: budget.maxLine,
-      }).concat(dialogueHardWordIssues(clips, formData.language, ownNames, speakerName));
+      }).concat(dialogueHardWordIssues(clips, formData.language, ownNames, speakerName))
+        // The characters are standing inside the business in every frame — see utils/speakingPosition.
+        .concat(clips.flatMap((clip, i) => clip
+          .map(line => elsewhereIssue(i + 1, line.text, speakerName(line.speaker)))
+          .filter((issue): issue is string => !!issue)));
     /** Written verb endings made spoken, in code — see toSpokenEndings. */
     const spokenLines = (clips: DialogueClip[]): DialogueClip[] =>
       clips.map(clip => clip.map(line => ({ ...line, text: toSpokenEndings(line.text, formData.language) })));
@@ -2317,7 +2516,9 @@ Review it now and return the JSON verdict.` }] }],
 
   if (pack) {
     // Two characters share every 8-second clip, so the script is an exchange rather than a line.
-    dialogueClips = await generateCharacterDialogue();
+    // Every line as it is spoken — numbers as words, మరియు exactly — whoever wrote it.
+    dialogueClips = (await generateCharacterDialogue())
+      .map(clip => clip.map(line => ({ ...line, text: speakableLine(line.text, formData.language) })));
     voiceOverScript = formatDialogueScript(dialogueClips, packSpeakerList);
     // Downstream (main frame, Veo, stock images) consumes one string per clip — give it the whole
     // exchange, speaker-labelled, so every later prompt knows who says what.
@@ -2330,29 +2531,28 @@ Review it now and return the JSON verdict.` }] }],
     // No AI re-segmentation, no word-count repair, no quality rewrite: the wording the business
     // supplied is what ships, so it appears unchanged in both the Voice Over Script and the
     // Veo 3 prompts built from these segments.
-    parsedSegments = preSplitCustomClips.map(clip => cleanScriptText(clip));
+    parsedSegments = preSplitCustomClips.map(clip => verbatimScriptText(clip));
     voiceOverScript = formatVoiceOverScript(parsedSegments);
   } else if (customScript && customScript.trim()) {
-    // Clean the script: remove emojis, special characters, normalize
-    const cleanedScript = cleanScriptText(customScript.trim());
+    /**
+     * Unlabelled text: only WHERE each clip starts is decided — never what it says.
+     *
+     * The model picks the cut points (it reads Telugu sentence ends better than a regex), but its
+     * answer is kept only if it says exactly the member's words in the member's order; anything else —
+     * a word changed, dropped, "cleaned" or added — is discarded for the code split at sentence
+     * boundaries. There is no repair or quality pass after this: a member's script is not ours to
+     * rewrite, even when a clip runs long or short.
+     */
+    const cleanedScript = verbatimScriptText(customScript.trim());
+    const segmentSystemPrompt = `You split a voice-over script into EXACTLY ${segmentCount} clips of about 8 seconds each, for a ${effectiveDuration}-second video.
 
-    // Use Gemini to intelligently segment the custom script into equal clips
-    const segmentSystemPrompt = `You are an expert script editor. Split the given script into EXACTLY ${segmentCount} roughly equal segments for a ${effectiveDuration}-second video (each segment ~8 seconds of speaking time).
+THE ONE RULE: you only decide where each clip starts. Every word of the script must appear exactly once, unchanged and in its original order — never rewrite, shorten, lengthen, translate, correct, reorder or "clean" anything, and never add a word of your own.
 
-RULES:
-- Split at natural sentence/phrase boundaries — NEVER split mid-sentence
-- Each segment MUST be a COMPLETE, SELF-CONTAINED thought with a proper conclusion
-- Each segment should make FULL SENSE on its own — no hanging or incomplete thoughts
-- Each segment should be roughly equal in word count (16-22 words each)
-- If a sentence is too long for one segment, REWRITE it as two shorter complete sentences
-- Maintain the original language and wording — do NOT rewrite or translate
-- Remove any remaining emojis, hashtags, or decorative symbols
-- Make the text clean and suitable for professional voice-over
-- Format output as:
+- Cut at sentence or phrase boundaries, never in the middle of a word.
+- Keep the clips as even in length as the sentences allow.
+- Output ONLY the clips, one per line:
 Segment 1: <text>
-Segment 2: <text>
-... etc.
-- Output ONLY the numbered segments, nothing else`;
+Segment 2: <text>`;
 
     const segmentResponse = await callWithFallback(async (ai, model) => {
       return await ai.models.generateContent({
@@ -2362,9 +2562,11 @@ Segment 2: <text>
       });
     });
 
-    const repairedVoiceOver = await applyVoiceOverRepairIfNeeded(segmentResponse.text || cleanedScript);
-    parsedSegments = repairedVoiceOver.segments;
-    voiceOverScript = repairedVoiceOver.formatted;
+    const proposed = parseLabeledClips(segmentResponse.text || '').map(verbatimScriptText);
+    const faithful = proposed.length === segmentCount && proposed.every(Boolean) && sameWords(cleanedScript, proposed.join(' '));
+    if (!faithful) console.info('Custom script: the model changed the wording while splitting — cutting it at sentence boundaries instead.');
+    parsedSegments = faithful ? proposed : splitScriptVerbatim(cleanedScript, segmentCount);
+    voiceOverScript = formatVoiceOverScript(parsedSegments);
   } else {
     // Auto-generate voice-over script
     const scriptSystemPrompt = buildLanguageDirective(formData) + VOICEOVER_SYSTEM_PROMPT(effectiveDuration, segmentCount, formData.adType, formData.festivalName, formData.language, formData.gender || 'female', coreMessage);
@@ -2394,6 +2596,16 @@ Segment 2: <text>
 
     parsedSegments = finalVoiceOver.segments;
     voiceOverScript = finalVoiceOver.formatted;
+  }
+
+  /**
+   * The last word on a single-voice script, whatever produced it — the writer, the repair, the
+   * review or the member's own paste: every number is written as the words that are spoken, and
+   * మరియు is spelled exactly (utils/spokenNumbers). The prompts ask for both; this guarantees them.
+   */
+  if (!pack) {
+    parsedSegments = parsedSegments.map(segment => speakableLine(segment, formData.language));
+    voiceOverScript = formatVoiceOverScript(parsedSegments);
   }
 
   // Emit partial result: voiceOver ready
@@ -2450,11 +2662,88 @@ Segment 2: <text>
   const usingClientPhotos = formData.locationMode === 'real_provided' && clientLocations.length > 0;
   const clipPhotoPlan = usingClientPhotos ? assignPhotosToClips(segmentCount, clientLocations) : [];
 
+
   /**
-   * How every clip moves — decided once, here, from what each clip is for (prompts/motion). The frame
-   * prompts compose each still for its move, and the video prompts are then written to perform it.
+   * Frames with no logo FILE show the business's NAME BOARD — whether "No logo" was ticked or there is
+   * simply no logo to attach. A frame prompt that says "the attached logo" with nothing attached sends
+   * the member looking for a file that does not exist (utils/frameBrand).
    */
-  const motionPlan = planClipMotion(segmentCount, formData.adType, packPerformer(pack));
+  const frameNoLogo = !!formData.noLogo || !files.logo;
+  const frameNameBoard = resolveNameBoardText(formData, businessInfo);
+  const frameBrand = getBrandMark(frameNoLogo, frameNameBoard);
+  /** A Real Owner Face ad is built from the owner's own photo, uploaded in its own slot. */
+  const ownerFace = !!pack?.usesClientFace && !!files.ownerImage;
+  /** The team's FRAME / BACKGROUND INSTRUCTIONS box — the highest-priority direction for every frame. */
+  const frameInstructionsBlock = formData.frameInstructions?.trim()
+    ? `
+  FRAME / BACKGROUND INSTRUCTIONS FROM THE TEAM (HIGHEST PRIORITY — follow them exactly in every clip they apply to; they override any location rule here):
+  ${formData.frameInstructions.trim()}
+`
+    : '';
+
+  /**
+   * The scene plan (prompts/scenePlan): what this video is ABOUT and one DIFFERENT background per
+   * clip, chosen by that clip's line. Skipped when the client's photographs already set every
+   * background. A plan that repeats a background is asked for once more with the repeats named; if
+   * the call fails the frames fall back to their own location rules, as before.
+   */
+  const planScenes = async (): Promise<SceneContext | null> => {
+    if (usingClientPhotos || API_KEYS.length === 0) return null;
+    onProgress("Planning a different background for every clip...", 42);
+    const subject = pack
+      ? (isHumanPack(pack)
+          ? (pack.characters.length > 1 ? 'the two presenters' : 'the presenter')
+          : pack.characters.map(c => c.name).join(' and '))
+      : `the ${formData.gender === 'male' ? 'male' : 'female'} brand ambassador`;
+    const systemInstruction = SCENE_PLAN_SYSTEM_PROMPT({
+      clipCount: segmentCount, adType: formData.adType, festivalName: formData.festivalName, subject,
+      twoHander: !!pack && pack.characters.length > 1, deity: packPerformer(pack) === 'deity',
+    });
+    const userPrompt = scenePlanUserPrompt({
+      businessContent: formData.textInstructions || '',
+      frameInstructions: formData.frameInstructions || '',
+      businessInfo,
+      clipLines: parsedSegments,
+      adType: formData.adType,
+      festivalName: formData.festivalName,
+    });
+    let best: SceneContext | null = null;
+    let repeats: number[] = [];
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const text = attempt === 0 || repeats.length === 0
+          ? userPrompt
+          : `${userPrompt}\n\nYOUR LAST PLAN REPEATED A BACKGROUND in clip${repeats.length === 1 ? '' : 's'} ${repeats.join(', ')}. Give every clip a genuinely different part of the place, with different real things in it.`;
+        const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
+          model,
+          contents: [{ role: 'user', parts: [{ text }] }],
+          config: { systemInstruction, responseMimeType: 'application/json' },
+        }));
+        const plan = parseScenePlan(response.text || '', segmentCount);
+        if (!plan) continue;
+        const planRepeats = repeatedBackgrounds(plan);
+        if (!best || planRepeats.length < repeats.length) { best = plan; repeats = planRepeats; }
+        if (repeats.length === 0) break;
+      } catch (err) {
+        console.warn('Scene planning failed; the frames choose their own backgrounds.', err);
+        break;
+      }
+    }
+    if (best && repeats.length > 0) console.warn(`Scene plan still repeats clip(s) ${repeats.join(', ')}.`);
+    return best;
+  };
+  const sceneContext = await planScenes();
+  const sceneLines = sceneContext ? sceneContext.clips.map((_, i) => sceneLineFor(sceneContext, i)) : [];
+  if (sceneContext) emitPartial({ sceneContext });
+
+  /**
+   * How every clip is staged and filmed — decided once, here, AFTER the scene plan (prompts/motion):
+   * stand and tell, walk and talk, show the product or present the space, each with its camera angle,
+   * lens, move and speed, from the scene plan's choices or, failing those, from reading each line. The
+   * frames are composed for it first; the video prompts are then written to perform it.
+   */
+  const motionPlan = planClipMotion(segmentCount, formData.adType, packPerformer(pack),
+    motionOptionsFor(pack, parsedSegments, sceneContext));
 
   // --- Steps 3-6 run CONCURRENTLY: Main Frame, Header (local), Poster, Veo ---
   onProgress("Generating Main Frame, Poster & Video prompts...", 45);
@@ -2491,12 +2780,17 @@ Segment 2: <text>
         aspectRatio: formData.aspectRatio === '16:9' ? '16:9' : '9:16',
         adType: formData.adType,
         festivalName: formData.festivalName,
-        hasLogo: !!files.logo,
+        hasLogo: !frameNoLogo,
         businessContext: serializedBusinessInfo,
         wardrobe: packWardrobe(pack, formData),
         motionPlan,
+        nameBoard: frameNoLogo ? frameNameBoard : '',
+        sceneBackgrounds: sceneLines,
+        sceneMotive: sceneContext
+          ? [sceneContext.motive, sceneContext.setting ? `set in ${sceneContext.setting}` : ''].filter(Boolean).join(', ')
+          : '',
       })
-    : buildRatioDirective(formData) + buildNameBoardDirective(formData, businessInfo) + MULTI_FRAME_SYSTEM_PROMPT(
+    : buildRatioDirective(formData) + buildBrandMarkDirective(frameNoLogo, frameNameBoard, 'scene') + MULTI_FRAME_SYSTEM_PROMPT(
     formData.attireType,
     formData.adType,
     formData.festivalName,
@@ -2505,8 +2799,8 @@ Segment 2: <text>
     serializedBusinessInfo,
     formData.gender || 'female',
     formData.customAttire || '',
-    formData.noLogo || false,
-    resolveNameBoardText(formData, businessInfo),
+    frameNoLogo,
+    frameNameBoard,
     // The same real-premises formula the character packs use, in the SYSTEM prompt where the
     // location rules it replaces actually live. See prompts/realLocation.
     usingClientPhotos
@@ -2516,6 +2810,7 @@ Segment 2: <text>
         }
       : undefined,
     motionPlan,
+    sceneContext ? { block: scenePlanBlock(sceneContext), lines: sceneLines } : undefined,
   );
 
   const isCommercialMainFrame = formData.adType !== 'festival';
@@ -2553,11 +2848,11 @@ Segment 2: <text>
     ? `
   CLIENT BUSINESS TYPE: ${detectedBusinessType}
   ${educationEnvironmentMode ? `EDUCATION ENVIRONMENT MODE: ${educationEnvironmentMode === 'institution' ? 'college / school / institute campus mode' : 'education consultancy mode'}
-  ` : ''}CLIENT ENVIRONMENT ANCHOR: ${usingClientPhotos ? "the client's own photographed premises, attached — see the LOCATION SOURCE block above" : resolvedEnvironmentGuidance}
-  CLIENT LOCATION LADDER: ${usingClientPhotos ? 'the clip-by-clip photograph plan above. Do not invent zones that are not in their photographs.' : resolvedLocationPlan}
+  ` : ''}CLIENT ENVIRONMENT ANCHOR: ${usingClientPhotos ? "the client's own photographed premises, attached — see the LOCATION SOURCE block above" : sceneContext?.setting ? `${sceneContext.setting} — see the SCENE PLAN below` : resolvedEnvironmentGuidance}
+  CLIENT LOCATION LADDER: ${usingClientPhotos ? 'the clip-by-clip photograph plan above. Do not invent zones that are not in their photographs.' : sceneContext ? 'the SCENE PLAN below — one planned, different background per clip.' : resolvedLocationPlan}
   BACKGROUND NEGATIVE RULES: ${environmentNegativeRules}
   LOGO INSTALLATION SURFACES: ${usingClientPhotos ? 'a real surface visible in that clip\'s own photograph — an existing board, counter fascia, wall panel or door. Never invent a surface the photograph does not show.' : realisticLogoPlacementGuidance}
-  LOCATION VARIATION RULE: ${usingClientPhotos ? "Every clip uses the photograph assigned to it above." : 'Every clip must choose a different real business zone from the client location ladder unless the script absolutely demands a return to the same spot.'}`
+  LOCATION VARIATION RULE: ${usingClientPhotos ? "Every clip uses the photograph assigned to it above." : sceneContext ? 'Every clip uses its own background from the SCENE PLAN below — never the same background twice.' : 'Every clip must choose a different real business zone from the client location ladder unless the script absolutely demands a return to the same spot.'}`
     : '';
   const commercialMainFramePriorityNote = isCommercialMainFrame
     ? `
@@ -2618,13 +2913,17 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
   • Ad type: ${formData.adType}${formData.adType === 'festival' ? ` — festival: ${formData.festivalName}` : ''}
   • Spoken language: ${formData.language || 'Telugu'}
   • Location: ${formData.locationMode === 'real_provided' ? "the client's own photographs, attached" : 'built from the business profile'}
-  • Logo: ${files.logo ? 'attached — place it as-is, never describe it' : 'none provided'}
+  • Logo: ${!frameNoLogo ? 'attached — place it as-is, never describe it' : `none — show ${frameBrand.ref} instead; there is nothing to attach`}${ownerFace ? `
+  • Owner image: attached — the person on screen IS this person, in every clip` : ''}
   ${hasProductImages ? `• Product images: ${productImageCount} attached — show them unchanged on real shelves, counters or display cases behind the characters.` : ''}
   SPECIAL CLIENT INSTRUCTIONS: ${businessInfo.specialRequirements?.customInstructions || 'None'}
 
   WHAT IS SAID IN EACH CLIP (the backdrop must prove that clip's line):
   ${parsedSegments.map((s, i) => `Clip ${i + 1}: ${s}`).join('\n  ')}
-
+${sceneContext ? `
+  SCENE PLAN (decided from what this video is about — build each clip's background exactly as planned):
+  ${scenePlanBlock(sceneContext).split('\n').join('\n  ')}
+` : ''}${frameInstructionsBlock}
   Generate ${segmentCount} complete, unique prompts now, separated by ###CLIP### on its own line.
   You MUST output EXACTLY ${segmentCount} prompts. Do NOT combine clips into one block.` : '';
 
@@ -2653,18 +2952,25 @@ ${realPremisesDirective}${maleCastingOverride}${commercialMainFramePriorityNote}
   
   VOICE-OVER SCRIPT SEGMENTS (each segment must directly drive that frame's location, background proof, pose energy, and emotional tone):
   ${parsedSegments.map((s, i) => `Clip ${i+1}: ${s}`).join('\n  ')}
+${sceneContext ? `
+  SCENE PLAN (decided from what this video is about — build each clip's background exactly as planned; it replaces the location ladder):
+  ${scenePlanBlock(sceneContext).split('\n').join('\n  ')}
+` : ''}${frameInstructionsBlock}
   
   Generate ${segmentCount} complete, unique Main Frame image prompts now. Separate each with ###CLIP### on its own line.
   You MUST output EXACTLY ${segmentCount} prompts. Each prompt must be separated by ###CLIP### (on its own line, nothing else on that line).
   Do NOT combine multiple clips into one block. Each clip gets its own complete prompt.${productImageMainFrameNote}`;
 
-  const mainFrameUserPrompt = pack ? packMainFrameUserPrompt : humanModelMainFrameUserPrompt;
+  // The human prompt's rules name "the attached logo" throughout; with no logo they name the board.
+  const mainFrameUserPrompt = pack
+    ? packMainFrameUserPrompt
+    : frameNoLogo ? nameBoardInPlaceOfLogo(humanModelMainFrameUserPrompt, frameNameBoard) : humanModelMainFrameUserPrompt;
 
   // Build main frame parts including product images and logo
   const mainFrameParts: any[] = [{ text: mainFrameUserPrompt }];
 
   // Pass the actual logo image so the AI can reproduce it pixel-perfect in the background
-  if (files.logo) {
+  if (files.logo && !frameNoLogo) {
     mainFrameParts.push({
       inlineData: {
         mimeType: files.logo.type,
@@ -2678,6 +2984,12 @@ ${realPremisesDirective}${maleCastingOverride}${commercialMainFramePriorityNote}
         ? `This is the client's business logo. Place it in every clip as real signage already installed in that zone, reproduced from this attached image pixel-for-pixel — never redesigned, recoloured, cropped, blurred, tilted or pasted like a floating overlay. Refer to it in your prompts only as "the attached logo": do NOT describe its text, colours, shape or icon. It is the only text anywhere in the frame.`
         : `This is the EXACT BUSINESS LOGO. You MUST describe this logo placement in every clip prompt so it appears as REAL PHYSICAL SIGNAGE installed on believable architectural surfaces for that zone. Prioritize these surface types: ${realisticLogoPlacementGuidance}. The logo must be reproduced PIXEL-PERFECT — do NOT redesign, reimagine, alter, crop, block, blur, tilt, stretch, partially hide, or paste it like a floating overlay in any way. The full logo must remain completely visible in one piece in every clip. Even though it sits in the background, keep the logo perfectly SHARP and in focus — never softened by depth-of-field blur — so every letter and all text on the logo is crisp and clearly readable.`
     });
+  }
+
+  // The owner's own face — the only source of the person on screen in a Real Owner Face ad.
+  if (ownerFace && files.ownerImage) {
+    mainFrameParts.push({ inlineData: { mimeType: files.ownerImage.type, data: await fileToBase64(files.ownerImage) } });
+    mainFrameParts.push({ text: `This is the OWNER IMAGE — a photograph of the business owner. The person in EVERY clip IS this person: the same face, bone structure, age, skin tone, hair and build, never beautified, de-aged or replaced by a look-alike. Refer to it in your prompts only as "the attached owner image"; do not describe their face in words.` });
   }
 
   if (hasProductImages) {
@@ -2746,12 +3058,16 @@ ${realPremisesDirective}${maleCastingOverride}${commercialMainFramePriorityNote}
         'MANDATORY REPAIR RULES:',
         `- Keep EXACTLY ${segmentCount} clips separated by ###CLIP###`,
         `- Keep the same ${p.person}, continuity, and styling anchor`,
-        '- Each clip must use a different real business zone that best proves that clip\'s exact voice-over line',
-        `- Client environment anchor: ${resolvedEnvironmentGuidance}`,
-        `- Client location ladder: ${resolvedLocationPlan}`,
+        sceneContext
+          ? `- Each clip keeps its planned background: ${sceneLines.map((l, i) => `Clip ${i + 1}: ${l}`).join(' | ')}`
+          : '- Each clip must use a different real business zone that best proves that clip\'s exact voice-over line',
+        `- Client environment anchor: ${sceneContext?.setting || resolvedEnvironmentGuidance}`,
+        `- Client location ladder: ${sceneContext ? 'the planned backgrounds above' : resolvedLocationPlan}`,
         `- Hard negatives: ${environmentNegativeRules}`,
         `- Keep professional suit styling inside this approved palette family: ${professionalSuitPalette}`,
-        `- Keep the logo pixel-perfect but physically installed on realistic surfaces: ${realisticLogoPlacementGuidance}`,
+        frameNoLogo
+          ? `- There is NO logo file: show only ${frameBrand.ref} on a realistic surface, and never mention an attached logo`
+          : `- Keep the logo pixel-perfect but physically installed on realistic surfaces: ${realisticLogoPlacementGuidance}`,
         detectedBusinessType === 'education'
           ? `- This education campaign is ${educationEnvironmentMode === 'consultancy' ? 'education consultancy mode' : 'college / school / institute campus mode'} and must not drift out of that mode.`
           : '- Do not drift into a generic office corner, home-like interior, or stock-photo background.',
@@ -2797,6 +3113,10 @@ ${realPremisesDirective}${maleCastingOverride}${commercialMainFramePriorityNote}
     // A model ad's clip 1 keeps its hero pose — the face every later frame is matched to.
     mainFramePrompts = mainFramePrompts.map((prompt, i) =>
       withMotionComposition(prompt, motionPlan[i], { keepPose: !pack && i === 0 }));
+    // Each frame carries its planned background — the model drifts back to one corner when merely told.
+    if (sceneContext) mainFramePrompts = mainFramePrompts.map((prompt, i) => withSceneBackground(prompt, sceneContext, i));
+    // No logo file: anything the model still wrote about "the attached logo" becomes the name board.
+    if (frameNoLogo) mainFramePrompts = mainFramePrompts.map(prompt => nameBoardInPlaceOfLogo(prompt, frameNameBoard));
 
     if (clipPhotoPlan.length > 0) {
       mainFramePrompts = mainFramePrompts.map((prompt, i) => {
@@ -2804,12 +3124,14 @@ ${realPremisesDirective}${maleCastingOverride}${commercialMainFramePriorityNote}
         return plan ? `${attachmentDirective(plan, clientLocations)}\n\n${prompt}` : prompt;
       });
     }
+    // Last, so it joins the photo line: the member attaches the owner's face to every frame.
+    if (ownerFace) mainFramePrompts = mainFramePrompts.map(withOwnerImageDirective);
 
     emitPartial({ mainFramePrompts });
     return mainFramePrompts;
   })();
 
-  // --- Step 4: Brand Label / lower third (local — no API call) ---
+  // --- Step 4: VIDEO BOTTOM LABEL (local — no API call) ---
 
   const headerNameBoardText = resolveNameBoardText(formData, businessInfo);
   // Extract ONLY logo/name/contacts/address — never dump the full business JSON or any other data.
@@ -2817,24 +3139,26 @@ ${realPremisesDirective}${maleCastingOverride}${commercialMainFramePriorityNote}
   const headerContacts = extractContactsFromInfo(businessInfo).slice(0, MAX_LABEL_CONTACTS);
   const headerAddress = resolveRealAddress(businessInfo, headerBusinessName);
   // No ratio directive here: a label is a tightly cropped strip laid over a video, not a video frame.
-  const headerSystemPrompt = buildNameBoardDirective(formData, businessInfo, 'header')
+  const headerSystemPrompt = buildBrandMarkDirective(frameNoLogo, frameNameBoard, 'header')
     + LOWER_THIRD_SYSTEM_PROMPT({
       businessType: detectBusinessType(serializedBusinessInfo),
       adType: formData.adType,
       festivalName: formData.festivalName,
-      noLogo: formData.noLogo || false,
+      // No logo FILE is no logo, ticked or not — the label never asks for a file that does not exist.
+      noLogo: frameNoLogo,
       contactCount: headerContacts.length,
       hasAddress: !!headerAddress,
       hasWhatsApp: hasWhatsAppNumber(businessInfo),
       // The client's own photographs may sit at the right edge; with none, the label stays graphic.
       hasPremisesPhoto: (files.storeImage?.length || 0) > 0,
+      ...labelDesignInputs(formData, sceneContext, coreMessage),
     });
   const headerValueLines = [
     // This block is the literal text the member copies into the image generator, so a "LOGO ="
     // line here asked for a logo file that was never uploaded however the rules above were worded.
     // In no-logo mode there is no brand line AT ALL: a "BRAND MARK = <business name>" line sitting
     // above "NAME = <business name>" is what put the same name in two boxes in the finished header.
-    formData.noLogo
+    frameNoLogo
       ? 'NO BRAND IMAGE — this label has no logo circle and no brand tile; the NAME below is the only branding, and it appears exactly once'
       : 'LOGO = use the attached logo image exactly as provided, unchanged',
     headerBusinessName ? `NAME = ${headerBusinessName}` : '',
@@ -2907,8 +3231,8 @@ ${realPremisesDirective}${maleCastingOverride}${commercialMainFramePriorityNote}
    */
   const veoPromise = mainFramePromise.then(async (frames): Promise<string[]> => {
     onProgress("Directing camera moves and performance for each clip...", 85);
-    const { count, clips } = veoClipsFromScript(voiceOverScript, formData, frames);
-    const prompts = await writeVeoPrompts(formData, count, clips);
+    const { count, clips, lines } = veoClipsFromScript(voiceOverScript, formData, frames);
+    const prompts = await writeVeoPrompts(formData, count, clips, lines, sceneContext);
     emitPartial({ veoPrompts: prompts });
     return prompts;
   });
@@ -2933,6 +3257,9 @@ ${realPremisesDirective}${maleCastingOverride}${commercialMainFramePriorityNote}
     productImageCount,
     stockImagePrompts: null, // Generated on-demand by user after main process
     coreMessage,
+    // What the video is about and where each clip is set; and what the client's voice note said.
+    sceneContext,
+    voiceBrief,
   };
 };
 
@@ -2963,8 +3290,8 @@ const veoClipsFromScript = (
   formData: AdFormData,
   mainFramePrompts: string[] = [],
   indexes?: number[],
-): { count: number; clips: VeoClipInput[] } => {
-  const pack = getCharacterPack(formData.characterPack);
+): { count: number; clips: VeoClipInput[]; lines: string[] } => {
+  const pack = packFor(formData);
   const frameFor = (i: number) => splitAttachmentDirective(mainFramePrompts[i] || '').body.trim();
   let all: VeoClipInput[];
 
@@ -2982,8 +3309,9 @@ const veoClipsFromScript = (
     });
   } else {
     const labelled = parseLabeledClips(script);
+    // The gentle cleaner: a member's "&" or "@" is spoken as written, not deleted on the way to Veo.
     const segments = labelled.length > 0
-      ? labelled.map(cleanScriptText)
+      ? labelled.map(verbatimScriptText)
       : normalizeAndFormatVoiceOver(script, Math.max(1, Math.round(formData.duration / CLIP_SECONDS))).segments;
     const { voice } = modelVeoSubject(formData.gender || 'female');
     all = segments.map((line, i) => ({
@@ -2997,8 +3325,17 @@ const veoClipsFromScript = (
   return {
     count: all.length,
     clips: indexes ? all.filter(c => indexes.includes(c.index)) : all,
+    // Every clip's line, so the motion plan is the same whichever clips are being regenerated.
+    lines: all.map(c => c.lineForDirector),
   };
 };
+
+/** The motion plan's inputs for a run: each clip's line, the scene plan's choices, and the cast size. */
+const motionOptionsFor = (pack: CharacterPack | null, lines: string[], sceneContext?: SceneContext | null) => ({
+  lines,
+  choices: motionChoicesOf(sceneContext),
+  twoHander: !!pack && pack.characters.length > 1,
+});
 
 /**
  * Writes the finished Veo 3 prompt for each clip.
@@ -3009,15 +3346,23 @@ const veoClipsFromScript = (
  * continuous shot, the identity lock and the negatives cannot drift. If the call fails or a clip's
  * direction is unusable, that clip is assembled from its motion plan — still a moving, directed shot.
  */
-const writeVeoPrompts = async (formData: AdFormData, clipCount: number, clips: VeoClipInput[]): Promise<string[]> => {
+const writeVeoPrompts = async (
+  formData: AdFormData,
+  clipCount: number,
+  clips: VeoClipInput[],
+  lines: string[] = [],
+  sceneContext?: SceneContext | null,
+): Promise<string[]> => {
   if (clips.length === 0) return [];
-  const pack = getCharacterPack(formData.characterPack);
+  const pack = packFor(formData);
   const aspectRatio = formData.aspectRatio === '16:9' ? '16:9' : '9:16';
   const language = formData.language || 'Telugu';
-  const plan: ClipMotionPlan[] = planClipMotion(Math.max(clipCount, ...clips.map(c => c.index + 1)), formData.adType, packPerformer(pack));
+  // The same plan the frames were composed for — same lines, same scene-plan choices.
+  const plan: ClipMotionPlan[] = planClipMotion(Math.max(clipCount, ...clips.map(c => c.index + 1)), formData.adType,
+    packPerformer(pack), motionOptionsFor(pack, lines, sceneContext));
   const packSubject = pack ? packVeoSubject(pack) : null;
   const modelSubject = modelVeoSubject(formData.gender || 'female');
-  /** Who walks, as the director reads the planned path: "Motu and Patlu walk…", "The model walks…". */
+  /** Who performs, as the director reads the planned staging: "Motu and Patlu turn…", "The model leans…". */
   const director = pack
     ? { who: pack.characters.map(c => c.name).join(' and '), plural: pack.characters.length > 1 }
     : { who: 'The model', plural: false };
@@ -3036,8 +3381,9 @@ ${clips.map((c, k) => {
 FRAME:
 ${frame || '(no frame prompt available — direct from the line and the planned move)'}
 LINE: ${c.lineForDirector}
-PLANNED WALK: ${p.walk.name} — ${walkPath(p, director.who, director.plural)}
-PLANNED MOVE: ${p.camera.name} — ${p.camera.action}
+PLANNED STAGING: ${p.staging.name}${p.staging.walks ? ' (a few steps along the clear floor the frame shows)' : ' (stays in their spot)'} — ${stagingPath(p, director.who, director.plural)}
+PLANNED CAMERA: ${cameraLabel(p)} — ${fillCast(p.camera.action, director.who, director.plural)}${p.focus === 'speaker' ? `
+SPEAKER FOCUS: the camera eases in on whoever is speaking and pulls focus between them` : ''}
 GESTURE INTENT: ${p.gesture}`;
 }).join('\n\n')}
 
@@ -3065,7 +3411,7 @@ Return the JSON array for all ${clips.length} clips, numbered 1 to ${clips.lengt
     cast: packSubject ? packSubject.cast : modelSubject.cast,
     castPlural: packSubject ? packSubject.castPlural : modelSubject.castPlural,
     twoHander: packSubject?.twoHander ?? false,
-    walkManner: packSubject?.walkManner,
+    manner: packSubject?.manner,
     handGestures: packSubject?.handGestures,
   }));
 };
@@ -3080,9 +3426,11 @@ export const regenerateVeoForClips = async (
   formData: AdFormData,
   mainFramePrompts: string[],
   indexes?: number[],
+  /** The run's scene plan, so a regenerated clip keeps the staging and camera it was planned with. */
+  sceneContext?: SceneContext | null,
 ): Promise<{ index: number; prompt: string }[]> => {
-  const { count, clips } = veoClipsFromScript(voiceOverScript, formData, mainFramePrompts, indexes);
-  const prompts = await writeVeoPrompts(formData, count, clips);
+  const { count, clips, lines } = veoClipsFromScript(voiceOverScript, formData, mainFramePrompts, indexes);
+  const prompts = await writeVeoPrompts(formData, count, clips, lines, sceneContext);
   return clips.map((c, k) => ({ index: c.index, prompt: prompts[k] }));
 };
 
@@ -3138,7 +3486,12 @@ export const generateStockImagePrompts = async (
   festivalName: string,
   theme: string = 'indian',
   aspectRatio: string = '9:16',
-  clipCount?: number
+  clipCount?: number,
+  /**
+   * What the video is about, from the same run: the scene plan's motive and world, and the core
+   * message. With them, B-roll for an annadanam video shows the food being served rather than a shop.
+   */
+  context: { sceneContext?: SceneContext | null; coreMessage?: CoreMessageBrief | null } = {},
 ): Promise<any[]> => {
   if (API_KEYS.length === 0) {
     throw new Error("No API keys configured. Please set API_KEY_1, API_KEY_2, etc. in your environment.");
@@ -3166,6 +3519,20 @@ export const generateStockImagePrompts = async (
   const placements = clipPlacements(voiceOverScript, clipCount);
   const clipLines = placements.map((p) => `${p.timing}: "${spokenOnly(p.line)}"`).join(String.fromCharCode(10));
 
+  /** The ad's own world — the festival's exact imagery, or the business's, or the event the video is about. */
+  const festivalTheme = adType === 'festival' && festivalName?.trim() ? getFestivalTheme(festivalName) : null;
+  const { sceneContext, coreMessage } = context;
+  const worldBlock = [
+    festivalTheme ? `FESTIVAL: ${festivalName}
+FESTIVAL IMAGERY (use these exact symbols and colours): ${festivalTheme.culturalElements}
+FESTIVAL COLOURS: ${festivalTheme.headerColors}
+FESTIVAL MOOD: ${festivalTheme.mood}` : '',
+    sceneContext ? `WHAT THIS VIDEO IS ABOUT: ${sceneContext.motive}${sceneContext.setting ? `
+THE WORLD OF THIS AD: ${sceneContext.setting}` : ''}${sceneContext.avoid.length ? `
+NEVER SHOW: ${sceneContext.avoid.join('; ')}` : ''}` : '',
+    coreMessage?.whatTheyDo ? `WHAT THE BUSINESS DOES: ${coreMessage.whatTheyDo}${coreMessage.corePromise ? ` — ${coreMessage.corePromise}` : ''}` : '',
+  ].filter(Boolean).join('\n');
+
   const userPrompt = `Analyze this voice-over script and generate stock image prompts for B-roll / cutaway shots to use during video editing.
 
 VOICE-OVER SCRIPT, CLIP BY CLIP (each image is cut over ONE of these clips, in this order):
@@ -3174,11 +3541,11 @@ ${clipLines || voiceOverScript}
 BUSINESS INFORMATION:
 ${JSON.stringify(businessInfo, null, 2)}
 
-AD TYPE: ${adType}
-${adType === 'festival' ? `FESTIVAL: ${festivalName}` : ''}
+AD TYPE: ${adType === 'festival' ? 'festival greeting' : 'promotional'}
+${worldBlock}
 
 CULTURAL THEME: ${themeInstruction}
-ALL people, clothing, settings, and cultural elements in every image MUST match this theme. This is NON-NEGOTIABLE.
+Every setting and object — and any incidental hands or background figures — MUST match this theme. There is no presenter or model in any B-roll image.
 
 OUTPUT ASPECT RATIO (MANDATORY): Every B-roll image MUST be ${ratio} ${orient}. Begin each "prompt" with "Create a hyper-realistic ${ratio} ${orient} image of". Override any other ratio mentioned.
 
@@ -3186,7 +3553,8 @@ ${countInstruction}
 
 EVERY IMAGE MUST BELONG TO ITS CLIP:
 • Image N is cut over clip N and must show exactly what clip N's line says — the product, the work, the offer or the moment named in THOSE words. If the line is about same-day service, the image is that service happening; if it is about free delivery, it is that delivery.
-• Keep it in the same world as the ad: the same kind of business, the same kind of Indian town premises, the same products, the same customers. Never a stock cliché that could sit in any other ad — no boardroom handshakes, no skyscrapers, no foreign offices, no unrelated lifestyle shots.
+• It shows the THING, not a person: no presenter, no model, no one posing or smiling at the camera — hands at work at most, faces out of frame.
+• Keep it in the same world as the ad (above). Never a stock cliché that could sit in any other ad — no boardroom handshakes, no skyscrapers, no foreign offices, no unrelated lifestyle shots — and no text in the image.
 • Say in "whyItFits" which words of that clip's line the image is showing.
 
 For each item return an object with: "id" (clip number), "concept" (short label), "prompt" (the full image prompt), "usage" (how the editor uses it, e.g. "full-screen B-roll for 2 seconds"), "whyItFits" (the words of that clip's line this image shows).`;
@@ -3299,15 +3667,63 @@ const toNumberedClipScript = (script: string): { numberedScript: string; clipCou
 };
 
 // Generate per-clip on-screen OVERLAY TEXTS with CapCut-searchable sound-effect suggestions.
+/** What an overlay's 3D look is themed to — the festival's own palette, or the business. */
+export interface OverlayDesignContext {
+  adType?: string;
+  festivalName?: string;
+  sceneContext?: SceneContext | null;
+  coreMessage?: CoreMessageBrief | null;
+}
+
+/** The theme block the overlay designer reads, and the look used when it returns none. */
+const overlayTheme = (context: OverlayDesignContext, businessInfo: any): { block: string; fallback: string } => {
+  const festival = context.adType === 'festival' && context.festivalName?.trim() ? getFestivalTheme(context.festivalName) : null;
+  if (festival) {
+    return {
+      block: `AD TYPE: festival greeting — ${context.festivalName}
+FESTIVAL COLOURS (the lettering uses exactly these): ${festival.headerColors}
+FESTIVAL SYMBOLS (one small accent may come from these): ${festival.culturalElements}
+FESTIVAL ACCENTS: ${festival.headerAccents}
+FESTIVAL MOOD: ${festival.mood}`,
+      fallback: `premium lettering in ${festival.headerColors.split(/[—,]/)[0].trim()} with a soft festive glow`,
+    };
+  }
+  // The extractor names its keys freely ("Brand Color Palette", "brandColorPalette", nested or not).
+  const findColours = (node: any, depth = 0): string | undefined => {
+    if (!node || typeof node !== 'object' || depth > 3) return undefined;
+    for (const [key, value] of Object.entries(node)) {
+      if (/brand.?colou?r|colou?r.?palette/i.test(key) && typeof value === 'string' && value.trim() && !/not provided/i.test(value)) {
+        return value.trim().slice(0, 120);
+      }
+      const nested = findColours(value, depth + 1);
+      if (nested) return nested;
+    }
+    return undefined;
+  };
+  const brandColours = findColours(businessInfo);
+  return {
+    block: [
+      'AD TYPE: promotional',
+      context.coreMessage?.whatTheyDo ? `THE BUSINESS: ${context.coreMessage.whatTheyDo}` : '',
+      brandColours ? `BRAND COLOURS: ${brandColours}` : '',
+      context.sceneContext?.mood ? `MOOD OF THE AD: ${context.sceneContext.mood}` : '',
+    ].filter(Boolean).join('\n'),
+    fallback: brandColours ? `glossy premium lettering in ${brandColours}` : "glossy premium metallic lettering in the brand's colours",
+  };
+};
+
 export const generateOverlayTexts = async (
   voiceOverScript: string,
   businessInfo: any,
-  language: string = 'Telugu'
+  language: string = 'Telugu',
+  /** What each overlay's 3D look is themed to (Overlay Text Image Generator). */
+  context: OverlayDesignContext = {},
 ): Promise<any[]> => {
   if (API_KEYS.length === 0) {
     throw new Error("No API keys configured. Please set API_KEY_1, API_KEY_2, etc. in your environment.");
   }
   const { numberedScript, clipCount } = toNumberedClipScript(voiceOverScript);
+  const theme = overlayTheme(context, businessInfo);
 
   const response = await callWithFallback(async (ai, model) => {
     return await ai.models.generateContent({
@@ -3320,6 +3736,9 @@ BUSINESS INFORMATION:
 ${JSON.stringify(businessInfo, null, 2)}
 
 LANGUAGE: ${language}
+
+THE LOOK OF THE OVERLAYS:
+${theme.block}
 
 Generate the on-screen overlay texts now.` }] }],
       config: { systemInstruction: OVERLAY_TEXT_SYSTEM_PROMPT(language), responseMimeType: "application/json" }
@@ -3348,13 +3767,60 @@ Generate the on-screen overlay texts now.` }] }],
         ? candidate
         : lastClip;
       lastClip = clip;
-      return { ...item, clip };
+      // The image prompt is assembled in code around the model's design note (utils/overlayImage).
+      const imageDesign = cleanOverlayDesign(typeof item?.design === 'string' ? item.design : '') || theme.fallback;
+      const { design: _design, ...rest } = item || {};
+      return { ...rest, clip, imageDesign, imagePrompt: overlayImagePrompt(String(item?.text || ''), imageDesign, theme.fallback) };
     })
     .sort((a, b) => a.clip - b.clip);
 
   // The seconds and the spoken line each overlay sits over, so the editor is not holding the script
   // in their head while placing it (see utils/clipPlacement).
   return withCues(withPlacements(healed, clipPlacements(voiceOverScript, clipCount), (item) => item.clip));
+};
+
+/**
+ * Refines ONE overlay's image prompt — only its look changes. The text, the transparent background
+ * and the tight crop are re-assembled in code, so a refine can never lose them (utils/overlayImage).
+ */
+export const refineOverlayImagePrompt = async (params: {
+  text: string;
+  currentPrompt: string;
+  currentDesign?: string;
+  instruction: string;
+  businessInfo?: any;
+  context?: OverlayDesignContext;
+}): Promise<{ imagePrompt: string; imageDesign: string }> => {
+  if (API_KEYS.length === 0) {
+    throw new Error("No API keys configured. Please set API_KEY_1, API_KEY_2, etc. in your environment.");
+  }
+  const theme = overlayTheme(params.context || {}, params.businessInfo);
+  const current = params.currentDesign || overlayDesignOf(params.currentPrompt) || theme.fallback;
+  const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
+    model,
+    contents: [{ role: 'user', parts: [{ text: `OVERLAY TEXT: "${params.text}"
+CURRENT LOOK: ${current}
+
+${theme.block}
+
+THE MEMBER'S REQUEST: "${params.instruction}"
+
+Return the JSON now.` }] }],
+    config: {
+      systemInstruction: `You refine the LOOK of one premium 3D text overlay — its material, colours, finish and at most one small accent — for an Indian video ad. Apply the member's request to the current look and keep whatever they did not ask to change. One short phrase. Never describe a background, a scene or a panel (the text is a transparent cut-out), never change or add words to the text, and for a festival ad keep that festival's own colours and symbols unless the member asks otherwise.
+
+Return ONLY this JSON: { "design": "<the new look, one short phrase>" }`,
+      responseMimeType: 'application/json',
+    },
+  }));
+  let design = '';
+  try {
+    design = cleanOverlayDesign(String(JSON.parse(response.text || '{}')?.design || ''));
+  } catch {
+    design = '';
+  }
+  const imageDesign = design || current;
+  return { imageDesign, imagePrompt: overlayImagePrompt(params.text, imageDesign, theme.fallback) };
 };
 
 // Transliterate Telugu voice-over script to English using Gemini AI

@@ -120,7 +120,7 @@ export default function WorkReports() {
      * no person in it — and the row then displayed a model who never appears. Carrying the pack is
      * what keeps the category the sales member sold attached to the job.
      */
-    characterPack: string; realLocationProvided: boolean;
+    characterPack: string; realLocationProvided: boolean; customCharacter: string;
     /** Poster jobs — see utils/assignmentEdit. */
     posterSize: string; posterStyle: string; posterCount: number; festival: string;
   } | null>(null);
@@ -333,6 +333,7 @@ export default function WorkReports() {
       language: a.language ? (isPresetLanguage ? a.language : 'Custom') : 'Telugu',
       customLanguage: a.language && !isPresetLanguage ? a.language : '',
       characterPack: a.characterPack || '',
+      customCharacter: a.customCharacter || '',
       realLocationProvided: a.realLocationProvided === true,
       ...posterEditFieldsOf(a),
     });
@@ -726,6 +727,7 @@ export default function WorkReports() {
                           <SpecialCategoryFields
                             characterPack={editForm.characterPack}
                             realLocationProvided={editForm.realLocationProvided}
+                            customCharacter={editForm.customCharacter}
                             onChange={(patch) => setEditForm(prev => prev ? { ...prev, ...patch } : prev)}
                           />
                         )}

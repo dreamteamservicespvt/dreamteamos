@@ -9,9 +9,9 @@ import {
   characterCastBlock,
 } from "@/services/prompts/characterAd";
 import { getCharacterPack } from "@/services/characterPacks";
-import { assembleVeoPrompt, planClipMotion, spokenLinesIn } from "@/services/prompts/motion";
+import { assembleVeoPrompt, cameraLabel, planClipMotion, spokenLinesIn } from "@/services/prompts/motion";
 import {
-  MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE, countSpokenWords,
+  MIN_WORDS_PER_DUO_CLIP, MAX_WORDS_PER_DUO_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE, countSpokenWords,
 } from "@/utils/dialogueFormat";
 import {
   assignPhotosToClips, describeClipLocations, attachmentDirective, splitAttachmentDirective,
@@ -86,7 +86,7 @@ describe("voice-over prompt — the two-hander contract", () => {
   });
 
   it("states the word budget the validator will enforce", () => {
-    expect(prompt).toContain(`between ${MIN_WORDS_PER_CLIP} and ${MAX_WORDS_PER_CLIP} spoken words`);
+    expect(prompt).toContain(`between ${MIN_WORDS_PER_DUO_CLIP} and ${MAX_WORDS_PER_DUO_CLIP} spoken words`);
     expect(prompt).toContain(`between ${MIN_WORDS_PER_LINE} and ${MAX_WORDS_PER_LINE} words`);
   });
 
@@ -116,7 +116,7 @@ describe("voice-over prompt — the two-hander contract", () => {
   it("repair prompt restates the same contract so a fix cannot drift", () => {
     const repair = CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT(pack, 32, 4, "Telugu");
     expect(repair).toContain("EXACTLY 4 clips");
-    expect(repair).toContain(`${MIN_WORDS_PER_CLIP}-${MAX_WORDS_PER_CLIP} spoken words per clip`);
+    expect(repair).toContain(`${MIN_WORDS_PER_DUO_CLIP}-${MAX_WORDS_PER_DUO_CLIP} spoken words per clip`);
     expect(repair).toContain("Motu speaks first");
     expect(repair).toContain("never add or remove clips");
   });
@@ -145,11 +145,12 @@ describe("main-frame prompt", () => {
     expect(p).not.toContain("AUTHORITATIVE");
   });
 
-  it("ties each clip's background to what is being said in it", () => {
+  it("ties each clip's background to what is being said in it, and never repeats one", () => {
     const p = frame();
-    expect(p).toContain("ONE CONTINUOUS WALK THROUGH THE BUSINESS");
-    expect(p).toContain("the background must prove the line");
-    expect(p).toContain("Clip N+1 starts where clip N ended");
+    expect(p).toContain("A DIFFERENT BACKGROUND FOR EVERY CLIP, CHOSEN BY ITS LINE");
+    expect(p).toContain("so the background proves\nthe line");
+    expect(p).toContain("Never repeat a background, a zone or a framing");
+    expect(p).not.toContain("ONE CONTINUOUS WALK");
     expect(p).toContain("Clip 1: Motu asks about prices");
     expect(p).toContain("Clip 2: Motu asks about range");
   });
@@ -180,15 +181,15 @@ describe("main-frame prompt", () => {
       expect(p).toContain("🎯 PURPOSE:");
     });
 
-    it("always opens on the arrival and closes on the invitation", () => {
+    it("always opens already inside and closes on the invitation", () => {
       const p = frame({ segmentCount: 4, clipSummaries: ["a", "b", "c", "d"] });
-      expect(p).toContain("CLIP 1 — ARRIVAL / ESTABLISHING SHOT");
+      expect(p).toContain("CLIP 1 — ESTABLISHING SHOT — ALREADY INSIDE");
       expect(p).toContain("CLIP 4 — THE CLOSING INVITATION");
     });
 
-    it("collapses a two-clip ad to arrival then close", () => {
+    it("collapses a two-clip ad to the opening then the close", () => {
       const p = frame({ segmentCount: 2 });
-      expect(p).toContain("CLIP 1 — ARRIVAL / ESTABLISHING SHOT");
+      expect(p).toContain("CLIP 1 — ESTABLISHING SHOT — ALREADY INSIDE");
       expect(p).toContain("CLIP 2 — THE CLOSING INVITATION");
       expect(p).not.toContain("CLIP 3");
     });
@@ -400,8 +401,8 @@ describe("voice-over prompt — promotional grounding", () => {
       // And each clip's pair totals inside the per-clip band.
       for (let i = 0; i < lines.length; i += 2) {
         const clipTotal = Number(lines[i][2]) + Number(lines[i + 1][2]);
-        expect(clipTotal).toBeGreaterThanOrEqual(MIN_WORDS_PER_CLIP);
-        expect(clipTotal).toBeLessThanOrEqual(MAX_WORDS_PER_CLIP);
+        expect(clipTotal).toBeGreaterThanOrEqual(MIN_WORDS_PER_DUO_CLIP);
+        expect(clipTotal).toBeLessThanOrEqual(MAX_WORDS_PER_DUO_CLIP);
       }
     });
 
@@ -483,8 +484,9 @@ describe("veo prompt", () => {
   it("never orders a static camera", () => {
     expect(p).not.toContain("Camera holds steady");
     expect(assembled).not.toContain("Camera holds steady");
-    expect(assembled).toContain("No static or locked-off camera, no frozen pose");
-    expect(assembled).toContain(`CAMERA — ${plan[1].camera.name}`);
+    expect(assembled).toContain("No static or locked-off camera");
+    expect(assembled).toContain("No frozen pose");
+    expect(assembled).toContain(`CAMERA — ${cameraLabel(plan[1])}`);
   });
 
   // The camera belongs to the motion plan now: the catalogue's held-frame camera kept the videos static.
@@ -495,13 +497,14 @@ describe("veo prompt", () => {
   });
 
   it("attributes each line to the right character, in its half of the clip", () => {
-    expect(assembled).toContain("0–4s — Motu, the original Motu voice from the show");
-    expect(assembled).toContain("4–8s — Patlu, the original Patlu voice from the show");
+    // And where each stands — the frame locks Motu LEFT and Patlu RIGHT, so the video can tell who talks.
+    expect(assembled).toContain("0–4s — Motu (on the LEFT of the frame), the original Motu voice from the show");
+    expect(assembled).toContain("4–8s — Patlu (on the RIGHT of the frame), the original Patlu voice from the show");
   });
 
   it("demands the original voices and keeps the listener alive", () => {
     expect(assembled).toContain("never a narrator, a new voice actor or a different accent");
-    expect(assembled).toContain("the other listens and reacts");
+    expect(assembled).toContain("the other listens with the mouth closed and reacts");
     expect(assembled).toContain("No extra people speaking, no new voices");
   });
 

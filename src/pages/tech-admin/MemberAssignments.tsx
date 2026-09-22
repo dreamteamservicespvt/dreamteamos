@@ -143,7 +143,7 @@ export default function MemberAssignments() {
   const [editForm, setEditForm] = useState<{
     category: string; duration: string; pricePerUnit: number; businessName: string; businessWhatsapp: string;
     modelGender: ModelGender; attireType: AttireType; customAttire: string; aspectRatio: '9:16' | '16:9'; language: string; customLanguage: string;
-    characterPack: string; realLocationProvided: boolean;
+    characterPack: string; realLocationProvided: boolean; customCharacter: string;
     /** Poster jobs — see utils/assignmentEdit. */
     posterSize: string; posterStyle: string; posterCount: number; festival: string;
   } | null>(null);
@@ -403,6 +403,7 @@ export default function MemberAssignments() {
       language: a.language ? (isPresetLanguage ? a.language : 'Custom') : 'Telugu',
       customLanguage: a.language && !isPresetLanguage ? a.language : '',
       characterPack: a.characterPack || '',
+      customCharacter: a.customCharacter || '',
       realLocationProvided: a.realLocationProvided === true,
       ...posterEditFieldsOf(a),
     });
@@ -771,6 +772,7 @@ export default function MemberAssignments() {
                       <SpecialCategoryFields
                         characterPack={editForm.characterPack}
                         realLocationProvided={editForm.realLocationProvided}
+                        customCharacter={editForm.customCharacter}
                         onChange={(patch) => setEditForm(prev => prev ? { ...prev, ...patch } : prev)}
                       />
                     )}

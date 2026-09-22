@@ -21,7 +21,7 @@ describe("the greeting's address", () => {
     expect(WISH_AUDIENCE_TELUGU.map((g) => g.english)).toEqual(["friends", "well-wishers", "customers"]);
   });
 
-  // "మరియు" is written Telugu, never spoken — the address is a plain list instead.
+  // The address is a plain comma list — the team's own wording.
   it("uses no bookish word a script would then be repaired for", () => {
     expect(WISH_AUDIENCE_LINE).not.toContain("మరియు");
     expect(findHardWords(WISH_AUDIENCE_LINE, "Telugu")).toEqual([]);
@@ -74,6 +74,7 @@ describe("every prompt that writes or edits a wish carries the rule", () => {
 
   it("stays out of a commercial ad, which has no wish", () => {
     expect(VOICEOVER_SYSTEM_PROMPT(32, 4, "commercial", "", "Telugu")).not.toContain(WISH_AUDIENCE_LINE);
-    expect(wishAudienceRule("Diwali", "Telugu")).toContain("మరియు");  // ...only as the thing to avoid
+    // మరియు is the team's word now (written exactly, said "mariyu"), so the rule no longer bans it.
+    expect(wishAudienceRule("Diwali", "Telugu")).not.toContain("మరియు");
   });
 });

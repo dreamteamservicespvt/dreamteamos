@@ -31,11 +31,20 @@ describe("the B-roll card", () => {
 describe("the overlay row", () => {
   const rows = section("Array.from(new Set(outputs.overlayTexts", "{outputs.overlayTexts && outputs.overlayTexts.length === 0");
 
-  it("shows the clip, the text, the sound effect and the words", () => {
-    expect(rows).toContain("?.timing || `Clip ${clip}`");
+  it("shows the clip, the text, the sound effect and the words it comes in on", () => {
+    expect(rows).toContain("Clip {clip}");
     expect(rows).toContain("{o.text}");
     expect(rows).toContain("{o.soundEffect}");
-    expect(rows).toContain("{o.cue ? cueWords(o.cue) : o.cueLabel}");
+    expect(rows).toContain("From “{o.cue.fromWord}” → To “{o.cue.toWord}”");
+  });
+
+  // Overlay Text Image Generator: the editor places it by the words, so the timeline numbers are gone.
+  it("drops the timecodes and carries the image prompt with a copy and a Refine Prompt", () => {
+    expect(rows).not.toContain("cueRange(");
+    expect(rows).not.toContain("?.timing");
+    expect(rows).toContain("{o.imagePrompt}");
+    expect(rows).toContain("navigator.clipboard.writeText(o.imagePrompt)");
+    expect(rows).toContain("Refine Prompt");
   });
 
   it("no longer prints the clip's spoken line above the overlays", () => {

@@ -74,15 +74,29 @@ describe("stamping the placement onto what the model returned", () => {
  * The background used to jump to an unrelated zone every clip, which broke the flow of the video.
  * All the clips are one walk through one space now.
  */
-describe("one continuous space", () => {
-  it("tells a model ad the place never jumps", () => {
+/**
+ * One place, a different background in every clip.
+ *
+ * The frames used to be told "ONE CONTINUOUS WALK — only the angle changes", which is exactly why the
+ * backgrounds repeated clip after clip. Now every clip is a different part of the same place, chosen by
+ * its own line, and nobody walks between them.
+ */
+describe("one place, a different background per clip", () => {
+  it("tells a model ad every clip has its own background, in the same place", () => {
     const p = MULTI_FRAME_SYSTEM_PROMPT("professional", "commercial", "", 4, ["a", "b", "c", "d"], "", "female", "", false, "", undefined, planClipMotion(4, "commercial"));
-    expect(p).toContain("All 4 clips happen in ONE CONTINUOUS SPACE");
-    expect(p).toContain("CONTINUITY BETWEEN CLIPS");
-    expect(p).toContain("CARRY SOMETHING OVER");
-    expect(p).toContain("The light, the colour grade, the floor, the wall finish and the time of day are IDENTICAL");
-    expect(p).toContain("HOW FAR ALONG THE WALK SHE IS");
-    expect(p).not.toContain("MODEL'S PHYSICAL LOCATION** — she must be at a DIFFERENT spot");
+    expect(p).toContain("EVERY CLIP HAS ITS OWN BACKGROUND, CHOSEN BY ITS LINE");
+    expect(p).toContain("No two clips may show the same corner, the same wall or the same set-up");
+    expect(p).toContain("4 DIFFERENT set-ups inside the SAME place");
+    expect(p).not.toContain("ONE CONTINUOUS SPACE");
+    expect(p).not.toContain("HOW FAR ALONG THE WALK");
+  });
+
+  it("builds each clip on its planned background when there is a scene plan", () => {
+    const p = MULTI_FRAME_SYSTEM_PROMPT("professional", "commercial", "", 2, ["a", "b"], "", "female", "", false, "", undefined,
+      planClipMotion(2, "commercial"), { block: "WHAT THIS VIDEO IS ABOUT: an annadanam", lines: ["the dining hall, devotees in rows", "the serving vessels at the kitchen pass"] });
+    expect(p).toContain("WHAT THIS VIDEO IS ABOUT: an annadanam");
+    expect(p).toContain("the dining hall, devotees in rows");
+    expect(p).toContain("the serving vessels at the kitchen pass");
   });
 
   it("keeps the client's own photographs one shop", () => {
@@ -97,10 +111,10 @@ describe("one continuous space", () => {
       segmentCount: 4, clipSummaries: ["a", "b", "c", "d"], locationMode: "ai_generated", locationPlan: "",
       aspectRatio: "9:16", adType: "commercial",
     });
-    expect(p).toContain("ONE CONTINUOUS WALK THROUGH THE BUSINESS");
-    expect(p).toContain("All 4 clips are ONE walk through that one space");
-    expect(p).toContain("Clip N+1 starts where clip N ended");
-    expect(p).toContain("the background must prove the line");
+    expect(p).toContain("A DIFFERENT BACKGROUND FOR EVERY CLIP, CHOSEN BY ITS LINE");
+    expect(p).toContain("It is always the SAME business");
+    expect(p).toContain("so the background proves\nthe line");
+    expect(p).not.toContain("ONE CONTINUOUS WALK");
   });
 });
 

@@ -8,8 +8,8 @@ import { coreMessageBlock, type CoreMessageBrief } from "./coreMessage";
 import { everydaySpeechRules } from "./everydaySpeech";
 import { wishAudienceRule } from "./festivalWish";
 import {
-  HAND_GESTURES, VEO_DIRECTION_SYSTEM_PROMPT, WALK_MANNER, compositionFor, framingForMotion, withoutStillness,
-  type ClipMotionPlan, type Performer,
+  HAND_GESTURES, PRESENCE, VEO_DIRECTION_SYSTEM_PROMPT, compositionFor, framingForMotion, withoutStillness,
+  withoutTravel, type ClipMotionPlan, type Performer,
 } from "./motion";
 
 /**
@@ -71,6 +71,11 @@ The same ${cast}, identical in every clip.`
         ? `${cast} — ${pack.franchise}.
 One consistent person: cast them once, in clip 1, and keep that exact face, age, build, hair and wardrobe
 in every clip after. A presenter who changes between clips reads as a different person and destroys the ad.`
+        : pack.family === "human_duo"
+          ? `TWO REAL PEOPLE — ${pack.franchise}.
+Cast both once, in clip 1, and keep each one's exact face, age, build, hair and wardrobe in every clip after.
+"${pack.characters.map((c) => c.name).join('" and "')}" are ROLE LABELS for the script, not names: never write
+them as text, and never give either person a cartoon or drawn look. They are photoreal people.`
         : pack.family === "custom"
           ? `${cast} — ${pack.franchise}`
           : `${cast} — the REAL, ORIGINAL character${pack.characters.length > 1 ? "s" : ""} from ${pack.franchise}, exactly as they appear on screen in that show.
@@ -87,7 +92,7 @@ They must be the same ${cast} in every clip.`;
    * asked for. When an attire was ordered it is stated after STAGING and said to override it, so
    * the choice the team made is the one on screen, identical in every clip.
    */
-  const wardrobeBlock = wardrobe && pack.family === "human"
+  const wardrobeBlock = wardrobe && (pack.family === "human" || pack.family === "human_duo")
     ? `\n\nWARDROBE (as ordered — this overrides any outfit STAGING offers): ${wardrobe}. The exact same outfit, colour and styling in every clip.`
     : "";
 
@@ -110,6 +115,15 @@ export const wardrobeDirective = (
   customAttire?: string | null,
   gender?: string | null,
 ): string => {
+  // A woman and a man: one attire choice, each dressed for themselves.
+  if (gender === "mixed") {
+    if (attireType === "custom") {
+      return customAttire?.trim() ? `exactly this, for the two of them: ${customAttire.trim()}` : "the outfits described in the client's brief";
+    }
+    const her = wardrobeDirective(attireType, customAttire, "female");
+    const him = wardrobeDirective(attireType, customAttire, "male");
+    return her && him ? `the woman wears ${her}; the man wears ${him}` : "";
+  }
   const male = gender === "male";
   switch (attireType) {
     case "traditional":
@@ -193,7 +207,7 @@ export const characterDirectionBlock = (
 
   const lines = all
     .filter(([, v, scopes]) => !!(v && v.trim()) && scopes.includes(scope))
-    .map(([k, v]) => [k, scope === "video" ? withoutStillness(v as string) : (v as string)] as const)
+    .map(([k, v]) => [k, scope === "video" ? withoutTravel(withoutStillness(v as string)) : (v as string)] as const)
     .filter(([, v]) => !!v.trim())
     .map(([k, v]) => `${k}: ${v}`);
 
@@ -401,6 +415,8 @@ export const CHARACTER_VOICEOVER_SYSTEM_PROMPT = (
   /** True only when the ad is long enough to actually have a turn. */
   const festivalTurn = isFestival && hookClip > 1;
   const [first] = pack.characters;
+  /** A human entry's speaker names are roles ("Presenter", "Friend", "Host") — never spoken. */
+  const roleLabels = pack.family === "human" || pack.family === "human_duo";
   /**
    * The second speaker, or the first again when there is only one.
    *
@@ -493,7 +509,12 @@ ${lang} speech between the two of them, not like a written slogan.${isFestival ?
 The one exception is clip 1, which sells nothing because it is the ${occasionBare} wish. Everything in
 this section applies from clip ${hookClip} onward.` : ""}
 
-===== BOTH NAMES, EACH EXACTLY ONCE (STRICT) =====
+${roleLabels ? `===== NO NAMES FOR THE SPEAKERS (STRICT) =====
+
+"${pack.characters.map((c) => c.name).join('" and "')}" ${solo ? "is a ROLE LABEL" : "are ROLE LABELS"} for the script, not ${solo ? "a name" : "names"}. Never speak
+${solo ? "it" : "them"} and never invent a personal name for ${solo ? "the speaker" : "either speaker"}. The business's name is the only name that is
+spoken, and it is spoken clearly.${solo ? "" : ` The two simply talk to each other — no "Friend", no "Host", no invented names.`}
+` : `===== BOTH NAMES, EACH EXACTLY ONCE (STRICT) =====
 
 ${solo ? `Say "${first.name}" AT MOST ONCE in the whole script, in clip 1. Every word spent on the character is a word the client did not get.` : `BOTH characters must be named in the ad, and each name is spoken EXACTLY ONE TIME across the ENTIRE
 script — all ${segmentCount} clips together. "${first.name}" appears once. "${second.name}" appears
@@ -510,7 +531,16 @@ We are promoting the business, not the characters. Beyond that one introduction,
 on "${first.name}" or "${second.name}" is a word the client did not get. The viewer can SEE who is
 talking; they cannot know the business unless it is said. So the BUSINESS's name is the one that
 gets repeated.
-`}
+`}`}
+
+===== YOU ARE ALREADY INSIDE THE BUSINESS (STRICT) =====
+
+In every clip ${solo ? first.name + " is" : "the speakers are"} standing INSIDE this business, among its real things — that is
+what the frames show. So every line is spoken from HERE: "here at <business>", "this shop", "come here",
+"visit us here", "look at this", "everything is right here". NEVER as if the business were somewhere
+else: never "let's go to …", "go there", "go to them", "head over to …", "visit that shop", "they have …"
+about the place they are standing in. A line that sends the viewer — or the speakers — somewhere
+else contradicts the picture, and the viewer notices.
 
 ${coreMessageBlock(brief, isFestival && segmentCount > 1 ? 2 : 1)}
 
@@ -533,8 +563,8 @@ knowing the business is in ${place} — not a nice-sounding shop somewhere in th
   name in the same breath — the way a person says it: "that is <business> here in ${place}".${festivalTurn ? `
 • NOT in clip 1. Clip 1 is the ${occasionBare} wish and carries no town — a wish does not come with an
   address on it. The town belongs in clip ${hookClip}, where the ad starts talking about the business.` : ""}
-• Frame it as the two of them having COME there today. They have travelled to ${place} and walked
-  into this business, and they are telling the viewer about the place they are standing in.
+• Say it from INSIDE: the two of them are standing in this business in ${place} right now, telling the
+  viewer about the place around them — "here in ${place}", never "let's go to" or "come with us to".
 • Say the town, not a whole address. Never a door number, street, district, state or pincode —
   those are read on screen, never spoken.
 • Never repeat "${place}" in any other clip. Once is what a listener needs; twice is a word the
@@ -602,7 +632,9 @@ This is shown in English so the STRUCTURE is unmistakable. Write yours in ${lang
 business you were given. Word counts are marked to show how a complete thought fits the budget.
 
 ${isFestival ? (solo ? `clip-1 (the WISH — the business sends it, and nothing at all is sold)
-  ${first.name}: "${first.name} here, wishing you and your whole family a very happy ${exampleOccasion} from all of us at Sharma Electronics."  (19 words)
+  ${first.name}: ${roleLabels
+    ? `"Wishing you and your whole family a very happy ${exampleOccasion} from all of us here at Sharma Electronics."  (18 words)`
+    : `"${first.name} here, wishing you and your whole family a very happy ${exampleOccasion} from all of us at Sharma Electronics."  (19 words)`}
 
 clip-2 (the TURN — the festival is over; the hook, then the business${place ? " and its town are" : " is"} named)
   ${first.name}: ${place
@@ -614,25 +646,29 @@ clip-3 (proof — a real, specific offering)
 
 clip-4 (close — it ends, and it tells you what to do)
   ${first.name}: "Come to Sharma Electronics today and see every one of these machines for yourself before the week ends."  (18 words)` : `clip-1 (the WISH — the business sends it, and nothing at all is sold)
-  ${first.name}:  "${second.name}, look at all these lights outside every shop!"   (9 words)
-  ${second.name}: "Happy ${exampleOccasion} from Sharma Electronics to you and your family, ${first.name}!"   (11 words)
+${roleLabels
+    // Role labels are never spoken (NO NAMES FOR THE SPEAKERS), so a human cast's example names nobody.
+    ? `  ${first.name}:  "Look at all the lights in every home tonight!"   (9 words)
+  ${second.name}: "Happy ${exampleOccasion} to every family from Sharma Electronics!"   (8 words)`
+    : `  ${first.name}:  "${second.name}, look at the lights in every home tonight!"   (9 words)
+  ${second.name}: "Happy ${exampleOccasion} from Sharma Electronics to you, ${first.name}!"   (8 words)`}
 
 clip-2 (the TURN — the festival is over; the hook, then the business${place ? " and its town are" : " is"} named)
-  ${first.name}:  "Why is there such a long queue outside that shop?"          (10 words)
+  ${first.name}:  "Why is this shop always so full?"                            (7 words)
   ${second.name}: ${place
-    ? `"That is Sharma Electronics here in ${place} — everyone buys there."   (10 words)`
-    : `"That is Sharma Electronics — the whole town buys there."   (9 words)`}
+    ? `"This is Sharma Electronics in ${place} — everyone shops here."   (9 words)`
+    : `"This is Sharma Electronics — the whole town shops here."   (9 words)`}
 
 clip-3 (proof — a real, specific offering)
-  ${first.name}:  "But do they keep the latest washing machines too?"         (9 words)
-  ${second.name}: "Every brand, every model, and free home delivery included."  (9 words)
+  ${first.name}:  "Do they have the latest washing machines too?"             (8 words)
+  ${second.name}: "Every brand, every model, with free home delivery."        (8 words)
 
 clip-4 (close — it ends, and it tells you what to do)
-  ${first.name}:  "Then what are we waiting for, let us go!"                   (9 words)
-  ${second.name}: "Visit Sharma Electronics today and see everything for yourself."   (9 words)`) : solo ? `clip-1 (the hook — curiosity gap, then the business and its town are named)
+  ${first.name}:  "So everything we need is right here!"                         (7 words)
+  ${second.name}: "Visit Sharma Electronics today and see it yourself."        (8 words)`) : solo ? `clip-1 (the hook — curiosity gap, then the business and its town are named)
   ${first.name}: ${place
-    ? `"Why is there a queue outside this shop? That is Sharma Electronics here in ${place} — everyone buys here."  (19 words)`
-    : `"Why is there a queue outside this shop? That is Sharma Electronics — the whole town buys here."  (18 words)`}
+    ? `"Why is this shop always full of customers? This is Sharma Electronics here in ${place} — everyone buys here."  (19 words)`
+    : `"Why is this shop always full of customers? This is Sharma Electronics — the whole town buys here."  (18 words)`}
 
 clip-2 (proof — a real, specific offering)
   ${first.name}: "They keep every brand and every model of washing machine, with free home delivery included."  (18 words)
@@ -643,22 +679,27 @@ clip-3 (proof — a DIFFERENT one, never a repeat)
 clip-4 (close — it ends, and it tells you what to do)
   ${first.name}: "Visit Sharma Electronics today and see the festival offers for yourself before they finish."  (18 words)`
   : `clip-1 (the hook — curiosity gap, then the business and its town are named)
-  ${first.name}:  "${second.name}! Why is there a queue outside this shop?"            (9 words)
+${roleLabels
+    ? `  ${first.name}:  "Why is this shop always so full?"            (7 words)
   ${second.name}: ${place
-    ? `"That is Sharma Electronics here in ${place}, ${first.name} — everyone buys here."   (11 words)`
-    : `"That is Sharma Electronics, ${first.name} — the whole town buys here."   (10 words)`}
+    ? `"This is Sharma Electronics in ${place} — everyone shops here."   (9 words)`
+    : `"This is Sharma Electronics — the whole town shops here."   (9 words)`}`
+    : `  ${first.name}:  "${second.name}! Why is this shop always so full?"            (8 words)
+  ${second.name}: ${place
+    ? `"Sharma Electronics in ${place}, ${first.name} — everyone shops here."   (8 words)`
+    : `"This is Sharma Electronics, ${first.name} — everyone shops here."   (8 words)`}`}
 
 clip-2 (proof — a real, specific offering)
-  ${first.name}:  "But do they keep the latest washing machines too?"          (9 words)
-  ${second.name}: "Every brand, every model, and free home delivery included."  (9 words)
+  ${first.name}:  "Do they have the latest washing machines too?"             (8 words)
+  ${second.name}: "Every brand, every model, with free home delivery."        (8 words)
 
 clip-3 (proof — a DIFFERENT one, never a repeat)
-  ${first.name}:  "Repairs must cost a fortune at a big showroom."             (9 words)
-  ${second.name}: "One full year of service is free with every purchase."      (10 words)
+  ${first.name}:  "Repairs must cost a fortune at big showrooms."            (8 words)
+  ${second.name}: "Here, one full year of service is free."                  (8 words)
 
 clip-4 (close — it ends, and it tells you what to do)
-  ${first.name}:  "Then what are we waiting for, let us go!"                   (9 words)
-  ${second.name}: "Visit Sharma Electronics today and see the festival offers yourself." (10 words)`}
+  ${first.name}:  "So everything we need is right here!"                         (7 words)
+  ${second.name}: "Visit Sharma Electronics today and see the offers yourself."  (9 words)`}
 
 ${isFestival
   ? `Notice: clip 1 sells nothing and only wishes, ${occasion} is never spoken of again after it,
@@ -932,6 +973,18 @@ export interface CharacterFramePromptInput {
   wardrobe?: string;
   /** The camera move each clip's video will be animated with, so each still is composed for it. */
   motionPlan?: ClipMotionPlan[];
+  /**
+   * NO LOGO: the business name, rendered as a physical name board. The prompt used to say "no text
+   * at all" whenever the logo was missing, so a pack ad sold with a name board never showed the name.
+   */
+  nameBoard?: string;
+  /**
+   * The per-clip background plan (prompts/scenePlan), when there are no client photographs. Replaces
+   * the generic shot zones, so each clip's background follows that clip's line and the video's motive.
+   */
+  sceneBackgrounds?: string[];
+  /** The motive of the video in one line — "Annadanam at the temple", "Birthday wishes". */
+  sceneMotive?: string;
 }
 
 /**
@@ -941,14 +994,19 @@ export interface CharacterFramePromptInput {
  * single biggest reason its frames look art-directed rather than generic: each clip arrives with a
  * stated purpose, zone, camera and staging instead of "write a nice frame". The character version
  * had none of it and the prompts came out flat and interchangeable. Same idea, restaged for two
- * cartoon characters who walk a customer through a business.
+ * characters who show a customer around a business — each clip from where they stand in it.
+ *
+ * Clip 1 used to be an "ARRIVAL" staged just inside the entrance, with the pair "having just arrived".
+ * Animated, that frame sent them back out of the door and onto the road — the doorway is the one place
+ * a video model reads as "going somewhere". Clip 1 is now staged already inside, facing into the
+ * premises, with the entrance out of frame.
  */
 const SHOT_DESIGNS = [
   {
-    name: "ARRIVAL / ESTABLISHING SHOT",
-    zone: "just inside the entrance, on the shop floor — the first thing a customer sees after stepping in (indoors, never the street outside)",
+    name: "ESTABLISHING SHOT — ALREADY INSIDE",
+    zone: "well inside the business on its main floor, facing INTO the premises — the counter, stock or work area behind them; the entrance, the door and the street are NOT in frame",
     camera: "wide enough to establish the place, the cast full-figure, the business clearly readable behind them",
-    staging: "the two have just arrived and are taking the place in — open, welcoming body language turned towards camera",
+    staging: "already standing inside, settled and at home here — open, welcoming body language turned towards camera; they are not arriving, not entering and not about to leave",
     purpose: "establish WHERE we are and WHOSE business this is, in one glance",
   },
   {
@@ -969,7 +1027,7 @@ const SHOT_DESIGNS = [
     name: "THE DETAIL / DEPTH SHOT",
     zone: "a different zone not shown yet — a specialised area, secondary display, storage, or the back-of-house work area",
     camera: "a fresh angle with real depth, using the room's own lines and fixtures to frame the pair",
-    staging: "actively exploring — leaning in, pointing something out, discovering it with the viewer",
+    staging: "leaning in and pointing something out from where they stand, discovering it with the viewer",
     purpose: "prove the place is bigger than one corner and add visual variety",
   },
   {
@@ -1018,17 +1076,23 @@ function clipShotPlan(
   solo: boolean,
   /** The move each clip's video will be animated with — see prompts/motion. */
   motionPlan: ClipMotionPlan[] = [],
+  /** One background per clip from the scene plan; empty entries fall back to the shot's own zone. */
+  sceneBackgrounds: string[] = [],
 ): string {
   return shots.map((shot, i) => {
     const n = i + 1;
     const line = clipSummaries[i] ? `\n   🗣️ THIS CLIP'S LINE: ${clipSummaries[i]}` : "";
+    const zone = sceneBackgrounds[i] || shot.zone;
     const motion = motionPlan[i] ? `\n   ${framingForMotion(motionPlan[i])}` : "";
     const composition = motionPlan[i] ? compositionFor(motionPlan[i]) : "";
+    const positions = !solo && cast.includes(" and ")
+      ? `\n   ↔️ POSITIONS: ${cast.split(" and ")[0]} on the LEFT of the frame, ${cast.split(" and ")[1]} on the RIGHT.`
+      : "";
     const head = `**CLIP ${n} — ${shot.name}**
-   📍 ZONE: ${shot.zone}
+   📍 ZONE: ${zone}
    🎥 CAMERA: ${shot.camera}
    🎭 STAGING: ${shot.staging}
-   🎯 PURPOSE: ${shot.purpose}${line}${motion}`;
+   🎯 PURPOSE: ${shot.purpose}${line}${positions}${motion}`;
 
     if (n === 1) {
       return `${head}
@@ -1037,7 +1101,7 @@ function clipShotPlan(
    Open by naming the photograph or generated zone this clip uses, then ${solo ? cast : `the two characters`} by name
    only, then the real fixtures and stock actually visible around them, then the light in that
    space, then the ${aspectRatio} ${orientation} framing.${hasLogo ? " Place the attached logo where it would really be installed in this zone." : ""}${motionPlan[i] ? `
-   Compose it as the first moment of this clip's walk: ${composition}.` : ""}
+   Compose it for this clip's in-place animation: ${composition}.` : ""}
    This frame sets the look for the whole ad — the grade, the light and the finish that every later
    clip has to match.`;
     }
@@ -1050,7 +1114,7 @@ function clipShotPlan(
    frame, unchanged" — and then spend the rest of the prompt ONLY on what genuinely changes:
    the new zone and the real objects in it, the new staging and gestures, the new camera angle,
    and how the light differs in this part of the premises.${motionPlan[i] ? `
-   Include, in plain words, the first moment of this clip's walk: ${composition}.` : ""}
+   Include, in plain words, how the still is composed for its in-place animation: ${composition}.` : ""}
    Keep it SHORT: 60–90 words. Anything you re-describe is something the generator is free to
    redraw differently, which is exactly how the characters drift between clips.`;
   }).join("\n\n");
@@ -1063,6 +1127,7 @@ export const CHARACTER_MULTI_FRAME_SYSTEM_PROMPT = (
   const {
     segmentCount, clipSummaries, locationMode, locationPlan,
     aspectRatio, adType, festivalName, hasLogo = false, businessContext = "", wardrobe, motionPlan = [],
+    nameBoard = "", sceneBackgrounds = [], sceneMotive = "",
   } = input;
   const clipContext = clipSummaries.map((s, i) => `  Clip ${i + 1}: ${s}`).join("\n");
   const orientation = aspectRatio === "16:9" ? "horizontal (landscape)" : "vertical (portrait)";
@@ -1094,7 +1159,15 @@ signage already installed in that zone — and must refer to it only as "the att
 Do NOT describe the logo: not its text, colours, shape, icon, or wording. It is attached; the image
 generator can see it. Describing it makes the generator redraw an approximation instead of using it.
 The attached logo is the only text anywhere in the frame — never invent other signage or wall text.`
-    : `===== LOGO =====
+    : nameBoard.trim()
+      ? `===== BRANDING: A NAME BOARD (THERE IS NO LOGO FILE) =====
+
+There is NO logo file for this business, and none will be attached — never mention, request or refer to
+"the attached logo". Instead, in every prompt, show the business name "${nameBoard.trim()}" as a REAL
+physical name board already installed in that zone — an acrylic or backlit sign board, a painted fascia or
+a counter panel — reading exactly "${nameBoard.trim()}", spelled letter for letter, sharp and readable. That
+name board is the ONLY text anywhere in the frame.`
+      : `===== LOGO =====
 
 No logo was provided. Do not invent one, and do not put any text, signage or lettering in the frame.`;
 
@@ -1130,10 +1203,13 @@ ${characterCastBlock(pack, wardrobe)}
 
 ${characterDirectionBlock(pack, "frame")}${motionPlan.length ? `
 
-Every clip's video WALKS: ${solo ? cast : "the characters"} walk${solo ? "s" : ""} through the business while talking, with a
-moving camera. Where the direction above asks for a planted stance, a held or locked-off frame, or no
-movement, this ad's walk wins — each frame is the first moment of its clip's walk (see each clip's 🎬
-note), with the body caught in motion. Everything else in that direction still applies.` : ""}
+Each clip's video follows its own 🎬 note — ${solo ? cast : "the characters"} STAND AND TELL, WALK AND TALK a few steps
+toward the camera, SHOW A PRODUCT or PRESENT THE SPACE, filmed with the camera angle, lens and move the note
+names. The video can only use what the frame shows, so each frame must already contain what its clip needs:
+for a walk, a clear, open, empty stretch of floor inside the business in front of them; for a product, the
+product within reach; clear space around the bodies; every object fully in view. Where the direction above
+describes walking somewhere, arriving or leading the way, the 🎬 note decides instead. Everything else in
+that direction still applies.` : ""}
 
 ${locationBlock}
 
@@ -1143,25 +1219,25 @@ ${logoBlock}
 
 ${clipContext}
 
-===== THE ONE RULE THAT MATTERS MOST: ONE CONTINUOUS WALK THROUGH THE BUSINESS =====
+===== THE ONE RULE THAT MATTERS MOST: A DIFFERENT BACKGROUND FOR EVERY CLIP, CHOSEN BY ITS LINE =====
 
-Every clip is set INSIDE the business — indoors, among its real fixtures. Never the street, the
-footpath, the car park or the outside of the building, and never a shot looking in from outside.
+Every clip is set INSIDE the business (or, when the video is about a place or an occasion, inside that
+place) — never the street, the footpath, the car park or the outside of the building, and never a shot
+looking in from outside.${sceneMotive ? `
 
-All ${segmentCount} clips are ONE walk through that one space, cut into pieces. Each clip shows the part
-of the business the characters are TALKING about in that clip — shelves for the product range, the
-counter for service, the display for what is new — and the background must prove the line. But each
-part must ADJOIN the last: clip N+1 picks up a few steps further along the same path.
+WHAT THIS VIDEO IS ABOUT: ${sceneMotive}. Every background must belong to that — relatable at a glance.` : ""}
 
-CONTINUITY (WHAT MAKES THE VIDEO FLOW — MANDATORY):
-• Clip N+1 starts where clip N ended, in the same room or the area directly next to it.
-• At least one real thing from the previous clip's frame — the counter, a shelf run, a doorway, a
-  pillar, the logo — is still visible in the next clip's frame, even if only at the edge.
-• The light, the colour grade, the floor and the wall finish are IDENTICAL in every clip.
-• Never a jump to an unrelated zone, another floor, another branch or another building. If a viewer
-  would ask "where are we now?", the frame is WRONG.
-• What changes between clips is the angle and how much of the space is in view — never the place.
-Never repeat the same framing twice, and never pick a zone at random.
+Each clip's background is chosen by WHAT IS SAID in that clip — shelves for the product range, the
+counter for service, the display for what is new, the kitchen for freshness — so the background proves
+the line. And every clip's background is DIFFERENT from every other clip's: a different part of the
+place, with different real things in it. Two clips that look like the same corner is the failure this
+rule exists to prevent.
+
+CONSISTENCY (WHAT KEEPS IT ONE AD):
+• It is always the SAME business: the same style, the same light, the same colour grade and finish.
+• Never another branch, another building or an unrelated place that the video is not about.
+• Never repeat a background, a zone or a framing, and never pick a zone at random.${sceneBackgrounds.length ? `
+• The 📍 ZONE given for each clip below is its planned background. Use it.` : ""}
 
 ===== ${solo ? `STAGING ${cast.toUpperCase()}` : "STAGING BOTH CHARACTERS"} =====
 
@@ -1172,6 +1248,9 @@ ${solo
 • Stage them open to camera, addressing the viewer directly rather than anyone in the room.
 • They must be the focus, but the business must be unmistakable behind them.`
   : `• BOTH characters visible in every frame, clearly separated, neither hidden or cropped.
+• POSITION LOCK: ${pack.characters[0].name} ALWAYS stands on the LEFT of the frame and ${pack.characters[1].name} ALWAYS on the
+  RIGHT, in every single clip. Write it into every prompt. The video tells who is speaking by where they
+  stand, so the two must never swap sides.
 • Stage them mid-conversation, angled slightly towards each other but open to camera — the classic
   two-hander. The one who is speaking is the more animated of the two.
 • They must be the focus, but the business must be unmistakable behind them.
@@ -1180,7 +1259,7 @@ ${solo
 
 ===== THE SHOT PLAN — WRITE THESE ${segmentCount} PROMPTS =====
 
-${clipShotPlan(segmentCount, clipSummaries, shots, hasLogo, aspectRatio, orientation, cast, solo, motionPlan)}
+${clipShotPlan(segmentCount, clipSummaries, shots, hasLogo, aspectRatio, orientation, cast, solo, motionPlan, sceneBackgrounds)}
 
 ===== OUTPUT FORMAT =====
 
@@ -1233,7 +1312,7 @@ export const CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT = (
   });
 };
 
-/** How a pack's cast performs a walk: a deity blesses, a cartoon walks its own way, a person naturally. */
+/** How a pack's cast performs in place: a deity blesses, a cartoon moves its own way, a person naturally. */
 export const packPerformer = (pack: CharacterPack | null | undefined): Performer => {
   if (!pack) return "person";
   if (pack.family === "god") return "deity";
@@ -1252,9 +1331,12 @@ export const packVeoSubject = (pack: CharacterPack) => {
   const solo = pack.characters.length === 1;
   const cartoon = pack.family === "duo" || pack.family === "solo";
   const person = pack.family === "human";
+  const people = pack.family === "human_duo";
   const identityLock = person
     ? "the person's face (100% face match), their hair, their outfit, the logo and the location"
-    : solo
+    : people
+      ? "both people's faces (100% face match), their hair, their outfits, the logo and the location"
+      : solo
       ? "the character exactly as drawn, the logo and the location"
       : "both characters exactly as drawn, the logo and the location";
   const voiceOf = (name: string, voice: string) => cartoon
@@ -1262,27 +1344,31 @@ export const packVeoSubject = (pack: CharacterPack) => {
     : voice;
   const speech = (lines: { name: string; text: string }[]) => lines.map((line, i) => {
     const character = pack.characters.find((c) => c.name === line.name) ?? pack.characters[i] ?? pack.characters[0];
+    // Where each speaker stands — the frames lock characters[0] to the LEFT and characters[1] to the
+    // RIGHT (see the POSITION LOCK in the frame prompt), so the video can tell who is talking.
+    const seat = pack.characters.indexOf(character);
     return {
       speaker: solo ? undefined : character.name,
       voice: voiceOf(character.name, character.voice),
       line: line.text,
       at: solo ? undefined : lines.length === 2 ? (i === 0 ? "0–4s" : "4–8s") : undefined,
+      position: solo ? undefined : seat === 0 ? "on the LEFT of the frame" : seat === 1 ? "on the RIGHT of the frame" : undefined,
     };
   });
   const performanceNotes = [
-    solo ? "" : "Only the speaking character's mouth moves; the other listens and reacts in their own way.",
+    solo ? "" : "Only the speaking character's mouth moves; the other listens with the mouth closed and reacts in their own way.",
     cartoon ? "Voices are strict: only the original voices from the show — never a narrator, a new voice actor or a different accent." : "",
   ].filter(Boolean).join("\n");
   /** Who the movement rules address — "Both characters", "Ganesha", "The business owner". */
   const cast = solo
     ? person ? `The ${pack.characters[0].name.toLowerCase()}` : pack.characters[0].name
-    : "Both characters";
+    : people ? "Both people" : "Both characters";
   const performer = packPerformer(pack);
-  /** A custom character is nobody's show — it walks its own way, not "the way the audience knows". */
-  const walkManner = pack.family === "custom" ? "in the character's own natural way" : WALK_MANNER[performer];
+  /** A custom character is nobody's show — it moves its own way, not "the way the audience knows". */
+  const manner = pack.family === "custom" ? "in the character's own natural way" : PRESENCE[performer];
   return {
     identityLock, speech, performanceNotes, cast, castPlural: !solo, twoHander: !solo,
-    performer, walkManner, handGestures: HAND_GESTURES[performer],
+    performer, manner, handGestures: HAND_GESTURES[performer],
   };
 };
 

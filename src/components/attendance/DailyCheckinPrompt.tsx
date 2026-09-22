@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import { db } from "@/services/firebase";
@@ -15,18 +15,40 @@ import { LogIn, Loader2, Sun } from "lucide-react";
  * MANDATORY: there is no close / "later" — the member must check in to continue.
  * Checking in records attendance and opens WhatsApp with the prefilled
  * attendance + work-status message for the admin.
+ *
+ * ── Not on a day off ──────────────────────────────────────────────────────────────────────────
+ * A member who opens the platform on a Sunday or an announced holiday is not reporting for work —
+ * they are finishing a job, answering a client or just looking something up. Blocking the whole app
+ * behind a check-in that day recorded attendance nobody owed and taught people to avoid opening it.
+ * So on those days the prompt stays away and the platform opens directly. The same two days are the
+ * holidays attendance itself resolves (services/techAttendance.resolveStatus): Sundays, and the
+ * `holidays/{date}` an admin announced. Checking in by choice from the Dashboard still works.
  */
 export default function DailyCheckinPrompt() {
   const user = useAuthStore((s) => s.user);
   const { toast } = useToast();
   const todayStr = format(new Date(), "yyyy-MM-dd");
+  const isSunday = new Date(`${todayStr}T00:00:00`).getDay() === 0;
 
   const [hasCheckin, setHasCheckin] = useState<boolean | null>(null);
   const [assignments, setAssignments] = useState<WorkAssignment[] | null>(null);
   const [checkingIn, setCheckingIn] = useState(false);
+  /** Null until the holiday document has been read — the prompt waits rather than flashing. */
+  const [isHoliday, setIsHoliday] = useState<boolean | null>(null);
 
   useEffect(() => {
-    if (!user) return;
+    // A Sunday needs no lookup; any other day asks one document whether it was announced as a holiday.
+    if (!user || isSunday) { setIsHoliday(false); return; }
+    return onSnapshot(
+      doc(db, "holidays", todayStr),
+      (snap) => setIsHoliday(snap.exists()),
+      // Unreadable: treat it as a working day, which is the prompt's ordinary behaviour.
+      () => setIsHoliday(false),
+    );
+  }, [user?.uid, todayStr, isSunday]);
+
+  useEffect(() => {
+    if (!user || isSunday) return;
     const unsubs: (() => void)[] = [];
     unsubs.push(onSnapshot(
       query(collection(db, "daily_checkins"), where("memberId", "==", user.uid), where("date", "==", todayStr)),
@@ -37,12 +59,14 @@ export default function DailyCheckinPrompt() {
       (snap) => setAssignments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as WorkAssignment)))
     ));
     return () => unsubs.forEach((u) => u());
-  }, [user?.uid, todayStr]);
+  }, [user?.uid, todayStr, isSunday]);
 
   const stats = useMemo(() => getTodayWorkStats(assignments || [], todayStr), [assignments, todayStr]);
 
   if (!user || user.role !== "tech_member") return null;
-  const show = hasCheckin === false && assignments !== null;
+  // A day off keeps the platform open — see the note at the top of this file.
+  const dayOff = isSunday || isHoliday === true;
+  const show = !dayOff && isHoliday === false && hasCheckin === false && assignments !== null;
 
   const handleCheckIn = async () => {
     if (!user || checkingIn) return;

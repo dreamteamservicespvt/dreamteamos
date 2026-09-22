@@ -16,6 +16,7 @@ import { categoryLabel, isAdCategory } from "@/utils/serviceCatalog";
 import { isPosterCategory, posterSizeLabel, DEFAULT_POSTER_SIZE } from "@/utils/posterSpec";
 import { AUTO_POSTER_STYLE } from "@/services/posterStyles";
 import { resolveModelSpec } from "@/utils/adRequirement";
+import { getCharacterPack, isCustomPack } from "@/services/characterPacks";
 import { AttireType, ModelGender } from "@/types/aiPlatform";
 import { findUnassignedOrderForPhone, revertOrderToUnassigned } from "@/services/orders";
 import { logTechActivity, type ActivityActor } from "@/services/activityLog";
@@ -63,6 +64,8 @@ export interface CreateWorkAssignmentInput {
   posterCount?: number;
   /** Special-category cartoon duo (a services/characterPacks id), when one was sold. */
   characterPack?: string;
+  /** For the Custom Character entry: who the character is, in the team's words. */
+  customCharacter?: string;
   /**
    * Whether the client is supplying photographs of their own premises — on EVERY ad job, not only
    * a pack one. The generator writes a different location prompt for each answer, so a job handed
@@ -99,7 +102,7 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
   const {
     assignedTo, assignedToName, assignerUid, category, duration, clipCount, pricePerUnit, uniqueId,
     businessName, businessWhatsapp, modelGender, attireType, customAttire, aspectRatio,
-    language, festival, requirementNotes, characterPack, realLocationProvided,
+    language, festival, requirementNotes, characterPack, customCharacter, realLocationProvided,
     businessInfo, businessAddress, posterSize, posterStyle, posterCount,
     order, tracks, memberLink = "/tech/my-work", assignerName, techAdminUid, actor,
   } = input;
@@ -170,6 +173,8 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
       ...(posterCount && posterCount > 1 ? { posterCount: Math.floor(posterCount) } : {}),
     } : {}),
     ...(!poster && characterPack ? { characterPack } : {}),
+    ...(!poster && characterPack && customCharacter?.trim() && isCustomPack(getCharacterPack(characterPack))
+      ? { customCharacter: customCharacter.trim() } : {}),
     /**
      * Where the ad is set, on every ad job.
      *

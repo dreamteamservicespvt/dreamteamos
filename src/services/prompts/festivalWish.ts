@@ -7,8 +7,8 @@
  * business greeting the people it actually knows.
  *
  * Kept here so the writer, the repair pass, the character-ad prompts and the check that the clip
- * really says it all use one list, and "మరియు" never creeps back in: the three groups are spoken as
- * a plain comma list, the way people say them out loud (see prompts/everydaySpeech).
+ * really says it all use one list: the three groups are spoken as a plain comma list, the way people
+ * say them out loud.
  */
 
 /** The three groups, as the greeting says them. Matching uses the stem, so case endings are fine. */
@@ -18,7 +18,7 @@ export const WISH_AUDIENCE_TELUGU = [
   { stem: "కస్టమర్", spoken: "కస్టమర్లందరికీ", english: "customers" },
 ];
 
-/** "మిత్రులు, శ్రేయోభిలాషులు, కస్టమర్లందరికీ" — the address, spoken as a list, with no "మరియు". */
+/** "మిత్రులు, శ్రేయోభిలాషులు, కస్టమర్లందరికీ" — the address, spoken as a plain list. */
 export const WISH_AUDIENCE_LINE = WISH_AUDIENCE_TELUGU.map((a) => a.spoken).join(", ");
 
 /** The same address in English, for every other language. */
@@ -41,7 +41,7 @@ export function wishAudienceRule(festivalName: string, language?: string): strin
   return isTeluguLanguage(language)
     ? `The wish is addressed to the business's own people, in these exact words and this order: `
       + `"${WISH_AUDIENCE_LINE}" — మిత్రులు (friends), శ్రేయోభిలాషులు (well-wishers) and కస్టమర్లు `
-      + `(customers). All three are named, as a plain comma list with no "మరియు", and the business is `
+      + `(customers). All three are named, as a plain comma list, and the business is `
       + `the one sending the ${occasion} wish.`
     : `The wish is addressed to the business's own people — its ${WISH_AUDIENCE_ENGLISH} — all three `
       + `named, with the business as the one sending the ${occasion} wish.`;

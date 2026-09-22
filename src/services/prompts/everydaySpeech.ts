@@ -99,7 +99,8 @@ export const HARD_TELUGU_WORDS: HardWord[] = [
   { word: "సేవలందిస్తాం", say: "సర్వీస్ చేస్తాం", parts: ["సేవలంది"] },
   { word: "తప్పక", say: "తప్పకుండా", forms: ["తప్పక"] },
   // Written-Telugu grammar words nobody says out loud.
-  { word: "మరియు", say: "ఇంకా", forms: ["మరియు"], shown: true },
+  // మరియు is NOT here: the team wants it written exactly మరియు (said "mariyu") whenever a line
+  // needs it — see utils/spokenNumbers FIXED_WORDS. It used to be swapped for ఇంకా.
   { word: "యొక్క", say: "(leave it out)", forms: ["యొక్క"], shown: true },
   { word: "కొరకు", say: "కోసం", forms: ["కొరకు", "కొరకే"], shown: true },
   { word: "వద్ద", say: "దగ్గర", forms: ["వద్ద", "వద్దకు", "వద్దనే", "వద్దే"], shown: true },
@@ -236,7 +237,9 @@ export function everydaySpeechRules(language?: string): string {
   if (lower === "english") {
     return `===== PLAIN EVERYDAY ENGLISH — EVERY WORD (MANDATORY) =====
 
-Write the way a friendly shopkeeper talks to a customer: short, common words that anyone in the town understands on the first listen. "Premium" is the confidence and warmth of the delivery — it is never fancy words. Never "bespoke", "curated", "state-of-the-art", "unparalleled", "solutions", "leverage" or any other brochure word.`;
+Write the way a friendly shopkeeper talks to a customer: short, common words that anyone in the town understands on the first listen. "Premium" is the confidence and warmth of the delivery — it is never fancy words. Never "bespoke", "curated", "state-of-the-art", "unparalleled", "solutions", "leverage" or any other brochure word.
+
+Numbers are always WORDS, never digits: "nine hundred ninety-nine rupees", "twenty percent" — never ₹999 or 20%.`;
   }
 
   const firstListen = `THE FIRST-LISTEN TEST, for every single word: would a vegetable seller, an auto driver, a grandmother and a college student in this town all understand it instantly — and say it themselves? If any one of them would pause on it, replace it with the word they actually use.`;
@@ -250,7 +253,8 @@ ${firstListen}
 
 • Everyday ${lang} words first.
 • An English word only when everyone in town already says it in English (free, offer, service, delivery, order, shop, fresh, special) — written in ${lang} script. Never English that only city people use (premium, exclusive, professional, innovative).
-• Never literary, Sanskrit-heavy, textbook or government-style ${lang}. Active voice. Short, simple words in one easy sentence.`;
+• Never literary, Sanskrit-heavy, textbook or government-style ${lang}. Active voice. Short, simple words in one easy sentence.
+• Numbers are always WORDS in ${lang}, never digits.`;
   }
 
   const never = HARD_TELUGU_WORDS.filter((w) => w.shown).map((w) => `${w.word} → ${w.say}`).join("  |  ");
@@ -265,6 +269,8 @@ ${firstListen}
 • Spoken verb endings, never written ones: చేస్తాం, ఇస్తాం, ఉన్నాం — never చేస్తాము, ఇస్తాము, ఉన్నాము.
 • Active voice: చేస్తాం, ఇస్తాం, ఉంది — never చేయబడును, అందించబడుతుంది, కలదు.
 • Short, simple words in one easy sentence.
+• Numbers are always WORDS, never digits: "తొమ్మిది వందల తొంభై తొమ్మిది రూపాయలు", "ఇరవై శాతం" — never ₹999 or 20%.
+• When a line needs "and", write it exactly మరియు (said "mariyu") — never మరీయు, మరియూ or another spelling.
 
 NEVER THESE → SAY THESE INSTEAD:
 ${never}`;

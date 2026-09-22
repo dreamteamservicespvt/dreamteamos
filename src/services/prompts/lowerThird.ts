@@ -1,5 +1,13 @@
 /**
- * The brand label — a lower third that sits over the bottom of a finished video.
+ * The VIDEO BOTTOM LABEL (formerly "Brand Label (Lower Third)") — a label that sits over the bottom
+ * of a finished video.
+ *
+ * ── Designed from the video, not only the trade ──────────────────────────────────────────────────
+ * The label used to be themed by business type alone, so a temple annadanam video and a festival
+ * wish got the same accents as that business's everyday promotion. It now also reads the festival's
+ * own palette and symbols, what the video is about (the scene plan's motive) and the core message,
+ * so its colour and mood belong to THIS video. Its content rule does not move: it still carries only
+ * the logo, the name, the numbers and the address.
  *
  * ── What it replaced, and why ────────────────────────────────────────────────────────────────────
  * This section used to produce a HEADER: a full-bleed strip across the top 7% of a 9:16 frame. The
@@ -110,6 +118,10 @@ export interface LowerThirdInput {
   hasWhatsApp?: boolean;
   /** True when the client sent photographs of the premises, which may sit at the right edge. */
   hasPremisesPhoto?: boolean;
+  /** A festival ad: that festival's own palette and symbols (prompts.getFestivalTheme) — visual only. */
+  festivalTheme?: { colors: string; patterns: string; elements: string };
+  /** What this video is about and says, so the label's mood matches it — never written on the label. */
+  context?: { motive?: string; mood?: string; coreMessage?: string };
 }
 
 /** How the contacts are arranged, for the count this business actually has. */
@@ -140,6 +152,13 @@ export function LOWER_THIRD_SYSTEM_PROMPT(input: LowerThirdInput): string {
   const { businessType, adType, festivalName = "", noLogo = false, contactCount, hasAddress } = input;
   const theme = labelThemeFor(businessType);
   const festive = adType === "festival" ? festivalAccentFor(festivalName) : "";
+  const festivalTheme = adType === "festival" ? input.festivalTheme : undefined;
+  const context = input.context;
+  const videoMood = [
+    context?.motive ? `this video is about ${context.motive}` : "",
+    context?.coreMessage ? `its message is ${context.coreMessage}` : "",
+    context?.mood ? `its mood is ${context.mood}` : "",
+  ].filter(Boolean).join("; ");
   const ratio = Math.round((LABEL_WIDTH / LABEL_HEIGHT) * 10) / 10;
   const brandSlot = noLogo
     ? "- LEFT: NO brand circle and no brand container of any kind. THIS BUSINESS HAS NO BRAND IMAGE FILE, and none will be "
@@ -149,7 +168,7 @@ export function LOWER_THIRD_SYSTEM_PROMPT(input: LowerThirdInput): string {
     : "- LEFT: the attached logo, used EXACTLY as provided and never redrawn, recoloured or cropped, inside a premium circular (or "
       + "softly rounded) glass container with a metallic rim and a gentle inner shadow.";
 
-  return `Design a PREMIUM LOWER-THIRD BRAND LABEL — a transparent PNG strip laid over the BOTTOM of a finished ${adType === "festival" ? "festival " : ""}advertisement video.
+  return `VIDEO BOTTOM LABEL — design a PREMIUM label: a transparent PNG strip laid over the BOTTOM of a finished ${adType === "festival" ? "festival " : ""}advertisement video.
 
 This is NOT a poster, NOT a 9:16 image, NOT a top header and NOT a full video frame. It is one wide label, cut out, with nothing around it.
 
@@ -186,7 +205,11 @@ ${contactBlock(contactCount, !!input.hasWhatsApp)}
 ${input.hasPremisesPhoto
     ? "- The client's own premises photograph may sit as a soft, cleanly masked cut-out at the far right edge, blending into the raised module. It stays behind the contact pills and never covers any text."
     : "- NO photographs: this label is graphic only. Never invent a building, a shopfront, an office or people."}
-${festive ? `- FESTIVAL ACCENT (VISUAL ONLY): ${festive}, with a slightly warmer glow. Do NOT write the festival's name, a greeting, wishes or a date anywhere on the label — the video says those; the label only brands the business.\n` : ""}
+${festivalTheme
+    ? `- FESTIVAL THEME (VISUAL ONLY) — this label belongs to a ${festivalName} video, so its colour and accents follow that festival exactly: colours ${festivalTheme.colors}; patterns ${festivalTheme.patterns}; symbols ${festivalTheme.elements} (one or two, small, at the edges). Do NOT write the festival's name, a greeting, wishes or a date anywhere on the label — the video says those; the label only brands the business.\n`
+    : festive ? `- FESTIVAL ACCENT (VISUAL ONLY): ${festive}, with a slightly warmer glow. Do NOT write the festival's name, a greeting, wishes or a date anywhere on the label — the video says those; the label only brands the business.\n` : ""}${videoMood
+    ? `- THIS VIDEO: ${videoMood}. Let the label's colour temperature, glow and accents suit it — calm and sacred for a devotional video, warm and generous for a food or community video, bolder for an offer. Never write any of it on the label.\n`
+    : ""}
 ===== DESIGN LANGUAGE =====
 
 Luxury cinematic UI — glassmorphism, metallic borders, soft outer glow, layered depth, rich gradients, premium shadows, elegant curves. It must read as one dimensional object, lit from a single direction.

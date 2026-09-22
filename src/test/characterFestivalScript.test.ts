@@ -6,7 +6,7 @@ import {
   CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT,
 } from "@/services/prompts/characterAd";
 import {
-  MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE, countSpokenWords,
+  MIN_WORDS_PER_DUO_CLIP, MAX_WORDS_PER_DUO_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE, countSpokenWords,
 } from "@/utils/dialogueFormat";
 
 /**
@@ -21,7 +21,9 @@ import {
  * turns at clip 2, and nothing downstream of the generator can quietly put the hook back.
  */
 
-const DUO = getCharacterPack(CHARACTER_CATALOGUE.find((p) => p.characters.length === 2)!.id)!;
+// A named cartoon duo — a human duo's speakers are role labels and are never named (see below).
+const DUO = getCharacterPack(CHARACTER_CATALOGUE.find((p) => p.family === "duo")!.id)!;
+const HUMAN_DUO = getCharacterPack(CHARACTER_CATALOGUE.find((p) => p.family === "human_duo")!.id)!;
 const SOLO = getCharacterPack(CHARACTER_CATALOGUE.find((p) => p.characters.length === 1)!.id)!;
 
 const festival = (pack = DUO, clips = 4, name = "Diwali", place = "Bodhan") =>
@@ -110,8 +112,18 @@ describe("festival wishes in a special-category script", () => {
 
     for (let i = 0; i < lines.length; i += 2) {
       const clipTotal = Number(lines[i][2]) + Number(lines[i + 1][2]);
-      expect(clipTotal, `clip ${i / 2 + 1}`).toBeGreaterThanOrEqual(MIN_WORDS_PER_CLIP);
-      expect(clipTotal, `clip ${i / 2 + 1}`).toBeLessThanOrEqual(MAX_WORDS_PER_CLIP);
+      expect(clipTotal, `clip ${i / 2 + 1}`).toBeGreaterThanOrEqual(MIN_WORDS_PER_DUO_CLIP);
+      expect(clipTotal, `clip ${i / 2 + 1}`).toBeLessThanOrEqual(MAX_WORDS_PER_DUO_CLIP);
+    }
+  });
+
+  // "Friend" and "Host" are how the script tells two people apart — never words either one says.
+  it("never has a human duo call each other by their role labels", () => {
+    for (const p of [festival(HUMAN_DUO), commercial(HUMAN_DUO)]) {
+      const ex = p.slice(p.indexOf("A WORKED EXAMPLE"), p.indexOf("Notice:"));
+      const spoken = [...ex.matchAll(/"([^"]+)"/g)].map(m => m[1]).join(" ");
+      for (const c of HUMAN_DUO.characters) expect(spoken).not.toContain(c.name);
+      expect(p).toContain("NO NAMES FOR THE SPEAKERS");
     }
   });
 

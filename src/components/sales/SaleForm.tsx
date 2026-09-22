@@ -26,7 +26,7 @@ import { upsertOrderForSale } from "@/services/orders";
 import { logActivity } from "@/services/activityLog";
 import { applySaleFreeze, buildLeadFreezeFields, fetchNumberLock } from "@/services/numberLock";
 import { watchAdLanguages, rememberAdLanguage, mergeAdLanguages } from "@/services/adLanguages";
-import { characterPackGroups, getCharacterPack, isHumanPack, packModelGender } from "@/services/characterPacks";
+import { characterPackGroups, getCharacterPack, isCustomPack, isHumanPack, packModelGender } from "@/services/characterPacks";
 import { formatCurrency } from "@/utils/formatters";
 import { normalizePhone } from "@/utils/phone";
 import {
@@ -48,8 +48,8 @@ import {
 import { presetsForCategory, buildPromise, CUSTOM_PRESET_KEY } from "@/utils/promiseSla";
 import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from "@/types/aiPlatform";
 import {
-  ATTIRE_LABELS, DEFAULT_REQUIREMENT, attireForGender, attireLabel, cleanRequirement, resolveModelSpec,
-  withRequirementDefaults,
+  ATTIRE_LABELS, DEFAULT_REQUIREMENT, attireForGender, attireLabel, attireOptionsFor, castLabelFor, cleanRequirement,
+  resolveModelSpec, withRequirementDefaults,
 } from "@/utils/adRequirement";
 import { CUSTOM_FESTIVAL_OPTION, WISHES_FESTIVALS, isListedFestival } from "@/utils/festivals";
 import { collectedOf, newPayment, withPayment } from "@/utils/salePayments";
@@ -362,6 +362,7 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
       notes: r.notes,
       festival: r.festival,
       specialCategory: r.specialCategory,
+      customCharacter: r.customCharacter,
       realLocationProvided: r.realLocationProvided,
     };
   });
@@ -443,6 +444,12 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
    * the same lead the sale was made on.
    */
   const contactMissing = isAdSale && !normalizePhone(req.businessWhatsapp.trim());
+  /**
+   * A Custom Character is built entirely from what the client says the character is. There was no
+   * box for it, so the tech team received "Custom Character" and nothing else — and had to invent
+   * one. It is asked here, on the call, where the client is saying it.
+   */
+  const characterMissing = !!salePack && isCustomPack(salePack) && !req.customCharacter.trim();
 
   /**
    * A bulk order is priced from the quantity, so the amount is computed rather than picked. The
@@ -633,6 +640,7 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
     : languageMissing ? "Type the language to continue"
     : contactMissing ? "Add the client's contact number to continue"
     : festivalMissing ? "Pick the occasion to continue"
+    : characterMissing ? "Describe the custom character to continue"
     : descriptionMissing ? "Say what was sold to continue"
     : amount <= 0 ? "Pick a package or enter an amount"
     : null;
@@ -758,6 +766,10 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
       toast({ title: "Which occasion?", description: "Pick the festival this wishes video is for — the tech team themes the whole ad from it.", variant: "destructive" });
       return;
     }
+    if (characterMissing) {
+      toast({ title: "Describe the character", description: "Say who or what the custom character is — the whole character is built from your description.", variant: "destructive" });
+      return;
+    }
     setSaving(true);
     const promise = buildPromise({
       presetKey: slaPreset || CUSTOM_PRESET_KEY,
@@ -798,6 +810,8 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
           // into the generator and theme an ad nobody asked to be themed.
           festival: isWishesSale ? resolvedFestival : "",
           specialCategory: req.specialCategory,
+          // Only the custom entry has a description; any other entry stores none.
+          customCharacter: isCustomPack(getCharacterPack(req.specialCategory)) ? req.customCharacter.trim() : "",
           /*
             Where the ad is SET — on every ad now, not only a cartoon one.
 
@@ -1941,6 +1955,23 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
                 clip, so ask for a straight-on, well-lit one — not a group photo and not a side angle.
               </p>
             )}
+            {/* The custom entry has no cast of its own: this description IS the character. */}
+            {salePack && isCustomPack(salePack) && (
+              <div>
+                <label className="flex items-center gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+                  Describe the character *
+                  <FieldHint text="Write who or what the character is, exactly as the client described it — a known figure (“Lord Hanuman”, “Chhota Bheem”), or a new one (“a smiling talking mango in a chef's cap”). Add anything they said about its look, voice or personality. The whole character is built from these words." />
+                </label>
+                <textarea
+                  data-test="sale-custom-character"
+                  rows={3}
+                  value={req.customCharacter}
+                  onChange={(e) => setReq((r) => ({ ...r, customCharacter: e.target.value }))}
+                  placeholder="e.g. Lord Hanuman carrying a sack of our rice, blessing the shop"
+                  className={`mt-1 w-full px-3 py-2 rounded-md bg-card border text-foreground text-sm outline-none focus:border-amber-500 resize-y ${characterMissing ? "border-destructive/60" : "border-amber-500/50"}`}
+                />
+              </div>
+            )}
           </div>
 
           {!salePack && (
@@ -1972,15 +2003,15 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
             {(!salePack || isHumanPack(salePack)) && (
             <div>
               <label className="text-[11px] text-muted-foreground">
-                Model attire{salePack ? ` (${packModelGender(salePack) === "male" ? "👨 male" : "👩 female"})` : ""}
+                Model attire{salePack ? ` (${castLabelFor(req.specialCategory)})` : ""}
               </label>
               <select
-                value={attireForGender((packModelGender(salePack) as ModelGender | null) ?? req.modelGender, req.attireType)}
+                value={resolveModelSpec({ characterPack: req.specialCategory, modelGender: (packModelGender(salePack) as ModelGender | null) ?? req.modelGender, attireType: req.attireType }).attireType}
                 data-test="sale-attire"
                 onChange={(e) => setReq((r) => ({ ...r, attireType: e.target.value as AttireType }))}
                 className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary"
               >
-                {ATTIRE_OPTIONS_BY_GENDER[(packModelGender(salePack) as ModelGender | null) ?? req.modelGender].map((a) => (
+                {attireOptionsFor(req.specialCategory, (packModelGender(salePack) as ModelGender | null) ?? req.modelGender).map((a) => (
                   <option key={a} value={a}>{ATTIRE_LABELS[a]}</option>
                 ))}
               </select>
