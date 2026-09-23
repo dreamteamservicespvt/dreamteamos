@@ -17,11 +17,11 @@
 
 :root {
   /* surfaces */
-  --ag-canvas: #020617;
-  --ag-surface: #071126;
+  --ag-canvas: #030B1A;
+  --ag-surface: #07152B;
   --ag-elevated: #0B1020;
-  --ag-glass: rgba(10, 18, 40, .72);
-  --ag-glass-soft: rgba(10, 18, 40, .55);
+  --ag-glass: rgba(7, 21, 43, .82);
+  --ag-glass-soft: rgba(7, 21, 43, .62);
   --ag-line: rgba(255, 255, 255, .08);
   --ag-line-strong: rgba(255, 255, 255, .14);
   --ag-divider: rgba(255, 255, 255, .06);
@@ -214,6 +214,102 @@
 .adgen ::placeholder { color: #64748B; }
 /* native controls follow the accent instead of the OS blue */
 .adgen :where(input[type="checkbox"], input[type="radio"], input[type="range"]) { accent-color: #7C3AED; }
+
+/* ── sections (the two panels' one-at-a-time cards) ───────────────────────────────────────────── */
+.ag-sec {
+  border-radius: 22px; border: 1px solid var(--ag-line);
+  background: var(--ag-glass); backdrop-filter: blur(24px);
+  box-shadow: var(--ag-shadow-glass);
+  overflow: hidden;
+  transition: border-color .28s ease, box-shadow .28s ease, background-color .28s ease;
+}
+.ag-sec:hover { border-color: var(--ag-line-strong); }
+.ag-sec--open { border-color: rgba(124, 58, 237, .30); }
+/* One 72px row, whether the section is open or shut — that is what keeps the two panels on one grid. */
+.ag-sec__head {
+  display: flex; align-items: center; gap: 14px;
+  min-height: 72px; padding: 0 20px; width: 100%;
+  background: none; border: 0; text-align: left; cursor: pointer; color: inherit;
+}
+.ag-sec__head:disabled { cursor: default; }
+.ag-sec__head:focus-visible { outline: none; box-shadow: inset 0 0 0 2px rgba(124, 58, 237, .75); }
+.ag-sec__body { padding: 0 20px 20px; }
+/*
+ * The morph: the section that opens grows into the space the other one gives back, in one motion.
+ * Height is animated through a grid row rather than max-height, so a long Configuration panel does
+ * not have to be guessed at and nothing snaps at the end of the transition.
+ */
+.ag-morph { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .28s cubic-bezier(.22, 1, .36, 1); }
+.ag-morph--open { grid-template-rows: 1fr; }
+.ag-morph > * { overflow: hidden; min-height: 0; }
+
+/* the icon tile that opens every section and every deliverable row */
+.ag-ico {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; flex: 0 0 44px; border-radius: 14px;
+  background: var(--ag-accent); color: #fff;
+  box-shadow: 0 14px 30px -18px rgba(37, 99, 235, 1);
+}
+.ag-ico--quiet { background: rgba(255, 255, 255, .05); border: 1px solid var(--ag-line); box-shadow: none; color: #A5B4FC; }
+
+/* ── compact asset tiles (the collapsed Assets panel during a run) ─────────────────────────────── */
+.ag-tile-up {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  padding: 16px 10px; border-radius: 16px; text-align: center;
+  border: 1px solid var(--ag-line); background: rgba(255, 255, 255, .025);
+  transition: border-color .2s ease, background-color .2s ease, transform .2s cubic-bezier(.16, 1, .3, 1);
+}
+.ag-tile-up:hover { border-color: rgba(124, 58, 237, .45); background: rgba(124, 58, 237, .07); transform: translateY(-2px); }
+
+/* ── milestone stepper (Generation Status) ────────────────────────────────────────────────────── */
+.ag-steps { display: flex; align-items: flex-start; gap: 0; }
+.ag-steps__item { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; text-align: center; }
+.ag-stepnode {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  width: 46px; height: 46px; border-radius: 50%;
+  border: 1px solid var(--ag-line); background: rgba(255, 255, 255, .04); color: var(--ag-muted);
+  transition: border-color .3s ease, color .3s ease, box-shadow .3s ease, background-color .3s ease;
+}
+.ag-stepnode--active { border-color: rgba(124, 58, 237, .8); color: #fff; background: rgba(124, 58, 237, .18); box-shadow: 0 0 0 5px rgba(124, 58, 237, .12); }
+.ag-stepnode--done { border-color: rgba(52, 211, 153, .5); color: #6EE7B7; background: rgba(16, 185, 129, .10); }
+/* the tick that rides on a finished node */
+.ag-stepnode__check {
+  position: absolute; right: -3px; bottom: -3px; width: 18px; height: 18px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--ag-accent); color: #fff; box-shadow: 0 0 0 3px var(--ag-surface);
+}
+.ag-stepline { flex: 1 1 auto; height: 1px; margin-top: 23px; border-top: 1px dashed rgba(255, 255, 255, .14); }
+.ag-stepline--done { border-top-style: solid; border-top-color: rgba(124, 58, 237, .5); }
+
+/* ── numbered rows: the AI Guide's steps and the Deliverables ─────────────────────────────────── */
+.ag-row {
+  display: flex; align-items: center; gap: 16px;
+  min-height: 72px; padding: 12px 18px; border-radius: 16px;
+  border: 1px solid var(--ag-line); background: rgba(255, 255, 255, .025);
+  transition: border-color .22s ease, background-color .22s ease, transform .22s cubic-bezier(.16, 1, .3, 1);
+}
+.ag-row:hover { border-color: var(--ag-line-strong); background: rgba(255, 255, 255, .04); }
+.ag-row--next { border-color: rgba(124, 58, 237, .5); background: linear-gradient(180deg, rgba(124, 58, 237, .12), rgba(255, 255, 255, .02)); }
+.ag-row--open { border-color: rgba(124, 58, 237, .34); background: linear-gradient(180deg, rgba(124, 58, 237, .10), rgba(255, 255, 255, .02)); }
+/* a note, not a step: nothing to tick, so it recedes */
+.ag-row--info { border-style: dashed; background: transparent; }
+.ag-row--done { opacity: .62; }
+.ag-row__num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; flex: 0 0 34px; border-radius: 50%;
+  background: var(--ag-accent); color: #fff; font-weight: 700; font-size: 13px;
+  box-shadow: 0 10px 24px -14px rgba(37, 99, 235, 1);
+}
+.ag-row__num--quiet { background: rgba(255, 255, 255, .06); color: var(--ag-muted); box-shadow: none; }
+
+/* ── the AI Guide once the first asset lands: one 72px strip ──────────────────────────────────── */
+.ag-strip {
+  display: flex; align-items: center; gap: 14px;
+  min-height: 72px; padding: 0 18px; border-radius: 18px;
+  border: 1px solid var(--ag-line); background: var(--ag-glass-soft);
+  transition: border-color .22s ease, background-color .22s ease;
+}
+.ag-strip:hover { border-color: rgba(124, 58, 237, .4); background: rgba(124, 58, 237, .07); }
 
 /* ── stage rail (what DTS is doing right now) ─────────────────────────────────────────────────── */
 .ag-track { position: relative; height: 4px; border-radius: 999px; background: rgba(255, 255, 255, .07); overflow: hidden; }

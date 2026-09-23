@@ -107,10 +107,10 @@ describe("the AI platform inputs", () => {
 
     expect((await screen.findByTestId("voice-brief")).textContent).toContain("Say we open at 6 am");
     expect(screen.getByTestId("scene-plan").textContent).toContain("the spare-parts rack");
-    expect(screen.getByText("2. VIDEO BOTTOM LABEL")).toBeTruthy();
+    expect(screen.getByText("Video Bottom Label")).toBeTruthy();
 
     const generator = screen.getByTestId("overlay-image-generator");
-    expect(generator.textContent).toContain("7. Overlay Text Image Generator");
+    expect(generator.textContent).toContain("Overlay Text Image Generator");
     fireEvent.click(screen.getAllByText("Generate").find((el) => generator.contains(el))!);
     expect((await screen.findByTestId("overlay-image-prompt")).textContent).toContain('"SAME-DAY SERVICE"');
     expect(screen.getByTestId("overlay-cue").textContent).toBe("From “Line” → To “one”");

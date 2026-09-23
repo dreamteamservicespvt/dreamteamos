@@ -2,10 +2,13 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import {
   Wand2, Sparkles, Layout, Type, Rocket, AlertCircle,
   Loader2, Save, Check, Camera, Video, PenTool, ChevronDown, Copy,
-  ExternalLink, StopCircle, ArrowLeft, CheckCircle2, Home, Ratio, Languages, Type as TypeIcon, Music
+  ExternalLink, StopCircle, ArrowLeft, CheckCircle2, Home, Ratio, Languages, Type as TypeIcon, Music,
+  History, Image as ImageIcon, FileText, Mic, Package, Store, CreditCard, Files, Upload, Settings2, Download, Clock,
+  type LucideIcon
 } from 'lucide-react';
 import { cueRange, cueWords } from '@/utils/wordTiming';
 import { cn } from '@/lib/utils';
+import { getRoleLabel } from '@/utils/roleHelpers';
 import { FileUpload } from './FileUpload';
 import { GeneratedCard, parseVoiceOverClips, stripAttachmentDirective } from './GeneratedCard';
 import { buildPromptAttachments, type PromptAttachment } from '@/utils/promptAttachments';
@@ -17,7 +20,7 @@ import { DEFAULT_POSTER_SIZE, isPosterCategory, isValidPosterSize, posterSizeLab
 import { AUTO_POSTER_STYLE } from '@/services/posterStyles';
 import { useAssignmentBrief } from '@/hooks/useAssignmentBrief';
 import { briefAsInstructions } from '@/utils/adRequirement';
-import { GEMINI_URL } from './generation/mission';
+import { CHATGPT_URL, GEMINI_URL } from './generation/mission';
 import { characterPackGroups, getCharacterPack, isCustomPack, isHumanPack, packModelGender } from '@/services/characterPacks';
 import { attireOptionsFor, castLabelFor } from '@/utils/adRequirement';
 import { DOCUMENT_ROUTE_HINT } from './FileUpload';
@@ -38,7 +41,7 @@ import { clipLabel, clipRange, formatClipLine, formatClipScript, parseLabeledCli
 import { CUSTOM_FESTIVAL_OPTION, WISHES_FESTIVALS } from '@/utils/festivals';
 import { measureRun, saveRunTiming, type Checkpoint, type RunProfile } from '@/utils/generationEta';
 import { hasGeneratedAsset, type GenerationRun, type RunFacts } from './generation/run';
-import { MissionWorkspace, RunCountdown, missionMotion } from './generation/MissionWorkspace';
+import { MissionStepper, MissionWorkspace, RunCountdown, missionMotion } from './generation/MissionWorkspace';
 import { AIGuideSheet } from './generation/AIGuideSheet';
 import { RefineRevisionBanner, type VoiceOverRevision } from './RefineRevisionBanner';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
@@ -145,6 +148,14 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
    * workspace's own leaf component so it never re-renders this screen.
    */
   const [activeRun, setActiveRun] = useState<GenerationRun | null>(null);
+  /**
+   * Which of the two left-hand sections is open — they share one space.
+   *
+   * Assets and Configuration used to be stacked, so reaching the duration meant scrolling past every
+   * upload slot. Now the one that opens takes the room the other gives back (see .ag-morph in
+   * adgen.css), and during a run both shut so the panel reads as the finished brief it is.
+   */
+  const [leftPanel, setLeftPanel] = useState<'assets' | 'config' | null>('assets');
   /** The member's side of the run — tabs opened, logo attached — shared by the workspace and the guide. */
   const [missionDone, setMissionDone] = useState<Record<string, boolean>>({});
   const [guideOpen, setGuideOpen] = useState(false);
@@ -910,6 +921,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     setStatus({ step: 'Initializing...', isProcessing: true, error: null, progress: 0 });
     setOutputs(null);
     setActiveRun({ id: runStartedAt, profile: runProfile, checkpoints: [{ percent: 0, at: runStartedAt }], facts: currentRunFacts() });
+    setLeftPanel(null);
     setMissionDone({});
     setGuideOpen(false);
     setVoiceOverRevision(null);
@@ -1090,6 +1102,21 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     }
   };
 
+  /** What the shut Assets panel shows: every slot, and what has actually been given to it. */
+  const assetTiles = [
+    { label: 'Business Logo', icon: ImageIcon, hint: 'PNG / JPG', count: files.logo ? 1 : 0 },
+    { label: 'Visiting Card', icon: CreditCard, hint: 'Front & back', count: files.visitingCard.length },
+    { label: 'Store / Office', icon: Store, hint: 'Inside, outside', count: files.storeImage.length },
+    { label: 'Product Images', icon: Package, hint: 'Your products', count: files.productImages.length },
+    { label: 'Flyers / Posters', icon: Files, hint: 'Offers, brochures', count: files.flyersPosters.length },
+    { label: 'Voice Instructions', icon: Mic, hint: 'Audio note', count: files.voiceRecording.length },
+  ];
+
+  /** The shut Configuration panel says what the run is set to, not what the panel contains. */
+  const configSummary = creationMode === 'poster'
+    ? `Poster · ${posterSizeLabel(formData.posterSize || DEFAULT_POSTER_SIZE)} · ${formData.posterTextLanguage || 'English'}`
+    : `${formData.adType === AdType.FESTIVAL ? 'Festival wishes' : 'Commercial'} · ${formData.aspectRatio} · ${formData.duration}s · ${formData.language || 'Telugu'}`;
+
   return (
     <div className="adgen fixed inset-0 z-50 flex flex-col overflow-hidden">
       {ConfirmDialog}
@@ -1146,8 +1173,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
         <div className="flex items-center gap-3 min-w-0">
           <BrandLogo variant="mark" on="dark" alt="DTS — Dream Team Services" className="h-7 sm:h-8 w-auto shrink-0" />
           {/* the company mark and the product name are two marks — a hairline keeps them from reading as one */}
-          <span className="w-px h-6 sm:h-7 bg-white/10 shrink-0" />
-          <div className="min-w-0 leading-tight">
+          <span className="hidden sm:block w-px h-6 sm:h-7 bg-white/10 shrink-0" />
+          <div className="min-w-0 leading-tight hidden sm:block">
             <h1 className="ag-h2 text-[15px] sm:text-base">DTS AdGen<span style={{ color: '#67E8F9' }}>.ai</span></h1>
             <p className="hidden sm:block text-[11px] ag-muted">Just dream big, we build it.</p>
           </div>
@@ -1176,13 +1203,20 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
             <span className="ag-halo w-1.5 h-1.5 rounded-full bg-violet-300 inline-block" />
             Generating · {Math.round(status.progress)}%
           </span>
-        ) : outputs ? (
+        ) : (
           <span className="ag-chip ag-badge--ok hidden sm:inline-flex">
-            <Check className="w-3 h-3" />{saveSuccess ? 'Saved' : 'Ready'}
+            {outputs ? <Check className="w-3 h-3" /> : <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 inline-block" />}
+            {saveSuccess ? 'Saved' : 'Ready'}
           </span>
-        ) : null}
+        )}
 
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* Every generation this member has run, same list as before — it just lives up here now,
+              where it is reachable at any stage instead of only once assets exist. */}
+          <button type="button" onClick={() => setShowSavedItems(true)} data-test="project-history"
+            className="ag-btn ag-btn--secondary ag-btn--sm sm:h-11 sm:px-[18px] sm:text-sm">
+            <History className="w-4 h-4" /><span className="hidden lg:inline">Project History</span>
+          </button>
           {onComplete && (
             // Disabled and visibly busy while submitting. Submitting does several writes and can
             // take seconds on mobile data; a button that looked unchanged the whole time is what
@@ -1196,6 +1230,17 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                 ? <><Loader2 className="w-4 h-4 animate-spin" /><span>Submitting…</span></>
                 : <><CheckCircle2 className="w-4 h-4" /><span className="hidden sm:inline">Mark Complete</span><span className="sm:hidden">Done</span></>}
             </button>
+          )}
+          {user?.name && (
+            <div className="hidden xl:flex items-center gap-2.5 pl-2.5 ml-0.5 border-l border-white/10">
+              <span className={cn("w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-bold text-white", BRAND_GRADIENT)}>
+                {user.name.trim().split(/s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase()}
+              </span>
+              <span className="leading-tight min-w-0">
+                <span className="block text-[13px] font-semibold text-slate-100 truncate max-w-[120px]">{user.name}</span>
+                <span className="block text-[11px] ag-muted truncate max-w-[120px]">{user.role ? getRoleLabel(user.role) : 'Team'}</span>
+              </span>
+            </div>
           )}
           <button onClick={onClose} className="ag-btn ag-btn--secondary ag-btn--sm sm:h-11 sm:px-[18px] sm:text-sm">
             <Home className="w-4 h-4" /><span className="hidden md:inline">Close project</span><span className="md:hidden">Home</span>
@@ -1213,50 +1258,42 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
         </div>
         <main className="relative max-w-[1520px] mx-auto px-3 sm:px-6 lg:px-10 py-6 sm:py-10">
 
-          {/* Hero — what this workspace is building, in one look */}
-          <div className="flex flex-wrap items-end justify-between gap-6 mb-8">
-            <div className="min-w-0">
-              <div className="ag-chip ag-badge--run mb-4">
-                <Sparkles className="w-3.5 h-3.5" />
-                {creationMode === 'poster'
-                  ? `Poster · ${posterSizeLabel(formData.posterSize || DEFAULT_POSTER_SIZE)}`
-                  : `${formData.adType === AdType.FESTIVAL ? 'Festival film' : 'Promotional film'} · ${formData.duration}s · ${formData.language || 'Telugu'}`}
-              </div>
-              <h2 className="ag-display text-3xl sm:text-[44px]">Generated Ad Kit</h2>
-              <p className="mt-3 text-sm sm:text-[15px] leading-6 text-slate-400 max-w-2xl">
-                {creationMode === 'poster'
-                  ? 'Poster concepts written from this client’s own assets — idea, headline and a ready image prompt for each one.'
-                  : 'Seven deliverables written from this client’s own assets — frames, poster, voice-over, B-roll, camera direction and VEO prompts, ready to copy into production.'}
-              </p>
-            </div>
-            {outputs && (
-              <div className="flex items-center gap-2 shrink-0">
-                <button type="button" onClick={() => setShowSavedItems(true)} className="ag-btn ag-btn--secondary ag-btn--sm">
-                  <Layout className="w-4 h-4" /><span className="hidden sm:inline">History</span>
-                </button>
-                <button type="button" onClick={handleSave} disabled={isSaving || saveSuccess}
-                  className={cn("ag-btn ag-btn--sm", saveSuccess ? "ag-btn--ok" : "ag-btn--secondary")}>
-                  {saveSuccess ? <><Check className="w-4 h-4" />Saved</> : isSaving ? <><Loader2 className="w-4 h-4 animate-spin" />Saving…</> : <><Save className="w-4 h-4" />Save</>}
-                </button>
-              </div>
-            )}
-          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-[18px] lg:gap-6 items-start">
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+            {/* LEFT: INPUTS — one section open at a time */}
+            <div className="lg:col-span-4 space-y-[18px]">
+              {/* 1 · Assets & Files */}
+              <section className={cn("ag-sec", leftPanel === 'assets' && "ag-sec--open")}>
+                <button type="button" data-test="section-assets"
+                  onClick={() => setLeftPanel(leftPanel === 'assets' ? null : 'assets')}
+                  aria-expanded={leftPanel === 'assets'}
+                  className="ag-sec__head">
+                  <span className="ag-ico"><ImageIcon className="w-5 h-5" /></span>
+                  <span className="min-w-0 flex-1">
+                    <span className="ag-h2 block text-[17px] text-white">1. Assets &amp; Files</span>
+                    <span className="ag-muted block text-[12px] mt-0.5 truncate">Upload your business material (max 2 images per section)</span>
+                  </span>
+                  <ChevronDown className={cn("w-4 h-4 shrink-0 ag-acc__chev", leftPanel === 'assets' && "rotate-180")} />
+                </button>
 
-            {/* LEFT: INPUTS */}
-            <div className="lg:col-span-5 space-y-5 sm:space-y-6">
-              {/* File Upload */}
-              <div className="ag-card p-4 sm:p-6">
-                <div className="flex items-center gap-3 mb-5 sm:mb-6">
-                  <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-600/25", BRAND_GRADIENT)}>
-                    <Layout className="w-5 h-5" />
+                {/* Shut, the panel still says what has been given to the run — and each tile opens it. */}
+                {leftPanel !== 'assets' && (
+                  <div className="grid grid-cols-3 gap-2.5 px-5 pb-5">
+                    {assetTiles.map(tile => (
+                      <button key={tile.label} type="button" onClick={() => setLeftPanel('assets')}
+                        className="ag-tile-up">
+                        <tile.icon className={cn("w-[18px] h-[18px]", tile.count > 0 ? "text-emerald-300" : "text-slate-400")} />
+                        <span className="text-[11px] font-semibold text-slate-200 leading-tight">{tile.label}</span>
+                        <span className={cn("text-[10px]", tile.count > 0 ? "text-emerald-300" : "ag-muted")}>
+                          {tile.count > 0 ? `${tile.count} added` : tile.hint}
+                        </span>
+                      </button>
+                    ))}
                   </div>
-                  <div>
-                    <h2 className={cn("text-base sm:text-lg font-bold leading-tight", isDark ? "text-white" : "text-slate-800")}>Assets &amp; Files</h2>
-                    <p className={cn("text-[11px]", isDark ? "text-slate-500" : "text-slate-400")}>Step 1 · Upload the business material</p>
-                  </div>
-                </div>
+                )}
+
+                <div className={cn("ag-morph", leftPanel === 'assets' && "ag-morph--open")}>
+                <div><div className="ag-sec__body">
                 <div className="space-y-4">
                   {/* A Real Owner Face ad is built from ONE photo — the owner's face. It gets its own
                       box, first and unmissable, because on every other ad a client photo means a
@@ -1389,19 +1426,25 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     </div>
                   </div>
                 </div>
-              </div>
-
-              {/* Configuration */}
-              <div className="ag-card p-4 sm:p-6">
-                <div className="flex items-center gap-3 mb-5 sm:mb-6">
-                  <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-lg shadow-violet-600/25", BRAND_GRADIENT)}>
-                    <Type className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h2 className={cn("text-base sm:text-lg font-bold leading-tight", isDark ? "text-white" : "text-slate-800")}>Configuration</h2>
-                    <p className={cn("text-[11px]", isDark ? "text-slate-500" : "text-slate-400")}>Step 2 · Choose how the ad is made</p>
-                  </div>
+                </div></div>
                 </div>
+              </section>
+
+              {/* 2 · Configuration */}
+              <section className={cn("ag-sec", leftPanel === 'config' && "ag-sec--open")}>
+                <button type="button" data-test="section-configuration"
+                  onClick={() => setLeftPanel(leftPanel === 'config' ? null : 'config')}
+                  aria-expanded={leftPanel === 'config'}
+                  className="ag-sec__head">
+                  <span className="ag-ico"><Settings2 className="w-5 h-5" /></span>
+                  <span className="min-w-0 flex-1">
+                    <span className="ag-h2 block text-[17px] text-white">2. Configuration</span>
+                    <span className="ag-muted block text-[12px] mt-0.5 truncate">{configSummary}</span>
+                  </span>
+                  <ChevronDown className={cn("w-4 h-4 shrink-0 ag-acc__chev", leftPanel === 'config' && "rotate-180")} />
+                </button>
+                <div className={cn("ag-morph", leftPanel === 'config' && "ag-morph--open")}>
+                <div><div className="ag-sec__body">
                 <div className="space-y-5">
                   {/* Creation Mode */}
                   <div>
@@ -1998,46 +2041,89 @@ clip-2[8-16sec]: second spoken line`}</pre>
                     </div>
                   )}
 
-                  {/* Generate Button */}
-                  <div className="flex space-x-2">
-                    <button onClick={handleGenerate} disabled={status.isProcessing} className="ag-btn ag-btn--primary ag-btn--lg flex-1">
-                      {status.isProcessing ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Rocket className="w-5 h-5" />}
-                      <span>{status.isProcessing ? 'Processing...' : creationMode === 'poster' ? 'Generate Poster Concepts' : 'Start Generation'}</span>
-                    </button>
-                    {status.isProcessing && (
-                      <button onClick={handleStopGeneration}
-                        className="py-3.5 px-4 rounded-2xl bg-red-500 hover:bg-red-600 text-white font-bold text-sm flex items-center space-x-2 active:scale-[0.98] transition-all">
-                        <StopCircle className="w-5 h-5" /><span>Stop</span>
-                      </button>
-                    )}
-                  </div>
-                  {status.error && (
-                    <div className="flex items-start space-x-2 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 p-3 rounded-lg text-sm">
-                      <AlertCircle className="w-5 h-5 flex-shrink-0" /><span>{status.error}</span>
-                    </div>
-                  )}
                 </div>
+                </div></div>
+                </div>
+              </section>
+
+              {/*
+                The one action, in the one place — below both sections, whichever is open. Stop stays
+                beside it while a run is going: it is the only way to call a run off.
+              */}
+              <div className="flex gap-2.5">
+                <button onClick={handleGenerate} disabled={status.isProcessing} className="ag-btn ag-btn--primary ag-btn--lg flex-1 h-[56px] text-[15px]">
+                  {status.isProcessing ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Rocket className="w-5 h-5" />}
+                  <span>{status.isProcessing ? 'Processing...' : creationMode === 'poster' ? 'Generate Poster Concepts' : 'Start Generation'}</span>
+                </button>
+                {status.isProcessing && (
+                  <button onClick={handleStopGeneration} className="ag-btn ag-btn--danger ag-btn--lg h-[56px]">
+                    <StopCircle className="w-5 h-5" /><span>Stop</span>
+                  </button>
+                )}
               </div>
+              {status.error && (
+                <div className="ag-chip ag-badge--bad w-full h-auto justify-start rounded-2xl px-4 py-3 text-left text-[13px] leading-relaxed">
+                  <AlertCircle className="w-4 h-4 shrink-0" /><span>{status.error}</span>
+                </div>
+              )}
+
+              {/* What a good brief looks like — read once, then ignored; it never blocks the form. */}
+              {!outputs && !status.isProcessing && (
+                <div className="ag-sec flex items-start gap-3 p-4">
+                  <span className="ag-row__num ag-row__num--quiet shrink-0"><Sparkles className="w-4 h-4 text-amber-300" /></span>
+                  <p className="text-[12px] leading-relaxed">
+                    <span className="block font-semibold text-slate-200 mb-0.5">Tip</span>
+                    <span className="ag-muted">Better assets = better ad kit. Upload clear, high-quality images and write the business details in full.</span>
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* RIGHT: OUTPUTS */}
-            <div className="lg:col-span-7" ref={outputPanelRef}>
-              {(status.isProcessing || status.step) && (
-                <div className="ag-card px-5 py-4 mb-5">
-                  <div className="flex items-center justify-between mb-2.5">
-                    <h2 className="ag-eyebrow">Generation status</h2>
-                    <div className="flex items-center gap-2 text-xs">
-                      <Wand2 className={cn("w-3.5 h-3.5 text-blue-500", status.isProcessing && "animate-pulse")} />
-                      <span className={cn(status.isProcessing && "animate-pulse", isDark ? "text-slate-400" : "text-slate-600")}>{status.step}</span>
+            <div className="lg:col-span-8" ref={outputPanelRef}>
+              {(status.isProcessing || status.step || outputs) && (
+                <div className="ag-card p-5 sm:p-6 mb-[18px]">
+                  <div className="flex items-center gap-4">
+                    <span className={cn("ag-ico w-12 h-12 flex-[0_0_48px] rounded-2xl", !status.isProcessing && outputs && "ag-btn--ok")}>
+                      {status.isProcessing
+                        ? <Loader2 className="w-5 h-5 animate-spin" />
+                        : outputs ? <Check className="w-6 h-6" strokeWidth={3} /> : <Wand2 className="w-5 h-5" />}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <h2 className="ag-h2 text-[18px] sm:text-[20px] text-white leading-tight">Generation Status</h2>
+                      <p className="ag-muted text-[13px] mt-0.5 truncate">
+                        {status.isProcessing
+                          ? 'DTS is preparing your complete ad kit using AI. This may take a few minutes.'
+                          : outputs ? 'Your ad kit has been successfully generated.' : status.step}
+                      </p>
+                      {status.isProcessing && status.step && (
+                        <p className="flex items-center gap-1.5 mt-1.5 text-[12px] text-violet-200">
+                          <Wand2 className="w-3.5 h-3.5 animate-pulse shrink-0" /><span className="truncate">{status.step}</span>
+                        </p>
+                      )}
+                    </div>
+                    <div className="hidden sm:flex items-center gap-3 shrink-0">
                       {/* The workspace leaves at the first asset, but the run goes on — so the countdown stays here. */}
                       {status.isProcessing && activeRun && !showMission && (
                         <RunCountdown run={activeRun} active isDark={isDark} variant="inline" />
                       )}
-                      <span className="ag-chip ag-num h-7 px-3 text-[13px]">{Math.round(status.progress)}%</span>
+                      {!status.isProcessing && outputs && (
+                        <span className="ag-chip ag-badge--ok"><Check className="w-3 h-3" />Completed</span>
+                      )}
+                      <span className="ag-num text-[26px] text-white leading-none">{Math.round(status.progress)}%</span>
                     </div>
                   </div>
-                  <div className="ag-progress">
+
+                  <div className="ag-progress mt-4">
                     <div className="ag-progress__fill" style={{ width: `${status.progress}%` }} />
+                  </div>
+
+                  {/* The same five milestones the guide talks in, read from the same missionStages(). */}
+                  <div className="mt-5">
+                    <MissionStepper
+                      profile={activeRun?.profile ?? currentRunProfile()}
+                      checkpoints={activeRun?.checkpoints ?? (outputs ? [{ percent: 100, at: Date.now() }] : [])}
+                    />
                   </div>
                 </div>
               )}
@@ -2057,26 +2143,33 @@ clip-2[8-16sec]: second spoken line`}</pre>
                   animate={{ opacity: 1, y: 0, transition: { duration: reduceMotion ? 0.2 : 0.45, ease: [0.22, 1, 0.36, 1] } }}
                   exit={{ opacity: 0, transition: { duration: 0.15 } }}
                 >
-                  <div className="flex items-center justify-between mb-2">
-                    <h2 className="ag-h2 text-lg sm:text-xl">
-                      Deliverables
-                      {viewingSavedItem && <span className="ml-2 text-sm font-normal ag-muted">(viewing saved)</span>}
-                    </h2>
-                    <div className="flex items-center space-x-2">
-                      {/* Where the workspace went. It pulses while the run is still going, just after the
-                          workspace has stepped aside, so the member sees where to find it again. */}
-                      <button type="button" onClick={() => setGuideOpen(true)} data-test="ai-guide-button"
-                        className={cn("ag-btn ag-btn--sm relative", status.isProcessing ? "ag-btn--primary" : "ag-btn--secondary")}>
-                        {status.isProcessing && !reduceMotion && (
-                          <span aria-hidden className="absolute inset-0 rounded-lg ring-2 ring-violet-400/50 animate-ping" />
-                        )}
-                        <Sparkles className="w-4 h-4" /><span>AI Guide</span>
-                      </button>
-                      <button onClick={handleSave} disabled={isSaving || saveSuccess}
-                        className={cn("ag-btn ag-btn--sm", saveSuccess ? "ag-btn--ok" : "ag-btn--secondary")}>
-                        {saveSuccess ? <><Check className="w-4 h-4" /><span>Saved!</span></> : isSaving ? <><Loader2 className="w-4 h-4 animate-spin" /><span>Saving...</span></> : <><Save className="w-4 h-4" /><span>Save</span></>}
-                      </button>
-                    </div>
+                  {/*
+                    The guide does not leave when the first asset lands — it folds into one strip and
+                    stays put, so the steps are still one click away while the member works down the
+                    deliverables. It pulses while the run is still going.
+                  */}
+                  <div className={cn("ag-strip", status.isProcessing && "border-violet-500/40")}>
+                    <span className="ag-ico shrink-0 relative">
+                      {status.isProcessing && !reduceMotion && (
+                        <span aria-hidden className="absolute inset-0 rounded-[14px] ring-2 ring-violet-400/50 animate-ping" />
+                      )}
+                      <Sparkles className="w-5 h-5" />
+                    </span>
+                    <button type="button" onClick={() => setGuideOpen(true)} data-test="ai-guide-button"
+                      className="min-w-0 flex-1 text-left bg-transparent border-0 p-0 cursor-pointer">
+                      <span className="ag-h2 block text-[16px] text-white leading-tight">AI Guide</span>
+                      <span className="ag-muted block text-[12px] mt-0.5 truncate">
+                        Follow these steps while DTS writes your ad kit. Reopen anytime.
+                      </span>
+                    </button>
+                    <a href={creationMode === 'poster' ? GEMINI_URL : CHATGPT_URL} target="_blank" rel="noopener noreferrer"
+                      className="ag-btn ag-btn--secondary ag-btn--sm hidden sm:inline-flex shrink-0">
+                      {creationMode === 'poster' ? 'Open in Gemini' : 'Open in ChatGPT'} <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+                    </a>
+                    <button type="button" onClick={() => setGuideOpen(true)} aria-label="Open the AI Guide"
+                      className="ag-btn ag-btn--icon ag-btn--sm shrink-0">
+                      <ChevronDown className="w-4 h-4 -rotate-90" />
+                    </button>
                   </div>
 
                   {/* Business Intelligence extracted silently - not shown */}
@@ -2145,13 +2238,32 @@ clip-2[8-16sec]: second spoken line`}</pre>
                     </div>
                   )}
 
-                  {/* Video outputs */}
+                  {/* Video outputs — one card, one row per deliverable, in the order they are used */}
+                  <div className="ag-card p-4 sm:p-5">
+                  <div className="flex items-center justify-between gap-3 mb-4 px-1">
+                    <h2 className="ag-h2 text-[20px] sm:text-[22px] text-white">
+                      Deliverables
+                      {viewingSavedItem && <span className="ml-2 text-sm font-normal ag-muted">(viewing saved)</span>}
+                    </h2>
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => setShowSavedItems(true)} className="ag-btn ag-btn--secondary ag-btn--sm">
+                        <Clock className="w-4 h-4" /><span className="hidden sm:inline">View History</span>
+                      </button>
+                      <button onClick={handleSave} disabled={isSaving || saveSuccess}
+                        className={cn("ag-btn ag-btn--sm", saveSuccess ? "ag-btn--ok" : "ag-btn--secondary")}>
+                        {saveSuccess ? <><Check className="w-4 h-4" /><span>Saved!</span></> : isSaving ? <><Loader2 className="w-4 h-4 animate-spin" /><span>Saving...</span></> : <><Save className="w-4 h-4" /><span>Save</span></>}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-2.5">
                   {creationMode === 'video' && outputs.mainFramePrompts?.length > 0 && (
                       <OutputSection title={`1. Main Frame Prompts (${outputs.mainFramePrompts.length} Clips)`} sectionKey="mainFrame"
+                        icon={ImageIcon}
+                        subtitle="One tab per clip, in order. Main Frame prompt 1 goes into tab 1, prompt 2 into tab 2, and so on."
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                         isDark={isDark}
                         quickCopyItems={outputs.mainFramePrompts.map(p => stripAttachmentDirective(p).body)}
-                        quickCopyAttachments={mainFrameAttachments}>
+                        quickCopyLabel="Tab " quickCopyAttachments={mainFrameAttachments}>
                         <GeneratedCard title="Main Frame" content={outputs.mainFramePrompts} variant="dropdown" sectionType="mainFrame"
                           attachments={mainFrameAttachments}
                           showRefinement={true} onRefine={(i) => handleRefineSection('mainFrame', i)} isRefining={refiningSection === 'mainFrame'} hideTitle />
@@ -2159,7 +2271,9 @@ clip-2[8-16sec]: second spoken line`}</pre>
                   )}
 
                   {creationMode === 'video' && outputs.headerPrompt && (
-                      <OutputSection title="2. VIDEO BOTTOM LABEL" sectionKey="header"
+                      <OutputSection title="2. Video Bottom Label" sectionKey="header"
+                        icon={TypeIcon}
+                        subtitle="Text for the bottom label to be added in the video."
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                         isDark={isDark} copyContent={outputs.headerPrompt}>
                         <GeneratedCard title="Video Bottom Label" content={outputs.headerPrompt} sectionType="header"
@@ -2169,6 +2283,8 @@ clip-2[8-16sec]: second spoken line`}</pre>
 
                   {creationMode === 'video' && outputs.posterPrompt && (
                       <OutputSection title="3. Poster Design" sectionKey="poster"
+                        icon={PenTool}
+                        subtitle="Poster design prompt for the promotional poster."
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                         isDark={isDark} copyContent={outputs.posterPrompt}>
                         <GeneratedCard title="Poster" content={outputs.posterPrompt} isJson sectionType="poster"
@@ -2184,6 +2300,8 @@ clip-2[8-16sec]: second spoken line`}</pre>
                       // the whole-script copy and the per-clip copies read the same way.
                       return (
                       <OutputSection title={`4. Voice Over Script (${formData.language || 'Telugu'})`} sectionKey="voiceOver"
+                        icon={Mic}
+                        subtitle={`Complete voice-over script with timing for ${voiceClips.length || 'all'} clip${voiceClips.length === 1 ? '' : 's'}.`}
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                         isDark={isDark}
                         copyContent={hasClips ? formatClipScript(voiceClips.map(c => c.text)) : outputs.voiceOverScript}
@@ -2216,6 +2334,8 @@ clip-2[8-16sec]: second spoken line`}</pre>
 
                   {creationMode === 'video' && outputs.veoPrompts?.length > 0 && (
                       <OutputSection title="5. Veo 3 Video Prompts" sectionKey="veo"
+                        icon={Video}
+                        subtitle={`Cinematic video generation prompts for ${outputs.veoPrompts.length} clip${outputs.veoPrompts.length === 1 ? '' : 's'}.`}
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                         isDark={isDark} quickCopyItems={outputs.veoPrompts} quickCopyLabel="clip-" quickCopyNamespace="veo"
                         quickCopyRanges={outputs.veoPrompts.map((_, i) => `[${clipRange(i)}sec]`)}>
@@ -2228,12 +2348,15 @@ clip-2[8-16sec]: second spoken line`}</pre>
 
                   {/* Stock Image Prompts */}
                   {creationMode === 'video' && outputs.voiceOverScript && (
-                        <div className="ag-acc ag-acc--open">
-                          <div className="relative px-4 py-3 border-b border-white/[0.07] flex justify-between items-center">
-                            <div className={cn("absolute left-0 top-0 bottom-0 w-1", BRAND_GRADIENT)} />
-                            <div className="flex items-center space-x-2 pl-1.5">
-                              <Camera className="w-4 h-4 text-teal-500" />
-                              <h3 className={cn("font-semibold text-sm uppercase tracking-wide", isDark ? "text-slate-200" : "text-slate-800")}>6. Stock Image Prompts (B-Roll)</h3>
+                        <div className="ag-row flex-col items-stretch !p-0">
+                          <div className="relative px-4 sm:px-5 py-3 min-h-[72px] flex justify-between items-center gap-3">
+                            <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                              <span className="ag-row__num shrink-0">6</span>
+                              <span className="ag-tile shrink-0 w-10 h-10 flex-[0_0_40px]"><Camera className="w-[18px] h-[18px] text-violet-200" /></span>
+                              <div className="min-w-0">
+                                <h3 className="ag-h2 text-[15px] sm:text-[16px] text-white truncate">Stock Image Prompts (B-Roll)</h3>
+                                <p className="ag-muted text-[12px] truncate">Additional stock image prompts for editing B-roll and overlays.</p>
+                              </div>
                             </div>
                             {!outputs.stockImagePrompts && (
                               <div className="flex items-center space-x-2">
@@ -2244,20 +2367,17 @@ clip-2[8-16sec]: second spoken line`}</pre>
                                   <option value="east-asian">🇯🇵 East Asian</option><option value="african">🇿🇦 African</option><option value="universal">🌍 Universal</option>
                                 </select>
                                 <button onClick={handleGenerateStockImages} disabled={isGeneratingStock}
-                                  className={cn("flex items-center space-x-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all",
-                                    isGeneratingStock ? (isDark ? "bg-white/[0.08] text-slate-400 cursor-not-allowed" : "bg-slate-100 text-slate-400")
-                                      : (isDark ? "bg-teal-900/40 text-teal-400 hover:bg-teal-900/60 border border-teal-700/50" : "bg-teal-50 text-teal-700 hover:bg-teal-100 border border-teal-200")
-                                  )}>
+                                  className="ag-btn ag-btn--primary ag-btn--sm h-9">
                                   {isGeneratingStock ? <><Loader2 className="w-3 h-3 animate-spin" /><span>Generating...</span></> : <><Sparkles className="w-3 h-3" /><span>Generate</span></>}
                                 </button>
                               </div>
                             )}
                           </div>
-                          <div className="p-4">
+                          <div className={cn(!outputs.stockImagePrompts && !isGeneratingStock ? "px-4 pb-3" : "p-4")}>
                             {!outputs.stockImagePrompts && !isGeneratingStock && (
-                              <div className={cn("text-center py-6", isDark ? "text-slate-500" : "text-slate-400")}>
-                                <Camera className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                                <p className="text-sm font-medium">Stock image prompts for editing B-roll</p>
+                              <div className="ag-muted flex items-center gap-2 text-[12px]">
+                                <Camera className="w-4 h-4 shrink-0 opacity-50" />
+                                <p className="text-[12px]">Stock image prompts for editing B-roll</p>
                               </div>
                             )}
                             {stockImageError && (
@@ -2332,27 +2452,28 @@ clip-2[8-16sec]: second spoken line`}</pre>
 
                   {/* 7. Overlay Text Image Generator — each overlay as a premium 3D transparent PNG prompt */}
                   {creationMode === 'video' && outputs.voiceOverScript && (
-                    <div data-test="overlay-image-generator" className="ag-acc ag-acc--open">
-                      <div className="relative px-4 py-3 border-b border-white/[0.07] flex justify-between items-center gap-2">
-                        <div className={cn("absolute left-0 top-0 bottom-0 w-1", BRAND_GRADIENT)} />
-                        <div className="flex items-center space-x-2 pl-1.5 min-w-0">
-                          <TypeIcon className="w-4 h-4 text-amber-500 flex-shrink-0" />
-                          <h3 className={cn("font-semibold text-sm uppercase tracking-wide", isDark ? "text-slate-200" : "text-slate-800")}>7. Overlay Text Image Generator</h3>
+                    <div data-test="overlay-image-generator" className="ag-row flex-col items-stretch !p-0">
+                      <div className="relative px-4 sm:px-5 py-3 min-h-[72px] flex justify-between items-center gap-3">
+                        <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                          <span className="ag-row__num shrink-0">7</span>
+                          <span className="ag-tile shrink-0 w-10 h-10 flex-[0_0_40px]"><TypeIcon className="w-[18px] h-[18px] text-violet-200" /></span>
+                          <div className="min-w-0">
+                            <h3 className="ag-h2 text-[15px] sm:text-[16px] text-white truncate">Overlay Text Image Generator</h3>
+                            <p className="ag-muted text-[12px] truncate">Key text overlays as ready image prompts.</p>
+                          </div>
                         </div>
                         <button onClick={handleGenerateOverlayTexts} disabled={isGeneratingOverlay}
-                          className={cn("flex items-center space-x-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all flex-shrink-0",
-                            isGeneratingOverlay ? (isDark ? "bg-white/[0.08] text-slate-400 cursor-not-allowed" : "bg-slate-100 text-slate-400")
-                              : (isDark ? "bg-amber-900/40 text-amber-400 hover:bg-amber-900/60 border border-amber-700/50" : "bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200"))}>
+                          className="ag-btn ag-btn--primary ag-btn--sm h-9 shrink-0">
                           {isGeneratingOverlay
                             ? <><Loader2 className="w-3 h-3 animate-spin" /><span>Generating...</span></>
                             : <><Sparkles className="w-3 h-3" /><span>{outputs.overlayTexts ? 'Regenerate' : 'Generate'}</span></>}
                         </button>
                       </div>
-                      <div className="p-4">
+                      <div className={cn(!outputs.overlayTexts && !isGeneratingOverlay ? "px-4 pb-3" : "p-4")}>
                         {!outputs.overlayTexts && !isGeneratingOverlay && (
-                          <div className={cn("text-center py-6", isDark ? "text-slate-500" : "text-slate-400")}>
-                            <TypeIcon className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                            <p className="text-sm font-medium">Each key point as a ready image prompt for a premium 3D transparent PNG — themed to the business or the festival — with its CapCut sound effect and the words it comes in on</p>
+                          <div className="ag-muted flex items-start gap-2 text-[12px]">
+                            <TypeIcon className="w-4 h-4 shrink-0 opacity-50 mt-0.5" />
+                            <p className="text-[12px] leading-relaxed">Each key point as a ready image prompt for a premium 3D transparent PNG — themed to the business or the festival — with its CapCut sound effect and the words it comes in on</p>
                           </div>
                         )}
                         {overlayError && (
@@ -2441,10 +2562,11 @@ clip-2[8-16sec]: second spoken line`}</pre>
                       </div>
                     </div>
                   )}
+                  </div>
+                  </div>
                 </motion.div>
               ) : showMission && activeRun ? (
-                <motion.div key={`mission-${activeRun.id}`} {...missionMotion(reduceMotion)} className="space-y-3">
-                  <h2 className="ag-eyebrow">Mission workspace</h2>
+                <motion.div key={`mission-${activeRun.id}`} {...missionMotion(reduceMotion)}>
                   <MissionWorkspace run={activeRun} done={missionDone} onToggle={toggleMission} isDark={isDark} />
                 </motion.div>
               ) : !status.isProcessing ? (
@@ -2497,6 +2619,9 @@ clip-2[8-16sec]: second spoken line`}</pre>
 // Collapsible Output Section wrapper
 const OutputSection: React.FC<{
   title: string; sectionKey: string; children: React.ReactNode;
+  /** What this deliverable is for, in one line — read far more often than the section is opened. */
+  subtitle?: string;
+  icon?: LucideIcon;
   collapsedOutputs: Record<string, boolean>; toggleOutputSection: (s: string) => void;
   isDark: boolean;
   copyContent?: string;
@@ -2508,7 +2633,7 @@ const OutputSection: React.FC<{
   quickCopyRanges?: string[];
   /** Per-item "attach this photo", surfaced on the quick-copy chips as the photo itself. */
   quickCopyAttachments?: (PromptAttachment | null)[];
-}> = ({ title, sectionKey, children, collapsedOutputs, toggleOutputSection, isDark, copyContent, copyLabel, quickCopyItems, quickCopyLabel, quickCopyNamespace, quickCopyRanges, quickCopyAttachments }) => {
+}> = ({ title, sectionKey, children, subtitle, icon: Icon = FileText, collapsedOutputs, toggleOutputSection, isDark, copyContent, copyLabel, quickCopyItems, quickCopyLabel, quickCopyNamespace, quickCopyRanges, quickCopyAttachments }) => {
   const [copied, setCopied] = useState(false);
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -2518,14 +2643,20 @@ const OutputSection: React.FC<{
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+  // The number is part of the deliverable's name ("4. Voice Over Script"); on screen it is the badge.
+  const numbered = /^(\d+)\.\s*(.*)$/.exec(title);
+  const [, ordinal, name] = numbered ?? [undefined, undefined, title];
+  const open = !!collapsedOutputs[sectionKey];
   return (
-    <div className={cn("ag-acc", collapsedOutputs[sectionKey] && "ag-acc--open")}>
-      <div className="relative w-full flex items-center justify-between gap-3 px-4 py-3.5 sm:px-5">
-        <div className={cn("absolute left-0 top-0 bottom-0 w-1", BRAND_GRADIENT)} />
-        <div className="min-w-0 flex-1 pl-1.5">
-          <span className="ag-h2 text-[15px] sm:text-base text-left block truncate">{title}</span>
+    <div className={cn("ag-row flex-col items-stretch !p-0", open && "ag-row--open")}>
+      <div className="relative w-full flex flex-wrap items-center gap-x-3 gap-y-2 sm:gap-x-4 px-4 py-3 sm:px-5 min-h-[72px]">
+        {ordinal && <span className="ag-row__num shrink-0">{ordinal}</span>}
+        <span className="ag-tile shrink-0 w-10 h-10 flex-[0_0_40px]"><Icon className="w-[18px] h-[18px] text-violet-200" /></span>
+        <div className="min-w-0 flex-1 basis-[min(100%,180px)]">
+          <span className="ag-h2 text-[15px] sm:text-[16px] text-white text-left block truncate">{name}</span>
+          {subtitle && <span className="ag-muted text-[12px] hidden sm:block truncate">{subtitle}</span>}
         </div>
-        <div className="flex items-center gap-2 flex-wrap justify-end">
+        <div className="flex items-center gap-2 flex-wrap justify-end ml-auto">
           {quickCopyItems && quickCopyItems.length > 0 && (
             <QuickCopyActions prompts={quickCopyItems} isDark={isDark}
               labelPrefix={quickCopyLabel ?? 'F'} namespace={quickCopyNamespace ?? 'main-frame'}
@@ -2543,14 +2674,14 @@ const OutputSection: React.FC<{
           <button
             type="button"
             onClick={() => toggleOutputSection(sectionKey)}
-            className="ag-btn ag-btn--icon ag-btn--sm h-8 w-8"
-            aria-label={collapsedOutputs[sectionKey] ? `Collapse ${title}` : `Expand ${title}`}
+            className="ag-btn ag-btn--icon ag-btn--sm h-9 w-9"
+            aria-label={open ? `Collapse ${title}` : `Expand ${title}`}
           >
-            <ChevronDown className="ag-acc__chev w-4 h-4" />
+            <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", open && "rotate-180")} />
           </button>
         </div>
       </div>
-      {collapsedOutputs[sectionKey] && children}
+      {open && <div className="px-2 pb-2 sm:px-3 sm:pb-3">{children}</div>}
     </div>
   );
 };

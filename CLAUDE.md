@@ -4,8 +4,8 @@
 > context/architecture/history document. The **source code wins** over this file; when they
 > disagree, fix this file in the same task.
 >
-> **Last full audit:** 2026-09-22 against `main` @ `a1623ac`; last updated 2026-09-23 for the
-> AdGen studio UI (§11, §22, §31).
+> **Last full audit:** 2026-09-22 against `main` @ `a1623ac`; last updated 2026-09-24 for the
+> AdGen studio UI and its one-screen layout (§11, §22, §31).
 > **Quick start:** read **§33 AI Development Context** first, then **§29 Rules** and **§30 Change Protocol**.
 >
 > Legend: ✅ implemented · 🟡 partial · ❌ not implemented · **[NOT CONFIRMED]** = could not be
@@ -612,7 +612,10 @@ Notification deep links must use `/` + query or a route the **recipient's** role
   violet→blue→cyan `--ag-accent`) and component classes — `ag-card`, `ag-panel`, `ag-acc`
   (output sections), `ag-btn` (+`--primary/--secondary/--ok/--danger/--icon/--sm/--lg`), `ag-chip`
   with `ag-badge--ok/run/warn/bad/info`, `ag-drop` (upload states `--over/--done/--error/--owner`),
-  `ag-progress`, `ag-track`, `ag-step`, `ag-tile`, `ag-code`/`ag-codebar`, and the type classes
+  `ag-progress`, `ag-track`, `ag-step`, `ag-tile`, `ag-code`/`ag-codebar`, and — for the one-screen
+  layout (2026-09-24) — `ag-sec` (+`ag-sec__head`/`__body`), `ag-morph` (the one-at-a-time panel
+  transition), `ag-ico`, `ag-tile-up`, `ag-steps`/`ag-stepnode`/`ag-stepline`, `ag-row` (72px numbered
+  row) and `ag-strip`, plus the type classes
   `ag-display/ag-h2/ag-num/ag-eyebrow/ag-mono/ag-muted`. The `ag-*` classes and the tokens are
   global (the prefix keeps them out of the way) because Radix portals — the AI Guide sheet, the spec
   dialog — render outside the platform's root; `.adgen` itself carries the canvas, colour scheme,
@@ -1155,7 +1158,7 @@ Gemini key), the production API base URL, and CORS allow-lists in `api/*`.
 | `AppLayout` | `components/layout/` | Guard + shell + global overlays + session listeners (§11). Props `allowedRoles` |
 | `Sidebar` / `Topbar` | `components/layout/` | Role nav with groups (flattened when collapsed), logout; bell, avatar |
 | `AppUpdateBanner`, `UpdatePopup`, `InstallAppButton` | `components/layout/` | Self-update, work popups, PWA install |
-| `AIPlatformApp` | `components/ai-platform/` | Props `assignment?`, `assignmentId?`, `onClose`, `onComplete?`, `completing?`, `onBusinessNameExtracted?`. Full-screen (`fixed inset-0 z-50`); holds updates while open; restores saved generation; locks spec from assignment. Children: `FileUpload`, `GeneratedCard`, `SavedItems`, `PosterConceptsPanel`, `generation/MissionWorkspace` (waiting screen with ETA from `utils/generationEta`), `AIGuideSheet`, `SpecUpdateDialog`, `RefineRevisionBanner`, `CodeVerificationModal`. Renders the owner-image slot, BUSINESS CONTENT / FRAME / BACKGROUND INSTRUCTIONS boxes, the Gemini document-route box, the Custom Character field, the duo custom-script format, a "what we understood / background plan" panel (`voiceBrief`, `sceneContext`), the 2. VIDEO BOTTOM LABEL and 7. Overlay Text Image Generator sections. `FileUpload` refuses PDFs/documents/video and supports drag & drop. Chrome (2026-09-23): root `.adgen`, 72px glass nav (company mark │ product name, run-state chip, Mark Complete), "Generated Ad Kit" hero, two-column `max-w-[1520px]` grid with a sticky welcome panel, output sections as `ag-acc` accordions |
+| `AIPlatformApp` | `components/ai-platform/` | Props `assignment?`, `assignmentId?`, `onClose`, `onComplete?`, `completing?`, `onBusinessNameExtracted?`. Full-screen (`fixed inset-0 z-50`); holds updates while open; restores saved generation; locks spec from assignment. Children: `FileUpload`, `GeneratedCard`, `SavedItems`, `PosterConceptsPanel`, `generation/MissionWorkspace` (waiting screen with ETA from `utils/generationEta`), `AIGuideSheet`, `SpecUpdateDialog`, `RefineRevisionBanner`, `CodeVerificationModal`. Renders the owner-image slot, BUSINESS CONTENT / FRAME / BACKGROUND INSTRUCTIONS boxes, the Gemini document-route box, the Custom Character field, the duo custom-script format, a "what we understood / background plan" panel (`voiceBrief`, `sceneContext`), the 2. VIDEO BOTTOM LABEL and 7. Overlay Text Image Generator sections. `FileUpload` refuses PDFs/documents/video and supports drag & drop. Chrome (2026-09-24): root `.adgen`; one screen — a 72px header (mark │ product name, Ready/Generating chip, Project History, Mark Complete, the signed-in member, Close project) over a 4/8 grid. LEFT: `1. Assets & Files` and `2. Configuration` as two `ag-sec` sections of which only one is open (`leftPanel`, morphed through `.ag-morph`); shut, Assets shows a six-tile summary of what has been uploaded and Configuration shows the run's settings; Start/Stop sits below both. RIGHT, by stage: welcome → Generation Status (progress, step, countdown, `MissionStepper`) + AI Guide card → Status + a 72px AI Guide strip + the Deliverables card of seven numbered `ag-row`s |
 | `SaleForm` | `components/sales/` | The one sale form (new, edit, upsell): packages, bulk, discounts, SMM fields, promise, requirement, payments; calls `upsertOrderForSale` |
 | `SpecialCategoryFields`, `ModelAttireFields`, `PosterSpecFields`, `OccasionPicker`, `DurationPicker` | `components/work/` | Shared spec editors used by Work Assign ×2, assignment editors and the AI platform. **`SaleForm` still has its own copy of the special-category picker** |
 | `OrderProgressPanel`, `BulkVideoBoard`, `AssignTracksDialog`, `PenaltyDialog`, `ExtendPromiseButton`, `DeadlineChip`, `ReassignWork`, `RequirementsShareModal`, `MemberWorkloadCard`, `WorkDoneReport` | `components/work/` | Order and work UI pieces |
@@ -1499,6 +1502,28 @@ Design intent lives in `docs/superpowers/specs/`.
   needed speaker lines. Verified: build ✅, vitest 171 files / 2720 tests ✅ (8 new, incl. a
   round-trip over the whole catalogue and an end-to-end Veo assembly for Bheem & Chutki), typecheck
   1 known error. No live Gemini or Veo run.
+- **2026-09-24: AdGen.ai laid out as one screen** — the studio rebuilt to the owner's three-stage
+  reference: a fixed 72px header, a 34% input panel and a 66% workspace, with nothing below the fold
+  that matters. LEFT: Assets & Files and Configuration became two sections sharing one space — the
+  one that opens takes the room the other gives back (`leftPanel` + the `.ag-morph` grid-row
+  transition, 280ms) — so reaching the duration no longer means scrolling past every upload slot; shut,
+  Assets is a six-tile summary of what has been given to the run and Configuration reads back the
+  run's own settings. Start/Stop moved below both, and a run now shuts both panels. RIGHT: the
+  "Generated Ad Kit" hero was dropped; Generation Status became a card with the five milestones
+  (`MissionStepper`, exported from MissionWorkspace so the card and the guide can never disagree —
+  both read `missionStages()`), the Mission Workspace became the **AI Guide** card the reference asks
+  for (numbered rows, each with its own Tab/Open Flow button, countdown compact in the header), and
+  once the first asset lands it folds into a 72px strip above the Deliverables card — seven numbered
+  72px rows, each with an icon, a one-line subtitle and its existing controls. Project History moved
+  into the header, main-frame quick-copy chips now say "Tab 1" like the guide does, and the two
+  always-open panels (B-roll, overlay images) took the same row anatomy. New in adgen.css: `ag-sec`,
+  `ag-morph`, `ag-ico`, `ag-tile-up`, `ag-steps`/`ag-stepnode`, `ag-row`, `ag-strip`; canvas retuned to
+  #030B1A / #07152B. **No handler, prop, state, route or generated output changed** — one deliverable
+  heading now renders its number as the row badge ("2. Video Bottom Label"), which is the only string
+  that moved. Verified: build ✅, vitest 171 files / 2720 tests ✅, typecheck 1 known error, and a
+  throwaway browser harness (headless Chrome over CDP, Gemini faked, deleted after) walked idle →
+  configuration morph → generating → completed at 1680px and 390px, confirming all seven deliverables
+  in order and no horizontal scroll.
 - **2026-09-23: AdGen.ai studio UI, taken live** — the design (dark luxury SaaS: #020617 canvas,
   glass cards, violet→blue→cyan accent, Space Grotesk + Inter) implemented in the real platform, not
   a mock-up. New `src/components/ai-platform/adgen.css` holds the whole system (§11); `index.html`
@@ -1575,18 +1600,17 @@ Design intent lives in `docs/superpowers/specs/`.
 
 ---
 
-## 32. CURRENT PROJECT STATE (as of 2026-09-23)
+## 32. CURRENT PROJECT STATE (as of 2026-09-24)
 
-- Branch `main` @ `0e435cf` ("28 updates", which committed the 2026-09-22 AdGen.ai batch).
-  Uncommitted: the 2026-09-23 work (§31) — the studio UI (`index.html`, `components/ai-platform/*`,
-  the new `components/ai-platform/adgen.css`) and the two-hander speaker-label fix
-  (`utils/dialogueFormat.ts`, `services/geminiService.ts`, two test files) — plus this CLAUDE.md.
+- Branch `main`. Uncommitted: the 2026-09-24 one-screen layout (§31) —
+  `components/ai-platform/AIPlatformApp.tsx`, `adgen.css`, `generation/MissionWorkspace.tsx` and
+  `src/test/aiPlatformInputs.test.tsx` — plus this CLAUDE.md.
 - `npm run build` ✅ (main chunk ≈454 KB, vendor-firebase ≈665 KB, geminiService chunk ≈757 KB).
 - `npx vitest run` ✅ 171 files, 2720 tests.
 - `npx tsc -p tsconfig.check.json --noEmit` → 1 known error (VideoCallManager).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
-- Most recent work: the two-hander speaker-label fix and the AdGen.ai studio UI, before them the
-  AdGen.ai batch (§31), Cinematic Ads, SMM, Poster Creation, load-time splitting.
+- Most recent work: the AdGen.ai one-screen layout, the two-hander speaker-label fix and the studio
+  UI, before them the AdGen.ai batch (§31), Cinematic Ads, SMM, Poster Creation, load-time splitting.
 - Open follow-ups the owner must act on: publish `docs/firestore-rules.md` in the console; move
   secrets out of source; authenticate `/api/send-notification`.
 
