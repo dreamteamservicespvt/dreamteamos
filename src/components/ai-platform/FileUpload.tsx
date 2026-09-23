@@ -1,7 +1,7 @@
 import React, { useRef, useState, useMemo, useEffect } from 'react';
 import { X, FileAudio, FileText, Image as ImageIcon, Plus, UserRound } from 'lucide-react';
-import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
+import { STUDIO_IS_DARK } from './brand';
 
 /**
  * The biggest image the generator will take.
@@ -56,8 +56,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   value,
   emphasis,
 }) => {
-  const { resolvedTheme } = useTheme();
-  const isDark = resolvedTheme === 'dark';
+  const isDark = STUDIO_IS_DARK;
   const inputRef = useRef<HTMLInputElement>(null);
   const appendModeRef = useRef(false);
   /** Depth of nested dragenter/dragleave pairs, so hovering a child element does not flicker the highlight. */
@@ -235,8 +234,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   const PdfNotice = () => pdfNotice ? (
     <div
       data-test="pdf-notice"
-      className={cn("mt-2 flex items-start gap-2 rounded-lg border px-3 py-2 text-xs leading-relaxed text-left",
-        isDark ? "border-amber-600/60 bg-amber-950/30 text-amber-200" : "border-amber-400 bg-amber-50 text-amber-800")}
+      className="mt-2 flex items-start gap-2 rounded-xl border px-3 py-2 text-xs leading-relaxed text-left ag-badge--warn"
     >
       <span className="shrink-0">⚠️</span>
       <span>{pdfNotice}</span>
@@ -270,15 +268,11 @@ export const FileUpload: React.FC<FileUploadProps> = ({
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inputRef.current?.click(); } }}
           {...dragProps}
           className={cn(
-            "group border-2 border-dashed rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all text-center",
+            "ag-drop group flex flex-col items-center justify-center cursor-pointer text-center",
             owner ? "p-7" : "p-6",
-            dragging
-              ? (isDark ? "border-blue-400 bg-blue-900/30 shadow-lg shadow-blue-900/30" : "border-blue-500 bg-blue-50 shadow-lg shadow-blue-100")
-              : owner
-                ? (isDark ? "border-amber-500/70 bg-amber-950/20 hover:bg-amber-950/30" : "border-amber-400 bg-amber-50/60 hover:bg-amber-50")
-                : isDark
-                  ? "border-slate-700 bg-slate-800/50 hover:bg-slate-800 hover:border-blue-500/70 hover:shadow-lg hover:shadow-blue-900/20"
-                  : "border-slate-300 bg-white hover:bg-blue-50/40 hover:border-blue-400 hover:shadow-lg hover:shadow-blue-100"
+            dragging && "ag-drop--over",
+            pdfNotice && "ag-drop--error",
+            !dragging && !pdfNotice && owner && "ag-drop--owner"
           )}
         >
           <div className="mb-2 pointer-events-none">{getIcon()}</div>
@@ -292,14 +286,14 @@ export const FileUpload: React.FC<FileUploadProps> = ({
         <div
           {...dragProps}
           data-test="drop-list"
-          className={cn("space-y-2 rounded-xl transition-all", dragging && (isDark ? "ring-2 ring-blue-400 bg-blue-900/20 p-1" : "ring-2 ring-blue-400 bg-blue-50 p-1"))}
+          className={cn("space-y-2 rounded-xl transition-all", dragging && "ag-drop ag-drop--over p-1")}
         >
           {files.map((file, idx) => {
             const previewUrl = previewUrls[idx];
             return (
             <div key={idx} className={cn(
               "flex items-center justify-between p-2.5 border rounded-lg shadow-sm",
-              isDark ? "bg-slate-700 border-slate-600" : "bg-white border-slate-200"
+              isDark ? "bg-white/[0.08] border-white/[0.14]" : "bg-white border-slate-200"
             )}>
               <div className="flex items-center space-x-3 overflow-hidden">
                 {previewUrl ? (
@@ -343,7 +337,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
               type="button"
               onClick={triggerChangeFile}
               className={cn("w-full text-xs text-center py-2 rounded-lg border border-dashed transition-colors",
-                isDark ? "border-slate-600 text-slate-400 hover:border-blue-500" : "border-slate-300 text-slate-500 hover:border-blue-400"
+                isDark ? "border-white/[0.14] text-slate-400 hover:border-blue-500" : "border-slate-300 text-slate-500 hover:border-blue-400"
               )}
             >
               Change file

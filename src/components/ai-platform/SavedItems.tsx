@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Bookmark, Trash2, ChevronRight, Calendar, Building2, PartyPopper, Loader2, X, User } from 'lucide-react';
-import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
+import { STUDIO_IS_DARK } from './brand';
 import { deleteDoc, doc } from 'firebase/firestore';
 import { db } from '@/services/firebase';
 import { extractBusinessNameFromInfo } from '@/services/geminiService';
@@ -76,8 +76,7 @@ interface SavedItemsProps {
 }
 
 export const SavedItems: React.FC<SavedItemsProps> = ({ items, onSelect, onDelete, onClose, isLoading, userRole }) => {
-  const { resolvedTheme } = useTheme();
-  const isDark = resolvedTheme === 'dark';
+  const isDark = STUDIO_IS_DARK;
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const { confirm, ConfirmDialog } = useConfirm();
 
@@ -105,18 +104,18 @@ export const SavedItems: React.FC<SavedItemsProps> = ({ items, onSelect, onDelet
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       {ConfirmDialog}
-      <div className={cn("rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col", isDark ? "bg-slate-800" : "bg-white")}>
-        <div className={cn("px-6 py-4 border-b flex items-center justify-between", isDark ? "border-slate-700" : "border-slate-200")}>
+      <div className="ag-card w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
+        <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className={cn("p-2 rounded-lg", isDark ? "bg-blue-900/30" : "bg-blue-100")}>
+            <div className="ag-tile">
               <Bookmark className={cn("w-5 h-5", isDark ? "text-blue-400" : "text-blue-600")} />
             </div>
             <div>
-              <h2 className={cn("text-lg font-bold", isDark ? "text-white" : "text-slate-800")}>Saved Generations</h2>
+              <h2 className="ag-h2 text-lg text-white">Saved generations</h2>
               <p className={cn("text-sm", isDark ? "text-slate-400" : "text-slate-500")}>{items.length} saved item{items.length !== 1 ? 's' : ''}</p>
             </div>
           </div>
-          <button onClick={onClose} className={cn("p-2 rounded-lg transition-colors", isDark ? "hover:bg-slate-700" : "hover:bg-slate-100")}>
+          <button onClick={onClose} className="ag-btn ag-btn--icon ag-btn--sm">
             <X className="w-5 h-5 text-slate-500" />
           </button>
         </div>
@@ -136,15 +135,12 @@ export const SavedItems: React.FC<SavedItemsProps> = ({ items, onSelect, onDelet
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {items.map((item) => (
                 <div key={item.id} onClick={() => onSelect(item)}
-                  className={cn("group relative border rounded-xl p-4 cursor-pointer transition-all hover:shadow-lg",
-                    isDark ? "bg-slate-700/50 border-slate-600 hover:border-blue-500" : "bg-slate-50 border-slate-200 hover:border-blue-300",
+                  className={cn("ag-panel ag-lift group relative p-4 cursor-pointer",
                     deletingId === item.id && "opacity-50 pointer-events-none"
                   )}>
                   {userRole !== 'tech_member' && (
                   <button onClick={(e) => handleDelete(e, item.id!)} disabled={deletingId === item.id}
-                    className={cn("absolute top-3 right-3 p-1.5 rounded-lg shadow opacity-0 group-hover:opacity-100 transition-opacity",
-                      isDark ? "bg-slate-600 hover:bg-red-900/30" : "bg-white hover:bg-red-50"
-                    )}>
+                    className="ag-btn ag-btn--icon ag-btn--sm absolute top-3 right-3 h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
                     {deletingId === item.id ? <Loader2 className="w-4 h-4 text-slate-400 animate-spin" /> : <Trash2 className="w-4 h-4 text-red-500" />}
                   </button>
                   )}
@@ -155,15 +151,15 @@ export const SavedItems: React.FC<SavedItemsProps> = ({ items, onSelect, onDelet
                     </p>
                   )}
                   <div className="flex flex-wrap gap-2 mb-3">
-                    <span className={cn("inline-flex items-center space-x-1 text-xs px-2 py-1 rounded-full", isDark ? "bg-blue-900/30 text-blue-300" : "bg-blue-100 text-blue-700")}>
+                    <span className="ag-chip ag-badge--info h-7 text-xs">
                       <Building2 className="w-3 h-3" /><span>{item.businessType || 'Business'}</span>
                     </span>
                     {item.adType === 'festival' && item.festivalName && (
-                      <span className={cn("inline-flex items-center space-x-1 text-xs px-2 py-1 rounded-full", isDark ? "bg-purple-900/30 text-purple-300" : "bg-purple-100 text-purple-700")}>
+                      <span className="ag-chip ag-badge--run h-7 text-xs">
                         <PartyPopper className="w-3 h-3" /><span>{item.festivalName}</span>
                       </span>
                     )}
-                    <span className={cn("text-xs px-2 py-1 rounded-full", isDark ? "bg-slate-600 text-slate-300" : "bg-slate-200 text-slate-600")}>{item.duration}s</span>
+                    <span className="ag-chip ag-num h-7 text-xs">{item.duration}s</span>
                   </div>
                   <div className="flex items-center justify-between text-xs text-slate-500">
                     <span className="flex items-center space-x-1"><Calendar className="w-3 h-3" /><span>{formatDate(item.createdAt)}</span></span>

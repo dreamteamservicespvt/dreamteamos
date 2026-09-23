@@ -89,10 +89,10 @@ const CodeVerificationModal: React.FC<CodeVerificationModalProps> = ({ accessCod
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className={cn("relative w-full max-w-sm rounded-2xl shadow-2xl border p-8",
-        isDark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200"
+        isDark ? "bg-[#0B1020] border-white/10" : "bg-white border-slate-200"
       )}>
         <button onClick={onClose} className={cn("absolute top-4 right-4 p-1 rounded-lg transition-colors",
-          isDark ? "text-slate-400 hover:text-white hover:bg-slate-700" : "text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+          isDark ? "text-slate-400 hover:text-white hover:bg-white/[0.08]" : "text-slate-400 hover:text-slate-600 hover:bg-slate-100"
         )}>
           <X className="w-5 h-5" />
         </button>
@@ -120,9 +120,9 @@ const CodeVerificationModal: React.FC<CodeVerificationModalProps> = ({ accessCod
                 locked
                   ? "border-red-300 bg-red-50 text-red-400 cursor-not-allowed dark:border-red-800 dark:bg-red-900/20 dark:text-red-500"
                   : error
-                    ? "border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 bg-white dark:bg-slate-700 focus:ring-2 focus:ring-red-200 dark:focus:ring-red-900"
+                    ? "border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 bg-white dark:bg-white/[0.08] focus:ring-2 focus:ring-red-200 dark:focus:ring-red-900"
                     : isDark
-                      ? "border-slate-600 bg-slate-700 text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-900"
+                      ? "border-white/[0.14] bg-white/[0.08] text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-900"
                       : "border-slate-300 bg-white text-slate-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
               )}
             />

@@ -48,7 +48,7 @@ const CopyChip: React.FC<{ label: string; text: string; isDark: boolean; testId:
         'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold transition-all active:scale-[0.97]',
         copied
           ? (isDark ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-emerald-300 bg-emerald-50 text-emerald-700')
-          : (isDark ? 'border-slate-600 text-slate-200 hover:border-violet-400' : 'border-slate-300 text-slate-700 hover:border-violet-400 bg-white'),
+          : (isDark ? 'border-white/[0.14] text-slate-200 hover:border-violet-400' : 'border-slate-300 text-slate-700 hover:border-violet-400 bg-white'),
       )}
     >
       {copied ? <Check className="w-3 h-3" strokeWidth={3} /> : <Copy className="w-3 h-3 opacity-70" />}
@@ -81,7 +81,7 @@ export const AIGuideSheet: React.FC<{
         data-test="ai-guide"
         className={cn(
           'w-full sm:max-w-md p-0 overflow-y-auto border-l',
-          isDark ? 'bg-slate-950 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-900',
+          isDark ? 'bg-slate-950 border-white/[0.07] text-slate-100' : 'bg-white border-slate-200 text-slate-900',
         )}
       >
         <div className="relative px-6 pt-7 pb-5">
@@ -122,7 +122,7 @@ export const AIGuideSheet: React.FC<{
                   ? directive.replace(/^[📎🎨]\s*/u, '')
                   : facts.hasLogo ? 'Attach the logo' : 'Nothing to attach';
                 return (
-                  <li key={i} className={cn('rounded-xl border p-3', isDark ? 'border-slate-800 bg-slate-900/60' : 'border-slate-200 bg-slate-50/70')}>
+                  <li key={i} className={cn('rounded-xl border p-3', isDark ? 'border-white/[0.07] bg-[rgba(7,17,38,0.55)]' : 'border-slate-200 bg-slate-50/70')}>
                     <div className="flex items-center justify-between gap-2">
                       <p className={cn('text-xs font-bold', isDark ? 'text-slate-100' : 'text-slate-800')}>Clip {i + 1} · Tab {i + 1}</p>
                       <div className="flex gap-1.5">

@@ -40,7 +40,7 @@ export default function PosterConceptsPanel({
     setTimeout(() => setCopied((c) => (c === key ? null : c)), 2000);
   };
 
-  const card = isDark ? 'bg-slate-900/70 border-slate-800 shadow-black/10' : 'bg-white border-slate-200 shadow-slate-200/50';
+  const card = isDark ? 'bg-[rgba(7,17,38,0.62)] border-white/[0.07] shadow-black/10' : 'bg-white border-slate-200 shadow-slate-200/50';
   const muted = isDark ? 'text-slate-400' : 'text-slate-500';
   const strong = isDark ? 'text-slate-100' : 'text-slate-800';
 
@@ -62,7 +62,7 @@ export default function PosterConceptsPanel({
               data-test="poster-copy-all"
               onClick={() => copy('all', concepts.map((c, i) => posterConceptAsText(c, i)).join('\n\n────────\n\n'))}
               className={cn('inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors',
-                isDark ? 'border-slate-700 text-slate-200 hover:bg-slate-800' : 'border-slate-200 text-slate-700 hover:bg-slate-50')}
+                isDark ? 'border-white/10 text-slate-200 hover:bg-[#0B1020]' : 'border-slate-200 text-slate-700 hover:bg-slate-50')}
             >
               {copied === 'all' ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
               {copied === 'all' ? 'Copied all' : 'Copy all'}
@@ -71,7 +71,7 @@ export default function PosterConceptsPanel({
               href={POSTER_GENERATOR_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className={cn('inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-white shadow', BRAND_GRADIENT)}
+              className="ag-btn ag-btn--primary ag-btn--sm h-9 text-xs"
             >
               Open image generator <ExternalLink className="h-3.5 w-3.5 opacity-80" />
             </a>
@@ -92,7 +92,7 @@ export default function PosterConceptsPanel({
         return (
           <div key={key} data-test="poster-concept" className={cn('overflow-hidden rounded-2xl border shadow-lg', card)}>
             <div className={cn('relative flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3',
-              isDark ? 'border-slate-800 bg-slate-900/80' : 'border-slate-200 bg-slate-50')}>
+              isDark ? 'border-white/[0.07] bg-[rgba(7,17,38,0.72)]' : 'border-slate-200 bg-slate-50')}>
               <div className={cn('absolute bottom-0 left-0 top-0 w-1', BRAND_GRADIENT)} />
               <div className="min-w-0 pl-1.5">
                 <p className={cn('text-[10px] font-semibold uppercase tracking-wider', muted)}>Concept {i + 1}</p>
@@ -114,7 +114,7 @@ export default function PosterConceptsPanel({
 
               {(c.headline || c.subline) && (
                 <div className={cn('flex items-start gap-2 rounded-lg border px-3 py-2',
-                  isDark ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-slate-50')}>
+                  isDark ? 'border-white/10 bg-white/[0.04]' : 'border-slate-200 bg-slate-50')}>
                   <TypeIcon className={cn('mt-0.5 h-4 w-4 shrink-0', muted)} />
                   <div className="min-w-0">
                     {c.headline && <p className={cn('text-sm font-extrabold', strong)}>“{c.headline}”</p>}
@@ -133,14 +133,14 @@ export default function PosterConceptsPanel({
                     className={cn('inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold transition-colors',
                       copied === key
                         ? (isDark ? 'bg-emerald-900/30 text-emerald-300' : 'bg-emerald-50 text-emerald-700')
-                        : (isDark ? 'text-slate-300 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-100'))}
+                        : (isDark ? 'text-slate-300 hover:bg-[#0B1020]' : 'text-slate-600 hover:bg-slate-100'))}
                   >
                     {copied === key ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                     {copied === key ? 'Copied' : 'Copy prompt'}
                   </button>
                 </div>
                 <p data-test={`poster-prompt-${i}`} className={cn('whitespace-pre-wrap rounded-lg border p-3 text-sm leading-relaxed',
-                  isDark ? 'border-slate-700 bg-slate-950/40 text-slate-200' : 'border-slate-200 bg-white text-slate-700')}>
+                  isDark ? 'border-white/10 bg-slate-950/40 text-slate-200' : 'border-slate-200 bg-white text-slate-700')}>
                   {c.imagePrompt}
                 </p>
                 {c.negativePrompt && (
@@ -160,13 +160,13 @@ export default function PosterConceptsPanel({
                   }}
                   placeholder="Change this concept — e.g. use a lotus instead, warmer colours, bigger logo"
                   className={cn('min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2',
-                    isDark ? 'border-slate-700 bg-slate-800 text-slate-200 placeholder-slate-500 focus:ring-blue-800' : 'border-slate-300 bg-white text-slate-700 placeholder-slate-400 focus:ring-blue-200')}
+                    isDark ? 'border-white/10 bg-[#0B1020] text-slate-200 placeholder-slate-500 focus:ring-blue-800' : 'border-slate-300 bg-white text-slate-700 placeholder-slate-400 focus:ring-blue-200')}
                 />
                 <button
                   type="button"
                   disabled={refining || !(refineText[i] || '').trim()}
                   onClick={() => onRefine(i, (refineText[i] || '').trim())}
-                  className={cn('inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-white transition-opacity disabled:opacity-50', BRAND_GRADIENT)}
+                  className="ag-btn ag-btn--primary ag-btn--sm h-9 w-full text-xs"
                 >
                   {refining ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
                   {refining ? 'Refining…' : 'Refine'}

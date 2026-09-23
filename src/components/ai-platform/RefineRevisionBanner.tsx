@@ -54,11 +54,11 @@ export const RefineRevisionBanner: React.FC<{
         <div className="flex shrink-0 items-center gap-1">
           <button type="button" onClick={onUndo} data-test="refine-undo"
             className={cn('flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors',
-              isDark ? 'bg-slate-800 text-slate-200 hover:bg-slate-700' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200')}>
+              isDark ? 'bg-[#0B1020] text-slate-200 hover:bg-white/[0.08]' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200')}>
             <RotateCcw className="w-3.5 h-3.5" /> Undo
           </button>
           <button type="button" onClick={onDismiss} aria-label="Dismiss"
-            className={cn('rounded-lg p-1.5 transition-colors', isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-500 hover:bg-white')}>
+            className={cn('rounded-lg p-1.5 transition-colors', isDark ? 'text-slate-400 hover:bg-[#0B1020]' : 'text-slate-500 hover:bg-white')}>
             <X className="w-3.5 h-3.5" />
           </button>
         </div>

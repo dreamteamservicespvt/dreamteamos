@@ -5,7 +5,6 @@ import {
   ExternalLink, StopCircle, ArrowLeft, CheckCircle2, Home, Ratio, Languages, Type as TypeIcon, Music
 } from 'lucide-react';
 import { cueRange, cueWords } from '@/utils/wordTiming';
-import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
 import { FileUpload } from './FileUpload';
 import { GeneratedCard, parseVoiceOverClips, stripAttachmentDirective } from './GeneratedCard';
@@ -44,7 +43,8 @@ import { AIGuideSheet } from './generation/AIGuideSheet';
 import { RefineRevisionBanner, type VoiceOverRevision } from './RefineRevisionBanner';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 // DTS brand system (violet → blue → cyan, from "JUST DREAM BIG, WE BUILD IT").
-import { BRAND_GRADIENT, BRAND_GRADIENT_HOVER, BRAND_TEXT } from './brand';
+import { BRAND_GRADIENT, BRAND_GRADIENT_HOVER, BRAND_TEXT, STUDIO_IS_DARK } from './brand';
+import './adgen.css';
 
 interface AIPlatformAppProps {
   assignment?: WorkAssignment;
@@ -85,8 +85,13 @@ const cleanPromptForClipboard = (content: string) => {
 const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   assignment, assignmentId, onBusinessNameExtracted, onClose, onComplete, completing = false
 }) => {
-  const { resolvedTheme } = useTheme();
-  const isDark = resolvedTheme === 'dark';
+  /**
+   * The studio is DARK ONLY (adgen.css). Its palette — deep navy, glass, one violet→cyan accent — is
+   * the product's identity and the prompts, frames and posters are read against it all day; the light
+   * theme washed the glass out and the member lost the depth that separates a panel from the canvas.
+   * Every `isDark` branch below therefore takes the dark side, whatever the app theme is set to.
+   */
+  const isDark = STUDIO_IS_DARK;
   const user = useAuthStore((s) => s.user);
   const { confirm: showAlert, ConfirmDialog } = useConfirm();
   const { toast } = useToast();
@@ -1086,7 +1091,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background overflow-hidden">
+    <div className="adgen fixed inset-0 z-50 flex flex-col overflow-hidden">
       {ConfirmDialog}
 
       {/* The admin changed this job while the member is holding it. Must be read before they
@@ -1103,7 +1108,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       {/* Generation-failed popup — centered so the user can't miss it */}
       {status.error && status.error !== 'Generation stopped.' && !errorModalDismissed && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className={cn("w-full max-w-md rounded-xl border shadow-2xl p-6", isDark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200")}>
+          <div className="ag-card w-full max-w-md p-6">
             <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto mb-4">
               <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
             </div>
@@ -1132,46 +1137,50 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
           onClose={() => setShowSavedItems(false)} isLoading={loadingSaved} userRole={user?.role} />
       )}
 
-      {/* Top Bar — DTS branded */}
-      <div className={cn("relative border-b px-3 sm:px-4 h-14 sm:h-16 flex items-center justify-between gap-2 shrink-0 backdrop-blur-xl",
-        isDark ? "bg-slate-900/90 border-slate-800" : "bg-white/90 border-slate-200"
-      )}>
-        {/* brand hairline */}
-        <div className={cn("absolute bottom-0 inset-x-0 h-[2px] opacity-80", BRAND_GRADIENT)} />
+      {/* Top navigation — 72px glass, gradient hairline, the run's state always in sight */}
+      <div className="ag-nav relative px-3 sm:px-6 h-14 sm:h-[72px] flex items-center gap-3 sm:gap-4 shrink-0">
+        <button onClick={onClose} aria-label="Back" className="ag-btn ag-btn--icon ag-btn--sm sm:h-11 sm:w-11 shrink-0">
+          <ArrowLeft className="w-[18px] h-[18px]" />
+        </button>
 
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <button onClick={onClose} aria-label="Back"
-            className={cn("flex items-center gap-1 text-sm px-2 sm:px-3 py-1.5 rounded-xl transition-colors shrink-0",
-              isDark ? "text-slate-300 hover:bg-slate-800" : "text-slate-600 hover:bg-slate-100"
-            )}>
-            <ArrowLeft className="w-4 h-4" /><span className="hidden sm:inline">Back</span>
-          </button>
-          <div className="flex items-center gap-2.5 min-w-0">
-            <BrandLogo variant="mark" on={isDark ? "dark" : "auto"} alt="DTS — Dream Team Services"
-              className="h-6 sm:h-7 w-auto shrink-0" />
-            <div className="min-w-0 leading-tight">
-              <h1 className={cn("text-base sm:text-lg font-extrabold tracking-tight", BRAND_TEXT)}>AdGen.ai</h1>
-              <p className={cn("hidden sm:block text-[9px] font-semibold tracking-[0.18em] uppercase", isDark ? "text-slate-500" : "text-slate-400")}>
-                Dream Team Services
-              </p>
-            </div>
+        <div className="flex items-center gap-3 min-w-0">
+          <BrandLogo variant="mark" on="dark" alt="DTS — Dream Team Services" className="h-7 sm:h-8 w-auto shrink-0" />
+          {/* the company mark and the product name are two marks — a hairline keeps them from reading as one */}
+          <span className="w-px h-6 sm:h-7 bg-white/10 shrink-0" />
+          <div className="min-w-0 leading-tight">
+            <h1 className="ag-h2 text-[15px] sm:text-base">DTS AdGen<span style={{ color: '#67E8F9' }}>.ai</span></h1>
+            <p className="hidden sm:block text-[11px] ag-muted">Just dream big, we build it.</p>
           </div>
         </div>
 
-        {/* Assignment Info Banner */}
+        {/* what this run is — and, while it runs, where it has got to */}
         {assignment && (
-          <div className={cn("hidden lg:flex items-center gap-2.5 px-3.5 py-1.5 rounded-full text-xs border",
-            isDark ? "bg-slate-800/80 text-slate-300 border-slate-700" : "bg-slate-50 text-slate-600 border-slate-200"
-          )}>
-            <span className={cn("w-1.5 h-1.5 rounded-full", BRAND_GRADIENT)} />
-            <span className="font-semibold truncate max-w-[200px]">{assignment.businessName || assignment.displayTitle}</span>
-            <span className="opacity-40">·</span>
-            <span className="capitalize">{assignment.category}</span>
-            <span className="opacity-40">·</span>
-            <span>{isPosterCategory(assignment.category) ? posterSizeLabel(assignment.posterSize) : `${assignment.clipCount} clips + EC`}</span>
-            <span className="font-mono text-[10px] opacity-50">{assignment.uniqueId}</span>
-          </div>
+          <>
+            <span className="hidden lg:block w-px h-7 bg-white/10" />
+            <div className="hidden lg:flex items-center gap-2.5 min-w-0">
+              <span className="text-sm font-semibold text-slate-200 truncate max-w-[220px]">{assignment.businessName || assignment.displayTitle}</span>
+              <span className="ag-chip">
+                <span className="capitalize">{assignment.category}</span>
+                <span className="opacity-40">·</span>
+                <span>{isPosterCategory(assignment.category) ? posterSizeLabel(assignment.posterSize) : `${assignment.clipCount} clips + EC`}</span>
+              </span>
+              <span className="ag-mono text-[10px] ag-muted">{assignment.uniqueId}</span>
+            </div>
+          </>
         )}
+
+        <div className="flex-1" />
+
+        {status.isProcessing ? (
+          <span className="ag-chip ag-badge--run hidden sm:inline-flex">
+            <span className="ag-halo w-1.5 h-1.5 rounded-full bg-violet-300 inline-block" />
+            Generating · {Math.round(status.progress)}%
+          </span>
+        ) : outputs ? (
+          <span className="ag-chip ag-badge--ok hidden sm:inline-flex">
+            <Check className="w-3 h-3" />{saveSuccess ? 'Saved' : 'Ready'}
+          </span>
+        ) : null}
 
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {onComplete && (
@@ -1182,19 +1191,17 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
               onClick={onComplete}
               disabled={completing}
               data-test="mark-complete"
-              className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold px-3 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-600/20 transition-all active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100">
+              className="ag-btn ag-btn--primary ag-btn--sm sm:h-11 sm:px-[18px] sm:text-sm">
               {completing
                 ? <><Loader2 className="w-4 h-4 animate-spin" /><span>Submitting…</span></>
                 : <><CheckCircle2 className="w-4 h-4" /><span className="hidden sm:inline">Mark Complete</span><span className="sm:hidden">Done</span></>}
             </button>
           )}
-          <button onClick={onClose}
-            className={cn("flex items-center gap-1.5 text-xs sm:text-sm font-medium px-3 sm:px-4 py-2 rounded-xl border transition-colors",
-              isDark ? "bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700" : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
-            )}>
-            <Home className="w-4 h-4" /><span className="hidden md:inline">Close &amp; back to home</span><span className="md:hidden">Home</span>
+          <button onClick={onClose} className="ag-btn ag-btn--secondary ag-btn--sm sm:h-11 sm:px-[18px] sm:text-sm">
+            <Home className="w-4 h-4" /><span className="hidden md:inline">Close project</span><span className="md:hidden">Home</span>
           </button>
         </div>
+        <div className="ag-hairline absolute inset-x-0 -bottom-px" />
       </div>
 
       {/* Main Content - Scrollable */}
@@ -1203,16 +1210,44 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
         <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
           <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-violet-600/10 blur-3xl" />
           <div className="absolute top-1/3 -right-32 w-96 h-96 rounded-full bg-cyan-500/10 blur-3xl" />
-          <div className="absolute bottom-0 left-1/3 w-80 h-80 rounded-full bg-blue-600/10 blur-3xl" />
         </div>
-        <main className="relative max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <main className="relative max-w-[1520px] mx-auto px-3 sm:px-6 lg:px-10 py-6 sm:py-10">
+
+          {/* Hero — what this workspace is building, in one look */}
+          <div className="flex flex-wrap items-end justify-between gap-6 mb-8">
+            <div className="min-w-0">
+              <div className="ag-chip ag-badge--run mb-4">
+                <Sparkles className="w-3.5 h-3.5" />
+                {creationMode === 'poster'
+                  ? `Poster · ${posterSizeLabel(formData.posterSize || DEFAULT_POSTER_SIZE)}`
+                  : `${formData.adType === AdType.FESTIVAL ? 'Festival film' : 'Promotional film'} · ${formData.duration}s · ${formData.language || 'Telugu'}`}
+              </div>
+              <h2 className="ag-display text-3xl sm:text-[44px]">Generated Ad Kit</h2>
+              <p className="mt-3 text-sm sm:text-[15px] leading-6 text-slate-400 max-w-2xl">
+                {creationMode === 'poster'
+                  ? 'Poster concepts written from this client’s own assets — idea, headline and a ready image prompt for each one.'
+                  : 'Seven deliverables written from this client’s own assets — frames, poster, voice-over, B-roll, camera direction and VEO prompts, ready to copy into production.'}
+              </p>
+            </div>
+            {outputs && (
+              <div className="flex items-center gap-2 shrink-0">
+                <button type="button" onClick={() => setShowSavedItems(true)} className="ag-btn ag-btn--secondary ag-btn--sm">
+                  <Layout className="w-4 h-4" /><span className="hidden sm:inline">History</span>
+                </button>
+                <button type="button" onClick={handleSave} disabled={isSaving || saveSuccess}
+                  className={cn("ag-btn ag-btn--sm", saveSuccess ? "ag-btn--ok" : "ag-btn--secondary")}>
+                  {saveSuccess ? <><Check className="w-4 h-4" />Saved</> : isSaving ? <><Loader2 className="w-4 h-4 animate-spin" />Saving…</> : <><Save className="w-4 h-4" />Save</>}
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
 
             {/* LEFT: INPUTS */}
             <div className="lg:col-span-5 space-y-5 sm:space-y-6">
               {/* File Upload */}
-              <div className={cn("rounded-2xl border p-4 sm:p-6 shadow-xl",
-                isDark ? "bg-slate-900/70 border-slate-800 shadow-black/20 backdrop-blur" : "bg-white/90 border-slate-200 shadow-slate-200/60 backdrop-blur")}>
+              <div className="ag-card p-4 sm:p-6">
                 <div className="flex items-center gap-3 mb-5 sm:mb-6">
                   <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-600/25", BRAND_GRADIENT)}>
                     <Layout className="w-5 h-5" />
@@ -1243,7 +1278,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     <FileUpload label="Business Logo" accept="image/png, image/jpeg" required value={files.logo} onChange={(f) => setFiles(prev => ({ ...prev, logo: f as File }))} helperText="High resolution PNG/JPG" />
                   )}
                   {/* #5 — No-logo option: use business name as a physical name board behind the model */}
-                  <div className={cn("rounded-lg border p-3", isDark ? "border-slate-600 bg-slate-700/30" : "border-slate-200 bg-slate-50")}>
+                  <div className={cn("rounded-lg border p-3", isDark ? "border-white/[0.14] bg-white/[0.04]" : "border-slate-200 bg-slate-50")}>
                     <label className={cn("flex items-center gap-2 text-sm font-medium cursor-pointer", isDark ? "text-slate-300" : "text-slate-700")}>
                       <input type="checkbox" checked={!!formData.noLogo}
                         onChange={(e) => {
@@ -1261,7 +1296,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                         onChange={(e) => setFormData(prev => ({ ...prev, logoNameText: e.target.value.toUpperCase() }))}
                         placeholder="BUSINESS NAME"
                         className={cn("mt-2 w-full border rounded-lg px-3 py-2 text-sm uppercase tracking-wide focus:ring-2 outline-none",
-                          isDark ? "bg-slate-700 border-slate-600 text-slate-200 placeholder-slate-500 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 placeholder-slate-400 focus:ring-blue-200"
+                          isDark ? "bg-white/[0.08] border-white/[0.14] text-slate-200 placeholder-slate-500 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 placeholder-slate-400 focus:ring-blue-200"
                         )}
                       />
                     )}
@@ -1277,10 +1312,10 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     { key: 'flyersPosters' as const, label: 'Flyers / Offer Posters', content: <FileUpload label="" accept="image/*" multiple value={files.flyersPosters} onChange={(f) => setFiles(prev => ({ ...prev, flyersPosters: f as File[] }))} helperText="Images only — screenshot a PDF flyer instead" /> },
                     { key: 'voiceInstructions' as const, label: 'Voice Instructions', content: <FileUpload label="" accept="audio/*" multiple value={files.voiceRecording} onChange={(f) => setFiles(prev => ({ ...prev, voiceRecording: (f ? (Array.isArray(f) ? f : [f]) : []) as File[] }))} helperText="Record your requirements" /> },
                   ].map(({ key, label, content: sectionContent }) => (
-                    <div key={key} className={cn("border rounded-lg overflow-hidden", isDark ? "border-slate-600" : "border-slate-200")}>
+                    <div key={key} className={cn("border rounded-lg overflow-hidden", isDark ? "border-white/[0.14]" : "border-slate-200")}>
                       <button onClick={() => toggleSection(key)}
                         className={cn("w-full flex items-center justify-between px-3 py-2 text-sm font-semibold transition-colors",
-                          isDark ? "bg-slate-700 text-slate-300 hover:bg-slate-600" : "bg-slate-50 text-slate-700 hover:bg-slate-100"
+                          isDark ? "bg-white/[0.08] text-slate-300 hover:bg-slate-600" : "bg-slate-50 text-slate-700 hover:bg-slate-100"
                         )}>
                         <span>{label}</span>
                         <ChevronDown className={cn("w-4 h-4 transition-transform", !collapsedSections[key] && "rotate-180")} />
@@ -1312,7 +1347,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     </label>
                     <p className={cn("text-[11px] mb-2", isDark ? "text-slate-500" : "text-slate-500")}>Business details, text, offers, CTA, contact info — what the ad must say.</p>
                     <textarea data-test="business-content" className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
-                        isDark ? "bg-slate-700 border-slate-600 text-slate-200 placeholder-slate-500 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200"
+                        isDark ? "bg-white/[0.08] border-white/[0.14] text-slate-200 placeholder-slate-500 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200"
                       )} rows={4} placeholder="e.g. Sri Sai Bakery, Kakinada — fresh cakes daily, custom birthday cakes, free home delivery above ₹500. Call / WhatsApp 98xxxxxxx."
                       value={formData.textInstructions} onChange={(e) => setFormData(prev => ({ ...prev, textInstructions: e.target.value }))} />
                   </div>
@@ -1324,7 +1359,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       Describe the frame, background, style, lighting, colours and scene. Leave it empty and the scenes are worked out from the visiting card, the business content and the script.
                     </p>
                     <textarea data-test="frame-instructions" className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
-                        isDark ? "bg-slate-700 border-slate-600 text-slate-200 placeholder-slate-500 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200"
+                        isDark ? "bg-white/[0.08] border-white/[0.14] text-slate-200 placeholder-slate-500 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200"
                       )} rows={3} placeholder="e.g. Temple courtyard with devotees being served food on banana leaves, warm morning light, marigold decorations, saffron and gold colours."
                       value={formData.frameInstructions || ''} onChange={(e) => setFormData(prev => ({ ...prev, frameInstructions: e.target.value }))} />
                   </div>
@@ -1357,8 +1392,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
               </div>
 
               {/* Configuration */}
-              <div className={cn("rounded-2xl border p-4 sm:p-6 shadow-xl",
-                isDark ? "bg-slate-900/70 border-slate-800 shadow-black/20 backdrop-blur" : "bg-white/90 border-slate-200 shadow-slate-200/60 backdrop-blur")}>
+              <div className="ag-card p-4 sm:p-6">
                 <div className="flex items-center gap-3 mb-5 sm:mb-6">
                   <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-lg shadow-violet-600/25", BRAND_GRADIENT)}>
                     <Type className="w-5 h-5" />
@@ -1380,7 +1414,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                           className={cn("flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-semibold border transition-all",
                             creationMode === mode
                               ? cn("border-transparent text-white shadow-lg shadow-blue-600/25", BRAND_GRADIENT)
-                              : (isDark ? "border-slate-700 hover:border-slate-600 text-slate-400 bg-slate-800/40" : "border-slate-200 hover:border-slate-300 text-slate-600 bg-white")
+                              : (isDark ? "border-white/10 hover:border-white/[0.14] text-slate-400 bg-white/[0.03]" : "border-slate-200 hover:border-slate-300 text-slate-600 bg-white")
                             , posterJob && mode === 'video' && "opacity-40 cursor-not-allowed"
                           )}>
                           <Icon className="w-4 h-4" /><span>{label}</span>
@@ -1394,7 +1428,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
 
                   {/* Poster Creation — the canvas, the style from the team's library, the occasion. */}
                   {creationMode === 'poster' && (
-                    <div className={cn("rounded-xl border p-3 sm:p-4", isDark ? "border-slate-700 bg-slate-800/40" : "border-slate-200 bg-slate-50/60")}>
+                    <div className={cn("rounded-xl border p-3 sm:p-4", isDark ? "border-white/10 bg-white/[0.03]" : "border-slate-200 bg-slate-50/60")}>
                       <PosterSpecFields
                         posterSize={formData.posterSize || DEFAULT_POSTER_SIZE}
                         posterStyle={formData.posterStyle || AUTO_POSTER_STYLE}
@@ -1415,7 +1449,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                             value={formData.posterConceptCount || DEFAULT_POSTER_CONCEPT_COUNT}
                             onChange={(e) => setFormData(prev => ({ ...prev, posterConceptCount: parseInt(e.target.value, 10) }))}
                             className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
-                              isDark ? "bg-slate-700 border-slate-600 text-slate-200 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200")}
+                              isDark ? "bg-white/[0.08] border-white/[0.14] text-slate-200 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200")}
                           >
                             {[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n} concept{n === 1 ? '' : 's'}</option>)}
                           </select>
@@ -1429,7 +1463,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                             value={formData.posterTextLanguage || 'English'}
                             onChange={(e) => setFormData(prev => ({ ...prev, posterTextLanguage: e.target.value }))}
                             className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
-                              isDark ? "bg-slate-700 border-slate-600 text-slate-200 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200")}
+                              isDark ? "bg-white/[0.08] border-white/[0.14] text-slate-200 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200")}
                           >
                             {Array.from(new Set(['English', ...LANGUAGE_OPTIONS, formData.posterTextLanguage || 'English'])).map(l => <option key={l} value={l}>{l}</option>)}
                           </select>
@@ -1449,7 +1483,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     </label>
                     {aspectRatioLocked ? (
                       <div className={cn("flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm",
-                        isDark ? "bg-slate-700/60 border-slate-600 text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
+                        isDark ? "bg-white/[0.06] border-white/[0.14] text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
                         <span className="font-mono font-semibold">{formData.aspectRatio}</span>
                         <span className={cn("text-[11px] px-2 py-0.5 rounded-full", isDark ? "bg-blue-900/40 text-blue-300" : "bg-blue-100 text-blue-700")}>🔒 Fixed by assignment</span>
                       </div>
@@ -1460,7 +1494,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                           className={cn("flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-all",
                             formData.aspectRatio === r
                               ? (isDark ? "border-blue-500 bg-blue-900/30 text-blue-400" : "border-blue-500 bg-blue-50 text-blue-700")
-                              : (isDark ? "border-slate-600 hover:border-slate-500 text-slate-400" : "border-slate-200 hover:border-slate-300 text-slate-600")
+                              : (isDark ? "border-white/[0.14] hover:border-violet-400/60 text-slate-400" : "border-slate-200 hover:border-slate-300 text-slate-600")
                           )}>
                           <span className="font-mono">{r}</span><span className="text-xs opacity-70">{label}</span>
                         </button>
@@ -1479,7 +1513,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     </label>
                     {languageLocked ? (
                       <div className={cn("flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm",
-                        isDark ? "bg-slate-700/60 border-slate-600 text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
+                        isDark ? "bg-white/[0.06] border-white/[0.14] text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
                         <span className="font-semibold">{formData.language}</span>
                         <span className={cn("text-[11px] px-2 py-0.5 rounded-full", isDark ? "bg-blue-900/40 text-blue-300" : "bg-blue-100 text-blue-700")}>🔒 Fixed by assignment</span>
                       </div>
@@ -1487,18 +1521,18 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     <div className="relative">
                       <button type="button" onClick={() => { setLanguageOpen(o => !o); setLanguageSearch(''); }}
                         className={cn("w-full flex items-center justify-between border rounded-lg px-3 py-2 text-sm outline-none",
-                          isDark ? "bg-slate-700 border-slate-600 text-slate-200" : "bg-white border-slate-300 text-slate-700"
+                          isDark ? "bg-white/[0.08] border-white/[0.14] text-slate-200" : "bg-white border-slate-300 text-slate-700"
                         )}>
                         <span>{formData.language}</span>
                         <ChevronDown className={cn("w-4 h-4 transition-transform", languageOpen && "rotate-180")} />
                       </button>
                       {languageOpen && (
                         <div className={cn("absolute z-30 mt-1 w-full rounded-lg border shadow-lg overflow-hidden",
-                          isDark ? "bg-slate-800 border-slate-600" : "bg-white border-slate-200")}>
+                          isDark ? "bg-[#0B1020] border-white/[0.14]" : "bg-white border-slate-200")}>
                           <input autoFocus value={languageSearch} onChange={(e) => setLanguageSearch(e.target.value)}
                             placeholder="Search language..."
                             className={cn("w-full px-3 py-2 text-sm border-b outline-none",
-                              isDark ? "bg-slate-800 border-slate-600 text-slate-200 placeholder-slate-500" : "bg-white border-slate-200 text-slate-700 placeholder-slate-400")} />
+                              isDark ? "bg-[#0B1020] border-white/[0.14] text-slate-200 placeholder-slate-500" : "bg-white border-slate-200 text-slate-700 placeholder-slate-400")} />
                           <div className="max-h-48 overflow-y-auto">
                             {LANGUAGE_OPTIONS.filter(l => l.toLowerCase().includes(languageSearch.toLowerCase())).map(l => (
                               <button key={l} type="button"
@@ -1506,7 +1540,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                                 className={cn("w-full text-left px-3 py-2 text-sm transition-colors",
                                   formData.language === l
                                     ? (isDark ? "bg-purple-900/30 text-purple-300" : "bg-purple-50 text-purple-700")
-                                    : (isDark ? "text-slate-300 hover:bg-slate-700" : "text-slate-700 hover:bg-slate-100"))}>
+                                    : (isDark ? "text-slate-300 hover:bg-white/[0.08]" : "text-slate-700 hover:bg-slate-100"))}>
                                 {l}
                               </button>
                             ))}
@@ -1528,7 +1562,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     <label className={cn("block text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>Ad Type</label>
                     {adTypeLocked ? (
                       <div className={cn("flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm",
-                        isDark ? "bg-slate-700/60 border-slate-600 text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
+                        isDark ? "bg-white/[0.06] border-white/[0.14] text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
                         <span className="font-semibold">{formData.adType === AdType.FESTIVAL ? "Festival Wishes" : "Commercial"}</span>
                         <span className={cn("text-[11px] px-2 py-0.5 rounded-full", isDark ? "bg-blue-900/40 text-blue-300" : "bg-blue-100 text-blue-700")}>🔒 Fixed by assignment</span>
                       </div>
@@ -1538,13 +1572,13 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                         className={cn("px-4 py-2 rounded-lg text-sm font-medium border transition-all",
                           formData.adType === AdType.COMMERCIAL
                             ? (isDark ? "border-blue-500 bg-blue-900/30 text-blue-400" : "border-blue-500 bg-blue-50 text-blue-700")
-                            : (isDark ? "border-slate-600 hover:border-slate-500 text-slate-400" : "border-slate-200 hover:border-slate-300 text-slate-600")
+                            : (isDark ? "border-white/[0.14] hover:border-violet-400/60 text-slate-400" : "border-slate-200 hover:border-slate-300 text-slate-600")
                         )}>Commercial</button>
                       <button onClick={() => setFormData(prev => ({ ...prev, adType: AdType.FESTIVAL }))}
                         className={cn("px-4 py-2 rounded-lg text-sm font-medium border transition-all",
                           formData.adType === AdType.FESTIVAL
                             ? (isDark ? "border-purple-500 bg-purple-900/30 text-purple-400" : "border-purple-500 bg-purple-50 text-purple-700")
-                            : (isDark ? "border-slate-600 hover:border-slate-500 text-slate-400" : "border-slate-200 hover:border-slate-300 text-slate-600")
+                            : (isDark ? "border-white/[0.14] hover:border-violet-400/60 text-slate-400" : "border-slate-200 hover:border-slate-300 text-slate-600")
                         )}>Festival Wishes</button>
                     </div>
                     )}
@@ -1561,7 +1595,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     </label>
                     {packLocked ? (
                       <div className={cn("flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm",
-                        isDark ? "bg-slate-700/60 border-slate-600 text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
+                        isDark ? "bg-white/[0.06] border-white/[0.14] text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
                         <span className="font-semibold truncate">🎭 {activePack?.label}</span>
                         <span className={cn("shrink-0 ml-2 text-[11px] px-2 py-0.5 rounded-full", isDark ? "bg-blue-900/40 text-blue-300" : "bg-blue-100 text-blue-700")}>🔒 Sold as this</span>
                       </div>
@@ -1575,7 +1609,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                         locationMode: e.target.value ? (prev.locationMode || 'real_provided') : undefined,
                       }))}
                       className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
-                        isDark ? "bg-slate-700 border-slate-600 text-slate-200 focus:ring-amber-800" : "bg-white border-slate-300 text-slate-700 focus:ring-amber-200")}
+                        isDark ? "bg-white/[0.08] border-white/[0.14] text-slate-200 focus:ring-amber-800" : "bg-white border-slate-300 text-slate-700 focus:ring-amber-200")}
                     >
                       <option value="">No — normal ad with a model</option>
                       {/* Grouped: thirty-two entries in one flat list is a search, not a choice. */}
@@ -1610,7 +1644,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                         </label>
                         {characterLocked ? (
                           <div className={cn("flex items-start justify-between gap-2 rounded-lg border px-3 py-2.5 text-sm",
-                            isDark ? "bg-slate-700/60 border-slate-600 text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
+                            isDark ? "bg-white/[0.06] border-white/[0.14] text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
                             <span>{formData.customCharacter}</span>
                             <span className={cn("shrink-0 text-[11px] px-2 py-0.5 rounded-full", isDark ? "bg-blue-900/40 text-blue-300" : "bg-blue-100 text-blue-700")}>🔒 Sold as this</span>
                           </div>
@@ -1622,7 +1656,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                             onChange={(e) => setFormData(prev => ({ ...prev, customCharacter: e.target.value }))}
                             placeholder="Who or what is the character? e.g. Lord Hanuman carrying a sack of our rice; a cheerful talking mango in a chef's cap"
                             className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none resize-y",
-                              isDark ? "bg-slate-700 border-slate-600 text-slate-200 placeholder-slate-500 focus:ring-amber-800" : "bg-white border-slate-300 text-slate-700 focus:ring-amber-200")}
+                              isDark ? "bg-white/[0.08] border-white/[0.14] text-slate-200 placeholder-slate-500 focus:ring-amber-800" : "bg-white border-slate-300 text-slate-700 focus:ring-amber-200")}
                           />
                         )}
                       </div>
@@ -1649,7 +1683,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     </label>
                     {backgroundLocked ? (
                       <div className={cn("flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm",
-                        isDark ? "bg-slate-700/60 border-slate-600 text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
+                        isDark ? "bg-white/[0.06] border-white/[0.14] text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
                         <span className="font-semibold truncate">
                           {formData.locationMode === 'real_provided'
                             ? "📷 Real — the client's own premises"
@@ -1668,7 +1702,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                             className={cn("px-3 py-2 rounded-lg text-xs font-medium border transition-all",
                               formData.locationMode === key
                                 ? (isDark ? "border-amber-500 bg-amber-900/40 text-amber-300" : "border-amber-500 bg-amber-100 text-amber-800")
-                                : (isDark ? "border-slate-600 text-slate-400 hover:border-slate-500" : "border-slate-300 text-slate-600 hover:border-slate-400"))}>
+                                : (isDark ? "border-white/[0.14] text-slate-400 hover:border-violet-400/60" : "border-slate-300 text-slate-600 hover:border-slate-400"))}>
                             {label}
                           </button>
                         ))}
@@ -1700,7 +1734,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     <div>
                       <label className={cn("block text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>Festival Name</label>
                       <select className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
-                          isDark ? "bg-slate-700 border-slate-600 text-slate-200 focus:ring-purple-800" : "bg-white border-slate-300 text-slate-700 focus:ring-purple-200"
+                          isDark ? "bg-white/[0.08] border-white/[0.14] text-slate-200 focus:ring-purple-800" : "bg-white border-slate-300 text-slate-700 focus:ring-purple-200"
                         )} value={selectedFestivalOption} onChange={(e) => {
                           const selectedFestival = e.target.value;
                           setSelectedFestivalOption(selectedFestival);
@@ -1730,7 +1764,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                           className={cn(
                             "flex-1 border rounded-lg px-3 py-1.5 text-sm focus:ring-2 outline-none",
                             isDark
-                              ? "bg-slate-700 border-slate-600 text-slate-200 placeholder-slate-500 focus:ring-purple-800"
+                              ? "bg-white/[0.08] border-white/[0.14] text-slate-200 placeholder-slate-500 focus:ring-purple-800"
                               : "bg-white border-slate-300 text-slate-700 placeholder-slate-400 focus:ring-purple-200"
                           )}
                         />
@@ -1745,7 +1779,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       <label className={cn("block text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>Model Gender</label>
                       {genderLocked ? (
                         <div className={cn("flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm capitalize",
-                          isDark ? "bg-slate-700/60 border-slate-600 text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
+                          isDark ? "bg-white/[0.06] border-white/[0.14] text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
                           <span className="font-semibold">{formData.gender === ModelGender.MALE ? '👨 Male' : '👩 Female'}</span>
                           <span className={cn("text-[11px] px-2 py-0.5 rounded-full", isDark ? "bg-blue-900/40 text-blue-300" : "bg-blue-100 text-blue-700")}>🔒 Fixed by assignment</span>
                         </div>
@@ -1762,7 +1796,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                             className={cn("px-3 py-2 rounded-lg text-sm font-medium border transition-all capitalize",
                               (formData.gender || ModelGender.FEMALE) === g
                                 ? (isDark ? "border-blue-500 bg-blue-900/30 text-blue-400" : "border-blue-500 bg-blue-50 text-blue-700")
-                                : (isDark ? "border-slate-600 text-slate-400" : "border-slate-200 text-slate-600")
+                                : (isDark ? "border-white/[0.14] text-slate-400" : "border-slate-200 text-slate-600")
                             )}>
                             {g === ModelGender.FEMALE ? '👩 Female' : '👨 Male'}
                           </button>
@@ -1781,14 +1815,14 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       </label>
                       {attireLocked ? (
                         <div className={cn("flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm",
-                          isDark ? "bg-slate-700/60 border-slate-600 text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
+                          isDark ? "bg-white/[0.06] border-white/[0.14] text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
                           <span className="font-semibold truncate">{formData.attireType === AttireType.CUSTOM && formData.customAttire ? formData.customAttire : ATTIRE_LABELS[formData.attireType]}</span>
                           <span className={cn("shrink-0 ml-2 text-[11px] px-2 py-0.5 rounded-full", isDark ? "bg-blue-900/40 text-blue-300" : "bg-blue-100 text-blue-700")}>🔒 Fixed</span>
                         </div>
                       ) : (
                       <>
                       <select className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
-                          isDark ? "bg-slate-700 border-slate-600 text-slate-200 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200"
+                          isDark ? "bg-white/[0.08] border-white/[0.14] text-slate-200 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200"
                         )} value={formData.attireType} onChange={(e) => setFormData(prev => ({ ...prev, attireType: e.target.value as AttireType }))}>
                         {attireOptionsFor(formData.characterPack, (packModelGender(activePack) as ModelGender | null) || formData.gender || ModelGender.FEMALE).map((a) => (
                           <option key={a} value={a}>{ATTIRE_LABELS[a]}</option>
@@ -1797,7 +1831,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       {formData.attireType === AttireType.CUSTOM && (
                         <textarea
                           className={cn("w-full mt-2 border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none resize-y",
-                            isDark ? "bg-slate-700 border-slate-600 text-slate-200 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200"
+                            isDark ? "bg-white/[0.08] border-white/[0.14] text-slate-200 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200"
                           )}
                           rows={2}
                           placeholder="Describe the exact attire (e.g. white chef coat with black apron, blue mechanic jumpsuit, cream kurta with Nehru jacket)…"
@@ -1816,7 +1850,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       <label className={cn("block text-sm font-semibold mb-2", isDark ? "text-slate-300" : "text-slate-700")}>Video Duration</label>
                       {durationLocked ? (
                         <div className={cn("flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm",
-                          isDark ? "bg-slate-700/60 border-slate-600 text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
+                          isDark ? "bg-white/[0.06] border-white/[0.14] text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
                           <span className="font-mono font-semibold">{formData.duration}s · {Math.round(formData.duration / 8)} clips</span>
                           <span className={cn("text-[11px] px-2 py-0.5 rounded-full", isDark ? "bg-blue-900/40 text-blue-300" : "bg-blue-100 text-blue-700")}>
                             🔒 Fixed by assignment{assignment?.category ? ` · ${assignment.category}` : ''}
@@ -1828,17 +1862,17 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                         <button onClick={() => setFormData(prev => ({ ...prev, durationMode: 'preset', duration: 16 }))}
                           className={cn("px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
                             formData.durationMode === 'preset' ? (isDark ? "border-blue-500 bg-blue-900/30 text-blue-400" : "border-blue-500 bg-blue-50 text-blue-700")
-                              : (isDark ? "border-slate-600 text-slate-400" : "border-slate-200 text-slate-600")
+                              : (isDark ? "border-white/[0.14] text-slate-400" : "border-slate-200 text-slate-600")
                           )}>Preset</button>
                         <button onClick={() => setFormData(prev => ({ ...prev, durationMode: 'custom', duration: 24 }))}
                           className={cn("px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
                             formData.durationMode === 'custom' ? (isDark ? "border-violet-500 bg-violet-900/30 text-violet-400" : "border-violet-500 bg-violet-50 text-violet-700")
-                              : (isDark ? "border-slate-600 text-slate-400" : "border-slate-200 text-slate-600")
+                              : (isDark ? "border-white/[0.14] text-slate-400" : "border-slate-200 text-slate-600")
                           )}>Custom</button>
                       </div>
                       {formData.durationMode === 'preset' ? (
                         <select className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
-                            isDark ? "bg-slate-700 border-slate-600 text-slate-200 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200"
+                            isDark ? "bg-white/[0.08] border-white/[0.14] text-slate-200 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200"
                           )} value={formData.duration} onChange={(e) => setFormData(prev => ({ ...prev, duration: parseInt(e.target.value) }))}>
                           <option value={16}>16 Seconds (2 Clips)</option>
                           <option value={32}>32 Seconds (4 Clips)</option>
@@ -1849,7 +1883,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                         <div className="flex items-center space-x-2">
                           <input type="number" min={8} max={120} step={8}
                             className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
-                              isDark ? "bg-slate-700 border-slate-600 text-slate-200 focus:ring-violet-800" : "bg-white border-slate-300 text-slate-700 focus:ring-violet-200"
+                              isDark ? "bg-white/[0.08] border-white/[0.14] text-slate-200 focus:ring-violet-800" : "bg-white border-slate-300 text-slate-700 focus:ring-violet-200"
                             )} value={formData.duration}
                             onChange={(e) => {
                               let val = Math.round((parseInt(e.target.value) || 8) / 8) * 8;
@@ -1897,7 +1931,7 @@ clip-2[8-16sec]: second spoken line`}</pre>
                           </div>
                           <textarea
                             className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
-                              isDark ? "bg-slate-700 border-slate-600 text-slate-200 placeholder-slate-500 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200"
+                              isDark ? "bg-white/[0.08] border-white/[0.14] text-slate-200 placeholder-slate-500 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200"
                             )} rows={6} placeholder={"clip-1[0-8sec]: \nclip-2[8-16sec]: "}
                             value={customScript} onChange={(e) => setCustomScript(e.target.value)} />
                           {(() => {
@@ -1966,12 +2000,7 @@ clip-2[8-16sec]: second spoken line`}</pre>
 
                   {/* Generate Button */}
                   <div className="flex space-x-2">
-                    <button onClick={handleGenerate} disabled={status.isProcessing}
-                      className={cn("flex-1 py-3.5 px-4 rounded-2xl text-white font-bold text-sm flex items-center justify-center space-x-2 transition-all",
-                        status.isProcessing
-                          ? "bg-slate-500/70 cursor-not-allowed"
-                          : cn(BRAND_GRADIENT, BRAND_GRADIENT_HOVER, "shadow-xl shadow-blue-600/30 hover:shadow-blue-500/40 active:scale-[0.99]")
-                      )}>
+                    <button onClick={handleGenerate} disabled={status.isProcessing} className="ag-btn ag-btn--primary ag-btn--lg flex-1">
                       {status.isProcessing ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Rocket className="w-5 h-5" />}
                       <span>{status.isProcessing ? 'Processing...' : creationMode === 'poster' ? 'Generate Poster Concepts' : 'Start Generation'}</span>
                     </button>
@@ -1994,10 +2023,9 @@ clip-2[8-16sec]: second spoken line`}</pre>
             {/* RIGHT: OUTPUTS */}
             <div className="lg:col-span-7" ref={outputPanelRef}>
               {(status.isProcessing || status.step) && (
-                <div className={cn("rounded-2xl border px-4 py-3.5 mb-4 shadow-xl",
-                  isDark ? "bg-slate-900/70 border-slate-800 shadow-black/20 backdrop-blur" : "bg-white/90 border-slate-200 shadow-slate-200/60 backdrop-blur")}>
+                <div className="ag-card px-5 py-4 mb-5">
                   <div className="flex items-center justify-between mb-2.5">
-                    <h2 className={cn("text-sm font-bold", isDark ? "text-white" : "text-slate-800")}>Generation Status</h2>
+                    <h2 className="ag-eyebrow">Generation status</h2>
                     <div className="flex items-center gap-2 text-xs">
                       <Wand2 className={cn("w-3.5 h-3.5 text-blue-500", status.isProcessing && "animate-pulse")} />
                       <span className={cn(status.isProcessing && "animate-pulse", isDark ? "text-slate-400" : "text-slate-600")}>{status.step}</span>
@@ -2005,12 +2033,11 @@ clip-2[8-16sec]: second spoken line`}</pre>
                       {status.isProcessing && activeRun && !showMission && (
                         <RunCountdown run={activeRun} active isDark={isDark} variant="inline" />
                       )}
-                      <span className={cn("font-mono font-bold text-[11px] px-1.5 py-0.5 rounded-md",
-                        isDark ? "bg-slate-800 text-cyan-400" : "bg-slate-100 text-blue-600")}>{Math.round(status.progress)}%</span>
+                      <span className="ag-chip ag-num h-7 px-3 text-[13px]">{Math.round(status.progress)}%</span>
                     </div>
                   </div>
-                  <div className={cn("w-full rounded-full h-2 overflow-hidden", isDark ? "bg-slate-800" : "bg-slate-100")}>
-                    <div className={cn("h-2 rounded-full transition-all duration-500", BRAND_GRADIENT)} style={{ width: `${status.progress}%` }} />
+                  <div className="ag-progress">
+                    <div className="ag-progress__fill" style={{ width: `${status.progress}%` }} />
                   </div>
                 </div>
               )}
@@ -2031,28 +2058,22 @@ clip-2[8-16sec]: second spoken line`}</pre>
                   exit={{ opacity: 0, transition: { duration: 0.15 } }}
                 >
                   <div className="flex items-center justify-between mb-2">
-                    <h2 className={cn("text-lg sm:text-xl font-extrabold tracking-tight", BRAND_TEXT)}>
-                      Generated Assets
-                      {viewingSavedItem && <span className="ml-2 text-sm font-normal text-slate-500">(Viewing Saved)</span>}
+                    <h2 className="ag-h2 text-lg sm:text-xl">
+                      Deliverables
+                      {viewingSavedItem && <span className="ml-2 text-sm font-normal ag-muted">(viewing saved)</span>}
                     </h2>
                     <div className="flex items-center space-x-2">
                       {/* Where the workspace went. It pulses while the run is still going, just after the
                           workspace has stepped aside, so the member sees where to find it again. */}
                       <button type="button" onClick={() => setGuideOpen(true)} data-test="ai-guide-button"
-                        className={cn("relative flex items-center gap-1 text-sm font-semibold px-3 py-1.5 rounded-lg transition-all active:scale-[0.98]",
-                          isDark ? "bg-violet-900/30 text-violet-300 hover:bg-violet-900/50" : "bg-violet-50 text-violet-700 hover:bg-violet-100",
-                          status.isProcessing && "ring-2 ring-violet-400/60")}>
+                        className={cn("ag-btn ag-btn--sm relative", status.isProcessing ? "ag-btn--primary" : "ag-btn--secondary")}>
                         {status.isProcessing && !reduceMotion && (
                           <span aria-hidden className="absolute inset-0 rounded-lg ring-2 ring-violet-400/50 animate-ping" />
                         )}
                         <Sparkles className="w-4 h-4" /><span>AI Guide</span>
                       </button>
                       <button onClick={handleSave} disabled={isSaving || saveSuccess}
-                        className={cn("flex items-center space-x-1 text-sm font-medium px-3 py-1.5 rounded-lg transition-all",
-                          saveSuccess ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                            : isSaving ? "bg-slate-100 text-slate-400 cursor-not-allowed dark:bg-slate-700"
-                            : "bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400"
-                        )}>
+                        className={cn("ag-btn ag-btn--sm", saveSuccess ? "ag-btn--ok" : "ag-btn--secondary")}>
                         {saveSuccess ? <><Check className="w-4 h-4" /><span>Saved!</span></> : isSaving ? <><Loader2 className="w-4 h-4 animate-spin" /><span>Saving...</span></> : <><Save className="w-4 h-4" /><span>Save</span></>}
                       </button>
                     </div>
@@ -2082,15 +2103,14 @@ clip-2[8-16sec]: second spoken line`}</pre>
                     />
                   )}
                   {creationMode === 'poster' && !(outputs.posterConcepts?.length) && (
-                    <p className={cn("rounded-xl border px-4 py-3 text-sm", isDark ? "border-slate-700 text-slate-400" : "border-slate-200 text-slate-500")}>
+                    <p className={cn("rounded-xl border px-4 py-3 text-sm", isDark ? "border-white/10 text-slate-400" : "border-slate-200 text-slate-500")}>
                       This saved work has no poster concepts yet — press <b>Generate Poster Concepts</b> to write them.
                     </p>
                   )}
 
                   {/* What the run heard and planned — so the member can check it before using the prompts. */}
                   {creationMode === 'video' && (outputs.voiceBrief || outputs.sceneContext) && (
-                    <div data-test="run-understanding" className={cn("rounded-2xl border p-4 space-y-3 text-sm",
-                      isDark ? "bg-slate-900/70 border-slate-800 text-slate-300" : "bg-white border-slate-200 text-slate-600")}>
+                    <div data-test="run-understanding" className="ag-card p-4 space-y-3 text-sm text-slate-300">
                       {outputs.voiceBrief && (
                         <div data-test="voice-brief">
                           <p className={cn("text-xs font-bold uppercase tracking-wide mb-1", isDark ? "text-violet-300" : "text-violet-700")}>Client voice note — what we understood</p>
@@ -2208,8 +2228,8 @@ clip-2[8-16sec]: second spoken line`}</pre>
 
                   {/* Stock Image Prompts */}
                   {creationMode === 'video' && outputs.voiceOverScript && (
-                        <div className={cn("rounded-2xl border overflow-hidden shadow-lg", isDark ? "bg-slate-900/70 border-slate-800 shadow-black/10" : "bg-white border-slate-200 shadow-slate-200/50")}>
-                          <div className={cn("relative px-4 py-3 border-b flex justify-between items-center", isDark ? "bg-slate-900/80 border-slate-800" : "bg-slate-50 border-slate-200")}>
+                        <div className="ag-acc ag-acc--open">
+                          <div className="relative px-4 py-3 border-b border-white/[0.07] flex justify-between items-center">
                             <div className={cn("absolute left-0 top-0 bottom-0 w-1", BRAND_GRADIENT)} />
                             <div className="flex items-center space-x-2 pl-1.5">
                               <Camera className="w-4 h-4 text-teal-500" />
@@ -2218,14 +2238,14 @@ clip-2[8-16sec]: second spoken line`}</pre>
                             {!outputs.stockImagePrompts && (
                               <div className="flex items-center space-x-2">
                                 <select value={stockImageTheme} onChange={(e) => setStockImageTheme(e.target.value)}
-                                  className={cn("text-xs font-medium py-1.5 px-2 rounded-lg border", isDark ? "bg-slate-700 border-slate-600 text-slate-200" : "bg-white border-slate-300 text-slate-700")}>
+                                  className={cn("text-xs font-medium py-1.5 px-2 rounded-lg border", isDark ? "bg-white/[0.08] border-white/[0.14] text-slate-200" : "bg-white border-slate-300 text-slate-700")}>
                                   <option value="indian">🇮🇳 Indian</option><option value="american">🇺🇸 American</option>
                                   <option value="middle-eastern">🇦🇪 Middle Eastern</option><option value="european">🇪🇺 European</option>
                                   <option value="east-asian">🇯🇵 East Asian</option><option value="african">🇿🇦 African</option><option value="universal">🌍 Universal</option>
                                 </select>
                                 <button onClick={handleGenerateStockImages} disabled={isGeneratingStock}
                                   className={cn("flex items-center space-x-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all",
-                                    isGeneratingStock ? (isDark ? "bg-slate-700 text-slate-400 cursor-not-allowed" : "bg-slate-100 text-slate-400")
+                                    isGeneratingStock ? (isDark ? "bg-white/[0.08] text-slate-400 cursor-not-allowed" : "bg-slate-100 text-slate-400")
                                       : (isDark ? "bg-teal-900/40 text-teal-400 hover:bg-teal-900/60 border border-teal-700/50" : "bg-teal-50 text-teal-700 hover:bg-teal-100 border border-teal-200")
                                   )}>
                                   {isGeneratingStock ? <><Loader2 className="w-3 h-3 animate-spin" /><span>Generating...</span></> : <><Sparkles className="w-3 h-3" /><span>Generate</span></>}
@@ -2252,7 +2272,7 @@ clip-2[8-16sec]: second spoken line`}</pre>
                               </div>
                             )}
                             {outputs.stockImagePrompts?.map((item: any, idx: number) => (
-                              <div key={idx} className={cn("rounded-lg border p-4 mb-3", isDark ? "bg-slate-700/50 border-slate-600" : "bg-slate-50 border-slate-200")}>
+                              <div key={idx} className={cn("rounded-lg border p-4 mb-3", isDark ? "bg-white/[0.05] border-white/[0.14]" : "bg-slate-50 border-slate-200")}>
                                 <div className="flex items-start justify-between mb-2">
                                   <div className="flex items-center space-x-2">
                                     <span className={cn("inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold", isDark ? "bg-teal-900/50 text-teal-400" : "bg-teal-100 text-teal-700")}>{item.id || idx + 1}</span>
@@ -2289,13 +2309,13 @@ clip-2[8-16sec]: second spoken line`}</pre>
                                       onKeyDown={(e) => { if (e.key === 'Enter') handleRefineStockImage(idx); }}
                                       placeholder="Describe the change for this image..."
                                       className={cn("flex-1 border rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-2",
-                                        isDark ? "bg-slate-800 border-slate-600 text-slate-200 focus:ring-teal-800" : "bg-white border-slate-300 text-slate-700 focus:ring-teal-200")} />
+                                        isDark ? "bg-[#0B1020] border-white/[0.14] text-slate-200 focus:ring-teal-800" : "bg-white border-slate-300 text-slate-700 focus:ring-teal-200")} />
                                     <button onClick={() => handleRefineStockImage(idx)} disabled={refiningStockIdx === idx || !stockRefineText.trim()}
                                       className="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 inline-flex items-center gap-1">
                                       {refiningStockIdx === idx ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />} Apply
                                     </button>
                                     <button onClick={() => { setStockRefineIdx(null); setStockRefineText(''); }}
-                                      className={cn("text-xs px-2 py-1.5 rounded-lg", isDark ? "text-slate-400 hover:bg-slate-700" : "text-slate-500 hover:bg-slate-100")}>Cancel</button>
+                                      className={cn("text-xs px-2 py-1.5 rounded-lg", isDark ? "text-slate-400 hover:bg-white/[0.08]" : "text-slate-500 hover:bg-slate-100")}>Cancel</button>
                                   </div>
                                 ) : (
                                   <button onClick={() => { setStockRefineIdx(idx); setStockRefineText(''); }}
@@ -2312,8 +2332,8 @@ clip-2[8-16sec]: second spoken line`}</pre>
 
                   {/* 7. Overlay Text Image Generator — each overlay as a premium 3D transparent PNG prompt */}
                   {creationMode === 'video' && outputs.voiceOverScript && (
-                    <div data-test="overlay-image-generator" className={cn("rounded-2xl border overflow-hidden shadow-lg", isDark ? "bg-slate-900/70 border-slate-800 shadow-black/10" : "bg-white border-slate-200 shadow-slate-200/50")}>
-                      <div className={cn("relative px-4 py-3 border-b flex justify-between items-center gap-2", isDark ? "bg-slate-900/80 border-slate-800" : "bg-slate-50 border-slate-200")}>
+                    <div data-test="overlay-image-generator" className="ag-acc ag-acc--open">
+                      <div className="relative px-4 py-3 border-b border-white/[0.07] flex justify-between items-center gap-2">
                         <div className={cn("absolute left-0 top-0 bottom-0 w-1", BRAND_GRADIENT)} />
                         <div className="flex items-center space-x-2 pl-1.5 min-w-0">
                           <TypeIcon className="w-4 h-4 text-amber-500 flex-shrink-0" />
@@ -2321,7 +2341,7 @@ clip-2[8-16sec]: second spoken line`}</pre>
                         </div>
                         <button onClick={handleGenerateOverlayTexts} disabled={isGeneratingOverlay}
                           className={cn("flex items-center space-x-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all flex-shrink-0",
-                            isGeneratingOverlay ? (isDark ? "bg-slate-700 text-slate-400 cursor-not-allowed" : "bg-slate-100 text-slate-400")
+                            isGeneratingOverlay ? (isDark ? "bg-white/[0.08] text-slate-400 cursor-not-allowed" : "bg-slate-100 text-slate-400")
                               : (isDark ? "bg-amber-900/40 text-amber-400 hover:bg-amber-900/60 border border-amber-700/50" : "bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200"))}>
                           {isGeneratingOverlay
                             ? <><Loader2 className="w-3 h-3 animate-spin" /><span>Generating...</span></>
@@ -2354,13 +2374,13 @@ clip-2[8-16sec]: second spoken line`}</pre>
                                 Clip {clip}
                               </p>
                               {outputs.overlayTexts!.map((o: any, idx: number) => ({ o, idx })).filter(({ o }) => (Number(o.clip) || 0) === clip).map(({ o, idx }) => (
-                                <div key={idx} data-test="overlay-item" className={cn("rounded-lg border p-2.5 mb-1.5", isDark ? "bg-slate-700/50 border-slate-600" : "bg-slate-50 border-slate-200")}>
+                                <div key={idx} data-test="overlay-item" className={cn("rounded-lg border p-2.5 mb-1.5", isDark ? "bg-white/[0.05] border-white/[0.14]" : "bg-slate-50 border-slate-200")}>
                                   <div className="flex items-center justify-between gap-2">
                                     <div className="flex items-center gap-2 min-w-0">
                                       <TypeIcon className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
                                       <span className={cn("font-semibold text-sm truncate", isDark ? "text-slate-200" : "text-slate-700")}>{o.text}</span>
                                     </div>
-                                    <span className={cn("inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-full flex-shrink-0", isDark ? "bg-slate-800 text-amber-300 border border-amber-700/40" : "bg-amber-100 text-amber-700")}>
+                                    <span className={cn("inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-full flex-shrink-0", isDark ? "bg-[#0B1020] text-amber-300 border border-amber-700/40" : "bg-amber-100 text-amber-700")}>
                                       <Music className="w-3 h-3" /> {o.soundEffect}
                                     </span>
                                   </div>
@@ -2373,7 +2393,7 @@ clip-2[8-16sec]: second spoken line`}</pre>
                                     </p>
                                   )}
                                   {o.imagePrompt ? (
-                                    <div className={cn("mt-2 rounded-md border p-2", isDark ? "bg-slate-800/70 border-slate-600" : "bg-white border-slate-200")}>
+                                    <div className={cn("mt-2 rounded-md border p-2", isDark ? "bg-white/[0.05] border-white/[0.14]" : "bg-white border-slate-200")}>
                                       <div className="flex items-center justify-between gap-2 mb-1">
                                         <span className={cn("text-[10px] font-bold uppercase tracking-wide", isDark ? "text-slate-400" : "text-slate-500")}>Generated prompt · 3D transparent PNG</span>
                                         <button onClick={() => { navigator.clipboard.writeText(o.imagePrompt); setCopiedOverlayIdx(idx); setTimeout(() => setCopiedOverlayIdx(null), 2000); }}
@@ -2391,13 +2411,13 @@ clip-2[8-16sec]: second spoken line`}</pre>
                                             onKeyDown={(e) => { if (e.key === 'Enter') handleRefineOverlayImage(idx); }}
                                             placeholder="e.g. make it silver with a blue glow"
                                             className={cn("flex-1 min-w-0 border rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-2",
-                                              isDark ? "bg-slate-800 border-slate-600 text-slate-200 focus:ring-amber-800" : "bg-white border-slate-300 text-slate-700 focus:ring-amber-200")} />
+                                              isDark ? "bg-[#0B1020] border-white/[0.14] text-slate-200 focus:ring-amber-800" : "bg-white border-slate-300 text-slate-700 focus:ring-amber-200")} />
                                           <button onClick={() => handleRefineOverlayImage(idx)} disabled={refiningOverlayIdx === idx || !overlayRefineText.trim()}
                                             className="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 inline-flex items-center gap-1">
                                             {refiningOverlayIdx === idx ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />} Apply
                                           </button>
                                           <button onClick={() => { setOverlayRefineIdx(null); setOverlayRefineText(''); }}
-                                            className={cn("text-xs px-2 py-1.5 rounded-lg", isDark ? "text-slate-400 hover:bg-slate-700" : "text-slate-500 hover:bg-slate-100")}>Cancel</button>
+                                            className={cn("text-xs px-2 py-1.5 rounded-lg", isDark ? "text-slate-400 hover:bg-white/[0.08]" : "text-slate-500 hover:bg-slate-100")}>Cancel</button>
                                         </div>
                                       ) : (
                                         <button data-test="overlay-refine" onClick={() => { setOverlayRefineIdx(idx); setOverlayRefineText(''); }}
@@ -2424,13 +2444,14 @@ clip-2[8-16sec]: second spoken line`}</pre>
                 </motion.div>
               ) : showMission && activeRun ? (
                 <motion.div key={`mission-${activeRun.id}`} {...missionMotion(reduceMotion)} className="space-y-3">
-                  <h2 className={cn("text-lg sm:text-xl font-extrabold tracking-tight", BRAND_TEXT)}>Generated Assets</h2>
+                  <h2 className="ag-eyebrow">Mission workspace</h2>
                   <MissionWorkspace run={activeRun} done={missionDone} onToggle={toggleMission} isDark={isDark} />
                 </motion.div>
               ) : !status.isProcessing ? (
                 <motion.div key="welcome" initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { duration: 0.25 } }} exit={{ opacity: 0, transition: { duration: 0.15 } }}>
-                <div className={cn("rounded-2xl border p-8 sm:p-12 text-center shadow-xl",
-                  isDark ? "bg-slate-900/70 border-slate-800 shadow-black/20 backdrop-blur" : "bg-white/90 border-slate-200 shadow-slate-200/60 backdrop-blur")}>
+                {/* Nothing has been generated yet, so this side is short while the form is long —
+                    sticky keeps it beside the fields instead of stranded at the top. */}
+                <div className="ag-card p-8 sm:p-12 text-center lg:sticky lg:top-2">
                   <div className={cn("w-16 h-16 mx-auto mb-5 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-blue-600/25", BRAND_GRADIENT)}>
                     <Sparkles className="w-8 h-8" />
                   </div>
@@ -2442,7 +2463,7 @@ clip-2[8-16sec]: second spoken line`}</pre>
                       { n: '2', t: 'Configure', d: 'Mode, ratio, language, attire & duration' },
                       { n: '3', t: 'Generate', d: 'Copy each prompt into the video platform' },
                     ].map(s => (
-                      <div key={s.n} className={cn("rounded-xl border p-3.5", isDark ? "bg-slate-800/60 border-slate-700/60" : "bg-slate-50 border-slate-200")}>
+                      <div key={s.n} className={cn("rounded-xl border p-3.5", isDark ? "bg-white/[0.04] border-white/10" : "bg-slate-50 border-slate-200")}>
                         <span className={cn("inline-flex w-6 h-6 mb-2 rounded-lg text-[11px] font-bold text-white items-center justify-center", BRAND_GRADIENT)}>{s.n}</span>
                         <p className={cn("text-xs font-bold mb-0.5", isDark ? "text-slate-200" : "text-slate-700")}>{s.t}</p>
                         <p className={cn("text-[11px] leading-relaxed", isDark ? "text-slate-500" : "text-slate-400")}>{s.d}</p>
@@ -2498,14 +2519,11 @@ const OutputSection: React.FC<{
     setTimeout(() => setCopied(false), 2000);
   };
   return (
-    <div className={cn("rounded-2xl border overflow-hidden shadow-lg",
-      isDark ? "border-slate-800 shadow-black/10" : "border-slate-200 shadow-slate-200/50")}>
-      <div className={cn("relative w-full flex items-center justify-between gap-3 px-4 py-3",
-        isDark ? "bg-slate-900/80 text-slate-200" : "bg-slate-50 text-slate-800"
-      )}>
+    <div className={cn("ag-acc", collapsedOutputs[sectionKey] && "ag-acc--open")}>
+      <div className="relative w-full flex items-center justify-between gap-3 px-4 py-3.5 sm:px-5">
         <div className={cn("absolute left-0 top-0 bottom-0 w-1", BRAND_GRADIENT)} />
         <div className="min-w-0 flex-1 pl-1.5">
-          <span className="font-semibold text-sm uppercase tracking-wide text-left">{title}</span>
+          <span className="ag-h2 text-[15px] sm:text-base text-left block truncate">{title}</span>
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
           {quickCopyItems && quickCopyItems.length > 0 && (
@@ -2516,12 +2534,7 @@ const OutputSection: React.FC<{
           {copyContent && (
             <span
               onClick={handleCopy}
-              className={cn(
-                "flex items-center space-x-1 text-xs font-medium px-2 py-1 rounded transition-colors",
-                copied
-                  ? isDark ? "text-green-400 bg-green-900/30" : "text-green-600 bg-green-50"
-                  : isDark ? "text-slate-400 hover:text-blue-400 hover:bg-blue-900/30" : "text-slate-500 hover:text-blue-600 hover:bg-blue-50"
-              )}
+              className={cn("ag-btn ag-btn--sm h-8 px-2.5 text-xs", copied ? "ag-btn--ok" : "ag-btn--secondary")}
             >
               {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
               <span>{copied ? 'Copied' : (copyLabel ?? 'Copy')}</span>
@@ -2530,13 +2543,10 @@ const OutputSection: React.FC<{
           <button
             type="button"
             onClick={() => toggleOutputSection(sectionKey)}
-            className={cn(
-              "inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors",
-              isDark ? "text-slate-400 hover:bg-slate-700 hover:text-white" : "text-slate-500 hover:bg-slate-200 hover:text-slate-900"
-            )}
+            className="ag-btn ag-btn--icon ag-btn--sm h-8 w-8"
             aria-label={collapsedOutputs[sectionKey] ? `Collapse ${title}` : `Expand ${title}`}
           >
-            <ChevronDown className={cn("w-4 h-4 transition-transform", collapsedOutputs[sectionKey] && "rotate-180")} />
+            <ChevronDown className="ag-acc__chev w-4 h-4" />
           </button>
         </div>
       </div>

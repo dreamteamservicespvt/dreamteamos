@@ -39,12 +39,7 @@ export const RunCountdown: React.FC<{
       <span
         data-test="run-countdown-inline"
         aria-live="off"
-        className={cn(
-          'font-mono font-bold text-[11px] px-1.5 py-0.5 rounded-md tabular-nums',
-          over
-            ? (isDark ? 'bg-amber-900/40 text-amber-300' : 'bg-amber-100 text-amber-700')
-            : (isDark ? 'bg-slate-800 text-violet-300' : 'bg-violet-50 text-violet-700'),
-        )}
+        className={cn('ag-chip ag-num h-7 px-2.5 text-[11px]', over ? 'ag-badge--warn' : 'ag-badge--run')}
         title={over ? 'Taking longer than estimated' : 'Estimated time remaining'}
       >
         {view.finishing ? 'finishing' : over ? `+${view.overLabel} over` : `${view.label} left`}
@@ -58,18 +53,15 @@ export const RunCountdown: React.FC<{
         role="timer"
         aria-live="off"
         aria-label={over ? `${view.overLabel} past the estimate` : `${view.label} remaining`}
-        className={cn(
-          'font-semibold tabular-nums tracking-tight leading-none text-5xl sm:text-6xl',
-          over ? (isDark ? 'text-amber-300' : 'text-amber-600') : BRAND_TEXT,
-        )}
+        className={cn('ag-num leading-none text-5xl sm:text-6xl', over ? 'text-amber-300' : BRAND_TEXT)}
       >
         {over ? `+${view.overLabel}` : view.label}
       </div>
-      <p className={cn('mt-2 text-[10px] font-semibold uppercase tracking-[0.18em]', isDark ? 'text-slate-400' : 'text-slate-500')}>
+      <p className="ag-eyebrow mt-2 text-[10px]">
         {view.finishing ? 'Finishing up' : over ? 'Past the estimate · still working' : target}
       </p>
       {view.calibrating && !over && (
-        <p className={cn('mt-1 text-[10px]', isDark ? 'text-slate-500' : 'text-slate-400')}>
+        <p className="ag-muted mt-1 text-[10px]">
           First run on this device — the estimate sharpens with every run
         </p>
       )}
@@ -88,8 +80,8 @@ const StageRail: React.FC<{ run: GenerationRun; isDark: boolean }> = ({ run, isD
     <ol className="grid gap-2" style={{ gridTemplateColumns: `repeat(${stages.length}, minmax(0, 1fr))` }} aria-label="DTS progress">
       {stages.map((stage) => (
         <li key={stage.key} className="min-w-0" aria-current={stage.state === 'active' ? 'step' : undefined}>
-          <div className={cn('relative h-1 rounded-full overflow-hidden', isDark ? 'bg-slate-800' : 'bg-slate-200/80')}>
-            {stage.state === 'done' && <div className={cn('absolute inset-0', BRAND_GRADIENT)} />}
+          <div className="ag-track">
+            {stage.state === 'done' && <div className="ag-track__fill" />}
             {stage.state === 'active' && (
               reduce
                 ? <div className={cn('absolute inset-y-0 left-0 w-1/2', BRAND_GRADIENT)} />
@@ -106,11 +98,8 @@ const StageRail: React.FC<{ run: GenerationRun; isDark: boolean }> = ({ run, isD
           {/* Four labels in a phone's width truncate into noise — there, one "Now" line says it instead. */}
           <p className={cn(
             'mt-1.5 hidden sm:block text-[11px] leading-tight truncate',
-            stage.state === 'active'
-              ? (isDark ? 'text-slate-100 font-semibold' : 'text-slate-800 font-semibold')
-              : stage.state === 'done'
-                ? (isDark ? 'text-slate-400' : 'text-slate-500')
-                : (isDark ? 'text-slate-600' : 'text-slate-400'),
+            stage.state === 'active' ? 'text-slate-100 font-semibold'
+              : stage.state === 'done' ? 'ag-muted' : 'text-slate-600',
           )} title={stage.label}>
             {stage.label}
           </p>
@@ -118,8 +107,8 @@ const StageRail: React.FC<{ run: GenerationRun; isDark: boolean }> = ({ run, isD
       ))}
     </ol>
     {activeIndex >= 0 && (
-      <p className={cn('sm:hidden mt-2 text-[11px]', isDark ? 'text-slate-400' : 'text-slate-500')}>
-        Now: <span className={cn('font-semibold', isDark ? 'text-slate-100' : 'text-slate-800')}>{stages[activeIndex].label}</span>
+      <p className="ag-muted sm:hidden mt-2 text-[11px]">
+        Now: <span className="font-semibold text-slate-100">{stages[activeIndex].label}</span>
         {' '}· step {activeIndex + 1} of {stages.length}
       </p>
     )}
@@ -155,18 +144,15 @@ export const MissionTaskList: React.FC<{
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, delay: animate ? 0.12 + i * 0.05 : 0, ease: EASE }}
             className={cn(
-              'relative rounded-xl border p-3.5 sm:p-4 transition-colors',
-              isNext
-                ? (isDark ? 'border-violet-500/50 bg-violet-500/[0.07]' : 'border-violet-300 bg-violet-50/70')
-                : info
-                  ? (isDark ? 'border-slate-800 bg-transparent' : 'border-slate-200/70 bg-transparent')
-                  : (isDark ? 'border-slate-700/60 bg-slate-800/40' : 'border-slate-200 bg-white/70'),
+              'ag-step sm:p-4',
+              isNext && 'ag-step--next',
+              info && 'ag-step--info',
+              complete && 'ag-step--done',
             )}
           >
             <div className="flex gap-3">
               {info ? (
-                <span className={cn('mt-0.5 shrink-0 w-[22px] h-[22px] rounded-full flex items-center justify-center',
-                  isDark ? 'text-slate-500' : 'text-slate-400')}>
+                <span className="ag-muted mt-0.5 shrink-0 w-[22px] h-[22px] rounded-full flex items-center justify-center">
                   <Info className="w-3.5 h-3.5" />
                 </span>
               ) : (
@@ -182,8 +168,8 @@ export const MissionTaskList: React.FC<{
                     complete
                       ? cn(BRAND_GRADIENT, 'text-white shadow-md shadow-blue-600/25')
                       : isNext
-                        ? (isDark ? 'border border-violet-400 text-violet-300' : 'border border-violet-500 text-violet-600')
-                        : (isDark ? 'border border-slate-600 text-slate-400 hover:border-slate-400' : 'border border-slate-300 text-slate-500 hover:border-slate-400'),
+                        ? 'border border-violet-400 text-violet-300'
+                        : 'border border-white/[0.14] text-slate-400 hover:border-slate-400',
                   )}
                 >
                   {complete ? <Check className="w-3.5 h-3.5" strokeWidth={3} /> : number}
@@ -193,9 +179,7 @@ export const MissionTaskList: React.FC<{
               <div className="min-w-0 flex-1">
                 <div className="flex items-start justify-between gap-2">
                   <p className={cn('text-sm font-semibold leading-snug',
-                    complete ? (isDark ? 'text-slate-500' : 'text-slate-400')
-                      : info ? (isDark ? 'text-slate-400' : 'text-slate-500')
-                        : (isDark ? 'text-slate-100' : 'text-slate-800'))}>
+                    complete || info ? 'ag-muted' : 'text-slate-100')}>
                     {task.title}
                   </p>
                   {isNext && (
@@ -204,7 +188,7 @@ export const MissionTaskList: React.FC<{
                     </span>
                   )}
                 </div>
-                <p className={cn('mt-0.5 text-xs leading-relaxed', isDark ? 'text-slate-400' : 'text-slate-500')}>
+                <p className="ag-muted mt-0.5 text-xs leading-relaxed">
                   {task.detail}
                 </p>
 
@@ -221,12 +205,8 @@ export const MissionTaskList: React.FC<{
                           rel="noopener noreferrer"
                           data-test={`mission-tab-${t + 1}`}
                           onClick={() => onToggle(key, true)}
-                          className={cn(
-                            'inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition-all active:scale-[0.97]',
-                            opened
-                              ? (isDark ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-emerald-300 bg-emerald-50 text-emerald-700')
-                              : (isDark ? 'border-slate-600 text-slate-200 hover:border-violet-400 hover:text-white' : 'border-slate-300 text-slate-700 hover:border-violet-400 hover:text-violet-700 bg-white'),
-                          )}
+                          className={cn('ag-chip h-7 text-[11px] transition-all active:scale-[0.97]',
+                            opened ? 'ag-badge--ok' : 'hover:border-violet-400 hover:text-white')}
                         >
                           {opened ? <Check className="w-3 h-3" strokeWidth={3} /> : <ExternalLink className="w-3 h-3 opacity-60" />}
                           Tab {t + 1}
@@ -242,10 +222,7 @@ export const MissionTaskList: React.FC<{
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => onToggle(task.id, true)}
-                    className={cn(
-                      'mt-2.5 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-white shadow-md shadow-blue-600/20 transition-all active:scale-[0.98]',
-                      BRAND_GRADIENT,
-                    )}
+                    className="ag-btn ag-btn--primary ag-btn--sm mt-2.5 h-9 text-xs"
                   >
                     {task.linkLabel || 'Open'} <ExternalLink className="w-3.5 h-3.5 opacity-80" />
                   </a>
@@ -277,10 +254,7 @@ export const MissionWorkspace: React.FC<{
     <section
       data-test="mission-workspace"
       aria-label="Mission workspace"
-      className={cn(
-        'relative overflow-hidden rounded-2xl border shadow-xl',
-        isDark ? 'bg-slate-900/80 border-slate-800 shadow-black/30' : 'bg-white/95 border-slate-200 shadow-slate-200/60',
-      )}
+      className="ag-card relative overflow-hidden"
     >
       {/* A slow wash of the brand colours behind the countdown — atmosphere, never information. */}
       <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -301,13 +275,13 @@ export const MissionWorkspace: React.FC<{
       <div className="relative px-5 py-5 sm:px-7 sm:py-7">
         <div className="grid gap-5 sm:grid-cols-[1fr_auto] sm:items-end">
           <div className="min-w-0">
-            <p className={cn('flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.2em]', isDark ? 'text-violet-300' : 'text-violet-600')}>
-              <Sparkles className="w-3.5 h-3.5" /> Mission Workspace
+            <p className="ag-chip ag-badge--run">
+              <Sparkles className="w-3.5 h-3.5" /> Mission workspace
             </p>
-            <h3 className={cn('mt-2 text-xl sm:text-2xl font-extrabold tracking-tight', isDark ? 'text-white' : 'text-slate-900')}>
+            <h3 className="ag-display mt-3 text-xl sm:text-3xl text-white">
               {poster ? 'Your poster concepts are being written' : 'Your ad kit is being built'}
             </h3>
-            <p className={cn('mt-1 text-xs', isDark ? 'text-slate-400' : 'text-slate-500')}>{runSummary(run.facts)}</p>
+            <p className="ag-muted mt-1.5 text-xs">{runSummary(run.facts)}</p>
           </div>
           <RunCountdown
             run={run}
@@ -322,15 +296,13 @@ export const MissionWorkspace: React.FC<{
           <StageRail run={run} isDark={isDark} />
         </div>
 
-        <div className={cn('my-6 h-px bg-gradient-to-r from-transparent to-transparent', isDark ? 'via-slate-700' : 'via-slate-200')} />
+        <div className="ag-hairline my-6" />
 
         <div className="flex items-baseline justify-between gap-3 mb-3">
-          <h4 className={cn('text-sm font-bold', isDark ? 'text-slate-100' : 'text-slate-800')}>
+          <h4 className="ag-h2 text-sm text-slate-100">
             While DTS writes, set up your studio
           </h4>
-          <span className={cn('shrink-0 text-[11px] font-semibold tabular-nums', ready === total
-            ? (isDark ? 'text-emerald-300' : 'text-emerald-600')
-            : (isDark ? 'text-slate-400' : 'text-slate-500'))}
+          <span className={cn('ag-num shrink-0 text-[11px]', ready === total ? 'text-emerald-300' : 'ag-muted')}
             data-test="mission-ready-count">
             {ready === total ? 'Studio ready' : `${ready} of ${total} ready`}
           </span>
@@ -338,7 +310,7 @@ export const MissionWorkspace: React.FC<{
 
         <MissionTaskList tasks={tasks} done={done} onToggle={onToggle} isDark={isDark} animate />
 
-        <p className={cn('mt-5 flex items-start gap-1.5 text-[11px] leading-relaxed', isDark ? 'text-slate-500' : 'text-slate-400')}>
+        <p className="ag-muted mt-5 flex items-start gap-1.5 text-[11px] leading-relaxed">
           <Sparkles className="w-3 h-3 mt-0.5 shrink-0" />
           This workspace steps aside the moment your first asset arrives. Reopen it any time from AI Guide.
         </p>

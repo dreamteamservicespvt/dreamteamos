@@ -39,7 +39,7 @@ export default function AttachmentBanner({ attachment, isDark, compact = false }
       <div
         data-test="attach-banner"
         className={cn("mb-3 flex items-center gap-2 rounded-lg border px-3 py-2 text-xs",
-          isDark ? "border-slate-700 bg-slate-800/60 text-slate-400" : "border-slate-200 bg-slate-50 text-slate-500")}
+          isDark ? "border-white/10 bg-white/[0.04] text-slate-400" : "border-slate-200 bg-slate-50 text-slate-500")}
       >
         <ImageOff className="w-4 h-4 shrink-0" />
         <span><b className="font-semibold">Nothing to attach.</b> This clip's location is generated from the prompt.</span>
@@ -62,7 +62,7 @@ export default function AttachmentBanner({ attachment, isDark, compact = false }
         />
       ) : (
         <div className={cn("flex h-16 w-16 shrink-0 items-center justify-center rounded-lg",
-          isDark ? "bg-slate-700 text-slate-500" : "bg-slate-200 text-slate-400")}>
+          isDark ? "bg-white/[0.08] text-slate-500" : "bg-slate-200 text-slate-400")}>
           <ImageOff className="w-5 h-5" />
         </div>
       )}

@@ -4,7 +4,8 @@
 > context/architecture/history document. The **source code wins** over this file; when they
 > disagree, fix this file in the same task.
 >
-> **Last full audit:** 2026-09-22 against `main` @ `a1623ac` (working tree otherwise clean).
+> **Last full audit:** 2026-09-22 against `main` @ `a1623ac`; last updated 2026-09-23 for the
+> AdGen studio UI (§11, §22, §31).
 > **Quick start:** read **§33 AI Development Context** first, then **§29 Rules** and **§30 Change Protocol**.
 >
 > Legend: ✅ implemented · 🟡 partial · ❌ not implemented · **[NOT CONFIRMED]** = could not be
@@ -106,7 +107,7 @@ hiring link), and hand-maintained social-media plans (SMM campaigns).
 | UI | React 18.3 (SPA), Vite 5.4 with `@vitejs/plugin-react-swc` |
 | Routing | `react-router-dom` 6.30 (`BrowserRouter`), every page `lazy()`-loaded |
 | Components | shadcn/ui (Radix primitives) in `src/components/ui/`, `lucide-react` icons, `framer-motion` |
-| Styling | Tailwind CSS 3.4 + `tailwindcss-animate` + `@tailwindcss/typography`; HSL CSS variables in `src/index.css`; fonts Syne (display), DM Sans (body), JetBrains Mono |
+| Styling | Tailwind CSS 3.4 + `tailwindcss-animate` + `@tailwindcss/typography`; HSL CSS variables in `src/index.css`; fonts Syne (display), DM Sans (body), JetBrains Mono. The AI Ads Platform adds its own scoped design system, `src/components/ai-platform/adgen.css` (`.adgen`, dark-only, Space Grotesk + Inter) |
 | Theme | `next-themes` (`attribute="class"`, default **dark**, system allowed); `components/ThemeSelector.tsx` |
 | Client state | `zustand` 5 stores in `src/store/` |
 | Server state | Firestore realtime listeners (`onSnapshot`) and one-shot reads. `@tanstack/react-query` `QueryClientProvider` is mounted but **no `useQuery` exists** |
@@ -384,7 +385,8 @@ and `tech-team-leader/MemberAssignments.tsx` (**near-duplicates**), `tech-member
 **9.7 AI Ads Platform (ad generation)** ✅. `components/ai-platform/*`, `services/geminiService.ts`,
 `services/prompts.ts`, `services/prompts/*`, `services/characterPacks.ts` +
 `characterCatalogue.ts` (35 special-category entries incl. three human duos), `services/posterStyles.ts`,
-`services/adLanguages.ts`. Collection `ai_generations`. See §17.
+`services/adLanguages.ts`, `components/ai-platform/adgen.css` (the studio's design system, §11).
+Collection `ai_generations`. See §17.
 
 **9.8 Cinematic Ads pipeline** ✅ (rebuilt 2026-09-19). `pages/tech-admin/CinematicAds.tsx`,
 `components/cinematic-ads/*` (Step0–Step6, ProjectList, AdFormatPicker, PipelineStepper,
@@ -605,6 +607,18 @@ Notification deep links must use `/` + query or a route the **recipient's** role
 - **Styling:** Tailwind utility classes, shadcn components, role colours (`bg-role-*`), brand
   gradient for the AI platform (`components/ai-platform/brand.ts`). Mobile-first, with a 412px /
   390px phone width checked in past sessions. Watch the `min-w-0` trap on grid/flex items.
+- **The AdGen studio (`.adgen`)** is the one place with its own design system:
+  `components/ai-platform/adgen.css` defines tokens (`--ag-canvas #020617`, glass surfaces, the
+  violet→blue→cyan `--ag-accent`) and component classes — `ag-card`, `ag-panel`, `ag-acc`
+  (output sections), `ag-btn` (+`--primary/--secondary/--ok/--danger/--icon/--sm/--lg`), `ag-chip`
+  with `ag-badge--ok/run/warn/bad/info`, `ag-drop` (upload states `--over/--done/--error/--owner`),
+  `ag-progress`, `ag-track`, `ag-step`, `ag-tile`, `ag-code`/`ag-codebar`, and the type classes
+  `ag-display/ag-h2/ag-num/ag-eyebrow/ag-mono/ag-muted`. The `ag-*` classes and the tokens are
+  global (the prefix keeps them out of the way) because Radix portals — the AI Guide sheet, the spec
+  dialog — render outside the platform's root; `.adgen` itself carries the canvas, colour scheme,
+  fonts, field styling and scrollbars, so no other page is affected. The studio is dark whatever the app theme is
+  (`STUDIO_IS_DARK` in `brand.ts`, plus `color-scheme: dark`); components opened OUTSIDE it —
+  `CodeVerificationModal`, on My Work / Recent Ads — still follow `next-themes`.
 - **Documents:** `AgreementView` renders letters with inline styles. `utils/documentPages.ts`
   paginates into A4 sheets used by both `agreementPdf` (html2canvas → jsPDF) and `agreementPrint`
   (native print). Print CSS at the end of `index.css` releases the fixed-height shell.
@@ -1137,7 +1151,7 @@ Gemini key), the production API base URL, and CORS allow-lists in `api/*`.
 | `AppLayout` | `components/layout/` | Guard + shell + global overlays + session listeners (§11). Props `allowedRoles` |
 | `Sidebar` / `Topbar` | `components/layout/` | Role nav with groups (flattened when collapsed), logout; bell, avatar |
 | `AppUpdateBanner`, `UpdatePopup`, `InstallAppButton` | `components/layout/` | Self-update, work popups, PWA install |
-| `AIPlatformApp` | `components/ai-platform/` | Props `assignment?`, `assignmentId?`, `onClose`, `onComplete?`, `completing?`, `onBusinessNameExtracted?`. Full-screen (`fixed inset-0 z-50`); holds updates while open; restores saved generation; locks spec from assignment. Children: `FileUpload`, `GeneratedCard`, `SavedItems`, `PosterConceptsPanel`, `generation/MissionWorkspace` (waiting screen with ETA from `utils/generationEta`), `AIGuideSheet`, `SpecUpdateDialog`, `RefineRevisionBanner`, `CodeVerificationModal`. Renders the owner-image slot, BUSINESS CONTENT / FRAME / BACKGROUND INSTRUCTIONS boxes, the Gemini document-route box, the Custom Character field, the duo custom-script format, a "what we understood / background plan" panel (`voiceBrief`, `sceneContext`), the 2. VIDEO BOTTOM LABEL and 7. Overlay Text Image Generator sections. `FileUpload` refuses PDFs/documents/video and supports drag & drop |
+| `AIPlatformApp` | `components/ai-platform/` | Props `assignment?`, `assignmentId?`, `onClose`, `onComplete?`, `completing?`, `onBusinessNameExtracted?`. Full-screen (`fixed inset-0 z-50`); holds updates while open; restores saved generation; locks spec from assignment. Children: `FileUpload`, `GeneratedCard`, `SavedItems`, `PosterConceptsPanel`, `generation/MissionWorkspace` (waiting screen with ETA from `utils/generationEta`), `AIGuideSheet`, `SpecUpdateDialog`, `RefineRevisionBanner`, `CodeVerificationModal`. Renders the owner-image slot, BUSINESS CONTENT / FRAME / BACKGROUND INSTRUCTIONS boxes, the Gemini document-route box, the Custom Character field, the duo custom-script format, a "what we understood / background plan" panel (`voiceBrief`, `sceneContext`), the 2. VIDEO BOTTOM LABEL and 7. Overlay Text Image Generator sections. `FileUpload` refuses PDFs/documents/video and supports drag & drop. Chrome (2026-09-23): root `.adgen`, 72px glass nav (company mark │ product name, run-state chip, Mark Complete), "Generated Ad Kit" hero, two-column `max-w-[1520px]` grid with a sticky welcome panel, output sections as `ag-acc` accordions |
 | `SaleForm` | `components/sales/` | The one sale form (new, edit, upsell): packages, bulk, discounts, SMM fields, promise, requirement, payments; calls `upsertOrderForSale` |
 | `SpecialCategoryFields`, `ModelAttireFields`, `PosterSpecFields`, `OccasionPicker`, `DurationPicker` | `components/work/` | Shared spec editors used by Work Assign ×2, assignment editors and the AI platform. **`SaleForm` still has its own copy of the special-category picker** |
 | `OrderProgressPanel`, `BulkVideoBoard`, `AssignTracksDialog`, `PenaltyDialog`, `ExtendPromiseButton`, `DeadlineChip`, `ReassignWork`, `RequirementsShareModal`, `MemberWorkloadCard`, `WorkDoneReport` | `components/work/` | Order and work UI pieces |
@@ -1466,6 +1480,22 @@ and push; PWA self-update; Android shell.
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
 
+- **2026-09-23: AdGen.ai studio UI, taken live** — the design (dark luxury SaaS: #020617 canvas,
+  glass cards, violet→blue→cyan accent, Space Grotesk + Inter) implemented in the real platform, not
+  a mock-up. New `src/components/ai-platform/adgen.css` holds the whole system (§11); `index.html`
+  loads the two fonts. `AIPlatformApp` gained the 72px glass nav with the run-state chip, the
+  "Generated Ad Kit" hero with History/Save, a `max-w-[1520px]` two-column grid whose welcome panel
+  is sticky, a system status card with the shimmering progress track, and `ag-acc` accordions for
+  every output section. `FileUpload` drop zones now carry rest/over/owner/refused states,
+  `GeneratedCard` became a panel with a mono prompt body and a `ag-codebar` toolbar,
+  `MissionWorkspace` got the stage rail, checklist steps and countdown in system type, and
+  `SavedItems` / `PosterConceptsPanel` follow. A mechanical pass retuned 147 slate-700/800/900
+  surfaces across the platform to the glass palette. The studio is dark in every app theme
+  (`STUDIO_IS_DARK` + `color-scheme: dark`); `CodeVerificationModal`, which opens outside it, was
+  left theme-aware. No handler, prop, data flow, prompt or Firestore shape changed. Verified: build
+  ✅, vitest 171 files / 2712 tests ✅, typecheck 1 known error, and a throwaway browser harness
+  (headless Chrome over CDP, deleted after) rendered the studio and the generated-asset cards at
+  1600px and 390px — no horizontal scroll, tokens and fonts resolving.
 - **2026-09-22: AdGen.ai batch (28 items)** — AI platform inputs: BUSINESS CONTENT and FRAME /
   BACKGROUND INSTRUCTIONS boxes, owner image slot, no document uploads (Gemini extraction guidance),
   working drag & drop, voice note understood first (`voiceNote`, `voiceBrief`), custom script word
@@ -1526,17 +1556,17 @@ Design intent lives in `docs/superpowers/specs/`.
 
 ---
 
-## 32. CURRENT PROJECT STATE (as of 2026-09-22)
+## 32. CURRENT PROJECT STATE (as of 2026-09-23)
 
-- Branch `main` @ `a1623ac`. Uncommitted: `HEADER LAYOUT.png` deleted (pre-existing), this
-  CLAUDE.md, and the whole 2026-09-22 AdGen.ai batch (§31) — not committed. `tsconfig.app.json`
-  gained `"ignoreDeprecations": "6.0"` outside this batch.
+- Branch `main` @ `0e435cf` ("28 updates", which committed the 2026-09-22 AdGen.ai batch).
+  Uncommitted: the 2026-09-23 studio UI (§31) — `index.html`, the `components/ai-platform/*` files
+  and the new `components/ai-platform/adgen.css` — plus this CLAUDE.md.
 - `npm run build` ✅ (main chunk ≈454 KB, vendor-firebase ≈665 KB, geminiService chunk ≈757 KB).
 - `npx vitest run` ✅ 171 files, 2712 tests.
 - `npx tsc -p tsconfig.check.json --noEmit` → 1 known error (VideoCallManager).
-- `npx eslint .` → 599 problems (pre-existing).
-- Most recent feature work: the AdGen.ai batch (§31), before it Cinematic Ads, SMM, Poster
-  Creation, load-time splitting.
+- `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
+- Most recent feature work: the AdGen.ai studio UI, before it the AdGen.ai batch (§31), Cinematic
+  Ads, SMM, Poster Creation, load-time splitting.
 - Open follow-ups the owner must act on: publish `docs/firestore-rules.md` in the console; move
   secrets out of source; authenticate `/api/send-notification`.
 
@@ -1590,7 +1620,9 @@ camera vocabulary, world + place locks, never a goodbye wave (§17.2). Poster mo
 7-step, project-persisted pipeline. All prompts are in `services/prompts.ts` +
 `services/prompts/*`. **`aiadsdts/` is dead; never edit it.**
 
-**Conventions.** `@/` alias; heavy "why" comments; optional fields for back-compat, no
+**Conventions.** The AI platform is styled with its own scoped system (`.adgen`,
+`components/ai-platform/adgen.css`, dark-only) — use `ag-*` classes there, Tailwind/shadcn
+everywhere else. `@/` alias; heavy "why" comments; optional fields for back-compat, no
 migrations; deterministic ids + `dedupeKey`; transactions for shared arrays; edit both
 duplicated WorkAssign/MemberAssignments pages; verify with `npm run build` + `npx vitest run` +
 `npx tsc -p tsconfig.check.json --noEmit` (1 known error); browser checks via a throwaway

@@ -34,7 +34,7 @@ export default function SpecUpdateDialog({
     >
       <div className={cn(
         "w-full max-w-lg rounded-2xl border shadow-2xl",
-        isDark ? "border-slate-700 bg-slate-900" : "border-slate-200 bg-white",
+        isDark ? "border-white/10 bg-[#071126]" : "border-slate-200 bg-white",
       )}>
         <div className="p-5">
           <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/15">
@@ -50,7 +50,7 @@ export default function SpecUpdateDialog({
 
           <div className={cn(
             "mt-4 divide-y rounded-xl border",
-            isDark ? "divide-slate-700 border-slate-700 bg-slate-800/50" : "divide-slate-200 border-slate-200 bg-slate-50",
+            isDark ? "divide-white/10 border-white/10 bg-white/[0.04]" : "divide-slate-200 border-slate-200 bg-slate-50",
           )}>
             {changes.map((c) => (
               <div key={c.label} className="px-3 py-2.5">
