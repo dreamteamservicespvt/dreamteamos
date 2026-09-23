@@ -153,6 +153,16 @@ describe("the client chat's lifecycle", () => {
 });
 
 describe("what the client is sent", () => {
+  it("names the festival a wishes video is for", () => {
+    const message = buildClientChatMessage({
+      businessName: "Lalitha Tailoring", uniqueId: "W12", chatId: "c1", category: "wishes", festival: "Diwali",
+    });
+    expect(message).toContain("Diwali");
+    // A client with three festivals booked could not tell which video had started.
+    expect(message).toContain("Your Diwali ");
+    expect(buildClientChatMessage({ uniqueId: "W12", chatId: "c1", category: "wishes" })).not.toContain("undefined");
+  });
+
   it("carries the link, and asks the customer for nothing at all", () => {
     const message = buildClientChatMessage({
       businessName: "Sharma Electronics",

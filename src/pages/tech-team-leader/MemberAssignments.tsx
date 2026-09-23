@@ -894,6 +894,7 @@ export default function TeamLeaderMemberAssignments() {
           businessName={shareChatFor.businessName || shareChatFor.clientName}
           uniqueId={shareChatFor.uniqueId}
           category={shareChatFor.category}
+          festival={shareChatFor.festival}
           clientPhone={shareChatFor.businessWhatsapp}
           onOpenChat={() => setOpenChatFor(shareChatFor)}
           onClose={() => setShareChatFor(null)}

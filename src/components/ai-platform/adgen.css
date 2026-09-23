@@ -251,6 +251,7 @@
   box-shadow: 0 14px 30px -18px rgba(37, 99, 235, 1);
 }
 .ag-ico--quiet { background: rgba(255, 255, 255, .05); border: 1px solid var(--ag-line); box-shadow: none; color: #A5B4FC; }
+.ag-ico--sm { width: 36px; height: 36px; flex: 0 0 36px; border-radius: 12px; }
 
 /* ── compact asset tiles (the collapsed Assets panel during a run) ─────────────────────────────── */
 .ag-tile-up {
@@ -266,7 +267,7 @@
 .ag-steps__item { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; text-align: center; }
 .ag-stepnode {
   position: relative; display: inline-flex; align-items: center; justify-content: center;
-  width: 46px; height: 46px; border-radius: 50%;
+  width: 36px; height: 36px; border-radius: 50%;
   border: 1px solid var(--ag-line); background: rgba(255, 255, 255, .04); color: var(--ag-muted);
   transition: border-color .3s ease, color .3s ease, box-shadow .3s ease, background-color .3s ease;
 }
@@ -274,11 +275,11 @@
 .ag-stepnode--done { border-color: rgba(52, 211, 153, .5); color: #6EE7B7; background: rgba(16, 185, 129, .10); }
 /* the tick that rides on a finished node */
 .ag-stepnode__check {
-  position: absolute; right: -3px; bottom: -3px; width: 18px; height: 18px; border-radius: 50%;
+  position: absolute; right: -3px; bottom: -3px; width: 16px; height: 16px; border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
   background: var(--ag-accent); color: #fff; box-shadow: 0 0 0 3px var(--ag-surface);
 }
-.ag-stepline { flex: 1 1 auto; height: 1px; margin-top: 23px; border-top: 1px dashed rgba(255, 255, 255, .14); }
+.ag-stepline { flex: 1 1 auto; height: 1px; margin-top: 18px; border-top: 1px dashed rgba(255, 255, 255, .14); }
 .ag-stepline--done { border-top-style: solid; border-top-color: rgba(124, 58, 237, .5); }
 
 /* ── numbered rows: the AI Guide's steps and the Deliverables ─────────────────────────────────── */
@@ -292,6 +293,8 @@
 .ag-row--next { border-color: rgba(124, 58, 237, .5); background: linear-gradient(180deg, rgba(124, 58, 237, .12), rgba(255, 255, 255, .02)); }
 .ag-row--open { border-color: rgba(124, 58, 237, .34); background: linear-gradient(180deg, rgba(124, 58, 237, .10), rgba(255, 255, 255, .02)); }
 /* a note, not a step: nothing to tick, so it recedes */
+.ag-row--tight { min-height: 56px; padding: 9px 14px; gap: 12px; }
+.ag-row--tight .ag-row__num { width: 30px; height: 30px; flex-basis: 30px; font-size: 12px; }
 .ag-row--info { border-style: dashed; background: transparent; }
 .ag-row--done { opacity: .62; }
 .ag-row__num {
@@ -304,8 +307,8 @@
 
 /* ── the AI Guide once the first asset lands: one 72px strip ──────────────────────────────────── */
 .ag-strip {
-  display: flex; align-items: center; gap: 14px;
-  min-height: 72px; padding: 0 18px; border-radius: 18px;
+  display: flex; align-items: center; gap: 12px;
+  min-height: 56px; padding: 0 16px; border-radius: 16px;
   border: 1px solid var(--ag-line); background: var(--ag-glass-soft);
   transition: border-color .22s ease, background-color .22s ease;
 }

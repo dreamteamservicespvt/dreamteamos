@@ -65,6 +65,12 @@ describe("మరియు, exactly", () => {
     expect(everydaySpeechRules("Telugu")).toContain("Numbers are always WORDS, never digits");
   });
 
+  it("catches the spacings and the half-transliterated forms too", () => {
+    for (const wrong of ["మరీయూ", "మరి యు", "మరీ యూ", "mariyu", "MARIYU"]) {
+      expect(withFixedWords(`టీ ${wrong} కాఫీ.`), wrong).toBe("టీ మరియు కాఫీ.");
+    }
+  });
+
   it("gives Veo its pronunciation", () => {
     expect(pronunciationNotes(["చీరలు మరియు పంచెలు"])).toEqual(['మరియు = "mariyu"']);
     expect(pronunciationNotes(["చీరలు"])).toEqual([]);

@@ -80,6 +80,24 @@ describe("the motion plan", () => {
     expect(plan[3].staging.key).toBe("welcome_invite");
   });
 
+  /**
+   * The worst fault reported from finished duo ads: the two characters come out of the video model
+   * at different heights from the still. A walk is a few steps toward the LENS — one character
+   * nearer the camera than the other is the excuse the model takes to re-proportion them.
+   */
+  it("never walks a two-hander toward the camera", () => {
+    for (const n of [2, 3, 4, 6, 8]) {
+      const plan = planClipMotion(n, "commercial", "cartoon", {
+        twoHander: true,
+        lines: Array.from({ length: n }, () => "Come inside our big showroom."),
+        choices: Array.from({ length: n }, () => ({ staging: "walk_and_talk" as const })),
+      });
+      expect(plan.some((p) => p.staging.walks), `${n} clips`).toBe(false);
+    }
+    // A single presenter still walks — there is no relationship to break.
+    expect(planClipMotion(6, "commercial", "person").some((p) => p.staging.walks)).toBe(true);
+  });
+
   it("never lets a deity walk", () => {
     const plan = planClipMotion(6, "commercial", "deity", { choices: [{ staging: "walk_and_talk" }] });
     expect(plan.some((p) => p.staging.walks)).toBe(false);
@@ -429,6 +447,28 @@ describe("the Veo prompt", () => {
     expect(prompt).toContain("Chhota Bheem (on the LEFT of the frame)");
     expect(prompt).toContain("Chutki (on the RIGHT of the frame)");
     expect(prompt).toContain("no line spoken by the wrong character");
+  });
+
+  it("opens a two-hander's prompt with the scale lock, naming both characters", () => {
+    const pack = getCharacterPack("duo_motu_patlu")!;
+    const s = packVeoSubject(pack);
+    const speech = s.speech([{ name: "Motu", text: "one" }, { name: "Patlu", text: "two" }]);
+    const prompt = assembleVeoPrompt({
+      aspectRatio: "9:16", plan: planClipMotion(4, "commercial", "cartoon", { twoHander: true })[1],
+      identityLock: s.identityLock, language: "Telugu", speech,
+      cast: s.cast, castPlural: s.castPlural, twoHander: s.twoHander, manner: s.manner, handGestures: s.handGestures,
+    });
+    // First, because a video model weighs the opening of a prompt most.
+    expect(prompt.indexOf("SCALE LOCK")).toBeLessThan(prompt.indexOf("LOCKED — THE LOOK"));
+    expect(prompt).toContain("Motu and Patlu keep EXACTLY the heights");
+    expect(prompt).toContain("BOTH change size together");
+    expect(prompt).toContain("No character moving nearer the lens than the other");
+    // A single presenter has no pair to hold, so it is not given the block.
+    const solo = assembleVeoPrompt({
+      aspectRatio: "9:16", plan: planClipMotion(4, "commercial")[1], identityLock: "her face",
+      language: "Telugu", speech: [{ voice: "a warm voice", line: "one" }],
+    });
+    expect(solo).not.toContain("SCALE LOCK");
   });
 
   it("gives a deity the catalogue voice and blessings only", () => {

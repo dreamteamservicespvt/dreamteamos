@@ -120,6 +120,8 @@ export default function TeamLeaderWorkAssign() {
   const [clientChat, setClientChat] = useState<{
     chatId: string; businessName: string; uniqueId: string;
     category?: string; clientPhone?: string;
+    /** The occasion, so the client message can name the festival the video is for. */
+    festival?: string;
   } | null>(null);
   /**
    * Opened only when someone presses "Chat link" — never by itself.
@@ -301,6 +303,7 @@ export default function TeamLeaderWorkAssign() {
         uniqueId,
         category: form.category,
         clientPhone: form.businessWhatsapp,
+        festival: form.festival,
       });
 
       setShowForm(false);
@@ -445,6 +448,7 @@ export default function TeamLeaderWorkAssign() {
           businessName={clientChat.businessName}
           uniqueId={clientChat.uniqueId}
           category={clientChat.category}
+          festival={clientChat.festival}
           clientPhone={clientChat.clientPhone}
           onClose={() => setClientChatOpen(false)}
         />

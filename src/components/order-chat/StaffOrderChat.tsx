@@ -283,6 +283,7 @@ export default function StaffOrderChat({ assignment, memberName, canShare, soldB
           businessName={businessName}
           uniqueId={uniqueId}
           category={assignment.category}
+          festival={assignment.festival}
           clientPhone={clientPhone || room?.clientPhone}
           onClose={() => setSharing(false)}
         />

@@ -4,8 +4,8 @@
 > context/architecture/history document. The **source code wins** over this file; when they
 > disagree, fix this file in the same task.
 >
-> **Last full audit:** 2026-09-22 against `main` @ `a1623ac`; last updated 2026-09-24 for the
-> AdGen studio UI and its one-screen layout (§11, §22, §31).
+> **Last full audit:** 2026-09-22 against `main` @ `a1623ac`; last updated 2026-09-25 for the
+> AdGen density/behaviour batch (§17.2, §24, §31).
 > **Quick start:** read **§33 AI Development Context** first, then **§29 Rules** and **§30 Change Protocol**.
 >
 > Legend: ✅ implemented · 🟡 partial · ❌ not implemented · **[NOT CONFIRMED]** = could not be
@@ -196,7 +196,7 @@ DTS-OS/
 │   ├── types/                 ← index.ts (core model), aiPlatform, cinematicAds, hr, payroll, smm,
 │   │                            orderChat, onboarding
 │   ├── lib/utils.ts           ← shadcn `cn()`
-│   └── test/                  ← Vitest suites (171 files, 2720 tests at 2026-09-23) + setup.ts
+│   └── test/                  ← Vitest suites (171 files, 2724 tests at 2026-09-25) + setup.ts
 ├── public/                    ← PWA manifests, FCM service worker, logos/icons
 ├── docs/
 │   ├── AI-MEMORY.md           ← HISTORICAL session log up to 2026-09-19 (superseded by §31; do not extend)
@@ -996,7 +996,9 @@ are written exactly **మరియు**. The Veo prompt adds `PRONUNCIATION: మ
 it. (`everydaySpeech` no longer swaps మరియు for ఇంకా.)
 
 Directives are prepended for ratio, name board, language, casting and wardrobe. `onPartialResult`
-streams sections as they arrive. On-demand extras: the **Overlay Text Image Generator**
+streams sections as they arrive. **B-roll and overlay images run automatically at the end of a video
+run** (`handleGenerate` → `handleGenerateStockImages`/`handleGenerateOverlayTexts` with the run's own
+result; their buttons remain for a regenerate, 2026-09-25). The two extras: the **Overlay Text Image Generator**
 (`generateOverlayTexts` + `utils/overlayImage.ts`: each overlay gets a model-written `design` and a
 code-assembled `imagePrompt` for a premium 3D transparent PNG — exact text, real alpha channel,
 tightly cropped; festival palette for festival ads; `refineOverlayImagePrompt` changes only the
@@ -1257,6 +1259,12 @@ report message → renewal.
   allowance counts as absence.
 - **Check-out** requires the Drive-upload declaration first; the daily check-in prompt cannot be
   dismissed on a working day, and does not appear on a Sunday or an announced holiday.
+- **AI ads (2026-09-25):** a run is refused while the client's brief is still loading and when
+  nothing describes the business (no BUSINESS CONTENT and no card / store / product / flyer / voice
+  file) — a model with nothing to read invents a business, which is what made first runs come back
+  about the wrong one. A two-hander never walks toward the camera (that is when the video model
+  re-proportions the pair) and every duo video prompt opens with the scale lock. B-roll and overlay
+  images are part of every video run, not a button pressed afterwards.
 - **AI ads (2026-09-22):** a custom script is used word for word (only emoji/decoration stripped;
   numbers become words); a two-speaker category needs `[Speaker]:` lines; a two-speaker clip is
   15–17 words (7–9 a line); human casts' role labels (Friend/Host) are never spoken; the Custom
@@ -1502,6 +1510,33 @@ Design intent lives in `docs/superpowers/specs/`.
   needed speaker lines. Verified: build ✅, vitest 171 files / 2720 tests ✅ (8 new, incl. a
   round-trip over the whole catalogue and an end-to-end Veo assembly for Bheem & Chutki), typecheck
   1 known error. No live Gemini or Veo run.
+- **2026-09-25: AdGen.ai batch — density, the two extras, and five faults**
+  *UI.* The header is one row that never wraps at any width (every block `whitespace-nowrap shrink-0`,
+  only the business name truncates; the member chip and the job chip drop out below 2xl). Generation
+  Status is ~40% shorter (one status line instead of two, 36px milestone nodes, the progress bar gone
+  once it reads 100%) and the AI Guide ~35% (`ag-row--tight`, 56px strip), so both fit the first
+  screen. Deliverables 6 and 7 became ordinary `OutputSection` rows through a new `actions` slot that
+  carries their theme picker and Generate button, so all seven rows are one height and open only when
+  asked. "What we understood" (voice brief + background plan) folded into its own 56px expander above
+  the Deliverables card, and the Flow link is a normal button.
+  *Behaviour.* **B-roll and overlay images are now generated with the kit** — `handleGenerate` runs
+  both existing handlers against the run's own result (they take an optional `source` because state
+  is not committed yet); the buttons remain as Regenerate. **The first run's "wrong business" output
+  is stopped at the source**: a run is refused while `useAssignmentBrief` is still fetching the order
+  (the Start button says "Loading the brief…"), and refused outright when nothing describes the
+  business — no BUSINESS CONTENT and no card, store, product, flyer or voice file — which is what made
+  the model invent one. The brief also now follows a job that is corrected later, replacing the text
+  it previously wrote (never a member's own writing). **A two-hander never walks toward the lens**
+  (`planClipMotion`, like a deity): a character arriving nearer the camera is what let the video model
+  re-proportion the pair, and a new `scaleLock()` block opens every duo prompt naming both characters,
+  with matching negatives — this is the height-drift fault. The pasted-script hint is now built per
+  special category (two speakers / one named speaker / plain clips) with a Copy format button, since
+  final scripts are written in ChatGPT or Gemini and pasted back. `FIXED_WORDS` catches more మరియు
+  spellings, including spaced and half-transliterated forms. The client's chat message names the
+  festival a wishes video is for (`buildClientChatMessage`, five call sites).
+  Verified: build ✅, vitest 171 files / 2724 tests ✅ (4 new), typecheck 1 known error, and a
+  throwaway CDP harness walked idle → generating → completed at 1680px and measured the header at
+  1024/1280/1440/1590px (72px, one line, no overflow). Nothing run against live Gemini or Veo.
 - **2026-09-24: AdGen.ai laid out as one screen** — the studio rebuilt to the owner's three-stage
   reference: a fixed 72px header, a 34% input panel and a 66% workspace, with nothing below the fold
   that matters. LEFT: Assets & Files and Configuration became two sections sharing one space — the
@@ -1600,13 +1635,14 @@ Design intent lives in `docs/superpowers/specs/`.
 
 ---
 
-## 32. CURRENT PROJECT STATE (as of 2026-09-24)
+## 32. CURRENT PROJECT STATE (as of 2026-09-25)
 
-- Branch `main`. Uncommitted: the 2026-09-24 one-screen layout (§31) —
-  `components/ai-platform/AIPlatformApp.tsx`, `adgen.css`, `generation/MissionWorkspace.tsx` and
-  `src/test/aiPlatformInputs.test.tsx` — plus this CLAUDE.md.
+- Branch `main`. Uncommitted: the 2026-09-24 one-screen layout and the 2026-09-25 batch (§31) —
+  16 files across `components/ai-platform/*`, `components/order-chat/*`, the two WorkAssign and two
+  MemberAssignments pages, `services/orderChat.ts`, `services/prompts/motion.ts`,
+  `utils/spokenNumbers.ts` and four test suites — plus this CLAUDE.md.
 - `npm run build` ✅ (main chunk ≈454 KB, vendor-firebase ≈665 KB, geminiService chunk ≈757 KB).
-- `npx vitest run` ✅ 171 files, 2720 tests.
+- `npx vitest run` ✅ 171 files, 2724 tests.
 - `npx tsc -p tsconfig.check.json --noEmit` → 1 known error (VideoCallManager).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
 - Most recent work: the AdGen.ai one-screen layout, the two-hander speaker-label fix and the studio

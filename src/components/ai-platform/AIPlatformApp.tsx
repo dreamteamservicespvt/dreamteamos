@@ -382,14 +382,20 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
    * member has typed is never replaced.
    */
   const assignmentBrief = useAssignmentBrief(assignment);
-  const briefAppliedFor = useRef<string | null>(null);
+  /** Exactly the brief text this component last wrote into BUSINESS CONTENT. */
+  const appliedBriefText = useRef<string>('');
   useEffect(() => {
     if (!assignment || assignmentBrief.loading) return;
-    if (briefAppliedFor.current === assignment.id) return;
-    briefAppliedFor.current = assignment.id;
     const text = briefAsInstructions(assignmentBrief.businessInfo, assignmentBrief.businessAddress);
-    if (!text) return;
-    setFormData(prev => (prev.textInstructions.trim() ? prev : { ...prev, textInstructions: text }));
+    if (!text || text === appliedBriefText.current) return;
+    const previous = appliedBriefText.current;
+    appliedBriefText.current = text;
+    setFormData(prev => {
+      const current = prev.textInstructions.trim();
+      // Ours to update: the box is empty, or it still holds exactly the brief we put there.
+      if (!current || current === previous.trim()) return { ...prev, textInstructions: text };
+      return prev;
+    });
     // Keyed on the job and on the brief arriving; the assignment object itself changes every snapshot.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assignment?.id, assignmentBrief.loading, assignmentBrief.businessInfo, assignmentBrief.businessAddress]);
@@ -870,6 +876,28 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   };
 
   const handleGenerate = async () => {
+    // 1 · The client's brief is still being read — a run started now would not contain it.
+    if (assignment && assignmentBrief.loading) {
+      await showAlert({
+        title: "One moment — loading the brief",
+        description: "The client's business details for this job are still being read. They fill BUSINESS CONTENT, and a run started without them writes an ad for the wrong business. Try again in a second.",
+        confirmText: "OK",
+      });
+      return;
+    }
+    // 2 · Nothing at all says who the business is.
+    const tellsUsAboutTheBusiness = !!formData.textInstructions.trim()
+      || files.visitingCard.length > 0 || files.storeImage.length > 0
+      || files.productImages.length > 0 || files.flyersPosters.length > 0
+      || files.voiceRecording.length > 0;
+    if (!tellsUsAboutTheBusiness) {
+      await showAlert({
+        title: "Tell us about the business first",
+        description: "There is nothing for DTS to read: BUSINESS CONTENT is empty and no visiting card, store photo, product photo, flyer or voice note is attached. Without them the ad is written for an invented business. Paste the client's details into BUSINESS CONTENT, or attach their visiting card.",
+        confirmText: "OK",
+      });
+      return;
+    }
     const hasNameBoard = !!(formData.noLogo && formData.logoNameText?.trim());
     if (!files.logo && !hasNameBoard) {
       await showAlert({ title: "Missing Logo", description: "Upload a logo image, OR tick 'No logo' and enter the business name to use as a name board.", confirmText: "OK" });
@@ -954,6 +982,13 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       if (stopped()) throw new Error('Generation stopped by user');
       setOutputs(generatedResult);
       setStatus(prev => ({ ...prev, isProcessing: false, step: 'Completed', progress: 100 }));
+      // Part of the kit, not an afterthought — and they read this run's result, not state.
+      if (creationMode === 'video' && generatedResult.voiceOverScript) {
+        void Promise.all([
+          handleGenerateStockImages(generatedResult),
+          handleGenerateOverlayTexts(generatedResult),
+        ]).catch(() => { /* each one already surfaces its own error in its section */ });
+      }
       // Teach the countdown how long this browser's runs really take. See utils/generationEta.
       const timing = measureRun(runProfile, checkpoints, Date.now());
       if (timing) saveRunTiming(timing);
@@ -1012,14 +1047,15 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     }
   };
 
-  const handleGenerateStockImages = async () => {
-    if (!outputs || !outputs.voiceOverScript) return;
+  const handleGenerateStockImages = async (source?: GeneratedOutputs) => {
+    const from = source ?? outputs;
+    if (!from || !from.voiceOverScript) return;
     setIsGeneratingStock(true);
     setStockImageError(null);
     try {
-      const clipCount = outputs.veoPrompts?.length || outputs.mainFramePrompts?.length || Math.round(formData.duration / 8);
-      const stockPrompts = await generateStockImagePrompts(outputs.voiceOverScript, outputs.businessInfo, formData.adType, formData.festivalName, stockImageTheme, formData.aspectRatio, clipCount,
-        { sceneContext: outputs.sceneContext, coreMessage: outputs.coreMessage });
+      const clipCount = from.veoPrompts?.length || from.mainFramePrompts?.length || Math.round(formData.duration / 8);
+      const stockPrompts = await generateStockImagePrompts(from.voiceOverScript, from.businessInfo, formData.adType, formData.festivalName, stockImageTheme, formData.aspectRatio, clipCount,
+        { sceneContext: from.sceneContext, coreMessage: from.coreMessage });
       setOutputs(prev => prev ? { ...prev, stockImagePrompts: stockPrompts } : prev);
     } catch (error: any) {
       setStockImageError(error.message || 'Failed to generate stock image prompts.');
@@ -1051,12 +1087,13 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   };
 
   // #14 — generate per-clip on-screen overlay texts + CapCut SFX suggestions
-  const handleGenerateOverlayTexts = async () => {
-    if (!outputs || !outputs.voiceOverScript) return;
+  const handleGenerateOverlayTexts = async (source?: GeneratedOutputs) => {
+    const from = source ?? outputs;
+    if (!from || !from.voiceOverScript) return;
     setIsGeneratingOverlay(true);
     setOverlayError(null);
     try {
-      const items = await generateOverlayTexts(outputs.voiceOverScript, outputs.businessInfo, formData.language, overlayDesignContext());
+      const items = await generateOverlayTexts(from.voiceOverScript, from.businessInfo, formData.language, overlayDesignContext(from));
       setOutputs(prev => prev ? { ...prev, overlayTexts: items } : prev);
     } catch (error: any) {
       setOverlayError(error.message || 'Failed to generate overlay texts.');
@@ -1066,11 +1103,11 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   };
 
   /** What the overlays' 3D look is themed to: the festival's own palette, or the business. */
-  const overlayDesignContext = () => ({
+  const overlayDesignContext = (source?: GeneratedOutputs) => ({
     adType: formData.adType,
     festivalName: formData.festivalName,
-    sceneContext: outputs?.sceneContext,
-    coreMessage: outputs?.coreMessage,
+    sceneContext: (source ?? outputs)?.sceneContext,
+    coreMessage: (source ?? outputs)?.coreMessage,
   });
 
   /** Refine Prompt — changes only the look of one overlay's image; its text and transparency are fixed. */
@@ -1111,6 +1148,33 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     { label: 'Flyers / Posters', icon: Files, hint: 'Offers, brochures', count: files.flyersPosters.length },
     { label: 'Voice Instructions', icon: Mic, hint: 'Audio note', count: files.voiceRecording.length },
   ];
+
+  /**
+   * The shape a pasted final script must take for THIS job — the same shape the script is written
+   * in wherever it is written, and the same one utils/dialogueFormat reads back.
+   */
+  const customScriptTemplate = (() => {
+    const speakers = activePack?.characters ?? [];
+    if (speakers.length > 1) {
+      return [
+        'clip-1[0-8sec]:',
+        `[${speakers[0].name}]: first line`,
+        `[${speakers[1].name}]: reply`,
+        'clip-2[8-16sec]:',
+        `[${speakers[0].name}]: …`,
+        `[${speakers[1].name}]: …`,
+      ].join('\n');
+    }
+    if (speakers.length === 1) {
+      return [
+        'clip-1[0-8sec]:',
+        `[${speakers[0].name}]: first spoken line`,
+        'clip-2[8-16sec]:',
+        `[${speakers[0].name}]: second spoken line`,
+      ].join('\n');
+    }
+    return 'clip-1[0-8sec]: first spoken line\nclip-2[8-16sec]: second spoken line';
+  })();
 
   /** The shut Configuration panel says what the run is set to, not what the panel contains. */
   const configSummary = creationMode === 'poster'
@@ -1165,46 +1229,47 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       )}
 
       {/* Top navigation — 72px glass, gradient hairline, the run's state always in sight */}
-      <div className="ag-nav relative px-3 sm:px-6 h-14 sm:h-[72px] flex items-center gap-3 sm:gap-4 shrink-0">
+      <div className="ag-nav relative px-3 sm:px-5 h-14 sm:h-[72px] flex flex-nowrap items-center gap-2 sm:gap-3 shrink-0 overflow-hidden">
         <button onClick={onClose} aria-label="Back" className="ag-btn ag-btn--icon ag-btn--sm sm:h-11 sm:w-11 shrink-0">
           <ArrowLeft className="w-[18px] h-[18px]" />
         </button>
 
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-2.5 shrink-0">
           <BrandLogo variant="mark" on="dark" alt="DTS — Dream Team Services" className="h-7 sm:h-8 w-auto shrink-0" />
           {/* the company mark and the product name are two marks — a hairline keeps them from reading as one */}
           <span className="hidden sm:block w-px h-6 sm:h-7 bg-white/10 shrink-0" />
-          <div className="min-w-0 leading-tight hidden sm:block">
-            <h1 className="ag-h2 text-[15px] sm:text-base">DTS AdGen<span style={{ color: '#67E8F9' }}>.ai</span></h1>
-            <p className="hidden sm:block text-[11px] ag-muted">Just dream big, we build it.</p>
+          <div className="leading-tight hidden sm:block shrink-0 whitespace-nowrap">
+            <h1 className="ag-h2 text-[15px] sm:text-base whitespace-nowrap">DTS AdGen<span style={{ color: '#67E8F9' }}>.ai</span></h1>
+            <p className="hidden lg:block text-[11px] ag-muted whitespace-nowrap">Just dream big, we build it.</p>
           </div>
         </div>
 
         {/* what this run is — and, while it runs, where it has got to */}
         {assignment && (
           <>
-            <span className="hidden lg:block w-px h-7 bg-white/10" />
-            <div className="hidden lg:flex items-center gap-2.5 min-w-0">
-              <span className="text-sm font-semibold text-slate-200 truncate max-w-[220px]">{assignment.businessName || assignment.displayTitle}</span>
-              <span className="ag-chip">
+            <span className="hidden 2xl:block w-px h-7 bg-white/10 shrink-0" />
+            {/* The only block allowed to shrink — and only the name inside it, by truncating. */}
+            <div className="hidden 2xl:flex items-center gap-2.5 min-w-0">
+              <span className="text-sm font-semibold text-slate-200 truncate max-w-[180px]">{assignment.businessName || assignment.displayTitle}</span>
+              <span className="ag-chip shrink-0 whitespace-nowrap">
                 <span className="capitalize">{assignment.category}</span>
                 <span className="opacity-40">·</span>
                 <span>{isPosterCategory(assignment.category) ? posterSizeLabel(assignment.posterSize) : `${assignment.clipCount} clips + EC`}</span>
               </span>
-              <span className="ag-mono text-[10px] ag-muted">{assignment.uniqueId}</span>
+              <span className="ag-mono text-[10px] ag-muted shrink-0">{assignment.uniqueId}</span>
             </div>
           </>
         )}
 
-        <div className="flex-1" />
+        <div className="flex-1 min-w-[8px]" />
 
         {status.isProcessing ? (
-          <span className="ag-chip ag-badge--run hidden sm:inline-flex">
+          <span className="ag-chip ag-badge--run hidden sm:inline-flex shrink-0 whitespace-nowrap">
             <span className="ag-halo w-1.5 h-1.5 rounded-full bg-violet-300 inline-block" />
             Generating · {Math.round(status.progress)}%
           </span>
         ) : (
-          <span className="ag-chip ag-badge--ok hidden sm:inline-flex">
+          <span className="ag-chip ag-badge--ok hidden sm:inline-flex shrink-0 whitespace-nowrap">
             {outputs ? <Check className="w-3 h-3" /> : <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 inline-block" />}
             {saveSuccess ? 'Saved' : 'Ready'}
           </span>
@@ -1214,8 +1279,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
           {/* Every generation this member has run, same list as before — it just lives up here now,
               where it is reachable at any stage instead of only once assets exist. */}
           <button type="button" onClick={() => setShowSavedItems(true)} data-test="project-history"
-            className="ag-btn ag-btn--secondary ag-btn--sm sm:h-11 sm:px-[18px] sm:text-sm">
-            <History className="w-4 h-4" /><span className="hidden lg:inline">Project History</span>
+            className="ag-btn ag-btn--secondary ag-btn--sm sm:h-11 sm:px-[18px] sm:text-sm whitespace-nowrap">
+            <History className="w-4 h-4" /><span className="hidden xl:inline">Project History</span>
           </button>
           {onComplete && (
             // Disabled and visibly busy while submitting. Submitting does several writes and can
@@ -1225,25 +1290,25 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
               onClick={onComplete}
               disabled={completing}
               data-test="mark-complete"
-              className="ag-btn ag-btn--primary ag-btn--sm sm:h-11 sm:px-[18px] sm:text-sm">
+              className="ag-btn ag-btn--primary ag-btn--sm sm:h-11 sm:px-[18px] sm:text-sm whitespace-nowrap">
               {completing
                 ? <><Loader2 className="w-4 h-4 animate-spin" /><span>Submitting…</span></>
-                : <><CheckCircle2 className="w-4 h-4" /><span className="hidden sm:inline">Mark Complete</span><span className="sm:hidden">Done</span></>}
+                : <><CheckCircle2 className="w-4 h-4" /><span className="hidden lg:inline">Mark Complete</span><span className="lg:hidden">Done</span></>}
             </button>
           )}
           {user?.name && (
-            <div className="hidden xl:flex items-center gap-2.5 pl-2.5 ml-0.5 border-l border-white/10">
+            <div className="hidden 2xl:flex items-center gap-2.5 pl-2.5 ml-0.5 border-l border-white/10 shrink-0">
               <span className={cn("w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-bold text-white", BRAND_GRADIENT)}>
                 {user.name.trim().split(/s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase()}
               </span>
               <span className="leading-tight min-w-0">
-                <span className="block text-[13px] font-semibold text-slate-100 truncate max-w-[120px]">{user.name}</span>
-                <span className="block text-[11px] ag-muted truncate max-w-[120px]">{user.role ? getRoleLabel(user.role) : 'Team'}</span>
+                <span className="block text-[13px] font-semibold text-slate-100 truncate max-w-[110px]">{user.name}</span>
+                <span className="block text-[11px] ag-muted truncate max-w-[110px]">{user.role ? getRoleLabel(user.role) : 'Team'}</span>
               </span>
             </div>
           )}
-          <button onClick={onClose} className="ag-btn ag-btn--secondary ag-btn--sm sm:h-11 sm:px-[18px] sm:text-sm">
-            <Home className="w-4 h-4" /><span className="hidden md:inline">Close project</span><span className="md:hidden">Home</span>
+          <button onClick={onClose} className="ag-btn ag-btn--secondary ag-btn--sm sm:h-11 sm:px-[18px] sm:text-sm whitespace-nowrap">
+            <Home className="w-4 h-4" /><span className="hidden lg:inline">Close project</span><span className="lg:hidden">Home</span>
           </button>
         </div>
         <div className="ag-hairline absolute inset-x-0 -bottom-px" />
@@ -1951,26 +2016,34 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                         <div className="mt-2">
                           <div className={cn("mb-2 rounded-lg border px-3 py-2 text-[11px] leading-relaxed",
                             isDark ? "bg-amber-900/20 border-amber-800/50 text-amber-200" : "bg-amber-50 border-amber-200 text-amber-800")}>
-                            {/* A two-person category cannot guess who says which sentence, so it asks for speaker lines. */}
-                            {activePack && activePack.characters.length > 1 ? (
-                              <>
-                                <span className="font-semibold">Required format — each clip, then who says each line:</span>
-                                <pre data-test="custom-script-duo-format" className="mt-1 font-mono text-[11px] whitespace-pre-wrap">{`clip-1[0-8sec]:
-[${activePack.characters[0].name}]: first line
-[${activePack.characters[1].name}]: reply
-clip-2[8-16sec]:
-[${activePack.characters[0].name}]: …
-[${activePack.characters[1].name}]: …`}</pre>
-                                <span>Your script is used <b>word-for-word</b>, and each person says only their own lines. Without the speaker labels the ad cannot be made, so it will ask you for them.</span>
-                              </>
-                            ) : (
-                              <>
-                                <span className="font-semibold">Required format — one clip per line:</span>
-                                <pre className="mt-1 font-mono text-[11px] whitespace-pre-wrap">{`clip-1[0-8sec]: first spoken line
-clip-2[8-16sec]: second spoken line`}</pre>
-                                <span>Your script is used <b>word-for-word</b> in the Voice Over Script and Veo 3 prompts, and its clip count sets the ad length. Unlabelled text is only cut into clips at sentence ends; no word is changed.</span>
-                              </>
-                            )}
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="font-semibold">
+                                {activePack && activePack.characters.length > 1
+                                  ? 'Required format — each clip, then who says each line:'
+                                  : activePack
+                                    ? `Required format — each clip, spoken by ${activePack.characters[0].name}:`
+                                    : 'Required format — one clip per line:'}
+                              </span>
+                              {/* The script is written in ChatGPT or Gemini — the format has to travel there. */}
+                              <button type="button" data-test="copy-script-format"
+                                onClick={() => {
+                                  void navigator.clipboard.writeText(customScriptTemplate);
+                                  toast({ title: 'Format copied', description: 'Paste it where you are writing the script, then paste the finished script back here.' });
+                                }}
+                                className="ag-btn ag-btn--secondary ag-btn--sm h-7 px-2 text-[11px] shrink-0">
+                                <Copy className="w-3 h-3" /> Copy format
+                              </button>
+                            </div>
+                            <pre
+                              data-test={activePack && activePack.characters.length > 1 ? 'custom-script-duo-format' : 'custom-script-format'}
+                              className="mt-1 font-mono text-[11px] whitespace-pre-wrap">{customScriptTemplate}</pre>
+                            <span>
+                              {activePack && activePack.characters.length > 1
+                                ? <>Your script is used <b>word-for-word</b>, and each person says only their own lines. Without the speaker labels the ad cannot be made, so it will ask you for them.</>
+                                : activePack
+                                  ? <>Your script is used <b>word-for-word</b>. The <b>[{activePack.characters[0].name}]</b> label is optional on a single-character ad — plain clip lines work too — and its clip count sets the ad length.</>
+                                  : <>Your script is used <b>word-for-word</b> in the Voice Over Script and Veo 3 prompts, and its clip count sets the ad length. Unlabelled text is only cut into clips at sentence ends; no word is changed.</>}
+                            </span>
                           </div>
                           <textarea
                             className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
@@ -2051,9 +2124,16 @@ clip-2[8-16sec]: second spoken line`}</pre>
                 beside it while a run is going: it is the only way to call a run off.
               */}
               <div className="flex gap-2.5">
-                <button onClick={handleGenerate} disabled={status.isProcessing} className="ag-btn ag-btn--primary ag-btn--lg flex-1 h-[56px] text-[15px]">
-                  {status.isProcessing ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Rocket className="w-5 h-5" />}
-                  <span>{status.isProcessing ? 'Processing...' : creationMode === 'poster' ? 'Generate Poster Concepts' : 'Start Generation'}</span>
+                <button onClick={handleGenerate} disabled={status.isProcessing || (!!assignment && assignmentBrief.loading)}
+                  className="ag-btn ag-btn--primary ag-btn--lg flex-1 h-[56px] text-[15px]">
+                  {status.isProcessing || (assignment && assignmentBrief.loading)
+                    ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    : <Rocket className="w-5 h-5" />}
+                  <span>
+                    {status.isProcessing ? 'Processing...'
+                      : assignment && assignmentBrief.loading ? 'Loading the brief…'
+                      : creationMode === 'poster' ? 'Generate Poster Concepts' : 'Start Generation'}
+                  </span>
                 </button>
                 {status.isProcessing && (
                   <button onClick={handleStopGeneration} className="ag-btn ag-btn--danger ag-btn--lg h-[56px]">
@@ -2082,44 +2162,45 @@ clip-2[8-16sec]: second spoken line`}</pre>
             {/* RIGHT: OUTPUTS */}
             <div className="lg:col-span-8" ref={outputPanelRef}>
               {(status.isProcessing || status.step || outputs) && (
-                <div className="ag-card p-5 sm:p-6 mb-[18px]">
-                  <div className="flex items-center gap-4">
-                    <span className={cn("ag-ico w-12 h-12 flex-[0_0_48px] rounded-2xl", !status.isProcessing && outputs && "ag-btn--ok")}>
+                <div className="ag-card px-4 py-3.5 sm:px-5 sm:py-4 mb-[18px]">
+                  <div className="flex items-center gap-3">
+                    <span className={cn("ag-ico ag-ico--sm", !status.isProcessing && outputs && "ag-btn--ok")}>
                       {status.isProcessing
-                        ? <Loader2 className="w-5 h-5 animate-spin" />
-                        : outputs ? <Check className="w-6 h-6" strokeWidth={3} /> : <Wand2 className="w-5 h-5" />}
+                        ? <Loader2 className="w-[18px] h-[18px] animate-spin" />
+                        : outputs ? <Check className="w-5 h-5" strokeWidth={3} /> : <Wand2 className="w-[18px] h-[18px]" />}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <h2 className="ag-h2 text-[18px] sm:text-[20px] text-white leading-tight">Generation Status</h2>
-                      <p className="ag-muted text-[13px] mt-0.5 truncate">
+                      <h2 className="ag-h2 text-[16px] sm:text-[17px] text-white leading-tight">Generation Status</h2>
+                      {/* One line, not two: while it runs, the stage IS the status. */}
+                      <p className={cn("text-[12px] mt-0.5 truncate flex items-center gap-1.5",
+                        status.isProcessing ? "text-violet-200" : "ag-muted")}>
+                        {status.isProcessing && <Wand2 className="w-3 h-3 animate-pulse shrink-0" />}
                         {status.isProcessing
-                          ? 'DTS is preparing your complete ad kit using AI. This may take a few minutes.'
+                          ? (status.step || 'Preparing your ad kit…')
                           : outputs ? 'Your ad kit has been successfully generated.' : status.step}
                       </p>
-                      {status.isProcessing && status.step && (
-                        <p className="flex items-center gap-1.5 mt-1.5 text-[12px] text-violet-200">
-                          <Wand2 className="w-3.5 h-3.5 animate-pulse shrink-0" /><span className="truncate">{status.step}</span>
-                        </p>
-                      )}
                     </div>
-                    <div className="hidden sm:flex items-center gap-3 shrink-0">
+                    <div className="hidden sm:flex items-center gap-2.5 shrink-0">
                       {/* The workspace leaves at the first asset, but the run goes on — so the countdown stays here. */}
                       {status.isProcessing && activeRun && !showMission && (
                         <RunCountdown run={activeRun} active isDark={isDark} variant="inline" />
                       )}
                       {!status.isProcessing && outputs && (
-                        <span className="ag-chip ag-badge--ok"><Check className="w-3 h-3" />Completed</span>
+                        <span className="ag-chip ag-badge--ok h-7"><Check className="w-3 h-3" />Completed</span>
                       )}
-                      <span className="ag-num text-[26px] text-white leading-none">{Math.round(status.progress)}%</span>
+                      <span className="ag-num text-[20px] text-white leading-none">{Math.round(status.progress)}%</span>
                     </div>
                   </div>
 
-                  <div className="ag-progress mt-4">
-                    <div className="ag-progress__fill" style={{ width: `${status.progress}%` }} />
-                  </div>
+                  {/* At 100% the bar says nothing the ticks do not — so it goes. */}
+                  {status.progress < 100 && (
+                    <div className="ag-progress mt-3">
+                      <div className="ag-progress__fill" style={{ width: `${status.progress}%` }} />
+                    </div>
+                  )}
 
                   {/* The same five milestones the guide talks in, read from the same missionStages(). */}
-                  <div className="mt-5">
+                  <div className="mt-3">
                     <MissionStepper
                       profile={activeRun?.profile ?? currentRunProfile()}
                       checkpoints={activeRun?.checkpoints ?? (outputs ? [{ percent: 100, at: Date.now() }] : [])}
@@ -2149,16 +2230,16 @@ clip-2[8-16sec]: second spoken line`}</pre>
                     deliverables. It pulses while the run is still going.
                   */}
                   <div className={cn("ag-strip", status.isProcessing && "border-violet-500/40")}>
-                    <span className="ag-ico shrink-0 relative">
+                    <span className="ag-ico ag-ico--sm shrink-0 relative">
                       {status.isProcessing && !reduceMotion && (
-                        <span aria-hidden className="absolute inset-0 rounded-[14px] ring-2 ring-violet-400/50 animate-ping" />
+                        <span aria-hidden className="absolute inset-0 rounded-xl ring-2 ring-violet-400/50 animate-ping" />
                       )}
-                      <Sparkles className="w-5 h-5" />
+                      <Sparkles className="w-[18px] h-[18px]" />
                     </span>
                     <button type="button" onClick={() => setGuideOpen(true)} data-test="ai-guide-button"
                       className="min-w-0 flex-1 text-left bg-transparent border-0 p-0 cursor-pointer">
-                      <span className="ag-h2 block text-[16px] text-white leading-tight">AI Guide</span>
-                      <span className="ag-muted block text-[12px] mt-0.5 truncate">
+                      <span className="ag-h2 block text-[15px] text-white leading-tight">AI Guide</span>
+                      <span className="ag-muted block text-[12px] mt-0.5 truncate hidden sm:block">
                         Follow these steps while DTS writes your ad kit. Reopen anytime.
                       </span>
                     </button>
@@ -2177,9 +2258,8 @@ clip-2[8-16sec]: second spoken line`}</pre>
                   {/* Video Generation Platform Link - at top */}
                   {creationMode === 'video' && (
                     <a href="https://labs.google/fx/tools/flow" target="_blank" rel="noopener noreferrer"
-                      className={cn("flex items-center justify-center space-x-3 w-full py-3.5 px-6 rounded-2xl font-semibold text-sm text-white shadow-xl shadow-blue-600/25 hover:shadow-blue-500/35 transition-all active:scale-[0.99]",
-                        BRAND_GRADIENT, BRAND_GRADIENT_HOVER)}>
-                      <Video className="w-5 h-5" /><span>Open Video Generation Platform</span><ExternalLink className="w-4 h-4 opacity-70" />
+                      className="ag-btn ag-btn--primary w-full h-11">
+                      <Video className="w-4 h-4" /><span>Open Video Generation Platform</span><ExternalLink className="w-3.5 h-3.5 opacity-70" />
                     </a>
                   )}
 
@@ -2201,9 +2281,24 @@ clip-2[8-16sec]: second spoken line`}</pre>
                     </p>
                   )}
 
-                  {/* What the run heard and planned — so the member can check it before using the prompts. */}
+                  {/* What the run heard and planned — checkable before the prompts are used, but folded away. */}
                   {creationMode === 'video' && (outputs.voiceBrief || outputs.sceneContext) && (
-                    <div data-test="run-understanding" className="ag-card p-4 space-y-3 text-sm text-slate-300">
+                    <div className={cn("ag-row flex-col items-stretch !p-0", collapsedOutputs.brief && "ag-row--open")}>
+                      <div className="flex items-center gap-3 px-4 sm:px-5 py-2 min-h-[56px]">
+                        <span className="ag-tile shrink-0 w-9 h-9 flex-[0_0_36px]"><Wand2 className="w-4 h-4 text-violet-200" /></span>
+                        <div className="min-w-0 flex-1">
+                          <span className="ag-h2 text-[15px] text-white block truncate">What we understood</span>
+                          <span className="ag-muted text-[12px] hidden sm:block truncate">The client's voice note and the background planned for each clip.</span>
+                        </div>
+                        <button type="button" data-test="run-understanding-toggle"
+                          onClick={() => toggleOutputSection('brief')}
+                          aria-label={collapsedOutputs.brief ? 'Collapse what we understood' : 'Expand what we understood'}
+                          className="ag-btn ag-btn--icon ag-btn--sm h-9 w-9 shrink-0">
+                          <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", collapsedOutputs.brief && "rotate-180")} />
+                        </button>
+                      </div>
+                      {collapsedOutputs.brief && (
+                    <div data-test="run-understanding" className="px-4 sm:px-5 pb-4 space-y-3 text-sm text-slate-300">
                       {outputs.voiceBrief && (
                         <div data-test="voice-brief">
                           <p className={cn("text-xs font-bold uppercase tracking-wide mb-1", isDark ? "text-violet-300" : "text-violet-700")}>Client voice note — what we understood</p>
@@ -2234,6 +2329,8 @@ clip-2[8-16sec]: second spoken line`}</pre>
                             {outputs.sceneContext.clips.map(c => <li key={c.clip} className="break-words">{c.background}</li>)}
                           </ol>
                         </div>
+                      )}
+                    </div>
                       )}
                     </div>
                   )}
@@ -2348,38 +2445,29 @@ clip-2[8-16sec]: second spoken line`}</pre>
 
                   {/* Stock Image Prompts */}
                   {creationMode === 'video' && outputs.voiceOverScript && (
-                        <div className="ag-row flex-col items-stretch !p-0">
-                          <div className="relative px-4 sm:px-5 py-3 min-h-[72px] flex justify-between items-center gap-3">
-                            <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                              <span className="ag-row__num shrink-0">6</span>
-                              <span className="ag-tile shrink-0 w-10 h-10 flex-[0_0_40px]"><Camera className="w-[18px] h-[18px] text-violet-200" /></span>
-                              <div className="min-w-0">
-                                <h3 className="ag-h2 text-[15px] sm:text-[16px] text-white truncate">Stock Image Prompts (B-Roll)</h3>
-                                <p className="ag-muted text-[12px] truncate">Additional stock image prompts for editing B-roll and overlays.</p>
-                              </div>
-                            </div>
-                            {!outputs.stockImagePrompts && (
-                              <div className="flex items-center space-x-2">
-                                <select value={stockImageTheme} onChange={(e) => setStockImageTheme(e.target.value)}
-                                  className={cn("text-xs font-medium py-1.5 px-2 rounded-lg border", isDark ? "bg-white/[0.08] border-white/[0.14] text-slate-200" : "bg-white border-slate-300 text-slate-700")}>
-                                  <option value="indian">🇮🇳 Indian</option><option value="american">🇺🇸 American</option>
-                                  <option value="middle-eastern">🇦🇪 Middle Eastern</option><option value="european">🇪🇺 European</option>
-                                  <option value="east-asian">🇯🇵 East Asian</option><option value="african">🇿🇦 African</option><option value="universal">🌍 Universal</option>
-                                </select>
-                                <button onClick={handleGenerateStockImages} disabled={isGeneratingStock}
-                                  className="ag-btn ag-btn--primary ag-btn--sm h-9">
-                                  {isGeneratingStock ? <><Loader2 className="w-3 h-3 animate-spin" /><span>Generating...</span></> : <><Sparkles className="w-3 h-3" /><span>Generate</span></>}
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                          <div className={cn(!outputs.stockImagePrompts && !isGeneratingStock ? "px-4 pb-3" : "p-4")}>
-                            {!outputs.stockImagePrompts && !isGeneratingStock && (
-                              <div className="ag-muted flex items-center gap-2 text-[12px]">
-                                <Camera className="w-4 h-4 shrink-0 opacity-50" />
-                                <p className="text-[12px]">Stock image prompts for editing B-roll</p>
-                              </div>
-                            )}
+                        <OutputSection title="6. Stock Image Prompts (B-Roll)" sectionKey="stock"
+                          icon={Camera}
+                          subtitle="Additional stock image prompts for editing B-roll and overlays."
+                          collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
+                          isDark={isDark}
+                          actions={
+                            <>
+                              <select value={stockImageTheme} onChange={(e) => setStockImageTheme(e.target.value)}
+                                aria-label="Stock image theme"
+                                className="text-xs font-medium h-9 px-2 rounded-xl border bg-white/[0.06] border-white/[0.14] text-slate-200">
+                                <option value="indian">🇮🇳 Indian</option><option value="american">🇺🇸 American</option>
+                                <option value="middle-eastern">🇦🇪 Middle Eastern</option><option value="european">🇪🇺 European</option>
+                                <option value="east-asian">🇯🇵 East Asian</option><option value="african">🇿🇦 African</option><option value="universal">🌍 Universal</option>
+                              </select>
+                              <button onClick={() => handleGenerateStockImages()} disabled={isGeneratingStock}
+                                className="ag-btn ag-btn--secondary ag-btn--sm h-9">
+                                {isGeneratingStock
+                                  ? <><Loader2 className="w-3 h-3 animate-spin" /><span>Generating...</span></>
+                                  : <><Sparkles className="w-3 h-3" /><span>{outputs.stockImagePrompts ? 'Regenerate' : 'Generate'}</span></>}
+                              </button>
+                            </>
+                          }>
+                          <div className="p-2">
                             {stockImageError && (
                               <div className="flex items-start space-x-2 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 p-3 rounded-lg text-sm">
                                 <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" /><span>{stockImageError}</span>
@@ -2447,35 +2535,26 @@ clip-2[8-16sec]: second spoken line`}</pre>
                               </div>
                             ))}
                           </div>
-                        </div>
+                        </OutputSection>
                   )}
 
                   {/* 7. Overlay Text Image Generator — each overlay as a premium 3D transparent PNG prompt */}
                   {creationMode === 'video' && outputs.voiceOverScript && (
-                    <div data-test="overlay-image-generator" className="ag-row flex-col items-stretch !p-0">
-                      <div className="relative px-4 sm:px-5 py-3 min-h-[72px] flex justify-between items-center gap-3">
-                        <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                          <span className="ag-row__num shrink-0">7</span>
-                          <span className="ag-tile shrink-0 w-10 h-10 flex-[0_0_40px]"><TypeIcon className="w-[18px] h-[18px] text-violet-200" /></span>
-                          <div className="min-w-0">
-                            <h3 className="ag-h2 text-[15px] sm:text-[16px] text-white truncate">Overlay Text Image Generator</h3>
-                            <p className="ag-muted text-[12px] truncate">Key text overlays as ready image prompts.</p>
-                          </div>
-                        </div>
-                        <button onClick={handleGenerateOverlayTexts} disabled={isGeneratingOverlay}
-                          className="ag-btn ag-btn--primary ag-btn--sm h-9 shrink-0">
-                          {isGeneratingOverlay
-                            ? <><Loader2 className="w-3 h-3 animate-spin" /><span>Generating...</span></>
-                            : <><Sparkles className="w-3 h-3" /><span>{outputs.overlayTexts ? 'Regenerate' : 'Generate'}</span></>}
-                        </button>
-                      </div>
-                      <div className={cn(!outputs.overlayTexts && !isGeneratingOverlay ? "px-4 pb-3" : "p-4")}>
-                        {!outputs.overlayTexts && !isGeneratingOverlay && (
-                          <div className="ag-muted flex items-start gap-2 text-[12px]">
-                            <TypeIcon className="w-4 h-4 shrink-0 opacity-50 mt-0.5" />
-                            <p className="text-[12px] leading-relaxed">Each key point as a ready image prompt for a premium 3D transparent PNG — themed to the business or the festival — with its CapCut sound effect and the words it comes in on</p>
-                          </div>
-                        )}
+                    <div data-test="overlay-image-generator">
+                      <OutputSection title="7. Overlay Text Image Generator" sectionKey="overlay"
+                        icon={TypeIcon}
+                        subtitle="Key text overlays as ready image prompts."
+                        collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
+                        isDark={isDark}
+                        actions={
+                          <button onClick={() => handleGenerateOverlayTexts()} disabled={isGeneratingOverlay}
+                            className="ag-btn ag-btn--secondary ag-btn--sm h-9 shrink-0">
+                            {isGeneratingOverlay
+                              ? <><Loader2 className="w-3 h-3 animate-spin" /><span>Generating...</span></>
+                              : <><Sparkles className="w-3 h-3" /><span>{outputs.overlayTexts ? 'Regenerate' : 'Generate'}</span></>}
+                          </button>
+                        }>
+                      <div className="p-2">
                         {overlayError && (
                           <div className="flex items-start space-x-2 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 p-3 rounded-lg text-sm">
                             <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" /><span>{overlayError}</span>
@@ -2560,6 +2639,7 @@ clip-2[8-16sec]: second spoken line`}</pre>
                           <p className={cn("text-sm text-center py-4", isDark ? "text-slate-500" : "text-slate-400")}>No overlay texts needed for this script.</p>
                         )}
                       </div>
+                      </OutputSection>
                     </div>
                   )}
                   </div>
@@ -2622,6 +2702,11 @@ const OutputSection: React.FC<{
   /** What this deliverable is for, in one line — read far more often than the section is opened. */
   subtitle?: string;
   icon?: LucideIcon;
+  /**
+   * The section's own controls, shown in the row beside Copy — a theme picker, a Generate button.
+   * Sections 6 and 7 had hand-built headers for exactly this; one row implementation instead.
+   */
+  actions?: React.ReactNode;
   collapsedOutputs: Record<string, boolean>; toggleOutputSection: (s: string) => void;
   isDark: boolean;
   copyContent?: string;
@@ -2633,7 +2718,7 @@ const OutputSection: React.FC<{
   quickCopyRanges?: string[];
   /** Per-item "attach this photo", surfaced on the quick-copy chips as the photo itself. */
   quickCopyAttachments?: (PromptAttachment | null)[];
-}> = ({ title, sectionKey, children, subtitle, icon: Icon = FileText, collapsedOutputs, toggleOutputSection, isDark, copyContent, copyLabel, quickCopyItems, quickCopyLabel, quickCopyNamespace, quickCopyRanges, quickCopyAttachments }) => {
+}> = ({ title, sectionKey, children, subtitle, icon: Icon = FileText, actions, collapsedOutputs, toggleOutputSection, isDark, copyContent, copyLabel, quickCopyItems, quickCopyLabel, quickCopyNamespace, quickCopyRanges, quickCopyAttachments }) => {
   const [copied, setCopied] = useState(false);
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -2657,6 +2742,7 @@ const OutputSection: React.FC<{
           {subtitle && <span className="ag-muted text-[12px] hidden sm:block truncate">{subtitle}</span>}
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end ml-auto">
+          {actions}
           {quickCopyItems && quickCopyItems.length > 0 && (
             <QuickCopyActions prompts={quickCopyItems} isDark={isDark}
               labelPrefix={quickCopyLabel ?? 'F'} namespace={quickCopyNamespace ?? 'main-frame'}

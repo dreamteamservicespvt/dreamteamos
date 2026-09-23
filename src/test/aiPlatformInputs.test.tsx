@@ -103,15 +103,23 @@ describe("the AI platform inputs", () => {
     open();
     fireEvent.click(screen.getByLabelText(/NO LOGO/));
     fireEvent.change(screen.getByPlaceholderText("BUSINESS NAME"), { target: { value: "Sharma Electronics" } });
+    // A run needs something that says who the business is — see handleGenerate.
+    fireEvent.change(screen.getByTestId("business-content"), {
+      target: { value: "Sharma Electronics, Kakinada — two-wheeler service, open at 6 am." },
+    });
     fireEvent.click(screen.getByText("Start Generation"));
 
-    expect((await screen.findByTestId("voice-brief")).textContent).toContain("Say we open at 6 am");
+    // What the run understood is folded away now — the deliverables come first on the screen.
+    fireEvent.click(await screen.findByTestId("run-understanding-toggle"));
+    expect(screen.getByTestId("voice-brief").textContent).toContain("Say we open at 6 am");
     expect(screen.getByTestId("scene-plan").textContent).toContain("the spare-parts rack");
     expect(screen.getByText("Video Bottom Label")).toBeTruthy();
 
     const generator = screen.getByTestId("overlay-image-generator");
     expect(generator.textContent).toContain("Overlay Text Image Generator");
-    fireEvent.click(screen.getAllByText("Generate").find((el) => generator.contains(el))!);
+    // The overlays are part of the kit now — nobody has to press Generate for them. Open the
+    // section and they are already there.
+    fireEvent.click(await screen.findByLabelText(/Expand 7\. Overlay Text Image Generator/));
     expect((await screen.findByTestId("overlay-image-prompt")).textContent).toContain('"SAME-DAY SERVICE"');
     expect(screen.getByTestId("overlay-cue").textContent).toBe("From “Line” → To “one”");
     expect(screen.getByTestId("overlay-refine")).toBeTruthy();

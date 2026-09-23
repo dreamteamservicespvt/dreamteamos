@@ -154,7 +154,20 @@ export function englishOrdinal(n: number): string {
  * never swapped for another word.
  */
 export const FIXED_WORDS: { word: string; say: string; variants: RegExp }[] = [
-  { word: "మరియు", say: "mariyu", variants: /మరీయు|మరియూ|మరీయూ|మరి\s+యు(?=[\s.,!?]|$)/g },
+  {
+    word: "మరియు",
+    say: "mariyu",
+    variants: new RegExp(
+      [
+        // Every wrong vowel length the writer has produced, with or without a space in the middle.
+        "మరీయు", "మరియూ", "మరీయూ", "మరియుు", "మర్యు",
+        "మరి\\s+యు", "మరి\\s+యూ", "మరీ\\s+యు", "మరీ\\s+యూ",
+        // The Latin spelling, when a line comes back half-transliterated.
+        "\\bmariyu\\b", "\\bmariyoo\\b", "\\bmariu\\b",
+      ].join("|"),
+      "gi",
+    ),
+  },
 ];
 
 /** A line with every variant of a fixed word written the one way the team wants. */

@@ -158,7 +158,7 @@ export const MissionTaskList: React.FC<{
   let number = 0;
 
   return (
-    <ol className="space-y-2">
+    <ol className="space-y-1.5">
       {tasks.map((task, i) => {
         const info = task.kind === 'info';
         const complete = !info && isTaskDone(task, done);
@@ -172,14 +172,14 @@ export const MissionTaskList: React.FC<{
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, delay: animate ? 0.12 + i * 0.05 : 0, ease: EASE }}
             className={cn(
-              'ag-row',
+              'ag-row ag-row--tight',
               isNext && 'ag-row--next',
               info && 'ag-row--info',
               complete && 'ag-row--done',
             )}
           >
             {/* number · what to do · the button that does it — the three columns of every guide row */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
               {info ? (
                 <span className="ag-row__num ag-row__num--quiet shrink-0">
                   <Info className="w-4 h-4" />
@@ -203,7 +203,7 @@ export const MissionTaskList: React.FC<{
 
               <div className="min-w-0 flex-1">
                 <div className="flex items-start gap-2">
-                  <p className={cn('text-[15px] font-semibold leading-snug',
+                  <p className={cn('text-[14px] font-semibold leading-snug',
                     complete || info ? 'ag-muted' : 'text-slate-100')}>
                     {task.title}
                   </p>
@@ -213,7 +213,7 @@ export const MissionTaskList: React.FC<{
                     </span>
                   )}
                 </div>
-                <p className="ag-muted mt-1 text-[13px] leading-relaxed">
+                <p className="ag-muted mt-0.5 text-[12px] leading-snug">
                   {task.detail}
                 </p>
               </div>
@@ -233,7 +233,7 @@ export const MissionTaskList: React.FC<{
                         rel="noopener noreferrer"
                         data-test={`mission-tab-${t + 1}`}
                         onClick={() => onToggle(key, true)}
-                        className={cn('ag-btn ag-btn--sm h-9 px-3 text-xs',
+                        className={cn('ag-btn ag-btn--sm h-8 px-2.5 text-xs',
                           opened ? 'ag-btn--ok' : 'ag-btn--secondary')}
                       >
                         {opened ? <Check className="w-3.5 h-3.5" strokeWidth={3} /> : <ExternalLink className="w-3.5 h-3.5 opacity-70" />}
@@ -250,7 +250,7 @@ export const MissionTaskList: React.FC<{
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => onToggle(task.id, true)}
-                  className="ag-btn ag-btn--primary ag-btn--sm h-9 text-xs shrink-0"
+                  className="ag-btn ag-btn--primary ag-btn--sm h-8 text-xs shrink-0"
                 >
                   {task.linkLabel || 'Open'} <ExternalLink className="w-3.5 h-3.5 opacity-80" />
                 </a>
@@ -304,11 +304,11 @@ export const MissionWorkspace: React.FC<{
           the one link the whole checklist starts from. The pipeline's milestones are NOT repeated
           here — they live in the Generation Status card above (MissionStepper). */}
       <div className="relative">
-        <div className="flex items-center gap-4 px-5 sm:px-7 pt-5 sm:pt-6 pb-4">
-          <span className="ag-ico shrink-0"><Sparkles className="w-5 h-5" /></span>
+        <div className="flex items-center gap-3 px-4 sm:px-5 pt-4 pb-3">
+          <span className="ag-ico ag-ico--sm shrink-0"><Sparkles className="w-[18px] h-[18px]" /></span>
           <div className="min-w-0 flex-1">
-            <h3 className="ag-h2 text-[18px] sm:text-[20px] text-white leading-tight">AI Guide</h3>
-            <p className="ag-muted mt-0.5 text-[13px] truncate">
+            <h3 className="ag-h2 text-[16px] sm:text-[17px] text-white leading-tight">AI Guide</h3>
+            <p className="ag-muted mt-0.5 text-[12px] truncate">
               {poster ? 'Follow these steps while DTS writes your concepts' : 'Follow these steps while DTS writes your ad kit'}
               {' · '}{runSummary(run.facts)}
             </p>
@@ -329,9 +329,9 @@ export const MissionWorkspace: React.FC<{
           )}
         </div>
 
-        <div className="px-5 sm:px-7 pb-5 sm:pb-6">
-          <div className="flex items-baseline justify-between gap-3 mb-3">
-            <h4 className="ag-h2 text-sm text-slate-100">
+        <div className="px-4 sm:px-5 pb-4">
+          <div className="flex items-baseline justify-between gap-3 mb-2">
+            <h4 className="ag-h2 text-[13px] text-slate-100">
               While DTS writes, set up your studio
             </h4>
             <span className={cn('ag-num shrink-0 text-[11px]', ready === total ? 'text-emerald-300' : 'ag-muted')}
@@ -342,7 +342,7 @@ export const MissionWorkspace: React.FC<{
 
           <MissionTaskList tasks={tasks} done={done} onToggle={onToggle} isDark={isDark} animate />
 
-          <p className="ag-muted mt-5 flex items-start gap-1.5 text-[11px] leading-relaxed">
+          <p className="ag-muted mt-3 flex items-start gap-1.5 text-[11px] leading-relaxed">
             <Sparkles className="w-3 h-3 mt-0.5 shrink-0" />
             This workspace steps aside the moment your first asset arrives. Reopen it any time from AI Guide.
           </p>

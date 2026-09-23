@@ -477,7 +477,8 @@ export function planClipMotion(
   let previousCamera: CameraMoveKey | null = null;
   let rotation = 0;
   let focusToggle = 0;
-  const middle = performer === "deity" ? MIDDLE_STAGINGS.filter((k) => k !== "walk_and_talk") : MIDDLE_STAGINGS;
+  const noWalking = performer === "deity" || twoHander;
+  const middle = noWalking ? MIDDLE_STAGINGS.filter((k) => k !== "walk_and_talk") : MIDDLE_STAGINGS;
 
   return roles.map((role, i) => {
     const choice = choices[i] || {};
@@ -488,7 +489,7 @@ export function planClipMotion(
     const chosen = isKey(choice.staging, STAGINGS) ? choice.staging : null;
     if (last) key = "welcome_invite";
     else if (chosen && chosen !== "welcome_invite") key = chosen;
-    else if (i === 0) key = SPACE_WORDS.test(lines[0] || "") && performer !== "deity" && role !== "wish" ? "walk_and_talk" : "stand_present";
+    else if (i === 0) key = SPACE_WORDS.test(lines[0] || "") && !noWalking && role !== "wish" ? "walk_and_talk" : "stand_present";
     else {
       const asked = stagingForLine(lines[i] || "", role, performer);
       if (asked && asked !== previousStaging) key = asked;
@@ -497,8 +498,8 @@ export function planClipMotion(
         if (key === previousStaging) key = middle[rotation++ % middle.length];
       }
     }
-    // A deity never walks; it presents the space it blesses.
-    if (performer === "deity" && key === "walk_and_talk") key = "present_space";
+    // A deity never walks; it presents the space it blesses. Neither does a pair — see above.
+    if (noWalking && key === "walk_and_talk") key = "present_space";
     previousStaging = key;
     const staging = STAGINGS[key];
 
@@ -950,6 +951,27 @@ Both stay in their places the whole time — only the camera and the focus move,
  * negatives — are guaranteed, and the model's contribution is limited to the direction it is actually
  * good at. The action comes first: Veo weighs the start of a prompt most.
  */
+/**
+ * The two characters' sizes, stated before anything else in the prompt.
+ *
+ * This is the fault that ruined most finished duo ads: the pair come out of the video model at
+ * different heights from the still they were animated from — usually the shorter one grown. The
+ * lock existed, but it sat in the middle of the prompt among a dozen other rules, and video models
+ * weigh the opening of a prompt most. So it goes first, it names the two characters, and it says
+ * what "the same height" means in a shot where the camera moves: they scale TOGETHER or not at all.
+ *
+ * The staging does its half of the job — a pair no longer walks toward the lens (planClipMotion),
+ * because one of them arriving nearer the camera is what gave the model the excuse to re-proportion.
+ */
+export function scaleLock(speech: VeoSpeech[]): string {
+  const [a, b] = speech.map((s) => s.speaker).filter(Boolean) as string[];
+  const pair = a && b ? `${a} and ${b}` : "the two characters";
+  return `SCALE LOCK — THE MOST IMPORTANT RULE IN THIS PROMPT:
+${pair} keep EXACTLY the heights, builds and body proportions of the attached frame, in every single frame of the video. The height difference between them is fixed: whoever is taller in the frame stays taller by exactly the same amount, measured against the counter, shelf or door frame behind them.
+Neither one grows, shrinks, stretches, gets rounder or gets thinner at any moment. Nobody is re-proportioned to fill the shot, to match the other character, or to fit a camera move.
+If the camera moves closer or further, BOTH change size together by the same amount and stay at the same distance from the lens as each other — never one nearer than the other, never one bigger relative to the other than the frame shows.`;
+}
+
 export function assembleVeoPrompt(input: VeoPromptInput): string {
   const { aspectRatio, plan, identityLock, language, speech, performanceNotes, cast, castPlural, twoHander } = input;
   const who = cast || "The cast";
@@ -972,7 +994,9 @@ export function assembleVeoPrompt(input: VeoPromptInput): string {
   const pronunciation = pronunciationNotes(speech.map((s) => s.line));
 
   return `${aspectRatio} ${orientation} video, one continuous 8-second shot, animated from the attached frame — the frame comes to life, filmed like a premium commercial.
-
+${twoHander ? `
+${scaleLock(speech)}
+` : ""}
 ${identityRules(identityLock, who, !!twoHander)}
 
 ${worldRules(who, !!twoHander, walks)}
@@ -1012,6 +1036,7 @@ No frozen pose, no statue or mannequin stiffness, no talking head where only the
 No static or locked-off camera — the camera move runs for all 8 seconds
 No cuts or scene change, no crash zoom or whip pan, no slow motion, hyperlapse or time-lapse while anyone speaks
 No change of height, build or body proportions — nobody grows or shrinks relative to the room, no change to the height difference between characters
+No character moving nearer the lens than the other, no one character growing while the other stays, no re-proportioning to match or fill the shot
 No costume change — no different clothes, colours, patterns, footwear or accessories, nothing added or taken away
 No redrawn, restyled or different-looking cast, no face morphing, no swapped or extra characters, no extra people
 No warped anatomy, no extra or missing fingers, no flicker, no jitter, no melting textures

@@ -67,9 +67,15 @@ export function buildClientChatMessage(input: {
   chatId: string;
   /** The work's catalog key, so the message can name what was actually ordered. */
   category?: string;
+  /**
+   * The occasion a wishes video is for. A client who bought a Diwali video reads "your wishes
+   * video has started" and cannot tell which of their festivals it is — so the festival is named.
+   */
+  festival?: string;
 }): string {
-  const { businessName, uniqueId, chatId, category } = input;
-  const what = category ? categoryLabel(category) : "ad";
+  const { businessName, uniqueId, chatId, category, festival } = input;
+  const occasion = festival?.trim();
+  const what = `${occasion ? `${occasion} ` : ""}${category ? categoryLabel(category) : "ad"}`;
   return [
     `Hello${businessName ? ` ${businessName}` : ""}! 👋`,
     ``,
