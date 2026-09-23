@@ -6,6 +6,7 @@ import {
   type DialogueClip,
 } from "@/utils/dialogueFormat";
 import { getCharacterPack, packSpeakers, packSpeakerAliases, packNameSpellings, packHighlight } from "@/services/characterPacks";
+import { CHARACTER_CATALOGUE } from "@/services/characterCatalogue";
 import { isClipHeaderLine, parseLabeledClips } from "@/utils/voiceOverFormat";
 
 /**
@@ -150,6 +151,77 @@ describe("parsing tolerates what the model actually emits", () => {
   it("returns nothing for unparseable text so callers can fall back", () => {
     expect(parseDialogueClips("", aliases)).toEqual([]);
     expect(parseDialogueClips("just some prose with no speakers", aliases)).toEqual([]);
+  });
+});
+
+/**
+ * The bug this pins shipped: the speaker label was matched as a single WORD, so every character
+ * whose name has a space in it — Chhota Bheem, Ben 10, Grandpa Max, Business Owner, Custom
+ * Character — was unreadable in the DISPLAY form. The generated script was fine (canonical form is
+ * keyed on single-word keys), but `voiceOverScript` is stored in the display form and re-read to
+ * build the Veo prompts, so a Bheem & Chutki ad arrived at the video prompts with only Chutki's
+ * half of each clip, and Ben 10 & Grandpa Max with no dialogue at all.
+ */
+describe("multi-word character names survive the display form", () => {
+  const twoWordPack = getCharacterPack("duo_bheem_chutki")!;
+  const bothTwoWordsPack = getCharacterPack("duo_ben10_maxwell")!;
+
+  /** Every pack's own script, written and read back the way the pipeline does it. */
+  const roundTrip = (id: string) => {
+    const p = getCharacterPack(id)!;
+    const cast = packSpeakers(p);
+    const clips: DialogueClip[] = [
+      cast.map((s, i) => ({ speaker: s.key, text: `Clip one line ${i + 1}.` })),
+      cast.map((s, i) => ({ speaker: s.key, text: `Clip two line ${i + 1}.` })),
+    ];
+    return { cast, clips, parsed: parseDialogueClips(formatDialogueScript(clips, cast), cast) };
+  };
+
+  it("reads both speakers when one name is two words", () => {
+    const { cast, parsed } = roundTrip("duo_bheem_chutki");
+    expect(parsed).toHaveLength(2);
+    expect(parsed[0].map(l => l.speaker)).toEqual(cast.map(s => s.key));
+    expect(parsed[0][0].text).toBe("Clip one line 1.");
+  });
+
+  it("reads both speakers when BOTH names are two words", () => {
+    const { cast, parsed } = roundTrip("duo_ben10_maxwell");
+    expect(parsed[1].map(l => l.speaker)).toEqual(cast.map(s => s.key));
+  });
+
+  it("keeps a solo pack's only line", () => {
+    for (const id of ["owner_face_male", "custom_character", "god_custom", "solo_mickey"]) {
+      const { parsed } = roundTrip(id);
+      expect(parsed.map(c => c.length), id).toEqual([1, 1]);
+    }
+  });
+
+  it("resolves the label to the pack's KEY, which is what everything downstream reads", () => {
+    const cast = packSpeakers(twoWordPack);
+    const parsed = parseDialogueClips("clip-1[0-8sec]:\n  [Chhota Bheem]: A?\n  [Chutki]: B.", cast);
+    expect(parsed[0].map(l => l.speaker)).toEqual(["bheem", "chutki"]);
+    // …so the script still validates as a proper two-hander rather than looping in repair.
+    expect(validateDialogueClips(parsed, 1, cast).filter(i => /must speak|missing/.test(i))).toEqual([]);
+  });
+
+  it("also accepts the short form of a two-word name, and the canonical ranged line", () => {
+    const cast = packSpeakers(bothTwoWordsPack);
+    const parsed = parseDialogueClips("0-8|[Ben 10]: A?\n0-8|Max: B.\n8-16|Ben: C?\n8-16|[Grandpa Max]: D.", cast);
+    expect(parsed.map(c => c.map(l => l.speaker))).toEqual([["ben", "max"], ["ben", "max"]]);
+  });
+
+  it("still treats an unknown label as a continuation, not a speaker", () => {
+    const parsed = parseDialogueClips("[Motu]: the offer is\nthis week only: everything half price.\n[Patlu]: B.", aliases);
+    expect(parsed[0]).toHaveLength(2);
+    expect(parsed[0][0].text).toBe("the offer is this week only: everything half price.");
+  });
+
+  /** Every pack in the catalogue, so a new one with a spaced name cannot reintroduce this. */
+  it("round-trips every pack in the catalogue", () => {
+    for (const p of CHARACTER_CATALOGUE) {
+      const { cast, parsed } = roundTrip(p.id);
+      expect(parsed.map(c => c.map(l => l.speaker)), p.id).toEqual([cast.map(s => s.key), cast.map(s => s.key)]);
+    }
   });
 });
 

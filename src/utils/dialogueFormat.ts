@@ -141,13 +141,69 @@ export function formatDialogueScript(
 
 // ── Parsing ───────────────────────────────────────────────────────────────────────────────────
 
-/** `0-8|motu: text` — the canonical line, carrying its own clip position. */
-const RANGED_SPEAKER = /^(\d+)\s*-\s*\d+\s*(?:sec|s)?\s*[|/]\s*\[?\s*([\p{L}\w]+)\s*\]?\s*[:\-–]\s*(.+)$/iu;
+/**
+ * A speaker label, bracketed or bare.
+ *
+ * ── Why this is not one word ──────────────────────────────────────────────────────────────────
+ * It used to be `([\p{L}\w]+)` — a single word — which silently lost every character whose NAME
+ * has a space in it: `[Chhota Bheem]:` and `[Ben 10]:` did not match, so the line fell through to
+ * the continuation rule and disappeared. The generated script itself was fine (it is written in the
+ * canonical `0-8|bheem:` form, keyed on single-word KEYS), but the display form stored in
+ * `voiceOverScript` is written with NAMES, and that is what the Veo prompts and the refine editor
+ * re-read — so a Bheem & Chutki ad reached the video prompts with only Chutki's half of the clip,
+ * and Ben 10 & Grandpa Max with no dialogue at all.
+ *
+ * A label is anything up to 40 characters before the separator; only labels that resolve to a known
+ * speaker are treated as dialogue (see `resolveSpeaker`), so ordinary prose with a colon in it is
+ * still a continuation, exactly as before.
+ */
+const LABEL = String.raw`(?:\[\s*([^\]\n]{1,40}?)\s*\]|\[?\s*([^:\-–\n\[\]]{1,40}?)\s*)`;
+/** `0-8|motu: text`, `0-8|[Chhota Bheem]: text` — the canonical line, carrying its own clip position. */
+const RANGED_SPEAKER = new RegExp(String.raw`^(\d+)\s*-\s*\d+\s*(?:sec|s)?\s*[|/]\s*${LABEL}\s*[:\-–]\s*(.+)$`, "iu");
 /** `clip-1[0-8sec]`, `Clip 1:`, `Segment 2`, or a bare `0-8:` on its own line. */
 const CLIP_HEADER = /^\s*(?:clip\s*-?\s*(\d+)|segment\s*(\d+))\s*(?:\[[^\]]*\])?\s*[:\-–]?\s*$/i;
 const BARE_RANGE_HEADER = /^\s*(\d+)\s*-\s*\d+\s*(?:sec|s)?\s*[:\-–]?\s*$/i;
-/** `[Motu]: text`, `Motu: text`, `Motu - text`. */
-const SPEAKER_LINE = /^\[?\s*([\p{L}\w]+)\s*\]?\s*[:\-–]\s*(.+)$/u;
+/** `[Motu]: text`, `[Chhota Bheem]: text`, `Motu: text`, `Motu - text`. */
+const SPEAKER_LINE = new RegExp(String.raw`^${LABEL}\s*[:\-–]\s*(.+)$`, "u");
+
+/**
+ * A label as it is matched against the speaker list: brackets, emphasis marks and doubled spaces
+ * dropped, case folded. `**[Chhota  Bheem]**` and `chhota bheem` are the same character.
+ */
+const labelKey = (raw: string): string =>
+  raw.replace(/[[\]*_`"']/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+
+/**
+ * Who a script may name, and which character each name belongs to.
+ *
+ * Plain strings are their own key (what the canonical form uses). `Speaker` entries carry the pack's
+ * key AND its display name, which is what lets `[Chhota Bheem]:` resolve to the key `bheem` — the
+ * only form the rest of the pipeline (validation, frames, Veo, name spellings) understands.
+ */
+export type SpeakerVocabulary = readonly (string | Speaker)[];
+
+function speakerIndex(vocabulary: SpeakerVocabulary): Map<string, string> {
+  const index = new Map<string, string>();
+  // Keys and full names first, so a shared last word can never shadow a character's own name.
+  for (const entry of vocabulary) {
+    if (typeof entry === "string") {
+      index.set(labelKey(entry), entry.toLowerCase());
+      continue;
+    }
+    for (const alias of [entry.key, entry.name]) {
+      const key = labelKey(alias);
+      if (key) index.set(key, entry.key.toLowerCase());
+    }
+  }
+  // "[Bheem]" for "Chhota Bheem", "[Max]" for "Grandpa Max" — only where nothing else claims it.
+  for (const entry of vocabulary) {
+    if (typeof entry === "string") continue;
+    const parts = entry.name.trim().split(/\s+/);
+    const last = labelKey(parts[parts.length - 1] || "");
+    if (last && !index.has(last)) index.set(last, entry.key.toLowerCase());
+  }
+  return index;
+}
 
 /**
  * Reads a script into clips, tolerating every shape the model realistically emits — canonical
@@ -159,13 +215,12 @@ const SPEAKER_LINE = /^\[?\s*([\p{L}\w]+)\s*\]?\s*[:\-–]\s*(.+)$/u;
  */
 export function parseDialogueClips(
   raw: string,
-  speakerAliases: string[],
+  speakerAliases: SpeakerVocabulary,
   clipSeconds: number = CLIP_SECONDS,
 ): DialogueClip[] {
   if (!raw?.trim()) return [];
 
-  const aliasToKey = new Map<string, string>();
-  for (const alias of speakerAliases) aliasToKey.set(alias.toLowerCase(), alias.toLowerCase());
+  const aliasToKey = speakerIndex(speakerAliases);
 
   const byIndex = new Map<number, DialogueClip>();
   let current = -1;
@@ -178,7 +233,8 @@ export function parseDialogueClips(
     return created;
   };
 
-  const resolveSpeaker = (token: string): string | null => aliasToKey.get(token.toLowerCase()) ?? null;
+  const resolveSpeaker = (token: string | undefined): string | null =>
+    (token ? aliasToKey.get(labelKey(token)) : undefined) ?? null;
 
   for (const rawLine of raw.split(/\r?\n/)) {
     const line = rawLine.trim();
@@ -188,10 +244,10 @@ export function parseDialogueClips(
     // 1 · Canonical `0-8|motu: text` — position is explicit, so trust it.
     const ranged = line.match(RANGED_SPEAKER);
     if (ranged) {
-      const speaker = resolveSpeaker(ranged[2]);
+      const speaker = resolveSpeaker(ranged[2] ?? ranged[3]);
       if (speaker) {
         const index = Math.floor(Number(ranged[1]) / clipSeconds);
-        ensure(index).push({ speaker, text: ranged[3].trim() });
+        ensure(index).push({ speaker, text: ranged[4].trim() });
         current = index;
         continue;
       }
@@ -213,10 +269,10 @@ export function parseDialogueClips(
     // 3 · `[Motu]: text` under the current clip.
     const spoken = line.match(SPEAKER_LINE);
     if (spoken) {
-      const speaker = resolveSpeaker(spoken[1]);
+      const speaker = resolveSpeaker(spoken[1] ?? spoken[2]);
       if (speaker) {
         if (current < 0) current = 0;
-        ensure(current).push({ speaker, text: spoken[2].trim() });
+        ensure(current).push({ speaker, text: spoken[3].trim() });
         continue;
       }
     }

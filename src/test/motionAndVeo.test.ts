@@ -9,7 +9,8 @@ import {
   CHARACTER_MULTI_FRAME_SYSTEM_PROMPT, CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT, characterDirectionBlock, packPerformer,
   packVeoSubject,
 } from "@/services/prompts/characterAd";
-import { getCharacterPack } from "@/services/characterPacks";
+import { getCharacterPack, packSpeakers } from "@/services/characterPacks";
+import { formatDialogueScript, parseDialogueClips } from "@/utils/dialogueFormat";
 
 /**
  * Every clip does what its LINE, its SCENE and the kind of video need — stand and tell, walk and talk,
@@ -396,6 +397,38 @@ describe("the Veo prompt", () => {
     expect(focused).toContain("WHO SPEAKS — STRICT, NEVER SWAPPED:");
     expect(spokenLinesIn(focused)).toEqual(["one", "two"]);
     expect(build2(2)).not.toContain("SPEAKER FOCUS");
+  });
+
+  /**
+   * The whole path a real run takes for a two-hander: the script is STORED in the display form
+   * (`[Chhota Bheem]: …`), and the Veo prompts are built by reading it back. When the parser could
+   * only see one-word labels, Bheem's half of every clip vanished on the way here and the video
+   * prompt carried a single voice — see utils/dialogueFormat.
+   */
+  it("carries BOTH voices when a character's name is two words", () => {
+    const pack = getCharacterPack("duo_bheem_chutki")!;
+    const cast = packSpeakers(pack);
+    const s = packVeoSubject(pack);
+    const script = formatDialogueScript(
+      [cast.map((c, i) => ({ speaker: c.key, text: `Line ${i + 1}.` }))],
+      cast,
+    );
+
+    // …exactly as geminiService's veoClipsFromScript composes it.
+    const nameOf = new Map(cast.map(c => [c.key, c.name]));
+    const clip = parseDialogueClips(script, cast)[0];
+    const lines = clip.map(l => ({ name: nameOf.get(l.speaker) ?? l.speaker, text: l.text }));
+    const prompt = assembleVeoPrompt({
+      aspectRatio: "9:16", plan: planClipMotion(2, "commercial", packPerformer(pack), { twoHander: true })[0],
+      identityLock: s.identityLock, language: "Telugu", speech: s.speech(lines),
+      performanceNotes: s.performanceNotes, cast: s.cast, castPlural: s.castPlural, twoHander: s.twoHander,
+      manner: s.manner, handGestures: s.handGestures,
+    });
+
+    expect(spokenLinesIn(prompt)).toEqual(["Line 1.", "Line 2."]);
+    expect(prompt).toContain("Chhota Bheem (on the LEFT of the frame)");
+    expect(prompt).toContain("Chutki (on the RIGHT of the frame)");
+    expect(prompt).toContain("no line spoken by the wrong character");
   });
 
   it("gives a deity the catalogue voice and blessings only", () => {

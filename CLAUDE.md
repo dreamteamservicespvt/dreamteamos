@@ -196,7 +196,7 @@ DTS-OS/
 │   ├── types/                 ← index.ts (core model), aiPlatform, cinematicAds, hr, payroll, smm,
 │   │                            orderChat, onboarding
 │   ├── lib/utils.ts           ← shadcn `cn()`
-│   └── test/                  ← Vitest suites (171 files, 2712 tests at 2026-09-22) + setup.ts
+│   └── test/                  ← Vitest suites (171 files, 2720 tests at 2026-09-23) + setup.ts
 ├── public/                    ← PWA manifests, FCM service worker, logos/icons
 ├── docs/
 │   ├── AI-MEMORY.md           ← HISTORICAL session log up to 2026-09-19 (superseded by §31; do not extend)
@@ -948,7 +948,11 @@ changes raise `SpecUpdateDialog`.
    text is split at sentence ends (a model split is kept only if `sameWords` holds); no repair or
    review; a two-speaker pack needs `[Speaker]:` lines or the run stops with a format message.
    `voiceOverFormat.parseLabeledClips` accepts many header shapes (round brackets, bold, no colon,
-   `Scene N`, full-width colon).
+   `Scene N`, full-width colon). A pack script is stored in the DISPLAY form (`[Motu]: …` under a
+   clip header) and re-read by the Veo step and the refine editor, so
+   `dialogueFormat.parseDialogueClips` must resolve a speaker LABEL — including a multi-word name
+   like `[Chhota Bheem]` — back to the pack's single-word key; pass it `packSpeakers(pack)`, not
+   bare aliases (2026-09-23).
 4. For real locations: review location photos, assign photos to clips. Otherwise the **scene
    plan** (`prompts/scenePlan.ts`, `utils/scenePlan.ts`): the video's motive (annadanam, temple,
    birthday, invitation, promotion…), its world, and one DIFFERENT background per clip from that
@@ -1480,6 +1484,21 @@ and push; PWA self-update; Android shell.
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
 
+- **2026-09-23: a two-hander's video prompts lost one speaker** — `utils/dialogueFormat`'s speaker
+  label was matched as a single WORD, so any character whose NAME contains a space was unreadable in
+  the DISPLAY form (`[Chhota Bheem]: …`). Generation was unaffected (the model writes the canonical
+  `0-8|bheem:` form, keyed on single-word keys), but `voiceOverScript` is stored in the display form
+  and re-read to build the Veo prompts, so **Chhota Bheem & Chutki reached the video prompts with
+  only Chutki's half of each clip, Ben 10 & Grandpa Max with no dialogue at all**, and the solo
+  Business Owner / Custom Character / Chosen Deity / Mickey Mouse packs with no spoken line. The
+  label now accepts multi-word names (`LABEL`, `labelKey`), and `parseDialogueClips` takes a
+  `SpeakerVocabulary` — plain aliases as before, or the pack's `{key, name}` speakers — so
+  `[Chhota Bheem]` resolves to the key `bheem` that validation, frames, Veo and name spellings all
+  read. `geminiService` passes `packSpeakers(pack)` at all four call sites. Also fixes: refining such
+  an ad's voice-over, and a member pasting a correctly labelled two-person script being told it
+  needed speaker lines. Verified: build ✅, vitest 171 files / 2720 tests ✅ (8 new, incl. a
+  round-trip over the whole catalogue and an end-to-end Veo assembly for Bheem & Chutki), typecheck
+  1 known error. No live Gemini or Veo run.
 - **2026-09-23: AdGen.ai studio UI, taken live** — the design (dark luxury SaaS: #020617 canvas,
   glass cards, violet→blue→cyan accent, Space Grotesk + Inter) implemented in the real platform, not
   a mock-up. New `src/components/ai-platform/adgen.css` holds the whole system (§11); `index.html`
@@ -1559,14 +1578,15 @@ Design intent lives in `docs/superpowers/specs/`.
 ## 32. CURRENT PROJECT STATE (as of 2026-09-23)
 
 - Branch `main` @ `0e435cf` ("28 updates", which committed the 2026-09-22 AdGen.ai batch).
-  Uncommitted: the 2026-09-23 studio UI (§31) — `index.html`, the `components/ai-platform/*` files
-  and the new `components/ai-platform/adgen.css` — plus this CLAUDE.md.
+  Uncommitted: the 2026-09-23 work (§31) — the studio UI (`index.html`, `components/ai-platform/*`,
+  the new `components/ai-platform/adgen.css`) and the two-hander speaker-label fix
+  (`utils/dialogueFormat.ts`, `services/geminiService.ts`, two test files) — plus this CLAUDE.md.
 - `npm run build` ✅ (main chunk ≈454 KB, vendor-firebase ≈665 KB, geminiService chunk ≈757 KB).
-- `npx vitest run` ✅ 171 files, 2712 tests.
+- `npx vitest run` ✅ 171 files, 2720 tests.
 - `npx tsc -p tsconfig.check.json --noEmit` → 1 known error (VideoCallManager).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
-- Most recent feature work: the AdGen.ai studio UI, before it the AdGen.ai batch (§31), Cinematic
-  Ads, SMM, Poster Creation, load-time splitting.
+- Most recent work: the two-hander speaker-label fix and the AdGen.ai studio UI, before them the
+  AdGen.ai batch (§31), Cinematic Ads, SMM, Poster Creation, load-time splitting.
 - Open follow-ups the owner must act on: publish `docs/firestore-rules.md` in the console; move
   secrets out of source; authenticate `/api/send-notification`.
 

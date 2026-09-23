@@ -76,7 +76,7 @@ import {
   numberedWords, parseClipDialogueEdits, parseClipTextEdits, parseRefinePlan, repairDirection, wordBandDistance,
 } from "@/utils/voiceOverRefine";
 import {
-  getCharacterPack, packSpeakers, packSpeakerAliases, packNameSpellings, isHumanPack, packCastGender,
+  getCharacterPack, packSpeakers, packNameSpellings, isHumanPack, packCastGender,
   withCustomCharacter, type CharacterPack,
 } from "./characterPacks";
 import {
@@ -717,7 +717,7 @@ export const refineVoiceOver = async (params: {
   const unchanged = (notApplied: string, understood = ''): VoiceOverRefineResult => ({ script, changed: [], understood, notApplied });
 
   // ── The script as clips ──
-  const dialogue: DialogueClip[] = pack ? parseDialogueClips(script, packSpeakerAliases(pack)) : [];
+  const dialogue: DialogueClip[] = pack ? parseDialogueClips(script, speakers) : [];
   const labelled = pack ? [] : parseLabeledClips(script).map(cleanScriptText);
   const lines: string[] = pack
     ? []
@@ -2026,7 +2026,7 @@ export const generateAdAssets = async (
   // attached script lands in the Generated Assets exactly as the business wrote it. A special-category
   // script with its `[Speaker]:` lines is read the same way, so its clip count wins too.
   const preSplitCustomClips = customScript?.trim() ? parseLabeledClips(customScript) : [];
-  const pastedDialogue = pack && customScript?.trim() ? parseDialogueClips(customScript, packSpeakerAliases(pack)) : [];
+  const pastedDialogue = pack && customScript?.trim() ? parseDialogueClips(customScript, packSpeakerList) : [];
   const segmentCount = pastedDialogue.length > 0
     ? pastedDialogue.length
     : preSplitCustomClips.length > 0
@@ -2087,7 +2087,8 @@ export const generateAdAssets = async (
   /** Generate → validate → repair, for the two-character script. Mirrors the standard loop. */
   const generateCharacterDialogue = async (): Promise<DialogueClip[]> => {
     if (!pack) return [];
-    const aliases = packSpeakerAliases(pack);
+    /** Key AND display name, so a script that labels lines `[Chhota Bheem]:` still resolves. */
+    const speakerVocabulary = packSpeakerList;
     /**
      * The characters' names have one fixed spelling in the spoken language. Applied to every
      * script that enters here — generated, repaired, or pasted — because the point is that the
@@ -2226,7 +2227,7 @@ export const generateAdAssets = async (
       config: { systemInstruction: systemPrompt },
     }));
 
-    let clips = spokenLines(fixNames(parseDialogueClips(response.text || '', aliases)));
+    let clips = spokenLines(fixNames(parseDialogueClips(response.text || '', speakerVocabulary)));
     let issues = checkDialogue(clips);
 
     for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES && issues.length > 0; pass++) {
@@ -2254,7 +2255,7 @@ Return only the repaired ${segmentCount} clips.`;
         },
       }));
 
-      const next = spokenLines(fixNames(parseDialogueClips(repaired.text || '', aliases)));
+      const next = spokenLines(fixNames(parseDialogueClips(repaired.text || '', speakerVocabulary)));
       // Only accept a repair that genuinely improves things — a worse rewrite is discarded.
       const nextIssues = checkDialogue(next);
       if (next.length > 0 && nextIssues.length < issues.length) {
@@ -3298,7 +3299,7 @@ const veoClipsFromScript = (
   if (pack) {
     const nameOf = new Map(packSpeakers(pack).map(s => [s.key, s.name]));
     const subject = packVeoSubject(pack);
-    all = parseDialogueClips(script, packSpeakerAliases(pack)).map((clip, i) => {
+    all = parseDialogueClips(script, packSpeakers(pack)).map((clip, i) => {
       const lines = clip.map(l => ({ name: nameOf.get(l.speaker) ?? l.speaker, text: l.text }));
       return {
         index: i,
