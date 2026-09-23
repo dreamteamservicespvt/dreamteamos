@@ -612,7 +612,8 @@ Notification deep links must use `/` + query or a route the **recipient's** role
   violet→blue→cyan `--ag-accent`) and component classes — `ag-card`, `ag-panel`, `ag-acc`
   (output sections), `ag-btn` (+`--primary/--secondary/--ok/--danger/--icon/--sm/--lg`), `ag-chip`
   with `ag-badge--ok/run/warn/bad/info`, `ag-drop` (upload states `--over/--done/--error/--owner`),
-  `ag-progress`, `ag-track`, `ag-step`, `ag-tile`, `ag-code`/`ag-codebar`, and — for the one-screen
+  `ag-progress`, `ag-track`, `ag-step`, `ag-tile`, `ag-code`/`ag-codebar`, `ag-bar` (the 46px utility
+  band above the deliverables), and — for the one-screen
   layout (2026-09-24) — `ag-sec` (+`ag-sec__head`/`__body`), `ag-morph` (the one-at-a-time panel
   transition), `ag-ico`, `ag-tile-up`, `ag-steps`/`ag-stepnode`/`ag-stepline`, `ag-row` (72px numbered
   row) and `ag-strip`, plus the type classes
@@ -1517,6 +1518,15 @@ Design intent lives in `docs/superpowers/specs/`.
   needed speaker lines. Verified: build ✅, vitest 171 files / 2720 tests ✅ (8 new, incl. a
   round-trip over the whole catalogue and an end-to-end Veo assembly for Bheem & Chutki), typecheck
   1 known error. No live Gemini or Veo run.
+- **2026-09-25 (later): the workspace band** — the four blocks above the deliverables were taking a
+  third of the first screen for things a member reads once or never. Finished, **Generation Status is
+  one 50px line** (title and sentence share it; the five milestone ticks are dropped, since they only
+  repeat what "Completed" says — the full stepper stays while a run is going, where it is the useful
+  thing on the screen). The **AI Guide strip, the ChatGPT/Gemini link, Open Video Generation Platform
+  and "What we understood"** became one 46px `ag-bar` of small buttons, with the understanding panel
+  opening under the band instead of being a card of its own. Same handlers, same links, same test
+  hooks (`ai-guide-button`, `run-understanding-toggle`, `run-understanding`). Measured in the harness:
+  Deliverables now start 255px down instead of ~535px, and all seven rows fit one 1680×1050 screen.
 - **2026-09-25 (later): "mariyu" on the page, and a duo that stops saying its own labels** — two
   faults from a delivered ad. (1) The script still showed **మరియు** and the Veo prompt carried a
   `PRONUNCIATION` line; the team reads the script aloud and wants the one Latin spelling **on the

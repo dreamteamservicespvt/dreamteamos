@@ -2162,23 +2162,31 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
             {/* RIGHT: OUTPUTS */}
             <div className="lg:col-span-8" ref={outputPanelRef}>
               {(status.isProcessing || status.step || outputs) && (
-                <div className="ag-card px-4 py-3.5 sm:px-5 sm:py-4 mb-[18px]">
+                <div className={cn("ag-card mb-3", status.isProcessing || !outputs ? "px-4 py-3.5 sm:px-5 sm:py-4" : "px-3.5 py-2 sm:px-4")}>
                   <div className="flex items-center gap-3">
-                    <span className={cn("ag-ico ag-ico--sm", !status.isProcessing && outputs && "ag-btn--ok")}>
+                    <span className={cn("ag-ico ag-ico--sm", !status.isProcessing && outputs && "ag-btn--ok w-8 h-8 flex-[0_0_32px] rounded-[10px]")}>
                       {status.isProcessing
                         ? <Loader2 className="w-[18px] h-[18px] animate-spin" />
-                        : outputs ? <Check className="w-5 h-5" strokeWidth={3} /> : <Wand2 className="w-[18px] h-[18px]" />}
+                        : outputs ? <Check className="w-4 h-4" strokeWidth={3} /> : <Wand2 className="w-[18px] h-[18px]" />}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <h2 className="ag-h2 text-[16px] sm:text-[17px] text-white leading-tight">Generation Status</h2>
-                      {/* One line, not two: while it runs, the stage IS the status. */}
-                      <p className={cn("text-[12px] mt-0.5 truncate flex items-center gap-1.5",
-                        status.isProcessing ? "text-violet-200" : "ag-muted")}>
-                        {status.isProcessing && <Wand2 className="w-3 h-3 animate-pulse shrink-0" />}
-                        {status.isProcessing
-                          ? (status.step || 'Preparing your ad kit…')
-                          : outputs ? 'Your ad kit has been successfully generated.' : status.step}
-                      </p>
+                      {/* Finished, the title and the sentence share one line — there is nothing to watch. */}
+                      {!status.isProcessing && outputs ? (
+                        <p className="flex items-baseline gap-2 min-w-0">
+                          <span className="ag-h2 text-[14px] text-white shrink-0">Generation Status</span>
+                          <span className="ag-muted text-[12px] truncate">Your ad kit has been successfully generated.</span>
+                        </p>
+                      ) : (
+                        <>
+                          <h2 className="ag-h2 text-[16px] sm:text-[17px] text-white leading-tight">Generation Status</h2>
+                          {/* One line, not two: while it runs, the stage IS the status. */}
+                          <p className={cn("text-[12px] mt-0.5 truncate flex items-center gap-1.5",
+                            status.isProcessing ? "text-violet-200" : "ag-muted")}>
+                            {status.isProcessing && <Wand2 className="w-3 h-3 animate-pulse shrink-0" />}
+                            {status.isProcessing ? (status.step || 'Preparing your ad kit…') : status.step}
+                          </p>
+                        </>
+                      )}
                     </div>
                     <div className="hidden sm:flex items-center gap-2.5 shrink-0">
                       {/* The workspace leaves at the first asset, but the run goes on — so the countdown stays here. */}
@@ -2186,9 +2194,11 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                         <RunCountdown run={activeRun} active isDark={isDark} variant="inline" />
                       )}
                       {!status.isProcessing && outputs && (
-                        <span className="ag-chip ag-badge--ok h-7"><Check className="w-3 h-3" />Completed</span>
+                        <span className="ag-chip ag-badge--ok h-6 px-2.5 text-[11px]"><Check className="w-3 h-3" />Completed</span>
                       )}
-                      <span className="ag-num text-[20px] text-white leading-none">{Math.round(status.progress)}%</span>
+                      <span className={cn("ag-num text-white leading-none", !status.isProcessing && outputs ? "text-[15px]" : "text-[20px]")}>
+                        {Math.round(status.progress)}%
+                      </span>
                     </div>
                   </div>
 
@@ -2199,13 +2209,16 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     </div>
                   )}
 
-                  {/* The same five milestones the guide talks in, read from the same missionStages(). */}
-                  <div className="mt-3">
-                    <MissionStepper
-                      profile={activeRun?.profile ?? currentRunProfile()}
-                      checkpoints={activeRun?.checkpoints ?? (outputs ? [{ percent: 100, at: Date.now() }] : [])}
-                    />
-                  </div>
+                  {/* The same five milestones the guide talks in, read from the same missionStages().
+                      Only while there is something to watch — finished, they are five identical ticks. */}
+                  {(status.isProcessing || !outputs) && (
+                    <div className="mt-3">
+                      <MissionStepper
+                        profile={activeRun?.profile ?? currentRunProfile()}
+                        checkpoints={activeRun?.checkpoints ?? (outputs ? [{ percent: 100, at: Date.now() }] : [])}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -2219,7 +2232,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
               {outputs && showAssets ? (
                 <motion.div
                   key="assets"
-                  className="space-y-6"
+                  className="space-y-3"
                   initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0, transition: { duration: reduceMotion ? 0.2 : 0.45, ease: [0.22, 1, 0.36, 1] } }}
                   exit={{ opacity: 0, transition: { duration: 0.15 } }}
@@ -2229,39 +2242,39 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     stays put, so the steps are still one click away while the member works down the
                     deliverables. It pulses while the run is still going.
                   */}
-                  <div className={cn("ag-strip", status.isProcessing && "border-violet-500/40")}>
-                    <span className="ag-ico ag-ico--sm shrink-0 relative">
-                      {status.isProcessing && !reduceMotion && (
-                        <span aria-hidden className="absolute inset-0 rounded-xl ring-2 ring-violet-400/50 animate-ping" />
-                      )}
-                      <Sparkles className="w-[18px] h-[18px]" />
-                    </span>
+                  <div className={cn("ag-bar", status.isProcessing && "border-violet-500/40")}>
                     <button type="button" onClick={() => setGuideOpen(true)} data-test="ai-guide-button"
-                      className="min-w-0 flex-1 text-left bg-transparent border-0 p-0 cursor-pointer">
-                      <span className="ag-h2 block text-[15px] text-white leading-tight">AI Guide</span>
-                      <span className="ag-muted block text-[12px] mt-0.5 truncate hidden sm:block">
-                        Follow these steps while DTS writes your ad kit. Reopen anytime.
-                      </span>
+                      className="ag-btn ag-btn--secondary ag-btn--sm h-8 px-2.5 text-[12px] relative shrink-0">
+                      {status.isProcessing && !reduceMotion && (
+                        <span aria-hidden className="absolute inset-0 rounded-[11px] ring-2 ring-violet-400/50 animate-ping" />
+                      )}
+                      <Sparkles className="w-3.5 h-3.5" />AI Guide
                     </button>
                     <a href={creationMode === 'poster' ? GEMINI_URL : CHATGPT_URL} target="_blank" rel="noopener noreferrer"
-                      className="ag-btn ag-btn--secondary ag-btn--sm hidden sm:inline-flex shrink-0">
-                      {creationMode === 'poster' ? 'Open in Gemini' : 'Open in ChatGPT'} <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+                      className="ag-btn ag-btn--secondary ag-btn--sm h-8 px-2.5 text-[12px] hidden sm:inline-flex shrink-0">
+                      {creationMode === 'poster' ? 'Gemini' : 'ChatGPT'} <ExternalLink className="w-3 h-3 opacity-70" />
                     </a>
-                    <button type="button" onClick={() => setGuideOpen(true)} aria-label="Open the AI Guide"
-                      className="ag-btn ag-btn--icon ag-btn--sm shrink-0">
-                      <ChevronDown className="w-4 h-4 -rotate-90" />
-                    </button>
+                    {creationMode === 'video' && (
+                      <a href="https://labs.google/fx/tools/flow" target="_blank" rel="noopener noreferrer"
+                        className="ag-btn ag-btn--primary ag-btn--sm h-8 px-2.5 text-[12px] shrink-0">
+                        <Video className="w-3.5 h-3.5" />Video platform <ExternalLink className="w-3 h-3 opacity-70" />
+                      </a>
+                    )}
+                    {/* What the run heard and planned — one button here, its detail below the band. */}
+                    {creationMode === 'video' && (outputs.voiceBrief || outputs.sceneContext) && (
+                      <button type="button" data-test="run-understanding-toggle"
+                        onClick={() => toggleOutputSection('brief')}
+                        aria-label={collapsedOutputs.brief ? 'Collapse what we understood' : 'Expand what we understood'}
+                        className={cn("ag-btn ag-btn--sm h-8 px-2.5 text-[12px] shrink-0",
+                          collapsedOutputs.brief ? "ag-btn--primary" : "ag-btn--secondary")}>
+                        <Wand2 className="w-3.5 h-3.5" /><span className="hidden sm:inline">What we understood</span><span className="sm:hidden">Brief</span>
+                        <ChevronDown className={cn("w-3 h-3 transition-transform duration-200", collapsedOutputs.brief && "rotate-180")} />
+                      </button>
+                    )}
+                    <span className="ag-muted text-[11px] ml-auto hidden lg:block truncate">
+                      {status.isProcessing ? 'The kit is still being written — the steps are in the guide.' : 'Copy each prompt into the platform it belongs to.'}
+                    </span>
                   </div>
-
-                  {/* Business Intelligence extracted silently - not shown */}
-
-                  {/* Video Generation Platform Link - at top */}
-                  {creationMode === 'video' && (
-                    <a href="https://labs.google/fx/tools/flow" target="_blank" rel="noopener noreferrer"
-                      className="ag-btn ag-btn--primary w-full h-11">
-                      <Video className="w-4 h-4" /><span>Open Video Generation Platform</span><ExternalLink className="w-3.5 h-3.5 opacity-70" />
-                    </a>
-                  )}
 
                   {/* Poster outputs */}
                   {creationMode === 'poster' && (outputs.posterConcepts?.length ?? 0) > 0 && (
@@ -2281,24 +2294,9 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     </p>
                   )}
 
-                  {/* What the run heard and planned — checkable before the prompts are used, but folded away. */}
-                  {creationMode === 'video' && (outputs.voiceBrief || outputs.sceneContext) && (
-                    <div className={cn("ag-row flex-col items-stretch !p-0", collapsedOutputs.brief && "ag-row--open")}>
-                      <div className="flex items-center gap-3 px-4 sm:px-5 py-2 min-h-[56px]">
-                        <span className="ag-tile shrink-0 w-9 h-9 flex-[0_0_36px]"><Wand2 className="w-4 h-4 text-violet-200" /></span>
-                        <div className="min-w-0 flex-1">
-                          <span className="ag-h2 text-[15px] text-white block truncate">What we understood</span>
-                          <span className="ag-muted text-[12px] hidden sm:block truncate">The client's voice note and the background planned for each clip.</span>
-                        </div>
-                        <button type="button" data-test="run-understanding-toggle"
-                          onClick={() => toggleOutputSection('brief')}
-                          aria-label={collapsedOutputs.brief ? 'Collapse what we understood' : 'Expand what we understood'}
-                          className="ag-btn ag-btn--icon ag-btn--sm h-9 w-9 shrink-0">
-                          <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", collapsedOutputs.brief && "rotate-180")} />
-                        </button>
-                      </div>
-                      {collapsedOutputs.brief && (
-                    <div data-test="run-understanding" className="px-4 sm:px-5 pb-4 space-y-3 text-sm text-slate-300">
+                  {/* Opened from the band above; it is a reference, so it is never in the way. */}
+                  {creationMode === 'video' && (outputs.voiceBrief || outputs.sceneContext) && collapsedOutputs.brief && (
+                    <div data-test="run-understanding" className="ag-row flex-col items-stretch !p-0 px-4 sm:px-5 py-3 space-y-3 text-sm text-slate-300">
                       {outputs.voiceBrief && (
                         <div data-test="voice-brief">
                           <p className={cn("text-xs font-bold uppercase tracking-wide mb-1", isDark ? "text-violet-300" : "text-violet-700")}>Client voice note — what we understood</p>
@@ -2329,8 +2327,6 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                             {outputs.sceneContext.clips.map(c => <li key={c.clip} className="break-words">{c.background}</li>)}
                           </ol>
                         </div>
-                      )}
-                    </div>
                       )}
                     </div>
                   )}
