@@ -513,7 +513,7 @@ ${roleLabels ? `===== NO NAMES FOR THE SPEAKERS (STRICT) =====
 
 "${pack.characters.map((c) => c.name).join('" and "')}" ${solo ? "is a ROLE LABEL" : "are ROLE LABELS"} for the script, not ${solo ? "a name" : "names"}. Never speak
 ${solo ? "it" : "them"} and never invent a personal name for ${solo ? "the speaker" : "either speaker"}. The business's name is the only name that is
-spoken, and it is spoken clearly.${solo ? "" : ` The two simply talk to each other — no "Friend", no "Host", no invented names.`}
+spoken, and it is spoken clearly.${solo ? "" : ` The two simply talk to each other — never "${pack.characters.map((c) => c.name).join('", never "')}", and no invented names. A line that starts by addressing the other one by their label is the single most common way this ad is ruined.`}
 ` : `===== BOTH NAMES, EACH EXACTLY ONCE (STRICT) =====
 
 ${solo ? `Say "${first.name}" AT MOST ONCE in the whole script, in clip 1. Every word spent on the character is a word the client did not get.` : `BOTH characters must be named in the ad, and each name is spoken EXACTLY ONE TIME across the ENTIRE

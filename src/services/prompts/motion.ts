@@ -1,5 +1,3 @@
-import { pronunciationNotes } from "@/utils/spokenNumbers";
-
 /**
  * How every clip MOVES — decided once, in code, and shared by the frame prompt and the video prompt.
  *
@@ -990,8 +988,6 @@ export function assembleVeoPrompt(input: VeoPromptInput): string {
     const at = s.at ? `${s.at} — ` : "";
     return `${at}${speaker}${s.voice}, speaking ${language}, perfectly lip-synced:\n"${s.line}"`;
   }).join("\n\n");
-  // Words the team wants said one fixed way — "మరియు" is "mariyu" (utils/spokenNumbers).
-  const pronunciation = pronunciationNotes(speech.map((s) => s.line));
 
   return `${aspectRatio} ${orientation} video, one continuous 8-second shot, animated from the attached frame — the frame comes to life, filmed like a premium commercial.
 ${twoHander ? `
@@ -1014,9 +1010,7 @@ CAMERA — ${cameraLabel(plan)}: ${d.camera}. A clearly visible, ${plan.speed} c
 ${twoHander && plan.focus === "speaker" ? speakerFocusBlock(speech) : ""}${performanceRules(who, plural, twoHander, manner, gestures, positions, walks)}
 
 ${speakerBlock(speech)}SPEECH:
-${speechLines}${pronunciation.length ? `
-
-PRONUNCIATION (say these words exactly like this): ${pronunciation.join(", ")}` : ""}
+${speechLines}
 
 SCENE LIFE: ${d.sceneLife}.
 

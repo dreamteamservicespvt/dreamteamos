@@ -152,6 +152,7 @@ export const CHARACTER_CATALOGUE: CharacterPack[] = [
       {
         key: "friend",
         name: "Friend",
+        labelSpellings: ["ఫ్రెండ్","ఫ్రెండ","ఫ్రెండు","ఫ్రెండూ"],
         emoji: "👩",
         voice: "a bright, curious young woman's voice - quick, warm and expressive, the friend who asks what the viewer is wondering",
         persona: "An everyday Indian woman who is discovering this business today with her friend. Curious, lively and relatable - she asks the customer's real question or reacts to what she sees in front of her.",
@@ -160,6 +161,7 @@ export const CHARACTER_CATALOGUE: CharacterPack[] = [
       {
         key: "host",
         name: "Host",
+        labelSpellings: ["హోస్ట్","హోస్ట","హోస్టు","హోస్ట్‌"],
         emoji: "👩‍💼",
         voice: "a calm, confident, clearly articulated woman's voice - slightly lower and steadier than her friend's, the one who knows the business",
         persona: "A poised Indian woman who knows this business well and is proud to show it. Warm, assured and precise - she answers with the real reason to choose it.",
@@ -188,6 +190,7 @@ export const CHARACTER_CATALOGUE: CharacterPack[] = [
       {
         key: "friend",
         name: "Friend",
+        labelSpellings: ["ఫ్రెండ్","ఫ్రెండ","ఫ్రెండు","ఫ్రెండూ"],
         emoji: "🧑",
         voice: "an energetic, friendly young man's voice - quick, expressive and conversational, the friend who asks what the viewer is wondering",
         persona: "An everyday Indian man seeing this business properly for the first time with his friend. Curious, lively and relatable - he asks the customer's real question or reacts to what is in front of him.",
@@ -196,6 +199,7 @@ export const CHARACTER_CATALOGUE: CharacterPack[] = [
       {
         key: "host",
         name: "Host",
+        labelSpellings: ["హోస్ట్","హోస్ట","హోస్టు","హోస్ట్‌"],
         emoji: "👨‍💼",
         voice: "a deep, calm, confident man's voice - steady baritone with clean diction, the one who knows the business",
         persona: "A composed Indian man who knows this business well and speaks for it with quiet authority. Assured, straightforward and reassuring.",
@@ -222,23 +226,25 @@ export const CHARACTER_CATALOGUE: CharacterPack[] = [
     franchise: "No franchise and no borrowed characters. A newly cast Indian woman (22-28) and Indian man (28-35), of the tier you would see in a national television commercial - two distinct faces invented for THIS client, each locked from clip 1 and reused unchanged for the whole campaign. Never look-alikes of named actors, never ethnically ambiguous stock models.",
     characters: [
       {
-        key: "friend",
-        name: "Friend",
+        key: "girl",
+        name: "Girl",
+        labelSpellings: ["గర్ల్", "గర్ల", "గర్లు", "అమ్మాయి"],
         emoji: "👩",
         voice: "a bright, warm young woman's voice - expressive and curious, the one who asks what the viewer is wondering",
         persona: "An everyday Indian woman discovering this business with her companion today. Curious, lively and relatable - she asks the customer's real question or reacts to what she sees.",
         scriptRole: "She speaks FIRST in every clip: a short question, a reaction or a set-up about something real in the business. She never delivers the facts herself - he does.",
       },
       {
-        key: "host",
-        name: "Host",
+        key: "boy",
+        name: "Boy",
+        labelSpellings: ["బాయ్", "బాయ", "బోయ్", "అబ్బాయి"],
         emoji: "👨‍💼",
         voice: "a calm, confident man's voice - warm baritone with clear diction, the one who knows the business",
         persona: "A composed Indian man who knows this business well and is proud to show it. Assured, friendly and reassuring.",
         scriptRole: "He speaks SECOND in every clip and answers her with one real, specific business fact. In the final clip he delivers the call to action.",
       },
     ],
-    styleDirective: "One photoreal Indian woman (22-28) and one photoreal Indian man (28-35) standing together inside the client's REAL business premises, shot like a national television commercial. They stand side by side at a respectful, natural conversational distance, angled slightly toward each other and open to camera - a friendly, family-appropriate pairing, never romantic. The WOMAN (Friend) always stands on the LEFT of the frame and the MAN (Host) always on the RIGHT, in every single clip. Their outfits are coordinated in the brand's palette but clearly distinct. Same two people, same faces, same outfits, same positions in every clip - only the zone of the premises changes.",
+    styleDirective: "One photoreal Indian woman (22-28) and one photoreal Indian man (28-35) standing together inside the client's REAL business premises, shot like a national television commercial. They stand side by side at a respectful, natural conversational distance, angled slightly toward each other and open to camera - a friendly, family-appropriate pairing, never romantic. The WOMAN (Girl) always stands on the LEFT of the frame and the MAN (Boy) always on the RIGHT, in every single clip. Their outfits are coordinated in the brand's palette but clearly distinct. Same two people, same faces, same outfits, same positions in every clip - only the zone of the premises changes.",
     dialogueRhythm: "Two speakers, one exchange per clip. The woman speaks first with a short set-up, the man answers with the business fact; together the two lines fill the 8 seconds with a natural hand-off pause between them. Only the person speaking moves their mouth; the other listens and reacts. A sentence never trails across a clip boundary.",
     voiceDirection: "A woman's voice and a man's voice, unmistakably different. The woman: bright, warm, rising on questions, lively. The man: warm baritone, steady and assured, lands the business name clearly. Clean studio voices at conversational volume with no reverb; the voices never swap between the two people.",
     expressionDirection: "The woman's face carries the discovery - lifted brows, bright eyes, a delighted smile as he answers. The man keeps a friendly, confident smile that opens fully on the business name and on the closing invitation, with a small confirming nod on each fact. The listener always reacts visibly, never a frozen face.",
@@ -247,7 +253,7 @@ export const CHARACTER_CATALOGUE: CharacterPack[] = [
     bodyLanguage: "Relaxed, friendly and grounded, standing a comfortable distance apart, turned a few degrees toward each other and open to camera. Small natural reactions between lines: a nod, a smile, a lean toward the product. They keep their places in the frame - the woman left, the man right - and never swap sides.",
     cameraDirection: "Composed for the ordered aspect ratio with the woman on the left and the man on the right, both in frame from head to knee in every clip. Clip 1 is a balanced two-shot at chest height with the business readable behind them; each later clip is a new two-shot in a different zone with a slow, smooth camera move - a gentle arc or a slow lateral slide - that keeps both fully in frame.",
     backgroundDirection: "When the client sends no photographs, build the real, operational premises of that exact sector and reuse the SAME establishment in every clip, moving the pair to a zone not yet shown so each background proves that clip's line. Never a home interior, hotel lobby, studio backdrop or invented certificate wall. The client's logo appears once, installed flat on a wall sign or counter panel facing camera.",
-    scriptStyle: "A natural two-person conversation about the business, never two announcements and never flirtatious. Her line is a short, real question or reaction; his line answers it with one specific, true fact from the business information. They never call each other 'Friend' or 'Host' - those are labels, not names - and they speak from INSIDE the business: 'here', 'this shop', 'come here', never 'let's go there' or 'go to them'.",
+    scriptStyle: "A natural two-person conversation about the business, never two announcements and never flirtatious. Her line is a short, real question or reaction; his line answers it with one specific, true fact from the business information. They never call each other 'Girl' or 'Boy', and never say those words at all - they are labels for the script, not names - and they speak from INSIDE the business: 'here', 'this shop', 'come here', never 'let's go there' or 'go to them'.",
     negatives: ["No on-screen text, captions, subtitles, logos-as-text, or watermarks","No background music - clean studio voice only","No third person anywhere in frame - no staff, no customers, no reflected or background humans","Do NOT swap places - the woman stays on the left and the man on the right in every clip","Do NOT swap their voices - the woman speaks with the woman's voice, the man with the man's voice","Do NOT change either person's face, hair or outfit between clips","No romantic, flirtatious or physical-contact staging","No floating subjects - both contact the floor with shadows that match the scene","No morphing, no extra or missing limbs, no distorted faces","No home interiors, hotel lobbies, wood-panelled walls, or invented certificate, award or photo walls"],
   },
   // ── God Promotion ───────────────────────────────────────────────────────

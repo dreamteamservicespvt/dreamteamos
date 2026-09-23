@@ -155,20 +155,38 @@ export function englishOrdinal(n: number): string {
  */
 export const FIXED_WORDS: { word: string; say: string; variants: RegExp }[] = [
   {
-    word: "మరియు",
+    // The team hands the script to whoever records it, and they want this word ON THE PAGE as
+    // "mariyu" — the Latin spelling, not the Telugu one. A reader who sees మరియు says it several
+    // different ways; one fixed Latin spelling is read the same way every time. So the written
+    // form IS "mariyu", in the voice-over script and in the video prompt's spoken line alike, and
+    // nothing anywhere explains it — there is nothing left to explain.
+    word: "mariyu",
     say: "mariyu",
     variants: new RegExp(
       [
-        // Every wrong vowel length the writer has produced, with or without a space in the middle.
-        "మరీయు", "మరియూ", "మరీయూ", "మరియుు", "మర్యు",
+        // The Telugu spelling itself, and every wrong vowel length the writer has produced,
+        // with or without a space in the middle.
+        "మరియు", "మరీయు", "మరియూ", "మరీయూ", "మరియుు", "మర్యు",
         "మరి\\s+యు", "మరి\\s+యూ", "మరీ\\s+యు", "మరీ\\s+యూ",
-        // The Latin spelling, when a line comes back half-transliterated.
-        "\\bmariyu\\b", "\\bmariyoo\\b", "\\bmariu\\b",
+        // Latin misspellings of the same word.
+        "\\bmariyoo\\b", "\\bmariu\\b", "\\bmariyu\\b",
       ].join("|"),
       "gi",
     ),
   },
 ];
+
+/**
+ * A line with the fixed words taken out — for checks that would otherwise object to them.
+ *
+ * "mariyu" is deliberately Latin inside a Telugu line, and the script validator refuses Latin
+ * letters in spoken content. Without this the one spelling the team asked for would be reported as
+ * a fault on every script that contains it.
+ */
+export function withoutFixedWords(text: string): string {
+  if (!text) return text;
+  return FIXED_WORDS.reduce((out, f) => out.split(f.word).join(" "), text);
+}
 
 /** A line with every variant of a fixed word written the one way the team wants. */
 export function withFixedWords(text: string): string {
@@ -176,10 +194,14 @@ export function withFixedWords(text: string): string {
   return FIXED_WORDS.reduce((out, f) => out.replace(f.variants, f.word), text);
 }
 
-/** "మరియు = mariyu" for each fixed word a set of lines contains — the pronunciation Veo is given. */
-export function pronunciationNotes(lines: string[]): string[] {
+/**
+ * Kept for the one thing it is still good for: proving in a test that a set of lines carries a
+ * fixed word. Nothing is added to a prompt from it any more — the written word IS the spelling to
+ * say, so a prompt that explained it would only be another place for the wrong spelling to appear.
+ */
+export function fixedWordsIn(lines: string[]): string[] {
   const all = lines.join(" ");
-  return FIXED_WORDS.filter((f) => all.includes(f.word)).map((f) => `${f.word} = "${f.say}"`);
+  return FIXED_WORDS.filter((f) => all.includes(f.word)).map((f) => f.word);
 }
 
 /** Both at once — what every spoken line goes through before it is used. */

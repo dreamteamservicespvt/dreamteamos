@@ -350,6 +350,14 @@ export interface DialogueValidationOptions {
   mentionsPerName?: number;
   /** Phrases the script is required to contain, e.g. the town the business is in. */
   requiredPhrases?: RequiredPhrase[];
+  /**
+   * Labels that must NEVER be spoken, with every spelling they could be written in.
+   *
+   * A human cast's "names" are role labels — Girl, Boy, Friend, Host. Scripts came back with the
+   * two people calling each other by them, which reads to a client like a template nobody filled
+   * in. Asking the writer not to do it was not enough, so it is checked and repaired.
+   */
+  forbiddenNames?: CharacterNameTokens[];
 }
 
 /**
@@ -425,6 +433,7 @@ export function validateDialogueClips(
     characterNames = [],
     mentionsPerName = 1,
     requiredPhrases = [],
+    forbiddenNames = [],
   } = options;
 
   const issues: string[] = [];
@@ -471,6 +480,21 @@ export function validateDialogueClips(
       );
     }
   }
+  /**
+   * A role label said out loud. Reported per clip, because the repair pass rewrites one clip at a
+   * time and "somewhere in the script" is not something it can act on.
+   */
+  for (const forbidden of forbiddenNames) {
+    clips.forEach((clip, index) => {
+      if (countNameMentions([clip], forbidden.tokens) === 0) return;
+      issues.push(
+        `Clip ${index + 1} says "${forbidden.name}" out loud. That is the script's label for who speaks, `
+        + `not a name — the two people never address each other by it. Rewrite the line without it, `
+        + `keeping the same meaning and length.`,
+      );
+    });
+  }
+
   const nameOf = new Map(speakers.map((s) => [s.key, s.name]));
   const label = (key: string) => nameOf.get(key) ?? key;
   const seenClips = new Map<string, number>();

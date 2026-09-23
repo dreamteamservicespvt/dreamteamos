@@ -26,6 +26,18 @@ describe("the human duos", () => {
     expect(packModelGender(getCharacterPack("human_duo_mixed"))).toBeNull();
   });
 
+  it("labels the mixed duo Girl and Boy, and carries how each label would be spoken", () => {
+    const mixed = getCharacterPack("human_duo_mixed")!;
+    expect(packSpeakers(mixed).map((s) => s.name)).toEqual(["Girl", "Boy"]);
+    expect(packSpeakers(mixed).map((s) => s.key)).toEqual(["girl", "boy"]);
+    // Every human cast carries the spellings its label would take if it were spoken, so the
+    // validator can catch it — see utils/dialogueFormat forbiddenNames.
+    for (const id of ["human_duo_female", "human_duo_male", "human_duo_mixed"]) {
+      const pack = getCharacterPack(id)!;
+      for (const c of pack.characters) expect(c.labelSpellings?.length, `${id} ${c.name}`).toBeGreaterThan(0);
+    }
+  });
+
   it("offers attire that dresses both people", () => {
     expect(attireOptionsFor("human_duo_mixed", ModelGender.FEMALE)).toEqual(MIXED_DUO_ATTIRE);
     expect(attireOptionsFor("human_duo_male", ModelGender.FEMALE)).toContain(AttireType.SHIRT_PANT);

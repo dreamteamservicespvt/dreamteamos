@@ -99,7 +99,7 @@ export const HARD_TELUGU_WORDS: HardWord[] = [
   { word: "సేవలందిస్తాం", say: "సర్వీస్ చేస్తాం", parts: ["సేవలంది"] },
   { word: "తప్పక", say: "తప్పకుండా", forms: ["తప్పక"] },
   // Written-Telugu grammar words nobody says out loud.
-  // మరియు is NOT here: the team wants it written exactly మరియు (said "mariyu") whenever a line
+  // మరియు is NOT here: the team wants it written exactly mariyu (in Latin) whenever a line
   // needs it — see utils/spokenNumbers FIXED_WORDS. It used to be swapped for ఇంకా.
   { word: "యొక్క", say: "(leave it out)", forms: ["యొక్క"], shown: true },
   { word: "కొరకు", say: "కోసం", forms: ["కొరకు", "కొరకే"], shown: true },
@@ -270,7 +270,7 @@ ${firstListen}
 • Active voice: చేస్తాం, ఇస్తాం, ఉంది — never చేయబడును, అందించబడుతుంది, కలదు.
 • Short, simple words in one easy sentence.
 • Numbers are always WORDS, never digits: "తొమ్మిది వందల తొంభై తొమ్మిది రూపాయలు", "ఇరవై శాతం" — never ₹999 or 20%.
-• When a line needs "and", write it exactly మరియు (said "mariyu") — never మరీయు, మరియూ or another spelling.
+• When a line needs "and", write it exactly mariyu — in Latin letters, inside the Telugu line. Never the Telugu spelling and never another form: the word is written the way it is said.
 
 NEVER THESE → SAY THESE INSTEAD:
 ${never}`;

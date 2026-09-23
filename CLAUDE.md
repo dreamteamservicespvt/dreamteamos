@@ -196,7 +196,7 @@ DTS-OS/
 │   ├── types/                 ← index.ts (core model), aiPlatform, cinematicAds, hr, payroll, smm,
 │   │                            orderChat, onboarding
 │   ├── lib/utils.ts           ← shadcn `cn()`
-│   └── test/                  ← Vitest suites (171 files, 2724 tests at 2026-09-25) + setup.ts
+│   └── test/                  ← Vitest suites (171 files, 2728 tests at 2026-09-25) + setup.ts
 ├── public/                    ← PWA manifests, FCM service worker, logos/icons
 ├── docs/
 │   ├── AI-MEMORY.md           ← HISTORICAL session log up to 2026-09-19 (superseded by §31; do not extend)
@@ -917,7 +917,9 @@ screenshot → leads/spend/cost-per-result/reach).
 - no-logo name board (also used automatically when no logo FILE is attached, see below);
 - special category `characterPack` (35 entries: human "Normal Ad", owner face, **human duos**
   (`human_duo_female` / `human_duo_male` / `human_duo_mixed`, family `human_duo`, speakers
-  "Friend"/"Host" as role labels that are never spoken), deities, cartoon duos/solos, custom);
+  speakers "Girl"/"Boy" on the mixed duo and "Friend"/"Host" on the same-gender ones — role labels
+  that are never spoken, now ENFORCED by `validateDialogueClips` `forbiddenNames` against each
+  character's `labelSpellings`), deities, cartoon duos/solos, custom);
 - `customCharacter` — the Custom Character's description (required for that pack; written into
   the pack by `characterPacks.withCustomCharacter`, one resolver `packFor` in geminiService);
 - `locationMode` (`real_provided` uses the client's store photos, `ai_generated`);
@@ -991,9 +993,12 @@ changes raise `SpecUpdateDialog`.
 **Spoken-word rules, in code (`utils/spokenNumbers.ts`):** every final script line — generated,
 repaired, refined or pasted — goes through `speakableLine`: numbers become words (Telugu words in a
 Telugu script, English words in an English one, Indian lakh/crore grouping, ₹ / % / decimals / times /
-phone numbers digit by digit; other languages rely on the prompt and validator), and మరియు variants
-are written exactly **మరియు**. The Veo prompt adds `PRONUNCIATION: మరియు = "mariyu"` when a line has
-it. (`everydaySpeech` no longer swaps మరియు for ఇంకా.)
+phone numbers digit by digit; other languages rely on the prompt and validator), and the Telugu word
+for "and" — with every misspelling of it — is written **`mariyu`, in Latin letters**, inside the
+Telugu line (2026-09-25: the team reads the script aloud and wants one fixed spelling on the page).
+Nothing explains it anywhere: the written word IS the spelling to say, so the Veo prompt no longer
+carries a PRONUNCIATION line. `withoutFixedWords` exempts it from the validator's "no Latin letters
+in spoken content" rule. (`everydaySpeech` no longer swaps it for ఇంకా.)
 
 Directives are prepended for ratio, name board, language, casting and wardrobe. `onPartialResult`
 streams sections as they arrive. **B-roll and overlay images run automatically at the end of a video
@@ -1270,7 +1275,9 @@ report message → renewal.
   15–17 words (7–9 a line); human casts' role labels (Friend/Host) are never spoken; the Custom
   Character needs a description (sale, Work Assign and platform) and Real Owner Face needs the
   owner image; no PDF/document uploads anywhere in the generator; every spoken number is words,
-  never digits; మరియు is written exactly and said "mariyu"; no frame or video ever ends on a goodbye
+  never digits; the word for "and" is written `mariyu` in Latin letters and explained nowhere; a human
+  cast never says its own role label out loud (Girl / Boy / Friend / Host — checked, not just asked);
+  no frame or video ever ends on a goodbye
   wave; a walk is only a few steps along floor the frame shows; no frame asks for a logo file that
   was not attached (the name board is used instead).
 - **HR:** 14 document types in lifecycle order; both officers sign all types (falls back to the
@@ -1510,6 +1517,21 @@ Design intent lives in `docs/superpowers/specs/`.
   needed speaker lines. Verified: build ✅, vitest 171 files / 2720 tests ✅ (8 new, incl. a
   round-trip over the whole catalogue and an end-to-end Veo assembly for Bheem & Chutki), typecheck
   1 known error. No live Gemini or Veo run.
+- **2026-09-25 (later): "mariyu" on the page, and a duo that stops saying its own labels** — two
+  faults from a delivered ad. (1) The script still showed **మరియు** and the Veo prompt carried a
+  `PRONUNCIATION` line; the team reads the script aloud and wants the one Latin spelling **on the
+  page**. `FIXED_WORDS` now normalises the Telugu word and every misspelling TO `mariyu`,
+  `pronunciationNotes` is gone from the Veo prompt (replaced by `fixedWordsIn`, test-only), the
+  writer rule asks for the Latin form, and `withoutFixedWords` keeps the validator's "no Latin in
+  spoken content" rule from reporting it. (2) A **Male & Female duo** was cast as "Friend"/"Host" —
+  which says nothing about who is who — and, worse, the two people addressed each other by those
+  labels out loud ("హోస్ట్, ఈ కిట్స్‌తో…"), which reads like a template nobody finished. The mixed duo is
+  now **Girl & Boy** (keys `girl`/`boy`, its style and script directives updated), every human cast
+  character carries `labelSpellings` (how its label would be written if spoken), and
+  `validateDialogueClips` takes `forbiddenNames` so a spoken label is a per-clip issue the repair
+  pass fixes — the prompt had forbidden it since the packs were written, but nothing checked it.
+  Verified: build ✅, vitest 171 files / 2728 tests ✅ (4 new), typecheck 1 known error. No live
+  Gemini or Veo run.
 - **2026-09-25: AdGen.ai batch — density, the two extras, and five faults**
   *UI.* The header is one row that never wraps at any width (every block `whitespace-nowrap shrink-0`,
   only the business name truncates; the member chip and the job chip drop out below 2xl). Generation
@@ -1642,7 +1664,7 @@ Design intent lives in `docs/superpowers/specs/`.
   MemberAssignments pages, `services/orderChat.ts`, `services/prompts/motion.ts`,
   `utils/spokenNumbers.ts` and four test suites — plus this CLAUDE.md.
 - `npm run build` ✅ (main chunk ≈454 KB, vendor-firebase ≈665 KB, geminiService chunk ≈757 KB).
-- `npx vitest run` ✅ 171 files, 2724 tests.
+- `npx vitest run` ✅ 171 files, 2728 tests.
 - `npx tsc -p tsconfig.check.json --noEmit` → 1 known error (VideoCallManager).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
 - Most recent work: the AdGen.ai one-screen layout, the two-hander speaker-label fix and the studio
@@ -1694,7 +1716,7 @@ SMM posting needs client approval.
 
 **Ad generation.** `AIPlatformApp` → `geminiService.generateAdAssets` (voice note → extract →
 core message → voice-over with repair and quality review, or a custom script word for word → numbers
-as words / exact మరియు → scene plan → motion plan → frames / VIDEO BOTTOM LABEL / poster → Veo prompts
+as words / `mariyu` in Latin → scene plan → motion plan → frames / VIDEO BOTTOM LABEL / poster → Veo prompts
 from the same plan) → `ai_generations`. Motion: mixed stand / walk / show staging in the standard
 camera vocabulary, world + place locks, never a goodbye wave (§17.2). Poster mode → `generatePosterConcepts`. Cinematic Ads (tech admin) is a separate
 7-step, project-persisted pipeline. All prompts are in `services/prompts.ts` +

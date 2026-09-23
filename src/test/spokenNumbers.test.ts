@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  englishNumberWords, englishOrdinal, pronunciationNotes, speakableLine, spellOutNumbers, teluguNumberWords, withFixedWords,
+  englishNumberWords, englishOrdinal, fixedWordsIn, speakableLine, spellOutNumbers, teluguNumberWords, withFixedWords,
 } from "@/utils/spokenNumbers";
 import { findHardWords, everydaySpeechRules } from "@/services/prompts/everydaySpeech";
 import { parseScenePlan, motionChoicesOf } from "@/utils/scenePlan";
@@ -53,27 +53,32 @@ describe("a whole line, spoken", () => {
   });
 });
 
-describe("మరియు, exactly", () => {
-  it("writes every variant spelling the one way", () => {
-    expect(withFixedWords("బట్టలు మరీయు నగలు, చీరలు మరియూ పంచెలు.")).toBe("బట్టలు మరియు నగలు, చీరలు మరియు పంచెలు.");
-    expect(speakableLine("2 చీరలు మరీయు 3 పంచెలు", "Telugu")).toBe("రెండు చీరలు మరియు మూడు పంచెలు");
+/**
+ * The team reads this word off the page. They want it there as "mariyu" — the Latin spelling — in
+ * the voice-over script and in the video prompt's spoken line, and nowhere is it explained: the
+ * written word IS the spelling to say.
+ */
+describe("mariyu, in Latin, everywhere", () => {
+  it("writes the Telugu word and every variant spelling as mariyu", () => {
+    expect(withFixedWords("బట్టలు మరియు నగలు, చీరలు మరియూ పంచెలు.")).toBe("బట్టలు mariyu నగలు, చీరలు mariyu పంచెలు.");
+    expect(speakableLine("2 చీరలు మరీయు 3 పంచెలు", "Telugu")).toBe("రెండు చీరలు mariyu మూడు పంచెలు");
   });
 
-  it("is never flagged as a hard word any more, and the writers are told to use it exactly", () => {
-    expect(findHardWords("చీరలు మరియు పంచెలు", "Telugu")).toEqual([]);
-    expect(everydaySpeechRules("Telugu")).toContain('write it exactly మరియు (said "mariyu")');
-    expect(everydaySpeechRules("Telugu")).toContain("Numbers are always WORDS, never digits");
-  });
-
-  it("catches the spacings and the half-transliterated forms too", () => {
-    for (const wrong of ["మరీయూ", "మరి యు", "మరీ యూ", "mariyu", "MARIYU"]) {
-      expect(withFixedWords(`టీ ${wrong} కాఫీ.`), wrong).toBe("టీ మరియు కాఫీ.");
+  it("catches the spacings and the misspelled Latin forms too", () => {
+    for (const wrong of ["మరియు", "మరీయూ", "మరి యు", "మరీ యూ", "mariyoo", "MARIYU"]) {
+      expect(withFixedWords(`టీ ${wrong} కాఫీ.`), wrong).toBe("టీ mariyu కాఫీ.");
     }
   });
 
-  it("gives Veo its pronunciation", () => {
-    expect(pronunciationNotes(["చీరలు మరియు పంచెలు"])).toEqual(['మరియు = "mariyu"']);
-    expect(pronunciationNotes(["చీరలు"])).toEqual([]);
+  it("is never flagged as a hard word, and the writers are told which spelling to use", () => {
+    expect(findHardWords("చీరలు mariyu పంచెలు", "Telugu")).toEqual([]);
+    expect(everydaySpeechRules("Telugu")).toContain('write it exactly mariyu');
+    expect(everydaySpeechRules("Telugu")).toContain("Numbers are always WORDS, never digits");
+  });
+
+  it("can still say which fixed words a script carries", () => {
+    expect(fixedWordsIn(["చీరలు mariyu పంచెలు"])).toEqual(["mariyu"]);
+    expect(fixedWordsIn(["చీరలు"])).toEqual([]);
   });
 });
 

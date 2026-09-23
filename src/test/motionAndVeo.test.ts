@@ -320,7 +320,8 @@ describe("the Veo prompt", () => {
   });
 
   it("gives Veo the fixed pronunciation of మరియు when a line has it", () => {
-    expect(build(null, 0, "బట్టలు మరియు నగలు.")).toContain('PRONUNCIATION (say these words exactly like this): మరియు = "mariyu"');
+    // The word is written the way it is said, so nothing explains it any more — see utils/spokenNumbers.
+    expect(build(null, 0, "బట్టలు mariyu నగలు.")).not.toContain("PRONUNCIATION");
     expect(build(null, 0)).not.toContain("PRONUNCIATION");
   });
 

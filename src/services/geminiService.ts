@@ -37,7 +37,7 @@ import { sameWords, splitScriptVerbatim, verbatimScriptText } from "@/utils/cust
 import { nameBoardInPlaceOfLogo, withOwnerImageDirective } from "@/utils/frameBrand";
 import { parseClipPromptEdits, sameVeoPrompt, veoEditProblems } from "@/utils/veoRefine";
 import { cleanOverlayDesign, overlayDesignOf, overlayImagePrompt } from "@/utils/overlayImage";
-import { speakableLine } from "@/utils/spokenNumbers";
+import { speakableLine, withoutFixedWords } from "@/utils/spokenNumbers";
 import {
   CHARACTER_VOICEOVER_SYSTEM_PROMPT,
   CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT,
@@ -1733,7 +1733,8 @@ const validateVoiceOverSegments = (
       return;
     }
 
-    if (!usesLatinScript(language) && LATIN_OR_DIGIT_PATTERN.test(segment)) {
+    // The fixed words are Latin on purpose (utils/spokenNumbers) — they are not a script fault.
+    if (!usesLatinScript(language) && LATIN_OR_DIGIT_PATTERN.test(withoutFixedWords(segment))) {
       issues.push(`Clip ${clipNumber} contains Latin letters or digits in spoken content.`);
     } else if (usesLatinScript(language) && /\d/.test(segment)) {
       issues.push(`Clip ${clipNumber} contains digits in spoken content.`);
@@ -2190,9 +2191,25 @@ export const generateAdAssets = async (
     const speakerName = (key: string) => packSpeakerList.find(s => s.key === key)?.name ?? key;
     // The town, in both spellings, joins the business's names: a name is never a hard word.
     const ownNames = [...(everyday?.names ?? []), placeName, spokenPlace].filter(Boolean) as string[];
+    /*
+     * A human cast has role labels, not names — Girl, Boy, Friend, Host. Scripts came back with the
+     * two of them addressing each other by the label, in Telugu, which reads to a client like a
+     * template nobody finished. The pack text asked for it not to happen; this is what checks it, so
+     * the repair pass rewrites the line instead of it being delivered.
+     */
+    const forbiddenNames = isHumanPack(pack)
+      ? packSpeakerList.map(speaker => ({
+          name: speaker.name,
+          tokens: [
+            speaker.name,
+            ...(pack.characters.find(c => c.key === speaker.key)?.labelSpellings ?? []),
+          ],
+        }))
+      : [];
     const checkDialogue = (clips: DialogueClip[]) =>
       validateDialogueClips(clips, segmentCount, packSpeakerList, {
         characterNames,
+        forbiddenNames,
         requiredPhrases,
         minWordsPerClip: budget.minClip,
         maxWordsPerClip: budget.maxClip,

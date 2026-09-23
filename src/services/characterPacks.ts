@@ -50,6 +50,15 @@ export interface PackCharacter {
   /** Fixed spoken spellings, keyed by lower-case language name. Languages absent here are free. */
   nativeNames?: Record<string, NativeName>;
   /**
+   * How this character's ROLE LABEL would look if it were spoken out loud — every spelling.
+   *
+   * Only for the human casts, whose "names" are labels: Girl, Boy, Friend, Host. Scripts came back
+   * with the two people addressing each other by them ("హోస్ట్, ఈ కిట్స్‌తో…"), which reads like a
+   * placeholder nobody replaced. The prompts asked for it not to happen; these spellings are what
+   * lets the validator CHECK it, so the repair pass fixes it instead of it reaching the client.
+   */
+  labelSpellings?: string[];
+  /**
    * A single emoji that stands for this character in WhatsApp messages.
    *
    * Purely for legibility: a member skimming a wall of assignment messages on their phone needs

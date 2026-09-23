@@ -162,6 +162,50 @@ describe("parsing tolerates what the model actually emits", () => {
  * build the Veo prompts, so a Bheem & Chutki ad arrived at the video prompts with only Chutki's
  * half of each clip, and Ben 10 & Grandpa Max with no dialogue at all.
  */
+/**
+ * A human cast's "names" are labels for the script — Girl, Boy, Friend, Host. Delivered ads came
+ * back with the two people addressing each other by them ("హోస్ట్, ఈ కిట్స్‌తో…"), which reads like a
+ * template nobody finished. The prompt already forbade it; nothing checked it.
+ */
+describe("a role label is never spoken", () => {
+  const cast = [{ key: "girl", name: "Girl" }, { key: "boy", name: "Boy" }];
+  const forbidden = [
+    { name: "Girl", tokens: ["Girl", "గర్ల్"] },
+    { name: "Boy", tokens: ["Boy", "బాయ్"] },
+  ];
+  const clipOfTexts = (a: string, b: string): DialogueClip => [
+    { speaker: "girl", text: a },
+    { speaker: "boy", text: b },
+  ];
+
+  it("reports the clip that says it, in words the repair pass can act on", () => {
+    const issues = validateDialogueClips(
+      [clipOfTexts("బాయ్, ఈ కిట్స్ నిజంగా బాగున్నాయా?", "అవును, చాలా బాగున్నాయి.")],
+      1, cast, { forbiddenNames: forbidden, characterNames: [] },
+    );
+    const said = issues.filter((i) => /out loud/.test(i));
+    expect(said).toHaveLength(1);
+    expect(said[0]).toContain('Clip 1 says "Boy" out loud');
+    expect(said[0]).toContain("Rewrite the line without it");
+  });
+
+  it("catches the Latin spelling as well as the spoken one", () => {
+    const issues = validateDialogueClips(
+      [clipOfTexts("Girl, look at this.", "Yes, it is good.")],
+      1, cast, { forbiddenNames: forbidden, characterNames: [] },
+    );
+    expect(issues.some((i) => i.includes('says "Girl" out loud'))).toBe(true);
+  });
+
+  it("says nothing when the two simply talk to each other", () => {
+    const issues = validateDialogueClips(
+      [clipOfTexts("ఈ కిట్స్ నిజంగా బాగున్నాయా?", "అవును, చాలా బాగున్నాయి.")],
+      1, cast, { forbiddenNames: forbidden, characterNames: [] },
+    );
+    expect(issues.filter((i) => /out loud/.test(i))).toEqual([]);
+  });
+});
+
 describe("multi-word character names survive the display form", () => {
   const twoWordPack = getCharacterPack("duo_bheem_chutki")!;
   const bothTwoWordsPack = getCharacterPack("duo_ben10_maxwell")!;
