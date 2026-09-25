@@ -579,7 +579,7 @@ export const writeVideoPosterPrompt = async (formData: AdFormData, businessInfo:
 const buildLanguageDirective = (formData: AdFormData): string => {
   const lang = (formData.language || 'Telugu').trim();
   if (!lang || lang.toLowerCase() === 'telugu') return '';
-  return `LANGUAGE OVERRIDE (MANDATORY): Write the ENTIRE voice-over in ${lang}${usesLatinScript(lang) ? ' (clean conversational English)' : ` using natural ${lang} script`}. Do NOT use Telugu anywhere. Every spoken line AND the closing call-to-action must be in ${lang}. Ignore any instruction below that says to write in Telugu — use ${lang} instead.\n\n`;
+  return `LANGUAGE OVERRIDE (MANDATORY): Write the ENTIRE voice-over in ${lang}${usesLatinScript(lang) ? ' (clean conversational INDIAN English — the way an educated person from Andhra Pradesh speaks English to a customer: simple words, Indian expressions and rhythm, rupees and lakhs, Indian names and places; never American or British slang, idioms or spellings)' : ` using natural ${lang} script`}. Do NOT use Telugu anywhere. Every spoken line AND the closing call-to-action must be in ${lang}. Ignore any instruction below that says to write in Telugu — use ${lang} instead.\n\n`;
 };
 
 // Pixel-perfect refine: change ONLY what the user asked, keep everything else identical.

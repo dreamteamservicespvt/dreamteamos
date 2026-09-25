@@ -3,7 +3,7 @@ import {
   CAMERA_MOVES, SHOT_ANGLES, STAGINGS, assembleVeoPrompt, cameraLabel, clipRoles, compositionFor, fillCast, framingForMotion,
   parseVeoDirections, planClipMotion, resolveDirection, spokenLinesIn, stagingForLine, stagingPath, withoutQuotedSpeech,
   withoutStillness, withoutTravel, VEO_DIRECTION_SYSTEM_PROMPT, MOTION_COMPOSITION_HEADING, withMotionComposition,
-  DUO_SAFE_MOVES, COLOUR_LOCK,
+  DUO_SAFE_MOVES, COLOUR_LOCK, speechAccentFor,
 } from "@/services/prompts/motion";
 import { MULTI_FRAME_SYSTEM_PROMPT, VEO_SEGMENT_SYSTEM_PROMPT, modelVeoSubject } from "@/services/prompts";
 import {
@@ -513,6 +513,45 @@ describe("the Veo prompt", () => {
     expect(prompt).toContain("No zoom, no dolly, no push-in or pull-back, no crane or pedestal, no orbit or arc");
     expect(prompt).not.toContain("No static or locked-off camera");
     expect(prompt).toContain("THE PAIR NEVER CHANGES SIZE — THE CAMERA KEEPS ITS DISTANCE");
+  });
+
+  /** English ads came out in a British or American voice — the prompt said only "speaking English". */
+  it("speaks an English ad in Indian English with an Andhra Pradesh accent, and leaves other languages native", () => {
+    const english = assembleVeoPrompt({
+      aspectRatio: "9:16", plan: planClipMotion(4, "commercial")[1], identityLock: "her face",
+      language: "English", speech: [{ voice: "a very sweet, warm, confident female voice", line: "Come to Sri Sai Motors today." }],
+    });
+    // The opening line, the block above the words, each spoken line and the negatives all say it.
+    expect(english.split("\n")[0]).toContain("spoken in Indian English with a natural Andhra Pradesh accent");
+    expect(english).toContain("VOICE AND ACCENT — INDIAN ENGLISH ONLY:");
+    expect(english.indexOf("VOICE AND ACCENT")).toBeLessThan(english.indexOf("SPEECH:"));
+    expect(english).toContain("speaking Indian English with a natural Andhra Pradesh accent, perfectly lip-synced");
+    expect(english).toContain("No British, American, Australian or any other foreign accent");
+    // The spoken line itself is untouched.
+    expect(spokenLinesIn(english)).toEqual(["Come to Sri Sai Motors today."]);
+
+    const telugu = assembleVeoPrompt({
+      aspectRatio: "9:16", plan: planClipMotion(4, "commercial")[1], identityLock: "her face",
+      language: "Telugu", speech: [{ voice: "a warm voice", line: "రండి." }],
+    });
+    expect(telugu).not.toContain("VOICE AND ACCENT");
+    expect(telugu).toContain("speaking Telugu, perfectly lip-synced");
+
+    expect(speechAccentFor("english")).not.toBeNull();
+    expect(speechAccentFor("English (India)")).not.toBeNull();
+    expect(speechAccentFor("Hindi")).toBeNull();
+  });
+
+  it("gives a cartoon pair speaking English the same Indian accent", () => {
+    const s = packVeoSubject(getCharacterPack("duo_motu_patlu")!);
+    const prompt = assembleVeoPrompt({
+      aspectRatio: "9:16", plan: planClipMotion(4, "commercial", "cartoon", { twoHander: true })[1],
+      identityLock: s.identityLock, language: "English",
+      speech: s.speech([{ name: "Motu", text: "one" }, { name: "Patlu", text: "two" }]),
+      cast: s.cast, castPlural: s.castPlural, twoHander: true, manner: s.manner, handGestures: s.handGestures,
+    });
+    expect(prompt.match(/speaking Indian English with a natural Andhra Pradesh accent/g)).toHaveLength(2);
+    expect(prompt).toContain("VOICE AND ACCENT — INDIAN ENGLISH ONLY:");
   });
 
   /** Finished videos came back paler and lighter than the frame they were animated from. */

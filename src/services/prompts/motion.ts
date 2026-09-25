@@ -1028,6 +1028,40 @@ A smooth rack focus between them. The camera itself does not move toward either 
  * The staging does its half of the job — a pair no longer walks toward the lens (planClipMotion),
  * because one of them arriving nearer the camera is what gave the model the excuse to re-proportion.
  */
+/**
+ * How the words are SPOKEN — the accent, stated.
+ *
+ * ── The fault this is ──────────────────────────────────────────────────────────────────────────
+ * English ads came out of the video model in a British or American voice. The prompt said only
+ * "speaking English", and the voices it described ("a very sweet, warm, confident female voice") had
+ * no nationality — so the model used its default English voice, which is not an Indian one. These ads
+ * are made for Indian customers, mostly in Andhra Pradesh, by an Indian business, with an Indian
+ * presenter on screen; a foreign accent coming out of her mouth is the first thing a viewer notices.
+ *
+ * So an English ad names its accent in three places a video model reads: the opening line, a VOICE AND
+ * ACCENT block right above the spoken lines, and the negative prompt. Other languages are spoken
+ * natively already and get nothing extra.
+ */
+export interface SpeechAccent {
+  /** What each line is "spoken in", e.g. "Indian English with a natural Andhra Pradesh accent". */
+  spoken: string;
+  /** The block above SPEECH. */
+  block: string;
+  /** The negative-prompt line. */
+  negative: string;
+}
+
+export function speechAccentFor(language: string): SpeechAccent | null {
+  const lang = (language || "").trim().toLowerCase();
+  if (lang !== "en" && !/^english\b/.test(lang)) return null;
+  return {
+    spoken: "Indian English with a natural Andhra Pradesh accent",
+    block: `VOICE AND ACCENT — INDIAN ENGLISH ONLY:
+Every word is spoken in Indian English, with the warm, natural accent of an educated Telugu speaker from Andhra Pradesh — the way a friendly, well-spoken professional in Vijayawada, Visakhapatnam or Kakinada speaks English to a customer: clear and confident, with an Indian rhythm and intonation and the Indian pronunciation of the business's name, the town and every Indian word. These are Indian voices speaking to Indian customers. Never a British, American, Australian or any other foreign accent, and never an imitation of one.`,
+    negative: "No British, American, Australian or any other foreign accent, no foreign-sounding voice — Indian English with an Andhra Pradesh accent only",
+  };
+}
+
 export function scaleLock(speech: VeoSpeech[]): string {
   const [a, b] = speech.map((s) => s.speaker).filter(Boolean) as string[];
   const pair = a && b ? `${a} and ${b}` : "the two characters";
@@ -1050,13 +1084,15 @@ export function assembleVeoPrompt(input: VeoPromptInput): string {
     ? { left: speech[0].speaker!, right: speech[1].speaker! }
     : undefined;
 
+  // An English ad is spoken with an Indian accent — see speechAccentFor.
+  const accent = speechAccentFor(language);
   const speechLines = speech.map((s) => {
     const speaker = s.speaker ? `${s.speaker}${s.position ? ` (${s.position})` : ""}, ` : "";
     const at = s.at ? `${s.at} — ` : "";
-    return `${at}${speaker}${s.voice}, speaking ${language}, perfectly lip-synced:\n"${s.line}"`;
+    return `${at}${speaker}${s.voice}, speaking ${accent ? accent.spoken : language}, perfectly lip-synced:\n"${s.line}"`;
   }).join("\n\n");
 
-  return `${aspectRatio} ${orientation} video, one continuous 8-second shot, animated from the attached frame — the frame comes to life, filmed like a premium commercial.
+  return `${aspectRatio} ${orientation} video, one continuous 8-second shot, animated from the attached frame — the frame comes to life, filmed like a premium commercial${accent ? `, spoken in ${accent.spoken}` : ""}.
 ${twoHander ? `
 ${scaleLock(speech)}
 ` : ""}
@@ -1080,7 +1116,9 @@ CAMERA — ${cameraLabel(plan)}: ${d.camera}. ${twoHander
 
 ${twoHander && plan.focus === "speaker" ? speakerFocusBlock(speech) : ""}${performanceRules(who, plural, twoHander, manner, gestures, positions, walks)}
 
-${speakerBlock(speech)}SPEECH:
+${accent ? `${accent.block}
+
+` : ""}${speakerBlock(speech)}SPEECH:
 ${speechLines}
 
 SCENE LIFE: ${d.sceneLife}.
@@ -1109,7 +1147,8 @@ No costume change — no different clothes, colours, patterns, footwear or acces
 No redrawn, restyled or different-looking cast, no face morphing, no swapped or extra characters, no extra people
 No warped anatomy, no extra or missing fingers, no flicker, no jitter, no melting textures
 No change to the face, hair, outfit, logo or location from the attached frame
-No extra people speaking, no new voices${twoHander ? ", no line spoken by the wrong character, no two characters speaking at once" : ""}`;
+No extra people speaking, no new voices${twoHander ? ", no line spoken by the wrong character, no two characters speaking at once" : ""}${accent ? `
+${accent.negative}` : ""}`;
 }
 
 /** The spoken line inside an assembled prompt — used to check a refined prompt kept it word for word. */

@@ -2253,7 +2253,7 @@ export const VOICEOVER_SYSTEM_PROMPT = (
   const isTelugu = lang.toLowerCase() === 'telugu';
   const isLatin = lang.toLowerCase() === 'english';
   const p = getModelProfile(gender);
-  const scriptWord = isLatin ? 'clean conversational English (Latin script)' : `${lang} script`;
+  const scriptWord = isLatin ? 'clean conversational Indian English (Latin script)' : `${lang} script`;
   const voiceArtist = p.isMale
     ? 'a warm, confident, premium MALE voice artist (a trustworthy male brand voice)'
     : 'a warm, sweet, confident, premium FEMALE voice artist';

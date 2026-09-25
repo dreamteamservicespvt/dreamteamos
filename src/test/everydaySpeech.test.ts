@@ -156,6 +156,14 @@ describe("the everyday-speech rules in every script prompt", () => {
     expect(everydaySpeechRules("English")).toContain("PLAIN EVERYDAY ENGLISH");
   });
 
+  it("writes an English ad in Indian English, for Indian customers", () => {
+    const rules = everydaySpeechRules("English");
+    expect(rules).toContain("Write INDIAN English");
+    expect(rules).toContain("Andhra Pradesh");
+    expect(rules).toMatch(/money is rupees/);
+    expect(rules).toMatch(/Never American or British slang, idioms, spellings or culture/);
+  });
+
   it("is in the writer, repair, review, refine, Tools and character prompts", () => {
     const pack = getCharacterPack("duo_motu_patlu")!;
     const prompts = {

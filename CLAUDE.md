@@ -196,7 +196,7 @@ DTS-OS/
 │   ├── types/                 ← index.ts (core model), aiPlatform, cinematicAds, hr, payroll, smm,
 │   │                            orderChat, onboarding
 │   ├── lib/utils.ts           ← shadcn `cn()`
-│   └── test/                  ← Vitest suites (176 files, 2787 tests at 2026-09-25) + setup.ts
+│   └── test/                  ← Vitest suites (176 files, 2791 tests at 2026-09-25) + setup.ts
 ├── public/                    ← PWA manifests, FCM service worker, logos/icons
 ├── docs/
 │   ├── AI-MEMORY.md           ← HISTORICAL session log up to 2026-09-19 (superseded by §31; do not extend)
@@ -1020,7 +1020,11 @@ changes raise `SpecUpdateDialog`.
    some clips, SPEAKER FOCUS (the focus moves to whoever talks; the camera does not). Every Veo prompt
    carries the `COLOUR_LOCK` near the top (the frame's exact grade, contrast and exposure; never pale,
    washed, hazy or brightened) with matching negatives, and scene life that changes the light is
-   refused (`LIGHT_CHANGE`). Locked always: the people (height/build/outfit relative to the room — a
+   refused (`LIGHT_CHANGE`). **An English ad is spoken in Indian English with an Andhra Pradesh accent**
+   (`speechAccentFor`): named in the opening line, in a `VOICE AND ACCENT — INDIAN ENGLISH ONLY` block
+   above SPEECH, on every spoken line and in the negatives (never British, American or any foreign
+   accent) — the prompt used to say only "speaking English", so Veo used its default foreign voice.
+   Other languages are spoken natively and get no block. Locked always: the people (height/build/outfit relative to the room — a
    single presenter's camera may move closer), the WORLD (no object vanishes or moves, nobody walks into furniture) and the
    PLACE (nobody leaves the shop or goes through a door). `resolveDirection` discards director text
    that leaves, freezes, walks outside a walk clip, cuts, crash-zooms or uses slow motion /
@@ -1037,7 +1041,10 @@ for "and" — with every misspelling of it — is written **`mariyu`, in Latin l
 Telugu line (2026-09-25: the team reads the script aloud and wants one fixed spelling on the page).
 Nothing explains it anywhere: the written word IS the spelling to say, so the Veo prompt no longer
 carries a PRONUNCIATION line. `withoutFixedWords` exempts it from the validator's "no Latin letters
-in spoken content" rule. (`everydaySpeech` no longer swaps it for ఇంకా.)
+in spoken content" rule. (`everydaySpeech` no longer swaps it for ఇంకా.) An **English** script is
+written and judged as **Indian English** (the writer rules, the language directive and the quality gate):
+how an educated person from Andhra Pradesh speaks English — Indian expressions, rupees and lakhs,
+Indian places and festivals, never American or British slang, idioms, spellings or culture.
 
 Directives are prepended for ratio, name board, language, casting and wardrobe. `onPartialResult`
 streams sections as they arrive. **B-roll and overlay images run automatically at the end of a video
@@ -1324,6 +1331,8 @@ report message → renewal.
   allowance counts as absence.
 - **Check-out** requires the Drive-upload declaration first; the daily check-in prompt cannot be
   dismissed on a working day, and does not appear on a Sunday or an announced holiday.
+- **AI ads — English (2026-09-25):** an English ad is Indian English throughout — written for Indian
+  customers and voiced with an Andhra Pradesh accent in every Veo prompt; never a foreign accent.
 - **AI ads (2026-09-25, integrity):** no contact number or address reaches a deliverable unless the
   member typed it or a card / flyer / premises photo could show it (and it is not a placeholder);
   missing fields are absent — no empty label, pill or line — and the layouts follow the count (1–3).
@@ -1470,8 +1479,9 @@ and push; PWA self-update; Android shell.
 - Verified facts drop a number the extraction put under a non-contact key or read from a product
   photo, and any number when only a logo was attached — by design, but a real number can be lost that
   way; the member types it into BUSINESS CONTENT to keep it.
-- The fixed-distance duo camera and the colour lock are prompt rules checked by unit tests only — no
-  live Veo run has confirmed the heights hold or the colour stays.
+- The fixed-distance duo camera, the colour lock and the Indian-English accent are prompt rules checked
+  by unit tests only — no live Veo run has confirmed the heights hold, the colour stays or the accent
+  is Indian. Cinematic Ads has its own `dialect` field and was not changed.
 
 ---
 
@@ -1611,6 +1621,12 @@ Design intent lives in `docs/superpowers/specs/`.
   Vitest 2787 ✅; a CDP harness checked 1680px and 390px (no overflow). The owner's commit `b781037`
   captured that throwaway harness (`verify.html`, `vite.verify.config.ts`, `src/__verify__/*`); it is
   deleted again and the deletion belongs in the next commit.
+  *Follow-up: English ads in Indian English.* English ads were voiced by Veo in a British/American
+  accent because the prompt said only "speaking English". `speechAccentFor` now puts "Indian English with
+  a natural Andhra Pradesh accent" in the opening line, a VOICE AND ACCENT block, every spoken line and
+  the negatives; the English writer rules, language directive and quality gate ask for Indian English
+  (rupees, Indian places, no American/British slang). Telugu and other languages unchanged. Vitest
+  176 files / 2791 tests ✅, build ✅, typecheck 1 known error. No live Veo run.
 
 - **2026-09-23: a two-hander's video prompts lost one speaker** — `utils/dialogueFormat`'s speaker
   label was matched as a single WORD, so any character whose NAME contains a space was unreadable in
@@ -1778,12 +1794,12 @@ Design intent lives in `docs/superpowers/specs/`.
 
 ## 32. CURRENT PROJECT STATE (as of 2026-09-25)
 
-- Branch `main`. The integrity batch and the Input Final Script move are committed (`b781037`).
-  Uncommitted: the strip's last layout fix (full width; the ChatGPT / Gemini button wraps on a phone) in
-  `FinalScriptPanel.tsx`, the deletion of the throwaway harness that commit picked up (`verify.html`,
-  `vite.verify.config.ts`, `src/__verify__/*`), and this CLAUDE.md.
+- Branch `main`. The integrity batch and the Input Final Script strip are committed (`b781037`,
+  `6655a8e`, which also removed the throwaway harness). Uncommitted: the Indian-English accent for English
+  ads (`prompts/motion.ts`, `prompts/everydaySpeech.ts`, `prompts/scriptQa.ts`, `prompts.ts`,
+  `geminiService.ts`, three test suites) and this CLAUDE.md.
 - `npm run build` ✅ (main chunk ≈454 KB, vendor-firebase ≈665 KB, geminiService chunk ≈783 KB).
-- `npx vitest run` ✅ 176 files, 2787 tests.
+- `npx vitest run` ✅ 176 files, 2791 tests.
 - `npx tsc -p tsconfig.check.json --noEmit` → 1 known error (VideoCallManager).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
 - Most recent work: the AdGen integrity batch (verified contact facts, script quality gate, final

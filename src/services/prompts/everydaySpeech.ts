@@ -237,7 +237,9 @@ export function everydaySpeechRules(language?: string): string {
   if (lower === "english") {
     return `===== PLAIN EVERYDAY ENGLISH — EVERY WORD (MANDATORY) =====
 
-Write the way a friendly shopkeeper talks to a customer: short, common words that anyone in the town understands on the first listen. "Premium" is the confidence and warmth of the delivery — it is never fancy words. Never "bespoke", "curated", "state-of-the-art", "unparalleled", "solutions", "leverage" or any other brochure word.
+Write INDIAN English — the way a friendly, educated shopkeeper in Andhra Pradesh talks to a customer in English: short, common words that anyone in the town understands on the first listen, with an Indian rhythm and Indian expressions ("come and see", "best quality at the best price", "for your whole family"). "Premium" is the confidence and warmth of the delivery — it is never fancy words. Never "bespoke", "curated", "state-of-the-art", "unparalleled", "solutions", "leverage" or any other brochure word.
+
+This ad is for Indian customers: money is rupees (and lakhs, crores), places, festivals and customs are Indian. Never American or British slang, idioms, spellings or culture — no dollars or pounds, no "y'all", "folks", "awesome deals", "Black Friday", "mate" or "cheers".
 
 Numbers are always WORDS, never digits: "nine hundred ninety-nine rupees", "twenty percent" — never ₹999 or 20%.`;
   }

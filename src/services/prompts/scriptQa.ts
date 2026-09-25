@@ -45,7 +45,9 @@ THE SCRIPT: ${ctx.clipCount} clips of 8 seconds${ctx.adType === "festival" && ct
 ===== THE REGISTER IT MUST HAVE =====
 ${isTelugu
     ? "The way an EDUCATED, WELL-SPOKEN Telugu person talks to a customer they respect — clear, fluent and confident, yet completely natural: the voice of a good TV or radio ad announcer, or an articulate business owner. Simple words everyone understands on the first listen, correct grammar, respectful మీరు / మీకు. NOT bookish, grandhika or Sanskrit-heavy Telugu. NOT slang, street talk or careless speech. NOT English sentences translated word for word. The everyday English trade words Telugu speakers really use (షాప్, ఆఫర్, సర్వీస్, క్వాలిటీ) are fine in Telugu script."
-    : `The way an educated, well-spoken ${lang} speaker talks to a customer they respect — clear, fluent, confident and natural; simple words, correct grammar; never bookish, never slang, never translated English.`}
+    : lang.toLowerCase() === "english"
+      ? "INDIAN English — the way an educated, well-spoken person from Andhra Pradesh talks to a customer they respect: clear, fluent, confident and natural, with Indian expressions, rhythm and references (rupees, Indian places and festivals). NOT American or British slang, idioms, spellings or culture."
+      : `The way an educated, well-spoken ${lang} speaker talks to a customer they respect — clear, fluent, confident and natural; simple words, correct grammar; never bookish, never slang, never translated English.`}
 
 ===== FIXED RULES — NEVER PENALISE THESE =====
 ${isTelugu ? `• "mariyu" written in Latin letters inside a Telugu line is REQUIRED — it is how the team spells "and". Never mark it as an error.

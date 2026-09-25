@@ -167,4 +167,10 @@ describe("the voice-over quality gate", () => {
     expect(p).toContain("You do NOT rewrite. You JUDGE");
     expect(p).not.toMatch(/polished/i);
   });
+
+  it("judges an English script as Indian English", () => {
+    const p = SCRIPT_QA_SYSTEM_PROMPT({ language: "English", clipCount: 4 });
+    expect(p).toContain("INDIAN English — the way an educated, well-spoken person from Andhra Pradesh");
+    expect(p).toContain("NOT American or British slang");
+  });
 });
