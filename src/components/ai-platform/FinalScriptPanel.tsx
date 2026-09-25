@@ -51,8 +51,8 @@ function CopyButton({ text, label, icon: Icon, test }: { text: string; label: st
   return (
     <button type="button" data-test={test}
       onClick={() => { void navigator.clipboard?.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1800); }}
-      className={cn('ag-btn ag-btn--sm h-8 px-2.5 text-[12px] shrink-0', copied ? 'ag-btn--ok' : 'ag-btn--secondary')}>
-      {copied ? <Check className="w-3.5 h-3.5" /> : <Icon className="w-3.5 h-3.5" />}{copied ? 'Copied' : label}
+      className={cn('ag-btn ag-btn--sm h-auto min-h-8 py-1.5 px-2.5 text-[12px] max-w-full !whitespace-normal text-left', copied ? 'ag-btn--ok' : 'ag-btn--secondary')}>
+      {copied ? <Check className="w-3.5 h-3.5 shrink-0" /> : <Icon className="w-3.5 h-3.5 shrink-0" />}<span className="min-w-0">{copied ? 'Copied' : label}</span>
     </button>
   );
 }
@@ -90,7 +90,8 @@ export default function FinalScriptInput({
       : `a ${speakers.map(s => `[${s.name}]:`).join(' and a ')} line in every clip`;
 
   return (
-    <div className="px-3 pb-3 sm:px-4 sm:pb-4">
+    // Full width on purpose: .ag-row centres its children, which shrank this strip to its text.
+    <div className="w-full self-stretch px-3 pb-3 sm:px-4 sm:pb-4">
       {/* The strip — always in sight on row 4, saying when this is for. */}
       <div data-test="final-script-callout" className="ag-callout flex flex-wrap items-center gap-x-3 gap-y-2 px-3.5 py-3">
         <span className="ag-ico ag-ico--sm shrink-0"><PenLine className="w-[18px] h-[18px]" /></span>

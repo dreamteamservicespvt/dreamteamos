@@ -196,7 +196,7 @@ DTS-OS/
 │   ├── types/                 ← index.ts (core model), aiPlatform, cinematicAds, hr, payroll, smm,
 │   │                            orderChat, onboarding
 │   ├── lib/utils.ts           ← shadcn `cn()`
-│   └── test/                  ← Vitest suites (176 files, 2784 tests at 2026-09-25) + setup.ts
+│   └── test/                  ← Vitest suites (176 files, 2787 tests at 2026-09-25) + setup.ts
 ├── public/                    ← PWA manifests, FCM service worker, logos/icons
 ├── docs/
 │   ├── AI-MEMORY.md           ← HISTORICAL session log up to 2026-09-19 (superseded by §31; do not extend)
@@ -1058,8 +1058,14 @@ state (Writing… / Missing / Failed / Updated from final script / Script QA n/1
 own Generate — label (instant), poster, the missing Veo clips — instead of vanishing while the status
 says Completed.
 
-**Final voice-over script (Deliverables header → `FinalScriptPanel`, `utils/finalScript`):** a script
-finished elsewhere (ChatGPT, Gemini, the client) is pasted in the per-category format shown there
+**Input Final Script (on row 4, Voice Over Script → `FinalScriptPanel.tsx`, `utils/finalScript`):** a
+highlighted strip (`ag-callout`, `data-test="final-script-callout"`) sits inside row 4 and is visible
+with the row shut, saying when to use it — a script given by the client, or corrected in ChatGPT or
+Gemini. It opens into three steps: 1 copy the format (for this ad's cast and the kit's clip count),
+with "Copy instruction for ChatGPT / Gemini" (`finalScriptAiInstruction`: returns the script in this
+format without changing a word); 2 paste — or "Load current script" (`finalScriptFromKit`) for a small
+correction — with a live reading; 3 "Use this script · update 5 · 6 · 7". After it, the strip says the
+final script is in use and offers "Change final script". The paste format is per category
 (plain clips / one `[Name]:` line / both characters' lines, over the kit's own clip count). It is read
 with the generator's parsers, used word for word (numbers and `mariyu` made speakable), refused with a
 reason when a label or the clip count is wrong, and becomes 4. Voice Over; 5 Veo (every clip, from the
@@ -1217,9 +1223,9 @@ Gemini key), the production API base URL, and CORS allow-lists in `api/*`.
 | `AppLayout` | `components/layout/` | Guard + shell + global overlays + session listeners (§11). Props `allowedRoles` |
 | `Sidebar` / `Topbar` | `components/layout/` | Role nav with groups (flattened when collapsed), logout; bell, avatar |
 | `AppUpdateBanner`, `UpdatePopup`, `InstallAppButton` | `components/layout/` | Self-update, work popups, PWA install |
-| `AIPlatformApp` | `components/ai-platform/` | Props `assignment?`, `assignmentId?`, `onClose`, `onComplete?`, `completing?`, `onBusinessNameExtracted?`. Full-screen (`fixed inset-0 z-50`); holds updates while open; restores saved generation; locks spec from assignment. Children: `FileUpload`, `GeneratedCard`, `SavedItems`, `PosterConceptsPanel`, `generation/MissionWorkspace` (waiting screen with ETA from `utils/generationEta`), `AIGuideSheet`, `SpecUpdateDialog`, `RefineRevisionBanner`, `CodeVerificationModal`. Renders the owner-image slot, BUSINESS CONTENT / FRAME / BACKGROUND INSTRUCTIONS boxes, the Gemini document-route box, the Custom Character field, the duo custom-script format, a "what we understood / background plan" panel (`voiceBrief`, `sceneContext`), the 2. VIDEO BOTTOM LABEL and 7. Overlay Text Image Generator sections. `FileUpload` refuses PDFs/documents/video and supports drag & drop. Chrome (2026-09-24): root `.adgen`; one screen — a 72px header (mark │ product name, Ready/Generating chip, Project History, Mark Complete, the signed-in member, Close project) over a 4/8 grid. LEFT: `1. Assets & Files` and `2. Configuration` as two `ag-sec` sections of which only one is open (`leftPanel`, morphed through `.ag-morph`); shut, Assets shows a six-tile summary of what has been uploaded and Configuration shows the run's settings; Start/Stop sits below both. RIGHT, by stage: welcome → Generation Status (progress, step, countdown, `MissionStepper`) + AI Guide card → Status + a 72px AI Guide strip + the Deliverables card of seven numbered `ag-row`s, every one always drawn with its state. A 36px **job strip** under the header (`data-test="job-strip"`: business, category / occasion, special category, clips + EC, ratio, language, job id) at every width; a stale-kit banner when the job changed after the kit was made; Final script in the Deliverables header |
+| `AIPlatformApp` | `components/ai-platform/` | Props `assignment?`, `assignmentId?`, `onClose`, `onComplete?`, `completing?`, `onBusinessNameExtracted?`. Full-screen (`fixed inset-0 z-50`); holds updates while open; restores saved generation; locks spec from assignment. Children: `FileUpload`, `GeneratedCard`, `SavedItems`, `PosterConceptsPanel`, `generation/MissionWorkspace` (waiting screen with ETA from `utils/generationEta`), `AIGuideSheet`, `SpecUpdateDialog`, `RefineRevisionBanner`, `CodeVerificationModal`. Renders the owner-image slot, BUSINESS CONTENT / FRAME / BACKGROUND INSTRUCTIONS boxes, the Gemini document-route box, the Custom Character field, the duo custom-script format, a "what we understood / background plan" panel (`voiceBrief`, `sceneContext`), the 2. VIDEO BOTTOM LABEL and 7. Overlay Text Image Generator sections. `FileUpload` refuses PDFs/documents/video and supports drag & drop. Chrome (2026-09-24): root `.adgen`; one screen — a 72px header (mark │ product name, Ready/Generating chip, Project History, Mark Complete, the signed-in member, Close project) over a 4/8 grid. LEFT: `1. Assets & Files` and `2. Configuration` as two `ag-sec` sections of which only one is open (`leftPanel`, morphed through `.ag-morph`); shut, Assets shows a six-tile summary of what has been uploaded and Configuration shows the run's settings; Start/Stop sits below both. RIGHT, by stage: welcome → Generation Status (progress, step, countdown, `MissionStepper`) + AI Guide card → Status + a 72px AI Guide strip + the Deliverables card of seven numbered `ag-row`s, every one always drawn with its state. A 36px **job strip** under the header (`data-test="job-strip"`: business, category / occasion, special category, clips + EC, ratio, language, job id) at every width; a stale-kit banner when the job changed after the kit was made; the Input Final Script strip on row 4 (`OutputSection` `footer`) |
 | `SaleForm` | `components/sales/` | The one sale form (new, edit, upsell): packages, bulk, discounts, SMM fields, promise, requirement, payments; calls `upsertOrderForSale` |
-| `FinalScriptPanel` | `components/ai-platform/` | The Final voice-over script input in the Deliverables: per-category format with Copy, live reading (clips, problems, notes), "Update 5 · 6 · 7", per-section progress with Retry |
+| `FinalScriptPanel` (default export `FinalScriptInput`) | `components/ai-platform/` | "Input Final Script" on row 4 (`OutputSection` `footer` slot, visible with the row shut): the highlighted strip, then three steps — copy the format / the ChatGPT-Gemini instruction, paste or load the current script with a live reading, update 5 · 6 · 7 with per-section progress and Retry |
 | `AssignmentBriefFields` | `components/work/` | Occasion (wishes) + business info + address + client's notes, in all three assignment edit dialogs |
 | `SpecialCategoryFields`, `ModelAttireFields`, `PosterSpecFields`, `OccasionPicker`, `DurationPicker` | `components/work/` | Shared spec editors used by Work Assign ×2, assignment editors and the AI platform. **`SaleForm` still has its own copy of the special-category picker** |
 | `OrderProgressPanel`, `BulkVideoBoard`, `AssignTracksDialog`, `PenaltyDialog`, `ExtendPromiseButton`, `DeadlineChip`, `ReassignWork`, `RequirementsShareModal`, `MemberWorkloadCard`, `WorkDoneReport` | `components/work/` | Order and work UI pieces |
@@ -1599,6 +1605,12 @@ Design intent lives in `docs/superpowers/specs/`.
   the new behaviour), typecheck 1 known error, and a throwaway CDP harness (Gemini + Firestore faked,
   deleted after) walked idle → run → missing poster Generate → final script → phone width with no
   console errors and no horizontal scroll. Nothing run against live Gemini or Veo.
+  *Follow-up, same day:* the final-script entry moved from the Deliverables header INTO row 4 as the
+  highlighted "Input Final Script" strip (visible with the row shut; `OutputSection` gained a `footer`
+  slot), with a three-step guide, "Load current script" and a copyable ChatGPT / Gemini instruction.
+  Vitest 2787 ✅; a CDP harness checked 1680px and 390px (no overflow). The owner's commit `b781037`
+  captured that throwaway harness (`verify.html`, `vite.verify.config.ts`, `src/__verify__/*`); it is
+  deleted again and the deletion belongs in the next commit.
 
 - **2026-09-23: a two-hander's video prompts lost one speaker** — `utils/dialogueFormat`'s speaker
   label was matched as a single WORD, so any character whose NAME contains a space was unreadable in
@@ -1766,14 +1778,12 @@ Design intent lives in `docs/superpowers/specs/`.
 
 ## 32. CURRENT PROJECT STATE (as of 2026-09-25)
 
-- Branch `main`. Uncommitted: the 2026-09-25 integrity batch (§31) — `components/ai-platform/*`
-  (AIPlatformApp, FinalScriptPanel, SavedItems, adgen.css), `components/work/AssignmentBriefFields`, the
-  two MemberAssignments pages and Work Reports, `hooks/useAssignmentBrief`, `services/geminiService`,
-  `services/prompts.ts` and `prompts/{motion,characterAd,everydaySpeech,posterConcept,scriptQa}`,
-  `types/aiPlatform`, `utils/{adRequirement,assignmentEdit,assignmentSpecDiff,assignmentFormSpec,
-  businessFacts,finalScript,scriptQa}`, seven test suites — plus this CLAUDE.md.
+- Branch `main`. The integrity batch and the Input Final Script move are committed (`b781037`).
+  Uncommitted: the strip's last layout fix (full width; the ChatGPT / Gemini button wraps on a phone) in
+  `FinalScriptPanel.tsx`, the deletion of the throwaway harness that commit picked up (`verify.html`,
+  `vite.verify.config.ts`, `src/__verify__/*`), and this CLAUDE.md.
 - `npm run build` ✅ (main chunk ≈454 KB, vendor-firebase ≈665 KB, geminiService chunk ≈783 KB).
-- `npx vitest run` ✅ 176 files, 2784 tests.
+- `npx vitest run` ✅ 176 files, 2787 tests.
 - `npx tsc -p tsconfig.check.json --noEmit` → 1 known error (VideoCallManager).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
 - Most recent work: the AdGen integrity batch (verified contact facts, script quality gate, final
@@ -1830,7 +1840,7 @@ and the scored quality gate (best of three drafts), or a custom script word for 
 as words / `mariyu` in Latin → scene plan → motion plan → frames / VIDEO BOTTOM LABEL / poster → Veo prompts
 from the same plan) → `ai_generations`. Motion: mixed stand / walk / show staging in the standard
 camera vocabulary (a pair only from a fixed distance), world + place + colour locks, never a goodbye
-wave (§17.2). A pasted final script rewrites 5 · 6 · 7 (`FinalScriptPanel`). Poster mode → `generatePosterConcepts`. Cinematic Ads (tech admin) is a separate
+wave (§17.2). "Input Final Script" on row 4 rewrites 5 · 6 · 7 from a pasted script (`FinalScriptPanel`). Poster mode → `generatePosterConcepts`. Cinematic Ads (tech admin) is a separate
 7-step, project-persisted pipeline. All prompts are in `services/prompts.ts` +
 `services/prompts/*`. **`aiadsdts/` is dead; never edit it.**
 
