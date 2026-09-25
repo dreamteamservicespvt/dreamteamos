@@ -98,7 +98,9 @@ describe("POSTER_CONCEPT_SYSTEM_PROMPT", () => {
 
   it("keeps the truth rules and asks for short non-English text", () => {
     const p = POSTER_CONCEPT_SYSTEM_PROMPT({ posterSize: "9:16", style, conceptCount: 1, hasLogo: true, textLanguage: "Telugu" });
-    expect(p).toMatch(/at most TWO phone numbers/);
+    // Every verified number, one to three, laid out for its count — never a two-number cap.
+    expect(p).toMatch(/EVERY phone number listed in REAL CONTACT DETAILS below — one, two or three/);
+    expect(p).toMatch(/A field that was not given does not exist/);
     expect(p).toMatch(/Never invent offers/);
     expect(p).toContain("Poster text language: Telugu");
     expect(p).toMatch(/Telugu script/);
@@ -107,11 +109,11 @@ describe("POSTER_CONCEPT_SYSTEM_PROMPT", () => {
 
   it("the user turn lists only the real details", () => {
     const u = POSTER_CONCEPT_USER_PROMPT({
-      businessInfo: { name: "Udaan" }, businessName: "Udaan Events", contacts: ["9000000001", "9000000002", "9000000003"],
+      businessInfo: { name: "Udaan" }, businessName: "Udaan Events", contacts: ["9000000001", "9000000002", "9000000003", "9000000004"],
       address: "", clientBrief: "Mention 10 years of events", occasion: "Engineers' Day", conceptCount: 3,
     });
-    expect(u).toContain("9000000001 , 9000000002");
-    expect(u).not.toContain("9000000003");
+    expect(u).toContain("9000000001 , 9000000002 , 9000000003 (exactly 3)");
+    expect(u).not.toContain("9000000004");
     expect(u).toContain("NONE — print no address");
     expect(u).toContain("Mention 10 years of events");
 

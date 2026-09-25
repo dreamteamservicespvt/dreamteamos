@@ -103,6 +103,20 @@
   backdrop-filter: blur(24px);
   border-bottom: 1px solid rgba(255, 255, 255, .07);
 }
+/* The job strip under the nav — which ad this is, at every width (36px). */
+.ag-jobstrip {
+  background: rgba(7, 17, 38, .45);
+  border-bottom: 1px solid rgba(255, 255, 255, .06);
+}
+/* A row that may scroll sideways on a phone without showing a scrollbar. */
+.ag-noscroll { scrollbar-width: none; }
+.ag-noscroll::-webkit-scrollbar { display: none; }
+/* A deliverable row's own state: writing / updated / missing. */
+.ag-state { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.ag-state--run { color: #C4B5FD; background: rgba(124, 58, 237, .14); border: 1px solid rgba(124, 58, 237, .35); }
+.ag-state--ok { color: #6EE7B7; background: rgba(16, 185, 129, .12); border: 1px solid rgba(16, 185, 129, .32); }
+.ag-state--bad { color: #FCA5A5; background: rgba(239, 68, 68, .12); border: 1px solid rgba(239, 68, 68, .32); }
+.ag-state--wait { color: #FCD34D; background: rgba(245, 158, 11, .12); border: 1px solid rgba(245, 158, 11, .32); }
 
 /* ── buttons ──────────────────────────────────────────────────────────────────────────────────── */
 .ag-btn {
@@ -304,6 +318,14 @@
   box-shadow: 0 10px 24px -14px rgba(37, 99, 235, 1);
 }
 .ag-row__num--quiet { background: rgba(255, 255, 255, .06); color: var(--ag-muted); box-shadow: none; }
+.ag-row__num--done { background: rgba(16, 185, 129, .9); color: #fff; box-shadow: 0 0 0 4px rgba(16, 185, 129, .14); }
+/* A highlighted strip inside a row — "Input Final Script" on the voice-over (FinalScriptPanel). */
+.ag-callout {
+  border-radius: 14px;
+  border: 1px solid rgba(139, 92, 246, .45);
+  background: linear-gradient(90deg, rgba(124, 58, 237, .18), rgba(37, 99, 235, .10) 55%, rgba(6, 182, 212, .08));
+  box-shadow: inset 3px 0 0 rgba(167, 139, 250, .9), 0 8px 24px -16px rgba(124, 58, 237, .6);
+}
 
 /* ── the AI Guide once the first asset lands: one 72px strip ──────────────────────────────────── */
 .ag-strip {

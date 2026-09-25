@@ -47,6 +47,9 @@ export interface AssignmentSpec {
   posterSize?: string;
   posterStyle?: string;
   posterCount?: number;
+  /** The client's brief. Changing what the business does or where it is changes what the ad says. */
+  businessInfo?: string;
+  businessAddress?: string;
 }
 
 /** Everything that matters, pulled off an assignment. */
@@ -70,6 +73,8 @@ export function specOf(a: WorkAssignment | null | undefined): AssignmentSpec {
     posterSize: a.posterSize,
     posterStyle: a.posterStyle,
     posterCount: a.posterCount,
+    businessInfo: a.businessInfo,
+    businessAddress: a.businessAddress,
   };
 }
 
@@ -93,6 +98,10 @@ export function specSignature(spec: AssignmentSpec): string {
       : []),
     // Appended the same way: a job with no custom character signs exactly as before.
     ...(spec.customCharacter?.trim() ? [spec.customCharacter.trim()] : []),
+    // And the brief, the same way: a job without one signs exactly as before.
+    ...(spec.businessInfo?.trim() || spec.businessAddress?.trim()
+      ? ["brief", spec.businessInfo?.trim() ?? "", spec.businessAddress?.trim() ?? ""]
+      : []),
   ]);
 }
 
@@ -100,6 +109,11 @@ const genderText = (v?: string) => (v === "male" ? "Male" : v === "female" ? "Fe
 const packText = (v?: string) => getCharacterPack(v)?.label || "Normal ad (with a model)";
 const locationText = (v?: boolean) => (v ? "Client's own business background" : "AI-created background");
 const plain = (v?: string) => (v?.trim() ? v.trim() : "—");
+/** A long text as one short line — the member reads the whole thing in BUSINESS CONTENT. */
+const preview = (v?: string) => {
+  const t = (v || "").replace(/\s+/g, " ").trim();
+  return !t ? "—" : t.length > 70 ? `${t.slice(0, 67)}…` : t;
+};
 
 /** Duration reads as the member sees it: the length AND the number of clips it buys. */
 function durationText(spec: AssignmentSpec): string {
@@ -162,6 +176,9 @@ export function describeSpecChanges(prev: AssignmentSpec, next: AssignmentSpec):
   // job has become a Ugadi one has to start the look again, not find out on delivery.
   add("Occasion", plain(prev.festival), plain(next.festival));
   add("Client notes", plain(prev.requirementNotes), plain(next.requirementNotes));
+  // The brief is re-written into BUSINESS CONTENT when it changes; this is how the member hears of it.
+  add("Business info", preview(prev.businessInfo), preview(next.businessInfo));
+  add("Address", preview(prev.businessAddress), preview(next.businessAddress));
 
   // Poster jobs. Compared only when either side IS a poster, so an ad never reports "Poster size".
   if (prev.category === "poster" || next.category === "poster") {

@@ -31,7 +31,8 @@ import SpecialCategoryFields from '@/components/work/SpecialCategoryFields';
 import ModelAttireFields from '@/components/work/ModelAttireFields';
 import PosterSpecFields from '@/components/work/PosterSpecFields';
 import PosterSpecChips from '@/components/work/PosterSpecChips';
-import { categoryDependentPatch, posterEditFieldsOf } from '@/utils/assignmentEdit';
+import { briefEditFieldsOf, briefPatch, categoryDependentPatch, posterEditFieldsOf } from '@/utils/assignmentEdit';
+import AssignmentBriefFields from '@/components/work/AssignmentBriefFields';
 import { categorySwitch } from '@/utils/adRequirement';
 import { isPosterCategory, DEFAULT_POSTER_PRICE, assignmentSizeLabel } from '@/utils/posterSpec';
 import { getCharacterPack } from '@/services/characterPacks';
@@ -123,6 +124,8 @@ export default function WorkReports() {
     characterPack: string; realLocationProvided: boolean; customCharacter: string;
     /** Poster jobs — see utils/assignmentEdit. */
     posterSize: string; posterStyle: string; posterCount: number; festival: string;
+    /** The client's brief — see components/work/AssignmentBriefFields. */
+    businessInfo: string; businessAddress: string; requirementNotes: string;
   } | null>(null);
   const [editMemberSearch, setEditMemberSearch] = useState('');
   const [confirmAction, setConfirmAction] = useState<{ type: 'delete' | 'sendback'; id: string; assignedTo?: string; title: string } | null>(null);
@@ -336,6 +339,7 @@ export default function WorkReports() {
       customCharacter: a.customCharacter || '',
       realLocationProvided: a.realLocationProvided === true,
       ...posterEditFieldsOf(a),
+      ...briefEditFieldsOf(a),
     });
     setEditMemberSearch(getMemberName(a.assignedTo));
   };
@@ -360,6 +364,8 @@ export default function WorkReports() {
         language,
         // Duration, clips, the ad spec — or the poster spec. See utils/assignmentEdit.
         ...categoryDependentPatch(editForm),
+        // The brief, written whole — a cleared address is really cleared. See utils/assignmentEdit.
+        ...briefPatch(editForm),
       });
       // Member changed → hand off through the established reassign flow (resets the work to
       // "assigned" for the new member and notifies both members).
@@ -789,6 +795,12 @@ export default function WorkReports() {
                           )}
                         </div>
                       </div>
+
+                      {/* The occasion and the client's brief — Work Assign asked for them; an edit could not change them. */}
+                      <AssignmentBriefFields className="mt-3"
+                        category={editForm.category} festival={editForm.festival}
+                        businessInfo={editForm.businessInfo} businessAddress={editForm.businessAddress} requirementNotes={editForm.requirementNotes}
+                        onChange={(patch) => setEditForm(prev => prev ? { ...prev, ...patch } : prev)} />
 
                       <div className="mt-3 pt-3 border-t border-border flex items-center justify-between gap-2">
                         {showPricing

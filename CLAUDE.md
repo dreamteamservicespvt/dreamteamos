@@ -5,7 +5,7 @@
 > disagree, fix this file in the same task.
 >
 > **Last full audit:** 2026-09-22 against `main` @ `a1623ac`; last updated 2026-09-25 for the
-> AdGen density/behaviour batch (§17.2, §24, §31).
+> AdGen integrity batch (§16, §17.2, §22, §24–§27, §31).
 > **Quick start:** read **§33 AI Development Context** first, then **§29 Rules** and **§30 Change Protocol**.
 >
 > Legend: ✅ implemented · 🟡 partial · ❌ not implemented · **[NOT CONFIRMED]** = could not be
@@ -122,7 +122,7 @@ hiring link), and hand-maintained social-media plans (SMM campaigns).
 | Realtime A/V | WebRTC with Google STUN and Metered.ca TURN (`services/webrtcConfig.ts`), signalling through Firestore |
 | Mobile | Capacitor 8 Android shell (`android/`, `capacitor.config.ts`, `webDir: dist`) with push, local-notifications, keyboard, status-bar, splash, haptics, app, keep-awake plugins |
 | PWA | `public/manifest.webmanifest`, `public/chat.webmanifest` (client chat), service worker `public/firebase-messaging-sw.js`, self-update via `/version.json` |
-| Tests | Vitest 3 + jsdom + Testing Library (`src/test/`, 171 files) |
+| Tests | Vitest 3 + jsdom + Testing Library (`src/test/`, 176 files) |
 | Lint | ESLint 9 flat config (`eslint.config.js`); not part of the build |
 | Package managers | `package-lock.json` (npm) is canonical; a stale `bun.lockb` is also committed |
 
@@ -196,7 +196,7 @@ DTS-OS/
 │   ├── types/                 ← index.ts (core model), aiPlatform, cinematicAds, hr, payroll, smm,
 │   │                            orderChat, onboarding
 │   ├── lib/utils.ts           ← shadcn `cn()`
-│   └── test/                  ← Vitest suites (171 files, 2728 tests at 2026-09-25) + setup.ts
+│   └── test/                  ← Vitest suites (176 files, 2784 tests at 2026-09-25) + setup.ts
 ├── public/                    ← PWA manifests, FCM service worker, logos/icons
 ├── docs/
 │   ├── AI-MEMORY.md           ← HISTORICAL session log up to 2026-09-19 (superseded by §31; do not extend)
@@ -385,7 +385,10 @@ and `tech-team-leader/MemberAssignments.tsx` (**near-duplicates**), `tech-member
 **9.7 AI Ads Platform (ad generation)** ✅. `components/ai-platform/*`, `services/geminiService.ts`,
 `services/prompts.ts`, `services/prompts/*`, `services/characterPacks.ts` +
 `characterCatalogue.ts` (35 special-category entries incl. three human duos), `services/posterStyles.ts`,
-`services/adLanguages.ts`, `components/ai-platform/adgen.css` (the studio's design system, §11).
+`services/adLanguages.ts`, `components/ai-platform/adgen.css` (the studio's design system, §11),
+`utils/businessFacts.ts` (verified contact numbers and address), `utils/scriptQa.ts` +
+`services/prompts/scriptQa.ts` (the voice-over quality gate), `utils/finalScript.ts` (a pasted final
+script), `utils/assignmentFormSpec.ts` (what a job decides on the form).
 Collection `ai_generations`. See §17.
 
 **9.8 Cinematic Ads pipeline** ✅ (rebuilt 2026-09-19). `pages/tech-admin/CinematicAds.tsx`,
@@ -707,7 +710,7 @@ index a query needs lives only in the console [NOT CONFIRMED].
 | `order_chats/{chatId}` (+`messages`) | `OrderChatDoc` | `chatId` = order id for sold work, else assignment id (`utils/orderChatId.orderChatIdOf`). `participants[]`, `accessCode`, `status` (`open`/`locked`), `clientReady`, `activeAt` heartbeats, `unreadCounts`, `clientReview`, member/seller/assigner ids |
 | `smm_campaigns/{orderId or auto}` | `SmmCampaign` | `origin`, `orderId` ("" for direct), `watchers[]`, `soldBy`, `team`, `items[]` (content with approval, chases, per-platform `postUrls`), `adRuns[]` (day reports, budgets), `budgetPayments[]`, `cycle`, `commitments`, `renewal`, `status` (`active`/`completed`/`renewed`/`lapsed`/`removed`) |
 | `smm_templates/{auto}` | `SmmTemplate` | saved client message wording (company-wide) |
-| `ai_generations/{auto}` | `SavedGeneration` | `userId`, outputs (`mainFramePrompts[]`, `headerPrompt` (the VIDEO BOTTOM LABEL), `posterPrompt`, `voiceOverScript`, `veoPrompts[]`, `stockImagePrompts`, `overlayTexts` (each with `imagePrompt` / `imageDesign`), `posterConcepts`, `coreMessage`, `sceneContext` (motive + per-clip background and staging/camera/angle/focus), `voiceBrief`), all form settings incl. `frameInstructions` and `customCharacter`, `creationMode`, `createdAt`/`updatedAt`. Generate = new doc (a version); Save and auto-save update it |
+| `ai_generations/{auto}` | `SavedGeneration` | `userId`, outputs (`mainFramePrompts[]`, `headerPrompt` (the VIDEO BOTTOM LABEL), `posterPrompt`, `voiceOverScript`, `veoPrompts[]`, `stockImagePrompts`, `overlayTexts` (each with `imagePrompt` / `imageDesign`), `posterConcepts`, `coreMessage`, `sceneContext` (motive + per-clip background and staging/camera/angle/focus), `voiceBrief`, `scriptQa` (the voice-over's quality-gate score, pass and drafts)), all form settings incl. `frameInstructions` and `customCharacter`, `creationMode`, `createdAt`/`updatedAt`. Generate = new doc (a version); Save and auto-save update it |
 | `cinematic_projects/{auto}` | `CinematicAdsProject` | `createdBy`, `name`, `currentStep`, `stepsCompleted`, brief, stories, boards, cast, clips, editing guide, deliverables, `delivered`, `updatedAt` (ms). `File` objects stripped |
 | `notifications/{auto or dedupeKey}` | — | `userId`, `type`, `title`, `message`, `read`, `link`, `meta`, `createdAt` |
 | `fcmTokens/{token}` | — | `userId`, `token`, device id |
@@ -857,7 +860,13 @@ assignment also notifies team leaders.
 **Other operations:** `unassignWork` (deletes the assignment; order → `unassigned`; chat kept and
 detached; member told) · `reassignWork` (move to another member; resets sessions and completion)
 · spec edits (`utils/assignmentEdit.ts`, `assignmentSpecDiff.ts`; the member sees a
-`SpecUpdateDialog`) · sale deleted after assignment → `saleDeleted` banner, work kept · sales
+`SpecUpdateDialog`). All three edit dialogs (both MemberAssignments pages and Work Reports) also edit
+the occasion of a wishes ad and the brief — business info, address, client's notes
+(`components/work/AssignmentBriefFields`, `briefPatch`, written whole so a cleared field stays cleared;
+`useAssignmentBrief` reads the order only for a field the job never carried). On the member's side the
+job's spec is applied by one util (`utils/assignmentFormSpec`) when the job opens, when it changes, and
+ON TOP of a reopened kit, so a restored kit can never put an old value back into a locked field; a kit
+made for an older spec shows a "made for an earlier version of the job" banner with the differences · sale deleted after assignment → `saleDeleted` banner, work kept · sales
 member **update notes** once assigned (`addOrderUpdateNote`).
 
 **Priority:** there is **no priority field**. Queue order comes from `utils/orderSort.ts` /
@@ -942,7 +951,17 @@ changes raise `SpecUpdateDialog`.
 0. Voice note (if any) heard on its own first: `understandVoiceInstructions` (`prompts/voiceNote.ts`,
    `utils/voiceBrief.ts`) → transcript, summary, requirements, conflicts with the typed content.
    Its text goes into extraction and is merged into the profile as `clientVoiceInstructions`.
-1. Extract business intelligence from all files (`EXTRACTION_SYSTEM_PROMPT`).
+1. Extract business intelligence from all files (`EXTRACTION_SYSTEM_PROMPT`), then **verify it**
+   (`verifyExtraction` → `utils/businessFacts`): numbers the member typed (BUSINESS CONTENT, text files,
+   the voice note's transcript) are ground truth; a number the model "read" is kept only when a
+   visiting card, flyer or premises photo is attached, it is well-formed, not a placeholder, and not a
+   one-digit misreading of a typed one; a typed `Address:` line (or the job's address) is used word for
+   word, a read address only with a document behind it or ≥60% of its words in the typed text. The
+   profile every later prompt reads is rewritten (`sanitizeBusinessProfile`) to carry only
+   `contactNumbers` / `whatsappNumber` / `address` that passed, with every "Not provided" and every
+   unverified town, email or website removed. The BUSINESS CONTENT brief a job opens with now also
+   carries the business name and the client's notes, and a corrected brief is merged into a box the
+   member already edited (`mergeBriefIntoInstructions`).
 2. Decide the core message (`prompts/coreMessage.ts`).
 3. Write the voice-over (`VOICEOVER_SYSTEM_PROMPT`, language-aware, 18–20 words per clip; a
    two-speaker clip is **15–17**, 7–9 per line, `dialogueFormat.wordBudgetFor`). Mechanical repair
@@ -959,6 +978,14 @@ changes raise `SpecUpdateDialog`.
    `dialogueFormat.parseDialogueClips` must resolve a speaker LABEL — including a multi-word name
    like `[Chhota Bheem]` — back to the pack's single-word key; pass it `packSpeakers(pack)`, not
    bare aliases (2026-09-23).
+   **Quality gate (every generated script, single voice or a cast; never a member's own):** a separate
+   judge (`prompts/scriptQa.ts`) never rewrites — it checks every claim against the business facts and
+   scores facts, language (educated, well-spoken, natural register), persuasion, clarity, relevance and
+   speakability; `utils/scriptQa` decides in code: pass (overall ≥ 8, each ≥ 7, facts ≥ 9, no
+   unsupported claim) ships; `polish` sends the judge's exact problems to the native-speaker editor;
+   `rewrite` writes a NEW draft told what failed. Every draft is judged again; the best of up to three
+   ships (`isBetterDraft`: no invented facts first, then score). The result is `scriptQa` on the kit
+   ("Script QA 8.6/10" on row 4). A judge that cannot run never blocks the ad.
 4. For real locations: review location photos, assign photos to clips. Otherwise the **scene
    plan** (`prompts/scenePlan.ts`, `utils/scenePlan.ts`): the video's motive (annadanam, temple,
    birthday, invitation, promotion…), its world, and one DIFFERENT background per clip from that
@@ -967,8 +994,13 @@ changes raise `SpecUpdateDialog`.
    scene plan; `CHARACTER_MULTI_FRAME_SYSTEM_PROMPT` with `sceneBackgrounds` / `nameBoard`). Stamped
    in code: motion composition, `withSceneBackground`, `frameBrand.nameBoardInPlaceOfLogo` when there
    is no logo file, `withOwnerImageDirective` for Real Owner Face, the photo attach line. VIDEO
-   BOTTOM LABEL (`prompts/lowerThird.ts`, now also fed the festival theme and the video's motive /
-   core message) and the poster prompt (`POSTER_SYSTEM_PROMPT`).
+   BOTTOM LABEL (`buildVideoBottomLabel`, code-assembled from `prompts/lowerThird.ts`, fed the festival
+   theme and the video's motive / core message) and the poster prompt (`writeVideoPosterPrompt`,
+   `POSTER_SYSTEM_PROMPT`) — both from the VERIFIED facts: exactly as many contact pills / numbers as the
+   business has (1–3, laid out for the count), no address strip or line when there is none, and
+   `stripUnverifiedNumbers` on every model-written poster, concept, overlay and refine. A poster that
+   fails twice leaves one Missing row instead of failing the run. Frames the model skipped are written
+   for exactly those clips (never a copy of the last frame), and the retry carries the images.
 6. Direct performance and camera per clip (`prompts/motion.ts`) → **Veo 3 prompts**. **Motion
    policy: each clip does what its line, scene and video type need.** Stagings `stand_present`
    (stand and tell), `walk_and_talk` (a few steps along clear floor the FRAME shows — never for a
@@ -980,10 +1012,16 @@ changes raise `SpecUpdateDialog`.
    high, bird's eye, worm's eye, over-the-shoulder, POV, dutch tilt), `CAMERA_MOVES` (dolly in/out,
    truck, push in, pull back, pan, tilt, pedestal, partial orbit, crane up/down, arc, follow
    tracking…), lens and speed keywords (`LENS_COMBOS`, `SPEED_KEYWORDS`); the Veo CAMERA line reads
-   e.g. "Eye level · 35mm · Follow Tracking · steadicam tracking". Two-handers get fixed LEFT/RIGHT
-   positions, a strict WHO SPEAKS block and, on some clips, SPEAKER FOCUS (the camera eases in on
-   whoever talks). Locked always: the people (height/build/outfit relative to the room — the camera
-   may move closer), the WORLD (no object vanishes or moves, nobody walks into furniture) and the
+   e.g. "Eye level · 35mm · Follow Tracking · steadicam tracking". **Two-handers are filmed from a fixed
+   distance** (`DUO_SAFE_MOVES`: static, truck, pan, gentle handheld float; always eye level; the
+   director's own camera sentence is ignored and beats that step toward the lens, rise or stretch fall
+   back to the plan's) — the dolly-ins, push-ins, cranes, low-angle orbits and speaker push-ins were
+   what grew Motu and Patlu. They keep fixed LEFT/RIGHT positions, a strict WHO SPEAKS block and, on
+   some clips, SPEAKER FOCUS (the focus moves to whoever talks; the camera does not). Every Veo prompt
+   carries the `COLOUR_LOCK` near the top (the frame's exact grade, contrast and exposure; never pale,
+   washed, hazy or brightened) with matching negatives, and scene life that changes the light is
+   refused (`LIGHT_CHANGE`). Locked always: the people (height/build/outfit relative to the room — a
+   single presenter's camera may move closer), the WORLD (no object vanishes or moves, nobody walks into furniture) and the
    PLACE (nobody leaves the shop or goes through a door). `resolveDirection` discards director text
    that leaves, freezes, walks outside a walk clip, cuts, crash-zooms or uses slow motion /
    hyperlapse during speech. The frames are composed for the plan first (`framingForMotion`,
@@ -1014,8 +1052,19 @@ imagery for festival ads; reads the scene plan and core message), regenerate Veo
 
 **Outputs** (`GeneratedOutputs`): 1. Main Frame Prompts (per clip), 2. **VIDEO BOTTOM LABEL**,
 3. Poster Design (JSON), 4. Voice Over Script, 5. Veo 3 Video Prompts, plus B-roll, overlay
-images, the core message, `sceneContext` and `voiceBrief` (shown in a "what we understood /
-background plan" panel above the sections).
+images, the core message, `sceneContext`, `voiceBrief` (shown in a "what we understood /
+background plan" panel above the sections) and `scriptQa`. **Every row is always drawn** with its own
+state (Writing… / Missing / Failed / Updated from final script / Script QA n/10) and, when missing, its
+own Generate — label (instant), poster, the missing Veo clips — instead of vanishing while the status
+says Completed.
+
+**Final voice-over script (Deliverables header → `FinalScriptPanel`, `utils/finalScript`):** a script
+finished elsewhere (ChatGPT, Gemini, the client) is pasted in the per-category format shown there
+(plain clips / one `[Name]:` line / both characters' lines, over the kit's own clip count). It is read
+with the generator's parsers, used word for word (numbers and `mariyu` made speakable), refused with a
+reason when a label or the clip count is wrong, and becomes 4. Voice Over; 5 Veo (every clip, from the
+existing frames), 6 B-roll and 7 overlays are rewritten from it in parallel, each with its own
+Regenerating… / Updated / Failed-Retry state. Frames, label and poster are untouched.
 
 **Editing / refine:** per-section refine (`refineSection`, "change only what was asked"),
 `refineVoiceOver` (plan → clip edits → validation; `RefineRevisionBanner` offers undo),
@@ -1025,7 +1074,9 @@ loses a section; one retry; the UI alert says what was understood). Copy buttons
 
 **Save / storage:** `persistGeneration` writes `ai_generations`. **Generate** creates a new doc (a
 version); **Save** and a 1-second debounced **auto-save** update the same doc; the assignment gets
-`savedGenerationId`. Reopening a job restores it. `SavedItems` lists the user's own generations.
+`savedGenerationId`. Reopening a job restores it — ONLY on opening: the auto-load no longer re-fires
+when a finished run points the job at its new save (that read-back used to wipe B-roll and overlays
+still arriving — the "completed but deliverables missing" glitch). `SavedItems` lists the user's own generations.
 Tools → Ad Generation History groups versions per job (`utils/generationHistory.ts`). Submitting
 the job is `useCompleteWork` (§16).
 
@@ -1166,8 +1217,10 @@ Gemini key), the production API base URL, and CORS allow-lists in `api/*`.
 | `AppLayout` | `components/layout/` | Guard + shell + global overlays + session listeners (§11). Props `allowedRoles` |
 | `Sidebar` / `Topbar` | `components/layout/` | Role nav with groups (flattened when collapsed), logout; bell, avatar |
 | `AppUpdateBanner`, `UpdatePopup`, `InstallAppButton` | `components/layout/` | Self-update, work popups, PWA install |
-| `AIPlatformApp` | `components/ai-platform/` | Props `assignment?`, `assignmentId?`, `onClose`, `onComplete?`, `completing?`, `onBusinessNameExtracted?`. Full-screen (`fixed inset-0 z-50`); holds updates while open; restores saved generation; locks spec from assignment. Children: `FileUpload`, `GeneratedCard`, `SavedItems`, `PosterConceptsPanel`, `generation/MissionWorkspace` (waiting screen with ETA from `utils/generationEta`), `AIGuideSheet`, `SpecUpdateDialog`, `RefineRevisionBanner`, `CodeVerificationModal`. Renders the owner-image slot, BUSINESS CONTENT / FRAME / BACKGROUND INSTRUCTIONS boxes, the Gemini document-route box, the Custom Character field, the duo custom-script format, a "what we understood / background plan" panel (`voiceBrief`, `sceneContext`), the 2. VIDEO BOTTOM LABEL and 7. Overlay Text Image Generator sections. `FileUpload` refuses PDFs/documents/video and supports drag & drop. Chrome (2026-09-24): root `.adgen`; one screen — a 72px header (mark │ product name, Ready/Generating chip, Project History, Mark Complete, the signed-in member, Close project) over a 4/8 grid. LEFT: `1. Assets & Files` and `2. Configuration` as two `ag-sec` sections of which only one is open (`leftPanel`, morphed through `.ag-morph`); shut, Assets shows a six-tile summary of what has been uploaded and Configuration shows the run's settings; Start/Stop sits below both. RIGHT, by stage: welcome → Generation Status (progress, step, countdown, `MissionStepper`) + AI Guide card → Status + a 72px AI Guide strip + the Deliverables card of seven numbered `ag-row`s |
+| `AIPlatformApp` | `components/ai-platform/` | Props `assignment?`, `assignmentId?`, `onClose`, `onComplete?`, `completing?`, `onBusinessNameExtracted?`. Full-screen (`fixed inset-0 z-50`); holds updates while open; restores saved generation; locks spec from assignment. Children: `FileUpload`, `GeneratedCard`, `SavedItems`, `PosterConceptsPanel`, `generation/MissionWorkspace` (waiting screen with ETA from `utils/generationEta`), `AIGuideSheet`, `SpecUpdateDialog`, `RefineRevisionBanner`, `CodeVerificationModal`. Renders the owner-image slot, BUSINESS CONTENT / FRAME / BACKGROUND INSTRUCTIONS boxes, the Gemini document-route box, the Custom Character field, the duo custom-script format, a "what we understood / background plan" panel (`voiceBrief`, `sceneContext`), the 2. VIDEO BOTTOM LABEL and 7. Overlay Text Image Generator sections. `FileUpload` refuses PDFs/documents/video and supports drag & drop. Chrome (2026-09-24): root `.adgen`; one screen — a 72px header (mark │ product name, Ready/Generating chip, Project History, Mark Complete, the signed-in member, Close project) over a 4/8 grid. LEFT: `1. Assets & Files` and `2. Configuration` as two `ag-sec` sections of which only one is open (`leftPanel`, morphed through `.ag-morph`); shut, Assets shows a six-tile summary of what has been uploaded and Configuration shows the run's settings; Start/Stop sits below both. RIGHT, by stage: welcome → Generation Status (progress, step, countdown, `MissionStepper`) + AI Guide card → Status + a 72px AI Guide strip + the Deliverables card of seven numbered `ag-row`s, every one always drawn with its state. A 36px **job strip** under the header (`data-test="job-strip"`: business, category / occasion, special category, clips + EC, ratio, language, job id) at every width; a stale-kit banner when the job changed after the kit was made; Final script in the Deliverables header |
 | `SaleForm` | `components/sales/` | The one sale form (new, edit, upsell): packages, bulk, discounts, SMM fields, promise, requirement, payments; calls `upsertOrderForSale` |
+| `FinalScriptPanel` | `components/ai-platform/` | The Final voice-over script input in the Deliverables: per-category format with Copy, live reading (clips, problems, notes), "Update 5 · 6 · 7", per-section progress with Retry |
+| `AssignmentBriefFields` | `components/work/` | Occasion (wishes) + business info + address + client's notes, in all three assignment edit dialogs |
 | `SpecialCategoryFields`, `ModelAttireFields`, `PosterSpecFields`, `OccasionPicker`, `DurationPicker` | `components/work/` | Shared spec editors used by Work Assign ×2, assignment editors and the AI platform. **`SaleForm` still has its own copy of the special-category picker** |
 | `OrderProgressPanel`, `BulkVideoBoard`, `AssignTracksDialog`, `PenaltyDialog`, `ExtendPromiseButton`, `DeadlineChip`, `ReassignWork`, `RequirementsShareModal`, `MemberWorkloadCard`, `WorkDoneReport` | `components/work/` | Order and work UI pieces |
 | `StaffOrderChat`, `SalesOrderChat`, `OrderChatPanel`, `ClientCall`, `ShareChatModal`, `ClientReviewCard` | `components/order-chat/` | Client chat for staff and guest |
@@ -1265,6 +1318,13 @@ report message → renewal.
   allowance counts as absence.
 - **Check-out** requires the Drive-upload declaration first; the daily check-in prompt cannot be
   dismissed on a working day, and does not appear on a Sunday or an announced holiday.
+- **AI ads (2026-09-25, integrity):** no contact number or address reaches a deliverable unless the
+  member typed it or a card / flyer / premises photo could show it (and it is not a placeholder);
+  missing fields are absent — no empty label, pill or line — and the layouts follow the count (1–3).
+  The job's spec wins over a reopened kit. Every generated script passes a separate quality gate or is
+  polished / rewritten automatically (best of three). A pair of characters is never filmed with a
+  move that changes their distance or height, and every video keeps the frame's colour. A final
+  script pasted into the Deliverables rewrites 5 · 6 · 7 only, and only with the kit's clip count.
 - **AI ads (2026-09-25):** a run is refused while the client's brief is still loading and when
   nothing describes the business (no BUSINESS CONTENT and no card / store / product / flyer / voice
   file) — a model with nothing to read invents a business, which is what made first runs come back
@@ -1317,6 +1377,9 @@ and push; PWA self-update; Android shell.
   Malayalam scripts rely on the prompt rule and the digit validator.
 - Motion staging comes from the scene plan's choices or a keyword reading of each line; when the
   client's own photos are used the scene plan is skipped, so only the keyword reading applies.
+- The script quality gate's thresholds (pass ≥ 8, each ≥ 7, facts ≥ 9) are set from the rubric, not
+  measured against live Gemini scores; a final script with a different clip count than the kit is
+  refused rather than re-framed (it has to go through Configuration → custom script and a new run).
 - Character catalogue regeneration from JSON has no committed generator script.
 - Native Android camera capture uses the web file input (`@capacitor/camera` not installed).
 - Error/loading handling is inconsistent across older pages (plain `console.error`).
@@ -1396,6 +1459,13 @@ and push; PWA self-update; Android shell.
   every profile snapshot re-reads `ai_generations` (read-quota; a test mock with an unstable user
   made it loop).
 - A frame run with no logo FILE now uses the name board even when "No logo" is not ticked.
+- The script quality gate adds a judge call per draft and up to two more drafts: 1 extra call on a
+  script that passes, up to ~6 on one that is rewritten twice (more quota and latency; not measured).
+- Verified facts drop a number the extraction put under a non-contact key or read from a product
+  photo, and any number when only a logo was attached — by design, but a real number can be lost that
+  way; the member types it into BUSINESS CONTENT to keep it.
+- The fixed-distance duo camera and the colour lock are prompt rules checked by unit tests only — no
+  live Veo run has confirmed the heights hold or the colour stays.
 
 ---
 
@@ -1502,6 +1572,33 @@ and push; PWA self-update; Android shell.
 
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
+
+- **2026-09-25 (later): AdGen integrity batch — eight faults, each traced to its cause** —
+  (1) *Spec edits not reaching the member*: reopening a job re-loaded its last kit and that restore
+  wrote the kit's old attire, gender, ratio, language, pack, festival and background back over the
+  job's spec, into fields locked as "Fixed by assignment". The job's spec is now one util
+  (`utils/assignmentFormSpec`) applied on open, on change and on top of every restore; a stale kit
+  says what changed. The three edit dialogs gained the occasion and the brief (`AssignmentBriefFields`;
+  `categoryDependentPatch` now writes `festival` for ads), the brief carries the business name and
+  client's notes, and a corrected brief reaches an edited BUSINESS CONTENT box. (2) *Fake contact
+  details*: every number and address came from the extraction model's JSON unchecked — now
+  `utils/businessFacts` verifies it against what was typed or could be read, rewrites the profile to
+  only those facts, lays out 1–3 numbers, and scrubs unverified numbers from posters, concepts,
+  overlays and refines; the old unverified readers were deleted. (3) *Motu & Patlu growing*: the pair
+  was filmed with dolly/push/crane/pedestal/orbit/low-angle moves and speaker push-ins, and the
+  negatives forbade a steady camera — a pair is now filmed from a fixed distance at eye level
+  (`DUO_SAFE_MOVES`), speaker focus moves only the focus, scale-changing beats are refused. (4) *Final
+  script*: `FinalScriptPanel` rewrites 5 · 6 · 7 from a pasted script with per-section progress. (5)
+  *Completed but missing*: the post-run auto-load race (above) is gone, rows are always drawn with a
+  state and their own Generate, missing frames are written not copied, and a failed poster no longer
+  fails the run. (6) *Pale video*: `COLOUR_LOCK` + negatives + no light-changing scene life. (7) *Which
+  ad*: the job strip. (8) *Script quality*: the separate quality gate with automatic polish / rewrite
+  and the educated-speaker register in the writer rules. Also fixed two regexes an earlier edit had
+  stripped of backslashes (`/whatss*app/`, the header initials split). New optional field only:
+  `ai_generations.scriptQa`. Verified: build ✅, vitest 176 files / 2784 tests ✅ (56 new, 5 changed to
+  the new behaviour), typecheck 1 known error, and a throwaway CDP harness (Gemini + Firestore faked,
+  deleted after) walked idle → run → missing poster Generate → final script → phone width with no
+  console errors and no horizontal scroll. Nothing run against live Gemini or Veo.
 
 - **2026-09-23: a two-hander's video prompts lost one speaker** — `utils/dialogueFormat`'s speaker
   label was matched as a single WORD, so any character whose NAME contains a space was unreadable in
@@ -1669,16 +1766,19 @@ Design intent lives in `docs/superpowers/specs/`.
 
 ## 32. CURRENT PROJECT STATE (as of 2026-09-25)
 
-- Branch `main`. Uncommitted: the 2026-09-24 one-screen layout and the 2026-09-25 batch (§31) —
-  16 files across `components/ai-platform/*`, `components/order-chat/*`, the two WorkAssign and two
-  MemberAssignments pages, `services/orderChat.ts`, `services/prompts/motion.ts`,
-  `utils/spokenNumbers.ts` and four test suites — plus this CLAUDE.md.
-- `npm run build` ✅ (main chunk ≈454 KB, vendor-firebase ≈665 KB, geminiService chunk ≈757 KB).
-- `npx vitest run` ✅ 171 files, 2728 tests.
+- Branch `main`. Uncommitted: the 2026-09-25 integrity batch (§31) — `components/ai-platform/*`
+  (AIPlatformApp, FinalScriptPanel, SavedItems, adgen.css), `components/work/AssignmentBriefFields`, the
+  two MemberAssignments pages and Work Reports, `hooks/useAssignmentBrief`, `services/geminiService`,
+  `services/prompts.ts` and `prompts/{motion,characterAd,everydaySpeech,posterConcept,scriptQa}`,
+  `types/aiPlatform`, `utils/{adRequirement,assignmentEdit,assignmentSpecDiff,assignmentFormSpec,
+  businessFacts,finalScript,scriptQa}`, seven test suites — plus this CLAUDE.md.
+- `npm run build` ✅ (main chunk ≈454 KB, vendor-firebase ≈665 KB, geminiService chunk ≈783 KB).
+- `npx vitest run` ✅ 176 files, 2784 tests.
 - `npx tsc -p tsconfig.check.json --noEmit` → 1 known error (VideoCallManager).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
-- Most recent work: the AdGen.ai one-screen layout, the two-hander speaker-label fix and the studio
-  UI, before them the AdGen.ai batch (§31), Cinematic Ads, SMM, Poster Creation, load-time splitting.
+- Most recent work: the AdGen integrity batch (verified contact facts, script quality gate, final
+  script, fixed-distance duo camera, colour lock, job strip), the one-screen layout, the two-hander
+  speaker-label fix and the studio UI, before them the AdGen.ai batch (§31), Cinematic Ads, SMM, Poster Creation, load-time splitting.
 - Open follow-ups the owner must act on: publish `docs/firestore-rules.md` in the console; move
   secrets out of source; authenticate `/api/send-notification`.
 
@@ -1725,10 +1825,12 @@ SMM posting needs client approval.
 `in_progress` / `completed` / `editing` / `verified`.
 
 **Ad generation.** `AIPlatformApp` → `geminiService.generateAdAssets` (voice note → extract →
-core message → voice-over with repair and quality review, or a custom script word for word → numbers
+verified contact facts (`utils/businessFacts`) → core message → voice-over with repair, quality review
+and the scored quality gate (best of three drafts), or a custom script word for word → numbers
 as words / `mariyu` in Latin → scene plan → motion plan → frames / VIDEO BOTTOM LABEL / poster → Veo prompts
 from the same plan) → `ai_generations`. Motion: mixed stand / walk / show staging in the standard
-camera vocabulary, world + place locks, never a goodbye wave (§17.2). Poster mode → `generatePosterConcepts`. Cinematic Ads (tech admin) is a separate
+camera vocabulary (a pair only from a fixed distance), world + place + colour locks, never a goodbye
+wave (§17.2). A pasted final script rewrites 5 · 6 · 7 (`FinalScriptPanel`). Poster mode → `generatePosterConcepts`. Cinematic Ads (tech admin) is a separate
 7-step, project-persisted pipeline. All prompts are in `services/prompts.ts` +
 `services/prompts/*`. **`aiadsdts/` is dead; never edit it.**
 

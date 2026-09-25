@@ -524,14 +524,47 @@ export function buildAssignmentRequirementsMessage(a: {
  * The AI Platform now opens a job with this already in the box (only when the box is empty, so
  * nothing a member typed is ever replaced). Empty when there is nothing to say.
  */
-export function briefAsInstructions(businessInfo?: string | null, businessAddress?: string | null): string {
+export function briefAsInstructions(
+  businessInfo?: string | null,
+  businessAddress?: string | null,
+  /**
+   * The rest of what the job says about the client. The business NAME is the one fact the model must
+   * never guess — a run that read only a logo named the business after whatever the logo looked like.
+   * The client's notes were shown on the member's job card and never reached the generator at all.
+   * Both are optional, and absent they leave the text exactly as it always was.
+   */
+  extras: { businessName?: string | null; notes?: string | null } = {},
+): string {
   const info = businessInfo?.trim();
   const address = businessAddress?.trim();
-  if (!info && !address) return "";
+  const name = extras.businessName?.trim();
+  const notes = extras.notes?.trim();
+  if (!info && !address && !notes) return "";
   return [
+    name ? `Business name: ${name}` : null,
     info ? `Business info & what to include (from the sale):\n${info}` : null,
     address ? `Address: ${address}` : null,
+    notes ? `Client's notes (from the sale):\n${notes}` : null,
   ].filter(Boolean).join("\n\n");
+}
+
+/**
+ * The job's brief, put into a BUSINESS CONTENT box the member may already have written in.
+ *
+ * The brief used to be re-applied only when the box was empty or still held exactly the old brief, so
+ * a member who had added one line never received the admin's correction to the address — and nobody
+ * told them. The old brief is now replaced where it stands inside their text; when it cannot be found
+ * (they rewrote it), the corrected brief goes on top and their own writing stays below it.
+ */
+export function mergeBriefIntoInstructions(current: string, previousBrief: string, nextBrief: string): string {
+  const text = current.trim();
+  const before = previousBrief.trim();
+  const next = nextBrief.trim();
+  if (!next) return current;
+  if (!text || text === before) return next;
+  if (before && current.includes(before)) return current.replace(before, next);
+  if (current.includes(next)) return current;
+  return `${next}\n\n${current.trim()}`;
 }
 
 /**

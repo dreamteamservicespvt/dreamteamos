@@ -13,7 +13,7 @@
  *     compact guide to all eight when the member asked for "best fit".
  *  3. The occasion — the three fusion patterns from the team's own festival posters.
  *  4. The canvas, the brand mark and the text rules.
- *  5. The truth rules — only real details, at most two numbers, one address line.
+ *  5. The truth rules — only real details, every verified number (one to three), one address line.
  *  6. The output contract — strict JSON, parsed by utils/posterConcepts.
  */
 import type { PosterStyle, PosterReference } from "@/services/posterStyles";
@@ -155,8 +155,10 @@ ${brandBlock}
 
   • Use ONLY facts from the business information and the client's brief. Never invent offers,
     prices, discounts, years in business, awards, statistics, reviews or taglines the client did not give.
-  • Contact strip: at most TWO phone numbers, copied digit-for-digit from REAL CONTACT DETAILS below,
-    and the address on ONE line if one is given. If no number is given, print no number at all.
+  • Contact strip: EVERY phone number listed in REAL CONTACT DETAILS below — one, two or three —
+    copied digit-for-digit and laid out for that count, and the address on ONE line if one is given.
+    A field that was not given does not exist: no number means no phone icon or label, no address
+    means no location pin or label. Never a placeholder.
   • Never print the name of a famous brand from the reference ads — they are examples, not content.
 
 ===== OUTPUT FORMAT (STRICT) =====
@@ -195,7 +197,7 @@ export const POSTER_CONCEPT_USER_PROMPT = (params: {
 
 REAL CONTACT DETAILS (the only ones that may be printed):
   • Business name: ${businessName || "as in the business information"}
-  • Phone number(s): ${contacts.length ? contacts.slice(0, 2).join(" , ") : "NONE — print no phone number"}
+  • Phone number(s): ${contacts.length ? `${contacts.slice(0, 3).join(" , ")} (exactly ${Math.min(3, contacts.length)})` : "NONE — print no phone number"}
   • Address: ${address || "NONE — print no address"}
 
 ${clientBrief?.trim() ? `THE CLIENT'S OWN BRIEF (what the poster must carry — honour it):
@@ -221,7 +223,7 @@ KEEP, WHATEVER THE REQUEST SAYS:
   ${input.occasion ? `• The occasion: ${input.occasion}, depicted authentically and respectfully.` : "• No festival decoration (this is a commercial poster)."}
   • ${input.hasLogo ? 'The logo is referred to only as "the attached logo" and never described.' : "The brand mark is the business name as a wordmark."}
   • Poster text language: ${input.textLanguage || "English"}. At most a 6-word headline and a 12-word subline.
-  • The truth rules: no invented offers, numbers or claims; at most two real phone numbers.
+  • The truth rules: no invented offers, numbers or claims; only the real phone numbers given (one to three).
 
 Return ONLY the updated concept as one JSON object with the same keys:
 {"title","style","idea","whyItWorks","headline","subline","imagePrompt","negativePrompt"}`;

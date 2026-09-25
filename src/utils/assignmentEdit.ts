@@ -81,5 +81,39 @@ export function categoryDependentPatch(form: CategoryEditForm): Record<string, u
     // Written on every ad, not only a pack one — a normal ad's background is a real field, and
     // gating it on the pack would reset it to "AI" on every unrelated edit.
     realLocationProvided: form.realLocationProvided === true,
+    /*
+      The occasion, on an ad too. It was written only for a poster, so correcting a wishes video from
+      Diwali to Ugadi on a job already assigned saved nothing — and the member's generator, which
+      themes the whole ad from it, kept the old festival. The form carries the job's own value, so an
+      edit that does not touch it writes back what was there.
+    */
+    festival: (form.festival || "").trim(),
+  };
+}
+
+/** The brief half of an edit form — what the client told the sale, as the job carries it. */
+export interface BriefEditFields {
+  businessInfo: string;
+  businessAddress: string;
+  requirementNotes: string;
+}
+
+export function briefEditFieldsOf(a: Pick<WorkAssignment, "businessInfo" | "businessAddress" | "requirementNotes">): BriefEditFields {
+  return {
+    businessInfo: a.businessInfo || "",
+    businessAddress: a.businessAddress || "",
+    requirementNotes: a.requirementNotes || "",
+  };
+}
+
+/**
+ * The brief as written back. Every field is written, trimmed — an empty one clears it, so an address
+ * an admin removes is really removed rather than surviving on the job and reappearing in the ad.
+ */
+export function briefPatch(form: BriefEditFields): Record<string, string> {
+  return {
+    businessInfo: form.businessInfo.trim(),
+    businessAddress: form.businessAddress.trim(),
+    requirementNotes: form.requirementNotes.trim(),
   };
 }

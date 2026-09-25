@@ -1,4 +1,5 @@
 import type { CoreMessageBrief } from '@/services/prompts/coreMessage';
+import type { ScriptQaSummary } from '@/utils/scriptQa';
 
 export enum AdType {
   COMMERCIAL = 'commercial',
@@ -231,6 +232,11 @@ export interface GeneratedOutputs {
   sceneContext?: SceneContext | null;
   /** The client's voice note, transcribed and understood. Absent when none was attached. */
   voiceBrief?: VoiceBrief | null;
+  /**
+   * The voice-over's quality check: its score, whether it passed, and how many drafts it took (utils/
+   * scriptQa). Absent for a member's own script — that is used word for word and never judged.
+   */
+  scriptQa?: ScriptQaSummary | null;
 }
 
 export interface GenerationStatus {

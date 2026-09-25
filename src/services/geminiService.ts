@@ -61,9 +61,18 @@ import { LOWER_THIRD_SYSTEM_PROMPT } from "./prompts/lowerThird";
 
 /** Three numbers still read as pills at video size; a fourth does not. */
 const MAX_LABEL_CONTACTS = 3;
-/** A number the client gave as their WhatsApp gets its own green pill on the label. */
-const hasWhatsAppNumber = (businessInfo: any): boolean =>
-  /whatss*app/i.test(JSON.stringify(businessInfo ?? {}));
+/**
+ * A number the client gave as their WhatsApp gets its own green pill on the label — a VERIFIED one.
+ * It used to test the whole profile for the word, so a "whatsapp": "Not provided" key drew a pill.
+ */
+const hasWhatsAppNumber = (businessInfo: any): boolean => factsFromProfile(businessInfo).phones.some(p => p.whatsapp);
+import {
+  factsFromProfile, sanitizeBusinessProfile, stripUnverifiedNumbers, verifiedKeys, verifyBusinessFacts, type BusinessFacts,
+} from "@/utils/businessFacts";
+import { SCRIPT_QA_SYSTEM_PROMPT } from "./prompts/scriptQa";
+import {
+  isBetterDraft, parseScriptQa, qaDecision, qaInstructions, qaSummary, type ScriptQaReport, type ScriptQaSummary,
+} from "@/utils/scriptQa";
 import {
   assembleVeoPrompt, cameraLabel, fillCast, parseVeoDirections, planClipMotion, spokenLinesIn, stagingPath,
   withMotionComposition, type ClipMotionPlan, type VeoSpeech,
@@ -450,6 +459,123 @@ const labelDesignInputs = (formData: AdFormData, sceneContext: SceneContext | nu
   };
 };
 
+/**
+ * How the contact numbers go on a poster — every verified one (up to three), laid out for its count,
+ * or none at all. The poster used to show "at most two", so a client with three numbers lost one.
+ */
+const posterContactRule = (contacts: { display: string; whatsapp: boolean }[]): string => {
+  const list = contacts.map(c => `${c.display}${c.whatsapp ? ' (WhatsApp — give it a WhatsApp icon)' : ''}`).join('  |  ');
+  switch (contacts.length) {
+    case 0:
+      return 'NO CONTACT NUMBER was given — the poster has NO contact line, NO phone icon and NO label for one. Never write, invent or suggest a number.';
+    case 1:
+      return `CONTACT NUMBER — exactly ONE, shown once as a single prominent contact line with a phone icon: ${list}. Digit for digit; never alter, complete or add a number.`;
+    case 2:
+      return `CONTACT NUMBERS — exactly TWO, both shown, evenly balanced side by side (or stacked) in ONE contact block: ${list}. Digit for digit; never alter, complete, merge or add a number.`;
+    default:
+      return `CONTACT NUMBERS — exactly THREE, all shown, as three compact, equally sized numbers in ONE tidy row or stack: ${list}. Digit for digit; never alter, complete, merge or add a number.`;
+  }
+};
+
+/**
+ * The VIDEO BOTTOM LABEL prompt — assembled in code, with no model call (prompts/lowerThird).
+ *
+ * Its numbers and address are the VERIFIED ones (utils/businessFacts): the pills are drawn for exactly
+ * as many numbers as the business gave — one, two or three — and a missing address is no strip at all.
+ * Exported so a label missing from a kit can be rebuilt on its own from what is on screen.
+ */
+export const buildVideoBottomLabel = (params: {
+  formData: AdFormData;
+  businessInfo: any;
+  hasLogoFile: boolean;
+  hasPremisesPhoto: boolean;
+  sceneContext?: SceneContext | null;
+  coreMessage?: CoreMessageBrief | null;
+}): string => {
+  const { formData, businessInfo } = params;
+  // No logo FILE is no logo, ticked or not — the label never asks for a file that does not exist.
+  const noLogo = !!formData.noLogo || !params.hasLogoFile;
+  const nameBoard = resolveNameBoardText(formData, businessInfo);
+  // Extract ONLY logo/name/contacts/address — never dump the full business JSON or any other data.
+  const name = extractBusinessNameFromInfo(businessInfo);
+  const facts = factsFromProfile(businessInfo);
+  const contacts = facts.phones.slice(0, MAX_LABEL_CONTACTS);
+  const address = facts.address;
+  // No ratio directive here: a label is a tightly cropped strip laid over a video, not a video frame.
+  const systemPrompt = buildBrandMarkDirective(noLogo, nameBoard, 'header')
+    + LOWER_THIRD_SYSTEM_PROMPT({
+      businessType: detectBusinessType(JSON.stringify(businessInfo ?? {})),
+      adType: formData.adType,
+      festivalName: formData.festivalName,
+      noLogo,
+      contactCount: contacts.length,
+      hasAddress: !!address,
+      hasWhatsApp: contacts.some(c => c.whatsapp),
+      // The client's own photographs may sit at the right edge; with none, the label stays graphic.
+      hasPremisesPhoto: params.hasPremisesPhoto,
+      ...labelDesignInputs(formData, params.sceneContext ?? null, params.coreMessage ?? null),
+    });
+  const valueLines = [
+    // This block is the literal text the member copies into the image generator, so a "LOGO =" line
+    // here asked for a logo file that was never uploaded however the rules above were worded. In
+    // no-logo mode there is no brand line AT ALL: a "BRAND MARK = <name>" line above "NAME = <name>"
+    // is what put the same name in two boxes in the finished label.
+    noLogo
+      ? 'NO BRAND IMAGE — this label has no logo circle and no brand tile; the NAME below is the only branding, and it appears exactly once'
+      : 'LOGO = use the attached logo image exactly as provided, unchanged',
+    name ? `NAME = ${name}` : '',
+    ...contacts.map((c, i) => `CONTACT ${i + 1} = ${c.display}${c.whatsapp ? ' (WhatsApp)' : ''}`),
+    contacts.length > 0 ? `EXACTLY ${contacts.length} NUMBER${contacts.length === 1 ? '' : 'S'} — draw ${contacts.length} contact pill${contacts.length === 1 ? '' : 's'}, no more and no fewer.` : '',
+    address ? `ADDRESS = ${address}` : '',
+  ].filter(Boolean);
+  // Explicit negatives for missing fields, so the image generator never fabricates them.
+  const missing: string[] = [];
+  if (contacts.length === 0) missing.push('NO CONTACT NUMBER provided — do NOT show any contact pill and do NOT invent, guess, autocomplete, or fabricate any phone number. The raised right module stays, because it must still cover the watermark.');
+  if (!address) missing.push('NO ADDRESS provided — do NOT show any address strip and do NOT invent, guess, autocomplete, or fabricate any address, street, area, city, pincode, or location. Close that space cleanly.');
+  return [
+    systemPrompt,
+    '',
+    'REAL CONTENT TO PLACE (use ONLY these EXACT values — do not add anything else, and do not write or invent any field that is not listed here):',
+    ...valueLines,
+    ...(missing.length ? ['', 'MISSING FIELDS (STRICT — NEVER FABRICATE THESE):', ...missing] : []),
+  ].join('\n');
+};
+
+/**
+ * The video kit's poster prompt (deliverable 3), from the verified facts.
+ *
+ * One model call, asked again once if it comes back empty — an empty poster row used to vanish from
+ * the kit while the status said Completed. Whatever comes back is scrubbed of any number the business
+ * never gave. Exported so a missing poster can be written on its own.
+ */
+export const writeVideoPosterPrompt = async (formData: AdFormData, businessInfo: any): Promise<string> => {
+  const systemInstruction = buildRatioDirective(formData)
+    + buildNameBoardDirective(formData, businessInfo, 'layout')
+    + POSTER_SYSTEM_PROMPT(formData.adType, formData.festivalName, formData.noLogo || false, resolveNameBoardText(formData, businessInfo));
+  const facts = factsFromProfile(businessInfo);
+  const contacts = facts.phones.slice(0, MAX_LABEL_CONTACTS);
+  const addressRule = facts.address
+    ? `ADDRESS — an address IS provided, so it MUST appear in the poster, on ONE clean line, exactly as given: ${facts.address}`
+    : `NO ADDRESS was given — the poster has NO address line, NO location pin and NO label for one. Never write or invent an address, street, area or city.`;
+  const userPrompt = `Write the poster design prompt for:
+  BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
+  AD TYPE: ${formData.adType}
+  ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName}` : ''}
+  ${posterContactRule(contacts)}
+  ${addressRule}
+  Write the short, clean, plain-English poster prompt now.`;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
+      model,
+      contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+      config: { systemInstruction },
+    }));
+    const text = stripUnverifiedNumbers((response.text || '').trim(), verifiedKeys(facts));
+    if (text.length > 40) return text;
+  }
+  throw new Error('The poster prompt came back empty. Press Generate on the poster row to write it again.');
+};
+
 const buildLanguageDirective = (formData: AdFormData): string => {
   const lang = (formData.language || 'Telugu').trim();
   if (!lang || lang.toLowerCase() === 'telugu') return '';
@@ -595,8 +721,9 @@ ${pack
           adType: formData.adType,
           festivalName: formData.festivalName,
           noLogo: formData.noLogo || false,
-          contactCount: extractContactsFromInfo(businessInfo).slice(0, MAX_LABEL_CONTACTS).length,
-          hasAddress: !!resolveRealAddress(businessInfo, extractBusinessNameFromInfo(businessInfo)),
+          contactCount: factsFromProfile(businessInfo).phones.slice(0, MAX_LABEL_CONTACTS).length,
+          hasAddress: !!factsFromProfile(businessInfo).address,
+          hasWhatsApp: hasWhatsAppNumber(businessInfo),
           ...labelDesignInputs(formData, null, null),
         });
       userPrompt = `You previously generated this brand label prompt:
@@ -654,6 +781,10 @@ IMPORTANT:
 
   const refined = response.text || currentContent;
 
+  // A refine is a model rewrite like any other: a number it adds that the business never gave goes.
+  if (sectionType === 'header' || sectionType === 'poster') {
+    return stripUnverifiedNumbers(refined, verifiedKeys(factsFromProfile(businessInfo)));
+  }
   return refined;
 };
 
@@ -1288,6 +1419,25 @@ const voiceInstructionParts = async (recordings: File[], brief: VoiceBrief | nul
   return parts;
 };
 
+/**
+ * The extraction, checked against what the member actually gave — see utils/businessFacts.
+ *
+ * Every contact number and address in the kit comes from the business profile, and the profile is a
+ * model's reading of the member's text and files. It is rewritten here to carry only the numbers the
+ * member typed (or that a card, flyer or premises photo could show) and only a real address, so no
+ * later prompt ever sees an invented one to copy. The contact documents are the card, the flyers and
+ * the premises photos — a number on a product packet is the manufacturer's, not the shop's.
+ */
+const verifyExtraction = (businessInfo: any, typedText: string, files: FileStore): { businessInfo: Record<string, unknown>; facts: BusinessFacts } => {
+  const input = {
+    typedText,
+    hasContactDocuments: (files.visitingCard?.length || 0) + (files.flyersPosters?.length || 0) + (files.storeImage?.length || 0) > 0,
+  };
+  const facts = verifyBusinessFacts({ ...input, profile: businessInfo });
+  if (facts.rejected.length > 0) console.info('Contact details the extraction reported that are NOT used (not verified):', facts.rejected);
+  return { businessInfo: sanitizeBusinessProfile(businessInfo, facts, input), facts };
+};
+
 /** How the team's typed BUSINESS CONTENT is labelled for the model — the authoritative facts. */
 const businessContentPart = (text: string) =>
   ({ text: `BUSINESS CONTENT typed by the team (authoritative — business details, offers, the call to action, contact information): ${text}` });
@@ -1302,14 +1452,18 @@ export const extractBusinessOnly = async (
   }
 
   const parts: any[] = [];
+  /** Everything the member typed or said — what the extraction is checked against. */
+  const typedChunks: string[] = [];
 
   if (formData.textInstructions) {
     parts.push(businessContentPart(formData.textInstructions));
+    typedChunks.push(formData.textInstructions);
   }
   if (files.textInstructionsFile && files.textInstructionsFile.length > 0) {
     for (const textFile of files.textInstructionsFile) {
       const textContent = await readFileAsText(textFile);
       parts.push({ text: `Client Text File Content: ${textContent}` });
+      typedChunks.push(textContent);
     }
   }
   if (files.logo) {
@@ -1338,6 +1492,7 @@ export const extractBusinessOnly = async (
     const brief = await understandVoiceInstructions(files.voiceRecording, {
       businessContent: formData.textInstructions, frameInstructions: formData.frameInstructions,
     });
+    if (brief?.transcript) typedChunks.push(brief.transcript);
     parts.push(...await voiceInstructionParts(files.voiceRecording, brief));
   }
   if (files.flyersPosters && files.flyersPosters.length > 0) {
@@ -1365,6 +1520,7 @@ export const extractBusinessOnly = async (
     console.warn("Failed to parse JSON directly, using raw text", e);
     businessInfo = { raw: businessInfoText };
   }
+  businessInfo = verifyExtraction(businessInfo, typedChunks.join('\n'), files).businessInfo;
 
   onProgress("Business info extracted. Ready for poster creation.", 100);
 
@@ -1409,8 +1565,10 @@ export const generatePosterConcepts = async (
   const occasion = (formData.posterOccasion || '').trim();
   const conceptCount = Math.max(1, Math.min(6, formData.posterConceptCount || DEFAULT_POSTER_CONCEPT_COUNT));
   const businessName = (formData.noLogo && formData.logoNameText?.trim()) || extractBusinessNameFromInfo(businessInfo);
-  const contacts = extractContactsFromInfo(businessInfo).slice(0, 2);
-  const address = resolveRealAddress(businessInfo, businessName);
+  // Verified numbers only (utils/businessFacts) — one, two or three, exactly as the member gave them.
+  const verified = factsFromProfile(businessInfo);
+  const contacts = verified.phones.slice(0, MAX_LABEL_CONTACTS).map(p => p.display);
+  const address = verified.address;
 
   onProgress(`Designing ${conceptCount} poster concept${conceptCount === 1 ? '' : 's'}${style ? ` — ${style.label}` : ''}...`, 55);
 
@@ -1484,7 +1642,7 @@ export const refinePosterConcept = async (
 ): Promise<PosterConcept> => {
   const posterSize = formData.posterSize || DEFAULT_POSTER_SIZE;
   const style = getPosterStyle(formData.posterStyle);
-  const contacts = extractContactsFromInfo(businessInfo).slice(0, 2);
+  const contacts = factsFromProfile(businessInfo).phones.slice(0, MAX_LABEL_CONTACTS).map(p => p.display);
   const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
     model,
     contents: [{ role: 'user', parts: [{ text: [
@@ -1827,6 +1985,9 @@ export const generateAdAssets = async (
       }))
     : null;
 
+  /** Everything the member typed or said — what the extraction is checked against (verifyExtraction). */
+  const typedChunks: string[] = voiceBrief?.transcript ? [voiceBrief.transcript] : [];
+
   // Helper to prepare parts
   const prepareParts = async () => {
     const parts: any[] = [];
@@ -1834,6 +1995,7 @@ export const generateAdAssets = async (
     // The team's BUSINESS CONTENT box — the facts the ad must carry.
     if (formData.textInstructions) {
       parts.push(businessContentPart(formData.textInstructions));
+      typedChunks.push(formData.textInstructions);
     }
 
     // Add text file content
@@ -1841,6 +2003,7 @@ export const generateAdAssets = async (
       for (const textFile of files.textInstructionsFile) {
         const textContent = await readFileAsText(textFile);
         parts.push({ text: `Client Text File Content: ${textContent}` });
+        typedChunks.push(textContent);
       }
     }
 
@@ -1981,6 +2144,8 @@ export const generateAdAssets = async (
   if (voiceBrief && businessInfo && typeof businessInfo === 'object') {
     businessInfo = { ...businessInfo, clientVoiceInstructions: voiceBriefForProfile(voiceBrief) };
   }
+  // Only verified contact numbers and a real address from here on — every later prompt reads this.
+  businessInfo = verifyExtraction(businessInfo, typedChunks.join('\n'), files).businessInfo;
 
   const hasProductImages = files.productImages && files.productImages.length > 0;
   const productImageCount = hasProductImages ? files.productImages.length : 0;
@@ -2085,8 +2250,11 @@ export const generateAdAssets = async (
     }
   };
 
-  /** Generate → validate → repair, for the two-character script. Mirrors the standard loop. */
-  const generateCharacterDialogue = async (): Promise<DialogueClip[]> => {
+  /**
+   * Generate → validate → repair, for the two-character script. Mirrors the standard loop.
+   * `feedback` is the quality gate's report on an earlier draft, when this is a second draft.
+   */
+  const generateCharacterDialogue = async (feedback = ''): Promise<DialogueClip[]> => {
     if (!pack) return [];
     /** Key AND display name, so a script that labels lines `[Chhota Bheem]:` still resolves. */
     const speakerVocabulary = packSpeakerList;
@@ -2240,7 +2408,7 @@ export const generateAdAssets = async (
 
     const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
       model,
-      contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+      contents: [{ role: 'user', parts: [{ text: userPrompt + feedback }] }],
       config: { systemInstruction: systemPrompt },
     }));
 
@@ -2494,7 +2662,7 @@ Return only the repaired ${segmentCount} clip lines.`;
    */
   const MAX_QUALITY_REVIEW_PASSES = 2;
   const messageClip = formData.adType === 'festival' && segmentCount > 1 ? 2 : 1;
-  const runVoiceOverQualityReview = async (candidateFormatted: string): Promise<string> => {
+  const runVoiceOverQualityReview = async (candidateFormatted: string, mustFix: string[] = []): Promise<string> => {
     let reviewed = candidateFormatted;
     for (let pass = 0; pass < MAX_QUALITY_REVIEW_PASSES; pass++) {
       try {
@@ -2507,7 +2675,10 @@ ${reviewed}
 
 BUSINESS INFORMATION:
 ${JSON.stringify(businessInfo, null, 2)}
-
+${mustFix.length ? `
+A STRICT QUALITY CHECK FOUND THESE PROBLEMS — FIX EVERY ONE, and keep everything that already works:
+${mustFix.map(m => `- ${m}`).join('\n')}
+` : ''}
 Review it now and return the JSON verdict.` }] }],
             config: { systemInstruction: VOICEOVER_QUALITY_REVIEW_SYSTEM_PROMPT(formData.language, coreMessage, messageClip), responseMimeType: "application/json" }
           });
@@ -2532,11 +2703,107 @@ Review it now and return the JSON verdict.` }] }],
     return reviewed;
   };
 
+  /*
+    ── The QUALITY GATE (services/prompts/scriptQa, utils/scriptQa) ────────────────────────────────
+    Every script the platform writes — single voice or a cast — is judged by a separate model that
+    never rewrites: it checks every claim against the business facts and scores language, persuasion,
+    clarity, relevance and how it speaks. Code decides from the scores: ship it, polish it with the
+    judge's exact problems, or write a NEW draft told what the last one got wrong. Each new draft is
+    judged again, and the best of up to three ships. A member's own script is never judged or touched.
+    A judge that cannot run (quota, a broken reply) never blocks the ad — the draft ships as it is.
+  */
+  const MAX_SCRIPT_DRAFTS = 3;
+  let scriptQa: ScriptQaSummary | null = null;
+  const judgeScript = async (script: string): Promise<ScriptQaReport | null> => {
+    try {
+      const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
+        model,
+        contents: [{ role: 'user', parts: [{ text: `SCRIPT TO JUDGE:
+${script}
+
+BUSINESS INFORMATION (the only facts the script may state):
+${JSON.stringify(businessInfo, null, 2)}
+
+Judge it now and return the JSON.` }] }],
+        config: {
+          systemInstruction: SCRIPT_QA_SYSTEM_PROMPT({
+            language: formData.language,
+            adType: formData.adType,
+            festivalName: formData.festivalName,
+            clipCount: segmentCount,
+            speakers: packSpeakerList.map(sp => sp.name),
+            brief: coreMessage,
+            messageClip,
+          }),
+          responseMimeType: 'application/json',
+          temperature: 0.2,
+        },
+      }));
+      return parseScriptQa(response.text || '');
+    } catch (err) {
+      console.warn('The script quality check could not run; the script ships as it is.', err);
+      return null;
+    }
+  };
+  /** What a new draft is told about the one that failed. */
+  const rewriteFeedback = (report: ScriptQaReport): string => `
+
+A PREVIOUS DRAFT OF THIS SCRIPT FAILED THE QUALITY CHECK (${report.overall}/10). Write a completely NEW script — do not reuse its sentences.
+WHAT THE NEW SCRIPT MUST DO DIFFERENTLY: ${report.rewriteBrief || 'Deliver the core message more clearly, naturally and persuasively, using only the real facts.'}
+WHAT THE CHECK FOUND:
+${qaInstructions(report).map(line => `- ${line}`).join('\n')}`;
+  /** Judge → polish or rewrite → judge again, keeping the best draft. */
+  const withScriptQa = async <T,>(
+    first: T,
+    textOf: (draft: T) => string,
+    nextDraft: (draft: T, report: ScriptQaReport) => Promise<T>,
+    mechanicalIssues: (draft: T) => number,
+  ): Promise<T> => {
+    onProgress("Checking the script — facts, language and selling power...", 30);
+    let best = { draft: first, report: await judgeScript(textOf(first)), mechanicalIssues: mechanicalIssues(first) };
+    let drafts = 1;
+    while (best.report && qaDecision(best.report) !== 'pass' && drafts < MAX_SCRIPT_DRAFTS) {
+      const rewrite = qaDecision(best.report) === 'rewrite';
+      onProgress(rewrite
+        ? `The script scored ${best.report.overall}/10 — writing a stronger draft...`
+        : `The script scored ${best.report.overall}/10 — polishing what the check found...`, 31 + drafts);
+      let candidate: T;
+      try {
+        candidate = await nextDraft(best.draft, best.report);
+      } catch (err) {
+        if ((err as Error)?.message?.includes('stopped by user')) throw err;
+        console.warn('Writing another script draft failed; keeping the best so far.', err);
+        break;
+      }
+      drafts += 1;
+      const entry = { draft: candidate, report: await judgeScript(textOf(candidate)), mechanicalIssues: mechanicalIssues(candidate) };
+      if (isBetterDraft(best, entry)) best = entry;
+    }
+    if (best.report) {
+      scriptQa = qaSummary(best.report, drafts);
+      console.info(`Script quality check: ${best.report.overall}/10 after ${drafts} draft${drafts === 1 ? '' : 's'}`, best.report);
+    }
+    return best.draft;
+  };
+
   if (pack) {
     // Two characters share every 8-second clip, so the script is an exchange rather than a line.
     // Every line as it is spoken — numbers as words, మరియు exactly — whoever wrote it.
-    dialogueClips = (await generateCharacterDialogue())
-      .map(clip => clip.map(line => ({ ...line, text: speakableLine(line.text, formData.language) })));
+    const speakableDialogue = (clips: DialogueClip[]) =>
+      clips.map(clip => clip.map(line => ({ ...line, text: speakableLine(line.text, formData.language) })));
+    dialogueClips = speakableDialogue(await generateCharacterDialogue());
+    if (!customScript?.trim()) {
+      dialogueClips = await withScriptQa(
+        dialogueClips,
+        clips => formatDialogueScript(clips, packSpeakerList),
+        async (_draft, report) => speakableDialogue(await generateCharacterDialogue(
+          qaDecision(report) === 'rewrite'
+            ? rewriteFeedback(report)
+            : `\n\nA QUALITY CHECK OF AN EARLIER DRAFT (${report.overall}/10) FOUND THESE PROBLEMS — write the script so that none of them happens:\n${qaInstructions(report).map(line => `- ${line}`).join('\n')}`,
+        )),
+        clips => clips.length === segmentCount ? 0 : 1,
+      );
+    }
     voiceOverScript = formatDialogueScript(dialogueClips, packSpeakerList);
     // Downstream (main frame, Veo, stock images) consumes one string per clip — give it the whole
     // exchange, speaker-labelled, so every later prompt knows who says what.
@@ -2594,23 +2861,39 @@ Segment 2: <text>`;
   ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName}` : ''}
   DURATION: ${effectiveDuration} seconds (${segmentCount} segments)`;
 
-    const scriptResponse = await callWithFallback(async (ai, model) => {
-      return await ai.models.generateContent({
-        model,
-        contents: [{ role: 'user', parts: [{ text: scriptUserPrompt }] }],
-        config: { systemInstruction: scriptSystemPrompt }
+    /** One complete draft: written, mechanically repaired, native-speaker polished, repaired again. */
+    const writeDraft = async (feedback = '') => {
+      const scriptResponse = await callWithFallback(async (ai, model) => {
+        return await ai.models.generateContent({
+          model,
+          contents: [{ role: 'user', parts: [{ text: scriptUserPrompt + feedback }] }],
+          config: { systemInstruction: scriptSystemPrompt }
+        });
       });
-    });
 
-    const repairedVoiceOver = await applyVoiceOverRepairIfNeeded(scriptResponse.text || "Failed to generate Script.");
+      const repairedVoiceOver = await applyVoiceOverRepairIfNeeded(scriptResponse.text || "Failed to generate Script.");
 
-    // Native-speaker QA pass, then re-run mechanical repair only if the rewrite actually
-    // changed something (keeps the common case — review confirms the script is already
-    // clean — to a single extra API call).
-    const qualityReviewed = await runVoiceOverQualityReview(repairedVoiceOver.formatted);
-    const finalVoiceOver = qualityReviewed === repairedVoiceOver.formatted
-      ? repairedVoiceOver
-      : await applyVoiceOverRepairIfNeeded(qualityReviewed);
+      // Native-speaker QA pass, then re-run mechanical repair only if the rewrite actually
+      // changed something (keeps the common case — review confirms the script is already
+      // clean — to a single extra API call).
+      const qualityReviewed = await runVoiceOverQualityReview(repairedVoiceOver.formatted);
+      return qualityReviewed === repairedVoiceOver.formatted
+        ? repairedVoiceOver
+        : await applyVoiceOverRepairIfNeeded(qualityReviewed);
+    };
+    type Draft = Awaited<ReturnType<typeof writeDraft>>;
+    /** The same draft, polished by the native-speaker editor told exactly what the gate found. */
+    const polishDraft = async (draft: Draft, report: ScriptQaReport): Promise<Draft> => {
+      const reviewed = await runVoiceOverQualityReview(draft.formatted, qaInstructions(report));
+      return reviewed === draft.formatted ? draft : await applyVoiceOverRepairIfNeeded(reviewed);
+    };
+    const finalVoiceOver = await withScriptQa<Draft>(
+      await writeDraft(),
+      draft => draft.formatted,
+      (draft, report) => (qaDecision(report) === 'rewrite' ? writeDraft(rewriteFeedback(report)) : polishDraft(draft, report)),
+      draft => validateVoiceOverSegments(draft.rawScript, draft.segments, segmentCount, formData.language, everyday,
+        formData.adType === 'festival' ? 1 : undefined).length,
+    );
 
     parsedSegments = finalVoiceOver.segments;
     voiceOverScript = finalVoiceOver.formatted;
@@ -2626,8 +2909,8 @@ Segment 2: <text>`;
     voiceOverScript = formatVoiceOverScript(parsedSegments);
   }
 
-  // Emit partial result: voiceOver ready
-  emitPartial({ voiceOverScript });
+  // Emit partial result: voiceOver ready (with its quality check, when it had one)
+  emitPartial({ voiceOverScript, scriptQa });
 
   /**
    * Location scouting for an ad built on the client's own photographs.
@@ -3033,8 +3316,10 @@ ${sceneContext ? `
   // If we still got fewer clips than needed, retry generation once
   if (rawClipPrompts.length < segmentCount && rawClipPrompts.length <= 2) {
     console.warn(`Parsed only ${rawClipPrompts.length} clips, expected ${segmentCount}. Retrying generation...`);
+    // With the same logo, photos and product images as the first call — a retry that sends only the
+    // text asks for frames of a business the model can no longer see.
     const retryResponse = await generateWithRetry(
-      [{ text: mainFrameUserPrompt + `\n\nIMPORTANT: You MUST generate EXACTLY ${segmentCount} separate prompts. Separate each one clearly with ###CLIP### on its own line. Do not combine clips. Output ${segmentCount} distinct prompts.` }],
+      [...mainFrameParts, { text: `IMPORTANT: You MUST generate EXACTLY ${segmentCount} separate prompts. Separate each one clearly with ###CLIP### on its own line. Do not combine clips. Output ${segmentCount} distinct prompts.` }],
       multiFrameSystemPrompt,
       'Main Frame (Multi-Clip Retry)'
     );
@@ -3042,6 +3327,30 @@ ${sceneContext ? `
     
     if (retryClips.length > rawClipPrompts.length) {
       rawClipPrompts = retryClips;
+    }
+  }
+
+  /*
+    Still short: the MISSING clips are written, not copied.
+
+    The last frame used to be duplicated into every clip the model left out, so a 6-clip ad could reach
+    the member with clips 5 and 6 carrying clip 4's frame — the kit said Completed, and two of its clips
+    showed the wrong line's scene. The model is now asked for exactly the clips it skipped, each for its
+    own line; only if that also fails is anything padded, and it is said so in the console.
+  */
+  if (rawClipPrompts.length > 0 && rawClipPrompts.length < segmentCount) {
+    const missing = Array.from({ length: segmentCount - rawClipPrompts.length }, (_, k) => rawClipPrompts.length + k + 1);
+    try {
+      const fillResponse = await generateWithRetry(
+        [...mainFrameParts, { text: `You returned ${rawClipPrompts.length} of the ${segmentCount} Main Frame prompts. Write ONLY the prompt${missing.length === 1 ? '' : 's'} for clip ${missing.join(', ')} now — each one complete, for its own clip line above, following every rule — separated by ###CLIP### on its own line, in clip order. Do not repeat the earlier clips.` }],
+        multiFrameSystemPrompt,
+        'Main Frame (missing clips)',
+        1,
+      );
+      const extra = collectParsedMainFramePrompts(fillResponse, missing.length).slice(0, missing.length);
+      rawClipPrompts = [...rawClipPrompts, ...extra];
+    } catch (err) {
+      console.warn('Writing the missing main-frame clips failed.', err);
     }
   }
 
@@ -3149,92 +3458,35 @@ ${sceneContext ? `
     return mainFramePrompts;
   })();
 
-  // --- Step 4: VIDEO BOTTOM LABEL (local — no API call) ---
-
-  const headerNameBoardText = resolveNameBoardText(formData, businessInfo);
-  // Extract ONLY logo/name/contacts/address — never dump the full business JSON or any other data.
-  const headerBusinessName = extractBusinessNameFromInfo(businessInfo);
-  const headerContacts = extractContactsFromInfo(businessInfo).slice(0, MAX_LABEL_CONTACTS);
-  const headerAddress = resolveRealAddress(businessInfo, headerBusinessName);
-  // No ratio directive here: a label is a tightly cropped strip laid over a video, not a video frame.
-  const headerSystemPrompt = buildBrandMarkDirective(frameNoLogo, frameNameBoard, 'header')
-    + LOWER_THIRD_SYSTEM_PROMPT({
-      businessType: detectBusinessType(serializedBusinessInfo),
-      adType: formData.adType,
-      festivalName: formData.festivalName,
-      // No logo FILE is no logo, ticked or not — the label never asks for a file that does not exist.
-      noLogo: frameNoLogo,
-      contactCount: headerContacts.length,
-      hasAddress: !!headerAddress,
-      hasWhatsApp: hasWhatsAppNumber(businessInfo),
-      // The client's own photographs may sit at the right edge; with none, the label stays graphic.
-      hasPremisesPhoto: (files.storeImage?.length || 0) > 0,
-      ...labelDesignInputs(formData, sceneContext, coreMessage),
-    });
-  const headerValueLines = [
-    // This block is the literal text the member copies into the image generator, so a "LOGO ="
-    // line here asked for a logo file that was never uploaded however the rules above were worded.
-    // In no-logo mode there is no brand line AT ALL: a "BRAND MARK = <business name>" line sitting
-    // above "NAME = <business name>" is what put the same name in two boxes in the finished header.
-    frameNoLogo
-      ? 'NO BRAND IMAGE — this label has no logo circle and no brand tile; the NAME below is the only branding, and it appears exactly once'
-      : 'LOGO = use the attached logo image exactly as provided, unchanged',
-    headerBusinessName ? `NAME = ${headerBusinessName}` : '',
-    ...headerContacts.map((number, i) => `CONTACT ${i + 1} = ${number}`),
-    headerAddress ? `ADDRESS = ${headerAddress}` : '',
-  ].filter(Boolean);
-  // Explicit negatives for missing fields, so the image generator never fabricates them.
-  const headerMissingLines: string[] = [];
-  if (headerContacts.length === 0) headerMissingLines.push('NO CONTACT NUMBER provided — do NOT show any contact pill and do NOT invent, guess, autocomplete, or fabricate any phone number. The raised right module stays, because it must still cover the watermark.');
-  if (!headerAddress) headerMissingLines.push('NO ADDRESS provided — do NOT show any address strip and do NOT invent, guess, autocomplete, or fabricate any address, street, area, city, pincode, or location. Close that space cleanly.');
-  const headerPrompt = [
-    headerSystemPrompt,
-    "",
-    "REAL CONTENT TO PLACE (use ONLY these EXACT values — do not add anything else, and do not write or invent any field that is not listed here):",
-    ...headerValueLines,
-    ...(headerMissingLines.length ? ["", "MISSING FIELDS (STRICT — NEVER FABRICATE THESE):", ...headerMissingLines] : []),
-  ].join('\n');
+  // --- Step 4: VIDEO BOTTOM LABEL (local — no API call; see buildVideoBottomLabel) ---
+  const headerPrompt = buildVideoBottomLabel({
+    formData,
+    businessInfo,
+    hasLogoFile: !!files.logo,
+    hasPremisesPhoto: (files.storeImage?.length || 0) > 0,
+    sceneContext,
+    coreMessage,
+  });
 
   // Emit partial result: the brand label is ready
   emitPartial({ headerPrompt });
 
-  // --- Step 5: Poster Design Prompt (JSON) — runs concurrently ---
+  // --- Step 5: Poster Design Prompt — runs concurrently (see writeVideoPosterPrompt) ---
+  /*
+    A poster that fails is ONE missing row, not a failed kit. It used to reject the whole run — every
+    frame, script and video prompt thrown away for the sake of the poster — and when the model came back
+    empty the row simply vanished while the status said Completed. It is now asked twice, and if it
+    still fails the kit arrives without it and the poster row says so, with its own Generate button.
+  */
   const posterPromise = (async (): Promise<string> => {
-  const posterSystemPrompt = buildRatioDirective(formData)
-    + buildNameBoardDirective(formData, businessInfo, 'layout')
-    + POSTER_SYSTEM_PROMPT(formData.adType, formData.festivalName, formData.noLogo || false, resolveNameBoardText(formData, businessInfo));
-  const posterContacts = extractContactsFromInfo(businessInfo).slice(0, 2);
-  const posterContactRule = posterContacts.length
-    ? `CONTACT NUMBER(S) — use ONLY these exact number(s), at most two, digit-for-digit; NEVER alter, complete, reorder, merge, or invent any number: ${posterContacts.join('  |  ')}`
-    : `NO CONTACT NUMBER provided — do NOT show or invent any phone number on the poster.`;
-  const posterAddress = resolveRealAddress(businessInfo, extractBusinessNameFromInfo(businessInfo));
-  const posterAddressRule = posterAddress
-    ? `ADDRESS — an address IS provided, so it MUST appear in the poster, on ONE clean line, exactly as given: ${posterAddress}`
-    : `NO ADDRESS provided — do NOT show or invent any address.`;
-  const posterUserPrompt = `Write the poster design prompt for:
-  BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
-  AD TYPE: ${formData.adType}
-  ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName}` : ''}
-  ${posterContactRule}
-  ${posterAddressRule}
-  Write the short, clean, plain-English poster prompt now.`;
-
-  const posterResponse = await callWithFallback(async (ai, model) => {
-    return await ai.models.generateContent({
-      model,
-      contents: [
-          { role: 'user', parts: [{ text: posterUserPrompt }] }
-      ],
-      config: {
-          systemInstruction: posterSystemPrompt
-      }
-    });
-  });
-
-  const posterPrompt = (posterResponse.text || "").trim();
-
-    emitPartial({ posterPrompt });
-    return posterPrompt;
+    try {
+      const posterPrompt = await writeVideoPosterPrompt(formData, businessInfo);
+      emitPartial({ posterPrompt });
+      return posterPrompt;
+    } catch (err) {
+      console.warn('The poster prompt could not be written; the kit continues without it.', err);
+      return '';
+    }
   })();
 
   // --- Step 6: Veo 3 Segment Prompts — runs concurrently ---
@@ -3278,6 +3530,7 @@ ${sceneContext ? `
     // What the video is about and where each clip is set; and what the client's voice note said.
     sceneContext,
     voiceBrief,
+    scriptQa,
   };
 };
 
@@ -3464,11 +3717,10 @@ export const generatePosterPrompt = async (
   }
 
   const posterSystemPrompt = POSTER_SYSTEM_PROMPT(adType, festivalName);
-  const posterContacts = extractContactsFromInfo(businessInfo).slice(0, 2);
-  const posterContactRule = posterContacts.length
-    ? `CONTACT NUMBER(S) — use ONLY these exact number(s), at most two, digit-for-digit; NEVER alter, complete, reorder, merge, or invent any number: ${posterContacts.join('  |  ')}`
-    : `NO CONTACT NUMBER provided — do NOT show or invent any phone number on the poster.`;
-  const posterAddress = resolveRealAddress(businessInfo, extractBusinessNameFromInfo(businessInfo));
+  // The verified facts only — see utils/businessFacts and writeVideoPosterPrompt.
+  const posterFacts = factsFromProfile(businessInfo);
+  const contactRuleText = posterContactRule(posterFacts.phones.slice(0, MAX_LABEL_CONTACTS));
+  const posterAddress = posterFacts.address;
   const posterAddressRule = posterAddress
     ? `ADDRESS — an address IS provided, so it MUST appear in the poster, on ONE clean line, exactly as given: ${posterAddress}`
     : `NO ADDRESS provided — do NOT show or invent any address.`;
@@ -3477,7 +3729,7 @@ export const generatePosterPrompt = async (
   AD TYPE: ${adType}
   ${adType === 'festival' ? `FESTIVAL: ${festivalName}` : ''}
   ${posterInstructions ? `\nUSER POSTER INSTRUCTIONS (IMPORTANT — follow these closely):\n${posterInstructions}` : ''}
-  ${posterContactRule}
+  ${contactRuleText}
   ${posterAddressRule}
   Write the short, clean, plain-English poster prompt now.`;
 
@@ -3493,7 +3745,7 @@ export const generatePosterPrompt = async (
     });
   });
 
-  return (posterResponse.text || "").trim();
+  return stripUnverifiedNumbers((posterResponse.text || "").trim(), verifiedKeys(posterFacts));
 };
 
 // --- Stock Image Prompts (On-Demand, User-Triggered) ---
@@ -3742,6 +3994,7 @@ export const generateOverlayTexts = async (
   }
   const { numberedScript, clipCount } = toNumberedClipScript(voiceOverScript);
   const theme = overlayTheme(context, businessInfo);
+  const allowedNumbers = verifiedKeys(factsFromProfile(businessInfo));
 
   const response = await callWithFallback(async (ai, model) => {
     return await ai.models.generateContent({
@@ -3788,8 +4041,12 @@ Generate the on-screen overlay texts now.` }] }],
       // The image prompt is assembled in code around the model's design note (utils/overlayImage).
       const imageDesign = cleanOverlayDesign(typeof item?.design === 'string' ? item.design : '') || theme.fallback;
       const { design: _design, ...rest } = item || {};
-      return { ...rest, clip, imageDesign, imagePrompt: overlayImagePrompt(String(item?.text || ''), imageDesign, theme.fallback) };
+      // An overlay is printed on the ad: a number on it that the business never gave does not survive.
+      const overlayText = stripUnverifiedNumbers(String(item?.text || ''), allowedNumbers);
+      return { ...rest, text: overlayText, clip, imageDesign, imagePrompt: overlayImagePrompt(overlayText, imageDesign, theme.fallback) };
     })
+    // An overlay that was nothing but an unverified number has nothing left to show.
+    .filter((item) => String(item.text || '').trim())
     .sort((a, b) => a.clip - b.clip);
 
   // The seconds and the spoken line each overlay sits over, so the editor is not holding the script
@@ -4142,82 +4399,6 @@ export function extractBusinessNameFromInfo(info: any): string {
   };
 
   return deepSearch(info, 0);
-}
-
-// Extract phone/contact numbers (deep search). Returns display strings in the order found.
-function extractContactsFromInfo(info: any): string[] {
-  if (!info || typeof info !== 'object') return [];
-  const found: string[] = [];
-  const addFromString = (raw: string) => {
-    if (!raw || /^not\s*provided$/i.test(raw.trim())) return;
-    const matches = raw.match(/\+?\d[\d\s\-()]{6,}\d/g) || [];
-    for (const m of matches) {
-      const digitCount = m.replace(/\D/g, '').length;
-      if (digitCount >= 7 && digitCount <= 15) {
-        const display = m.trim().replace(/\s{2,}/g, ' ');
-        if (!found.some(f => f.replace(/\D/g, '') === display.replace(/\D/g, ''))) {
-          found.push(display);
-        }
-      }
-    }
-  };
-  const isContactKey = (key: string) => {
-    const lk = key.toLowerCase();
-    return (lk.includes('phone') || lk.includes('contact') || lk.includes('mobile') || lk.includes('whatsapp') || lk.includes('number') || lk.includes('cell') || lk.includes('tel')) && !lk.includes('email');
-  };
-  const visit = (obj: any, depth: number, underContactKey: boolean) => {
-    if (obj == null || depth > 6) return;
-    if (typeof obj === 'string') {
-      if (underContactKey) addFromString(obj);
-      return;
-    }
-    if (Array.isArray(obj)) {
-      obj.forEach(v => visit(v, depth + 1, underContactKey));
-      return;
-    }
-    if (typeof obj === 'object') {
-      for (const [key, val] of Object.entries(obj)) {
-        visit(val, depth + 1, underContactKey || isContactKey(key));
-      }
-    }
-  };
-  visit(info, 0, false);
-  return found;
-}
-
-// Extract the address string (deep search for an "address" key).
-function extractAddressFromInfo(info: any): string {
-  if (!info || typeof info !== 'object') return '';
-  const invalid = (v: any) => typeof v !== 'string' || !v.trim() || /^not\s*provided$/i.test(v.trim());
-  let result = '';
-  const visit = (obj: any, depth: number) => {
-    if (result || obj == null || depth > 6 || typeof obj !== 'object') return;
-    for (const [key, val] of Object.entries(obj)) {
-      if (key.toLowerCase().includes('address') && !invalid(val)) { result = String(val).trim(); return; }
-    }
-    for (const val of Object.values(obj)) {
-      if (val && typeof val === 'object') {
-        visit(val, depth + 1);
-        if (result) return;
-      }
-    }
-  };
-  visit(info, 0);
-  return result;
-}
-
-// Resolve a REAL address (drops values that are just the business name / a vague label with no street or pincode).
-function resolveRealAddress(info: any, businessName: string): string {
-  const addr = extractAddressFromInfo(info);
-  if (!addr) return '';
-  const norm = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-  const nName = norm(businessName);
-  const nAddr = norm(addr);
-  const hasRealAddressSignal = /\d/.test(addr) || /\b(road|rd|street|st|nagar|colony|lane|cross|main|opp|near|beside|floor|plot|door|pin|pincode|dist|district|mandal|village|town|city|state|highway|circle|sector|block|phase|market|complex|building)\b/i.test(addr);
-  if (nName && nAddr && !hasRealAddressSignal && (nAddr === nName || nName.includes(nAddr) || nAddr.includes(nName))) {
-    return '';
-  }
-  return addr;
 }
 
 /* ── Meta ads dashboard → the three numbers a client is told ───────────────────────────────── */

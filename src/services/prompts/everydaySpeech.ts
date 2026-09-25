@@ -258,9 +258,17 @@ ${firstListen}
   }
 
   const never = HARD_TELUGU_WORDS.filter((w) => w.shown).map((w) => `${w.word} → ${w.say}`).join("  |  ");
+  /*
+    The register, stated positively. "Talk like the town" alone produced scripts that were simple but
+    careless — the owner called them the worst yet. What the team wants is the voice of an EDUCATED,
+    well-spoken person: the same simple words everyone understands, spoken fluently, correctly and
+    respectfully, the way a good announcer speaks. (Never the word for a glossy finish: it was what
+    once turned scripts formal — see the everyday-speech test.) The quality gate (prompts/scriptQa) judges the
+    same register, so the writer and the judge are held to one standard.
+  */
   return `===== EVERYDAY SPOKEN TELUGU — EVERY WORD (MANDATORY) =====
 
-Write the way people in the town actually TALK — at home, at the shop counter, on the phone — never the way a newspaper, a textbook or a government notice writes. "Premium" is the confidence and warmth of the delivery; it is NEVER fancy or formal words.
+Write the way an EDUCATED, WELL-SPOKEN Telugu person talks to a customer they respect — clear, fluent and confident, yet completely natural: the voice of a good TV or radio ad announcer. Simple words everyone in the town understands, correct grammar, respectful మీరు / మీకు — never the way a newspaper, a textbook or a government notice writes, and never slang or careless street talk. "Premium" is the confidence and warmth of the delivery; it is NEVER fancy or formal words.
 
 ${firstListen}
 

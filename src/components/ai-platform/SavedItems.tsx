@@ -48,6 +48,8 @@ export interface SavedGeneration {
   sceneContext?: SceneContext | null;
   /** The client's voice note, heard and understood — absent when none was attached. */
   voiceBrief?: VoiceBrief | null;
+  /** The voice-over's quality check — see utils/scriptQa. */
+  scriptQa?: import('@/utils/scriptQa').ScriptQaSummary | null;
   /** Whether that pack ad used the client's real photos or a generated location. */
   locationMode?: string | null;
   aspectRatio?: string;

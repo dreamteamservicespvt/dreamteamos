@@ -30,7 +30,8 @@ import SpecialCategoryFields from '@/components/work/SpecialCategoryFields';
 import ModelAttireFields from '@/components/work/ModelAttireFields';
 import PosterSpecFields from '@/components/work/PosterSpecFields';
 import PosterSpecChips from '@/components/work/PosterSpecChips';
-import { categoryDependentPatch, posterEditFieldsOf } from '@/utils/assignmentEdit';
+import { briefEditFieldsOf, briefPatch, categoryDependentPatch, posterEditFieldsOf } from '@/utils/assignmentEdit';
+import AssignmentBriefFields from '@/components/work/AssignmentBriefFields';
 import { categorySwitch } from '@/utils/adRequirement';
 import { isPosterCategory, DEFAULT_POSTER_PRICE, assignmentSizeLabel } from '@/utils/posterSpec';
 import ReassignWork from '@/components/work/ReassignWork';
@@ -98,6 +99,8 @@ export default function TeamLeaderMemberAssignments() {
     characterPack: string; realLocationProvided: boolean; customCharacter: string;
     /** Poster jobs — see utils/assignmentEdit. */
     posterSize: string; posterStyle: string; posterCount: number; festival: string;
+    /** The client's brief — see components/work/AssignmentBriefFields. */
+    businessInfo: string; businessAddress: string; requirementNotes: string;
   } | null>(null);
   const [confirmAction, setConfirmAction] = useState<{ type: 'delete' | 'sendback' | 'unassign'; id: string; assignedTo?: string; title: string; orderId?: string | null } | null>(null);
   const [unassigning, setUnassigning] = useState(false);
@@ -341,6 +344,7 @@ export default function TeamLeaderMemberAssignments() {
       customCharacter: a.customCharacter || '',
       realLocationProvided: a.realLocationProvided === true,
       ...posterEditFieldsOf(a),
+      ...briefEditFieldsOf(a),
     });
   };
 
@@ -363,6 +367,8 @@ export default function TeamLeaderMemberAssignments() {
         language,
         // Duration, clips, the ad spec — or the poster spec. See utils/assignmentEdit.
         ...categoryDependentPatch(editForm),
+        // The brief, written whole — a cleared address is really cleared. See utils/assignmentEdit.
+        ...briefPatch(editForm),
       });
       // Tell the member their brief moved. The AI Platform shows them exactly what changed if they
       // have it open; this is for when they do not, so a spec change is never silent.
@@ -726,6 +732,12 @@ export default function TeamLeaderMemberAssignments() {
                         )}
                       </div>
                     </div>
+
+                    {/* The occasion and the client's brief — Work Assign asked for them; an edit could not change them. */}
+                    <AssignmentBriefFields className="mt-3"
+                      category={editForm.category} festival={editForm.festival}
+                      businessInfo={editForm.businessInfo} businessAddress={editForm.businessAddress} requirementNotes={editForm.requirementNotes}
+                      onChange={(patch) => setEditForm(prev => prev ? { ...prev, ...patch } : prev)} />
 
                     <div className="mt-3 pt-3 border-t border-border flex items-center justify-end gap-2">
                       <button onClick={() => { setEditingId(null); setEditForm(null); }}

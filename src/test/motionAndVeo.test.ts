@@ -3,6 +3,7 @@ import {
   CAMERA_MOVES, SHOT_ANGLES, STAGINGS, assembleVeoPrompt, cameraLabel, clipRoles, compositionFor, fillCast, framingForMotion,
   parseVeoDirections, planClipMotion, resolveDirection, spokenLinesIn, stagingForLine, stagingPath, withoutQuotedSpeech,
   withoutStillness, withoutTravel, VEO_DIRECTION_SYSTEM_PROMPT, MOTION_COMPOSITION_HEADING, withMotionComposition,
+  DUO_SAFE_MOVES, COLOUR_LOCK,
 } from "@/services/prompts/motion";
 import { MULTI_FRAME_SYSTEM_PROMPT, VEO_SEGMENT_SYSTEM_PROMPT, modelVeoSubject } from "@/services/prompts";
 import {
@@ -410,9 +411,12 @@ describe("the Veo prompt", () => {
       manner: s.manner, handGestures: s.handGestures,
     });
     const focused = build2(1);
-    expect(focused).toContain("SPEAKER FOCUS — THE CAMERA FOLLOWS THE CONVERSATION:");
-    expect(focused).toContain("0–4s: the camera eases in toward Motu (on the LEFT of the frame) and pulls focus to Motu while Motu speaks");
-    expect(focused).toContain("4–8s: the camera glides smoothly across toward Patlu (on the RIGHT of the frame)");
+    // Only the focus follows the conversation: a camera easing in on one of them is what grew them.
+    expect(focused).toContain("SPEAKER FOCUS — ONLY THE FOCUS MOVES:");
+    expect(focused).toContain("0–4s: the focus rests on Motu (on the LEFT of the frame) while Motu speaks");
+    expect(focused).toContain("4–8s: the focus rests on Patlu (on the RIGHT of the frame)");
+    expect(focused).toContain("The camera itself does not move toward either of them");
+    expect(focused).not.toMatch(/eases in toward|glides smoothly across toward/);
     expect(focused).toContain("WHO SPEAKS — STRICT, NEVER SWAPPED:");
     expect(spokenLinesIn(focused)).toEqual(["one", "two"]);
     expect(build2(2)).not.toContain("SPEAKER FOCUS");
@@ -462,14 +466,70 @@ describe("the Veo prompt", () => {
     // First, because a video model weighs the opening of a prompt most.
     expect(prompt.indexOf("SCALE LOCK")).toBeLessThan(prompt.indexOf("LOCKED — THE LOOK"));
     expect(prompt).toContain("Motu and Patlu keep EXACTLY the heights");
-    expect(prompt).toContain("BOTH change size together");
+    expect(prompt).toContain("The camera keeps ONE fixed distance and height for the whole clip");
+    expect(prompt).toContain("their feet stay on the same line of floor");
     expect(prompt).toContain("No character moving nearer the lens than the other");
+    expect(prompt).toContain("No character growing taller, stretching, rising onto the toes");
     // A single presenter has no pair to hold, so it is not given the block.
     const solo = assembleVeoPrompt({
       aspectRatio: "9:16", plan: planClipMotion(4, "commercial")[1], identityLock: "her face",
       language: "Telugu", speech: [{ voice: "a warm voice", line: "one" }],
     });
     expect(solo).not.toContain("SCALE LOCK");
+  });
+
+  /**
+   * Motu and Patlu grew in the finished videos because the pair was filmed with dolly-ins, push-ins,
+   * cranes, a low-angle orbit and a camera easing in on the speaker — every one of them changes the
+   * pair's size on screen, and a video model re-draws a cartoon body from scratch as the view changes.
+   */
+  it("films a pair only from a fixed distance, at eye level — whatever the scene plan or the director asks", () => {
+    const choices = [
+      { camera: "orbit", angle: "low_angle" }, { camera: "dolly_in" }, { camera: "crane_up", angle: "worms_eye" },
+      { camera: "push_in" }, { camera: "pedestal" }, null,
+    ];
+    const duo = planClipMotion(6, "commercial", "cartoon", { twoHander: true, choices: choices as never });
+    for (const clip of duo) {
+      expect(DUO_SAFE_MOVES).toContain(clip.camera.key);
+      expect(clip.angle.key).toBe("eye_level");
+      expect(clip.staging.walks).toBe(false);
+      expect(clip.twoHander).toBe(true);
+    }
+    // A single presenter keeps the whole vocabulary.
+    expect(planClipMotion(6, "commercial", "person", { choices: choices as never })[0].camera.key).toBe("orbit");
+
+    const s = packVeoSubject(getCharacterPack("duo_motu_patlu")!);
+    const prompt = assembleVeoPrompt({
+      aspectRatio: "9:16", plan: duo[1], identityLock: s.identityLock, language: "Telugu",
+      speech: s.speech([{ name: "Motu", text: "one" }, { name: "Patlu", text: "two" }]),
+      cast: s.cast, castPlural: s.castPlural, twoHander: true, manner: s.manner, handGestures: s.handGestures,
+      direction: {
+        path: "Motu steps forward proudly toward the camera", camera: "Low angle, the camera dollies in on Motu",
+        beats: ["Patlu rises onto his toes", "b", "c"], sceneLife: "sunlight streams through the window",
+      },
+    });
+    expect(prompt).not.toMatch(/dollies in|Low angle, the camera|steps forward proudly|rises onto his toes|sunlight streams/);
+    expect(prompt).toContain("The camera keeps the SAME distance and the SAME height from both characters for all 8 seconds");
+    expect(prompt).toContain("No zoom, no dolly, no push-in or pull-back, no crane or pedestal, no orbit or arc");
+    expect(prompt).not.toContain("No static or locked-off camera");
+    expect(prompt).toContain("THE PAIR NEVER CHANGES SIZE — THE CAMERA KEEPS ITS DISTANCE");
+  });
+
+  /** Finished videos came back paler and lighter than the frame they were animated from. */
+  it("holds every video to the frame's exact colour and exposure", () => {
+    const solo = assembleVeoPrompt({
+      aspectRatio: "9:16", plan: planClipMotion(4, "commercial")[1], identityLock: "her face",
+      language: "Telugu", speech: [{ voice: "a warm voice", line: "one" }],
+      direction: { path: "", camera: "", beats: [], sceneLife: "soft light shifts across the counter" },
+    });
+    expect(solo).toContain(COLOUR_LOCK);
+    // Near the top — a video model weighs the opening of a prompt most.
+    expect(solo.indexOf("COLOUR AND LIGHT LOCK")).toBeLessThan(solo.indexOf("ACTION —"));
+    expect(solo).toContain("No washed-out, faded, pale, pastel or desaturated colour");
+    expect(solo).not.toContain("soft light shifts");
+    expect(solo).toContain("with the light exactly as the frame has it");
+    // A single presenter is still filmed with a real move.
+    expect(solo).toContain("No static or locked-off camera");
   });
 
   it("gives a deity the catalogue voice and blessings only", () => {
@@ -516,7 +576,20 @@ describe("the director call", () => {
   it("gives a pack its characters' own direction, with the plan winning", () => {
     const p = VEO_DIRECTION_SYSTEM_PROMPT({ clipCount: 2, aspectRatio: "9:16", subject: "Motu and Patlu", characterDirection: "HOW THIS CHARACTER PERFORMS" });
     expect(p).toContain("the planned staging, the world lock and the planned camera always win");
-    expect(p).toContain("When the plan says SPEAKER FOCUS, the camera eases in on whoever is speaking");
+    expect(p).toContain("When the plan says SPEAKER FOCUS, only the focus moves to whoever is speaking");
+  });
+
+  it("tells a pair's director the camera keeps its distance, and a single presenter's that it may move in", () => {
+    const pair = CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT(getCharacterPack("duo_motu_patlu")!, 4);
+    expect(pair).toContain("For this PAIR the camera NEVER changes its distance or height to them");
+    expect(pair).toContain("A PAIR NEVER CHANGES SIZE");
+    const solo = VEO_DIRECTION_SYSTEM_PROMPT({ clipCount: 2, aspectRatio: "9:16", subject: "the model" });
+    expect(solo).toContain("The camera may move closer (dolly in, push in)");
+    // Neither is shown a change of light as an example of scene life any more.
+    for (const prompt of [pair, solo]) {
+      expect(prompt).toContain("THE LIGHT AND COLOUR ARE LOCKED");
+      expect(prompt).not.toContain("light shifting through a window");
+    }
   });
 
   it("tells a deity's director to move slowly and bless", () => {

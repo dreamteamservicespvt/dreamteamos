@@ -1309,6 +1309,8 @@ export const CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT = (
     subject: cast,
     characterDirection: characterDirectionBlock(pack, "video"),
     performer: packPerformer(pack),
+    // A pair is filmed from a fixed distance — the director is told so (prompts/motion DUO_SAFE_MOVES).
+    twoHander: pack.characters.length > 1,
   });
 };
 

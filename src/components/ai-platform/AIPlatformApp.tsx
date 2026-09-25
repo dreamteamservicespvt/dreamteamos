@@ -19,12 +19,15 @@ import PosterConceptsPanel from './PosterConceptsPanel';
 import { DEFAULT_POSTER_SIZE, isPosterCategory, isValidPosterSize, posterSizeLabel } from '@/utils/posterSpec';
 import { AUTO_POSTER_STYLE } from '@/services/posterStyles';
 import { useAssignmentBrief } from '@/hooks/useAssignmentBrief';
-import { briefAsInstructions } from '@/utils/adRequirement';
+import { briefAsInstructions, mergeBriefIntoInstructions } from '@/utils/adRequirement';
+import { assignmentFormSpec, jobClipCount, jobKitSpec, kitSpec, staleKitChanges } from '@/utils/assignmentFormSpec';
 import { CHATGPT_URL, GEMINI_URL } from './generation/mission';
-import { characterPackGroups, getCharacterPack, isCustomPack, isHumanPack, packModelGender } from '@/services/characterPacks';
+import { characterPackGroups, getCharacterPack, isCustomPack, isHumanPack, packModelGender, packSpeakers, withCustomCharacter } from '@/services/characterPacks';
 import { attireOptionsFor, castLabelFor } from '@/utils/adRequirement';
 import { DOCUMENT_ROUTE_HINT } from './FileUpload';
-import { generateAdAssets, generatePosterConcepts, refinePosterConcept, DEFAULT_POSTER_CONCEPT_COUNT, generateStockImagePrompts, refineStockImagePrompt, generateOverlayTexts, refineOverlayImagePrompt, refineSection, refineVoiceOver, refineVeoPrompts, regenerateVeoForClips, SectionType, extractBusinessNameFromInfo } from '@/services/geminiService';
+import { generateAdAssets, generatePosterConcepts, refinePosterConcept, DEFAULT_POSTER_CONCEPT_COUNT, generateStockImagePrompts, refineStockImagePrompt, generateOverlayTexts, refineOverlayImagePrompt, refineSection, refineVoiceOver, refineVeoPrompts, regenerateVeoForClips, SectionType, extractBusinessNameFromInfo, buildVideoBottomLabel, writeVideoPosterPrompt } from '@/services/geminiService';
+import FinalScriptInput, { type FinalScriptProgress, type FinalScriptSection } from './FinalScriptPanel';
+import { finalScriptTemplate } from '@/utils/finalScript';
 import { collection, addDoc, getDocs, getDoc, query, where, serverTimestamp, doc, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/services/firebase';
 import { useAuthStore } from '@/store/authStore';
@@ -188,6 +191,11 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [viewingSavedItem, setViewingSavedItem] = useState<SavedGeneration | null>(null);
+  /**
+   * The spec the kit on screen was generated FOR — set at Start and when a saved kit is restored.
+   * Compared with the job as it stands, it says when the kit is out of date (utils/assignmentFormSpec).
+   */
+  const [kitSpecOnScreen, setKitSpecOnScreen] = useState<AssignmentSpec | null>(null);
   const [isGeneratingStock, setIsGeneratingStock] = useState(false);
   const [stockImageError, setStockImageError] = useState<string | null>(null);
   const [stockImageTheme, setStockImageTheme] = useState<string>('indian');
@@ -197,6 +205,14 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   const [refiningStockIdx, setRefiningStockIdx] = useState<number | null>(null);
   const [isGeneratingOverlay, setIsGeneratingOverlay] = useState(false);
   const [overlayError, setOverlayError] = useState<string | null>(null);
+  /** The Final voice-over script panel, and the progress of the sections it rewrites. */
+  const [finalScriptOpen, setFinalScriptOpen] = useState(false);
+  const [finalScriptProgress, setFinalScriptProgress] = useState<FinalScriptProgress | null>(null);
+  /**
+   * A single deliverable being written on its own — a label, poster or set of video prompts that a
+   * run left missing. Keyed by section; the value is the error when it failed.
+   */
+  const [sectionRegen, setSectionRegen] = useState<Partial<Record<'header' | 'poster' | 'veo', 'run' | string>>>({});
   /** Overlay Text Image Generator — which overlay's prompt was copied / is being refined (index in overlayTexts). */
   const [copiedOverlayIdx, setCopiedOverlayIdx] = useState<number | null>(null);
   const [overlayRefineIdx, setOverlayRefineIdx] = useState<number | null>(null);
@@ -251,61 +267,17 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
    * and leave others on the old job.
    */
   const applyAssignmentSpec = useCallback((a: WorkAssignment) => {
+    // One list of what a job decides — utils/assignmentFormSpec. The restore of a saved kit applies
+    // the same list on top of what it restores, so the two can never disagree about a field.
+    const spec = assignmentFormSpec(a);
     // The festival picker is two pieces of state (the dropdown and the "other" box), so it is set
     // here alongside the form rather than left on whatever the member last looked at.
-    if (a.festival) {
-      const listed = WISHES_FESTIVALS.includes(a.festival);
-      setSelectedFestivalOption(listed ? a.festival : CUSTOM_FESTIVAL_OPTION);
-      setCustomFestivalName(listed ? '' : a.festival);
+    if (spec.festivalPicker) {
+      setSelectedFestivalOption(spec.festivalPicker.option);
+      setCustomFestivalName(spec.festivalPicker.custom);
     }
-    const poster = isPosterCategory(a.category);
-    if (poster) setCreationMode('poster');
-    const clips = a.clipCount || Math.max(1, Math.floor((parseInt(a.duration) || 16) / 8));
-    const seconds = Math.min(120, Math.max(8, clips * 8));
-    const isPreset = [16, 32, 48, 64].includes(seconds);
-
-    setFormData(prev => ({
-      ...prev,
-      duration: seconds,
-      durationMode: isPreset ? 'preset' : 'custom',
-      // Ad type is always implied by the category — the admin already decided Wishes vs Promotional.
-      adType: a.category === 'wishes' ? AdType.FESTIVAL : AdType.COMMERCIAL,
-      // Each of these applies only when the assignment actually specifies it, so an older
-      // assignment created before these fields existed stays fully editable exactly as before.
-      ...(a.modelGender ? { gender: a.modelGender as ModelGender } : {}),
-      ...(a.attireType ? { attireType: a.attireType as AttireType } : {}),
-      ...(a.attireType === AttireType.CUSTOM && a.customAttire ? { customAttire: a.customAttire } : {}),
-      ...(a.aspectRatio ? { aspectRatio: a.aspectRatio } : {}),
-      // On a poster job the language is the language of the words ON the poster.
-      ...(a.language ? (poster ? { posterTextLanguage: a.language } : { language: a.language }) : {}),
-      ...(poster ? {
-        posterSize: a.posterSize || DEFAULT_POSTER_SIZE,
-        posterStyle: a.posterStyle || AUTO_POSTER_STYLE,
-        posterOccasion: a.festival || '',
-      } : {}),
-      // The occasion was agreed with the client at sale time and themes the entire ad, so the
-      // member opens on it rather than choosing a festival nobody bought.
-      ...(a.festival ? { festivalName: a.festival } : {}),
-      // A special category was sold, not chosen here — the member opens straight on the right
-      // treatment rather than having to know that this particular job is a cartoon-duo ad.
-      ...(a.characterPack ? { characterPack: a.characterPack } : { characterPack: undefined }),
-      // Who a custom character is was said on the sale call; the member builds exactly that one.
-      ...(a.customCharacter ? { customCharacter: a.customCharacter } : {}),
-      /*
-        Where the ad is set — carried on EVERY ad job now, not only a pack one.
-
-        This used to be applied only alongside a character pack, so a normal ad opened with no
-        location mode at all and the generator built the location from the business profile
-        regardless of what the client had been asked to send. A member with a chat full of shop
-        photographs had no way to tell the pipeline to use them.
-
-        An assignment made before this existed carries no flag; `realLocationProvided` reads as
-        false there, which is a built location — which is what those ads in fact got.
-      */
-      ...(a.realLocationProvided === undefined
-        ? {}
-        : { locationMode: (a.realLocationProvided ? 'real_provided' : 'ai_generated') as LocationMode }),
-    }));
+    if (spec.poster) setCreationMode('poster');
+    setFormData(prev => ({ ...prev, ...spec.form }));
   }, []);
 
   /**
@@ -384,21 +356,28 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   const assignmentBrief = useAssignmentBrief(assignment);
   /** Exactly the brief text this component last wrote into BUSINESS CONTENT. */
   const appliedBriefText = useRef<string>('');
+  const briefBusinessName = assignment?.businessName || assignment?.clientName || '';
   useEffect(() => {
     if (!assignment || assignmentBrief.loading) return;
-    const text = briefAsInstructions(assignmentBrief.businessInfo, assignmentBrief.businessAddress);
+    const text = briefAsInstructions(assignmentBrief.businessInfo, assignmentBrief.businessAddress, {
+      businessName: briefBusinessName, notes: assignmentBrief.notes,
+    });
     if (!text || text === appliedBriefText.current) return;
     const previous = appliedBriefText.current;
     appliedBriefText.current = text;
+    /*
+      A corrected brief reaches the member even when they have written in the box: the old brief is
+      replaced where it stands, or the new one goes on top (utils/adRequirement mergeBriefIntoInstructions).
+      It used to be applied only to an empty or untouched box, so one added line meant the admin's
+      corrected address never arrived.
+    */
     setFormData(prev => {
-      const current = prev.textInstructions.trim();
-      // Ours to update: the box is empty, or it still holds exactly the brief we put there.
-      if (!current || current === previous.trim()) return { ...prev, textInstructions: text };
-      return prev;
+      const merged = mergeBriefIntoInstructions(prev.textInstructions, previous, text);
+      return merged === prev.textInstructions ? prev : { ...prev, textInstructions: merged };
     });
     // Keyed on the job and on the brief arriving; the assignment object itself changes every snapshot.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assignment?.id, assignmentBrief.loading, assignmentBrief.businessInfo, assignmentBrief.businessAddress]);
+  }, [assignment?.id, assignmentBrief.loading, assignmentBrief.businessInfo, assignmentBrief.businessAddress, assignmentBrief.notes, briefBusinessName]);
   /** The selected cartoon duo, or null for a normal human-model ad. */
   const activePack = getCharacterPack(formData.characterPack);
 
@@ -461,19 +440,39 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     }
   }, [outputs?.businessInfo]);
 
-  // Auto-load the last saved generation when opening from an assignment
+  /**
+   * Auto-load the last saved generation when a job OPENS — and only then.
+   *
+   * ── The "completed, but some deliverables are missing" glitch ─────────────────────────────────
+   * This used to run whenever the job's `savedGenerationId` changed. Every finished run changes it:
+   * the run saves a new document and points the job at it. So a moment after each run, this effect
+   * read that document back and replaced everything on screen with it — while the B-roll and overlay
+   * prompts were still being written. Whichever of the two landed last won. On a fast connection the
+   * read-back usually came first and nothing was lost; on mobile data the B-roll or the overlays
+   * arrived first and were wiped, and the status still said Completed.
+   *
+   * It now restores only a document this screen is not already showing, and only when nothing is on
+   * screen yet — which is exactly "reopening the job".
+   */
+  const outputsOnScreen = !!outputs;
   useEffect(() => {
-    if (!assignment?.savedGenerationId) return;
+    const id = assignment?.savedGenerationId;
+    if (!id || id === generationDocIdRef.current || outputsOnScreen || status.isProcessing) return;
+    let cancelled = false;
     (async () => {
       try {
-        const snap = await getDoc(doc(db, 'ai_generations', assignment.savedGenerationId!));
-        if (!snap.exists()) return;
+        const snap = await getDoc(doc(db, 'ai_generations', id));
+        if (cancelled || !snap.exists()) return;
+        // Something may have been generated while the read was in flight — that work wins.
+        if (generationDocIdRef.current && generationDocIdRef.current !== id) return;
         const item = { id: snap.id, ...snap.data() } as SavedGeneration;
         restoreGeneration(item, true);
       } catch (e) {
         console.error('Failed to auto-load saved generation:', e);
       }
     })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assignment?.savedGenerationId]);
 
   const loadSavedItems = async () => {
@@ -517,6 +516,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     frameInstructions: formData.frameInstructions || '',
     sceneContext: o.sceneContext || null,
     voiceBrief: o.voiceBrief || null,
+    scriptQa: o.scriptQa || null,
     locationMode: formData.locationMode || null,
     gender: formData.gender || ModelGender.FEMALE,
     attireType: formData.attireType,
@@ -614,6 +614,9 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     savedFingerprintRef.current = '';
     setViewingSavedItem(item);
     setVoiceOverRevision(null);
+    // A different kit: nothing on it was updated from a final script, and no section is being rewritten.
+    setFinalScriptProgress(null);
+    setSectionRegen({});
     setOutputs({
       businessInfo: item.businessInfo,
       mainFramePrompts: item.mainFramePrompts || [],
@@ -629,6 +632,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       coreMessage: item.coreMessage || null,
       sceneContext: item.sceneContext || null,
       voiceBrief: item.voiceBrief || null,
+      scriptQa: item.scriptQa || null,
     });
     setFormData(prev => ({
       ...prev,
@@ -657,6 +661,21 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     if (!posterJob && (item.creationMode === 'video' || item.creationMode === 'poster')) {
       setCreationMode(item.creationMode);
     }
+    /*
+      The JOB decides every field it specifies — applied after the saved settings, so a kit made
+      before an admin changed the attire can no longer put the old attire back into a locked field.
+      The kit itself is kept (it is the member's work), and the banner above the deliverables says
+      what it was made for, if that is no longer the job.
+    */
+    if (assignment) applyAssignmentSpec(assignment);
+    const savedClips = item.veoPrompts?.length || item.mainFramePrompts?.length || Math.round((item.duration || 16) / 8);
+    setKitSpecOnScreen(kitSpec({
+      adType: item.adType, festivalName: item.festivalName, gender: item.gender, attireType: item.attireType,
+      customAttire: item.customAttire, aspectRatio: item.aspectRatio, language: item.language,
+      characterPack: item.characterPack ?? undefined, customCharacter: item.customCharacter,
+      locationMode: item.locationMode ?? undefined, posterSize: item.posterSize, posterStyle: item.posterStyle,
+      posterOccasion: item.posterOccasion, posterTextLanguage: item.posterTextLanguage,
+    }, savedClips, item.creationMode === 'poster'));
   };
 
   const handleSelectSavedItem = (item: SavedGeneration) => {
@@ -945,6 +964,14 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     const stopped = () => controller.signal.aborted;
     const runStartedAt = Date.now();
     const runProfile = currentRunProfile();
+    // What this kit is being made for — so a later change to the job can be shown against it.
+    const runSpec = kitSpec({
+      adType: formData.adType, festivalName: formData.festivalName, gender: formData.gender,
+      attireType: formData.attireType, customAttire: formData.customAttire, aspectRatio: formData.aspectRatio,
+      language: formData.language, characterPack: formData.characterPack || '', customCharacter: formData.customCharacter,
+      locationMode: formData.locationMode ?? null, posterSize: formData.posterSize, posterStyle: formData.posterStyle,
+      posterOccasion: formData.posterOccasion, posterTextLanguage: formData.posterTextLanguage,
+    }, runProfile.clipCount, creationMode === 'poster');
     setErrorModalDismissed(false);
     setStatus({ step: 'Initializing...', isProcessing: true, error: null, progress: 0 });
     setOutputs(null);
@@ -953,6 +980,9 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     setMissionDone({});
     setGuideOpen(false);
     setVoiceOverRevision(null);
+    setFinalScriptProgress(null);
+    setFinalScriptOpen(false);
+    setSectionRegen({});
     setTimeout(() => outputPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
     /** Each reported percent is a checkpoint the countdown re-anchors on. */
     const checkpoints: Checkpoint[] = [{ percent: 0, at: runStartedAt }];
@@ -981,6 +1011,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       // is not what the member is looking at any more.
       if (stopped()) throw new Error('Generation stopped by user');
       setOutputs(generatedResult);
+      setKitSpecOnScreen(runSpec);
       setStatus(prev => ({ ...prev, isProcessing: false, step: 'Completed', progress: 100 }));
       // Part of the kit, not an afterthought — and they read this run's result, not state.
       if (creationMode === 'video' && generatedResult.voiceOverScript) {
@@ -1047,18 +1078,22 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     }
   };
 
-  const handleGenerateStockImages = async (source?: GeneratedOutputs) => {
+  /** Writes the B-roll prompts from a kit (this run's, before state has it, or the one on screen). True when they arrived. */
+  const handleGenerateStockImages = async (source?: GeneratedOutputs): Promise<boolean> => {
     const from = source ?? outputs;
-    if (!from || !from.voiceOverScript) return;
+    if (!from || !from.voiceOverScript) return false;
     setIsGeneratingStock(true);
     setStockImageError(null);
     try {
       const clipCount = from.veoPrompts?.length || from.mainFramePrompts?.length || Math.round(formData.duration / 8);
       const stockPrompts = await generateStockImagePrompts(from.voiceOverScript, from.businessInfo, formData.adType, formData.festivalName, stockImageTheme, formData.aspectRatio, clipCount,
         { sceneContext: from.sceneContext, coreMessage: from.coreMessage });
-      setOutputs(prev => prev ? { ...prev, stockImagePrompts: stockPrompts } : prev);
+      // Only onto the script they were written for — a newer final script may have replaced it meanwhile.
+      setOutputs(prev => prev && prev.voiceOverScript === from.voiceOverScript ? { ...prev, stockImagePrompts: stockPrompts } : prev);
+      return true;
     } catch (error: any) {
       setStockImageError(error.message || 'Failed to generate stock image prompts.');
+      return false;
     } finally {
       setIsGeneratingStock(false);
     }
@@ -1087,18 +1122,123 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   };
 
   // #14 — generate per-clip on-screen overlay texts + CapCut SFX suggestions
-  const handleGenerateOverlayTexts = async (source?: GeneratedOutputs) => {
+  const handleGenerateOverlayTexts = async (source?: GeneratedOutputs): Promise<boolean> => {
     const from = source ?? outputs;
-    if (!from || !from.voiceOverScript) return;
+    if (!from || !from.voiceOverScript) return false;
     setIsGeneratingOverlay(true);
     setOverlayError(null);
     try {
       const items = await generateOverlayTexts(from.voiceOverScript, from.businessInfo, formData.language, overlayDesignContext(from));
-      setOutputs(prev => prev ? { ...prev, overlayTexts: items } : prev);
+      setOutputs(prev => prev && prev.voiceOverScript === from.voiceOverScript ? { ...prev, overlayTexts: items } : prev);
+      return true;
     } catch (error: any) {
       setOverlayError(error.message || 'Failed to generate overlay texts.');
+      return false;
     } finally {
       setIsGeneratingOverlay(false);
+    }
+  };
+
+  /** The clips the kit on screen was built for — the frames it has, else the job's own count. */
+  const kitClipCount = () => outputs?.mainFramePrompts?.length || outputs?.veoPrompts?.length
+    || (assignment && !isPosterCategory(assignment.category) ? jobClipCount(assignment) : Math.max(1, Math.round((formData.duration || 16) / 8)));
+
+  /**
+   * One section rewritten from a final script — the video prompts, the B-roll or the overlays — with
+   * its progress recorded against this apply only, so a later apply is never marked by an earlier one.
+   */
+  const runFinalScriptSection = async (section: FinalScriptSection, kit: GeneratedOutputs, appliedAt: number) => {
+    const mark = (state: 'run' | 'done' | 'error') => setFinalScriptProgress(prev => (
+      prev && prev.appliedAt === appliedAt ? { ...prev, sections: { ...prev.sections, [section]: state } } : prev
+    ));
+    mark('run');
+    let ok = false;
+    try {
+      if (section === 'veo') {
+        // Every clip, from the frames already made — only the words changed, not the pictures.
+        const fresh = await regenerateVeoForClips(kit.voiceOverScript, formData, kit.mainFramePrompts || [], undefined, kit.sceneContext);
+        setOutputs(prev => {
+          if (!prev || prev.voiceOverScript !== kit.voiceOverScript) return prev;
+          const veoPrompts = [...(prev.veoPrompts || [])];
+          fresh.forEach(({ index, prompt }) => { veoPrompts[index] = prompt; });
+          return { ...prev, veoPrompts: veoPrompts.slice(0, Math.max(fresh.length, 1)) };
+        });
+        ok = fresh.length > 0;
+      } else if (section === 'stock') {
+        ok = await handleGenerateStockImages(kit);
+      } else {
+        ok = await handleGenerateOverlayTexts(kit);
+      }
+    } catch (e) {
+      console.error(`Rewriting ${section} from the final script failed:`, e);
+      ok = false;
+    }
+    mark(ok ? 'done' : 'error');
+  };
+
+  /** The member's final script becomes the voice-over, and 5 · 6 · 7 are rewritten from it. */
+  const handleApplyFinalScript = (script: string) => {
+    if (!outputs) return;
+    const appliedAt = Date.now();
+    const kit: GeneratedOutputs = { ...outputs, voiceOverScript: script };
+    setOutputs(prev => (prev ? { ...prev, voiceOverScript: script } : prev));
+    setVoiceOverRevision(null);
+    setFinalScriptProgress({ appliedAt, sections: { veo: 'run', stock: 'run', overlay: 'run' } });
+    (['veo', 'stock', 'overlay'] as FinalScriptSection[]).forEach(section => { void runFinalScriptSection(section, kit, appliedAt); });
+  };
+
+  const handleRetryFinalScriptSection = (section: FinalScriptSection) => {
+    if (!outputs || !finalScriptProgress) return;
+    void runFinalScriptSection(section, outputs, finalScriptProgress.appliedAt);
+  };
+
+  /** A label missing from a kit, rebuilt on its own — it is assembled in code, so it is instant. */
+  const handleRegenerateHeader = () => {
+    if (!outputs) return;
+    const headerPrompt = buildVideoBottomLabel({
+      formData, businessInfo: outputs.businessInfo, hasLogoFile: !!files.logo,
+      hasPremisesPhoto: files.storeImage.length > 0, sceneContext: outputs.sceneContext, coreMessage: outputs.coreMessage,
+    });
+    setOutputs(prev => (prev ? { ...prev, headerPrompt } : prev));
+  };
+
+  const clearSectionRegen = (key: 'header' | 'poster' | 'veo') => setSectionRegen(prev => {
+    const next = { ...prev };
+    delete next[key];
+    return next;
+  });
+
+  /** A poster missing from a kit, written on its own from the same verified facts. */
+  const handleRegeneratePoster = async () => {
+    if (!outputs) return;
+    setSectionRegen(prev => ({ ...prev, poster: 'run' }));
+    try {
+      const posterPrompt = await writeVideoPosterPrompt(formData, outputs.businessInfo);
+      setOutputs(prev => (prev ? { ...prev, posterPrompt } : prev));
+      clearSectionRegen('poster');
+    } catch (e: any) {
+      setSectionRegen(prev => ({ ...prev, poster: e?.message || 'The poster prompt could not be written. Try again.' }));
+    }
+  };
+
+  /** Video prompts missing from a kit — only the clips that have none, from their own frames. */
+  const handleRegenerateVeo = async () => {
+    if (!outputs?.voiceOverScript) return;
+    const frames = outputs.mainFramePrompts || [];
+    const have = outputs.veoPrompts || [];
+    const missing = frames.map((_, i) => i).filter(i => !have[i]?.trim());
+    setSectionRegen(prev => ({ ...prev, veo: 'run' }));
+    try {
+      const fresh = await regenerateVeoForClips(outputs.voiceOverScript, formData, frames, missing.length > 0 ? missing : undefined, outputs.sceneContext);
+      setOutputs(prev => {
+        if (!prev) return prev;
+        const veoPrompts = [...(prev.veoPrompts || [])];
+        fresh.forEach(({ index, prompt }) => { veoPrompts[index] = prompt; });
+        return { ...prev, veoPrompts };
+      });
+      clearSectionRegen('veo');
+    } catch (e: any) {
+      setSectionRegen(prev => ({ ...prev, veo: e?.message || 'The video prompts could not be written. Try again.' }));
     }
   };
 
@@ -1153,33 +1293,75 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
    * The shape a pasted final script must take for THIS job — the same shape the script is written
    * in wherever it is written, and the same one utils/dialogueFormat reads back.
    */
-  const customScriptTemplate = (() => {
-    const speakers = activePack?.characters ?? [];
-    if (speakers.length > 1) {
-      return [
-        'clip-1[0-8sec]:',
-        `[${speakers[0].name}]: first line`,
-        `[${speakers[1].name}]: reply`,
-        'clip-2[8-16sec]:',
-        `[${speakers[0].name}]: …`,
-        `[${speakers[1].name}]: …`,
-      ].join('\n');
-    }
-    if (speakers.length === 1) {
-      return [
-        'clip-1[0-8sec]:',
-        `[${speakers[0].name}]: first spoken line`,
-        'clip-2[8-16sec]:',
-        `[${speakers[0].name}]: second spoken line`,
-      ].join('\n');
-    }
-    return 'clip-1[0-8sec]: first spoken line\nclip-2[8-16sec]: second spoken line';
+  /** Who speaks in this ad, as a script labels them — the same list the generator reads (packFor). */
+  const scriptSpeakers = (() => {
+    const pack = withCustomCharacter(getCharacterPack(formData.characterPack), formData.customCharacter);
+    return pack ? packSpeakers(pack) : [];
   })();
+  const customScriptTemplate = finalScriptTemplate(scriptSpeakers, kitClipCount());
+
+  /**
+   * Where each deliverable stands. A row used to be drawn only when it had content, so a section that
+   * failed or came back empty simply was not there while the status said Completed — nobody could
+   * tell a missing poster from a kit that never had one. Every row is drawn now, and says so.
+   */
+  const rowState = (key: 'mainFrame' | 'header' | 'poster' | 'voiceOver' | 'veo' | 'stock' | 'overlay', has: boolean): RowState => {
+    const regen = key === 'header' || key === 'poster' || key === 'veo' ? sectionRegen[key] : undefined;
+    if ((key === 'stock' && isGeneratingStock) || (key === 'overlay' && isGeneratingOverlay) || regen === 'run') {
+      return { tone: 'run', label: finalScriptProgress?.sections[key as FinalScriptSection] === 'run' ? 'Regenerating…' : 'Writing…' };
+    }
+    const fromScript = key === 'veo' || key === 'stock' || key === 'overlay' ? finalScriptProgress?.sections[key] : undefined;
+    if (fromScript === 'run') return { tone: 'run', label: 'Regenerating…' };
+    if (fromScript === 'error') return { tone: 'bad', label: 'Update failed' };
+    if (typeof regen === 'string') return { tone: 'bad', label: 'Failed' };
+    if ((key === 'stock' && stockImageError) || (key === 'overlay' && overlayError)) return { tone: 'bad', label: 'Failed' };
+    if (!has) return status.isProcessing ? { tone: 'run', label: 'Writing…' } : { tone: 'wait', label: 'Missing' };
+    if (fromScript === 'done') return { tone: 'ok', label: 'Updated from final script' };
+    if (key === 'voiceOver' && finalScriptProgress) return { tone: 'ok', label: 'Final script applied' };
+    if (key === 'voiceOver' && outputs?.scriptQa) {
+      return { tone: outputs.scriptQa.passed ? 'ok' : 'wait', label: `Script QA ${outputs.scriptQa.score}/10` };
+    }
+    return null;
+  };
+  /** Clips that have a frame but no video prompt — a partial row says how many, and writes only those. */
+  const veoGaps = outputs
+    ? Math.max(0, (outputs.mainFramePrompts?.length || 0) - (outputs.veoPrompts || []).filter(p => p?.trim()).length)
+    : 0;
 
   /** The shut Configuration panel says what the run is set to, not what the panel contains. */
   const configSummary = creationMode === 'poster'
     ? `Poster · ${posterSizeLabel(formData.posterSize || DEFAULT_POSTER_SIZE)} · ${formData.posterTextLanguage || 'English'}`
     : `${formData.adType === AdType.FESTIVAL ? 'Festival wishes' : 'Commercial'} · ${formData.aspectRatio} · ${formData.duration}s · ${formData.language || 'Telugu'}`;
+
+  /** The job strip under the header: whose ad this is, what kind, and how many clips. */
+  const jobStrip = (() => {
+    const name = assignment?.businessName?.trim() || assignment?.clientName?.trim()
+      || extractBusinessNameFromInfo(outputs?.businessInfo) || assignment?.displayTitle?.trim() || 'New ad';
+    const facts: string[] = [];
+    if (creationMode === 'poster') {
+      facts.push('Poster');
+      facts.push(posterSizeLabel(formData.posterSize || DEFAULT_POSTER_SIZE));
+      if (formData.posterOccasion?.trim()) facts.push(formData.posterOccasion.trim());
+      facts.push(formData.posterTextLanguage || 'English');
+    } else {
+      const category = assignment?.category
+        ? assignment.category.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+        : formData.adType === AdType.FESTIVAL ? 'Wishes' : 'Promotional';
+      facts.push(formData.adType === AdType.FESTIVAL && formData.festivalName.trim()
+        ? `${category} · ${formData.festivalName.trim()}` : category);
+      facts.push(activePack ? activePack.label : 'Normal ad');
+      const clips = assignment && !isPosterCategory(assignment.category) ? jobClipCount(assignment) : runClipCount();
+      facts.push(`${clips} clip${clips === 1 ? '' : 's'} + EC · ${clips * 8}s`);
+      facts.push(formData.aspectRatio);
+      facts.push(formData.language || 'Telugu');
+    }
+    return { name, facts };
+  })();
+
+  /** What the job says now that the kit on screen was not made for — empty when they still match. */
+  const staleChanges = assignment && outputs && !status.isProcessing
+    ? staleKitChanges(kitSpecOnScreen, jobKitSpec(assignment))
+    : [];
 
   return (
     <div className="adgen fixed inset-0 z-50 flex flex-col overflow-hidden">
@@ -1244,23 +1426,6 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
           </div>
         </div>
 
-        {/* what this run is — and, while it runs, where it has got to */}
-        {assignment && (
-          <>
-            <span className="hidden 2xl:block w-px h-7 bg-white/10 shrink-0" />
-            {/* The only block allowed to shrink — and only the name inside it, by truncating. */}
-            <div className="hidden 2xl:flex items-center gap-2.5 min-w-0">
-              <span className="text-sm font-semibold text-slate-200 truncate max-w-[180px]">{assignment.businessName || assignment.displayTitle}</span>
-              <span className="ag-chip shrink-0 whitespace-nowrap">
-                <span className="capitalize">{assignment.category}</span>
-                <span className="opacity-40">·</span>
-                <span>{isPosterCategory(assignment.category) ? posterSizeLabel(assignment.posterSize) : `${assignment.clipCount} clips + EC`}</span>
-              </span>
-              <span className="ag-mono text-[10px] ag-muted shrink-0">{assignment.uniqueId}</span>
-            </div>
-          </>
-        )}
-
         <div className="flex-1 min-w-[8px]" />
 
         {status.isProcessing ? (
@@ -1299,7 +1464,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
           {user?.name && (
             <div className="hidden 2xl:flex items-center gap-2.5 pl-2.5 ml-0.5 border-l border-white/10 shrink-0">
               <span className={cn("w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-bold text-white", BRAND_GRADIENT)}>
-                {user.name.trim().split(/s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase()}
+                {user.name.trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase()}
               </span>
               <span className="leading-tight min-w-0">
                 <span className="block text-[13px] font-semibold text-slate-100 truncate max-w-[110px]">{user.name}</span>
@@ -1312,6 +1477,31 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
           </button>
         </div>
         <div className="ag-hairline absolute inset-x-0 -bottom-px" />
+      </div>
+
+      {/*
+        WHICH AD THIS IS — at every width.
+
+        The business, the kind of ad, the special category and the number of clips used to sit in the
+        header, and the one-row header hid them below 2xl to stay on one line — so on an ordinary
+        laptop a member with three jobs open could not tell which one they were in. They live on their
+        own slim line now, which nothing else competes for.
+      */}
+      <div data-test="job-strip" className="ag-jobstrip shrink-0">
+        <div className="max-w-[1520px] mx-auto px-3 sm:px-6 lg:px-10 h-9 flex items-center gap-2 min-w-0">
+          <span data-test="job-strip-name" className="text-[13px] sm:text-sm font-semibold text-white truncate min-w-0 max-w-[48%] sm:max-w-[40%]"
+            title={jobStrip.name}>
+            {jobStrip.name}
+          </span>
+          <div className="flex items-center gap-1.5 min-w-0 overflow-x-auto ag-noscroll">
+            {jobStrip.facts.map(fact => (
+              <span key={fact} className="ag-chip h-6 px-2 text-[11px] shrink-0 whitespace-nowrap">{fact}</span>
+            ))}
+          </div>
+          {assignment?.uniqueId && (
+            <span className="ag-mono text-[10px] ag-muted shrink-0 ml-auto hidden sm:block">{assignment.uniqueId}</span>
+          )}
+        </div>
       </div>
 
       {/* Main Content - Scrollable */}
@@ -2348,10 +2538,27 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       </button>
                     </div>
                   </div>
+                  {/* The job changed after this kit was made — say exactly what, so nobody delivers the old spec. */}
+                  {staleChanges.length > 0 && (
+                    <div data-test="stale-kit" role="status"
+                      className="mb-3 rounded-[14px] border border-amber-400/30 bg-amber-400/[0.07] px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+                      <AlertCircle className="w-4 h-4 text-amber-300 shrink-0" />
+                      <div className="min-w-0 flex-1 text-[13px] text-amber-100">
+                        <p className="font-semibold">This kit was made for an earlier version of the job.</p>
+                        <p className="text-[12px] text-amber-200/90 mt-0.5 break-words">
+                          {staleChanges.map(c => `${c.label}: ${c.from} → ${c.to}`).join(' · ')}
+                        </p>
+                      </div>
+                      <button type="button" onClick={handleGenerate} disabled={status.isProcessing}
+                        className="ag-btn ag-btn--primary ag-btn--sm shrink-0">
+                        <Rocket className="w-3.5 h-3.5" />Generate again
+                      </button>
+                    </div>
+                  )}
                   <div className="space-y-2.5">
                   {creationMode === 'video' && outputs.mainFramePrompts?.length > 0 && (
                       <OutputSection title={`1. Main Frame Prompts (${outputs.mainFramePrompts.length} Clips)`} sectionKey="mainFrame"
-                        icon={ImageIcon}
+                        icon={ImageIcon} state={rowState('mainFrame', true)}
                         subtitle="One tab per clip, in order. Main Frame prompt 1 goes into tab 1, prompt 2 into tab 2, and so on."
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                         isDark={isDark}
@@ -2363,9 +2570,19 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       </OutputSection>
                   )}
 
+                  {creationMode === 'video' && !(outputs.mainFramePrompts?.length > 0) && (
+                      <OutputSection title="1. Main Frame Prompts" sectionKey="mainFrame" icon={ImageIcon} empty
+                        subtitle="One tab per clip, in order."
+                        state={rowState('mainFrame', false)}
+                        collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection} isDark={isDark}
+                        actions={!status.isProcessing ? (
+                          <button type="button" onClick={handleGenerate} className="ag-btn ag-btn--secondary ag-btn--sm h-9"><Rocket className="w-3.5 h-3.5" />Generate again</button>
+                        ) : undefined} />
+                  )}
+
                   {creationMode === 'video' && outputs.headerPrompt && (
                       <OutputSection title="2. Video Bottom Label" sectionKey="header"
-                        icon={TypeIcon}
+                        icon={TypeIcon} state={rowState('header', true)}
                         subtitle="Text for the bottom label to be added in the video."
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                         isDark={isDark} copyContent={outputs.headerPrompt}>
@@ -2374,15 +2591,35 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       </OutputSection>
                   )}
 
+                  {creationMode === 'video' && !outputs.headerPrompt && (
+                      <OutputSection title="2. Video Bottom Label" sectionKey="header" icon={TypeIcon} empty
+                        subtitle="Text for the bottom label to be added in the video."
+                        state={rowState('header', false)}
+                        collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection} isDark={isDark}
+                        actions={!status.isProcessing ? (
+                          <button type="button" onClick={handleRegenerateHeader} className="ag-btn ag-btn--secondary ag-btn--sm h-9"><Sparkles className="w-3.5 h-3.5" />Generate</button>
+                        ) : undefined} />
+                  )}
+
                   {creationMode === 'video' && outputs.posterPrompt && (
                       <OutputSection title="3. Poster Design" sectionKey="poster"
-                        icon={PenTool}
+                        icon={PenTool} state={rowState('poster', true)}
                         subtitle="Poster design prompt for the promotional poster."
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                         isDark={isDark} copyContent={outputs.posterPrompt}>
                         <GeneratedCard title="Poster" content={outputs.posterPrompt} isJson sectionType="poster"
                           showRefinement={true} onRefine={(i) => handleRefineSection('poster', i)} isRefining={refiningSection === 'poster'} hideTitle />
                       </OutputSection>
+                  )}
+
+                  {creationMode === 'video' && !outputs.posterPrompt && (
+                      <OutputSection title="3. Poster Design" sectionKey="poster" icon={PenTool} empty
+                        subtitle="Poster design prompt for the promotional poster."
+                        state={rowState('poster', false)}
+                        collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection} isDark={isDark}
+                        actions={!status.isProcessing ? (
+                          <button type="button" onClick={() => void handleRegeneratePoster()} disabled={sectionRegen.poster === 'run'} className="ag-btn ag-btn--secondary ag-btn--sm h-9">{sectionRegen.poster === 'run' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}Generate</button>
+                        ) : undefined} />
                   )}
 
                   {creationMode === 'video' && outputs.voiceOverScript && (() => {
@@ -2393,7 +2630,21 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       // the whole-script copy and the per-clip copies read the same way.
                       return (
                       <OutputSection title={`4. Voice Over Script (${formData.language || 'Telugu'})`} sectionKey="voiceOver"
-                        icon={Mic}
+                        icon={Mic} state={rowState('voiceOver', true)}
+                        footer={
+                          /* A script finished elsewhere — the client's, or corrected in ChatGPT / Gemini — goes in here. */
+                          <FinalScriptInput
+                            speakers={scriptSpeakers}
+                            clipCount={kitClipCount()}
+                            language={formData.language}
+                            currentScript={outputs.voiceOverScript}
+                            open={finalScriptOpen}
+                            onToggle={() => setFinalScriptOpen(open => !open)}
+                            progress={finalScriptProgress}
+                            onApply={handleApplyFinalScript}
+                            onRetry={handleRetryFinalScriptSection}
+                          />
+                        }
                         subtitle={`Complete voice-over script with timing for ${voiceClips.length || 'all'} clip${voiceClips.length === 1 ? '' : 's'}.`}
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                         isDark={isDark}
@@ -2408,6 +2659,23 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                             isDark ? "border-violet-500/30 bg-violet-500/[0.06] text-slate-300" : "border-violet-200 bg-violet-50/70 text-slate-600")}>
                             <span className={cn("mr-1.5 font-bold uppercase tracking-wider text-[10px]", isDark ? "text-violet-300" : "text-violet-700")}>Core message</span>
                             {outputs.coreMessage.messageLine || `${outputs.coreMessage.businessName} — ${outputs.coreMessage.corePromise}`}
+                          </div>
+                        )}
+                        {outputs.scriptQa && !finalScriptProgress && (
+                          <div data-test="script-qa" className="mx-4 mt-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-xs text-slate-300">
+                            <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <span className={cn("font-bold uppercase tracking-wider text-[10px]", outputs.scriptQa.passed ? "text-emerald-300" : "text-amber-300")}>
+                                Quality check {outputs.scriptQa.passed ? 'passed' : 'best draft'}
+                              </span>
+                              <span className="ag-num text-white">{outputs.scriptQa.score}/10</span>
+                              <span className="ag-muted">· {outputs.scriptQa.drafts} draft{outputs.scriptQa.drafts === 1 ? '' : 's'} checked</span>
+                              <span className="ag-muted">· {Object.entries(outputs.scriptQa.scores).map(([k, v]) => `${k} ${v}`).join(' · ')}</span>
+                            </p>
+                            {outputs.scriptQa.notes.length > 0 && (
+                              <ul className="mt-1.5 list-disc pl-4 space-y-0.5 text-amber-100/90">
+                                {outputs.scriptQa.notes.map(n => <li key={n}>{n}</li>)}
+                              </ul>
+                            )}
                           </div>
                         )}
                         {voiceOverRevision && voiceOverRevision.after === outputs.voiceOverScript && (
@@ -2425,9 +2693,25 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       );
                   })()}
 
+                  {creationMode === 'video' && !outputs.voiceOverScript && (
+                      <OutputSection title="4. Voice Over Script" sectionKey="voiceOver" icon={Mic} empty
+                        subtitle="Complete voice-over script with timing for every clip."
+                        state={rowState('voiceOver', false)}
+                        collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection} isDark={isDark}
+                        actions={!status.isProcessing ? (
+                          <button type="button" onClick={handleGenerate} className="ag-btn ag-btn--secondary ag-btn--sm h-9"><Rocket className="w-3.5 h-3.5" />Generate again</button>
+                        ) : undefined} />
+                  )}
+
                   {creationMode === 'video' && outputs.veoPrompts?.length > 0 && (
                       <OutputSection title="5. Veo 3 Video Prompts" sectionKey="veo"
                         icon={Video}
+                        state={veoGaps > 0 && sectionRegen.veo !== 'run' ? { tone: 'wait', label: `${veoGaps} missing` } : rowState('veo', true)}
+                        actions={veoGaps > 0 && !status.isProcessing ? (
+                          <button type="button" onClick={() => void handleRegenerateVeo()} disabled={sectionRegen.veo === 'run'} className="ag-btn ag-btn--secondary ag-btn--sm h-8 px-2.5 text-xs">
+                            {sectionRegen.veo === 'run' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}Write missing
+                          </button>
+                        ) : undefined}
                         subtitle={`Cinematic video generation prompts for ${outputs.veoPrompts.length} clip${outputs.veoPrompts.length === 1 ? '' : 's'}.`}
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                         isDark={isDark} quickCopyItems={outputs.veoPrompts} quickCopyLabel="clip-" quickCopyNamespace="veo"
@@ -2439,10 +2723,20 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       </OutputSection>
                   )}
 
+                  {creationMode === 'video' && !(outputs.veoPrompts?.length > 0) && (
+                      <OutputSection title="5. Veo 3 Video Prompts" sectionKey="veo" icon={Video} empty
+                        subtitle="Cinematic video generation prompts for every clip."
+                        state={rowState('veo', false)}
+                        collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection} isDark={isDark}
+                        actions={!status.isProcessing ? (
+                          <button type="button" onClick={() => void handleRegenerateVeo()} disabled={sectionRegen.veo === 'run' || !outputs.voiceOverScript} className="ag-btn ag-btn--secondary ag-btn--sm h-9">{sectionRegen.veo === 'run' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}Generate</button>
+                        ) : undefined} />
+                  )}
+
                   {/* Stock Image Prompts */}
-                  {creationMode === 'video' && outputs.voiceOverScript && (
+                  {creationMode === 'video' && (
                         <OutputSection title="6. Stock Image Prompts (B-Roll)" sectionKey="stock"
-                          icon={Camera}
+                          icon={Camera} state={rowState('stock', !!outputs.stockImagePrompts?.length)}
                           subtitle="Additional stock image prompts for editing B-roll and overlays."
                           collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                           isDark={isDark}
@@ -2455,7 +2749,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                                 <option value="middle-eastern">🇦🇪 Middle Eastern</option><option value="european">🇪🇺 European</option>
                                 <option value="east-asian">🇯🇵 East Asian</option><option value="african">🇿🇦 African</option><option value="universal">🌍 Universal</option>
                               </select>
-                              <button onClick={() => handleGenerateStockImages()} disabled={isGeneratingStock}
+                              <button onClick={() => void handleGenerateStockImages()} disabled={isGeneratingStock || !outputs.voiceOverScript}
                                 className="ag-btn ag-btn--secondary ag-btn--sm h-9">
                                 {isGeneratingStock
                                   ? <><Loader2 className="w-3 h-3 animate-spin" /><span>Generating...</span></>
@@ -2535,15 +2829,15 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                   )}
 
                   {/* 7. Overlay Text Image Generator — each overlay as a premium 3D transparent PNG prompt */}
-                  {creationMode === 'video' && outputs.voiceOverScript && (
+                  {creationMode === 'video' && (
                     <div data-test="overlay-image-generator">
                       <OutputSection title="7. Overlay Text Image Generator" sectionKey="overlay"
-                        icon={TypeIcon}
+                        icon={TypeIcon} state={rowState('overlay', !!outputs.overlayTexts)}
                         subtitle="Key text overlays as ready image prompts."
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                         isDark={isDark}
                         actions={
-                          <button onClick={() => handleGenerateOverlayTexts()} disabled={isGeneratingOverlay}
+                          <button onClick={() => void handleGenerateOverlayTexts()} disabled={isGeneratingOverlay || !outputs.voiceOverScript}
                             className="ag-btn ag-btn--secondary ag-btn--sm h-9 shrink-0">
                             {isGeneratingOverlay
                               ? <><Loader2 className="w-3 h-3 animate-spin" /><span>Generating...</span></>
@@ -2693,8 +2987,20 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
 };
 
 // Collapsible Output Section wrapper
+/** A deliverable row's own state — writing, updated, failed, missing — shown beside its name. */
+type RowState = { tone: 'run' | 'ok' | 'bad' | 'wait'; label: string } | null;
+
 const OutputSection: React.FC<{
-  title: string; sectionKey: string; children: React.ReactNode;
+  title: string; sectionKey: string; children?: React.ReactNode;
+  /** Writing / Updated / Failed / Missing — every row says where it stands, instead of vanishing when empty. */
+  state?: RowState;
+  /** Nothing to open yet: the row shows its name, its state and its controls, and no chevron. */
+  empty?: boolean;
+  /**
+   * Shown under the row's header whether the row is open or shut — for something a member must see
+   * without opening the section (the "Input Final Script" strip on the voice-over).
+   */
+  footer?: React.ReactNode;
   /** What this deliverable is for, in one line — read far more often than the section is opened. */
   subtitle?: string;
   icon?: LucideIcon;
@@ -2714,7 +3020,7 @@ const OutputSection: React.FC<{
   quickCopyRanges?: string[];
   /** Per-item "attach this photo", surfaced on the quick-copy chips as the photo itself. */
   quickCopyAttachments?: (PromptAttachment | null)[];
-}> = ({ title, sectionKey, children, subtitle, icon: Icon = FileText, actions, collapsedOutputs, toggleOutputSection, isDark, copyContent, copyLabel, quickCopyItems, quickCopyLabel, quickCopyNamespace, quickCopyRanges, quickCopyAttachments }) => {
+}> = ({ title, sectionKey, children, state, empty = false, footer, subtitle, icon: Icon = FileText, actions, collapsedOutputs, toggleOutputSection, isDark, copyContent, copyLabel, quickCopyItems, quickCopyLabel, quickCopyNamespace, quickCopyRanges, quickCopyAttachments }) => {
   const [copied, setCopied] = useState(false);
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -2727,14 +3033,22 @@ const OutputSection: React.FC<{
   // The number is part of the deliverable's name ("4. Voice Over Script"); on screen it is the badge.
   const numbered = /^(\d+)\.\s*(.*)$/.exec(title);
   const [, ordinal, name] = numbered ?? [undefined, undefined, title];
-  const open = !!collapsedOutputs[sectionKey];
+  const open = !empty && !!collapsedOutputs[sectionKey];
   return (
     <div className={cn("ag-row flex-col items-stretch !p-0", open && "ag-row--open")}>
       <div className="relative w-full flex flex-wrap items-center gap-x-3 gap-y-2 sm:gap-x-4 px-4 py-3 sm:px-5 min-h-[72px]">
         {ordinal && <span className="ag-row__num shrink-0">{ordinal}</span>}
         <span className="ag-tile shrink-0 w-10 h-10 flex-[0_0_40px]"><Icon className="w-[18px] h-[18px] text-violet-200" /></span>
         <div className="min-w-0 flex-1 basis-[min(100%,180px)]">
-          <span className="ag-h2 text-[15px] sm:text-[16px] text-white text-left block truncate">{name}</span>
+          <span className="flex items-center gap-2 min-w-0">
+            <span className="ag-h2 text-[15px] sm:text-[16px] text-white text-left block truncate">{name}</span>
+            {state && (
+              <span data-test={`row-state-${sectionKey}`} className={cn('ag-state shrink-0', `ag-state--${state.tone}`)}>
+                {state.tone === 'run' ? <Loader2 className="w-3 h-3 animate-spin" /> : state.tone === 'ok' ? <Check className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
+                {state.label}
+              </span>
+            )}
+          </span>
           {subtitle && <span className="ag-muted text-[12px] hidden sm:block truncate">{subtitle}</span>}
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end ml-auto">
@@ -2753,16 +3067,19 @@ const OutputSection: React.FC<{
               <span>{copied ? 'Copied' : (copyLabel ?? 'Copy')}</span>
             </span>
           )}
-          <button
-            type="button"
-            onClick={() => toggleOutputSection(sectionKey)}
-            className="ag-btn ag-btn--icon ag-btn--sm h-9 w-9"
-            aria-label={open ? `Collapse ${title}` : `Expand ${title}`}
-          >
-            <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", open && "rotate-180")} />
-          </button>
+          {!empty && (
+            <button
+              type="button"
+              onClick={() => toggleOutputSection(sectionKey)}
+              className="ag-btn ag-btn--icon ag-btn--sm h-9 w-9"
+              aria-label={open ? `Collapse ${title}` : `Expand ${title}`}
+            >
+              <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", open && "rotate-180")} />
+            </button>
+          )}
         </div>
       </div>
+      {footer}
       {open && <div className="px-2 pb-2 sm:px-3 sm:pb-3">{children}</div>}
     </div>
   );
