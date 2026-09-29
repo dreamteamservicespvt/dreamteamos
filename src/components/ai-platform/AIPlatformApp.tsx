@@ -1004,7 +1004,9 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
           includeProductsInHeader,
           customScript: useCustomScript ? customScript : undefined,
           // A partial that lands after Stop belongs to a run the member has already abandoned.
-          onPartialResult: (partial) => { if (!stopped()) setOutputs(partial); }
+          onPartialResult: (partial) => { if (!stopped()) setOutputs(partial); },
+          // B-roll and overlays are written inside the run, alongside the frames (geminiService extras).
+          extras: { stockTheme: stockImageTheme },
         });
       }
       // The model calls cannot be cancelled mid-flight, so a stopped run can still finish. Its result
@@ -1013,11 +1015,12 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       setOutputs(generatedResult);
       setKitSpecOnScreen(runSpec);
       setStatus(prev => ({ ...prev, isProcessing: false, step: 'Completed', progress: 100 }));
-      // Part of the kit, not an afterthought — and they read this run's result, not state.
+      // Part of the kit, not an afterthought. They are written inside the run now; only one the run
+      // could not write is asked for again here — from this run's result, not state.
       if (creationMode === 'video' && generatedResult.voiceOverScript) {
         void Promise.all([
-          handleGenerateStockImages(generatedResult),
-          handleGenerateOverlayTexts(generatedResult),
+          !generatedResult.stockImagePrompts?.length ? handleGenerateStockImages(generatedResult) : null,
+          !generatedResult.overlayTexts ? handleGenerateOverlayTexts(generatedResult) : null,
         ]).catch(() => { /* each one already surfaces its own error in its section */ });
       }
       // Teach the countdown how long this browser's runs really take. See utils/generationEta.

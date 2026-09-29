@@ -4,8 +4,8 @@
 > context/architecture/history document. The **source code wins** over this file; when they
 > disagree, fix this file in the same task.
 >
-> **Last full audit:** 2026-09-22 against `main` @ `a1623ac`; last updated 2026-09-25 for the
-> AdGen integrity batch (§16, §17.2, §22, §24–§27, §31).
+> **Last full audit:** 2026-09-22 against `main` @ `a1623ac`; last updated 2026-09-29 for the
+> generation-speed work (§17.2, §17.3, §26–§28, §31).
 > **Quick start:** read **§33 AI Development Context** first, then **§29 Rules** and **§30 Change Protocol**.
 >
 > Legend: ✅ implemented · 🟡 partial · ❌ not implemented · **[NOT CONFIRMED]** = could not be
@@ -122,7 +122,7 @@ hiring link), and hand-maintained social-media plans (SMM campaigns).
 | Realtime A/V | WebRTC with Google STUN and Metered.ca TURN (`services/webrtcConfig.ts`), signalling through Firestore |
 | Mobile | Capacitor 8 Android shell (`android/`, `capacitor.config.ts`, `webDir: dist`) with push, local-notifications, keyboard, status-bar, splash, haptics, app, keep-awake plugins |
 | PWA | `public/manifest.webmanifest`, `public/chat.webmanifest` (client chat), service worker `public/firebase-messaging-sw.js`, self-update via `/version.json` |
-| Tests | Vitest 3 + jsdom + Testing Library (`src/test/`, 176 files) |
+| Tests | Vitest 3 + jsdom + Testing Library (`src/test/`, 177 files) |
 | Lint | ESLint 9 flat config (`eslint.config.js`); not part of the build |
 | Package managers | `package-lock.json` (npm) is canonical; a stale `bun.lockb` is also committed |
 
@@ -196,7 +196,7 @@ DTS-OS/
 │   ├── types/                 ← index.ts (core model), aiPlatform, cinematicAds, hr, payroll, smm,
 │   │                            orderChat, onboarding
 │   ├── lib/utils.ts           ← shadcn `cn()`
-│   └── test/                  ← Vitest suites (176 files, 2791 tests at 2026-09-25) + setup.ts
+│   └── test/                  ← Vitest suites (177 files, 2796 tests at 2026-09-29) + setup.ts
 ├── public/                    ← PWA manifests, FCM service worker, logos/icons
 ├── docs/
 │   ├── AI-MEMORY.md           ← HISTORICAL session log up to 2026-09-19 (superseded by §31; do not extend)
@@ -947,6 +947,17 @@ An assignment **pre-fills and locks** spec fields it carries (gender, attire, ra
 festival, pack, custom character, background, duration, poster size/style/occasion). Live spec
 changes raise `SpecUpdateDialog`.
 
+**Speed (2026-09-29, measured live):** a 4-clip Telugu ad took 129 s plus the B-roll/overlay tail;
+it now takes ~70–90 s with B-roll and overlays INCLUDED (a Motu & Patlu ad 161 s → 108 s). What
+overlaps: the poster starts right after extraction; the client-photo scout runs while the script is
+written; a scene plan starts on every draft the quality gate considers (`planScenesEarly`, keyed by
+the draft's lines) so the shipped draft is already planned; B-roll and overlays run inside the run
+alongside frames and Veo (`GenerationOptions.extras`, the studio passes its stock theme and only
+re-asks for one the run could not write). The native-speaker review now runs only when the gate asks
+for a polish or could not run. Every pipeline call states an effort (§17.3). Images are downscaled
+once per file before upload (`utils/fileHelpers.fileToBase64`: longest edge 2048 px, same format,
+cached; small images and anything the browser cannot redraw go as they are).
+
 **Pipeline (progress messages in order):**
 0. Voice note (if any) heard on its own first: `understandVoiceInstructions` (`prompts/voiceNote.ts`,
    `utils/voiceBrief.ts`) → transcript, summary, requirements, conflicts with the typed content.
@@ -984,7 +995,9 @@ changes raise `SpecUpdateDialog`.
    speakability; `utils/scriptQa` decides in code: pass (overall ≥ 8, each ≥ 7, facts ≥ 9, no
    unsupported claim) ships; `polish` sends the judge's exact problems to the native-speaker editor;
    `rewrite` writes a NEW draft told what failed. Every draft is judged again; the best of up to three
-   ships (`isBetterDraft`: no invented facts first, then score). The result is `scriptQa` on the kit
+   ships (`isBetterDraft`: no invented facts first, then score). Extra drafts are written AT THE SAME
+   TIME and judged together (one for a polish, every remaining draft for a rewrite), with a 60 s
+   deadline (`SCRIPT_GATE_DEADLINE_MS`) after which the best so far ships. The result is `scriptQa` on the kit
    ("Script QA 8.6/10" on row 4). A judge that cannot run never blocks the ad.
 4. For real locations: review location photos, assign photos to clips. Otherwise the **scene
    plan** (`prompts/scenePlan.ts`, `utils/scenePlan.ts`): the video's motive (annadanam, temple,
@@ -1107,12 +1120,25 @@ count 1–6 (default 3), text language (English default) → `generatePosterConc
 - **Models:** `MODEL_LIST` (`gemini-2.5-flash` → `2.0-flash` → `2.5-flash-lite` → … →
   `gemini-3.1-flash-lite-preview`), rotated on overload or 5xx. A 404 "not available to new users"
   retires a model **for that key only**; any other 404 retires it for all keys.
+- **Thinking budget per call (2026-09-29):** `callWithFallback(apiCall, { effort })` — `fast` 0 tokens
+  (extraction, voice note, poster, splits, location scout, B-roll, overlays), `standard` 768 (core
+  message, repairs, scene plan, frames, Veo director, poster concepts), `deep` 1536 (script writer,
+  review, quality judge). Applied only on `gemini-2.5-flash` (the lite models do not think by
+  default; 2.0 rejects the setting); a call with no effort keeps the model default. Measured: thinking
+  was ~75% of generated tokens and 10–16 s per call before.
+- **Key handling (2026-09-29):** each call starts on the NEXT usable key (round-robin — the free tier
+  allows ~5 requests/minute and ~20/day per key per model on 2.5-flash); invalid, expired and
+  "reported as leaked" keys are dead for the session with no wait before the next; a 429 rests that key
+  for Google's retry delay (30 min for a per-DAY limit); keys lacking a model ("new users" 404) are
+  skipped for it. Dead keys and per-model gaps are kept in localStorage for a day under a fingerprint
+  of the key set (never the keys), and the last good key index is where a new session starts.
 - **Errors:** after exhausting keys and models the call throws; the UI shows an error modal
   (`status.error`). Many parsers are defensive (JSON repair, clip-number coercion). No
   server-side proxy, no retry queue.
-- **Live testing:** run `generateAdAssets` with vite-node and text-only `formData`. Per the notes
-  of 2026-09-15, some keys are invalid or cannot use 2.5-flash, and `gemini-2.0-flash` is retired
-  [NOT CONFIRMED currently].
+- **Live testing:** run `generateAdAssets` with vite-node and text-only `formData`, timing each request
+  by wrapping `globalThis.fetch` (model, ms, status, `usageMetadata.thoughtsTokenCount`). On 2026-09-29,
+  of the 30 keys: several invalid (incl. 1, 12, 18), several "reported as leaked" (16, 23–28), key 2 has
+  no gemini-2.5-flash, and working keys hit the free-tier daily limit of 20 requests per model.
 
 ### 17.4 Cinematic Ads pipeline (`/tech-admin/cinematic-ads`)
 Project list (create, open, delete; **scoped to the creator**, `listProjects(createdBy)` ordered
@@ -1421,9 +1447,12 @@ and push; PWA self-update; Android shell.
 2. **Secrets committed in source:** Gemini API key in `src/services/gemini.ts` (its only export
    `verifyScreenshot` has **no callers**, so it is dead code carrying a live-looking key); TURN
    credentials in `src/services/webrtcConfig.ts`.
-3. **Gemini keys shipped to every browser.** `envPrefix` includes `API_KEY_` and `GEMINI_`.
-   `geminiService.ts` also logs each key's first 6 and last 4 characters to the console on load
-   ("DEBUG … remove after verification").
+3. **Gemini keys shipped to every browser — and Google now reports several as leaked** (403 "Your API
+   key was reported as leaked" on keys 16 and 23–28, 2026-09-29), with more invalid. `envPrefix`
+   includes `API_KEY_` and `GEMINI_`, so every key is in the public bundle, and `geminiService.ts` also
+   logs each key's first 6 and last 4 characters to the console on load ("DEBUG … remove after
+   verification"). The call layer skips dead keys, but each is capacity lost; they must be replaced, and
+   the lasting fix is a server-side proxy so no key reaches a browser.
 4. **Plaintext passwords stored** in `member_credentials` (by design, admin-readable) and in
    completed `onboarding_invites`.
 5. **Deleting a member leaves their Firebase Auth account** (only Firestore docs are deleted), so
@@ -1479,6 +1508,10 @@ and push; PWA self-update; Android shell.
 - Verified facts drop a number the extraction put under a non-contact key or read from a product
   photo, and any number when only a logo was attached — by design, but a real number can be lost that
   way; the member types it into BUSINESS CONTENT to keep it.
+- Speed work (2026-09-29): a rewrite now spends every extra draft at once (more calls than stopping at a
+  passing second draft), and B-roll/overlays run concurrently — both use the small free-tier quota
+  (~20 requests/day/key/model) faster. The thinking budgets were chosen from one live comparison
+  (quality gate 9.8 → 8.9–9.0 on the same brief), not a broad study.
 - The fixed-distance duo camera, the colour lock and the Indian-English accent are prompt rules checked
   by unit tests only — no live Veo run has confirmed the heights hold, the colour stays or the accent
   is Indian. Cinematic Ads has its own `dialect` field and was not changed.
@@ -1515,6 +1548,8 @@ and push; PWA self-update; Android shell.
 - **Documents:** never reintroduce fixed running headers for print; keep the paginator
   comparison strict (`scrollHeight > clientHeight`); verify exported PDFs from the **dark** theme
   (ink-colour bug).
+- **Gemini calls** in the ad pipeline state their effort (`callWithFallback(fn, { effort })`, §17.3); a new
+  call that only reads, formats or splits is `fast`. Run independent steps together, not in turn.
 - **Scripted edits** to source must assert the target text exists before replacing (a silent
   no-op happened once).
 - **Unicode escapes in regexes:** write `\u{2000}` (braced, with the `u` flag) rather than a literal
@@ -1588,6 +1623,20 @@ and push; PWA self-update; Android shell.
 
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
+
+- **2026-09-29: generation made ~2× faster, measured live** — a live 4-clip Telugu run took 129 s (plus
+  the B-roll/overlay tail) in 13 strictly sequential calls, 20,693 thinking tokens against 6,736 of
+  output. Now ~70–90 s with B-roll and overlays included; a Motu & Patlu ad 161 s → 108 s with a better
+  script (5.4 → 7.4). (1) **Thinking budgets** per call (`effort`: fast 0 / standard 768 / deep 1536,
+  26 pipeline call sites) — thinking tokens down ~60%. (2) **Overlaps**: poster after extraction, photo
+  scout during the script, a scene plan per draft during the gate, B-roll and overlays inside the run
+  (`extras`). (3) **Gate**: judge first — the review runs only for a polish; extra drafts written in
+  parallel with a 60 s deadline. (4) **Keys**: round-robin across usable keys, dead (invalid/expired/
+  leaked) keys skipped with no wait and remembered for a day, 429 keys rested (30 min for a daily limit),
+  last good key kept. (5) **Images** downscaled to 2048 px once per file before upload (checked in
+  Chrome: 11.7 MB → 1.6 MB, cached). Verified: vitest 177 files / 2796 tests ✅ (5 new, fake SDK),
+  build ✅, typecheck 1 known error; three live runs. Found: nine of the thirty keys are invalid or
+  "reported as leaked" (§26).
 
 - **2026-09-25 (later): AdGen integrity batch — eight faults, each traced to its cause** —
   (1) *Spec edits not reaching the member*: reopening a job re-loaded its last kit and that restore
@@ -1794,19 +1843,19 @@ Design intent lives in `docs/superpowers/specs/`.
 
 ## 32. CURRENT PROJECT STATE (as of 2026-09-25)
 
-- Branch `main`. The integrity batch and the Input Final Script strip are committed (`b781037`,
-  `6655a8e`, which also removed the throwaway harness). Uncommitted: the Indian-English accent for English
-  ads (`prompts/motion.ts`, `prompts/everydaySpeech.ts`, `prompts/scriptQa.ts`, `prompts.ts`,
-  `geminiService.ts`, three test suites) and this CLAUDE.md.
-- `npm run build` ✅ (main chunk ≈454 KB, vendor-firebase ≈665 KB, geminiService chunk ≈783 KB).
-- `npx vitest run` ✅ 176 files, 2791 tests.
+- Branch `main` @ `5826db4` (the Indian-English accent is committed). Uncommitted: the generation-speed
+  work — `services/geminiService.ts`, `utils/fileHelpers.ts`, `ai-platform/AIPlatformApp.tsx`, the new
+  `test/geminiCallSpeed.test.ts` — and this CLAUDE.md.
+- `npm run build` ✅ (main chunk ≈454 KB, vendor-firebase ≈665 KB, geminiService chunk ≈790 KB).
+- `npx vitest run` ✅ 177 files, 2796 tests.
 - `npx tsc -p tsconfig.check.json --noEmit` → 1 known error (VideoCallManager).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
 - Most recent work: the AdGen integrity batch (verified contact facts, script quality gate, final
   script, fixed-distance duo camera, colour lock, job strip), the one-screen layout, the two-hander
   speaker-label fix and the studio UI, before them the AdGen.ai batch (§31), Cinematic Ads, SMM, Poster Creation, load-time splitting.
-- Open follow-ups the owner must act on: publish `docs/firestore-rules.md` in the console; move
-  secrets out of source; authenticate `/api/send-notification`.
+- Open follow-ups the owner must act on: replace the invalid and "reported as leaked" Gemini keys
+  (§26.3); publish `docs/firestore-rules.md` in the console; move secrets out of source; authenticate
+  `/api/send-notification`.
 
 ---
 

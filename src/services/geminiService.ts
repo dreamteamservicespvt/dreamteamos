@@ -156,8 +156,28 @@ if (API_KEYS.length === 0 && (import.meta.env.VITE_API_KEY || import.meta.env.AP
   API_KEYS.push(import.meta.env.VITE_API_KEY || import.meta.env.API_KEY || import.meta.env.GEMINI_API_KEY);
 }
 
-// Track which API key is currently active
-let currentKeyIndex = 0;
+/**
+ * Which API key is active — starting from the last key that WORKED on this device.
+ *
+ * Every page load used to start on key 1, and key 1 is invalid: the first call of every session failed,
+ * then the second (key 2 cannot serve gemini-2.5-flash), and only then did work begin. The index of the
+ * last good key — never the key itself — is kept in this browser and a new session starts there.
+ */
+const LAST_GOOD_KEY = 'dts.gemini.lastGoodKey';
+let currentKeyIndex = (() => {
+  try {
+    const saved = Number(globalThis.localStorage?.getItem(LAST_GOOD_KEY));
+    return Number.isInteger(saved) && saved >= 0 && saved < API_KEYS.length ? saved : 0;
+  } catch {
+    return 0;
+  }
+})();
+let savedGoodKey = currentKeyIndex;
+const rememberGoodKey = () => {
+  if (savedGoodKey === currentKeyIndex) return;
+  savedGoodKey = currentKeyIndex;
+  try { globalThis.localStorage?.setItem(LAST_GOOD_KEY, String(currentKeyIndex)); } catch { /* private mode */ }
+};
 
 // Get the current API key
 const getCurrentApiKey = (): string => {
@@ -257,22 +277,148 @@ const rotateToNextModel = (): boolean => {
   return true;
 };
 
+/**
+ * How long a call may THINK before it answers.
+ *
+ * ── Why this exists ─────────────────────────────────────────────────────────────────────────────
+ * Measured on a live 4-clip run (2026-09-29): 129 seconds, 13 calls, and 20,693 "thinking" tokens
+ * against 6,736 tokens of actual output. gemini-2.5-flash thinks by default, as long as it likes, on
+ * every call — 2,000–2,800 tokens before writing a 150-word answer — and that is what made each call
+ * take 10–16 seconds. Most of these calls are extraction, formatting or a directed edit, where the
+ * thinking buys nothing. So each call says how hard it needs to think:
+ *   fast      — no thinking: reading files, formatting, splitting, B-roll and overlay prompts;
+ *   standard  — a short think: repairs, the core message, the scene plan, frames, the Veo director;
+ *   deep      — a real think, still bounded: writing the script, reviewing it, judging it.
+ * A call that says nothing keeps the model's own default, as before.
+ */
+export type Effort = 'fast' | 'standard' | 'deep';
+const THINKING_BUDGET: Record<Effort, number> = { fast: 0, standard: 768, deep: 1536 };
+
+/**
+ * Only gemini-2.5-flash takes a budget this way. The lite models already answer without thinking (and
+ * are only reached as fallbacks, where speed is the point), and the 2.0 models reject the setting.
+ */
+const takesThinkingBudget = (model: string) => /^gemini-2\.5-flash(?!-lite)/.test(model);
+
+/** The client, with this call's thinking budget put into every request it makes. */
+const withThinkingBudget = (ai: GoogleGenAI, model: string, effort?: Effort): GoogleGenAI => {
+  if (!effort || !takesThinkingBudget(model)) return ai;
+  const budget = THINKING_BUDGET[effort];
+  const models = ai.models;
+  const generateContent = models.generateContent.bind(models);
+  const bounded = Object.create(models);
+  bounded.generateContent = (params: Parameters<typeof models.generateContent>[0]) => generateContent({
+    ...params,
+    config: { ...params.config, thinkingConfig: params.config?.thinkingConfig ?? { thinkingBudget: budget } },
+  });
+  return new Proxy(ai, { get: (target, prop, receiver) => (prop === 'models' ? bounded : Reflect.get(target, prop, receiver)) });
+};
+
+/**
+ * Keys that can never answer this session — an invalid key, or one whose project cannot serve ANY
+ * model we try. Every page load used to start on key 1 (invalid) and then key 2 (no gemini-2.5-flash
+ * for new projects), so the first call of every session failed twice, and every rotation that
+ * wrapped round tried them again. Remembered here, they are skipped.
+ */
+const deadKeys = new Set<number>();
+/**
+ * An answer that means the KEY is finished, whatever the model: invalid, expired, or "reported as
+ * leaked" (403). Live testing met nine such keys among thirty, and each was being asked again on every
+ * pass through the rotation.
+ */
+const isInvalidKeyError = (message: string) => /API_KEY_INVALID|API key not valid|API key expired|reported as leaked/i.test(message);
+
+/**
+ * Dead keys are remembered in this browser for a day, by a fingerprint of the key set — never the keys
+ * — so a new session does not spend its first several calls rediscovering them, and a new set of keys
+ * starts clean.
+ */
+const DEAD_KEYS_STORAGE = 'dts.gemini.deadKeys';
+const keySetFingerprint = (() => {
+  let h = 2166136261;
+  for (const k of API_KEYS) for (let i = 0; i < k.length; i++) h = Math.imul(h ^ k.charCodeAt(i), 16777619);
+  return (h >>> 0).toString(36);
+})();
+try {
+  const saved = JSON.parse(globalThis.localStorage?.getItem(DEAD_KEYS_STORAGE) || 'null');
+  if (saved?.fingerprint === keySetFingerprint && Date.now() - saved.at < 24 * 3600 * 1000 && Array.isArray(saved.keys)) {
+    for (const k of saved.keys) if (Number.isInteger(k) && k >= 0 && k < API_KEYS.length) deadKeys.add(k);
+    // …and the keys that cannot serve a particular model ("no longer available to new users").
+    if (Array.isArray(saved.modelKeys)) for (const id of saved.modelKeys) if (typeof id === 'string') deadModelKeys.add(id);
+  }
+} catch { /* no storage, or nothing saved */ }
+const saveKeyHealth = () => {
+  try {
+    globalThis.localStorage?.setItem(DEAD_KEYS_STORAGE, JSON.stringify({
+      fingerprint: keySetFingerprint, at: Date.now(), keys: [...deadKeys], modelKeys: [...deadModelKeys],
+    }));
+  } catch { /* private mode */ }
+};
+const markKeyDead = (k: number) => {
+  deadKeys.add(k);
+  saveKeyHealth();
+};
+
+/**
+ * Keys resting after a 429, until when (ms). Each key is a free-tier project allowed only a few
+ * requests a minute per model ("limit: 5, model: gemini-2.5-flash" in live testing), so a key that has
+ * just said "retry in 49s" is left alone for 49 seconds instead of being asked again on the next call.
+ */
+const keyRestingUntil = new Map<number, number>();
+const restFor = (message: string): number => {
+  // A key out of its DAILY requests will not recover in the "retry in 45s" Google also sends.
+  if (/PerDay/i.test(message)) return 30 * 60 * 1000;
+  const seconds = Number((message.match(/retry in ([\d.]+)s/i) || [])[1]);
+  return (Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds, 120) : 60) * 1000;
+};
+
+/** The next key worth trying for this model — alive, not known to lack it, and not resting. */
+const nextUsableKey = (model: string, from: number): number | null => {
+  const now = Date.now();
+  let resting: number | null = null;
+  for (let step = 1; step <= API_KEYS.length; step++) {
+    const k = (from + step) % API_KEYS.length;
+    if (deadKeys.has(k) || deadModelKeys.has(modelKeyId(k, model))) continue;
+    if ((keyRestingUntil.get(k) ?? 0) > now) { resting ??= k; continue; }
+    return k;
+  }
+  // Every live key is resting: the first of them is still better than a dead one.
+  return resting;
+};
+
+/**
+ * Each call starts on the NEXT usable key, not the one the last call used.
+ *
+ * With a few requests a minute per key, one key carrying a whole run meant a 429 every few calls —
+ * each a failed round trip and a pause before the retry. Spread across the keys, a run's fifteen-odd
+ * calls never meet the limit, and the daily quota is used evenly instead of one key's at a time.
+ */
+const startOnNextKey = (model: string) => {
+  const next = nextUsableKey(model, currentKeyIndex);
+  if (next !== null) currentKeyIndex = next;
+};
+
 // Helper function to make API calls with automatic key + model rotation on failure
 const callWithFallback = async <T>(
   apiCall: (ai: GoogleGenAI, model: string) => Promise<T>,
-  maxRetries: number = API_KEYS.length * MODEL_LIST.length
+  options: number | { effort?: Effort; maxRetries?: number } = {}
 ): Promise<T> => {
+  const { effort, maxRetries = API_KEYS.length * MODEL_LIST.length } =
+    typeof options === 'number' ? { maxRetries: options } : options;
   let lastError: any = null;
   const triedKeys = new Set<number>();
   const triedModels = new Set<string>();
-  
+
   const aliveModelCount = () => MODEL_LIST.filter(m => !deadModels.has(m)).length;
-  
+
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     const model = getCurrentModel();
+    // A new call moves on to the next key; a retry has already been moved by its failure below.
+    if (attempt === 0) startOnNextKey(model);
     try {
-      const ai = getAiInstance();
+      const ai = withThinkingBudget(getAiInstance(), model, effort);
       const result = await apiCall(ai, model);
+      rememberGoodKey();
       return result;
     } catch (error: any) {
       lastError = error;
@@ -291,6 +437,7 @@ const callWithFallback = async <T>(
         // Only "no longer available to new users" is about the key; older keys still serve the model.
         const keySpecific = /new users/i.test(errorMessage);
         deadModelKeys.add(modelKeyId(currentKeyIndex, model));
+        saveKeyHealth();
         const keysWithModel = keySpecific
           ? API_KEYS.map((_, k) => k).filter(k => !deadModelKeys.has(modelKeyId(k, model)))
           : [];
@@ -338,10 +485,18 @@ const callWithFallback = async <T>(
       if (isKeyRelatedError && API_KEYS.length > 1) {
         console.warn(`API key ${currentKeyIndex + 1} failed with model "${model}": ${errorMessage}. Trying next key...`);
         triedKeys.add(currentKeyIndex);
-        rotateToNextKey();
-        
+        // An invalid key never becomes valid mid-session — never try it again.
+        const deadKey = isInvalidKeyError(errorMessage);
+        if (deadKey) markKeyDead(currentKeyIndex);
+        // A key over its per-minute limit rests for as long as Google asks.
+        else if (statusCode === 429 || /429|RESOURCE_EXHAUSTED|quota/i.test(errorMessage)) {
+          keyRestingUntil.set(currentKeyIndex, Date.now() + restFor(errorMessage));
+        }
+        const next = nextUsableKey(model, currentKeyIndex);
+        if (next !== null) currentKeyIndex = next; else rotateToNextKey();
+
         // If we've tried all keys with this model, try next model
-        if (triedKeys.size >= API_KEYS.length) {
+        if (triedKeys.size >= API_KEYS.length - deadKeys.size) {
           console.warn(`All API keys exhausted for model "${model}". Trying next model...`);
           triedKeys.clear();
           triedModels.add(model);
@@ -349,8 +504,9 @@ const callWithFallback = async <T>(
             throw new Error(`All ${API_KEYS.length} API keys and ${aliveModelCount()} models failed. Last error: ${errorMessage}`);
           }
         }
-        
-        await new Promise(r => setTimeout(r, 500));
+
+        // A dead key answers at once and the next key is another project: there is nothing to wait for.
+        if (!deadKey) await new Promise(r => setTimeout(r, 500));
       } else if (isModelRelatedError) {
         console.warn(`Model "${model}" error: ${errorMessage}. Trying next model...`);
         triedModels.add(model);
@@ -569,7 +725,7 @@ export const writeVideoPosterPrompt = async (formData: AdFormData, businessInfo:
       model,
       contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
       config: { systemInstruction },
-    }));
+    }), { effort: 'fast' });
     const text = stripUnverifiedNumbers((response.text || '').trim(), verifiedKeys(facts));
     if (text.length > 40) return text;
   }
@@ -616,7 +772,7 @@ ${configuration}
 
 Decide the core message now and return the JSON.` }] }],
         config: { systemInstruction: CORE_MESSAGE_SYSTEM_PROMPT, responseMimeType: 'application/json' },
-      }));
+      }), { effort: 'standard' });
       const parsed = parseCoreMessageBrief(response.text || '');
       if (parsed) return parsed;
     } catch (err) {
@@ -1394,7 +1550,7 @@ export const understandVoiceInstructions = async (
       model,
       contents: [{ role: 'user', parts }],
       config: { systemInstruction: VOICE_NOTE_SYSTEM_PROMPT, responseMimeType: 'application/json' },
-    }));
+    }), { effort: 'fast' });
     return parseVoiceBrief(response.text || '');
   } catch (err) {
     console.warn('Voice-note understanding failed; attaching the recordings to extraction instead.', err);
@@ -1510,7 +1666,7 @@ export const extractBusinessOnly = async (
       contents: [{ role: 'user', parts: [...parts, { text: "Extract business info." }] }],
       config: { systemInstruction: EXTRACTION_SYSTEM_PROMPT, responseMimeType: "application/json" }
     });
-  });
+  }, { effort: 'fast' });
 
   const businessInfoText = extractionResponse.text || "{}";
   let businessInfo;
@@ -1610,7 +1766,7 @@ export const generatePosterConcepts = async (
       model,
       contents: [{ role: 'user', parts: [...imageParts, { text: userPrompt + extraNote }] }],
       config: { systemInstruction, responseMimeType: 'application/json', temperature: 0.95 },
-    }));
+    }), { effort: 'standard' });
     return parsePosterConcepts(response.text || '', styleId);
   };
 
@@ -1657,7 +1813,7 @@ export const refinePosterConcept = async (
       }),
       responseMimeType: 'application/json',
     },
-  }));
+  }), { effort: 'standard' });
   const [parsed] = parsePosterConcepts(response.text || '', concept.style);
   const next = parsed ?? normalizePosterConcept(concept, concept.style);
   if (!next) return concept;
@@ -1669,6 +1825,12 @@ export interface GenerationOptions {
   includeProductsInHeader?: boolean;
   customScript?: string;
   onPartialResult?: (partial: GeneratedOutputs) => void;
+  /**
+   * Write the B-roll and overlay-image prompts INSIDE the run, alongside the frames and the video
+   * prompts — they need only the final script and the scene plan. The studio used to start them after
+   * the whole run had finished, so "all seven deliverables" arrived long after the status said done.
+   */
+  extras?: { stockTheme?: string };
 }
 
 // Clean script text: remove emojis, special decorative characters, normalize whitespace
@@ -1969,7 +2131,7 @@ export const generateAdAssets = async (
   options: GenerationOptions = {}
 ): Promise<GeneratedOutputs> => {
   
-  const { includeProductsInHeader = false, customScript, onPartialResult } = options;
+  const { includeProductsInHeader = false, customScript, onPartialResult, extras } = options;
   
   if (API_KEYS.length === 0) {
     throw new Error("No API keys configured. Please set API_KEY_1, API_KEY_2, etc. in your environment.");
@@ -2093,7 +2255,7 @@ export const generateAdAssets = async (
             contents: [{ role: 'user', parts }],
             config: { systemInstruction: systemPrompt, ...config }
           });
-        });
+        }, { effort: 'standard' });
         const text = response.text;
         if (text && text.trim().length > 50) {
           return text;
@@ -2130,7 +2292,7 @@ export const generateAdAssets = async (
           responseMimeType: "application/json"
       }
     });
-  });
+  }, { effort: 'fast' });
 
   const businessInfoText = extractionResponse.text || "{}";
   let businessInfo;
@@ -2170,6 +2332,25 @@ export const generateAdAssets = async (
 
   // Emit partial result: businessInfo extracted
   emitPartial({});
+
+  // --- The poster — started here, alongside the script: it needs only the business (writeVideoPosterPrompt) ---
+  /*
+    A poster that fails is ONE missing row, not a failed kit. It used to reject the whole run — every
+    frame, script and video prompt thrown away for the sake of the poster — and when the model came back
+    empty the row simply vanished while the status said Completed. It is now asked twice, and if it
+    still fails the kit arrives without it and the poster row says so, with its own Generate button.
+  */
+  const posterPromise = (async (): Promise<string> => {
+    try {
+      const posterPrompt = await writeVideoPosterPrompt(formData, businessInfo);
+      emitPartial({ posterPrompt });
+      return posterPrompt;
+    } catch (err) {
+      console.warn('The poster prompt could not be written; the kit continues without it.', err);
+      return '';
+    }
+  })();
+
 
   // --- Step 2: Voice Over Script ---
   // --- Step 1b: the core message, decided before the script is written (prompts/coreMessage) ---
@@ -2239,7 +2420,7 @@ export const generateAdAssets = async (
         contents: [{ role: "user", parts: [{ text:
           `Write the Indian place name "${placeName}" in ${lang} script, exactly as a local person `
           + `pronounces it. Reply with the name only — no explanation, no punctuation, no Latin letters.` }] }],
-      }));
+      }), { effort: 'fast' });
       const first = (res.text || "").trim().split(/\r?\n/)[0] || "";
       const cleaned = first.replace(/["'`.,:;!?()\[\]]/g, "").trim();
       // A reply that came back in Latin letters is the model refusing to transliterate, not a
@@ -2410,7 +2591,7 @@ export const generateAdAssets = async (
       model,
       contents: [{ role: 'user', parts: [{ text: userPrompt + feedback }] }],
       config: { systemInstruction: systemPrompt },
-    }));
+    }), { effort: 'deep' });
 
     let clips = spokenLines(fixNames(parseDialogueClips(response.text || '', speakerVocabulary)));
     let issues = checkDialogue(clips);
@@ -2438,7 +2619,7 @@ Return only the repaired ${segmentCount} clips.`;
             formData.adType, formData.festivalName,
           ),
         },
-      }));
+      }), { effort: 'standard' });
 
       const next = spokenLines(fixNames(parseDialogueClips(repaired.text || '', speakerVocabulary)));
       // Only accept a repair that genuinely improves things — a worse rewrite is discarded.
@@ -2502,7 +2683,7 @@ Return ONLY the JSON for clip${targets.length === 1 ? '' : 's'} ${targets.map(i 
             }),
             responseMimeType: 'application/json',
           },
-        }));
+        }), { effort: 'standard' });
         const edits = new Map([...parseClipDialogueEdits(response.text || '', targets)].map(([i, ls]) =>
           [i, ls.map((l, p) => ({ speaker: speakerKeyOf(l.speaker, p), text: l.text }))] as [number, DialogueClip]));
         if (edits.size === 0) break;
@@ -2568,7 +2749,7 @@ Return ONLY the JSON for clip${targets.length === 1 ? '' : 's'} ${targets.map(i 
           model,
           contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
           config: { systemInstruction, responseMimeType: 'application/json' },
-        }));
+        }), { effort: 'standard' });
         const edits = new Map([...parseClipTextEdits(response.text || '', targets)].map(([i, t]) => [i, cleanScriptText(t)] as [number, string]));
         if (edits.size === 0) break;
         const merged = mergeClipEdits(best.segments, edits);
@@ -2627,7 +2808,7 @@ Return only the repaired ${segmentCount} clip lines.`;
           contents: [{ role: 'user', parts: [{ text: repairUserPrompt }] }],
           config: { systemInstruction: repairSystemPrompt }
         });
-      });
+      }, { effort: 'standard' });
 
       normalizedVoiceOver = normalizeAndFormatVoiceOver(spoken(repairResponse.text || normalizedVoiceOver.formatted), segmentCount);
       voiceOverIssues = validateVoiceOverSegments(normalizedVoiceOver.rawScript, normalizedVoiceOver.segments, segmentCount, formData.language, everyday, formData.adType === 'festival' ? 1 : undefined);
@@ -2682,7 +2863,7 @@ ${mustFix.map(m => `- ${m}`).join('\n')}
 Review it now and return the JSON verdict.` }] }],
             config: { systemInstruction: VOICEOVER_QUALITY_REVIEW_SYSTEM_PROMPT(formData.language, coreMessage, messageClip), responseMimeType: "application/json" }
           });
-        });
+        }, { effort: 'deep' });
         const parsed = JSON.parse(reviewResponse.text || '{}');
         if (parsed && typeof parsed.correctedScript === 'string' && parsed.correctedScript.trim()) {
           reviewed = parsed.correctedScript;
@@ -2703,6 +2884,119 @@ Review it now and return the JSON verdict.` }] }],
     return reviewed;
   };
 
+  /**
+   * Location scouting for an ad built on the client's own photographs.
+   *
+   * Reading the photos once, up front, is what lets each clip be matched to the RIGHT backdrop
+   * instead of simply taking them in upload order. If the scout call fails we fall back to a
+   * plain positional assignment rather than losing the photos altogether.
+   *
+   * ── Why this is no longer pack-only ──────────────────────────────────────────────────────────
+   * It was gated on a character pack, from when staging two cartoons in a real shop was the only
+   * reason anyone uploaded premises photos. A human-model ad shot in the client's own showroom
+   * needs exactly the same thing and was getting none of it: the photos sat in the Store/Office
+   * slot as generic "business context" while the frame prompts described an invented interior. A
+   * client who was asked for every angle of their shop got an ad set somewhere else.
+   */
+  const scoutClientLocations = async (): Promise<LocationPhoto[]> => {
+    const photos = files.storeImage || [];
+    if (formData.locationMode !== 'real_provided' || photos.length === 0) return [];
+    try {
+      const parts: any[] = [];
+      for (let i = 0; i < photos.length; i++) {
+        parts.push({ inlineData: { mimeType: photos[i].type, data: await fileToBase64(photos[i]) } });
+        parts.push({ text: `Photograph index ${i}.` });
+      }
+      const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
+        model,
+        contents: [{ role: 'user', parts }],
+        config: { systemInstruction: LOCATION_INDEX_SYSTEM_PROMPT, responseMimeType: "application/json" },
+      }), { effort: 'fast' });
+      const indexed = parseLocationIndex(response.text || '', photos.length);
+      if (indexed.length > 0) return indexed;
+    } catch (err) {
+      console.warn('Location scouting failed; falling back to positional photo assignment.', err);
+    }
+    // Unscouted but still usable — better a plain assignment than ignoring the client's photos.
+    return photos.map((_, index) => ({ index, zone: `photograph ${index + 1}`, usable: true }));
+  };
+
+  /*
+    Started now and read after the script: the photographs do not depend on the words, so reading them
+    no longer waits for the whole voice-over to be written, reviewed and judged.
+  */
+  const clientLocationsPromise = scoutClientLocations();
+
+  /**
+   * The scene plan (prompts/scenePlan): what this video is ABOUT and one DIFFERENT background per
+   * clip, chosen by that clip's line. Skipped when the client's photographs already set every
+   * background. A plan that repeats a background is asked for once more with the repeats named; if
+   * the call fails the frames fall back to their own location rules, as before.
+   */
+  const planScenes = async (clipLines: string[], announce = true): Promise<SceneContext | null> => {
+    if (API_KEYS.length === 0) return null;
+    if (announce) onProgress("Planning a different background for every clip...", 42);
+    const subject = pack
+      ? (isHumanPack(pack)
+          ? (pack.characters.length > 1 ? 'the two presenters' : 'the presenter')
+          : pack.characters.map(c => c.name).join(' and '))
+      : `the ${formData.gender === 'male' ? 'male' : 'female'} brand ambassador`;
+    const systemInstruction = SCENE_PLAN_SYSTEM_PROMPT({
+      clipCount: segmentCount, adType: formData.adType, festivalName: formData.festivalName, subject,
+      twoHander: !!pack && pack.characters.length > 1, deity: packPerformer(pack) === 'deity',
+    });
+    const userPrompt = scenePlanUserPrompt({
+      businessContent: formData.textInstructions || '',
+      frameInstructions: formData.frameInstructions || '',
+      businessInfo,
+      clipLines,
+      adType: formData.adType,
+      festivalName: formData.festivalName,
+    });
+    let best: SceneContext | null = null;
+    let repeats: number[] = [];
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const text = attempt === 0 || repeats.length === 0
+          ? userPrompt
+          : `${userPrompt}\n\nYOUR LAST PLAN REPEATED A BACKGROUND in clip${repeats.length === 1 ? '' : 's'} ${repeats.join(', ')}. Give every clip a genuinely different part of the place, with different real things in it.`;
+        const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
+          model,
+          contents: [{ role: 'user', parts: [{ text }] }],
+          config: { systemInstruction, responseMimeType: 'application/json' },
+        }), { effort: 'standard' });
+        const plan = parseScenePlan(response.text || '', segmentCount);
+        if (!plan) continue;
+        const planRepeats = repeatedBackgrounds(plan);
+        if (!best || planRepeats.length < repeats.length) { best = plan; repeats = planRepeats; }
+        if (repeats.length === 0) break;
+      } catch (err) {
+        console.warn('Scene planning failed; the frames choose their own backgrounds.', err);
+        break;
+      }
+    }
+    if (best && repeats.length > 0) console.warn(`Scene plan still repeats clip(s) ${repeats.join(', ')}.`);
+    return best;
+  };
+  /**
+   * The scene plan, started on the FIRST draft while the quality gate judges it.
+   *
+   * The plan needs the script's lines, so it used to wait for the gate — ten more seconds on every run,
+   * though the gate keeps the first draft on most runs. It now starts the moment a draft exists; if the
+   * gate changes the script, the plan is made again from the final lines (see sceneContext below).
+   * The client's own photographs set every background, so there is nothing to plan then.
+   */
+  const photosSetTheScenes = formData.locationMode === 'real_provided' && (files.storeImage?.length || 0) > 0;
+  const linesKey = (lines: string[]) => JSON.stringify(lines);
+  /** A plan started for every draft the gate considers — the one it ships is then already planned. */
+  const earlyScenePlans = new Map<string, Promise<SceneContext | null>>();
+  const planScenesEarly = (lines: string[]) => {
+    if (photosSetTheScenes || lines.length === 0 || earlyScenePlans.has(linesKey(lines))) return;
+    const plan = planScenes(lines, false);
+    plan.catch(() => { /* planned again after the gate if this failed */ });
+    earlyScenePlans.set(linesKey(lines), plan);
+  };
+
   /*
     ── The QUALITY GATE (services/prompts/scriptQa, utils/scriptQa) ────────────────────────────────
     Every script the platform writes — single voice or a cast — is judged by a separate model that
@@ -2713,6 +3007,8 @@ Review it now and return the JSON verdict.` }] }],
     A judge that cannot run (quota, a broken reply) never blocks the ad — the draft ships as it is.
   */
   const MAX_SCRIPT_DRAFTS = 3;
+  /** How long the extra drafts may take, together, before the best draft so far ships. */
+  const SCRIPT_GATE_DEADLINE_MS = 60_000;
   let scriptQa: ScriptQaSummary | null = null;
   const judgeScript = async (script: string): Promise<ScriptQaReport | null> => {
     try {
@@ -2738,7 +3034,7 @@ Judge it now and return the JSON.` }] }],
           responseMimeType: 'application/json',
           temperature: 0.2,
         },
-      }));
+      }), { effort: 'deep' });
       return parseScriptQa(response.text || '');
     } catch (err) {
       console.warn('The script quality check could not run; the script ships as it is.', err);
@@ -2758,26 +3054,48 @@ ${qaInstructions(report).map(line => `- ${line}`).join('\n')}`;
     textOf: (draft: T) => string,
     nextDraft: (draft: T, report: ScriptQaReport) => Promise<T>,
     mechanicalIssues: (draft: T) => number,
+    /** Called with every draft before it is judged — the scene plan starts from it. */
+    onDraft?: (draft: T) => void,
   ): Promise<T> => {
     onProgress("Checking the script — facts, language and selling power...", 30);
+    onDraft?.(first);
     let best = { draft: first, report: await judgeScript(textOf(first)), mechanicalIssues: mechanicalIssues(first) };
     let drafts = 1;
-    while (best.report && qaDecision(best.report) !== 'pass' && drafts < MAX_SCRIPT_DRAFTS) {
-      const rewrite = qaDecision(best.report) === 'rewrite';
+    /*
+      Further drafts are written AT THE SAME TIME and judged together — not one after another.
+
+      Written in turn, a weak first draft cost two more full rounds of writing, repairing and judging:
+      a live Motu & Patlu run spent 110 seconds there and ended on the score it started with. Written
+      side by side (each call on its own key), the same drafts take the time of one. A polish is one
+      directed edit, so it is one candidate; a rewrite gets every remaining draft at once. Anything not
+      back by the deadline is left out, and the best draft so far ships.
+    */
+    if (best.report && qaDecision(best.report) !== 'pass') {
+      const firstReport = best.report;
+      const rewrite = qaDecision(firstReport) === 'rewrite';
       onProgress(rewrite
-        ? `The script scored ${best.report.overall}/10 — writing a stronger draft...`
-        : `The script scored ${best.report.overall}/10 — polishing what the check found...`, 31 + drafts);
-      let candidate: T;
-      try {
-        candidate = await nextDraft(best.draft, best.report);
-      } catch (err) {
-        if ((err as Error)?.message?.includes('stopped by user')) throw err;
-        console.warn('Writing another script draft failed; keeping the best so far.', err);
-        break;
+        ? `The script scored ${firstReport.overall}/10 — writing stronger drafts...`
+        : `The script scored ${firstReport.overall}/10 — polishing what the check found...`, 32);
+      const attempts = rewrite ? MAX_SCRIPT_DRAFTS - 1 : 1;
+      let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+      const deadline = new Promise<null>(resolve => { deadlineTimer = setTimeout(() => resolve(null), SCRIPT_GATE_DEADLINE_MS); });
+      const candidates = await Promise.all(Array.from({ length: attempts }, () => Promise.race([
+        (async () => {
+          const candidate = await nextDraft(first, firstReport);
+          onDraft?.(candidate);
+          return { draft: candidate, report: await judgeScript(textOf(candidate)), mechanicalIssues: mechanicalIssues(candidate) };
+        })().catch(err => {
+          console.warn('Writing another script draft failed; keeping the best so far.', err);
+          return null;
+        }),
+        deadline,
+      ])));
+      clearTimeout(deadlineTimer);
+      for (const entry of candidates) {
+        if (!entry) continue;
+        drafts += 1;
+        if (isBetterDraft(best, entry)) best = entry;
       }
-      drafts += 1;
-      const entry = { draft: candidate, report: await judgeScript(textOf(candidate)), mechanicalIssues: mechanicalIssues(candidate) };
-      if (isBetterDraft(best, entry)) best = entry;
     }
     if (best.report) {
       scriptQa = qaSummary(best.report, drafts);
@@ -2789,6 +3107,11 @@ ${qaInstructions(report).map(line => `- ${line}`).join('\n')}`;
   if (pack) {
     // Two characters share every 8-second clip, so the script is an exchange rather than a line.
     // Every line as it is spoken — numbers as words, మరియు exactly — whoever wrote it.
+    /** One string per clip, speaker-labelled — exactly what parsedSegments holds below. */
+    const dialogueSegments = (clips: DialogueClip[]) => {
+      const nameOf = new Map(packSpeakerList.map(s => [s.key, s.name]));
+      return clips.map(clip => clip.map(line => `${nameOf.get(line.speaker) ?? line.speaker}: ${line.text}`).join(' '));
+    };
     const speakableDialogue = (clips: DialogueClip[]) =>
       clips.map(clip => clip.map(line => ({ ...line, text: speakableLine(line.text, formData.language) })));
     dialogueClips = speakableDialogue(await generateCharacterDialogue());
@@ -2802,6 +3125,7 @@ ${qaInstructions(report).map(line => `- ${line}`).join('\n')}`;
             : `\n\nA QUALITY CHECK OF AN EARLIER DRAFT (${report.overall}/10) FOUND THESE PROBLEMS — write the script so that none of them happens:\n${qaInstructions(report).map(line => `- ${line}`).join('\n')}`,
         )),
         clips => clips.length === segmentCount ? 0 : 1,
+        clips => planScenesEarly(dialogueSegments(clips)),
       );
     }
     voiceOverScript = formatDialogueScript(dialogueClips, packSpeakerList);
@@ -2845,7 +3169,7 @@ Segment 2: <text>`;
         contents: [{ role: 'user', parts: [{ text: `Split this script into ${segmentCount} segments:\n\n${cleanedScript}` }] }],
         config: { systemInstruction: segmentSystemPrompt }
       });
-    });
+    }, { effort: 'fast' });
 
     const proposed = parseLabeledClips(segmentResponse.text || '').map(verbatimScriptText);
     const faithful = proposed.length === segmentCount && proposed.every(Boolean) && sameWords(cleanedScript, proposed.join(' '));
@@ -2861,7 +3185,11 @@ Segment 2: <text>`;
   ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName}` : ''}
   DURATION: ${effectiveDuration} seconds (${segmentCount} segments)`;
 
-    /** One complete draft: written, mechanically repaired, native-speaker polished, repaired again. */
+    /**
+     * One draft: written and mechanically repaired. The native-speaker review no longer runs on every
+     * draft — it rewrote scripts the quality gate then scored 9.8/10, sixteen seconds for nothing. It
+     * runs when the gate asks for a polish (polishDraft), or when the gate could not run at all.
+     */
     const writeDraft = async (feedback = '') => {
       const scriptResponse = await callWithFallback(async (ai, model) => {
         return await ai.models.generateContent({
@@ -2869,17 +3197,9 @@ Segment 2: <text>`;
           contents: [{ role: 'user', parts: [{ text: scriptUserPrompt + feedback }] }],
           config: { systemInstruction: scriptSystemPrompt }
         });
-      });
+      }, { effort: 'deep' });
 
-      const repairedVoiceOver = await applyVoiceOverRepairIfNeeded(scriptResponse.text || "Failed to generate Script.");
-
-      // Native-speaker QA pass, then re-run mechanical repair only if the rewrite actually
-      // changed something (keeps the common case — review confirms the script is already
-      // clean — to a single extra API call).
-      const qualityReviewed = await runVoiceOverQualityReview(repairedVoiceOver.formatted);
-      return qualityReviewed === repairedVoiceOver.formatted
-        ? repairedVoiceOver
-        : await applyVoiceOverRepairIfNeeded(qualityReviewed);
+      return applyVoiceOverRepairIfNeeded(scriptResponse.text || "Failed to generate Script.");
     };
     type Draft = Awaited<ReturnType<typeof writeDraft>>;
     /** The same draft, polished by the native-speaker editor told exactly what the gate found. */
@@ -2887,13 +3207,20 @@ Segment 2: <text>`;
       const reviewed = await runVoiceOverQualityReview(draft.formatted, qaInstructions(report));
       return reviewed === draft.formatted ? draft : await applyVoiceOverRepairIfNeeded(reviewed);
     };
-    const finalVoiceOver = await withScriptQa<Draft>(
+    let finalVoiceOver = await withScriptQa<Draft>(
       await writeDraft(),
       draft => draft.formatted,
       (draft, report) => (qaDecision(report) === 'rewrite' ? writeDraft(rewriteFeedback(report)) : polishDraft(draft, report)),
       draft => validateVoiceOverSegments(draft.rawScript, draft.segments, segmentCount, formData.language, everyday,
         formData.adType === 'festival' ? 1 : undefined).length,
+      // The same lines the script will be planned from once it is final (see the speakableLine pass below).
+      draft => planScenesEarly(draft.segments.map(segment => speakableLine(segment, formData.language))),
     );
+    // The gate could not run (quota, a broken reply): the native-speaker review still polishes the draft.
+    if (!scriptQa) {
+      const reviewed = await runVoiceOverQualityReview(finalVoiceOver.formatted);
+      if (reviewed !== finalVoiceOver.formatted) finalVoiceOver = await applyVoiceOverRepairIfNeeded(reviewed);
+    }
 
     parsedSegments = finalVoiceOver.segments;
     voiceOverScript = finalVoiceOver.formatted;
@@ -2912,45 +3239,7 @@ Segment 2: <text>`;
   // Emit partial result: voiceOver ready (with its quality check, when it had one)
   emitPartial({ voiceOverScript, scriptQa });
 
-  /**
-   * Location scouting for an ad built on the client's own photographs.
-   *
-   * Reading the photos once, up front, is what lets each clip be matched to the RIGHT backdrop
-   * instead of simply taking them in upload order. If the scout call fails we fall back to a
-   * plain positional assignment rather than losing the photos altogether.
-   *
-   * ── Why this is no longer pack-only ──────────────────────────────────────────────────────────
-   * It was gated on a character pack, from when staging two cartoons in a real shop was the only
-   * reason anyone uploaded premises photos. A human-model ad shot in the client's own showroom
-   * needs exactly the same thing and was getting none of it: the photos sat in the Store/Office
-   * slot as generic "business context" while the frame prompts described an invented interior. A
-   * client who was asked for every angle of their shop got an ad set somewhere else.
-   */
-  const scoutClientLocations = async (): Promise<LocationPhoto[]> => {
-    const photos = files.storeImage || [];
-    if (formData.locationMode !== 'real_provided' || photos.length === 0) return [];
-    try {
-      onProgress("Reviewing the client's location photos...", 40);
-      const parts: any[] = [];
-      for (let i = 0; i < photos.length; i++) {
-        parts.push({ inlineData: { mimeType: photos[i].type, data: await fileToBase64(photos[i]) } });
-        parts.push({ text: `Photograph index ${i}.` });
-      }
-      const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
-        model,
-        contents: [{ role: 'user', parts }],
-        config: { systemInstruction: LOCATION_INDEX_SYSTEM_PROMPT, responseMimeType: "application/json" },
-      }));
-      const indexed = parseLocationIndex(response.text || '', photos.length);
-      if (indexed.length > 0) return indexed;
-    } catch (err) {
-      console.warn('Location scouting failed; falling back to positional photo assignment.', err);
-    }
-    // Unscouted but still usable — better a plain assignment than ignoring the client's photos.
-    return photos.map((_, index) => ({ index, zone: `photograph ${index + 1}`, usable: true }));
-  };
-
-  const clientLocations = await scoutClientLocations();
+  const clientLocations = await clientLocationsPromise;
 
   /**
    * Which uploaded photo backs which clip — decided ONCE, here, and reused by the art-direction
@@ -2982,60 +3271,36 @@ Segment 2: <text>`;
 `
     : '';
 
-  /**
-   * The scene plan (prompts/scenePlan): what this video is ABOUT and one DIFFERENT background per
-   * clip, chosen by that clip's line. Skipped when the client's photographs already set every
-   * background. A plan that repeats a background is asked for once more with the repeats named; if
-   * the call fails the frames fall back to their own location rules, as before.
-   */
-  const planScenes = async (): Promise<SceneContext | null> => {
-    if (usingClientPhotos || API_KEYS.length === 0) return null;
-    onProgress("Planning a different background for every clip...", 42);
-    const subject = pack
-      ? (isHumanPack(pack)
-          ? (pack.characters.length > 1 ? 'the two presenters' : 'the presenter')
-          : pack.characters.map(c => c.name).join(' and '))
-      : `the ${formData.gender === 'male' ? 'male' : 'female'} brand ambassador`;
-    const systemInstruction = SCENE_PLAN_SYSTEM_PROMPT({
-      clipCount: segmentCount, adType: formData.adType, festivalName: formData.festivalName, subject,
-      twoHander: !!pack && pack.characters.length > 1, deity: packPerformer(pack) === 'deity',
-    });
-    const userPrompt = scenePlanUserPrompt({
-      businessContent: formData.textInstructions || '',
-      frameInstructions: formData.frameInstructions || '',
-      businessInfo,
-      clipLines: parsedSegments,
-      adType: formData.adType,
-      festivalName: formData.festivalName,
-    });
-    let best: SceneContext | null = null;
-    let repeats: number[] = [];
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const text = attempt === 0 || repeats.length === 0
-          ? userPrompt
-          : `${userPrompt}\n\nYOUR LAST PLAN REPEATED A BACKGROUND in clip${repeats.length === 1 ? '' : 's'} ${repeats.join(', ')}. Give every clip a genuinely different part of the place, with different real things in it.`;
-        const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
-          model,
-          contents: [{ role: 'user', parts: [{ text }] }],
-          config: { systemInstruction, responseMimeType: 'application/json' },
-        }));
-        const plan = parseScenePlan(response.text || '', segmentCount);
-        if (!plan) continue;
-        const planRepeats = repeatedBackgrounds(plan);
-        if (!best || planRepeats.length < repeats.length) { best = plan; repeats = planRepeats; }
-        if (repeats.length === 0) break;
-      } catch (err) {
-        console.warn('Scene planning failed; the frames choose their own backgrounds.', err);
-        break;
-      }
-    }
-    if (best && repeats.length > 0) console.warn(`Scene plan still repeats clip(s) ${repeats.join(', ')}.`);
-    return best;
-  };
-  const sceneContext = await planScenes();
+  /*
+    The scene plan started on the first draft is used when the quality gate kept that draft's lines; a
+    script the gate changed is planned again from its final lines, exactly as before.
+  */
+  const earlyScenes = earlyScenePlans.get(linesKey(parsedSegments));
+  const sceneContext = usingClientPhotos
+    ? null
+    : earlyScenes
+      ? (onProgress("Planning a different background for every clip...", 42), await earlyScenes)
+      : await planScenes(parsedSegments);
   const sceneLines = sceneContext ? sceneContext.clips.map((_, i) => sceneLineFor(sceneContext, i)) : [];
   if (sceneContext) emitPartial({ sceneContext });
+
+  /*
+    The B-roll and overlay-image prompts need only the final script and the scene plan, so they are
+    written now, alongside the frames and the video prompts, instead of after the whole run. Either can
+    fail on its own: its row then says Missing and offers Generate, and the kit still arrives.
+  */
+  const extrasPromise: Promise<[any[] | null, any[] | null]> = extras && voiceOverScript
+    ? Promise.all([
+        generateStockImagePrompts(voiceOverScript, businessInfo, formData.adType, formData.festivalName,
+          extras.stockTheme || 'indian', formData.aspectRatio, segmentCount, { sceneContext, coreMessage })
+          .then(stock => { emitPartial({ stockImagePrompts: stock }); return stock; })
+          .catch(err => { console.warn('B-roll prompts failed inside the run; the row offers Generate.', err); return null; }),
+        generateOverlayTexts(voiceOverScript, businessInfo, formData.language || 'Telugu',
+          { adType: formData.adType, festivalName: formData.festivalName, sceneContext, coreMessage })
+          .then(items => { emitPartial({ overlayTexts: items }); return items; })
+          .catch(err => { console.warn('Overlay prompts failed inside the run; the row offers Generate.', err); return null; }),
+      ])
+    : Promise.resolve([null, null]);
 
   /**
    * How every clip is staged and filmed — decided once, here, AFTER the scene plan (prompts/motion):
@@ -3471,24 +3736,6 @@ ${sceneContext ? `
   // Emit partial result: the brand label is ready
   emitPartial({ headerPrompt });
 
-  // --- Step 5: Poster Design Prompt — runs concurrently (see writeVideoPosterPrompt) ---
-  /*
-    A poster that fails is ONE missing row, not a failed kit. It used to reject the whole run — every
-    frame, script and video prompt thrown away for the sake of the poster — and when the model came back
-    empty the row simply vanished while the status said Completed. It is now asked twice, and if it
-    still fails the kit arrives without it and the poster row says so, with its own Generate button.
-  */
-  const posterPromise = (async (): Promise<string> => {
-    try {
-      const posterPrompt = await writeVideoPosterPrompt(formData, businessInfo);
-      emitPartial({ posterPrompt });
-      return posterPrompt;
-    } catch (err) {
-      console.warn('The poster prompt could not be written; the kit continues without it.', err);
-      return '';
-    }
-  })();
-
   // --- Step 6: Veo 3 Segment Prompts — runs concurrently ---
   /**
    * The video prompts are written AFTER the frames, from them.
@@ -3507,11 +3754,12 @@ ${sceneContext ? `
     return prompts;
   });
 
-  // Frames and poster run concurrently; the video prompts follow the frames (see veoPromise).
-  const [mainFramePromptsResult, posterPromptResult, veoPromptsResult] = await Promise.all([
+  // Frames, poster, B-roll and overlays run concurrently; the video prompts follow the frames (see veoPromise).
+  const [mainFramePromptsResult, posterPromptResult, veoPromptsResult, [extraStock, extraOverlays]] = await Promise.all([
     mainFramePromise,
     posterPromise,
     veoPromise,
+    extrasPromise,
   ]);
 
   onProgress("Finalizing...", 100);
@@ -3525,7 +3773,8 @@ ${sceneContext ? `
     veoPrompts: veoPromptsResult,
     hasProductImages,
     productImageCount,
-    stockImagePrompts: null, // Generated on-demand by user after main process
+    stockImagePrompts: extraStock ?? null,
+    overlayTexts: extraOverlays ?? null,
     coreMessage,
     // What the video is about and where each clip is set; and what the client's voice note said.
     sceneContext,
@@ -3664,7 +3913,7 @@ Return the JSON array for all ${clips.length} clips, numbered 1 to ${clips.lengt
         model,
         contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
         config: { systemInstruction, responseMimeType: 'application/json' },
-      }));
+      }), { effort: 'standard' });
       directions = parseVeoDirections(response.text || '', clips.length);
     } catch (err) {
       console.warn('Veo direction call failed; assembling each clip from its motion plan.', err);
@@ -3743,7 +3992,7 @@ export const generatePosterPrompt = async (
         systemInstruction: posterSystemPrompt
       }
     });
-  });
+  }, { effort: 'fast' });
 
   return stripUnverifiedNumbers((posterResponse.text || "").trim(), verifiedKeys(posterFacts));
 };
@@ -3840,7 +4089,7 @@ For each item return an object with: "id" (clip number), "concept" (short label)
         responseMimeType: "application/json"
       }
     });
-  });
+  }, { effort: 'fast' });
 
   const text = response.text || "[]";
   try {
@@ -3877,7 +4126,7 @@ REQUESTED CHANGE:
 The image MUST stay ${ratio} ${orient} and hyper-realistic / highly relatable. Output ONLY the refined image prompt text — no explanations, no code block.` }] }],
       config: { systemInstruction: REFINE_EDIT_DIRECTIVE + `You refine single hyper-realistic ${ratio} ${orient} B-roll image prompts.` }
     });
-  });
+  }, { effort: 'fast' });
   return (response.text || currentPrompt)
     .replace(/^```(?:json|text|plaintext)?\s*\n?/gim, '')
     .replace(/\n?```\s*$/gim, '')
@@ -4014,7 +4263,7 @@ ${theme.block}
 Generate the on-screen overlay texts now.` }] }],
       config: { systemInstruction: OVERLAY_TEXT_SYSTEM_PROMPT(language), responseMimeType: "application/json" }
     });
-  });
+  }, { effort: 'fast' });
   const text = response.text || "[]";
   let parsed: any[];
   try {
@@ -4087,7 +4336,7 @@ Return the JSON now.` }] }],
 Return ONLY this JSON: { "design": "<the new look, one short phrase>" }`,
       responseMimeType: 'application/json',
     },
-  }));
+  }), { effort: 'fast' });
   let design = '';
   try {
     design = cleanOverlayDesign(String(JSON.parse(response.text || '{}')?.design || ''));
