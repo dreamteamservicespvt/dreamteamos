@@ -116,7 +116,7 @@ describe("a duo script prompt is unchanged", () => {
 
   it("still runs the two-hander beat and example", () => {
     const out = script("duo_motu_patlu");
-    expect(out).toContain("addresses Patlu BY NAME");
+    expect(out).toContain("address Patlu BY NAME");
     expect(out).toContain("Patlu:");
   });
 });

@@ -48,7 +48,7 @@ import {
 import { presetsForCategory, buildPromise, CUSTOM_PRESET_KEY } from "@/utils/promiseSla";
 import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from "@/types/aiPlatform";
 import {
-  ATTIRE_LABELS, DEFAULT_REQUIREMENT, attireForGender, attireLabel, attireOptionsFor, castLabelFor, cleanRequirement,
+  DEFAULT_REQUIREMENT, attireForGender, attireLabel, attireOptionLabel, attireOptionsFor, castLabelFor, cleanRequirement,
   resolveModelSpec, withRequirementDefaults,
 } from "@/utils/adRequirement";
 import { CUSTOM_FESTIVAL_OPTION, WISHES_FESTIVALS, isListedFestival } from "@/utils/festivals";
@@ -134,7 +134,7 @@ function describeSaleChanges(prev: SaleDetail, next: SaleDetail): string[] {
   if ((pr.festival || "") !== (nr.festival || "")) out.push(`Occasion: ${pr.festival || "—"} → ${nr.festival || "—"}`);
   const model = (v?: string) => (v === "male" ? "Male" : v === "female" ? "Female" : "—");
   if ((pr.modelGender || "") !== (nr.modelGender || "")) out.push(`Model: ${model(pr.modelGender)} → ${model(nr.modelGender)}`);
-  const attire = (r: typeof pr) => (r.attireType ? attireLabel(r.attireType, r.customAttire) : "—");
+  const attire = (r: typeof pr) => (r.attireType ? attireLabel(r.attireType, r.customAttire, r.specialCategory) : "—");
   if (attire(pr) !== attire(nr)) out.push(`Attire: ${attire(pr)} → ${attire(nr)}`);
   if ((pr.aspectRatio || "") !== (nr.aspectRatio || "")) out.push(`Ratio: ${pr.aspectRatio || "—"} → ${nr.aspectRatio || "—"}`);
   if ((pr.notes || "") !== (nr.notes || "")) out.push(`Tech notes updated`);
@@ -2012,7 +2012,7 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
                 className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary"
               >
                 {attireOptionsFor(req.specialCategory, (packModelGender(salePack) as ModelGender | null) ?? req.modelGender).map((a) => (
-                  <option key={a} value={a}>{ATTIRE_LABELS[a]}</option>
+                  <option key={a} value={a}>{attireOptionLabel(a, req.specialCategory)}</option>
                 ))}
               </select>
               {req.attireType === AttireType.CUSTOM && (

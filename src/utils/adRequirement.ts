@@ -12,7 +12,7 @@ import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from "@/types/aiPla
 import { DURATIONS, END_CREDITS_SECONDS, durationFromSeconds, getClipCount, hasPoster, priceForClips } from "./assignmentDuration";
 import { PACKAGES, isAdCategory, categoryLabel, effectiveAdCategory, productionCategory } from "./serviceCatalog";
 import { PRICING } from "./pricing";
-import { getCharacterPack, isCustomPack, isHumanPack, packCastGender, packHighlight, packModelGender } from "@/services/characterPacks";
+import { getCharacterPack, isCustomPack, isHumanPack, isKidsPack, packCastGender, packHighlight, packModelGender } from "@/services/characterPacks";
 import { posterStyleLabel, AUTO_POSTER_STYLE } from "@/services/posterStyles";
 import {
   DEFAULT_POSTER_SIZE, DEFAULT_POSTER_PRICE, POSTER_DURATION, isPosterCategory, posterSizeLabel,
@@ -44,10 +44,30 @@ export const DEFAULT_REQUIREMENT = {
   notes: "",
 };
 
+/**
+ * What each attire option means for the Kids entries — children are never offered a "Designer Saree"
+ * or a "Formal Suit". The stored values are the ordinary AttireType ones, so nothing downstream
+ * changes shape; only the words a member reads, and the outfit the prompts describe, are a child's.
+ */
+export const KIDS_ATTIRE_LABELS: Partial<Record<AttireType, string>> = {
+  [AttireType.TRADITIONAL]: "Traditional (Ethnic wear)",
+  [AttireType.SHIRT_PANT]: "Smart casual",
+  [AttireType.CUSTOM]: "Custom",
+};
+
+/** The attire options for two children: ethnic wear, smart casual or the team's own words. */
+export const KIDS_ATTIRE: AttireType[] = [AttireType.TRADITIONAL, AttireType.SHIRT_PANT, AttireType.CUSTOM];
+
+/** The label of one attire option, in the words that fit the special category (a child's, for Kids). */
+export function attireOptionLabel(attire: AttireType | string, characterPack?: string | null): string {
+  if (isKidsPack(getCharacterPack(characterPack))) return KIDS_ATTIRE_LABELS[attire as AttireType] || ATTIRE_LABELS[attire as AttireType] || String(attire);
+  return ATTIRE_LABELS[attire as AttireType] || String(attire);
+}
+
 /** The attire actually asked for, as text: the custom description when there is one. */
-export function attireLabel(attire?: string | null, custom?: string | null): string {
+export function attireLabel(attire?: string | null, custom?: string | null, characterPack?: string | null): string {
   if (attire === AttireType.CUSTOM && custom?.trim()) return custom.trim();
-  return ATTIRE_LABELS[(attire || AttireType.TRADITIONAL) as AttireType] || String(attire || "");
+  return attireOptionLabel((attire || AttireType.TRADITIONAL) as AttireType, characterPack);
 }
 
 /** Keeps attire valid for the chosen model — a saree is not an option for a male model. */
@@ -73,6 +93,7 @@ export const MIXED_DUO_ATTIRE: AttireType[] = [AttireType.PROFESSIONAL, AttireTy
  * options that dress both of them.
  */
 export function attireOptionsFor(characterPack: string | null | undefined, modelGender: ModelGender): AttireType[] {
+  if (isKidsPack(getCharacterPack(characterPack))) return KIDS_ATTIRE;
   const cast = packCastGender(getCharacterPack(characterPack));
   if (cast === "mixed") return MIXED_DUO_ATTIRE;
   return ATTIRE_OPTIONS_BY_GENDER[(cast as ModelGender | null) ?? modelGender];
@@ -83,6 +104,7 @@ export function castLabelFor(characterPack: string | null | undefined, modelGend
   const pack = getCharacterPack(characterPack);
   const cast = pack ? packCastGender(pack) : (modelGender || ModelGender.FEMALE);
   const duo = !!pack && pack.characters.length > 1;
+  if (isKidsPack(pack)) return cast === "mixed" ? "👧👦 girl & boy" : cast === "male" ? "👦👦 both boys" : "👧👧 both girls";
   if (cast === "mixed") return "👩👨 woman & man";
   if (cast === "male") return duo ? "👨👨 both men" : "👨 male";
   return duo ? "👩👩 both women" : "👩 female";
@@ -507,7 +529,7 @@ export function buildAssignmentRequirementsMessage(a: {
           characterPack: a.characterPack,
           modelGender: (packGender as ModelGender | null) ?? ((a.modelGender as ModelGender) || ModelGender.FEMALE),
           attireType: a.attireType as AttireType,
-        }).attireType, a.customAttire)}`
+        }).attireType, a.customAttire, a.characterPack)}`
       : null,
     a.aspectRatio ? `📐 *Ratio:* ${a.aspectRatio}` : null,
     a.language ? `🗣️ *Language:* ${a.language}` : null,
@@ -586,8 +608,8 @@ export function requirementSummary(requirement?: AdRequirement | null): string[]
       : r.modelGender === "male" ? "👨 Male" : r.modelGender === "female" ? "👩 Female" : null,
     pack ? (r.realLocationProvided ? "📷 Client's photos" : "🏙️ Location created")
       : r.attireType ? attireLabel(r.attireType, r.customAttire) : null,
-    // A human-model entry is still a person in clothes — say which clothes.
-    pack?.family === "human" && r.attireType ? attireLabel(r.attireType, r.customAttire) : null,
+    // A human-model entry is still a person in clothes — say which clothes (a child's, for Kids).
+    isHumanPack(pack) && r.attireType ? attireLabel(r.attireType, r.customAttire, r.specialCategory) : null,
     r.aspectRatio,
   ].filter((v): v is string => !!v);
 }

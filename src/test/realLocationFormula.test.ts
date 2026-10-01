@@ -58,11 +58,13 @@ describe("the shared formula", () => {
     expect(humanModel(true)).toContain(realLocationFormula(MODEL_LOCATION_SUBJECT, OVERVIEW));
   });
 
-  it("names a clip's photograph, or says plainly there is none", () => {
+  it("names a clip's photograph as its background plate, or says plainly there is none", () => {
     expect(clipLocationLabel(PLAN[1], PHOTOS)).toBe(
-      "the client's PHOTOGRAPH #2 (the washing machine aisle), reproduced exactly as photographed",
+      "the client's PHOTOGRAPH #2 (the washing machine aisle), used as this clip's background plate exactly as photographed — only enhanced to 8K",
     );
-    expect(clipLocationLabel(PLAN[3], PHOTOS)).toMatch(/^NO CLIENT PHOTOGRAPH for this clip/);
+    // More clips than photos: the photos are used again, never an invented place.
+    expect(clipLocationLabel(PLAN[3], PHOTOS)).toContain("PHOTOGRAPH #1 (the billing counter)");
+    expect(clipLocationLabel({ clip: 0, photoIndex: null }, PHOTOS)).toMatch(/^NO CLIENT PHOTOGRAPH for this clip/);
   });
 });
 
@@ -73,13 +75,14 @@ describe("the shared formula", () => {
 describe("the formula places whoever is actually on screen", () => {
   it("lights two characters for a duo", () => {
     const p = packFrame("duo_motu_patlu");
-    expect(p).toMatch(/when lighting\s+the two characters, so they look photographed/);
+    expect(p).toMatch(/The two characters are placed INTO the photograph/);
+    expect(p).toMatch(/place the two characters into it/);
     expect(p).toContain("stages CARTOON CHARACTERS inside REAL");
   });
 
   it("lights the deity alone for a god pack", () => {
     const p = packFrame("god_ganesha");
-    expect(p).toMatch(/when lighting\s+Ganesha, so Ganesha looks photographed/);
+    expect(p).toMatch(/Ganesha is placed INTO the photograph/);
     expect(p).not.toContain("the two characters");
     expect(p).toContain("stages a DEITY inside REAL");
     expect(p).not.toContain("CARTOON CHARACTERS");
@@ -90,7 +93,7 @@ describe("the formula places whoever is actually on screen", () => {
     expect(p).toContain("stages a REAL PERSON inside REAL");
     expect(p).not.toContain("the two characters");
     // A role, not a proper name — it takes an article.
-    expect(p).toMatch(/when lighting\s+the business owner, so the business owner looks photographed/);
+    expect(p).toMatch(/The business owner is placed INTO the photograph/);
   });
 
   it("stages one cartoon for a solo pack", () => {
@@ -107,7 +110,7 @@ describe("the formula places whoever is actually on screen", () => {
 describe("a human-model ad shot in the client's photographs", () => {
   it("carries the formula in the SYSTEM prompt, where the location rules live", () => {
     const p = humanModel(true);
-    expect(p).toContain("LOCATION: THE CLIENT'S REAL PHOTOGRAPHS (AUTHORITATIVE)");
+    expect(p).toContain("LOCATION: THE CLIENT'S REAL PHOTOGRAPHS — EACH ONE IS A BACKGROUND PLATE (STRICT)");
     expect(p).toContain("THIS OVERRIDES EVERY LOCATION INSTRUCTION IN THIS PROMPT");
   });
 
@@ -126,7 +129,9 @@ describe("a human-model ad shot in the client's photographs", () => {
     expect(p).toContain("📍 LOCATION: the client's PHOTOGRAPH #1 (the billing counter)");
     expect(p).toContain("📍 LOCATION: the client's PHOTOGRAPH #2 (the washing machine aisle)");
     expect(p).toContain("📍 LOCATION: the client's PHOTOGRAPH #3 (the entrance)");
-    expect(p).toMatch(/📍 LOCATION: NO CLIENT PHOTOGRAPH for this clip/);
+    // The fourth clip stands in a real photograph again — never an invented zone.
+    expect(p).not.toMatch(/📍 LOCATION: NO CLIENT PHOTOGRAPH for this clip/);
+    expect(p).toContain("the photograph's own camera angle, perspective and framing — unchanged");
   });
 
   it("builds clip 1 in the photograph instead of an invented reception", () => {

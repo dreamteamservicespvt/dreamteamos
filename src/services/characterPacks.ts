@@ -77,12 +77,14 @@ export interface PackCharacter {
  * Which shelf of the catalogue an entry sits on. Purely for grouping the picker — the generation
  * pipeline never branches on it, because every entry already carries its own direction.
  */
-export type CharacterFamily = "human" | "human_duo" | "god" | "duo" | "solo" | "custom";
+export type CharacterFamily = "human" | "human_duo" | "kids" | "god" | "duo" | "solo" | "custom";
 
 export const CHARACTER_FAMILY_LABELS: Record<CharacterFamily, string> = {
   human: "Human Model",
   // Two real people talking about the business — female duo, male duo, or a woman and a man.
   human_duo: "Human Duo",
+  // Two real children — two girls, two boys, or a girl and a boy — photoreal, never drawn.
+  kids: "Kids (Real Children)",
   god: "God Promotion",
   duo: "Cartoon Duo",
   solo: "Single Cartoon",
@@ -90,7 +92,7 @@ export const CHARACTER_FAMILY_LABELS: Record<CharacterFamily, string> = {
 };
 
 /** The order the families are offered in — commonest first, escape hatch last. */
-export const CHARACTER_FAMILY_ORDER: CharacterFamily[] = ["human", "human_duo", "god", "duo", "solo", "custom"];
+export const CHARACTER_FAMILY_ORDER: CharacterFamily[] = ["human", "human_duo", "kids", "god", "duo", "solo", "custom"];
 
 export interface CharacterPack {
   id: string;
@@ -145,6 +147,20 @@ export interface CharacterPack {
    * identically in every single clip.
    */
   usesClientFace?: boolean;
+  /**
+   * The cast's size, stated against a REAL OBJECT in the room — "a normal shop counter top reaches
+   * Motu's chest and Patlu's waist".
+   *
+   * ── Why this exists (2026-10-01) ─────────────────────────────────────────────────────────────
+   * Motu and Patlu kept growing in the finished videos. The frame prompt said nothing about their size
+   * (a description of their BUILD invites the generator to redraw them), so each still put them at
+   * whatever height it liked, and the video prompt could only ask to "keep the heights the frame
+   * shows" — with nothing in the room to measure them by, the video model drifted them toward its own
+   * idea of how tall they are. A relation to a counter is not a description of the body; it is a
+   * measurement a video model can hold. The same words are stamped into every frame prompt and the
+   * scale lock of every video prompt, so the still and the video agree.
+   */
+  scaleAnchor?: string;
   /** Hard negatives repeated verbatim in every frame and video prompt. */
   negatives: string[];
 }
@@ -209,6 +225,10 @@ const HUMAN_PACK_GENDER: Record<string, CastGender> = {
   human_duo_male: "male",
   // A woman and a man: each is dressed for their own gender from one attire choice.
   human_duo_mixed: "mixed",
+  kids_duo_girls: "female",
+  kids_duo_boys: "male",
+  // A girl and a boy, each dressed for themselves.
+  kids_duo_mixed: "mixed",
 };
 
 /** Who a human entry casts: one gender, or — for the male & female duo — both. */
@@ -216,7 +236,38 @@ export type CastGender = "female" | "male" | "mixed";
 
 /** True for an entry that still puts a real person on screen — someone who can be dressed. */
 export function isHumanPack(pack?: CharacterPack | null): boolean {
-  return !!pack && (pack.family === "human" || pack.family === "human_duo");
+  return !!pack && (pack.family === "human" || pack.family === "human_duo" || pack.family === "kids");
+}
+
+/** The Kids entries — two real children. Dressed, cast and voiced as children everywhere. */
+export function isKidsPack(pack?: CharacterPack | null): boolean {
+  return !!pack && pack.family === "kids";
+}
+
+/**
+ * What kind of ad this pack makes, in the words a prompt uses to ask for it.
+ *
+ * ── Why this exists (2026-10-01) ─────────────────────────────────────────────────────────────
+ * The requests to the script and frame models said "Write the cartoon dialogue script" and "this
+ * two-character cartoon ad" for EVERY special category — a Normal Ad presenter, the human duos, the
+ * client's own face, a deity. The system prompt for a human duo forbids a drawn look, and the request
+ * beside it called the ad a cartoon; the model was given two answers and picked differently each run.
+ */
+export function packAdKind(pack: CharacterPack): { script: string; ad: string } {
+  const solo = pack.characters.length === 1;
+  switch (pack.family) {
+    case "duo": return { script: "two-character cartoon dialogue script", ad: "two-character cartoon ad" };
+    case "solo": return { script: "single-character cartoon script", ad: "single-character cartoon ad" };
+    case "god": return { script: "devotional presenter script", ad: "devotional ad presented by the deity" };
+    case "human_duo": return { script: "two-person conversation script", ad: "photoreal two-person ad with two real people" };
+    case "kids": return { script: "two-child conversation script", ad: "photoreal ad with two real children" };
+    case "human": return pack.usesClientFace
+      ? { script: "presenter script spoken by the business owner", ad: "photoreal ad fronted by the business owner" }
+      : { script: "presenter script", ad: "photoreal presenter ad with one real person" };
+    default: return solo
+      ? { script: "single-character script", ad: "single-character ad" }
+      : { script: "two-character dialogue script", ad: "two-character ad" };
+  }
 }
 
 /**

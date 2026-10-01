@@ -3,7 +3,7 @@ import { MAX_WORDS_PER_CLIP, MIN_WORDS_PER_CLIP } from '@/utils/dialogueFormat';
 import { coreMessageBlock, type CoreMessageBrief } from './prompts/coreMessage';
 import { everydaySpeechRules } from './prompts/everydaySpeech';
 import { wishAudienceRule, wishOpeningLine } from './prompts/festivalWish';
-import { STAGINGS, VEO_DIRECTION_SYSTEM_PROMPT, cameraLabel, compositionFor, framingForMotion, type ClipMotionPlan } from './prompts/motion';
+import { VEO_DIRECTION_SYSTEM_PROMPT, cameraLabel, compositionFor, framingForMotion, type ClipMotionPlan } from './prompts/motion';
 
 /** The spoken-word band every clip is held to, as prompts say it. See utils/dialogueFormat. */
 const WORD_BAND = `${MIN_WORDS_PER_CLIP} to ${MAX_WORDS_PER_CLIP}`;
@@ -1856,11 +1856,11 @@ export const MULTI_FRAME_SYSTEM_PROMPT = (
 **OVERRIDE: Instead of generating ONE prompt, you must generate EXACTLY ${segmentCount} SEPARATE Main Frame image prompts — one for each 8-second video clip.**
 
 ${realLocation
-  ? `This campaign is shot ON LOCATION, in the client's own premises. The client has photographed their business and each clip has been assigned one of those photographs. Each clip = the photograph assigned to it, reproduced as photographed, with the brand ambassador placed into it.
+  ? `This campaign is shot ON LOCATION, in the client's own premises. The client has photographed their business and each clip has been assigned one of those photographs. Each clip = the photograph assigned to it, used AS the background exactly as photographed (only enhanced to 8K), with the brand ambassador placed into it.
 
 ${realLocation.formula}
 
-THIS OVERRIDES EVERY LOCATION INSTRUCTION IN THIS PROMPT. Wherever the base prompt above or the shot plan below says reception, front desk, logo wall, product display, consultation zone, "choose the zone that proves the line", "a different area of the business", or describes an environment for this type of business — that clip's location is its assigned photograph instead. The shot plan still decides the camera, the pose, the purpose and the mood of each clip. It no longer decides where the clip is.`
+THIS OVERRIDES EVERY LOCATION INSTRUCTION IN THIS PROMPT. Wherever the base prompt above or the shot plan below says reception, front desk, logo wall, product display, consultation zone, "choose the zone that proves the line", "a different area of the business", or describes an environment for this type of business — that clip's location is its assigned photograph instead. The shot plan still decides the pose, the purpose and the mood of each clip. It no longer decides where the clip is, and it no longer decides the camera: the angle, perspective and framing are the photograph's own.`
   : `Think of this as a ₹20-lakh national TV commercial shoot: the ambassador is filmed in ${segmentCount} DIFFERENT set-ups inside the SAME place, and each set-up is chosen by what is said in that clip — so every clip has its own background that proves its line, and no two clips look like the same corner.${scene ? `
 
 ${scene.block}
@@ -1883,7 +1883,7 @@ The consistency rule is: same woman within this campaign; different businesses s
 
 ===== THE DIRECTOR'S SHOT PLAN =====
 
-${realLocation ? `**GOLDEN RULE (ON LOCATION): Every clip is set in the client's photograph assigned to it — never an invented zone, never a "typical" interior for this kind of business, and never the same photograph behind two clips. The voice-over decides the pose, the gesture and the mood inside that photographed space. Treat the photographs as ONE shop seen from different spots: keep the same light, the same colour grade and the same finish across all of them, so the cuts read as one continuous visit rather than different buildings.**` : `**GOLDEN RULE: EVERY CLIP HAS ITS OWN BACKGROUND, CHOSEN BY ITS LINE. All ${segmentCount} clips belong to the same place — the same premises (or, when the video is about a temple, an event or an occasion, that place) — but each clip is set in a DIFFERENT part of it that visually PROVES what that clip says. No two clips may show the same corner, the same wall or the same set-up.**`}
+${realLocation ? `**GOLDEN RULE (ON LOCATION): Every clip is set in the client's photograph assigned to it, used as its background plate — never an invented zone, never a "typical" interior for this kind of business, never a redrawn or redesigned version of the photograph. A photograph assigned to two clips is the same real place staged anew, never swapped for an invented one. The voice-over decides the pose, the gesture and the mood inside that photographed space. Treat the photographs as ONE shop seen from different spots: keep the same light, the same colour grade and the same finish across all of them, so the cuts read as one continuous visit rather than different buildings.**` : `**GOLDEN RULE: EVERY CLIP HAS ITS OWN BACKGROUND, CHOSEN BY ITS LINE. All ${segmentCount} clips belong to the same place — the same premises (or, when the video is about a temple, an event or an occasion, that place) — but each clip is set in a DIFFERENT part of it that visually PROVES what that clip says. No two clips may show the same corner, the same wall or the same set-up.**`}
 ${realLocation ? '' : `
 Just like in real TV commercials — the actress doesn't stand in one spot for 30 seconds: each line is filmed where it is true.
 • The product line is filmed at the products, the service line where the service happens, the trust line where the business shows its care, the closing line at its most inviting spot
@@ -1922,15 +1922,14 @@ Each chosen spot must match the exact service claim, business proof point, or em
 
 ${motionPlan?.length ? `===== FRAMES BUILT FOR MOTION (EACH FRAME IS THE FIRST MOMENT OF ITS CLIP) =====
 
-Each frame below becomes an 8-second video, and the clips are not all alike: in some the ambassador STANDS AND TELLS, in some she WALKS AND TALKS a few steps toward the camera, in some she SHOWS A PRODUCT or PRESENTS THE SPACE — each clip's 🎬 note says which, and with which camera angle, lens and move. The video can only use what the frame shows: anything it would have to invent (a room beyond the edge, a product out of reach, floor that is not there) is where tables vanish and people walk into walls. Compose every frame for its own clip:
+Each frame below becomes an 8-second video that animates THAT frame and nothing beyond it: the ambassador STANDS AND TELLS, SHOWS A PRODUCT or PRESENTS THE SPACE, always in place — nobody walks, and the camera only eases closer, breathes or moves its focus. Each clip's 🎬 note says which, and with which camera angle, lens and move. So the variety of the ad comes from YOUR frames — every clip is a different real part of the business (the entrance seen from inside, the counter, the display, the work area) — and the video can only use what the frame shows: anything it would have to invent (a room beyond the edge, a product out of reach) is where tables vanish and people walk into walls. Compose every frame for its own clip:
 
 • READY FOR ITS CLIP: follow each clip's 🎬 note exactly — relaxed and natural, facing the camera, with clear space around the arms for gestures and nothing touching the body.
-• A WALK NEEDS ITS FLOOR: for a walk-and-talk clip, a clear, open, empty stretch of floor inside the business runs from her toward the camera, fully in view, with nothing in the way.
 • THE THING TO SHOW WITHIN REACH: the product, counter or equipment the clip talks about sits within arm's reach and fully in view, so she can turn to it, point to it or touch it.
 • EVERYTHING WHOLE AND IN VIEW: tables, counters, shelves and products are fully inside the frame and clear of her body — nothing cut off at her elbow, nothing she is leaning into.
 • THREE-QUARTER BODY (head to knees) — with the face large, clear and evenly lit.
 • A HEIGHT REFERENCE: a fixed real thing behind her — the counter edge, a door frame, a shelf line — that her height can be read against in every clip. Keep her feet and the floor visible wherever the framing allows.
-• DEPTH: real objects at two or three distances — a foreground edge (a counter corner, shelf end, plant or display) near the lens, the subject in the middle ground, the premises behind — so the slow camera move shows parallax.
+• DEPTH: real objects at two or three distances — the subject in the middle ground, the premises behind — so a slow push-in or a focus pull has depth to work with.
 • SHARP, EVEN LIGHT on the subject and the logo, so motion never drops them into shadow.
 • Clip 1 keeps its hero framing and pose.
 • INSIDE THE BUSINESS, ALWAYS: every frame is set indoors, inside the premises, facing INTO them — never the street, the footpath, the car park, the outside of the building, a doorway, or a shot looking in from outside.
@@ -1947,7 +1946,7 @@ ${Array.from({ length: segmentCount }, (_, i) => {
   const location = realLocation ? photoFor(i) : (scene?.lines[i] || shot.location);
   const logoSurface = realLocation ? PHOTO_LOGO_SURFACE : shot.logoPlacement;
   const camera = realLocation
-    ? shot.camera.replace(/the business reception/g, "that photograph's real space")
+    ? `the photograph's own camera angle, perspective and framing — unchanged — with the ${p.personYoung} placed into it at real-world scale`
     : shot.camera;
   /** Clip 1's backdrop in the words its instructions use — the reception, or the real photograph. */
   const heroBackdrop = realLocation
@@ -1964,7 +1963,7 @@ ${Array.from({ length: segmentCount }, (_, i) => {
   const plan = motionPlan?.[i];
   const motionNote = plan
     ? `\n   ${clipNum === 1
-      ? `🎬 THIS CLIP: ${plan.staging.name} — filmed ${cameraLabel(plan)}. Keep the hero framing and pose exactly; compose ${plan.camera.framing}${plan.staging.walks ? `, with ${STAGINGS.walk_and_talk.start.replace(/^standing /, "her standing ")}` : ""}.`
+      ? `🎬 THIS CLIP: ${plan.staging.name} — filmed ${cameraLabel(plan)}. Keep the hero framing and pose exactly; compose ${plan.camera.framing}.`
       : framingForMotion(plan)}`
     : '';
   const animated = !!plan && clipNum > 1;
@@ -2420,7 +2419,7 @@ ${segmentCount === 1 ? `ONE-CLIP MODE:
 • Do NOT overload Clip 2 with too many claims.` : `MULTI-CLIP MODE:
 • Clip ${messageClip} = the core message
 • The clips after it = proof, one concrete fact each, strongest first
-• Final clip only = CTA, contact, and optional address if explicitly provided`}
+• Final clip only = the CTA — and the business address, word for word, when the ADDRESS block below gives one (never an invented one)`}
 
 ===== DELIVERY PUNCTUATION RULE =====
 

@@ -8,8 +8,8 @@ import { coreMessageBlock, type CoreMessageBrief } from "./coreMessage";
 import { everydaySpeechRules } from "./everydaySpeech";
 import { wishAudienceRule } from "./festivalWish";
 import {
-  HAND_GESTURES, PRESENCE, VEO_DIRECTION_SYSTEM_PROMPT, compositionFor, framingForMotion, withoutStillness,
-  withoutTravel, type ClipMotionPlan, type Performer,
+  HAND_GESTURES, PRESENCE, VEO_DIRECTION_SYSTEM_PROMPT, compositionFor, framingForMotion, withoutApproach,
+  withoutStillness, withoutTravel, type ClipMotionPlan, type Performer,
 } from "./motion";
 
 /**
@@ -42,7 +42,7 @@ import {
  * Deliberately three lines. Anything longer here is a physical description by another route, and
  * that is exactly what made the generated characters stop looking like themselves.
  */
-export const characterCastBlock = (pack: CharacterPack, wardrobe?: string): string => {
+export const characterCastBlock = (pack: CharacterPack, wardrobe?: string, castSheet = ""): string => {
   const cast = pack.characters.map((c) => c.name).join(" and ");
 
   /**
@@ -71,11 +71,11 @@ The same ${cast}, identical in every clip.`
         ? `${cast} — ${pack.franchise}.
 One consistent person: cast them once, in clip 1, and keep that exact face, age, build, hair and wardrobe
 in every clip after. A presenter who changes between clips reads as a different person and destroys the ad.`
-        : pack.family === "human_duo"
-          ? `TWO REAL PEOPLE — ${pack.franchise}.
+        : pack.family === "human_duo" || pack.family === "kids"
+          ? `${pack.family === "kids" ? "TWO REAL CHILDREN" : "TWO REAL PEOPLE"} — ${pack.franchise}.
 Cast both once, in clip 1, and keep each one's exact face, age, build, hair and wardrobe in every clip after.
 "${pack.characters.map((c) => c.name).join('" and "')}" are ROLE LABELS for the script, not names: never write
-them as text, and never give either person a cartoon or drawn look. They are photoreal people.`
+them as text, and never give either ${pack.family === "kids" ? "child" : "person"} a cartoon or drawn look. They are photoreal ${pack.family === "kids" ? "children" : "people"}.`
         : pack.family === "custom"
           ? `${cast} — ${pack.franchise}`
           : `${cast} — the REAL, ORIGINAL character${pack.characters.length > 1 ? "s" : ""} from ${pack.franchise}, exactly as they appear on screen in that show.
@@ -92,15 +92,23 @@ They must be the same ${cast} in every clip.`;
    * asked for. When an attire was ordered it is stated after STAGING and said to override it, so
    * the choice the team made is the one on screen, identical in every clip.
    */
-  const wardrobeBlock = wardrobe && (pack.family === "human" || pack.family === "human_duo")
+  const wardrobeBlock = wardrobe && (pack.family === "human" || pack.family === "human_duo" || pack.family === "kids")
     ? `\n\nWARDROBE (as ordered — this overrides any outfit STAGING offers): ${wardrobe}. The exact same outfit, colour and styling in every clip.`
+    : "";
+  /*
+    The cast sheet (utils/castSheet) is the identity of a person nobody has seen before. A label is
+    not an identity — see the note there — so the frames are written from it, word for word, and it
+    decides the outfit's exact colour where the wardrobe line leaves a choice.
+  */
+  const sheetBlock = castSheet
+    ? `\n\n${castSheet}\nEvery prompt describes ${pack.characters.length > 1 ? "them" : "this person"} in exactly these words (code also stamps this sheet onto every prompt), and the outfit colours above are final.`
     : "";
 
   return `===== CHARACTERS =====
 
 ${identity}
 
-STAGING: ${pack.styleDirective}${wardrobeBlock}`;
+STAGING: ${pack.styleDirective}${wardrobeBlock}${sheetBlock}`;
 };
 
 /**
@@ -114,17 +122,32 @@ export const wardrobeDirective = (
   attireType?: string | null,
   customAttire?: string | null,
   gender?: string | null,
+  /** Two children (the Kids entries): dressed as children — never a saree, a suit or jewellery. */
+  kids = false,
 ): string => {
-  // A woman and a man: one attire choice, each dressed for themselves.
+  // A woman and a man (or a girl and a boy): one attire choice, each dressed for themselves.
   if (gender === "mixed") {
     if (attireType === "custom") {
       return customAttire?.trim() ? `exactly this, for the two of them: ${customAttire.trim()}` : "the outfits described in the client's brief";
     }
-    const her = wardrobeDirective(attireType, customAttire, "female");
-    const him = wardrobeDirective(attireType, customAttire, "male");
-    return her && him ? `the woman wears ${her}; the man wears ${him}` : "";
+    const her = wardrobeDirective(attireType, customAttire, "female", kids);
+    const him = wardrobeDirective(attireType, customAttire, "male", kids);
+    return her && him ? `the ${kids ? "girl" : "woman"} wears ${her}; the ${kids ? "boy" : "man"} wears ${him}` : "";
   }
   const male = gender === "male";
+  if (kids) {
+    if (attireType === "custom") {
+      return customAttire?.trim() ? `exactly this outfit: ${customAttire.trim()}` : "the outfit described in the client's brief";
+    }
+    if (attireType === "traditional") {
+      return male
+        ? "a neat traditional kurta with a white pyjama, in a cheerful colour, child-sized and age-appropriate"
+        : "a traditional silk pattu langa (a long skirt with a matching blouse) in a cheerful colour, with small simple earrings — child-sized and age-appropriate";
+    }
+    return male
+      ? "a neat smart half-sleeve shirt tucked into trousers, with clean shoes — child-sized and age-appropriate"
+      : "a neat knee-length smart dress with clean sandals — child-sized and age-appropriate";
+  }
   switch (attireType) {
     case "traditional":
       return male
@@ -194,6 +217,7 @@ export const characterDirectionBlock = (
    * motion), and every clause that orders stillness is taken out of what the director reads. What
    * makes the character THEM — manner, gestures, expressions, what a deity must never touch — stays.
    */
+  const pair = pack.characters.length > 1;
   const all: [string, string | undefined, DirectionScope[]][] = [
     ["VOICE & MODULATION", pack.voiceDirection, ["script", "video"]],
     ["FACIAL EXPRESSION", pack.expressionDirection, ["script", "frame", "video"]],
@@ -207,7 +231,10 @@ export const characterDirectionBlock = (
 
   const lines = all
     .filter(([, v, scopes]) => !!(v && v.trim()) && scopes.includes(scope))
-    .map(([k, v]) => [k, scope === "video" ? withoutTravel(withoutStillness(v as string)) : (v as string)] as const)
+    .map(([k, v]) => [k, scope === "video"
+      // A pair's video never brings either character nearer the lens — see withoutApproach.
+      ? (pair ? withoutApproach(withoutTravel(withoutStillness(v as string))) : withoutTravel(withoutStillness(v as string)))
+      : (v as string)] as const)
     .filter(([, v]) => !!v.trim())
     .map(([k, v]) => `${k}: ${v}`);
 
@@ -239,7 +266,19 @@ export const characterNegativesBlock = (pack: CharacterPack): string =>
  * greet themselves by name in clip 1 and to answer their own question — an instruction with no
  * possible correct output, which the validator then enforced.
  */
-const promotionalBeats = (segmentCount: number, first: string, second: string, place: string): string => {
+const promotionalBeats = (
+  segmentCount: number,
+  first: string,
+  second: string,
+  place: string,
+  /**
+   * The speakers' "names" are role labels (Friend / Host, Girl / Boy) that are NEVER spoken. The hook
+   * used to tell the first speaker to address the second "BY NAME" and the second to answer with the
+   * first's — on a human duo that was an order to say "Host" out loud, in the same prompt as the rule
+   * forbidding it, and the label check then failed every script (2026-10-01).
+   */
+  roleLabels = false,
+): string => {
   const solo = first === second;
   const placeAndName = place
     ? `NAMES THE BUSINESS **and says it is in ${place}**, saying plainly what it does and the core promise that makes it worth choosing`
@@ -255,10 +294,14 @@ const promotionalBeats = (segmentCount: number, first: string, second: string, p
       ? `Clip 1 — THE HOOK: ${first}'s first line must STOP someone who is scrolling past. They react `
         + `to something striking in front of them — see THE HOOK below for how — and in the same breath `
         + `${placeAndName}. This clip carries the one and only mention of ${first}'s name.`
-      : `Clip 1 — THE HOOK: ${first}'s first line must STOP someone who is scrolling past. He addresses `
-        + `${second} BY NAME and reacts to something striking — see THE HOOK below for how. `
-        + `${second} answers with "${first}" and ${placeAndName}. `
-        + `This clip carries the one and only mention of each name — no clip after this may use either again.`,
+      : roleLabels
+        ? `Clip 1 — THE HOOK: ${first}'s first line must STOP someone who is scrolling past. They react `
+          + `to something striking in front of them — see THE HOOK below for how. ${second} answers and `
+          + `${placeAndName}. Neither speaker ever says "${first}" or "${second}" — those are labels, not names.`
+        : `Clip 1 — THE HOOK: ${first}'s first line must STOP someone who is scrolling past. They address `
+          + `${second} BY NAME and react to something striking — see THE HOOK below for how. `
+          + `${second} answers with "${first}" and ${placeAndName}. `
+          + `This clip carries the one and only mention of each name — no clip after this may use either again.`,
   ];
   for (let i = 2; i < segmentCount; i++) {
     beats.push(
@@ -296,6 +339,8 @@ const festivalBeats = (
   festival: string,
   /** The ad's language, so the wish is addressed in the words that language uses. */
   language: string,
+  /** Role labels are never spoken — see promotionalBeats. */
+  roleLabels = false,
 ): string => {
   const solo = first === second;
   /**
@@ -315,11 +360,16 @@ const festivalBeats = (
       + `happy ${bare} ON BEHALF OF THE BUSINESS, naming the business as the one sending the `
       + `wish. ${wishAudienceRule(festival, language)} This clip carries the one and only mention of `
       + `${first}'s name.`
-    : `Clip 1 — THE WISHES (NOT A HOOK, NOT A SELL): ${first} greets ${second} BY NAME about `
-      + `${occasion}, and ${second} answers with "${first}" and wishes the viewer and their family a `
-      + `happy ${bare} ON BEHALF OF THE BUSINESS, naming the business as the one sending the `
-      + `wish. ${wishAudienceRule(festival, language)} This clip carries the one and only mention of `
-      + `each name — no clip after this may use either again.`;
+    : roleLabels
+      ? `Clip 1 — THE WISHES (NOT A HOOK, NOT A SELL): ${first} turns to ${second} about ${occasion}, `
+        + `and ${second} answers and wishes the viewer and their family a happy ${bare} ON BEHALF OF THE `
+        + `BUSINESS, naming the business as the one sending the wish. ${wishAudienceRule(festival, language)} `
+        + `Neither speaker ever says "${first}" or "${second}" — those are labels, not names.`
+      : `Clip 1 — THE WISHES (NOT A HOOK, NOT A SELL): ${first} greets ${second} BY NAME about `
+        + `${occasion}, and ${second} answers with "${first}" and wishes the viewer and their family a `
+        + `happy ${bare} ON BEHALF OF THE BUSINESS, naming the business as the one sending the `
+        + `wish. ${wishAudienceRule(festival, language)} This clip carries the one and only mention of `
+        + `each name — no clip after this may use either again.`;
 
   const nothingElse = `Clip 1 CONTAINS NOTHING ELSE. No product, no service, no offer, no price, no `
     + `speciality, no reason to buy, no call to action${place ? `, and not the town "${place}"` : ""}. `
@@ -416,7 +466,7 @@ export const CHARACTER_VOICEOVER_SYSTEM_PROMPT = (
   const festivalTurn = isFestival && hookClip > 1;
   const [first] = pack.characters;
   /** A human entry's speaker names are roles ("Presenter", "Friend", "Host") — never spoken. */
-  const roleLabels = pack.family === "human" || pack.family === "human_duo";
+  const roleLabels = pack.family === "human" || pack.family === "human_duo" || pack.family === "kids";
   /**
    * The second speaker, or the first again when there is only one.
    *
@@ -452,7 +502,11 @@ export const CHARACTER_VOICEOVER_SYSTEM_PROMPT = (
   return `You are a WORLD-CLASS ${lang.toUpperCase()} AD SCRIPTWRITER writing a ${duration}-second
 ${isFestival ? `${occasionBare.toUpperCase()} GREETING advertisement` : "television commercial"} in which ${solo
   ? `${first.name} presents a real business straight to camera`
-  : "two well-known characters visit a real business and talk to each other about it"}.
+  : pack.family === "kids"
+    ? "two real children visit a real business and talk to each other about it"
+    : roleLabels
+      ? "two real people visit a real business and talk to each other about it"
+      : "two well-known characters visit a real business and talk to each other about it"}.
 
 ===== ${solo ? "THE CHARACTER" : "THE TWO CHARACTERS"} =====
 
@@ -547,8 +601,8 @@ ${coreMessageBlock(brief, isFestival && segmentCount > 1 ? 2 : 1)}
 CLIP-BY-CLIP STRUCTURE:
 
 ${isFestival
-  ? festivalBeats(segmentCount, first.name, second.name, place, festivalName, lang)
-  : promotionalBeats(segmentCount, first.name, second.name, place)}
+  ? festivalBeats(segmentCount, first.name, second.name, place, festivalName, lang, roleLabels)
+  : promotionalBeats(segmentCount, first.name, second.name, place, roleLabels)}
 
 ${place
   ? `===== SAY WHERE THIS BUSINESS IS (MANDATORY) =====
@@ -565,10 +619,11 @@ knowing the business is in ${place} — not a nice-sounding shop somewhere in th
   address on it. The town belongs in clip ${hookClip}, where the ad starts talking about the business.` : ""}
 • Say it from INSIDE: the two of them are standing in this business in ${place} right now, telling the
   viewer about the place around them — "here in ${place}", never "let's go to" or "come with us to".
-• Say the town, not a whole address. Never a door number, street, district, state or pincode —
-  those are read on screen, never spoken.
-• Never repeat "${place}" in any other clip. Once is what a listener needs; twice is a word the
-  business did not get.
+• Say the town here, not the address. The address — when the client gave one — belongs to the final
+  clip, exactly as THE ADDRESS rule below says. Never a door number, district, state or pincode — those
+  are read on screen, never spoken.
+• Never repeat "${place}" in any other clip — except inside that address in the final clip. Once is
+  what a listener needs; twice is a word the business did not get.
 • SPELL IT EXACTLY AS "${place}" — that spelling and no other. A town whose name is written two
   different ways in two runs is a town the client does not recognise as theirs.
 
@@ -596,12 +651,12 @@ An ad is ${festivalTurn ? "skipped the moment the wish ends" : "skipped in the f
 job: make a person stop. It must PROVOKE, never explain. Pick whichever of these fits the business
 and ${festivalTurn ? "turn the ad with it" : "open with it"}:
 
-• SURPRISE — ${solo ? "they react" : "he reacts"} to something striking in front of him. "Look at the size of that shelf!"
+• SURPRISE — they react to something striking in front of them. "Look at the size of that shelf!"
 • CURIOSITY GAP — something unexplained that demands an answer. "Why is there a queue outside?"
 • THE CUSTOMER'S OWN PROBLEM — the exact pain that brings people to this business. "My phone died again!"
-• DISBELIEF — he challenges a claim as too good to be true. "At that price? I don't believe it."
+• DISBELIEF — they challenge a claim as too good to be true. "At that price? I don't believe it."
 
-It must sound like ${first.name}: loud, excited, saying what everyone else is thinking.
+It must sound like ${first.name} as described above${roleLabels ? "" : ": excited"}, saying what everyone else is thinking.
 And it must be about THIS business — a hook that would suit any shop is not a hook.
 
 NEVER ${festivalTurn ? `write clip ${hookClip}` : "open"} with any of these. They are why an ad gets skipped:
@@ -985,6 +1040,13 @@ export interface CharacterFramePromptInput {
   sceneBackgrounds?: string[];
   /** The motive of the video in one line — "Annadanam at the temple", "Birthday wishes". */
   sceneMotive?: string;
+  /**
+   * On location: each clip's photograph, as clipLocationLabel names it. The photograph IS that clip's
+   * frame (a background plate), so the shot plan's zone and camera give way to it.
+   */
+  photoClips?: string[];
+  /** The cast sheet for invented people (utils/castSheet) — their identity, word for word. */
+  castSheet?: string;
 }
 
 /**
@@ -1027,7 +1089,7 @@ const SHOT_DESIGNS = [
     name: "THE DETAIL / DEPTH SHOT",
     zone: "a different zone not shown yet — a specialised area, secondary display, storage, or the back-of-house work area",
     camera: "a fresh angle with real depth, using the room's own lines and fixtures to frame the pair",
-    staging: "leaning in and pointing something out from where they stand, discovering it with the viewer",
+    staging: "pointing something out from where they stand, discovering it with the viewer",
     purpose: "prove the place is bigger than one corner and add visual variety",
   },
   {
@@ -1078,19 +1140,29 @@ function clipShotPlan(
   motionPlan: ClipMotionPlan[] = [],
   /** One background per clip from the scene plan; empty entries fall back to the shot's own zone. */
   sceneBackgrounds: string[] = [],
+  /** On location: the photograph each clip stands in — it replaces the shot's zone AND camera. */
+  photoClips: string[] = [],
+  /** Invented people with a cast sheet: they are described by it, never by their labels. */
+  hasCastSheet = false,
 ): string {
   return shots.map((shot, i) => {
     const n = i + 1;
     const line = clipSummaries[i] ? `\n   🗣️ THIS CLIP'S LINE: ${clipSummaries[i]}` : "";
-    const zone = sceneBackgrounds[i] || shot.zone;
+    const plate = photoClips[i] || "";
+    const zone = plate || sceneBackgrounds[i] || shot.zone;
+    const shotCamera = plate
+      ? "the photograph's own camera angle, perspective and framing — unchanged; the cast placed into it"
+      : shot.camera;
     const motion = motionPlan[i] ? `\n   ${framingForMotion(motionPlan[i])}` : "";
     const composition = motionPlan[i] ? compositionFor(motionPlan[i]) : "";
     const positions = !solo && cast.includes(" and ")
-      ? `\n   ↔️ POSITIONS: ${cast.split(" and ")[0]} on the LEFT of the frame, ${cast.split(" and ")[1]} on the RIGHT.`
+      ? hasCastSheet
+        ? `\n   ↔️ POSITIONS: exactly as the CAST SHEET places them — its LEFT person on the LEFT of the frame, its RIGHT person on the RIGHT.`
+        : `\n   ↔️ POSITIONS: ${cast.split(" and ")[0]} on the LEFT of the frame, ${cast.split(" and ")[1]} on the RIGHT.`
       : "";
     const head = `**CLIP ${n} — ${shot.name}**
    📍 ZONE: ${zone}
-   🎥 CAMERA: ${shot.camera}
+   🎥 CAMERA: ${shotCamera}
    🎭 STAGING: ${shot.staging}
    🎯 PURPOSE: ${shot.purpose}${line}${positions}${motion}`;
 
@@ -1098,8 +1170,9 @@ function clipShotPlan(
       return `${head}
 
    Write a COMPLETE standalone prompt for this frame, about 90–120 words, as one flowing paragraph.
-   Open by naming the photograph or generated zone this clip uses, then ${solo ? cast : `the two characters`} by name
-   only, then the real fixtures and stock actually visible around them, then the light in that
+   Open by naming the photograph or generated zone this clip uses, then ${hasCastSheet
+     ? `${solo ? "the person" : "the two people"} exactly as the CAST SHEET describes them (their positions, faces, hair and outfits, word for word)`
+     : `${solo ? cast : `the two characters`} by name only`}, then the real fixtures and stock actually visible around them, then the light in that
    space, then the ${aspectRatio} ${orientation} framing.${hasLogo ? " Place the attached logo where it would really be installed in this zone." : ""}${motionPlan[i] ? `
    Compose it for this clip's in-place animation: ${composition}.` : ""}
    This frame sets the look for the whole ad — the grade, the light and the finish that every later
@@ -1110,10 +1183,11 @@ function clipShotPlan(
 
    ⚠️ CONTINUATION FRAME — clip 1's frame is attached as the reference. Do NOT re-describe the
    characters, the style, the grade or the business identity: they are LOCKED by that reference.
-   Write ONE line referring to it — "the same ${cast} exactly as in the attached reference
-   frame, unchanged" — and then spend the rest of the prompt ONLY on what genuinely changes:
-   the new zone and the real objects in it, the new staging and gestures, the new camera angle,
-   and how the light differs in this part of the premises.${motionPlan[i] ? `
+   Write ONE line referring to it — "the same ${hasCastSheet ? (solo ? "person" : "two people") : cast} exactly as in the attached reference
+   frame${hasCastSheet ? " and the cast sheet" : ""}, unchanged" — and then spend the rest of the prompt ONLY on what genuinely changes:
+   ${plate
+    ? "the photograph this clip stands in (kept exactly as photographed — only enhanced to 8K), and the new staging and gestures. Never a new camera angle or a new layout: the photograph's own framing is the frame."
+    : "the new zone and the real objects in it, the new staging and gestures, the new camera angle, and how the light differs in this part of the premises."}${motionPlan[i] ? `
    Include, in plain words, how the still is composed for its in-place animation: ${composition}.` : ""}
    Keep it SHORT: 60–90 words. Anything you re-describe is something the generator is free to
    redraw differently, which is exactly how the characters drift between clips.`;
@@ -1127,7 +1201,7 @@ export const CHARACTER_MULTI_FRAME_SYSTEM_PROMPT = (
   const {
     segmentCount, clipSummaries, locationMode, locationPlan,
     aspectRatio, adType, festivalName, hasLogo = false, businessContext = "", wardrobe, motionPlan = [],
-    nameBoard = "", sceneBackgrounds = [], sceneMotive = "",
+    nameBoard = "", sceneBackgrounds = [], sceneMotive = "", photoClips = [], castSheet = "",
   } = input;
   const clipContext = clipSummaries.map((s, i) => `  Clip ${i + 1}: ${s}`).join("\n");
   const orientation = aspectRatio === "16:9" ? "horizontal (landscape)" : "vertical (portrait)";
@@ -1199,17 +1273,17 @@ Every prompt must state the ${aspectRatio} ${orientation} framing explicitly, an
 ${solo ? `${cast}` : "the two characters"} and the business zone to fill that shape properly — no composition borrowed from a
 different aspect ratio.
 
-${characterCastBlock(pack, wardrobe)}
+${characterCastBlock(pack, wardrobe, castSheet)}
 
 ${characterDirectionBlock(pack, "frame")}${motionPlan.length ? `
 
-Each clip's video follows its own 🎬 note — ${solo ? cast : "the characters"} STAND AND TELL, WALK AND TALK a few steps
-toward the camera, SHOW A PRODUCT or PRESENT THE SPACE, filmed with the camera angle, lens and move the note
-names. The video can only use what the frame shows, so each frame must already contain what its clip needs:
-for a walk, a clear, open, empty stretch of floor inside the business in front of them; for a product, the
-product within reach; clear space around the bodies; every object fully in view. Where the direction above
-describes walking somewhere, arriving or leading the way, the 🎬 note decides instead. Everything else in
-that direction still applies.` : ""}
+Each clip's video animates THIS still and nothing beyond it, following its own 🎬 note — ${solo ? cast : "the characters"}
+STAND AND TELL, SHOW A PRODUCT or PRESENT THE SPACE, always in place, filmed with the camera the note names.
+Nobody walks in the video, so the variety of the ad comes from YOUR frames: each clip is a different real part of
+the business. The video can only animate what the frame shows, so each frame must already contain what its clip
+needs: for a product, the product within reach; clear space around the bodies; every object fully in view.
+Where the direction above describes walking somewhere, arriving or leading the way, the 🎬 note decides
+instead. Everything else in that direction still applies.` : ""}
 
 ${locationBlock}
 
@@ -1248,25 +1322,30 @@ ${solo
 • Stage them open to camera, addressing the viewer directly rather than anyone in the room.
 • They must be the focus, but the business must be unmistakable behind them.`
   : `• BOTH characters visible in every frame, clearly separated, neither hidden or cropped.
-• POSITION LOCK: ${pack.characters[0].name} ALWAYS stands on the LEFT of the frame and ${pack.characters[1].name} ALWAYS on the
+• POSITION LOCK: ${castSheet ? "the CAST SHEET's LEFT person" : pack.characters[0].name} ALWAYS stands on the LEFT of the frame and ${castSheet ? "its RIGHT person" : pack.characters[1].name} ALWAYS on the
   RIGHT, in every single clip. Write it into every prompt. The video tells who is speaking by where they
   stand, so the two must never swap sides.
 • Stage them mid-conversation, angled slightly towards each other but open to camera — the classic
   two-hander. The one who is speaking is the more animated of the two.
 • They must be the focus, but the business must be unmistakable behind them.
-• Say nothing about their build, size or how tall either one is. They are the real characters —
-  their proportions come with them. Writing it down only invites the generator to redraw them.`}
+• Both stand on the real floor, side by side, at the SAME distance from the camera — neither one nearer
+  the lens — beside a real counter, shelf or door frame that their height can be read against.${pack.scaleAnchor ? `
+• SCALE ANCHOR — write it into EVERY prompt, word for word: ${pack.scaleAnchor}` : ""}
+• Beyond that, say nothing about their build or body. ${pack.family === "duo"
+  ? "They are the real characters — their proportions come with them. Describing the body only invites the generator to redraw them."
+  : "Their look is fixed by the cast sheet and by clip 1."}`}
 
 ===== THE SHOT PLAN — WRITE THESE ${segmentCount} PROMPTS =====
 
-${clipShotPlan(segmentCount, clipSummaries, shots, hasLogo, aspectRatio, orientation, cast, solo, motionPlan, sceneBackgrounds)}
+${clipShotPlan(segmentCount, clipSummaries, shots, hasLogo, aspectRatio, orientation, cast, solo, motionPlan, sceneBackgrounds, photoClips, !!castSheet)}
 
 ===== OUTPUT FORMAT =====
 
 Write ${segmentCount} prompts separated by ###CLIP### on its own line, in clip order, nothing else.
 Each prompt is plain flowing English — no headings, no numbering, no bullet lists, no commentary,
-and no negative list. Follow the per-clip word budgets above. Never describe what the characters
-look like${hasLogo ? ", and never describe the attached logo" : ""} — naming them is enough.
+and no negative list. Follow the per-clip word budgets above. ${castSheet
+  ? `Describe the ${solo ? "person" : "people"} ONLY in the CAST SHEET's words, never in new ones${hasLogo ? ", and never describe the attached logo" : ""}.`
+  : `Never describe what the characters look like${hasLogo ? ", and never describe the attached logo" : ""} — naming them is enough.`}
 
 ${/*
   No performance direction here, deliberately.
@@ -1301,8 +1380,10 @@ export const CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT = (
   pack: CharacterPack,
   segmentCount: number,
   aspectRatio: "9:16" | "16:9" = "9:16",
+  /** Invented people named by how they look (utils/castSheet castNamesFromFrames), not by their labels. */
+  castNames: string[] = [],
 ): string => {
-  const cast = pack.characters.map((c) => c.name).join(" and ");
+  const cast = pack.characters.map((c, i) => castNames[i] || c.name).join(" and ");
   return VEO_DIRECTION_SYSTEM_PROMPT({
     clipCount: segmentCount,
     aspectRatio,
@@ -1329,15 +1410,25 @@ export const packPerformer = (pack: CharacterPack | null | undefined): Performer
  * gives them. In a two-hander the first speaker has the first half of the clip and the second the
  * rest, and only the one speaking moves their mouth.
  */
-export const packVeoSubject = (pack: CharacterPack) => {
+export const packVeoSubject = (
+  pack: CharacterPack,
+  /**
+   * How each invented person is named in the video prompt — "the woman in the teal saree" — read off
+   * the frames' cast sheet. A video model sees two women, not a "Friend" and a "Host": "ONLY Host
+   * speaks this line" told it nothing about which mouth should move (2026-10-01). Empty → the labels.
+   */
+  castNames: string[] = [],
+) => {
   const solo = pack.characters.length === 1;
   const cartoon = pack.family === "duo" || pack.family === "solo";
   const person = pack.family === "human";
-  const people = pack.family === "human_duo";
+  const people = pack.family === "human_duo" || pack.family === "kids";
+  /** The name a speaker is given in this video prompt. */
+  const spoken = (c: CharacterPack["characters"][number]) => castNames[pack.characters.indexOf(c)] || c.name;
   const identityLock = person
     ? "the person's face (100% face match), their hair, their outfit, the logo and the location"
     : people
-      ? "both people's faces (100% face match), their hair, their outfits, the logo and the location"
+      ? `both ${pack.family === "kids" ? "children's" : "people's"} faces (100% face match), their hair, their outfits, their ages, the logo and the location`
       : solo
       ? "the character exactly as drawn, the logo and the location"
       : "both characters exactly as drawn, the logo and the location";
@@ -1345,12 +1436,12 @@ export const packVeoSubject = (pack: CharacterPack) => {
     ? `the original ${name} voice from the show (${voice})`
     : voice;
   const speech = (lines: { name: string; text: string }[]) => lines.map((line, i) => {
-    const character = pack.characters.find((c) => c.name === line.name) ?? pack.characters[i] ?? pack.characters[0];
+    const character = pack.characters.find((c) => c.name === line.name || spoken(c) === line.name) ?? pack.characters[i] ?? pack.characters[0];
     // Where each speaker stands — the frames lock characters[0] to the LEFT and characters[1] to the
     // RIGHT (see the POSITION LOCK in the frame prompt), so the video can tell who is talking.
     const seat = pack.characters.indexOf(character);
     return {
-      speaker: solo ? undefined : character.name,
+      speaker: solo ? undefined : spoken(character),
       voice: voiceOf(character.name, character.voice),
       line: line.text,
       at: solo ? undefined : lines.length === 2 ? (i === 0 ? "0–4s" : "4–8s") : undefined,
@@ -1363,14 +1454,16 @@ export const packVeoSubject = (pack: CharacterPack) => {
   ].filter(Boolean).join("\n");
   /** Who the movement rules address — "Both characters", "Ganesha", "The business owner". */
   const cast = solo
-    ? person ? `The ${pack.characters[0].name.toLowerCase()}` : pack.characters[0].name
-    : people ? "Both people" : "Both characters";
+    ? person ? (castNames[0] ? castNames[0].replace(/^the /, "The ") : `The ${pack.characters[0].name.toLowerCase()}`) : pack.characters[0].name
+    : people ? (pack.family === "kids" ? "Both children" : "Both people") : "Both characters";
   const performer = packPerformer(pack);
   /** A custom character is nobody's show — it moves its own way, not "the way the audience knows". */
   const manner = pack.family === "custom" ? "in the character's own natural way" : PRESENCE[performer];
   return {
     identityLock, speech, performanceNotes, cast, castPlural: !solo, twoHander: !solo,
     performer, manner, handGestures: HAND_GESTURES[performer],
+    /** The cast's size against the room — the same words every frame of this ad carries. */
+    scaleAnchor: pack.scaleAnchor,
   };
 };
 

@@ -20,7 +20,7 @@ import {
 describe("the catalogue", () => {
   it("offers every family the sales team sells", () => {
     const families = new Set(CHARACTER_CATALOGUE.map((p) => p.family));
-    expect([...families].sort()).toEqual(["custom", "duo", "god", "human", "human_duo", "solo"]);
+    expect([...families].sort()).toEqual(["custom", "duo", "god", "human", "human_duo", "kids", "solo"]);
   });
 
   it("has no duplicate ids", () => {
@@ -69,7 +69,7 @@ describe("the catalogue", () => {
 
   it("gives duos exactly two speakers and everything else exactly one", () => {
     for (const p of CHARACTER_CATALOGUE) {
-      expect(p.characters.length, p.id).toBe(p.family === "duo" || p.family === "human_duo" ? 2 : 1);
+      expect(p.characters.length, p.id).toBe(p.family === "duo" || p.family === "human_duo" || p.family === "kids" ? 2 : 1);
     }
   });
 

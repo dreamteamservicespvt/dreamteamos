@@ -13,7 +13,7 @@
  * is being lit and placed, which is the one thing the caller passes in.
  */
 import type { CharacterPack } from "../characterPacks";
-import type { ClipLocation, LocationPhoto } from "@/utils/locationAssignment";
+import { backgroundPlateRule, type ClipLocation, type LocationPhoto } from "@/utils/locationAssignment";
 
 /** Who the photograph has to be matched around, as the formula will say it. */
 export interface RealLocationSubject {
@@ -31,6 +31,7 @@ export interface RealLocationSubject {
  */
 export function packLocationSubject(pack: CharacterPack): RealLocationSubject {
   if (pack.family === "human_duo") return { who: "the two people", plural: true };
+  if (pack.family === "kids") return { who: "the two children", plural: true };
   if (pack.characters.length > 1) return { who: "the two characters", plural: true };
   const name = pack.characters[0]?.name || "character";
   // A deity or a cartoon is a proper name ("Ganesha"). A human entry's name is a role — "Presenter",
@@ -53,6 +54,7 @@ export function packStagingRole(pack: CharacterPack): string {
     case "god": return "a DEITY";
     case "human": return "a REAL PERSON";
     case "human_duo": return "TWO REAL PEOPLE";
+    case "kids": return "TWO REAL CHILDREN";
     case "solo": return "a CARTOON CHARACTER";
     case "duo": return "CARTOON CHARACTERS";
     default: return pack.characters.length > 1 ? "CHARACTERS" : "a CHARACTER";
@@ -65,27 +67,24 @@ export function packStagingRole(pack: CharacterPack): string {
  */
 export function realLocationFormula(subject: RealLocationSubject, locationPlan: string): string {
   const Who = subject.who.charAt(0).toUpperCase() + subject.who.slice(1);
-  const looks = subject.plural ? "they look" : `${subject.who} looks`;
-  return `===== LOCATION: THE CLIENT'S REAL PHOTOGRAPHS (AUTHORITATIVE) =====
+  return `===== LOCATION: THE CLIENT'S REAL PHOTOGRAPHS — EACH ONE IS A BACKGROUND PLATE (STRICT) =====
 
-Real photographs of this business are attached. They are the ground truth for every clip.
+Real photographs of this business are attached. Every clip stands in one of them, and that photograph
+IS the clip's background — the image generator receives it with the prompt and must USE it, not redraw a
+shop like it.
 
-• Each clip has been assigned ONE specific photograph — build that clip's frame from THAT photo.
-• REPRODUCE the real place: its actual architecture, counters, shelving, stock, signage, flooring,
-  wall colours and fixtures. Do not redesign, tidy, upgrade, or re-imagine it.
-• MATCH that photo's own lighting — direction, hardness and colour temperature — when lighting
-  ${subject.who}, so ${looks} photographed in that room rather than pasted onto it.
-• MATCH the camera perspective and eye level of the photo. ${Who} must sit correctly in
-  that space, standing on the actual floor, at believable scale against real objects.
+• Each clip has been assigned ONE specific photograph (below). That clip's frame is THAT photograph.
+• ${backgroundPlateRule("the clip's attached photograph")}.
+• ${Who} ${subject.plural ? "are" : "is"} placed INTO the photograph: on its actual floor, at believable real-world scale
+  against its real counters, shelves and door frames, matching its eye level and perspective.
+• Write each prompt as instructions to keep the photograph and place ${subject.who} into it. Do NOT describe the
+  shop as if inventing it, and never ask for a different angle, a wider view or a new layout — the
+  photograph's own framing is the frame.
 • Keep the business's real signage and branding legible exactly as photographed.
 
 ${locationPlan}`;
 }
 
-/**
- * One clip's location, in the words a per-clip instruction needs: which photograph and what it is.
- * Used where a prompt would otherwise name an invented zone for that clip.
- */
 export function clipLocationLabel(location: ClipLocation | undefined, photos: LocationPhoto[] = []): string {
   if (!location || location.photoIndex === null) {
     return "NO CLIENT PHOTOGRAPH for this clip — build a real-looking zone of this same business, "
@@ -94,5 +93,5 @@ export function clipLocationLabel(location: ClipLocation | undefined, photos: Lo
   const photo = photos.find((p) => p.index === location.photoIndex);
   const zone = photo?.zone?.replace(/^the\s+/i, "").trim();
   return `the client's PHOTOGRAPH #${location.photoIndex + 1}${zone ? ` (the ${zone})` : ""}, `
-    + "reproduced exactly as photographed";
+    + "used as this clip's background plate exactly as photographed — only enhanced to 8K";
 }

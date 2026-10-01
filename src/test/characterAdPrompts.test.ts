@@ -15,7 +15,7 @@ import {
 } from "@/utils/dialogueFormat";
 import {
   assignPhotosToClips, describeClipLocations, attachmentDirective, splitAttachmentDirective,
-  parseLocationIndex, type LocationPhoto,
+  parseLocationIndex, withBackgroundPlate, BACKGROUND_PLATE_HEADING, type LocationPhoto,
 } from "@/utils/locationAssignment";
 
 const pack = getCharacterPack("motu_patlu")!;
@@ -133,16 +133,17 @@ describe("main-frame prompt", () => {
 
   it("uses the client's photographs as ground truth when provided", () => {
     const p = frame({ locationMode: "real_provided" });
-    expect(p).toContain("THE CLIENT'S REAL PHOTOGRAPHS (AUTHORITATIVE)");
-    expect(p).toContain("Do not redesign, tidy, upgrade, or re-imagine it");
-    expect(p).toContain("MATCH that photo's own lighting");
-    expect(p).toContain("MATCH the camera perspective");
+    expect(p).toContain("THE CLIENT'S REAL PHOTOGRAPHS — EACH ONE IS A BACKGROUND PLATE (STRICT)");
+    expect(p).toContain("Only ENHANCE it — upscale it to 8K");
+    expect(p).toContain("Do NOT redesign, rebuild, redraw, tidy, modernise, widen, extend, crop into or re-imagine it");
+    expect(p).toContain("lit by its own light (same direction, softness and colour temperature)");
+    expect(p).toMatch(/photograph's own framing is the frame/);
   });
 
   it("generates the location when no photographs were sent", () => {
     const p = frame();
     expect(p).toContain("GENERATED FROM THE BUSINESS PROFILE");
-    expect(p).not.toContain("AUTHORITATIVE");
+    expect(p).not.toContain("BACKGROUND PLATE");
   });
 
   it("ties each clip's background to what is being said in it, and never repeats one", () => {
@@ -217,12 +218,20 @@ describe("main-frame prompt", () => {
 
   // Their build comes with them; writing it down invites the generator to redraw them, which is
   // how two same-sized cartoon men kept coming back instead of the real pair.
-  it("never mentions height or relative size", () => {
-    const p = frame().toLowerCase();
-    for (const banned of ["height", "taller", "shorter", "height difference"]) {
-      expect(p).not.toContain(banned);
+  /**
+   * Motu and Patlu grew in the videos because no still fixed their size against anything in the room.
+   * The build is still never described — the size is anchored to a real counter instead (2026-10-01).
+   */
+  it("fixes the pair's size against a real object in the room, and never describes their build", () => {
+    const p = frame();
+    expect(p).toContain("at the SAME distance from the camera — neither one nearer");
+    expect(p).toContain("beside a real counter, shelf or door frame that their height can be read against");
+    expect(p).toContain(`SCALE ANCHOR — write it into EVERY prompt, word for word: ${pack.scaleAnchor}`);
+    expect(pack.scaleAnchor).toContain("the top of a normal shop counter (about 90 cm) reaches Motu's chest and Patlu's waist");
+    expect(p).toContain("Beyond that, say nothing about their build or body");
+    for (const banned of ["round", "thin", "fat", "chubby", "skinny"]) {
+      expect(pack.scaleAnchor!.toLowerCase(), banned).not.toMatch(new RegExp(`\\b${banned}\\b`));
     }
-    expect(frame()).toContain("Say nothing about their build, size or how tall either one is");
   });
 
   /**
@@ -481,11 +490,11 @@ describe("veo prompt", () => {
   });
 
   // The whole point of the change: the old prompt ordered a static camera.
-  it("never orders a static camera", () => {
+  it("never orders a frozen performance, and keeps the camera inside the frame", () => {
     expect(p).not.toContain("Camera holds steady");
     expect(assembled).not.toContain("Camera holds steady");
-    expect(assembled).toContain("No static or locked-off camera");
     expect(assembled).toContain("No frozen pose");
+    expect(assembled).toContain("No camera move that shows anything beyond the attached frame");
     expect(assembled).toContain(`CAMERA — ${cameraLabel(plan[1])}`);
   });
 
@@ -544,13 +553,14 @@ describe("location index + photo assignment", () => {
    * zone behind clip 2. Cycling back would show the same photograph twice AND leave the member
    * attaching one file to two prompts, unsure whether they had misread the instruction.
    */
-  it("generates the extra clips instead of showing a photo twice", () => {
+  // A real-location ad stands in the client's real place in EVERY clip — never an invented shop (2026-10-01).
+  it("uses the photos again in turn when there are more clips than photos, instead of inventing a place", () => {
     const out = assignPhotosToClips(4, [photo(0, "entrance"), photo(1, "counter")]);
-    expect(out.map(a => a.photoIndex)).toEqual([0, 1, null, null]);
+    expect(out.map(a => a.photoIndex)).toEqual([0, 1, 0, 1]);
   });
 
-  it("gives the one-photo two-clip case a photo then a generated zone", () => {
-    expect(assignPhotosToClips(2, [photo(0, "shopfront")]).map(a => a.photoIndex)).toEqual([0, null]);
+  it("puts the one photo behind every clip of a one-photo ad", () => {
+    expect(assignPhotosToClips(2, [photo(0, "shopfront")]).map(a => a.photoIndex)).toEqual([0, 0]);
   });
 
   it("leaves spare photos unused rather than repeating one", () => {
@@ -568,18 +578,28 @@ describe("location index + photo assignment", () => {
     expect(out.map(a => a.photoIndex)).toEqual([null, null]);
   });
 
-  it("briefs each clip with its photo, and asks for a built zone where there is none", () => {
+  it("briefs each clip with its photo, and a reused photo as the same real place staged anew", () => {
     const photos = [{ index: 0, zone: "entrance", lighting: "warm", bestFor: "welcome", usable: true }];
     const text = describeClipLocations(assignPhotosToClips(2, photos), photos);
     expect(text).toContain("Clip 1: PHOTOGRAPH #1");
+    expect(text).toContain("Clip 2: PHOTOGRAPH #1");
     expect(text).toContain("zone: entrance");
-    expect(text).toContain("Clip 2: NO PHOTOGRAPH");
-    expect(text).toContain("never put the same photograph behind two clips");
+    expect(text).toContain("is never swapped for an invented place");
+    expect(text).toContain("each photograph is the clip's BACKGROUND PLATE: used as it is, only enhanced to 8K");
   });
 
-  it("tells the model to build the location when a clip has no photo", () => {
+  it("builds the location only when no usable photo was sent at all", () => {
     const text = describeClipLocations(assignPhotosToClips(1, []), []);
-    expect(text).toContain("NO PHOTOGRAPH");
+    expect(text).toContain("NO USABLE PHOTOGRAPH");
+  });
+
+  it("stamps the background plate onto a photo clip's frame prompt once, and never onto a generated one", () => {
+    const stamped = withBackgroundPlate("Motu and Patlu at the counter.", { clip: 0, photoIndex: 1 });
+    expect(stamped).toContain(`${BACKGROUND_PLATE_HEADING} (STRICT): Use the attached Store/Office Image #2 AS the background, exactly as it is`);
+    expect(stamped).toContain("upscale it to 8K");
+    expect(stamped).toContain("Do NOT redesign, rebuild, redraw");
+    expect(withBackgroundPlate(stamped, { clip: 0, photoIndex: 1 })).toBe(stamped);
+    expect(withBackgroundPlate("A frame.", { clip: 0, photoIndex: null })).toBe("A frame.");
   });
 
   /**
@@ -596,9 +616,9 @@ describe("location index + photo assignment", () => {
     });
 
     it("says to attach nothing when the clip's location is generated", () => {
-      const plan = assignPhotosToClips(2, [photo(0, "shopfront")]);
-      expect(attachmentDirective(plan[1], photos)).toMatch(/^🎨 ATTACH NOTHING/);
-      expect(attachmentDirective(plan[1], photos)).toContain("generated");
+      const generated = { clip: 1, photoIndex: null };
+      expect(attachmentDirective(generated, photos)).toMatch(/^🎨 ATTACH NOTHING/);
+      expect(attachmentDirective(generated, photos)).toContain("generated");
     });
 
     it("still names the slot when the scout gave no zone", () => {

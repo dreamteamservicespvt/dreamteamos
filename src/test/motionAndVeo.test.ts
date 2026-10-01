@@ -3,7 +3,8 @@ import {
   CAMERA_MOVES, SHOT_ANGLES, STAGINGS, assembleVeoPrompt, cameraLabel, clipRoles, compositionFor, fillCast, framingForMotion,
   parseVeoDirections, planClipMotion, resolveDirection, spokenLinesIn, stagingForLine, stagingPath, withoutQuotedSpeech,
   withoutStillness, withoutTravel, VEO_DIRECTION_SYSTEM_PROMPT, MOTION_COMPOSITION_HEADING, withMotionComposition,
-  DUO_SAFE_MOVES, COLOUR_LOCK, speechAccentFor,
+  DUO_SAFE_MOVES, CARTOON_PAIR_MOVES, COLOUR_LOCK, speechAccentFor, frameSummaryOf, withoutApproach, withScaleAnchor,
+  SCALE_ANCHOR_HEADING,
 } from "@/services/prompts/motion";
 import { MULTI_FRAME_SYSTEM_PROMPT, VEO_SEGMENT_SYSTEM_PROMPT, modelVeoSubject } from "@/services/prompts";
 import {
@@ -14,11 +15,14 @@ import { getCharacterPack, packSpeakers } from "@/services/characterPacks";
 import { formatDialogueScript, parseDialogueClips } from "@/utils/dialogueFormat";
 
 /**
- * Every clip does what its LINE, its SCENE and the kind of video need — stand and tell, walk and talk,
- * show the product, present the space, invite the viewer in — filmed with a named camera angle, lens,
- * move and speed. A walk is only ever a few steps along floor the frame already shows; the people and
- * the place never change; and nobody waves goodbye.
+ * Every clip ANIMATES ITS OWN FRAME and nothing beyond it (2026-10-01): stand and tell, show the
+ * product, present the space or invite the viewer in — always in place, nobody walks — filmed with a
+ * camera that only tightens on or breathes around what the still shows. The people and the place
+ * never change, the frame's edges are never crossed, and nobody waves goodbye.
  */
+
+/** Words that would send the camera or a body somewhere the still does not show. */
+const TRAVELS = /\b(?:walks?|walking|steps? (?:toward|forward|closer)|follow tracking|steadicam|pulls? back|dolly out|crane|orbit|arcs? |pans? |tilts? |trucks? )\b/i;
 
 const GOODBYE = /\b(?:wav(?:e|es|ing) (?:goodbye|bye)|bye-bye|farewell wave)\b/i;
 
@@ -37,71 +41,75 @@ describe("what each clip is for", () => {
 });
 
 describe("the motion plan", () => {
-  it("introduces the business standing, filmed as a hero, and ends inviting the viewer in", () => {
+  it("introduces the business standing, eased in on, and ends inviting the viewer in", () => {
     const plan = planClipMotion(4, "commercial");
     expect(plan[0].staging.key).toBe("stand_present");
-    expect(plan[0].camera.key).toBe("orbit");
-    expect(plan[0].angle.key).toBe("low_angle");
+    expect(plan[0].camera.key).toBe("push_in");
+    expect(plan[0].angle.key).toBe("eye_level");
     expect(plan.at(-1)!.staging.key).toBe("welcome_invite");
     expect(stagingPath(plan.at(-1)!, "She")).toContain("never a goodbye: no waving, no bye-bye hand");
   });
 
-  // The team's rule: sometimes stand and tell, sometimes walk and talk, sometimes show the product.
-  it("mixes stand, walk and show across an ad — never all the same", () => {
+  // Still varied — stand and tell, show the product, present the space — but always in place.
+  it("mixes stand, show and present across an ad — never all the same, and never a walk", () => {
     const plan = planClipMotion(6, "commercial");
     const kinds = new Set(plan.map((p) => p.staging.key));
     expect(kinds.has("stand_present")).toBe(true);
-    expect(kinds.has("walk_and_talk")).toBe(true);
     expect(kinds.has("show_product")).toBe(true);
+    expect(kinds.has("present_space")).toBe(true);
+    expect(Object.keys(STAGINGS)).toEqual(["stand_present", "show_product", "present_space", "welcome_invite"]);
   });
 
-  it("reads each line for what it asks: a product to show, the place to walk, a promise to stand behind", () => {
+  it("reads each line for what it asks: a product to show, the place to present, a promise to stand behind", () => {
     expect(stagingForLine("See our new silk saree collection.", "proof", "person")).toBe("show_product");
     expect(stagingForLine("మా కొత్త కలెక్షన్ చూడండి.", "proof", "person")).toBe("show_product");
-    expect(stagingForLine("Come inside our big showroom.", "proof", "person")).toBe("walk_and_talk");
+    expect(stagingForLine("Come inside our big showroom.", "proof", "person")).toBe("present_space");
     expect(stagingForLine("Trusted by families for twenty years.", "proof", "person")).toBe("stand_present");
     expect(stagingForLine("anything", "trust", "person")).toBe("stand_present");
     expect(stagingForLine("Come inside our big showroom.", "proof", "deity")).toBe("present_space");
     const plan = planClipMotion(3, "commercial", "person", { lines: ["Namaste.", "See our gold jewellery designs.", "Visit us."] });
     expect(plan[1].staging.key).toBe("show_product");
-    expect(plan[1].camera.key).toBe("push_in");
+    expect(plan[1].camera.key).toBe("rack_focus");
     expect(plan[1].lens).toBe("85mm");
   });
 
-  it("takes the scene plan's choices where they are usable", () => {
+  it("takes the scene plan's choices where they are usable, and reads a saved walk as presenting the space", () => {
     const plan = planClipMotion(4, "commercial", "person", {
-      choices: [{ staging: "walk_and_talk", camera: "truck", angle: "eye_level" }, { staging: "present_space", camera: "crane_down" }, { staging: "nonsense", camera: "zoom" }, { staging: "stand_present" }],
+      choices: [{ staging: "walk_and_talk", camera: "follow_tracking", angle: "eye_level" }, { staging: "show_product", camera: "rack_focus", angle: "high_angle" }, { staging: "nonsense", camera: "crane_down", angle: "worms_eye" }, { staging: "stand_present" }],
     });
-    expect(plan[0].staging.key).toBe("walk_and_talk");
-    expect(plan[0].camera.key).toBe("truck");
-    expect(plan[1].camera.key).toBe("crane_down");
+    expect(plan[0].staging.key).toBe("present_space");
+    // A retired move is never used: the staging's own in-frame move instead.
+    expect(plan[0].camera.key).toBe("handheld");
+    expect(plan[1].camera.key).toBe("rack_focus");
     expect(plan[1].angle.key).toBe("high_angle");
+    expect(Object.keys(CAMERA_MOVES)).toContain(plan[2].camera.key);
+    expect(plan[2].angle.key).toBe("eye_level");
     // An unusable choice falls back to the code plan; the last clip is always the invitation.
     expect(Object.keys(STAGINGS)).toContain(plan[2].staging.key);
     expect(plan[3].staging.key).toBe("welcome_invite");
   });
 
   /**
-   * The worst fault reported from finished duo ads: the two characters come out of the video model
-   * at different heights from the still. A walk is a few steps toward the LENS — one character
-   * nearer the camera than the other is the excuse the model takes to re-proportion them.
+   * Walking toward the camera sent people onto the road and over the furniture, and in a pair it is
+   * one character nearer the lens than the other — the excuse the model takes to re-proportion them.
    */
-  it("never walks a two-hander toward the camera", () => {
-    for (const n of [2, 3, 4, 6, 8]) {
-      const plan = planClipMotion(n, "commercial", "cartoon", {
-        twoHander: true,
-        lines: Array.from({ length: n }, () => "Come inside our big showroom."),
-        choices: Array.from({ length: n }, () => ({ staging: "walk_and_talk" as const })),
-      });
-      expect(plan.some((p) => p.staging.walks), `${n} clips`).toBe(false);
+  it("never walks anyone — a person, a pair, a cartoon or a deity — whatever the lines or the plan ask", () => {
+    for (const performer of ["person", "cartoon", "deity"] as const) {
+      for (const twoHander of [false, true]) {
+        for (const n of [2, 3, 4, 6, 8]) {
+          const plan = planClipMotion(n, "commercial", performer, {
+            twoHander,
+            lines: Array.from({ length: n }, () => "Come inside our big showroom."),
+            choices: Array.from({ length: n }, () => ({ staging: "walk_and_talk", camera: "follow_tracking" })),
+          });
+          for (const clip of plan) {
+            expect(Object.keys(STAGINGS), `${performer} ${n}`).toContain(clip.staging.key);
+            expect(stagingPath(clip, "She"), `${performer} ${n}`).not.toMatch(TRAVELS);
+            expect(clip.camera.action, `${performer} ${n}`).not.toMatch(TRAVELS);
+          }
+        }
+      }
     }
-    // A single presenter still walks — there is no relationship to break.
-    expect(planClipMotion(6, "commercial", "person").some((p) => p.staging.walks)).toBe(true);
-  });
-
-  it("never lets a deity walk", () => {
-    const plan = planClipMotion(6, "commercial", "deity", { choices: [{ staging: "walk_and_talk" }] });
-    expect(plan.some((p) => p.staging.walks)).toBe(false);
   });
 
   it("never stages or films two neighbouring clips the same way", () => {
@@ -119,11 +127,12 @@ describe("the motion plan", () => {
     expect(planClipMotion(5, "commercial", "person", { lines })).toEqual(planClipMotion(5, "commercial", "person", { lines }));
   });
 
-  it("follows the speaker in a two-hander on some clips, not all", () => {
+  it("follows the speaker in a two-hander with the focus only, on some clips, not all", () => {
     const plan = planClipMotion(6, "commercial", "cartoon", { twoHander: true });
     const focus = plan.map((p) => p.focus);
     expect(focus).toContain("speaker");
     expect(focus).toContain("both");
+    for (const clip of plan) expect(clip.focus === "speaker").toBe(clip.camera.key === "rack_focus");
     expect(planClipMotion(4, "commercial").every((p) => p.focus === "both")).toBe(true);
   });
 
@@ -132,31 +141,32 @@ describe("the motion plan", () => {
       for (const p of [...planClipMotion(8, "festival", performer), ...planClipMotion(1, "commercial", performer)]) {
         expect(p.fallbackBeats).toHaveLength(3);
         const beats = p.fallbackBeats.join(" ");
-        expect(beats, `${performer} ${p.role}`).toMatch(/palm|hand|gesture|turns|nod|lean|namaste|bow|walking/);
+        expect(beats, `${performer} ${p.role}`).toMatch(/palm|hand|gesture|turns|nod|namaste|bow/);
         expect(beats, `${performer} ${p.role}`).not.toMatch(GOODBYE);
-        if (!p.staging.walks) expect(beats, `${performer} ${p.role}`).not.toMatch(/\bwalk/);
+        expect(beats, `${performer} ${p.role}`).not.toMatch(/\bwalk|\bsteps?\b|\blean/);
       }
     }
   });
 
-  it("walks only a few steps along clear floor, never toward furniture or a door", () => {
-    const walk = STAGINGS.walk_and_talk;
-    expect(walk.walks).toBe(true);
-    expect(walk.path).toContain("a few natural, unhurried steps toward the camera along the clear, open floor the frame shows");
-    expect(walk.path).toContain("never toward a table, a counter, a shelf or a door");
-    expect(walk.start).toContain("a clear, open stretch of floor INSIDE the business");
-    for (const staging of Object.values(STAGINGS).filter((s) => !s.walks)) {
-      expect(fillCast(staging.path, "She")).not.toMatch(/\bwalks? (?:to|through|across|along|in|out|toward)\b/i);
+  it("keeps every staging in place — nobody walks, steps or travels", () => {
+    for (const staging of Object.values(STAGINGS)) {
+      expect(fillCast(staging.path, "She"), staging.key).not.toMatch(TRAVELS);
+      expect(staging.start, staging.key).not.toMatch(/open stretch of floor|running toward the camera|about to step/);
     }
+    expect(fillCast(STAGINGS.stand_present.path, "She")).toContain("feet planted where they are");
   });
 
-  it("gives every move a lens and speed from the standard vocabulary, and a deity blessings only", () => {
+  // Every move that showed MORE than the still made the video model invent the rest of the shop.
+  it("films only with moves that stay inside the frame, in natural angles, and a deity blessings only", () => {
+    expect(Object.keys(CAMERA_MOVES)).toEqual(["push_in", "rack_focus", "handheld", "static_locked"]);
     for (const move of Object.values(CAMERA_MOVES)) {
       expect(move.lens, move.key).toMatch(/^\d+mm$/);
       expect(move.speed, move.key).toBeTruthy();
       expect(move.action, move.key).not.toMatch(/\b(?:crash zoom|whip|360)\b/i);
+      expect(move.action, move.key).not.toMatch(TRAVELS);
     }
-    expect(Object.keys(SHOT_ANGLES)).toEqual(["eye_level", "low_angle", "high_angle", "birds_eye", "worms_eye", "over_the_shoulder", "pov", "dutch_tilt"]);
+    expect(CAMERA_MOVES.push_in.action).toContain("never reveals anything beyond its edges");
+    expect(Object.keys(SHOT_ANGLES)).toEqual(["eye_level", "low_angle", "high_angle"]);
     const deity = planClipMotion(4, "commercial", "deity");
     expect(deity[1].gesture).toContain("never touching, holding or presenting it");
   });
@@ -165,8 +175,8 @@ describe("the motion plan", () => {
     const plan = planClipMotion(4, "commercial");
     expect(stagingPath(plan[0], "She")).toMatch(/^She stands where the frame has her, facing the camera/);
     expect(stagingPath(plan[0], "Both characters", true)).toMatch(/^Both characters stand where the frame has them/);
-    expect(fillCast(STAGINGS.walk_and_talk.path, "She")).toContain("talking as she walks");
-    expect(fillCast(STAGINGS.walk_and_talk.path, "Both characters", true)).toContain("talking as they walk");
+    expect(fillCast(STAGINGS.present_space.path, "She")).toContain("She opens one arm to present the real space behind her");
+    expect(fillCast(STAGINGS.present_space.path, "Both characters", true)).toContain("Both characters open one arm to present the real space behind them");
   });
 });
 
@@ -176,18 +186,20 @@ describe("frames built for each clip's staging", () => {
   const modelFrame = () =>
     MULTI_FRAME_SYSTEM_PROMPT("professional", "commercial", "", 4, lines, "", "female", "", false, "", undefined, plan);
 
-  it("composes each frame for its own clip — a walk gets its floor, a product its reach", () => {
+  it("composes each frame for its own clip — a product within reach, every clip in place", () => {
     const p = modelFrame();
     expect(p).toContain("FRAMES BUILT FOR MOTION (EACH FRAME IS THE FIRST MOMENT OF ITS CLIP)");
-    expect(p).toContain("A WALK NEEDS ITS FLOOR");
+    expect(p).toContain("animates THAT frame and nothing beyond it");
+    expect(p).toContain("the variety of the ad comes from YOUR frames");
+    expect(p).not.toMatch(/WALK NEEDS ITS FLOOR|WALKS AND TALKS/);
     expect(p).toContain("THE THING TO SHOW WITHIN REACH");
     expect(p).toContain("INSIDE THE BUSINESS, ALWAYS");
     for (const clip of plan.slice(1)) {
       expect(p).toContain(framingForMotion(clip));
       expect(p).toContain(`🧍 POSE: ${clip.staging.start}`);
     }
-    expect(plan[1].staging.key).toBe("walk_and_talk");
-    expect(framingForMotion(plan[1])).toContain("a clear, open stretch of floor INSIDE the business");
+    expect(plan[1].staging.key).toBe("present_space");
+    expect(framingForMotion(plan[1])).not.toMatch(/open stretch of floor|toward the camera/);
   });
 
   // Clip 1's image is the face every later frame is matched to.
@@ -211,8 +223,9 @@ describe("frames built for each clip's staging", () => {
       segmentCount: 4, clipSummaries: lines, locationMode: "ai_generated", locationPlan: "",
       aspectRatio: "9:16", adType: "commercial", motionPlan: packPlan,
     });
-    expect(p).toContain("Each clip's video follows its own 🎬 note");
-    expect(p).toContain("for a walk, a clear, open, empty stretch of floor inside the business");
+    expect(p).toContain("Each clip's video animates THIS still and nothing beyond it");
+    expect(p).toContain("Nobody walks in the video, so the variety of the ad comes from YOUR frames");
+    expect(p).not.toContain("for a walk");
     expect(p).toContain(compositionFor(packPlan[1]));
   });
 });
@@ -259,25 +272,51 @@ describe("the Veo prompt", () => {
   it("stages, films in the standard terms, times the performance and keeps the line exact — with no direction at all", () => {
     const p = build(null);
     expect(p).toContain("one continuous 8-second shot, animated from the attached frame");
-    expect(p).toContain(`ACTION — STAND AND TELL:\nShe stands where the frame has her`);
+    expect(p).toContain(`ACTION — STAND AND TELL, IN PLACE:\nShe stands where the frame has her`);
     expect(p).toContain(`CAMERA — ${cameraLabel(plan[0])}: ${fillCast(plan[0].camera.action, "She")}`);
     expect(p).toMatch(/• 0–2s: .+\n• 2–5s: .+\n• 5–8s: .+/);
     expect(spokenLinesIn(p)).toEqual([line]);
   });
 
-  it("walks and talks on a walk clip — only along the floor the frame shows", () => {
-    const p = build(null, 1);
-    expect(p).toContain("ACTION — WALK AND TALK:");
-    expect(p).toContain(`CAMERA — Eye level · 35mm · Follow Tracking · steadicam tracking, ultra smooth`);
-    expect(p).toContain("She walks only a few steps along the clear, open floor the frame shows ahead");
-    expect(p).toContain("walks and talks at the same time");
-    expect(p).toContain("No walking across the whole room or around the shop — only a few steps along the clear floor in the frame");
+  /**
+   * The user's report: presenters walked toward the camera and out onto the road, characters walked over
+   * tables and cupboards, and the shop stretched into one the client does not own. Every clip is now
+   * bounded by its frame — on a "showroom" line too, which used to be a walk.
+   */
+  it("never walks on any clip, and bounds every clip to its frame", () => {
+    expect(plan[1].staging.key).toBe("present_space");
+    for (const clip of plan) {
+      const p = build(null, clip.clip);
+      expect(p).toContain("FRAME BOUNDARY — THIS VIDEO SHOWS ONLY WHAT THE ATTACHED FRAME SHOWS:");
+      expect(p).toContain("The camera never reveals anything beyond the frame's four edges");
+      expect(p).toContain("the place never extends, widens, stretches, grows or rebuilds itself");
+      expect(p).toContain("She is already in place, exactly where the frame has her, and stands there for the whole clip with both feet on the real floor");
+      expect(p).toContain("No walking, no steps, no stepping forward or toward the camera");
+      expect(p).toContain("No climbing onto, standing on or walking over tables, counters, shelves, cupboards or any furniture");
+      expect(p).toContain("no pull-back, dolly-out, zoom-out, crane, pedestal, orbit, arc, pan, tilt, truck or tracking shot");
+      expect(p).toContain("no extended, enlarged, stretched or rebuilt shop");
+      expect(p).not.toMatch(/walks and talks|a few steps along/);
+    }
   });
 
-  it("stands on every other clip", () => {
-    const p = build(null, 2);
-    expect(p).toContain("She is already in place, in the spot the frame shows");
-    expect(p).toContain("No walking across the room, no walking around, no walking toward or through the door");
+  // The video is told what it is animating, read from the prompt the still was made from.
+  it("describes the attached frame from its own prompt when the director gives no description", () => {
+    const framePrompt = "A woman in a maroon silk saree stands at the billing counter of a clothing store, folded shirts on the shelves behind her. Soft daylight.\n\nCOMPOSITION FOR MOTION: Stand and tell (Eye level · 50mm) — three-quarter body.\n\nBACKGROUND FOR THIS CLIP: the billing counter with folded shirts. This background is different from every other clip's, and it belongs to the store.";
+    const p = assembleVeoPrompt({
+      aspectRatio: "9:16", plan: plan[0], identityLock: model.identityLock, language: "Telugu",
+      speech: [{ voice: model.voice, line }], cast: model.cast, castPlural: model.castPlural, framePrompt,
+    });
+    expect(p).toContain("THE ATTACHED FRAME — WHAT THIS VIDEO ANIMATES, AND ALL IT MAY SHOW:\nA woman in a maroon silk saree stands at the billing counter of a clothing store");
+    expect(p).toContain("Background: the billing counter with folded shirts.");
+    expect(p).not.toContain("COMPOSITION FOR MOTION: Stand");
+    // Near the top, before the locks.
+    expect(p.indexOf("THE ATTACHED FRAME")).toBeLessThan(p.indexOf("COLOUR AND LIGHT LOCK"));
+    // The director's own description wins when it is usable, and a walking one is refused.
+    expect(resolveDirection(plan[0], { frame: "she stands by the counter, shirts behind her" }, "She", false, framePrompt).frame)
+      .toBe("she stands by the counter, shirts behind her");
+    expect(resolveDirection(plan[0], { frame: "she walks out onto the road" }, "She", false, framePrompt).frame)
+      .toContain("A woman in a maroon silk saree stands at the billing counter");
+    expect(frameSummaryOf("")).toBe("");
   });
 
   // The place is what the walking prompts broke: vanishing furniture, walking into tables, onto the road.
@@ -285,8 +324,8 @@ describe("the Veo prompt", () => {
     for (const p of plan.map((clip) => build(null, clip.clip))) {
       expect(p).toContain("WORLD LOCK — THE PLACE AND EVERYTHING IN IT STAY EXACTLY AS THE FRAME SHOWS:");
       expect(p).toContain("Nothing disappears, appears, melts, morphs, slides, floats or moves by itself");
-      expect(p).toContain("nobody walks into a table, a counter, a door or a wall");
-      expect(p).toContain("Nobody walks out of the shop, onto the road or the street, into another shop, or through a door");
+      expect(p).toContain("nobody climbs onto, stands on or walks over a table, a counter, a shelf or a cupboard");
+      expect(p).toContain("nobody walks out of the shop, onto the road or the street, into another shop, or through a door");
       expect(p).toContain("No object disappearing, appearing, moving by itself or changing shape");
     }
   });
@@ -299,15 +338,16 @@ describe("the Veo prompt", () => {
     expect(build(null, 3)).toContain("This is an invitation to come, never a goodbye");
   });
 
-  it("lets the camera move closer or further, and locks the people instead", () => {
+  it("lets a single presenter's camera ease slightly closer, and locks the people instead", () => {
     const p = build(null, 2);
     expect(p).toContain(`CAMERA — ${cameraLabel(plan[2])}`);
-    expect(plan[2].camera.key).toBe("dolly_in");
+    expect(plan[2].camera.key).toBe("push_in");
+    expect(p).toContain("A gentle, slow cinematic, ultra smooth move that stays inside the frame");
     expect(p).toContain("THE PEOPLE NEVER CHANGE — ONLY THE CAMERA MOVES:");
-    expect(p).toContain("but She keeps exactly the height, build and proportions the frame shows");
+    expect(p).toContain("The camera may ease slightly closer, but She keeps exactly the height, build and proportions the frame shows");
     expect(p).toContain("No change of height, build or body proportions — nobody grows or shrinks relative to the room");
     expect(p).toContain("No costume change");
-    expect(p).toContain("No static or locked-off camera");
+    expect(p).toContain("No fast or shaky camera");
     expect(p).toContain("no slow motion, hyperlapse or time-lapse while anyone speaks");
   });
 
@@ -339,10 +379,17 @@ describe("the Veo prompt", () => {
     expect(p).toContain("SCENE LIFE: a fan turns.");
   });
 
-  it("accepts a walk on a walk clip, and refuses it anywhere else", () => {
-    const walking = { path: "she walks toward the camera along the aisle between the saree racks, presenting them" };
-    expect(resolveDirection(plan[1], walking, "She").path).toBe(walking.path);
-    expect(resolveDirection(plan[2], walking, "She").path).toBe(stagingPath(plan[2], "She"));
+  it("refuses a walk, a step toward the camera, climbing on furniture or a camera that leaves the frame — on every clip", () => {
+    for (const clip of plan) {
+      for (const path of [
+        "she walks toward the camera along the aisle between the saree racks, presenting them",
+        "she takes a half step forward and presents the counter",
+        "she climbs onto the table to point at the shelf",
+      ]) expect(resolveDirection(clip, { path }, "She").path, path).toBe(stagingPath(clip, "She"));
+      for (const camera of ["a slow pull back reveals the whole showroom", "the camera orbits around her", "a pan across the store", "a tracking shot follows her"]) {
+        expect(resolveDirection(clip, { camera }, "She").camera, camera).toBe(fillCast(clip.camera.action, "She"));
+      }
+    }
   });
 
   it("refuses leaving the business, walking into things, freezing or a broken camera — on every clip", () => {
@@ -382,12 +429,12 @@ describe("the Veo prompt", () => {
   // Both seen on nearly every clip of the first live run: "counter.. Smooth" and "• 0–2s: 0–2s: …".
   it("never doubles the full stop or the time label the prompt supplies", () => {
     const p = build({
-      camera: "a slow arc around her.",
+      camera: "a slow push-in toward her.",
       beats: ["0–2s: smiles to the lens.", "2-5s - open palm on the name", "(5–8 sec) a warm nod."],
       sceneLife: "a fan turns..",
     });
     expect(p).not.toMatch(/\.\./);
-    expect(p).toContain("a slow arc around her. A clearly visible");
+    expect(p).toContain("a slow push-in toward her. A gentle");
     expect(p).toContain("• 0–2s: smiles to the lens\n");
     expect(p).toContain("• 2–5s: open palm on the name\n");
     expect(p).toContain("• 5–8s: a warm nod\n");
@@ -469,7 +516,17 @@ describe("the Veo prompt", () => {
     expect(prompt).toContain("The camera keeps ONE fixed distance and height for the whole clip");
     expect(prompt).toContain("their feet stay on the same line of floor");
     expect(prompt).toContain("No character moving nearer the lens than the other");
-    expect(prompt).toContain("No character growing taller, stretching, rising onto the toes");
+    expect(prompt).toContain("No character growing taller, stretching, leaning toward the camera, rising onto the toes");
+    expect(prompt).not.toContain("SCALE ANCHOR — EXACTLY");
+    // A pack's scale anchor goes into the lock, word for word — the same words the frame carried.
+    const anchored = assembleVeoPrompt({
+      aspectRatio: "9:16", plan: planClipMotion(4, "commercial", "cartoon", { twoHander: true })[1],
+      identityLock: s.identityLock, language: "Telugu", speech, scaleAnchor: s.scaleAnchor,
+      cast: s.cast, castPlural: s.castPlural, twoHander: s.twoHander, manner: s.manner, handGestures: s.handGestures,
+    });
+    expect(s.scaleAnchor).toBe(pack.scaleAnchor);
+    expect(anchored).toContain(`SCALE ANCHOR — EXACTLY AS IN THE ATTACHED FRAME, FOR ALL 8 SECONDS: ${pack.scaleAnchor!.replace(/\.$/, "")}.`);
+    expect(anchored.indexOf("SCALE ANCHOR")).toBeLessThan(anchored.indexOf("COLOUR AND LIGHT LOCK"));
     // A single presenter has no pair to hold, so it is not given the block.
     const solo = assembleVeoPrompt({
       aspectRatio: "9:16", plan: planClipMotion(4, "commercial")[1], identityLock: "her face",
@@ -490,13 +547,17 @@ describe("the Veo prompt", () => {
     ];
     const duo = planClipMotion(6, "commercial", "cartoon", { twoHander: true, choices: choices as never });
     for (const clip of duo) {
-      expect(DUO_SAFE_MOVES).toContain(clip.camera.key);
+      // A DRAWN pair — Motu and Patlu — is never filmed with any camera movement at all.
+      expect(CARTOON_PAIR_MOVES).toContain(clip.camera.key);
       expect(clip.angle.key).toBe("eye_level");
-      expect(clip.staging.walks).toBe(false);
       expect(clip.twoHander).toBe(true);
     }
-    // A single presenter keeps the whole vocabulary.
-    expect(planClipMotion(6, "commercial", "person", { choices: choices as never })[0].camera.key).toBe("orbit");
+    // Real people as a pair may also have a barely-there float, never a push-in.
+    const people = planClipMotion(6, "commercial", "person", { twoHander: true, choices: choices as never });
+    for (const clip of people) expect(DUO_SAFE_MOVES).toContain(clip.camera.key);
+    expect(people.some((c) => c.camera.key === "handheld")).toBe(true);
+    // A single presenter keeps its own in-frame moves, and may be eased in on.
+    expect(planClipMotion(6, "commercial", "person", { choices: choices as never })[3].camera.key).toBe("push_in");
 
     const s = packVeoSubject(getCharacterPack("duo_motu_patlu")!);
     const prompt = assembleVeoPrompt({
@@ -567,8 +628,8 @@ describe("the Veo prompt", () => {
     expect(solo).toContain("No washed-out, faded, pale, pastel or desaturated colour");
     expect(solo).not.toContain("soft light shifts");
     expect(solo).toContain("with the light exactly as the frame has it");
-    // A single presenter is still filmed with a real move.
-    expect(solo).toContain("No static or locked-off camera");
+    // A single presenter's camera never leaves the frame either.
+    expect(solo).toContain("No camera move that shows anything beyond the attached frame");
   });
 
   it("gives a deity the catalogue voice and blessings only", () => {
@@ -587,14 +648,18 @@ describe("the Veo prompt", () => {
 describe("the director call", () => {
   it("directs each clip's staging in the standard camera vocabulary, never re-describes the person, and never cuts", () => {
     const p = VEO_SEGMENT_SYSTEM_PROMPT(4, "female");
+    expect(p).toContain("HOW THE TEAM WORKS — READ THIS FIRST");
     expect(p).toContain("FRAME — the prompt the still was generated from");
-    expect(p).toContain("PLANNED STAGING — stand and tell / walk and talk / show the product / present the space / invite the viewer in");
+    expect(p).toContain("PLANNED STAGING — stand and tell / show the product / present the space / invite the viewer in. Always in place");
     expect(p).toContain("PLANNED CAMERA — the angle, lens, move and speed");
-    expect(p).toContain("THE CAMERA VOCABULARY");
-    for (const term of ["Eye level", "Worm's eye", "Over-the-shoulder", "Dutch tilt", "Dolly In", "Truck Left / Right", "Push In", "Crane Up", "Follow Tracking", "85mm + slow Dolly → premium product", "steadicam tracking"]) {
+    expect(p).toContain("THE CAMERA VOCABULARY — ONLY MOVES THAT STAY INSIDE THE FRAME");
+    for (const term of ["Slow Push In", "Rack Focus", "Gentle Float", "Static Locked", "85mm + Rack Focus → product to face, premium detail"]) {
       expect(p, term).toContain(term);
     }
-    expect(p).toContain("Only a walk-and-talk clip walks");
+    expect(p).not.toMatch(/Follow Tracking|Crane Up|Worm's eye|Dutch tilt|steadicam/);
+    expect(p).toContain("IN PLACE, ALWAYS. Nobody walks, steps, comes toward the camera");
+    expect(p).toContain("THE FRAME IS THE WHOLE WORLD");
+    expect(p).toContain('"frame": ""');
     expect(p).toContain("THE WORLD IS LOCKED");
     expect(p).toContain("INSIDE THE BUSINESS ONLY");
     expect(p).toContain("One continuous shot. Never a cut");
@@ -606,15 +671,16 @@ describe("the director call", () => {
   });
 
   it("reads its JSON reply by clip number, and survives a broken one", () => {
-    const out = parseVeoDirections(JSON.stringify([{ clip: 2, path: "p", camera: "b", beats: ["1", "2", "3"], sceneLife: "s" }]), 3);
+    const out = parseVeoDirections(JSON.stringify([{ clip: 2, frame: "f", path: "p", camera: "b", beats: ["1", "2", "3"], sceneLife: "s" }]), 3);
     expect(out[0]).toBeNull();
     expect(out[1]?.camera).toBe("b");
+    expect(out[1]?.frame).toBe("f");
     expect(parseVeoDirections("nonsense", 2)).toEqual([null, null]);
   });
 
   it("gives a pack its characters' own direction, with the plan winning", () => {
     const p = VEO_DIRECTION_SYSTEM_PROMPT({ clipCount: 2, aspectRatio: "9:16", subject: "Motu and Patlu", characterDirection: "HOW THIS CHARACTER PERFORMS" });
-    expect(p).toContain("the planned staging, the world lock and the planned camera always win");
+    expect(p).toContain("the planned staging, the frame boundary, the world lock and the planned camera always win");
     expect(p).toContain("When the plan says SPEAKER FOCUS, only the focus moves to whoever is speaking");
   });
 
@@ -623,7 +689,7 @@ describe("the director call", () => {
     expect(pair).toContain("For this PAIR the camera NEVER changes its distance or height to them");
     expect(pair).toContain("A PAIR NEVER CHANGES SIZE");
     const solo = VEO_DIRECTION_SYSTEM_PROMPT({ clipCount: 2, aspectRatio: "9:16", subject: "the model" });
-    expect(solo).toContain("The camera may move closer (dolly in, push in)");
+    expect(solo).toContain("It may ease slightly closer (a slow push-in) or float gently; it never travels, widens or swings round");
     // Neither is shown a change of light as an example of scene life any more.
     for (const prompt of [pair, solo]) {
       expect(prompt).toContain("THE LIGHT AND COLOUR ARE LOCKED");
@@ -669,6 +735,27 @@ describe("character direction without the stillness or the travel", () => {
       expect(video, id).not.toMatch(GOODBYE);
     }
     expect(characterDirectionBlock(getCharacterPack("duo_motu_patlu")!, "frame")).toContain("CAMERA & CINEMATIC DIRECTION");
+  });
+
+  /** "Motu leans in and rocks forward … a half step towards the thing" — a body nearer the lens is a body growing. */
+  it("takes every move toward the camera out of a pair's video direction, and keeps the rest", () => {
+    const out = withoutApproach("Mickey takes the half step forward when he asks; Minnie holds her ground. His eyes go wide on the price. Chutki steps a half pace forward on her fact.");
+    expect(out).toContain("His eyes go wide on the price.");
+    expect(out).not.toMatch(/half step|half pace|forward/);
+    for (const id of ["duo_motu_patlu", "duo_mickey_minnie", "duo_bheem_chutki", "duo_oggy_jack", "duo_spongebob_patrick", "human_duo_male"]) {
+      const video = characterDirectionBlock(getCharacterPack(id)!, "video");
+      expect(video, id).not.toMatch(/\b(?:leans? (?:in|forward|towards?)|rocks? forward|half[- ](?:step|pace)|steps? forward|stepping in|popping up)\b/i);
+    }
+    // A single character keeps its own body language untouched by this rule.
+    expect(characterDirectionBlock(getCharacterPack("solo_motu")!, "video")).toBeTruthy();
+  });
+
+  it("stamps a pair's scale anchor onto a frame prompt once, word for word", () => {
+    const anchor = getCharacterPack("duo_motu_patlu")!.scaleAnchor!;
+    const stamped = withScaleAnchor("Motu and Patlu at the counter.", anchor);
+    expect(stamped).toContain(`${SCALE_ANCHOR_HEADING}: ${anchor.replace(/\.$/, "")}. Both stand on the floor at the same distance from the camera`);
+    expect(withScaleAnchor(stamped, anchor)).toBe(stamped);
+    expect(withScaleAnchor("A frame.", "")).toBe("A frame.");
   });
 
   it("keeps what a deity must never touch", () => {

@@ -19,7 +19,7 @@ import SaleDeletedBanner from '@/components/work/SaleDeletedBanner';
 import { deleteOrderChat, ensureOrderChat, lockOrderChat, reopenOrderChat, detachAssignmentFromChat } from '@/services/orderChat';
 import { orderChatIdOf } from '@/utils/orderChatId';
 import { useOrderChatUnread } from '@/hooks/useOrderChat';
-import { buildAssignmentRequirementsMessage } from '@/utils/adRequirement';
+import { attireLabel, buildAssignmentRequirementsMessage } from '@/utils/adRequirement';
 import { useAssignmentBrief } from '@/hooks/useAssignmentBrief';
 import { getCharacterPack } from '@/services/characterPacks';
 import { unassignWork } from '@/services/workAssign';
@@ -45,14 +45,6 @@ import DashboardDateRangePicker from '@/components/dashboard/DateRangePicker';
 import type { WorkAssignment, AppUser } from '@/types';
 import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from '@/types/aiPlatform';
 import { formatDateRangeLabel, isDateWithinRange, normalizeDateRange, parseQueryDate, parseQueryDateRange } from '@/utils/dateRange';
-
-// Human-readable labels for each attire option (mirrors WorkAssign / AIPlatformApp).
-const ATTIRE_LABELS: Record<AttireType, string> = {
-  [AttireType.PROFESSIONAL]: 'Professional (Formal Suit)',
-  [AttireType.TRADITIONAL]: 'Traditional (Designer Saree)',
-  [AttireType.SHIRT_PANT]: 'Professional (In-shirt & Pant)',
-  [AttireType.CUSTOM]: 'Custom',
-};
 
 const ASSIGNMENT_LANGUAGE_OPTIONS = ['Telugu', 'English', 'Hindi', 'Kannada', 'Custom'] as const;
 
@@ -900,7 +892,7 @@ export default function MemberAssignments() {
                         {/* A human-model entry still has clothes worth reading off the card. */}
                         {getCharacterPack(a.characterPack)?.family === 'human' && a.attireType && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
-                            {a.attireType === 'custom' && a.customAttire ? a.customAttire : ATTIRE_LABELS[a.attireType]}
+                            {attireLabel(a.attireType, a.customAttire, a.characterPack)}
                           </span>
                         )}
                       </>
@@ -913,7 +905,7 @@ export default function MemberAssignments() {
                     )}
                     {a.attireType && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
-                        {a.attireType === 'custom' && a.customAttire ? a.customAttire : ATTIRE_LABELS[a.attireType]}
+                        {attireLabel(a.attireType, a.customAttire, a.characterPack)}
                       </span>
                     )}
                     </>

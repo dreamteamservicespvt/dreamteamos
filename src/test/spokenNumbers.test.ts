@@ -87,24 +87,28 @@ describe("the scene plan chooses how each clip is filmed", () => {
     const ctx = parseScenePlan(JSON.stringify({
       motive: "a saree showroom", setting: "the showroom", mood: "premium", avoid: [],
       clips: [
-        { clip: 1, background: "the entrance display", staging: "walk_and_talk", camera: "follow_tracking", angle: "eye_level", focus: "speaker" },
-        { clip: 2, background: "the silk racks", staging: "moonwalk", camera: "zoom", angle: "sideways" },
+        { clip: 1, background: "the entrance display", staging: "show_product", camera: "rack_focus", angle: "eye_level", focus: "speaker" },
+        { clip: 2, background: "the silk racks", staging: "walk_and_talk", camera: "follow_tracking", angle: "worms_eye" },
       ],
     }), 2)!;
+    // A retired staging, move or angle (walking, tracking, worm's eye) is dropped like any unknown key.
     expect(motionChoicesOf(ctx)).toEqual([
-      { staging: "walk_and_talk", camera: "follow_tracking", angle: "eye_level", focus: "speaker" },
+      { staging: "show_product", camera: "rack_focus", angle: "eye_level", focus: "speaker" },
       { staging: undefined, camera: undefined, angle: undefined, focus: undefined },
     ]);
   });
 
-  it("offers the planner the stagings, moves and angles — and no walking for a deity", () => {
+  it("offers the planner only in-place stagings and in-frame moves — no walking for anyone", () => {
     const p = SCENE_PLAN_SYSTEM_PROMPT({ clipCount: 3, adType: "commercial", subject: "Motu and Patlu", twoHander: true });
     expect(p).toContain("STEP 5 — HOW EACH CLIP IS FILMED");
-    expect(p).toContain("walk_and_talk (Walk and talk)");
-    expect(p).toContain("follow_tracking (Follow Tracking)");
-    expect(p).toContain("over_the_shoulder (Over-the-shoulder)");
+    expect(p).toContain("nobody walks, and the camera never shows anything outside the frame");
+    expect(p).toContain("show_product (Show the product)");
+    expect(p).toContain("rack_focus (Rack Focus)");
+    expect(p).not.toContain("push_in (Slow Push In)");
+    expect(p).not.toMatch(/walk_and_talk|follow_tracking|over_the_shoulder|crane|orbit/);
     expect(p).toContain('"focus"');
-    const deity = SCENE_PLAN_SYSTEM_PROMPT({ clipCount: 3, adType: "commercial", subject: "Ganesha", deity: true });
-    expect(deity).not.toContain("walk_and_talk (Walk and talk)");
+    const solo = SCENE_PLAN_SYSTEM_PROMPT({ clipCount: 3, adType: "commercial", subject: "the model" });
+    expect(solo).toContain("push_in (Slow Push In)");
+    expect(solo).not.toContain('"focus"');
   });
 });

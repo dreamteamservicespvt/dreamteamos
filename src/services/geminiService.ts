@@ -75,7 +75,7 @@ import {
 } from "@/utils/scriptQa";
 import {
   assembleVeoPrompt, cameraLabel, fillCast, parseVeoDirections, planClipMotion, spokenLinesIn, stagingPath,
-  withMotionComposition, type ClipMotionPlan, type VeoSpeech,
+  withMotionComposition, withScaleAnchor, type ClipMotionPlan, type VeoSpeech,
 } from "./prompts/motion";
 import {
   VEO_REFINE_PLAN_SYSTEM_PROMPT, VEO_REFINE_SYSTEM_PROMPT, VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT, VOICEOVER_REFINE_PLAN_SYSTEM_PROMPT,
@@ -85,9 +85,12 @@ import {
   numberedWords, parseClipDialogueEdits, parseClipTextEdits, parseRefinePlan, repairDirection, wordBandDistance,
 } from "@/utils/voiceOverRefine";
 import {
-  getCharacterPack, packSpeakers, packNameSpellings, isHumanPack, packCastGender,
+  getCharacterPack, packSpeakers, packNameSpellings, isHumanPack, isKidsPack, packAdKind, packCastGender,
   withCustomCharacter, type CharacterPack,
 } from "./characterPacks";
+import { castNamesFromFrames, castSheetBlock, castSheetFor, withCastSheet } from "@/utils/castSheet";
+import { inventedAddressIssue, missingAddressIssue, spokenAddressOf } from "@/utils/spokenAddress";
+import { addressRuleBlock } from "./prompts/address";
 import {
   POSTER_CONCEPT_SYSTEM_PROMPT, POSTER_CONCEPT_USER_PROMPT, POSTER_CONCEPT_REFINE_SYSTEM_PROMPT,
 } from "./prompts/posterConcept";
@@ -99,7 +102,7 @@ import {
   type DialogueClip, wordBudgetFor, countSpokenWords, MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, TARGET_WORDS_PER_CLIP,
 } from "@/utils/dialogueFormat";
 import {
-  assignPhotosToClips, describeClipLocations, attachmentDirective, parseLocationIndex, splitAttachmentDirective,
+  assignPhotosToClips, describeClipLocations, attachmentDirective, backgroundPlateRule, parseLocationIndex, splitAttachmentDirective, withBackgroundPlate,
   type LocationPhoto,
 } from "@/utils/locationAssignment";
 import { MODEL_LOCATION_SUBJECT, clipLocationLabel, realLocationFormula } from "./prompts/realLocation";
@@ -558,7 +561,7 @@ const buildRatioDirective = (formData: AdFormData): string => {
 const packWardrobe = (pack: CharacterPack | null, formData: AdFormData): string | undefined => {
   if (!pack || !isHumanPack(pack) || !formData.attireType) return undefined;
   // The male & female duo is dressed per person from one choice — see wardrobeDirective.
-  return wardrobeDirective(formData.attireType, formData.customAttire, packCastGender(pack)) || undefined;
+  return wardrobeDirective(formData.attireType, formData.customAttire, packCastGender(pack), isKidsPack(pack)) || undefined;
 };
 
 /**
@@ -2309,6 +2312,33 @@ export const generateAdAssets = async (
   // Only verified contact numbers and a real address from here on — every later prompt reads this.
   businessInfo = verifyExtraction(businessInfo, typedChunks.join('\n'), files).businessInfo;
 
+  /**
+   * The address the closing clip must say — only the VERIFIED one, in its spoken form (road, landmark,
+   * town; no door number or pincode — utils/spokenAddress) — and, for a script not in English, fixed
+   * in that script's spelling up front so the check can find it. No verified address → no address may
+   * be spoken at all. A member's own script is used word for word and is never held to this.
+   */
+  const latinAddress = customScript?.trim() ? '' : spokenAddressOf(factsFromProfile(businessInfo).address);
+  const nativeAddressPromise: Promise<string> = (async () => {
+    const lang = (formData.language || 'Telugu').trim();
+    if (!latinAddress) return '';
+    if (!lang || lang.toLowerCase() === 'english') return speakableLine(latinAddress, 'English');
+    try {
+      const res = await callWithFallback(async (ai, model) => ai.models.generateContent({
+        model,
+        contents: [{ role: 'user', parts: [{ text:
+          `Write this Indian shop address in ${lang} script, exactly as a local person says it aloud: "${latinAddress}". `
+          + `Keep every place name; write "opposite", "near" and "beside" as the ${lang} words for them. `
+          + `Reply with the address only — one line, no explanation, no Latin letters, no digits.` }] }],
+      }), { effort: 'fast' });
+      const first = (res.text || '').trim().split(/\r?\n/)[0] || '';
+      const cleaned = first.replace(/["'`.:;!?()\[\]]/g, '').trim();
+      return cleaned && !/[A-Za-z0-9]/.test(cleaned) ? cleaned : '';
+    } catch {
+      return '';
+    }
+  })();
+
   const hasProductImages = files.productImages && files.productImages.length > 0;
   const productImageCount = hasProductImages ? files.productImages.length : 0;
 
@@ -2360,6 +2390,11 @@ export const generateAdAssets = async (
 
   onProgress(customScript ? "Processing custom script..." : "Writing Voice Over script...", 20);
 
+  /** The address in the spelling the last clip must use — "" when there is none, or it could not be fixed. */
+  const sayAddress = await nativeAddressPromise;
+  /** True when the client's data carries an address — then the last clip says it, else none is spoken. */
+  const addressGiven = !!latinAddress;
+
   // ── Special-category (cartoon duo) ad ───────────────────────────────────────────────────────
   // A pack swaps in the two-character script/frame/video prompts. When no pack is selected this
   // is null and every line below behaves exactly as it always has.
@@ -2380,6 +2415,25 @@ export const generateAdAssets = async (
       ? preSplitCustomClips.length
       : Math.round(formData.duration / 8);
   const effectiveDuration = segmentCount * CLIP_SECONDS;
+
+  /** The address rule every writer and repairer of a GENERATED script is given (prompts/address). */
+  const addressRule = customScript?.trim() ? '' : addressRuleBlock({
+    given: addressGiven, spoken: sayAddress, latin: latinAddress, language: formData.language || 'Telugu', finalClip: segmentCount,
+  });
+  /**
+   * What the address rule checks, clip by clip: the closing clip says the address when there is one
+   * (in the spelling fixed above — when it could not be fixed it is asked for, not checked), and no
+   * clip invents one when there is none. The business's own name and town are never flagged.
+   */
+  const addressIssues = (segments: string[], own: string[] = []): string[] => {
+    if (customScript?.trim() || segments.length === 0) return [];
+    if (addressGiven) {
+      if (!sayAddress) return [];
+      const issue = missingAddressIssue(segments.length, segments[segments.length - 1] || '', sayAddress);
+      return issue ? [issue] : [];
+    }
+    return segments.map((segment, i) => inventedAddressIssue(i + 1, segment, own)).filter((x): x is string => !!x);
+  };
 
   /**
    * Everyday words (prompts/everydaySpeech): hard words are checked and repaired, and written verb
@@ -2568,7 +2622,9 @@ export const generateAdAssets = async (
         // The characters are standing inside the business in every frame — see utils/speakingPosition.
         .concat(clips.flatMap((clip, i) => clip
           .map(line => elsewhereIssue(i + 1, line.text, speakerName(line.speaker)))
-          .filter((issue): issue is string => !!issue)));
+          .filter((issue): issue is string => !!issue)))
+        // The address: said in the last clip when the client gave one, never invented when not.
+        .concat(addressIssues(clips.map(clip => clip.map(line => line.text).join(' ')), ownNames));
     /** Written verb endings made spoken, in code — see toSpokenEndings. */
     const spokenLines = (clips: DialogueClip[]): DialogueClip[] =>
       clips.map(clip => clip.map(line => ({ ...line, text: toSpokenEndings(line.text, formData.language) })));
@@ -2579,8 +2635,8 @@ export const generateAdAssets = async (
     const systemPrompt = CHARACTER_VOICEOVER_SYSTEM_PROMPT(
       pack, effectiveDuration, segmentCount, formData.adType, formData.festivalName, formData.language, promptPlace,
       coreMessage,
-    );
-    const userPrompt = `Write the ${segmentCount}-clip cartoon dialogue script for:
+    ) + addressRule;
+    const userPrompt = `Write the ${segmentCount}-clip ${packAdKind(pack).script} for:
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
   AD TYPE: ${formData.adType}
   ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName} (clip 1 is the wishes on behalf of the business and sells nothing)` : ''}
@@ -2597,7 +2653,7 @@ export const generateAdAssets = async (
     let issues = checkDialogue(clips);
 
     for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES && issues.length > 0; pass++) {
-      const repairPrompt = `Repair this cartoon dialogue script using only verified business facts.
+      const repairPrompt = `Repair this ${packAdKind(pack).script} using only verified business facts.
 
 BUSINESS INFORMATION:
 ${JSON.stringify(businessInfo, null, 2)}
@@ -2617,7 +2673,7 @@ Return only the repaired ${segmentCount} clips.`;
           systemInstruction: CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT(
             pack, effectiveDuration, segmentCount, formData.language, promptPlace,
             formData.adType, formData.festivalName,
-          ),
+          ) + addressRule,
         },
       }), { effort: 'standard' });
 
@@ -2680,7 +2736,7 @@ Return ONLY the JSON for clip${targets.length === 1 ? '' : 's'} ${targets.map(i 
               festivalName: formData.festivalName,
               brief: coreMessage,
               speakers: packSpeakerList,
-            }),
+            }) + addressRule,
             responseMimeType: 'application/json',
           },
         }), { effort: 'standard' });
@@ -2731,7 +2787,7 @@ Return ONLY the JSON for clip${targets.length === 1 ? '' : 's'} ${targets.map(i 
         adType: formData.adType,
         festivalName: formData.festivalName,
         brief: coreMessage,
-      });
+      }) + addressRule;
       const userPrompt = `SCRIPT (the whole script, for context):
 ${best.segments.map((s, i) => `Clip ${i + 1}: ${s}`).join('\n')}
 
@@ -2754,7 +2810,8 @@ Return ONLY the JSON for clip${targets.length === 1 ? '' : 's'} ${targets.map(i 
         if (edits.size === 0) break;
         const merged = mergeClipEdits(best.segments, edits);
         const candidate = normalizeAndFormatVoiceOver(spoken(formatVoiceOverScript(merged)), segmentCount);
-        const candidateIssues = validateVoiceOverSegments(candidate.rawScript, candidate.segments, segmentCount, formData.language, everyday, formData.adType === 'festival' ? 1 : undefined);
+        const candidateIssues = validateVoiceOverSegments(candidate.rawScript, candidate.segments, segmentCount, formData.language, everyday, formData.adType === 'festival' ? 1 : undefined)
+          .concat(addressIssues(candidate.segments, everyday?.names));
         const candidateDistance = distanceOf(candidate.segments);
         // Keep a fix that gets closer even when it does not clear the issue outright; stop only when a
         // pass makes nothing better.
@@ -2776,7 +2833,8 @@ Return ONLY the JSON for clip${targets.length === 1 ? '' : 's'} ${targets.map(i 
 
   const applyVoiceOverRepairIfNeeded = async (candidateScript: string) => {
     let normalizedVoiceOver = normalizeAndFormatVoiceOver(spoken(candidateScript), segmentCount);
-    let voiceOverIssues = validateVoiceOverSegments(normalizedVoiceOver.rawScript, normalizedVoiceOver.segments, segmentCount, formData.language, everyday, formData.adType === 'festival' ? 1 : undefined);
+    let voiceOverIssues = validateVoiceOverSegments(normalizedVoiceOver.rawScript, normalizedVoiceOver.segments, segmentCount, formData.language, everyday, formData.adType === 'festival' ? 1 : undefined)
+      .concat(addressIssues(normalizedVoiceOver.segments, everyday?.names));
 
     // Problems inside clips are fixed clip by clip; only a script-level problem (a wrong clip count)
     // still needs the whole script rewritten.
@@ -2788,7 +2846,7 @@ Return ONLY the JSON for clip${targets.length === 1 ? '' : 's'} ${targets.map(i 
     }
 
     for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES && voiceOverIssues.length > 0 && scriptLevel(voiceOverIssues); pass++) {
-      const repairSystemPrompt = buildLanguageDirective(formData) + VOICEOVER_REPAIR_SYSTEM_PROMPT(effectiveDuration, segmentCount, formData.adType, formData.festivalName, formData.language, coreMessage);
+      const repairSystemPrompt = buildLanguageDirective(formData) + VOICEOVER_REPAIR_SYSTEM_PROMPT(effectiveDuration, segmentCount, formData.adType, formData.festivalName, formData.language, coreMessage) + addressRule;
       const repairUserPrompt = `Repair this ${formData.language || 'Telugu'} voice-over script using only verified business facts.
 
 BUSINESS INFORMATION:
@@ -2811,7 +2869,8 @@ Return only the repaired ${segmentCount} clip lines.`;
       }, { effort: 'standard' });
 
       normalizedVoiceOver = normalizeAndFormatVoiceOver(spoken(repairResponse.text || normalizedVoiceOver.formatted), segmentCount);
-      voiceOverIssues = validateVoiceOverSegments(normalizedVoiceOver.rawScript, normalizedVoiceOver.segments, segmentCount, formData.language, everyday, formData.adType === 'festival' ? 1 : undefined);
+      voiceOverIssues = validateVoiceOverSegments(normalizedVoiceOver.rawScript, normalizedVoiceOver.segments, segmentCount, formData.language, everyday, formData.adType === 'festival' ? 1 : undefined)
+      .concat(addressIssues(normalizedVoiceOver.segments, everyday?.names));
     }
 
     // Whatever the whole-script repair left inside individual clips gets the clip-level fix too.
@@ -2861,7 +2920,7 @@ A STRICT QUALITY CHECK FOUND THESE PROBLEMS — FIX EVERY ONE, and keep everythi
 ${mustFix.map(m => `- ${m}`).join('\n')}
 ` : ''}
 Review it now and return the JSON verdict.` }] }],
-            config: { systemInstruction: VOICEOVER_QUALITY_REVIEW_SYSTEM_PROMPT(formData.language, coreMessage, messageClip), responseMimeType: "application/json" }
+            config: { systemInstruction: VOICEOVER_QUALITY_REVIEW_SYSTEM_PROMPT(formData.language, coreMessage, messageClip) + addressRule, responseMimeType: "application/json" }
           });
         }, { effort: 'deep' });
         const parsed = JSON.parse(reviewResponse.text || '{}');
@@ -2938,7 +2997,7 @@ Review it now and return the JSON verdict.` }] }],
     if (announce) onProgress("Planning a different background for every clip...", 42);
     const subject = pack
       ? (isHumanPack(pack)
-          ? (pack.characters.length > 1 ? 'the two presenters' : 'the presenter')
+          ? (pack.characters.length > 1 ? (isKidsPack(pack) ? 'the two children' : 'the two presenters') : 'the presenter')
           : pack.characters.map(c => c.name).join(' and '))
       : `the ${formData.gender === 'male' ? 'male' : 'female'} brand ambassador`;
     const systemInstruction = SCENE_PLAN_SYSTEM_PROMPT({
@@ -3178,7 +3237,7 @@ Segment 2: <text>`;
     voiceOverScript = formatVoiceOverScript(parsedSegments);
   } else {
     // Auto-generate voice-over script
-    const scriptSystemPrompt = buildLanguageDirective(formData) + VOICEOVER_SYSTEM_PROMPT(effectiveDuration, segmentCount, formData.adType, formData.festivalName, formData.language, formData.gender || 'female', coreMessage);
+    const scriptSystemPrompt = buildLanguageDirective(formData) + VOICEOVER_SYSTEM_PROMPT(effectiveDuration, segmentCount, formData.adType, formData.festivalName, formData.language, formData.gender || 'female', coreMessage) + addressRule;
     const scriptUserPrompt = `Generate a ${effectiveDuration}-second ${formData.language || 'Telugu'} voice-over script for:
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
   AD TYPE: ${formData.adType}
@@ -3212,7 +3271,7 @@ Segment 2: <text>`;
       draft => draft.formatted,
       (draft, report) => (qaDecision(report) === 'rewrite' ? writeDraft(rewriteFeedback(report)) : polishDraft(draft, report)),
       draft => validateVoiceOverSegments(draft.rawScript, draft.segments, segmentCount, formData.language, everyday,
-        formData.adType === 'festival' ? 1 : undefined).length,
+        formData.adType === 'festival' ? 1 : undefined).concat(addressIssues(draft.segments, everyday?.names)).length,
       // The same lines the script will be planned from once it is final (see the speakableLine pass below).
       draft => planScenesEarly(draft.segments.map(segment => speakableLine(segment, formData.language))),
     );
@@ -3263,6 +3322,16 @@ Segment 2: <text>`;
   const frameBrand = getBrandMark(frameNoLogo, frameNameBoard);
   /** A Real Owner Face ad is built from the owner's own photo, uploaded in its own slot. */
   const ownerFace = !!pack?.usesClientFace && !!files.ownerImage;
+  /**
+   * The people this ad invents — a Normal Ad presenter, a human duo, the Kids — written down once and
+   * stamped onto every frame, so every clip shows the SAME people (utils/castSheet). Seeded by the
+   * business, so a regenerated kit casts them again and the next client gets different faces.
+   */
+  const castMembers = castSheetFor(pack, {
+    attireType: formData.attireType, customAttire: formData.customAttire,
+    seed: coreMessage?.businessName || extractBusinessNameFromInfo(businessInfo) || formData.textInstructions || '',
+  });
+  const castBlock = castSheetBlock(castMembers);
   /** The team's FRAME / BACKGROUND INSTRUCTIONS box — the highest-priority direction for every frame. */
   const frameInstructionsBlock = formData.frameInstructions?.trim()
     ? `
@@ -3352,6 +3421,9 @@ Segment 2: <text>`;
         motionPlan,
         nameBoard: frameNoLogo ? frameNameBoard : '',
         sceneBackgrounds: sceneLines,
+        // On location every clip's frame IS its photograph (background plate) — see clipShotPlan.
+        photoClips: usingClientPhotos ? clipPhotoPlan.map((plan) => clipLocationLabel(plan, clientLocations)) : [],
+        castSheet: castBlock,
         sceneMotive: sceneContext
           ? [sceneContext.motive, sceneContext.setting ? `set in ${sceneContext.setting}` : ''].filter(Boolean).join(', ')
           : '',
@@ -3398,14 +3470,12 @@ Segment 2: <text>`;
    */
   const realPremisesDirective = usingClientPhotos
     ? `
-  LOCATION SOURCE — THE CLIENT'S OWN PREMISES (ABSOLUTE, OVERRIDES EVERY ENVIRONMENT RULE BELOW):
-  The client has supplied ${clientLocations.length} photograph${clientLocations.length === 1 ? '' : 's'} of their actual business. Every clip is set in one of those real photographed spaces — the attached reference for that clip — and NOT in an invented, generic, or "typical for this business type" interior.
-  • Rebuild the exact space in the attached photograph: its real walls, floor, ceiling, fixtures, counters, shelving, stock, signage, colours and daylight direction. Keep what is actually there.
-  • Do NOT redesign, upgrade, tidy, modernise, or "premiumise" the premises. A modest real shop must stay a modest real shop; making it look like a showroom is the failure this override exists to prevent.
-  • Do NOT substitute a stock interior, a studio backdrop, or a location invented from the business profile. Do NOT merge several of their spaces into one composite room.
-  • The model is placed INTO that photographed space with matching perspective, matching light direction and matching colour temperature, so the frame reads as a photograph taken on location that day.
-  • Where any rule below says "reception", "front desk", "logo wall", "business zone" or "a different area", read it as that clip's photograph. The attire, pose and framing rules still apply; the place they happen in is the photograph.
-  CLIP-BY-CLIP LOCATION PLAN (each clip uses its own photograph — never the same one twice unless the plan says so):
+  LOCATION SOURCE — THE CLIENT'S OWN PREMISES, EACH PHOTOGRAPH A BACKGROUND PLATE (ABSOLUTE, OVERRIDES EVERY ENVIRONMENT RULE BELOW):
+  The client has supplied ${clientLocations.length} photograph${clientLocations.length === 1 ? '' : 's'} of their actual business, attached here and attached again by the member to each clip's image prompt. Every clip stands in one of those real photographs — never in an invented, generic, or "typical for this business type" interior.
+  • ${backgroundPlateRule("that clip's attached photograph")}.
+  • A modest real shop stays a modest real shop; making it look like a showroom is the failure this override exists to prevent. Never a stock interior, a studio backdrop, a location invented from the business profile, or several of their spaces merged into one.
+  • Where any rule below says "reception", "front desk", "logo wall", "business zone", "a different area" or names a camera framing, read it as that clip's photograph and its own framing. The attire and pose rules still apply; the place, the angle and the framing are the photograph's.
+  CLIP-BY-CLIP PHOTOGRAPH PLAN (each clip uses its own photograph as listed; a photograph listed twice is the same real place, staged anew):
   ${describeClipLocations(clipPhotoPlan, clientLocations)}
 `
     : '';
@@ -3469,7 +3539,7 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
    * placement in every clip prompt" — instructions that contradict the character system prompt and
    * that produced the logo descriptions in the generated frames.
    */
-  const packMainFrameUserPrompt = pack ? `Generate ${segmentCount} Main Frame image prompts (one per ${CLIP_SECONDS}-second clip) for this two-character cartoon ad.
+  const packMainFrameUserPrompt = pack ? `Generate ${segmentCount} Main Frame image prompts (one per ${CLIP_SECONDS}-second clip) for this ${packAdKind(pack).ad}.
 
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
 
@@ -3550,6 +3620,24 @@ ${sceneContext ? `
         ? `This is the client's business logo. Place it in every clip as real signage already installed in that zone, reproduced from this attached image pixel-for-pixel — never redesigned, recoloured, cropped, blurred, tilted or pasted like a floating overlay. Refer to it in your prompts only as "the attached logo": do NOT describe its text, colours, shape or icon. It is the only text anywhere in the frame.`
         : `This is the EXACT BUSINESS LOGO. You MUST describe this logo placement in every clip prompt so it appears as REAL PHYSICAL SIGNAGE installed on believable architectural surfaces for that zone. Prioritize these surface types: ${realisticLogoPlacementGuidance}. The logo must be reproduced PIXEL-PERFECT — do NOT redesign, reimagine, alter, crop, block, blur, tilt, stretch, partially hide, or paste it like a floating overlay in any way. The full logo must remain completely visible in one piece in every clip. Even though it sits in the background, keep the logo perfectly SHARP and in focus — never softened by depth-of-field blur — so every letter and all text on the logo is crisp and clearly readable.`
     });
+  }
+
+  /*
+    The client's own photographs, so the prompt writer SEES the places it is placing the cast into. It
+    used to read only the scout's one-line description of each photo — and wrote a fresh description of
+    "a shop like that", which the image generator then drew instead of the photo (backgroundPlateRule).
+  */
+  if (usingClientPhotos) {
+    const photoClips = new Map<number, number[]>();
+    clipPhotoPlan.forEach(({ clip, photoIndex }) => {
+      if (photoIndex !== null) photoClips.set(photoIndex, [...(photoClips.get(photoIndex) || []), clip + 1]);
+    });
+    for (const [photoIndex, clipNumbers] of photoClips) {
+      const photo = files.storeImage?.[photoIndex];
+      if (!photo) continue;
+      mainFrameParts.push({ inlineData: { mimeType: photo.type, data: await fileToBase64(photo) } });
+      mainFrameParts.push({ text: `This is Store/Office Image #${photoIndex + 1} — the background plate for clip${clipNumbers.length === 1 ? '' : 's'} ${clipNumbers.join(', ')}. Keep it exactly as it is (only enhanced to 8K) and place the cast into it; never describe a different or redesigned place.` });
+    }
   }
 
   // The owner's own face — the only source of the person on screen in a Real Owner Face ad.
@@ -3704,7 +3792,15 @@ ${sceneContext ? `
     // code, because the frame model drops it when asked (prompts/motion withMotionComposition).
     // A model ad's clip 1 keeps its hero pose — the face every later frame is matched to.
     mainFramePrompts = mainFramePrompts.map((prompt, i) =>
-      withMotionComposition(prompt, motionPlan[i], { keepPose: !pack && i === 0 }));
+      withMotionComposition(prompt, motionPlan[i], {
+        keepPose: !pack && i === 0,
+        // A clip shot in a client photograph keeps the photograph's own framing (background plate).
+        plate: clipPhotoPlan[i]?.photoIndex !== null && clipPhotoPlan[i] !== undefined,
+      }));
+    // A pair's size against the room — the same words the video's scale lock carries (characterPacks.scaleAnchor).
+    if (pack?.scaleAnchor) mainFramePrompts = mainFramePrompts.map(prompt => withScaleAnchor(prompt, pack.scaleAnchor));
+    // The invented people, word for word in every frame — the video prompts read their names back from here.
+    if (castBlock) mainFramePrompts = mainFramePrompts.map(prompt => withCastSheet(prompt, castBlock));
     // Each frame carries its planned background — the model drifts back to one corner when merely told.
     if (sceneContext) mainFramePrompts = mainFramePrompts.map((prompt, i) => withSceneBackground(prompt, sceneContext, i));
     // No logo file: anything the model still wrote about "the attached logo" becomes the name board.
@@ -3713,7 +3809,8 @@ ${sceneContext ? `
     if (clipPhotoPlan.length > 0) {
       mainFramePrompts = mainFramePrompts.map((prompt, i) => {
         const plan = clipPhotoPlan[i];
-        return plan ? `${attachmentDirective(plan, clientLocations)}\n\n${prompt}` : prompt;
+        // The photo is the background, used — not redrawn — and only enhanced to 8K (backgroundPlateRule).
+        return plan ? `${attachmentDirective(plan, clientLocations)}\n\n${withBackgroundPlate(prompt, plan)}` : prompt;
       });
     }
     // Last, so it joins the photo line: the member attaches the owner's face to every frame.
@@ -3816,8 +3913,11 @@ const veoClipsFromScript = (
   let all: VeoClipInput[];
 
   if (pack) {
-    const nameOf = new Map(packSpeakers(pack).map(s => [s.key, s.name]));
-    const subject = packVeoSubject(pack);
+    // Invented people are named by how the frames show them ("the woman in the teal saree"), read
+    // back off the frames' cast sheet — never by a label the video model cannot see (utils/castSheet).
+    const castNames = castNamesFromFrames(mainFramePrompts);
+    const nameOf = new Map(packSpeakers(pack).map((s, i) => [s.key, castNames[i] || s.name]));
+    const subject = packVeoSubject(pack, castNames);
     all = parseDialogueClips(script, packSpeakers(pack)).map((clip, i) => {
       const lines = clip.map(l => ({ name: nameOf.get(l.speaker) ?? l.speaker, text: l.text }));
       return {
@@ -3877,20 +3977,22 @@ const writeVeoPrompts = async (
   const pack = packFor(formData);
   const aspectRatio = formData.aspectRatio === '16:9' ? '16:9' : '9:16';
   const language = formData.language || 'Telugu';
+  /** The invented people as the frames name them — the same names veoClipsFromScript gave the lines. */
+  const castNames = castNamesFromFrames(clips.map(c => c.framePrompt));
   // The same plan the frames were composed for — same lines, same scene-plan choices.
   const plan: ClipMotionPlan[] = planClipMotion(Math.max(clipCount, ...clips.map(c => c.index + 1)), formData.adType,
     packPerformer(pack), motionOptionsFor(pack, lines, sceneContext));
-  const packSubject = pack ? packVeoSubject(pack) : null;
+  const packSubject = pack ? packVeoSubject(pack, castNames) : null;
   const modelSubject = modelVeoSubject(formData.gender || 'female');
   /** Who performs, as the director reads the planned staging: "Motu and Patlu turn…", "The model leans…". */
   const director = pack
-    ? { who: pack.characters.map(c => c.name).join(' and '), plural: pack.characters.length > 1 }
+    ? { who: pack.characters.map((c, i) => castNames[i] || c.name).join(' and '), plural: pack.characters.length > 1 }
     : { who: 'The model', plural: false };
 
   let directions: ReturnType<typeof parseVeoDirections> = clips.map(() => null);
   if (API_KEYS.length > 0) {
     const systemInstruction = pack
-      ? CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT(pack, clips.length, aspectRatio)
+      ? CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT(pack, clips.length, aspectRatio, castNames)
       : VEO_SEGMENT_SYSTEM_PROMPT(clips.length, formData.gender || 'female', aspectRatio);
     const userPrompt = `Direct these ${clips.length} clip${clips.length === 1 ? '' : 's'}.
 
@@ -3901,9 +4003,9 @@ ${clips.map((c, k) => {
 FRAME:
 ${frame || '(no frame prompt available — direct from the line and the planned move)'}
 LINE: ${c.lineForDirector}
-PLANNED STAGING: ${p.staging.name}${p.staging.walks ? ' (a few steps along the clear floor the frame shows)' : ' (stays in their spot)'} — ${stagingPath(p, director.who, director.plural)}
+PLANNED STAGING: ${p.staging.name} (in place — stays in their spot, feet where the frame has them) — ${stagingPath(p, director.who, director.plural)}
 PLANNED CAMERA: ${cameraLabel(p)} — ${fillCast(p.camera.action, director.who, director.plural)}${p.focus === 'speaker' ? `
-SPEAKER FOCUS: the camera eases in on whoever is speaking and pulls focus between them` : ''}
+SPEAKER FOCUS: only the focus moves to whoever is speaking — the camera itself does not move toward either of them` : ''}
 GESTURE INTENT: ${p.gesture}`;
 }).join('\n\n')}
 
@@ -3924,6 +4026,9 @@ Return the JSON array for all ${clips.length} clips, numbered 1 to ${clips.lengt
     aspectRatio,
     plan: plan[c.index],
     direction: directions[k],
+    // The still this clip animates — read for the FRAME line when the director's own is unusable.
+    framePrompt: c.framePrompt,
+    scaleAnchor: packSubject?.scaleAnchor,
     identityLock: packSubject ? packSubject.identityLock : modelSubject.identityLock,
     language,
     speech: c.speech,
