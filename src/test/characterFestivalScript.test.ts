@@ -123,7 +123,9 @@ describe("festival wishes in a special-category script", () => {
       const ex = p.slice(p.indexOf("A WORKED EXAMPLE"), p.indexOf("Notice:"));
       const spoken = [...ex.matchAll(/"([^"]+)"/g)].map(m => m[1]).join(" ");
       for (const c of HUMAN_DUO.characters) expect(spoken).not.toContain(c.name);
-      expect(p).toContain("NO NAMES FOR THE SPEAKERS");
+      // Two real people have their own script prompt now — labels, never names (PEOPLE_DUO_VOICEOVER_SYSTEM_PROMPT).
+      expect(p).toContain("NO NAMES. Never say");
+      expect(p).not.toContain("BOTH NAMES, EACH EXACTLY ONCE");
     }
   });
 

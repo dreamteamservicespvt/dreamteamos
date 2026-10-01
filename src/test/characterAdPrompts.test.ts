@@ -66,7 +66,8 @@ describe("character cast block", () => {
   // The version that carried both characters' full physical descriptions ran past 1500 characters,
   // and it was pasted into every clip prompt. This guards the order of magnitude, not the wording.
   it("stays short — length here is what bloated every downstream prompt", () => {
-    expect(characterCastBlock(pack).length).toBeLessThan(1000);
+    // The TRUE SCALE line is the one addition: Motu and Patlu's size in the room, said once.
+    expect(characterCastBlock(pack).length).toBeLessThan(1500);
   });
 });
 
@@ -131,18 +132,19 @@ describe("main-frame prompt", () => {
       aspectRatio: "9:16", adType: "commercial", businessContext: "ctx", ...over,
     });
 
-  it("uses the client's photographs as ground truth when provided", () => {
+  it("uses the client's photographs AS the background — an edit, never a redrawn shop", () => {
     const p = frame({ locationMode: "real_provided" });
-    expect(p).toContain("THE CLIENT'S REAL PHOTOGRAPHS (AUTHORITATIVE)");
-    expect(p).toContain("Do not redesign, tidy, upgrade, or re-imagine it");
-    expect(p).toContain("MATCH that photo's own lighting");
-    expect(p).toContain("MATCH the camera perspective");
+    expect(p).toContain("THE CLIENT'S REAL PHOTOGRAPHS — USED AS THEY ARE");
+    expect(p).toContain("That photograph IS the background of that clip's frame");
+    expect(p).toContain("enhance and upscale it to a sharp, clean 8K image");
+    expect(p).toContain("CROP it to fit — never extend or outpaint it");
+    expect(p).toContain("Do not describe\n  the room in your own words");
   });
 
   it("generates the location when no photographs were sent", () => {
     const p = frame();
     expect(p).toContain("GENERATED FROM THE BUSINESS PROFILE");
-    expect(p).not.toContain("AUTHORITATIVE");
+    expect(p).not.toContain("USED AS THEY ARE");
   });
 
   it("ties each clip's background to what is being said in it, and never repeats one", () => {
@@ -217,12 +219,23 @@ describe("main-frame prompt", () => {
 
   // Their build comes with them; writing it down invites the generator to redraw them, which is
   // how two same-sized cartoon men kept coming back instead of the real pair.
-  it("never mentions height or relative size", () => {
-    const p = frame().toLowerCase();
-    for (const banned of ["height", "taller", "shorter", "height difference"]) {
-      expect(p).not.toContain(banned);
-    }
-    expect(frame()).toContain("Say nothing about their build, size or how tall either one is");
+  /**
+   * The size of a pair is written down ONCE now. Left unsaid, the image tool chose a size and the video
+   * model "corrected" it across the clip — Motu and Patlu grew. Their looks are still never described.
+   */
+  it("states Motu and Patlu's size in the room once — and still never describes how they look", () => {
+    const p = frame();
+    expect(p).toContain("TRUE SCALE IN THE ROOM: Motu and Patlu are grown men drawn in their show's own 2D style");
+    expect(p).toContain("Motu is about a head shorter, his head level with Patlu's shoulder");
+    expect(p.match(/TRUE SCALE IN THE ROOM/g)?.length).toBe(1);
+    expect(p).toContain("Their SIZE in this room is fixed by the TRUE");
+    // A pair with no scale on record is still told nothing about build.
+    const doraemon = CHARACTER_MULTI_FRAME_SYSTEM_PROMPT(getCharacterPack("duo_doraemon_nobita")!, {
+      segmentCount: 2, clipSummaries: clips, locationMode: "ai_generated", locationPlan: "ladder",
+      aspectRatio: "9:16", adType: "commercial", businessContext: "ctx",
+    });
+    expect(doraemon).not.toContain("TRUE SCALE");
+    expect(doraemon).toContain("Say nothing about their build or looks");
   });
 
   /**
@@ -470,7 +483,7 @@ describe("voice-over prompt — promotional grounding", () => {
 describe("veo prompt", () => {
   const p = CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT(pack, 4);
   const subject = packVeoSubject(pack);
-  const plan = planClipMotion(4, "commercial");
+  const plan = planClipMotion(4, "commercial", "cartoon", { twoHander: true });
   const assembled = assembleVeoPrompt({
     aspectRatio: "9:16",
     plan: plan[1],
@@ -478,15 +491,17 @@ describe("veo prompt", () => {
     language: "Telugu",
     speech: subject.speech([{ name: "Motu", text: "మోటు లైన్" }, { name: "Patlu", text: "పట్లు లైన్" }]),
     performanceNotes: subject.performanceNotes,
+    cast: subject.cast, castPlural: subject.castPlural, twoHander: subject.twoHander,
+    manner: subject.manner, handGestures: subject.handGestures, scaleNote: subject.scaleNote, drawnCast: subject.drawnCast,
   });
 
   // The whole point of the change: the old prompt ordered a static camera.
-  it("never orders a static camera", () => {
+  it("never orders the old frozen 'camera holds steady' shot, and films the pair from a fixed distance", () => {
     expect(p).not.toContain("Camera holds steady");
     expect(assembled).not.toContain("Camera holds steady");
-    expect(assembled).toContain("No static or locked-off camera");
     expect(assembled).toContain("No frozen pose");
     expect(assembled).toContain(`CAMERA — ${cameraLabel(plan[1])}`);
+    expect(assembled).toContain("The camera keeps the SAME distance and the SAME height from both for all 8 seconds");
   });
 
   // The camera belongs to the motion plan now: the catalogue's held-frame camera kept the videos static.
@@ -505,12 +520,13 @@ describe("veo prompt", () => {
   it("demands the original voices and keeps the listener alive", () => {
     expect(assembled).toContain("never a narrator, a new voice actor or a different accent");
     expect(assembled).toContain("the other listens with the mouth closed and reacts");
-    expect(assembled).toContain("No extra people speaking, no new voices");
+    expect(assembled).toContain("No extra people, no new voices");
   });
 
   it("animates the attached frame and locks it against drift", () => {
-    expect(assembled).toContain("Keep both characters exactly as drawn, the logo and the location exactly as they are in it");
-    expect(assembled).toContain("No change to the face, hair, outfit, logo or location from the attached frame");
+    expect(assembled).toContain("keep both characters exactly as drawn, the logo and the location exactly as in the frame");
+    expect(assembled).toContain("No change of face, hair, outfit, colours, height, build or body proportions");
+    expect(assembled).toContain("THE ATTACHED FRAME — THE WHOLE WORLD OF THIS CLIP");
     expect(p).toContain("Never describe the face, hair, skin, outfit or jewellery");
   });
 

@@ -33,7 +33,7 @@ import PosterSpecFields from '@/components/work/PosterSpecFields';
 import PosterSpecChips from '@/components/work/PosterSpecChips';
 import { briefEditFieldsOf, briefPatch, categoryDependentPatch, posterEditFieldsOf } from '@/utils/assignmentEdit';
 import AssignmentBriefFields from '@/components/work/AssignmentBriefFields';
-import { categorySwitch } from '@/utils/adRequirement';
+import { attireOptionLabel, categorySwitch } from '@/utils/adRequirement';
 import { isPosterCategory, DEFAULT_POSTER_PRICE, assignmentSizeLabel } from '@/utils/posterSpec';
 import { getCharacterPack } from '@/services/characterPacks';
 import WorkDoneReport from '@/components/work/WorkDoneReport';
@@ -49,12 +49,8 @@ import { useViewMode } from '@/hooks/useViewMode';
  * instead of two near-identical ones.
  */
 
-const ATTIRE_LABELS: Record<AttireType, string> = {
-  [AttireType.PROFESSIONAL]: 'Professional (Formal Suit)',
-  [AttireType.TRADITIONAL]: 'Traditional (Designer Saree)',
-  [AttireType.SHIRT_PANT]: 'Professional (In-shirt & Pant)',
-  [AttireType.CUSTOM]: 'Custom',
-};
+// The attire as it reads for this job — children's wear on a Kids job (adRequirement.attireOptionLabel).
+const attireText = (attire: string, characterPack?: string | null) => attireOptionLabel(attire as AttireType, characterPack);
 
 const ASSIGNMENT_LANGUAGE_OPTIONS = ['Telugu', 'English', 'Hindi', 'Kannada', 'Custom'] as const;
 
@@ -847,7 +843,7 @@ export default function WorkReports() {
                           )}
                           {(!a.characterPack || getCharacterPack(a.characterPack)?.family === 'human') && a.attireType && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
-                              {a.attireType === 'custom' && a.customAttire ? a.customAttire : ATTIRE_LABELS[a.attireType]}
+                              {a.attireType === 'custom' && a.customAttire ? a.customAttire : attireText(a.attireType, a.characterPack)}
                             </span>
                           )}
                           {/* On every ad, not only a pack one. A real-premises job cannot be STARTED until

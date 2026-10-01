@@ -226,7 +226,7 @@ describe("refining a Veo prompt", () => {
     const edited = original.replace(/SCENE LIFE: [^\n]*/, "SCENE LIFE: steam rising from the tea glasses on the counter.");
     expect(veoEditProblems(original, edited)).toEqual([]);
     expect(sameVeoPrompt(original, `${original}  `)).toBe(true);
-    expect(promptHeadings(original)).toEqual(expect.arrayContaining(["ACTION", "CAMERA", "SPEECH", "SCENE LIFE", "NEGATIVE PROMPT", "WORLD LOCK"]));
+    expect(promptHeadings(original)).toEqual(expect.arrayContaining(["ACTION", "CAMERA", "SPEECH", "SCENE LIFE", "NEGATIVE PROMPT", "THE ATTACHED FRAME", "LOCKED"]));
   });
 
   it("refuses an edit that changes the spoken line or drops a section", () => {

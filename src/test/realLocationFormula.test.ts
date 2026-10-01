@@ -60,7 +60,7 @@ describe("the shared formula", () => {
 
   it("names a clip's photograph, or says plainly there is none", () => {
     expect(clipLocationLabel(PLAN[1], PHOTOS)).toBe(
-      "the client's PHOTOGRAPH #2 (the washing machine aisle), reproduced exactly as photographed",
+      "the client's PHOTOGRAPH #2 (the washing machine aisle), used exactly as photographed — only enhanced and upscaled to 8K",
     );
     expect(clipLocationLabel(PLAN[3], PHOTOS)).toMatch(/^NO CLIENT PHOTOGRAPH for this clip/);
   });
@@ -73,13 +73,15 @@ describe("the shared formula", () => {
 describe("the formula places whoever is actually on screen", () => {
   it("lights two characters for a duo", () => {
     const p = packFrame("duo_motu_patlu");
-    expect(p).toMatch(/when lighting\s+the two characters, so they look photographed/);
+    expect(p).toMatch(/place\s+the two characters\s+INTO it/);
+    expect(p).toMatch(/so\s+they look photographed in that room/);
     expect(p).toContain("stages CARTOON CHARACTERS inside REAL");
   });
 
   it("lights the deity alone for a god pack", () => {
     const p = packFrame("god_ganesha");
-    expect(p).toMatch(/when lighting\s+Ganesha, so Ganesha looks photographed/);
+    expect(p).toMatch(/place\s+Ganesha\s+INTO it/);
+    expect(p).toMatch(/so\s+Ganesha looks photographed in that room/);
     expect(p).not.toContain("the two characters");
     expect(p).toContain("stages a DEITY inside REAL");
     expect(p).not.toContain("CARTOON CHARACTERS");
@@ -90,7 +92,8 @@ describe("the formula places whoever is actually on screen", () => {
     expect(p).toContain("stages a REAL PERSON inside REAL");
     expect(p).not.toContain("the two characters");
     // A role, not a proper name — it takes an article.
-    expect(p).toMatch(/when lighting\s+the business owner, so the business owner looks photographed/);
+    expect(p).toMatch(/place\s+the business owner\s+INTO it/);
+    expect(p).toMatch(/so\s+the business owner looks photographed in that room/);
   });
 
   it("stages one cartoon for a solo pack", () => {
@@ -107,7 +110,7 @@ describe("the formula places whoever is actually on screen", () => {
 describe("a human-model ad shot in the client's photographs", () => {
   it("carries the formula in the SYSTEM prompt, where the location rules live", () => {
     const p = humanModel(true);
-    expect(p).toContain("LOCATION: THE CLIENT'S REAL PHOTOGRAPHS (AUTHORITATIVE)");
+    expect(p).toContain("LOCATION: THE CLIENT'S REAL PHOTOGRAPHS — USED AS THEY ARE");
     expect(p).toContain("THIS OVERRIDES EVERY LOCATION INSTRUCTION IN THIS PROMPT");
   });
 

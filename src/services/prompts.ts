@@ -3,7 +3,7 @@ import { MAX_WORDS_PER_CLIP, MIN_WORDS_PER_CLIP } from '@/utils/dialogueFormat';
 import { coreMessageBlock, type CoreMessageBrief } from './prompts/coreMessage';
 import { everydaySpeechRules } from './prompts/everydaySpeech';
 import { wishAudienceRule, wishOpeningLine } from './prompts/festivalWish';
-import { STAGINGS, VEO_DIRECTION_SYSTEM_PROMPT, cameraLabel, compositionFor, framingForMotion, type ClipMotionPlan } from './prompts/motion';
+import { VEO_DIRECTION_SYSTEM_PROMPT, cameraLabel, compositionFor, framingForMotion, type ClipMotionPlan } from './prompts/motion';
 
 /** The spoken-word band every clip is held to, as prompts say it. See utils/dialogueFormat. */
 const WORD_BAND = `${MIN_WORDS_PER_CLIP} to ${MAX_WORDS_PER_CLIP}`;
@@ -1922,10 +1922,10 @@ Each chosen spot must match the exact service claim, business proof point, or em
 
 ${motionPlan?.length ? `===== FRAMES BUILT FOR MOTION (EACH FRAME IS THE FIRST MOMENT OF ITS CLIP) =====
 
-Each frame below becomes an 8-second video, and the clips are not all alike: in some the ambassador STANDS AND TELLS, in some she WALKS AND TALKS a few steps toward the camera, in some she SHOWS A PRODUCT or PRESENTS THE SPACE — each clip's 🎬 note says which, and with which camera angle, lens and move. The video can only use what the frame shows: anything it would have to invent (a room beyond the edge, a product out of reach, floor that is not there) is where tables vanish and people walk into walls. Compose every frame for its own clip:
+Each frame below becomes an 8-second video, and the clips are not all alike: in some the ambassador STANDS AND TELLS, in some she SHOWS A PRODUCT, PRESENTS THE SPACE or INVITES THE VIEWER IN — each clip's 🎬 note says which, and with which camera angle, lens and move. Nobody walks in these videos: each FRAME is the whole world of its clip, and the video only animates what the still shows. Anything it would have to invent (a room beyond the edge, a product out of reach, a longer shop, the road outside) is where shops stretched, tables vanished and people walked into walls. Compose every frame for its own clip:
 
 • READY FOR ITS CLIP: follow each clip's 🎬 note exactly — relaxed and natural, facing the camera, with clear space around the arms for gestures and nothing touching the body.
-• A WALK NEEDS ITS FLOOR: for a walk-and-talk clip, a clear, open, empty stretch of floor inside the business runs from her toward the camera, fully in view, with nothing in the way.
+• CLEAR FLOOR, NO FURNITURE IN FRONT: the floor between her and the camera is clear — no table, counter or display in front of her body — so nothing in the video ever has to step over or through anything.
 • THE THING TO SHOW WITHIN REACH: the product, counter or equipment the clip talks about sits within arm's reach and fully in view, so she can turn to it, point to it or touch it.
 • EVERYTHING WHOLE AND IN VIEW: tables, counters, shelves and products are fully inside the frame and clear of her body — nothing cut off at her elbow, nothing she is leaning into.
 • THREE-QUARTER BODY (head to knees) — with the face large, clear and evenly lit.
@@ -1964,7 +1964,7 @@ ${Array.from({ length: segmentCount }, (_, i) => {
   const plan = motionPlan?.[i];
   const motionNote = plan
     ? `\n   ${clipNum === 1
-      ? `🎬 THIS CLIP: ${plan.staging.name} — filmed ${cameraLabel(plan)}. Keep the hero framing and pose exactly; compose ${plan.camera.framing}${plan.staging.walks ? `, with ${STAGINGS.walk_and_talk.start.replace(/^standing /, "her standing ")}` : ""}.`
+      ? `🎬 THIS CLIP: ${plan.staging.name} — filmed ${cameraLabel(plan)}. Keep the hero framing and pose exactly; compose ${plan.camera.framing}.`
       : framingForMotion(plan)}`
     : '';
   const animated = !!plan && clipNum > 1;

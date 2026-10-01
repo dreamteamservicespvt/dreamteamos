@@ -56,6 +56,9 @@ export const TARGET_WORDS_PER_CLIP = 19;
  */
 export const MIN_WORDS_PER_DUO_CLIP = 15;
 export const MAX_WORDS_PER_DUO_CLIP = 17;
+/** Two CHILDREN sharing an 8-second clip — see wordBudgetFor. */
+export const MIN_WORDS_PER_KIDS_CLIP = 13;
+export const MAX_WORDS_PER_KIDS_CLIP = 15;
 /** A single character's share in a two-hander. The two lines must still total inside the duo band above. */
 export const MIN_WORDS_PER_LINE = 7;
 export const MAX_WORDS_PER_LINE = 9;
@@ -80,8 +83,13 @@ export interface WordBudget {
  * which then re-imposed the same impossible pair. With one speaker the line IS the clip, so it
  * inherits the clip band.
  */
-export function wordBudgetFor(speakerCount: number): WordBudget {
+export function wordBudgetFor(speakerCount: number, options: { children?: boolean } = {}): WordBudget {
   const solo = speakerCount <= 1;
+  // Children speak more slowly than an adult presenter, and a video model voicing a child keeps that
+  // pace: 15–17 words left the second child gabbling to fit the eight seconds. Two lines of 6–8.
+  if (options.children && !solo) {
+    return { minClip: MIN_WORDS_PER_KIDS_CLIP, maxClip: MAX_WORDS_PER_KIDS_CLIP, minLine: 6, maxLine: 8 };
+  }
   return {
     minClip: solo ? MIN_WORDS_PER_CLIP : MIN_WORDS_PER_DUO_CLIP,
     maxClip: solo ? MAX_WORDS_PER_CLIP : MAX_WORDS_PER_DUO_CLIP,
@@ -358,6 +366,13 @@ export interface DialogueValidationOptions {
    * in. Asking the writer not to do it was not enough, so it is checked and repaired.
    */
   forbiddenNames?: CharacterNameTokens[];
+  /**
+   * Extra words the FINAL clip may use, per line and in total — given when it has to carry the
+   * business's address as well as the invitation. "Where is it?" / "Main Road, near the Clock Tower,
+   * Kakinada — come today!" does not fit two 7–9-word lines; it fits a shorter question and a longer
+   * answer. The first line may be that much shorter, the second that much longer.
+   */
+  finalClipSlack?: number;
 }
 
 /**
@@ -430,6 +445,7 @@ export function validateDialogueClips(
     maxWordsPerClip = budget.maxClip,
     minWordsPerLine = budget.minLine,
     maxWordsPerLine = budget.maxLine,
+    finalClipSlack = 0,
     characterNames = [],
     mentionsPerName = 1,
     requiredPhrases = [],
@@ -505,6 +521,10 @@ export function validateDialogueClips(
 
   clips.forEach((clip, index) => {
     const n = index + 1;
+    const slack = n === expectedClipCount ? Math.max(0, finalClipSlack) : 0;
+    const lineMin = Math.max(1, minWordsPerLine - slack);
+    const lineMax = maxWordsPerLine + slack;
+    const clipMax = maxWordsPerClip + slack;
 
     if (clip.length !== speakers.length) {
       const names = speakers.map((s) => s.name).join(" and ");
@@ -539,17 +559,17 @@ export function validateDialogueClips(
         issues.push(`Clip ${n}: ${label(line.speaker)}'s line is empty.`);
         continue;
       }
-      if (words < minWordsPerLine || words > maxWordsPerLine) {
-        issues.push(`Clip ${n}: ${label(line.speaker)}'s line must be ${minWordsPerLine}-${maxWordsPerLine} words but has ${words}.`);
+      if (words < lineMin || words > lineMax) {
+        issues.push(`Clip ${n}: ${label(line.speaker)}'s line must be ${lineMin}-${lineMax} words but has ${words}.`);
       }
       if (!/[.!?]$/.test(line.text.trim())) {
         issues.push(`Clip ${n}: ${label(line.speaker)}'s line must end with spoken punctuation.`);
       }
     }
 
-    if (clip.length > 0 && (total < minWordsPerClip || total > maxWordsPerClip)) {
+    if (clip.length > 0 && (total < minWordsPerClip || total > clipMax)) {
       issues.push(
-        `Clip ${n} must contain ${minWordsPerClip}-${maxWordsPerClip} spoken words across both `
+        `Clip ${n} must contain ${minWordsPerClip}-${clipMax} spoken words across both `
         + `characters, but has ${total}.`,
       );
     }

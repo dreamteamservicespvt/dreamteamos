@@ -16,7 +16,7 @@
  * Renders grid cells (a fragment), so it drops into the existing form grids unchanged.
  */
 import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from "@/types/aiPlatform";
-import { ATTIRE_LABELS, attireOptionsFor, castLabelFor } from "@/utils/adRequirement";
+import { attireOptionLabel, attireOptionsFor, castLabelFor } from "@/utils/adRequirement";
 import { getCharacterPack, isHumanPack, packModelGender } from "@/services/characterPacks";
 
 export interface ModelAttirePatch {
@@ -101,7 +101,7 @@ export default function ModelAttireFields({
           className={field}
         >
           {options.map((a) => (
-            <option key={a} value={a}>{ATTIRE_LABELS[a]}</option>
+            <option key={a} value={a}>{attireOptionLabel(a, characterPack)}</option>
           ))}
         </select>
         {shownAttire === AttireType.CUSTOM && (

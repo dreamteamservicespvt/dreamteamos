@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
+ Developer: Reload Windowimport type { VercelRequest, VercelResponse } from "@vercel/node";
 import admin from "firebase-admin";
 
 // Initialize Firebase Admin SDK once

@@ -1,6 +1,7 @@
 import type { DiscountApproval, EarnedDiscount } from "@/utils/saleDiscount";
 import type { ClientReview } from "@/types/orderChat";
 import type { SmmContentKind, SmmPlatform } from "@/types/smm";
+import type { WorkFlowCredits } from "@/types/flowAccounts";
 
 export type UserRole =
   | "main_admin"
@@ -162,6 +163,11 @@ export interface WorkAssignment {
   completedDate?: string;
   clientName?: string;
   savedGenerationId?: string;
+  /**
+   * The Flow credits this ad used, recorded at Mark Complete (services/flowAccounts logFlowCredits) —
+   * or that it was made without Flow. Absent on every job completed before the Flow Accounts section.
+   */
+  flowCredits?: WorkFlowCredits | null;
   // Delivery promise / turnaround SLA, carried from the originating sale → order
   promise?: PromiseDeadline;
   // Link back to the originating Order (set when assigned from the Orders queue)

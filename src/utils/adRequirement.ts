@@ -12,7 +12,7 @@ import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from "@/types/aiPla
 import { DURATIONS, END_CREDITS_SECONDS, durationFromSeconds, getClipCount, hasPoster, priceForClips } from "./assignmentDuration";
 import { PACKAGES, isAdCategory, categoryLabel, effectiveAdCategory, productionCategory } from "./serviceCatalog";
 import { PRICING } from "./pricing";
-import { getCharacterPack, isCustomPack, isHumanPack, packCastGender, packHighlight, packModelGender } from "@/services/characterPacks";
+import { getCharacterPack, isCustomPack, isHumanPack, isKidsPack, packCastGender, packHighlight, packModelGender } from "@/services/characterPacks";
 import { posterStyleLabel, AUTO_POSTER_STYLE } from "@/services/posterStyles";
 import {
   DEFAULT_POSTER_SIZE, DEFAULT_POSTER_PRICE, POSTER_DURATION, isPosterCategory, posterSizeLabel,
@@ -44,10 +44,32 @@ export const DEFAULT_REQUIREMENT = {
   notes: "",
 };
 
+/**
+ * The same four attire choices, as they read for CHILDREN.
+ *
+ * A Kids job is dressed from the same stored values — a sale, an order and an assignment never needed a
+ * new field — but "Designer Saree" and "Formal Suit" mean nothing on an eight-year-old. Each value is
+ * read as the children's outfit it stands for, and wardrobeDirective writes that outfit into the prompt.
+ */
+export const KIDS_ATTIRE_LABELS: Record<AttireType, string> = {
+  [AttireType.TRADITIONAL]: "Traditional (Pattu Langa / Kurta)",
+  [AttireType.PROFESSIONAL]: "Smart Casual (Party Wear)",
+  [AttireType.SHIRT_PANT]: "School Uniform",
+  [AttireType.CUSTOM]: "Custom",
+};
+
+/** The attire options a Kids job offers — every one, read as children's wear (KIDS_ATTIRE_LABELS). */
+export const KIDS_ATTIRE: AttireType[] = [AttireType.TRADITIONAL, AttireType.PROFESSIONAL, AttireType.SHIRT_PANT, AttireType.CUSTOM];
+
+/** How one attire option reads on a form for this job: children's wear for a Kids job, the usual label otherwise. */
+export function attireOptionLabel(attire: AttireType, characterPack?: string | null): string {
+  return (isKidsPack(getCharacterPack(characterPack)) ? KIDS_ATTIRE_LABELS : ATTIRE_LABELS)[attire] || String(attire);
+}
+
 /** The attire actually asked for, as text: the custom description when there is one. */
-export function attireLabel(attire?: string | null, custom?: string | null): string {
+export function attireLabel(attire?: string | null, custom?: string | null, characterPack?: string | null): string {
   if (attire === AttireType.CUSTOM && custom?.trim()) return custom.trim();
-  return ATTIRE_LABELS[(attire || AttireType.TRADITIONAL) as AttireType] || String(attire || "");
+  return attireOptionLabel((attire || AttireType.TRADITIONAL) as AttireType, characterPack) || String(attire || "");
 }
 
 /** Keeps attire valid for the chosen model — a saree is not an option for a male model. */
@@ -73,7 +95,10 @@ export const MIXED_DUO_ATTIRE: AttireType[] = [AttireType.PROFESSIONAL, AttireTy
  * options that dress both of them.
  */
 export function attireOptionsFor(characterPack: string | null | undefined, modelGender: ModelGender): AttireType[] {
-  const cast = packCastGender(getCharacterPack(characterPack));
+  const pack = getCharacterPack(characterPack);
+  // Children are dressed in children's wear — the same four values, read as KIDS_ATTIRE_LABELS.
+  if (isKidsPack(pack)) return KIDS_ATTIRE;
+  const cast = packCastGender(pack);
   if (cast === "mixed") return MIXED_DUO_ATTIRE;
   return ATTIRE_OPTIONS_BY_GENDER[(cast as ModelGender | null) ?? modelGender];
 }
@@ -83,6 +108,10 @@ export function castLabelFor(characterPack: string | null | undefined, modelGend
   const pack = getCharacterPack(characterPack);
   const cast = pack ? packCastGender(pack) : (modelGender || ModelGender.FEMALE);
   const duo = !!pack && pack.characters.length > 1;
+  if (isKidsPack(pack)) {
+    if (cast === "mixed") return "👦👧 boy & girl";
+    return cast === "male" ? "👦👦 both boys" : "👧👧 both girls";
+  }
   if (cast === "mixed") return "👩👨 woman & man";
   if (cast === "male") return duo ? "👨👨 both men" : "👨 male";
   return duo ? "👩👩 both women" : "👩 female";

@@ -33,7 +33,7 @@ export interface ScenePlanPromptInput {
   deity?: boolean;
 }
 
-/** The how-to-film options, as the planner reads them: "walk_and_talk (Walk and talk)". */
+/** The how-to-film options, as the planner reads them: "show_product (Show the product)". */
 const optionsOf = (record: Record<string, { name: string }>, skip: string[] = []) =>
   Object.entries(record).filter(([k]) => !skip.includes(k)).map(([k, v]) => `${k} (${v.name})`).join(", ");
 
@@ -63,17 +63,17 @@ STEP 3 — ONE BACKGROUND PER CLIP. For each clip, the background that PROVES wh
 • read that clip's line and show the real thing it talks about — the food being served when it talks about food, the sanctum when it talks about the deity, the cake when it talks about the celebration, the stock when it talks about the products;
 • EVERY clip's background is DIFFERENT from every other clip's — a different part of the place with different real things in it. Two clips that look like the same corner is a failure;
 • realistic, photographable and Indian; real objects only; no readable text, banners, posters or signage apart from the client's own logo or name board;
-• ${subject} stands IN that background, with space to present from where they stand — never in a doorway, never outside on a road, never in a different building from the world.
+• ${subject} stands IN that background, with space to present from where they stand and clear floor in front of them — never in a doorway, never outside on a road, never in a different building from the world. The background is everything that clip's video will ever show: nobody walks in these videos and the camera never reveals more, so put into it everything the line needs.
 
 STEP 4 — WHAT TO AVOID. Things that would contradict the motive (e.g. for an annadanam: no restaurant billing counter, no menu board, no price tags).
 
-STEP 5 — HOW EACH CLIP IS FILMED. A premium ad is dynamic: not every clip the same. For each clip choose, from what its line says, the kind of video and its background:
-• "staging" — one of: ${optionsOf(STAGINGS, deity ? ["walk_and_talk", "welcome_invite"] : ["welcome_invite"])}.
-  – stand_present for a promise, trust, a greeting or a wish; show_product when the line names something that can be shown; present_space when it is about the place itself${deity ? "" : "; walk_and_talk when the line suits a walk through the place AND that clip's background has a clear, open stretch of floor (an aisle, open floor) — plan that floor into the background"}.
+STEP 5 — HOW EACH CLIP IS FILMED. A premium ad is dynamic: not every clip the same — but every clip's movement stays inside its own frame. The ad moves through the place from clip to clip (that is what the different backgrounds are for); inside a clip nobody walks and the camera never shows more than the frame. For each clip choose, from what its line says:
+• "staging" — one of: ${optionsOf(STAGINGS, ["welcome_invite"])}.
+  – stand_present for a promise, trust, a greeting or a wish; show_product when the line names something that can be shown (and put that thing within arm's reach in the background); present_space when it is about the place itself.
   – Mix them across the ad. The last clip always invites the viewer in — the code sets it; never a goodbye.
-• "camera" — one of: ${optionsOf(CAMERA_MOVES, ["handheld", "static_locked"])}. Match it to the staging: follow_tracking or truck for a walk, push_in or tilt_down for a product, pan / dolly_out / crane_down for the space, dolly_in or arc for a promise, orbit for a hero introduction, pull_back or crane_up to end. Never the same move in two neighbouring clips.
-• "angle" — one of: ${optionsOf(SHOT_ANGLES)}. Eye level for most; low angle for a powerful hero; high angle for an overview; over-the-shoulder for a conversation or a product reveal.${twoHander ? `
-• "focus" — "speaker" when the camera should ease in on whoever is talking (Motu while Motu speaks, then Patlu) or "both" for a two-shot. Use "speaker" on some clips, not all.` : ""}
+• "camera" — one of: ${optionsOf(CAMERA_MOVES, ["handheld", "static_locked"])}. Match it to the staging: push_in or rack_focus for a product, truck or arc for the space, dolly_in or arc for a promise. Never the same move in two neighbouring clips.
+• "angle" — one of: ${optionsOf(SHOT_ANGLES)}. Eye level for most; slightly low for a confident hero; slightly high for an overview of a counter.${twoHander ? `
+• "focus" — "speaker" when the focus should follow whoever is talking (Motu while Motu speaks, then Patlu) or "both" for a two-shot. Use "speaker" on some clips, not all.` : ""}
 
 Return ONLY this JSON, no markdown:
 {

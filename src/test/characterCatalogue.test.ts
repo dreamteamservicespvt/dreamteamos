@@ -20,7 +20,7 @@ import {
 describe("the catalogue", () => {
   it("offers every family the sales team sells", () => {
     const families = new Set(CHARACTER_CATALOGUE.map((p) => p.family));
-    expect([...families].sort()).toEqual(["custom", "duo", "god", "human", "human_duo", "solo"]);
+    expect([...families].sort()).toEqual(["custom", "duo", "god", "human", "human_duo", "kids_duo", "solo"]);
   });
 
   it("has no duplicate ids", () => {
@@ -69,7 +69,7 @@ describe("the catalogue", () => {
 
   it("gives duos exactly two speakers and everything else exactly one", () => {
     for (const p of CHARACTER_CATALOGUE) {
-      expect(p.characters.length, p.id).toBe(p.family === "duo" || p.family === "human_duo" ? 2 : 1);
+      expect(p.characters.length, p.id).toBe(p.family === "duo" || p.family === "human_duo" || p.family === "kids_duo" ? 2 : 1);
     }
   });
 
@@ -77,6 +77,18 @@ describe("the catalogue", () => {
   it("sells a male duo, a female duo and a male & female duo", () => {
     const duos = CHARACTER_CATALOGUE.filter((p) => p.family === "human_duo").map((p) => p.id).sort();
     expect(duos).toEqual(["human_duo_female", "human_duo_male", "human_duo_mixed"]);
+  });
+
+  // The Kids shelf: two girls, two boys, a boy and a girl — on the same two-speaker system.
+  it("sells two girls, two boys and a boy & girl as Kids", () => {
+    const kids = CHARACTER_CATALOGUE.filter((p) => p.family === "kids_duo");
+    expect(kids.map((p) => p.id).sort()).toEqual(["kids_duo_female", "kids_duo_male", "kids_duo_mixed"]);
+    for (const p of kids) {
+      // Every child is pointed at by what the picture shows, and has a size in the room.
+      expect(p.characters.every((c) => !!c.screen), p.id).toBe(true);
+      expect(p.scale?.frame, p.id).toMatch(/TRUE SCALE IN THE ROOM: they are real children/);
+      expect(p.negatives.join(" "), p.id).toMatch(/No adult anywhere in frame/);
+    }
   });
 });
 

@@ -86,3 +86,13 @@ describe("which key a call uses", () => {
     expect(sent.filter((s) => s.apiKey === "key-4").length).toBeLessThanOrEqual(1);
   });
 });
+
+describe("what a frame prompt says its still shows — for the video prompt that animates it", () => {
+  it("reads the client's photo from the attach line, and a generated background from the scene plan line", () => {
+    expect(gemini.frameSceneOf("📎 ATTACH STORE/OFFICE IMAGE #2 — the entrance\n\nThe woman stands…"))
+      .toEqual({ frameScene: "the client's own photograph #2 of their entrance", realPhoto: true });
+    expect(gemini.frameSceneOf("A frame.\n\nBACKGROUND FOR THIS CLIP: The saree section with silk sarees on wooden shelves (with folded sarees, lamps). This background is different from every other clip's, and it belongs to the store."))
+      .toEqual({ frameScene: "The saree section with silk sarees on wooden shelves (with folded sarees, lamps)", realPhoto: false });
+    expect(gemini.frameSceneOf("just a frame")).toEqual({ frameScene: "", realPhoto: false });
+  });
+});
