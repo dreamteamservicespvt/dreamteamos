@@ -8,6 +8,10 @@ import { cleanup, configure, fireEvent, render, screen, waitFor, within } from "
  *
  * These drive the real page, and check that submitting from it does the same five things My Work
  * does, since both now go through hooks/useCompleteWork.
+ *
+ * Since 2026-10-01 a video job asks how many Flow credits it used before it is handed in
+ * (components/ai-accounts/useCreditGate). This member has no Flow account, so they tick "No Flow
+ * credits" — the completion itself is what these tests are about.
  */
 
 const assignments = [
@@ -81,6 +85,15 @@ const openAd = (name: string) => {
   fireEvent.click(screen.getByTestId("verify"));
 };
 
+/** Submit, then answer the credit step: no Flow credits were used. */
+const submitAd = () => {
+  fireEvent.click(screen.getByTestId("submit"));
+  fireEvent.click(screen.getByTestId("credit-none"));
+  fireEvent.click(screen.getByTestId("credit-save"));
+};
+
+const completedWrites = () => updateDoc.mock.calls.filter((c) => (c[1] as { status?: string })?.status === "completed");
+
 describe("Recent Ads — submitting an in-progress ad", () => {
   it("offers a Submit button, which it never used to", () => {
     render(<RecentAds />);
@@ -88,10 +101,24 @@ describe("Recent Ads — submitting an in-progress ad", () => {
     expect(screen.getByTestId("submit")).toBeInTheDocument();
   });
 
-  it("marks the assignment completed", async () => {
+  it("asks for the Flow credits first, and hands nothing in until they are saved", async () => {
     render(<RecentAds />);
     openAd("Sharma Electronics");
     fireEvent.click(screen.getByTestId("submit"));
+    expect(screen.getByTestId("credit-usage-dialog")).toBeInTheDocument();
+    // The job's own clip count, every clip 8 seconds: 4 × 12 credits.
+    expect(screen.getByTestId("credit-total").textContent).toContain("48");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByTestId("credit-usage-dialog")).not.toBeInTheDocument();
+    expect(screen.getByTestId("generator")).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(completedWrites()).toHaveLength(0);
+  });
+
+  it("marks the assignment completed", async () => {
+    render(<RecentAds />);
+    openAd("Sharma Electronics");
+    submitAd();
 
     await waitFor(() => {
       const completion = updateDoc.mock.calls.find(
@@ -105,7 +132,7 @@ describe("Recent Ads — submitting an in-progress ad", () => {
   it("tells the assigner and the team leaders, once each", async () => {
     render(<RecentAds />);
     openAd("Sharma Electronics");
-    fireEvent.click(screen.getByTestId("submit"));
+    submitAd();
 
     await waitFor(() => expect(sendNotification).toHaveBeenCalledTimes(1));
     expect(sendNotification.mock.calls[0][0]).toMatchObject({
@@ -119,7 +146,7 @@ describe("Recent Ads — submitting an in-progress ad", () => {
   it("closes the order and records the client, exactly as My Work does", async () => {
     render(<RecentAds />);
     openAd("Sharma Electronics");
-    fireEvent.click(screen.getByTestId("submit"));
+    submitAd();
 
     await waitFor(() => expect(markOrderCompleted).toHaveBeenCalledWith("o1"));
     expect(upsertClientOnWorkComplete).toHaveBeenCalledTimes(1);
@@ -129,9 +156,15 @@ describe("Recent Ads — submitting an in-progress ad", () => {
     render(<RecentAds />);
     openAd("Sharma Electronics");
     const submit = screen.getByTestId("submit");
+    // Taps while the credit step is open ask once…
     fireEvent.click(submit);
     fireEvent.click(submit);
     fireEvent.click(submit);
+    fireEvent.click(screen.getByTestId("credit-none"));
+    fireEvent.click(screen.getByTestId("credit-save"));
+    // …and taps after it go straight to the completion, which must still send one round.
+    const again = screen.queryByTestId("submit");
+    if (again) { fireEvent.click(again); fireEvent.click(again); }
 
     await waitFor(() => expect(upsertClientOnWorkComplete).toHaveBeenCalledTimes(1));
     expect(sendNotification).toHaveBeenCalledTimes(1);
@@ -148,7 +181,7 @@ describe("Recent Ads — submitting an in-progress ad", () => {
   it("returns to the list once the work is submitted", async () => {
     render(<RecentAds />);
     openAd("Sharma Electronics");
-    fireEvent.click(screen.getByTestId("submit"));
+    submitAd();
     await waitFor(() => expect(screen.queryByTestId("generator")).not.toBeInTheDocument());
     expect(screen.getByText("Sharma Electronics")).toBeInTheDocument();
   });

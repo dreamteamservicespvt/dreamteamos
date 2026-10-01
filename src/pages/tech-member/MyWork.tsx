@@ -8,6 +8,7 @@ import { collection, query, where, doc, updateDoc, deleteField, serverTimestamp 
 import { db } from '@/services/firebase';
 import { revertOrderToAssigned } from '@/services/orders';
 import { useCompleteWork } from '@/hooks/useCompleteWork';
+import { useCreditGate } from '@/components/ai-accounts/useCreditGate';
 import { useAuthStore } from '@/store/authStore';
 import { useFirestoreQuery } from '@/hooks/useFirestore';
 import { format, subDays, subMonths, startOfDay } from 'date-fns';
@@ -181,14 +182,18 @@ export default function MyWork() {
    */
   const { completing, complete } = useCompleteWork();
 
-  const handleComplete = async () => {
+  /** "How many Flow credits did this ad use?" — asked before every video job is handed in (useCreditGate). */
+  const creditGate = useCreditGate();
+
+  const handleComplete = () => creditGate.request(openAssignment, async () => {
     const submitted = await complete(openAssignment, { sessionStart: sessionStartRef.current });
     if (submitted) {
       // Counted by the hook's final write; leaving it set would bill the time twice on unmount.
       sessionStartRef.current = null;
       setOpenAssignment(null);
     }
-  };
+    return submitted;
+  });
 
   const handleUndoComplete = async (assignment: WorkAssignment) => {
     const { confirmed } = await confirm({ title: "Undo Completion", description: "Revert this to In Progress? This will undo the completion.", confirmText: "Undo", variant: "destructive" });
@@ -459,6 +464,7 @@ export default function MyWork() {
   // Show AI Platform when assignment is opened
   if (openAssignment && liveOpenAssignment) {
     return (
+      <>
       <AIPlatformApp
         assignment={liveOpenAssignment}
         assignmentId={liveOpenAssignment.id}
@@ -467,6 +473,8 @@ export default function MyWork() {
         onClose={handleClose}
         onComplete={handleComplete}
       />
+      {creditGate.dialog}
+      </>
     );
   }
 

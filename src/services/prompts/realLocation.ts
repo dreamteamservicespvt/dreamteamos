@@ -13,7 +13,7 @@
  * is being lit and placed, which is the one thing the caller passes in.
  */
 import type { CharacterPack } from "../characterPacks";
-import type { ClipLocation, LocationPhoto } from "@/utils/locationAssignment";
+import { backgroundPlateRule, type ClipLocation, type LocationPhoto } from "@/utils/locationAssignment";
 
 /** Who the photograph has to be matched around, as the formula will say it. */
 export interface RealLocationSubject {
@@ -31,7 +31,7 @@ export interface RealLocationSubject {
  */
 export function packLocationSubject(pack: CharacterPack): RealLocationSubject {
   if (pack.family === "human_duo") return { who: "the two people", plural: true };
-  if (pack.family === "kids_duo") return { who: "the two children", plural: true };
+  if (pack.family === "kids") return { who: "the two children", plural: true };
   if (pack.characters.length > 1) return { who: "the two characters", plural: true };
   const name = pack.characters[0]?.name || "character";
   // A deity or a cartoon is a proper name ("Ganesha"). A human entry's name is a role — "Presenter",
@@ -54,7 +54,7 @@ export function packStagingRole(pack: CharacterPack): string {
     case "god": return "a DEITY";
     case "human": return "a REAL PERSON";
     case "human_duo": return "TWO REAL PEOPLE";
-    case "kids_duo": return "TWO REAL CHILDREN";
+    case "kids": return "TWO REAL CHILDREN";
     case "solo": return "a CARTOON CHARACTER";
     case "duo": return "CARTOON CHARACTERS";
     default: return pack.characters.length > 1 ? "CHARACTERS" : "a CHARACTER";
@@ -64,72 +64,27 @@ export function packStagingRole(pack: CharacterPack): string {
 /**
  * The formula itself. `locationPlan` is the per-clip photograph assignment
  * (utils/locationAssignment.describeClipLocations), appended as the ground truth it refers to.
- *
- * ── Why it says USE, not REPRODUCE ──────────────────────────────────────────────────────────
- * It used to tell the art director to "REPRODUCE the real place … build that clip's frame from THAT
- * photo", and the frame prompts it produced described the shop in words. An image generator handed a
- * description and a photo GENERATES a new room that matches the words — the client's real shop came
- * back as a different shop: other shelves, other colours, a bigger floor. The photograph is not a
- * reference to redraw; it IS the background. The frame is an edit of it: enhanced, upscaled to 8K,
- * and the cast placed into it — nothing else (see realLocationLock, stamped on every such frame).
  */
 export function realLocationFormula(subject: RealLocationSubject, locationPlan: string): string {
   const Who = subject.who.charAt(0).toUpperCase() + subject.who.slice(1);
-  const looks = subject.plural ? "they look" : `${subject.who} looks`;
-  return `===== LOCATION: THE CLIENT'S REAL PHOTOGRAPHS — USED AS THEY ARE =====
+  return `===== LOCATION: THE CLIENT'S REAL PHOTOGRAPHS — EACH ONE IS A BACKGROUND PLATE (STRICT) =====
 
-Real photographs of this business are attached. Each clip's frame is an EDIT of its own photograph, not a new
-picture of a similar place.
+Real photographs of this business are attached. Every clip stands in one of them, and that photograph
+IS the clip's background — the image generator receives it with the prompt and must USE it, not redraw a
+shop like it.
 
-• Each clip has been assigned ONE specific photograph. That photograph IS the background of that clip's frame —
-  the same room, the same layout, the same camera angle and perspective, the same counters, shelves, stock,
-  signage, floor, walls, colours and light. Nothing is redesigned, tidied, upgraded, re-imagined, moved, added
-  or removed.
-• The ONLY change to the photograph is its quality: enhance and upscale it to a sharp, clean 8K image — more
-  detail, no noise or blur, balanced exposure and white balance, its own natural colours.
-• Then place ${subject.who} INTO it: standing on its real floor, at true scale against its real counters and
-  shelves, lit by the photo's own light (direction, softness and colour temperature) with matching contact
-  shadows, so ${looks} photographed in that room rather than pasted onto it.
-• If the photograph's shape differs from the ad's aspect ratio, CROP it to fit — never extend or outpaint it
-  with invented room.
-• Write each prompt as that edit: "Use the attached photograph #N as the exact background…". Do not describe
-  the room in your own words — every word of description is something the generator will redraw.
-• Keep the business's real signage and branding exactly as photographed; add no new signs, boards or
-  decorations to the real premises. ${Who} must not hide the business's own signage.
+• Each clip has been assigned ONE specific photograph (below). That clip's frame is THAT photograph.
+• ${backgroundPlateRule("the clip's attached photograph")}.
+• ${Who} ${subject.plural ? "are" : "is"} placed INTO the photograph: on its actual floor, at believable real-world scale
+  against its real counters, shelves and door frames, matching its eye level and perspective.
+• Write each prompt as instructions to keep the photograph and place ${subject.who} into it. Do NOT describe the
+  shop as if inventing it, and never ask for a different angle, a wider view or a new layout — the
+  photograph's own framing is the frame.
+• Keep the business's real signage and branding legible exactly as photographed.
 
 ${locationPlan}`;
 }
 
-/** The heading code stamps on a photo-backed frame — see realLocationLock. */
-export const REAL_LOCATION_LOCK_HEADING = "REAL LOCATION — USE THE ATTACHED PHOTOGRAPH AS IT IS";
-
-/**
- * The real-premises instruction, stamped in code on every frame built on a client's photograph.
- *
- * The art director is told to write each prompt as an edit of its photograph; this makes sure every
- * prompt the member pastes actually SAYS it, the same way the "attach this photo" line and the motion
- * composition are stamped rather than requested — a frame model drops what it is merely asked to keep.
- * `photoLabel` names the photograph ("STORE/OFFICE IMAGE #2 — the entrance"); `who` is who goes in it.
- * Idempotent.
- */
-export function realLocationLock(prompt: string, photoLabel: string, who: string): string {
-  if (!prompt.trim() || prompt.includes(REAL_LOCATION_LOCK_HEADING)) return prompt;
-  return `${prompt.trimEnd()}
-
-${REAL_LOCATION_LOCK_HEADING}:
-Use the attached ${photoLabel} as the EXACT background of this image. Do not redraw, regenerate, redesign or
-re-imagine it: keep its layout, camera angle and perspective, every counter, shelf, product, sign, wall, floor,
-colour and light exactly as photographed — nothing added, removed or moved. The only change to the photograph is
-quality: enhance and upscale it to a sharp, clean 8K image — more detail, no noise or blur, balanced exposure and
-white balance, its own natural colours. Place ${who} into this exact scene on its real floor, at true scale against
-its real fixtures, lit by its own light with matching shadows. If the shape differs from the ad's aspect ratio, crop
-the photograph — never extend it with invented space.`;
-}
-
-/**
- * One clip's location, in the words a per-clip instruction needs: which photograph and what it is.
- * Used where a prompt would otherwise name an invented zone for that clip.
- */
 export function clipLocationLabel(location: ClipLocation | undefined, photos: LocationPhoto[] = []): string {
   if (!location || location.photoIndex === null) {
     return "NO CLIENT PHOTOGRAPH for this clip — build a real-looking zone of this same business, "
@@ -138,5 +93,5 @@ export function clipLocationLabel(location: ClipLocation | undefined, photos: Lo
   const photo = photos.find((p) => p.index === location.photoIndex);
   const zone = photo?.zone?.replace(/^the\s+/i, "").trim();
   return `the client's PHOTOGRAPH #${location.photoIndex + 1}${zone ? ` (the ${zone})` : ""}, `
-    + "used exactly as photographed — only enhanced and upscaled to 8K";
+    + "used as this clip's background plate exactly as photographed — only enhanced to 8K";
 }

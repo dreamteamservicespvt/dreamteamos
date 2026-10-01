@@ -59,18 +59,6 @@ export interface PackCharacter {
    */
   labelSpellings?: string[];
   /**
-   * Who this person IS in the picture, for a cast of real people: "woman", "man on the RIGHT",
-   * "younger girl". No article — the prompt adds "the".
-   *
-   * ── Why the label is not enough ─────────────────────────────────────────────────────────────
-   * A famous character's name is an identity an image or video model already knows; "Motu" draws
-   * Motu. A role label is not. Frame prompts went out reading "the same Girl and Boy exactly as in
-   * the reference" — an image tool reads that as two CHILDREN — and the video prompt said "ONLY Girl
-   * speaks, in Girl's own voice", which names nobody the video model can see. So a cast of real people
-   * is referred to by what is visibly true of each one, and the label stays inside the script.
-   */
-  screen?: string;
-  /**
    * A single emoji that stands for this character in WhatsApp messages.
    *
    * Purely for legibility: a member skimming a wall of assignment messages on their phone needs
@@ -89,14 +77,14 @@ export interface PackCharacter {
  * Which shelf of the catalogue an entry sits on. Purely for grouping the picker — the generation
  * pipeline never branches on it, because every entry already carries its own direction.
  */
-export type CharacterFamily = "human" | "human_duo" | "kids_duo" | "god" | "duo" | "solo" | "custom";
+export type CharacterFamily = "human" | "human_duo" | "kids" | "god" | "duo" | "solo" | "custom";
 
 export const CHARACTER_FAMILY_LABELS: Record<CharacterFamily, string> = {
   human: "Human Model",
   // Two real people talking about the business — female duo, male duo, or a woman and a man.
   human_duo: "Human Duo",
-  // Two real children — two girls, two boys, or a boy and a girl — on the same two-speaker system.
-  kids_duo: "Kids",
+  // Two real children — two girls, two boys, or a girl and a boy — photoreal, never drawn.
+  kids: "Kids (Real Children)",
   god: "God Promotion",
   duo: "Cartoon Duo",
   solo: "Single Cartoon",
@@ -104,7 +92,7 @@ export const CHARACTER_FAMILY_LABELS: Record<CharacterFamily, string> = {
 };
 
 /** The order the families are offered in — commonest first, escape hatch last. */
-export const CHARACTER_FAMILY_ORDER: CharacterFamily[] = ["human", "human_duo", "kids_duo", "god", "duo", "solo", "custom"];
+export const CHARACTER_FAMILY_ORDER: CharacterFamily[] = ["human", "human_duo", "kids", "god", "duo", "solo", "custom"];
 
 export interface CharacterPack {
   id: string;
@@ -159,20 +147,22 @@ export interface CharacterPack {
    * identically in every single clip.
    */
   usesClientFace?: boolean;
+  /**
+   * The cast's size, stated against a REAL OBJECT in the room — "a normal shop counter top reaches
+   * Motu's chest and Patlu's waist".
+   *
+   * ── Why this exists (2026-10-01) ─────────────────────────────────────────────────────────────
+   * Motu and Patlu kept growing in the finished videos. The frame prompt said nothing about their size
+   * (a description of their BUILD invites the generator to redraw them), so each still put them at
+   * whatever height it liked, and the video prompt could only ask to "keep the heights the frame
+   * shows" — with nothing in the room to measure them by, the video model drifted them toward its own
+   * idea of how tall they are. A relation to a counter is not a description of the body; it is a
+   * measurement a video model can hold. The same words are stamped into every frame prompt and the
+   * scale lock of every video prompt, so the still and the video agree.
+   */
+  scaleAnchor?: string;
   /** Hard negatives repeated verbatim in every frame and video prompt. */
   negatives: string[];
-  /**
-   * How tall the cast is IN THE ROOM — said once in the frame prompt and held in the video prompt.
-   *
-   * ── Why a pair's size has to be written down ───────────────────────────────────────────────
-   * The frame prompt used to say nothing about size ("their proportions come with them"), so the image
-   * tool chose a scale, and the video model — which has its own idea of how big a grown man or a child
-   * is in a shop — corrected it across the clip: Motu and Patlu grew. With the scale fixed in the frame
-   * there is nothing left for the video to correct, and the video prompt can name a line in the picture
-   * each head stays on ("Motu's head stays level with Patlu's shoulder") instead of an abstract rule.
-   * `frame` goes into the frame prompt; `video` into the video prompt's scale lock.
-   */
-  scale?: { frame: string; video: string };
 }
 
 // The Motu & Patlu pack now lives in the catalogue as `duo_motu_patlu`, reproduced there
@@ -235,9 +225,9 @@ const HUMAN_PACK_GENDER: Record<string, CastGender> = {
   human_duo_male: "male",
   // A woman and a man: each is dressed for their own gender from one attire choice.
   human_duo_mixed: "mixed",
-  kids_duo_female: "female",
-  kids_duo_male: "male",
-  // A boy and a girl, each dressed for themselves — see wardrobeDirective's children's wear.
+  kids_duo_girls: "female",
+  kids_duo_boys: "male",
+  // A girl and a boy, each dressed for themselves.
   kids_duo_mixed: "mixed",
 };
 
@@ -246,31 +236,38 @@ export type CastGender = "female" | "male" | "mixed";
 
 /** True for an entry that still puts a real person on screen — someone who can be dressed. */
 export function isHumanPack(pack?: CharacterPack | null): boolean {
-  return !!pack && (pack.family === "human" || pack.family === "human_duo" || pack.family === "kids_duo");
+  return !!pack && (pack.family === "human" || pack.family === "human_duo" || pack.family === "kids");
 }
 
-/** True for the Kids entries — two real children. Dressed in children's wear, voiced as children. */
+/** The Kids entries — two real children. Dressed, cast and voiced as children everywhere. */
 export function isKidsPack(pack?: CharacterPack | null): boolean {
-  return !!pack && pack.family === "kids_duo";
+  return !!pack && pack.family === "kids";
 }
 
 /**
- * True for a cast of two REAL people — adults or children — whose speaker names are role labels.
+ * What kind of ad this pack makes, in the words a prompt uses to ask for it.
  *
- * They share everything that makes a two-hander of real people different from a cartoon pair: nobody
- * knows them by name, so the frames have to SAY what they look like (a cast line) and the video has to
- * point at them ("the woman on the LEFT") rather than name them.
+ * ── Why this exists (2026-10-01) ─────────────────────────────────────────────────────────────
+ * The requests to the script and frame models said "Write the cartoon dialogue script" and "this
+ * two-character cartoon ad" for EVERY special category — a Normal Ad presenter, the human duos, the
+ * client's own face, a deity. The system prompt for a human duo forbids a drawn look, and the request
+ * beside it called the ad a cartoon; the model was given two answers and picked differently each run.
  */
-export function isPeopleDuo(pack?: CharacterPack | null): boolean {
-  return !!pack && (pack.family === "human_duo" || pack.family === "kids_duo") && pack.characters.length > 1;
-}
-
-/**
- * The name a prompt uses for one cast member: the character's own name for a famous character, what
- * the picture shows ("the woman on the LEFT", "the younger girl") for a cast of real people.
- */
-export function screenNameOf(pack: CharacterPack, character: PackCharacter): string {
-  return character.screen ? `the ${character.screen}` : character.name;
+export function packAdKind(pack: CharacterPack): { script: string; ad: string } {
+  const solo = pack.characters.length === 1;
+  switch (pack.family) {
+    case "duo": return { script: "two-character cartoon dialogue script", ad: "two-character cartoon ad" };
+    case "solo": return { script: "single-character cartoon script", ad: "single-character cartoon ad" };
+    case "god": return { script: "devotional presenter script", ad: "devotional ad presented by the deity" };
+    case "human_duo": return { script: "two-person conversation script", ad: "photoreal two-person ad with two real people" };
+    case "kids": return { script: "two-child conversation script", ad: "photoreal ad with two real children" };
+    case "human": return pack.usesClientFace
+      ? { script: "presenter script spoken by the business owner", ad: "photoreal ad fronted by the business owner" }
+      : { script: "presenter script", ad: "photoreal presenter ad with one real person" };
+    default: return solo
+      ? { script: "single-character script", ad: "single-character ad" }
+      : { script: "two-character dialogue script", ad: "two-character ad" };
+  }
 }
 
 /**

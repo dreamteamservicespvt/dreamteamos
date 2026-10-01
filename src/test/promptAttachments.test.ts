@@ -28,7 +28,13 @@ describe("buildPromptAttachments", () => {
   });
 
   it("marks a generated clip as having nothing to attach", () => {
-    const out = buildPromptAttachments(stamped(2, [photos[0]]), urls, names);
+    // A real-location ad reuses its photos (utils/locationAssignment), so a generated clip is one
+    // stamped explicitly — the case where no usable photo exists.
+    const generated = [
+      `${attachmentDirective({ clip: 0, photoIndex: 0 }, photos)}\n\nPrompt body 1.`,
+      `${attachmentDirective({ clip: 1, photoIndex: null }, photos)}\n\nPrompt body 2.`,
+    ];
+    const out = buildPromptAttachments(generated, urls, names);
     expect(out[0]?.photoNumber).toBe(1);
     expect(out[1]?.photoNumber).toBeNull();
     expect(out[1]?.url).toBeNull();

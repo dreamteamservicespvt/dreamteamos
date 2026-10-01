@@ -165,7 +165,7 @@ export function describeSpecChanges(prev: AssignmentSpec, next: AssignmentSpec):
   if (!nextPack || isHumanPack(nextPack)) {
     add(
       "Attire",
-      prev.attireType ? attireLabel(prev.attireType, prev.customAttire, next.characterPack) : "—",
+      prev.attireType ? attireLabel(prev.attireType, prev.customAttire, prev.characterPack) : "—",
       next.attireType ? attireLabel(next.attireType, next.customAttire, next.characterPack) : "—",
     );
   }
