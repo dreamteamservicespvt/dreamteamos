@@ -18,6 +18,11 @@ interface TopbarProps {
   onMenuClick?: () => void;
 }
 
+/** A Firestore document id in the URL (a user's uid, an order-keyed month) rather than a page name. */
+function looksLikeId(segment: string): boolean {
+  return segment.length >= 20 && /^[A-Za-z0-9_-]+$/.test(segment) && /\d/.test(segment) && !/^[a-z]+(-[a-z]+)*$/.test(segment);
+}
+
 export default function Topbar({ onMenuClick }: TopbarProps) {
   const user = useAuthStore((s) => s.user);
   const location = useLocation();
@@ -50,24 +55,39 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
 
   useEffect(() => {
     const pathSegments = location.pathname.split("/").filter(Boolean);
-    pathSegments.forEach(async (s) => {
-      if (/^[a-zA-Z0-9]{20,}$/.test(s) && !resolvedNames[s]) {
-        try {
+    pathSegments.forEach(async (s, i) => {
+      if (resolvedNames[s]) return;
+      try {
+        // A social-media month's page (/smm/<id>) is named after its business, not its document id.
+        if (pathSegments[i - 1] === "smm" && looksLikeId(s)) {
+          const snap = await getDoc(doc(db, "smm_campaigns", s));
+          const c = snap.exists() ? snap.data() : null;
+          const name = c?.businessName || c?.clientName;
+          if (name) setResolvedNames((prev) => ({ ...prev, [s]: name }));
+          return;
+        }
+        if (/^[a-zA-Z0-9]{20,}$/.test(s)) {
           const userDoc = await getDoc(doc(db, "users", s));
           if (userDoc.exists()) {
             const name = userDoc.data().name;
             if (name) setResolvedNames((prev) => ({ ...prev, [s]: name }));
           }
-        } catch { /* ignore */ }
-      }
+        }
+      } catch { /* ignore */ }
     });
   }, [location.pathname]);
 
   const segments = location.pathname.split("/").filter(Boolean);
-  const breadcrumb = segments.map((s) => {
-    if (resolvedNames[s]) return resolvedNames[s];
-    return s.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-  });
+  // A raw document id is never shown (it read "O_Uwng3cPr…_1790839133922" on a social-media month):
+  // it is replaced by its name once that has been read, and left out until then.
+  const breadcrumb = segments
+    .map((s) => {
+      if (resolvedNames[s]) return resolvedNames[s];
+      if (looksLikeId(s)) return "";
+      if (s === "smm") return "Social Media";
+      return s.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    })
+    .filter(Boolean);
 
   const getNotifColor = (type: string) => {
     if (type.includes("approved") || type.includes("verified") || type.includes("completed")) return "bg-success/15 text-success";

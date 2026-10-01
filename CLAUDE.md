@@ -5,7 +5,8 @@
 > disagree, fix this file in the same task.
 >
 > **Last full audit:** 2026-09-22 against `main` @ `a1623ac`; last updated 2026-10-01 for the
-> frame-bounded video, Kids, spoken-address and AI Accounts work (§9.21, §13, §17.2, §24–§27, §31).
+> frame-bounded video, Kids, spoken-address and AI Accounts work (§9.21, §13, §17.2, §24–§27, §31), and
+> the SMM delete / Social Media Team Lead / typed extra work changes (§7, §9.9, §31).
 > **Quick start:** read **§33 AI Development Context** first, then **§29 Rules** and **§30 Change Protocol**.
 >
 > Legend: ✅ implemented · 🟡 partial · ❌ not implemented · **[NOT CONFIRMED]** = could not be
@@ -122,7 +123,7 @@ hiring link), and hand-maintained social-media plans (SMM campaigns).
 | Realtime A/V | WebRTC with Google STUN and Metered.ca TURN (`services/webrtcConfig.ts`), signalling through Firestore |
 | Mobile | Capacitor 8 Android shell (`android/`, `capacitor.config.ts`, `webDir: dist`) with push, local-notifications, keyboard, status-bar, splash, haptics, app, keep-awake plugins |
 | PWA | `public/manifest.webmanifest`, `public/chat.webmanifest` (client chat), service worker `public/firebase-messaging-sw.js`, self-update via `/version.json` |
-| Tests | Vitest 3 + jsdom + Testing Library (`src/test/`, 182 files); `src/test/memoryFirestore.ts` is an in-memory `firebase/firestore` for tests that need real writes and live listeners |
+| Tests | Vitest 3 + jsdom + Testing Library (`src/test/`, 183 files); `src/test/memoryFirestore.ts` is an in-memory `firebase/firestore` for tests that need real writes and live listeners |
 | Lint | ESLint 9 flat config (`eslint.config.js`); not part of the build |
 | Package managers | `package-lock.json` (npm) is canonical; a stale `bun.lockb` is also committed |
 
@@ -196,7 +197,7 @@ DTS-OS/
 │   ├── types/                 ← index.ts (core model), aiPlatform, cinematicAds, hr, payroll, smm,
 │   │                            orderChat, onboarding
 │   ├── lib/utils.ts           ← shadcn `cn()`
-│   └── test/                  ← Vitest suites (182 files, 2865 tests at 2026-10-01) + setup.ts + memoryFirestore.ts
+│   └── test/                  ← Vitest suites (183 files, 2873 tests at 2026-10-01) + setup.ts + memoryFirestore.ts
 ├── public/                    ← PWA manifests, FCM service worker, logos/icons
 ├── docs/
 │   ├── AI-MEMORY.md           ← HISTORICAL session log up to 2026-09-19 (superseded by §31; do not extend)
@@ -257,8 +258,11 @@ tech admin). Filters like `u.createdBy === teamAdminUid` recur across pages.
   `AppLayout` redirects any other path to `/tech/create`. Excluded from team lists, attendance,
   payroll and reports. Their `ai_generations` are visible to the tech admin (`AdsHistoryModal`).
   Set by tech admin in My Team.
-- `smmLeader: true`: sees every SMM campaign and may assign and start months
-  (`utils/smmPlan.isSmmOverseer`). Keeps their normal role. Set by tech admin in My Team.
+- `smmLeader: true` — shown as **Social Media Team Lead** (2026-10-01): sees every SMM campaign, may
+  assign, start and **delete** months (`utils/smmPlan.isSmmOverseer`, `canDeleteSmmCampaign`), and is
+  notified when a month is sold (`smm_new_month`). Keeps their normal role. Appointed by the tech admin
+  or main admin in the Team Lead panel at the top of `/smm` (`SmmTeamLeadPanel`, `canAppointSmmLead`)
+  or the megaphone toggle in My Team; both go through `services/smm.setSmmTeamLead` (notifies them).
 
 **Non-account actors:**
 - **Client (guest)**: opens `/c/:chatId`. `api/order-chat` mints a custom token with an
@@ -324,6 +328,8 @@ legacy users without the field active.
 | Tick bulk slot done | ✅ | ✅ | ✅ | own slot | | | |
 | Edit order progress counters (non-derived) | ✅ | ✅ | ✅ | track holder | | | |
 | See all SMM months / start direct month | ✅ | ✅ | ✅ | smmLeader | ✅ | | |
+| Delete an SMM month | ✅ | ✅ | | smmLeader | | | |
+| Appoint / remove the Social Media Team Lead | ✅ | ✅ | | | | | |
 | Edit an SMM month | overseer | overseer | overseer | if watcher | overseer | if seller/watcher | |
 | Manage client profiles | ✅ | | | | ✅ | | |
 | Import/backfill clients | ✅ | ✅ | | | | | |
@@ -408,6 +414,14 @@ ProjectAssetsPanel), `store/cinematicAdsStore.ts`, `services/cinematicAdsService
 runs in a transaction (`mutateCampaign`). The order's progress counters are **derived** from the
 plan (`syncOrderProgress`). Budget ledger with `direct`/`via_us` payment routes and two-leg proof.
 Due reminders appear in the check-in/check-out screens. Removing an order retires its month.
+**2026-10-01:** a month can be **deleted** (`deleteCampaign`, Delete button on the month's page): a
+direct month's document is deleted; a sold month becomes a `status: "deleted"` tombstone
+(`deletedAt`, `deletedByName`) that lists and the page treat as gone and that `ensureCampaignForOrder`
+never revives (unlike `removed`). **Extra work** is added from a form — type Poster / Promotional
+video / Wishes video / Cinematic video (`SMM_EXTRA_WORK_TYPES`) and, for a video, a duration
+(16/32/48/64 s or other) — stored as `extraType` / `extraDuration` with the title "Promotional video ·
+32 sec"; it now goes through `addItem`, which notifies the seller (the old button used `addItems`,
+which notified nobody). The top bar's breadcrumb names a month by its business, never its order id.
 
 **9.10 Client order chat + client calls** ✅. `pages/client/ClientChat.tsx` (public),
 `components/order-chat/*` (`StaffOrderChat`, `SalesOrderChat`, `OrderChatPanel`, `ClientCall`,
@@ -734,7 +748,7 @@ index a query needs lives only in the console [NOT CONFIRMED].
 | `work_assignments/{auto}` | `WorkAssignment` | `assignedTo`, `assignedBy`, `category` (`wishes`/`promotional`/`cinematic`/`bulk_ads`/`social_media_management`/`poster`), `clipCount`, `duration`, `pricePerUnit`, `uniqueId` (W/P/C/PS/O + number), **`accessCode`** (4 digits), `status`, `sessions[]`, `totalDurationSeconds`, `date`, ad spec (`modelGender`, `attireType`, `customAttire`, `aspectRatio`, `language`, `festival`, `characterPack`, `customCharacter` (Custom Character only), `realLocationProvided`, poster fields), brief (`requirementNotes`, `businessInfo`, `businessAddress`), `orderId`, `chatId`, `promise`, `tracks[]`, `savedGenerationId`, `saleDeleted*`, `reassignedFrom/By/At` |
 | `clients/{digitsPhone}` | `Client` | profile assets, `works[]`, totals, `reviews[]` (server-written), `salesAdminIds[]`, `soldByIds[]` (array-contains scope), `firstSoldBy`, review/loyalty mirror |
 | `order_chats/{chatId}` (+`messages`) | `OrderChatDoc` | `chatId` = order id for sold work, else assignment id (`utils/orderChatId.orderChatIdOf`). `participants[]`, `accessCode`, `status` (`open`/`locked`), `clientReady`, `activeAt` heartbeats, `unreadCounts`, `clientReview`, member/seller/assigner ids |
-| `smm_campaigns/{orderId or auto}` | `SmmCampaign` | `origin`, `orderId` ("" for direct), `watchers[]`, `soldBy`, `team`, `items[]` (content with approval, chases, per-platform `postUrls`), `adRuns[]` (day reports, budgets), `budgetPayments[]`, `cycle`, `commitments`, `renewal`, `status` (`active`/`completed`/`renewed`/`lapsed`/`removed`) |
+| `smm_campaigns/{orderId or auto}` | `SmmCampaign` | `origin`, `orderId` ("" for direct), `watchers[]`, `soldBy`, `team`, `items[]` (content with approval, chases, per-platform `postUrls`, extra work's `extraType`/`extraDuration`), `adRuns[]` (day reports, budgets), `budgetPayments[]`, `cycle`, `commitments`, `renewal`, `status` (`active`/`completed`/`renewed`/`lapsed`/`removed`/`deleted`), `deletedAt`/`deletedByName` |
 | `smm_templates/{auto}` | `SmmTemplate` | saved client message wording (company-wide) |
 | `ai_generations/{auto}` | `SavedGeneration` | `userId`, outputs (`mainFramePrompts[]`, `headerPrompt` (the VIDEO BOTTOM LABEL), `posterPrompt`, `voiceOverScript`, `veoPrompts[]`, `stockImagePrompts`, `overlayTexts` (each with `imagePrompt` / `imageDesign`), `posterConcepts`, `coreMessage`, `sceneContext` (motive + per-clip background and staging/camera/angle/focus), `voiceBrief`, `scriptQa` (the voice-over's quality-gate score, pass and drafts)), all form settings incl. `frameInstructions` and `customCharacter`, `creationMode`, `createdAt`/`updatedAt`. Generate = new doc (a version); Save and auto-save update it |
 | `cinematic_projects/{auto}` | `CinematicAdsProject` | `createdBy`, `name`, `currentStep`, `stepsCompleted`, brief, stories, boards, cast, clips, editing guide, deliverables, `delivered`, `updatedAt` (ms). `File` objects stripped |
@@ -1241,7 +1255,7 @@ Gemini calls use the shared fallback.
   alerts via `api/order-chat`.
 - **Common types:** `work_assigned`, `work_completed`, `work_verified`, `work_editing`,
   `work_unassigned`, `sale_approved`, `attendance_update`, `order_new_*`, `chat_message`,
-  `voice_call` / `video_call`, SMM and HR types, `ai_account` (an AI account assigned to or moved from someone).
+  `voice_call` / `video_call`, SMM (incl. `smm_lead`, `smm_new_month`) and HR types, `ai_account` (an AI account assigned to or moved from someone).
 
 ---
 
@@ -1395,6 +1409,10 @@ report message → renewal.
   records the client delivery.
 - **Bulk videos:** only tech admin, main admin or team leader assign slots; the owner or those
   roles can tick them done; slot numbers are never renumbered.
+- **SMM deletion and lead (2026-10-01):** only the main admin, the tech admin and the Social Media
+  Team Lead delete a month; a deleted sold month never comes back with its sale; only the tech admin
+  and main admin appoint the team lead; extra work always says what it is (and a video its length),
+  and the seller is told.
 - **SMM:** nothing is scheduled or posted without a recorded client approval (enforced in
   `setItemStatus`); month quotas are 2 posts + 2 stories per video (`smmQuota`; stories target
   now 0 for plan-derived months); campaigns run on the video count; the real-video add-on is
@@ -1713,6 +1731,22 @@ and push; PWA self-update; Android shell.
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
 
+- **2026-10-01 (later): Social Media Management — delete, the Social Media Team Lead, typed extra
+  work** — (1) months can be deleted (main admin, tech admin, team lead): a direct month outright, a
+  sold month as a `deleted` tombstone that `ensureCampaignForOrder` never revives. (2) The existing
+  `smmLeader` flag (a hard-to-find icon in My Team's table) became the **Social Media Team Lead**: a
+  panel at the top of `/smm` where the tech admin / main admin appoints or removes them
+  (`SmmTeamLeadPanel`, `setSmmTeamLead`, `watchSmmTeamLeads`), notified on appointment and on every
+  newly sold month (`smm_new_month`), with delete added to their powers. (3) The top bar no longer shows
+  a month's order id (`o_Uwng…_1790…`) — it reads "Social Media / <business>" (`Topbar.looksLikeId`;
+  any unresolved id segment is left out). (4) Extra work is chosen from a list (poster / promotional /
+  wishes / cinematic video + duration); fixed on the way: it was added via `addItems`, which never told
+  the seller although the toast said it had. Verified: build ✅, vitest 183 files / 2873 tests ✅ (8 new
+  in `smmManageOct01`), typecheck 1 known error; a throwaway Playwright harness (real SMM pages + real
+  Topbar on `memoryFirestore`, deleted after) ran 16 checks at 1440 / 390 px — appoint + notify,
+  breadcrumb, extra work saved and shown, delete → tombstone → gone from the list, member / team-leader
+  permissions — all passing, no console errors, no horizontal scroll.
+
 - **2026-10-01: six AdGen faults fixed at their cause, and the AI Accounts module** —
   (1) *Unrealistic videos* (people walking over tables and cupboards, toward the camera onto the road,
   the shop extended): every Veo prompt now animates its own frame — it opens with THE ATTACHED FRAME
@@ -1975,12 +2009,11 @@ Design intent lives in `docs/superpowers/specs/`.
 
 ## 32. CURRENT PROJECT STATE (as of 2026-10-01)
 
-- `main` @ `4c3f083` (includes the 2026-09-29 generation-speed work). Branch
-  `claude/exciting-lovelace-kcst5s` adds `60f9dc6` (the six AdGen fixes) and the AI Accounts commit;
-  not merged into `main`.
+- `main` @ `a0247fe` (PR #1 merged: the six AdGen fixes and AI Accounts). Branch
+  `claude/exciting-lovelace-kcst5s` carries the SMM delete / team lead / extra-work change on top.
 - `npm run build` ✅ (main chunk ≈455 KB, vendor-firebase ≈665 KB, geminiService chunk ≈790 KB; AI
   Accounts adds lazy `AiAccounts` ≈14 KB and `MyAiAccounts` ≈9 KB pages).
-- `npx vitest run` ✅ 182 files, 2865 tests.
+- `npx vitest run` ✅ 183 files, 2873 tests.
 - `npx tsc -p tsconfig.check.json --noEmit` → 1 known error (VideoCallManager).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
 - Most recent work: the six AdGen fixes (frame-bounded video, duo heights, background plates, cast
