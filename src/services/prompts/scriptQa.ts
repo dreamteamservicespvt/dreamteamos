@@ -26,6 +26,8 @@ export interface ScriptQaContext {
   brief?: CoreMessageBrief | null;
   /** The clip that must land the message: 1, or 2 when clip 1 is a festival greeting. */
   messageClip?: number;
+  /** The verified address as spoken, when the business has one — the final clip must say it. */
+  address?: string;
 }
 
 export const SCRIPT_QA_SYSTEM_PROMPT = (ctx: ScriptQaContext): string => {
@@ -54,6 +56,9 @@ ${isTelugu ? `• "mariyu" written in Latin letters inside a Telugu line is REQU
 • The closing sentence "మరిన్ని వివరాల కోసం స్క్రీన్‌పై ఉన్న నంబర్‌కు ఇప్పుడే కాల్ చేయండి." is fixed. Judge the rest of the final clip, not that sentence.
 ` : ""}• Numbers written as words, and no phone number spoken anywhere, are required.
 • The business's own name is spelled exactly as given, even when it is an English or unusual word.
+${ctx.address?.trim()
+  ? `• THE ADDRESS IS REQUIRED: the final clip must tell the viewer where to come — "${ctx.address.trim()}". A final clip without it is a problem in that clip (clarity at most 6). Saying it is never an unsupported claim.`
+  : "• No verified address was given: an address, street or landmark spoken anywhere is an unsupported claim."}
 
 ${everydaySpeechRules(lang)}
 

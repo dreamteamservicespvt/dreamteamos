@@ -1747,7 +1747,14 @@ Design intent lives in `docs/superpowers/specs/`.
   the accounts loaded kept an empty account; the assign dialog could lose a pick on a live update;
   account history could drop a concurrent event (now `arrayUnion`); a job handed in again offered its
   whole clip count again; settings accepted 0; a creation date could move away from recorded credits;
-  and five phone/desktop layout faults. Nothing was run against live Gemini, Veo or Flow.
+  and five phone/desktop layout faults. Nothing was run against live Gemini, Veo or Flow. *Merged with `main` (PR #1):* `main` had meanwhile gained a parallel version of the same work
+  (`eb2c3ff`: its own motion/duo/Kids/address prompts and an unrouted Flow-accounts module —
+  `services/flowAccounts`, `components/flow`, `flow_credit_logs` — writing `flow_accounts` in a
+  different shape). The owner chose this branch's version: the conflicted files, the catalogue and
+  the Flow module are this branch's; kept from `main` are the optional `dialogueFormat` children's
+  word budget and final-clip slack, the `scriptQa` address field and the sales-message attire line.
+  `main`'s `api/send-notification.ts` had stray editor text before its first import (a broken
+  function); this branch's copy replaced it.
 
 - **2026-09-29: generation made ~2× faster, measured live** — a live 4-clip Telugu run took 129 s (plus
   the B-roll/overlay tail) in 13 strictly sequential calls, 20,693 thinking tokens against 6,736 of

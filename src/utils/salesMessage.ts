@@ -17,7 +17,7 @@
 import { categoryLabel } from "@/utils/serviceCatalog";
 import { packagePlatforms } from "@/utils/serviceCatalog";
 import { attireLabel } from "@/utils/adRequirement";
-import { getCharacterPack, packHighlight } from "@/services/characterPacks";
+import { getCharacterPack, isHumanPack, packHighlight } from "@/services/characterPacks";
 import { formatCurrency } from "@/utils/formatters";
 import { formatPhoneDisplay } from "@/utils/phone";
 import type { Lead, SaleDetail } from "@/types";
@@ -86,7 +86,7 @@ export function buildClientSaleMessage(lead: Lead, item: SaleDetail): string {
         ? `   ✨ Both characters speak in every clip`
         : `   ✨ ${pack.characters[0].name} presents your business throughout`) : null,
       !pack && r.modelGender ? `👤 *Model:* ${r.modelGender === "male" ? "Male" : "Female"}` : null,
-      !pack && r.attireType ? `👔 *Attire:* ${attireLabel(r.attireType, r.customAttire)}` : null,
+      (!pack || isHumanPack(pack)) && r.attireType ? `👔 *Attire:* ${attireLabel(r.attireType, r.customAttire, r.specialCategory)}` : null,
       // On EVERY ad now, not only a cartoon one. The client is buying either their own premises or
       // a built set, at the same price, and which one it is used to be invisible to them.
       backgroundLine(r.realLocationProvided === true),
