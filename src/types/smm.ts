@@ -120,6 +120,13 @@ export function blankApproval(): SmmApproval {
 /** Whether extra work has been settled with the client, and how. */
 export type SmmExtraCharge = "unbilled" | "billed" | "free";
 
+/**
+ * What a piece of extra work IS (2026-10-01) — a poster, or a promotional, wishes or cinematic video
+ * of a stated length. Chosen from a list when it is added, so the seller and the monthly report say
+ * exactly what was made instead of "an extra item". See smmPlan.SMM_EXTRA_WORK_TYPES.
+ */
+export type SmmExtraWorkType = "poster" | "promotional" | "wishes" | "cinematic";
+
 /** One piece of content in the month's plan. */
 export interface SmmContentItem {
   id: string;
@@ -160,6 +167,10 @@ export interface SmmContentItem {
   extra: boolean;
   extraCharge?: SmmExtraCharge | null;
   extraAmount?: number | null;
+  /** What the extra work is (absent on items added before the type was asked for). */
+  extraType?: SmmExtraWorkType | null;
+  /** A video's length, "32s" — absent for a poster. */
+  extraDuration?: string | null;
   postedAt?: any | null;
   /**
    * Where it went live, one link per account.
@@ -277,7 +288,11 @@ export interface SmmBudgetPayment {
  * finished: it should not be there at all. Restoring the order brings it back to `active`, and
  * purging the order deletes the campaign outright.
  */
-export type SmmCampaignStatus = "active" | "completed" | "renewed" | "lapsed" | "removed";
+/**
+ * `removed` follows the order (it comes back when the sale is re-approved); `deleted` is a person
+ * deleting the month on purpose (2026-10-01) and is never revived — see services/smm deleteCampaign.
+ */
+export type SmmCampaignStatus = "active" | "completed" | "renewed" | "lapsed" | "removed" | "deleted";
 export type SmmRenewalState = "none" | "pitched" | "won" | "lost";
 
 export interface SmmRenewal {
@@ -377,6 +392,9 @@ export interface SmmCampaign {
    */
   watchers: string[];
   status: SmmCampaignStatus;
+  /** Who deleted the month, and when — set with `status: "deleted"` on a sold month. */
+  deletedAt?: any | null;
+  deletedByName?: string | null;
   renewal: SmmRenewal;
   createdAt?: any;
   updatedAt?: any;

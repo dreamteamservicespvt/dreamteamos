@@ -9,17 +9,19 @@
  * tab they are on: how far through the month is, and who is on it.
  */
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
-  ArrowLeft, Loader2, Megaphone, Phone, MessageSquare, CalendarRange, Users, IndianRupee,
+  ArrowLeft, Loader2, Megaphone, Phone, MessageSquare, CalendarRange, Users, IndianRupee, Trash2,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useSmmCampaign } from "@/hooks/useSmmCampaigns";
-import { fetchAssignableMembers, setCampaignTeam, setCycle } from "@/services/smm";
+import { deleteCampaign, fetchAssignableMembers, setCampaignTeam, setCycle } from "@/services/smm";
+import { useConfirm } from "@/hooks/useConfirm";
+import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/utils/formatters";
 import { getWhatsAppUrl } from "@/utils/phone";
 import {
-  canEditCampaign, clientWaitSummary, daysLeftInCycle, fulfilment, isoDay, isSmmOverseer,
+  canDeleteSmmCampaign, canEditCampaign, clientWaitSummary, daysLeftInCycle, fulfilment, isoDay, isSmmOverseer,
   teamMembers,
 } from "@/utils/smmPlan";
 import { orderChatLink } from "@/services/orderChat";
@@ -46,6 +48,11 @@ export default function SmmCampaignPage() {
 
   const canEdit = canEditCampaign(campaign || { watchers: [], soldBy: "" }, user);
   const canAssign = isSmmOverseer(user);
+  const canDelete = canDeleteSmmCampaign(user);
+  const navigate = useNavigate();
+  const { confirm, ConfirmDialog } = useConfirm();
+  const { toast } = useToast();
+  const [deleting, setDeleting] = useState(false);
   const today = isoDay(new Date());
 
   useEffect(() => {
@@ -81,8 +88,28 @@ export default function SmmCampaignPage() {
   const daysLeft = daysLeftInCycle(campaign.cycle, today);
   const team = teamMembers(campaign.team);
 
+  const removeMonth = async () => {
+    const { confirmed } = await confirm({
+      title: `Delete ${campaign.businessName || campaign.clientName}'s month?`,
+      description: "Its plan, ads, money and report go for everyone, and it will not come back if the sale is edited. This cannot be undone.",
+      confirmText: "Delete month",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
+    setDeleting(true);
+    try {
+      await deleteCampaign(campaign, user);
+      toast({ title: "Month deleted", description: campaign.businessName || campaign.clientName });
+      navigate("/smm");
+    } catch {
+      toast({ title: "Could not delete the month", description: "Try again.", variant: "destructive" });
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
+      {ConfirmDialog}
       {/* `-mx-2 px-2 py-1.5`: the words are the same size, but the thing a thumb has to hit is
           not. The negative margin keeps it optically flush with the card below. */}
       <Link to="/smm" className="-mx-2 inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
@@ -121,6 +148,16 @@ export default function SmmCampaignPage() {
               >
                 <MessageSquare size={13} /> Their chat
               </a>
+            )}
+            {canDelete && (
+              <button
+                data-test="smm-delete-month"
+                onClick={removeMonth}
+                disabled={deleting}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-destructive/40 px-3 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
+              >
+                {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Delete
+              </button>
             )}
           </div>
         </div>

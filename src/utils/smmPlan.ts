@@ -11,7 +11,7 @@ import {
   SMM_CONTENT_KINDS, SMM_PLATFORMS,
   type SmmAdDayReport, type SmmAdRun, type SmmApproval, type SmmBudgetPayment, type SmmCampaign,
   type SmmContentItem,
-  type SmmContentKind, type SmmCycle, type SmmItemStatus, type SmmPlatform, type SmmTeam,
+  type SmmContentKind, type SmmCycle, type SmmExtraWorkType, type SmmItemStatus, type SmmPlatform, type SmmTeam,
 } from "@/types/smm";
 import type { OrderProgressCounts } from "@/types";
 
@@ -580,6 +580,71 @@ export function isSmmOverseer(user: { role?: string; smmLeader?: boolean } | nul
   if (!user) return false;
   if (user.smmLeader) return true;
   return ["main_admin", "tech_admin", "sales_admin", "tech_team_leader"].includes(user.role || "");
+}
+
+/**
+ * Who may delete a month outright (2026-10-01): the main admin, the tech admin and the Social Media
+ * Team Lead. Narrower than `isSmmOverseer` on purpose — deleting throws away a month's plan, ads and
+ * money trail, and a team leader or a sales admin who only oversees months has no need to.
+ */
+export function canDeleteSmmCampaign(user: { role?: string; smmLeader?: boolean } | null | undefined): boolean {
+  if (!user) return false;
+  if (user.smmLeader) return true;
+  return user.role === "main_admin" || user.role === "tech_admin";
+}
+
+/** Who may appoint or remove the Social Media Team Lead: the tech admin and the main admin. */
+export function canAppointSmmLead(user: { role?: string } | null | undefined): boolean {
+  return user?.role === "tech_admin" || user?.role === "main_admin";
+}
+
+/* ── Extra work: what it is ─────────────────────────────────────────────────────────────────── */
+
+/**
+ * The kinds of extra work a month can carry, chosen from a list (2026-10-01).
+ *
+ * Each maps onto one of the plan's content kinds, so it counts and is planned like any other row —
+ * a poster is a poster, and every video is made with the AI ad pipeline — while the TYPE and the
+ * DURATION say what was actually made, which is what the seller charges for.
+ */
+export const SMM_EXTRA_WORK_TYPES: { key: SmmExtraWorkType; label: string; kind: SmmContentKind; video: boolean }[] = [
+  { key: "poster", label: "Poster", kind: "poster", video: false },
+  { key: "promotional", label: "Promotional video", kind: "ai_ad", video: true },
+  { key: "wishes", label: "Wishes video", kind: "ai_ad", video: true },
+  { key: "cinematic", label: "Cinematic video", kind: "ai_ad", video: true },
+];
+
+/** The lengths offered for a video — the same presets Work Assign uses (8-second clips). */
+export const SMM_EXTRA_DURATIONS = ["16s", "32s", "48s", "64s"] as const;
+
+export function extraWorkTypeInfo(type: SmmExtraWorkType) {
+  return SMM_EXTRA_WORK_TYPES.find((t) => t.key === type) || SMM_EXTRA_WORK_TYPES[0];
+}
+
+/** "32s" → "32 sec"; a bare number is read as seconds. Anything unreadable gives "". */
+export function durationLabel(duration?: string | null): string {
+  const n = parseInt(String(duration || "").replace(/[^0-9]/g, ""), 10);
+  return Number.isFinite(n) && n > 0 ? `${n} sec` : "";
+}
+
+/** Normalises a duration typed or chosen to "<n>s", or "" when it is not a sensible length. */
+export function normaliseDuration(duration?: string | number | null): string {
+  const n = parseInt(String(duration ?? "").replace(/[^0-9]/g, ""), 10);
+  return Number.isFinite(n) && n >= 4 && n <= 600 ? `${n}s` : "";
+}
+
+/** "Promotional video · 32 sec", "Poster" — the extra item's title and the line everybody reads. */
+export function extraWorkTitle(type: SmmExtraWorkType, duration?: string | null): string {
+  const info = extraWorkTypeInfo(type);
+  const len = info.video ? durationLabel(duration) : "";
+  return len ? `${info.label} · ${len}` : info.label;
+}
+
+/** Why an extra-work entry cannot be added yet, or "" when it can. A video needs its length. */
+export function extraWorkProblem(type: SmmExtraWorkType, duration?: string | null): string {
+  if (!SMM_EXTRA_WORK_TYPES.some((t) => t.key === type)) return "Choose what the extra work is.";
+  if (extraWorkTypeInfo(type).video && !normaliseDuration(duration)) return "Choose the video's duration.";
+  return "";
 }
 
 /* ── One line about the month ───────────────────────────────────────────────────────────────── */

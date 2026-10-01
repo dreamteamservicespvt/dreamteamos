@@ -31,7 +31,7 @@ export function useSmmCampaigns(user: SmmViewer | null | undefined) {
     setLoading(true);
     const handle = (list: SmmCampaign[]) => {
       /*
-        A month whose ORDER was removed is gone, not filed under "Finished".
+        A month whose ORDER was removed — or that somebody deleted — is gone, not filed under "Finished".
 
         Filtered here rather than in the query because a member's read is
         `watchers array-contains uid`, and Firestore will not take an inequality on another field
@@ -39,7 +39,7 @@ export function useSmmCampaigns(user: SmmViewer | null | undefined) {
         months, so the browser can do it for nothing. The overseer's read is already scoped to
         active, so this only ever removes one from the member's own list.
       */
-      setCampaigns(list.filter((c) => c.status !== "removed"));
+      setCampaigns(list.filter((c) => c.status !== "removed" && c.status !== "deleted"));
       setLoading(false);
     };
     return overseer ? watchActiveCampaigns(handle) : watchMyCampaigns(uid, handle);
@@ -69,7 +69,7 @@ export function useSmmCampaign(id: string | undefined) {
     // A removed month reads as "not available to you" — which is what it is. Somebody following an
     // old notification link to one should be told it is gone, not shown a plan they cannot act on.
     return watchCampaign(id, (c) => {
-      setCampaign(c && c.status === "removed" ? null : c);
+      setCampaign(c && (c.status === "removed" || c.status === "deleted") ? null : c);
       setLoading(false);
     });
   }, [id]);

@@ -18,21 +18,21 @@
  */
 
 import {
-  collection, deleteDoc, doc, getDoc, onSnapshot, query, runTransaction, serverTimestamp, setDoc,
+  collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, runTransaction, serverTimestamp, setDoc,
   where, Timestamp, updateDoc,
 } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import {
-  blankItem, buildInitialItems, cycleFromStart, derivedProgressCounts, isoDay, newItemId,
-  smmWatchers, targetsFromCommitments,
+  blankItem, buildInitialItems, cycleFromStart, derivedProgressCounts, extraWorkTitle, extraWorkTypeInfo, isoDay,
+  newItemId, normaliseDuration, smmWatchers, targetsFromCommitments,
 } from "@/utils/smmPlan";
 import { commitmentsForPackage, platformsForPackage } from "@/utils/smmPricing";
 import { normalizePhone, phoneLockId } from "@/utils/phone";
 import { POSTABLE_STATUSES } from "@/types/smm";
 import type {
   SmmAdDayReport, SmmAdRun, SmmBudgetPayment, SmmCampaign, SmmContentItem, SmmContentKind,
-  SmmItemStatus, SmmPaymentRoute, SmmPlatform, SmmRenewalState, SmmTeam,
+  SmmExtraWorkType, SmmItemStatus, SmmPaymentRoute, SmmPlatform, SmmRenewalState, SmmTeam,
 } from "@/types/smm";
 import type { AppUser, Order, OrderProgress, SaleDetail } from "@/types";
 
@@ -92,6 +92,8 @@ export async function ensureCampaignForOrder(input: CreateCampaignInput): Promis
 
     if (snap.exists()) {
       const existing = snap.data() as SmmCampaign;
+      // Deleted on purpose (deleteCampaign): editing or re-approving the sale must not bring it back.
+      if (existing.status === "deleted") return;
       await updateDoc(ref, {
         /*
           A month taken off the board with its order comes back with it.
@@ -145,6 +147,7 @@ export async function ensureCampaignForOrder(input: CreateCampaignInput): Promis
     };
 
     await setDoc(ref, clean({ ...campaign, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }));
+    await notifySmmLeadsOfNewMonth(input.orderId, input.businessName || input.clientName, input.soldByName);
   } catch (err) {
     console.error("[smm] ensureCampaignForOrder failed:", err);
   }
@@ -425,13 +428,22 @@ export async function setItemStatus(
  */
 export async function addItem(
   campaignId: string,
-  input: { kind: SmmContentKind; title?: string; uploadDate?: string | null; uploadTime?: string | null; platforms?: SmmPlatform[]; extra?: boolean; notes?: string | null },
+  input: {
+    kind: SmmContentKind; title?: string; uploadDate?: string | null; uploadTime?: string | null; platforms?: SmmPlatform[];
+    extra?: boolean; notes?: string | null;
+    /** What the extra work is, and a video's length (2026-10-01) — the kind and title follow from it. */
+    extraType?: SmmExtraWorkType | null; extraDuration?: string | null;
+  },
   actor: SmmActor,
 ): Promise<void> {
+  const typeInfo = input.extra && input.extraType ? extraWorkTypeInfo(input.extraType) : null;
+  const duration = typeInfo?.video ? normaliseDuration(input.extraDuration) : "";
+  const kind = typeInfo ? typeInfo.kind : input.kind;
   const created = await mutateCampaign(campaignId, (c) => {
     const item: SmmContentItem = {
-      ...blankItem(input.kind, input.platforms?.length ? input.platforms : c.platforms, !!input.extra),
-      title: input.title || "",
+      ...blankItem(kind, input.platforms?.length ? input.platforms : c.platforms, !!input.extra),
+      ...(typeInfo ? { extraType: input.extraType, extraDuration: duration || null } : {}),
+      title: input.title?.trim() || (typeInfo ? extraWorkTitle(input.extraType!, duration) : ""),
       uploadDate: input.uploadDate ?? null,
       uploadTime: input.uploadTime ?? null,
       notes: input.notes ?? null,
@@ -815,6 +827,85 @@ export async function setRenewal(
 
 export async function setCampaignStatus(campaignId: string, status: SmmCampaign["status"]): Promise<void> {
   await mutateCampaign(campaignId, () => ({ status }));
+}
+
+/**
+ * Delete a month (2026-10-01) — main admin, tech admin or the Social Media Team Lead
+ * (smmPlan.canDeleteSmmCampaign).
+ *
+ * A month added directly has nothing behind it, so its document is simply deleted. A SOLD month is
+ * keyed on its order, and `ensureCampaignForOrder` runs again whenever the sale is edited or
+ * re-approved — a deleted document would come straight back as a fresh, empty month. So a sold month
+ * is kept as a tombstone, `status: "deleted"`, which every list and page treats as gone and which
+ * `ensureCampaignForOrder` never revives (unlike `removed`, which follows its order back).
+ */
+export async function deleteCampaign(campaign: Pick<SmmCampaign, "id" | "orderId">, actor: SmmActor): Promise<void> {
+  if (!campaign.orderId) {
+    await deleteDoc(campaignRef(campaign.id));
+    return;
+  }
+  await updateDoc(campaignRef(campaign.id), {
+    status: "deleted",
+    deletedAt: serverTimestamp(),
+    deletedByName: actor.name || "",
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/* ── The Social Media Team Lead ─────────────────────────────────────────────────────────────── */
+
+/**
+ * The people running the whole social-media side (`users.smmLeader`, 2026-10-01 naming: "Social
+ * Media Team Lead"). A tech member keeps their own role and screens and gains every month in the
+ * company — seeing, assigning, starting and deleting them. Live, and one equality filter.
+ */
+export function watchSmmTeamLeads(cb: (leads: { uid: string; name: string; role?: string }[]) => void): () => void {
+  return onSnapshot(
+    query(collection(db, "users"), where("smmLeader", "==", true)),
+    (snap) => cb(snap.docs
+      .map((d) => ({ uid: d.id, ...(d.data() as AppUser) }))
+      .filter((u) => u.isActive !== false)
+      .map((u) => ({ uid: u.uid, name: u.name, role: u.role }))
+      .sort((a, b) => (a.name || "").localeCompare(b.name || ""))),
+    (err) => { console.error("[smm] watchSmmTeamLeads:", err); cb([]); },
+  );
+}
+
+/** Make someone the Social Media Team Lead, or stand them down — and tell them either way. */
+export async function setSmmTeamLead(member: { uid: string; name: string }, lead: boolean, actor: SmmActor): Promise<void> {
+  await updateDoc(doc(db, "users", member.uid), { smmLeader: lead, updatedAt: serverTimestamp() });
+  await sendNotification({
+    userId: member.uid,
+    type: "smm_lead",
+    title: lead ? "You are the Social Media Team Lead" : "Social Media Team Lead role removed",
+    message: lead
+      ? `${actor.name || "Your admin"} made you the Social Media Team Lead: you now see, assign and manage every social media month.`
+      : `${actor.name || "Your admin"} removed your Social Media Team Lead role. You keep the months you are on.`,
+    link: "/smm",
+  }).catch(() => { /* the role is changed either way */ });
+}
+
+/**
+ * Tell the Social Media Team Lead(s) a new month has been sold, so it gets a team the same day.
+ * Never throws: a sale must not fail because a bell could not ring.
+ */
+async function notifySmmLeadsOfNewMonth(campaignId: string, businessName: string, soldByName: string): Promise<void> {
+  try {
+    const snap = await getDocs(query(collection(db, "users"), where("smmLeader", "==", true)));
+    for (const d of snap.docs) {
+      if ((d.data() as AppUser).isActive === false) continue;
+      await sendNotification({
+        userId: d.id,
+        type: "smm_new_month",
+        title: "New social media month",
+        message: `${businessName} — sold by ${soldByName}. Put a team on it.`,
+        link: `/smm/${campaignId}`,
+        dedupeKey: `smm_new_${campaignId}_${d.id}`,
+      }).catch(() => undefined);
+    }
+  } catch (err) {
+    console.warn("[smm] notifySmmLeadsOfNewMonth:", err);
+  }
 }
 
 /**
