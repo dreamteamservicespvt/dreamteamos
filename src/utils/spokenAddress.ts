@@ -17,14 +17,14 @@
  */
 
 /** Parts of an address that are read, never spoken. */
-const DOOR_NUMBER = /^(?:(?:d|h|s)\.?\s*no\b|(?:door|plot|flat|shop|house|survey|unit|block)\.?\s*(?:no\.?)?\s*[:\-]?\s*[\da-z]{0,2}\d|no\.\s*\d|#)/i;
+const DOOR_NUMBER = /^(?:(?:d|h|s)\.?\s*no\b|(?:door|plot|flat|shop|house|survey|unit|block)\.?\s*(?:no\.?)?\s*[:-]?\s*[\da-z]{0,2}\d|no\.\s*\d|#)/i;
 /** What a form or a model writes when there is no address at all. */
 const NO_ADDRESS = /^(?:not\s+provided|not\s+available|n\/?a|nil|none|-+|unknown)$/i;
 /** A landmark a person gives directions by — said first when the words run short. */
 const LANDMARK = /^(?:opposite|near|beside|behind|next to|in front of|above|below)\b/i;
 /** An area, street or road — said next. */
 const AREA = /(?:nagar|peta?|pet|puram|palem|wada|guda|colony|layout|street|road|junction|centre|center|bazaar|market|cross roads)\b/i;
-const NUMBER_ONLY = /^[#\d\s\-\/.,]+[a-z]?$/i;
+const NUMBER_ONLY = /^[#\d\s\-/.,]+[a-z]?$/i;
 const PINCODE = /\b\d{6}\b/g;
 const FLOOR = /\b(?:\d+(?:st|nd|rd|th)|ground|first|second|third|top)\s+floor\b/i;
 const REGION = /^(?:andhra\s*pradesh|a\.?\s*p\.?|telangana|t\.?\s*s\.?|t\.?\s*g\.?|india|tamil\s*nadu|karnataka|kerala|odisha|orissa|maharashtra|pin(?:\s*code)?)$/i;
@@ -57,9 +57,9 @@ export function spokenAddressOf(address: string | null | undefined, maxWords = M
 
   const parts: string[] = [];
   for (const raw of text.split(/[,;|]|\s+[-–]\s+/)) {
-    let part = raw.replace(PINCODE, "").replace(/\bpin(?:\s*code)?\s*[:\-]?\s*$/i, "").trim();
+    let part = raw.replace(PINCODE, "").replace(/\bpin(?:\s*code)?\s*[:-]?\s*$/i, "").trim();
     // "D.No 12-3-45 Main Road" → "Main Road": a door number glued to the street is cut off it.
-    part = part.replace(/^(?:d\.?\s*no|h\.?\s*no|door\s*no|plot\s*no|flat\s*no|shop\s*no|house\s*no|#)\.?\s*[:\-]?\s*[\d\-\/.]+[a-z]?\b\s*/i, "").trim();
+    part = part.replace(/^(?:d\.?\s*no|h\.?\s*no|door\s*no|plot\s*no|flat\s*no|shop\s*no|house\s*no|#)\.?\s*[:-]?\s*[\d\-/.]+[a-z]?\b\s*/i, "").trim();
     part = part.replace(/^[.\-–:\s]+|[.\-–:\s]+$/g, "");
     if (!part || DOOR_NUMBER.test(part) || NUMBER_ONLY.test(part) || REGION.test(part) || DISTRICT.test(part) || FLOOR.test(part)) continue;
     for (const [pattern, said] of EXPANSIONS) part = part.replace(pattern, said);

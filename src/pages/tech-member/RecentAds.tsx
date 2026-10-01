@@ -13,6 +13,7 @@ import { useFirestoreQuery } from '@/hooks/useFirestore';
 import { formatDate, formatTime } from '@/utils/formatters';
 import type { WorkAssignment } from '@/types';
 import { useCompleteWork } from '@/hooks/useCompleteWork';
+import { useCreditGate } from '@/components/ai-accounts/useCreditGate';
 import CodeVerificationModal from '@/components/ai-platform/CodeVerificationModal';
 import { isWorkUnlocked, rememberWorkUnlock } from '@/utils/workUnlock';
 import AIPlatformApp from '@/components/ai-platform/AIPlatformApp';
@@ -174,25 +175,32 @@ export default function RecentAds() {
    */
   const { completing, complete } = useCompleteWork();
 
-  const handleComplete = async () => {
+  /** "How many Flow credits did this ad use?" — asked before every video job is handed in (useCreditGate). */
+  const creditGate = useCreditGate();
+
+  const handleComplete = () => creditGate.request(liveOpenAssignment, async () => {
     const submitted = await complete(liveOpenAssignment, { sessionStart: sessionStartRef.current });
     if (submitted) {
       // Already written into the final update; clearing it stops the unmount handler double-billing.
       sessionStartRef.current = null;
       setOpenAssignment(null);
     }
-  };
+    return submitted;
+  });
 
   if (openAssignment && liveOpenAssignment) {
     return (
-      <AIPlatformApp
-        assignment={liveOpenAssignment}
-        assignmentId={liveOpenAssignment.id}
-        completing={completing}
-        onBusinessNameExtracted={handleBusinessNameExtracted}
-        onClose={() => setOpenAssignment(null)}
-        onComplete={isSubmittable(liveOpenAssignment) ? handleComplete : undefined}
-      />
+      <>
+        <AIPlatformApp
+          assignment={liveOpenAssignment}
+          assignmentId={liveOpenAssignment.id}
+          completing={completing}
+          onBusinessNameExtracted={handleBusinessNameExtracted}
+          onClose={() => setOpenAssignment(null)}
+          onComplete={isSubmittable(liveOpenAssignment) ? handleComplete : undefined}
+        />
+        {creditGate.dialog}
+      </>
     );
   }
 

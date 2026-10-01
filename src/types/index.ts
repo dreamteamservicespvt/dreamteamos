@@ -47,6 +47,11 @@ export interface AppUser {
    */
   target?: number;
   googleDriveBaseUrl?: string;
+  /**
+   * The Flow account this tech member is "using now" (flow_accounts id = its email). A credit entry
+   * after an ad starts on it; when it runs out the member picks the next one. Absent → none chosen.
+   */
+  activeFlowAccountId?: string | null;
   phone: string;
   /**
    * The WhatsApp Business number a sales member actually sells on — not `phone`, which is their

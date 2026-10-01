@@ -158,16 +158,60 @@ service cloud.firestore {
     // decision (see services/smm), not a security boundary — every one of these documents is
     // readable by any signed-in member of staff, the same as orders and work assignments.
 
+    // ── AI Accounts: Flow accounts, their passwords, the credit ledger, paid logins ─────────────
+    // (types/aiAccounts.) Passwords live in their own collections so a list never carries them, and
+    // only the people who use an account — and the tech managers — can read one. The catch-all below
+    // does NOT reach these collections (Firestore ORs every matching rule, so a catch-all that matched
+    // them would open them to every member of staff — see the note on it).
+    function isTechManager() { return isStaff() && role() in ['main_admin', 'tech_admin', 'tech_team_leader']; }
+
+    match /flow_accounts/{id} {
+      // A member lists `where('visibleTo','array-contains',uid)`; a manager lists their team.
+      allow read:   if isStaff() && (isTechManager() || request.auth.uid in resource.data.visibleTo);
+      allow create: if isStaff() && request.resource.data.addedBy == request.auth.uid;
+      // The holder's credit entries move its running total; the adder/owner may correct its details.
+      allow update: if isStaff() && (isTechManager() || request.auth.uid in resource.data.visibleTo);
+      allow delete: if isTechManager();
+    }
+    match /flow_account_secrets/{id} {
+      function account() { return getAfter(/databases/$(database)/documents/flow_accounts/$(id)); }
+      allow read:  if isStaff() && (isTechManager() || request.auth.uid in get(/databases/$(database)/documents/flow_accounts/$(id)).data.visibleTo);
+      // Written in the same transaction as the account (getAfter sees it), or by someone who uses it.
+      allow write: if isStaff() && (isTechManager() || request.auth.uid in account().data.visibleTo);
+    }
+    match /flow_usage/{id} {
+      allow read:   if isStaff() && (isTechManager() || resource.data.userId == request.auth.uid);
+      allow create: if isStaff() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isStaff() && (isTechManager() || resource.data.userId == request.auth.uid);
+    }
+    match /paid_accounts/{id} {
+      allow read:  if isStaff() && (isTechManager() || request.auth.uid in resource.data.assignedTo);
+      allow write: if isTechManager();
+    }
+    match /paid_account_secrets/{id} {
+      allow read:  if isStaff() && (isTechManager() || request.auth.uid in get(/databases/$(database)/documents/paid_accounts/$(id)).data.assignedTo);
+      allow write: if isTechManager();
+    }
+
     // ── Everything else the app runs on ────────────────────────────────────────────────────────
     // Staff-only, which is what it always should have been. Nothing outside this file needs it.
-    match /{document=**} {
-      allow read, write: if isStaff();
+    //
+    // ⚠ Firestore ORs every rule that matches a path. A plain `match /{document=**}` also matches
+    // every collection above it, and its `isStaff()` then grants what their own rules refuse. The
+    // collections listed here are kept out of it so their own rules are the whole story. (The older
+    // restricted collections — employee_profiles, member_credentials, hr_documents,
+    // onboarding_invites, cinematic_projects — are still reached by it today; adding them to this
+    // list is the change that makes their rules real, and should be tested against each HR screen.)
+    match /{collection}/{document=**} {
+      allow read, write: if isStaff() && !(collection in [
+        'flow_accounts', 'flow_account_secrets', 'flow_usage', 'paid_accounts', 'paid_account_secrets'
+      ]);
     }
   }
 }
 ```
 
-## After publishing, check these five things
+## After publishing, check these six things
 
 1. Open an ID card and scan its QR (or visit `/verify/<uid>` signed out) — it must say **Verified
    employee**. If it says "could not be verified", press **Republish all badges** in
@@ -183,7 +227,8 @@ service cloud.firestore {
 
    ```sh
    KEY=<web-api-key>
-   for c in employee_profiles hr_documents company_settings hr_counters member_credentials; do
+   for c in employee_profiles hr_documents company_settings hr_counters member_credentials \
+            flow_account_secrets paid_account_secrets; do
      printf '%s -> ' "$c"
      curl -s -o /dev/null -w '%{http_code}\n' \
        "https://firestore.googleapis.com/v1/projects/dts-manager/databases/(default)/documents/$c?key=$KEY&pageSize=1"
@@ -192,6 +237,9 @@ service cloud.firestore {
 
    After publishing, every line must read **403**. Anything still reading 200 is a collection these
    rules missed.
+6. AI Accounts: sign in as a tech member and open **My AI Accounts** — their own Flow accounts list
+   and **Show** reveals a password. Then sign in as a different member: that account must not be
+   listed at all. The tech admin and a team leader see every account on **AI Accounts**.
 
 ## Status
 
