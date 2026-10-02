@@ -1,7 +1,6 @@
 import type { DiscountApproval, EarnedDiscount } from "@/utils/saleDiscount";
 import type { ClientReview } from "@/types/orderChat";
 import type { SmmContentKind, SmmPlatform } from "@/types/smm";
-import type { WorkFlowCredits } from "@/types/flowAccounts";
 
 export type UserRole =
   | "main_admin"
@@ -48,6 +47,11 @@ export interface AppUser {
    */
   target?: number;
   googleDriveBaseUrl?: string;
+  /**
+   * The Flow account this tech member is "using now" (flow_accounts id = its email). A credit entry
+   * after an ad starts on it; when it runs out the member picks the next one. Absent → none chosen.
+   */
+  activeFlowAccountId?: string | null;
   phone: string;
   /**
    * The WhatsApp Business number a sales member actually sells on — not `phone`, which is their
@@ -163,11 +167,6 @@ export interface WorkAssignment {
   completedDate?: string;
   clientName?: string;
   savedGenerationId?: string;
-  /**
-   * The Flow credits this ad used, recorded at Mark Complete (services/flowAccounts logFlowCredits) —
-   * or that it was made without Flow. Absent on every job completed before the Flow Accounts section.
-   */
-  flowCredits?: WorkFlowCredits | null;
   // Delivery promise / turnaround SLA, carried from the originating sale → order
   promise?: PromiseDeadline;
   // Link back to the originating Order (set when assigned from the Orders queue)

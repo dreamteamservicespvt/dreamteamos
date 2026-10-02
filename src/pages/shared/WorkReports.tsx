@@ -33,7 +33,7 @@ import PosterSpecFields from '@/components/work/PosterSpecFields';
 import PosterSpecChips from '@/components/work/PosterSpecChips';
 import { briefEditFieldsOf, briefPatch, categoryDependentPatch, posterEditFieldsOf } from '@/utils/assignmentEdit';
 import AssignmentBriefFields from '@/components/work/AssignmentBriefFields';
-import { attireOptionLabel, categorySwitch } from '@/utils/adRequirement';
+import { attireLabel, categorySwitch } from '@/utils/adRequirement';
 import { isPosterCategory, DEFAULT_POSTER_PRICE, assignmentSizeLabel } from '@/utils/posterSpec';
 import { getCharacterPack } from '@/services/characterPacks';
 import WorkDoneReport from '@/components/work/WorkDoneReport';
@@ -48,9 +48,6 @@ import { useViewMode } from '@/hooks/useViewMode';
  * only their own team's members and no pricing, exactly as before, so there is one implementation
  * instead of two near-identical ones.
  */
-
-// The attire as it reads for this job — children's wear on a Kids job (adRequirement.attireOptionLabel).
-const attireText = (attire: string, characterPack?: string | null) => attireOptionLabel(attire as AttireType, characterPack);
 
 const ASSIGNMENT_LANGUAGE_OPTIONS = ['Telugu', 'English', 'Hindi', 'Kannada', 'Custom'] as const;
 
@@ -843,7 +840,7 @@ export default function WorkReports() {
                           )}
                           {(!a.characterPack || getCharacterPack(a.characterPack)?.family === 'human') && a.attireType && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
-                              {a.attireType === 'custom' && a.customAttire ? a.customAttire : attireText(a.attireType, a.characterPack)}
+                              {attireLabel(a.attireType, a.customAttire, a.characterPack)}
                             </span>
                           )}
                           {/* On every ad, not only a pack one. A real-premises job cannot be STARTED until

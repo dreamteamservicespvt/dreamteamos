@@ -94,8 +94,9 @@ const TeamAttendance = lazy(() => import("@/pages/shared/TeamAttendance"));
 const MemberProfileDetail = lazy(() => import("@/pages/shared/MemberProfileDetail"));
 const HrCenter = lazy(() => import("@/pages/shared/HrCenter"));
 const Tools = lazy(() => import("@/pages/shared/Tools"));
-// The Google AI Pro accounts the team makes videos with, their credits, and the shared paid accounts.
-const FlowAccounts = lazy(() => import("@/pages/shared/FlowAccounts"));
+// Flow accounts (Veo credits) and paid ChatGPT / Grok logins — managers see the team, members their own.
+const AiAccounts = lazy(() => import("@/pages/shared/AiAccounts"));
+const MyAiAccounts = lazy(() => import("@/pages/tech-member/MyAiAccounts"));
 const WorkReports = lazy(() => import("@/pages/shared/WorkReports"));
 const Payroll = lazy(() => import("@/pages/shared/Payroll"));
 const Profit = lazy(() => import("@/pages/shared/Profit"));
@@ -260,7 +261,7 @@ const App = () => (
                 this department's own report card. Read-only here: see canRecordFeedback. */}
             <Route path="/tech-admin/feedback-upsell" element={<FeedbackUpsell />} />
             <Route path="/tech-admin/tools" element={<Tools />} />
-            <Route path="/tech-admin/flow-accounts" element={<FlowAccounts />} />
+            <Route path="/tech-admin/ai-accounts" element={<AiAccounts />} />
             <Route path="/tech-admin/cinematic-ads" element={<CinematicAds />} />
             <Route path="/tech-admin/chat" element={<Chat />} />
             <Route path="/tech-admin/meeting" element={<Meeting />} />
@@ -315,7 +316,6 @@ const App = () => (
             <Route path="/tech/create" element={<CreateAd />} />
             <Route path="/tech/dashboard" element={<TechMemberDashboard />} />
             <Route path="/tech/my-work" element={<MyWork />} />
-            <Route path="/tech/flow-accounts" element={<FlowAccounts />} />
             <Route path="/tech/recent-ads" element={<RecentAds />} />
             <Route path="/tech/analytics" element={<TechMemberMyAnalytics />} />
             <Route path="/tech/training" element={<TechMemberTraining />} />
@@ -324,6 +324,7 @@ const App = () => (
             <Route path="/tech/meeting" element={<Meeting />} />
             <Route path="/tech/salary" element={<MySalaryDashboard />} />
             <Route path="/tech/salary/receipts" element={<MySalaryPage />} />
+            <Route path="/tech/ai-accounts" element={<MyAiAccounts />} />
           </Route>
 
           {/* Sales Member */}
@@ -366,7 +367,8 @@ const App = () => (
             {/* A team leader is an employee too — they have HR documents of their own to sign. */}
             <Route path="/team-leader/profile" element={<TechMemberProfile />} />
             <Route path="/team-leader/tools" element={<Tools />} />
-            <Route path="/team-leader/flow-accounts" element={<FlowAccounts />} />
+            {/* Team leaders manage every account type alongside the tech admin. */}
+            <Route path="/team-leader/ai-accounts" element={<AiAccounts />} />
           </Route>
 
           <Route path="*" element={<NotFound />} />

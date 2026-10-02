@@ -1,18 +1,23 @@
 /**
- * Deciding which of the client's photographs backs which clip.
+ * Deciding which of the client's photographs backs which clip — and making sure it is USED, not
+ * redrawn.
  *
  * The client sends several photos of their business and every one of them should be used — a
  * different real place behind every clip is what makes the ad feel like it was shot there.
  *
  * ── Division of labour (deliberate) ───────────────────────────────────────────────────────────
- * The mechanical rule is guaranteed HERE, in code: never repeat a photo while an unused one
- * remains, and never point at an unusable one. The *judgement* — which backdrop best proves this
- * particular line of dialogue — is left to the model, which can read the Telugu dialogue and look
- * at the attached images at the same time. Keyword-matching English photo tags against Telugu
- * dialogue in code would be guesswork; the model does that part properly.
+ * The mechanical rule is guaranteed HERE, in code: every usable photo is used before any is used
+ * again, never an unusable one, and every clip of a real-location ad stands in one of the client's
+ * photographs. The *judgement* — which backdrop best proves this particular line of dialogue — is left
+ * to the model, which can read the Telugu dialogue and look at the attached images at the same time.
  *
- * So: this function hands the model a correct, no-repeat starting assignment, and the prompt
- * permits a swap when a different photo clearly suits the line better — but never a repeat.
+ * ── The photograph is the background plate (2026-10-01) ─────────────────────────────────────
+ * Members reported the client's real shop coming back CHANGED in the frames: redesigned, tidied,
+ * widened, a different shop. The prompts told the image generator to "build", "reproduce" and
+ * "rebuild" the space from the photo — words an image model reads as "draw a new one like it" — and
+ * the clips the photos did not cover were given an invented zone. Now each photo clip carries the
+ * BACKGROUND PLATE directive (withBackgroundPlate): the attached photograph IS the background, kept
+ * exactly, only enhanced to 8K, with the cast placed into it.
  */
 
 /** One photograph, as described by the location-index pass. */
@@ -36,14 +41,15 @@ export interface ClipLocation {
 }
 
 /**
- * Assigns at most one photo to each clip: every usable photo is used exactly once, and any clip
- * left over has its location generated instead.
+ * Assigns one photo to each clip: every usable photo is used once before any is used again, and when
+ * there are fewer photos than clips they are used again in turn — never an invented place.
  *
- * This deliberately does NOT cycle back to the start when there are fewer photos than clips. A
- * client who sends one photo for a two-clip ad should get that photo behind clip 1 and a generated
- * — but real-looking — zone of the same business behind clip 2. Showing the same photograph twice
- * reads as a stalled ad, and it also puts the member in the impossible position of attaching one
- * file to two different prompts and wondering whether they got it wrong.
+ * It used to give the clips left over a GENERATED zone of "the same business". On a real-location ad
+ * that is exactly the fault the team reported: the client recognises their shop in two clips and a
+ * shop they do not own in the third. A real-location ad now stands in the client's real place in
+ * every clip; a reused photo is staged differently (another pose, another gesture, another line) and
+ * the attach line names the photo, so the member knows exactly which file goes with which prompt.
+ * `null` is left only for the case with no usable photo at all.
  */
 export function assignPhotosToClips(clipCount: number, photos: LocationPhoto[]): ClipLocation[] {
   if (clipCount <= 0) return [];
@@ -51,7 +57,7 @@ export function assignPhotosToClips(clipCount: number, photos: LocationPhoto[]):
 
   return Array.from({ length: clipCount }, (_, clip) => ({
     clip,
-    photoIndex: clip < usable.length ? usable[clip].index : null,
+    photoIndex: usable.length > 0 ? usable[clip % usable.length].index : null,
   }));
 }
 
@@ -74,6 +80,37 @@ export function attachmentDirective(
   // directive never reads "the the entrance".
   const zone = photos.find((p) => p.index === location.photoIndex)?.zone?.replace(/^the\s+/i, "").trim();
   return `📎 ATTACH STORE/OFFICE IMAGE #${location.photoIndex + 1}${zone ? ` — the ${zone}` : ""}`;
+}
+
+/** The heading of the plate line code stamps onto a photo clip's frame prompt — see withBackgroundPlate. */
+export const BACKGROUND_PLATE_HEADING = "BACKGROUND PLATE";
+
+/**
+ * What an image generator must do with an attached store photo: USE it — not redraw a shop like it.
+ * Shared by the stamp below and the location formula (prompts/realLocation), so the system prompt and
+ * every finished frame say the same thing in the same words.
+ */
+export function backgroundPlateRule(photo = "the attached store/office photograph"): string {
+  return `Use ${photo} AS the background, exactly as it is: the same room, the same layout, walls, floor, ceiling, `
+    + `counters, shelves, racks, stock, products, signage, colours and light, seen from the same camera angle, `
+    + `perspective and framing. Only ENHANCE it — upscale it to 8K, sharpen it, remove noise, blur and compression `
+    + `artefacts, and correct exposure and white balance — so it reads as a crisp, premium 8K photograph of the very `
+    + `same place. Do NOT redesign, rebuild, redraw, tidy, modernise, widen, extend, crop into or re-imagine it, and do `
+    + `NOT add, remove, move or restyle a single object. The only things added are the cast of this frame — standing on `
+    + `its real floor at true real-world scale against its real objects, lit by its own light (same direction, softness `
+    + `and colour temperature) and casting soft contact shadows, so they look photographed in that room, not pasted `
+    + `onto it — and the logo or name board, on a surface the photograph already has`;
+}
+
+/**
+ * A finished frame prompt for a photo clip, guaranteed to carry the background-plate rule — stamped in
+ * code, the same way the attach line is, because a frame model asked to keep a photo "as photographed"
+ * still wrote a fresh description of a shop, and the image generator drew that description instead of
+ * the photo. Idempotent; a clip with no photo is returned unchanged.
+ */
+export function withBackgroundPlate(prompt: string, location: ClipLocation | undefined): string {
+  if (!prompt.trim() || !location || location.photoIndex === null || prompt.includes(BACKGROUND_PLATE_HEADING)) return prompt;
+  return `${prompt.trimEnd()}\n\n${BACKGROUND_PLATE_HEADING} (STRICT): ${backgroundPlateRule(`the attached Store/Office Image #${location.photoIndex + 1}`)}.`;
 }
 
 /**
@@ -101,9 +138,8 @@ export function describeClipLocations(
 
   const lines = assignments.map(({ clip, photoIndex }) => {
     if (photoIndex === null) {
-      return `  Clip ${clip + 1}: NO PHOTOGRAPH — the client sent none for this clip. Build a real-looking `
-        + `zone of this same business, chosen to match this clip's line, matching the lighting and `
-        + `finish of the photographs above so it belongs to the same premises.`;
+      return `  Clip ${clip + 1}: NO USABLE PHOTOGRAPH — build a real-looking zone of this same business, chosen `
+        + `to match this clip's line.`;
     }
     const photo = byIndex.get(photoIndex);
     const bits = [
@@ -120,8 +156,10 @@ export function describeClipLocations(
 ${lines.join("\n")}
 
 This assignment is FIXED — the member attaches exactly this photograph to this clip's prompt, so do
-not tell a clip to use a different photograph, and never put the same photograph behind two clips.
-Each prompt must open by naming its own photograph exactly as listed above.`;
+not tell a clip to use a different photograph. Where the list gives one photograph to more than one
+clip, that real place appears again — staged differently, with a new pose and gesture for its own line —
+and is never swapped for an invented place. Each prompt must open by naming its own photograph exactly
+as listed above, and each photograph is the clip's BACKGROUND PLATE: used as it is, only enhanced to 8K.`;
 }
 
 /**

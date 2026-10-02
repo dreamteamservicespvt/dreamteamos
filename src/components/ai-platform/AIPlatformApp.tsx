@@ -23,12 +23,10 @@ import { briefAsInstructions, mergeBriefIntoInstructions } from '@/utils/adRequi
 import { assignmentFormSpec, jobClipCount, jobKitSpec, kitSpec, staleKitChanges } from '@/utils/assignmentFormSpec';
 import { CHATGPT_URL, GEMINI_URL } from './generation/mission';
 import { characterPackGroups, getCharacterPack, isCustomPack, isHumanPack, packModelGender, packSpeakers, withCustomCharacter } from '@/services/characterPacks';
-import { attireOptionLabel, attireOptionsFor, castLabelFor } from '@/utils/adRequirement';
+import { attireLabel, attireOptionLabel, attireOptionsFor, castLabelFor } from '@/utils/adRequirement';
 import { DOCUMENT_ROUTE_HINT } from './FileUpload';
 import { generateAdAssets, generatePosterConcepts, refinePosterConcept, DEFAULT_POSTER_CONCEPT_COUNT, generateStockImagePrompts, refineStockImagePrompt, generateOverlayTexts, refineOverlayImagePrompt, refineSection, refineVoiceOver, refineVeoPrompts, regenerateVeoForClips, SectionType, extractBusinessNameFromInfo, buildVideoBottomLabel, writeVideoPosterPrompt } from '@/services/geminiService';
 import FinalScriptInput, { type FinalScriptProgress, type FinalScriptSection } from './FinalScriptPanel';
-import FlowCreditsGate from '@/components/flow/FlowCreditsGate';
-import { flowCreditsQuestion } from '@/utils/flowAccounts';
 import { finalScriptTemplate } from '@/utils/finalScript';
 import { collection, addDoc, getDocs, getDoc, query, where, serverTimestamp, doc, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/services/firebase';
@@ -63,11 +61,6 @@ interface AIPlatformAppProps {
   /** True while the completion is being written — disables the button and shows progress. */
   completing?: boolean;
 }
-
-// Human-readable labels for each attire option (shown in the attire dropdown, filtered by gender).
-// A Kids job reads the same values as children's wear — see adRequirement.KIDS_ATTIRE_LABELS.
-const attireLabelHere = (attire: AttireType, characterPack?: string | null) =>
-  attire === AttireType.CUSTOM ? 'Custom (describe below)' : attireOptionLabel(attire, characterPack);
 
 /**
  * What the member pastes into Gemini alongside a client's PDF or document.
@@ -185,11 +178,6 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   };
   const [includeProductsInHeader, setIncludeProductsInHeader] = useState(false);
   const [showSavedItems, setShowSavedItems] = useState(false);
-  /** Mark Complete is asking for the ad's Flow credits (components/flow/FlowCreditsGate) — the first time, or again for a later round. */
-  const [askingFlowCredits, setAskingFlowCredits] = useState<'first' | 'again' | null>(null);
-  /** Answered in this sitting: a hand-in that failed and is retried must not ask, and log the clips, twice. */
-  const flowCreditsAnsweredRef = useRef(false);
-  useEffect(() => { flowCreditsAnsweredRef.current = false; }, [assignment?.id]);
   const [savedItems, setSavedItems] = useState<SavedGeneration[]>([]);
   const [loadingSaved, setLoadingSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -1370,22 +1358,6 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     ? staleKitChanges(kitSpecOnScreen, jobKitSpec(assignment))
     : [];
 
-  /**
-   * Mark Complete — for a video job, the Flow credits it used come first.
-   *
-   * A finished ad is the one moment its cost is known, so the person it was assigned to records it here
-   * (services/flowAccounts): which account, how many clips, how many credits. A poster is made in
-   * ChatGPT, not Flow, so it goes straight through. A job handed in before — sent back for edits,
-   * completion undone, reassigned — is asked again for that round only (utils/flowAccounts
-   * flowCreditsQuestion), because the clips made again cost credits too.
-   */
-  const markComplete = () => {
-    if (!onComplete) return;
-    const question = flowCreditsQuestion(assignment, user?.uid, flowCreditsAnsweredRef.current);
-    if (question) setAskingFlowCredits(question);
-    else onComplete();
-  };
-
   return (
     <div className="adgen fixed inset-0 z-50 flex flex-col overflow-hidden">
       {ConfirmDialog}
@@ -1426,16 +1398,6 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
             </button>
           </div>
         </div>
-      )}
-
-      {askingFlowCredits && assignment && user && (
-        <FlowCreditsGate
-          user={user}
-          assignment={assignment}
-          again={askingFlowCredits === 'again'}
-          onClose={() => setAskingFlowCredits(null)}
-          onSaved={() => { flowCreditsAnsweredRef.current = true; setAskingFlowCredits(null); onComplete?.(); }}
-        />
       )}
 
       {showSavedItems && (
@@ -1485,7 +1447,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
             // take seconds on mobile data; a button that looked unchanged the whole time is what
             // led members to tap it repeatedly and fire a round of notifications each time.
             <button
-              onClick={markComplete}
+              onClick={onComplete}
               disabled={completing}
               data-test="mark-complete"
               className="ag-btn ag-btn--primary ag-btn--sm sm:h-11 sm:px-[18px] sm:text-sm whitespace-nowrap">
@@ -2147,7 +2109,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       {attireLocked ? (
                         <div className={cn("flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm",
                           isDark ? "bg-white/[0.06] border-white/[0.14] text-slate-200" : "bg-slate-100 border-slate-200 text-slate-700")}>
-                          <span className="font-semibold truncate">{formData.attireType === AttireType.CUSTOM && formData.customAttire ? formData.customAttire : attireLabelHere(formData.attireType, formData.characterPack)}</span>
+                          <span className="font-semibold truncate">{attireLabel(formData.attireType, formData.customAttire, formData.characterPack)}</span>
                           <span className={cn("shrink-0 ml-2 text-[11px] px-2 py-0.5 rounded-full", isDark ? "bg-blue-900/40 text-blue-300" : "bg-blue-100 text-blue-700")}>🔒 Fixed</span>
                         </div>
                       ) : (
@@ -2156,7 +2118,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                           isDark ? "bg-white/[0.08] border-white/[0.14] text-slate-200 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200"
                         )} value={formData.attireType} onChange={(e) => setFormData(prev => ({ ...prev, attireType: e.target.value as AttireType }))}>
                         {attireOptionsFor(formData.characterPack, (packModelGender(activePack) as ModelGender | null) || formData.gender || ModelGender.FEMALE).map((a) => (
-                          <option key={a} value={a}>{attireLabelHere(a, formData.characterPack)}</option>
+                          <option key={a} value={a}>{attireOptionLabel(a, formData.characterPack)}</option>
                         ))}
                       </select>
                       {formData.attireType === AttireType.CUSTOM && (

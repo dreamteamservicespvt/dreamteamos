@@ -18,6 +18,7 @@ import { clientWaitSummary, fulfilment, isSmmOverseer, isoDay } from "@/utils/sm
 import { overdueItemsFor } from "@/utils/smmReminders";
 import SmmCampaignCard from "@/components/smm/SmmCampaignCard";
 import SmmNewCampaignDialog from "@/components/smm/SmmNewCampaignDialog";
+import SmmTeamLeadPanel from "@/components/smm/SmmTeamLeadPanel";
 import type { SmmCampaign } from "@/types/smm";
 
 type Tab = "active" | "attention" | "done";
@@ -81,6 +82,9 @@ export default function SocialMedia() {
             : "Every monthly client, what they were promised, and where it has got to."}
         </p>
       </div>
+
+      {/* Who runs the whole side — appointed here by the tech admin (SmmTeamLeadPanel). */}
+      {user && canCreate && <SmmTeamLeadPanel user={user} />}
 
       <div className="flex flex-wrap items-center gap-2">
         {canCreate && (

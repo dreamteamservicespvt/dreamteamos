@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, serverTimestamp, query, where } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { syncPublicBadge } from "@/services/publicBadge";
+import { setSmmTeamLead } from "@/services/smm";
 import { createUserWithoutSignOut } from "@/services/secondaryAuth";
 import { saveMemberPassword, deleteMemberPassword, fetchMemberPassword, buildCredentialsMessage } from "@/services/memberCredentials";
 import { useAuthStore } from "@/store/authStore";
@@ -209,12 +210,13 @@ export default function TechAdminMyTeam() {
   const toggleSmmLeader = async (member: AppUser) => {
     const next = !member.smmLeader;
     try {
-      await updateDoc(doc(db, "users", member.uid), { smmLeader: next, updatedAt: serverTimestamp() });
+      // The same write (and notification) as the Social Media page's team-lead panel.
+      await setSmmTeamLead({ uid: member.uid, name: member.name }, next, { uid: currentUser?.uid || "", name: currentUser?.name || "" });
       setMembers((prev) => prev.map((m) => m.uid === member.uid ? { ...m, smmLeader: next } : m));
       toast({
-        title: next ? "Promoted to SMM Leader" : "No longer SMM Leader",
+        title: next ? "Made Social Media Team Lead" : "No longer Social Media Team Lead",
         description: next
-          ? `${member.name} now sees and assigns every social media month, on top of their own work.`
+          ? `${member.name} now sees and manages every social media month, on top of their own work.`
           : `${member.name} sees only the social media months they are on.`,
       });
     } catch {
@@ -549,7 +551,7 @@ export default function TechAdminMyTeam() {
                         )}
                         {!m.externalCreator && (
                           <button onClick={() => toggleSmmLeader(m)} data-test="smm-leader-toggle"
-                            title={m.smmLeader ? "Remove SMM Leader" : "Promote to SMM Leader (sees every social media month)"}
+                            title={m.smmLeader ? "Remove Social Media Team Lead" : "Make Social Media Team Lead (manages every social media month)"}
                             className={`w-8 h-8 rounded-md inline-flex items-center justify-center transition-colors ${m.smmLeader ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-primary hover:bg-primary/10"}`}>
                             <Megaphone size={15} />
                           </button>

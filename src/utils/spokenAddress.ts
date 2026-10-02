@@ -1,101 +1,137 @@
 /**
- * The business's address as it is SAID in an ad — and the check that the final clip said it.
+ * The business's address as it is SPOKEN in the last clip — and the check that it was.
  *
- * ── Why this exists ─────────────────────────────────────────────────────────────────────────────
- * The voice-over prompts only ever said "do not invent addresses", so an ad for a client who typed
- * "D.No 5-12, Main Road, near Clock Tower, Kakinada" never told anyone where to come. The address is
- * now spoken in the final clip whenever the business has a VERIFIED one (utils/businessFacts) — and
- * only then, so nothing is ever invented.
+ * ── Why this exists (2026-10-01) ─────────────────────────────────────────────────────────────
+ * The team's rule: when the client's data has a real address, the closing clip says it; when it has
+ * none, no address is spoken and nothing is invented. The prompts said the opposite in two places —
+ * the presenter script made the address "optional", the character script forbade anything beyond the
+ * town ("never a door number, street… those are read on screen") — and nothing checked either way.
  *
- * An address is written for an envelope, not for a voice: a door number, a pincode, a state and a
- * country are noise in an eight-second clip (and they are on screen in the bottom label anyway). What
- * a listener needs is the street, the landmark and the town — "Main Road, near Clock Tower, Kakinada".
+ * The address used is ONLY the verified one (utils/businessFacts: typed by the member, or read from a
+ * card, flyer or premises photo). A door number, a pincode, a district and a state are written on the
+ * bottom label and the poster, never said: in an 8-second clip they are seconds of digits a viewer
+ * cannot remember. What is said is what a person would tell a friend — the road, the landmark, the
+ * town — in at most a handful of words, so it fits beside the call to action.
  *
- * Pure — no model calls. The parts are written in the ad's script by one small call in geminiService;
- * whether the final clip said them is checked here.
+ * Pure — no React, no Firestore, no model call — so it is unit-tested.
  */
 
-/** A door, house, flat, plot, shop or survey number — with or without its digits. */
-const UNIT_NUMBER = /^(?:d\.?\s*no|door\s*no|h\.?\s*no|house\s*no|flat(?:\s*no)?|plot(?:\s*no)?|shop(?:\s*no)?|s\.?\s*no|sy\.?\s*no|survey\s*no|door|no|#)\b[.:\s#-]*[\w/.-]*$/i;
-/** A part that is only a number — "5-12", "12/4", "#21". */
-const ONLY_NUMBER = /^[#\d\s/.,:-]+$/;
-/** The state, the country and their abbreviations — never said aloud in a local ad. */
-const STATE_OR_COUNTRY = /^(?:andhra\s*pradesh|a\.?\s*p\.?|telangana|t\.?\s*s\.?|tamil\s*nadu|karnataka|kerala|odisha|india|bharat)$/i;
-/** A district or mandal tag — dropped when the place itself is already named. */
-const ADMIN_TAG = /\b(?:dist(?:rict)?|mandal|tq|taluk|tehsil)\b\.?/i;
+/** Parts of an address that are read, never spoken. */
+const DOOR_NUMBER = /^(?:(?:d|h|s)\.?\s*no\b|(?:door|plot|flat|shop|house|survey|unit|block)\.?\s*(?:no\.?)?\s*[:-]?\s*[\da-z]{0,2}\d|no\.\s*\d|#)/i;
+/** What a form or a model writes when there is no address at all. */
+const NO_ADDRESS = /^(?:not\s+provided|not\s+available|n\/?a|nil|none|-+|unknown)$/i;
+/** A landmark a person gives directions by — said first when the words run short. */
+const LANDMARK = /^(?:opposite|near|beside|behind|next to|in front of|above|below)\b/i;
+/** An area, street or road — said next. */
+const AREA = /(?:nagar|peta?|pet|puram|palem|wada|guda|colony|layout|street|road|junction|centre|center|bazaar|market|cross roads)\b/i;
+const NUMBER_ONLY = /^[#\d\s\-/.,]+[a-z]?$/i;
+const PINCODE = /\b\d{6}\b/g;
+const FLOOR = /\b(?:\d+(?:st|nd|rd|th)|ground|first|second|third|top)\s+floor\b/i;
+const REGION = /^(?:andhra\s*pradesh|a\.?\s*p\.?|telangana|t\.?\s*s\.?|t\.?\s*g\.?|india|tamil\s*nadu|karnataka|kerala|odisha|orissa|maharashtra|pin(?:\s*code)?)$/i;
+const DISTRICT = /\b(?:dist\.?|district|mandal|taluk|tehsil|state)\b/i;
 
-const tidy = (part: string): string => part
-  // A pincode, wherever it sits: "Kakinada - 533001" → "Kakinada".
-  .replace(/[-–\s]*\b\d{6}\b/g, "")
-  // A door number in front of a street: "12-4 Main Road" → "Main Road".
-  .replace(/^\s*(?:d\.?\s*no\.?|door\s*no\.?|h\.?\s*no\.?|#)?\s*\d+[\w/-]*\s+(?=[A-Za-z\u{0C00}-\u{0C7F}])/iu, "")
-  .replace(/\s+/g, " ")
-  .replace(/^[\s,.;:-]+|[\s,.;:-]+$/g, "")
-  .trim();
+/** Abbreviations written on cards, expanded the way they are said. */
+const EXPANSIONS: [RegExp, string][] = [
+  [/\bopp\.?(?=\s|$)/gi, "opposite"],
+  [/\bnr\.?(?=\s|$)/gi, "near"],
+  [/\bbeh\.?(?=\s|$)/gi, "behind"],
+  [/\brd\.?(?=\s|$|,)/gi, "Road"],
+  [/\bst\.(?=\s|$)/gi, "Street"],
+  [/\bjn\.?(?=\s|$)/gi, "Junction"],
+  [/\bx\s*rd?s?\b/gi, "Cross Roads"],
+];
+
+/** How many spoken words an address may take in a closing clip that also carries the call to action. */
+export const MAX_SPOKEN_ADDRESS_WORDS = 6;
+
+const wordsOf = (text: string) => text.split(/\s+/).filter(Boolean);
 
 /**
- * The parts of an address worth saying, most specific first and the town last — at most three:
- * "D.No 5-12, Main Road, near Clock Tower, Gandhi Nagar, Kakinada - 533001, Andhra Pradesh" →
- * ["Main Road", "near Clock Tower", "Kakinada"]. [] when nothing speakable is left.
+ * The spoken form of a verified address: road, landmark and town, door numbers, pincodes, districts
+ * and states left out, abbreviations said in full, at most MAX_SPOKEN_ADDRESS_WORDS words (the town is
+ * always kept). "" when there is no address, or nothing in it a person would say.
  */
-export function addressPartsForSpeech(address: string | null | undefined): string[] {
-  const raw = (address || "").split(/[,\n;]+/).map(tidy).filter(Boolean);
-  const kept: string[] = [];
-  for (const part of raw) {
-    if (UNIT_NUMBER.test(part) || ONLY_NUMBER.test(part) || STATE_OR_COUNTRY.test(part)) continue;
-    if (kept.some((k) => k.toLowerCase() === part.toLowerCase())) continue;
-    kept.push(part);
+export function spokenAddressOf(address: string | null | undefined, maxWords = MAX_SPOKEN_ADDRESS_WORDS): string {
+  const text = (address || "").replace(/\r?\n+/g, ", ").replace(/\s+/g, " ").trim();
+  if (!text || NO_ADDRESS.test(text)) return "";
+
+  const parts: string[] = [];
+  for (const raw of text.split(/[,;|]|\s+[-–]\s+/)) {
+    let part = raw.replace(PINCODE, "").replace(/\bpin(?:\s*code)?\s*[:-]?\s*$/i, "").trim();
+    // "D.No 12-3-45 Main Road" → "Main Road": a door number glued to the street is cut off it.
+    part = part.replace(/^(?:d\.?\s*no|h\.?\s*no|door\s*no|plot\s*no|flat\s*no|shop\s*no|house\s*no|#)\.?\s*[:-]?\s*[\d\-/.]+[a-z]?\b\s*/i, "").trim();
+    part = part.replace(/^[.\-–:\s]+|[.\-–:\s]+$/g, "");
+    if (!part || DOOR_NUMBER.test(part) || NUMBER_ONLY.test(part) || REGION.test(part) || DISTRICT.test(part) || FLOOR.test(part)) continue;
+    for (const [pattern, said] of EXPANSIONS) part = part.replace(pattern, said);
+    if (!parts.some((p) => p.toLowerCase() === part.toLowerCase())) parts.push(part);
   }
-  // A district or mandal tag only adds words once the place itself is named.
-  const places = kept.length >= 2 ? kept.filter((p) => !ADMIN_TAG.test(p)) : kept;
-  const parts = places.length > 0 ? places : kept.map((p) => p.replace(ADMIN_TAG, "").trim()).filter(Boolean);
-  if (parts.length <= 3) return parts;
-  // The street and the landmark say WHERE in town; the last part says WHICH town.
-  return [parts[0], parts[1], parts[parts.length - 1]];
+  if (parts.length === 0) return "";
+
+  /*
+    Keep the town (the last part), then what a person gives directions by: a landmark first
+    ("opposite RTC Bus Stand"), then the area or road, then anything else — as much as fits — said in
+    the order the address has them.
+  */
+  const town = parts[parts.length - 1];
+  const rest = parts.slice(0, -1).map((part, order) => ({
+    part, order, rank: LANDMARK.test(part) ? 0 : AREA.test(part) ? 1 : 2,
+  }));
+  const chosen = new Set<number>();
+  let count = wordsOf(town).length;
+  for (const { part, order } of [...rest].sort((a, b) => a.rank - b.rank || a.order - b.order)) {
+    const n = wordsOf(part).length;
+    if (count + n > maxWords) continue;
+    chosen.add(order);
+    count += n;
+  }
+  const kept = rest.filter((r) => chosen.has(r.order)).map((r) => r.part);
+  const spoken = [...kept, town].join(", ");
+  return wordsOf(spoken).length > maxWords && kept.length === 0 ? wordsOf(town).slice(0, maxWords).join(" ") : spoken;
 }
 
-/** One part of the address in the two spellings a script may carry it in. */
-export interface AddressPart {
-  /** As typed — "near Clock Tower". */
-  latin: string;
-  /** As spoken in the ad's own script — "క్లాక్ టవర్ దగ్గర". Same as `latin` for an English ad. */
-  spoken: string;
+/** The meaningful words of a spoken address — what a check looks for in the closing line. */
+function keyWords(address: string): string[] {
+  return wordsOf(address.replace(/[,.!?;:()"'“”‘’]/g, " "))
+    .filter((w) => w.length >= 2 && !/^(?:opposite|near|behind|the|of|and|to|at)$/i.test(w));
 }
-
-/** The address, as one phrase to put in a prompt. */
-export function spokenAddressPhrase(parts: AddressPart[]): string {
-  return parts.map((p) => p.spoken || p.latin).filter(Boolean).join(", ");
-}
-
-/** For matching: lower case, no spaces, no joiners, no punctuation — "రోడ్‌లో" still contains "రోడ్". */
-const squashed = (text: string): string => (text || "")
-  .toLowerCase()
-  .normalize("NFC")
-  .replace(/[\s\u{200B}-\u{200D}\u{2060}.,;:!?'"()-]/gu, "");
 
 /**
- * The parts of the address a line does NOT say, in their spoken form. A part counts as said when its
- * spoken or typed spelling appears anywhere in the text, with or without spaces and case endings —
- * "కాకినాడలో" says "కాకినాడ", "Main Road's" says "Main Road".
+ * Whether a closing line says the address: at least 60% of its meaningful words are there, each
+ * matched by its stem so a case ending ("కాకినాడలో", "Kakinada's") still counts.
  */
-export function missingAddressParts(text: string, parts: AddressPart[]): string[] {
-  const haystack = squashed(text);
-  return parts
-    // A part with no known spoken spelling cannot be checked — a Telugu line never contains "Main Road".
-    .filter((part) => !!part.spoken?.trim())
-    .filter((part) => {
-      const needles = [part.spoken, part.latin].map(squashed).filter(Boolean);
-      return needles.length > 0 && !needles.some((n) => haystack.includes(n));
-    })
-    .map((part) => part.spoken || part.latin);
+export function saysAddress(line: string, address: string): boolean {
+  const words = keyWords(address);
+  if (words.length === 0) return true;
+  const haystack = line.toLowerCase();
+  const found = words.filter((w) => {
+    const stem = w.toLowerCase().slice(0, Math.max(2, w.length - 2));
+    return haystack.includes(stem);
+  }).length;
+  return found / words.length >= 0.6;
 }
 
-/** The repair instruction for a final clip that left part of the address out, or null when it said it all. */
-export function addressIssue(clipNumber: number, text: string, parts: AddressPart[]): string | null {
-  if (parts.length === 0) return null;
-  const missing = missingAddressParts(text, parts);
-  if (missing.length === 0) return null;
-  return `Clip ${clipNumber} must say where the business is — the address "${spokenAddressPhrase(parts)}" — but it `
-    + `leaves out ${missing.map((m) => `"${m}"`).join(", ")}. Put the address into the invitation, written exactly `
-    + `as given, keeping the clip inside its word budget by shortening the rest of the line.`;
+/** The issue a validator raises when the closing clip leaves the address out. */
+export function missingAddressIssue(clipNumber: number, line: string, address: string): string | null {
+  if (!address.trim() || saysAddress(line, address)) return null;
+  return `Clip ${clipNumber} must say the business address "${address}" as part of the call to action — it is missing. `
+    + `Say it exactly in those words, keep the clip inside its word count, and keep everything else that works.`;
+}
+
+/**
+ * Words that only an address uses. When the client gave NO address, a line carrying one of these is
+ * an invented address. Matched as whole words; a word that is part of the business's own name or its
+ * town (passed in `own`) is never flagged — "Karimnagar" is a town, not an invented street.
+ */
+const ADDRESS_WORDS = new Set([
+  "road", "street", "colony", "layout", "opposite", "pincode", "lane", "cross", "junction",
+  "రోడ్డు", "రోడ్", "రోడ్డులో", "రోడ్లో", "రోడ్‌లో", "కాలనీ", "కాలనీలో", "వీధి", "వీధిలో", "ఎదురుగా", "పిన్‌కోడ్", "జంక్షన్",
+]);
+
+export function inventedAddressIssue(clipNumber: number, line: string, own: string[] = []): string | null {
+  const ownWords = new Set(own.flatMap((o) => wordsOf(o.toLowerCase().replace(/[,.!?;:]/g, " "))));
+  const hit = wordsOf(line.toLowerCase().replace(/[,.!?;:()"'“”‘’]/g, " "))
+    .find((w) => ADDRESS_WORDS.has(w) && !ownWords.has(w));
+  return hit
+    ? `Clip ${clipNumber} speaks an address ("${hit}") but the client gave none — never invent a road, street, colony or landmark. Remove it and say something true about the business instead.`
+    : null;
 }

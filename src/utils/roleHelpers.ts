@@ -4,7 +4,7 @@ import {
   Settings, BookOpen, FolderOpen, Target, User, BarChart3,
   ClipboardList, Briefcase, Wrench, FileCheck, MessageSquare, Video, Eye, Film, ScrollText, CalendarClock, Trophy, History,
   ShoppingBag, Contact, Star, GraduationCap, LayoutGrid, PiggyBank, Banknote, Wand2, Search,
-  MessageSquarePlus, Megaphone, Zap,
+  MessageSquarePlus, Megaphone, KeyRound,
 } from "lucide-react";
 
 export interface NavItem {
@@ -37,8 +37,6 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "Dashboard", path: "/tech-admin/dashboard", icon: LayoutDashboard },
     { title: "Work Assign", path: "/tech-admin/work-assign", icon: ClipboardList },
     { title: "Orders", path: "/tech-admin/orders", icon: ShoppingBag },
-    // The Google AI Pro accounts and their credits — the team's video-making capacity, checked daily.
-    { title: "Flow Accounts", path: "/tech-admin/flow-accounts", icon: Zap },
     // Monthly retainers. A top-level link for every role that touches one: a month that is
     // behind is only ever fixed by somebody noticing, and nobody notices a submenu.
     { title: "Social Media", path: "/smm", icon: Megaphone },
@@ -67,6 +65,8 @@ const NAV: Record<UserRole, NavItem[]> = {
       ],
     },
     { title: "Tools", path: "/tech-admin/tools", icon: Wrench },
+    // Flow accounts (every ad's Veo credits) and the paid ChatGPT / Grok logins, in one place.
+    { title: "AI Accounts", path: "/tech-admin/ai-accounts", icon: KeyRound },
     { title: "Cinematic Ads", path: "/tech-admin/cinematic-ads", icon: Film },
     { title: "Settings", path: "/tech-admin/settings", icon: Settings },
   ],
@@ -135,12 +135,12 @@ const NAV: Record<UserRole, NavItem[]> = {
   tech_member: [
     { title: "Dashboard", path: "/tech/dashboard", icon: LayoutDashboard },
     { title: "My Work", path: "/tech/my-work", icon: Briefcase },
-    // Right under the work: the account a member makes videos on, and the 30-account drive.
-    { title: "Flow Accounts", path: "/tech/flow-accounts", icon: Zap },
     // Monthly retainers. A top-level link for every role that touches one: a month that is
     // behind is only ever fixed by somebody noticing, and nobody notices a submenu.
     { title: "Social Media", path: "/smm", icon: Megaphone },
     { title: "Recent Ads", path: "/tech/recent-ads", icon: Film },
+    // The Flow accounts they open and generate with, and the paid logins assigned to them.
+    { title: "My AI Accounts", path: "/tech/ai-accounts", icon: KeyRound },
     { title: "My Salary", path: "/tech/salary", icon: Wallet },
     {
       title: "Workspace", icon: LayoutGrid,
@@ -205,13 +205,13 @@ const NAV: Record<UserRole, NavItem[]> = {
     // behind is only ever fixed by somebody noticing, and nobody notices a submenu.
     { title: "Social Media", path: "/smm", icon: Megaphone },
     { title: "Work Assign", path: "/team-leader/work-assign", icon: ClipboardList },
-    { title: "Flow Accounts", path: "/team-leader/flow-accounts", icon: Zap },
     { title: "Work Done & Reports", path: "/team-leader/work-reports", icon: BarChart3 },
     { title: "Feedback & Upsell", path: "/team-leader/feedback-upsell", icon: MessageSquarePlus },
     { title: "Attendance", path: "/team-leader/attendance", icon: CalendarClock },
     { title: "HR & Documents", path: "/team-leader/hr", icon: FileCheck },
     { title: "Activity History", path: "/team-leader/activity", icon: History },
     { title: "Tools", path: "/team-leader/tools", icon: Wrench },
+    { title: "AI Accounts", path: "/team-leader/ai-accounts", icon: KeyRound },
     // A team leader is an employee too: their own employment record and documents to sign.
     { title: "My Profile", path: "/team-leader/profile", icon: User },
   ],

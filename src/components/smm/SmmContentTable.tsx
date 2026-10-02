@@ -13,10 +13,16 @@
 import { useMemo, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Plus, Sparkles, Image as ImageIcon, Video, ChevronRight, Link2 } from "lucide-react";
-import { addItems } from "@/services/smm";
+import { addItem, addItems } from "@/services/smm";
 import { useToast } from "@/hooks/use-toast";
-import { isoDay, postLinks } from "@/utils/smmPlan";
-import { SMM_CONTENT_KINDS, type SmmCampaign, type SmmContentItem, type SmmContentKind } from "@/types/smm";
+import { useAuthStore } from "@/store/authStore";
+import {
+  SMM_EXTRA_DURATIONS, SMM_EXTRA_WORK_TYPES, extraWorkProblem, extraWorkTitle, extraWorkTypeInfo, isoDay,
+  normaliseDuration, postLinks,
+} from "@/utils/smmPlan";
+import {
+  SMM_CONTENT_KINDS, type SmmCampaign, type SmmContentItem, type SmmContentKind, type SmmExtraWorkType,
+} from "@/types/smm";
 import { DueChip, PlatformChips, StatusChip } from "@/components/smm/SmmChips";
 
 const KIND_ICON: Record<SmmContentKind, LucideIcon> = { poster: ImageIcon, ai_ad: Sparkles, real_video: Video };
@@ -32,6 +38,9 @@ export default function SmmContentTable({ campaign, canEdit, onOpen }: {
   const today = isoDay(new Date());
   const [filter, setFilter] = useState<KindFilter>("all");
   const [adding, setAdding] = useState(false);
+  const user = useAuthStore((s) => s.user);
+  /** The extra-work form (2026-10-01): what it is, and a video's length. Null while closed. */
+  const [extraForm, setExtraForm] = useState<{ type: SmmExtraWorkType; duration: string; custom: string; note: string } | null>(null);
 
   /**
    * Undated posts sink to the bottom, everything else runs in date order.
@@ -51,14 +60,40 @@ export default function SmmContentTable({ campaign, canEdit, onOpen }: {
     });
   }, [campaign.items, filter]);
 
-  const add = async (kind: SmmContentKind, extra: boolean) => {
+  const add = async (kind: SmmContentKind) => {
     setAdding(true);
     try {
-      await addItems(campaign.id, kind, 1, extra);
+      await addItems(campaign.id, kind, 1, false);
+      toast({ title: "Added to the plan" });
+    } catch {
+      toast({ title: "Not added", description: "Try again.", variant: "destructive" });
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  /**
+   * Extra work goes through `addItem`, which tells the seller — the old button used `addItems`, which
+   * told nobody while its toast said the sales member had been told.
+   */
+  const extraDuration = extraForm ? (extraForm.duration === "custom" ? normaliseDuration(extraForm.custom) : extraForm.duration) : "";
+  const extraProblem = extraForm ? extraWorkProblem(extraForm.type, extraDuration) : "";
+  const addExtra = async () => {
+    if (!extraForm || !user || extraProblem) return;
+    setAdding(true);
+    try {
+      await addItem(campaign.id, {
+        kind: extraWorkTypeInfo(extraForm.type).kind,
+        extra: true,
+        extraType: extraForm.type,
+        extraDuration,
+        notes: extraForm.note.trim() || null,
+      }, user);
       toast({
-        title: extra ? "Extra work added" : "Added to the plan",
-        description: extra ? "The sales member has been told, so they can collect for it." : undefined,
+        title: `Extra work added: ${extraWorkTitle(extraForm.type, extraDuration)}`,
+        description: campaign.soldBy && campaign.soldBy !== user.uid ? "The sales member has been told, so they can collect for it." : undefined,
       });
+      setExtraForm(null);
     } catch {
       toast({ title: "Not added", description: "Try again.", variant: "destructive" });
     } finally {
@@ -125,7 +160,7 @@ export default function SmmContentTable({ campaign, canEdit, onOpen }: {
                           <Icon size={14} className="shrink-0 text-muted-foreground" />
                           <div className="min-w-0">
                             <p className="truncate text-sm text-foreground">{item.title || <span className="text-muted-foreground">Untitled</span>}</p>
-                            {item.extra && <span className="text-[10px] font-medium text-warning">Extra work</span>}
+                            {item.extra && <span className="text-[10px] font-medium text-warning">Extra work{item.extraType ? ` · ${extraWorkTitle(item.extraType, item.extraDuration)}` : ""}</span>}
                           </div>
                         </div>
                       </td>
@@ -204,7 +239,7 @@ export default function SmmContentTable({ campaign, canEdit, onOpen }: {
               key={key}
               data-test={`smm-add-${key}`}
               disabled={adding}
-              onClick={() => add(key, false)}
+              onClick={() => add(key)}
               className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
             >
               <Plus size={12} /> {singular}
@@ -219,11 +254,78 @@ export default function SmmContentTable({ campaign, canEdit, onOpen }: {
           <button
             data-test="smm-add-extra"
             disabled={adding}
-            onClick={() => add(filter === "all" ? "poster" : filter, true)}
+            onClick={() => setExtraForm(extraForm ? null : { type: "poster", duration: "32s", custom: "", note: "" })}
             className="inline-flex items-center gap-1 rounded-lg border border-warning/50 bg-warning/10 px-2.5 py-1.5 text-xs font-medium text-warning transition-colors hover:bg-warning/20 disabled:opacity-50"
           >
             <Plus size={12} /> Extra work (beyond the package)
           </button>
+        </div>
+      )}
+
+      {canEdit && extraForm && (
+        <div data-test="smm-extra-form" className="mt-2 rounded-xl border border-warning/40 bg-warning/5 p-3">
+          <p className="mb-2 text-xs font-semibold text-foreground">Extra work — what was made?</p>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="min-w-0">
+              <span className="mb-1 block text-[11px] text-muted-foreground">Type of work</span>
+              <select
+                data-test="smm-extra-type"
+                value={extraForm.type}
+                onChange={(e) => setExtraForm({ ...extraForm, type: e.target.value as SmmExtraWorkType })}
+                className="h-8 rounded-lg border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary"
+              >
+                {SMM_EXTRA_WORK_TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+              </select>
+            </label>
+            {extraWorkTypeInfo(extraForm.type).video && (
+              <label className="min-w-0">
+                <span className="mb-1 block text-[11px] text-muted-foreground">Duration</span>
+                <select
+                  data-test="smm-extra-duration"
+                  value={extraForm.duration}
+                  onChange={(e) => setExtraForm({ ...extraForm, duration: e.target.value })}
+                  className="h-8 rounded-lg border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary"
+                >
+                  {SMM_EXTRA_DURATIONS.map((d) => <option key={d} value={d}>{parseInt(d, 10)} sec</option>)}
+                  <option value="custom">Other…</option>
+                </select>
+              </label>
+            )}
+            {extraWorkTypeInfo(extraForm.type).video && extraForm.duration === "custom" && (
+              <label className="min-w-0">
+                <span className="mb-1 block text-[11px] text-muted-foreground">Seconds</span>
+                <input
+                  data-test="smm-extra-seconds"
+                  type="number" min={4} max={600} inputMode="numeric"
+                  value={extraForm.custom}
+                  onChange={(e) => setExtraForm({ ...extraForm, custom: e.target.value })}
+                  className="h-8 w-20 rounded-lg border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary"
+                />
+              </label>
+            )}
+            <label className="min-w-[140px] flex-1">
+              <span className="mb-1 block text-[11px] text-muted-foreground">Note (optional)</span>
+              <input
+                value={extraForm.note}
+                onChange={(e) => setExtraForm({ ...extraForm, note: e.target.value })}
+                placeholder="e.g. Diwali offer video"
+                className="h-8 w-full rounded-lg border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary"
+              />
+            </label>
+            <div className="flex gap-1.5">
+              <button onClick={() => setExtraForm(null)} disabled={adding}
+                className="h-8 rounded-lg border border-border px-3 text-xs font-medium text-foreground hover:bg-accent">
+                Cancel
+              </button>
+              <button data-test="smm-extra-save" onClick={addExtra} disabled={adding || !!extraProblem}
+                className="h-8 whitespace-nowrap rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                Add extra work
+              </button>
+            </div>
+          </div>
+          <p className="mt-1.5 text-[11px] text-muted-foreground" data-test="smm-extra-preview">
+            {extraProblem || `Adds “${extraWorkTitle(extraForm.type, extraDuration)}” to the plan, and tells the sales member so they can collect for it.`}
+          </p>
         </div>
       )}
     </div>
