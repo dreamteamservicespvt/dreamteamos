@@ -27,6 +27,8 @@ import { attireOptionLabel, attireOptionsFor, castLabelFor } from '@/utils/adReq
 import { DOCUMENT_ROUTE_HINT } from './FileUpload';
 import { generateAdAssets, generatePosterConcepts, refinePosterConcept, DEFAULT_POSTER_CONCEPT_COUNT, generateStockImagePrompts, refineStockImagePrompt, generateOverlayTexts, refineOverlayImagePrompt, refineSection, refineVoiceOver, refineVeoPrompts, regenerateVeoForClips, SectionType, extractBusinessNameFromInfo, buildVideoBottomLabel, writeVideoPosterPrompt } from '@/services/geminiService';
 import FinalScriptInput, { type FinalScriptProgress, type FinalScriptSection } from './FinalScriptPanel';
+import FlowCreditsGate from '@/components/flow/FlowCreditsGate';
+import { flowCreditsQuestion } from '@/utils/flowAccounts';
 import { finalScriptTemplate } from '@/utils/finalScript';
 import { collection, addDoc, getDocs, getDoc, query, where, serverTimestamp, doc, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/services/firebase';
@@ -183,6 +185,11 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   };
   const [includeProductsInHeader, setIncludeProductsInHeader] = useState(false);
   const [showSavedItems, setShowSavedItems] = useState(false);
+  /** Mark Complete is asking for the ad's Flow credits (components/flow/FlowCreditsGate) — the first time, or again for a later round. */
+  const [askingFlowCredits, setAskingFlowCredits] = useState<'first' | 'again' | null>(null);
+  /** Answered in this sitting: a hand-in that failed and is retried must not ask, and log the clips, twice. */
+  const flowCreditsAnsweredRef = useRef(false);
+  useEffect(() => { flowCreditsAnsweredRef.current = false; }, [assignment?.id]);
   const [savedItems, setSavedItems] = useState<SavedGeneration[]>([]);
   const [loadingSaved, setLoadingSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -1363,6 +1370,22 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     ? staleKitChanges(kitSpecOnScreen, jobKitSpec(assignment))
     : [];
 
+  /**
+   * Mark Complete — for a video job, the Flow credits it used come first.
+   *
+   * A finished ad is the one moment its cost is known, so the person it was assigned to records it here
+   * (services/flowAccounts): which account, how many clips, how many credits. A poster is made in
+   * ChatGPT, not Flow, so it goes straight through. A job handed in before — sent back for edits,
+   * completion undone, reassigned — is asked again for that round only (utils/flowAccounts
+   * flowCreditsQuestion), because the clips made again cost credits too.
+   */
+  const markComplete = () => {
+    if (!onComplete) return;
+    const question = flowCreditsQuestion(assignment, user?.uid, flowCreditsAnsweredRef.current);
+    if (question) setAskingFlowCredits(question);
+    else onComplete();
+  };
+
   return (
     <div className="adgen fixed inset-0 z-50 flex flex-col overflow-hidden">
       {ConfirmDialog}
@@ -1403,6 +1426,16 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
             </button>
           </div>
         </div>
+      )}
+
+      {askingFlowCredits && assignment && user && (
+        <FlowCreditsGate
+          user={user}
+          assignment={assignment}
+          again={askingFlowCredits === 'again'}
+          onClose={() => setAskingFlowCredits(null)}
+          onSaved={() => { flowCreditsAnsweredRef.current = true; setAskingFlowCredits(null); onComplete?.(); }}
+        />
       )}
 
       {showSavedItems && (
@@ -1452,7 +1485,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
             // take seconds on mobile data; a button that looked unchanged the whole time is what
             // led members to tap it repeatedly and fire a round of notifications each time.
             <button
-              onClick={onComplete}
+              onClick={markComplete}
               disabled={completing}
               data-test="mark-complete"
               className="ag-btn ag-btn--primary ag-btn--sm sm:h-11 sm:px-[18px] sm:text-sm whitespace-nowrap">

@@ -13,7 +13,7 @@
  * credits that are about to disappear first. More credits left breaks a tie.
  */
 import type {
-  FlowAccount, FlowClipCounts, FlowCreditLog, FlowSettings,
+  FlowAccount, FlowClipCounts, FlowCreditLog, FlowSettings, WorkFlowCredits,
 } from "@/types/flowAccounts";
 
 /** The drive as announced: 30 accounts each by 29 October, two a day; Google AI Pro's credits and price list. */
@@ -295,6 +295,27 @@ export function validateFlowAccountInput(input: FlowAccountInput, today: string)
   if (!isIsoDay(input.createdOn)) errors.createdOn = "Pick the day the account was created.";
   else if (daysBetween(today, input.createdOn) > 0) errors.createdOn = "The creation date cannot be in the future.";
   return errors;
+}
+
+// ── Asking at hand-in ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Whether handing a job in asks for its Flow credits, and how.
+ *
+ * "first" — nothing is recorded on the job yet. "again" — credits were recorded in an earlier round:
+ * the job was sent back for edits, its completion was undone, or it was reassigned, and the clips made
+ * again cost credits too — so it asks again, shows what is already on the job, and "none this round"
+ * is one click. null — a poster (made in ChatGPT, not Flow), someone else's job, or a question already
+ * answered in this sitting: a hand-in that failed and is being retried must not log the same clips twice.
+ */
+export function flowCreditsQuestion(
+  job: { category?: string; assignedTo?: string; flowCredits?: WorkFlowCredits | null } | null | undefined,
+  viewerUid: string | null | undefined,
+  answeredThisSitting: boolean,
+): "first" | "again" | null {
+  if (!job || !viewerUid || job.assignedTo !== viewerUid) return null;
+  if (job.category === "poster" || answeredThisSitting) return null;
+  return job.flowCredits ? "again" : "first";
 }
 
 // ── Reading the spend ─────────────────────────────────────────────────────────────────────────

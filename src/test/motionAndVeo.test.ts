@@ -316,6 +316,17 @@ describe("the Veo prompt", () => {
     expect(p).toContain("no slow motion, hyperlapse or time-lapse while anyone speaks");
   });
 
+  /** A live run had "A smooth focus pull move that only ever moves closer" under a camera that held still. */
+  it("tells a rack focus that the camera stays still and only the focus travels", () => {
+    const rack = { ...plan[2], camera: CAMERA_MOVES.rack_focus, lens: CAMERA_MOVES.rack_focus.lens, speed: CAMERA_MOVES.rack_focus.speed };
+    const p = assembleVeoPrompt({
+      aspectRatio: "9:16", plan: rack, direction: null, identityLock: model.identityLock, language: "Telugu",
+      speech: [{ voice: model.voice, line }], cast: model.cast, castPlural: model.castPlural,
+    });
+    expect(p).toContain("The camera itself stays still — only the focus travels");
+    expect(p).not.toContain("move that only ever moves closer");
+  });
+
   it("puts the frame, the locks and the action before the camera, the performance and the speech", () => {
     const p = build(null);
     const at = (s: string) => p.indexOf(s);

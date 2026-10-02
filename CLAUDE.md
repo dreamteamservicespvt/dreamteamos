@@ -4,8 +4,9 @@
 > context/architecture/history document. The **source code wins** over this file; when they
 > disagree, fix this file in the same task.
 >
-> **Last full audit:** 2026-09-22 against `main` @ `a1623ac`; last updated 2026-09-29 for the
-> generation-speed work (§17.2, §17.3, §26–§28, §31).
+> **Last full audit:** 2026-09-22 against `main` @ `a1623ac`; last updated 2026-10-02 for the
+> duo / kids / spoken-address / frame-bounded-motion work and the new **Flow Accounts** section
+> (§9.21, §13, §17.2, §24–§27, §31).
 > **Quick start:** read **§33 AI Development Context** first, then **§29 Rules** and **§30 Change Protocol**.
 >
 > Legend: ✅ implemented · 🟡 partial · ❌ not implemented · **[NOT CONFIRMED]** = could not be
@@ -24,7 +25,7 @@
 | Production web | `https://dreamteamos.vercel.app` (from CORS allow-lists and `API_BASE` in `services/notifications.ts`) |
 | Backend project | Firebase project `dts-manager` (Auth + Firestore + FCM) |
 | Git remote | GitHub `dreamteamservicespvt/dreamteamos` (from a merge commit); default branch `main` |
-| History | 276 commits, 2026-03-01 → 2026-09-20. Many commit messages are one or two letters ("af", "S"); `docs/AI-MEMORY.md` and §31 hold the meaningful history. |
+| History | 289 commits, 2026-03-01 → 2026-10-01. Many commit messages are one or two letters ("af", "S", "a"); `docs/AI-MEMORY.md` and §31 hold the meaningful history. |
 | Ad language default | Telugu (ads also support English, Hindi, Kannada, Tamil, Malayalam, custom) |
 | Currency / locale | INR (₹), India; dates stored as `yyyy-MM-dd` strings plus Firestore Timestamps |
 
@@ -84,6 +85,10 @@ hiring link), and hand-maintained social-media plans (SMM campaigns).
     pay cycle, leave) → payslips. Sales commission (5% or 10%) → settlements.
 11. **Oversight.** Dashboards, leaderboards, analytics, activity and session history, chat
     monitor, profit & loss.
+12. **Flow accounts.** Tech members add the Google AI Pro accounts the team makes videos with in
+    Google Flow (30 each, two a day); the tech admin and team leaders see every one, add backups,
+    assign and reassign them; every finished video job records the Flow credits it used before it is
+    handed in. The team's paid ChatGPT / Grok logins are shared from the same page (§9.21).
 
 ### Module relationships
 ```
@@ -95,6 +100,7 @@ hiring link), and hand-maintained social-media plans (SMM campaigns).
      │                                                                    │
      └─► Feedback & Upsell (orders.feedback)            notifications / FCM push fan-out everywhere
  users ──► employee_profiles / hr_documents / agreements / public_badges / payroll_* / attendance / leave_requests
+ flow_accounts ◄── Mark Complete (video jobs) ── flow_credit_logs + work_assignments.flowCredits · paid_accounts (shared logins)
 ```
 
 ---
@@ -122,7 +128,7 @@ hiring link), and hand-maintained social-media plans (SMM campaigns).
 | Realtime A/V | WebRTC with Google STUN and Metered.ca TURN (`services/webrtcConfig.ts`), signalling through Firestore |
 | Mobile | Capacitor 8 Android shell (`android/`, `capacitor.config.ts`, `webDir: dist`) with push, local-notifications, keyboard, status-bar, splash, haptics, app, keep-awake plugins |
 | PWA | `public/manifest.webmanifest`, `public/chat.webmanifest` (client chat), service worker `public/firebase-messaging-sw.js`, self-update via `/version.json` |
-| Tests | Vitest 3 + jsdom + Testing Library (`src/test/`, 177 files) |
+| Tests | Vitest 3 + jsdom + Testing Library (`src/test/`, 180 files) |
 | Lint | ESLint 9 flat config (`eslint.config.js`); not part of the build |
 | Package managers | `package-lock.json` (npm) is canonical; a stale `bun.lockb` is also committed |
 
@@ -186,7 +192,7 @@ DTS-OS/
 │   │                            sales-member, tech-team-leader, shared/, client/, public/, onboarding/, auth/
 │   ├── components/            ← feature folders: ai-platform/, cinematic-ads/, work/, sales/, smm/,
 │   │                            order-chat/, chat/, hr/, agreement/, payroll/, attendance/, onboarding/,
-│   │                            layout/, dashboard/, common/, analytics/, birthday/, team/, tech/, ui/ (shadcn)
+│   │                            flow/, layout/, dashboard/, common/, analytics/, birthday/, team/, tech/, ui/ (shadcn)
 │   ├── services/              ← Firestore/API/AI access + domain operations (≈63 files)
 │   │   └── prompts/           ← Gemini prompt modules (character ads, motion/Veo, refine, poster, …)
 │   ├── utils/                 ← PURE business logic, no React or Firestore (≈95 files, most unit-tested)
@@ -196,13 +202,13 @@ DTS-OS/
 │   ├── types/                 ← index.ts (core model), aiPlatform, cinematicAds, hr, payroll, smm,
 │   │                            orderChat, onboarding
 │   ├── lib/utils.ts           ← shadcn `cn()`
-│   └── test/                  ← Vitest suites (177 files, 2796 tests at 2026-09-29) + setup.ts
+│   └── test/                  ← Vitest suites (180 files, 2847 tests at 2026-10-02) + setup.ts
 ├── public/                    ← PWA manifests, FCM service worker, logos/icons
 ├── docs/
 │   ├── AI-MEMORY.md           ← HISTORICAL session log up to 2026-09-19 (superseded by §31; do not extend)
 │   ├── firestore-rules.md     ← the intended Firestore security rules (paste into Firebase console)
 │   ├── firestore-rules-onboarding.md ← onboarding_invites rule notes
-│   ├── video-category-plan.md + video-category-catalogue.json ← source for services/characterCatalogue.ts
+│   ├── video-category-plan.md + video-category-catalogue.json ← HISTORICAL snapshot; services/characterCatalogue.ts is the source now
 │   └── superpowers/specs/*.md ← dated design specs (historical intent, not proof of implementation)
 ├── android/                   ← Capacitor Android project (versionName 1.0)
 ├── aiadsdts/                  ← DEAD standalone copy of an old AI-ads app. Not imported. Never edit.
@@ -245,11 +251,11 @@ tech admin). Filters like `u.createdBy === teamAdminUid` recur across pages.
 | Role (label) | Purpose | Created by | Lands on | Can do (implemented) | Cannot / restricted |
 |---|---|---|---|---|---|
 | `main_admin` (Main Admin) | Company owner / overview | Seed account auto-created on first login (hard-coded email in `Login.tsx`) | `/main-admin/dashboard` | Create tech/sales/accounts **admins**; activate, deactivate, delete any user; reset password email; view stored credentials; company-wide dashboards (revenue, tech, sales, accounts, P&L, sessions); clients (manage profiles, import); SMM overseer | No access to `/tech-admin/*`, `/sales-admin/*`, etc. (route guard). Several helpers grant main_admin powers (feedback, bulk slots, promise extension) that are only reachable where main_admin has a route |
-| `tech_admin` (Tech Admin, "CTO" signatory) | Runs the tech department | main_admin | `/tech-admin/dashboard` | Create tech_member / tech_team_leader (quick add or hiring invite); toggle `externalCreator`, `smmLeader`, employment type; Orders queue incl. **purge**; assign, unassign, reassign, verify work, send back for edits; work reports; attendance overrides, holidays, leave approvals; tech payroll; HR centre (issue/delete documents); Drive folder URLs; training; Tools (AI platform, script checker, generation history); **Cinematic Ads**; chat monitor; clients import; SMM overseer | Cannot record client feedback (read-only by design) |
+| `tech_admin` (Tech Admin, "CTO" signatory) | Runs the tech department | main_admin | `/tech-admin/dashboard` | Create tech_member / tech_team_leader (quick add or hiring invite); toggle `externalCreator`, `smmLeader`, employment type; Orders queue incl. **purge**; assign, unassign, reassign, verify work, send back for edits; work reports; attendance overrides, holidays, leave approvals; tech payroll; HR centre (issue/delete documents); Drive folder URLs; training; Tools (AI platform, script checker, generation history); **Cinematic Ads**; chat monitor; clients import; SMM overseer; **Flow Accounts** (every account of the team, backups, assign/reassign, drive settings, paid ChatGPT/Grok logins) | Cannot record client feedback (read-only by design) |
 | `sales_admin` (Sales Admin, "CEO" signatory) | Runs the sales department | main_admin | `/sales-admin/leaderboard` | Create sales_member; distribute numbers (Leads Management, per-member assign, schedule pools); **verify or reject sales and approve over-10% discounts**; resolve duplicate-sale disputes and frozen numbers; client lookup; settlements (commission payouts); sales payroll; attendance; analytics; training and scripts; HR centre; record client feedback; manage client profiles; assign review tasks; chat monitor; SMM overseer | No access to the tech Orders queue or Work Assign |
 | `accounts_admin` (Accounts Admin) | Finance bookkeeping | main_admin | `/accounts/dashboard` | Accounts dashboard; revenue summary; daily expenses CRUD; salary management (edit `users.salary`, `salary_receipts`) | No `/smm`, no chat, no profile page (`getProfileRoute` → "") |
-| `tech_team_leader` (Tech Team Leader) | Supervises a tech team under a tech admin | tech_admin | `/team-leader/work-assign` | Orders queue (remove/restore, **not purge**); Work Assign; unassign/reassign; verify / send back; work reports; attendance and leave; HR centre (send agreements, **cannot delete** documents); activity history; Tools; own profile/HR docs; SMM overseer; extend promises | No pricing UI on their Work Assign page; no payroll route; no dashboard |
-| `tech_member` (Tech Member) | Produces ads | tech_admin (or hiring link) | `/tech/dashboard` | Daily check-in/out (mandatory prompt); My Work (open job with access code, AI platform, submit, undo completion); Recent Ads; analytics; salary dashboard; SMM items they are on; bulk video slots assigned to them; extend promise on own job; team chat and meetings; profile, KYC, documents | Cannot assign work, including to themselves |
+| `tech_team_leader` (Tech Team Leader) | Supervises a tech team under a tech admin | tech_admin | `/team-leader/work-assign` | Orders queue (remove/restore, **not purge**); Work Assign; unassign/reassign; verify / send back; work reports; attendance and leave; HR centre (send agreements, **cannot delete** documents); activity history; Tools; own profile/HR docs; SMM overseer; extend promises; **Flow Accounts** with the tech admin's full powers (all accounts, backups, assign, settings, paid logins) | No pricing UI on their Work Assign page; no payroll route; no dashboard |
+| `tech_member` (Tech Member) | Produces ads | tech_admin (or hiring link) | `/tech/dashboard` | Daily check-in/out (mandatory prompt); My Work (open job with access code, AI platform, submit, undo completion); Recent Ads; analytics; salary dashboard; SMM items they are on; bulk video slots assigned to them; extend promise on own job; team chat and meetings; profile, KYC, documents; **Flow Accounts** (add own accounts, "I'm using this account now", record credits — mandatory when a video job is handed in; sees the paid logins shared with them) | Cannot assign work, including to themselves; sees only the Flow accounts they added or were given |
 | `sales_member` (Sales Executive) | Calls leads and sells | sales_admin (or hiring link) | `/sales/dashboard` | My Leads (claim numbers, call statuses, record/edit/delete sales, freeze sold numbers 1–7 days, dispute proof); client chats for own orders; My Clients (feedback, upsell); review tasks; performance; salary and settlements (request payout); leaderboard (**month view only**); scripts, training; activity history; SMM months they sold | Discounts over 10% need sales admin approval; sale edits locked once work is assigned (send update notes instead) |
 
 **Flags (additive, not roles):**
@@ -291,7 +297,10 @@ legacy users without the field active.
    no `orderChat` claim), `isAdmin` (main/tech/sales admin), `isManager` (+ team leader). Special
    rules cover `employee_profiles`, `public_badges`, `member_credentials`, `hr_documents`,
    `company_settings`, `hr_counters`, `onboarding_invites`, `cinematic_projects`, `order_chats`
-   (+messages), `calls`. Everything else falls to a catch-all: **any staff may read and write**.
+   (+messages), `calls`, and (2026-10-02, helper `isTechManager` = main/tech admin + team leader)
+   `flow_accounts` (people in `memberIds` or a tech manager), `flow_credit_logs` (the logger or a
+   tech manager), `paid_accounts` (assignees read; tech managers write). Everything else falls to a
+   catch-all: **any staff may read and write**.
    Publication status: **[NOT CONFIRMED]**. It was verified as *not published* on 2026-08-03.
 
 > Consequence: almost every "who can do what" below is a UI rule. A signed-in staff account can
@@ -334,6 +343,11 @@ legacy users without the field active.
 | Expenses | ✅ (Accounts page) | | | | | | ✅ |
 | Cinematic Ads | | ✅ | | | | | |
 | Chat monitor | | ✅ | | | ✅ | | |
+| Flow accounts: add | | ✅ backups | ✅ backups | ✅ own | | | |
+| Flow accounts: see | | whole team | whole team | added or given | | | |
+| Flow accounts: assign / reassign, block, delete, drive settings | | ✅ | ✅ | delete/edit own unassigned | | | |
+| Record Flow credits | | ✅ | ✅ | ✅ (mandatory on hand-in of a video job) | | | |
+| Paid accounts (ChatGPT / Grok logins): manage | | ✅ | ✅ | read the ones shared with them | | | |
 
 ---
 
@@ -384,11 +398,13 @@ and `tech-team-leader/MemberAssignments.tsx` (**near-duplicates**), `tech-member
 
 **9.7 AI Ads Platform (ad generation)** ✅. `components/ai-platform/*`, `services/geminiService.ts`,
 `services/prompts.ts`, `services/prompts/*`, `services/characterPacks.ts` +
-`characterCatalogue.ts` (35 special-category entries incl. three human duos), `services/posterStyles.ts`,
+`characterCatalogue.ts` (38 special-category entries incl. three human duos and three **kids** duos;
+this TS file is the catalogue's source now), `services/posterStyles.ts`,
 `services/adLanguages.ts`, `components/ai-platform/adgen.css` (the studio's design system, §11),
-`utils/businessFacts.ts` (verified contact numbers and address), `utils/scriptQa.ts` +
-`services/prompts/scriptQa.ts` (the voice-over quality gate), `utils/finalScript.ts` (a pasted final
-script), `utils/assignmentFormSpec.ts` (what a job decides on the form).
+`utils/businessFacts.ts` (verified contact numbers and address), `utils/spokenAddress.ts` (the address
+the final clip says), `utils/castLine.ts` (one cast description stamped on every frame),
+`utils/scriptQa.ts` + `services/prompts/scriptQa.ts` (the voice-over quality gate), `utils/finalScript.ts`
+(a pasted final script), `utils/assignmentFormSpec.ts` (what a job decides on the form).
 Collection `ai_generations`. See §17.
 
 **9.8 Cinematic Ads pipeline** ✅ (rebuilt 2026-09-19). `pages/tech-admin/CinematicAds.tsx`,
@@ -496,6 +512,42 @@ Capacitor plugins (`services/capacitor-plugins.ts`), Android back button, `Birth
 (`utils/profileCompletion.ts`), `UpdatePopup` (work_assigned / work_editing / attendance_update
 popups).
 
+**9.21 Flow Accounts** ✅ (2026-10-02). The Google AI Pro accounts (Jio offer, 18 months) the team
+makes Veo clips with in Google Flow, the credits each ad spends, and the team's paid ChatGPT / Grok
+logins. Page `pages/shared/FlowAccounts.tsx` (`/tech-admin|tech|team-leader/flow-accounts`);
+`components/flow/*` (`FlowAccountCard`, `FlowAccountDialog`, `FlowCreditsDialog`, `FlowCreditsGate`,
+`PaidAccountDialog`, `FlowParts`); `hooks/useFlowAccounts.ts`; `services/flowAccounts.ts`;
+`utils/flowAccounts.ts` (pure, tested); `types/flowAccounts.ts`. Collections `flow_accounts`,
+`flow_credit_logs`, `paid_accounts`, `app_settings/flow_accounts`; field `work_assignments.flowCredits`.
+- **Members** (tabs My accounts / Credit usage / Paid accounts): add an account (email, password,
+  login phone, creation date; expiry = creation + 18 months, automatic; the doc id is the lower-cased
+  email, so the same account can never be added twice); see the drive (30 by the deadline, two a
+  day — `driveProgress`); "I'm using this account now" (one in use per member); record or correct
+  usage; the credit calculator (clips each length the credits left will buy).
+- **Managers = tech admin and team leaders** (tabs Overview / All accounts / Credit usage / Paid
+  accounts / Settings): totals (accounts, credits a month, credits left this month), the drive per
+  member, every account of the team with filters, add **backup** accounts, assign / reassign / take
+  back (the card says "Added by X · now with Y (assigned by Z)"; the new holder is notified,
+  `flow_account_assigned`), block, edit, delete, everyone's usage (editable), the drive target,
+  credits and the price list (Settings; defaults 30 accounts, 2 a day, 29 Sep → 29 Oct 2026, 1,000
+  credits a month, 18 months; 10 s = 15, 8 s = 12, 6 s = 10, 4 s = 7 credits).
+- **Credits:** each account refills on its own creation day each month (`creditCycleStart`); spending
+  is kept per cycle in `flow_accounts.used` and one `flow_credit_logs` row per account per ad, written
+  together in a transaction (`logFlowCredits`, which also adds to `work_assignments.flowCredits`);
+  corrections move the difference (`updateFlowCreditLog`). When the account in use cannot pay for
+  the cheapest clip, the member is switched to the next one (`nextAccountToUse`: the cycle that ends
+  soonest with credits, then the most left).
+- **At hand-in** (`AIPlatformApp` Mark Complete → `FlowCreditsGate`, `flowCreditsQuestion`): a video
+  job's assignee records the clips per length (default: the job's clip count at 8 s, calculated,
+  editable) on the account(s) used — or "Not made in Flow" with where it was made. Posters skip it.
+  A job handed in again (sent back for edits, undone, reassigned) asks again for THAT round only,
+  adding to the record, with "No Flow credits used in this round" one tick; a retry in the same
+  sitting is not asked twice. Both My Work and Recent Ads complete through this button.
+- **Paid accounts:** platform (ChatGPT for frames, footers and posters; Grok for animation clips;
+  other), label, plan, login, renewal, the members it is shared with (count shown). No credit
+  tracking. Members see only the ones shared with them.
+- Passwords are stored readable by design (the point is sharing them), shown masked with a reveal.
+
 ---
 
 ## 10. PAGES & ROUTES
@@ -537,8 +589,8 @@ legacy `agreements` (shared/HrCenter) · `drive` (DriveManagement: member Drive 
 `?verify=<id>` deep link) · `work-reports` (shared/WorkReports) · `payroll` (shared/Payroll) ·
 `profit` · `orders` (Orders) · `clients` · `feedback-upsell` (shared/FeedbackUpsell, read-only
 ratings) · `tools` (shared/Tools: AI platform, script duration checker, generation history) ·
-`cinematic-ads` (CinematicAds) · `chat` (shared/Chat) · `meeting` (shared/Meeting) ·
-`chat-monitor` (shared/AdminChatMonitor).
+`cinematic-ads` (CinematicAds) · `flow-accounts` (shared/FlowAccounts, manager view) · `chat`
+(shared/Chat) · `meeting` (shared/Meeting) · `chat-monitor` (shared/AdminChatMonitor).
 
 ### sales_admin — `/sales-admin/*`
 `leaderboard` (**landing**, shared/Leaderboard) · `dashboard` (also runs schedule-pool release) ·
@@ -556,7 +608,8 @@ ratings) · `tools` (shared/Tools: AI platform, script duration checker, generat
 ### tech_member — `/tech/*`
 `create` (CreateAd: standalone AIPlatformApp; the external-creator home, not in the normal
 nav) · `dashboard` (check-in hero + MyDayCalendar; still fetches assignments for check-in counts,
-not dead code) · `my-work` (MyWork) · `recent-ads` · `analytics` · `training` · `profile`
+not dead code) · `my-work` (MyWork) · `flow-accounts` (shared/FlowAccounts, member view) ·
+`recent-ads` · `analytics` · `training` · `profile`
 (MyProfile: account, HR/KYC, documents, agreements, leave, bank) · `chat` · `meeting` · `salary`
 (MySalaryDashboard) · `salary/receipts` (shared/MySalary).
 
@@ -567,9 +620,10 @@ not dead code) · `my-work` (MyWork) · `recent-ads` · `analytics` · `training
 `salary/receipts`.
 
 ### tech_team_leader — `/team-leader/*`
-`work-assign` (**landing**) · `work-assign/:memberId` · `work-reports` · `orders`
-(tech-admin/Orders) · `feedback-upsell` · `activity` (tech-admin/ActivityHistory) · `attendance` ·
-`hr` and `agreements` · `profile` (tech-member/MyProfile) · `tools`.
+`work-assign` (**landing**) · `work-assign/:memberId` · `flow-accounts` (shared/FlowAccounts,
+manager view) · `work-reports` · `orders` (tech-admin/Orders) · `feedback-upsell` · `activity`
+(tech-admin/ActivityHistory) · `attendance` · `hr` and `agreements` · `profile`
+(tech-member/MyProfile) · `tools`.
 
 Unrouted leftovers: `pages/Index.tsx` (template "Blank App") and `pages/PlaceholderPage.tsx`
 (lazy-declared in App.tsx, used by no route). `pages/sales-member/SalesScripts.tsx.bak` is a
@@ -705,13 +759,16 @@ index a query needs lives only in the console [NOT CONFIRMED].
 | `numberLocks/{digitsPhone}` | `NumberLock` | `ownerId`, `ownerLeadId`, `reserveExpiresAt` (+24h), `saleFrozen`, `saleFrozenUntil`, `timeline[]` (`claimed`/`taken_over`/`sold`/`admin_override`) |
 | `schedulePools/{auto}` | `SchedulePool` | `createdBy`, `assignedTo`, `numbers[]`, `releasedCount`, `dailyLimit`, `minCompletionPercent`, `isActive`, `lastReleasedDate` |
 | `orders/{o_<leadId>_<submittedAtMs>}` (legacy `o_<leadId>__<idx>`) | `Order` | client (`clientPhone`, `clientPhoneId`, `businessName`, `clientName`), sale copy (`category`, `packageKey`, `amount`, bulk/discount fields, `requirement`, `promise`), link (`leadId`, `saleItemIndex`, `saleItemKey`, `saleSubmittedAtMs`), attribution (`soldBy`, `soldByName`, `salesAdminId`, `fromAd`), `saleVerified`, **`status`**, `workAssignmentId`, `assignedTo`, `progress` (SMM/bulk), `bulkVideos[]`, `penalties[]`/`penaltyTotal`, `updateNotes[]`, `feedback` (after-sale call), `clientReview` (mirror), tombstone/restore/retire fields |
-| `work_assignments/{auto}` | `WorkAssignment` | `assignedTo`, `assignedBy`, `category` (`wishes`/`promotional`/`cinematic`/`bulk_ads`/`social_media_management`/`poster`), `clipCount`, `duration`, `pricePerUnit`, `uniqueId` (W/P/C/PS/O + number), **`accessCode`** (4 digits), `status`, `sessions[]`, `totalDurationSeconds`, `date`, ad spec (`modelGender`, `attireType`, `customAttire`, `aspectRatio`, `language`, `festival`, `characterPack`, `customCharacter` (Custom Character only), `realLocationProvided`, poster fields), brief (`requirementNotes`, `businessInfo`, `businessAddress`), `orderId`, `chatId`, `promise`, `tracks[]`, `savedGenerationId`, `saleDeleted*`, `reassignedFrom/By/At` |
+| `work_assignments/{auto}` | `WorkAssignment` | `assignedTo`, `assignedBy`, `category` (`wishes`/`promotional`/`cinematic`/`bulk_ads`/`social_media_management`/`poster`), `clipCount`, `duration`, `pricePerUnit`, `uniqueId` (W/P/C/PS/O + number), **`accessCode`** (4 digits), `status`, `sessions[]`, `totalDurationSeconds`, `date`, ad spec (`modelGender`, `attireType`, `customAttire`, `aspectRatio`, `language`, `festival`, `characterPack`, `customCharacter` (Custom Character only), `realLocationProvided`, poster fields), brief (`requirementNotes`, `businessInfo`, `businessAddress`), `orderId`, `chatId`, `promise`, `tracks[]`, `savedGenerationId`, `saleDeleted*`, `reassignedFrom/By/At`, `flowCredits` (credits recorded at hand-in: `total`, `logIds`, `recordedAt/By`, `none` + `noneReason`; later rounds add to it) |
 | `clients/{digitsPhone}` | `Client` | profile assets, `works[]`, totals, `reviews[]` (server-written), `salesAdminIds[]`, `soldByIds[]` (array-contains scope), `firstSoldBy`, review/loyalty mirror |
 | `order_chats/{chatId}` (+`messages`) | `OrderChatDoc` | `chatId` = order id for sold work, else assignment id (`utils/orderChatId.orderChatIdOf`). `participants[]`, `accessCode`, `status` (`open`/`locked`), `clientReady`, `activeAt` heartbeats, `unreadCounts`, `clientReview`, member/seller/assigner ids |
 | `smm_campaigns/{orderId or auto}` | `SmmCampaign` | `origin`, `orderId` ("" for direct), `watchers[]`, `soldBy`, `team`, `items[]` (content with approval, chases, per-platform `postUrls`), `adRuns[]` (day reports, budgets), `budgetPayments[]`, `cycle`, `commitments`, `renewal`, `status` (`active`/`completed`/`renewed`/`lapsed`/`removed`) |
 | `smm_templates/{auto}` | `SmmTemplate` | saved client message wording (company-wide) |
 | `ai_generations/{auto}` | `SavedGeneration` | `userId`, outputs (`mainFramePrompts[]`, `headerPrompt` (the VIDEO BOTTOM LABEL), `posterPrompt`, `voiceOverScript`, `veoPrompts[]`, `stockImagePrompts`, `overlayTexts` (each with `imagePrompt` / `imageDesign`), `posterConcepts`, `coreMessage`, `sceneContext` (motive + per-clip background and staging/camera/angle/focus), `voiceBrief`, `scriptQa` (the voice-over's quality-gate score, pass and drafts)), all form settings incl. `frameInstructions` and `customCharacter`, `creationMode`, `createdAt`/`updatedAt`. Generate = new doc (a version); Save and auto-save update it |
 | `cinematic_projects/{auto}` | `CinematicAdsProject` | `createdBy`, `name`, `currentStep`, `stepsCompleted`, brief, stories, boards, cast, clips, editing guide, deliverables, `delivered`, `updatedAt` (ms). `File` objects stripped |
+| `flow_accounts/{lower-cased email}` | `FlowAccount` | `email`, `password` (readable by design), `authPhone`, `createdOn`, `expiresOn` (+18 months), `monthlyCredits`, `status` (`active`/`blocked`), `addedBy/Name/Role`, `assignedTo/By` (+names), **`memberIds[]`** (adder + holder: the member query), **`teamAdminId`** (the manager query), `inUseBy` (+name), `used` (map credit-cycle start → credits), `history[]` (added/assigned/unassigned/blocked/unblocked/edited), `notes` |
+| `flow_credit_logs/{auto}` | `FlowCreditLog` | one ad's spend on one account: `accountId`/`accountEmail`, `userId`/`userName`, `teamAdminId`, `clips` (`s10`/`s8`/`s6`/`s4`), `calculated`, `credits`, `manual`, `cycle`, `date`, `month`, job link (`assignmentId`, `uniqueId`, `businessName`, `category`), `note`, `editedBy` |
+| `paid_accounts/{auto}` | `PaidAccount` | `platform` (`chatgpt`/`grok`/`other`), `label`, `plan`, `email`, `password`, `assigneeIds[]`, `teamAdminId`, `renewsOn`, `notes`, added-by fields. No credits |
 | `notifications/{auto or dedupeKey}` | — | `userId`, `type`, `title`, `message`, `read`, `link`, `meta`, `createdAt` |
 | `fcmTokens/{token}` | — | `userId`, `token`, device id |
 | `activityLogs/{auto}` | `ActivityLogEntry` | actor, `action`, `details`, `adminId` (sales + tech feeds) |
@@ -731,7 +788,8 @@ code, generated password after completion) · `member_credentials/{uid}` (**read
 `commission_settlements` · `settlement_requests` · `audit_logs` · `review_tasks` · `expenses` ·
 `other_income` · `training_modules` · `chatRooms` (+messages) · `calls` (+candidates) · `meetings`
 (+participants, signals) · `settings/salesConfig` (`activeFestival`) · `app_settings/ad_languages`,
-`app_settings/clients_backfill`.
+`app_settings/clients_backfill`, `app_settings/flow_accounts` (`FlowSettings`: drive target, daily
+goal, start/deadline, monthly credits, validity months, clip prices).
 
 ### Key relationships
 ```
@@ -745,6 +803,8 @@ work_assignments *─1 users(tech_member)   assignment.assignedTo
 work_assignments 0..1─1 ai_generations    assignment.savedGenerationId
 clients(phone digits) 1─* works           built from orders/assignments on complete/verify
 users 1─1 employee_profiles / employee_bank / public_badges / member_credentials (doc id = uid)
+flow_accounts 1─* flow_credit_logs        via log.accountId; a log ─0..1 work_assignments (assignmentId ⇄ flowCredits.logIds)
+users *─* flow_accounts                   via memberIds (adder + holder); team via teamAdminId
 ```
 
 ### Status fields
@@ -853,7 +913,7 @@ assignment also notifies team leaders.
 |---|---|---|
 | `assigned` | `createWorkAssignment`, `reassignWork` | Waiting for the member |
 | `in_progress` | Member opens the job (My Work / Recent Ads) from `assigned` or `editing`; also **Undo completion** | Being worked. Sessions (open→close, >5s) accumulate `totalDurationSeconds`. Chat status synced |
-| `completed` | Member submits (`useCompleteWork`) | Notifies the assigner + team leaders (dedupe keys), order → `completed`, chat **locked as delivered** (invites the client review), client record upserted |
+| `completed` | Member submits (`useCompleteWork`, from the generator's Mark Complete) — a video job first records the Flow credits it used (§9.21; asked again on a later round) | Notifies the assigner + team leaders (dedupe keys), order → `completed`, chat **locked as delivered** (invites the client review), client record upserted |
 | `editing` | Tech admin / team leader "send back" (MemberAssignments, WorkReports) | Order → `assigned`, chat reopened, member notified `work_editing` |
 | `verified` | Tech admin / team leader (`verifyAssignments`, bulk or single) | Member notified, chat shows Delivered, `upsertClientOnWorkVerify` (order → `verified`, client works/totals), activity logged |
 
@@ -925,11 +985,19 @@ screenshot → leads/spend/cost-per-result/reach).
 - aspect ratio `9:16` / `16:9`;
 - language (Telugu default);
 - no-logo name board (also used automatically when no logo FILE is attached, see below);
-- special category `characterPack` (35 entries: human "Normal Ad", owner face, **human duos**
-  (`human_duo_female` / `human_duo_male` / `human_duo_mixed`, family `human_duo`, speakers
-  speakers "Girl"/"Boy" on the mixed duo and "Friend"/"Host" on the same-gender ones — role labels
-  that are never spoken, now ENFORCED by `validateDialogueClips` `forbiddenNames` against each
-  character's `labelSpellings`), deities, cartoon duos/solos, custom);
+- special category `characterPack` (38 entries: human "Normal Ad", owner face, **human duos**
+  (`human_duo_female` / `human_duo_male` / `human_duo_mixed`, family `human_duo`; speakers
+  "Friend"/"Host" on the same-gender ones and "Girl"/"Boy" on the mixed one — role labels that are
+  never spoken, ENFORCED by `validateDialogueClips` `forbiddenNames` against each character's
+  `labelSpellings`, and never written into a frame or video prompt either: each person has a
+  `screen` name read through `screenNameOf` — "the woman on the LEFT"), **kids duos** (2026-10-02:
+  `kids_duo_female` Younger / Elder Girl, `kids_duo_male` Younger / Elder Boy, `kids_duo_mixed`
+  Boy / Girl; family `kids_duo`, group "Kids"; children's wardrobe `KIDS_ATTIRE` — Traditional (Pattu
+  Langa / Kurta), Smart Casual (Party Wear), School Uniform, Custom; sold in `SaleForm`, assigned in
+  Work Assign, locked in the platform like any pack), deities, cartoon duos/solos, custom). Every
+  pair carries its **true scale** (`pack.scale`: `frame` is stamped on every frame by `withTrueScale`,
+  `video` goes into the Veo scale lock) — Motu's head at Patlu's shoulder; children ~120 / 140 cm
+  with a 90 cm counter at their chest;
 - `customCharacter` — the Custom Character's description (required for that pack; written into
   the pack by `characterPacks.withCustomCharacter`, one resolver `packFor` in geminiService);
 - `locationMode` (`real_provided` uses the client's store photos, `ai_generated`);
@@ -979,7 +1047,18 @@ cached; small images and anything the browser cannot redraw go as they are).
    (≤2 passes), native-speaker quality review (AI scripts only), second repair. Checks include
    everyday speech, festival wish, and `utils/speakingPosition` (a line that sends the viewer
    "elsewhere" while the speaker stands inside the business). Character packs use
-   `prompts/characterAd.ts` dialogue prompts. **A custom script is used word for word**
+   `prompts/characterAd.ts` dialogue prompts; a pair of PEOPLE (human or kids) has its own
+   (`PEOPLE_DUO_VOICEOVER_SYSTEM_PROMPT`: two real people in an easy conversation that moves the
+   pitch on every line — never an echo or a chain of "yes"), and a kids clip is **13–15 words, 6–8 a
+   line** (`wordBudgetFor(count, { children: true })`, a child's point of view).
+   **The address is said in the final clip when there is one** (2026-10-02): the VERIFIED address
+   (step 1) is cut to what a person says aloud (`utils/spokenAddress.addressPartsForSpeech`: at most
+   three parts, the town last — no door number, PIN, state or country), written once in the
+   script's language by one fast call (`resolveSpokenAddress`, alongside the core message), required
+   of the writer and repair prompts for the last clip (`addressBlock`), checked in code
+   (`addressIssue`; `finalClipSlack` gives that clip the room) and judged by the quality gate. No
+   verified address → nothing is invented; the last clip is another promotional line.
+   **A custom script is used word for word**
    (`utils/customScript.ts`): labelled clips verbatim (only emoji/decoration stripped); unlabelled
    text is split at sentence ends (a model split is kept only if `sameWords` holds); no repair or
    review; a two-speaker pack needs `[Speaker]:` lines or the run stops with a format message.
@@ -999,14 +1078,23 @@ cached; small images and anything the browser cannot redraw go as they are).
    TIME and judged together (one for a polish, every remaining draft for a rewrite), with a 60 s
    deadline (`SCRIPT_GATE_DEADLINE_MS`) after which the best so far ships. The result is `scriptQa` on the kit
    ("Script QA 8.6/10" on row 4). A judge that cannot run never blocks the ad.
-4. For real locations: review location photos, assign photos to clips. Otherwise the **scene
-   plan** (`prompts/scenePlan.ts`, `utils/scenePlan.ts`): the video's motive (annadanam, temple,
-   birthday, invitation, promotion…), its world, and one DIFFERENT background per clip from that
-   clip's line; retried once if `repeatedBackgrounds` finds a repeat.
+4. For real locations: review location photos, assign photos to clips (each used exactly as
+   photographed, step 5). Otherwise the **scene plan** (`prompts/scenePlan.ts`, `utils/scenePlan.ts`):
+   the video's motive (annadanam, temple, birthday, invitation, promotion…), its world, and one
+   DIFFERENT background per clip from that clip's line; retried once if `repeatedBackgrounds` finds a
+   repeat. Its per-clip staging / camera / angle choices are offered only from the frame-safe
+   vocabulary of step 6.
 5. Main-frame prompts per clip (`MAIN_FRAME_SYSTEM_PROMPT` / `MULTI_FRAME_SYSTEM_PROMPT` with the
    scene plan; `CHARACTER_MULTI_FRAME_SYSTEM_PROMPT` with `sceneBackgrounds` / `nameBoard`). Stamped
    in code: motion composition, `withSceneBackground`, `frameBrand.nameBoardInPlaceOfLogo` when there
-   is no logo file, `withOwnerImageDirective` for Real Owner Face, the photo attach line. VIDEO
+   is no logo file, `withOwnerImageDirective` for Real Owner Face, the photo attach line,
+   **`withCastLine`** (invented people — the human and kids duos, the normal presenters — are described
+   ONCE, in clip 1's `CAST:` line, and code copies that exact line onto every frame, so the same
+   people appear in every clip), **`withTrueScale`** (a pair's true scale) and, on a client's
+   Store/Office photo, **`realLocationLock`** ("REAL LOCATION — USE THE ATTACHED PHOTOGRAPH AS IT IS":
+   the photo is the exact background, never redrawn or extended — only enhanced and upscaled to 8K —
+   with the people placed on its real floor at true scale; `realPremisesDirective` and the location
+   formula say the same). VIDEO
    BOTTOM LABEL (`buildVideoBottomLabel`, code-assembled from `prompts/lowerThird.ts`, fed the festival
    theme and the video's motive / core message) and the poster prompt (`writeVideoPosterPrompt`,
    `POSTER_SYSTEM_PROMPT`) — both from the VERIFIED facts: exactly as many contact pills / numbers as the
@@ -1014,36 +1102,43 @@ cached; small images and anything the browser cannot redraw go as they are).
    `stripUnverifiedNumbers` on every model-written poster, concept, overlay and refine. A poster that
    fails twice leaves one Missing row instead of failing the run. Frames the model skipped are written
    for exactly those clips (never a copy of the last frame), and the retry carries the images.
-6. Direct performance and camera per clip (`prompts/motion.ts`) → **Veo 3 prompts**. **Motion
-   policy: each clip does what its line, scene and video type need.** Stagings `stand_present`
-   (stand and tell), `walk_and_talk` (a few steps along clear floor the FRAME shows — never for a
-   deity), `show_product`, `present_space`, `welcome_invite` (always the last clip; an invitation,
-   **never a goodbye wave**). The plan (`planClipMotion`) takes the scene plan's per-clip
-   `staging` / `camera` / `angle` / `focus` choices, else reads each line (`stagingForLine`:
-   product words → show, place words → walk, trust words → stand), and never repeats a neighbour's
-   staging or move. Every clip is filmed in the standard vocabulary — `SHOT_ANGLES` (eye level, low,
-   high, bird's eye, worm's eye, over-the-shoulder, POV, dutch tilt), `CAMERA_MOVES` (dolly in/out,
-   truck, push in, pull back, pan, tilt, pedestal, partial orbit, crane up/down, arc, follow
-   tracking…), lens and speed keywords (`LENS_COMBOS`, `SPEED_KEYWORDS`); the Veo CAMERA line reads
-   e.g. "Eye level · 35mm · Follow Tracking · steadicam tracking". **Two-handers are filmed from a fixed
-   distance** (`DUO_SAFE_MOVES`: static, truck, pan, gentle handheld float; always eye level; the
-   director's own camera sentence is ignored and beats that step toward the lens, rise or stretch fall
-   back to the plan's) — the dolly-ins, push-ins, cranes, low-angle orbits and speaker push-ins were
-   what grew Motu and Patlu. They keep fixed LEFT/RIGHT positions, a strict WHO SPEAKS block and, on
-   some clips, SPEAKER FOCUS (the focus moves to whoever talks; the camera does not). Every Veo prompt
-   carries the `COLOUR_LOCK` near the top (the frame's exact grade, contrast and exposure; never pale,
-   washed, hazy or brightened) with matching negatives, and scene life that changes the light is
-   refused (`LIGHT_CHANGE`). **An English ad is spoken in Indian English with an Andhra Pradesh accent**
-   (`speechAccentFor`): named in the opening line, in a `VOICE AND ACCENT — INDIAN ENGLISH ONLY` block
-   above SPEECH, on every spoken line and in the negatives (never British, American or any foreign
-   accent) — the prompt used to say only "speaking English", so Veo used its default foreign voice.
-   Other languages are spoken natively and get no block. Locked always: the people (height/build/outfit relative to the room — a
-   single presenter's camera may move closer), the WORLD (no object vanishes or moves, nobody walks into furniture) and the
-   PLACE (nobody leaves the shop or goes through a door). `resolveDirection` discards director text
-   that leaves, freezes, walks outside a walk clip, cuts, crash-zooms or uses slow motion /
-   hyperlapse during speech. The frames are composed for the plan first (`framingForMotion`,
-   `withMotionComposition`: a walk clip's frame shows its open floor), then the Veo prompts use the
-   SAME plan (`writeVeoPrompts` receives all lines + `sceneContext`; `regenerateVeoForClips` too).
+6. Direct performance and camera per clip (`prompts/motion.ts`) → **Veo 3 prompts**, each written
+   FROM its clip's frame. **Motion policy (2026-10-02): the attached frame is the whole world of its
+   clip.** Members attach each generated frame to its Veo prompt, so anything the video shows beyond
+   that still is invented by the video model — that is where presenters walked onto tables and
+   cupboards, came toward the lens out onto the road, and the shop "extended". So **nobody walks**:
+   the stagings are `stand_present`, `show_product`, `present_space` and `welcome_invite` (always the
+   last clip; an invitation, **never a goodbye wave**) — a turn, a gesture or a half-step in place is
+   the most anyone moves, and only what is within arm's reach in the frame is touched. **The camera
+   only moves closer or drifts**: `CAMERA_MOVES` = static, dolly in, push in, rack focus, slight arc,
+   truck, gentle handheld; `SHOT_ANGLES` = eye level, slightly low, slightly high — nothing that pulls
+   back, pans away, cranes, orbits or tracks (each reveals more than the still). The plan
+   (`planClipMotion`) takes the scene plan's per-clip choices where they are in that vocabulary, else
+   reads each line (`stagingForLine`: product words → show, place words → present the space, trust
+   words → stand), and never repeats a neighbour's staging or move. Every Veo prompt opens with
+   **THE ATTACHED FRAME — THE WHOLE WORLD OF THIS CLIP** (the director's `frame` sentence, else
+   `frameSceneOf` the clip's main-frame prompt; `realPhoto` adds that it is the client's own place),
+   then ONE `LOCKED` block (the people — face, outfit, height, build; the place — every object where it
+   is, nothing stretches or extends; `COLOUR_LOCK` — the frame's exact grade, never pale or hazy),
+   ACTION, CAMERA, PERFORMANCE (alive, natural, in place), SPEECH, SCENE LIFE (light-changing life is
+   refused, `LIGHT_CHANGE`), LOOK and one negative list. `resolveDirection` discards director text
+   that leaves, freezes, walks, gets onto furniture, reveals beyond the frame or (for a pair) changes
+   distance or height. **Pairs** — cartoon, human or kids — are filmed from a fixed distance at eye
+   level (`DUO_SAFE_MOVES`: static, truck, handheld, rack focus), keep fixed LEFT/RIGHT positions and
+   a strict WHO SPEAKS block (speakers named by what the camera sees), may use SPEAKER FOCUS (only
+   the focus moves), and open with a SCALE LOCK carrying the pair's true scale (`scaleLock`,
+   `pack.scale.video`). **Drawn characters get a cartoon LOOK** (`cartoonLook`: they stay 2D cartoon
+   drawings with their show's proportions inside a photoreal place — never realistic people or 3D
+   renders) — the old photoreal "stable anatomy" line on Motu and Patlu told the model to give them
+   real human bodies, and they grew taller as each clip played. **An English ad is spoken in Indian
+   English with an Andhra Pradesh accent** (`speechAccentFor`): named in the opening line, in a
+   `VOICE AND ACCENT — INDIAN ENGLISH ONLY` block above SPEECH, on every spoken line and in the
+   negatives (never British, American or any foreign accent). Other languages are spoken natively and
+   get no block. The frames are composed for the plan first (`framingForMotion`,
+   `withMotionComposition`, and the frame rules: clear floor and no furniture in front of anyone, the
+   thing to show within reach, always inside the business), then the Veo prompts use the SAME plan
+   (`writeVeoPrompts` receives all lines, `sceneContext` and each clip's `frameScene` / `realPhoto`;
+   `regenerateVeoForClips` too).
 7. Finalize (returns `sceneContext` and `voiceBrief` too).
 
 **Spoken-word rules, in code (`utils/spokenNumbers.ts`):** every final script line — generated,
@@ -1121,7 +1216,7 @@ count 1–6 (default 3), text language (English default) → `generatePosterConc
   `gemini-3.1-flash-lite-preview`), rotated on overload or 5xx. A 404 "not available to new users"
   retires a model **for that key only**; any other 404 retires it for all keys.
 - **Thinking budget per call (2026-09-29):** `callWithFallback(apiCall, { effort })` — `fast` 0 tokens
-  (extraction, voice note, poster, splits, location scout, B-roll, overlays), `standard` 768 (core
+  (extraction, voice note, poster, splits, location scout, B-roll, overlays, the spoken address), `standard` 768 (core
   message, repairs, scene plan, frames, Veo director, poster concepts), `deep` 1536 (script writer,
   review, quality judge). Applied only on `gemini-2.5-flash` (the lite models do not think by
   default; 2.0 rejects the setting); a call with no effort keeps the model default. Measured: thinking
@@ -1187,7 +1282,8 @@ Gemini calls use the shared fallback.
   alerts via `api/order-chat`.
 - **Common types:** `work_assigned`, `work_completed`, `work_verified`, `work_editing`,
   `work_unassigned`, `sale_approved`, `attendance_update`, `order_new_*`, `chat_message`,
-  `voice_call` / `video_call`, SMM and HR types.
+  `voice_call` / `video_call`, `flow_account_assigned` (link `/tech/flow-accounts`), SMM and HR
+  types.
 
 ---
 
@@ -1260,6 +1356,7 @@ Gemini key), the production API base URL, and CORS allow-lists in `api/*`.
 | `SaleForm` | `components/sales/` | The one sale form (new, edit, upsell): packages, bulk, discounts, SMM fields, promise, requirement, payments; calls `upsertOrderForSale` |
 | `FinalScriptPanel` (default export `FinalScriptInput`) | `components/ai-platform/` | "Input Final Script" on row 4 (`OutputSection` `footer` slot, visible with the row shut): the highlighted strip, then three steps — copy the format / the ChatGPT-Gemini instruction, paste or load the current script with a live reading, update 5 · 6 · 7 with per-section progress and Retry |
 | `AssignmentBriefFields` | `components/work/` | Occasion (wishes) + business info + address + client's notes, in all three assignment edit dialogs |
+| `FlowAccountCard`, `FlowAccountDialog`, `FlowCreditsDialog` (modes `complete` / `log` / `edit`; `previous` = a later round), `FlowCreditsGate`, `PaidAccountDialog`, `FlowParts` (`Modal`, `SecretField`, `CreditBar`, `CreditCalculator`, `DriveProgressCard`, …) | `components/flow/` | Flow Accounts (§9.21). `FlowCreditsGate` is mounted by `AIPlatformApp` at Mark Complete (`z-[70]`, above the studio) |
 | `SpecialCategoryFields`, `ModelAttireFields`, `PosterSpecFields`, `OccasionPicker`, `DurationPicker` | `components/work/` | Shared spec editors used by Work Assign ×2, assignment editors and the AI platform. **`SaleForm` still has its own copy of the special-category picker** |
 | `OrderProgressPanel`, `BulkVideoBoard`, `AssignTracksDialog`, `PenaltyDialog`, `ExtendPromiseButton`, `DeadlineChip`, `ReassignWork`, `RequirementsShareModal`, `MemberWorkloadCard`, `WorkDoneReport` | `components/work/` | Order and work UI pieces |
 | `StaffOrderChat`, `SalesOrderChat`, `OrderChatPanel`, `ClientCall`, `ShareChatModal`, `ClientReviewCard` | `components/order-chat/` | Client chat for staff and guest |
@@ -1380,8 +1477,23 @@ report message → renewal.
   never digits; the word for "and" is written `mariyu` in Latin letters and explained nowhere; a human
   cast never says its own role label out loud (Girl / Boy / Friend / Host — checked, not just asked);
   no frame or video ever ends on a goodbye
-  wave; a walk is only a few steps along floor the frame shows; no frame asks for a logo file that
-  was not attached (the name board is used instead).
+  wave; no frame asks for a logo file that was not attached (the name board is used instead). (Its
+  "a walk is a few steps along floor the frame shows" was replaced on 2026-10-02: nobody walks.)
+- **AI ads (2026-10-02):** the attached frame is the whole world of its clip — nobody walks or gets
+  onto furniture, and the camera never shows more than the still (no pull-back, pan, crane, orbit or
+  tracking); every Veo prompt is written from its own frame. A verified address is said in the final
+  clip (street / landmark / town — never a door number or PIN); with none, nothing is invented. A
+  client's Store/Office photo is the exact background — enhanced and upscaled to 8K, never redrawn
+  or extended. The two people of a human or kids duo are the same people in every frame (one CAST
+  line), are never called by their role labels, and keep their true heights; cartoon characters stay
+  drawings. Kids ads dress the children for their age and use 13–15 words a clip.
+- **Flow accounts (2026-10-02):** one document per Google account (lower-cased email; a duplicate is
+  refused); expiry = creation + 18 months; 1,000 credits a month, refilled on the creation day, never
+  carried over; a member sees only the accounts they added or were given, the tech admin and team
+  leaders see the team's; only they assign, block or change the settings; one account in use per
+  member. A video job is not handed in without its credits (or "not made in Flow" and where), asked
+  again for each later round; posters are exempt. Every spend can be corrected or removed, and moves
+  the account's balance in the same transaction.
 - **HR:** 14 document types in lifecycle order; both officers sign all types (falls back to the
   issuing admin); references `DTS/<TYPE>/<year>/<seq>` are allocated in a transaction with a 6s
   timeout; unsigned agreements trigger a non-closable signing gate; bulk sends tokenise personal
@@ -1404,7 +1516,8 @@ Platform (video and poster) with save, refine and history; Cinematic Ads 7-step 
 project persistence; SMM; client order chat with calls and reviews; team chat, calls, meetings;
 tech and sales attendance, leave; tech and sales payroll, settlements; HR documents, agreements,
 hiring link, ID cards and public badge; finance pages; leaderboards and analytics; notifications
-and push; PWA self-update; Android shell.
+and push; PWA self-update; Android shell; Flow Accounts (Google AI Pro accounts, credits at hand-in,
+paid ChatGPT / Grok logins); Kids duos in sale, assignment and generation.
 
 **PARTIALLY IMPLEMENTED 🟡:**
 - Firestore security: rules written but publication [NOT CONFIRMED]; authorization mostly
@@ -1421,7 +1534,12 @@ and push; PWA self-update; Android shell.
 - The script quality gate's thresholds (pass ≥ 8, each ≥ 7, facts ≥ 9) are set from the rubric, not
   measured against live Gemini scores; a final script with a different clip count than the kit is
   refused rather than re-framed (it has to go through Configuration → custom script and a new run).
-- Character catalogue regeneration from JSON has no committed generator script.
+- The character catalogue is edited in `services/characterCatalogue.ts` itself; the JSON in `docs/`
+  is a historical snapshot with no generator script. Kids duos are realistic children only (no
+  cartoon kids).
+- Flow Accounts: balances are what the team records — Google Flow's own credit balance is never read
+  (there is no API), so a spend nobody records is invisible; the drive target, deadline and price
+  list are one setting for the whole team; there is no expiry reminder beyond the card's amber date.
 - Native Android camera capture uses the web file input (`@capacitor/camera` not installed).
 - Error/loading handling is inconsistent across older pages (plain `console.error`).
 - Header/poster prompts in no-logo mode may still reference a logo container (noted 2026-07,
@@ -1453,8 +1571,9 @@ and push; PWA self-update; Android shell.
    logs each key's first 6 and last 4 characters to the console on load ("DEBUG … remove after
    verification"). The call layer skips dead keys, but each is capacity lost; they must be replaced, and
    the lasting fix is a server-side proxy so no key reaches a browser.
-4. **Plaintext passwords stored** in `member_credentials` (by design, admin-readable) and in
-   completed `onboarding_invites`.
+4. **Plaintext passwords stored** in `member_credentials` (by design, admin-readable), in
+   completed `onboarding_invites`, and in `flow_accounts` / `paid_accounts` (the Google, ChatGPT and
+   Grok logins — by design, sharing them is the feature).
 5. **Deleting a member leaves their Firebase Auth account** (only Firestore docs are deleted), so
    the email cannot be reused and the auth record lingers.
 6. **One TypeScript error:** `src/components/chat/VideoCallManager.tsx(823)` — `Plugins` does not
@@ -1471,6 +1590,11 @@ and push; PWA self-update; Android shell.
    (committed backup), `bun.lockb` alongside `package-lock.json`, outdated `README.md`.
 10. **Duplicated pages** that drift: `tech-admin/WorkAssign.tsx` vs `tech-team-leader/WorkAssign.tsx`,
     and the two `MemberAssignments.tsx`.
+11. **`api/send-notification.ts` was broken by an accidental edit in commit `eb2c3ff` (pushed):** its
+    first line read ` Developer: Reload Windowimport type {…}` (a VS Code command typed into the
+    file), a syntax error in the push function that neither the Vite build nor the typecheck covers
+    (`api/` is outside both). Restored in the working tree on 2026-10-02 (esbuild parses all three
+    functions); it must be committed and pushed. Check `api/` by hand after any commit that touches it.
 
 ---
 
@@ -1493,12 +1617,28 @@ and push; PWA self-update; Android shell.
 - Free-tier Firestore quota has been exceeded before. New listeners must be scoped.
 - Work access codes, client chat ids and invite codes are bearer secrets. Links forwarded around
   WhatsApp grant access.
-- Every AI video run now makes up to three more Gemini calls: the voice note (when one is
-  attached), the scene plan (up to 2 attempts, skipped with client photos) and the Veo refine's plan
-  step. More quota and latency per run; not measured live.
-- The motion policy (walk-and-talk, dolly/push-ins, speaker focus) and the in-code prompt rules were
-  unit-tested only — **no live Gemini, image or Veo run** has confirmed how the generated frames and
-  videos behave (e.g. whether Veo keeps a walk on the visible floor).
+- Every AI video run now makes up to four more Gemini calls: the voice note (when one is
+  attached), the scene plan (up to 2 attempts, skipped with client photos), the Veo refine's plan
+  step and (2026-10-02) one `fast` call that writes a verified address in the script's language. More
+  quota and latency per run; the address call runs alongside the core message.
+- The frame-bounded motion policy, the duo / kids CAST line and true scale, the cartoon LOOK, the
+  real-photo lock and the spoken address (2026-10-02) were checked with **live Gemini text runs**
+  (the scripts and prompts: human duo QA 6.5 → 8.9 with no spoken labels, Motu & Patlu 7.4 → 9.0 on
+  the first draft, kids 8.7, a single presenter 9.2; the address in the last clip in all four) but
+  **no image or Veo run** — whether Veo now keeps everyone in place, the pair at its true height and
+  the real photo unchanged is not yet confirmed.
+- Flow Accounts keep Google, ChatGPT and Grok passwords readable in Firestore. Until
+  `docs/firestore-rules.md` is published, any signed-in staff account can read them; the UI hides
+  other members' accounts, which is not a security boundary.
+- The Flow credit cycle assumes Google refills an account on its creation day each month and that
+  the accounts cost nothing beyond the Jio offer — both from the owner's brief, not verified against
+  Google's terms. The defaults (30 accounts, 2 a day, 29 Oct 2026) are editable in Settings.
+- A member who records an ad's credits and then closes the generator before the hand-in goes
+  through is asked again on reopening (a new sitting reads as a new round) and must answer "No Flow
+  credits used in this round"; otherwise the same clips are counted twice (correctable in Credit
+  usage).
+- The `flow_accounts` read rule allows reading a document that does not exist (`resource == null`) —
+  the add transaction's duplicate check needs it; it reveals only that an email is not registered.
 - `AIPlatformApp` reloads saved generations in `useEffect(..., [user])`; a new `user` object on
   every profile snapshot re-reads `ai_generations` (read-quota; a test mock with an unstable user
   made it loop).
@@ -1560,8 +1700,17 @@ and push; PWA self-update; Android shell.
   stores. Real-browser checks use a throwaway harness (a temporary root `.html` + `src/__verify__/`
   mounting real components with `firebase/*` aliased to an in-memory fake, driven over CDP or
   Playwright) because real pages need a Firebase login. Delete the harness afterwards.
-- **Never edit** `aiadsdts/`, `dist/`, or generated `services/characterCatalogue.ts` by hand for
-  large changes (edit the JSON source).
+- **Never edit** `aiadsdts/` or `dist/`. `services/characterCatalogue.ts` IS the catalogue (edit it
+  directly; `docs/video-category-catalogue.json` is a historical snapshot). A new pack family needs
+  `CharacterFamily`, `CHARACTER_FAMILY_LABELS` and `CHARACTER_FAMILY_ORDER` (that is what puts it in
+  every picker, via `characterPackGroups`), `HUMAN_PACK_GENDER` and `isHumanPack` for people, its
+  attire in `utils/adRequirement`, and — for invented people — `needsCastLine` and a `scale`.
+- **Shell-scripted edits** (Windows + Git Bash): a `node -e '…'` or heredoc mangles backslashes,
+  backticks and apostrophes (a `\b` once became a backspace character in source). Write the script to
+  a `.cjs` file with the editor tool, use `String.raw` for text with backslashes, and assert every
+  anchor.
+- **`api/` is outside the build and the typecheck** — parse it after touching it
+  (`npx esbuild api/<file>.ts --platform=node --log-level=error > /dev/null`).
 
 ---
 
@@ -1624,6 +1773,44 @@ and push; PWA self-update; Android shell.
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
 
+- **2026-10-02: duos, kids, the spoken address, frame-bounded motion — and Flow Accounts** —
+  *Six AI-ad faults, each traced to its cause.* (1) **Human duos worse than Motu & Patlu**: nothing
+  fixed what the two invented people looked like, so each frame cast two new people; their role
+  labels ("Boy", "Host") reached the frames, the Veo prompts and the dialogue; and they were written
+  with the cartoon dialogue prompt. Now clip 1's `CAST:` line is copied onto every frame
+  (`utils/castLine`), every prompt names them by what the camera sees (`screenNameOf`), and real
+  people get their own conversation prompt — live QA 6.5 → 8.9, no label spoken. (2) **Kids**: a new
+  family (two girls, two boys, boy & girl) through `SaleForm`, Work Assign and the platform, with
+  children's wardrobe, a child's word budget (13–15) and children's true scale — live QA 8.7.
+  (3) **Motu & Patlu still growing**: every clip's LOOK held them to photoreal "stable anatomy", so
+  the video model gave the drawings real human bodies as it played; now a cartoon LOOK (`cartoonLook`)
+  and the pair's true scale on every frame and in the video's scale lock — live QA 7.4 (3 drafts) →
+  9.0 (first draft). (4) **Address**: a verified address is now said in the last clip
+  (`utils/spokenAddress`, one transliteration call, required and checked in code, judged by the
+  gate); with none, nothing is invented. (5) **Unrealistic motion** (walking over tables and
+  cupboards, coming toward the lens onto the road, the shop extending): every staging that walked and
+  every camera move that showed more than the still were removed; the attached frame is the clip's
+  whole world, each Veo prompt opens with what its frame shows (`frameSceneOf`, the director's
+  `frame`), and director text that walks, climbs or reveals is discarded. (6) **Real photos
+  changed**: a code-stamped `realLocationLock` keeps the client's photo exactly, enhanced and
+  upscaled to 8K. The catalogue's TS file became its source (the JSON is historical).
+  *Flow Accounts (new, §9.21):* members' Google AI Pro accounts (30 each by 29 Oct, two a day; expiry
+  +18 months), "I'm using this account now" with automatic switching when one runs dry, mandatory
+  credits at hand-in of every video job (clips per length at the price list, editable; asked again
+  for a later round), managers (tech admin and team leaders) seeing and assigning everything with
+  provenance on each card and a notification to the new holder, totals, the drive per member, a
+  credit calculator, editable settings, and the paid ChatGPT / Grok logins shared with members. New
+  collections `flow_accounts`, `flow_credit_logs`, `paid_accounts`, `app_settings/flow_accounts`; new
+  optional `work_assignments.flowCredits`; rules added to `docs/firestore-rules.md`.
+  *Also:* a rack-focus clip's camera line no longer calls the still camera "a move"; Flow filters
+  sized with `cn()` (a class string let `w-full` win). Found and restored in the working tree:
+  `api/send-notification.ts` broken by an accidental edit in `eb2c3ff` (§26.11).
+  Verified: vitest 180 files / 2847 tests ✅ (new `duoKidsAddress`, `flowAccounts`,
+  `flowCreditsRound`; `motionAndVeo` rewritten for the new policy), build ✅, typecheck 1 known error,
+  esbuild parses `api/*`; live Gemini text runs for a human duo, Motu & Patlu, a kids duo and a single
+  presenter; a throwaway CDP harness (Firestore faked, deleted after) drove the member, tech admin,
+  team leader and Mark Complete flows and the Kids pickers at desktop and 390 px with no console
+  errors. No image or Veo run.
 - **2026-09-29: generation made ~2× faster, measured live** — a live 4-clip Telugu run took 129 s (plus
   the B-roll/overlay tail) in 13 strictly sequential calls, 20,693 thinking tokens against 6,736 of
   output. Now ~70–90 s with B-roll and overlays included; a Motu & Patlu ad 161 s → 108 s with a better
@@ -1841,20 +2028,27 @@ Design intent lives in `docs/superpowers/specs/`.
 
 ---
 
-## 32. CURRENT PROJECT STATE (as of 2026-09-25)
+## 32. CURRENT PROJECT STATE (as of 2026-10-02)
 
-- Branch `main` @ `5826db4` (the Indian-English accent is committed). Uncommitted: the generation-speed
-  work — `services/geminiService.ts`, `utils/fileHelpers.ts`, `ai-platform/AIPlatformApp.tsx`, the new
-  `test/geminiCallSpeed.test.ts` — and this CLAUDE.md.
-- `npm run build` ✅ (main chunk ≈454 KB, vendor-firebase ≈665 KB, geminiService chunk ≈790 KB).
-- `npx vitest run` ✅ 177 files, 2796 tests.
+- Branch `main` @ `69a519d` = `origin/main`. Commit `eb2c3ff` (2026-10-01) already holds the duo /
+  kids / address / motion work and the first half of Flow Accounts (types, utils, service, the add
+  dialog and parts). **Uncommitted:** the rest of Flow Accounts (page, card, credits dialog and gate,
+  paid-account dialog, hook, routes, nav, the hand-in step in `AIPlatformApp`, the rules in
+  `docs/firestore-rules.md`), the rack-focus line, the restored `api/send-notification.ts`, the new
+  tests and this CLAUDE.md.
+- `npm run build` ✅ (main chunk ≈455 KB, vendor-firebase ≈665 KB, geminiService chunk ≈810 KB,
+  FlowAccounts page ≈42 KB).
+- `npx vitest run` ✅ 180 files, 2847 tests.
 - `npx tsc -p tsconfig.check.json --noEmit` → 1 known error (VideoCallManager).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
-- Most recent work: the AdGen integrity batch (verified contact facts, script quality gate, final
-  script, fixed-distance duo camera, colour lock, job strip), the one-screen layout, the two-hander
-  speaker-label fix and the studio UI, before them the AdGen.ai batch (§31), Cinematic Ads, SMM, Poster Creation, load-time splitting.
-- Open follow-ups the owner must act on: replace the invalid and "reported as leaked" Gemini keys
-  (§26.3); publish `docs/firestore-rules.md` in the console; move secrets out of source; authenticate
+- Most recent work: duos / kids / spoken address / frame-bounded motion and Flow Accounts
+  (2026-10-02), before them generation speed, the AdGen integrity batch, the one-screen layout and
+  the studio UI (§31).
+- Open follow-ups the owner must act on: **commit and push** (the pushed `api/send-notification.ts`
+  is broken until then, §26.11); publish `docs/firestore-rules.md` in the console — now including
+  the three Flow collections, whose passwords are otherwise readable by any signed-in staff account;
+  one live Veo check of the new motion rules (a duo, Motu & Patlu, a real-photo ad); replace the
+  invalid and "reported as leaked" Gemini keys (§26.3); move secrets out of source; authenticate
   `/api/send-notification`.
 
 ---
@@ -1891,11 +2085,13 @@ SMM posting needs client approval.
 `smm_campaigns` (id = order id), `ai_generations`, `cinematic_projects`, `notifications`, HR
 (`employee_profiles`, `hr_documents`, `agreements`, `company_settings`, `onboarding_invites`,
 `member_credentials`, `public_badges`), pay (`payroll_*`, `salary_*`, `commission_settlements`,
-`leave_requests`, `daily_checkins`, `attendance`, `holidays`, `salesCheckins`).
+`leave_requests`, `daily_checkins`, `attendance`, `holidays`, `salesCheckins`), Flow
+(`flow_accounts` id = lower-cased email, `flow_credit_logs`, `paid_accounts`).
 
 **Core pipeline.** `SaleForm` → `upsertOrderForSale` (order + team-only chat + SMM campaign) →
-`SalesApprovals` verify → `createWorkAssignment` → member `MyWork` → `AIPlatformApp` →
-`useCompleteWork` (completed) → `verifyAssignments` (verified → client record). Statuses: order
+`SalesApprovals` verify → `createWorkAssignment` → member `MyWork` → `AIPlatformApp` → Mark
+Complete (a video job records its Flow credits first, `FlowCreditsGate`) → `useCompleteWork`
+(completed) → `verifyAssignments` (verified → client record). Statuses: order
 `unassigned` / `assigned` / `completed` / `verified` / `cancelled` / `deleted`; work `assigned` /
 `in_progress` / `completed` / `editing` / `verified`.
 
@@ -1903,9 +2099,12 @@ SMM posting needs client approval.
 verified contact facts (`utils/businessFacts`) → core message → voice-over with repair, quality review
 and the scored quality gate (best of three drafts), or a custom script word for word → numbers
 as words / `mariyu` in Latin → scene plan → motion plan → frames / VIDEO BOTTOM LABEL / poster → Veo prompts
-from the same plan) → `ai_generations`. Motion: mixed stand / walk / show staging in the standard
-camera vocabulary (a pair only from a fixed distance), world + place + colour locks, never a goodbye
-wave (§17.2). "Input Final Script" on row 4 rewrites 5 · 6 · 7 from a pasted script (`FinalScriptPanel`). Poster mode → `generatePosterConcepts`. Cinematic Ads (tech admin) is a separate
+from the same plan) → `ai_generations`. Motion: **the attached frame is the clip's whole world** —
+nobody walks, the camera only closes in or drifts, each Veo prompt opens with what its frame shows;
+a pair is filmed from a fixed distance at its true scale; cartoons keep a cartoon LOOK; world, place
+and colour locks; never a goodbye wave (§17.2). Duos and kids: one CAST line on every frame, screen
+names, never role labels. A verified address is said in the last clip; a client's photo is used as
+it is (8K). Flow Accounts (§9.21) track the Google AI Pro accounts and credits the videos are made with. "Input Final Script" on row 4 rewrites 5 · 6 · 7 from a pasted script (`FinalScriptPanel`). Poster mode → `generatePosterConcepts`. Cinematic Ads (tech admin) is a separate
 7-step, project-persisted pipeline. All prompts are in `services/prompts.ts` +
 `services/prompts/*`. **`aiadsdts/` is dead; never edit it.**
 

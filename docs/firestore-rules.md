@@ -158,6 +158,33 @@ service cloud.firestore {
     // decision (see services/smm), not a security boundary — every one of these documents is
     // readable by any signed-in member of staff, the same as orders and work assignments.
 
+    // ── Flow Accounts: Google AI Pro logins, their credits, and the shared paid logins ──────────
+    // These hold READABLE passwords, so they are not left to the catch-all below. A member reads and
+    // updates the accounts they added or hold (memberIds); the tech admin and the team leaders, all of
+    // their team's. `resource == null` lets the add-account transaction see that an email is still
+    // free — a missing document leaks nothing. Recording credits updates the account's monthly
+    // totals, which is why the holder may update it. See services/flowAccounts.ts.
+    function isTechManager() { return isStaff() && role() in ['main_admin', 'tech_admin', 'tech_team_leader']; }
+
+    match /flow_accounts/{id} {
+      allow read:   if isStaff() && (resource == null || request.auth.uid in resource.data.memberIds || isTechManager());
+      allow create: if isStaff() && request.resource.data.addedBy == request.auth.uid;
+      allow update: if isStaff() && (request.auth.uid in resource.data.memberIds || isTechManager());
+      allow delete: if isStaff() && (isTechManager()
+        || (resource.data.addedBy == request.auth.uid && resource.data.assignedTo == null));
+    }
+
+    match /flow_credit_logs/{id} {
+      allow read:   if isStaff() && (resource.data.userId == request.auth.uid || isTechManager());
+      allow create: if isStaff() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isStaff() && (resource.data.userId == request.auth.uid || isTechManager());
+    }
+
+    match /paid_accounts/{id} {
+      allow read:  if isStaff() && (request.auth.uid in resource.data.assigneeIds || isTechManager());
+      allow write: if isTechManager();
+    }
+
     // ── Everything else the app runs on ────────────────────────────────────────────────────────
     // Staff-only, which is what it always should have been. Nothing outside this file needs it.
     match /{document=**} {

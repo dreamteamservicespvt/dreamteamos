@@ -4,7 +4,7 @@ import {
   Settings, BookOpen, FolderOpen, Target, User, BarChart3,
   ClipboardList, Briefcase, Wrench, FileCheck, MessageSquare, Video, Eye, Film, ScrollText, CalendarClock, Trophy, History,
   ShoppingBag, Contact, Star, GraduationCap, LayoutGrid, PiggyBank, Banknote, Wand2, Search,
-  MessageSquarePlus, Megaphone,
+  MessageSquarePlus, Megaphone, Zap,
 } from "lucide-react";
 
 export interface NavItem {
@@ -37,6 +37,8 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "Dashboard", path: "/tech-admin/dashboard", icon: LayoutDashboard },
     { title: "Work Assign", path: "/tech-admin/work-assign", icon: ClipboardList },
     { title: "Orders", path: "/tech-admin/orders", icon: ShoppingBag },
+    // The Google AI Pro accounts and their credits — the team's video-making capacity, checked daily.
+    { title: "Flow Accounts", path: "/tech-admin/flow-accounts", icon: Zap },
     // Monthly retainers. A top-level link for every role that touches one: a month that is
     // behind is only ever fixed by somebody noticing, and nobody notices a submenu.
     { title: "Social Media", path: "/smm", icon: Megaphone },
@@ -133,6 +135,8 @@ const NAV: Record<UserRole, NavItem[]> = {
   tech_member: [
     { title: "Dashboard", path: "/tech/dashboard", icon: LayoutDashboard },
     { title: "My Work", path: "/tech/my-work", icon: Briefcase },
+    // Right under the work: the account a member makes videos on, and the 30-account drive.
+    { title: "Flow Accounts", path: "/tech/flow-accounts", icon: Zap },
     // Monthly retainers. A top-level link for every role that touches one: a month that is
     // behind is only ever fixed by somebody noticing, and nobody notices a submenu.
     { title: "Social Media", path: "/smm", icon: Megaphone },
@@ -201,6 +205,7 @@ const NAV: Record<UserRole, NavItem[]> = {
     // behind is only ever fixed by somebody noticing, and nobody notices a submenu.
     { title: "Social Media", path: "/smm", icon: Megaphone },
     { title: "Work Assign", path: "/team-leader/work-assign", icon: ClipboardList },
+    { title: "Flow Accounts", path: "/team-leader/flow-accounts", icon: Zap },
     { title: "Work Done & Reports", path: "/team-leader/work-reports", icon: BarChart3 },
     { title: "Feedback & Upsell", path: "/team-leader/feedback-upsell", icon: MessageSquarePlus },
     { title: "Attendance", path: "/team-leader/attendance", icon: CalendarClock },

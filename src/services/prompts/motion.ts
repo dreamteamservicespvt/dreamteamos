@@ -1042,7 +1042,11 @@ ${COLOUR_LOCK}`;
     ? `${plan.camera.key === "static_locked" ? "A steady, composed frame — the life comes from the two of them. " : ""}The camera keeps the SAME distance and the SAME height from both for all 8 seconds — it never moves toward or away from them, never rises or lowers, never zooms — so both stay exactly the size they are in the frame.`
     : plan.camera.key === "static_locked"
       ? "A steady, composed frame — the life comes from the performance."
-      : `A ${plan.speed} move that only ever moves closer or drifts a little — it never pulls back, pans away, rises or circles around to show more than the frame.`} The frame's own angle is kept. One continuous shot, no cuts.`;
+      // A rack focus is a still camera: calling it "a move that only ever moves closer" (the
+      // sentence every other move gets) told Veo to move a camera the director had just held still.
+      : plan.camera.key === "rack_focus"
+        ? "The camera itself stays still — only the focus travels; it never pulls back, pans away, rises or circles around to show more than the frame."
+        : `A ${plan.speed} move that only ever moves closer or drifts a little — it never pulls back, pans away, rises or circles around to show more than the frame.`} The frame's own angle is kept. One continuous shot, no cuts.`;
 
   const performance = `PERFORMANCE — ALIVE, NATURAL, IN PLACE:
 ${who} ${is} alive for the whole 8 seconds, ${manner}: natural breathing and blinks, the head and shoulders turning, an expressive face that reacts to the words${twoHander ? "" : ", a slight lean on the key words"} — never frozen like a statue or a cut-out, and never a moment when only the mouth moves. Clear, natural hand gestures on the key words — ${gestures} — reaching only what is within arm's reach in the frame, each flowing into the next. No waving goodbye at any point; an ending is an invitation in.${twoHander ? `

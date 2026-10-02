@@ -37,6 +37,13 @@ const SETTINGS_DOC = ["app_settings", "flow_accounts"] as const;
 /** How many events an account keeps — enough to answer "who had it and when", small enough to carry. */
 const HISTORY_LIMIT = 30;
 
+/** Where Flow Accounts lives for this role — a notification must link to a route its recipient can open. */
+export function flowAccountsPath(role?: string | null): string {
+  return role === "tech_admin" ? "/tech-admin/flow-accounts"
+    : role === "tech_team_leader" ? "/team-leader/flow-accounts"
+      : "/tech/flow-accounts";
+}
+
 /** Who is acting — the signed-in user, as much of them as the records need. */
 export type FlowActor = Pick<AppUser, "uid" | "name" | "role" | "createdBy">;
 
@@ -213,7 +220,7 @@ export async function deleteFlowAccount(accountId: string): Promise<void> {
  */
 export async function assignFlowAccount(
   account: FlowAccount,
-  to: { uid: string; name: string } | null,
+  to: { uid: string; name: string; role?: string } | null,
   actor: FlowActor,
 ): Promise<void> {
   const holder = to && to.uid !== account.addedBy ? to : null;
@@ -235,7 +242,7 @@ export async function assignFlowAccount(
       type: "flow_account_assigned",
       title: "Flow account assigned to you",
       message: `${actor.name || "Your admin"} gave you the Flow account ${account.email}. It is in Flow Accounts.`,
-      link: "/tech/flow-accounts",
+      link: flowAccountsPath(holder.role),
       dedupeKey: `flow_assigned_${account.id}_${holder.uid}`,
     }).catch(() => { /* the assignment stands either way */ });
   }
@@ -516,10 +523,10 @@ export async function deletePaidAccount(id: string): Promise<void> {
 }
 
 /** Who a paid account is shared with. Anyone newly added is told where to find it. */
-export async function setPaidAccountAssignees(account: PaidAccount, assignees: { uid: string; name: string }[], actor: FlowActor): Promise<void> {
+export async function setPaidAccountAssignees(account: PaidAccount, assignees: { uid: string; name: string; role?: string }[], actor: FlowActor): Promise<void> {
   const unique = [...new Map(assignees.map((a) => [a.uid, a])).values()];
   await updateDoc(doc(db, PAID_ACCOUNTS, account.id), {
-    assignees: unique,
+    assignees: unique.map(({ uid, name }) => ({ uid, name })),
     assigneeIds: unique.map((a) => a.uid),
     updatedAt: serverTimestamp(),
   });
@@ -529,7 +536,7 @@ export async function setPaidAccountAssignees(account: PaidAccount, assignees: {
     type: "paid_account_assigned",
     title: `${account.label} shared with you`,
     message: `${actor.name || "Your admin"} shared the ${platformName(account.platform)} account "${account.label}" with you. It is in Flow Accounts.`,
-    link: "/tech/flow-accounts",
+    link: flowAccountsPath(a.role),
     dedupeKey: `paid_assigned_${account.id}_${a.uid}`,
   }).catch(() => { /* sharing stands either way */ })));
 }
