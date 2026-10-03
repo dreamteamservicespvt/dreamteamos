@@ -35,11 +35,13 @@ beforeEach(() => { mem.__reset(); sendNotification.mockClear(); });
 afterEach(cleanup);
 
 describe("who may delete a month and appoint the team lead", () => {
-  it("lets the main admin, tech admin and Social Media Team Lead delete — not every overseer", () => {
+  it("lets the main admin, tech admin, team leader and Social Media Team Lead delete — not every overseer", () => {
     expect(plan.canDeleteSmmCampaign({ role: "tech_admin" })).toBe(true);
     expect(plan.canDeleteSmmCampaign({ role: "main_admin" })).toBe(true);
     expect(plan.canDeleteSmmCampaign({ role: "tech_member", smmLeader: true })).toBe(true);
-    expect(plan.canDeleteSmmCampaign({ role: "tech_team_leader" })).toBe(false);
+    // The owner gave the tech team leader delete on 2026-10-03.
+    expect(plan.canDeleteSmmCampaign({ role: "tech_team_leader" })).toBe(true);
+    expect(plan.canDeleteSmmCampaign({ role: "sales_admin" })).toBe(false);
     expect(plan.canDeleteSmmCampaign({ role: "sales_member" })).toBe(false);
     expect(plan.canAppointSmmLead({ role: "tech_admin" })).toBe(true);
     expect(plan.canAppointSmmLead({ role: "tech_member" })).toBe(false);
@@ -48,10 +50,12 @@ describe("who may delete a month and appoint the team lead", () => {
 
 describe("deleting a month", () => {
   it("removes a directly-added month outright", async () => {
-    const id = await smm.createDirectCampaign({
-      clientName: "Walk-in", businessName: "Walk-in Store", clientPhone: "9876543210", packageKey: "", packageLabel: "Custom",
-      amount: 5000, platforms: ["instagram"], commitments: { poster: 2, ai_ad: 0, real_video: 0 }, startDate: "2026-10-01",
-    }, ADMIN);
+    // Months can no longer be started without a sale (2026-10-03); one started before that is seeded.
+    const id = "direct1";
+    mem.__seed(`smm_campaigns/${id}`, {
+      id, orderId: "", origin: "direct", clientName: "Walk-in", businessName: "Walk-in Store", status: "active",
+      items: [], ads: [], budgetPayments: [], team: { creator: null, publisher: null, marketer: null, assistants: [] },
+    });
     expect(campaign(id)).toBeTruthy();
     await smm.deleteCampaign({ id, orderId: "" }, ADMIN);
     expect(campaign(id)).toBeUndefined();

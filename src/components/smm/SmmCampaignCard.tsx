@@ -1,96 +1,167 @@
 /**
- * One month, on the overview.
+ * One month, on the board (redrawn 2026-10-03).
  *
- * ── Why the client is the headline and the member is the footnote ─────────────────────────────
- * This list is read by people with a dozen months in front of them, and what they are looking for is
- * a client — "how is Sri Lakshmi Jewellers doing this month". So the business is set large and the
- * people on it small underneath, exactly as asked for. The bar and the one-line state sit between
- * them, because the second question is always "are we behind", and it should be answerable without
- * opening anything.
+ * ── What it has to answer without being opened ────────────────────────────────────────────────
+ * The board is read by people with a dozen clients in front of them, scanning for trouble. So each
+ * card answers, at a glance and in this order: which client and which package; how far through its
+ * dates the month is, with every post as a dot on its day; how much of each kind has been posted,
+ * one block per piece; whether it is keeping pace; what is late or waiting on the client; who is on
+ * it and who sold it. The business is set large and the people small underneath, because what they
+ * are looking for is a client.
+ *
+ * The actions (Set up, Renew) sit below the link rather than inside it — a button inside a link is
+ * a click that does two things.
  */
 import { Link } from "react-router-dom";
-import { AlertTriangle, Clock, Users } from "lucide-react";
-import { clientWaitSummary, daysLeftInCycle, fulfilment, isoDay, teamMembers } from "@/utils/smmPlan";
+import { AlertTriangle, Clock, Image as ImageIcon, Loader2, RefreshCcw, Settings2, Sparkles, Users, Video } from "lucide-react";
+import { clientWaitSummary, isOverdue, isoDay, teamMembers } from "@/utils/smmPlan";
+import {
+  clipsPerVideoOf, cyclePhase, kindSegments, needsSetup, paceOf, renewalDue, videoLengthLabel,
+} from "@/utils/smmPackage";
 import { overdueItemsFor } from "@/utils/smmReminders";
-import { ProgressBar } from "@/components/smm/SmmChips";
-import type { SmmCampaign } from "@/types/smm";
+import { KindBar, MonthTimeline, PaceChip } from "@/components/smm/SmmVisuals";
+import { PlatformChips } from "@/components/smm/SmmChips";
+import type { SmmCampaign, SmmContentKind } from "@/types/smm";
+import type { LucideIcon } from "lucide-react";
 
-export default function SmmCampaignCard({ campaign, viewerUid }: {
+const KIND_ROWS: { kind: SmmContentKind; label: string; icon: LucideIcon }[] = [
+  { kind: "ai_ad", label: "Videos", icon: Sparkles },
+  { kind: "poster", label: "Posters", icon: ImageIcon },
+  { kind: "real_video", label: "Real videos", icon: Video },
+];
+
+export default function SmmCampaignCard({ campaign, viewerUid, onSetUp, onRenew, renewing }: {
   campaign: SmmCampaign;
   /** Used only to colour "my own late work" — everyone sees the same facts. */
   viewerUid?: string;
+  /** Offered to the tech side on a month nobody is on yet. */
+  onSetUp?: (c: SmmCampaign) => void;
+  /** Offered to the month's own salesperson when its renewal is due. */
+  onRenew?: (c: SmmCampaign) => void;
+  renewing?: boolean;
 }) {
   const today = isoDay(new Date());
-  const f = fulfilment(campaign);
+  const pace = paceOf(campaign, today);
   const wait = clientWaitSummary(campaign.items);
-  const daysLeft = daysLeftInCycle(campaign.cycle, today);
   const team = teamMembers(campaign.team);
-  const late = campaign.items.filter((i) => i.uploadDate && i.status !== "posted" && i.uploadDate < today).length;
+  const late = campaign.items.filter((i) => isOverdue(i, today)).length;
   const mineLate = viewerUid ? overdueItemsFor([campaign], viewerUid, today).length : 0;
+  const setupDue = needsSetup(campaign, today);
+  const renewDue = renewalDue(campaign, today);
+  const ended = cyclePhase(campaign.cycle, today) === "ended";
+  const clips = clipsPerVideoOf(campaign);
+  const monthNo = campaign.monthNumber || 1;
+  const sellerLine = campaign.origin === "direct" ? `added by ${campaign.soldByName}` : `sold by ${campaign.soldByName}`;
+  const carriedIn = campaign.items.filter((i) => i.carriedFrom).length;
 
   return (
-    <Link
-      to={`/smm/${campaign.id}`}
-      data-test="smm-campaign-card"
-      /* `min-w-0`: this is a grid item, and a grid item will not shrink below its own content
-         unless told to — a long business name dragged the whole card off a phone screen even
-         though the heading inside it was already truncating. */
-      className="block min-w-0 rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-accent/30"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          {/* The two names people actually scan for, at the size they scan at. */}
-          <h3 data-test="smm-card-business" className="truncate text-base font-semibold leading-tight text-foreground sm:text-lg">
-            {campaign.businessName || campaign.clientName}
-          </h3>
-          <p className="truncate text-xs text-muted-foreground">
-            {campaign.clientName && campaign.clientName !== campaign.businessName ? `${campaign.clientName} · ` : ""}
-            {campaign.packageLabel}
+    <div data-test="smm-campaign-card" data-setup={setupDue ? "due" : "done"}
+      /* `min-w-0`: a grid item will not shrink below its content without it, and a long business
+         name dragged the whole card off a phone screen even though the heading truncated. */
+      className={`flex min-w-0 flex-col rounded-xl border bg-card transition-colors hover:border-primary/40 ${
+        setupDue ? "border-warning/50" : late > 0 ? "border-destructive/30" : "border-border"
+      }`}>
+      <Link to={`/smm/${campaign.id}`} className="block min-w-0 flex-1 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 data-test="smm-card-business" className="truncate text-base font-semibold leading-tight text-foreground sm:text-lg">
+              {campaign.businessName || campaign.clientName}
+            </h3>
+            <p className="truncate text-xs text-muted-foreground">
+              {campaign.clientName && campaign.clientName !== campaign.businessName ? `${campaign.clientName} · ` : ""}
+              {campaign.packageLabel}
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            {monthNo > 1 && (
+              <span data-test="smm-card-month-no" className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                Month {monthNo}
+              </span>
+            )}
+            {campaign.history && (
+              <span className="rounded-full bg-info/15 px-2 py-0.5 text-[10px] font-semibold text-info">History</span>
+            )}
+            <PlatformChips platforms={campaign.platforms} />
+          </div>
+        </div>
+
+        {(campaign.commitments?.ai_ad || 0) > 0 && (
+          <p data-test="smm-card-length" className="mt-1 text-[11px] text-muted-foreground">
+            Each video {videoLengthLabel(clips)}
           </p>
-        </div>
-        <div className="shrink-0 text-right">
-          <p data-test="smm-card-percent" className="font-mono text-lg font-bold text-primary">{f.percent}%</p>
-          <p className="text-[10px] text-muted-foreground">{f.posted}/{f.committed} posted</p>
-        </div>
-      </div>
-
-      <div className="mt-2.5"><ProgressBar percent={f.percent} tone={f.complete ? "success" : "primary"} /></div>
-
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
-        {late > 0 && (
-          <span data-test="smm-card-late" className={`inline-flex items-center gap-1 font-medium ${mineLate > 0 ? "text-destructive" : "text-warning"}`}>
-            <AlertTriangle size={11} /> {late} late{mineLate > 0 ? ` · ${mineLate} yours` : ""}
-          </span>
         )}
-        {wait.openCount > 0 && (
-          <span className="inline-flex items-center gap-1 text-warning">
-            <Clock size={11} /> {wait.openCount} waiting on client
+
+        <div className="mt-3"><MonthTimeline cycle={campaign.cycle} today={today} items={campaign.items} /></div>
+
+        <div className="mt-3 grid gap-2">
+          {KIND_ROWS.map(({ kind, label, icon }) => {
+            const committed = campaign.commitments?.[kind] || 0;
+            if (committed <= 0) return null;
+            const segments = kindSegments(campaign.items, kind, today);
+            const posted = segments.filter((s) => s.tone === "done").length;
+            return (
+              <KindBar key={kind} testId={`smm-card-bar-${kind}`} label={label} icon={icon}
+                segments={segments} committed={committed} posted={posted} />
+            );
+          })}
+        </div>
+
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px]">
+          {!campaign.history && <PaceChip pace={pace} />}
+          {late > 0 && (
+            <span data-test="smm-card-late" className={`inline-flex items-center gap-1 font-medium ${mineLate > 0 ? "text-destructive" : "text-warning"}`}>
+              <AlertTriangle size={11} /> {late} late{mineLate > 0 ? ` · ${mineLate} yours` : ""}
+            </span>
+          )}
+          {wait.openCount > 0 && (
+            <span className="inline-flex items-center gap-1 text-warning">
+              <Clock size={11} /> {wait.openCount} with the client
+            </span>
+          )}
+          {carriedIn > 0 && (
+            <span className="text-muted-foreground">{carriedIn} carried over</span>
+          )}
+          {renewDue && (
+            <span data-test="smm-card-renewal-due" className="inline-flex items-center gap-1 font-medium text-primary">
+              <RefreshCcw size={11} /> {ended ? "Renewal overdue" : "Renewal due"}
+            </span>
+          )}
+          {campaign.renewal?.nextCampaignId && (
+            <span className="font-medium text-success">Renewed</span>
+          )}
+        </div>
+
+        {/*
+          Small, underneath — the people, not the headline. The team names may run out of room; the
+          seller's may not: truncating them together left "sold by Anita" reading as "sold".
+        */}
+        <div data-test="smm-card-team" className="mt-2 flex items-center gap-1 text-[11px] text-muted-foreground">
+          <Users size={11} className="shrink-0" />
+          <span className="min-w-0 flex-1 truncate">
+            {team.length > 0
+              ? team.map((m) => `${m.name} (${m.roles.join("/")})`).join(" · ")
+              : campaign.history ? "Recorded after it ended" : "Nobody on it yet"}
           </span>
-        )}
-        <span className="text-muted-foreground">
-          {daysLeft > 0 ? `${daysLeft}d left` : daysLeft === 0 ? "Last day" : `Ended ${Math.abs(daysLeft)}d ago`}
-        </span>
-      </div>
+          <span className="shrink-0 whitespace-nowrap pl-2">{sellerLine}</span>
+        </div>
+      </Link>
 
-      {/*
-        Small, underneath — the people, not the headline.
-
-        The team names are the part allowed to run out of room; the seller's name is not. Truncating
-        the whole line together left "sold by Anita" reading as "sold", which looks like a status.
-      */}
-      <div data-test="smm-card-team" className="mt-2 flex items-center gap-1 text-[11px] text-muted-foreground">
-        <Users size={11} className="shrink-0" />
-        <span className="min-w-0 flex-1 truncate">
-          {team.length > 0
-            ? team.map((m) => `${m.name} (${m.roles.join("/")})`).join(" · ")
-            : "Nobody assigned yet"}
-        </span>
-        {/* A month that came to us directly was not sold by anybody — saying it was would put a
-            commission conversation where there is none. */}
-        <span className="shrink-0 whitespace-nowrap pl-2">
-          {campaign.origin === "direct" ? "added by" : "sold by"} {campaign.soldByName}
-        </span>
-      </div>
-    </Link>
+      {((setupDue && onSetUp) || (renewDue && onRenew)) && (
+        <div className="flex flex-wrap gap-1.5 border-t border-border px-4 py-2.5">
+          {setupDue && onSetUp && (
+            <button onClick={() => onSetUp(campaign)} data-test="smm-card-setup"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-warning px-3 text-xs font-semibold text-white hover:bg-warning/90">
+              <Settings2 size={13} /> Set up & assign
+            </button>
+          )}
+          {renewDue && onRenew && (
+            <button onClick={() => onRenew(campaign)} disabled={renewing} data-test="smm-card-renew"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+              {renewing ? <Loader2 size={13} className="animate-spin" /> : <RefreshCcw size={13} />} Renew for next month
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

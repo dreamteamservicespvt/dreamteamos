@@ -1102,6 +1102,16 @@ export default function SalesApprovals() {
                     <span className="text-muted-foreground">Package:</span>{" "}
                     <span className="text-foreground font-medium">{li.item.packageKey || "—"}</span>
                   </div>
+                  {/* Typed in by the tech side for this salesperson ("Add SMM sale") — the sale is
+                      theirs, but the approver should know it did not come from their own phone. */}
+                  {li.item.enteredBy && (
+                    <div className="col-span-2">
+                      <span data-test="approval-entered-by"
+                        className="inline-flex items-center gap-1 rounded-full bg-info/15 px-2 py-0.5 text-[10px] font-medium text-info">
+                        Entered by {li.item.enteredBy.name} for {getMemberName(li.lead.assignedTo)}
+                      </span>
+                    </div>
+                  )}
                   {/* A bulk order's price is quantity × unit × discount. Approving it means
                       approving that arithmetic, so all three are on the card rather than a total.
                       The discount is shown in the unit the member gave it in. */}

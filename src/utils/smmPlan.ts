@@ -583,14 +583,15 @@ export function isSmmOverseer(user: { role?: string; smmLeader?: boolean } | nul
 }
 
 /**
- * Who may delete a month outright (2026-10-01): the main admin, the tech admin and the Social Media
- * Team Lead. Narrower than `isSmmOverseer` on purpose — deleting throws away a month's plan, ads and
- * money trail, and a team leader or a sales admin who only oversees months has no need to.
+ * Who may delete a month outright: the main admin, the tech admin, the tech team leader (added
+ * 2026-10-03 — the owner's call, since the team leader now creates and sets months up too) and the
+ * Social Media Team Lead. Narrower than `isSmmOverseer` on purpose — deleting throws away a month's
+ * plan, ads and money trail, and a sales admin who only oversees months has no need to.
  */
 export function canDeleteSmmCampaign(user: { role?: string; smmLeader?: boolean } | null | undefined): boolean {
   if (!user) return false;
   if (user.smmLeader) return true;
-  return user.role === "main_admin" || user.role === "tech_admin";
+  return user.role === "main_admin" || user.role === "tech_admin" || user.role === "tech_team_leader";
 }
 
 /** Who may appoint or remove the Social Media Team Lead: the tech admin and the main admin. */
@@ -656,8 +657,9 @@ export function campaignHeadline(campaign: SmmCampaign, today: string): string {
   const left = daysLeftInCycle(campaign.cycle, today);
   const parts = [`${f.posted} of ${f.committed} posted`];
   if (wait.openCount > 0) parts.push(`${wait.openCount} waiting on client`);
-  if (left > 0) parts.push(`ends in ${left} day${left === 1 ? "" : "s"}`);
-  else if (left === 0) parts.push("last day");
-  else parts.push(`ended ${Math.abs(left)} day${Math.abs(left) === 1 ? "" : "s"} ago`);
+  // `left` counts today: it is 1 on the last day and 0 the day after, which used to read "last day".
+  if (left > 1) parts.push(`ends in ${left} days`);
+  else if (left === 1) parts.push("last day");
+  else parts.push(`ended ${1 - left} day${1 - left === 1 ? "" : "s"} ago`);
   return parts.join(" · ");
 }

@@ -5,25 +5,38 @@
  * A month has four separable jobs — make and post the content, run the ads, handle the money, and
  * report to the client — and on any given day a person is doing exactly one of them. Stacked into
  * one scroll, the person posting today has to scroll past a budget ledger to reach the plan, on a
- * phone, several times a day. The header carries the two facts everybody needs regardless of which
- * tab they are on: how far through the month is, and who is on it.
+ * phone, several times a day.
+ *
+ * ── The header is the month at a glance (2026-10-03) ──────────────────────────────────────────
+ * Above the tabs sits everything anybody opening the month asks first, drawn rather than written:
+ * its dates as a timeline with every post as a dot on its day, what it owes as one block per piece,
+ * whether it is keeping pace, who is on it and who sold it. Under that, where the month sits in the
+ * client's run — the month before, the renewal coming, the month after — and, on a renewal, any
+ * pieces the month before left unposted, ready to be moved in.
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import type { LucideIcon } from "lucide-react";
 import {
-  ArrowLeft, Loader2, Megaphone, Phone, MessageSquare, CalendarRange, Users, IndianRupee, Trash2,
+  ArrowLeft, ArrowRight, BellRing, CalendarRange, Image as ImageIcon, IndianRupee, Loader2, Megaphone,
+  MessageSquare, MoveRight, Phone, RefreshCcw, Settings2, Sparkles, Trash2, Users, Video, XCircle,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useSmmCampaign } from "@/hooks/useSmmCampaigns";
-import { deleteCampaign, fetchAssignableMembers, setCampaignTeam, setCycle } from "@/services/smm";
+import {
+  deleteCampaign, fetchAssignableMembers, fetchCampaign, moveUnpostedToMonth, remindSellerToRenew, setRenewal,
+} from "@/services/smm";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/utils/formatters";
 import { getWhatsAppUrl } from "@/utils/phone";
 import {
-  canDeleteSmmCampaign, canEditCampaign, clientWaitSummary, daysLeftInCycle, fulfilment, isoDay, isSmmOverseer,
-  teamMembers,
+  canDeleteSmmCampaign, canEditCampaign, clientWaitSummary, isOverdue, isPosted, isoDay,
 } from "@/utils/smmPlan";
+import {
+  SMM_SEATS, canRenewSmm, canSetUpSmm, clipsPerVideoOf, cycleRangeLabel, cyclePhase, kindSegments, monthLabel,
+  needsSetup, paceOf, renewalDue, videoLengthLabel,
+} from "@/utils/smmPackage";
 import { orderChatLink } from "@/services/orderChat";
 import SmmContentTable from "@/components/smm/SmmContentTable";
 import SmmAdsPanel from "@/components/smm/SmmAdsPanel";
@@ -31,10 +44,45 @@ import SmmMoneyPanel from "@/components/smm/SmmMoneyPanel";
 import SmmReportPanel from "@/components/smm/SmmReportPanel";
 import SmmItemDialog from "@/components/smm/SmmItemDialog";
 import SmmMessageComposer from "@/components/smm/SmmMessageComposer";
-import { ProgressBar } from "@/components/smm/SmmChips";
-import type { SmmAssignee, SmmContentItem, SmmTeam, SmmTemplateKind } from "@/types/smm";
+import { PlatformChips } from "@/components/smm/SmmChips";
+import { KindBar, MonthTimeline, PaceChip, ToneLegend } from "@/components/smm/SmmVisuals";
+import { SmmSetupDialog } from "@/components/smm/SmmSetupForm";
+import { useSmmRenewal } from "@/components/smm/useSmmRenewal";
+import { SMM_PLATFORMS, type SmmCampaign, type SmmContentItem, type SmmContentKind, type SmmTemplateKind } from "@/types/smm";
 
 type Tab = "content" | "ads" | "money" | "report";
+
+const KIND_ROWS: { kind: SmmContentKind; label: string; icon: LucideIcon }[] = [
+  { kind: "ai_ad", label: "Videos", icon: Sparkles },
+  { kind: "poster", label: "Posters", icon: ImageIcon },
+  { kind: "real_video", label: "Real videos", icon: Video },
+];
+
+const STATUS_LABEL: Partial<Record<SmmCampaign["status"], string>> = {
+  completed: "Finished",
+  renewed: "Renewed",
+  lapsed: "Not renewed",
+};
+
+/** The pieces a month owed and never posted — what can be moved into the month after it. */
+const unpostedOf = (c: SmmCampaign | null) => (c ? c.items.filter((i) => !i.extra && !isPosted(i)) : []);
+
+/** Each person on the month once, with what they do: "makes, posts & runs ads". */
+function peopleBySeat(c: SmmCampaign): { uid: string; name: string; does: string }[] {
+  const map = new Map<string, { uid: string; name: string; jobs: string[] }>();
+  for (const { seat, short } of SMM_SEATS) {
+    const who = c.team?.[seat];
+    if (!who?.uid) continue;
+    const entry = map.get(who.uid) || { uid: who.uid, name: who.name, jobs: [] };
+    entry.jobs.push(short);
+    map.set(who.uid, entry);
+  }
+  return [...map.values()].map((p) => ({
+    uid: p.uid,
+    name: p.name,
+    does: p.jobs.length > 1 ? `${p.jobs.slice(0, -1).join(", ")} & ${p.jobs[p.jobs.length - 1]}` : p.jobs[0],
+  }));
+}
 
 export default function SmmCampaignPage() {
   const { campaignId } = useParams();
@@ -44,20 +92,32 @@ export default function SmmCampaignPage() {
   const [openItem, setOpenItem] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; kind: SmmTemplateKind } | null>(null);
   const [members, setMembers] = useState<{ uid: string; name: string }[]>([]);
-  const [showTeam, setShowTeam] = useState(false);
+  const [settingUp, setSettingUp] = useState(false);
+  const [previous, setPrevious] = useState<SmmCampaign | null>(null);
+  const [busy, setBusy] = useState<"" | "delete" | "move" | "remind" | "lost">("");
 
   const canEdit = canEditCampaign(campaign || { watchers: [], soldBy: "" }, user);
-  const canAssign = isSmmOverseer(user);
+  const canSetUp = canSetUpSmm(user);
   const canDelete = canDeleteSmmCampaign(user);
+  const canRenew = !!campaign && !!user && canRenewSmm(campaign, user);
+  const { renew, renewingId } = useSmmRenewal(user);
   const navigate = useNavigate();
   const { confirm, ConfirmDialog } = useConfirm();
   const { toast } = useToast();
-  const [deleting, setDeleting] = useState(false);
   const today = isoDay(new Date());
 
   useEffect(() => {
-    if (canAssign) fetchAssignableMembers().then(setMembers);
-  }, [canAssign]);
+    if (canSetUp) fetchAssignableMembers().then(setMembers);
+  }, [canSetUp]);
+
+  // The month before — for the link back, and for any pieces it left unposted.
+  const renewalOf = campaign?.renewalOf || "";
+  useEffect(() => {
+    if (!renewalOf) { setPrevious(null); return; }
+    let cancelled = false;
+    fetchCampaign(renewalOf).then((c) => { if (!cancelled) setPrevious(c); }).catch(() => { if (!cancelled) setPrevious(null); });
+    return () => { cancelled = true; };
+  }, [renewalOf]);
 
   // The dialog reads the live item rather than a copy, so a change made in it is visible the
   // instant it is saved instead of on the next open.
@@ -83,27 +143,77 @@ export default function SmmCampaignPage() {
     );
   }
 
-  const f = fulfilment(campaign);
+  const business = campaign.businessName || campaign.clientName;
+  const pace = paceOf(campaign, today);
   const wait = clientWaitSummary(campaign.items);
-  const daysLeft = daysLeftInCycle(campaign.cycle, today);
-  const team = teamMembers(campaign.team);
+  const late = campaign.items.filter((i) => isOverdue(i, today)).length;
+  const clips = clipsPerVideoOf(campaign);
+  const monthNo = campaign.monthNumber || 1;
+  const setupDue = needsSetup(campaign, today);
+  const renewDue = renewalDue(campaign, today);
+  const ended = cyclePhase(campaign.cycle, today) === "ended";
+  const nextId = campaign.renewal?.nextCampaignId || "";
+  const leftover = unpostedOf(previous);
+  // Offered once the month before has ended — its pieces are its own until then.
+  const canCarry = canSetUp && !!previous && leftover.length > 0
+    && (previous.status !== "active" || cyclePhase(previous.cycle, today) === "ended");
+  const pageLinks = SMM_PLATFORMS.filter((p) => campaign.pageLinks?.[p.key]?.trim());
 
   const removeMonth = async () => {
     const { confirmed } = await confirm({
-      title: `Delete ${campaign.businessName || campaign.clientName}'s month?`,
+      title: `Delete ${business}'s month?`,
       description: "Its plan, ads, money and report go for everyone, and it will not come back if the sale is edited. This cannot be undone.",
       confirmText: "Delete month",
       variant: "destructive",
     });
     if (!confirmed) return;
-    setDeleting(true);
+    setBusy("delete");
     try {
       await deleteCampaign(campaign, user);
-      toast({ title: "Month deleted", description: campaign.businessName || campaign.clientName });
+      toast({ title: "Month deleted", description: business });
       navigate("/smm");
     } catch {
       toast({ title: "Could not delete the month", description: "Try again.", variant: "destructive" });
-      setDeleting(false);
+      setBusy("");
+    }
+  };
+
+  const moveLeftover = async () => {
+    if (!previous) return;
+    setBusy("move");
+    try {
+      const moved = await moveUnpostedToMonth(previous.id, campaign.id, leftover.map((i) => i.id), user);
+      toast({ title: `${moved} piece${moved === 1 ? "" : "s"} moved in`, description: `From ${monthLabel(previous.cycle.startDate)} — still owed, now planned here.` });
+    } catch (err) {
+      toast({ title: "Not moved", description: err instanceof Error ? err.message : "Try again.", variant: "destructive" });
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const remind = async () => {
+    setBusy("remind");
+    try {
+      await remindSellerToRenew(campaign, user);
+      toast({ title: `${campaign.soldByName} has been reminded` });
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const notRenewing = async () => {
+    const { confirmed } = await confirm({
+      title: `${business} is not renewing?`,
+      description: "The month is closed as not renewed once its last day has passed. You can still renew it later from the sale form.",
+      confirmText: "Not renewing",
+    });
+    if (!confirmed) return;
+    setBusy("lost");
+    try {
+      await setRenewal(campaign.id, "lost", user);
+      toast({ title: "Marked as not renewing" });
+    } finally {
+      setBusy("");
     }
   };
 
@@ -116,88 +226,194 @@ export default function SmmCampaignPage() {
         <ArrowLeft size={14} /> Social Media Management
       </Link>
 
-      {/* ── Who this is, and how it is going ──────────────────────────────────────────────── */}
+      {/* ── The month at a glance ─────────────────────────────────────────────────────────── */}
       <div className="rounded-xl border border-border bg-card p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h1 data-test="smm-page-business" className="truncate text-xl font-bold text-foreground sm:text-2xl">
-              {campaign.businessName || campaign.clientName}
-            </h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 data-test="smm-page-business" className="truncate text-xl font-bold text-foreground sm:text-2xl">{business}</h1>
+              {monthNo > 1 && (
+                <span data-test="smm-page-month-no" className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">Month {monthNo}</span>
+              )}
+              {campaign.history && <span className="rounded-full bg-info/15 px-2 py-0.5 text-[11px] font-semibold text-info">History</span>}
+              {!campaign.history && STATUS_LABEL[campaign.status] && (
+                <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">{STATUS_LABEL[campaign.status]}</span>
+              )}
+            </div>
             <p className="text-sm text-muted-foreground">
               {campaign.clientName && campaign.clientName !== campaign.businessName ? `${campaign.clientName} · ` : ""}
               {campaign.packageLabel} · {formatCurrency(campaign.amount)}
             </p>
+            <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+              <span data-test="smm-page-range"><CalendarRange size={12} className="mr-1 inline" />{cycleRangeLabel(campaign.cycle)}</span>
+              {(campaign.commitments?.ai_ad || 0) > 0 && (
+                <span data-test="smm-page-length">· each video <b className="text-foreground">{videoLengthLabel(clips)}</b></span>
+              )}
+              <PlatformChips platforms={campaign.platforms} />
+            </p>
           </div>
-          <div className="flex items-center gap-1.5">
-            <a
-              href={getWhatsAppUrl(campaign.clientPhone)}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium text-foreground hover:bg-accent"
-            >
+          <div className="flex flex-wrap items-center gap-1.5">
+            <a href={getWhatsAppUrl(campaign.clientPhone)} target="_blank" rel="noreferrer"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium text-foreground hover:bg-accent">
               <Phone size={13} /> Client
             </a>
-            {/* A directly-added month has no order behind it, so there is no client chat room to
-                open — the link would lead to a page that says the chat does not exist. */}
+            {/* A month with no order behind it (started directly, before every month had a sale)
+                has no client chat room — the link would lead to a page saying so. */}
             {campaign.orderId && (
-              <a
-                href={orderChatLink(campaign.id)}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium text-foreground hover:bg-accent"
-              >
+              <a href={orderChatLink(campaign.orderId)} target="_blank" rel="noreferrer"
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium text-foreground hover:bg-accent">
                 <MessageSquare size={13} /> Their chat
               </a>
             )}
+            {canSetUp && campaign.status === "active" && !campaign.history && (
+              <button data-test="smm-page-setup" onClick={() => setSettingUp(true)}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-primary/50 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/10">
+                <Settings2 size={13} /> {campaign.setupAt || !setupDue ? "Edit setup" : "Set up & assign"}
+              </button>
+            )}
             {canDelete && (
-              <button
-                data-test="smm-delete-month"
-                onClick={removeMonth}
-                disabled={deleting}
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-destructive/40 px-3 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
-              >
-                {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Delete
+              <button data-test="smm-delete-month" onClick={removeMonth} disabled={busy === "delete"}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-destructive/40 px-3 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50">
+                {busy === "delete" ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Delete
               </button>
             )}
           </div>
         </div>
 
-        <div className="mt-3"><ProgressBar percent={f.percent} tone={f.complete ? "success" : "primary"} /></div>
-        <p className="mt-1.5 text-xs text-muted-foreground">
-          <strong className="text-foreground">{f.posted} of {f.committed}</strong> posted
-          {wait.openCount > 0 ? ` · ${wait.openCount} waiting on the client` : ""}
-          {" · "}{campaign.cycle.startDate} → {campaign.cycle.endDate}
-          {daysLeft > 0 ? ` (${daysLeft}d left)` : daysLeft === 0 ? " (last day)" : " (ended)"}
-        </p>
+        {setupDue && canSetUp && (
+          <div data-test="smm-page-needs-setup" className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 p-2.5 text-xs text-foreground">
+            <span className="min-w-0 flex-1">Nobody is on this month yet. Set its dates and video length, and give the work out.</span>
+            <button onClick={() => setSettingUp(true)}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-warning px-3 text-xs font-semibold text-white hover:bg-warning/90">
+              <Settings2 size={13} /> Set up & assign
+            </button>
+          </div>
+        )}
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+          <div className="min-w-0">
+            <MonthTimeline cycle={campaign.cycle} today={today} items={campaign.items} size="lg" />
+            <ToneLegend className="mt-2" />
+          </div>
+          <div className="grid min-w-0 gap-2.5">
+            {KIND_ROWS.map(({ kind, label, icon }) => {
+              const committed = campaign.commitments?.[kind] || 0;
+              if (committed <= 0) return null;
+              const segments = kindSegments(campaign.items, kind, today);
+              const carried = campaign.items.filter((i) => i.kind === kind && i.carriedFrom).length;
+              return (
+                <KindBar key={kind} testId={`smm-page-bar-${kind}`} label={label} icon={icon}
+                  segments={segments} committed={committed} posted={segments.filter((s) => s.tone === "done").length}
+                  note={kind === "ai_ad" ? `${clips * 8}s each${carried ? ` · ${carried} carried` : ""}` : carried ? `${carried} carried` : undefined} />
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+          {!campaign.history && <PaceChip pace={pace} />}
+          {late > 0 && <span className="font-medium text-destructive">{late} late</span>}
+          {wait.openCount > 0 && <span className="text-warning">{wait.openCount} waiting on the client</span>}
+          {campaign.history && <span className="text-muted-foreground">Recorded after the month ended — its delivery was not tracked here.</span>}
+        </div>
 
         {/* Small, underneath the client — the people on the month. */}
-        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
-          <Users size={11} />
-          {team.length > 0
-            ? team.map((m) => <span key={m.uid}>{m.name} <span className="opacity-70">({m.roles.join("/")})</span></span>)
-            : <span>Nobody assigned yet</span>}
-          <span className="opacity-70">· {campaign.origin === "direct" ? "added by" : "sold by"} {campaign.soldByName}</span>
-          {canAssign && (
-            <button
-              data-test="smm-edit-team"
-              onClick={() => setShowTeam((v) => !v)}
-              className="ml-1 inline-flex h-6 items-center rounded border border-border px-2 text-[10px] font-medium text-foreground transition-colors hover:bg-accent"
-            >
-              Change
+        <div data-test="smm-page-people" className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-3 text-[11px] text-muted-foreground">
+          <Users size={12} />
+          {/* One entry per person — "Divya makes, posts & runs ads", not her name three times. */}
+          {peopleBySeat(campaign).map((p) => (
+            <span key={p.uid}><b className="text-foreground">{p.name}</b> {p.does}</span>
+          ))}
+          {(campaign.team?.assistants || []).length > 0 && (
+            <span>Assisting: {(campaign.team.assistants || []).map((a) => a.name).join(", ")}</span>
+          )}
+          {!campaign.team?.creator && !campaign.team?.publisher && !campaign.team?.marketer && (
+            <span>{campaign.history ? "No team — recorded as history" : "Nobody on it yet"}</span>
+          )}
+          <span className="ml-auto">
+            {campaign.origin === "direct" ? "added by" : "sold by"} <b className="text-foreground">{campaign.soldByName}</b>
+            {campaign.setupByName ? ` · set up by ${campaign.setupByName}` : ""}
+          </span>
+        </div>
+
+        {pageLinks.length > 0 && (
+          <div data-test="smm-page-links" className="mt-2 flex flex-wrap gap-1.5">
+            {pageLinks.map((p) => {
+              const raw = campaign.pageLinks?.[p.key]?.trim() || "";
+              const href = /^https?:\/\//i.test(raw) ? raw : null;
+              return href ? (
+                <a key={p.key} href={href} target="_blank" rel="noreferrer"
+                  className="inline-flex h-7 items-center rounded-md border border-border px-2 text-[11px] text-foreground hover:bg-accent">
+                  {p.label}: {raw.replace(/^https?:\/\/(www\.)?/i, "").slice(0, 40)}
+                </a>
+              ) : (
+                <span key={p.key} className="inline-flex h-7 items-center rounded-md border border-border px-2 text-[11px] text-foreground">
+                  {p.label}: {raw}
+                </span>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Where this month sits in the client's run ─────────────────────────────────────── */}
+      {(renewalOf || nextId || renewDue || campaign.renewal?.state === "lost") && (
+        <div data-test="smm-page-renewal" className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3 text-xs">
+          {renewalOf && (
+            <Link to={`/smm/${renewalOf}`} className="inline-flex h-8 items-center gap-1 rounded-lg border border-border px-2.5 font-medium text-foreground hover:bg-accent">
+              <ArrowLeft size={12} /> {previous ? monthLabel(previous.cycle.startDate) : "Previous month"}
+            </Link>
+          )}
+          <span className="min-w-0 flex-1 text-muted-foreground">
+            {nextId
+              ? <>Renewed{campaign.renewal?.byName ? ` by ${campaign.renewal.byName}` : ""} — the next month is set.</>
+              : campaign.renewal?.state === "lost"
+                ? "Not renewing."
+                : renewDue
+                  ? (ended
+                    ? <>The month has ended without a renewal decision.</>
+                    : <>Renewal due — {campaign.soldByName} renews it by recording the sale.</>)
+                  : <>Month {monthNo} of this client.</>}
+          </span>
+          {nextId && (
+            <Link to={`/smm/${nextId}`} data-test="smm-page-next"
+              className="inline-flex h-8 items-center gap-1 rounded-lg bg-success/15 px-2.5 font-medium text-success hover:bg-success/25">
+              Next month <ArrowRight size={12} />
+            </Link>
+          )}
+          {renewDue && canRenew && (
+            <>
+              <button onClick={() => renew(campaign)} disabled={renewingId === campaign.id} data-test="smm-page-renew"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                {renewingId === campaign.id ? <Loader2 size={12} className="animate-spin" /> : <RefreshCcw size={12} />} Renew for next month
+              </button>
+              <button onClick={notRenewing} disabled={busy === "lost"} data-test="smm-page-not-renewing"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 font-medium text-muted-foreground hover:bg-accent disabled:opacity-50">
+                <XCircle size={12} /> Not this time
+              </button>
+            </>
+          )}
+          {renewDue && !canRenew && canSetUp && campaign.soldBy !== user.uid && (
+            <button onClick={remind} disabled={busy === "remind"} data-test="smm-page-remind"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 font-medium text-foreground hover:bg-accent disabled:opacity-50">
+              {busy === "remind" ? <Loader2 size={12} className="animate-spin" /> : <BellRing size={12} />} Remind {campaign.soldByName}
             </button>
           )}
         </div>
+      )}
 
-        {showTeam && canAssign && (
-          <TeamEditor
-            campaignId={campaign.id}
-            team={campaign.team}
-            members={members}
-            cycleStart={campaign.cycle.startDate}
-            onDone={() => setShowTeam(false)}
-          />
-        )}
-      </div>
+      {canCarry && previous && (
+        <div data-test="smm-page-carry" className="flex flex-wrap items-center gap-2 rounded-xl border border-warning/40 bg-warning/5 p-3 text-xs text-foreground">
+          <span className="min-w-0 flex-1">
+            {monthLabel(previous.cycle.startDate)} left <b>{leftover.length} piece{leftover.length === 1 ? "" : "s"}</b> unposted.
+            They are still owed — move them into this month to plan them here.
+          </span>
+          <button onClick={moveLeftover} disabled={busy === "move"}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-warning px-3 font-semibold text-white hover:bg-warning/90 disabled:opacity-50">
+            {busy === "move" ? <Loader2 size={12} className="animate-spin" /> : <MoveRight size={12} />} Move them here
+          </button>
+        </div>
+      )}
 
       {/* ── The four jobs ────────────────────────────────────────────────────────────────── */}
       <div className="inline-flex w-full overflow-x-auto rounded-xl border border-border bg-card p-0.5">
@@ -207,14 +423,10 @@ export default function SmmCampaignPage() {
           { key: "money" as const, label: "Money", Icon: IndianRupee },
           { key: "report" as const, label: "Report", Icon: Users },
         ]).map(({ key, label, Icon }) => (
-          <button
-            key={key}
-            data-test={`smm-tab-${key}`}
-            onClick={() => setTab(key)}
+          <button key={key} data-test={`smm-tab-${key}`} onClick={() => setTab(key)}
             className={`inline-flex h-9 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 text-xs font-medium transition-colors ${
-              tab === key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-accent"
-            }`}
-          >
+              tab === key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground"
+            }`}>
             <Icon size={13} /> {label}
           </button>
         ))}
@@ -224,173 +436,30 @@ export default function SmmCampaignPage() {
         <SmmContentTable campaign={campaign} canEdit={canEdit} onOpen={(i: SmmContentItem) => setOpenItem(i.id)} />
       )}
       {tab === "ads" && (
-        <SmmAdsPanel
-          campaign={campaign}
-          canEdit={canEdit}
-          actorName={user.name}
-          onMessage={(text) => setMessage({ text, kind: "daily_report" })}
-        />
+        <SmmAdsPanel campaign={campaign} canEdit={canEdit} actorName={user.name}
+          onMessage={(text) => setMessage({ text, kind: "daily_report" })} />
       )}
       {tab === "money" && (
-        <SmmMoneyPanel
-          campaign={campaign}
-          canEdit={canEdit}
-          actorName={user.name}
-          actorUid={user.uid}
-          onMessage={(text) => setMessage({ text, kind: "extra_work" })}
-        />
+        <SmmMoneyPanel campaign={campaign} canEdit={canEdit} actorName={user.name} actorUid={user.uid}
+          onMessage={(text) => setMessage({ text, kind: "extra_work" })} />
       )}
       {tab === "report" && (
         <SmmReportPanel campaign={campaign} user={user} onMessage={(text, kind) => setMessage({ text, kind })} />
       )}
 
       {item && (
-        <SmmItemDialog
-          campaign={campaign}
-          item={item}
-          user={user}
-          members={canAssign ? members : []}
-          onClose={() => setOpenItem(null)}
-          onMessage={(text, kind) => setMessage({ text, kind })}
-        />
+        <SmmItemDialog campaign={campaign} item={item} user={user} members={canSetUp ? members : []}
+          onClose={() => setOpenItem(null)} onMessage={(text, kind) => setMessage({ text, kind })} />
       )}
 
       {message && (
-        <SmmMessageComposer
-          campaign={campaign}
-          initialText={message.text}
-          kind={message.kind}
-          user={user}
-          onClose={() => setMessage(null)}
-        />
+        <SmmMessageComposer campaign={campaign} initialText={message.text} kind={message.kind} user={user}
+          onClose={() => setMessage(null)} />
       )}
-    </div>
-  );
-}
 
-/**
- * Who is on the month, and when it runs.
- *
- * The three seats mirror the order's own tracks, so assigning here and assigning on the Orders
- * queue mean the same thing. Assistants are the part the tracks cannot express — the junior put
- * alongside the main member on a big month, who needs to see the plan and be reminded about it like
- * anybody else doing the work.
- */
-function TeamEditor({ campaignId, team, members, cycleStart, onDone }: {
-  campaignId: string;
-  team: SmmTeam;
-  members: SmmAssignee[];
-  cycleStart: string;
-  onDone: () => void;
-}) {
-  const [saving, setSaving] = useState(false);
-  const [start, setStart] = useState(cycleStart);
-  const [days, setDays] = useState(30);
-
-  const pick = async (seat: "creator" | "publisher" | "marketer", uid: string) => {
-    const m = members.find((x) => x.uid === uid);
-    setSaving(true);
-    try {
-      await setCampaignTeam(campaignId, { ...team, [seat]: m ? { uid: m.uid, name: m.name } : null });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const toggleAssistant = async (uid: string) => {
-    const m = members.find((x) => x.uid === uid);
-    if (!m) return;
-    const has = team.assistants.some((a) => a.uid === uid);
-    setSaving(true);
-    try {
-      await setCampaignTeam(campaignId, {
-        ...team,
-        assistants: has ? team.assistants.filter((a) => a.uid !== uid) : [...team.assistants, { uid: m.uid, name: m.name }],
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div data-test="smm-team-editor" className="mt-3 space-y-2.5 rounded-lg border border-border bg-background p-3">
-      <div className="grid gap-2 sm:grid-cols-3">
-        {([
-          { seat: "creator" as const, label: "Makes the content" },
-          { seat: "publisher" as const, label: "Posts it" },
-          { seat: "marketer" as const, label: "Runs the ads" },
-        ]).map(({ seat, label }) => (
-          <div key={seat}>
-            <label className="text-[11px] font-medium text-muted-foreground">{label}</label>
-            <select
-              value={team[seat]?.uid || ""}
-              data-test={`smm-seat-${seat}`}
-              disabled={saving}
-              onChange={(e) => pick(seat, e.target.value)}
-              className="mt-1 h-9 w-full rounded-md border border-border bg-card px-2 text-sm text-foreground outline-none focus:border-primary disabled:opacity-50"
-            >
-              <option value="">Nobody</option>
-              {members.map((m) => <option key={m.uid} value={m.uid}>{m.name}</option>)}
-            </select>
-          </div>
-        ))}
-      </div>
-
-      <div>
-        <label className="text-[11px] font-medium text-muted-foreground">Assisting (juniors on a big month)</label>
-        <div className="mt-1 flex flex-wrap gap-1.5">
-          {members.map((m) => {
-            const on = team.assistants.some((a) => a.uid === m.uid);
-            return (
-              <button
-                key={m.uid}
-                data-test={`smm-assistant-${m.uid}`}
-                disabled={saving}
-                onClick={() => toggleAssistant(m.uid)}
-                className={`rounded-md border px-2 py-1 text-[11px] font-medium transition-colors disabled:opacity-50 ${
-                  on ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent"
-                }`}
-              >
-                {m.name}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-end gap-2">
-        <div>
-          <label className="text-[11px] font-medium text-muted-foreground">Month runs from</label>
-          <input
-            type="date"
-            value={start}
-            data-test="smm-cycle-start"
-            onChange={(e) => setStart(e.target.value)}
-            className="mt-1 h-9 rounded-md border border-border bg-card px-2 text-sm text-foreground outline-none focus:border-primary"
-          />
-        </div>
-        <div className="w-20">
-          <label className="text-[11px] font-medium text-muted-foreground">Days</label>
-          <input
-            type="number"
-            min={1}
-            value={days}
-            onChange={(e) => setDays(Math.max(1, Number(e.target.value) || 30))}
-            className="mt-1 h-9 w-full rounded-md border border-border bg-card px-2 text-sm text-foreground outline-none focus:border-primary"
-          />
-        </div>
-        <button
-          data-test="smm-cycle-save"
-          disabled={saving}
-          onClick={async () => { setSaving(true); try { await setCycle(campaignId, start, days); } finally { setSaving(false); } }}
-          className="h-9 rounded-md border border-border px-3 text-xs font-medium text-foreground hover:bg-accent disabled:opacity-50"
-        >
-          Set dates
-        </button>
-        <button onClick={onDone} className="ml-auto h-9 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90">
-          Done
-        </button>
-      </div>
+      {settingUp && (
+        <SmmSetupDialog campaign={campaign} user={user} onClose={() => setSettingUp(false)} />
+      )}
     </div>
   );
 }

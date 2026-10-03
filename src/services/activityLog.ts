@@ -39,7 +39,9 @@ export type ActivityAction =
   | "purged_orders"
   // ── tech: money charged against an order ──
   | "added_penalty"
-  | "removed_penalty";
+  | "removed_penalty"
+  // ── tech: a social-media month's dates, video length and team set (services/smmSetup) ──
+  | "set_up_smm_month";
 
 /** Who can appear in the feed. Tech roles were added when tech actions started being recorded. */
 export type ActivityActorRole =
@@ -51,7 +53,7 @@ export type ActivityActorRole =
 export const TECH_ACTIVITY_ACTIONS: ActivityAction[] = [
   "assigned_work", "unassigned_work", "reassigned_work", "verified_work",
   "deleted_orders", "restored_orders", "cleaned_up_orders", "purged_orders",
-  "added_penalty", "removed_penalty",
+  "added_penalty", "removed_penalty", "set_up_smm_month",
 ];
 
 export interface ActivityLogEntry {

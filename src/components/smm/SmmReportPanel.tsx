@@ -13,15 +13,18 @@
  * seller makes it holding the evidence, instead of ringing to say "shall we continue?"
  */
 import { useState } from "react";
-import { Send, Trophy, Clock, TrendingUp, CheckCircle2, XCircle } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Send, Trophy, Clock, TrendingUp, ArrowRight, RefreshCcw, XCircle, Loader2 } from "lucide-react";
 import { formatCurrency } from "@/utils/formatters";
 import {
   adTotals, allAdReports, clientWaitSummary, daysLeftInCycle, extraWork, fulfilment, isoDay,
   postsByPlatform,
 } from "@/utils/smmPlan";
+import { canRenewSmm, cycleTimeLabel, renewalDue } from "@/utils/smmPackage";
 import { monthlyReportMessage, renewalMessage } from "@/utils/smmMessages";
 import { setRenewal } from "@/services/smm";
 import { useToast } from "@/hooks/use-toast";
+import { useSmmRenewal } from "@/components/smm/useSmmRenewal";
 import { SMM_CONTENT_KINDS, type SmmCampaign } from "@/types/smm";
 import { ProgressBar } from "@/components/smm/SmmChips";
 import type { AppUser } from "@/types";
@@ -39,14 +42,19 @@ export default function SmmReportPanel({ campaign, user, onMessage }: {
   const extras = extraWork(campaign.items);
   const platforms = postsByPlatform(campaign.items);
   const daysLeft = daysLeftInCycle(campaign.cycle, today);
-  const isSeller = campaign.soldBy === user.uid;
+  // Renewing is the month's own salesperson's, through a sale (2026-10-03).
+  const isSeller = canRenewSmm(campaign, user);
+  const due = renewalDue(campaign, today);
+  const nextId = campaign.renewal?.nextCampaignId || "";
+  const moved = campaign.carriedOut || [];
   const [busy, setBusy] = useState(false);
+  const { renew, renewingId } = useSmmRenewal(user);
 
-  const mark = async (state: "won" | "lost" | "pitched") => {
+  const mark = async (state: "lost" | "pitched") => {
     setBusy(true);
     try {
       await setRenewal(campaign.id, state, user);
-      toast({ title: state === "won" ? "Renewed" : state === "lost" ? "Marked not renewing" : "Pitch recorded" });
+      toast({ title: state === "lost" ? "Marked not renewing" : "Pitch recorded" });
     } catch {
       toast({ title: "Not saved", description: "Try again.", variant: "destructive" });
     } finally {
@@ -111,7 +119,7 @@ export default function SmmReportPanel({ campaign, user, onMessage }: {
       </section>
 
       {/* ── Where the month actually went ────────────────────────────────────────────────── */}
-      {(wait.totalDays > 0 || extras.items.length > 0) && (
+      {(wait.totalDays > 0 || extras.items.length > 0 || moved.length > 0) && (
         <section className="rounded-lg border border-border bg-card p-3 text-xs text-muted-foreground">
           {wait.totalDays > 0 && (
             <p data-test="smm-wait-line">
@@ -131,6 +139,13 @@ export default function SmmReportPanel({ campaign, user, onMessage }: {
               {extras.unbilled > 0 ? `. ${extras.unbilled} still to settle.` : "."}
             </p>
           )}
+          {/* Owed by this month, not posted in its dates, and carried into the next one. */}
+          {moved.length > 0 && (
+            <p className="mt-1.5" data-test="smm-moved-line">
+              <strong className="text-foreground">{moved.length} piece{moved.length === 1 ? "" : "s"}</strong> not posted
+              in this month {moved.length === 1 ? "was" : "were"} moved into the next month, where {moved.length === 1 ? "it is" : "they are"} still owed.
+            </p>
+          )}
         </section>
       )}
 
@@ -147,15 +162,24 @@ export default function SmmReportPanel({ campaign, user, onMessage }: {
         <h3 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
           <Trophy size={14} className="text-warning" /> Next month
         </h3>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          {campaign.renewal?.state === "won" ? `Renewed${campaign.renewal.byName ? ` — ${campaign.renewal.byName}` : ""}.`
+        <p className="mt-0.5 text-xs text-muted-foreground" data-test="smm-renewal-state">
+          {nextId || campaign.renewal?.state === "won"
+            ? `Renewed${campaign.renewal?.byName ? ` by ${campaign.renewal.byName}` : ""} — the next month has its own plan, ads and report.`
             : campaign.renewal?.state === "lost" ? "Not renewing."
             : campaign.renewal?.state === "pitched" ? "Pitched, waiting on the client."
             : daysLeft <= 5 ? "The month is nearly up — this is the moment to ask, with the figures in hand."
-            : `Ends in ${daysLeft} days.`}
+            : `${cycleTimeLabel(campaign.cycle, today)}.`}
+          {!isSeller && !nextId && campaign.renewal?.state !== "lost"
+            ? ` Renewals are recorded by ${campaign.soldByName}, as a sale.` : ""}
         </p>
 
-        {isSeller && campaign.renewal?.state !== "won" && (
+        {/*
+          A renewal is a sale (2026-10-03): Renew opens the salesperson's sale form on this client,
+          pre-filled from this month, and saving it opens the next month with the same team. There is
+          no "they renewed" tick any more — a renewal with no sale behind it paid nobody and linked to
+          nothing.
+        */}
+        {isSeller && !nextId && campaign.renewal?.state !== "won" && (
           <div className="mt-2 flex flex-wrap gap-1.5">
             <button
               data-test="smm-send-renewal"
@@ -164,14 +188,16 @@ export default function SmmReportPanel({ campaign, user, onMessage }: {
             >
               <Send size={11} /> Send the renewal ask
             </button>
-            <button
-              data-test="smm-renewal-won"
-              disabled={busy}
-              onClick={() => mark("won")}
-              className="inline-flex items-center gap-1.5 rounded-md border border-success/50 bg-success/10 px-2.5 py-1.5 text-[11px] font-medium text-success hover:bg-success/20 disabled:opacity-50"
-            >
-              <CheckCircle2 size={11} /> They renewed
-            </button>
+            {(due || campaign.renewal?.state === "pitched") && (
+              <button
+                data-test="smm-renewal-renew"
+                disabled={renewingId === campaign.id}
+                onClick={() => renew(campaign)}
+                className="inline-flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              >
+                {renewingId === campaign.id ? <Loader2 size={11} className="animate-spin" /> : <RefreshCcw size={11} />} Renew — record the sale
+              </button>
+            )}
             <button
               data-test="smm-renewal-lost"
               disabled={busy}
@@ -182,10 +208,11 @@ export default function SmmReportPanel({ campaign, user, onMessage }: {
             </button>
           </div>
         )}
-        {campaign.renewal?.state === "won" && (
-          <p className="mt-2 text-[11px] text-muted-foreground">
-            Record next month as a new sale on this client — it gets its own plan, its own ads and its own report.
-          </p>
+        {nextId && (
+          <Link to={`/smm/${nextId}`} data-test="smm-renewal-next"
+            className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline">
+            Open the next month <ArrowRight size={11} />
+          </Link>
         )}
       </section>
     </div>

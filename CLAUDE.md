@@ -8,7 +8,8 @@
 > frame-bounded video, Kids, spoken-address and AI Accounts work (§9.21, §13, §17.2, §24–§27, §31), and
 > the SMM delete / Social Media Team Lead / typed extra work changes (§7, §9.9, §31); 2026-10-02 for
 > the merge that dropped a parallel local Flow module (§28, §31, §32).
-> **Quick start:** read **§33 AI Development Context** first, then **§29 Rules** and **§30 Change Protocol**.
+> **Quick start:** if **`HANDOFF.md`** exists, read it FIRST — it is an unfinished task. Then read
+> **§34 Session & usage protocol**, **§33 AI Development Context**, **§29 Rules** and **§30 Change Protocol**.
 >
 > Legend: ✅ implemented · 🟡 partial · ❌ not implemented · **[NOT CONFIRMED]** = could not be
 > verified from code (e.g. live console/deployment state).
@@ -198,7 +199,7 @@ DTS-OS/
 │   ├── types/                 ← index.ts (core model), aiPlatform, cinematicAds, hr, payroll, smm,
 │   │                            orderChat, onboarding
 │   ├── lib/utils.ts           ← shadcn `cn()`
-│   └── test/                  ← Vitest suites (183 files, 2873 tests at 2026-10-01) + setup.ts + memoryFirestore.ts
+│   └── test/                  ← Vitest suites (186 files, 2910 tests at 2026-10-03) + setup.ts + memoryFirestore.ts
 ├── public/                    ← PWA manifests, FCM service worker, logos/icons
 ├── docs/
 │   ├── AI-MEMORY.md           ← HISTORICAL session log up to 2026-09-19 (superseded by §31; do not extend)
@@ -260,7 +261,7 @@ tech admin). Filters like `u.createdBy === teamAdminUid` recur across pages.
   payroll and reports. Their `ai_generations` are visible to the tech admin (`AdsHistoryModal`).
   Set by tech admin in My Team.
 - `smmLeader: true` — shown as **Social Media Team Lead** (2026-10-01): sees every SMM campaign, may
-  assign, start and **delete** months (`utils/smmPlan.isSmmOverseer`, `canDeleteSmmCampaign`), and is
+  set up, assign and **delete** months (`utils/smmPlan.isSmmOverseer`, `canDeleteSmmCampaign`), and is
   notified when a month is sold (`smm_new_month`). Keeps their normal role. Appointed by the tech admin
   or main admin in the Team Lead panel at the top of `/smm` (`SmmTeamLeadPanel`, `canAppointSmmLead`)
   or the megaphone toggle in My Team; both go through `services/smm.setSmmTeamLead` (notifies them).
@@ -328,8 +329,11 @@ legacy users without the field active.
 | Assign bulk video slots | ✅ | ✅ | ✅ | | | | |
 | Tick bulk slot done | ✅ | ✅ | ✅ | own slot | | | |
 | Edit order progress counters (non-derived) | ✅ | ✅ | ✅ | track holder | | | |
-| See all SMM months / start direct month | ✅ | ✅ | ✅ | smmLeader | ✅ | | |
-| Delete an SMM month | ✅ | ✅ | | smmLeader | | | |
+| See all SMM months | ✅ | ✅ | ✅ | smmLeader | ✅ | | |
+| Add SMM sale for a salesperson (`canRecordSmmSaleForSeller`) | ✅ | ✅ | ✅ | | | | |
+| Set up / assign / edit an SMM month (`canSetUpSmm`) | ✅ | ✅ | ✅ | smmLeader | | | |
+| Renew an SMM month — as a sale (`canRenewSmm`) | | | | | | ✅ own month | |
+| Delete an SMM month | ✅ | ✅ | ✅ (2026-10-03) | smmLeader | | | |
 | Appoint / remove the Social Media Team Lead | ✅ | ✅ | | | | | |
 | Edit an SMM month | overseer | overseer | overseer | if watcher | overseer | if seller/watcher | |
 | Manage client profiles | ✅ | | | | ✅ | | |
@@ -423,6 +427,30 @@ video / Wishes video / Cinematic video (`SMM_EXTRA_WORK_TYPES`) and, for a video
 (16/32/48/64 s or other) — stored as `extraType` / `extraDuration` with the title "Promotional video ·
 32 sec"; it now goes through `addItem`, which notifies the seller (the old button used `addItems`,
 which notified nobody). The top bar's breadcrumb names a month by its business, never its order id.
+**2026-10-03 — every month is a sale; setup, renewal, board.** No-sale "Start a month" removed
+(`createDirectCampaign` gone; old `origin:"direct"` months still work, seats only). **Add SMM sale**
+(`SmmAddSaleDialog`, `services/smmSetup`): the client's number lists every SMM sale ever recorded on it
+(`findSmmSalesForPhone`, any salesperson, legacy `saleDetails` too); a sale already there is **set up,
+never sold again** (`setupSaleMonth`: restores a removed order / rebuilds a purged one under the same
+id with `announce:false`, replaces a removed/deleted month, original sold date, chains to the
+previous month if continuous); dates already over → **history** (status `completed`, order
+`verified`, no jobs). Only a number with no SMM sale may get a new sale, recorded through the real
+`SaleForm` in `onBehalfOf` mode on the salesperson's own lead (`leadForSeller` → `adminAssignNumber`,
+refused while another salesperson holds the number) — their sale, Sales Approvals, existing
+commission; `enteredBy` + an "Entered by" chip. **Setup** (`SmmSetupForm`/`SmmSetupDialog`,
+`applyMonthSetup`): start → end auto = same date next month (`monthCycle`), `clipsPerVideo` (also on
+the sale form; default 4 = 32 s), page links, team → **one assignment path** `services/smmAssign`
+(`assignSmmMonth`: one job per person with their tracks, at the month's length, `smmCampaignId`,
+idempotent, untouched cards withdrawn, started kept; also used by Orders → Assign jobs); order
+deadline = month end (`monthPromise`). **Renewal = the salesperson's sale**: Renew (`useSmmRenewal` →
+upsell path → My Leads `?renew=` → `SaleForm renewal`) → `ensureCampaignForOrder` links Month N+1
+(start = old end or renewal day, team/clips/page links copied, jobs auto-created, tech side told);
+the old month closes after its last day (`closeEndedMonthsOnOpen`, on board open). Unposted pieces
+can be moved forward (`moveUnpostedToMonth`). **Board**: tiles (`SmmBoardStats`), tabs Needs setup /
+Running / Needs attention / Renewals / Finished (on-demand), member/seller filters, cards and month
+header drawn by `SmmVisuals` (timeline with post dots, one block per piece, `PaceChip`), Content
+List/Calendar (`SmmCalendar`); salesperson dashboard `SmmRenewalsCard`; My Work "Month plan →".
+Rules in `utils/smmPackage.ts`.
 
 **9.10 Client order chat + client calls** ✅. `pages/client/ClientChat.tsx` (public),
 `components/order-chat/*` (`StaffOrderChat`, `SalesOrderChat`, `OrderChatPanel`, `ClientCall`,
@@ -727,7 +755,9 @@ adminAssignNumber / applySaleFreeze / …`, `clients.upsertClientOnWorkComplete 
 upsertClientOnWorkVerify`, `orderChat.*`, `smm.*`, `notifications.sendNotification /
 notifyTechTeamLeaders`, `activityLog.logTechActivity / logActivity`, `hr.*`, `hrDocuments.*`,
 `payroll.*`, `payrollRun.*`, `leave.*`, `settlements.*`, `aiAccounts.*` (Flow and paid accounts,
-`recordFlowUsage / editFlowUsage / deleteFlowUsage / usageForAssignment`).
+`recordFlowUsage / editFlowUsage / deleteFlowUsage / usageForAssignment`), `smmAssign.assignSmmMonth`
+(the ONLY way to put people on an SMM month), `smmSetup.findSmmSalesForPhone / leadForSeller /
+setupSaleMonth / applyMonthSetup`.
 
 ---
 
@@ -749,7 +779,7 @@ index a query needs lives only in the console [NOT CONFIRMED].
 | `work_assignments/{auto}` | `WorkAssignment` | `assignedTo`, `assignedBy`, `category` (`wishes`/`promotional`/`cinematic`/`bulk_ads`/`social_media_management`/`poster`), `clipCount`, `duration`, `pricePerUnit`, `uniqueId` (W/P/C/PS/O + number), **`accessCode`** (4 digits), `status`, `sessions[]`, `totalDurationSeconds`, `date`, ad spec (`modelGender`, `attireType`, `customAttire`, `aspectRatio`, `language`, `festival`, `characterPack`, `customCharacter` (Custom Character only), `realLocationProvided`, poster fields), brief (`requirementNotes`, `businessInfo`, `businessAddress`), `orderId`, `chatId`, `promise`, `tracks[]`, `savedGenerationId`, `saleDeleted*`, `reassignedFrom/By/At` |
 | `clients/{digitsPhone}` | `Client` | profile assets, `works[]`, totals, `reviews[]` (server-written), `salesAdminIds[]`, `soldByIds[]` (array-contains scope), `firstSoldBy`, review/loyalty mirror |
 | `order_chats/{chatId}` (+`messages`) | `OrderChatDoc` | `chatId` = order id for sold work, else assignment id (`utils/orderChatId.orderChatIdOf`). `participants[]`, `accessCode`, `status` (`open`/`locked`), `clientReady`, `activeAt` heartbeats, `unreadCounts`, `clientReview`, member/seller/assigner ids |
-| `smm_campaigns/{orderId or auto}` | `SmmCampaign` | `origin`, `orderId` ("" for direct), `watchers[]`, `soldBy`, `team`, `items[]` (content with approval, chases, per-platform `postUrls`, extra work's `extraType`/`extraDuration`), `adRuns[]` (day reports, budgets), `budgetPayments[]`, `cycle`, `commitments`, `renewal`, `status` (`active`/`completed`/`renewed`/`lapsed`/`removed`/`deleted`), `deletedAt`/`deletedByName` |
+| `smm_campaigns/{orderId or auto}` | `SmmCampaign` | `origin`, `orderId` ("" for legacy direct), `watchers[]`, `soldBy`, `team`, `items[]` (content with approval, chases, per-platform `postUrls`, extra work's `extraType`/`extraDuration`, `carriedFrom`), `adRuns[]` (day reports, budgets), `budgetPayments[]`, `cycle` (start → same date next month), `commitments`, `renewal` (+`nextCampaignId`), `status` (`active`/`completed`/`renewed`/`lapsed`/`removed`/`deleted`), `deletedAt`/`deletedByName`; 2026-10-03: `clipsPerVideo`, `pageLinks`, `renewalOf`, `monthNumber`, `setupAt/ByName/ByUid`, `history`, `carriedOut[]`. Related: `SaleDetail.enteredBy`, `SmmSaleSpec.clipsPerVideo/renewalOf`, `WorkAssignment.smmCampaignId` |
 | `smm_templates/{auto}` | `SmmTemplate` | saved client message wording (company-wide) |
 | `ai_generations/{auto}` | `SavedGeneration` | `userId`, outputs (`mainFramePrompts[]`, `headerPrompt` (the VIDEO BOTTOM LABEL), `posterPrompt`, `voiceOverScript`, `veoPrompts[]`, `stockImagePrompts`, `overlayTexts` (each with `imagePrompt` / `imageDesign`), `posterConcepts`, `coreMessage`, `sceneContext` (motive + per-clip background and staging/camera/angle/focus), `voiceBrief`, `scriptQa` (the voice-over's quality-gate score, pass and drafts)), all form settings incl. `frameInstructions` and `customCharacter`, `creationMode`, `createdAt`/`updatedAt`. Generate = new doc (a version); Save and auto-save update it |
 | `cinematic_projects/{auto}` | `CinematicAdsProject` | `createdBy`, `name`, `currentStep`, `stepsCompleted`, brief, stories, boards, cast, clips, editing guide, deliverables, `delivered`, `updatedAt` (ms). `File` objects stripped |
@@ -1256,7 +1286,9 @@ Gemini calls use the shared fallback.
   alerts via `api/order-chat`.
 - **Common types:** `work_assigned`, `work_completed`, `work_verified`, `work_editing`,
   `work_unassigned`, `sale_approved`, `attendance_update`, `order_new_*`, `chat_message`,
-  `voice_call` / `video_call`, SMM (incl. `smm_lead`, `smm_new_month`) and HR types, `ai_account` (an AI account assigned to or moved from someone).
+  `voice_call` / `video_call`, SMM (incl. `smm_lead`, `smm_new_month`; 2026-10-03: `smm_sale_entered`,
+  `smm_month_setup`, `smm_renewed`, `smm_renewal_due`, `smm_renewal_reminder`) and HR types, `ai_account`
+  (an AI account assigned to or moved from someone).
 
 ---
 
@@ -1333,7 +1365,7 @@ Gemini key), the production API base URL, and CORS allow-lists in `api/*`.
 | `OrderProgressPanel`, `BulkVideoBoard`, `AssignTracksDialog`, `PenaltyDialog`, `ExtendPromiseButton`, `DeadlineChip`, `ReassignWork`, `RequirementsShareModal`, `MemberWorkloadCard`, `WorkDoneReport` | `components/work/` | Order and work UI pieces |
 | `StaffOrderChat`, `SalesOrderChat`, `OrderChatPanel`, `ClientCall`, `ShareChatModal`, `ClientReviewCard` | `components/order-chat/` | Client chat for staff and guest |
 | `VideoCallManager`, `ChatRoom`, `ChatSidebar`, `MeetingRoom` | `components/chat/` | Team chat, WebRTC calls and meetings. VideoCallManager carries the one known TS error |
-| `SmmItemDialog` (autosave ~900ms), `SmmContentTable`, `SmmStageBar`, `SmmAdsPanel`, `SmmMoneyPanel`, `SmmBudgetPaymentForm`, `SmmReportPanel`, `SmmMessageComposer`, `SmmNewCampaignDialog`, `SmmDueCard` | `components/smm/` | SMM month UI |
+| `SmmItemDialog` (autosave ~900ms), `SmmContentTable` (+ `SmmCalendar`), `SmmStageBar`, `SmmAdsPanel`, `SmmMoneyPanel`, `SmmBudgetPaymentForm`, `SmmReportPanel`, `SmmMessageComposer`, `SmmDueCard`, `SmmAddSaleDialog`, `SmmSetupForm`/`SmmSetupDialog`, `SmmVisuals`, `SmmBoardStats`, `SmmCampaignCard`, `SmmRenewalsCard`, `useSmmRenewal` | `components/smm/` | SMM month UI (§9.9) |
 | `AgreementView`, `SignaturePad`, `MandatoryAgreementGate`, `Letterhead` | `components/agreement/` | Document rendering, signing, forced signing gate |
 | `IssueDocumentDialog`, `AllDocumentsPanel`, `EmploymentTermsCard`, `KycPanel`, `IdCardView`, `CompanyDocumentsCard`, `ProbationPanel`, `SeparationPanel`, `AssetsPanel` | `components/hr/` | HR centre and profile panels |
 | `DailyCheckinPrompt` (mandatory), `CheckoutModal`, `MyDayCalendar` | `components/attendance/` | Tech attendance |
@@ -1410,10 +1442,18 @@ report message → renewal.
   records the client delivery.
 - **Bulk videos:** only tech admin, main admin or team leader assign slots; the owner or those
   roles can tick them done; slot numbers are never renumbered.
-- **SMM deletion and lead (2026-10-01):** only the main admin, the tech admin and the Social Media
-  Team Lead delete a month; a deleted sold month never comes back with its sale; only the tech admin
-  and main admin appoint the team lead; extra work always says what it is (and a video its length),
-  and the seller is told.
+- **SMM deletion and lead (2026-10-01, team leader added 2026-10-03):** the main admin, the tech
+  admin, the tech team leader and the Social Media Team Lead delete a month; a deleted sold month never
+  comes back with its sale; only the tech admin and main admin appoint the team lead; extra work always
+  says what it is (and a video its length), and the seller is told.
+- **SMM months (owner, 2026-10-03):** every month is a sale — recorded by the salesperson or, by the
+  tech admin / team leader / main admin, on the salesperson's behalf (their sale, Sales Approvals,
+  existing 5%/10% commission). A sale already recorded is set up, never recorded again (no double
+  commission). A month runs from its start to the same date next month. Clips per video default 4
+  (32 s); every job of the month is made at that length. Only the month's salesperson renews, as a
+  sale; the next month starts on the old end date with the same team; the old month closes after its
+  last day. A number held by another salesperson is refused. The tech side cannot record a new sale
+  for a client who already has months (that is a renewal).
 - **SMM:** nothing is scheduled or posted without a recorded client approval (enforced in
   `setItemStatus`); month quotas are 2 posts + 2 stories per video (`smmQuota`; stories target
   now 0 for plan-derived months); campaigns run on the video count; the real-video add-on is
@@ -1615,6 +1655,15 @@ and push; PWA self-update; Android shell.
   spoken address are prompt rules checked by unit tests and one full-pipeline test on a faked Gemini —
   **no live Gemini, image or Veo run** has confirmed that Veo stops walking people over furniture or
   onto roads, keeps Motu & Patlu's height, leaves a client photo unchanged, or how the children look.
+- SMM (2026-10-03) writes across roles from the browser: the tech side writes a sale onto a
+  salesperson's lead ("Add SMM sale"), and a salesperson's renewal sale creates the tech team's jobs
+  (`linkRenewal` → `assignSmmMonth`). Fine under the catch-all rule; any rule restricting `leads` or
+  `work_assignments` writes to their owner would break both (noted in `docs/firestore-rules.md`).
+  History months mark their order `verified` with no job behind it. Unposted pieces are moved to the
+  next month only when somebody presses "Move them here" — nothing moves on its own. Months started
+  directly before 2026-10-03 keep working with seats only (no jobs, no renewal sale).
+  Checked by unit/service/UI tests and a 35-step browser run on the in-memory Firestore — not against
+  live Firebase or push delivery.
 - AI Accounts' writes are browser-side: the rule lets anyone in an account's `visibleTo` update the
   whole document, so the credit totals and holder fields are a UI rule, not a security boundary.
 - The rules' catch-all now EXCLUDES the five AI-account collections (Firestore ORs matching rules).
@@ -1712,7 +1761,9 @@ and push; PWA self-update; Android shell.
 20. Ask for clarification when requirements conflict with existing business logic and cannot
     safely be inferred.
 21. Do not create any other project-context or documentation file (no ARCHITECTURE.md, API.md,
-    etc.). Do not add new entries to `docs/AI-MEMORY.md`; history goes in §31.
+    etc.). Do not add new entries to `docs/AI-MEMORY.md`; history goes in §31. The one exception is
+    **`HANDOFF.md`** at the repo root: a temporary note for an UNFINISHED task (§34), deleted when
+    that task is done and this file has been updated.
 22. Treat TODOs, placeholders and specs as intent, not implementation.
 
 ---
@@ -1742,6 +1793,22 @@ and push; PWA self-update; Android shell.
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
 
+- **2026-10-03: SMM — every month is a sale; setup, renewal by the salesperson, visual board** (§9.9,
+  §24). The owner re-created old SMM months from the tech side and needed: a sale recorded for the
+  salesperson who made it (counting in their login and commission), old deleted months set up again
+  without a second sale, a month that ends on the same date next month, clips per video, assignment
+  that reaches My Work, team-leader delete, renewal only by the salesperson, and a clear board.
+  Found and fixed on the way: the Orders split dialog gave the AI studio the number of VIDEOS in the
+  month as each video's clip count (a Pro month locked every video to 8 clips) and duplicated job cards
+  on every re-split; assigning on the month page created no job and told nobody; "They renewed" linked
+  nothing; overseers' Finished tab was always empty; seller renewal reminders were never shown; cards
+  said "Last day" the day after a month ended; Renew/upsell links opened My Leads on a lead hidden by
+  the "today" filter (now brought into view); a sale's chat room now opens before its month (a
+  renewal's auto-assigned jobs join it). Verified: build ✅, vitest 186 files / 2910 tests ✅ (new:
+  `smmPackage`, `smmSetupOct03` on memoryFirestore, `smmAddSaleUi`), typecheck 1 known error; a
+  throwaway CDP harness (real SMM pages, My Leads and My Work on memoryFirestore, deleted after) ran 35
+  checks at 1440 / 390 px across tech admin, team leader, salesperson and member — all passing, no
+  console errors. Not run against live Firebase.
 - **2026-10-02: this machine's `main` merged with origin/main; the parallel Flow module dropped** —
   a local session had built a second implementation of the same request on top of `eb2c3ff`
   (Flow Accounts: `components/flow/*`, `pages/shared/FlowAccounts.tsx`, `services|utils|types/
@@ -2028,17 +2095,21 @@ Design intent lives in `docs/superpowers/specs/`.
 
 ---
 
-## 32. CURRENT PROJECT STATE (as of 2026-10-02)
+## 32. CURRENT PROJECT STATE (as of 2026-10-03)
 
+- The 2026-10-03 SMM work (§31) is complete in the working tree, **not yet committed**.
+- Open owner decision: CLAUDE.md is ~2,200 lines and is loaded into every session (docs recommend
+  under ~200) — trimming it into a short core + on-demand reference would cut usage on every request.
 - `main` = the merge of this machine's `346c7f0` into origin/main `1a090f9` (PR #1: the six AdGen
   fixes and AI Accounts; PR #2: the SMM delete / team lead / extra-work change), resolved to
   origin/main's implementation (§31, 2026-10-02) and pushed.
 - `npm run build` ✅ (main chunk ≈455 KB, vendor-firebase ≈665 KB, geminiService chunk ≈790 KB; AI
   Accounts adds lazy `AiAccounts` ≈14 KB and `MyAiAccounts` ≈9 KB pages).
-- `npx vitest run` ✅ 183 files, 2873 tests.
+- `npx vitest run` ✅ 186 files, 2910 tests.
 - `npx tsc -p tsconfig.check.json --noEmit` → 1 known error (VideoCallManager).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
-- Most recent work: the six AdGen fixes (frame-bounded video, duo heights, background plates, cast
+- Most recent work: SMM — every month is a sale, Add SMM sale, setup with clips per video, renewal by
+  the salesperson, team-leader delete, the visual board (2026-10-03); before it the six AdGen fixes (frame-bounded video, duo heights, background plates, cast
   sheets, Kids, spoken address) and AI Accounts (2026-10-01); before them the AdGen integrity batch
   (verified contact facts, script quality gate, final script, fixed-distance duo camera, colour lock, job strip), the one-screen layout, the two-hander
   speaker-label fix and the studio UI, before them the AdGen.ai batch (§31), Cinematic Ads, SMM, Poster Creation, load-time splitting.
@@ -2121,3 +2192,31 @@ pages; lint debt; no priority, comments or scheduler; accounts module basic.
 
 **Rules.** Follow §29 and §30. CLAUDE.md is the only context file: update it after every
 meaningful change (sections + §25–§27 + dated §31 entry). The code wins over this file.
+
+---
+
+## 34. SESSION & USAGE PROTOCOL (owner's standing rules, 2026-10-03)
+
+Why: on 2026-10-03 the usage panel showed **98% of usage was spent at >150k context** — one long
+conversation re-sends everything on every step. The fix is short sessions that hand over in a file.
+- **Start:** if `HANDOFF.md` exists, read it first and continue from it; read only the files the next
+  step needs (it lists them) — do not re-read the whole module.
+- **Long task:** at a clean stopping point (it builds), when the conversation is getting large or the
+  task will clearly outlast it, write/update `HANDOFF.md` (goal + confirmed answers, done, remaining
+  in order, gotchas) and tell the owner to start a new chat with: *"Continue the task in HANDOFF.md."*
+- **End of every task**, say one of: **"Start a new chat for the next task"** (the default), or
+  **"Continue in this chat"** — only when the next step is small and needs what is already loaded.
+  When the task is finished: update this file per §30 and delete `HANDOFF.md`.
+- **Effort level** (Opus 5.5 default is `medium`, which matches Opus 5 at `high` on coding — source:
+  code.claude.com/docs/en/model-config). Use `medium` for small fixes and copy changes, `high` for
+  normal features and debugging in this repo, `xhigh` for large cross-module features or a bug `high`
+  could not crack, `max` only for the hardest design/debug problems. At the start of a task, say if it
+  needs a level different from `high`; the owner switches with `/effort <level>`.
+- **Ultracode** (`/effort ultracode`) makes Claude run multi-agent workflows on its own and costs much
+  more. Only for big jobs that split into independent parts (whole-codebase audit, a migration across
+  many modules). Claude **asks the owner to turn it on**, saying why — never assumes it.
+- **Workflows:** the owner allows Claude to start one on its own when it is genuinely needed
+  (independent parallel work) — say so in one line first, with a rough size; keep it small.
+- `/compact` mid-task when the context grows; `/clear` between unrelated tasks; `/usage` to watch.
+- This file is loaded into EVERY session; the docs recommend under ~200 lines. Keep additions short;
+  trimming it (moving detail into on-demand docs) is an open owner decision (§32).

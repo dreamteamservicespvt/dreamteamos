@@ -12,8 +12,10 @@
  */
 import { useMemo, useState } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Plus, Sparkles, Image as ImageIcon, Video, ChevronRight, Link2 } from "lucide-react";
+import { Plus, Sparkles, Image as ImageIcon, Video, ChevronRight, Link2, List, CalendarDays } from "lucide-react";
 import { addItem, addItems } from "@/services/smm";
+import { clipsPerVideoOf, videoLengthLabel } from "@/utils/smmPackage";
+import SmmCalendar from "@/components/smm/SmmCalendar";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/store/authStore";
 import {
@@ -37,6 +39,16 @@ export default function SmmContentTable({ campaign, canEdit, onOpen }: {
   const { toast } = useToast();
   const today = isoDay(new Date());
   const [filter, setFilter] = useState<KindFilter>("all");
+  /** The plan as rows (what to do next) or as a calendar (what the client's feed looks like). */
+  const [view, setView] = useState<"list" | "calendar">("list");
+  const lengthLabel = videoLengthLabel(clipsPerVideoOf(campaign));
+  /** What a row says under its title: a video's length, extra work, a piece carried in from last month. */
+  const rowNotes = (item: SmmContentItem) => (
+    <>
+      {item.kind === "ai_ad" && !item.extra && <span className="mr-1.5 text-[10px] text-muted-foreground">{lengthLabel}</span>}
+      {item.carriedFrom && <span data-test="smm-row-carried" className="mr-1.5 text-[10px] font-medium text-info">From {item.carriedFrom.label}</span>}
+    </>
+  );
   const [adding, setAdding] = useState(false);
   const user = useAuthStore((s) => s.user);
   /** The extra-work form (2026-10-01): what it is, and a video's length. Null while closed. */
@@ -120,9 +132,24 @@ export default function SmmContentTable({ campaign, canEdit, onOpen }: {
             </button>
           );
         })}
+        <div className="ml-auto inline-flex rounded-lg border border-border p-0.5">
+          {([
+            { key: "list" as const, label: "List", Icon: List },
+            { key: "calendar" as const, label: "Calendar", Icon: CalendarDays },
+          ]).map(({ key, label, Icon }) => (
+            <button key={key} data-test={`smm-view-${key}`} aria-pressed={view === key} onClick={() => setView(key)}
+              className={`inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11px] font-medium transition-colors ${
+                view === key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent"
+              }`}>
+              <Icon size={12} /> {label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {rows.length === 0 ? (
+      {view === "calendar" ? (
+        <SmmCalendar campaign={filter === "all" ? campaign : { ...campaign, items: campaign.items.filter((i) => i.kind === filter) }} onOpen={onOpen} />
+      ) : rows.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
           Nothing planned here yet.
         </p>
@@ -160,6 +187,7 @@ export default function SmmContentTable({ campaign, canEdit, onOpen }: {
                           <Icon size={14} className="shrink-0 text-muted-foreground" />
                           <div className="min-w-0">
                             <p className="truncate text-sm text-foreground">{item.title || <span className="text-muted-foreground">Untitled</span>}</p>
+                            {rowNotes(item)}
                             {item.extra && <span className="text-[10px] font-medium text-warning">Extra work{item.extraType ? ` · ${extraWorkTitle(item.extraType, item.extraDuration)}` : ""}</span>}
                           </div>
                         </div>
@@ -225,6 +253,7 @@ export default function SmmContentTable({ campaign, canEdit, onOpen }: {
                     <span>{item.uploadDate || "No date"}{item.uploadTime ? ` · ${item.uploadTime}` : ""}</span>
                     <span>{item.makerName || "Unassigned"}{item.extra ? " · extra" : ""}</span>
                   </div>
+                  {(item.kind === "ai_ad" || item.carriedFrom) && <div className="mt-0.5">{rowNotes(item)}</div>}
                 </button>
               );
             })}

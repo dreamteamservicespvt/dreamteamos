@@ -157,6 +157,14 @@ service cloud.firestore {
     // `where('watchers','array-contains',uid)` and an admin reads the active set. That is a quota
     // decision (see services/smm), not a security boundary — every one of these documents is
     // readable by any signed-in member of staff, the same as orders and work assignments.
+    //
+    // 2026-10-03 — no new collection and no rule change. A month gained optional fields
+    // (`clipsPerVideo`, `pageLinks`, `renewalOf`, `monthNumber`, `setupAt/ByName/ByUid`, `history`,
+    // `carriedOut`), a sale item `enteredBy`, a job `smmCampaignId`. NOTE for any future tightening:
+    // "Add SMM sale" lets the tech admin / team leader write a sale onto a SALESPERSON's lead (and
+    // `adminAssignNumber` creates that lead), and a salesperson's renewal sale creates the tech
+    // team's jobs. A rule restricting `leads` or `work_assignments` writes to their owner would
+    // break both — those paths would need a server function first.
 
     // ── AI Accounts: Flow accounts, their passwords, the credit ledger, paid logins ─────────────
     // (types/aiAccounts.) Passwords live in their own collections so a list never carries them, and

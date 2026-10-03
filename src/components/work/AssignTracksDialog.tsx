@@ -12,7 +12,11 @@ import { useMemo, useState } from "react";
 import { Loader2, Split } from "lucide-react";
 import { createWorkAssignment, nextWorkUniqueId } from "@/services/workAssign";
 import { setOrderTracks } from "@/services/orders";
+import { fetchCampaign } from "@/services/smm";
+import { assignSmmMonth } from "@/services/smmAssign";
 import { activeTracks } from "@/utils/orderProgress";
+import { DEFAULT_SMM_CLIPS_PER_VIDEO, teamFromTracks, videoDuration } from "@/utils/smmPackage";
+import { assignSummary } from "@/components/smm/SmmSetupForm";
 import { useToast } from "@/hooks/use-toast";
 import { ORDER_TRACKS } from "@/types";
 import type { AppUser, Order, OrderTrack, WorkAssignment } from "@/types";
@@ -50,11 +54,36 @@ export default function AssignTracksDialog({ order, members, assignments, assign
     setSaving(true);
     try {
       const nameOf = (uid: string) => members.find((m) => m.uid === uid)?.name || "";
+      const trackMap: Partial<Record<OrderTrack, { uid: string; name: string }>> = {};
+      for (const t of chosen) trackMap[t] = { uid: picked[t], name: nameOf(picked[t]) };
+
+      /*
+        A social-media month goes through the one assignment path (services/smmAssign, 2026-10-03):
+        one job per person, updated rather than duplicated when the month is re-split, and every job
+        made at the month's own video length. This dialog used to create a fresh card for everyone on
+        every use, and gave the AI studio the number of VIDEOS in the month as each video's clip count.
+      */
+      if (order.category === "social_media_management") {
+        const campaign = await fetchCampaign(order.id).catch(() => null);
+        if (campaign) {
+          const result = await assignSmmMonth({
+            campaignId: campaign.id,
+            team: teamFromTracks(trackMap, campaign.team?.assistants || []),
+            assigner: assigner
+              ? { uid: assigner.uid, name: assigner.name, role: assigner.role, createdBy: assigner.createdBy }
+              : { uid: assignerUid, name: "" },
+            actor: assigner,
+            existingAssignments: assignments,
+          });
+          toast({ title: "Assigned", description: assignSummary(result) || "The month's jobs are up to date." });
+          onDone?.();
+          onClose();
+          return;
+        }
+      }
 
       // Record the split on the order first: it is what every screen reads to show who holds what,
       // and it must be true even if creating an assignment below fails partway.
-      const trackMap: Partial<Record<OrderTrack, { uid: string; name: string }>> = {};
-      for (const t of chosen) trackMap[t] = { uid: picked[t], name: nameOf(picked[t]) };
       await setOrderTracks({ order, tracks: trackMap });
 
       // Group by member so someone holding two jobs gets one assignment listing both.
@@ -71,13 +100,15 @@ export default function AssignTracksDialog({ order, members, assignments, assign
       for (const [uid, memberTracks] of byMember) {
         const uniqueId = nextWorkUniqueId(order.category, issued);
         issued.push({ uniqueId } as WorkAssignment);
+        // A month with no plan (sold before the section existed) still gets a real video length.
+        const smm = order.category === "social_media_management";
         await createWorkAssignment({
           assignedTo: uid,
           assignedToName: nameOf(uid),
           assignerUid,
           category: order.category,
-          duration: order.packageKey || "",
-          clipCount: order.progress?.targets.ads || 1,
+          duration: smm ? videoDuration(DEFAULT_SMM_CLIPS_PER_VIDEO) : order.packageKey || "",
+          clipCount: smm ? DEFAULT_SMM_CLIPS_PER_VIDEO : order.progress?.targets.ads || 1,
           pricePerUnit: 0,
           uniqueId,
           businessName: order.businessName,

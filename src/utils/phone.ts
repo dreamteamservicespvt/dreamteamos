@@ -46,6 +46,23 @@ export function phoneLockId(raw: string): string {
 }
 
 /**
+ * The forms one number gets written down in.
+ *
+ * Leads are keyed by whatever the member typed or pasted, so the same client exists as
+ * "+919849834102", "919849834102" and "9849834102" across different rows. An equality query on one
+ * of those finds one third of the history, which on a lookup screen looks exactly like "no history".
+ * Feed the result to a Firestore `in` query (at most 30 values — this is six).
+ */
+export function phoneVariants(raw: string): string[] {
+  const digits = phoneLockId(raw);
+  if (!digits) return [];
+  const local = digits.length > 10 ? digits.slice(-10) : digits;
+  return [...new Set([
+    `+${digits}`, digits, local, `+91${local}`, `91${local}`, `0${local}`,
+  ])];
+}
+
+/**
  * Format phone for display: +91 XXXXX XXXXX
  */
 export function formatPhoneDisplay(phone: string): string {

@@ -25,13 +25,17 @@ import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import {
   blankItem, buildInitialItems, cycleFromStart, derivedProgressCounts, extraWorkTitle, extraWorkTypeInfo, isoDay,
-  newItemId, normaliseDuration, smmWatchers, targetsFromCommitments,
+  isPosted, newItemId, normaliseDuration, smmWatchers, targetsFromCommitments,
 } from "@/utils/smmPlan";
+import {
+  closingStatus, cyclePhase, hasTeam, monthCycle, monthLabel, normaliseClipsPerVideo, renewalStartDate, saleDay,
+  videosLine,
+} from "@/utils/smmPackage";
+import { dueItemsFor, dueLabel, dueNotificationKey, renewalsDueFor } from "@/utils/smmReminders";
 import { commitmentsForPackage, platformsForPackage } from "@/utils/smmPricing";
-import { normalizePhone, phoneLockId } from "@/utils/phone";
 import { POSTABLE_STATUSES } from "@/types/smm";
 import type {
-  SmmAdDayReport, SmmAdRun, SmmBudgetPayment, SmmCampaign, SmmContentItem, SmmContentKind,
+  SmmAdDayReport, SmmAdRun, SmmBudgetPayment, SmmCampaign, SmmCarriedPiece, SmmContentItem, SmmContentKind,
   SmmExtraWorkType, SmmItemStatus, SmmPaymentRoute, SmmPlatform, SmmRenewalState, SmmTeam,
 } from "@/types/smm";
 import type { AppUser, Order, OrderProgress, SaleDetail } from "@/types";
@@ -49,9 +53,35 @@ export function campaignRef(id: string) {
   return doc(db, SMM_CAMPAIGNS, id);
 }
 
-/** Firestore refuses `undefined`; a plan built in a form is full of optional fields. */
+/**
+ * Firestore refuses `undefined`; a plan built in a form is full of optional fields.
+ *
+ * A JSON round trip, so it must never be handed a `serverTimestamp()` — the sentinel would come out
+ * the other side as a plain map and be stored as one. Stamp those on AFTER cleaning.
+ */
 function clean<T>(value: T): T {
   return JSON.parse(JSON.stringify(value, (_k, v) => (v === undefined ? null : v)));
+}
+
+/** The team a renewal carries over: the same people in the same seats. */
+function carriedTeam(team: SmmTeam | null | undefined): SmmTeam {
+  return {
+    creator: team?.creator ?? null,
+    publisher: team?.publisher ?? null,
+    marketer: team?.marketer ?? null,
+    assistants: team?.assistants || [],
+  };
+}
+
+/** Rows made by / posted by the seat holders, for a plan built with a team already on it. */
+function withSeatHolders(items: SmmContentItem[], team: SmmTeam): SmmContentItem[] {
+  return items.map((it) => ({
+    ...it,
+    makerUid: it.makerUid || team.creator?.uid || null,
+    makerName: it.makerName || team.creator?.name || null,
+    publisherUid: it.publisherUid || team.publisher?.uid || null,
+    publisherName: it.publisherName || team.publisher?.name || null,
+  }));
 }
 
 /* ── Creating the month ─────────────────────────────────────────────────────────────────────── */
@@ -74,6 +104,64 @@ export interface CreateCampaignInput {
   salesAdminId?: string | null;
   /** `yyyy-MM-dd` the month runs from. Defaults to today — the day it was sold. */
   startDate?: string;
+  /** Clips in each AI video, as agreed on the sale. Absent reads as 4 (see utils/smmPackage). */
+  clipsPerVideo?: number | null;
+  /** The month this sale renews, when the salesperson pressed Renew on it. */
+  renewalOf?: string | null;
+}
+
+/**
+ * The month a sale opens, before anybody has worked on it.
+ *
+ * One builder for both ways a sold month comes into being — the sale itself (`ensureCampaignForOrder`)
+ * and the tech side setting an older sale up again (services/smmSetup) — so the two can never build
+ * a different shape. `team` is non-empty only for a renewal, which carries the last month's people.
+ */
+export function buildSoldCampaign(
+  input: CreateCampaignInput,
+  options: {
+    startDate: string;
+    endDate?: string | null;
+    team?: SmmTeam;
+    renewalOf?: SmmCampaign | null;
+    clipsPerVideo?: number | null;
+    pageLinks?: SmmCampaign["pageLinks"];
+  },
+): Omit<SmmCampaign, "createdAt" | "updatedAt"> {
+  const team = options.team || { creator: null, publisher: null, marketer: null, assistants: [] };
+  const prev = options.renewalOf || null;
+  const clips = options.clipsPerVideo ?? input.clipsPerVideo ?? prev?.clipsPerVideo ?? null;
+  return {
+    id: input.orderId,
+    orderId: input.orderId,
+    leadId: input.leadId,
+    saleItemKey: input.saleItemKey,
+    origin: "sale",
+    clientPhone: input.clientPhone,
+    clientPhoneId: input.clientPhoneId,
+    clientName: input.clientName,
+    businessName: input.businessName,
+    packageKey: input.packageKey,
+    packageLabel: input.packageLabel,
+    amount: input.amount,
+    cycle: monthCycle(options.startDate, options.endDate),
+    platforms: input.platforms,
+    commitments: input.commitments,
+    items: withSeatHolders(buildInitialItems(input.commitments, input.platforms), team),
+    ads: [],
+    budgetPayments: [],
+    team,
+    soldBy: input.soldBy,
+    soldByName: input.soldByName,
+    salesAdminId: input.salesAdminId ?? null,
+    watchers: smmWatchers(team, input.soldBy),
+    status: "active",
+    renewal: { state: "none", at: null, byName: null, note: null, nextCampaignId: null },
+    clipsPerVideo: clips ? normaliseClipsPerVideo(clips) : null,
+    pageLinks: options.pageLinks ?? prev?.pageLinks ?? null,
+    renewalOf: prev?.id ?? null,
+    monthNumber: prev ? (prev.monthNumber || 1) + 1 : 1,
+  };
 }
 
 /**
@@ -84,6 +172,13 @@ export interface CreateCampaignInput {
  * campaign only has its descriptive fields refreshed — the client's name, the business, the price —
  * and the plan itself is left alone. Never throws: a sale must not fail because a plan could not be
  * opened.
+ *
+ * ── A renewal continues the month before it (2026-10-03) ──────────────────────────────────────
+ * When the salesperson pressed Renew, the sale names the month it renews. The new month then starts
+ * where that one ends (or today, if the client had a gap), carries its team, its video length and the
+ * client's page links, and is counted as month N+1 — and the old month is marked renewed, linked
+ * forward, and closed once its own last day passes. The same people are given their jobs straight
+ * away (services/smmAssign), because the whole point of a renewal is that nothing stops.
  */
 export async function ensureCampaignForOrder(input: CreateCampaignInput): Promise<void> {
   try {
@@ -104,6 +199,10 @@ export async function ensureCampaignForOrder(input: CreateCampaignInput): Promis
           keeps the status it earned.
         */
         ...(existing.status === "removed" ? { status: "active" as const } : {}),
+        // The sale is where the video length is agreed; the month takes it once and is then the
+        // tech side's to change, so a later edit of the sale never undoes their setup.
+        ...(!existing.clipsPerVideo && input.clipsPerVideo
+          ? { clipsPerVideo: normaliseClipsPerVideo(input.clipsPerVideo) } : {}),
         clientName: input.clientName,
         businessName: input.businessName,
         clientPhone: input.clientPhone,
@@ -118,38 +217,109 @@ export async function ensureCampaignForOrder(input: CreateCampaignInput): Promis
       return;
     }
 
-    const team: SmmTeam = { creator: null, publisher: null, marketer: null, assistants: [] };
-    const campaign: Omit<SmmCampaign, "createdAt" | "updatedAt"> = {
-      id: input.orderId,
-      orderId: input.orderId,
-      leadId: input.leadId,
-      saleItemKey: input.saleItemKey,
-      clientPhone: input.clientPhone,
-      clientPhoneId: input.clientPhoneId,
-      clientName: input.clientName,
-      businessName: input.businessName,
-      packageKey: input.packageKey,
-      packageLabel: input.packageLabel,
-      amount: input.amount,
-      cycle: cycleFromStart(input.startDate || isoDay(new Date())),
-      platforms: input.platforms,
-      commitments: input.commitments,
-      items: buildInitialItems(input.commitments, input.platforms),
-      ads: [],
-      budgetPayments: [],
-      team,
-      soldBy: input.soldBy,
-      soldByName: input.soldByName,
-      salesAdminId: input.salesAdminId ?? null,
-      watchers: smmWatchers(team, input.soldBy),
-      status: "active",
-      renewal: { state: "none", at: null, byName: null, note: null },
-    };
+    const prevRaw = input.renewalOf ? await fetchCampaign(input.renewalOf).catch(() => null) : null;
+    const prev = prevRaw && prevRaw.status !== "deleted" && prevRaw.status !== "removed" ? prevRaw : null;
+    const today = isoDay(new Date());
+    const startDate = prev ? renewalStartDate(prev.cycle, today) : (input.startDate || today);
+    const team = prev ? carriedTeam(prev.team) : undefined;
+    const campaign = buildSoldCampaign(input, { startDate, team, renewalOf: prev });
 
-    await setDoc(ref, clean({ ...campaign, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }));
+    await setDoc(ref, {
+      ...clean({
+        ...campaign,
+        // A renewal is set up from the month before it; a first month waits for the tech side.
+        ...(prev && hasTeam(team) ? { setupAt: Timestamp.now(), setupByName: "Renewal — same team as before" } : {}),
+      }),
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    if (prev) {
+      await linkRenewal(prev, campaign as SmmCampaign, input.soldByName).catch((err) => {
+        console.warn("[smm] could not link the renewal:", err);
+      });
+      return;
+    }
     await notifySmmLeadsOfNewMonth(input.orderId, input.businessName || input.clientName, input.soldByName);
   } catch (err) {
     console.error("[smm] ensureCampaignForOrder failed:", err);
+  }
+}
+
+/**
+ * The second half of a renewal: the old month points forward, the team gets its new jobs, and the
+ * tech side is told.
+ *
+ * The old month stays `active` until its own last day — renewing early must not hide the posts it
+ * still owes — and `closeEndedMonthsOnOpen` files it as renewed once that day has passed.
+ */
+async function linkRenewal(prev: SmmCampaign, next: SmmCampaign, soldByName: string): Promise<void> {
+  const today = isoDay(new Date());
+  await mutateCampaign(prev.id, (c) => ({
+    renewal: {
+      ...(c.renewal || { state: "none" }),
+      state: "won",
+      at: Timestamp.now(),
+      byName: soldByName,
+      nextCampaignId: next.id,
+    },
+    ...(cyclePhase(c.cycle, today) === "ended" ? { status: "renewed" as const } : {}),
+  }));
+
+  // The same people, straight away. Whoever set the last month up is recorded as the assigner, so
+  // completion still reports to the tech side and not to the salesperson who sold the renewal.
+  let assigned: string[] = [];
+  if (hasTeam(next.team)) {
+    try {
+      const { assignSmmMonth } = await import("@/services/smmAssign");
+      const assignerUid = prev.setupByUid || (await fetchOrderTechAdmin(prev.orderId)) || next.soldBy;
+      const result = await assignSmmMonth({
+        campaignId: next.id,
+        team: next.team,
+        assigner: { uid: assignerUid, name: prev.setupByName && !prev.setupByName.startsWith("Renewal") ? prev.setupByName : "Renewal" },
+        actor: null,
+      });
+      assigned = result.created.map((c) => c.name);
+    } catch (err) {
+      console.warn("[smm] renewal jobs not created:", err);
+    }
+  }
+
+  const who = assigned.length > 0
+    ? `Same team on it: ${assigned.join(", ")}.`
+    : "It needs a team — open it and set it up.";
+  const length = videosLine(next);
+  for (const uid of await techSideUids()) {
+    await sendNotification({
+      userId: uid,
+      type: "smm_renewed",
+      title: "Social media month renewed",
+      message: `${next.businessName || next.clientName} renewed for ${monthLabel(next.cycle.startDate)} (${next.packageLabel}${length ? ` · ${length}` : ""}) — sold by ${soldByName}. ${who}`,
+      link: `/smm/${next.id}`,
+      dedupeKey: `smm_renewed_${next.id}_${uid}`,
+    }).catch(() => undefined);
+  }
+}
+
+/** Who set the last month up, read off its order when the month itself predates `setupByUid`. */
+async function fetchOrderTechAdmin(orderId: string | null | undefined): Promise<string | null> {
+  if (!orderId) return null;
+  try {
+    const snap = await getDoc(doc(db, "orders", orderId));
+    return snap.exists() ? ((snap.data() as Order).techAdminId || null) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Every active tech admin and tech team leader — the people a renewal or a new month is announced to. */
+async function techSideUids(): Promise<string[]> {
+  try {
+    const snap = await getDocs(query(collection(db, "users"), where("role", "in", ["tech_admin", "tech_team_leader"])));
+    return snap.docs.filter((d) => (d.data() as AppUser).isActive !== false).map((d) => d.id);
+  } catch (err) {
+    console.warn("[smm] tech side lookup failed:", err);
+    return [];
   }
 }
 
@@ -159,7 +329,8 @@ export async function ensureCampaignForOrder(input: CreateCampaignInput): Promis
  * Lives here rather than in `services/orders` so the shape of a campaign is decided in one file.
  * The sale carries the add-on count and the committed accounts under `smm`; a sale recorded before
  * that section existed falls back to the package's own quota and platforms, which is exactly what
- * those months were sold as.
+ * those months were sold as. The month starts on the day the sale was made — which is today for a
+ * sale being recorded now, and the original day for an older sale whose order is being rebuilt.
  */
 export function campaignInputFromSale(params: {
   order: { id: string; leadId: string; saleItemKey: string; clientPhone: string; clientPhoneId: string; clientName?: string; businessName: string; soldBy: string; salesAdminId?: string | null };
@@ -185,74 +356,10 @@ export function campaignInputFromSale(params: {
     soldBy: order.soldBy,
     soldByName,
     salesAdminId: order.salesAdminId ?? null,
+    startDate: saleDay(item, isoDay(new Date())),
+    clipsPerVideo: sold?.clipsPerVideo ?? null,
+    renewalOf: sold?.renewalOf ?? null,
   };
-}
-
-/**
- * A month that never came through a sale.
- *
- * ── Why this exists ──────────────────────────────────────────────────────────────────────────
- * Most retainers arrive from a sales member and bring an order with them. Some do not: a client
- * rings the tech admin directly, or walks in, or is handed over by somebody who already knows them,
- * and the SMM leader starts running their accounts on Monday. Without this, that month could only
- * be tracked by inventing a fake sale — which attaches a commission to revenue nobody sold — or by
- * keeping it on paper, which is the exact state this section exists to end.
- *
- * It is the same document in every other respect. What it does not have is an order to write
- * counters back to, and a client chat to post into; both are simply absent.
- *
- * The creator becomes the client's owner (`soldBy`), because approvals still have to be chased, ad
- * money still has to be asked for and the renewal still has to be pitched — and a month nobody owns
- * is a month where the client goes quiet and nobody notices.
- */
-export async function createDirectCampaign(input: {
-  clientName: string;
-  businessName: string;
-  clientPhone: string;
-  packageKey: string;
-  packageLabel: string;
-  amount: number;
-  platforms: SmmPlatform[];
-  commitments: Record<SmmContentKind, number>;
-  startDate: string;
-  days?: number;
-}, actor: SmmActor): Promise<string> {
-  const ref = doc(collection(db, SMM_CAMPAIGNS));
-  const phone = normalizePhone(input.clientPhone);
-  const team: SmmTeam = { creator: null, publisher: null, marketer: null, assistants: [] };
-
-  const campaign: Omit<SmmCampaign, "createdAt" | "updatedAt"> = {
-    id: ref.id,
-    orderId: "",
-    leadId: "",
-    saleItemKey: "",
-    origin: "direct",
-    createdBy: actor.uid,
-    createdByName: actor.name,
-    clientPhone: phone,
-    clientPhoneId: phoneLockId(input.clientPhone),
-    clientName: input.clientName.trim(),
-    businessName: input.businessName.trim() || input.clientName.trim(),
-    packageKey: input.packageKey,
-    packageLabel: input.packageLabel || input.packageKey || "Custom month",
-    amount: Math.max(0, Math.round(input.amount) || 0),
-    cycle: cycleFromStart(input.startDate || isoDay(new Date()), input.days ?? 30),
-    platforms: input.platforms,
-    commitments: input.commitments,
-    items: buildInitialItems(input.commitments, input.platforms),
-    ads: [],
-    budgetPayments: [],
-    team,
-    soldBy: actor.uid,
-    soldByName: actor.name,
-    salesAdminId: null,
-    watchers: smmWatchers(team, actor.uid),
-    status: "active",
-    renewal: { state: "none", at: null, byName: null, note: null },
-  };
-
-  await setDoc(ref, clean({ ...campaign, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }));
-  return ref.id;
 }
 
 /* ── Reading ────────────────────────────────────────────────────────────────────────────────── */
@@ -318,7 +425,7 @@ async function mutateCampaign(
     const current = { ...(snap.data() as SmmCampaign), id: snap.id };
     const patch = apply(current);
     if (!patch) return null;
-    tx.update(ref, clean({ ...patch, updatedAt: serverTimestamp() }));
+    tx.update(ref, { ...clean(patch), updatedAt: serverTimestamp() });
     return { ...current, ...patch } as SmmCampaign;
   });
 
@@ -805,6 +912,31 @@ export async function setCycle(campaignId: string, startDate: string, days: numb
   await mutateCampaign(campaignId, () => ({ cycle: cycleFromStart(startDate, days) }));
 }
 
+/**
+ * The tech side's setup of a month — its dates, its video length and the client's page links —
+ * stamped with who did it. The team is written separately by services/smmAssign, together with the
+ * jobs it implies. Returns the month as saved.
+ */
+export async function saveMonthSetup(
+  campaignId: string,
+  setup: {
+    cycle: SmmCampaign["cycle"];
+    clipsPerVideo: number;
+    pageLinks: SmmCampaign["pageLinks"];
+    setupByName: string;
+    setupByUid: string;
+  },
+): Promise<SmmCampaign | null> {
+  return mutateCampaign(campaignId, () => ({
+    cycle: setup.cycle,
+    clipsPerVideo: normaliseClipsPerVideo(setup.clipsPerVideo),
+    pageLinks: setup.pageLinks ?? null,
+    setupAt: Timestamp.now(),
+    setupByName: setup.setupByName,
+    setupByUid: setup.setupByUid,
+  }));
+}
+
 export async function setCommitments(
   campaignId: string,
   commitments: Record<SmmContentKind, number>,
@@ -813,15 +945,31 @@ export async function setCommitments(
   await mutateCampaign(campaignId, () => ({ commitments, ...(platforms ? { platforms } : {}) }));
 }
 
+/**
+ * Record where the renewal conversation stands — pitched, or not renewing.
+ *
+ * "Renewed" is no longer typed here (2026-10-03): a renewal is a sale the salesperson records, and
+ * that sale marks this month won and links it forward (`ensureCampaignForOrder`). A month whose
+ * client is not renewing closes as lapsed — now if its last day has passed, otherwise when it does.
+ */
 export async function setRenewal(
   campaignId: string,
   state: SmmRenewalState,
   actor: SmmActor,
   note?: string | null,
 ): Promise<void> {
-  await mutateCampaign(campaignId, () => ({
-    renewal: { state, at: Timestamp.now(), byName: actor.name, note: note ?? null },
+  const today = isoDay(new Date());
+  await mutateCampaign(campaignId, (c) => ({
+    renewal: {
+      state,
+      at: Timestamp.now(),
+      byName: actor.name,
+      note: note ?? null,
+      nextCampaignId: c.renewal?.nextCampaignId ?? null,
+    },
     ...(state === "won" ? { status: "renewed" as const } : {}),
+    ...(state === "lost" && c.status === "active" && cyclePhase(c.cycle, today) === "ended"
+      ? { status: "lapsed" as const } : {}),
   }));
 }
 
@@ -830,8 +978,153 @@ export async function setCampaignStatus(campaignId: string, status: SmmCampaign[
 }
 
 /**
- * Delete a month (2026-10-01) — main admin, tech admin or the Social Media Team Lead
- * (smmPlan.canDeleteSmmCampaign).
+ * File every month that has run out of days and has a decision behind it — renewed or lapsed.
+ *
+ * There is no scheduler on this stack, so it runs when an overseer opens the board, exactly like the
+ * order deadline sweep. A month past its end with NO decision is left running on purpose: it shows
+ * under Renewals and Needs attention until the salesperson renews it or says the client is not
+ * renewing, because a renewal nobody decided is the one that silently lapses. Never throws.
+ */
+export async function closeEndedMonthsOnOpen(campaigns: SmmCampaign[], today: string): Promise<number> {
+  let closed = 0;
+  for (const c of campaigns) {
+    const status = closingStatus(c, today);
+    if (!status) continue;
+    try {
+      await mutateCampaign(c.id, (cur) => (closingStatus(cur, today) === status ? { status } : null));
+      closed += 1;
+    } catch (err) {
+      console.warn("[smm] could not close", c.id, err);
+    }
+  }
+  return closed;
+}
+
+/**
+ * The finished months, read once when somebody opens the Finished tab.
+ *
+ * Overseers read only the active set live (a listener on every month ever run would grow for ever
+ * on a free-tier quota), which is why this tab used to be empty for them. One query, on demand.
+ */
+export async function fetchFinishedCampaigns(): Promise<SmmCampaign[]> {
+  try {
+    const snap = await getDocs(query(collection(db, SMM_CAMPAIGNS), where("status", "in", ["completed", "renewed", "lapsed"])));
+    return snap.docs.map((d) => fromSnap(d as CampaignSnap))
+      .sort((a, b) => (b.cycle?.startDate || "").localeCompare(a.cycle?.startDate || ""));
+  } catch (err) {
+    console.error("[smm] fetchFinishedCampaigns:", err);
+    return [];
+  }
+}
+
+/**
+ * Move pieces a month owed and never posted into the next month.
+ *
+ * ── Why move, and why they count ──────────────────────────────────────────────────────────────
+ * The client paid for them, so they are still owed — dropping them when the month closes is how a
+ * client ends up two posts short with nobody able to say where they went. Moving (not copying)
+ * keeps each piece in exactly one place. They are added to the next month's commitments, because
+ * that month now owes them, and each carries where it came from. The old month keeps its own
+ * commitments untouched and records what left it, so its report still says honestly that those
+ * pieces were not posted in its own dates.
+ *
+ * One transaction across both documents: a piece is never in both months, nor in neither.
+ */
+export async function moveUnpostedToMonth(
+  fromId: string,
+  toId: string,
+  itemIds: string[],
+  actor: SmmActor,
+): Promise<number> {
+  const fromRef = campaignRef(fromId);
+  const toRef = campaignRef(toId);
+  const moved = await runTransaction(db, async (tx) => {
+    const [fromSnap, toSnap] = await Promise.all([tx.get(fromRef), tx.get(toRef)]);
+    if (!fromSnap.exists() || !toSnap.exists()) throw new Error("One of the two months no longer exists.");
+    const from = { ...(fromSnap.data() as SmmCampaign), id: fromSnap.id };
+    const to = { ...(toSnap.data() as SmmCampaign), id: toSnap.id };
+
+    const wanted = new Set(itemIds);
+    const pieces = from.items.filter((i) => wanted.has(i.id) && !i.extra && !isPosted(i));
+    if (pieces.length === 0) return 0;
+
+    const label = monthLabel(from.cycle.startDate);
+    const commitments = { ...to.commitments };
+    for (const p of pieces) commitments[p.kind] = (commitments[p.kind] || 0) + 1;
+    const carriedOut: SmmCarriedPiece[] = [
+      ...(from.carriedOut || []),
+      ...pieces.map((p) => ({
+        itemId: p.id, title: p.title?.trim() || "", kind: p.kind, toCampaignId: to.id, at: Timestamp.now(), byName: actor.name,
+      })),
+    ];
+
+    tx.update(fromRef, {
+      ...clean({ items: from.items.filter((i) => !pieces.some((p) => p.id === i.id)), carriedOut }),
+      updatedAt: serverTimestamp(),
+    });
+    tx.update(toRef, {
+      ...clean({
+        commitments,
+        items: [
+          ...to.items,
+          ...pieces.map((p) => ({ ...p, carriedFrom: { campaignId: from.id, label }, updatedAt: Timestamp.now() })),
+        ],
+      }),
+      updatedAt: serverTimestamp(),
+    });
+    return pieces.length;
+  });
+
+  if (moved > 0) {
+    // Both orders' counters follow their plans.
+    const [from, to] = await Promise.all([fetchCampaign(fromId), fetchCampaign(toId)]);
+    if (from) await syncOrderProgress(from).catch(() => undefined);
+    if (to) await syncOrderProgress(to).catch(() => undefined);
+  }
+  return moved;
+}
+
+/** An overseer nudging the salesperson about a renewal that is due — once a day, however many clicks. */
+export async function remindSellerToRenew(campaign: SmmCampaign, actor: SmmActor): Promise<void> {
+  if (!campaign.soldBy || campaign.soldBy === actor.uid) return;
+  await sendNotification({
+    userId: campaign.soldBy,
+    type: "smm_renewal_reminder",
+    title: "Renewal due — your client",
+    message: `${actor.name || "The tech side"} asks you to renew ${campaign.businessName || campaign.clientName}'s social media month (ends ${campaign.cycle.endDate}). Open it and press Renew.`,
+    link: `/smm/${campaign.id}`,
+    dedupeKey: `smm_renew_remind_${campaign.id}_${isoDay(new Date())}`,
+  });
+}
+
+/**
+ * Tell a salesperson which of their months are due for renewal — once per month per day.
+ *
+ * Called when they open their dashboard or the board; the dedupe key carries the day, so opening
+ * the app six times is one bell and the next day is a new one.
+ */
+export async function notifyRenewalsDueOnOpen(
+  campaigns: SmmCampaign[],
+  user: Pick<AppUser, "uid">,
+  today: string,
+): Promise<void> {
+  for (const r of renewalsDueFor(campaigns, user.uid, today).slice(0, 5)) {
+    await sendNotification({
+      userId: user.uid,
+      type: "smm_renewal_due",
+      title: r.daysLeft > 0 ? "Social media renewal due" : "Social media month has ended",
+      message: r.daysLeft > 0
+        ? `${r.businessName} — ${r.daysLeft} day${r.daysLeft === 1 ? "" : "s"} left (${r.postedOfCommitted} posted). Press Renew to continue next month.`
+        : `${r.businessName} — the month has ended (${r.postedOfCommitted} posted). Renew it, or mark that they are not renewing.`,
+      link: `/smm/${r.campaignId}`,
+      dedupeKey: `smm_renewal_due_${r.campaignId}_${user.uid}_${today}`,
+    }).catch(() => { /* a missed bell must not stop the next one */ });
+  }
+}
+
+/**
+ * Delete a month (2026-10-01) — main admin, tech admin, tech team leader or the Social Media Team
+ * Lead (smmPlan.canDeleteSmmCampaign).
  *
  * A month added directly has nothing behind it, so its document is simply deleted. A SOLD month is
  * keyed on its order, and `ensureCampaignForOrder` runs again whenever the sale is edited or
@@ -974,7 +1267,6 @@ export async function notifySmmDueOnOpen(
   user: Pick<AppUser, "uid" | "name">,
   today: string,
 ): Promise<void> {
-  const { dueItemsFor, dueLabel, dueNotificationKey } = await import("@/utils/smmReminders");
   const due = dueItemsFor(campaigns, user.uid, today);
   for (const d of due.slice(0, 5)) {
     await sendNotification({

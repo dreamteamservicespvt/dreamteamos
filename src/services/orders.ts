@@ -120,9 +120,18 @@ export async function upsertOrderForSale(params: {
   verifierUid?: string | null;
   /** True when a sales admin has approved the sale. Sale-time creation passes false. */
   saleVerified?: boolean;
+  /**
+   * Ring the tech side's "new order" bell when the order is created (default). The tech side setting
+   * an older sale's month up again (services/smmSetup) passes false — they are the tech side, and an
+   * order rebuilt for a sale made weeks ago is not news to anybody.
+   */
+  announce?: boolean;
 }): Promise<void> {
   const { lead, item, itemIndex, soldByName } = params;
   const salesAdminId = params.salesAdminId ?? params.verifierUid ?? null;
+  // A renewal announces itself — "renewed, same team on it" — from `ensureCampaignForOrder`.
+  const announce = params.announce !== false
+    && !(item.category === "social_media_management" && item.smm?.renewalOf);
 
   /**
    * A price nobody has agreed does not reach the people who build against it.
@@ -265,14 +274,41 @@ export async function upsertOrderForSale(params: {
         and a re-announcement of a job already in production is noise the team learns to ignore.
         Awaited but never fatal: a sale must not fail because a bell could not be rung.
       */
-      await notifyTechSideOfNewOrder({
-        id,
-        businessName: saleFields.businessName,
-        category: item.category,
-        soldByName,
-        promise: item.promise ?? null,
-      }).catch(() => { /* the order exists either way */ });
+      if (announce) {
+        await notifyTechSideOfNewOrder({
+          id,
+          businessName: saleFields.businessName,
+          category: item.category,
+          soldByName,
+          promise: item.promise ?? null,
+        }).catch(() => { /* the order exists either way */ });
+      }
     }
+
+    /**
+     * The client's chat, opened with the sale rather than with the assignment.
+     *
+     * This is the window the seller actually needs it in: the client sends their logo, their
+     * tagline and their change of mind to the person who sold to them, in pieces, over the days
+     * before anyone is given the job. All of it now lands in the room the tech team inherits.
+     *
+     * Team-only until somebody is assigned — see `clientReady`. Safe to call on every edit; it
+     * creates once and patches the descriptive fields thereafter. Awaited but never fatal: a sale
+     * must not fail because its chat could not be opened.
+     *
+     * Opened BEFORE the social-media month below (2026-10-03): a renewal's month gives its team
+     * their jobs straight away, and each job joins this room — it has to exist first.
+     */
+    await ensureSaleOrderChat({
+      orderId: id,
+      category: item.category,
+      businessName: saleFields.businessName,
+      clientName: saleFields.clientName,
+      clientPhone: phone,
+      soldByUid: lead.assignedTo,
+      soldByName,
+      salesAdminUid: salesAdminId,
+    });
 
     /**
      * A social-media month gets its plan the moment it is sold.
@@ -300,28 +336,6 @@ export async function upsertOrderForSale(params: {
         soldByName,
       }));
     }
-
-    /**
-     * The client's chat, opened with the sale rather than with the assignment.
-     *
-     * This is the window the seller actually needs it in: the client sends their logo, their
-     * tagline and their change of mind to the person who sold to them, in pieces, over the days
-     * before anyone is given the job. All of it now lands in the room the tech team inherits.
-     *
-     * Team-only until somebody is assigned — see `clientReady`. Safe to call on every edit; it
-     * creates once and patches the descriptive fields thereafter. Awaited but never fatal: a sale
-     * must not fail because its chat could not be opened.
-     */
-    await ensureSaleOrderChat({
-      orderId: id,
-      category: item.category,
-      businessName: saleFields.businessName,
-      clientName: saleFields.clientName,
-      clientPhone: phone,
-      soldByUid: lead.assignedTo,
-      soldByName,
-      salesAdminUid: salesAdminId,
-    });
   } catch (err) {
     console.error("[orders] upsertOrderForSale failed:", err);
   }

@@ -93,8 +93,8 @@ export default function SmmTeamLeadPanel({ user }: { user: Pick<AppUser, "uid" |
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
         {user.smmLeader
-          ? "You run every social media month: assign the team, start and delete months, and you are told the moment a new one is sold."
-          : "Runs every social media month — assigns the team, starts and deletes months, and is told the moment a new one is sold."}
+          ? "You run every social media month: set months up, assign the team, delete months, and you are told the moment a new one is sold."
+          : "Runs every social media month — sets months up, assigns the team, deletes months, and is told the moment a new one is sold."}
       </p>
       {canAppoint && (
         <div className="mt-2 flex flex-wrap items-center gap-2">

@@ -23,7 +23,7 @@ import { useAuthStore } from "@/store/authStore";
 import { useToast } from "@/hooks/use-toast";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import { upsertOrderForSale } from "@/services/orders";
-import { logActivity } from "@/services/activityLog";
+import { logActivity, type ActivityActorRole } from "@/services/activityLog";
 import { applySaleFreeze, buildLeadFreezeFields, fetchNumberLock } from "@/services/numberLock";
 import { watchAdLanguages, rememberAdLanguage, mergeAdLanguages } from "@/services/adLanguages";
 import { characterPackGroups, getCharacterPack, isCustomPack, isHumanPack, packModelGender } from "@/services/characterPacks";
@@ -59,7 +59,9 @@ import {
   commitmentsForPackage, platformsForPackage, quoteSmm, NO_ADDONS,
 } from "@/utils/smmPricing";
 import FieldHint from "@/components/common/FieldHint";
-import type { Lead, SaleDetail, SaleEditEntry, SalePayment } from "@/types";
+import { DEFAULT_SMM_CLIPS_PER_VIDEO, dayLabel, normaliseClipsPerVideo } from "@/utils/smmPackage";
+import type { AppUser, Lead, SaleDetail, SaleEditEntry, SalePayment } from "@/types";
+import type { SmmRenewalPrefill } from "@/types/smm";
 
 type TimestampLike = { toMillis?: () => number; seconds?: number } | null | undefined;
 
@@ -156,7 +158,9 @@ function describeSaleChanges(prev: SaleDetail, next: SaleDetail): string[] {
   return out;
 }
 
-export default function SaleForm({ lead, updateLead, onDone, editItem, initialCategory }: {
+export default function SaleForm({
+  lead, updateLead, onDone, editItem, initialCategory, onBehalfOf, lockCategory, renewal, initialBusinessName,
+}: {
   lead: Lead;
   updateLead: (id: string, data: Record<string, any>) => Promise<void>;
   /**
@@ -164,9 +168,10 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
    *
    * `heldForApproval` means the discount is past the member's own authority, so no order exists
    * yet — see `upsertOrderForSale`. A caller that shows sales via their orders has nothing at all
-   * to display for such a sale, and must be told rather than left looking unchanged.
+   * to display for such a sale, and must be told rather than left looking unchanged. A new sale
+   * also reports where it went (`leadId`, `itemIndex`, `item`), so a caller can carry on from it.
    */
-  onDone: (result?: { heldForApproval: boolean }) => void;
+  onDone: (result?: { heldForApproval: boolean; leadId?: string; itemIndex?: number; item?: SaleDetail }) => void;
   /** Present when editing an existing sale rather than adding a new one. */
   editItem?: { index: number; item: SaleDetail };
   /**
@@ -175,18 +180,54 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
    * upsell gets recorded as the promotional default nobody changed.
    */
   initialCategory?: string;
+  /**
+   * The salesperson this sale belongs to, when somebody else is typing it in (2026-10-03).
+   *
+   * The tech admin or team leader records a social-media sale for the salesperson who made it
+   * ("Add SMM sale"). Everything that decides whose sale it is — the order's seller, the sales admin
+   * who approves it, the freeze, the payment's collector — is that salesperson, so it counts in their
+   * login exactly as if they had recorded it. Who actually typed it is kept on the sale (`enteredBy`)
+   * and in the activity feed. Absent when the seller is recording their own sale.
+   */
+  onBehalfOf?: { uid: string; name: string; createdBy?: string | null } | null;
+  /** Keep the form on the category it opened on — "Add SMM sale" records social-media months only. */
+  lockCategory?: boolean;
+  /**
+   * The social-media month this sale renews, when the salesperson pressed Renew on it. The form opens
+   * on that month's package, accounts and video length, and the sale is linked to it.
+   */
+  renewal?: SmmRenewalPrefill | null;
+  /** The business's name, when the caller knows it better than the lead does. */
+  initialBusinessName?: string;
 }) {
   const { toast } = useToast();
-  const saleFormUser = useAuthStore((s) => s.user);
+  const authUser = useAuthStore((s) => s.user);
+  /**
+   * Whose sale this is. The signed-in member's own, or — when somebody records it for them — the
+   * salesperson named in `onBehalfOf`. Memoised on the uid: it feeds an effect that sets state, and a
+   * fresh object on every render would run that effect for ever.
+   */
+  const behalfUid = onBehalfOf?.uid;
+  const behalfName = onBehalfOf?.name;
+  const behalfAdmin = onBehalfOf?.createdBy;
+  const saleFormUser = useMemo(
+    () => (behalfUid
+      ? ({ uid: behalfUid, name: behalfName || "", createdBy: behalfAdmin || undefined } as Pick<AppUser, "uid" | "name" | "createdBy">)
+      : authUser),
+    [behalfUid, behalfName, behalfAdmin, authUser],
+  );
   const editing = !!editItem;
   const ed = editItem?.item;
+  const renewPackage = renewal?.packageKey && (PACKAGES.social_media_management || []).some((p) => p.label === renewal.packageKey)
+    ? renewal.packageKey : "";
   // Promotional is what the team sells most, so it's the default; the ₹499 "15 Seconds + Poster"
   // package is pre-selected to match, since that is the one they actually sell most of. When
-  // editing, everything starts from the saved sale.
-  const [category, setCategory] = useState(ed?.category || initialCategory || "promotional");
+  // editing, everything starts from the saved sale; when renewing, from the month being renewed.
+  const [category, setCategory] = useState(ed?.category || (renewal ? "social_media_management" : initialCategory) || "promotional");
   const [packageKey, setPackageKey] = useState(
     ed
       ? (ed.packageKey && ed.packageKey !== "custom" ? ed.packageKey : "")
+      : renewal ? renewPackage
       // The promotional default only makes sense for a promotional sale; arriving on Wishes with a
       // promotional package pre-picked is a wrong price waiting to be submitted.
       : (!initialCategory || initialCategory === "promotional") ? DEFAULT_PROMOTIONAL_PACKAGE : "",
@@ -231,6 +272,19 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
         priceMode: saved.priceMode || "final",
         // Shown back in the unit it was agreed in: the price they pay, or the amount off.
         priceValue: saved.priceMode === "final" ? (ed?.amount || 0) : (ed?.discountAmount || 0),
+        clipsPerVideo: normaliseClipsPerVideo(saved.clipsPerVideo || DEFAULT_SMM_CLIPS_PER_VIDEO),
+      };
+    }
+    // A renewal opens on the month being renewed — its accounts and its video length carry on
+    // unless the client changes them; the counts follow whichever package is picked.
+    if (renewal) {
+      return {
+        platforms: renewal.platforms?.length ? renewal.platforms : platformsForPackage(renewPackage),
+        commitments: commitmentsForPackage(renewPackage, NO_ADDONS),
+        addOns: { ...NO_ADDONS },
+        priceMode: "final",
+        priceValue: 0,
+        clipsPerVideo: normaliseClipsPerVideo(renewal.clipsPerVideo || DEFAULT_SMM_CLIPS_PER_VIDEO),
       };
     }
     return {
@@ -240,6 +294,7 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
       // "What are they paying?" is the question actually asked on a call, so it leads.
       priceMode: "final",
       priceValue: 0,
+      clipsPerVideo: DEFAULT_SMM_CLIPS_PER_VIDEO,
     };
   });
   /** The member has touched the month's plan, so the package must stop re-seeding it under them. */
@@ -350,7 +405,7 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
   const [req, setReq] = useState(() => {
     const r = withRequirementDefaults(ed?.requirement);
     return {
-      businessName: r.businessName || lead.realName || lead.displayName || "",
+      businessName: r.businessName || initialBusinessName || renewal?.businessName || lead.realName || lead.displayName || "",
       businessWhatsapp: r.businessWhatsapp || normalizePhone(lead.phone),
       businessAddress: r.businessAddress,
       businessInfo: r.businessInfo,
@@ -529,8 +584,12 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
    * changed it themselves. Pro means eight of everything; a member who then agrees ten posters has
    * made a decision, and having it wiped by an unrelated re-render is how a promise gets lost.
    */
+  // A renewal opens on the month's own accounts; re-seeding them from the package on the first render
+  // would quietly drop an account the client was promised last month.
+  const smmSkipFirst = useRef(!!renewal && !!renewPackage);
   useEffect(() => {
     if (!isSmm || smmTouched.current || !packageKey) return;
+    if (smmSkipFirst.current) { smmSkipFirst.current = false; return; }
     setSmmValue((v) => ({
       ...v,
       platforms: platformsForPackage(packageKey),
@@ -729,6 +788,22 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
     }
   };
 
+  /**
+   * Who the activity feed names. The seller, when they record their own sale; the person who typed
+   * it in, when it was recorded on a seller's behalf — with the seller named in the details.
+   */
+  const activityActor = (): { actorId: string; actorName: string; actorRole: ActivityActorRole } => {
+    if (onBehalfOf && authUser) {
+      return {
+        actorId: authUser.uid,
+        actorName: authUser.name,
+        actorRole: authUser.role === "tech_team_leader" ? "tech_team_leader" : "tech_admin",
+      };
+    }
+    return { actorId: saleFormUser?.uid || "", actorName: saleFormUser?.name || "", actorRole: "sales_member" };
+  };
+  const behalfDetail = () => (onBehalfOf ? { onBehalfOf: onBehalfOf.name, onBehalfOfUid: onBehalfOf.uid } : {});
+
   const handleSave = async (opts: { keepOpen?: boolean } = {}) => {
     if (amount <= 0) {
       toast({ title: "Error", description: "Please enter a valid amount.", variant: "destructive" });
@@ -892,6 +967,9 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
             addOns: smmValue.addOns,
             grossAmount: smmQuote.grossAmount,
             priceMode: smmValue.priceMode,
+            clipsPerVideo: normaliseClipsPerVideo(smmValue.clipsPerVideo || DEFAULT_SMM_CLIPS_PER_VIDEO),
+            // A renewal stays a renewal through every later edit of the sale.
+            renewalOf: renewal?.campaignId ?? ed?.smm?.renewalOf ?? null,
           }
         : null,
       ...(isSmm && smmQuote.discountAmount > 0
@@ -941,7 +1019,8 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
       updatedItem.editedAt = Timestamp.now();
       updatedItem.editLog = [
         ...(ed.editLog || []),
-        { at: Timestamp.now(), byName: saleFormUser?.name || "", changes },
+        // Whoever actually made the edit — on a sale recorded for somebody, not the seller.
+        { at: Timestamp.now(), byName: authUser?.name || saleFormUser?.name || "", changes },
       ];
       const items = existingItems.map((it, i) => (i === editItem.index ? updatedItem : it));
       await updateLead(lead.id, { saleItems: items, saleDetails: items[items.length - 1] });
@@ -955,9 +1034,9 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
       } catch { /* best-effort */ }
       if (saleFormUser) {
         await logActivity({
-          actorId: saleFormUser.uid, actorName: saleFormUser.name, actorRole: "sales_member",
+          ...activityActor(),
           adminId: saleFormUser.createdBy, action: "edited_sale_item",
-          details: { leadId: lead.id, leadName: lead.displayName, amount, category, changes },
+          details: { leadId: lead.id, leadName: lead.displayName, amount, category, changes, ...behalfDetail() },
         });
       }
       setSaving(false);
@@ -980,6 +1059,10 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
       proofNote: proofNote.trim() || null,
       promise,
       requirement,
+      // Typed in by somebody other than the seller — kept so the approver can see it.
+      ...(onBehalfOf && authUser
+        ? { enteredBy: { uid: authUser.uid, name: authUser.name, role: authUser.role || null } }
+        : {}),
     };
     const updatedItems = [...existingItems, newItem];
     await updateLead(lead.id, { saleDone: true, saleItems: updatedItems, saleDetails: newItem });
@@ -995,9 +1078,7 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
     } catch { /* best-effort: the sale is recorded even if the order write fails */ }
     if (saleFormUser) {
       await logActivity({
-        actorId: saleFormUser.uid,
-        actorName: saleFormUser.name,
-        actorRole: "sales_member",
+        ...activityActor(),
         adminId: saleFormUser.createdBy,
         action: "submitted_sale",
         details: {
@@ -1006,6 +1087,7 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
           amount,
           category,
           packageKey: packageKey || "custom",
+          ...behalfDetail(),
         },
       });
     }
@@ -1047,7 +1129,7 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
     // Staying open for the next service on the same client, rather than closing and making them
     // find the button again.
     if (opts.keepOpen) { resetForNextService(); return; }
-    onDone({ heldForApproval: held });
+    onDone({ heldForApproval: held, leadId: lead.id, itemIndex: updatedItems.length - 1, item: newItem });
   };
 
   /**
@@ -1078,6 +1160,20 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
 
   return (
     <div className="space-y-3 bg-background border border-border rounded-lg p-3 mt-2">
+      {/* Recorded for somebody else: say whose sale it becomes, and what happens next. */}
+      {onBehalfOf && !editing && (
+        <div data-test="sale-on-behalf" className="rounded-md border border-primary/30 bg-primary/10 p-2 text-xs text-foreground">
+          Recording this sale for <b>{onBehalfOf.name}</b>. It goes on their lead and counts as their
+          sale — and their commission — once the sales admin verifies it.
+        </div>
+      )}
+      {renewal && !editing && (
+        <div data-test="sale-renewal" className="rounded-md border border-success/40 bg-success/10 p-2 text-xs text-foreground">
+          <b>Renewal</b> of {renewal.businessName}'s {renewal.monthLabel} month. The next month starts
+          {" "}<b>{dayLabel(renewal.nextStart)}</b> and the same team carries on. Change the package if the
+          client is moving up or down.
+        </div>
+      )}
       {editing ? (
         <div className="bg-info/10 border border-info/30 text-info text-xs rounded-md p-2 flex items-center gap-1.5">
           <Pencil size={12} /> Editing sale — every change is logged and sent to the tech team
@@ -1094,6 +1190,11 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
         </div>
       )}
 
+      {lockCategory || renewal ? (
+        <p data-test="sale-category-locked" className="rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground">
+          {categoryLabel(category)}
+        </p>
+      ) : (
       <select
         value={category}
         data-test="sale-category"
@@ -1104,6 +1205,7 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
           <option key={c} value={c}>{categoryLabel(c)}</option>
         ))}
       </select>
+      )}
 
       {/* Which kind of video the bulk order is made of. Asked BEFORE the package because it is
           what decides the price list — bulk cinematic is priced as cinematic, not as promotional. */}
@@ -2226,7 +2328,7 @@ export default function SaleForm({ lead, updateLead, onDone, editItem, initialCa
           own details still filled in — is the difference between three sales being recorded and
           one being recorded and two being meant to.
         */}
-        {!editing && (
+        {!editing && !lockCategory && !renewal && (
           <button
             onClick={() => handleSave({ keepOpen: true })}
             data-test="save-and-add-another"

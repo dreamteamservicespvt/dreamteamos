@@ -20,6 +20,9 @@ import { formatCurrency } from "@/utils/formatters";
 import {
   SMM_REAL_VIDEO_RATE, quoteSmm, valueForMode, type SmmAddOns, type SmmPriceMode,
 } from "@/utils/smmPricing";
+import {
+  DEFAULT_SMM_CLIPS_PER_VIDEO, MAX_SMM_CLIPS_PER_VIDEO, SMM_CLIP_PRESETS, normaliseClipsPerVideo, videoLengthLabel,
+} from "@/utils/smmPackage";
 import { SMM_CONTENT_KINDS, SMM_PLATFORMS, type SmmContentKind, type SmmPlatform } from "@/types/smm";
 import FieldHint from "@/components/common/FieldHint";
 
@@ -43,6 +46,64 @@ export interface SmmSaleValue {
   addOns: SmmAddOns;
   priceMode: SmmPriceMode;
   priceValue: number;
+  /**
+   * Clips in each AI video — 4 is a 32-second video (2026-10-03). Most clients get four; some ask
+   * for six. Optional so a caller that predates it still compiles; absent reads as 4.
+   */
+  clipsPerVideo?: number;
+}
+
+/**
+ * How long each AI video is, picked as clips because that is what gets made — with the seconds
+ * beside it, because that is what the client was told. Shared with the tech side's setup.
+ */
+export function ClipsPerVideoPicker({ value, onChange, testPrefix = "smm-clips" }: {
+  value: number;
+  onChange: (clips: number) => void;
+  testPrefix?: string;
+}) {
+  const clips = normaliseClipsPerVideo(value || DEFAULT_SMM_CLIPS_PER_VIDEO);
+  const isPreset = SMM_CLIP_PRESETS.includes(clips);
+  return (
+    <div data-test={`${testPrefix}-picker`}>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {SMM_CLIP_PRESETS.map((n) => (
+          <button
+            key={n}
+            type="button"
+            data-test={`${testPrefix}-${n}`}
+            aria-pressed={clips === n}
+            onClick={() => onChange(n)}
+            className={`h-8 rounded-lg border px-2.5 text-xs font-medium transition-colors ${
+              clips === n ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent"
+            }`}
+          >
+            {n} clips · {n * 8}s
+          </button>
+        ))}
+        <label className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+          Other
+          <input
+            type="number"
+            min={1}
+            max={MAX_SMM_CLIPS_PER_VIDEO}
+            inputMode="numeric"
+            data-test={`${testPrefix}-custom`}
+            value={isPreset ? "" : clips}
+            placeholder="—"
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              if (Number.isFinite(n) && n > 0) onChange(normaliseClipsPerVideo(n));
+            }}
+            className="h-8 w-14 rounded-md border border-border bg-card px-2 text-right font-mono text-xs text-foreground outline-none focus:border-primary"
+          />
+        </label>
+      </div>
+      <p className="mt-1 text-[11px] text-muted-foreground" data-test={`${testPrefix}-label`}>
+        Each video: <b className="text-foreground">{videoLengthLabel(clips)}</b>
+      </p>
+    </div>
+  );
 }
 
 export default function SmmSaleFields({ packageAmount, value, onChange }: {
@@ -157,6 +218,20 @@ export default function SmmSaleFields({ packageAmount, value, onChange }: {
           })}
         </div>
       </div>
+
+      {/* ── How long each video is ───────────────────────────────────────────────────────── */}
+      {(value.commitments.ai_ad || 0) > 0 && (
+        <div>
+          <label className="mb-1 flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+            Clips per video
+            <FieldHint text="How long each AI video is. Most months are 4 clips (32 seconds); some clients ask for 6 (48 seconds). Every video of the month is made at this length." />
+          </label>
+          <ClipsPerVideoPicker
+            value={value.clipsPerVideo || DEFAULT_SMM_CLIPS_PER_VIDEO}
+            onChange={(clips) => set({ clipsPerVideo: clips })}
+          />
+        </div>
+      )}
 
       {/* ── Price ────────────────────────────────────────────────────────────────────────── */}
       <div className="rounded-lg border border-border bg-background p-2.5">

@@ -23,6 +23,7 @@ import {
   updateItem,
 } from "@/services/smm";
 import { approvalWaitDays, canPublish, postLinks } from "@/utils/smmPlan";
+import { clipsPerVideoOf, videoLengthLabel } from "@/utils/smmPackage";
 import { approvalRequestMessage, postingUpdateMessage } from "@/utils/smmMessages";
 import { SMM_CONTENT_KINDS, SMM_PLATFORMS } from "@/types/smm";
 import type { SmmCampaign, SmmContentItem, SmmItemStatus, SmmPlatform, SmmTemplateKind } from "@/types/smm";
@@ -144,7 +145,14 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
       >
         <div className="mb-3 flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{kindLabel}{item.extra ? " · extra" : ""}</p>
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              {kindLabel}{item.extra ? " · extra" : ""}
+              {/* How long the AI video is — the month's own length, which the maker's AI studio is locked to. */}
+              {item.kind === "ai_ad" && !item.extra && (
+                <span data-test="smm-item-length" className="normal-case tracking-normal"> · {videoLengthLabel(clipsPerVideoOf(campaign))}</span>
+              )}
+              {item.carriedFrom && <span className="normal-case tracking-normal text-info"> · from {item.carriedFrom.label}</span>}
+            </p>
             <h3 className="truncate text-base font-semibold text-foreground">{item.title || "Untitled"}</h3>
             <div className="mt-1 flex items-center gap-2">
               <StatusChip status={item.status} />

@@ -9,6 +9,7 @@ import { motion } from "framer-motion";
 import { Phone, CheckCircle, Clock, TrendingUp, AlertCircle, LogIn, LogOut, Loader2, Send } from "lucide-react";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
 import SalesEarningsCard from "@/components/sales/SalesEarningsCard";
+import SmmRenewalsCard from "@/components/smm/SmmRenewalsCard";
 import { useSalesEarnings } from "@/hooks/useSalesEarnings";
 import { useMyLeads } from "@/hooks/useMyLeads";
 import { payPeriodForDate, payPeriodLabel, currentPayMonth } from "@/utils/payrollEngine";
@@ -197,6 +198,9 @@ export default function SalesMemberDashboard() {
 
       {/* Daily check-in / check-out — drives monthly attendance */}
       {user && <CheckinCard user={{ uid: user.uid, name: user.name }} leads={leads} />}
+
+      {/* Social media months of theirs about to end — renewing is the salesperson's job. */}
+      {user && <SmmRenewalsCard user={user} />}
 
       {/* Total earnings this cycle — salary + incentives, the same figure as My Salary. Tap to
           open the full breakdown. */}

@@ -309,7 +309,8 @@ describe("opening the month", () => {
       startDate: "2026-09-01",
     });
     expect(campaign().items).toHaveLength(18);
-    expect(campaign().cycle).toEqual({ month: "2026-09", startDate: "2026-09-01", endDate: "2026-09-30" });
+    // To the same date next month (2026-10-03), not thirty days.
+    expect(campaign().cycle).toEqual({ month: "2026-09", startDate: "2026-09-01", endDate: "2026-10-01" });
     expect(campaign().watchers).toEqual(["seller"]);
   });
 
@@ -337,70 +338,6 @@ describe("opening the month", () => {
   });
 });
 
-
-describe("a month that never came through a sale", () => {
-  it("can be started by hand, with the same plan a sold month gets", async () => {
-    const id = await smm.createDirectCampaign({
-      clientName: "Meena",
-      businessName: "Meena Boutique",
-      clientPhone: "9876543210",
-      packageKey: "Starter Package",
-      packageLabel: "Starter Package",
-      amount: 9000,
-      platforms: ["instagram", "facebook"],
-      commitments: { poster: 4, ai_ad: 4, real_video: 1 },
-      startDate: "2026-09-01",
-    }, ACTOR);
-
-    const made = store[`smm_campaigns/${id}`];
-    expect(made.origin).toBe("direct");
-    expect(made.items).toHaveLength(9);
-    expect(made.cycle).toEqual({ month: "2026-09", startDate: "2026-09-01", endDate: "2026-09-30" });
-    expect(made.status).toBe("active");
-  });
-
-  it("has no order behind it, and does not pretend otherwise", async () => {
-    const id = await smm.createDirectCampaign({
-      clientName: "Meena", businessName: "Meena Boutique", clientPhone: "9876543210",
-      packageKey: "", packageLabel: "Custom month", amount: 5000,
-      platforms: ["instagram"], commitments: { poster: 2, ai_ad: 0, real_video: 0 },
-      startDate: "2026-09-01",
-    }, ACTOR);
-
-    expect(store[`smm_campaigns/${id}`].orderId).toBe("");
-    // Moving the plan must not throw trying to write counters onto an order that does not exist.
-    const first = store[`smm_campaigns/${id}`].items[0];
-    await expect(smm.setItemStatus(id, first.id, "in_progress", ACTOR)).resolves.toBeUndefined();
-  });
-
-  it("makes whoever started it the owner of the client conversation", async () => {
-    const id = await smm.createDirectCampaign({
-      clientName: "Meena", businessName: "Meena Boutique", clientPhone: "9876543210",
-      packageKey: "", packageLabel: "Custom month", amount: 5000,
-      platforms: ["instagram"], commitments: { poster: 1, ai_ad: 0, real_video: 0 },
-      startDate: "2026-09-01",
-    }, ACTOR);
-
-    // Approvals still get chased, ad money still gets asked for, the renewal still gets pitched —
-    // all of which belong to a person. A month owned by nobody is one the client goes quiet on.
-    expect(store[`smm_campaigns/${id}`].soldBy).toBe("tech1");
-    expect(store[`smm_campaigns/${id}`].createdByName).toBe("Kiran");
-    expect(store[`smm_campaigns/${id}`].watchers).toContain("tech1");
-  });
-
-  it("normalises the client's number the same way every other screen does", async () => {
-    const id = await smm.createDirectCampaign({
-      clientName: "Meena", businessName: "", clientPhone: "9876543210",
-      packageKey: "", packageLabel: "Custom month", amount: 5000,
-      platforms: ["instagram"], commitments: { poster: 1, ai_ad: 0, real_video: 0 },
-      startDate: "2026-09-01",
-    }, ACTOR);
-
-    expect(store[`smm_campaigns/${id}`].clientPhone).toBe("+919876543210");
-    // A business nobody named is the client's own name — a blank headline is unusable on the board.
-    expect(store[`smm_campaigns/${id}`].businessName).toBe("Meena");
-  });
-});
 
 describe("recording the client's ad money", () => {
   it("defaults to the client having paid Meta themselves", async () => {

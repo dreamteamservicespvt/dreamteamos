@@ -79,6 +79,12 @@ export interface CreateWorkAssignmentInput {
    * jobs gets ONE assignment naming both, rather than two cards for the same month.
    */
   tracks?: OrderTrack[];
+  /**
+   * The social-media month this job is for (its campaign id). Lets the month find its members' jobs
+   * — to update one instead of duplicating it, and to follow a change of video length — and lets My
+   * Work link back to the month's plan. See services/smmAssign.
+   */
+  smmCampaignId?: string | null;
   /** Shown in the assignee's notification. */
   memberLink?: string;
   /** The assigner's display name, for the client chat this creates. */
@@ -104,7 +110,7 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
     businessName, businessWhatsapp, modelGender, attireType, customAttire, aspectRatio,
     language, festival, requirementNotes, characterPack, customCharacter, realLocationProvided,
     businessInfo, businessAddress, posterSize, posterStyle, posterCount,
-    order, tracks, memberLink = "/tech/my-work", assignerName, techAdminUid, actor,
+    order, tracks, smmCampaignId, memberLink = "/tech/my-work", assignerName, techAdminUid, actor,
   } = input;
   const poster = isPosterCategory(category);
 
@@ -198,6 +204,7 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
     ...(linkedOrder ? { chatId: linkedOrder.id } : {}),
     ...(linkedOrder?.promise ? { promise: linkedOrder.promise } : {}),
     ...(tracks?.length ? { tracks } : {}),
+    ...(smmCampaignId ? { smmCampaignId } : {}),
   });
 
   /**

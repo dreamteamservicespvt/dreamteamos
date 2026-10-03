@@ -186,6 +186,13 @@ export interface WorkAssignment {
    * Absent on ordinary single-ad work, which has no tracks to divide.
    */
   tracks?: OrderTrack[];
+  /**
+   * The social-media month this job is for (2026-10-03) — the campaign's id, which is the order's id
+   * for a sold month. Lets the month find its members' jobs (to update a job instead of creating a
+   * duplicate, and to follow a change of video length) and lets My Work link back to the month's plan.
+   * Absent on every other kind of job and on month jobs created before it existed.
+   */
+  smmCampaignId?: string | null;
   // Ad specification set by the admin/team leader at assignment time — pre-fills and locks
   // the matching field in the assigned member's AI Platform tool (see AIPlatformApp.tsx).
   modelGender?: "male" | "female";
@@ -448,6 +455,16 @@ export interface SaleDetail {
    * are said rather than guessed by the tech team three days later. See `types/smm`.
    */
   smm?: SmmSaleSpec | null;
+  /**
+   * Somebody else typed this sale in for the salesperson who made it (2026-10-03).
+   *
+   * The tech admin or team leader records a social-media sale on a salesperson's behalf ("Add SMM
+   * sale"). It is the salesperson's sale in every respect — it sits on their lead, counts in their
+   * sales and commission once verified — and this says who actually entered it, so the sales admin
+   * approving it and anyone reading the lead later can see that it did not come from the seller's own
+   * phone. Absent on every sale the salesperson recorded themselves.
+   */
+  enteredBy?: { uid: string; name: string; role?: string | null } | null;
 }
 
 /**
@@ -468,6 +485,17 @@ export interface SmmSaleSpec {
   grossAmount: number;
   /** Which end the member entered the negotiation from — kept so reopening the sale shows it back. */
   priceMode: "amount" | "percent" | "final";
+  /**
+   * Clips in each AI video — 4 is a 32-second video, 6 is 48 (2026-10-03). Agreed on the call
+   * because some clients ask for longer videos than the usual four clips. Absent reads as 4; see
+   * `SmmCampaign.clipsPerVideo`, which is where the month carries it from here on.
+   */
+  clipsPerVideo?: number | null;
+  /**
+   * The month this sale renews (a campaign id), when the salesperson pressed Renew on it. The new
+   * month continues from that one: its dates follow on, its team carries over. Absent on a first sale.
+   */
+  renewalOf?: string | null;
 }
 
 /** One recorded edit of a sale, so a change is visible and accountable rather than silent. */

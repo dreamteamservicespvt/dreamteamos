@@ -51,6 +51,7 @@ export const ACTIVITY_META: Record<ActivityAction, ActivityMeta> = {
   purged_orders: { label: "Permanently Deleted", icon: ShieldAlert, ...BAD },
   added_penalty: { label: "Charged for Changes", icon: AlertTriangle, ...BAD },
   removed_penalty: { label: "Removed Charge", icon: Undo2, ...INFO },
+  set_up_smm_month: { label: "Set Up Social Media Month", icon: Sparkle, ...PRIMARY },
 };
 
 export const ROLE_LABEL: Record<ActivityActorRole, string> = {
@@ -94,7 +95,9 @@ export function describeActivity(log: DescribableLog): string {
     case "bulk_rejected_sales":
       return `Bulk rejected ${d.count} sale(s) in one action`;
     case "submitted_sale":
-      return `Submitted ${spaced(d.category)} sale of ${formatCurrency(d.amount || 0)} for "${d.leadName}"`;
+      return `Submitted ${spaced(d.category)} sale of ${formatCurrency(d.amount || 0)} for "${d.leadName}"`
+        // Recorded by the tech side for the salesperson who made it ("Add SMM sale").
+        + `${d.onBehalfOf ? ` on behalf of ${d.onBehalfOf}` : ""}`;
     case "deleted_sale_item":
       return `Deleted their own ${spaced(d.category)} sale of ${formatCurrency(d.amount || 0)} for "${d.leadName}"`;
     case "edited_sale_item":
@@ -135,6 +138,12 @@ export function describeActivity(log: DescribableLog): string {
         + `${d.reason ? ` — ${d.reason}` : ""}`;
     case "removed_penalty":
       return `Removed a charge of ${formatCurrency(d.amount || 0)} from "${d.businessName || "an order"}"`;
+    case "set_up_smm_month":
+      return d.history
+        ? `Recorded "${d.businessName || "a client"}"'s social media month (${d.startDate} → ${d.endDate}) as history`
+        : `Set up "${d.businessName || "a client"}"'s social media month (${d.startDate} → ${d.endDate})`
+          + `${d.clipsPerVideo ? ` · ${d.clipsPerVideo} clips a video` : ""}`
+          + `${Array.isArray(d.team) && d.team.length ? ` — ${d.team.map((m: { name?: string }) => m.name).filter(Boolean).join(", ")}` : ""}`;
     default:
       return "Unknown action";
   }

@@ -24,6 +24,9 @@ import {
 import { collectReadiness } from "@/utils/collectReadiness";
 import SaleSection from "@/components/sales/SaleSection";
 import SaleForm from "@/components/sales/SaleForm";
+import { fetchCampaign } from "@/services/smm";
+import { renewalPrefillOf } from "@/utils/smmPackage";
+import type { SmmRenewalPrefill } from "@/types/smm";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
@@ -155,15 +158,62 @@ export default function MyLeads() {
     leadId: leadParams.get("lead"),
     category: leadParams.get("category") || undefined,
     wantsSale: leadParams.get("sale") === "1",
+    /** The social-media month being renewed, when the member pressed Renew on it. */
+    renewId: leadParams.get("renew") || null,
   };
+  // The month being renewed (read below), and whether that read has finished.
+  const [renewal, setRenewal] = useState<SmmRenewalPrefill | null>(null);
+  const [renewalReady, setRenewalReady] = useState(false);
+  const renewalOpened = useRef(false);
   useEffect(() => {
     if (!upsellRequest.leadId || !upsellRequest.wantsSale) return;
     if (!leads.some(l => l.id === upsellRequest.leadId)) return;  // still loading, or not theirs
+    // A renewal waits for its month: the form reads it once, when it opens.
+    if (upsellRequest.renewId && !renewalReady) return;
+    /*
+      Bring that lead into view. The list opens on today, and a client being upsold or renewed was
+      usually last worked weeks ago — so their card, and the sale form opened inside it, sat in an old
+      day's bucket where nobody could see it (found 2026-10-03). Showing every day, searched to this
+      one number, puts exactly that card on screen.
+    */
+    const target = leads.find(l => l.id === upsellRequest.leadId);
+    setViewTab("leads");
+    setSelectedDate(undefined);
+    setDayFilter("all");
+    setStatusFilter("all");
+    if (target?.phone) setSearch(target.phone.replace(/\D/g, "").slice(-10));
     setExpandedSale(upsellRequest.leadId);
+    if (upsellRequest.renewId) renewalOpened.current = true;
     const next = new URLSearchParams(leadParams);
     next.delete("sale");
     setLeadParams(next, { replace: true });
-  }, [upsellRequest.leadId, upsellRequest.wantsSale, leads, leadParams, setLeadParams]);
+  }, [upsellRequest.leadId, upsellRequest.wantsSale, upsellRequest.renewId, renewalReady, leads, leadParams, setLeadParams]);
+
+  /**
+   * Arriving from Renew on a social-media month (2026-10-03).
+   *
+   * The month is read once so the sale form opens on its package, accounts and video length, and the
+   * sale is linked to it. The link is dropped as soon as that form closes — saved or not — so a later,
+   * unrelated sale on the same lead is never mistaken for this renewal.
+   */
+  useEffect(() => {
+    if (!upsellRequest.renewId) { setRenewal(null); setRenewalReady(false); return; }
+    let cancelled = false;
+    setRenewalReady(false);
+    fetchCampaign(upsellRequest.renewId)
+      .then((c) => { if (!cancelled) setRenewal(c ? renewalPrefillOf(c, format(new Date(), "yyyy-MM-dd")) : null); })
+      .catch(() => { if (!cancelled) setRenewal(null); })
+      .finally(() => { if (!cancelled) setRenewalReady(true); });
+    return () => { cancelled = true; };
+  }, [upsellRequest.renewId]);
+  useEffect(() => {
+    if (expandedSale || !renewalOpened.current) return;
+    renewalOpened.current = false;
+    setRenewal(null);
+    const next = new URLSearchParams(leadParams);
+    next.delete("renew");
+    setLeadParams(next, { replace: true });
+  }, [expandedSale, leadParams, setLeadParams]);
   const [showCustomModal, setShowCustomModal] = useState(false);
   const [duplicateLeadIds, setDuplicateLeadIds] = useState<Set<string>>(new Set());
   const [dupLoading, setDupLoading] = useState(true);
@@ -731,6 +781,7 @@ export default function MyLeads() {
                     setExpandedNotes={setExpandedNotes}
                     expandedSale={expandedSale}
                     upsellCategory={upsellRequest.category}
+                    renewal={renewal && upsellRequest.leadId === lead.id ? renewal : null}
                     setExpandedSale={setExpandedSale}
                     ordersById={ordersById}
                   />
@@ -867,6 +918,7 @@ export default function MyLeads() {
                     setExpandedNotes={setExpandedNotes}
                     expandedSale={expandedSale}
                     upsellCategory={upsellRequest.category}
+                    renewal={renewal && upsellRequest.leadId === lead.id ? renewal : null}
                     setExpandedSale={setExpandedSale}
                     ordersById={ordersById}
                   />
@@ -896,6 +948,8 @@ interface LeadCardProps {
   ordersById: Map<string, Order>;
   /** What an upsell arriving from My Clients was for, so the sale form opens on it. */
   upsellCategory?: string;
+  /** The social-media month being renewed, for the one lead the Renew button opened. */
+  renewal?: SmmRenewalPrefill | null;
 }
 
 /**
@@ -1201,7 +1255,7 @@ function RevenueBreakdownModal({
   );
 }
 
-function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expandedNotes, setExpandedNotes, expandedSale, setExpandedSale, ordersById, upsellCategory }: LeadCardProps) {
+function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expandedNotes, setExpandedNotes, expandedSale, setExpandedSale, ordersById, upsellCategory, renewal }: LeadCardProps) {
   const { toast } = useToast();
   const currentUser = useAuthStore((s) => s.user);
   const [notes, setNotes] = useState(lead.notes || "");
@@ -1701,7 +1755,7 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
           {expandedSale === lead.id && (
             <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
               <SaleForm lead={lead} updateLead={updateLead} onDone={() => setExpandedSale(null)}
-                initialCategory={upsellCategory} />
+                initialCategory={upsellCategory} renewal={renewal} />
             </motion.div>
           )}
         </AnimatePresence>

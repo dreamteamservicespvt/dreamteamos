@@ -27,7 +27,7 @@ import {
   CheckCircle2, XCircle, Clock, History, AlertTriangle,
 } from "lucide-react";
 import { formatCurrency } from "@/utils/formatters";
-import { formatPhoneDisplay, normalizePhone, phoneLockId } from "@/utils/phone";
+import { formatPhoneDisplay, normalizePhone, phoneLockId, phoneVariants } from "@/utils/phone";
 import { collectedOf } from "@/utils/salePayments";
 import { saleDiscountOf } from "@/utils/saleDiscount";
 import { categoryLabel } from "@/utils/serviceCatalog";
@@ -76,22 +76,6 @@ interface Result {
 
 const itemsOf = (lead: Lead): SaleDetail[] =>
   lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
-
-/**
- * The forms one number gets written down in.
- *
- * Leads are keyed by whatever the member typed or pasted, so the same client exists as
- * "+919849834102", "919849834102" and "9849834102" across different rows. An equality query on one
- * of those finds one third of the history, which on this screen looks exactly like "no history".
- */
-function phoneVariants(raw: string): string[] {
-  const digits = phoneLockId(raw);
-  if (!digits) return [];
-  const local = digits.length > 10 ? digits.slice(-10) : digits;
-  return [...new Set([
-    `+${digits}`, digits, local, `+91${local}`, `91${local}`, `0${local}`,
-  ])];
-}
 
 export default function ClientLookup() {
   const [input, setInput] = useState("");

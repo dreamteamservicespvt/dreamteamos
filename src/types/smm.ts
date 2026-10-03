@@ -190,6 +190,14 @@ export interface SmmContentItem {
    */
   postUrl?: string | null;
   notes?: string | null;
+  /**
+   * A piece the PREVIOUS month owed and did not post, moved into this one (2026-10-03).
+   *
+   * Set only by `services/smm.moveUnpostedToMonth`. The piece is still owed — the client paid for it
+   * last month — so it is counted in this month's commitments, and the chip says where it came from
+   * so nobody mistakes it for this month's own quota.
+   */
+  carriedFrom?: { campaignId: string; label: string } | null;
   createdAt?: any;
   updatedAt?: any;
 }
@@ -300,6 +308,21 @@ export interface SmmRenewal {
   at?: any | null;
   byName?: string | null;
   note?: string | null;
+  /**
+   * The month the renewal created (2026-10-03). Written when the salesperson's renewal sale opens
+   * the next month, so this month can link forward to it and is closed as `renewed` once it ends.
+   */
+  nextCampaignId?: string | null;
+}
+
+/** One piece this month owed and moved into the next month instead (see `SmmContentItem.carriedFrom`). */
+export interface SmmCarriedPiece {
+  itemId: string;
+  title: string;
+  kind: SmmContentKind;
+  toCampaignId: string;
+  at: any;
+  byName: string;
 }
 
 /** The service month this campaign covers. */
@@ -340,6 +363,11 @@ export interface SmmTeam {
  * A direct month behaves identically everywhere that matters: the same plan, the same approvals,
  * the same ads, the same reports. What it lacks is an order to write counters back to and a
  * client chat to post into, and both of those are simply absent rather than broken.
+ *
+ * ── No longer created (2026-10-03) ────────────────────────────────────────────────────────────
+ * Every month now has a sale behind it: a salesperson records it, or the tech side records it on
+ * their behalf ("Add SMM sale"), so the salesperson sees it and is paid for it by the usual formula.
+ * Months started directly before that keep working exactly as described above.
  */
 export type SmmOrigin = "sale" | "direct";
 
@@ -396,8 +424,59 @@ export interface SmmCampaign {
   deletedAt?: any | null;
   deletedByName?: string | null;
   renewal: SmmRenewal;
+  /**
+   * Clips in each AI video this month — 8 seconds a clip, so 4 is a 32-second video (2026-10-03).
+   *
+   * ── Why per month and not per package ─────────────────────────────────────────────────────────
+   * The package says HOW MANY videos; it never said how long each one is, so the length was guessed
+   * downstream — and the guess was the number of videos in the month, which locked a Pro month's
+   * every video to 8 clips. Most clients get 4 clips a video; some ask for 6. It is agreed with the
+   * client, so it is set on the sale and in the tech side's setup, and every member's job hands the
+   * AI studio exactly this. Absent on older months, which read as `DEFAULT_SMM_CLIPS_PER_VIDEO`.
+   */
+  clipsPerVideo?: number | null;
+  /** The client's own page on each account — a handle or a link — so whoever posts knows where. */
+  pageLinks?: Partial<Record<SmmPlatform, string>> | null;
+  /** The month this one renews — absent on a client's first month. */
+  renewalOf?: string | null;
+  /** 1 for the first month with this client, 2 for its first renewal, … Absent reads as 1. */
+  monthNumber?: number | null;
+  /**
+   * When the tech side set the month up — its dates, its video length and its team — and who did.
+   *
+   * A sale opens the month the moment it is recorded, with a plan and nobody on it. Setting it up
+   * is the tech side's half of the handover; renewals are set up automatically from the month before.
+   */
+  setupAt?: any | null;
+  setupByName?: string | null;
+  /** Who set it up — the assigner its renewal's jobs are recorded against. */
+  setupByUid?: string | null;
+  /**
+   * Set up after its dates had already passed — a sale recorded before this section had everything
+   * it needs, re-created for the record. It is history: nobody gets a job for it, nothing on it is
+   * late, and it files straight under Finished.
+   */
+  history?: boolean;
+  /** Pieces this month owed and moved into the next month instead of posting. */
+  carriedOut?: SmmCarriedPiece[];
   createdAt?: any;
   updatedAt?: any;
+}
+
+/**
+ * What the sale form needs to open on a month being renewed (2026-10-03). Built from the month by
+ * `utils/smmPackage.renewalPrefillOf` and carried to My Leads by the Renew button.
+ */
+export interface SmmRenewalPrefill {
+  campaignId: string;
+  businessName: string;
+  packageKey: string;
+  platforms: SmmPlatform[];
+  clipsPerVideo?: number | null;
+  /** The month being renewed, named — "October 2026". */
+  monthLabel: string;
+  /** The day the next month starts, `yyyy-MM-dd`. */
+  nextStart: string;
 }
 
 /** What a saved message template is for. Drives which placeholders it is offered. */

@@ -3,7 +3,7 @@ import {
   Briefcase, Clock, Play, CheckCircle2, ChevronDown, Loader2, AlertCircle, Sparkles, Edit3, Copy, Check, Undo2,
   MessagesSquare, StickyNote
 } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { collection, query, where, doc, updateDoc, deleteField, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/services/firebase';
 import { revertOrderToAssigned } from '@/services/orders';
@@ -605,7 +605,17 @@ export default function MyWork() {
                     ) : (
                       <span>{assignmentSizeLabel(a)}</span>
                     )}
-                    {!isPosterCategory(a.category) && <span>{a.duration}</span>}
+                    {/* A month's job makes every video at the month's length — say it as one. */}
+                    {!isPosterCategory(a.category) && (
+                      <span>{a.category === 'social_media_management' ? `each video ${a.duration}` : a.duration}</span>
+                    )}
+                    {/* The month's plan — titles, dates, approvals — lives on its own page. */}
+                    {a.category === 'social_media_management' && (a.smmCampaignId || a.orderId) && (
+                      <Link to={`/smm/${a.smmCampaignId || a.orderId}`} data-test="my-work-month-plan"
+                        className="font-medium text-primary hover:underline">
+                        Month plan →
+                      </Link>
+                    )}
                     <span>Assigned: {getAssignedStamp(a)}</span>
                     {a.totalDurationSeconds > 0 && (
                       <span className="flex items-center space-x-1"><Clock className="w-3 h-3" /><span>{formatDuration(a.totalDurationSeconds)}</span></span>
