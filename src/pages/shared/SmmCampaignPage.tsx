@@ -45,6 +45,7 @@ import SmmContentTable from "@/components/smm/SmmContentTable";
 import SmmAdsPanel from "@/components/smm/SmmAdsPanel";
 import SmmMoneyPanel from "@/components/smm/SmmMoneyPanel";
 import SmmReportPanel from "@/components/smm/SmmReportPanel";
+import SmmMyJobPanel from "@/components/smm/SmmMyJobPanel";
 import SmmItemDialog from "@/components/smm/SmmItemDialog";
 import SmmMessageComposer from "@/components/smm/SmmMessageComposer";
 import { PlatformChips } from "@/components/smm/SmmChips";
@@ -466,6 +467,9 @@ export default function SmmCampaignPage() {
           </div>
         )}
       </div>
+
+      {/* ── A tech member's own job on this month — opened from here, not from My Work ───────── */}
+      <SmmMyJobPanel campaign={campaign} user={user} />
 
       {/* ── Where this month sits in the client's run ─────────────────────────────────────── */}
       {(renewalOf || nextId || renewDue || campaign.renewal?.state === "lost") && (

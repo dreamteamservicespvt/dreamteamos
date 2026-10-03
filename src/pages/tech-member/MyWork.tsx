@@ -3,7 +3,7 @@ import {
   Briefcase, Clock, Play, CheckCircle2, ChevronDown, Loader2, AlertCircle, Sparkles, Edit3, Copy, Check, Undo2,
   MessagesSquare, StickyNote
 } from 'lucide-react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { collection, query, where, doc, updateDoc, deleteField, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/services/firebase';
 import { revertOrderToAssigned } from '@/services/orders';
@@ -35,6 +35,7 @@ import { reopenOrderChat, syncOrderChatWorkStatus } from '@/services/orderChat';
 import { orderChatIdOf } from '@/utils/orderChatId';
 import PosterSpecChips from '@/components/work/PosterSpecChips';
 import { isPosterCategory, assignmentSizeLabel } from '@/utils/posterSpec';
+import { isSmmMonthJob, safeMonthReturn } from '@/utils/smmPackage';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useToast } from '@/hooks/use-toast';
 
@@ -60,7 +61,15 @@ function getDayLabel(date: Date): string {
 export default function MyWork() {
   const user = useAuthStore((s) => s.user);
   const q = useMemo(() => user ? query(collection(db, 'work_assignments'), where('assignedTo', '==', user.uid)) : null, [user?.uid]);
-  const { data: assignments, loading } = useFirestoreQuery<WorkAssignment>(q, [user?.uid]);
+  const { data: allAssignments, loading } = useFirestoreQuery<WorkAssignment>(q, [user?.uid]);
+  /**
+   * The jobs this page lists: everything except a social-media month's card (2026-10-04).
+   *
+   * A month is worked from its own page under Social Media (utils/smmPackage.isSmmMonthJob). Its
+   * card is still loaded — the month page opens it here through `?open=` / `?chat=`, and a chat
+   * notification can still land on it — it is only kept out of the lists, tiles and counts.
+   */
+  const assignments = useMemo(() => allAssignments.filter(a => !isSmmMonthJob(a)), [allAssignments]);
 
   const [verifyingAssignment, setVerifyingAssignment] = useState<WorkAssignment | null>(null);
   /**
@@ -80,16 +89,40 @@ export default function MyWork() {
    * into this entry — does not reopen a chat the member deliberately closed.
    */
   const [chatParams, setChatParams] = useSearchParams();
+  const navigate = useNavigate();
+  /**
+   * Where to go when the job opened by a link is closed — a social-media month's page, when the
+   * member came from it (2026-10-04). Read once from `?back=` and only ever a month page.
+   */
+  const [returnTo, setReturnTo] = useState<string | null>(() => safeMonthReturn(chatParams.get("back")));
+  const goBack = () => {
+    if (!returnTo) return;
+    const to = returnTo;
+    setReturnTo(null);
+    navigate(to, { replace: true });
+  };
   const requestedChatId = chatParams.get("chat");
+  const requestedOpenId = chatParams.get("open");
   useEffect(() => {
-    if (!requestedChatId) return;
-    const match = assignments.find(a => a.id === requestedChatId);
-    if (!match) return;              // still loading, or not this member's job
-    setOpenChatFor(match);
+    if (!requestedChatId && !requestedOpenId) return;
+    const match = allAssignments.find(a => a.id === (requestedChatId || requestedOpenId));
+    if (!match) {
+      // Still loading — or not this member's job, in which case there is nothing to open.
+      if (!loading) {
+        const next = new URLSearchParams(chatParams);
+        next.delete("chat"); next.delete("open"); next.delete("back");
+        setChatParams(next, { replace: true });
+        if (returnTo) goBack();
+      }
+      return;
+    }
+    if (requestedChatId) setOpenChatFor(match);
+    else openWithCode(match, 'work');
     const next = new URLSearchParams(chatParams);
-    next.delete("chat");
+    next.delete("chat"); next.delete("open"); next.delete("back");
     setChatParams(next, { replace: true });
-  }, [requestedChatId, assignments, chatParams, setChatParams]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedChatId, requestedOpenId, allAssignments, loading, chatParams, setChatParams]);
   const chatState = useOrderChatUnread(user?.uid);
 
   /**
@@ -101,8 +134,8 @@ export default function MyWork() {
    * from it is what makes an edit reach the person doing the work.
    */
   const liveOpenAssignment = useMemo(
-    () => (openAssignment ? assignments.find(a => a.id === openAssignment.id) ?? openAssignment : null),
-    [assignments, openAssignment],
+    () => (openAssignment ? allAssignments.find(a => a.id === openAssignment.id) ?? openAssignment : null),
+    [allAssignments, openAssignment],
   );
   const sessionStartRef = useRef<Date | null>(null);
   const [dayFilter, setDayFilter] = useState<string>('all');
@@ -171,6 +204,7 @@ export default function MyWork() {
 
   const handleClose = () => {
     setOpenAssignment(null);
+    goBack();
   };
 
   /**
@@ -188,7 +222,7 @@ export default function MyWork() {
   const creditGate = useCreditGate();
 
   /** "Now upload it to your Drive" — opens the moment a job is handed in (useDriveUploadStep). */
-  const driveStep = useDriveUploadStep();
+  const driveStep = useDriveUploadStep({ onClosed: goBack });
 
   const handleComplete = () => creditGate.request(openAssignment, async () => {
     const finished = openAssignment;
@@ -276,8 +310,9 @@ export default function MyWork() {
    * documents and nothing else.
    *
    * ── Why it is no longer only the tracked work ────────────────────────────────────────────────
-   * It used to fetch only assignments carrying tracks, because the counters on a social-media month
-   * live on the order. The member now also needs the order to move a delivery deadline: the promise
+   * It used to fetch only assignments carrying tracks, because the counters on a split order (a bulk
+   * order now; social-media months moved to their own page) live on the order. The member now also
+   * needs the order to move a delivery deadline: the promise
    * is written on the ORDER, which is the document both sides can write, and the member watching an
    * unanswered script is often the first to know the client is the reason it slipped. Limited to
    * ACTIVE work, so finished jobs — which can no longer be extended — cost nothing.
@@ -297,7 +332,8 @@ export default function MyWork() {
   };
 
   /**
-   * Active work, with unfinished months and bulk orders held at the top.
+   * Active work, with unfinished bulk orders held at the top (social-media months are worked from
+   * Social Media and are not listed here).
    *
    * Those run over days while single ads land and clear around them, so on plain newest-first they
    * sink below a fortnight of finished ads while still owing the client work.
@@ -501,7 +537,7 @@ export default function MyWork() {
         <CodeVerificationModal
           accessCode={verifyingAssignment.accessCode}
           onVerified={handleVerified}
-          onClose={() => setVerifyingAssignment(null)}
+          onClose={() => { setVerifyingAssignment(null); goBack(); }}
         />
       )}
 
@@ -509,7 +545,7 @@ export default function MyWork() {
         <StaffOrderChat
           assignment={openChatFor}
           memberName={user?.name}
-          onClose={() => setOpenChatFor(null)}
+          onClose={() => { setOpenChatFor(null); goBack(); }}
         />
       )}
 
@@ -606,7 +642,7 @@ export default function MyWork() {
                   <SaleDeletedBanner assignment={a} />
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground mb-3">
                     <span className="capitalize">{a.category.replace(/_/g, ' ')}</span>
-                    {/* Ordinary ad work is counted in clips; a month is counted in jobs, and
+                    {/* Ordinary ad work is counted in clips; a split order is counted in jobs, and
                         "8 clips + EC" would be a lie about what this person was actually given. */}
                     {a.tracks?.length ? (
                       <span className="text-purple-600 dark:text-purple-400">
@@ -615,17 +651,7 @@ export default function MyWork() {
                     ) : (
                       <span>{assignmentSizeLabel(a)}</span>
                     )}
-                    {/* A month's job makes every video at the month's length — say it as one. */}
-                    {!isPosterCategory(a.category) && (
-                      <span>{a.category === 'social_media_management' ? `each video ${a.duration}` : a.duration}</span>
-                    )}
-                    {/* The month's plan — titles, dates, approvals — lives on its own page. */}
-                    {a.category === 'social_media_management' && (a.smmCampaignId || a.orderId) && (
-                      <Link to={`/smm/${a.smmCampaignId || a.orderId}`} data-test="my-work-month-plan"
-                        className="font-medium text-primary hover:underline">
-                        Month plan →
-                      </Link>
-                    )}
+                    {!isPosterCategory(a.category) && <span>{a.duration}</span>}
                     <span>Assigned: {getAssignedStamp(a)}</span>
                     {a.totalDurationSeconds > 0 && (
                       <span className="flex items-center space-x-1"><Clock className="w-3 h-3" /><span>{formatDuration(a.totalDurationSeconds)}</span></span>
@@ -645,7 +671,7 @@ export default function MyWork() {
 
                   {/* The shared counters — or, for a bulk order, this member's own videos with a
                       tick against each. Written to the order, so the other members on a split
-                      month see this person's progress without anyone having to message anyone.
+                      order see this person's progress without anyone having to message anyone.
                       Bulk orders render whether or not they carry a progress object: their videos
                       come from the quantity sold, and a member must always be able to tick off
                       work that is sitting in their name. */}

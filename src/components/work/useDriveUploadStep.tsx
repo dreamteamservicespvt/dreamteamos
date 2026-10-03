@@ -7,9 +7,11 @@ import type { WorkAssignment } from "@/types";
  * The Drive step after "Mark complete" (2026-10-03) — one hook, so My Work and Recent Ads, the two
  * places a job is handed in from, open the same sheet the same way (like useCreditGate in front of
  * the completion). `offer` after a successful submit; `offer(job, false)` from a job card's
- * "Upload to Drive" button; render `sheet` once anywhere on the page.
+ * "Upload to Drive" button; render `sheet` once anywhere on the page. `onClosed` runs when the sheet
+ * goes away — My Work uses it to return a member to the social-media month they came from.
  */
-export function useDriveUploadStep() {
+export function useDriveUploadStep(options: { onClosed?: () => void } = {}) {
+  const { onClosed } = options;
   const user = useAuthStore((s) => s.user);
   const [current, setCurrent] = useState<{ assignment: WorkAssignment; justCompleted: boolean } | null>(null);
 
@@ -38,7 +40,7 @@ export function useDriveUploadStep() {
       assignment={current.assignment}
       user={user}
       justCompleted={current.justCompleted}
-      onClose={() => setCurrent(null)}
+      onClose={() => { setCurrent(null); onClosed?.(); }}
     />
   ) : null;
 

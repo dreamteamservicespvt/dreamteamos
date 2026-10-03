@@ -252,7 +252,7 @@ tech admin). Filters like `u.createdBy === teamAdminUid` recur across pages.
 | `sales_admin` (Sales Admin, "CEO" signatory) | Runs the sales department | main_admin | `/sales-admin/leaderboard` | Create sales_member; distribute numbers (Leads Management, per-member assign, schedule pools); **verify or reject sales and approve over-10% discounts**; resolve duplicate-sale disputes and frozen numbers; client lookup; settlements (commission payouts); sales payroll; attendance; analytics; training and scripts; HR centre; record client feedback; manage client profiles; assign review tasks; chat monitor; SMM overseer | No access to the tech Orders queue or Work Assign |
 | `accounts_admin` (Accounts Admin) | Finance bookkeeping | main_admin | `/accounts/dashboard` | Accounts dashboard; revenue summary; daily expenses CRUD; salary management (edit `users.salary`, `salary_receipts`) | No `/smm`, no chat, no profile page (`getProfileRoute` → "") |
 | `tech_team_leader` (Tech Team Leader) | Supervises a tech team under a tech admin | tech_admin | `/team-leader/work-assign` | Orders queue (remove/restore, **not purge**); Work Assign; unassign/reassign; verify / send back; work reports; attendance and leave; HR centre (send agreements, **cannot delete** documents); activity history; Tools; **AI Accounts** (same as the tech admin); own profile/HR docs; SMM overseer; extend promises | No pricing UI on their Work Assign page; no payroll route; no dashboard |
-| `tech_member` (Tech Member) | Produces ads | tech_admin (or hiring link) | `/tech/dashboard` | Daily check-in/out (mandatory prompt); My Work (open job with access code, AI platform, submit, undo completion); Recent Ads; analytics; salary dashboard; SMM items they are on; bulk video slots assigned to them; extend promise on own job; team chat and meetings; profile, KYC, documents; **My AI Accounts** (own Flow accounts and credits; a video job asks for its Flow credits before it is marked complete) | Cannot assign work, including to themselves |
+| `tech_member` (Tech Member) | Produces ads | tech_admin (or hiring link) | `/tech/dashboard` | Daily check-in/out (mandatory prompt); My Work (open job with access code, AI platform, submit, undo completion); Recent Ads; analytics; salary dashboard; SMM months they are on (worked from Social Media — their month job opens from the month's page, not My Work); bulk video slots assigned to them; extend promise on own job; team chat and meetings; profile, KYC, documents; **My AI Accounts** (own Flow accounts and credits; a video job asks for its Flow credits before it is marked complete) | Cannot assign work, including to themselves |
 | `sales_member` (Sales Executive) | Calls leads and sells | sales_admin (or hiring link) | `/sales/dashboard` | My Leads (claim numbers, call statuses, record/edit/delete sales, freeze sold numbers 1–7 days, dispute proof); client chats for own orders; My Clients (feedback, upsell); review tasks; performance; salary and settlements (request payout); leaderboard (**month view only**); scripts, training; activity history; SMM months they sold | Discounts over 10% need sales admin approval; sale edits locked once work is assigned (send update notes instead) |
 
 **Flags (additive, not roles):**
@@ -403,6 +403,12 @@ the member's own `users.googleDriveBaseUrl`, and "It's uploaded" (`services/work
 names and the file name copy in one tap; the loudest button is always the next step. "Upload later" leaves
 `DrivePendingStrip` at the top of both pages and a `DriveUploadChip` on the job; no link set → "Ask my
 admin" (`askAdminForDriveFolder`, `drive_folder_missing`, once a day).
+**Social-media months are not in My Work or Recent Ads (2026-10-04):** a month's job card
+(`utils/smmPackage.isSmmMonthJob`: SMM category + `smmCampaignId` or `orderId`) is kept out of both
+lists, their tiles and counts, and the Drive strip. It is still loaded: the month page's
+`SmmMyJobPanel` opens it through My Work's `?open=<jobId>` (studio, behind the code) or `?chat=<jobId>`
+links with `back=/smm/<id>` (`monthJobLink`), and closing the studio, the chat, the code box or the
+Drive step returns there (`safeMonthReturn`: only a month page).
 
 **9.7 AI Ads Platform (ad generation)** ✅. `components/ai-platform/*`, `services/geminiService.ts`,
 `services/prompts.ts`, `services/prompts/*`, `services/characterPacks.ts` +
@@ -459,7 +465,7 @@ the old month closes after its last day (`closeEndedMonthsOnOpen`, on board open
 can be moved forward (`moveUnpostedToMonth`). **Board**: tiles (`SmmBoardStats`), tabs Needs setup /
 Running / Needs attention / Renewals / Finished (on-demand), member/seller filters, cards and month
 header drawn by `SmmVisuals` (timeline with post dots, one block per piece, `PaceChip`), Content
-List/Calendar (`SmmCalendar`); salesperson dashboard `SmmRenewalsCard`; My Work "Month plan →".
+List/Calendar (`SmmCalendar`); salesperson dashboard `SmmRenewalsCard`; for a tech member, **"Your work on this month"** (`SmmMyJobPanel`, under the month's header, 2026-10-04): their seats, the video length, status, access code, Start / Continue in AI studio and Chat with client (My Work's links, back to the month), or "handed in" with the Drive chip — read once with `smmAssign.fetchMyMonthJobs` (their own card only). A month's jobs are no longer listed in My Work or Recent Ads, and their assignment alert opens the month (`memberLink: /smm/<id>`).
 Rules in `utils/smmPackage.ts`. Same day, from the owner: the month's **name** is editable (setup's
 Name field, or the pencil beside the title — `smmSetup.renameMonth`; renames the jobs too; sets
 `businessNameEdited` so a sale edit never renames it back; the order keeps the sale's name); setup
@@ -665,7 +671,7 @@ ratings) · `tools` (shared/Tools: AI platform, script duration checker, generat
 ### tech_member — `/tech/*`
 `create` (CreateAd: standalone AIPlatformApp; the external-creator home, not in the normal
 nav) · `dashboard` (check-in hero + MyDayCalendar; still fetches assignments for check-in counts,
-not dead code) · `my-work` (MyWork) · `recent-ads` · `analytics` · `training` · `profile`
+not dead code) · `my-work` (MyWork; `?open=` / `?chat=<jobId>` with `back=/smm/<id>`; lists no social-media month) · `recent-ads` · `analytics` · `training` · `profile`
 (MyProfile: account, HR/KYC, documents, agreements, leave, bank) · `chat` · `meeting` · `salary`
 (MySalaryDashboard) · `salary/receipts` (shared/MySalary) · `ai-accounts` (MyAiAccounts).
 
@@ -798,7 +804,7 @@ notifyTechTeamLeaders`, `activityLog.logTechActivity / logActivity`, `hr.*`, `hr
 `payroll.*`, `payrollRun.*`, `leave.*`, `settlements.*`, `aiAccounts.*` (Flow and paid accounts,
 `recordFlowUsage / editFlowUsage / deleteFlowUsage / usageForAssignment`), `smmAssign.assignSmmMonth`
 (the ONLY way to put people on an SMM month), `smmSetup.findSmmSalesForPhone / leadForSeller /
-setupSaleMonth / applyMonthSetup`, `workDrive.markDriveUploaded / askAdminForDriveFolder`.
+setupSaleMonth / applyMonthSetup`, `smmAssign.fetchMyMonthJobs`, `workDrive.markDriveUploaded / askAdminForDriveFolder`.
 
 ---
 
@@ -1406,7 +1412,7 @@ Gemini key), the production API base URL, and CORS allow-lists in `api/*`.
 | `OrderProgressPanel`, `BulkVideoBoard`, `AssignTracksDialog`, `PenaltyDialog`, `ExtendPromiseButton`, `DeadlineChip`, `ReassignWork`, `RequirementsShareModal`, `MemberWorkloadCard`, `WorkDoneReport` | `components/work/` | Order and work UI pieces |
 | `StaffOrderChat`, `SalesOrderChat`, `OrderChatPanel`, `ClientCall`, `ShareChatModal`, `ClientReviewCard` | `components/order-chat/` | Client chat for staff and guest |
 | `VideoCallManager`, `ChatRoom`, `ChatSidebar`, `MeetingRoom` | `components/chat/` | Team chat, WebRTC calls and meetings. VideoCallManager carries the one known TS error |
-| `SmmItemDialog` (autosave ~900ms), `SmmContentTable` (+ `SmmCalendar`), `SmmStageBar`, `SmmAdsPanel`, `SmmMoneyPanel`, `SmmBudgetPaymentForm`, `SmmReportPanel`, `SmmMessageComposer`, `SmmDueCard`, `SmmAddSaleDialog`, `SmmSetupForm`/`SmmSetupDialog`, `SmmVisuals`, `SmmBoardStats`, `SmmCampaignCard`, `SmmRenewalsCard`, `SmmRenewalPopup`, `useSmmRenewal` | `components/smm/` | SMM month UI (§9.9) |
+| `SmmItemDialog` (autosave ~900ms), `SmmContentTable` (+ `SmmCalendar`), `SmmStageBar`, `SmmAdsPanel`, `SmmMoneyPanel`, `SmmBudgetPaymentForm`, `SmmReportPanel`, `SmmMessageComposer`, `SmmDueCard`, `SmmAddSaleDialog`, `SmmSetupForm`/`SmmSetupDialog`, `SmmVisuals`, `SmmBoardStats`, `SmmCampaignCard`, `SmmRenewalsCard`, `SmmRenewalPopup`, `SmmMyJobPanel`, `useSmmRenewal` | `components/smm/` | SMM month UI (§9.9) |
 | `AgreementView`, `SignaturePad`, `MandatoryAgreementGate`, `Letterhead` | `components/agreement/` | Document rendering, signing, forced signing gate |
 | `IssueDocumentDialog`, `AllDocumentsPanel`, `EmploymentTermsCard`, `KycPanel`, `IdCardView`, `CompanyDocumentsCard`, `ProbationPanel`, `SeparationPanel`, `AssetsPanel` | `components/hr/` | HR centre and profile panels |
 | `DailyCheckinPrompt` (mandatory), `CheckoutModal`, `MyDayCalendar` | `components/attendance/` | Tech attendance |
@@ -1504,6 +1510,9 @@ report message → renewal.
   or come after a recorded sale. Its next month is the salesperson's Renew — a sale. A month's deadline
   is its last day, on the order and every job, including a renewal's; a later edit or approval of the
   sale does not change it (nor a used extension).
+- **SMM work lives in Social Media (owner, 2026-10-04):** a tech member's social-media month is never
+  listed in My Work or Recent Ads; they open it from the month's page ("Your work on this month"), which
+  uses the same studio, code, credits, completion and Drive step, and returns them to the month.
 - **SMM renewal popup (2026-10-03):** from 3 days before a month's renewal date through the day itself,
   the salesperson who sold it gets the countdown + work-report popup once a day (per month, per device)
   until there is a decision (a renewal linked, won or lost — a pitch is not one). Once the date has
@@ -1610,9 +1619,12 @@ and push; PWA self-update; Android shell.
 - AI Accounts: credits are entered by the member (there is no Flow API), so the totals are only as
   good as the entries; nothing reconciles them with Flow's own balance. The rules for the new
   collections are written (`docs/firestore-rules.md`) but restrict nothing until they are published.
-- SMM month with no sale: its job in My Work shows no "This month's delivery" counters (that panel
-  reads the ORDER's progress, and such a month has none) — only the Month plan link. Deleting any month
-  leaves its members' job cards in place (as it always did for sold months).
+- SMM month jobs (2026-10-04): opened from the month page only. A member cannot undo a month job they
+  handed in by mistake (My Work's Undo was on its Completed list) — the admin sends it back for edits.
+  Only a `tech_member` gets the panel (the studio link is My Work's route); a team leader on a month's
+  seat had no My Work before either. A month job linked by an order whose month was never created
+  (sold before the section existed) is hidden from My Work with no month page to open it from.
+  Deleting any month leaves its members' job cards in place (as it always did for sold months).
 - Native Android camera capture uses the web file input (`@capacitor/camera` not installed).
 - Error/loading handling is inconsistent across older pages (plain `console.error`).
 - Header/poster prompts in no-logo mode may still reference a logo container (noted 2026-07,
@@ -1865,6 +1877,22 @@ and push; PWA self-update; Android shell.
 
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
+
+- **2026-10-04: social-media months out of My Work, into Social Media** (§9.6, §9.9, §24). The owner
+  asked that a tech member's My Work stop showing social media, with all of it in the Social Media
+  page, and that anything on My Work not needed be removed. The month's job card is the month's only
+  way into the AI studio (code, credits, time, completion), so it was moved, not dropped: My Work and
+  Recent Ads filter it out (`isSmmMonthJob`) — with it went the "each video" label and the "Month plan
+  →" link — and the month page gained `SmmMyJobPanel`, whose buttons use My Work's existing `?open=`
+  (new) / `?chat=` links with `back=`, so there is still one studio and one completion flow; closing
+  any of it returns to the month (`useDriveUploadStep({ onClosed })` for the Drive step). Kept on My
+  Work because bulk orders use them: the shared progress panel, pinning and the "who does what"
+  labels. The month's assignment alert now opens the month, and a withdrawal opens `/smm`. Verified:
+  build ✅, vitest 190 files / 2977 tests ✅ (13 new in `smmOutOfMyWork.test.tsx`, 2 link checks in
+  `smmSetupOct03`), typecheck 1 known error; a throwaway CDP harness outside the repo (real My Work and
+  month page on `memoryFirestore`, the real studio and code box; deleted after) ran 22 checks at 1440 /
+  390 px — My Work without the month, the panel, Start → code → studio → Close back on the month as "In
+  progress", chat there and back — no console errors, no horizontal scroll.
 
 - **2026-10-03 (later): the Drive step after a job is handed in** (§9.6, §16, §24). The owner asked that
   the member's own Drive link appear the moment a video is marked complete. The real problem: uploading
@@ -2215,10 +2243,10 @@ Design intent lives in `docs/superpowers/specs/`.
 
 ## 32. CURRENT PROJECT STATE (as of 2026-10-03)
 
-- The 2026-10-03 SMM work is committed (`a15b746`, `e1b9503`). The renewal countdown popup, the
-  month with no sale and the Drive step after a hand-in (§31) are complete in the working tree, **not yet
-  committed** (a parallel session may also have work in progress there — check `git status` before
-  committing).
+- The 2026-10-03 SMM work is committed (`a15b746`, `e1b9503`), and the renewal countdown popup, the
+  month with no sale and the Drive step after a hand-in with it (`14985b1`). Social-media months moving
+  out of My Work (2026-10-04, §31) is complete in the working tree, **not yet committed** (check
+  `git status` before committing — parallel sessions work in this tree).
 - Open owner decision: CLAUDE.md is ~2,200 lines and is loaded into every session (docs recommend
   under ~200) — trimming it into a short core + on-demand reference would cut usage on every request.
 - `main` = the merge of this machine's `346c7f0` into origin/main `1a090f9` (PR #1: the six AdGen
@@ -2226,8 +2254,7 @@ Design intent lives in `docs/superpowers/specs/`.
   origin/main's implementation (§31, 2026-10-02) and pushed.
 - `npm run build` ✅ (main chunk ≈455 KB, vendor-firebase ≈665 KB, geminiService chunk ≈790 KB; AI
   Accounts adds lazy `AiAccounts` ≈14 KB and `MyAiAccounts` ≈9 KB pages).
-- `npx vitest run` ✅ 189 files, 2964 tests (after the month with no sale; the count includes a parallel
-  session's Drive-upload tests, which were in the tree at the time).
+- `npx vitest run` ✅ 190 files, 2977 tests (2026-10-04, after social-media months moved out of My Work).
 - `npx tsc -p tsconfig.check.json --noEmit` → 1 known error (VideoCallManager).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
 - Most recent work: the SMM month that had no sale (not counted; renewed as a sale) and the month

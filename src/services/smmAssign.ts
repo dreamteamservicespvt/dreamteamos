@@ -73,6 +73,27 @@ export async function fetchMonthJobs(campaign: Pick<SmmCampaign, "id" | "orderId
 }
 
 /**
+ * One member's job(s) on a month, newest first — what the month page offers them to open
+ * (SmmMyJobPanel, 2026-10-04). The same two links as `fetchMonthJobs`, each narrowed to the member:
+ * equality filters only, so no composite index, and only their own card is read.
+ */
+export async function fetchMyMonthJobs(
+  campaign: Pick<SmmCampaign, "id" | "orderId">,
+  uid: string,
+): Promise<WorkAssignment[]> {
+  const byId = new Map<string, WorkAssignment>();
+  const jobs = collection(db, "work_assignments");
+  const reads = [getDocs(query(jobs, where("smmCampaignId", "==", campaign.id), where("assignedTo", "==", uid)))];
+  if (campaign.orderId) {
+    reads.push(getDocs(query(jobs, where("orderId", "==", campaign.orderId), where("assignedTo", "==", uid))));
+  }
+  for (const snap of await Promise.all(reads)) {
+    for (const d of snap.docs) byId.set(d.id, { ...(d.data() as WorkAssignment), id: d.id });
+  }
+  return [...byId.values()].sort((a, b) => tsMs(b.assignedAt) - tsMs(a.assignedAt));
+}
+
+/**
  * The job ids already issued in the "O" series, so a new card gets the next number.
  *
  * Only read when the caller has not got the list (the Orders page has; the board has not). A range
@@ -212,6 +233,8 @@ export async function assignSmmMonth(params: {
       order,
       tracks: w.tracks,
       smmCampaignId: campaign.id,
+      // A month is worked from its own page, not My Work (2026-10-04) — the alert opens it there.
+      memberLink: `/smm/${campaign.id}`,
       ...monthRoom,
       actor: actor ?? null,
     });
@@ -239,7 +262,7 @@ export async function assignSmmMonth(params: {
         type: "work_unassigned",
         title: "Taken off a social media month",
         message: `${campaign.businessName || campaign.clientName}'s social media month has been given to someone else. Nothing you need to do.`,
-        link: "/tech/my-work",
+        link: "/smm",
         dedupeKey: `smm_job_withdrawn_${job.id}`,
       }).catch(() => undefined);
     } else {

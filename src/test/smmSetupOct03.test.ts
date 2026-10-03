@@ -181,6 +181,8 @@ describe("assigning is one path, and idempotent", () => {
     seedOrder();
     await setup.setupSaleMonth({ leadId: "l1", itemIndex: 0, setup: SETUP, actor: KIRAN });
     expect(jobs()).toHaveLength(2);
+    // A month is worked from its own page, not My Work (2026-10-04): the alert opens the month.
+    expect(notified("work_assigned").map((n) => n.link)).toEqual([`/smm/${ORDER_ID}`, `/smm/${ORDER_ID}`]);
 
     // The same setup again: nothing new.
     await setup.applyMonthSetup(ORDER_ID, SETUP, KIRAN);
@@ -191,6 +193,7 @@ describe("assigning is one path, and idempotent", () => {
     expect(jobs().map((j) => j.assignedTo)).toEqual(["divya"]);
     expect(jobs()[0].tracks).toEqual(["ad_creation", "social_upload", "digital_marketing"]);
     expect(notified("work_unassigned").map((n) => n.userId)).toEqual(["arjun"]);
+    expect(notified("work_unassigned")[0].link).toBe("/smm");
 
     // Divya has started; moving the month back to Arjun keeps her card for a person to decide.
     const divyaJob = jobs()[0];

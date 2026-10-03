@@ -19,7 +19,7 @@ import {
   type SmmAssignee, type SmmCampaign, type SmmContentItem, type SmmContentKind, type SmmCycle, type SmmItemStatus,
   type SmmRenewalPrefill, type SmmTeam,
 } from "@/types/smm";
-import type { Lead, OrderTrack, SaleDetail } from "@/types";
+import type { Lead, OrderTrack, SaleDetail, WorkAssignment } from "@/types";
 
 /* ── How long each video is ─────────────────────────────────────────────────────────────────── */
 
@@ -627,6 +627,46 @@ export function canSetUpSmm(user: Viewer): boolean {
  */
 export function canRenewSmm(c: Pick<SmmCampaign, "soldBy">, user: Viewer): boolean {
   return user?.role === "sales_member" && !!user.uid && c.soldBy === user.uid;
+}
+
+/* ── A member's job on a month, worked from Social Media (2026-10-04) ───────────────────────── */
+
+type MonthJob = Pick<WorkAssignment, "category" | "smmCampaignId" | "orderId">;
+
+/**
+ * A job card that belongs to a social-media month.
+ *
+ * ── Why it is not in My Work ────────────────────────────────────────────────────────────────
+ * The owner wants a member's social-media work in one place, the Social Media section. A month's
+ * card in My Work carried a second copy of the month — its counters, its "each video" length, a link
+ * back to the plan — beside one-off ads it has nothing in common with, and a member looking for
+ * their month had two places to look. The card itself still exists: it is how a month reaches the
+ * AI studio, holds the access code and the client chat, and records the time spent. It is simply
+ * opened from the month's own page now (SmmMyJobPanel → My Work's `?open=` link).
+ *
+ * Linked by `smmCampaignId`, or by the order for the cards made before that field existed (the
+ * month's id IS its order's id).
+ */
+export function isSmmMonthJob(job: MonthJob): boolean {
+  return job.category === "social_media_management" && !!(job.smmCampaignId || job.orderId);
+}
+
+/** The month a month job belongs to — the id of its page under /smm. */
+export function smmMonthIdOf(job: Pick<WorkAssignment, "smmCampaignId" | "orderId">): string {
+  return job.smmCampaignId || job.orderId || "";
+}
+
+/**
+ * My Work, opened on one month job and returning to the month when it closes: `open` goes straight
+ * into the AI studio (behind the job's access code), `chat` into the client chat.
+ */
+export function monthJobLink(jobId: string, campaignId: string, what: "open" | "chat"): string {
+  return `/tech/my-work?${what}=${encodeURIComponent(jobId)}&back=${encodeURIComponent(`/smm/${campaignId}`)}`;
+}
+
+/** The page My Work may send the member back to — only a month page, so a link cannot point anywhere else. */
+export function safeMonthReturn(back: string | null | undefined): string | null {
+  return back && /^\/smm\/[\w-]+$/.test(back) ? back : null;
 }
 
 /* ── A month with no sale behind it (2026-10-03) ────────────────────────────────────────────── */

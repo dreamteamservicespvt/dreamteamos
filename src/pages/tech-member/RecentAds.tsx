@@ -24,6 +24,7 @@ import { useOrderChatUnread } from '@/hooks/useOrderChat';
 import { syncOrderChatWorkStatus } from '@/services/orderChat';
 import { orderChatIdOf } from '@/utils/orderChatId';
 import { isPosterCategory, assignmentSizeLabel } from '@/utils/posterSpec';
+import { isSmmMonthJob } from '@/utils/smmPackage';
 
 const STATUS_CONFIG: Record<string, {
   icon: React.ReactNode;
@@ -65,7 +66,12 @@ export default function RecentAds() {
     () => (user ? query(collection(db, 'work_assignments'), where('assignedTo', '==', user.uid)) : null),
     [user?.uid],
   );
-  const { data: assignments, loading } = useFirestoreQuery<WorkAssignment>(q, [user?.uid]);
+  const { data: allAssignments, loading } = useFirestoreQuery<WorkAssignment>(q, [user?.uid]);
+  /**
+   * Social-media months are worked from Social Media, not listed here (2026-10-04) — the same rule as
+   * My Work, so a member has one place for a month (utils/smmPackage.isSmmMonthJob).
+   */
+  const assignments = useMemo(() => allAssignments.filter((a) => !isSmmMonthJob(a)), [allAssignments]);
 
   const [search, setSearch] = useState('');
   const [shown, setShown] = useState(ADS_PAGE_SIZE);
