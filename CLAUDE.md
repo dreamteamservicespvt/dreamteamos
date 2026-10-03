@@ -403,6 +403,14 @@ the member's own `users.googleDriveBaseUrl`, and "It's uploaded" (`services/work
 names and the file name copy in one tap; the loudest button is always the next step. "Upload later" leaves
 `DrivePendingStrip` at the top of both pages and a `DriveUploadChip` on the job; no link set → "Ask my
 admin" (`askAdminForDriveFolder`, `drive_folder_missing`, once a day).
+**Opens at once (2026-10-04):** `useDriveUploadStep.submit` closes the studio and puts the card on screen the
+moment the member submits (after the Flow credit step) — not after `useCompleteWork`'s six writes. The
+card says "Submitting your video…" until the JOB is saved (`complete(…, { onSaved })`, the first write),
+then "Video submitted" while the follow-ups (alerts, order, chat, client) finish behind it; a failed save
+shows "Not submitted yet" + Try again, and "It's uploaded" stays disabled until the job is saved. A
+follow-up failing after the save is reported as "Submitted — one follow-up did not finish", never as
+"not submitted". The card is centred on every screen, fits a 360×640 phone without scrolling, has a green
+top band, and does not close on a tap outside it (X, Escape, Upload later or It's uploaded).
 **Social-media months are not in My Work or Recent Ads (2026-10-04):** a month's job card
 (`utils/smmPackage.isSmmMonthJob`: SMM category + `smmCampaignId` or `orderId`) is kept out of both
 lists, their tiles and counts, and the Drive strip. It is still loaded: the month page's
@@ -981,7 +989,7 @@ assignment also notifies team leaders.
 |---|---|---|
 | `assigned` | `createWorkAssignment`, `reassignWork` | Waiting for the member |
 | `in_progress` | Member opens the job (My Work / Recent Ads) from `assigned` or `editing`; also **Undo completion** | Being worked. Sessions (open→close, >5s) accumulate `totalDurationSeconds`. Chat status synced |
-| `completed` | Member submits (`useCompleteWork`) — a video job first asks for the Flow credits it used (`useCreditGate`, §9.21) | Notifies the assigner + team leaders (dedupe keys), order → `completed`, chat **locked as delivered** (invites the client review), client record upserted; the job's previous Drive mark cleared and the Drive step opens (§9.6) |
+| `completed` | Member submits (`useCompleteWork`) — a video job first asks for the Flow credits it used (`useCreditGate`, §9.21) | Notifies the assigner + team leaders (dedupe keys), order → `completed`, chat **locked as delivered** (invites the client review), client record upserted; the job's previous Drive mark cleared. The Drive step is already on screen from the moment of the submit (§9.6) |
 | `editing` | Tech admin / team leader "send back" (MemberAssignments, WorkReports) | Order → `assigned`, chat reopened, member notified `work_editing` |
 | `verified` | Tech admin / team leader (`verifyAssignments`, bulk or single) | Member notified, chat shows Delivered, `upsertClientOnWorkVerify` (order → `verified`, client works/totals), activity logged |
 
@@ -1536,6 +1544,7 @@ report message → renewal.
   in `Name › Month › Day N › <clips> Clips` (posters: `Posters`) of the day it was finished, named
   `<job id> - <business>`. "It's uploaded" is the member's word (the app cannot see a Drive). A job handed
   in again after edits must be uploaded again. Jobs finished before 2026-10-03 are never shown as missing.
+  The Drive card appears the instant the job is handed in and only says "submitted" once the job is saved.
 - **Check-out** requires the Drive-upload declaration first; the daily check-in prompt cannot be
   dismissed on a working day, and does not appear on a Sunday or an announced holiday.
 - **AI ads — English (2026-09-25):** an English ad is Indian English throughout — written for Indian
@@ -1619,6 +1628,9 @@ and push; PWA self-update; Android shell.
 - AI Accounts: credits are entered by the member (there is no Flow API), so the totals are only as
   good as the entries; nothing reconciles them with Flow's own balance. The rules for the new
   collections are written (`docs/firestore-rules.md`) but restrict nothing until they are published.
+- Drive step (2026-10-04): the studio closes as soon as the member submits. If the job's save then
+  fails and the member closes the card without Try again, the job stays in progress (they hand it in
+  again from My Work) and that studio session's time is not recorded.
 - SMM month jobs (2026-10-04): opened from the month page only. A member cannot undo a month job they
   handed in by mistake (My Work's Undo was on its Completed list) — the admin sends it back for edits.
   Only a `tech_member` gets the panel (the studio link is My Work's route); a team leader on a month's
@@ -1877,6 +1889,22 @@ and push; PWA self-update; Android shell.
 
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
+
+- **2026-10-04 (later): the Drive card appears instantly, fits the screen, and is a solid card** (§9.6,
+  §24). The owner saw the Drive step arrive a little late after Mark complete and asked for it at once,
+  as a fitted, strong card. Cause: the card opened only after `useCompleteWork` returned — six writes in
+  a row (job, assigner alert, team-leader alerts, order, chat lock, client record). Now
+  `useDriveUploadStep.submit` opens it first and runs the completion behind it; `complete` gained
+  `onSaved` (fired after the job's own write) so the card can say "Submitting…" → "Video submitted"
+  truthfully, with "Not submitted yet" + Try again on failure, and a follow-up failure after the save no
+  longer tells the member their work was not submitted. The session time is handed to `complete` and
+  the studio's close no longer records it a second time. The card: centred on every width, max-width
+  440 px, green top band, compact steps, no close on a backdrop tap. Verified: build ✅, vitest 191 files
+  / 2983 tests ✅ (6 new in `driveStepInstant.test.tsx`, the job's write held open to prove the card is
+  there first), typecheck 1 known error; a throwaway CDP harness outside the repo (the real card through
+  the real hook, a fake 1.5 s save; deleted after) ran 19 checks — on screen 41 ms after the tap at 390 px
+  and 6 ms at 1440 px, fits 360×640 / 375×667 / 390×844 / 412×915 / 1440×900 with no inner scroll, failure
+  → Try again, backdrop tap keeps it, no console errors.
 
 - **2026-10-04: social-media months out of My Work, into Social Media** (§9.6, §9.9, §24). The owner
   asked that a tech member's My Work stop showing social media, with all of it in the Social Media
@@ -2244,9 +2272,9 @@ Design intent lives in `docs/superpowers/specs/`.
 ## 32. CURRENT PROJECT STATE (as of 2026-10-03)
 
 - The 2026-10-03 SMM work is committed (`a15b746`, `e1b9503`), and the renewal countdown popup, the
-  month with no sale and the Drive step after a hand-in with it (`14985b1`). Social-media months moving
-  out of My Work (2026-10-04, §31) is complete in the working tree, **not yet committed** (check
-  `git status` before committing — parallel sessions work in this tree).
+  month with no sale and the Drive step after a hand-in with it (`14985b1`); social-media months out of
+  My Work in `f972c8a`. The instant Drive card (2026-10-04, §31) is complete in the working tree, **not yet
+  committed** (check `git status` before committing — parallel sessions work in this tree).
 - Open owner decision: CLAUDE.md is ~2,200 lines and is loaded into every session (docs recommend
   under ~200) — trimming it into a short core + on-demand reference would cut usage on every request.
 - `main` = the merge of this machine's `346c7f0` into origin/main `1a090f9` (PR #1: the six AdGen
@@ -2254,7 +2282,7 @@ Design intent lives in `docs/superpowers/specs/`.
   origin/main's implementation (§31, 2026-10-02) and pushed.
 - `npm run build` ✅ (main chunk ≈455 KB, vendor-firebase ≈665 KB, geminiService chunk ≈790 KB; AI
   Accounts adds lazy `AiAccounts` ≈14 KB and `MyAiAccounts` ≈9 KB pages).
-- `npx vitest run` ✅ 190 files, 2977 tests (2026-10-04, after social-media months moved out of My Work).
+- `npx vitest run` ✅ 191 files, 2983 tests (2026-10-04, after the instant Drive card).
 - `npx tsc -p tsconfig.check.json --noEmit` → 1 known error (VideoCallManager).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
 - Most recent work: the SMM month that had no sale (not counted; renewed as a sale) and the month

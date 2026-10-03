@@ -224,16 +224,21 @@ export default function MyWork() {
   /** "Now upload it to your Drive" — opens the moment a job is handed in (useDriveUploadStep). */
   const driveStep = useDriveUploadStep({ onClosed: goBack });
 
+  /**
+   * Handing a job in: the Drive step is on screen the moment the member submits (2026-10-04).
+   *
+   * It used to wait for every write `complete` makes — six round trips — before the studio closed
+   * and the Drive step opened, which on mobile data was seconds of nothing happening. Now the studio
+   * closes at once, the Drive step says "Submitting…" until the job is saved, and the rest finishes
+   * behind it (useDriveUploadStep.submit). If the save fails, the step says so and offers Try again.
+   */
   const handleComplete = () => creditGate.request(openAssignment, async () => {
     const finished = openAssignment;
-    const submitted = await complete(openAssignment, { sessionStart: sessionStartRef.current });
-    if (submitted) {
-      // Counted by the hook's final write; leaving it set would bill the time twice on unmount.
-      sessionStartRef.current = null;
-      setOpenAssignment(null);
-      driveStep.offer(finished);
-    }
-    return submitted;
+    const sessionStart = sessionStartRef.current;
+    // `complete` writes this session itself; closing the studio now must not record it a second time.
+    sessionStartRef.current = null;
+    setOpenAssignment(null);
+    return driveStep.submit(finished, (onSaved) => complete(finished, { sessionStart, onSaved }));
   });
 
   const handleUndoComplete = async (assignment: WorkAssignment) => {

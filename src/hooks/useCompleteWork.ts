@@ -40,7 +40,15 @@ export function useCompleteWork() {
    */
   const complete = useCallback(async (
     assignment: WorkAssignment | null,
-    options: { sessionStart?: Date | null } = {},
+    options: {
+      sessionStart?: Date | null;
+      /**
+       * Called the moment the job itself is saved as completed — before the follow-ups below
+       * (notifications, the order, the chat, the client record), which take several more round
+       * trips. The Drive step shows "submitted" on this, not on the last of them (2026-10-04).
+       */
+      onSaved?: () => void;
+    } = {},
   ): Promise<boolean> => {
     if (!assignment) return false;
     if (completingRef.current) return false;
@@ -49,8 +57,10 @@ export function useCompleteWork() {
 
     completingRef.current = true;
     setCompleting(true);
+    /** The job is saved as completed; anything failing after this is a follow-up, not the submit. */
+    let saved = false;
     try {
-      const { sessionStart } = options;
+      const { sessionStart, onSaved } = options;
       const base = {
         status: "completed" as const,
         completedAt: serverTimestamp(),
@@ -75,6 +85,8 @@ export function useCompleteWork() {
       } else {
         await updateDoc(doc(db, "work_assignments", assignment.id), base);
       }
+      saved = true;
+      onSaved?.();
 
       const title = assignment.businessName || assignment.displayTitle;
 
@@ -123,6 +135,17 @@ export function useCompleteWork() {
       return true;
     } catch (error) {
       console.error("Failed to mark complete:", error);
+      /*
+        The job is already saved as completed — telling the member "your work was not submitted"
+        would be false, and a retry would find it completed and send nothing anyway. Say what is true.
+      */
+      if (saved) {
+        toast({
+          title: "Submitted",
+          description: "Your work is submitted. One follow-up (a team alert or the order) did not finish — tell your admin if they don't see it.",
+        });
+        return true;
+      }
       toast({
         title: "Couldn't submit",
         description: "Your work was not submitted. Check your connection and try again.",

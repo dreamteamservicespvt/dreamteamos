@@ -24,7 +24,8 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import { format } from "date-fns";
 import {
-  Check, CheckCircle2, ChevronRight, Copy, ExternalLink, FolderOpen, Loader2, Send, UploadCloud, X,
+  AlertTriangle, Check, CheckCircle2, ChevronRight, Copy, ExternalLink, FolderOpen, Loader2, RotateCw, Send,
+  UploadCloud, X,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { askAdminForDriveFolder, markDriveUploaded } from "@/services/workDrive";
@@ -33,6 +34,13 @@ import { isPosterCategory } from "@/utils/posterSpec";
 import type { AppUser, WorkAssignment } from "@/types";
 
 type Member = Pick<AppUser, "uid" | "name" | "createdBy" | "googleDriveBaseUrl">;
+
+/**
+ * Where the hand-in itself stands while the sheet is already open (2026-10-04): the sheet opens the
+ * moment the member submits, so it says "Submitting…" until the job is saved, and "Not submitted"
+ * with Try again if that save fails. Absent when the sheet was opened from a job card.
+ */
+export type DriveSubmitState = "saving" | "saved" | "failed";
 
 /** `yyyy-MM-dd` → a local Date, so a job reopened tomorrow still points at the day it was finished. */
 function dayOf(iso?: string): Date {
@@ -66,11 +74,13 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-export default function DriveUploadSheet({ assignment, user, justCompleted, onClose }: {
+export default function DriveUploadSheet({ assignment, user, justCompleted, submit, onClose }: {
   assignment: WorkAssignment;
   user: Member;
   /** Opened by Mark Complete — the header celebrates the submit. Otherwise it was opened from a job card. */
   justCompleted: boolean;
+  /** The hand-in, still being saved or failed — see DriveSubmitState. Absent means nothing is pending. */
+  submit?: { state: DriveSubmitState; onRetry?: () => void };
   onClose: () => void;
 }) {
   const { toast } = useToast();
@@ -82,6 +92,13 @@ export default function DriveUploadSheet({ assignment, user, justCompleted, onCl
     : jobDrivePath(user.name, assignment, dayOf(assignment.completedDate));
   const fileName = (alreadyUploaded && assignment.driveFileName) || driveFileName(assignment);
   const driveUrl = (user.googleDriveBaseUrl || "").trim();
+  const submitState: DriveSubmitState = submit?.state || "saved";
+  /**
+   * "It's uploaded" waits for the hand-in: marking a job uploaded before it is saved as completed
+   * could be wiped by the completion itself (each hand-in clears the old mark), or left on a job that
+   * was never submitted.
+   */
+  const canConfirm = submitState === "saved";
 
   const [opened, setOpened] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
@@ -158,25 +175,43 @@ export default function DriveUploadSheet({ assignment, user, justCompleted, onCl
   return (
     <Overlay onClose={saving ? undefined : onClose}>
       {/* ── Header ─────────────────────────────────────────────────────────────────────── */}
-      <div className={`relative px-5 pb-4 pt-5 ${justCompleted || alreadyUploaded ? "bg-gradient-to-b from-success/15 to-transparent" : "bg-gradient-to-b from-primary/10 to-transparent"}`}>
+      <div className={`relative shrink-0 px-4 pb-3 pt-4 sm:px-5 ${
+        justCompleted && submitState === "failed" ? "bg-gradient-to-b from-destructive/15 to-transparent"
+          : justCompleted || alreadyUploaded ? "bg-gradient-to-b from-success/15 to-transparent"
+          : "bg-gradient-to-b from-primary/10 to-transparent"
+      }`}>
         <button onClick={onClose} disabled={saving} aria-label="Close" data-test="drive-upload-close"
-          className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground">
+          className="absolute right-2.5 top-2.5 inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground">
           <X size={16} />
         </button>
         <div className="flex items-center gap-3 pr-8">
-          <motion.div
-            initial={justCompleted ? { scale: 0.4, opacity: 0 } : false}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ type: "spring", stiffness: 320, damping: 18 }}
-            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${
-              justCompleted || alreadyUploaded ? "bg-success/15 text-success" : "bg-primary/15 text-primary"
-            }`}
-          >
-            {justCompleted || alreadyUploaded ? <CheckCircle2 size={26} /> : <UploadCloud size={24} />}
-          </motion.div>
+          <div data-test="drive-upload-badge" data-state={justCompleted ? submitState : "card"}
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
+              justCompleted && submitState === "saving" ? "bg-primary/15 text-primary"
+                : justCompleted && submitState === "failed" ? "bg-destructive/15 text-destructive"
+                : justCompleted || alreadyUploaded ? "bg-success/15 text-success"
+                : "bg-primary/15 text-primary"
+            }`}>
+            {justCompleted && submitState === "saving" ? <Loader2 size={22} className="animate-spin" />
+              : justCompleted && submitState === "failed" ? <AlertTriangle size={22} />
+              : justCompleted || alreadyUploaded
+                ? (
+                  <motion.span key="ok" initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: "spring", stiffness: 420, damping: 18 }} className="inline-flex">
+                    <CheckCircle2 size={24} />
+                  </motion.span>
+                )
+                : <UploadCloud size={22} />}
+          </div>
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              {alreadyUploaded ? "Uploaded" : justCompleted ? `${poster ? "Poster" : "Video"} submitted` : "Not in your Drive yet"}
+            <p data-test="drive-upload-eyebrow" className={`text-[11px] font-semibold uppercase tracking-wide ${
+              justCompleted && submitState === "failed" ? "text-destructive" : "text-muted-foreground"
+            }`}>
+              {alreadyUploaded ? "Uploaded"
+                : !justCompleted ? "Not in your Drive yet"
+                : submitState === "saving" ? `Submitting your ${what}…`
+                : submitState === "failed" ? "Not submitted yet"
+                : `${poster ? "Poster" : "Video"} submitted`}
             </p>
             <h2 id="drive-upload-title" className="font-display text-lg font-bold leading-tight text-foreground">
               {alreadyUploaded ? `This ${what} is in your Drive` : `Now upload it to your Drive`}
@@ -188,15 +223,27 @@ export default function DriveUploadSheet({ assignment, user, justCompleted, onCl
             </p>
           </div>
         </div>
-        {!alreadyUploaded && (
-          <p className="mt-3 rounded-lg bg-background/70 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
-            Do it now, while the file is fresh — work that is not in your Drive is <b className="text-foreground">not counted for the day</b>.
+        {justCompleted && submitState === "failed" ? (
+          <div data-test="drive-upload-submit-failed" className="mt-2.5 flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2">
+            <p className="min-w-0 flex-1 text-[11px] leading-snug text-foreground">
+              Your {what} was not submitted — check your connection. Your work in the studio is saved.
+            </p>
+            {submit?.onRetry && (
+              <button onClick={submit.onRetry} data-test="drive-upload-retry"
+                className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg bg-destructive px-2.5 text-xs font-semibold text-white hover:bg-destructive/90">
+                <RotateCw size={12} /> Try again
+              </button>
+            )}
+          </div>
+        ) : !alreadyUploaded && (
+          <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
+            Do it now — work not in your Drive is <b className="text-foreground">not counted for the day</b>.
           </p>
         )}
       </div>
 
       {/* ── The three steps ───────────────────────────────────────────────────────────── */}
-      <ol className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">
+      <ol data-test="drive-upload-steps" className="min-h-0 flex-1 overflow-y-auto px-4 pb-3 sm:px-5">
         <Step n={1} done={opened || alreadyUploaded} title={driveUrl ? "Open your Drive folder" : "Your Drive folder"}>
           {driveUrl ? (
             opened && !alreadyUploaded ? (
@@ -253,7 +300,7 @@ export default function DriveUploadSheet({ assignment, user, justCompleted, onCl
                     onClick={() => copy(key, part)}
                     title={`Copy "${part}"`}
                     data-test="drive-upload-folder"
-                    className={`inline-flex h-8 items-center gap-1 rounded-lg border px-2 text-xs font-semibold transition-colors ${
+                    className={`inline-flex h-7 items-center gap-1 rounded-lg border px-2 text-xs font-semibold transition-colors ${
                       last ? "border-primary/50 bg-primary/10 text-foreground" : "border-border bg-background text-foreground hover:bg-accent"
                     }`}
                   >
@@ -264,8 +311,8 @@ export default function DriveUploadSheet({ assignment, user, justCompleted, onCl
             })}
           </div>
           {!alreadyUploaded && (
-            <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-              A folder missing? Create it with exactly this name — tap a name to copy it.
+            <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+              Missing? Create it with exactly this name — tap a name to copy it.
             </p>
           )}
         </Step>
@@ -273,7 +320,7 @@ export default function DriveUploadSheet({ assignment, user, justCompleted, onCl
         <Step n={3} done={alreadyUploaded} title={`Upload the ${what}, named`} last>
           <div className="flex items-center gap-2">
             {/* Shown whole, never cut short: someone renaming on a phone may be typing it. */}
-            <code data-test="drive-upload-filename" className="min-w-0 flex-1 break-words rounded-lg border border-border bg-background px-2.5 py-2 font-mono text-xs leading-relaxed text-foreground">
+            <code data-test="drive-upload-filename" className="min-w-0 flex-1 break-words rounded-lg border border-border bg-background px-2.5 py-1.5 font-mono text-xs leading-snug text-foreground">
               {fileName}
             </code>
             <button onClick={() => copy("file", fileName)} data-test="drive-upload-copy-name"
@@ -282,9 +329,8 @@ export default function DriveUploadSheet({ assignment, user, justCompleted, onCl
             </button>
           </div>
           {!alreadyUploaded && (
-            <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-              Rename the file to this, then drag it into the folder — on a phone, tap <b className="text-foreground">+ → Upload</b>.
-              The job number lets whoever checks your work find it at a glance.
+            <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+              Rename the file to this, then upload it into the folder — on a phone, <b className="text-foreground">+ → Upload</b>.
             </p>
           )}
           {uploadedOn && <p className="mt-1.5 text-[11px] text-success">Marked uploaded {uploadedOn}</p>}
@@ -292,7 +338,7 @@ export default function DriveUploadSheet({ assignment, user, justCompleted, onCl
       </ol>
 
       {/* ── Footer: the next action is always the loudest ─────────────────────────────────── */}
-      <div className="flex gap-2 border-t border-border bg-card px-5 py-3">
+      <div className="flex shrink-0 gap-2 border-t border-border bg-card px-4 py-3 sm:px-5">
         {alreadyUploaded ? (
           <button onClick={onClose} data-test="drive-upload-done-close"
             className="h-11 flex-1 rounded-xl bg-accent text-sm font-semibold text-foreground">
@@ -307,16 +353,17 @@ export default function DriveUploadSheet({ assignment, user, justCompleted, onCl
             <button
               ref={(el) => { if (opened || !driveUrl) primaryRef.current = el; }}
               onClick={confirmUploaded}
-              disabled={saving}
+              disabled={saving || !canConfirm}
+              title={canConfirm ? undefined : submitState === "failed" ? "Submit the job first" : "Waiting for your submit to save"}
               data-test="drive-upload-confirm"
               data-emphasis={opened ? "primary" : "secondary"}
-              className={`inline-flex h-11 flex-[1.4] items-center justify-center gap-1.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-60 ${
+              className={`inline-flex h-11 flex-[1.4] items-center justify-center gap-1.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50 ${
                 opened
                   ? "bg-success text-white shadow-lg shadow-success/25 hover:bg-success/90"
                   : "border border-success/40 text-success hover:bg-success/10"
               }`}
             >
-              {saving ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={16} />} It's uploaded
+              {saving || submitState === "saving" ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={16} />} It's uploaded
             </button>
           </>
         )}
@@ -325,20 +372,29 @@ export default function DriveUploadSheet({ assignment, user, justCompleted, onCl
   );
 }
 
-function Overlay({ children, onClose }: { children: ReactNode; onClose?: () => void }) {
+/**
+ * A solid card in the middle of the screen, on a phone as on a laptop (2026-10-04).
+ *
+ * It used to be a bottom sheet on a phone that a stray tap on the dimmed page closed — and the
+ * member then had to find the job again to get the step back. Now it floats with a margin on every
+ * side, sized to fit a small phone without scrolling, with a green band across the top, and it
+ * stays until the member chooses: "It's uploaded", "Upload later", the X, or Escape. It appears in
+ * 0.14 s — the member has just pressed a button and is waiting for it.
+ */
+function Overlay({ children }: { children: ReactNode; onClose?: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm sm:p-4">
       <motion.div
         role="dialog"
         aria-modal="true"
         aria-labelledby="drive-upload-title"
         data-test="drive-upload-sheet"
-        initial={{ y: 32, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ type: "spring", stiffness: 380, damping: 32 }}
-        onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl border border-border bg-card shadow-2xl sm:max-w-md sm:rounded-2xl"
+        initial={{ opacity: 0, scale: 0.96, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.14, ease: "easeOut" }}
+        className="relative flex max-h-[calc(100dvh-1.5rem)] w-full max-w-[440px] flex-col overflow-hidden rounded-2xl border border-success/30 bg-card shadow-[0_24px_64px_-12px_rgba(0,0,0,0.65)] ring-1 ring-black/5"
       >
+        <span aria-hidden className="h-1.5 w-full shrink-0 bg-gradient-to-r from-success via-success/80 to-primary" />
         {children}
       </motion.div>
     </div>
@@ -353,16 +409,16 @@ function Step({ n, done, title, last = false, children }: {
   children: ReactNode;
 }) {
   return (
-    <li className="relative flex gap-3 pt-3" data-test="drive-upload-step" data-done={done ? "1" : "0"}>
+    <li className="relative flex gap-3 pt-2.5" data-test="drive-upload-step" data-done={done ? "1" : "0"}>
       {/* The rail joining the steps — it reads as one short journey, not three separate asks. */}
-      {!last && <span className="absolute bottom-0 left-[13px] top-10 w-px bg-border" />}
+      {!last && <span className="absolute bottom-0 left-[13px] top-9 w-px bg-border" />}
       <span className={`relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
         done ? "bg-success text-white" : "border-2 border-primary/50 bg-card text-primary"
       }`}>
         {done ? <Check size={14} /> : n}
       </span>
       <div className="min-w-0 flex-1 pb-1">
-        <p className="mb-1.5 pt-1 text-sm font-semibold text-foreground">{title}</p>
+        <p className="mb-1 pt-1 text-sm font-semibold text-foreground">{title}</p>
         {children}
       </div>
     </li>

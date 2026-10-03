@@ -189,16 +189,14 @@ export default function RecentAds() {
   /** "Now upload it to your Drive" — the same step My Work opens after a hand-in (useDriveUploadStep). */
   const driveStep = useDriveUploadStep();
 
+  /** The Drive step is on screen the moment the member submits — see the same note in MyWork. */
   const handleComplete = () => creditGate.request(liveOpenAssignment, async () => {
     const finished = liveOpenAssignment;
-    const submitted = await complete(liveOpenAssignment, { sessionStart: sessionStartRef.current });
-    if (submitted) {
-      // Already written into the final update; clearing it stops the unmount handler double-billing.
-      sessionStartRef.current = null;
-      setOpenAssignment(null);
-      driveStep.offer(finished);
-    }
-    return submitted;
+    const sessionStart = sessionStartRef.current;
+    // `complete` writes this session itself; closing the studio now must not record it a second time.
+    sessionStartRef.current = null;
+    setOpenAssignment(null);
+    return driveStep.submit(finished, (onSaved) => complete(finished, { sessionStart, onSaved }));
   });
 
   if (openAssignment && liveOpenAssignment) {
