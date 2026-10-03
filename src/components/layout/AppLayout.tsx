@@ -25,6 +25,7 @@ const ProfileCompletionPrompt = lazy(() => import("@/components/profile/ProfileC
 const MandatoryAgreementGate = lazy(() => import("@/components/agreement/MandatoryAgreementGate"));
 const UpdatePopup = lazy(() => import("@/components/layout/UpdatePopup"));
 const BirthdayGreeting = lazy(() => import("@/components/BirthdayGreeting"));
+const SmmRenewalPopup = lazy(() => import("@/components/smm/SmmRenewalPopup"));
 import { registerBackButton } from "@/services/capacitor-plugins";
 import { isNative } from "@/utils/platform";
 import { EXTERNAL_CREATOR_ROUTES } from "@/utils/roleHelpers";
@@ -150,6 +151,9 @@ export default function AppLayout({ allowedRoles }: AppLayoutProps) {
         <ProfileCompletionPrompt />
         <MandatoryAgreementGate />
         <UpdatePopup />
+        {/* The last three days before a social-media month's renewal date: a countdown and the
+            month's work report for the salesperson who sold it, once a day. */}
+        {user.role === "sales_member" && <SmmRenewalPopup />}
         </Suspense>
       </div>
     </div>

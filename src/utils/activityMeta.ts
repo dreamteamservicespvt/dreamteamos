@@ -139,11 +139,13 @@ export function describeActivity(log: DescribableLog): string {
     case "removed_penalty":
       return `Removed a charge of ${formatCurrency(d.amount || 0)} from "${d.businessName || "an order"}"`;
     case "set_up_smm_month":
-      return d.history
+      return (d.history
         ? `Recorded "${d.businessName || "a client"}"'s social media month (${d.startDate} → ${d.endDate}) as history`
         : `Set up "${d.businessName || "a client"}"'s social media month (${d.startDate} → ${d.endDate})`
           + `${d.clipsPerVideo ? ` · ${d.clipsPerVideo} clips a video` : ""}`
-          + `${Array.isArray(d.team) && d.team.length ? ` — ${d.team.map((m: { name?: string }) => m.name).filter(Boolean).join(", ")}` : ""}`;
+          + `${Array.isArray(d.team) && d.team.length ? ` — ${d.team.map((m: { name?: string }) => m.name).filter(Boolean).join(", ")}` : ""}`)
+        // A month with no sale says so, and whose client it is — it is in nobody's figures.
+        + (d.noSale ? ` · no sale, ${d.sellerName ? `${d.sellerName}'s client` : "not counted"}` : "");
     default:
       return "Unknown action";
   }

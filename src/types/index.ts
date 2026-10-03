@@ -165,6 +165,19 @@ export interface WorkAssignment {
   verifiedBy?: string;
   date: string;
   completedDate?: string;
+  /**
+   * The member's word that this job's finished file is in their Drive (2026-10-03).
+   *
+   * Asked the moment the job is marked complete (components/work/DriveUploadSheet), while the file
+   * is fresh and its folder is certain — instead of once at check-out for the whole day, when
+   * several files have to be matched to folders from memory. A declaration, not a verified upload:
+   * the app cannot see inside a Drive. Absent → not uploaded yet (or completed before this existed).
+   */
+  driveUploadedAt?: any;
+  /** The folder it was declared into, outermost first: `Name › October › Day 3 › 4 Clips`. */
+  driveUploadPath?: string[];
+  /** The file name the member was asked to use — `W123 - Sri Sai Silks`. */
+  driveFileName?: string;
   clientName?: string;
   savedGenerationId?: string;
   // Delivery promise / turnaround SLA, carried from the originating sale → order

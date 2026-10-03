@@ -13,29 +13,42 @@
  *   • Only a number with no SMM sale at all gets "Record a new sale": the ordinary sale form, on the
  *     salesperson's own lead, in their name, waiting for the sales admin like any other sale.
  *   • A client who already has months is renewed by their salesperson, not from here.
+ *   • A client the company was serving BEFORE sales were recorded in the app gets "Add a month that
+ *     had no sale" (2026-10-03): the salesperson who looks after them, then the month set up by hand.
+ *     It shows in the salesperson's login with its dates and counts in nobody's revenue or commission;
+ *     their Renew makes the next month a sale (services/smmSetup.addNoSaleMonth).
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  ArrowLeft, ArrowRight, BellRing, ExternalLink, Loader2, Plus, Search, Settings2, UserCheck, X,
+  ArrowLeft, ArrowRight, BellRing, ExternalLink, History, Info, Loader2, Plus, Search, Settings2, UserCheck, X,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import SaleForm from "@/components/sales/SaleForm";
-import SmmSetupForm, { assignSummary, setupInputOf, setupValueOf, type SmmSetupValue } from "@/components/smm/SmmSetupForm";
+import SmmSetupForm, {
+  assignSummary, countsLine, setupInputOf, setupValueOf, type SmmSetupValue,
+} from "@/components/smm/SmmSetupForm";
 import { fetchAssignableMembers, remindSellerToRenew } from "@/services/smm";
 import {
-  canSetUpSale, fetchSalesPeople, findSmmSalesForPhone, leadForSeller, notifySellerOfEnteredSale, setupProblem,
-  setupSaleMonth, updateLeadDoc, type SmmSaleRecord, type SmmSaleState,
+  addNoSaleMonth, canSetUpSale, fetchSalesPeople, findSmmSalesForPhone, leadForSeller, noSaleSetupProblem,
+  notifySellerOfEnteredSale, setupProblem, setupSaleMonth, updateLeadDoc, type SmmSaleRecord, type SmmSaleState,
 } from "@/services/smmSetup";
 import { formatCurrency } from "@/utils/formatters";
 import { formatPhoneDisplay, normalizePhone } from "@/utils/phone";
 import { isoDay } from "@/utils/smmPlan";
-import { canRecordSmmSaleForSeller, dayLabel, normaliseClipsPerVideo } from "@/utils/smmPackage";
+import {
+  NO_SALE_NOTE, canAddNoSaleMonth, canRecordSmmSaleForSeller, dayLabel, normaliseClipsPerVideo,
+} from "@/utils/smmPackage";
 import { platformsForPackage, commitmentsForPackage } from "@/utils/smmPricing";
+import { PACKAGES } from "@/utils/serviceCatalog";
+import { SMM_PLATFORMS } from "@/types/smm";
 import type { AppUser, Lead, SaleDetail } from "@/types";
 import type { SmmContentKind, SmmPlatform } from "@/types/smm";
 
-type Step = "number" | "seller" | "sale" | "setup" | "held";
+type Step = "number" | "seller" | "sale" | "setup" | "held" | "nosale";
+
+/** The packages a no-sale month can be described by — the same catalogue the sale form sells from. */
+const SMM_PACKAGE_NAMES: string[] = (PACKAGES.social_media_management || []).map((p) => p.label);
 
 const STATE_LABEL: Record<SmmSaleState, { label: string; cls: string }> = {
   rejected: { label: "Rejected by the sales admin", cls: "bg-destructive/15 text-destructive" },
@@ -86,6 +99,7 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
   const { toast } = useToast();
   const today = isoDay(new Date());
   const canRecord = canRecordSmmSaleForSeller(user);
+  const canNoSale = canAddNoSaleMonth(user);
   const actor = { uid: user.uid, name: user.name, role: user.role, createdBy: user.createdBy };
 
   const [step, setStep] = useState<Step>("number");
@@ -105,8 +119,14 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
   const [setup, setSetup] = useState<SmmSetupValue | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // A month that had no sale: the package it ran on ("" for a custom month) and the accounts it covered.
+  const [noSalePackage, setNoSalePackage] = useState<string>(SMM_PACKAGE_NAMES[0] || "");
+  const [noSalePlatforms, setNoSalePlatforms] = useState<SmmPlatform[]>(() => platformsForPackage(SMM_PACKAGE_NAMES[0]));
+
   useEffect(() => { fetchAssignableMembers().then(setMembers); }, []);
-  useEffect(() => { if (step === "seller" && sellers.length === 0) fetchSalesPeople().then(setSellers); }, [step, sellers.length]);
+  useEffect(() => {
+    if ((step === "seller" || step === "nosale") && sellers.length === 0) fetchSalesPeople().then(setSellers);
+  }, [step, sellers.length]);
 
   const seller = sellers.find((s) => s.uid === sellerUid) || null;
   const normalized = normalizePhone(phone);
@@ -173,7 +193,57 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
     setStep("setup");
   };
 
-  const problem = useMemo(() => (setup ? setupProblem(setupInputOf(setup), today) : ""), [setup, today]);
+  /** A client served before sales were recorded here: the month on its own, set up by hand. */
+  const startNoSale = () => {
+    const pkg = SMM_PACKAGE_NAMES[0] || "";
+    setNoSalePackage(pkg);
+    setNoSalePlatforms(platformsForPackage(pkg));
+    setSetup(setupValueOf(null, today, records?.find((r) => r.businessName)?.businessName || "", commitmentsForPackage(pkg)));
+    setStep("nosale");
+  };
+  /** A package fills in its counts and accounts; "Custom" leaves whatever is typed. */
+  const chooseNoSalePackage = (pkg: string) => {
+    setNoSalePackage(pkg);
+    if (!pkg) return;
+    setNoSalePlatforms(platformsForPackage(pkg));
+    setSetup((s) => (s ? { ...s, commitments: commitmentsForPackage(pkg) } : s));
+  };
+  const toggleNoSalePlatform = (p: SmmPlatform) =>
+    setNoSalePlatforms((list) => (list.includes(p) ? list.filter((x) => x !== p) : [...list, p]));
+
+  const problem = useMemo(() => {
+    if (!setup) return "";
+    if (step === "nosale") {
+      return noSaleSetupProblem({ phone: normalized, seller, setup: setupInputOf(setup) }, today)
+        || (noSalePlatforms.length === 0 ? "Tick the accounts the month ran on." : "");
+    }
+    return setupProblem(setupInputOf(setup), today);
+  }, [setup, today, step, normalized, seller, noSalePlatforms]);
+
+  const saveNoSale = async () => {
+    if (!setup || !seller || problem) return;
+    setSaving(true);
+    try {
+      const result = await addNoSaleMonth({
+        phone: normalized,
+        seller,
+        packageKey: noSalePackage,
+        platforms: noSalePlatforms,
+        setup: setupInputOf(setup),
+        actor,
+      });
+      toast({
+        title: result.history ? "Earlier month recorded" : "Month added",
+        description: result.history
+          ? `On ${seller.name}'s Social Media page with its dates — not counted in revenue or commission.`
+          : `${assignSummary(result.assign) || "The month is on the board."} Not counted in revenue or commission.`,
+      });
+      onCreated(result.campaignId);
+    } catch (err) {
+      toast({ title: "Not added", description: err instanceof Error ? err.message : "Try again.", variant: "destructive" });
+      setSaving(false);
+    }
+  };
 
   const saveSetup = async () => {
     if (!chosen || !setup || problem) return;
@@ -193,7 +263,10 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
     }
   };
 
-  const title = step === "setup" ? "Set up the month" : step === "sale" ? "Record the sale" : "Add SMM sale";
+  const title = step === "setup" ? "Set up the month"
+    : step === "sale" ? "Record the sale"
+      : step === "nosale" ? "Add a month that had no sale"
+        : "Add SMM sale";
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4" onClick={() => !saving && onClose()}>
@@ -208,6 +281,7 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
               {step === "sale" && seller && `On ${seller.name}'s lead for ${formatPhoneDisplay(normalized)}.`}
               {step === "setup" && chosen && `${chosen.businessName || formatPhoneDisplay(normalized)} · sold by ${chosen.sellerName}`}
               {step === "held" && "Waiting on the sales admin."}
+              {step === "nosale" && `${formatPhoneDisplay(normalized)} · a client from before sales were recorded in the app`}
             </p>
           </div>
           <button onClick={onClose} aria-label="Close" data-test="smm-add-sale-close"
@@ -309,6 +383,83 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
                 <Plus size={14} /> Record a new sale for a salesperson
               </button>
             )}
+
+            {records && canNoSale && (
+              <div data-test="smm-add-sale-no-sale-offer" className="rounded-lg border border-dashed border-border p-3">
+                <button onClick={startNoSale} data-test="smm-add-sale-no-sale"
+                  className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-background text-sm font-medium text-foreground hover:bg-accent">
+                  <History size={14} /> Add a month that had no sale
+                </button>
+                <p className="mt-1.5 text-[11px] text-muted-foreground">
+                  For a client we were already serving before sales were recorded in the app. The salesperson
+                  sees it in their login with its dates, but it is not a sale — it counts in nobody's revenue or
+                  commission. Their next month is a renewal, which is a sale.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── A month that had no sale ───────────────────────────────────────────────────── */}
+        {step === "nosale" && setup && (
+          <div className="space-y-4">
+            <p data-test="smm-no-sale-note" className="flex gap-2 rounded-lg border border-info/40 bg-info/10 p-2.5 text-xs text-foreground">
+              <Info size={14} className="mt-0.5 shrink-0 text-info" />
+              <span>
+                {NO_SALE_NOTE} It shows on the salesperson's Social Media page with its dates. When it ends,
+                they renew it — that month is a sale, and counts as theirs.
+              </span>
+            </p>
+            <label className="block text-[11px] font-medium text-muted-foreground">
+              Salesperson who looks after this client
+              <select value={sellerUid} data-test="smm-no-sale-seller" onChange={(e) => setSellerUid(e.target.value)}
+                className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-primary">
+                <option value="">Choose the salesperson…</option>
+                {sellers.map((s) => <option key={s.uid} value={s.uid}>{s.name}</option>)}
+              </select>
+            </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block min-w-0 text-[11px] font-medium text-muted-foreground">
+                Package it ran on
+                <select value={noSalePackage} data-test="smm-no-sale-package" onChange={(e) => chooseNoSalePackage(e.target.value)}
+                  className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-primary">
+                  {SMM_PACKAGE_NAMES.map((p) => (
+                    <option key={p} value={p}>{p} · {countsLine(commitmentsForPackage(p))}</option>
+                  ))}
+                  <option value="">Custom — set the counts below</option>
+                </select>
+              </label>
+              <div className="min-w-0">
+                <span className="text-[11px] font-medium text-muted-foreground">Accounts it covered</span>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {SMM_PLATFORMS.map((p) => {
+                    const on = noSalePlatforms.includes(p.key);
+                    return (
+                      <button key={p.key} type="button" aria-pressed={on} data-test={`smm-no-sale-platform-${p.key}`}
+                        onClick={() => toggleNoSalePlatform(p.key)}
+                        className={`h-8 rounded-md border px-2.5 text-xs font-medium transition-colors ${
+                          on ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent"
+                        }`}>
+                        {p.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+            <SmmSetupForm value={setup} onChange={setSetup} members={members} platforms={noSalePlatforms} />
+            <div className="flex gap-2">
+              <button onClick={() => setStep("number")} disabled={saving}
+                className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-accent disabled:opacity-50">
+                <ArrowLeft size={14} /> Back
+              </button>
+              {/* The reason it cannot be added yet reads on the button, so it may run to two lines. */}
+              <button onClick={saveNoSale} disabled={saving || !!problem} data-test="smm-no-sale-save"
+                className="inline-flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary px-2 py-1.5 text-sm font-medium leading-tight text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                {saving && <Loader2 size={14} className="animate-spin" />}
+                {saving ? "Adding…" : problem || "Add the month"}
+              </button>
+            </div>
           </div>
         )}
 

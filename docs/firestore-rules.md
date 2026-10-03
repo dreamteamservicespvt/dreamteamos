@@ -165,6 +165,11 @@ service cloud.firestore {
     // `adminAssignNumber` creates that lead), and a salesperson's renewal sale creates the tech
     // team's jobs. A rule restricting `leads` or `work_assignments` writes to their owner would
     // break both — those paths would need a server function first.
+    //
+    // 2026-10-03 (later) — still no rule change. A month can be `origin: "no_sale"` (a client served
+    // before sales were recorded in the app): an auto id, no order, amount 0, `soldBy` = the
+    // salesperson. Its team's jobs share one `order_chats/{campaignId}` room (no `orderId` on it;
+    // `api/order-chat` already skips the orders mirror when a room has none).
 
     // ── AI Accounts: Flow accounts, their passwords, the credit ledger, paid logins ─────────────
     // (types/aiAccounts.) Passwords live in their own collections so a list never carries them, and

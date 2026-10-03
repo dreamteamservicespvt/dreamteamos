@@ -15,7 +15,8 @@
  *   • each job hands the AI studio the month's own video length (`clipsPerVideo` × 8 seconds);
  *   • somebody taken off the month who has not started has their card withdrawn and is told;
  *     somebody already working on it keeps the card, and the caller is told so a person decides;
- *   • the order reads the same people, so the queue, My Work and the plan cannot disagree.
+ *   • the order reads the same people, so the queue, My Work and the plan cannot disagree;
+ *   • a month with no order (a no-sale month) is given jobs the same way, sharing one client chat.
  */
 import { collection, deleteDoc, doc, getDoc, getDocs, query, updateDoc, where } from "firebase/firestore";
 import { db } from "@/services/firebase";
@@ -23,7 +24,7 @@ import { sendNotification } from "@/services/notifications";
 import { createWorkAssignment, nextWorkUniqueId } from "@/services/workAssign";
 import { fetchOrder } from "@/services/orders";
 import { fetchCampaign, setCampaignTeam } from "@/services/smm";
-import { clipsPerVideoOf, jobsByMember, tracksFromTeam, videoDuration } from "@/utils/smmPackage";
+import { clipsPerVideoOf, isNoSaleMonth, jobsByMember, tracksFromTeam, videoDuration } from "@/utils/smmPackage";
 import type { ActivityActor } from "@/services/activityLog";
 import type { AppUser, OrderTrack, WorkAssignment } from "@/types";
 import type { SmmAssignee, SmmCampaign, SmmTeam } from "@/types/smm";
@@ -144,17 +145,21 @@ export async function assignSmmMonth(params: {
   ].filter(Boolean) as string[];
   const team = withoutInactive(params.team, await activeOf([...new Set(seatUids)]), result.skippedInactive);
 
-  // A month started directly, before every month had a sale behind it: it has no order to hang jobs
-  // on, so it keeps working the way it always did — names on the plan.
-  if (!campaign.orderId) {
-    await setCampaignTeam(campaignId, team);
-    return result;
-  }
-
-  const order = await fetchOrder(campaign.orderId);
-  if (!order || order.deleted || order.status === "deleted") {
+  /*
+    A month with no order — a no-sale month, or one started directly before every month had a sale —
+    gets its jobs all the same (2026-10-03). It used to get names on the plan only, which left the
+    member no way into the AI studio for it. Its jobs share one client chat keyed on the month's own
+    id (a sold month's share the order's), and the order bookkeeping at the end is skipped: there is
+    no order to keep.
+  */
+  const order = campaign.orderId ? await fetchOrder(campaign.orderId) : null;
+  if (campaign.orderId && (!order || order.deleted || order.status === "deleted")) {
     throw new Error("This month's order has been removed. Set the sale up again from Add SMM sale.");
   }
+  const monthRoom = order ? {} : {
+    roomId: campaign.id,
+    soldBy: isNoSaleMonth(campaign) ? { uid: campaign.soldBy, name: campaign.soldByName } : null,
+  };
 
   const clips = clipsPerVideoOf(campaign);
   const duration = videoDuration(clips);
@@ -199,14 +204,15 @@ export async function assignSmmMonth(params: {
       clipCount: clips,
       pricePerUnit: 0,
       uniqueId,
-      businessName: campaign.businessName || order.businessName,
-      businessWhatsapp: order.clientPhone,
-      requirementNotes: order.requirement?.notes || undefined,
-      businessInfo: order.requirement?.businessInfo || undefined,
-      businessAddress: order.requirement?.businessAddress || undefined,
+      businessName: campaign.businessName || order?.businessName,
+      businessWhatsapp: order?.clientPhone || campaign.clientPhone,
+      requirementNotes: order?.requirement?.notes || undefined,
+      businessInfo: order?.requirement?.businessInfo || undefined,
+      businessAddress: order?.requirement?.businessAddress || undefined,
       order,
       tracks: w.tracks,
       smmCampaignId: campaign.id,
+      ...monthRoom,
       actor: actor ?? null,
     });
     result.created.push({ uid: w.uid, name: w.name, id: made.id, accessCode: made.accessCode });
@@ -251,22 +257,24 @@ export async function assignSmmMonth(params: {
     ...result.keptStarted.map((k) => ({ id: k.id, uid: k.uid, name: k.name })),
   ].filter((j) => !withdrawnIds.has(j.id));
   const primary = live.find((j) => j.uid === team.creator?.uid) || live[0] || null;
-  await updateDoc(doc(db, "orders", order.id), {
-    ...(order.progress ? { progress: { ...order.progress, tracks: tracksFromTeam(team) } } : {}),
-    ...(primary
-      ? {
-          ...(order.status === "unassigned" ? { status: "assigned" } : {}),
-          workAssignmentId: primary.id,
-          assignedTo: primary.uid,
-          assignedToName: primary.name,
-        }
-      : {
-          ...(order.status === "assigned" ? { status: "unassigned" } : {}),
-          workAssignmentId: null,
-          assignedTo: null,
-          assignedToName: null,
-        }),
-  });
+  if (order) {
+    await updateDoc(doc(db, "orders", order.id), {
+      ...(order.progress ? { progress: { ...order.progress, tracks: tracksFromTeam(team) } } : {}),
+      ...(primary
+        ? {
+            ...(order.status === "unassigned" ? { status: "assigned" } : {}),
+            workAssignmentId: primary.id,
+            assignedTo: primary.uid,
+            assignedToName: primary.name,
+          }
+        : {
+            ...(order.status === "assigned" ? { status: "unassigned" } : {}),
+            workAssignmentId: null,
+            assignedTo: null,
+            assignedToName: null,
+          }),
+    });
+  }
 
   await setCampaignTeam(campaignId, team);
   return result;

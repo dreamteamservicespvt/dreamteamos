@@ -336,6 +336,112 @@ export function renewalLeadUrl(leadId: string, campaignId: string): string {
   return `/sales/leads?lead=${encodeURIComponent(leadId)}&sale=1&category=social_media_management&renew=${encodeURIComponent(campaignId)}`;
 }
 
+/* ── The renewal countdown popup (2026-10-03) ───────────────────────────────────────────────── */
+
+/**
+ * The salesperson's popup starts three days before the renewal date.
+ *
+ * ── Why three, when the dashboard card says five ─────────────────────────────────────────────
+ * The owner asked for it: the card is a list a salesperson reads when they choose to, and five days
+ * gives them time to plan the call. The popup interrupts, so it is kept to the last three days —
+ * "3 days, 2 days, 1 day, today" — where it means "make the call now, with this report in hand".
+ */
+export const SMM_RENEWAL_POPUP_DAYS = 3;
+
+/**
+ * Whole days from today to the renewal date — the month's end date, which is also the day a renewed
+ * month starts (`renewalStartDate`). 3, 2, 1, then 0 on the day itself; negative once it has passed.
+ *
+ * Not `daysLeftInCycle`: that counts today and reads 1 on the last day, which is right for "days left
+ * in the month" and wrong for "days to renewal".
+ */
+export function daysToRenewal(cycle: SmmCycle, today: string): number {
+  return daysBetween(today, cycle.endDate);
+}
+
+/** "3 days to renewal", "1 day to renewal — tomorrow", "Renewal is today". */
+export function renewalCountdownLabel(days: number): string {
+  if (days > 1) return `${days} days to renewal`;
+  if (days === 1) return "1 day to renewal — tomorrow";
+  if (days === 0) return "Renewal is today";
+  return "Renewal date has passed";
+}
+
+export type SmmCountdownState = "past" | "now" | "next";
+
+export interface SmmCountdownStep {
+  days: number;
+  /** "3 days", "2 days", "1 day", "Renewal day". */
+  label: string;
+  state: SmmCountdownState;
+}
+
+/**
+ * The four stops of the countdown — 3 days, 2 days, 1 day, renewal day — each marked as gone,
+ * today, or still to come. Drawn as a strip so the salesperson sees where they are in the run-up
+ * at a glance, not just a number.
+ */
+export function renewalCountdownSteps(days: number, from = SMM_RENEWAL_POPUP_DAYS): SmmCountdownStep[] {
+  const steps: SmmCountdownStep[] = [];
+  for (let d = from; d >= 0; d -= 1) {
+    steps.push({
+      days: d,
+      label: d === 0 ? "Renewal day" : `${d} day${d === 1 ? "" : "s"}`,
+      state: d > days ? "past" : d === days ? "now" : "next",
+    });
+  }
+  return steps;
+}
+
+/**
+ * The salesperson's own months whose renewal date is within the popup's three days (or is today),
+ * with no decision yet — soonest first.
+ *
+ * Same "no decision" rule as `renewalDue` (a renewal linked, won or lost ends it; a pitch does not —
+ * the client still has to say yes). A month that has already passed its date is left to the
+ * dashboard card and the board: the countdown is over, and a popup saying "−2 days" helps nobody.
+ */
+export function renewalPopupMonths(
+  campaigns: SmmCampaign[],
+  uid: string,
+  today: string,
+  withinDays = SMM_RENEWAL_POPUP_DAYS,
+): SmmCampaign[] {
+  return campaigns
+    // `renewalDue` counts in days LEFT (today included), one more than days TO renewal.
+    .filter((c) => c.soldBy === uid && renewalDue(c, today, withinDays + 1))
+    .filter((c) => {
+      const d = daysToRenewal(c.cycle, today);
+      return d >= 0 && d <= withinDays;
+    })
+    .sort((a, b) => a.cycle.endDate.localeCompare(b.cycle.endDate));
+}
+
+/** Remembers that the salesperson has seen this month's popup today, so it pops once a day, not on every page. */
+export function renewalPopupSeenKey(uid: string, campaignId: string, day: string): string {
+  return `dts_smm_renewal_popup_${uid}_${campaignId}_${day}`;
+}
+
+/**
+ * How many of the month's promised pieces sit at each stage — the stacked status bar in the popup.
+ * Extra work is left out (it is not what was sold); a promise with no row yet counts as `unplanned`.
+ */
+export function toneCounts(
+  campaign: Pick<SmmCampaign, "items" | "commitments">,
+  today: string,
+): Record<SmmTone, number> & { unplanned: number; total: number } {
+  const counts = { done: 0, ready: 0, wait: 0, work: 0, idle: 0, late: 0 } as Record<SmmTone, number>;
+  let rows = 0;
+  for (const item of campaign.items) {
+    if (item.extra) continue;
+    counts[toneOf(item, today)] += 1;
+    rows += 1;
+  }
+  const committed = Object.values(campaign.commitments || {}).reduce((n, v) => n + Math.max(0, Math.floor(v || 0)), 0);
+  const unplanned = Math.max(0, committed - rows);
+  return { ...counts, unplanned, total: rows + unplanned };
+}
+
 /* ── The team, as jobs ──────────────────────────────────────────────────────────────────────── */
 
 export type SmmSeat = "creator" | "publisher" | "marketer";
@@ -521,4 +627,61 @@ export function canSetUpSmm(user: Viewer): boolean {
  */
 export function canRenewSmm(c: Pick<SmmCampaign, "soldBy">, user: Viewer): boolean {
   return user?.role === "sales_member" && !!user.uid && c.soldBy === user.uid;
+}
+
+/* ── A month with no sale behind it (2026-10-03) ────────────────────────────────────────────── */
+
+/** A month run before sales were recorded in the app — no order, no amount, nobody's revenue. */
+export function isNoSaleMonth(c: Pick<SmmCampaign, "origin"> | null | undefined): boolean {
+  return c?.origin === "no_sale";
+}
+
+/** What a no-sale month is, in one sentence — the same words on the board, the month and the form. */
+export const NO_SALE_NOTE = "Run before sales were recorded in the app — not counted in anyone's revenue or commission.";
+
+/**
+ * Whose month it is, as the people line reads it. A sold month was sold by somebody and a month
+ * started directly was added by somebody; a no-sale month belongs to its salesperson, who did not
+ * sell it here — "sold by" would claim a sale that is in nobody's figures.
+ */
+export function sellerLineOf(c: Pick<SmmCampaign, "origin" | "soldByName">): string {
+  return `${sellerLabelOf(c)} ${c.soldByName}`;
+}
+
+/** The words before the name in `sellerLineOf`, for a line that sets the name in bold. */
+export function sellerLabelOf(c: Pick<SmmCampaign, "origin">): string {
+  if (c.origin === "direct") return "added by";
+  if (c.origin === "no_sale") return "salesperson";
+  return "sold by";
+}
+
+/**
+ * Do two months share a day of work? Back-to-back months share their boundary day — one ends on the
+ * day the next starts ("same date next month") — so touching is not overlapping.
+ */
+export function cyclesOverlap(a: SmmCycle, b: SmmCycle): boolean {
+  return a.startDate < b.endDate && b.startDate < a.endDate;
+}
+
+/**
+ * Add a no-sale month: the tech admin, team leader or main admin — the people who also record a sale
+ * for a salesperson. Deciding that a client's month counts in nobody's figures is theirs; the Social
+ * Media Team Lead runs months but does not make that call.
+ */
+export function canAddNoSaleMonth(user: Viewer): boolean {
+  return canRecordSmmSaleForSeller(user);
+}
+
+/**
+ * Why a no-sale month cannot be added, or "" when it can — only the rules about it having no sale;
+ * its name, counts, dates and team are checked by the ordinary setup rules (services/smmSetup).
+ *
+ * A month that has not started yet is new business, which is a sale: the salesperson records it, and
+ * it counts. Only a month already running or already over can be added without one.
+ */
+export function noSaleMonthProblem(p: { phone: string; sellerUid: string; startDate: string }, today: string): string {
+  if (p.phone.replace(/\D/g, "").length < 10) return "Enter the client's 10-digit WhatsApp number.";
+  if (!p.sellerUid) return "Choose the salesperson who looks after this client.";
+  if (p.startDate > today) return "A month that hasn't started yet is a sale — the salesperson records it.";
+  return "";
 }

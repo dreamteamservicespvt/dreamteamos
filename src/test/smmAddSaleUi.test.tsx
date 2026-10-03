@@ -8,7 +8,7 @@ import { MemoryRouter } from "react-router-dom";
  *     and who typed it is kept;
  *   • the sale form opened by Renew — on the month's package and video length, and linked to it;
  *   • "Add SMM sale" — an old sale is set up, never sold again; a client with months gets the
- *     salesperson's Renew, not a new sale;
+ *     salesperson's Renew, not a new sale; a client from before the app gets a month with no sale;
  *   • the board — its tabs, and the buttons each role gets.
  */
 
@@ -18,6 +18,7 @@ const logActivity = vi.fn(async (_p: Record<string, unknown>) => undefined);
 const applySaleFreeze = vi.fn(async (_p: Record<string, unknown>) => undefined);
 const findSmmSalesForPhone = vi.fn();
 const setupSaleMonth = vi.fn();
+const addNoSaleMonth = vi.fn();
 const remindSellerToRenew = vi.fn(async () => undefined);
 
 let AUTH: { user: Record<string, unknown> } = { user: { uid: "kiran", name: "Kiran", role: "tech_admin" } };
@@ -50,7 +51,7 @@ vi.mock("@/services/smm", () => ({
 }));
 vi.mock("@/services/smmSetup", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/services/smmSetup")>()),
-  findSmmSalesForPhone, setupSaleMonth,
+  findSmmSalesForPhone, setupSaleMonth, addNoSaleMonth,
   fetchSalesPeople: async () => [{ uid: "anil", name: "Anil", createdBy: "sadmin" }],
   leadForSeller: vi.fn(),
   updateLeadDoc: vi.fn(),
@@ -68,7 +69,7 @@ const { isoDay } = await import("@/utils/smmPlan");
 configure({ testIdAttribute: "data-test" });
 beforeEach(() => {
   AUTH = { user: { uid: "kiran", name: "Kiran", role: "tech_admin" } };
-  for (const f of [updateLead, upsertOrderForSale, logActivity, applySaleFreeze, findSmmSalesForPhone, setupSaleMonth]) f.mockClear();
+  for (const f of [updateLead, upsertOrderForSale, logActivity, applySaleFreeze, findSmmSalesForPhone, setupSaleMonth, addNoSaleMonth]) f.mockClear();
 });
 afterEach(cleanup);
 
@@ -211,6 +212,56 @@ describe("Add SMM sale", () => {
     await waitFor(() => expect(remindSellerToRenew).toHaveBeenCalled());
     expect(screen.queryByTestId("smm-add-sale-new")).toBeNull();
   });
+
+  it("adds a month that had no sale — the salesperson's, set up by hand, not a sale", async () => {
+    findSmmSalesForPhone.mockResolvedValue([]);
+    addNoSaleMonth.mockResolvedValue({ campaignId: "c_pre", history: false, assign: { created: [{ uid: "arjun", name: "Arjun", id: "w1", accessCode: "1234" }], updated: [], withdrawn: [], keptStarted: [], skippedInactive: [] } });
+    const onCreated = open();
+
+    fireEvent.click(await screen.findByTestId("smm-add-sale-no-sale"));
+    expect(screen.getByTestId("smm-no-sale-note").textContent).toMatch(/not counted in anyone's revenue or commission/);
+    // The button says what is still missing, in order.
+    expect(screen.getByTestId("smm-no-sale-save").textContent).toMatch(/Choose the salesperson/);
+    await waitFor(() => expect((screen.getByTestId("smm-no-sale-seller") as HTMLSelectElement).options.length).toBeGreaterThan(1));
+    fireEvent.change(screen.getByTestId("smm-no-sale-seller"), { target: { value: "anil" } });
+    expect(screen.getByTestId("smm-no-sale-save").textContent).toMatch(/Give the month a name/);
+
+    // A package fills in its counts and its accounts.
+    expect((screen.getByTestId("smm-setup-count-ai_ad") as HTMLInputElement).value).toBe("4");
+    fireEvent.change(screen.getByTestId("smm-no-sale-package"), { target: { value: "Plus Package" } });
+    expect((screen.getByTestId("smm-setup-count-ai_ad") as HTMLInputElement).value).toBe("6");
+    expect((screen.getByTestId("smm-setup-count-poster") as HTMLInputElement).value).toBe("6");
+    expect(screen.getByTestId("smm-no-sale-platform-youtube").getAttribute("aria-pressed")).toBe("true");
+    fireEvent.change(screen.getByTestId("smm-setup-name"), { target: { value: "Lakshmi Jewellers" } });
+
+    // A month that has not started is new business — a sale — and is refused here.
+    const day = (n: number) => isoDay(new Date(Date.now() + n * 86_400_000));
+    fireEvent.change(screen.getByTestId("smm-setup-start"), { target: { value: day(3) } });
+    expect(screen.getByTestId("smm-no-sale-save").textContent).toMatch(/hasn't started yet is a sale/);
+    fireEvent.change(screen.getByTestId("smm-setup-start"), { target: { value: day(-10) } });
+    await waitFor(() => expect((screen.getByTestId("smm-setup-seat-creator") as HTMLSelectElement).options.length).toBeGreaterThan(1));
+    fireEvent.change(screen.getByTestId("smm-setup-all"), { target: { value: "arjun" } });
+    fireEvent.click(screen.getByTestId("smm-no-sale-save"));
+
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith("c_pre"));
+    const args = addNoSaleMonth.mock.calls[0][0];
+    expect(args).toMatchObject({
+      phone: "+919876543210", seller: { uid: "anil", name: "Anil" }, packageKey: "Plus Package",
+      platforms: ["instagram", "facebook", "youtube"], actor: { uid: "kiran" },
+    });
+    expect(args.setup).toMatchObject({ businessName: "Lakshmi Jewellers", startDate: day(-10), commitments: { ai_ad: 6, poster: 6, real_video: 0 } });
+    expect(args.setup.team.creator.uid).toBe("arjun");
+    expect(setupSaleMonth).not.toHaveBeenCalled();
+  });
+
+  it("does not offer a month with no sale to the Social Media Team Lead", async () => {
+    findSmmSalesForPhone.mockResolvedValue([]);
+    render(<MemoryRouter><SmmAddSaleDialog user={{ uid: "ravi", name: "Ravi", role: "tech_member", smmLeader: true } as never} onClose={vi.fn()} onCreated={vi.fn()} /></MemoryRouter>);
+    fireEvent.change(screen.getByTestId("smm-add-sale-phone"), { target: { value: "98765 43210" } });
+    fireEvent.click(screen.getByTestId("smm-add-sale-find"));
+    await screen.findByTestId("smm-add-sale-none");
+    expect(screen.queryByTestId("smm-add-sale-no-sale")).toBeNull();
+  });
 });
 
 describe("the board", () => {
@@ -256,5 +307,20 @@ describe("the board", () => {
     render(<MemoryRouter><SocialMedia /></MemoryRouter>);
     fireEvent.click(screen.getByTestId("smm-tab-renewals"));
     expect(screen.queryByTestId("smm-card-renew")).toBeNull();
+  });
+
+  it("marks a month that had no sale on its card — and its salesperson still renews it", () => {
+    AUTH = { user: { uid: "anil", name: "Anil", role: "sales_member" } };
+    const start = new Date(); start.setDate(start.getDate() - 29);
+    BOARD = [{
+      ...base, id: "n", orderId: "", leadId: "", saleItemKey: "", origin: "no_sale", amount: 0,
+      businessName: "Old Client Co", cycle: monthCycle(isoDay(start)), team: withTeam,
+    }];
+    render(<MemoryRouter><SocialMedia /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId("smm-tab-renewals"));
+    const card = screen.getAllByTestId("smm-campaign-card")[0];
+    expect(within(card).getByTestId("smm-card-no-sale").textContent).toBe("No sale");
+    expect(within(card).getByTestId("smm-card-team").textContent).toMatch(/salesperson Anil/);
+    expect(within(card).getByTestId("smm-card-renew")).toBeTruthy();
   });
 });

@@ -331,6 +331,7 @@ legacy users without the field active.
 | Edit order progress counters (non-derived) | ✅ | ✅ | ✅ | track holder | | | |
 | See all SMM months | ✅ | ✅ | ✅ | smmLeader | ✅ | | |
 | Add SMM sale for a salesperson (`canRecordSmmSaleForSeller`) | ✅ | ✅ | ✅ | | | | |
+| Add an SMM month that had no sale — not counted (`canAddNoSaleMonth`) | ✅ | ✅ | ✅ | | | sees it, renews it | |
 | Set up / assign / edit an SMM month (`canSetUpSmm`) | ✅ | ✅ | ✅ | smmLeader | | | |
 | Renew an SMM month — as a sale (`canRenewSmm`) | | | | | | ✅ own month | |
 | Delete an SMM month | ✅ | ✅ | ✅ (2026-10-03) | smmLeader | | | |
@@ -394,6 +395,14 @@ with team leader), `components/work/*` (`OrderProgressPanel`, `BulkVideoBoard`, 
 `tech-team-leader/WorkAssign.tsx` (**near-duplicates, edit both**), `tech-admin/MemberAssignments.tsx`
 and `tech-team-leader/MemberAssignments.tsx` (**near-duplicates**), `tech-member/MyWork.tsx`,
 `tech-member/RecentAds.tsx`, `shared/WorkReports.tsx`. Collection `work_assignments`. See §16.
+**Drive step (2026-10-03):** the moment a job is handed in (My Work, Recent Ads — `useDriveUploadStep`),
+`components/work/DriveUploadSheet` opens: this job's folder (`Name › Month › Day N › 4 Clips`, or `Posters`;
+`utils/driveUpload.jobDrivePath`, the day it was finished), a file name (`W123 - Business`, `driveFileName`),
+the member's own `users.googleDriveBaseUrl`, and "It's uploaded" (`services/workDrive.markDriveUploaded` →
+`driveUploadedAt` / `driveUploadPath` / `driveFileName` on the job; every new hand-in clears them). Folder
+names and the file name copy in one tap; the loudest button is always the next step. "Upload later" leaves
+`DrivePendingStrip` at the top of both pages and a `DriveUploadChip` on the job; no link set → "Ask my
+admin" (`askAdminForDriveFolder`, `drive_folder_missing`, once a day).
 
 **9.7 AI Ads Platform (ad generation)** ✅. `components/ai-platform/*`, `services/geminiService.ts`,
 `services/prompts.ts`, `services/prompts/*`, `services/characterPacks.ts` +
@@ -414,7 +423,7 @@ ProjectAssetsPanel), `store/cinematicAdsStore.ts`, `services/cinematicAdsService
 `pages/shared/SmmCampaignPage.tsx` (`/smm/:campaignId`), `components/smm/*`, `services/smm.ts`,
 `services/smmTemplates.ts`, `utils/smmPlan.ts`, `smmPricing.ts`, `smmMessages.ts`,
 `smmReminders.ts`, `hooks/useSmmCampaigns.ts`, `types/smm.ts`. Collections `smm_campaigns` (doc id
-= order id; `origin: "sale" | "direct"`), `smm_templates`. Rules: items cannot go
+= order id, or an auto id for a month with no order; `origin: "sale" | "direct" | "no_sale"`), `smm_templates`. Rules: items cannot go
 `scheduled`/`posted` without a recorded client approval (`setItemStatus` throws). Every mutation
 runs in a transaction (`mutateCampaign`). The order's progress counters are **derived** from the
 plan (`syncOrderProgress`). Budget ledger with `direct`/`via_us` payment routes and two-leg proof.
@@ -428,7 +437,8 @@ video / Wishes video / Cinematic video (`SMM_EXTRA_WORK_TYPES`) and, for a video
 32 sec"; it now goes through `addItem`, which notifies the seller (the old button used `addItems`,
 which notified nobody). The top bar's breadcrumb names a month by its business, never its order id.
 **2026-10-03 — every month is a sale; setup, renewal, board.** No-sale "Start a month" removed
-(`createDirectCampaign` gone; old `origin:"direct"` months still work, seats only). **Add SMM sale**
+(`createDirectCampaign` gone; old `origin:"direct"` months still work — their team now gets job cards
+too, see the no-sale paragraph below). **Add SMM sale**
 (`SmmAddSaleDialog`, `services/smmSetup`): the client's number lists every SMM sale ever recorded on it
 (`findSmmSalesForPhone`, any salesperson, legacy `saleDetails` too); a sale already there is **set up,
 never sold again** (`setupSaleMonth`: restores a removed order / rebuilds a purged one under the same
@@ -456,6 +466,32 @@ Name field, or the pencil beside the title — `smmSetup.renameMonth`; renames t
 sets the **number of videos / posters / real videos** (`setMonthCommitments`: adds rows, removes only
 untouched ones, order counters follow); **Delete offers Undo for 5 s** (deleted at once,
 `undoDeleteCampaign` puts the month back exactly as it was).
+**Renewal countdown popup (2026-10-03, `components/smm/SmmRenewalPopup.tsx`, mounted in `AppLayout`
+for sales members):** from 3 days before a month's renewal date (= its end date) through the day
+itself — 3 days · 2 days · 1 day · renewal day — the salesperson who SOLD it gets a popup once a day
+per month per device (localStorage `renewalPopupSeenKey`): the countdown strip, the month's timeline
+with every post on its day, work status (% posted, `PaceChip`, a stacked stage bar from `toneCounts`,
+one block per piece per kind), the call figures (posts live, leads, ad spend, cost per lead, days
+waiting on the client, extra work, team) and the next month's dates; Renew (the usual
+`useSmmRenewal` sale), Full report (`/smm/:id?tab=report` — the month page now opens on `?tab=`),
+Later; several clients page 1 of N. Rules: `SMM_RENEWAL_POPUP_DAYS`, `daysToRenewal`,
+`renewalCountdownLabel/Steps`, `renewalPopupMonths` in `utils/smmPackage.ts`.
+**A month that had no sale (2026-10-03, later)** — for clients served before sales were recorded in the
+app. Add SMM sale → number → **Add a month that had no sale** (tech admin, team leader, main admin;
+`canAddNoSaleMonth`): salesperson, the package it ran on (fills counts + accounts) or Custom, then the
+ordinary setup form → `smmSetup.addNoSaleMonth` → `origin: "no_sale"`, auto id, no order/lead/sale
+item, **amount 0**, `soldBy` = the salesperson — so it is in their Social Media with its dates and they
+get Renew, but nothing reaches revenue, leaderboards or commission. Refused (`noSaleMonthProblem`,
+`noSaleMonthClash`): a start in the future (that is a sale), dates on any month the number has, dates a
+recorded sale covers (even a deleted one → "Set up this sale"), any month after a recorded sale (that is
+the salesperson's renewal). Over → history; running → `applyMonthSetup` → jobs. **Orderless months now
+get job cards** (`assignSmmMonth`): one client chat per month keyed on the month id
+(`createWorkAssignment` `roomId`/`soldBy`, `orderChat.joinMonthRoom`), never adopting the client's
+waiting sale by phone, with the month's deadline. Shown as a "No sale" chip, "No sale — not counted in
+revenue or commission" on the month, "salesperson X" (`sellerLineOf`). The salesperson's Renew makes
+month 2 a real sale. Fixed with it: a renewal's order and jobs now get the month's deadline
+(`monthPromise`, now in `services/smm`, set in `linkRenewal`), and a sale edit or approval no longer
+writes the sale's promise over an order's `smm_month` deadline or a used extension (`upsertOrderForSale`).
 
 **9.10 Client order chat + client calls** ✅. `pages/client/ClientChat.tsx` (public),
 `components/order-chat/*` (`StaffOrderChat`, `SalesOrderChat`, `OrderChatPanel`, `ClientCall`,
@@ -485,7 +521,7 @@ everyone (`CHATTABLE_ROLES`). Tech and sales admins can read their department me
 
 **9.13 Attendance, check-in/out, leave** ✅. Tech: `components/attendance/*` (`DailyCheckinPrompt`,
 mandatory for tech members on working days — **not shown on Sundays or on an announced
-`holidays/{date}`**, so the platform opens directly; `CheckoutModal` with a Drive-upload declaration; `MyDayCalendar`),
+`holidays/{date}`**, so the platform opens directly; `CheckoutModal` with a Drive-upload declaration and, since 2026-10-03, today's finished jobs marked in the Drive or not (`todaysDriveUploads`, one-tap "Uploaded"); `MyDayCalendar`),
 `services/techAttendance.ts` (statuses `full|half|absent|leave|holiday`; overrides and holidays
 persisted, Full/Absent derived from check-ins). Sales: `services/salesCheckin.ts`,
 `components/sales/AttendanceCard.tsx`. Shared grid `pages/shared/TeamAttendance.tsx` (with the
@@ -592,7 +628,7 @@ is lazy. Chunk loading shows `PageFallback` inside the shell (app pages) or `Rou
 ### Shared by six roles (all except `accounts_admin`)
 | `/smm` | `shared/SocialMedia.tsx` | SMM months list (scoped by `useSmmCampaigns`); "Start a month" for overseers |
 |---|---|---|
-| `/smm/:campaignId` | `shared/SmmCampaignPage.tsx` | One month: content table, item dialog, ads, money, reports, messages |
+| `/smm/:campaignId` | `shared/SmmCampaignPage.tsx` | One month: content table, item dialog, ads, money, reports, messages; `?tab=report` (or `ads` / `money`) opens on that tab |
 
 ### main_admin — `/main-admin/*`
 `dashboard` (Dashboard) · `team` (TeamManagement: all users, create admins) · `revenue`
@@ -660,7 +696,7 @@ Notification deep links must use `/` + query or a route the **recipient's** role
 - **Shell (`AppLayout`):** `Sidebar` (role navigation from `getNavItems`, collapsible groups,
   mobile drawer, logout) + `Topbar` (notification bell, profile) + `<Suspense><Outlet/></Suspense>`
   + lazy overlays: `VideoCallManager`, `DailyCheckinPrompt` (tech members only),
-  `ProfileCompletionPrompt`, `MandatoryAgreementGate`, `UpdatePopup`, `BirthdayGreeting`. It also
+  `ProfileCompletionPrompt`, `MandatoryAgreementGate`, `UpdatePopup`, `BirthdayGreeting`, `SmmRenewalPopup` (sales members, z-[42]). It also
   mounts `useMyLeadsSync()` / `useMyOrdersSync()` (sales members) and `initFCM` once per user.
 - **State:** zustand stores. `authStore` (user, loading), `sidebarStore` (collapsed),
   `callStore` (active call UI), `salesLeadsStore` / `salesOrdersStore` (session-long sales data;
@@ -762,7 +798,7 @@ notifyTechTeamLeaders`, `activityLog.logTechActivity / logActivity`, `hr.*`, `hr
 `payroll.*`, `payrollRun.*`, `leave.*`, `settlements.*`, `aiAccounts.*` (Flow and paid accounts,
 `recordFlowUsage / editFlowUsage / deleteFlowUsage / usageForAssignment`), `smmAssign.assignSmmMonth`
 (the ONLY way to put people on an SMM month), `smmSetup.findSmmSalesForPhone / leadForSeller /
-setupSaleMonth / applyMonthSetup`.
+setupSaleMonth / applyMonthSetup`, `workDrive.markDriveUploaded / askAdminForDriveFolder`.
 
 ---
 
@@ -781,10 +817,10 @@ index a query needs lives only in the console [NOT CONFIRMED].
 | `numberLocks/{digitsPhone}` | `NumberLock` | `ownerId`, `ownerLeadId`, `reserveExpiresAt` (+24h), `saleFrozen`, `saleFrozenUntil`, `timeline[]` (`claimed`/`taken_over`/`sold`/`admin_override`) |
 | `schedulePools/{auto}` | `SchedulePool` | `createdBy`, `assignedTo`, `numbers[]`, `releasedCount`, `dailyLimit`, `minCompletionPercent`, `isActive`, `lastReleasedDate` |
 | `orders/{o_<leadId>_<submittedAtMs>}` (legacy `o_<leadId>__<idx>`) | `Order` | client (`clientPhone`, `clientPhoneId`, `businessName`, `clientName`), sale copy (`category`, `packageKey`, `amount`, bulk/discount fields, `requirement`, `promise`), link (`leadId`, `saleItemIndex`, `saleItemKey`, `saleSubmittedAtMs`), attribution (`soldBy`, `soldByName`, `salesAdminId`, `fromAd`), `saleVerified`, **`status`**, `workAssignmentId`, `assignedTo`, `progress` (SMM/bulk), `bulkVideos[]`, `penalties[]`/`penaltyTotal`, `updateNotes[]`, `feedback` (after-sale call), `clientReview` (mirror), tombstone/restore/retire fields |
-| `work_assignments/{auto}` | `WorkAssignment` | `assignedTo`, `assignedBy`, `category` (`wishes`/`promotional`/`cinematic`/`bulk_ads`/`social_media_management`/`poster`), `clipCount`, `duration`, `pricePerUnit`, `uniqueId` (W/P/C/PS/O + number), **`accessCode`** (4 digits), `status`, `sessions[]`, `totalDurationSeconds`, `date`, ad spec (`modelGender`, `attireType`, `customAttire`, `aspectRatio`, `language`, `festival`, `characterPack`, `customCharacter` (Custom Character only), `realLocationProvided`, poster fields), brief (`requirementNotes`, `businessInfo`, `businessAddress`), `orderId`, `chatId`, `promise`, `tracks[]`, `savedGenerationId`, `saleDeleted*`, `reassignedFrom/By/At` |
+| `work_assignments/{auto}` | `WorkAssignment` | `assignedTo`, `assignedBy`, `category` (`wishes`/`promotional`/`cinematic`/`bulk_ads`/`social_media_management`/`poster`), `clipCount`, `duration`, `pricePerUnit`, `uniqueId` (W/P/C/PS/O + number), **`accessCode`** (4 digits), `status`, `sessions[]`, `totalDurationSeconds`, `date`, ad spec (`modelGender`, `attireType`, `customAttire`, `aspectRatio`, `language`, `festival`, `characterPack`, `customCharacter` (Custom Character only), `realLocationProvided`, poster fields), brief (`requirementNotes`, `businessInfo`, `businessAddress`), `orderId`, `chatId`, `promise`, `tracks[]`, `savedGenerationId`, `saleDeleted*`, `reassignedFrom/By/At`, `driveUploadedAt` / `driveUploadPath` / `driveFileName` (the member's word that the file is in their Drive, 2026-10-03; cleared on each hand-in) |
 | `clients/{digitsPhone}` | `Client` | profile assets, `works[]`, totals, `reviews[]` (server-written), `salesAdminIds[]`, `soldByIds[]` (array-contains scope), `firstSoldBy`, review/loyalty mirror |
 | `order_chats/{chatId}` (+`messages`) | `OrderChatDoc` | `chatId` = order id for sold work, else assignment id (`utils/orderChatId.orderChatIdOf`). `participants[]`, `accessCode`, `status` (`open`/`locked`), `clientReady`, `activeAt` heartbeats, `unreadCounts`, `clientReview`, member/seller/assigner ids |
-| `smm_campaigns/{orderId or auto}` | `SmmCampaign` | `origin`, `orderId` ("" for legacy direct), `watchers[]`, `soldBy`, `team`, `items[]` (content with approval, chases, per-platform `postUrls`, extra work's `extraType`/`extraDuration`, `carriedFrom`), `adRuns[]` (day reports, budgets), `budgetPayments[]`, `cycle` (start → same date next month), `commitments`, `renewal` (+`nextCampaignId`), `status` (`active`/`completed`/`renewed`/`lapsed`/`removed`/`deleted`), `deletedAt`/`deletedByName`; 2026-10-03: `clipsPerVideo`, `pageLinks`, `renewalOf`, `monthNumber`, `setupAt/ByName/ByUid`, `history`, `carriedOut[]`, `businessNameEdited`. Related: `SaleDetail.enteredBy`, `SmmSaleSpec.clipsPerVideo/renewalOf`, `WorkAssignment.smmCampaignId` |
+| `smm_campaigns/{orderId or auto}` | `SmmCampaign` | `origin` (`sale` / legacy `direct` / `no_sale` — no order, amount 0, `soldBy` = the salesperson), `orderId` ("" for direct and no-sale months), `watchers[]`, `soldBy`, `team`, `items[]` (content with approval, chases, per-platform `postUrls`, extra work's `extraType`/`extraDuration`, `carriedFrom`), `adRuns[]` (day reports, budgets), `budgetPayments[]`, `cycle` (start → same date next month), `commitments`, `renewal` (+`nextCampaignId`), `status` (`active`/`completed`/`renewed`/`lapsed`/`removed`/`deleted`), `deletedAt`/`deletedByName`; 2026-10-03: `clipsPerVideo`, `pageLinks`, `renewalOf`, `monthNumber`, `setupAt/ByName/ByUid`, `history`, `carriedOut[]`, `businessNameEdited`. Related: `SaleDetail.enteredBy`, `SmmSaleSpec.clipsPerVideo/renewalOf`, `WorkAssignment.smmCampaignId` |
 | `smm_templates/{auto}` | `SmmTemplate` | saved client message wording (company-wide) |
 | `ai_generations/{auto}` | `SavedGeneration` | `userId`, outputs (`mainFramePrompts[]`, `headerPrompt` (the VIDEO BOTTOM LABEL), `posterPrompt`, `voiceOverScript`, `veoPrompts[]`, `stockImagePrompts`, `overlayTexts` (each with `imagePrompt` / `imageDesign`), `posterConcepts`, `coreMessage`, `sceneContext` (motive + per-clip background and staging/camera/angle/focus), `voiceBrief`, `scriptQa` (the voice-over's quality-gate score, pass and drafts)), all form settings incl. `frameInstructions` and `customCharacter`, `creationMode`, `createdAt`/`updatedAt`. Generate = new doc (a version); Save and auto-save update it |
 | `cinematic_projects/{auto}` | `CinematicAdsProject` | `createdBy`, `name`, `currentStep`, `stepsCompleted`, brief, stories, boards, cast, clips, editing guide, deliverables, `delivered`, `updatedAt` (ms). `File` objects stripped |
@@ -939,7 +975,7 @@ assignment also notifies team leaders.
 |---|---|---|
 | `assigned` | `createWorkAssignment`, `reassignWork` | Waiting for the member |
 | `in_progress` | Member opens the job (My Work / Recent Ads) from `assigned` or `editing`; also **Undo completion** | Being worked. Sessions (open→close, >5s) accumulate `totalDurationSeconds`. Chat status synced |
-| `completed` | Member submits (`useCompleteWork`) — a video job first asks for the Flow credits it used (`useCreditGate`, §9.21) | Notifies the assigner + team leaders (dedupe keys), order → `completed`, chat **locked as delivered** (invites the client review), client record upserted |
+| `completed` | Member submits (`useCompleteWork`) — a video job first asks for the Flow credits it used (`useCreditGate`, §9.21) | Notifies the assigner + team leaders (dedupe keys), order → `completed`, chat **locked as delivered** (invites the client review), client record upserted; the job's previous Drive mark cleared and the Drive step opens (§9.6) |
 | `editing` | Tech admin / team leader "send back" (MemberAssignments, WorkReports) | Order → `assigned`, chat reopened, member notified `work_editing` |
 | `verified` | Tech admin / team leader (`verifyAssignments`, bulk or single) | Member notified, chat shows Delivered, `upsertClientOnWorkVerify` (order → `verified`, client works/totals), activity logged |
 
@@ -1293,7 +1329,7 @@ Gemini calls use the shared fallback.
   `work_unassigned`, `sale_approved`, `attendance_update`, `order_new_*`, `chat_message`,
   `voice_call` / `video_call`, SMM (incl. `smm_lead`, `smm_new_month`; 2026-10-03: `smm_sale_entered`,
   `smm_month_setup`, `smm_renewed`, `smm_renewal_due`, `smm_renewal_reminder`) and HR types, `ai_account`
-  (an AI account assigned to or moved from someone).
+  (an AI account assigned to or moved from someone), `drive_folder_missing` (a tech member with no Drive folder asks their tech admin; link `/tech-admin/drive`).
 
 ---
 
@@ -1370,10 +1406,11 @@ Gemini key), the production API base URL, and CORS allow-lists in `api/*`.
 | `OrderProgressPanel`, `BulkVideoBoard`, `AssignTracksDialog`, `PenaltyDialog`, `ExtendPromiseButton`, `DeadlineChip`, `ReassignWork`, `RequirementsShareModal`, `MemberWorkloadCard`, `WorkDoneReport` | `components/work/` | Order and work UI pieces |
 | `StaffOrderChat`, `SalesOrderChat`, `OrderChatPanel`, `ClientCall`, `ShareChatModal`, `ClientReviewCard` | `components/order-chat/` | Client chat for staff and guest |
 | `VideoCallManager`, `ChatRoom`, `ChatSidebar`, `MeetingRoom` | `components/chat/` | Team chat, WebRTC calls and meetings. VideoCallManager carries the one known TS error |
-| `SmmItemDialog` (autosave ~900ms), `SmmContentTable` (+ `SmmCalendar`), `SmmStageBar`, `SmmAdsPanel`, `SmmMoneyPanel`, `SmmBudgetPaymentForm`, `SmmReportPanel`, `SmmMessageComposer`, `SmmDueCard`, `SmmAddSaleDialog`, `SmmSetupForm`/`SmmSetupDialog`, `SmmVisuals`, `SmmBoardStats`, `SmmCampaignCard`, `SmmRenewalsCard`, `useSmmRenewal` | `components/smm/` | SMM month UI (§9.9) |
+| `SmmItemDialog` (autosave ~900ms), `SmmContentTable` (+ `SmmCalendar`), `SmmStageBar`, `SmmAdsPanel`, `SmmMoneyPanel`, `SmmBudgetPaymentForm`, `SmmReportPanel`, `SmmMessageComposer`, `SmmDueCard`, `SmmAddSaleDialog`, `SmmSetupForm`/`SmmSetupDialog`, `SmmVisuals`, `SmmBoardStats`, `SmmCampaignCard`, `SmmRenewalsCard`, `SmmRenewalPopup`, `useSmmRenewal` | `components/smm/` | SMM month UI (§9.9) |
 | `AgreementView`, `SignaturePad`, `MandatoryAgreementGate`, `Letterhead` | `components/agreement/` | Document rendering, signing, forced signing gate |
 | `IssueDocumentDialog`, `AllDocumentsPanel`, `EmploymentTermsCard`, `KycPanel`, `IdCardView`, `CompanyDocumentsCard`, `ProbationPanel`, `SeparationPanel`, `AssetsPanel` | `components/hr/` | HR centre and profile panels |
 | `DailyCheckinPrompt` (mandatory), `CheckoutModal`, `MyDayCalendar` | `components/attendance/` | Tech attendance |
+| `DriveUploadSheet` (+ `DrivePendingStrip`, `DriveUploadChip`), `useDriveUploadStep` | `components/work/` | The Drive step after a hand-in (§9.6): the job's folder, file name, the member's Drive link, "It's uploaded" / "Upload later" |
 | `AccessCodeGate`, `FieldHint`, `ImageLightbox`, `ViewToggle`, `BrandLogo` | `components/common/` | Shared primitives (FieldHint has a 24px tap target) |
 | `CreditUsageDialog`, `useCreditGate`, `FlowAccountDialog`, `FlowAccountsList`, `AssignDialog`, `PaidAccountsPanel`, `SecretField`, `CreditCalculator`, `TargetCard`, `UsageList`, `AiModal` | `components/ai-accounts/` | AI Accounts (§9.21). `useCreditGate` puts the credit step in front of Mark Complete on My Work and Recent Ads; `AiModal` is z-[70] so the credit dialog opens over the full-screen studio |
 | `ui/*` | `components/ui/` | shadcn primitives. Do not hand-edit casually |
@@ -1460,6 +1497,17 @@ report message → renewal.
   last day. A number held by another salesperson is refused. The tech side cannot record a new sale
   for a client who already has months (that is a renewal). The tech side may rename a month and change
   how many videos/posters it owes; a worked row is never removed. A deleted month can be undone for 5 s.
+  The one exception — **a month that had no sale (owner, 2026-10-03):** a client served before sales
+  were recorded in the app is added by the tech admin / team leader / main admin with the salesperson's
+  name: amount 0, counted in nobody's revenue or commission, shown in the salesperson's login with its
+  dates. It cannot start in the future, overlap any month of the client, cover a recorded sale's dates,
+  or come after a recorded sale. Its next month is the salesperson's Renew — a sale. A month's deadline
+  is its last day, on the order and every job, including a renewal's; a later edit or approval of the
+  sale does not change it (nor a used extension).
+- **SMM renewal popup (2026-10-03):** from 3 days before a month's renewal date through the day itself,
+  the salesperson who sold it gets the countdown + work-report popup once a day (per month, per device)
+  until there is a decision (a renewal linked, won or lost — a pitch is not one). Once the date has
+  passed it stops; the dashboard card (5 days, and ended months) and the board carry it from there.
 - **SMM:** nothing is scheduled or posted without a recorded client approval (enforced in
   `setItemStatus`); month quotas are 2 posts + 2 stories per video (`smmQuota`; stories target
   now 0 for plan-derived months); campaigns run on the video count; the real-video add-on is
@@ -1475,6 +1523,10 @@ report message → renewal.
 - **Tech attendance:** manual override wins → Sunday or announced holiday = holiday → checked in
   = full → past with no check-in = absent. The monthly leave quota constant is 2. Leave past the
   allowance counts as absence.
+- **Drive upload per job (2026-10-03):** every job handed in opens the Drive step at once — the file goes
+  in `Name › Month › Day N › <clips> Clips` (posters: `Posters`) of the day it was finished, named
+  `<job id> - <business>`. "It's uploaded" is the member's word (the app cannot see a Drive). A job handed
+  in again after edits must be uploaded again. Jobs finished before 2026-10-03 are never shown as missing.
 - **Check-out** requires the Drive-upload declaration first; the daily check-in prompt cannot be
   dismissed on a working day, and does not appear on a Sunday or an announced holiday.
 - **AI ads — English (2026-09-25):** an English ad is Indian English throughout — written for Indian
@@ -1558,6 +1610,9 @@ and push; PWA self-update; Android shell.
 - AI Accounts: credits are entered by the member (there is no Flow API), so the totals are only as
   good as the entries; nothing reconciles them with Flow's own balance. The rules for the new
   collections are written (`docs/firestore-rules.md`) but restrict nothing until they are published.
+- SMM month with no sale: its job in My Work shows no "This month's delivery" counters (that panel
+  reads the ORDER's progress, and such a month has none) — only the Month plan link. Deleting any month
+  leaves its members' job cards in place (as it always did for sold months).
 - Native Android camera capture uses the web file input (`@capacitor/camera` not installed).
 - Error/loading handling is inconsistent across older pages (plain `console.error`).
 - Header/poster prompts in no-logo mode may still reference a logo container (noted 2026-07,
@@ -1667,9 +1722,21 @@ and push; PWA self-update; Android shell.
   `work_assignments` writes to their owner would break both (noted in `docs/firestore-rules.md`).
   History months mark their order `verified` with no job behind it. Unposted pieces are moved to the
   next month only when somebody presses "Move them here" — nothing moves on its own. Months started
-  directly before 2026-10-03 keep working with seats only (no jobs, no renewal sale).
+  directly before 2026-10-03 have no renewal sale; set up again, their team now gets job cards.
   Checked by unit/service/UI tests and a 35-step browser run on the in-memory Firestore — not against
   live Firebase or push delivery.
+- The renewal popup remembers "seen today" per browser (localStorage), so a second phone or a cleared
+  browser shows it again the same day. Checked by unit tests and a browser harness on fake data at
+  1440 / 1280 / 412 / 390 px — not against live Firebase.
+- A month with no sale is a UI-level rule like the rest: the tech side could still add a client's
+  CURRENT month as no-sale instead of the salesperson renewing it, when that client has no sale recorded
+  in the app yet — the clash rules stop it only after a recorded sale. Its chat room is keyed on the
+  month id (no order behind it); checked by service tests (real chat service on the in-memory Firestore)
+  and a 37-step browser run, not against live Firebase or the client's side of the chat.
+- The per-job Drive mark is a declaration: nothing checks that the file is really in the Drive, and the
+  folder trail assumes the team's `Name › Month › Day N › <clips> Clips` layout. Checked by unit tests and
+  a browser harness on fake data (1440 / 1280 / 390 px, dark and light) — not against live Firebase or a
+  real Drive.
 - AI Accounts' writes are browser-side: the rule lets anyone in an account's `visibleTo` update the
   whole document, so the credit totals and holder fields are a UI rule, not a security boundary.
 - The rules' catch-all now EXCLUDES the five AI-account collections (Firestore ORs matching rules).
@@ -1799,6 +1866,51 @@ and push; PWA self-update; Android shell.
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
 
+- **2026-10-03 (later): the Drive step after a job is handed in** (§9.6, §16, §24). The owner asked that
+  the member's own Drive link appear the moment a video is marked complete. The real problem: uploading
+  was one tick at check-out for the whole day, when several `VID_…mp4` files had to be matched to Day /
+  clip-count folders from memory — files went missing or into the wrong folder, and work not in the
+  Drive is not counted. Now `DriveUploadSheet` opens on every hand-in (My Work, Recent Ads) with three
+  steps (open your folder · go to this folder · upload it with this name), one-tap copies, the next step
+  always the loudest button, and "It's uploaded" stamped on the job (`driveUploadedAt/Path/FileName`,
+  `services/workDrive`); "Upload later" leaves a strip at the top of both pages and a button on the job;
+  check-out lists today's jobs in / not in the Drive; no Drive link → one tap asks the tech admin.
+  `useCompleteWork` clears the mark on every hand-in. Verified: build ✅, vitest 189 files / 2964 tests
+  (16 new in `driveUploadStep.test.tsx`, 1 in `recentAdsComplete`; one unrelated `aiPlatformInputs` test
+  timed out once under the full run's load and passes alone), typecheck 1 known error; a throwaway CDP
+  harness outside the repo (real sheet / strip / chips, faked auth and writes, deleted after) ran 31
+  checks at 1440 / 1280 / 390 px, dark and light — no horizontal scroll, no console errors.
+- **2026-10-03 (later): SMM — a month that had no sale** (§9.9, §24, §8.2). The owner had run SMM for
+  some clients before the app recorded sales and wanted them in it — client number, salesperson, the
+  rest set up by hand — shown in the salesperson's login with from/to dates, NOT in revenue or
+  commission, and tracked normally from the next month. Built as `origin: "no_sale"` months (no order,
+  amount 0, `soldBy` = the salesperson) added from Add SMM sale (`smmSetup.addNoSaleMonth`), with clash
+  rules so one can never stand in for a recorded sale (overlap, a deleted sale's dates, any month after
+  a sale) or a future month; the salesperson's Renew makes month 2 a sale. Orderless months now get job
+  cards sharing one client chat on the month id (`orderChat.joinMonthRoom`, `createWorkAssignment`
+  `roomId`/`soldBy`) and never adopt the client's waiting sale by phone (the test was mutation-checked).
+  Found and fixed on the way: a renewed month's jobs read "23h 59m left" (the sale form's promise) —
+  `linkRenewal` now sets the month's deadline first (`monthPromise` moved to `services/smm`); and every
+  edit or approval of a sale wrote its promise back over an order's month deadline or a used extension
+  — `upsertOrderForSale` keeps both. Verified: build ✅, vitest 189 files / 2964 tests ✅ (14 new in
+  `smmNoSaleOct03`, 3 in `smmAddSaleUi`), typecheck 1 known error; a throwaway CDP harness (real board,
+  month page, My Leads and My Work on `memoryFirestore`, deleted after) ran 37 checks at 1440 / 390 px —
+  add, refusals, history, the salesperson's view, the renewal as a sale with the month's deadline, My
+  Work — no console errors, no horizontal scroll. Built alongside a parallel session in the same tree
+  (the renewal popup, then a Drive-upload step), files split by message.
+- **2026-10-03 (later): SMM renewal countdown popup for the salesperson** (§9.9, §24). The owner asked
+  that, from three days before a month's renewal date, the salesperson who made the sale gets a popup
+  like a work report — the month's work status, report and timeline drawn clearly — counting down
+  3 days, 2 days, 1 day to renewal. New `SmmRenewalPopup` (lazy, in `AppLayout`, sales members only;
+  reuses the seller's scoped `useSmmCampaigns` query, which the dashboard card shares) and pure rules
+  in `utils/smmPackage` (`daysToRenewal` counts to the end date — `daysLeftInCycle` counts today and
+  read "3 days left" under a "2 days to renewal" countdown, so the popup draws its own timeline labels).
+  The month page opens on `?tab=report`. Shown on the renewal day too; not after it. Verified: build ✅
+  (popup chunk ≈12 KB), vitest 187 files / 2930 tests ✅ (13 new in `smmRenewalPopup.test.tsx`),
+  typecheck 1 known error; a throwaway CDP harness (real popup, faked auth and months, outside the repo,
+  deleted after) ran 25 checks at 1440 / 1280 / 412 / 390 px, dark and light — countdown at 3 / 1 / 0
+  days, nothing at 4, paging, Later, Full report, Renew, no horizontal scroll, no console errors.
+  Built alongside a parallel session's SMM "month with no sale" work in the same tree (files split).
 - **2026-10-03: SMM — every month is a sale; setup, renewal by the salesperson, visual board** (§9.9,
   §24). The owner re-created old SMM months from the tech side and needed: a sale recorded for the
   salesperson who made it (counting in their login and commission), old deleted months set up again
@@ -2103,7 +2215,10 @@ Design intent lives in `docs/superpowers/specs/`.
 
 ## 32. CURRENT PROJECT STATE (as of 2026-10-03)
 
-- The 2026-10-03 SMM work (§31) is complete in the working tree, **not yet committed**.
+- The 2026-10-03 SMM work is committed (`a15b746`, `e1b9503`). The renewal countdown popup, the
+  month with no sale and the Drive step after a hand-in (§31) are complete in the working tree, **not yet
+  committed** (a parallel session may also have work in progress there — check `git status` before
+  committing).
 - Open owner decision: CLAUDE.md is ~2,200 lines and is loaded into every session (docs recommend
   under ~200) — trimming it into a short core + on-demand reference would cut usage on every request.
 - `main` = the merge of this machine's `346c7f0` into origin/main `1a090f9` (PR #1: the six AdGen
@@ -2111,11 +2226,14 @@ Design intent lives in `docs/superpowers/specs/`.
   origin/main's implementation (§31, 2026-10-02) and pushed.
 - `npm run build` ✅ (main chunk ≈455 KB, vendor-firebase ≈665 KB, geminiService chunk ≈790 KB; AI
   Accounts adds lazy `AiAccounts` ≈14 KB and `MyAiAccounts` ≈9 KB pages).
-- `npx vitest run` ✅ 186 files, 2917 tests.
+- `npx vitest run` ✅ 189 files, 2964 tests (after the month with no sale; the count includes a parallel
+  session's Drive-upload tests, which were in the tree at the time).
 - `npx tsc -p tsconfig.check.json --noEmit` → 1 known error (VideoCallManager).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
-- Most recent work: SMM — every month is a sale, Add SMM sale, setup with clips per video, renewal by
-  the salesperson, team-leader delete, the visual board (2026-10-03); before it the six AdGen fixes (frame-bounded video, duo heights, background plates, cast
+- Most recent work: the SMM month that had no sale (not counted; renewed as a sale) and the month
+  deadline fixes, the renewal countdown popup; before them SMM — every month is a sale, Add SMM sale,
+  setup with clips per video, renewal by the salesperson, team-leader delete, the visual board
+  (2026-10-03); before it the six AdGen fixes (frame-bounded video, duo heights, background plates, cast
   sheets, Kids, spoken address) and AI Accounts (2026-10-01); before them the AdGen integrity batch
   (verified contact facts, script quality gate, final script, fixed-distance duo camera, colour lock, job strip), the one-screen layout, the two-hander
   speaker-label fix and the studio UI, before them the AdGen.ai batch (§31), Cinematic Ads, SMM, Poster Creation, load-time splitting.

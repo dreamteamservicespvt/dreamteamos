@@ -185,4 +185,19 @@ describe("Recent Ads — submitting an in-progress ad", () => {
     await waitFor(() => expect(screen.queryByTestId("generator")).not.toBeInTheDocument());
     expect(screen.getByText("Sharma Electronics")).toBeInTheDocument();
   });
+
+  it("opens the Drive upload step the moment the work is submitted, for this job's own folder", async () => {
+    render(<RecentAds />);
+    openAd("Sharma Electronics");
+    submitAd();
+    const sheet = await screen.findByTestId("drive-upload-sheet");
+    expect(within(sheet).getByText("Video submitted")).toBeInTheDocument();
+    const folders = within(sheet).getAllByTestId("drive-upload-folder").map((b) => b.textContent);
+    expect(folders[0]).toBe("Jyothika");
+    expect(folders[folders.length - 1]).toBe("4 Clips");
+    expect(within(sheet).getByTestId("drive-upload-filename").textContent).toBe("P001 - Sharma Electronics");
+    // The completion itself clears any upload mark from an earlier hand-in.
+    const completion = completedWrites()[0][1] as Record<string, unknown>;
+    expect(completion).toHaveProperty("driveUploadedAt");
+  });
 });

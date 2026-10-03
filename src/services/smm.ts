@@ -24,21 +24,21 @@ import {
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import {
-  blankItem, buildInitialItems, cycleFromStart, derivedProgressCounts, extraWorkTitle, extraWorkTypeInfo, isoDay,
-  isPosted, newItemId, normaliseDuration, smmWatchers, targetsFromCommitments,
+  blankItem, buildInitialItems, cycleFromStart, dayToDate, derivedProgressCounts, extraWorkTitle, extraWorkTypeInfo,
+  isoDay, isPosted, newItemId, normaliseDuration, smmWatchers, targetsFromCommitments,
 } from "@/utils/smmPlan";
 import {
-  closingStatus, cyclePhase, hasTeam, monthCycle, monthLabel, normaliseClipsPerVideo, renewalStartDate, saleDay,
-  videosLine,
+  closingStatus, cycleRangeLabel, cyclePhase, hasTeam, monthCycle, monthLabel, normaliseClipsPerVideo,
+  renewalStartDate, saleDay, videosLine,
 } from "@/utils/smmPackage";
 import { dueItemsFor, dueLabel, dueNotificationKey, renewalsDueFor } from "@/utils/smmReminders";
 import { commitmentsForPackage, platformsForPackage } from "@/utils/smmPricing";
 import { POSTABLE_STATUSES } from "@/types/smm";
 import type {
   SmmAdDayReport, SmmAdRun, SmmBudgetPayment, SmmCampaign, SmmCarriedPiece, SmmContentItem, SmmContentKind,
-  SmmExtraWorkType, SmmItemStatus, SmmPaymentRoute, SmmPlatform, SmmRenewalState, SmmTeam,
+  SmmCycle, SmmExtraWorkType, SmmItemStatus, SmmPaymentRoute, SmmPlatform, SmmRenewalState, SmmTeam,
 } from "@/types/smm";
-import type { AppUser, Order, OrderProgress, SaleDetail } from "@/types";
+import type { AppUser, Order, OrderProgress, PromiseDeadline, SaleDetail } from "@/types";
 
 export const SMM_CAMPAIGNS = "smm_campaigns";
 
@@ -165,6 +165,52 @@ export function buildSoldCampaign(
 }
 
 /**
+ * A no-sale month (2026-10-03): a client served before sales were recorded in the app.
+ *
+ * Built by `buildSoldCampaign` so its plan, dates, team and renewal fields cannot drift from a sold
+ * month's, then stripped of everything a sale would have given it — no order, no lead, no sale item
+ * and no amount. Its salesperson is `soldBy`, which is what puts it in their login.
+ */
+export function buildNoSaleCampaign(
+  id: string,
+  input: Omit<CreateCampaignInput, "orderId" | "leadId" | "saleItemKey" | "amount">,
+  options: Parameters<typeof buildSoldCampaign>[1],
+  actor: SmmActor,
+): Omit<SmmCampaign, "createdAt" | "updatedAt"> {
+  return {
+    ...buildSoldCampaign({ ...input, orderId: id, leadId: "", saleItemKey: "", amount: 0 }, options),
+    id,
+    orderId: "",
+    origin: "no_sale",
+    createdBy: actor.uid,
+    createdByName: actor.name,
+  };
+}
+
+/**
+ * A social-media month's deadline is the end of the month.
+ *
+ * The sale form gives every sale a delivery promise in days, which suits an ad and not a retainer:
+ * an SMM order was "overdue" a day after it was sold. Promising the month's own last day makes the
+ * queue's deadline alerts mean something — the month's work is due when the month ends. Set when the
+ * tech side sets a month up (services/smmSetup) and when a renewal sets itself up (`linkRenewal`).
+ */
+export function monthPromise(cycle: SmmCycle): PromiseDeadline {
+  const start = dayToDate(cycle.startDate) ?? new Date();
+  const end = dayToDate(cycle.endDate) ?? new Date();
+  const due = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59);
+  const hours = Math.max(24, Math.round((due.getTime() - start.getTime()) / 3_600_000));
+  return {
+    presetKey: "smm_month",
+    label: `by ${cycleRangeLabel(cycle).split(" → ")[1]}`,
+    hours,
+    source: "custom",
+    startAt: Timestamp.fromMillis(start.getTime()),
+    dueAt: Timestamp.fromMillis(due.getTime()),
+  };
+}
+
+/**
  * Open the month, once.
  *
  * Idempotent on purpose: `upsertOrderForSale` runs again on every edit of the sale, and the plan
@@ -266,6 +312,14 @@ async function linkRenewal(prev: SmmCampaign, next: SmmCampaign, soldByName: str
     },
     ...(cyclePhase(c.cycle, today) === "ended" ? { status: "renewed" as const } : {}),
   }));
+
+  // The renewal is set up by itself, so it takes a set-up month's deadline — its own last day — on
+  // its order before any job is made, and every job copies it. Left with the sale form's promise of
+  // a day or two, a renewed month's jobs read "23h 59m left" and were flagged overdue the next day.
+  if (next.orderId) {
+    await updateDoc(doc(db, "orders", next.orderId), { promise: monthPromise(next.cycle), updatedAt: serverTimestamp() })
+      .catch((err) => console.warn("[smm] renewal deadline not set:", err));
+  }
 
   // The same people, straight away. Whoever set the last month up is recorded as the assigner, so
   // completion still reports to the tech side and not to the salesperson who sold the renewal.

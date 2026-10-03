@@ -15,7 +15,7 @@
  * pieces the month before left unposted, ready to be moved in.
  */
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowLeft, ArrowRight, BellRing, CalendarRange, Check, Image as ImageIcon, IndianRupee, Loader2, Megaphone,
@@ -37,8 +37,8 @@ import {
   canDeleteSmmCampaign, canEditCampaign, clientWaitSummary, isOverdue, isPosted, isoDay,
 } from "@/utils/smmPlan";
 import {
-  SMM_SEATS, canRenewSmm, canSetUpSmm, clipsPerVideoOf, cycleRangeLabel, cyclePhase, kindSegments, monthLabel,
-  needsSetup, paceOf, renewalDue, videoLengthLabel,
+  NO_SALE_NOTE, SMM_SEATS, canRenewSmm, canSetUpSmm, clipsPerVideoOf, cycleRangeLabel, cyclePhase, hasTeam,
+  isNoSaleMonth, kindSegments, monthLabel, needsSetup, paceOf, renewalDue, sellerLabelOf, videoLengthLabel,
 } from "@/utils/smmPackage";
 import { orderChatLink } from "@/services/orderChat";
 import SmmContentTable from "@/components/smm/SmmContentTable";
@@ -139,7 +139,12 @@ export default function SmmCampaignPage() {
   const { campaignId } = useParams();
   const user = useAuthStore((s) => s.user);
   const { campaign, loading } = useSmmCampaign(campaignId);
-  const [tab, setTab] = useState<Tab>("content");
+  // `?tab=report` opens straight on the report — the renewal popup's "Full report" links there.
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState<Tab>(() => {
+    const asked = searchParams.get("tab");
+    return asked === "ads" || asked === "money" || asked === "report" ? asked : "content";
+  });
   const [openItem, setOpenItem] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; kind: SmmTemplateKind } | null>(null);
   const [members, setMembers] = useState<{ uid: string; name: string }[]>([]);
@@ -343,7 +348,11 @@ export default function SmmCampaignPage() {
             </div>
             <p className="text-sm text-muted-foreground">
               {campaign.clientName && campaign.clientName !== campaign.businessName ? `${campaign.clientName} · ` : ""}
-              {campaign.packageLabel} · {formatCurrency(campaign.amount)}
+              {campaign.packageLabel} ·{" "}
+              {/* A no-sale month has no price to show — it is in nobody's figures, and says so. */}
+              {isNoSaleMonth(campaign)
+                ? <span data-test="smm-page-no-sale" title={NO_SALE_NOTE} className="font-medium text-foreground">No sale — not counted in revenue or commission</span>
+                : formatCurrency(campaign.amount)}
             </p>
             <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
               <span data-test="smm-page-range"><CalendarRange size={12} className="mr-1 inline" />{cycleRangeLabel(campaign.cycle)}</span>
@@ -358,10 +367,11 @@ export default function SmmCampaignPage() {
               className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium text-foreground hover:bg-accent">
               <Phone size={13} /> Client
             </a>
-            {/* A month with no order behind it (started directly, before every month had a sale)
-                has no client chat room — the link would lead to a page saying so. */}
-            {campaign.orderId && (
-              <a href={orderChatLink(campaign.orderId)} target="_blank" rel="noreferrer"
+            {/* A sold month's room is its order's. A no-sale month's team shares a room on the month's
+                own id, opened by its first job — so it exists once the month has people on it. A month
+                started directly before every month had a sale has none to link to. */}
+            {(campaign.orderId || (isNoSaleMonth(campaign) && !campaign.history && hasTeam(campaign.team))) && (
+              <a href={orderChatLink(campaign.orderId || campaign.id)} target="_blank" rel="noreferrer" data-test="smm-page-chat"
                 className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium text-foreground hover:bg-accent">
                 <MessageSquare size={13} /> Their chat
               </a>
@@ -432,7 +442,7 @@ export default function SmmCampaignPage() {
             <span>{campaign.history ? "No team — recorded as history" : "Nobody on it yet"}</span>
           )}
           <span className="ml-auto">
-            {campaign.origin === "direct" ? "added by" : "sold by"} <b className="text-foreground">{campaign.soldByName}</b>
+            {sellerLabelOf(campaign)} <b className="text-foreground">{campaign.soldByName}</b>
             {campaign.setupByName ? ` · set up by ${campaign.setupByName}` : ""}
           </span>
         </div>

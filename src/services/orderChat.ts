@@ -309,6 +309,30 @@ export async function attachAssignmentToChat(input: {
 }
 
 /**
+ * The room a whole social-media month shares when it has no order (a no-sale month, 2026-10-03):
+ * the month's first job opens it, every later one joins it, exactly as a sold month's jobs join the
+ * order's room.
+ *
+ * Looked up first rather than attempted, because for such a month a missing room is the normal first
+ * step, not a failure — going through `attachAssignmentToChat`'s fallback would log an error for every
+ * new month. Never throws, like the rest of this file.
+ */
+export async function joinMonthRoom(
+  input: Parameters<typeof attachAssignmentToChat>[0] & { fallback: Omit<CreateOrderChatInput, "assignmentId"> },
+): Promise<void> {
+  try {
+    const snap = await getDoc(doc(db, ORDER_CHATS, input.chatId));
+    if (!snap.exists()) {
+      await createOrderChat({ ...input.fallback, assignmentId: input.assignmentId, chatId: input.chatId });
+      return;
+    }
+  } catch (err) {
+    console.warn("[orderChat] could not look up the month's room", input.chatId, err);
+  }
+  await attachAssignmentToChat(input);
+}
+
+/**
  * The room for an assignment that predates this feature — or lost its room somehow.
  *
  * Every job assigned before order chats existed has no room, and there are hundreds of them. Rather

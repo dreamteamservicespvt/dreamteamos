@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { deleteField, doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { format } from "date-fns";
 import { db } from "@/services/firebase";
 import { sendNotification, notifyTechTeamLeaders } from "@/services/notifications";
@@ -55,6 +55,11 @@ export function useCompleteWork() {
         status: "completed" as const,
         completedAt: serverTimestamp(),
         completedDate: format(new Date(), "yyyy-MM-dd"),
+        // Each hand-in is a new file. A job sent back for edits and finished again must go up to the
+        // Drive again, so the previous upload mark is cleared (components/work/DriveUploadSheet).
+        driveUploadedAt: deleteField(),
+        driveUploadPath: deleteField(),
+        driveFileName: deleteField(),
       };
 
       if (sessionStart) {

@@ -16,7 +16,8 @@ import { Link } from "react-router-dom";
 import { AlertTriangle, Clock, Image as ImageIcon, Loader2, RefreshCcw, Settings2, Sparkles, Users, Video } from "lucide-react";
 import { clientWaitSummary, isOverdue, isoDay, teamMembers } from "@/utils/smmPlan";
 import {
-  clipsPerVideoOf, cyclePhase, kindSegments, needsSetup, paceOf, renewalDue, videoLengthLabel,
+  NO_SALE_NOTE, clipsPerVideoOf, cyclePhase, isNoSaleMonth, kindSegments, needsSetup, paceOf, renewalDue,
+  sellerLineOf, videoLengthLabel,
 } from "@/utils/smmPackage";
 import { overdueItemsFor } from "@/utils/smmReminders";
 import { KindBar, MonthTimeline, PaceChip } from "@/components/smm/SmmVisuals";
@@ -51,7 +52,7 @@ export default function SmmCampaignCard({ campaign, viewerUid, onSetUp, onRenew,
   const ended = cyclePhase(campaign.cycle, today) === "ended";
   const clips = clipsPerVideoOf(campaign);
   const monthNo = campaign.monthNumber || 1;
-  const sellerLine = campaign.origin === "direct" ? `added by ${campaign.soldByName}` : `sold by ${campaign.soldByName}`;
+  const sellerLine = sellerLineOf(campaign);
   const carriedIn = campaign.items.filter((i) => i.carriedFrom).length;
 
   return (
@@ -80,6 +81,13 @@ export default function SmmCampaignCard({ campaign, viewerUid, onSetUp, onRenew,
             )}
             {campaign.history && (
               <span className="rounded-full bg-info/15 px-2 py-0.5 text-[10px] font-semibold text-info">History</span>
+            )}
+            {/* In nobody's revenue — said on the card, so nobody reads its package as money made. */}
+            {isNoSaleMonth(campaign) && (
+              <span data-test="smm-card-no-sale" title={NO_SALE_NOTE}
+                className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                No sale
+              </span>
             )}
             <PlatformChips platforms={campaign.platforms} />
           </div>

@@ -367,9 +367,19 @@ export interface SmmTeam {
  * ── No longer created (2026-10-03) ────────────────────────────────────────────────────────────
  * Every month now has a sale behind it: a salesperson records it, or the tech side records it on
  * their behalf ("Add SMM sale"), so the salesperson sees it and is paid for it by the usual formula.
- * Months started directly before that keep working exactly as described above.
+ * Months started directly before that keep working exactly as described above, and since the same
+ * day their team is given job cards like any other month (services/smmAssign).
+ *
+ * ── "no_sale": a month run before sales were recorded in the app (2026-10-03) ─────────────────
+ * Some clients were already being served when the app arrived, and nobody ever recorded their sale
+ * here. Recording one now would put money that changed hands months ago into a salesperson's
+ * revenue and commission today. So the tech admin or team leader adds the month itself, naming the
+ * salesperson who looks after the client: it has no order and no amount, it shows in that
+ * salesperson's Social Media with its dates, and it counts in nobody's revenue or commission. The
+ * client's next month is a real sale — the salesperson's Renew — and from there it is tracked like
+ * every other client. See services/smmSetup.addNoSaleMonth.
  */
-export type SmmOrigin = "sale" | "direct";
+export type SmmOrigin = "sale" | "direct" | "no_sale";
 
 export interface SmmCampaign {
   /** The order's id for a sold month — see the header of utils/orderChatId for why that is the
@@ -381,7 +391,7 @@ export interface SmmCampaign {
   saleItemKey: string;
   /** Absent on months recorded before direct entry existed, every one of which came from a sale. */
   origin?: SmmOrigin;
-  /** Who added a direct month, for the record. The seller fields carry who OWNS the client. */
+  /** Who added a direct or no-sale month, for the record. The seller fields carry who OWNS the client. */
   createdBy?: string;
   createdByName?: string;
   clientPhone: string;
@@ -390,7 +400,10 @@ export interface SmmCampaign {
   businessName: string;
   packageKey: string;
   packageLabel: string;
-  /** What the client is paying for the month, after everything came off. */
+  /**
+   * What the client is paying for the month, after everything came off. Always 0 on a no-sale month:
+   * it was paid for before sales were recorded here, and is in nobody's figures.
+   */
   amount: number;
   cycle: SmmCycle;
   /** The accounts committed on the call. */

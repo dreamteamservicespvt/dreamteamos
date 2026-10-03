@@ -21,7 +21,7 @@ import { AttireType, ModelGender } from "@/types/aiPlatform";
 import { findUnassignedOrderForPhone, revertOrderToUnassigned } from "@/services/orders";
 import { logTechActivity, type ActivityActor } from "@/services/activityLog";
 import {
-  createOrderChat, attachAssignmentToChat, detachAssignmentFromChat, deleteOrderChat,
+  createOrderChat, attachAssignmentToChat, detachAssignmentFromChat, deleteOrderChat, joinMonthRoom,
 } from "@/services/orderChat";
 import { orderChatIdOf } from "@/utils/orderChatId";
 import { ORDER_TRACKS } from "@/types";
@@ -85,6 +85,19 @@ export interface CreateWorkAssignmentInput {
    * Work link back to the month's plan. See services/smmAssign.
    */
   smmCampaignId?: string | null;
+  /**
+   * The client chat this job shares with the rest of its month, for a social-media month with no
+   * order behind it (a no-sale month, or one started directly). A sold month's jobs all join the
+   * order's room; without this, each person on an orderless month would open a room of their own and
+   * the client would be handed two or three links for one month. The room is created by the first job
+   * and joined by the rest. See services/smmAssign.
+   */
+  roomId?: string | null;
+  /**
+   * The salesperson behind work that has no order — the no-sale month's — so they are in its room the
+   * way a seller is in a sold month's. An order-backed job reads its seller off the order.
+   */
+  soldBy?: { uid: string; name: string } | null;
   /** Shown in the assignee's notification. */
   memberLink?: string;
   /** The assigner's display name, for the client chat this creates. */
@@ -110,7 +123,7 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
     businessName, businessWhatsapp, modelGender, attireType, customAttire, aspectRatio,
     language, festival, requirementNotes, characterPack, customCharacter, realLocationProvided,
     businessInfo, businessAddress, posterSize, posterStyle, posterCount,
-    order, tracks, smmCampaignId, memberLink = "/tech/my-work", assignerName, techAdminUid, actor,
+    order, tracks, smmCampaignId, roomId, soldBy, memberLink = "/tech/my-work", assignerName, techAdminUid, actor,
   } = input;
   const poster = isPosterCategory(category);
 
@@ -136,8 +149,14 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
    * Work assigned straight from Work Assign (rather than from the Orders queue) still belongs to
    * a sale if one exists for that client's number — so it adopts the waiting order instead of
    * leaving it stuck in "unassigned" while the work is already being done.
+   *
+   * Never for a social-media month's job: the month already knows whether it has an order and passes
+   * it. A month with none (a no-sale month) must not pick up the client's NEXT month — their renewal
+   * sale, waiting in the queue for the same number — and quietly mark that sale as being worked on.
    */
-  const linkedOrder = order ?? (phone ? await findUnassignedOrderForPhone(phone, category) : null);
+  const linkedOrder = order ?? (phone && !smmCampaignId ? await findUnassignedOrderForPhone(phone, category) : null);
+  /** A shared month room, only for work with no order — an order's room always wins. */
+  const sharedRoom = linkedOrder ? null : (roomId || null);
 
   const ref = await addDoc(collection(db, "work_assignments"), {
     assignedTo,
@@ -201,7 +220,7 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
      * than derived, so the hundreds of rooms already keyed on an assignment id keep working
      * untouched. See utils/orderChatId.
      */
-    ...(linkedOrder ? { chatId: linkedOrder.id } : {}),
+    ...(linkedOrder ? { chatId: linkedOrder.id } : sharedRoom ? { chatId: sharedRoom } : {}),
     ...(linkedOrder?.promise ? { promise: linkedOrder.promise } : {}),
     ...(tracks?.length ? { tracks } : {}),
     ...(smmCampaignId ? { smmCampaignId } : {}),
@@ -230,8 +249,8 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
     assignerUid,
     assignerName,
     techAdminUid,
-    soldByUid: linkedOrder?.soldBy ?? null,
-    soldByName: linkedOrder?.soldByName ?? null,
+    soldByUid: linkedOrder?.soldBy ?? soldBy?.uid ?? null,
+    soldByName: linkedOrder?.soldByName ?? soldBy?.name ?? null,
     orderId: linkedOrder?.id ?? null,
   };
 
@@ -249,6 +268,20 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
       techAdminUid,
       // A sale taken before rooms opened at sale time has nothing to attach to.
       fallback: { ...chatFields, chatId: linkedOrder.id },
+    });
+  } else if (sharedRoom) {
+    // The month's own room: the first job of the month opens it, the rest join it.
+    await joinMonthRoom({
+      chatId: sharedRoom,
+      assignmentId: ref.id,
+      accessCode,
+      uniqueId,
+      memberUid: assignedTo,
+      memberName: assignedToName,
+      assignerUid,
+      assignerName,
+      techAdminUid,
+      fallback: { ...chatFields, chatId: sharedRoom },
     });
   } else {
     // No sale behind this job, so nothing opened a room earlier — it starts here, on the

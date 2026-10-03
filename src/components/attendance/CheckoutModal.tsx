@@ -6,11 +6,12 @@ import { sendNotification } from "@/services/notifications";
 import { useToast } from "@/hooks/use-toast";
 import { getTodayWorkStats, buildCheckoutMessage, ADMIN_WHATSAPP } from "@/utils/attendance";
 import { getWhatsAppUrl } from "@/utils/phone";
-import { driveFolderPath } from "@/utils/driveUpload";
+import { driveAdTypeFolder, driveFileName, driveFolderPath, jobDrivePath, todaysDriveUploads } from "@/utils/driveUpload";
+import { markDriveUploaded } from "@/services/workDrive";
 import SmmDueCard from "@/components/smm/SmmDueCard";
 import type { AppUser, DailyCheckin, WorkAssignment } from "@/types";
 import {
-  AlertTriangle, ArrowRight, Clock, LogOut, Loader2, User, Video, UploadCloud, ExternalLink,
+  AlertTriangle, ArrowRight, CheckCircle2, Clock, LogOut, Loader2, User, Video, UploadCloud, ExternalLink,
 } from "lucide-react";
 
 interface CheckoutModalProps {
@@ -49,6 +50,24 @@ export default function CheckoutModal({ user, todayCheckin, assignments, onClose
   const inMs = todayCheckin.checkedInAt?.toDate?.()?.getTime?.() || 0;
   const checkInTime = inMs ? format(todayCheckin.checkedInAt.toDate(), "hh:mm a") : "—";
   const path = driveFolderPath(user.name, now);
+
+  /**
+   * Today's finished jobs, each with whether its file is in the Drive (2026-10-03). Each job is now
+   * marked as it is handed in (components/work/DriveUploadSheet), so check-out can say exactly which
+   * are still to go up instead of asking for one tick about the whole day.
+   */
+  const driveJobs = useMemo(() => todaysDriveUploads(assignments, todayStr), [assignments, todayStr]);
+  const [markingId, setMarkingId] = useState<string | null>(null);
+  const markUploaded = async (job: WorkAssignment) => {
+    setMarkingId(job.id);
+    try {
+      await markDriveUploaded(job, jobDrivePath(user.name, job, now), driveFileName(job));
+    } catch {
+      toast({ title: "Not saved", description: "Try again.", variant: "destructive" });
+    } finally {
+      setMarkingId(null);
+    }
+  };
 
   const handleSubmit = async () => {
     setSubmitting(true);
@@ -156,6 +175,39 @@ export default function CheckoutModal({ user, todayCheckin, assignments, onClose
               <b className="text-foreground">4 Clips</b> — and put that work in it.
             </p>
           </div>
+
+          {driveJobs.uploaded.length + driveJobs.pending.length > 0 && (
+            <div data-test="checkout-drive-jobs" className="rounded-lg border border-border bg-background p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Today's finished work</p>
+                <span data-test="checkout-drive-count" className={`text-[11px] font-semibold ${driveJobs.pending.length ? "text-warning" : "text-success"}`}>
+                  {driveJobs.uploaded.length} of {driveJobs.uploaded.length + driveJobs.pending.length} in your Drive
+                </span>
+              </div>
+              <ul className="space-y-1.5">
+                {[...driveJobs.pending, ...driveJobs.uploaded].map((job) => {
+                  const done = driveJobs.uploaded.includes(job);
+                  return (
+                    <li key={job.id} data-test="checkout-drive-job" data-done={done ? "1" : "0"} className="flex items-center gap-2 text-xs">
+                      {done
+                        ? <CheckCircle2 size={14} className="shrink-0 text-success" />
+                        : <span className="h-3.5 w-3.5 shrink-0 rounded-full border-2 border-warning" />}
+                      <span className="min-w-0 flex-1 truncate text-foreground">
+                        <b className="font-mono">{job.uniqueId}</b> · {job.businessName || job.displayTitle}
+                        <span className="text-muted-foreground"> · {driveAdTypeFolder(job)}</span>
+                      </span>
+                      {!done && (
+                        <button onClick={() => markUploaded(job)} disabled={markingId === job.id} data-test="checkout-drive-mark"
+                          className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-success/40 px-2 text-[11px] font-semibold text-success hover:bg-success/10 disabled:opacity-50">
+                          {markingId === job.id ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle2 size={11} />} Uploaded
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
 
           <ul className="space-y-1 text-[11px] leading-relaxed text-muted-foreground">
             <li>• A proper backup of everything the team has made.</li>

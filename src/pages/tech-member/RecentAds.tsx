@@ -14,6 +14,8 @@ import { formatDate, formatTime } from '@/utils/formatters';
 import type { WorkAssignment } from '@/types';
 import { useCompleteWork } from '@/hooks/useCompleteWork';
 import { useCreditGate } from '@/components/ai-accounts/useCreditGate';
+import { useDriveUploadStep } from '@/components/work/useDriveUploadStep';
+import { DriveUploadChip, DrivePendingStrip } from '@/components/work/DriveUploadSheet';
 import CodeVerificationModal from '@/components/ai-platform/CodeVerificationModal';
 import { isWorkUnlocked, rememberWorkUnlock } from '@/utils/workUnlock';
 import AIPlatformApp from '@/components/ai-platform/AIPlatformApp';
@@ -178,12 +180,17 @@ export default function RecentAds() {
   /** "How many Flow credits did this ad use?" — asked before every video job is handed in (useCreditGate). */
   const creditGate = useCreditGate();
 
+  /** "Now upload it to your Drive" — the same step My Work opens after a hand-in (useDriveUploadStep). */
+  const driveStep = useDriveUploadStep();
+
   const handleComplete = () => creditGate.request(liveOpenAssignment, async () => {
+    const finished = liveOpenAssignment;
     const submitted = await complete(liveOpenAssignment, { sessionStart: sessionStartRef.current });
     if (submitted) {
       // Already written into the final update; clearing it stops the unmount handler double-billing.
       sessionStartRef.current = null;
       setOpenAssignment(null);
+      driveStep.offer(finished);
     }
     return submitted;
   });
@@ -250,6 +257,10 @@ export default function RecentAds() {
         </h1>
         <p className="text-sm text-muted-foreground mt-1 ml-11">All your ad generation assignments</p>
       </div>
+
+      {driveStep.sheet}
+      {/* Finished work whose file is not in the Drive yet. */}
+      <DrivePendingStrip jobs={assignments} onOpen={(job) => driveStep.offer(job, false)} />
 
       {/* Filter pills — Total + each status */}
       <div className="flex flex-wrap gap-2">
@@ -375,6 +386,7 @@ export default function RecentAds() {
 
                     {/* Right: code + open */}
                     <div className="shrink-0 flex items-center gap-2">
+                      <DriveUploadChip assignment={a} onOpen={(job) => driveStep.offer(job, false)} />
                       {/* Code badge */}
                       <div className="flex items-center gap-1.5 bg-muted/80 rounded-lg px-3 py-2">
                         <span className="text-[11px] text-muted-foreground font-medium">Code</span>

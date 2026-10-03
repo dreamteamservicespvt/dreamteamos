@@ -17,8 +17,8 @@ import { fetchAssignableMembers } from "@/services/smm";
 import { ClipsPerVideoPicker } from "@/components/sales/SmmSaleFields";
 import { isoDay } from "@/utils/smmPlan";
 import {
-  DEFAULT_SMM_CLIPS_PER_VIDEO, SMM_SEATS, addMonthsIso, clipsPerVideoOf, cycleRangeLabel, monthCycle,
-  type SmmSeat,
+  DEFAULT_SMM_CLIPS_PER_VIDEO, SMM_SEATS, addMonthsIso, clipsPerVideoOf, cycleRangeLabel, isNoSaleMonth, monthCycle,
+  sellerLineOf, type SmmSeat,
 } from "@/utils/smmPackage";
 import { daysBetween } from "@/utils/smmPlan";
 import {
@@ -385,7 +385,9 @@ export function SmmSetupDialog({ campaign, user, onClose, onSaved }: {
             <h3 className="truncate text-base font-semibold text-foreground">
               {campaign.setupAt ? "Edit setup" : "Set up & assign"} — {campaign.businessName || campaign.clientName}
             </h3>
-            <p className="text-xs text-muted-foreground">{campaign.packageLabel} · sold by {campaign.soldByName}</p>
+            <p className="text-xs text-muted-foreground">
+              {campaign.packageLabel} · {sellerLineOf(campaign)}{isNoSaleMonth(campaign) ? " · no sale, not in revenue" : ""}
+            </p>
           </div>
           <button onClick={onClose} aria-label="Close" className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground">
             <X size={18} />

@@ -9,6 +9,8 @@ import { db } from '@/services/firebase';
 import { revertOrderToAssigned } from '@/services/orders';
 import { useCompleteWork } from '@/hooks/useCompleteWork';
 import { useCreditGate } from '@/components/ai-accounts/useCreditGate';
+import { useDriveUploadStep } from '@/components/work/useDriveUploadStep';
+import { DriveUploadChip, DrivePendingStrip } from '@/components/work/DriveUploadSheet';
 import { useAuthStore } from '@/store/authStore';
 import { useFirestoreQuery } from '@/hooks/useFirestore';
 import { format, subDays, subMonths, startOfDay } from 'date-fns';
@@ -185,12 +187,17 @@ export default function MyWork() {
   /** "How many Flow credits did this ad use?" — asked before every video job is handed in (useCreditGate). */
   const creditGate = useCreditGate();
 
+  /** "Now upload it to your Drive" — opens the moment a job is handed in (useDriveUploadStep). */
+  const driveStep = useDriveUploadStep();
+
   const handleComplete = () => creditGate.request(openAssignment, async () => {
+    const finished = openAssignment;
     const submitted = await complete(openAssignment, { sessionStart: sessionStartRef.current });
     if (submitted) {
       // Counted by the hook's final write; leaving it set would bill the time twice on unmount.
       sessionStartRef.current = null;
       setOpenAssignment(null);
+      driveStep.offer(finished);
     }
     return submitted;
   });
@@ -512,6 +519,9 @@ export default function MyWork() {
         <p className="text-sm text-muted-foreground mt-1">AI ad generation assignments</p>
       </div>
 
+      {/* Finished work whose file is not in the Drive yet — whatever the filters below say. */}
+      <DrivePendingStrip jobs={assignments} onOpen={(job) => driveStep.offer(job, false)} />
+
       {/* Date Filters */}
       <div className="flex flex-wrap items-center gap-3">
         <select value={selectedDate ? 'custom' : dayFilter} onChange={e => { setSelectedDate(undefined); setDayFilter(e.target.value); }}
@@ -729,6 +739,8 @@ export default function MyWork() {
         </div>
       )}
 
+      {driveStep.sheet}
+
       {/* Completed Work — collapsed by default and paged, so a long history never buries
           the active work above it. */}
       {filteredCompleted.length > 0 && (
@@ -757,6 +769,7 @@ export default function MyWork() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    <DriveUploadChip assignment={a} onOpen={(job) => driveStep.offer(job, false)} />
                     {a.status === 'completed' && (
                       <button
                         onClick={() => handleUndoComplete(a)}

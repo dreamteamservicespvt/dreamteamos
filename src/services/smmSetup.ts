@@ -15,6 +15,12 @@
  * them twice. `findSmmSalesForPhone` shows every sale already on the number, and `setupSaleMonth`
  * brings its own order back — the order id is derived from the sale's own time, so it is the same
  * order, not a new one.
+ *
+ * ── The one month with no sale (2026-10-03) ───────────────────────────────────────────────────
+ * A client the company was serving before sales were recorded here has no sale to find, and
+ * recording one now would put old money into a salesperson's figures today. `addNoSaleMonth` adds
+ * that month on its own: in the salesperson's login with its dates, in nobody's revenue or
+ * commission, and continued by the salesperson's Renew — a sale — from the next month.
  */
 import { collection, doc, getDoc, getDocs, query, setDoc, serverTimestamp, Timestamp, updateDoc, where } from "firebase/firestore";
 import { db } from "@/services/firebase";
@@ -23,17 +29,18 @@ import { logTechActivity, type ActivityActor } from "@/services/activityLog";
 import { adminAssignNumber } from "@/services/numberLock";
 import { fetchOrder, orderDocId, restoreOrders, upsertOrderForSale } from "@/services/orders";
 import {
-  buildSoldCampaign, campaignInputFromSale, campaignRef, fetchCampaign, saveMonthSetup, setMonthCommitments,
+  buildNoSaleCampaign, buildSoldCampaign, campaignInputFromSale, campaignRef, fetchCampaign, monthPromise,
+  saveMonthSetup, setMonthCommitments,
 } from "@/services/smm";
 import { assignSmmMonth, fetchMonthJobs, type SmmAssignResult } from "@/services/smmAssign";
 import { releasedToTech } from "@/utils/saleDiscount";
 import { dayToDate, isoDay } from "@/utils/smmPlan";
 import {
-  cycleRangeLabel, hasTeam, jobsByMember, monthCycle, monthLabel, needsSetup, normaliseClipsPerVideo,
-  saleDay, smmSalesOnLeads,
+  cycleRangeLabel, cyclesOverlap, hasTeam, isNoSaleMonth, jobsByMember, monthCycle, monthLabel, needsSetup,
+  noSaleMonthProblem, normaliseClipsPerVideo, saleDay, smmSalesOnLeads,
 } from "@/utils/smmPackage";
-import { normalizePhone, phoneVariants } from "@/utils/phone";
-import type { AppUser, Lead, Order, PromiseDeadline, SaleDetail, WorkAssignment } from "@/types";
+import { normalizePhone, phoneLockId, phoneVariants } from "@/utils/phone";
+import type { AppUser, Lead, Order, SaleDetail, WorkAssignment } from "@/types";
 import type { SmmCampaign, SmmContentKind, SmmCycle, SmmPlatform, SmmTeam } from "@/types/smm";
 
 /* ── Finding what is already there ──────────────────────────────────────────────────────────── */
@@ -274,32 +281,14 @@ export interface MonthSetupResult {
 }
 
 /**
- * A social-media month's deadline is the end of the month.
- *
- * The sale form gives every sale a delivery promise in days, which suits an ad and not a retainer:
- * an SMM order was "overdue" a day after it was sold. Promising the month's own last day makes the
- * queue's deadline alerts mean something — the month's work is due when the month ends.
+ * The month's deadline on its order and on every open job — what the queue and My Work count down to.
+ * A month with no order (a no-sale month) has only its jobs to carry it.
  */
-export function monthPromise(cycle: SmmCycle): PromiseDeadline {
-  const start = dayToDate(cycle.startDate) ?? new Date();
-  const end = dayToDate(cycle.endDate) ?? new Date();
-  const due = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59);
-  const hours = Math.max(24, Math.round((due.getTime() - start.getTime()) / 3_600_000));
-  return {
-    presetKey: "smm_month",
-    label: `by ${cycleRangeLabel(cycle).split(" → ")[1]}`,
-    hours,
-    source: "custom",
-    startAt: Timestamp.fromMillis(start.getTime()),
-    dueAt: Timestamp.fromMillis(due.getTime()),
-  };
-}
-
-/** The month's deadline on its order and on every open job — what the queue and My Work count down to. */
 async function applyMonthPromise(campaign: Pick<SmmCampaign, "id" | "orderId" | "cycle">): Promise<void> {
-  if (!campaign.orderId) return;
   const promise = monthPromise(campaign.cycle);
-  await updateDoc(doc(db, "orders", campaign.orderId), { promise, updatedAt: serverTimestamp() }).catch(() => undefined);
+  if (campaign.orderId) {
+    await updateDoc(doc(db, "orders", campaign.orderId), { promise, updatedAt: serverTimestamp() }).catch(() => undefined);
+  }
   for (const job of await fetchMonthJobs(campaign)) {
     if (job.status === "completed" || job.status === "verified") continue;
     await updateDoc(doc(db, "work_assignments", job.id), { promise }).catch(() => undefined);
@@ -334,7 +323,8 @@ export async function applyMonthSetup(
     setupByName: actor.name,
     setupByUid: actor.uid,
   });
-  await applyMonthPromise(after || { ...before, cycle });
+  // A sold month's deadline goes on its order first, so the jobs created next copy it from there.
+  if (before.orderId) await applyMonthPromise(after || { ...before, cycle });
 
   const assign = await assignSmmMonth({
     campaignId,
@@ -344,13 +334,20 @@ export async function applyMonthSetup(
     existingAssignments: opts.existingAssignments,
   });
 
+  // A month with no order has nothing for a new job to copy the deadline from: every job is given it.
+  if (!before.orderId) await applyMonthPromise(after || { ...before, cycle });
+
+  const noSale = isNoSaleMonth(before);
   if (firstSetup && before.soldBy && before.soldBy !== actor.uid) {
     const people = jobsByMember(setup.team).map((m) => m.name).join(", ");
+    const what = `${before.businessName || before.clientName} · ${cycleRangeLabel(cycle)}${people ? ` — ${people} on it` : ""}`;
     await sendNotification({
       userId: before.soldBy,
       type: "smm_month_setup",
-      title: "Your client's social media month is set up",
-      message: `${before.businessName || before.clientName} · ${cycleRangeLabel(cycle)}${people ? ` — ${people} on it` : ""}. Follow its progress in Social Media.`,
+      title: noSale ? "A client's social media month was added for you" : "Your client's social media month is set up",
+      message: noSale
+        ? `${what}. It was run before sales were recorded in the app, so it is not counted in your sales or commission. Renew it when it ends — the renewal is your sale.`
+        : `${what}. Follow its progress in Social Media.`,
       link: `/smm/${campaignId}`,
       dedupeKey: `smm_setup_${campaignId}_${before.soldBy}`,
     }).catch(() => undefined);
@@ -366,6 +363,7 @@ export async function applyMonthSetup(
       endDate: cycle.endDate,
       clipsPerVideo: normaliseClipsPerVideo(setup.clipsPerVideo),
       team: jobsByMember(setup.team).map((m) => ({ uid: m.uid, name: m.name, tracks: m.tracks })),
+      ...(noSale ? { noSale: true, sellerName: before.soldByName } : {}),
     },
   });
 
@@ -579,4 +577,160 @@ export function setupProblem(setup: MonthSetupInput, today: string): string {
 /** "October 2026 · 3 Oct → 3 Nov 2026" — a month named in a sentence. */
 export function monthTitle(cycle: SmmCycle): string {
   return `${monthLabel(cycle.startDate)} · ${cycleRangeLabel(cycle)}`;
+}
+
+/* ── A month with no sale behind it (2026-10-03) ────────────────────────────────────────────── */
+
+/**
+ * Why a no-sale month cannot go on these dates for this number, or "" when it can.
+ *
+ * Three things it must never do:
+ *   • sit on top of a month the client already has, of any kind — one period, one month;
+ *   • sit on top of a sale recorded for that period, even one whose month was deleted or whose order
+ *     was removed: that sale is already counted for its salesperson, and its own month comes back with
+ *     "Set up this sale";
+ *   • come after a recorded sale at all. Once a client has been sold here, every later month is a
+ *     renewal — the salesperson's sale, on their commission — and a no-sale month in its place would
+ *     quietly take that from them.
+ */
+export async function noSaleMonthClash(phone: string, cycle: SmmCycle): Promise<string> {
+  const phoneId = phoneLockId(phone);
+  const [monthsSnap, sales] = await Promise.all([
+    getDocs(query(collection(db, "smm_campaigns"), where("clientPhoneId", "==", phoneId))),
+    findSmmSalesForPhone(phone),
+  ]);
+
+  for (const d of monthsSnap.docs) {
+    const c = { ...(d.data() as SmmCampaign), id: d.id };
+    // A sold month that was deleted or removed is checked below, through its sale.
+    if (c.status === "deleted" || c.status === "removed" || !c.cycle) continue;
+    if (cyclesOverlap(c.cycle, cycle)) {
+      return `${c.businessName || c.clientName || "This client"} already has a month on these dates (${cycleRangeLabel(c.cycle)}). Open it from the board instead.`;
+    }
+  }
+
+  for (const s of sales) {
+    if (s.state === "rejected") continue;
+    const saleCycle = s.campaign?.cycle || monthCycle(s.soldDay);
+    if (cyclesOverlap(saleCycle, cycle)) {
+      return s.state === "held"
+        ? `${s.sellerName}'s sale for these dates (${cycleRangeLabel(saleCycle)}) is waiting for the sales admin to approve its discount — the month comes from that sale.`
+        : `${s.sellerName} recorded a sale for these dates (${cycleRangeLabel(saleCycle)}), already counted as their sale. Use "Set up this sale" on it instead.`;
+    }
+    if (saleCycle.startDate < cycle.startDate) {
+      return `${s.businessName || "This client"} has been a recorded sale since ${monthLabel(saleCycle.startDate)} (${s.sellerName}), so a later month is a renewal — ${s.sellerName} records it with Renew, and it counts as their sale.`;
+    }
+  }
+  return "";
+}
+
+export interface NoSaleMonthInput {
+  /** The client's WhatsApp number. */
+  phone: string;
+  /** The salesperson who looks after the client — the month shows in their login, in their name. */
+  seller: { uid: string; name: string; createdBy?: string | null };
+  /** A catalogue package's name, or "" for a month agreed outside the packages. */
+  packageKey: string;
+  platforms: SmmPlatform[];
+  /** The month itself. Its name and counts are required here — there is no sale to take them from. */
+  setup: MonthSetupInput & { businessName: string; commitments: Record<SmmContentKind, number> };
+  actor: SetupActor;
+  existingAssignments?: WorkAssignment[];
+}
+
+/** Everything wrong with a no-sale month before anything is read, or "" — the form's button reads it. */
+export function noSaleSetupProblem(input: Pick<NoSaleMonthInput, "phone" | "seller" | "setup">, today: string): string {
+  return noSaleMonthProblem({ phone: input.phone, sellerUid: input.seller?.uid || "", startDate: input.setup.startDate }, today)
+    || setupProblem(input.setup, today);
+}
+
+/**
+ * Add a social-media month that had no sale (2026-10-03) — a client the company was already serving
+ * before sales were recorded in the app.
+ *
+ * It is a month like any other on the board and in the team's work: the same plan, approvals, posts,
+ * reports and, while it runs, the same job cards in My Work (services/smmAssign). What it never has is
+ * a sale: no lead is touched, no order is made, its amount is 0 — so nothing reaches any revenue
+ * figure, leaderboard or commission. It names the salesperson who looks after the client, and that is
+ * what puts it on their Social Media page with its dates. When it ends, their Renew records the next
+ * month as a real sale, linked to this one as month 2.
+ *
+ * A month whose dates are already over is recorded as history (no jobs, filed as finished); one the
+ * client is in the middle of is set up and given out straight away. One that has not started is refused
+ * — new business is a sale.
+ */
+export async function addNoSaleMonth(params: NoSaleMonthInput): Promise<MonthSetupResult> {
+  const { seller, packageKey, platforms, setup, actor } = params;
+  const today = isoDay(new Date());
+  const phone = normalizePhone(params.phone);
+  const problem = noSaleSetupProblem({ phone, seller, setup }, today);
+  if (problem) throw new Error(problem);
+
+  const cycle = monthCycle(setup.startDate, setup.endDate);
+  const clash = await noSaleMonthClash(phone, cycle);
+  if (clash) throw new Error(clash);
+
+  const history = cycle.endDate < today;
+  const name = setup.businessName.trim().replace(/\s+/g, " ");
+  const phoneId = phoneLockId(phone);
+  const ref = doc(collection(db, "smm_campaigns"));
+  const previous = await previousMonthOf(phoneId, cycle.startDate, ref.id);
+  const campaign = buildNoSaleCampaign(ref.id, {
+    clientPhone: phone,
+    clientPhoneId: phoneId,
+    clientName: name,
+    businessName: name,
+    packageKey,
+    packageLabel: packageKey || "Custom month",
+    platforms,
+    commitments: cleanCommitments(setup.commitments),
+    soldBy: seller.uid,
+    soldByName: seller.name,
+    salesAdminId: seller.createdBy || null,
+  }, {
+    startDate: cycle.startDate,
+    endDate: cycle.endDate,
+    clipsPerVideo: setup.clipsPerVideo,
+    pageLinks: cleanLinks(setup.pageLinks),
+    renewalOf: previous,
+  }, actor);
+
+  await setDoc(ref, {
+    ...JSON.parse(JSON.stringify(campaign, (_k, v) => (v === undefined ? null : v))),
+    // A running month is stamped by `applyMonthSetup` below; a history month goes no further.
+    ...(history
+      ? { history: true, status: "completed", setupAt: Timestamp.now(), setupByName: actor.name, setupByUid: actor.uid }
+      : {}),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+
+  if (previous) {
+    // The client's month before it — added the same way, as history — now points forward.
+    await updateDoc(campaignRef(previous.id), {
+      renewal: { ...(previous.renewal || { state: "none" }), state: "won", nextCampaignId: ref.id, at: Timestamp.now(), byName: actor.name },
+      ...(previous.status === "active" && previous.cycle.endDate < today ? { status: "renewed" } : {}),
+      updatedAt: serverTimestamp(),
+    }).catch(() => undefined);
+  }
+
+  if (!history) return applyMonthSetup(ref.id, setup, actor, { existingAssignments: params.existingAssignments });
+
+  await sendNotification({
+    userId: seller.uid,
+    type: "smm_month_setup",
+    title: "An earlier social media month was recorded for you",
+    message: `${name} · ${cycleRangeLabel(cycle)} — run before sales were recorded in the app, so it is not counted in your sales or commission. It is on your Social Media page for the record.`,
+    link: `/smm/${ref.id}`,
+    dedupeKey: `smm_setup_${ref.id}_${seller.uid}`,
+  }).catch(() => undefined);
+  await logTechActivity({
+    actor,
+    action: "set_up_smm_month",
+    details: {
+      campaignId: ref.id, businessName: name, startDate: cycle.startDate, endDate: cycle.endDate,
+      history: true, noSale: true, sellerName: seller.name,
+    },
+  });
+  return { campaignId: ref.id, history: true, assign: null };
 }

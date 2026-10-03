@@ -248,7 +248,16 @@ export async function upsertOrderForSale(params: {
        * INTO a bulk or monthly category) gets it now.
        */
       const progressPatch = !existing.progress && progress ? { progress } : {};
-      await updateDoc(ref, { ...saleFields, ...statusPatch, ...verifiedPatch, ...progressPatch });
+      /**
+       * The deadline the order already carries wins over the sale's when the tech side gave it one
+       * (2026-10-03): a social-media month's own last day (`monthPromise`, "smm_month") or the one
+       * extension somebody used. This runs again on every edit and on the sales admin's approval, and
+       * writing the sale's few-day promise back undid both — a set-up month went "overdue" the morning
+       * after its sale was verified, and an extended job lost the time it had been given.
+       */
+      const promisePatch = existing.promise && (existing.promise.presetKey === "smm_month" || existing.promise.extension)
+        ? { promise: existing.promise } : {};
+      await updateDoc(ref, { ...saleFields, ...statusPatch, ...verifiedPatch, ...progressPatch, ...promisePatch });
     } else {
       await setDoc(ref, {
         ...saleFields,
