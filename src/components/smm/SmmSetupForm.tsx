@@ -10,7 +10,7 @@
  * "Add SMM sale" dialog uses it as its last step.
  */
 import { useEffect, useMemo, useState } from "react";
-import { CalendarRange, Clapperboard, Link2, Loader2, Users, X } from "lucide-react";
+import { CalendarRange, Clapperboard, Link2, ListChecks, Loader2, PencilLine, Users, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { applyMonthSetup, setupProblem } from "@/services/smmSetup";
 import { fetchAssignableMembers } from "@/services/smm";
@@ -21,11 +21,17 @@ import {
   type SmmSeat,
 } from "@/utils/smmPackage";
 import { daysBetween } from "@/utils/smmPlan";
-import { SMM_PLATFORMS, type SmmAssignee, type SmmCampaign, type SmmPlatform, type SmmTeam } from "@/types/smm";
+import {
+  SMM_PLATFORMS, type SmmAssignee, type SmmCampaign, type SmmContentKind, type SmmPlatform, type SmmTeam,
+} from "@/types/smm";
 import type { SmmAssignResult } from "@/services/smmAssign";
 import type { AppUser } from "@/types";
 
 export interface SmmSetupValue {
+  /** The month's name — the business or page name the board, its page and the jobs show. */
+  businessName: string;
+  /** How many videos, posters and real videos the month owes. */
+  commitments: Record<SmmContentKind, number>;
   startDate: string;
   endDate: string;
   /** The end was typed, so a new start no longer moves it. */
@@ -36,12 +42,36 @@ export interface SmmSetupValue {
 }
 
 const EMPTY_TEAM: SmmTeam = { creator: null, publisher: null, marketer: null, assistants: [] };
+const NO_COUNTS: Record<SmmContentKind, number> = { ai_ad: 0, poster: 0, real_video: 0 };
+
+/** The three counts, in the order a month is described: videos first. */
+const COUNT_ROWS: { kind: SmmContentKind; label: string }[] = [
+  { kind: "ai_ad", label: "Videos" },
+  { kind: "poster", label: "Posters" },
+  { kind: "real_video", label: "Real videos" },
+];
+
+/** "4 videos · 4 posters" — a set of counts in words, zeros left out. */
+export function countsLine(c: Partial<Record<SmmContentKind, number>> | null | undefined): string {
+  const parts = COUNT_ROWS
+    .map(({ kind, label }) => ({ n: Math.max(0, Math.floor(c?.[kind] || 0)), label: label.toLowerCase() }))
+    .filter((p) => p.n > 0)
+    .map((p) => `${p.n} ${p.n === 1 ? p.label.replace(/s$/, "") : p.label}`);
+  return parts.join(" · ") || "nothing";
+}
 
 /** A month's current setup as the form's starting point — or a fresh one starting on `startDate`. */
-export function setupValueOf(campaign: SmmCampaign | null | undefined, startDate?: string): SmmSetupValue {
+export function setupValueOf(
+  campaign: SmmCampaign | null | undefined,
+  startDate?: string,
+  businessName?: string,
+  commitments?: Record<SmmContentKind, number> | null,
+): SmmSetupValue {
   const start = startDate || campaign?.cycle?.startDate || isoDay(new Date());
   const cycle = monthCycle(start, startDate ? null : campaign?.cycle?.endDate);
   return {
+    businessName: businessName ?? campaign?.businessName ?? campaign?.clientName ?? "",
+    commitments: { ...NO_COUNTS, ...(commitments ?? campaign?.commitments ?? {}) },
     startDate: cycle.startDate,
     endDate: cycle.endDate,
     endTouched: !startDate && !!campaign?.cycle && campaign.cycle.endDate !== addMonthsIso(campaign.cycle.startDate, 1),
@@ -54,6 +84,8 @@ export function setupValueOf(campaign: SmmCampaign | null | undefined, startDate
 /** What the services take. */
 export function setupInputOf(v: SmmSetupValue) {
   return {
+    businessName: v.businessName,
+    commitments: v.commitments,
     startDate: v.startDate,
     endDate: v.endDate,
     clipsPerVideo: v.clipsPerVideo,
@@ -64,16 +96,22 @@ export function setupInputOf(v: SmmSetupValue) {
 
 const inputCls = "mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-primary";
 
-export default function SmmSetupForm({ value, onChange, members, platforms, hasVideos }: {
+export default function SmmSetupForm({ value, onChange, members, platforms, soldCommitments }: {
   value: SmmSetupValue;
   onChange: (next: SmmSetupValue) => void;
   members: { uid: string; name: string }[];
   /** The accounts the month covers — one page-link box each. */
   platforms: SmmPlatform[];
-  /** The month owes AI videos, so their length is asked. */
-  hasVideos: boolean;
+  /** What the sale promised, shown beside the counts so a change from it is visible. */
+  soldCommitments?: Record<SmmContentKind, number> | null;
 }) {
   const today = isoDay(new Date());
+  // The video length is only asked while the month owes AI videos.
+  const hasVideos = (value.commitments.ai_ad || 0) > 0;
+  const setCount = (kind: SmmContentKind, n: number) =>
+    set({ commitments: { ...value.commitments, [kind]: Math.max(0, Math.min(60, Math.floor(n) || 0)) } });
+  const changedFromSale = !!soldCommitments
+    && COUNT_ROWS.some(({ kind }) => (soldCommitments[kind] || 0) !== (value.commitments[kind] || 0));
   const cycle = monthCycle(value.startDate, value.endDate);
   const history = cycle.endDate < today;
   const days = daysBetween(cycle.startDate, cycle.endDate) + 1;
@@ -113,6 +151,59 @@ export default function SmmSetupForm({ value, onChange, members, platforms, hasV
 
   return (
     <div data-test="smm-setup-form" className="space-y-4">
+      {/* ── What it is called ────────────────────────────────────────────────────────────── */}
+      <section>
+        <label className="block text-xs font-semibold text-foreground">
+          <span className="flex items-center gap-1.5"><PencilLine size={13} className="text-primary" /> Name</span>
+          <input
+            value={value.businessName}
+            data-test="smm-setup-name"
+            maxLength={80}
+            placeholder="Business or page name — e.g. Sri Sai Silks"
+            onChange={(e) => set({ businessName: e.target.value })}
+            className={inputCls}
+          />
+        </label>
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          How the month is named on the board, its page and the team's jobs. The sale keeps its own record.
+        </p>
+      </section>
+
+      {/* ── What it owes ─────────────────────────────────────────────────────────────────── */}
+      <section data-test="smm-setup-counts">
+        <h4 className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+          <ListChecks size={13} className="text-primary" /> What the month owes
+        </h4>
+        <div className="mt-1.5 grid grid-cols-3 gap-2">
+          {COUNT_ROWS.map(({ kind, label }) => {
+            const n = value.commitments[kind] || 0;
+            return (
+              <div key={kind} className="min-w-0">
+                <span className="text-[11px] font-medium text-muted-foreground">{label}</span>
+                <div className="mt-1 flex items-stretch">
+                  <button type="button" aria-label={`Fewer ${label.toLowerCase()}`} data-test={`smm-setup-less-${kind}`}
+                    onClick={() => setCount(kind, n - 1)} disabled={n <= 0}
+                    className="h-9 w-8 shrink-0 rounded-l-md border border-border text-sm text-foreground hover:bg-accent disabled:opacity-40">−</button>
+                  <input type="number" min={0} max={60} inputMode="numeric" value={n}
+                    aria-label={label} data-test={`smm-setup-count-${kind}`}
+                    onChange={(e) => setCount(kind, Number(e.target.value))}
+                    className="h-9 w-full min-w-0 border-y border-border bg-background text-center font-mono text-sm text-foreground outline-none focus:border-primary" />
+                  <button type="button" aria-label={`More ${label.toLowerCase()}`} data-test={`smm-setup-more-${kind}`}
+                    onClick={() => setCount(kind, n + 1)}
+                    className="h-9 w-8 shrink-0 rounded-r-md border border-border text-sm text-foreground hover:bg-accent">+</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {soldCommitments && (
+          <p data-test="smm-setup-sold" className={`mt-1 text-[11px] ${changedFromSale ? "text-warning" : "text-muted-foreground"}`}>
+            Sold as {countsLine(soldCommitments)}
+            {changedFromSale ? " — the month will owe what you set here." : "."}
+          </p>
+        )}
+      </section>
+
       {/* ── When ─────────────────────────────────────────────────────────────────────────── */}
       <section>
         <h4 className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
@@ -301,7 +392,7 @@ export function SmmSetupDialog({ campaign, user, onClose, onSaved }: {
           </button>
         </div>
         <SmmSetupForm value={value} onChange={setValue} members={members}
-          platforms={campaign.platforms || []} hasVideos={(campaign.commitments?.ai_ad || 0) > 0} />
+          platforms={campaign.platforms || []} />
         <div className="mt-4 flex gap-2">
           <button onClick={onClose} disabled={saving}
             className="flex-1 rounded-lg border border-border px-3 py-2.5 text-sm font-medium text-foreground hover:bg-accent disabled:opacity-50">

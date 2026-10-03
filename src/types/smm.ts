@@ -452,6 +452,11 @@ export interface SmmCampaign {
   /** Who set it up — the assigner its renewal's jobs are recorded against. */
   setupByUid?: string | null;
   /**
+   * The tech side renamed the month (2026-10-03) — its page or business name as the team calls it.
+   * From then on an edit or approval of the sale no longer copies the sale's business name over it.
+   */
+  businessNameEdited?: boolean;
+  /**
    * Set up after its dates had already passed — a sale recorded before this section had everything
    * it needs, re-created for the record. It is history: nobody gets a job for it, nothing on it is
    * late, and it files straight under Finished.

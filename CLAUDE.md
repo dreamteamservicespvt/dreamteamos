@@ -199,7 +199,7 @@ DTS-OS/
 │   ├── types/                 ← index.ts (core model), aiPlatform, cinematicAds, hr, payroll, smm,
 │   │                            orderChat, onboarding
 │   ├── lib/utils.ts           ← shadcn `cn()`
-│   └── test/                  ← Vitest suites (186 files, 2910 tests at 2026-10-03) + setup.ts + memoryFirestore.ts
+│   └── test/                  ← Vitest suites (186 files, 2917 tests at 2026-10-03) + setup.ts + memoryFirestore.ts
 ├── public/                    ← PWA manifests, FCM service worker, logos/icons
 ├── docs/
 │   ├── AI-MEMORY.md           ← HISTORICAL session log up to 2026-09-19 (superseded by §31; do not extend)
@@ -450,7 +450,12 @@ can be moved forward (`moveUnpostedToMonth`). **Board**: tiles (`SmmBoardStats`)
 Running / Needs attention / Renewals / Finished (on-demand), member/seller filters, cards and month
 header drawn by `SmmVisuals` (timeline with post dots, one block per piece, `PaceChip`), Content
 List/Calendar (`SmmCalendar`); salesperson dashboard `SmmRenewalsCard`; My Work "Month plan →".
-Rules in `utils/smmPackage.ts`.
+Rules in `utils/smmPackage.ts`. Same day, from the owner: the month's **name** is editable (setup's
+Name field, or the pencil beside the title — `smmSetup.renameMonth`; renames the jobs too; sets
+`businessNameEdited` so a sale edit never renames it back; the order keeps the sale's name); setup
+sets the **number of videos / posters / real videos** (`setMonthCommitments`: adds rows, removes only
+untouched ones, order counters follow); **Delete offers Undo for 5 s** (deleted at once,
+`undoDeleteCampaign` puts the month back exactly as it was).
 
 **9.10 Client order chat + client calls** ✅. `pages/client/ClientChat.tsx` (public),
 `components/order-chat/*` (`StaffOrderChat`, `SalesOrderChat`, `OrderChatPanel`, `ClientCall`,
@@ -779,7 +784,7 @@ index a query needs lives only in the console [NOT CONFIRMED].
 | `work_assignments/{auto}` | `WorkAssignment` | `assignedTo`, `assignedBy`, `category` (`wishes`/`promotional`/`cinematic`/`bulk_ads`/`social_media_management`/`poster`), `clipCount`, `duration`, `pricePerUnit`, `uniqueId` (W/P/C/PS/O + number), **`accessCode`** (4 digits), `status`, `sessions[]`, `totalDurationSeconds`, `date`, ad spec (`modelGender`, `attireType`, `customAttire`, `aspectRatio`, `language`, `festival`, `characterPack`, `customCharacter` (Custom Character only), `realLocationProvided`, poster fields), brief (`requirementNotes`, `businessInfo`, `businessAddress`), `orderId`, `chatId`, `promise`, `tracks[]`, `savedGenerationId`, `saleDeleted*`, `reassignedFrom/By/At` |
 | `clients/{digitsPhone}` | `Client` | profile assets, `works[]`, totals, `reviews[]` (server-written), `salesAdminIds[]`, `soldByIds[]` (array-contains scope), `firstSoldBy`, review/loyalty mirror |
 | `order_chats/{chatId}` (+`messages`) | `OrderChatDoc` | `chatId` = order id for sold work, else assignment id (`utils/orderChatId.orderChatIdOf`). `participants[]`, `accessCode`, `status` (`open`/`locked`), `clientReady`, `activeAt` heartbeats, `unreadCounts`, `clientReview`, member/seller/assigner ids |
-| `smm_campaigns/{orderId or auto}` | `SmmCampaign` | `origin`, `orderId` ("" for legacy direct), `watchers[]`, `soldBy`, `team`, `items[]` (content with approval, chases, per-platform `postUrls`, extra work's `extraType`/`extraDuration`, `carriedFrom`), `adRuns[]` (day reports, budgets), `budgetPayments[]`, `cycle` (start → same date next month), `commitments`, `renewal` (+`nextCampaignId`), `status` (`active`/`completed`/`renewed`/`lapsed`/`removed`/`deleted`), `deletedAt`/`deletedByName`; 2026-10-03: `clipsPerVideo`, `pageLinks`, `renewalOf`, `monthNumber`, `setupAt/ByName/ByUid`, `history`, `carriedOut[]`. Related: `SaleDetail.enteredBy`, `SmmSaleSpec.clipsPerVideo/renewalOf`, `WorkAssignment.smmCampaignId` |
+| `smm_campaigns/{orderId or auto}` | `SmmCampaign` | `origin`, `orderId` ("" for legacy direct), `watchers[]`, `soldBy`, `team`, `items[]` (content with approval, chases, per-platform `postUrls`, extra work's `extraType`/`extraDuration`, `carriedFrom`), `adRuns[]` (day reports, budgets), `budgetPayments[]`, `cycle` (start → same date next month), `commitments`, `renewal` (+`nextCampaignId`), `status` (`active`/`completed`/`renewed`/`lapsed`/`removed`/`deleted`), `deletedAt`/`deletedByName`; 2026-10-03: `clipsPerVideo`, `pageLinks`, `renewalOf`, `monthNumber`, `setupAt/ByName/ByUid`, `history`, `carriedOut[]`, `businessNameEdited`. Related: `SaleDetail.enteredBy`, `SmmSaleSpec.clipsPerVideo/renewalOf`, `WorkAssignment.smmCampaignId` |
 | `smm_templates/{auto}` | `SmmTemplate` | saved client message wording (company-wide) |
 | `ai_generations/{auto}` | `SavedGeneration` | `userId`, outputs (`mainFramePrompts[]`, `headerPrompt` (the VIDEO BOTTOM LABEL), `posterPrompt`, `voiceOverScript`, `veoPrompts[]`, `stockImagePrompts`, `overlayTexts` (each with `imagePrompt` / `imageDesign`), `posterConcepts`, `coreMessage`, `sceneContext` (motive + per-clip background and staging/camera/angle/focus), `voiceBrief`, `scriptQa` (the voice-over's quality-gate score, pass and drafts)), all form settings incl. `frameInstructions` and `customCharacter`, `creationMode`, `createdAt`/`updatedAt`. Generate = new doc (a version); Save and auto-save update it |
 | `cinematic_projects/{auto}` | `CinematicAdsProject` | `createdBy`, `name`, `currentStep`, `stepsCompleted`, brief, stories, boards, cast, clips, editing guide, deliverables, `delivered`, `updatedAt` (ms). `File` objects stripped |
@@ -1453,7 +1458,8 @@ report message → renewal.
   (32 s); every job of the month is made at that length. Only the month's salesperson renews, as a
   sale; the next month starts on the old end date with the same team; the old month closes after its
   last day. A number held by another salesperson is refused. The tech side cannot record a new sale
-  for a client who already has months (that is a renewal).
+  for a client who already has months (that is a renewal). The tech side may rename a month and change
+  how many videos/posters it owes; a worked row is never removed. A deleted month can be undone for 5 s.
 - **SMM:** nothing is scheduled or posted without a recorded client approval (enforced in
   `setItemStatus`); month quotas are 2 posts + 2 stories per video (`smmQuota`; stories target
   now 0 for plan-derived months); campaigns run on the video count; the real-video add-on is
@@ -1808,7 +1814,7 @@ Design intent lives in `docs/superpowers/specs/`.
   `smmPackage`, `smmSetupOct03` on memoryFirestore, `smmAddSaleUi`), typecheck 1 known error; a
   throwaway CDP harness (real SMM pages, My Leads and My Work on memoryFirestore, deleted after) ran 35
   checks at 1440 / 390 px across tech admin, team leader, salesperson and member — all passing, no
-  console errors. Not run against live Firebase.
+  console errors (43 after the same-day rename / counts / undo follow-up). Not run against live Firebase.
 - **2026-10-02: this machine's `main` merged with origin/main; the parallel Flow module dropped** —
   a local session had built a second implementation of the same request on top of `eb2c3ff`
   (Flow Accounts: `components/flow/*`, `pages/shared/FlowAccounts.tsx`, `services|utils|types/
@@ -2105,7 +2111,7 @@ Design intent lives in `docs/superpowers/specs/`.
   origin/main's implementation (§31, 2026-10-02) and pushed.
 - `npm run build` ✅ (main chunk ≈455 KB, vendor-firebase ≈665 KB, geminiService chunk ≈790 KB; AI
   Accounts adds lazy `AiAccounts` ≈14 KB and `MyAiAccounts` ≈9 KB pages).
-- `npx vitest run` ✅ 186 files, 2910 tests.
+- `npx vitest run` ✅ 186 files, 2917 tests.
 - `npx tsc -p tsconfig.check.json --noEmit` → 1 known error (VideoCallManager).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
 - Most recent work: SMM — every month is a sale, Add SMM sale, setup with clips per video, renewal by

@@ -204,7 +204,8 @@ export async function ensureCampaignForOrder(input: CreateCampaignInput): Promis
         ...(!existing.clipsPerVideo && input.clipsPerVideo
           ? { clipsPerVideo: normaliseClipsPerVideo(input.clipsPerVideo) } : {}),
         clientName: input.clientName,
-        businessName: input.businessName,
+        // A month the tech side renamed keeps its name through every later edit of the sale.
+        ...(existing.businessNameEdited ? {} : { businessName: input.businessName }),
         clientPhone: input.clientPhone,
         clientPhoneId: input.clientPhoneId,
         packageKey: input.packageKey,
@@ -945,6 +946,59 @@ export async function setCommitments(
   await mutateCampaign(campaignId, () => ({ commitments, ...(platforms ? { platforms } : {}) }));
 }
 
+/** A row nobody has touched: no title, no date, not started, never sent to the client, not carried in. */
+const untouchedRow = (i: SmmContentItem) =>
+  !i.extra && !i.carriedFrom && i.status === "planned" && !i.title?.trim() && !i.uploadDate
+  && (!i.approval || i.approval.state === "not_sent") && !i.notes?.trim();
+
+/**
+ * Change how many videos, posters and real videos the month owes (2026-10-03) — the tech side's call
+ * at setup, when the client asked for more or less than the package.
+ *
+ * The plan follows in the same transaction: a higher count gets new blank rows (already on the seat
+ * holders), a lower count loses rows only where nobody has touched them, from the end. A row with a
+ * title, a date, a status or an approval on it is never removed — the month then simply shows more
+ * rows than it owes, which is honest. The order's counters follow through `syncOrderProgress`.
+ */
+export async function setMonthCommitments(
+  campaignId: string,
+  commitments: Record<SmmContentKind, number>,
+): Promise<void> {
+  await mutateCampaign(campaignId, (c) => {
+    const next: Record<SmmContentKind, number> = {
+      poster: Math.max(0, Math.floor(commitments.poster || 0)),
+      ai_ad: Math.max(0, Math.floor(commitments.ai_ad || 0)),
+      real_video: Math.max(0, Math.floor(commitments.real_video || 0)),
+    };
+    let items = [...c.items];
+    for (const kind of Object.keys(next) as SmmContentKind[]) {
+      const rows = items.filter((i) => i.kind === kind && !i.extra);
+      if (rows.length < next[kind]) {
+        const add = Array.from({ length: next[kind] - rows.length }, () => ({
+          ...blankItem(kind, c.platforms),
+          makerUid: c.team?.creator?.uid ?? null,
+          makerName: c.team?.creator?.name ?? null,
+          publisherUid: c.team?.publisher?.uid ?? null,
+          publisherName: c.team?.publisher?.name ?? null,
+          createdAt: Timestamp.now(),
+        }));
+        items = [...items, ...add];
+      } else if (rows.length > next[kind]) {
+        let spare = rows.length - next[kind];
+        const drop = new Set<string>();
+        for (const row of [...rows].reverse()) {
+          if (spare === 0) break;
+          if (untouchedRow(row)) { drop.add(row.id); spare -= 1; }
+        }
+        items = items.filter((i) => !drop.has(i.id));
+      }
+    }
+    const same = (Object.keys(next) as SmmContentKind[]).every((k) => (c.commitments?.[k] || 0) === next[k])
+      && items.length === c.items.length;
+    return same ? null : { commitments: next, items };
+  });
+}
+
 /**
  * Record where the renewal conversation stands — pitched, or not renewing.
  *
@@ -1143,6 +1197,27 @@ export async function deleteCampaign(campaign: Pick<SmmCampaign, "id" | "orderId
     deletedByName: actor.name || "",
     updatedAt: serverTimestamp(),
   });
+}
+
+/**
+ * Put back a month deleted a moment ago — the Undo on the delete toast (2026-10-03).
+ *
+ * Given the month exactly as it was before the delete. A sold month was only tombstoned, so its
+ * status comes back and the delete stamps go; a month started directly was erased, so it is written
+ * back whole. Either way the plan, ads, money and team are what they were.
+ */
+export async function undoDeleteCampaign(before: SmmCampaign): Promise<void> {
+  if (before.orderId) {
+    await updateDoc(campaignRef(before.id), {
+      status: before.status === "deleted" ? "active" : before.status,
+      deletedAt: null,
+      deletedByName: null,
+      updatedAt: serverTimestamp(),
+    });
+    return;
+  }
+  const { createdAt: _created, updatedAt: _updated, ...rest } = before;
+  await setDoc(campaignRef(before.id), { ...clean(rest), createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
 }
 
 /* ── The Social Media Team Lead ─────────────────────────────────────────────────────────────── */

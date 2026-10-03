@@ -18,16 +18,19 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
-  ArrowLeft, ArrowRight, BellRing, CalendarRange, Image as ImageIcon, IndianRupee, Loader2, Megaphone,
-  MessageSquare, MoveRight, Phone, RefreshCcw, Settings2, Sparkles, Trash2, Users, Video, XCircle,
+  ArrowLeft, ArrowRight, BellRing, CalendarRange, Check, Image as ImageIcon, IndianRupee, Loader2, Megaphone,
+  MessageSquare, MoveRight, Pencil, Phone, RefreshCcw, Settings2, Sparkles, Trash2, Users, Video, X, XCircle,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useSmmCampaign } from "@/hooks/useSmmCampaigns";
 import {
   deleteCampaign, fetchAssignableMembers, fetchCampaign, moveUnpostedToMonth, remindSellerToRenew, setRenewal,
+  undoDeleteCampaign,
 } from "@/services/smm";
+import { renameMonth } from "@/services/smmSetup";
 import { useConfirm } from "@/hooks/useConfirm";
-import { useToast } from "@/hooks/use-toast";
+import { toast as showToast, useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import { formatCurrency } from "@/utils/formatters";
 import { getWhatsAppUrl } from "@/utils/phone";
 import {
@@ -67,6 +70,54 @@ const STATUS_LABEL: Partial<Record<SmmCampaign["status"], string>> = {
 /** The pieces a month owed and never posted — what can be moved into the month after it. */
 const unpostedOf = (c: SmmCampaign | null) => (c ? c.items.filter((i) => !i.extra && !isPosted(i)) : []);
 
+/** How long a deleted month can be brought back from the toast. */
+const UNDO_SECONDS = 5;
+
+/**
+ * "Month deleted — Undo" for five seconds (2026-10-03).
+ *
+ * The delete is written at once and Undo writes the month back exactly as it was — rather than
+ * holding the delete back for five seconds — because the page has already closed and the person may
+ * close the tab too: a delete that silently never happened would be worse than one that can be
+ * undone. Lives outside the page component: it keeps counting after the page unmounts.
+ */
+function offerUndo(before: SmmCampaign, reopen: (id: string) => void) {
+  const name = before.businessName || before.clientName;
+  let left = UNDO_SECONDS;
+  let done = false;
+  const handle = showToast({
+    title: "Month deleted",
+    description: `${name} — undo within ${left}s`,
+    duration: UNDO_SECONDS * 1000 + 200,
+    action: (
+      <ToastAction
+        altText="Undo the delete"
+        data-test="smm-undo-delete"
+        onClick={async () => {
+          if (done) return;
+          done = true;
+          clearInterval(timer);
+          try {
+            await undoDeleteCampaign(before);
+            handle.dismiss();
+            showToast({ title: "Month restored", description: name });
+            reopen(before.id);
+          } catch {
+            showToast({ title: "Could not restore the month", description: "Try again from Add SMM sale.", variant: "destructive" });
+          }
+        }}
+      >
+        Undo
+      </ToastAction>
+    ),
+  });
+  const timer = setInterval(() => {
+    left -= 1;
+    if (left > 0 && !done) handle.update({ id: handle.id, description: `${name} — undo within ${left}s` });
+    else clearInterval(timer);
+  }, 1000);
+}
+
 /** Each person on the month once, with what they do: "makes, posts & runs ads". */
 function peopleBySeat(c: SmmCampaign): { uid: string; name: string; does: string }[] {
   const map = new Map<string, { uid: string; name: string; jobs: string[] }>();
@@ -94,7 +145,9 @@ export default function SmmCampaignPage() {
   const [members, setMembers] = useState<{ uid: string; name: string }[]>([]);
   const [settingUp, setSettingUp] = useState(false);
   const [previous, setPrevious] = useState<SmmCampaign | null>(null);
-  const [busy, setBusy] = useState<"" | "delete" | "move" | "remind" | "lost">("");
+  const [busy, setBusy] = useState<"" | "delete" | "move" | "remind" | "lost" | "rename">("");
+  /** The name being typed while the month is renamed in place; null when not renaming. */
+  const [nameDraft, setNameDraft] = useState<string | null>(null);
 
   const canEdit = canEditCampaign(campaign || { watchers: [], soldBy: "" }, user);
   const canSetUp = canSetUpSmm(user);
@@ -162,18 +215,34 @@ export default function SmmCampaignPage() {
   const removeMonth = async () => {
     const { confirmed } = await confirm({
       title: `Delete ${business}'s month?`,
-      description: "Its plan, ads, money and report go for everyone, and it will not come back if the sale is edited. This cannot be undone.",
+      description: `Its plan, ads, money and report go for everyone, and it will not come back if the sale is edited. You can undo it for ${UNDO_SECONDS} seconds.`,
       confirmText: "Delete month",
       variant: "destructive",
     });
     if (!confirmed) return;
     setBusy("delete");
+    const before = campaign;
     try {
-      await deleteCampaign(campaign, user);
-      toast({ title: "Month deleted", description: business });
+      await deleteCampaign(before, user);
       navigate("/smm");
+      offerUndo(before, (id) => navigate(`/smm/${id}`));
     } catch {
       toast({ title: "Could not delete the month", description: "Try again.", variant: "destructive" });
+      setBusy("");
+    }
+  };
+
+  const saveName = async () => {
+    if (nameDraft === null) return;
+    if (!nameDraft.trim()) { toast({ title: "Give the month a name", variant: "destructive" }); return; }
+    setBusy("rename");
+    try {
+      const changed = await renameMonth(campaign.id, nameDraft);
+      if (changed) toast({ title: "Month renamed", description: nameDraft.trim() });
+      setNameDraft(null);
+    } catch (err) {
+      toast({ title: "Not renamed", description: err instanceof Error ? err.message : "Try again.", variant: "destructive" });
+    } finally {
       setBusy("");
     }
   };
@@ -231,7 +300,39 @@ export default function SmmCampaignPage() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 data-test="smm-page-business" className="truncate text-xl font-bold text-foreground sm:text-2xl">{business}</h1>
+              {nameDraft !== null ? (
+                /* Renamed in place — the board, this page, the top bar and the team's jobs follow. */
+                <form data-test="smm-rename-form" onSubmit={(e) => { e.preventDefault(); saveName(); }} className="flex min-w-0 max-w-full items-center gap-1.5">
+                  <input
+                    autoFocus
+                    value={nameDraft}
+                    maxLength={80}
+                    data-test="smm-rename-input"
+                    aria-label="Month name"
+                    onChange={(e) => setNameDraft(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Escape") setNameDraft(null); }}
+                    className="h-10 w-72 min-w-0 max-w-full rounded-md border border-primary bg-background px-2 text-lg font-bold text-foreground outline-none"
+                  />
+                  <button type="submit" disabled={busy === "rename"} data-test="smm-rename-save" aria-label="Save name"
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                    {busy === "rename" ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
+                  </button>
+                  <button type="button" onClick={() => setNameDraft(null)} aria-label="Cancel renaming"
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-accent">
+                    <X size={15} />
+                  </button>
+                </form>
+              ) : (
+                <>
+                  <h1 data-test="smm-page-business" className="truncate text-xl font-bold text-foreground sm:text-2xl">{business}</h1>
+                  {canSetUp && (
+                    <button data-test="smm-rename" onClick={() => setNameDraft(business)} aria-label="Rename this month" title="Rename"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+                      <Pencil size={14} />
+                    </button>
+                  )}
+                </>
+              )}
               {monthNo > 1 && (
                 <span data-test="smm-page-month-no" className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">Month {monthNo}</span>
               )}

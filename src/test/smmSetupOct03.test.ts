@@ -288,6 +288,116 @@ describe("closing months and carrying work forward", () => {
   });
 });
 
+describe("renaming a month", () => {
+  it("renames the month and its jobs, and a later edit of the sale does not undo it", async () => {
+    seedSale();
+    seedOrder();
+    await setup.setupSaleMonth({ leadId: "l1", itemIndex: 0, setup: SETUP, actor: KIRAN });
+
+    expect(await setup.renameMonth(ORDER_ID, "  Sri Sai Silks   Official ")).toBe(true);
+    const month = read(`smm_campaigns/${ORDER_ID}`)!;
+    expect(month.businessName).toBe("Sri Sai Silks Official");
+    expect(month.businessNameEdited).toBe(true);
+    expect(jobs().every((j) => j.businessName === "Sri Sai Silks Official")).toBe(true);
+    expect(await setup.renameMonth(ORDER_ID, "Sri Sai Silks Official")).toBe(false); // nothing to change
+    await expect(setup.renameMonth(ORDER_ID, "   ")).rejects.toThrow(/name/i);
+
+    // The salesperson edits the sale; the month keeps the tech side's name, the price still follows.
+    await smm.ensureCampaignForOrder({
+      orderId: ORDER_ID, leadId: "l1", saleItemKey: "l1__0", clientPhone: "+919876543210", clientPhoneId: "919876543210",
+      clientName: "Sri Sai Silks", businessName: "Sri Sai Silks", packageKey: "Starter Package", packageLabel: "Starter Package",
+      amount: 9500, platforms: ["instagram"], commitments: { poster: 4, ai_ad: 4, real_video: 0 }, soldBy: "anil", soldByName: "Anil",
+    });
+    expect(read(`smm_campaigns/${ORDER_ID}`)!.businessName).toBe("Sri Sai Silks Official");
+    expect(read(`smm_campaigns/${ORDER_ID}`)!.amount).toBe(9500);
+  });
+
+  it("takes the name typed at setup", async () => {
+    seedSale();
+    seedOrder({ status: "deleted", deleted: true });
+    await setup.setupSaleMonth({ leadId: "l1", itemIndex: 0, setup: { ...SETUP, businessName: "SSS Instagram" }, actor: KIRAN });
+    const month = read(`smm_campaigns/${ORDER_ID}`)!;
+    expect(month.businessName).toBe("SSS Instagram");
+    expect(month.businessNameEdited).toBe(true);
+    expect(jobs().every((j) => j.businessName === "SSS Instagram")).toBe(true);
+  });
+});
+
+describe("changing what a month owes", () => {
+  it("adds rows for more, and removes only untouched rows for fewer", async () => {
+    const worked = { ...blankItem("ai_ad", ["instagram"]), id: "w1", title: "Founder story" };
+    const blank = [1, 2, 3].map((n) => ({ ...blankItem("ai_ad", ["instagram"]), id: `b${n}` }));
+    mem.__seed("smm_campaigns/c1", campaignDoc({
+      id: "c1", commitments: { poster: 0, ai_ad: 4, real_video: 0 }, items: [worked, ...blank] as never,
+      team: { creator: ARJUN, publisher: null, marketer: null, assistants: [] },
+    }) as unknown as Record<string, unknown>);
+
+    await smm.setMonthCommitments("c1", { poster: 2, ai_ad: 6, real_video: 0 });
+    let c = read("smm_campaigns/c1")!;
+    expect(c.commitments).toEqual({ poster: 2, ai_ad: 6, real_video: 0 });
+    expect(c.items.filter((i: { kind: string }) => i.kind === "ai_ad")).toHaveLength(6);
+    expect(c.items.filter((i: { kind: string }) => i.kind === "poster")).toHaveLength(2);
+    expect(c.items.find((i: { kind: string }) => i.kind === "poster").makerUid).toBe("arjun");
+
+    // Down to one video: the worked row stays, blank rows go.
+    await smm.setMonthCommitments("c1", { poster: 2, ai_ad: 1, real_video: 0 });
+    c = read("smm_campaigns/c1")!;
+    const videos = c.items.filter((i: { kind: string }) => i.kind === "ai_ad");
+    expect(videos.map((i: { id: string }) => i.id)).toEqual(["w1"]);
+    expect(c.commitments.ai_ad).toBe(1);
+  });
+
+  it("is set from the setup form, for a month set up again and for one already running", async () => {
+    seedSale();
+    seedOrder({ status: "deleted", deleted: true });
+    await setup.setupSaleMonth({ leadId: "l1", itemIndex: 0, actor: KIRAN, setup: { ...SETUP, commitments: { ai_ad: 6, poster: 2, real_video: 0 } } });
+    let c = read(`smm_campaigns/${ORDER_ID}`)!;
+    expect(c.commitments).toEqual({ poster: 2, ai_ad: 6, real_video: 0 });
+    expect(c.items).toHaveLength(8);
+
+    await setup.applyMonthSetup(ORDER_ID, { ...SETUP, commitments: { ai_ad: 8, poster: 8, real_video: 1 } }, KIRAN);
+    c = read(`smm_campaigns/${ORDER_ID}`)!;
+    expect(c.commitments).toEqual({ poster: 8, ai_ad: 8, real_video: 1 });
+    expect(c.items).toHaveLength(17);
+    // The order's counters follow the plan.
+    expect(read(`orders/${ORDER_ID}`)!.progress.targets.ads).toBe(9);
+  });
+
+  it("refuses a month that owes nothing", () => {
+    expect(setup.setupProblem({ ...SETUP, startDate: iso(0), commitments: { ai_ad: 0, poster: 0, real_video: 0 } }, iso(0)))
+      .toMatch(/at least one/);
+  });
+});
+
+describe("undoing a delete", () => {
+  it("brings a sold month back from its tombstone with its plan intact", async () => {
+    seedSale();
+    seedOrder();
+    await setup.setupSaleMonth({ leadId: "l1", itemIndex: 0, setup: SETUP, actor: KIRAN });
+    const before = (await smm.fetchCampaign(ORDER_ID))!;
+    await smm.deleteCampaign(before, KIRAN);
+    expect(read(`smm_campaigns/${ORDER_ID}`)!.status).toBe("deleted");
+
+    await smm.undoDeleteCampaign(before);
+    const back = read(`smm_campaigns/${ORDER_ID}`)!;
+    expect(back.status).toBe("active");
+    expect(back.deletedAt).toBeNull();
+    expect(back.items).toHaveLength(8);
+    expect(back.team.creator.uid).toBe("arjun");
+  });
+
+  it("writes an erased direct month back whole", async () => {
+    const direct = campaignDoc({ id: "d1", orderId: "", origin: "direct", items: [blankItem("poster", ["instagram"])] });
+    mem.__seed("smm_campaigns/d1", direct as unknown as Record<string, unknown>);
+    const before = (await smm.fetchCampaign("d1"))!;
+    await smm.deleteCampaign(before, KIRAN);
+    expect(read("smm_campaigns/d1")).toBeUndefined();
+    await smm.undoDeleteCampaign(before);
+    expect(read("smm_campaigns/d1")!.items).toHaveLength(1);
+    expect(read("smm_campaigns/d1")!.status).toBe("active");
+  });
+});
+
 describe("finding what a number already has, and whose it is", () => {
   it("lists the sale with where its month stands", async () => {
     seedSale();

@@ -33,7 +33,7 @@ import { isoDay } from "@/utils/smmPlan";
 import { canRecordSmmSaleForSeller, dayLabel, normaliseClipsPerVideo } from "@/utils/smmPackage";
 import { platformsForPackage, commitmentsForPackage } from "@/utils/smmPricing";
 import type { AppUser, Lead, SaleDetail } from "@/types";
-import type { SmmPlatform } from "@/types/smm";
+import type { SmmContentKind, SmmPlatform } from "@/types/smm";
 
 type Step = "number" | "seller" | "sale" | "setup" | "held";
 
@@ -62,19 +62,19 @@ interface Chosen {
   sellerName: string;
   businessName: string;
   platforms: SmmPlatform[];
-  hasVideos: boolean;
+  /** What the sale promised — the counts the setup starts from, and shows beside its own. */
+  soldCommitments: Record<SmmContentKind, number>;
 }
 
 function chosenOf(r: Pick<SmmSaleRecord, "leadId" | "itemIndex" | "sellerName" | "businessName" | "item">): Chosen {
   const sold = r.item.smm;
-  const commitments = sold?.commitments ?? commitmentsForPackage(r.item.packageKey);
   return {
     leadId: r.leadId,
     itemIndex: r.itemIndex,
     sellerName: r.sellerName,
     businessName: r.businessName,
     platforms: sold?.platforms?.length ? sold.platforms : platformsForPackage(r.item.packageKey),
-    hasVideos: (commitments.ai_ad || 0) > 0,
+    soldCommitments: sold?.commitments ?? commitmentsForPackage(r.item.packageKey),
   };
 }
 
@@ -133,7 +133,13 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
   const startSetup = (r: SmmSaleRecord) => {
     setChosen(chosenOf(r));
     const keepCurrent = r.state === "needs_setup" && r.campaign;
-    const value = setupValueOf(keepCurrent ? r.campaign : null, keepCurrent ? undefined : r.soldDay);
+    const chosenSale = chosenOf(r);
+    const value = setupValueOf(
+      keepCurrent ? r.campaign : null,
+      keepCurrent ? undefined : r.soldDay,
+      keepCurrent ? undefined : r.businessName,
+      keepCurrent ? undefined : chosenSale.soldCommitments,
+    );
     setSetup({ ...value, clipsPerVideo: normaliseClipsPerVideo(r.item.smm?.clipsPerVideo || value.clipsPerVideo) });
     setStep("setup");
   };
@@ -158,8 +164,12 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
     const business = result.item.requirement?.businessName?.trim() || businessName.trim();
     await notifySellerOfEnteredSale({ sellerUid: seller.uid, actorName: user.name, businessName: business, item: result.item, leadId: result.leadId });
     if (result.heldForApproval) { setStep("held"); return; }
-    setChosen(chosenOf({ leadId: result.leadId, itemIndex: result.itemIndex, sellerName: seller.name, businessName: business, item: result.item }));
-    setSetup({ ...setupValueOf(null, today), clipsPerVideo: normaliseClipsPerVideo(result.item.smm?.clipsPerVideo || 4) });
+    const chosenSale = chosenOf({ leadId: result.leadId, itemIndex: result.itemIndex, sellerName: seller.name, businessName: business, item: result.item });
+    setChosen(chosenSale);
+    setSetup({
+      ...setupValueOf(null, today, business, chosenSale.soldCommitments),
+      clipsPerVideo: normaliseClipsPerVideo(result.item.smm?.clipsPerVideo || 4),
+    });
     setStep("setup");
   };
 
@@ -365,7 +375,7 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
         {step === "setup" && chosen && setup && (
           <div>
             <SmmSetupForm value={setup} onChange={setSetup} members={members}
-              platforms={chosen.platforms} hasVideos={chosen.hasVideos} />
+              platforms={chosen.platforms} soldCommitments={chosen.soldCommitments} />
             <div className="mt-4 flex gap-2">
               <button onClick={() => setStep("number")} disabled={saving}
                 className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-accent disabled:opacity-50">

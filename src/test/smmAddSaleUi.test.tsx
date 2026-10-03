@@ -167,6 +167,16 @@ describe("Add SMM sale", () => {
     expect(screen.getByTestId("smm-add-sale-renew-note")).toBeTruthy();
 
     fireEvent.click(within(card).getByTestId("smm-add-sale-setup"));
+    // The name comes from the sale and can be changed here.
+    expect((screen.getByTestId("smm-setup-name") as HTMLInputElement).value).toBe("Sri Sai Silks");
+    fireEvent.change(screen.getByTestId("smm-setup-name"), { target: { value: "Sri Sai Silks Official" } });
+    // The counts start from the sale, and can be changed here.
+    expect((screen.getByTestId("smm-setup-count-ai_ad") as HTMLInputElement).value).toBe("4");
+    expect((screen.getByTestId("smm-setup-count-poster") as HTMLInputElement).value).toBe("4");
+    expect(screen.getByTestId("smm-setup-sold").textContent).toMatch(/Sold as 4 videos · 4 posters/);
+    fireEvent.click(screen.getByTestId("smm-setup-more-ai_ad"));
+    fireEvent.click(screen.getByTestId("smm-setup-more-ai_ad"));
+    expect(screen.getByTestId("smm-setup-sold").textContent).toMatch(/will owe what you set here/);
     expect((screen.getByTestId("smm-setup-start") as HTMLInputElement).value).toBe("2026-09-20");
     expect((screen.getByTestId("smm-setup-end") as HTMLInputElement).value).toBe("2026-10-20"); // same date next month
     fireEvent.change(await screen.findByTestId("smm-setup-all"), { target: { value: "arjun" } });
@@ -178,7 +188,10 @@ describe("Add SMM sale", () => {
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith("o1"));
     const args = setupSaleMonth.mock.calls[0][0];
     expect(args).toMatchObject({ leadId: "l1", itemIndex: 0 });
-    expect(args.setup).toMatchObject({ startDate: "2026-09-20", endDate: "2026-10-20", clipsPerVideo: 6 });
+    expect(args.setup).toMatchObject({
+      businessName: "Sri Sai Silks Official", startDate: "2026-09-20", endDate: "2026-10-20", clipsPerVideo: 6,
+      commitments: { ai_ad: 6, poster: 4, real_video: 0 },
+    });
     expect(args.setup.team.creator.uid).toBe("arjun");
     expect(args.setup.team.marketer.uid).toBe("arjun");
   });

@@ -23,7 +23,7 @@ import { logTechActivity, type ActivityActor } from "@/services/activityLog";
 import { adminAssignNumber } from "@/services/numberLock";
 import { fetchOrder, orderDocId, restoreOrders, upsertOrderForSale } from "@/services/orders";
 import {
-  buildSoldCampaign, campaignInputFromSale, campaignRef, fetchCampaign, saveMonthSetup,
+  buildSoldCampaign, campaignInputFromSale, campaignRef, fetchCampaign, saveMonthSetup, setMonthCommitments,
 } from "@/services/smm";
 import { assignSmmMonth, fetchMonthJobs, type SmmAssignResult } from "@/services/smmAssign";
 import { releasedToTech } from "@/utils/saleDiscount";
@@ -34,7 +34,7 @@ import {
 } from "@/utils/smmPackage";
 import { normalizePhone, phoneVariants } from "@/utils/phone";
 import type { AppUser, Lead, Order, PromiseDeadline, SaleDetail, WorkAssignment } from "@/types";
-import type { SmmCampaign, SmmCycle, SmmPlatform, SmmTeam } from "@/types/smm";
+import type { SmmCampaign, SmmContentKind, SmmCycle, SmmPlatform, SmmTeam } from "@/types/smm";
 
 /* ── Finding what is already there ──────────────────────────────────────────────────────────── */
 
@@ -225,11 +225,41 @@ export async function notifySellerOfEnteredSale(params: {
 /* ── Setting the month up ───────────────────────────────────────────────────────────────────── */
 
 export interface MonthSetupInput {
+  /** The month's name — the business or page name it is known by. Absent leaves it as it is. */
+  businessName?: string;
+  /**
+   * How many videos, posters and real videos the month owes — the sale's numbers unless the tech side
+   * agreed different ones with the client. Absent leaves them as they are.
+   */
+  commitments?: Record<SmmContentKind, number>;
   startDate: string;
   endDate: string;
   clipsPerVideo: number;
   pageLinks?: Partial<Record<SmmPlatform, string>> | null;
   team: SmmTeam;
+}
+
+/**
+ * Rename a month (2026-10-03) — the business or page name the board, its page, the top bar and the
+ * team's job cards all show.
+ *
+ * Marked as the tech side's own name (`businessNameEdited`), so an edit or approval of the sale no
+ * longer copies the sale's business name back over it. The month's job cards follow, because a member
+ * looking for "the Sri Sai Silks Instagram" in My Work should find it under the same name. The order
+ * keeps the name from the sale — that is the salesperson's record of what they sold. Returns false when
+ * there was nothing to change.
+ */
+export async function renameMonth(campaignId: string, name: string): Promise<boolean> {
+  const next = name.trim().replace(/\s+/g, " ");
+  if (!next) throw new Error("Give the month a name.");
+  const before = await fetchCampaign(campaignId);
+  if (!before) throw new Error("This month no longer exists.");
+  if ((before.businessName || "").trim() === next) return false;
+  await updateDoc(campaignRef(campaignId), { businessName: next, businessNameEdited: true, updatedAt: serverTimestamp() });
+  for (const job of await fetchMonthJobs(before)) {
+    await updateDoc(doc(db, "work_assignments", job.id), { businessName: next }).catch(() => undefined);
+  }
+  return true;
 }
 
 export interface SetupActor extends ActivityActor {
@@ -290,6 +320,8 @@ export async function applyMonthSetup(
   actor: SetupActor,
   opts: { existingAssignments?: WorkAssignment[] } = {},
 ): Promise<MonthSetupResult> {
+  if (setup.businessName?.trim()) await renameMonth(campaignId, setup.businessName);
+  if (setup.commitments) await setMonthCommitments(campaignId, setup.commitments);
   const before = await fetchCampaign(campaignId);
   if (!before) throw new Error("This month no longer exists.");
   const cycle = monthCycle(setup.startDate, setup.endDate);
@@ -338,6 +370,12 @@ export async function applyMonthSetup(
   });
 
   return { campaignId, history: false, assign };
+}
+
+/** Whole, non-negative counts, capped at a month's worth of daily posting. */
+export function cleanCommitments(c: Partial<Record<SmmContentKind, number>> | null | undefined): Record<SmmContentKind, number> {
+  const n = (v: unknown) => Math.max(0, Math.min(60, Math.floor(Number(v) || 0)));
+  return { poster: n(c?.poster), ai_ad: n(c?.ai_ad), real_video: n(c?.real_video) };
 }
 
 const cleanLinks = (links: MonthSetupInput["pageLinks"]) => {
@@ -405,6 +443,7 @@ export async function setupSaleMonth(params: {
   // ── The month ────────────────────────────────────────────────────────────────────────────────
   const existing = await fetchCampaign(orderId);
   const replace = !existing || existing.status === "removed" || existing.status === "deleted";
+  let renamed = false;
   if (replace) {
     const input = campaignInputFromSale({
       order: {
@@ -422,6 +461,14 @@ export async function setupSaleMonth(params: {
       soldByName,
     });
     const previous = await previousMonthOf(order.clientPhoneId, cycle.startDate, orderId);
+    // The name typed at setup wins over the sale's, and is kept from then on.
+    const typedName = setup.businessName?.trim().replace(/\s+/g, " ") || "";
+    if (typedName && typedName !== input.businessName) {
+      input.businessName = typedName;
+      renamed = true;
+    }
+    // So do the counts agreed at setup — the plan is built from them.
+    if (setup.commitments) input.commitments = cleanCommitments(setup.commitments);
     const campaign = buildSoldCampaign(input, {
       startDate: cycle.startDate,
       endDate: cycle.endDate,
@@ -437,6 +484,7 @@ export async function setupSaleMonth(params: {
         ...(history
           ? { history: true, status: "completed", setupAt: Timestamp.now(), setupByName: actor.name, setupByUid: actor.uid }
           : {}),
+        ...(renamed ? { businessNameEdited: true } : {}),
       }, (_k, v) => (v === undefined ? null : v))),
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -453,6 +501,8 @@ export async function setupSaleMonth(params: {
 
   // ── History: a record, not work ──────────────────────────────────────────────────────────────
   if (history) {
+    if (!replace && setup.businessName?.trim()) await renameMonth(orderId, setup.businessName);
+    if (!replace && setup.commitments) await setMonthCommitments(orderId, setup.commitments);
     if (!replace) {
       await updateDoc(campaignRef(orderId), {
         cycle,
@@ -515,6 +565,11 @@ async function previousMonthOf(clientPhoneId: string, startDate: string, ownId: 
 /** Whether a month's setup would have nobody on it — the form refuses that for a running month. */
 export function setupProblem(setup: MonthSetupInput, today: string): string {
   const cycle = monthCycle(setup.startDate, setup.endDate);
+  if (setup.businessName !== undefined && !setup.businessName.trim()) return "Give the month a name.";
+  if (setup.commitments) {
+    const c = cleanCommitments(setup.commitments);
+    if (c.ai_ad + c.poster + c.real_video === 0) return "The month must owe at least one video or poster.";
+  }
   if (!dayToDate(setup.startDate)) return "Pick the day the month starts.";
   if (setup.endDate && setup.endDate <= setup.startDate) return "The month must end after it starts.";
   if (cycle.endDate >= today && !hasTeam(setup.team)) return "Put somebody on the month — at least who makes the content.";
