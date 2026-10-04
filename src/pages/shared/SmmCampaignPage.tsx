@@ -16,10 +16,9 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import type { LucideIcon } from "lucide-react";
 import {
-  ArrowLeft, ArrowRight, BellRing, CalendarRange, Check, Image as ImageIcon, IndianRupee, Loader2, Megaphone,
-  MessageSquare, MoveRight, Pencil, Phone, RefreshCcw, Settings2, Sparkles, Trash2, Users, Video, X, XCircle,
+  ArrowLeft, ArrowRight, BellRing, CalendarRange, Check, IndianRupee, Loader2, Megaphone,
+  MessageSquare, MoveRight, Pencil, Phone, RefreshCcw, Settings2, Trash2, Users, X, XCircle,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useSmmCampaign } from "@/hooks/useSmmCampaigns";
@@ -34,12 +33,13 @@ import { ToastAction } from "@/components/ui/toast";
 import { formatCurrency } from "@/utils/formatters";
 import { getWhatsAppUrl } from "@/utils/phone";
 import {
-  canDeleteSmmCampaign, canEditCampaign, clientWaitSummary, isOverdue, isPosted, isoDay,
+  canDeleteSmmCampaign, canEditCampaign, isPosted, isoDay,
 } from "@/utils/smmPlan";
 import {
   NO_SALE_NOTE, SMM_SEATS, canRenewSmm, canSetUpSmm, clipsPerVideoOf, cycleRangeLabel, cyclePhase, hasTeam,
-  isNoSaleMonth, kindSegments, monthLabel, needsSetup, paceOf, renewalDue, sellerLabelOf, videoLengthLabel,
+  isNoSaleMonth, monthLabel, needsSetup, renewalDue, sellerLabelOf, videoLengthLabel,
 } from "@/utils/smmPackage";
+import { monthGlance } from "@/utils/smmGlance";
 import { orderChatLink } from "@/services/orderChat";
 import SmmContentTable from "@/components/smm/SmmContentTable";
 import SmmAdsPanel from "@/components/smm/SmmAdsPanel";
@@ -49,18 +49,12 @@ import SmmMyJobPanel from "@/components/smm/SmmMyJobPanel";
 import SmmItemDialog from "@/components/smm/SmmItemDialog";
 import SmmMessageComposer from "@/components/smm/SmmMessageComposer";
 import { PlatformChips } from "@/components/smm/SmmChips";
-import { KindBar, MonthTimeline, PaceChip, ToneLegend } from "@/components/smm/SmmVisuals";
+import { MonthGlance, StatusPill } from "@/components/smm/SmmGlance";
 import { SmmSetupDialog } from "@/components/smm/SmmSetupForm";
 import { useSmmRenewal } from "@/components/smm/useSmmRenewal";
-import { SMM_PLATFORMS, type SmmCampaign, type SmmContentItem, type SmmContentKind, type SmmTemplateKind } from "@/types/smm";
+import { SMM_PLATFORMS, type SmmCampaign, type SmmContentItem, type SmmTemplateKind } from "@/types/smm";
 
 type Tab = "content" | "ads" | "money" | "report";
-
-const KIND_ROWS: { kind: SmmContentKind; label: string; icon: LucideIcon }[] = [
-  { kind: "ai_ad", label: "Videos", icon: Sparkles },
-  { kind: "poster", label: "Posters", icon: ImageIcon },
-  { kind: "real_video", label: "Real videos", icon: Video },
-];
 
 const STATUS_LABEL: Partial<Record<SmmCampaign["status"], string>> = {
   completed: "Finished",
@@ -203,9 +197,8 @@ export default function SmmCampaignPage() {
   }
 
   const business = campaign.businessName || campaign.clientName;
-  const pace = paceOf(campaign, today);
-  const wait = clientWaitSummary(campaign.items);
-  const late = campaign.items.filter((i) => isOverdue(i, today)).length;
+  const glance = monthGlance(campaign, today);
+  const carriedIn = campaign.items.filter((i) => i.carriedFrom).length;
   const clips = clipsPerVideoOf(campaign);
   const monthNo = campaign.monthNumber || 1;
   const setupDue = needsSetup(campaign, today);
@@ -402,31 +395,20 @@ export default function SmmCampaignPage() {
           </div>
         )}
 
-        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
-          <div className="min-w-0">
-            <MonthTimeline cycle={campaign.cycle} today={today} items={campaign.items} size="lg" />
-            <ToneLegend className="mt-2" />
+        {/*
+          The month at a glance (2026-10-04) — the same picture as its card on the board: the status in
+          everyday words and why, every promised post in one ring, each kind, the days left, the next post.
+        */}
+        <div data-test="smm-page-glance" className="mt-4 rounded-2xl border border-border bg-background/40 p-4 sm:p-5">
+          <div className="mb-4 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+            <StatusPill glance={glance} size="lg" />
+            <span data-test="smm-page-reason" className="text-sm text-foreground/80">{glance.reason}</span>
+            {carriedIn > 0 && <span className="text-xs text-muted-foreground">· {carriedIn} carried over from last month</span>}
           </div>
-          <div className="grid min-w-0 gap-2.5">
-            {KIND_ROWS.map(({ kind, label, icon }) => {
-              const committed = campaign.commitments?.[kind] || 0;
-              if (committed <= 0) return null;
-              const segments = kindSegments(campaign.items, kind, today);
-              const carried = campaign.items.filter((i) => i.kind === kind && i.carriedFrom).length;
-              return (
-                <KindBar key={kind} testId={`smm-page-bar-${kind}`} label={label} icon={icon}
-                  segments={segments} committed={committed} posted={segments.filter((s) => s.tone === "done").length}
-                  note={kind === "ai_ad" ? `${clips * 8}s each${carried ? ` · ${carried} carried` : ""}` : carried ? `${carried} carried` : undefined} />
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-          {!campaign.history && <PaceChip pace={pace} />}
-          {late > 0 && <span className="font-medium text-destructive">{late} late</span>}
-          {wait.openCount > 0 && <span className="text-warning">{wait.openCount} waiting on the client</span>}
-          {campaign.history && <span className="text-muted-foreground">Recorded after the month ended — its delivery was not tracked here.</span>}
+          <MonthGlance glance={glance} layout="wide" />
+          {campaign.history && (
+            <p className="mt-3 text-xs text-muted-foreground">Recorded after the month ended — its delivery was not tracked here.</p>
+          )}
         </div>
 
         {/* Small, underneath the client — the people on the month. */}

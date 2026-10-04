@@ -16,24 +16,46 @@ import {
 } from "@/utils/smmPackage";
 import type { SmmContentItem, SmmCycle } from "@/types/smm";
 
-/** The fill for each tone. Kept beside the legend so the two cannot disagree. */
+/**
+ * The fill for each tone. Kept beside the legend so the two cannot disagree.
+ *
+ * ── Why these colours (2026-10-04) ────────────────────────────────────────────────────────────
+ * "Approved" used to be the brand orange — beside the amber of "with the client" and the red of
+ * "late", three warm colours a leader had to tell apart at a glance, and the first two collapse into
+ * one for a colour-blind reader. The stages are now one validated scale (index.css `--viz-*`):
+ * green posted, two blues for the work moving along (approved deeper, being made lighter), amber
+ * waiting on the client, grey not started, red late — the same on the dashboard's charts.
+ */
 export const TONE_BG: Record<SmmTone, string> = {
-  done: "bg-success",
-  ready: "bg-primary",
-  wait: "bg-warning",
-  work: "bg-info",
-  idle: "bg-muted-foreground/25",
-  late: "bg-destructive",
+  done: "bg-viz-done",
+  ready: "bg-viz-ready",
+  wait: "bg-viz-wait",
+  work: "bg-viz-work",
+  idle: "bg-viz-idle",
+  late: "bg-viz-late",
 };
 
-/** The same tones as soft chips with readable text — for anything that carries a title. */
+/** The same colours for SVG marks, which take a colour value rather than a class. */
+export const TONE_RGB: Record<SmmTone, string> = {
+  done: "rgb(var(--viz-done))",
+  ready: "rgb(var(--viz-ready))",
+  wait: "rgb(var(--viz-wait))",
+  work: "rgb(var(--viz-work))",
+  idle: "rgb(var(--viz-idle))",
+  late: "rgb(var(--viz-late))",
+};
+
+/**
+ * The same tones as soft chips — for anything that carries a title. The words stay in the text
+ * colour: amber or light-blue text on a light card is unreadable, and the tint already says which.
+ */
 export const TONE_CHIP: Record<SmmTone, string> = {
-  done: "bg-success/15 text-success border-success/30",
-  ready: "bg-primary/15 text-primary border-primary/30",
-  wait: "bg-warning/15 text-warning border-warning/40",
-  work: "bg-info/15 text-info border-info/30",
+  done: "bg-viz-done/15 text-foreground border-viz-done/40",
+  ready: "bg-viz-ready/15 text-foreground border-viz-ready/40",
+  wait: "bg-viz-wait/20 text-foreground border-viz-wait/50",
+  work: "bg-viz-work/20 text-foreground border-viz-work/50",
   idle: "bg-muted text-muted-foreground border-border",
-  late: "bg-destructive/15 text-destructive border-destructive/40",
+  late: "bg-viz-late/15 text-foreground border-viz-late/50",
 };
 
 /** Which tone wins when several pieces share a day: the one that needs somebody most. */
@@ -45,7 +67,8 @@ export function ToneLegend({ className = "" }: { className?: string }) {
     <div data-test="smm-tone-legend" className={`flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground ${className}`}>
       {SMM_TONE_LEGEND.map(({ tone, label }) => (
         <span key={tone} className="inline-flex items-center gap-1">
-          <span className={`h-2 w-2 rounded-full ${TONE_BG[tone]}`} /> {label}
+          {/* Late is a diamond here as on the timeline, so the key matches the mark. */}
+          <span className={`h-2 w-2 ${tone === "late" ? "rotate-45 rounded-[1px]" : "rounded-full"} ${TONE_BG[tone]}`} /> {label}
         </span>
       ))}
     </div>
@@ -129,19 +152,25 @@ export function MonthTimeline({ cycle, today, items, size = "sm", showLabels = t
     <div data-test="smm-timeline" className="min-w-0">
       {/* The track has to read in both themes: `bg-muted` vanished against a dark card, and the dots
           for days still to come looked as if they floated past the end of the month. */}
-      <div className={`relative ${barH} rounded-full bg-muted-foreground/20`}>
-        <div className="absolute inset-y-0 left-0 rounded-full bg-primary/35" style={{ width: `${gone}%` }} />
+      <div className={`relative ${barH} rounded-full bg-viz-axis/25`}>
+        <div className="absolute inset-y-0 left-0 rounded-full bg-foreground/15" style={{ width: `${gone}%` }} />
         {[...byDay.entries()].map(([day, d]) => (
           <span
             key={day}
             data-test="smm-timeline-dot"
             data-tone={d.tone}
             title={`${shortDayLabel(day)} — ${d.titles.join(", ")}`}
-            className={`absolute top-1/2 ${dot} -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-card ${TONE_BG[d.tone]}`}
+            /* A late day is a diamond as well as red: red and green look alike to a colour-blind
+               reader, and late beside posted is exactly the pair this bar has to tell apart. */
+            className={`absolute top-1/2 ${dot} -translate-x-1/2 -translate-y-1/2 ring-2 ring-card ${
+              d.tone === "late" ? "rotate-45 rounded-[2px]" : "rounded-full"
+            } ${TONE_BG[d.tone]}`}
             style={{ left: `${at(day)}%` }}
           >
             {size === "lg" && d.count > 1 && (
-              <span className="absolute -right-2 -top-2.5 rounded-full bg-foreground px-1 text-[8px] font-bold leading-3 text-background">
+              <span className={`absolute -right-2 -top-2.5 rounded-full bg-foreground px-1 text-[8px] font-bold leading-3 text-background ${
+                d.tone === "late" ? "-rotate-45" : ""
+              }`}>
                 {d.count}
               </span>
             )}
@@ -169,22 +198,23 @@ export function MonthTimeline({ cycle, today, items, size = "sm", showLabels = t
   );
 }
 
-const PACE_STYLE: Record<SmmPace["state"], { cls: string; Icon: LucideIcon }> = {
-  done: { cls: "bg-success/15 text-success", Icon: CheckCircle2 },
-  on_track: { cls: "bg-success/10 text-success", Icon: TrendingUp },
-  behind: { cls: "bg-warning/15 text-warning", Icon: TrendingDown },
-  upcoming: { cls: "bg-muted text-muted-foreground", Icon: Hourglass },
-  ended_short: { cls: "bg-destructive/15 text-destructive", Icon: AlertTriangle },
-  nothing: { cls: "bg-muted text-muted-foreground", Icon: Clock },
+/* The icon carries the colour and the words stay readable — an amber word on a light card is not. */
+const PACE_STYLE: Record<SmmPace["state"], { cls: string; icon: string; Icon: LucideIcon }> = {
+  done: { cls: "bg-viz-done/15", icon: "text-viz-done", Icon: CheckCircle2 },
+  on_track: { cls: "bg-viz-done/10", icon: "text-viz-done", Icon: TrendingUp },
+  behind: { cls: "bg-viz-wait/20", icon: "text-viz-wait", Icon: TrendingDown },
+  upcoming: { cls: "bg-muted", icon: "text-muted-foreground", Icon: Hourglass },
+  ended_short: { cls: "bg-viz-late/15", icon: "text-viz-late", Icon: AlertTriangle },
+  nothing: { cls: "bg-muted", icon: "text-muted-foreground", Icon: Clock },
 };
 
 /** "On track" / "Behind by 2" / "All posted" — the one word a scanning eye wants. */
 export function PaceChip({ pace }: { pace: SmmPace }) {
-  const { cls, Icon } = PACE_STYLE[pace.state];
+  const { cls, icon, Icon } = PACE_STYLE[pace.state];
   return (
     <span data-test="smm-pace" data-pace={pace.state}
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${cls}`}>
-      <Icon size={11} /> {paceLabel(pace)}
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold text-foreground ${cls}`}>
+      <Icon size={11} className={icon} /> {paceLabel(pace)}
     </span>
   );
 }

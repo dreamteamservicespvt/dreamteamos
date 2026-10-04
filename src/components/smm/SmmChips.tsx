@@ -20,21 +20,28 @@ function tsToMs(ts: unknown): number {
 }
 import type { SmmContentItem } from "@/types/smm";
 
-const TONE_CLASS: Record<string, string> = {
-  idle: "bg-muted text-muted-foreground",
-  work: "bg-info/15 text-info",
-  wait: "bg-warning/15 text-warning",
-  ready: "bg-primary/15 text-primary",
-  done: "bg-success/15 text-success",
+/*
+  The section's stage colours (2026-10-04, index.css --viz-*): a dot in the stage's colour and the
+  words in the text colour — the old orange "Approved" read like a warning, and amber words on a light
+  card could not be read.
+*/
+const TONE_CLASS: Record<string, { chip: string; dot: string }> = {
+  idle: { chip: "bg-muted text-muted-foreground", dot: "bg-viz-axis" },
+  work: { chip: "bg-viz-work/15 text-foreground", dot: "bg-viz-work" },
+  wait: { chip: "bg-viz-wait/20 text-foreground", dot: "bg-viz-wait" },
+  ready: { chip: "bg-viz-ready/15 text-foreground", dot: "bg-viz-ready" },
+  done: { chip: "bg-viz-done/15 text-foreground", dot: "bg-viz-done" },
 };
 
 export function StatusChip({ status, className = "" }: { status: SmmItemStatus; className?: string }) {
   const meta = SMM_ITEM_STATUSES.find((s) => s.key === status);
+  const tone = TONE_CLASS[meta?.tone || "idle"];
   return (
     <span
       data-test={`smm-status-${status}`}
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${TONE_CLASS[meta?.tone || "idle"]} ${className}`}
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${tone.chip} ${className}`}
     >
+      <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
       {meta?.label || status}
     </span>
   );
@@ -96,17 +103,5 @@ export function DueChip({ item, today }: { item: SmmContentItem; today: string }
     <span className={`inline-flex items-center gap-1 text-[11px] ${tone}`}>
       <Clock size={11} /> {label}
     </span>
-  );
-}
-
-/** A plain bar. Used for the month, and for each kind of content inside it. */
-export function ProgressBar({ percent, tone = "primary" }: { percent: number; tone?: "primary" | "success" }) {
-  return (
-    <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-      <div
-        className={`h-full rounded-full transition-all ${tone === "success" ? "bg-success" : "bg-primary"}`}
-        style={{ width: `${Math.max(0, Math.min(100, percent))}%` }}
-      />
-    </div>
   );
 }

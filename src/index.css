@@ -87,6 +87,25 @@ html.native-app body {
     --chart-tooltip-bg: 0 0% 100%;
     --chart-tooltip-border: 240 5.9% 90%;
 
+    /*
+      Social Media stages and charts (2026-10-04) — R G B channels, so Tailwind's `bg-viz-done/15`
+      works. One colour per stage of a piece, the same on the board, the cards, the month page and the
+      dashboard. Validated with the dataviz palette checker on the card surface (#f7f7f7 here, #111113
+      dark): every pair that can sit side by side clears CVD ΔE 8 and normal-vision ΔE 15. Amber and
+      the light blue sit under 3:1 on white by design, so every bar that uses them carries a legend
+      with counts. Late is red AND drawn as a diamond on the timeline — red and green collapse for
+      deuteranopes, the shape does not.
+    */
+    --viz-done: 12 163 12;     /* posted — status good #0ca30c */
+    --viz-ready: 37 106 191;   /* approved / scheduled — #256abf */
+    --viz-wait: 250 178 25;    /* with the client — status warning #fab219 */
+    --viz-work: 134 182 239;   /* being made — #86b6ef */
+    --viz-idle: 212 212 216;   /* planned, not started — #d4d4d8 */
+    --viz-late: 208 59 59;     /* late — status critical #d03b3b */
+    --viz-ink: 113 113 122;    /* one series of plain magnitude (leads, posts a day) — #71717a, 4.5:1 */
+    --viz-grid: 228 228 231;   /* hairline gridline — #e4e4e7 */
+    --viz-axis: 161 161 170;   /* baseline / track — #a1a1aa */
+
     /* Fonts */
     --font-display: 'Syne', sans-serif;
     --font-body: 'DM Sans', sans-serif;
@@ -144,6 +163,18 @@ html.native-app body {
     --chart-grid: 240 3.8% 16.1%;
     --chart-tooltip-bg: 240 5.3% 7.1%;
     --chart-tooltip-border: 240 3.8% 16.1%;
+
+    /* Social Media stages — stepped for the dark card, not flipped: "approved" is the brighter blue
+       here (further along reads brighter on dark), "being made" the deeper one. */
+    --viz-done: 12 163 12;     /* #0ca30c */
+    --viz-ready: 109 167 236;  /* #6da7ec */
+    --viz-wait: 250 178 25;    /* #fab219 */
+    --viz-work: 37 106 191;    /* #256abf */
+    --viz-idle: 63 63 70;      /* #3f3f46 */
+    --viz-late: 208 59 59;     /* #d03b3b */
+    --viz-ink: 161 161 170;    /* #a1a1aa, 7.4:1 */
+    --viz-grid: 39 39 42;      /* #27272a */
+    --viz-axis: 82 82 91;      /* #52525b */
 
     /* Fonts */
     --font-display: 'Syne', sans-serif;

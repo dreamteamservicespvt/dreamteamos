@@ -276,6 +276,7 @@ describe("the board", () => {
   const withTeam = { ...noTeam, creator: { uid: "arjun", name: "Arjun" } };
 
   beforeEach(() => {
+    localStorage.clear();
     const start = new Date(); start.setDate(start.getDate() - 29);
     BOARD = [
       { ...base, id: "a", orderId: "a", businessName: "Needs Team Co", cycle: monthCycle(today), team: noTeam },
@@ -285,7 +286,9 @@ describe("the board", () => {
 
   it("puts a month with nobody on it under Needs setup, with Set up & assign for the tech side", () => {
     render(<MemoryRouter><SocialMedia /></MemoryRouter>);
-    expect(screen.getByTestId("smm-board-stats")).toBeTruthy();
+    // The cards open first; the status row counts and filters them.
+    expect(screen.getAllByTestId("smm-campaign-card")).toHaveLength(2);
+    expect(screen.getByTestId("smm-count-setup").textContent).toBe("1");
     fireEvent.click(screen.getByTestId("smm-tab-setup"));
     const cards = screen.getAllByTestId("smm-campaign-card");
     expect(cards).toHaveLength(1);
@@ -322,5 +325,35 @@ describe("the board", () => {
     expect(within(card).getByTestId("smm-card-no-sale").textContent).toBe("No sale");
     expect(within(card).getByTestId("smm-card-team").textContent).toMatch(/salesperson Anil/);
     expect(within(card).getByTestId("smm-card-renew")).toBeTruthy();
+  });
+
+  it("says each month's status in words, puts the worst first, and filters by status", () => {
+    const late = new Date(); late.setDate(late.getDate() - 2);
+    const start = new Date(); start.setDate(start.getDate() - 10);
+    const lateItem = { id: "x1", kind: "poster", title: "Diwali offer", uploadDate: isoDay(late), uploadTime: "06:00", platforms: ["instagram"],
+      status: "planned", approval: { state: "not_sent", chases: [] }, extra: false, postedAt: null };
+    BOARD = [
+      { ...base, id: "fine", orderId: "fine", businessName: "Fine Co", cycle: monthCycle(today), team: withTeam },
+      { ...base, id: "late", orderId: "late", businessName: "Late Co", cycle: monthCycle(isoDay(start)), team: withTeam, items: [lateItem] },
+    ];
+    render(<MemoryRouter><SocialMedia /></MemoryRouter>);
+    const cards = screen.getAllByTestId("smm-campaign-card");
+    expect(within(cards[0]).getByTestId("smm-card-business").textContent).toBe("Late Co");
+    expect(within(cards[0]).getByTestId("smm-status").textContent).toContain("Off track");
+    expect(within(cards[0]).getByTestId("smm-card-reason").textContent).toContain("1 post is late");
+    expect(within(cards[1]).getByTestId("smm-status").textContent).toContain("On track");
+    expect(screen.getByTestId("smm-count-off").textContent).toBe("1");
+    fireEvent.click(screen.getByTestId("smm-tab-off"));
+    expect(screen.getAllByTestId("smm-campaign-card").map((c) => within(c).getByTestId("smm-card-business").textContent)).toEqual(["Late Co"]);
+    fireEvent.click(screen.getByTestId("smm-tab-ok"));
+    expect(screen.getAllByTestId("smm-campaign-card").map((c) => within(c).getByTestId("smm-card-business").textContent)).toEqual(["Fine Co"]);
+  });
+
+  it("keeps the charts one switch away, as Insights", () => {
+    render(<MemoryRouter><SocialMedia /></MemoryRouter>);
+    expect(screen.queryByTestId("smm-dashboard")).toBeNull();
+    fireEvent.click(screen.getByTestId("smm-view-insights"));
+    expect(screen.getByTestId("smm-dashboard")).toBeTruthy();
+    expect(screen.queryByTestId("smm-status-filters")).toBeNull();
   });
 });

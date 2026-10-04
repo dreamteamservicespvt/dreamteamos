@@ -12,21 +12,21 @@
  * A renewal is won by showing what was delivered. Putting the ask next to the figures means the
  * seller makes it holding the evidence, instead of ringing to say "shall we continue?"
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Send, Trophy, Clock, TrendingUp, ArrowRight, RefreshCcw, XCircle, Loader2 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { Send, Trophy, Clock, Users2, IndianRupee, Target, ArrowRight, RefreshCcw, XCircle, Loader2 } from "lucide-react";
 import { formatCurrency } from "@/utils/formatters";
-import {
-  adTotals, allAdReports, clientWaitSummary, daysLeftInCycle, extraWork, fulfilment, isoDay,
-  postsByPlatform,
-} from "@/utils/smmPlan";
+import { adTotals, allAdReports, clientWaitSummary, daysLeftInCycle, extraWork, isoDay } from "@/utils/smmPlan";
 import { canRenewSmm, cycleTimeLabel, renewalDue } from "@/utils/smmPackage";
+import { adDaily, scheduleBetween, stageBreakdown } from "@/utils/smmDashboard";
 import { monthlyReportMessage, renewalMessage } from "@/utils/smmMessages";
 import { setRenewal } from "@/services/smm";
 import { useToast } from "@/hooks/use-toast";
 import { useSmmRenewal } from "@/components/smm/useSmmRenewal";
-import { SMM_CONTENT_KINDS, type SmmCampaign } from "@/types/smm";
-import { ProgressBar } from "@/components/smm/SmmChips";
+import { AdsDaily, MonthDelivery } from "@/components/smm/dashboard/MonthViews";
+import { PostingCalendar, StagePipeline } from "@/components/smm/dashboard/WorkViews";
+import type { SmmCampaign } from "@/types/smm";
 import type { AppUser } from "@/types";
 
 export default function SmmReportPanel({ campaign, user, onMessage }: {
@@ -36,12 +36,16 @@ export default function SmmReportPanel({ campaign, user, onMessage }: {
 }) {
   const { toast } = useToast();
   const today = isoDay(new Date());
-  const f = fulfilment(campaign);
   const ads = adTotals(allAdReports(campaign));
   const wait = clientWaitSummary(campaign.items);
   const extras = extraWork(campaign.items);
-  const platforms = postsByPlatform(campaign.items);
   const daysLeft = daysLeftInCycle(campaign.cycle, today);
+  const stages = useMemo(() => stageBreakdown([campaign], today), [campaign, today]);
+  const days = useMemo(
+    () => scheduleBetween([campaign], today, campaign.cycle.startDate, campaign.cycle.endDate),
+    [campaign, today],
+  );
+  const daily = useMemo(() => adDaily(campaign, today), [campaign, today]);
   // Renewing is the month's own salesperson's, through a sale (2026-10-03).
   const isSeller = canRenewSmm(campaign, user);
   const due = renewalDue(campaign, today);
@@ -63,64 +67,45 @@ export default function SmmReportPanel({ campaign, user, onMessage }: {
   };
 
   return (
-    <div data-test="smm-report-panel" className="max-w-3xl space-y-4">
-      {/* ── The promise, kept ────────────────────────────────────────────────────────────── */}
-      <section className="rounded-lg border border-border bg-card p-3">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-foreground">Promise tracker</h3>
-          <span data-test="smm-fulfilment-percent" className="font-mono text-sm font-bold text-primary">{f.percent}%</span>
-        </div>
-        <div className="mt-2"><ProgressBar percent={f.percent} tone={f.complete ? "success" : "primary"} /></div>
-        <p className="mt-1.5 text-xs text-muted-foreground">
-          {f.posted} of {f.committed} committed post{f.committed === 1 ? "" : "s"} {f.posted === 1 ? "is" : "are"} live
-          {f.extra > 0 ? ` · ${f.extra} extra delivered` : ""}
-          {daysLeft > 0 ? ` · ${daysLeft} day${daysLeft === 1 ? "" : "s"} left in the month` : daysLeft === 0 ? " · last day" : " · month has ended"}
-        </p>
+    <div data-test="smm-report-panel" className="space-y-4">
+      {/*
+        ── The month at a glance (2026-10-04) ──────────────────────────────────────────────────
+        The dashboard's own pictures for this one client: the promise against today's target, every
+        piece by stage, the month's calendar and the ads day by day — what the salesperson has open
+        when they ask for the renewal.
+      */}
+      <div className="grid gap-4 lg:grid-cols-12">
+        <MonthDelivery campaign={campaign} today={today} className="lg:col-span-7" />
+        <StagePipeline breakdown={stages} className="lg:col-span-5" />
+      </div>
 
-        <div className="mt-3 space-y-2">
-          {f.byKind.filter((k) => k.committed > 0).map((k) => {
-            const pct = k.committed > 0 ? Math.min(100, Math.round((k.posted / k.committed) * 100)) : 0;
-            return (
-              <div key={k.kind} data-test={`smm-kind-${k.kind}`}>
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="text-muted-foreground">{SMM_CONTENT_KINDS.find((c) => c.key === k.kind)?.label}</span>
-                  <span className="font-mono text-foreground">{k.posted} / {k.committed} posted · {k.made} made</span>
-                </div>
-                <div className="mt-1"><ProgressBar percent={pct} tone={pct >= 100 ? "success" : "primary"} /></div>
-              </div>
-            );
-          })}
-        </div>
-
-        {platforms.length > 0 && (
-          <p className="mt-2.5 text-[11px] text-muted-foreground">
-            Where they went: {platforms.map((p) => `${p.label} (${p.count})`).join(" · ")}
-          </p>
-        )}
-      </section>
+      <PostingCalendar days={days} title="This month's calendar"
+        lead="Every dated piece on the day it is planned for, across the month's dates." />
 
       {/* ── The numbers ──────────────────────────────────────────────────────────────────── */}
-      <section className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {[
-          { label: "Leads", value: String(ads.leads), Icon: TrendingUp },
-          { label: "Ad spend", value: formatCurrency(ads.spend), Icon: TrendingUp },
-          { label: "Per result", value: ads.leads > 0 ? formatCurrency(ads.costPerResult) : "—", Icon: TrendingUp },
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {([
+          { label: "Leads", value: ads.leads.toLocaleString("en-IN"), Icon: Users2 },
+          { label: "Ad spend", value: formatCurrency(ads.spend), Icon: IndianRupee },
+          { label: "Per result", value: ads.leads > 0 ? formatCurrency(ads.costPerResult) : "—", Icon: Target },
           { label: "Days waiting on client", value: String(wait.totalDays), Icon: Clock },
-        ].map(({ label, value, Icon }) => (
-          <div key={label} className="rounded-lg border border-border bg-card p-2.5">
-            <p className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-              <Icon size={10} /> {label}
+        ] as { label: string; value: string; Icon: LucideIcon }[]).map(({ label, value, Icon }) => (
+          <div key={label} className="min-w-0 rounded-2xl border border-border bg-card p-4">
+            <p className="flex items-start gap-1.5 text-xs leading-snug text-muted-foreground">
+              <Icon size={14} className="mt-px shrink-0" /> {label}
             </p>
-            <p data-test={`smm-stat-${label.toLowerCase().replace(/\s/g, "-")}`} className="mt-0.5 font-mono text-sm font-semibold text-foreground">
+            <p data-test={`smm-stat-${label.toLowerCase().replace(/\s/g, "-")}`} className="mt-2 truncate text-2xl font-semibold leading-none tracking-tight text-foreground">
               {value}
             </p>
           </div>
         ))}
       </section>
 
+      {campaign.ads.length > 0 && daily.length > 0 && <AdsDaily series={daily} />}
+
       {/* ── Where the month actually went ────────────────────────────────────────────────── */}
       {(wait.totalDays > 0 || extras.items.length > 0 || moved.length > 0) && (
-        <section className="rounded-lg border border-border bg-card p-3 text-xs text-muted-foreground">
+        <section className="rounded-2xl border border-border bg-card p-4 text-xs leading-relaxed text-muted-foreground">
           {wait.totalDays > 0 && (
             <p data-test="smm-wait-line">
               <strong className="text-foreground">{wait.totalDays} day{wait.totalDays === 1 ? "" : "s"}</strong> of this month
@@ -152,13 +137,13 @@ export default function SmmReportPanel({ campaign, user, onMessage }: {
       <button
         data-test="smm-send-monthly"
         onClick={() => onMessage(monthlyReportMessage(campaign), "monthly_report")}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 sm:w-auto"
       >
         <Send size={15} /> Send the monthly report
       </button>
 
       {/* ── Renewal ──────────────────────────────────────────────────────────────────────── */}
-      <section className="rounded-lg border border-border bg-card p-3">
+      <section className="rounded-2xl border border-border bg-card p-4">
         <h3 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
           <Trophy size={14} className="text-warning" /> Next month
         </h3>

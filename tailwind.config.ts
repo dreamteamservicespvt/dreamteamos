@@ -34,6 +34,18 @@ export default {
         success: "hsl(var(--success))",
         warning: "hsl(var(--warning))",
         info: "hsl(var(--info))",
+        // Social Media stages and charts — see the --viz-* note in index.css.
+        viz: {
+          done: "rgb(var(--viz-done) / <alpha-value>)",
+          ready: "rgb(var(--viz-ready) / <alpha-value>)",
+          wait: "rgb(var(--viz-wait) / <alpha-value>)",
+          work: "rgb(var(--viz-work) / <alpha-value>)",
+          idle: "rgb(var(--viz-idle) / <alpha-value>)",
+          late: "rgb(var(--viz-late) / <alpha-value>)",
+          ink: "rgb(var(--viz-ink) / <alpha-value>)",
+          grid: "rgb(var(--viz-grid) / <alpha-value>)",
+          axis: "rgb(var(--viz-axis) / <alpha-value>)",
+        },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
