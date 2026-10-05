@@ -9,7 +9,174 @@
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
 
-- **2026-10-05 (latest): the Veo dynamic pass — every clip a moving commercial shot, and the camera never
+- **2026-10-05 (latest): a deleted renewal un-renews its month; over-discounted sales reach the tech side
+  at once; the salesperson's renewal money card; the admins' Money tab; the 11 AM / 5 PM post-status
+  popup** (session dts-os-ba; `.claude/rules/smm.md` §9.9 / §24 / §25 / §27, `sales.md` §24,
+  `orders-work.md` §24, `architecture.md` §5 / §23, `roles-routes.md` §7 / §8, `backend-security.md` §18,
+  `data-model.md` order statuses; CLAUDE.md §32 / §33).
+  - **The owner's five items:** (1) a salesperson renewed an SMM package and then deleted that sale, and the
+    tech side still read "Renewed by Govardhan — the next month is set. Next month"; (2) a sale with a
+    discount over the member's 10% went to the sales admin and NOT to the tech side until approved — it must
+    reach the tech side without the approval; (3) the salesperson needs a clear SMM calculation — running,
+    renewed, pending, and the money they get for renewals — "a UI that 100% motivates them to convert their
+    clients to the next month"; (4) the same, company-wide, for the tech admin and sales admin only; (5) a
+    popup to everybody doing SMM work, twice a day, to update the status of all their posts. Layouts and
+    times chosen by the owner from mockups (AskUserQuestion): "Money first" card, a "Money" tab in Social
+    Media, 11 AM and 5 PM, anyone holding a seat on a month's team.
+  - **(1) Root cause:** a renewal sale links Month N forward (`renewal: { state:"won", nextCampaignId }`,
+    `linkRenewal`); deleting the sale removed Month N+1 (`cancelOrderForSale` → `setCampaignRemovedForOrders`
+    when work was out, `deleteCampaignsForOrders` when not) but nothing ever touched Month N. **Fix — "renewed"
+    follows the renewal sale:** `utils/smmRenewalLink` (pure: `renewalUnlinkPatch` — back to "no decision", a
+    month already filed `renewed` back to `active` (history → `completed`); `renewalRelinkPatch` — only if it
+    still points nowhere or here; `leadIdOfOrderId`) applied in a transaction by `smm.unlinkRenewal` when
+    `cancelOrderForSale` (sale deleted / rejected / taken back) removes or erases the month (`saleWithdrawn`),
+    and by `relinkRenewal` when the sale comes back (`ensureCampaignForOrder` revive, order restore). The tech
+    admins / team leaders get `smm_renewal_cancelled`. **Deliberately not** for the tech side removing the
+    renewal order from the queue (offered on delivered orders too), purging it, or deleting the month: the sale
+    and its commission stand, and "no decision" on an old filed month would invite a duplicate renewal sale —
+    the month page just drops the dead Next month link ("its next month was taken off the board"). **Existing
+    broken links** are repaired by `healRenewalLinksOnOpen` (the board for every viewer — before the overseer's
+    `closeEndedMonthsOnOpen` —, the month page when its next month is gone, the Money tab) only where the sale
+    was withdrawn (`renewalSaleWithdrawn`: the next order `cancelled`, or no order and no such sale on the lead);
+    once per link per session.
+  - **(2)** `upsertOrderForSale` no longer returns early for an over-limit discount: the order is made at
+    sale time like any sale (`saleVerified:false` → the Orders queue's existing "Pending approval" chip);
+    approval still happens in Sales Approvals, a rejected sale is still cancelled. Removed with the gate:
+    `releasedToTech` (now `discountAwaitingApproval`, a fact for screens), the `withheld` sale stage, the
+    `held` SMM sale state / step, SaleForm's `heldForApproval` result, My Clients' held notice; SaleForm's
+    banner, authority line and toast now say "Sent to the tech team right away — your admin must approve the
+    N% discount". **Sales held under the old rule** get their order when a sales admin opens Sales Approvals
+    (`orders.releaseHeldSales`: pending + discount awaiting approval + no order yet; one read each, once a
+    visit).
+  - **(3)** `SmmRenewalsCard` (sales Dashboard, and the top of their Social Media) rebuilt "Money first":
+    ‹ month › stepper; "₹X from your renewals this month" + "₹Y more waiting — renew N clients"; one bar
+    "3 of 7 renewed"; four counts (Running now · ✔ Renewed · ◷ Waiting (+n from earlier) · ✖ Not renewing,
+    the calendar's marks); "Renew these now" rows with "+₹500" (their 5% / 10%, `commissionRate`) and Renew;
+    Renewed / Not renewing chips; "N% of each renewal sale is yours — paid once verified and collected". It
+    still rings the renewal bells (not on Social Media, which rings them itself). No new read.
+  - **(4)** Social Media → **Money** (`components/smm/money/SmmMoneyView`, `canSeeSmmMoney`: main / tech /
+    sales admin; anybody else asking for `?view=money` gets the cards): totals (running clients, ₹ a month,
+    renewal rate), the month's renewals on one bar (✔ kept ₹ / ◷ still to win ₹ / ✖ gone ₹), one row per
+    salesperson (running, ✔ ◷ ✖, kept, rate), and "Waiting for a decision" with Remind / Open. Numbers in
+    `utils/smmRenewalMoney` (a month counts in the calendar month its last day falls in; value = next month's
+    price, else its own, else the package's list price; history / removed / deleted left out). One on-demand
+    read per month shown (`smm.fetchMonthsEndingBetween`, `cycle.endDate` range, single-field index).
+  - **(5)** `components/smm/SmmStatusCheckPopup` (AppLayout, tech roles, not external creators; rules in
+    `utils/smmStatusCheck`): from 11:00 and from 17:00, for a person holding a seat on a month running today,
+    every post not live yet (theirs first, late next) with its status select (`setItemStatus`; Scheduled /
+    Posted disabled until the client approved); "All updated" answers the slot on this device, "Later" = 30
+    min; opened first after 17:00 it asks once; waits while any other popup or full-screen overlay is open. One scoped read when a
+    slot comes due (`smm.fetchMyCampaigns`), live only while open.
+  - **Files:** `services/smm.ts`, `services/orders.ts`, `services/smmSetup.ts`, `utils/{smmRenewalLink,
+    smmRenewalMoney,smmStatusCheck}.ts` (new), `utils/{saleDiscount,saleStatus,smmPlan}.ts`,
+    `components/smm/{SmmRenewalsCard,SmmStatusCheckPopup,SmmAddSaleDialog}.tsx`,
+    `components/smm/money/{MonthStepper,SmmMoneyView}.tsx` (new), `components/sales/{SaleForm,SaleStatusChip}.tsx`,
+    `components/layout/AppLayout.tsx`, `pages/shared/{SocialMedia,SmmCampaignPage}.tsx`,
+    `pages/sales-admin/SalesApprovals.tsx`, `pages/sales-member/{MyClients,Dashboard}.tsx`.
+  - Also: on a phone the Social Media view switcher is a full-width row of equal word tabs (icons from 640px)
+    — the admins' fourth tab, Money, ran off a 360px screen.
+  - **Tested:** new `smmRenewalOct05` (14), `smmUnrenewOct05` (15, in-memory Firestore: deleted after / before
+    jobs, filed month back on the board, re-approve, a newer renewal kept, the tech side's queue removal /
+    purge / Delete keep it renewed, the repair per case and once a session, the Money read),
+    `smmStatusCheckOct05` (6); `discountHold`, `saleDiscount`, `saleStatus`, `saleOpensChat`, `smmSaleForm`
+    rewritten to the new rule; `smmAddSaleUi` mock extended. **Browser** (throwaway harness on the in-memory
+    Firestore, real pages, headless Chrome; 1440 / 1024 / 390 / 360 px, light + dark, zero console errors, no
+    sideways scroll): the Govardhan case repaired on opening the month (strip → "Renewal due…", Renew back for
+    the salesperson); the card's numbers checked by hand (5% and 10%), month arrows, Renew rows; the Money tab
+    for tech admin and sales admin (absent for member / team leader, also via `?view=money`), Remind → toast +
+    bell; the popup at 17:41 (5 PM slot) — worst first, own posts first, a status change saved, Posted disabled
+    without approval and refused by the service, Later / All updated remembered, nothing for a salesperson.
+    A second pass fixed what the first found: names squeezed by buttons on phones, the popup's clipped "You"
+    chip, amber words on white (now text colour + amber marks; money in a darker green, 4.6:1), the 1024px rate
+    bar, "1 month ends", the salesperson's own strip wording, the popup's count (now the card's), the tabs.
+    Build ✅, typecheck (1 known).
+- **2026-10-05: an old client's earlier SMM months — the Team Lead adds them, their people and
+  work are kept, they join the client's run — and the Kids dressed for the ad** (session dts-os-d3;
+  `.claude/rules/smm.md` §9.9 / §24 / §25 / §27, `roles-routes.md` §8 + `smmLeader`, `data-model.md`
+  `smm_campaigns`, `ai-ads.md` §17.2 inputs (Kids) / §24 / §25; CLAUDE.md §32).
+  - **The owner's four items (with screenshots):** (1) listing the previous months' work for a client —
+    "assign to the person is not there", the work to be updated later; (2) the Social Media Team Lead's
+    "Add SMM sale" showed "No social media sale has been recorded" and nothing else; (3) no way to check
+    the previous month's work, "the calendar UI is worst" (the screenshot was the LIVE site — the old
+    2026-10-03 calendar; today's redrawn calendar was uncommitted); (4) the Kids always in the same dress,
+    whatever the concept, business or logo.
+  - **Root causes (in code):** (1) `SmmSetupForm` hid the whole team section once the dates were over, and
+    the month page hid Edit setup on a history month — so nobody could be put on a past month, see it or
+    fill it in; and `setItemStatus` refused Posted without a recorded client approval, three presses per old
+    post. (2) `canAddNoSaleMonth` was the three admins only, by a 2026-10-03 rule, while the lead had the
+    button. (3) An earlier month was only ever linked BACKWARD (`previousMonthOf`), so August added after
+    September stayed a separate "Month 1" with no "← August" link; the calendar opened a finished month on
+    its middle page (often empty for a filled-in history month) and kept a client's months read for 5 minutes
+    even after a month was added; the post dialog dropped what was typed in the 900 ms before it closed. (4)
+    `castSheet.outfitFor` gave the children one outfit per attire choice, coloured from a fixed list.
+  - **The owner's answers (asked first):** a past month's people by name, no job cards; Posted without the
+    approval step on history months only; the Team Lead adds no-sale months but records no sale; the Kids'
+    outfit follows the ad automatically.
+  - **What changed:** `utils/smmPackage.canAddNoSaleMonth` (+ the lead); `SmmAddSaleDialog` (who records a
+    new sale; history toast names the people; drops the client's kept months read); `SmmSetupForm` ("Who did
+    the work" on history; `SmmSetupDialog` → `applyHistorySetup` on a history month); `services/smmSetup`
+    (`historyTeam`, `historySetupProblem`, `applyHistorySetup`, `neighbourMonthsOf` replacing
+    `previousMonthOf`, `linkInFront` — forward link + renumbering; history months built with their team);
+    `smmPlan.canPublish(item, campaign)` + `smm.setItemStatus` (history: no approval, upload date required);
+    `SmmItemDialog` (history note in place of the approval panel, date saved before Posted, unsaved edits
+    written on close); `SmmCampaignPage` (Edit setup on history, no carry from a history month, fill-in
+    note); `smmCalendar.openingMonth` (most posts, middle on a tie) and the history banner in
+    `ClientCalendar`; `useSmmClientMonths` (`forgetClientMonths`, link-aware staleness); `smmAssign`
+    (a tech-member assigner's tech admin joins the chat). Kids: `utils/castSheet` (`WardrobeTheme`,
+    `kidsThemeOf` by first mention, `themeTextOf` — brief first, no address / contact / palette —,
+    `brandColoursIn`, `dressKids`, `kidsWardrobeLine`, `an()`), `geminiService` (cast sheet built after the
+    scene plan with the theme; `brandPaletteOf` lifted out of `overlayTheme`; the Kids' WARDROBE line repeats
+    the sheet), `adRequirement` ("Smart casual" → "Matches the ad" for Kids). dts-os-83's stylist then took
+    the WARDROBE line over for every cast (`castWardrobeLine`) and uses `dressKids` as the Kids' fallback.
+  - **Tested:** new `smmHistoryOct05` (10, real services on the in-memory Firestore: history team without
+    jobs, forward linking and renumbering through three months, posting rules, Edit setup on history, the
+    lead's month puts the tech admin in the chat), `smmItemDialogOct05` (5), `kidsWardrobeOct05` (10), and
+    updated `smmNoSaleOct03`, `smmAddSaleUi` (+1), `smmCalendar` (+1), `humanDuoKidsOct01`,
+    `adPipelineEndToEnd` (+1, a school's Kids through the faked pipeline; the fake extraction is now per
+    test). Browser (throwaway harness on the real pages, in-memory Firestore, headless Chrome): the lead's
+    lookup, AIRAVATH 24 Aug – 24 Sep as history with Aswintha, a post filled in on 28 Aug, its calendar,
+    Edit setup to Rekha, the owner's Javani month seeded as in the screenshot then August added in front
+    (Month 1 → 2, "← August 2026", paged to on the calendar); 1440 / 390 / 360 px, no console errors. Full
+    suite 202 files / 3122 tests, build, typecheck (the known VideoCallManager error only). Not checked:
+    live Firebase, and no image yet from the Kids' new outfits.
+- **2026-10-05: the wardrobe stylist — the invented cast is dressed for the business, the video
+  and the logo** (`.claude/rules/ai-ads.md` §17.2 step 5 / §24 / §25 / §27; CLAUDE.md §32 / §33).
+  - **The problem (owner):** "in the duo characters the girl and the boy always get the same outfit — we
+    need them related to the video context, the business context and the logo, whatever is good."
+  - **Root cause (in code):** the cast sheet (`utils/castSheet.outfitFor`) dressed every invented person by
+    the ordered attire alone — Professional put both people in "a tailored formal suit with a crisp white
+    shirt", Traditional was always a saree beside a kurta with a cream Nehru jacket — and the colours came
+    from a fixed list of seven pairs picked by the business name. The frame prompt then called those colours
+    "final", overruling the "brand palette" wording of the WARDROBE line and the duo's catalogue entry. The
+    extraction is told not to describe the logo, so nothing in the run knew its colours.
+  - **The owner's answers (asked first):** keep the ordered attire as the STYLE (Traditional ethnic,
+    Professional formal, In-shirt & Pant, Custom verbatim) and choose everything inside it; apply it to every
+    invented person (human duos, Kids, the Normal Ad presenter); decide it with an AI stylist that sees the
+    logo, with a code fallback.
+  - **What changed:** new `services/prompts/castWardrobe.ts` (`CAST_WARDROBE_SYSTEM_PROMPT`,
+    `castWardrobeRequest`: the people with their ordered style, the business and core message, the brand
+    palette, the festival's look, BUSINESS CONTENT, the FRAME instructions and the voice note's requests,
+    the logo image) and `utils/castWardrobe.ts` (`styleRuleFor` per person and attire, `checkStyledCast`:
+    inside the style, a nameable colour and garment that the outfit names, no writing / logo / profession's
+    uniform / bridal / revealing clothes, children never a saree / suit / heels / make-up, two people never
+    one name and two adults never one main colour; all or nothing). `geminiService.styleCastWardrobe` (one
+    `fast` call, temperature 0, the logo attached unless "No logo"; a rejected answer goes back once with its
+    problems) starts right after the core message and is awaited before `castSheetFor` (20 s cap).
+    `castSheetFor` takes `styled` (wins over the Kids' `dressKids` and `outfitFor`; never for Custom),
+    exports `castPeopleFor`, and without the stylist gives grown-ups the brand palette's colours
+    (`brandColoursIn`). The WARDROBE line now repeats the sheet for every non-Custom cast in a run
+    (`castWardrobeLine`; `kidsWardrobeLine` calls it); a refine keeps the ordered directive.
+  - **Tested:** `castWardrobe.test.ts` (16) and `castWardrobePipeline.test.ts` (5, the run on a faked
+    Gemini: the logo reaches the stylist, its answer is on every frame, in the WARDROBE line and in the Veo
+    names, a retry, the fallback, Custom and Motu & Patlu never styled, the lone presenter); full suite,
+    build, typecheck. Live (real Gemini): the prompt on five briefs — IconoIQ's black-and-copper logo gave an
+    ivory Mangalagiri saree and a gold silk kurta, a children's hospital sky blue and forest green suits, a
+    sweet shop's Sankranti a saffron and a maroon silk saree, the play school's first answer was correctly
+    refused — and one full 2-clip duo run with the logo (stylist 24 s, in parallel; 52 requests, 154 s).
+    No image or Veo clip has been made from a styled frame yet.
+  - **Parallel work the same day:** dts-os-d3 dressed the Kids for the ad in code (`dressKids`), which is
+    the Kids' fallback under the stylist (its own entry).
+- **2026-10-05: the Veo dynamic pass — every clip a moving commercial shot, and the camera never
   moves backward** (`.claude/rules/ai-ads.md` §17.2 step 6 / §24 / §25 / §27; CLAUDE.md §32 / §33).
   - **The problem (owner's report, three Flow clips made from that morning's prompts):** still static. A
     woman in a maternity consultation room, a man and a woman at a hospital reception, and Motu & Patlu at

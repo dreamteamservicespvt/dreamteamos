@@ -120,7 +120,8 @@ Orders tabs (active / delivered history paged by `ORDER_HISTORY_PAGE = 300` / re
 
 ## 24. BUSINESS RULES (IMPLEMENTED; verified in code)
 
-- **Orders** are created at **sale time** (approval is not a gate except over-discount).
+- **Orders** are created at **sale time** — approval is not a gate, not even for a discount over 10%
+  (2026-10-05, owner); a rejected sale cancels its order.
   Re-verifying never duplicates (idempotent id). A deleted order is never recreated by its sale.
   Progress is seeded once and never re-seeded.
 - **Delivery promise:** the countdown starts at the sale; exactly **one extension**, by team

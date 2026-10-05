@@ -2,13 +2,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Lead, Order, SaleDetail } from "@/types";
 
 /**
- * A price nobody has agreed does not reach the people who build against it.
+ * A discount over the member's limit no longer holds the sale back (2026-10-05, owner).
  *
- * A sales member may take 10% off on their own. Past that the sales admin has to confirm it, and
- * until they do there is no order at all — not a hidden one, not a badged one. The tech team's
- * screens are built to show them work they can start, and work that has started cannot be
- * un-started: an ad built against a discount the company never agreed to has already cost the
- * money it was supposed to protect.
+ * A sales member may take 10% off on their own; past that the sales admin approves the discount.
+ * Until 2026-10-05 such a sale had no order until they did. The owner's rule now: every sale reaches
+ * the tech side the moment it is recorded — the approval still happens in Sales Approvals, and a sale
+ * the sales admin rejects is pulled back like any rejected sale (`cancelOrderForSale`, not here).
+ * Sales held under the old rule get their order when a sales admin opens Sales Approvals
+ * (`releaseHeldSales`).
  *
  * This drives the real `upsertOrderForSale` against an in-memory store, because the guarantee is
  * about what does and does not end up in the `orders` collection.
@@ -107,76 +108,49 @@ describe("an ordinary sale", () => {
   });
 });
 
-describe("a sale discounted past the member's own limit", () => {
-  it("does not reach the tech queue at all", async () => {
+describe("a sale discounted past the member's own limit (2026-10-05)", () => {
+  it("reaches the tech queue at once, marked as not yet approved", async () => {
     const item = sale({ discountNeedsApproval: true, discountApproval: "pending" });
     await send(item);
-    expect(store.has(idFor(item))).toBe(false);
+    const order = store.get(idFor(item)) as Order;
+    expect(order?.status).toBe("unassigned");
+    expect(order?.saleVerified).toBe(false); // the tech side's "Pending approval" chip
   });
 
-  it("stays out of it while the sales admin has not decided", async () => {
-    const item = sale({ discountNeedsApproval: true });
+  it("is signed off on the same order when the sales admin approves it", async () => {
+    const item = sale({ discountNeedsApproval: true, discountApproval: "pending" });
     await send(item);
-    await send(item);          // a sale edit re-runs this; it must not slip through on a retry
-    expect(store.has(idFor(item))).toBe(false);
-  });
-
-  it("stays out of it after the sales admin turns the price down", async () => {
-    const item = sale({ discountNeedsApproval: true, discountApproval: "rejected" });
-    await send(item);
-    expect(store.has(idFor(item))).toBe(false);
-  });
-
-  it("arrives the moment the sales admin agrees the price", async () => {
-    const held = sale({ discountNeedsApproval: true, discountApproval: "pending" });
-    await send(held);
-    expect(store.has(idFor(held))).toBe(false);
-
-    const approved = { ...held, discountApproval: "approved" as const, verificationStatus: "verified" as const };
-    await send(approved, true);
-    const order = store.get(idFor(approved)) as Order;
-    expect(order).toBeTruthy();
-    expect(order.saleVerified).toBe(true);
+    await send({ ...item, discountApproval: "approved", verificationStatus: "verified" }, true);
+    expect(store.get(idFor(item))?.saleVerified).toBe(true);
+    expect([...store.keys()].filter((k) => k.startsWith("orders/"))).toHaveLength(1);
   });
 });
 
 describe("a sale that was already with the tech team", () => {
-  it("is pulled back when an edit pushes its discount past the limit", async () => {
-    // The member edited the price after the order went out. Leaving it standing would have the
-    // tech team building against a figure that is no longer the agreed one. Nothing has been
-    // assigned yet, so the order simply goes — there is nobody to warn.
+  it("stays with them when an edit pushes its discount past the limit — and keeps its job", async () => {
     const item = sale();
     await send(item);
-    expect(store.get(idFor(item))?.status).toBe("unassigned");
-
-    const discounted = { ...item, discountNeedsApproval: true, discountApproval: "pending" as const };
-    await send(discounted);
-    expect(store.has(idFor(discounted))).toBe(false);
-  });
-
-  it("cancels loudly instead of vanishing when a member is already building it", async () => {
-    const item = sale();
-    await send(item);
-    // The tech admin has given the job to somebody.
     store.set(idFor(item), { ...store.get(idFor(item)), status: "assigned", assignedTo: "tech1" });
 
-    const discounted = { ...item, discountNeedsApproval: true, discountApproval: "pending" as const };
+    const discounted = { ...item, amount: 800, discountNeedsApproval: true, discountApproval: "pending" as const };
     await send(discounted);
-    // Still there, and marked — a job disappearing out from under the person doing it is worse
-    // than a job that says why it stopped.
-    expect(store.get(idFor(discounted))?.status).toBe("cancelled");
+    expect(store.get(idFor(discounted))).toMatchObject({ status: "assigned", assignedTo: "tech1", amount: 800 });
   });
+});
 
-  it("comes back when the admin approves it", async () => {
-    const item = sale();
-    await send(item);
-    const discounted = { ...item, discountNeedsApproval: true, discountApproval: "pending" as const };
-    await send(discounted);
-    expect(store.has(idFor(item))).toBe(false);
+describe("sales held under the old rule (releaseHeldSales)", () => {
+  it("get their order when a sales admin opens Sales Approvals — once", async () => {
+    const { releaseHeldSales } = await import("@/services/orders");
+    const held = sale({ discountNeedsApproval: true, discountApproval: "pending" });
+    const fine = sale({ submittedAt: { seconds: 1_700_000_500 } } as Partial<SaleDetail>);
+    const rejected = sale({ discountNeedsApproval: true, verificationStatus: "rejected", submittedAt: { seconds: 1_700_000_900 } } as Partial<SaleDetail>);
+    const old = { ...lead, assignedTo: "m1", saleItems: [held, fine, rejected] } as Lead;
 
-    await send({ ...discounted, discountApproval: "approved" }, true);
-    expect(store.get(idFor(item))?.status).toBe("unassigned");
-    expect(store.get(idFor(item))?.saleVerified).toBe(true);
+    expect(await releaseHeldSales([old], () => "Kusuma")).toBe(1);
+    expect(store.get(key("orders", orderDocId(lead.id, held, 0)))?.saleVerified).toBe(false);
+    expect(store.has(key("orders", orderDocId(lead.id, fine, 1)))).toBe(false); // not held: not this sweep's
+    expect(store.has(key("orders", orderDocId(lead.id, rejected, 2)))).toBe(false);
+    expect(await releaseHeldSales([old], () => "Kusuma")).toBe(0);
   });
 });
 

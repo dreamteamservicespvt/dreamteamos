@@ -146,7 +146,8 @@ setupSaleMonth / applyMonthSetup`, `smmAssign.fetchMyMonthJobs`, `workDrive.mark
 - **Common types:** `work_assigned`, `work_completed`, `work_verified`, `work_editing`,
   `work_unassigned`, `sale_approved`, `attendance_update`, `order_new_*`, `chat_message`,
   `voice_call` / `video_call`, SMM (incl. `smm_lead`, `smm_new_month`; 2026-10-03: `smm_sale_entered`,
-  `smm_month_setup`, `smm_renewed`, `smm_renewal_due`, `smm_renewal_reminder`) and HR types, `ai_account`
+  `smm_month_setup`, `smm_renewed`, `smm_renewal_due`, `smm_renewal_reminder`; 2026-10-05:
+  `smm_renewal_cancelled` — a renewal month removed, told to the tech admins and team leaders) and HR types, `ai_account`
   (an AI account assigned to or moved from someone), `drive_folder_missing` (a tech member with no Drive folder asks their tech admin; link `/tech-admin/drive`).
 
 ## 20. THIRD-PARTY INTEGRATIONS

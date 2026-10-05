@@ -230,7 +230,7 @@ export interface CalendarClientMonth {
   startDate: string;
   endDate: string;
   phase: SmmPhase;
-  /** Recorded after it ended: what went up was not tracked here. */
+  /** Recorded after it ended: only the posts filled in since are drawn, each on the day it went up. */
   history: boolean;
 }
 
@@ -364,14 +364,29 @@ const clampMonth = (ym: string, run: Pick<ClientRun, "first" | "last">): string 
 /**
  * The calendar month the calendar opens on. The month it is about — the page's own month when there is
  * one, else the month running today (the new one on a handover day), else the client's latest — shown on
- * today's page while it runs, else on the page holding the middle of it (5 Aug – 5 Sep opens on August).
+ * today's page while it runs, else on the page holding most of its posts, the middle of it on a tie
+ * (5 Aug – 5 Sep with nothing posted opens on August).
  */
 export function openingMonth(run: ClientRun, today: string, focusId?: string | null): string {
   const focus = focusId ? run.months.find((m) => m.id === focusId) : undefined;
   const target = focus || clientMonthOn(run.months, today) || run.months[run.months.length - 1];
   const runsToday = target.startDate <= today && today <= target.endDate;
-  const middle = addDays(target.startDate, Math.floor(daysBetween(target.startDate, target.endDate) / 2));
-  return clampMonth(monthOf(runsToday ? today : middle), run);
+  if (runsToday) return clampMonth(monthOf(today), run);
+  /*
+    A month not running today opens on the page holding most of ITS posts (dated inside it), the middle
+    page on a tie (2026-10-05). A month recorded after it ended shows only the posts filled in since, on
+    their own days: "24 Aug – 24 Sep" opened on September while the work filled in sat on 28 Aug, a page
+    away. A post dated outside its month does not pull the page — it is flagged where it sits.
+  */
+  const middle = monthOf(addDays(target.startDate, Math.floor(daysBetween(target.startDate, target.endDate) / 2)));
+  const perPage = new Map<string, number>();
+  for (const e of run.entries) {
+    if (e.monthId !== target.id || !e.day || e.day < target.startDate || e.day > target.endDate) continue;
+    perPage.set(monthOf(e.day), (perPage.get(monthOf(e.day)) || 0) + 1);
+  }
+  let best = middle;
+  for (const [ym, n] of perPage) if (n > (perPage.get(best) || 0)) best = ym;
+  return clampMonth(best, run);
 }
 
 /**

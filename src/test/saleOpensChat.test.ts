@@ -7,11 +7,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  * from the moment of sale because that is when the client is talking. One case did not get one: a
  * sale discounted past the member's own authority returned early — no order, and with it no chat.
  *
- * Withholding the ORDER is deliberate and stays: the tech team must never be handed work at a price
- * nobody has agreed. But that was never a reason to take away the place the brief goes, and it is
- * the worst possible case to take it away in — the price is still being negotiated, so the client is
- * mid-conversation. The room is team-only until somebody is assigned, so opening it early exposes
- * nothing to the customer and puts nothing in the tech queue.
+ * Since 2026-10-05 (owner) such a sale is no longer held at all: its ORDER is made at once too, and
+ * only the discount waits for the sales admin. The room is team-only until somebody is assigned.
  */
 
 const calls = { ensureSaleOrderChat: [] as unknown[], cancelled: 0, setDoc: 0 };
@@ -86,14 +83,13 @@ describe("a sale discounted past what the member may give", () => {
     expect(input.clientPhone).toBe("+919849834102");
   });
 
-  /** The room and the order are different things, and only one of them is being withheld. */
-  it("still does not create the order", async () => {
+  /** 2026-10-05: the discount no longer holds the sale back — the tech side gets the order now. */
+  it("creates the order at once, before the sales admin approves the discount", async () => {
     await upsertOrderForSale({ lead, item: held, itemIndex: 0, soldByName: "Kusuma" });
-    expect(calls.setDoc).toBe(0);
+    expect(calls.setDoc).toBeGreaterThan(0);
   });
 
-  /** Once the price is agreed, the order appears and attaches to the room already there. */
-  it("creates the order once the discount is approved", async () => {
+  it("creates it the same way once the discount is approved", async () => {
     const approved = sale({ discountNeedsApproval: true, discountApproval: "approved" } as Partial<SaleDetail>);
     await upsertOrderForSale({ lead, item: approved, itemIndex: 0, soldByName: "Kusuma" });
     expect(calls.setDoc).toBeGreaterThan(0);

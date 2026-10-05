@@ -72,8 +72,8 @@ waiting on the client, extra work, team) and the next month's dates; Renew (the 
 Later; several clients page 1 of N. Rules: `SMM_RENEWAL_POPUP_DAYS`, `daysToRenewal`,
 `renewalCountdownLabel/Steps`, `renewalPopupMonths` in `utils/smmPackage.ts`.
 **A month that had no sale (2026-10-03, later)** — for clients served before sales were recorded in the
-app. Add SMM sale → number → **Add a month that had no sale** (tech admin, team leader, main admin;
-`canAddNoSaleMonth`): salesperson, the package it ran on (fills counts + accounts) or Custom, then the
+app. Add SMM sale → number → **Add a month that had no sale** (tech admin, team leader, main admin and,
+since 2026-10-05, the Social Media Team Lead; `canAddNoSaleMonth`): salesperson, the package it ran on (fills counts + accounts) or Custom, then the
 ordinary setup form → `smmSetup.addNoSaleMonth` → `origin: "no_sale"`, auto id, no order/lead/sale
 item, **amount 0**, `soldBy` = the salesperson — so it is in their Social Media with its dates and they
 get Renew, but nothing reaches revenue, leaderboards or commission. Refused (`noSaleMonthProblem`,
@@ -160,8 +160,9 @@ back to that stamp ("Marked posted on 5 Oct — no upload date was given"). A po
 shows on that date's page (the arrows reach it) and is counted there. A history month's blank plan is left
 out ("added after it ended"). Swipe left/right (the grid is `touch-pan-y`, or the browser takes a
 right-swipe as Back) and Page Up/Down change month; arrows move a day, over a month's edge too. Opens on
-today's page while the month it is about runs, else on the page holding that month's middle
-(`openingMonth`). Three places: the month page's Content → **Calendar** (`SmmCalendar`, about that month;
+today's page while the month it is about runs, else on the page holding most of its posts dated inside it,
+its middle on a tie (`openingMonth`; since 2026-10-05 — a history month "24 Aug – 24 Sep" opened on September
+while its filled-in work sat on 28 Aug). Three places: the month page's Content → **Calendar** (`SmmCalendar`, about that month;
 the kind filter applies), its **Report** tab (the same calendar replaced the stacked bar chart of the
 days), and **Social Media → Calendar** (`SmmCalendarBoard`, third view beside Cards / Insights, kept in
 `dts_smm_view`; about the client's month running now; client list A–Z with search beside it from 1280px
@@ -186,8 +187,78 @@ accounts take the new ones, a piece given its own accounts keeps them minus a dr
 the month's). Page links are kept only for covered accounts (`linksForAccounts`). The sale keeps the
 accounts it was sold with, and a later sale edit never copies them back (`ensureCampaignForOrder` does
 not touch `platforms`).
+**An old client's earlier months, their people and their work (2026-10-05, owner).** The team lists the
+months a client had before the app ("the previous months' work that we made for the client") and fills
+their work in afterwards. (1) **The Social Media Team Lead may add a month that had no sale**
+(`canAddNoSaleMonth`); recording a NEW sale stays with the three admins, and a number with no sale now says
+who records one (`smm-add-sale-new-who`) — the lead used to get "No social media sale has been recorded"
+and nothing to press. (2) **A history month keeps who did its work** — the setup form's team section,
+hidden for past dates before, now reads **"Who did the work"** (optional): saved by name, their seats on
+every row and in `watchers` (so it is in their Social Media and they may edit it), with **no job card, no
+chat, no work alert** (`smmSetup.historyTeam` → `buildSoldCampaign({ team })` for `addNoSaleMonth` /
+`setupSaleMonth`, `setCampaignTeam` for a month that already existed). **Edit setup works on a history
+month** (`applyHistorySetup`: name, counts, accounts, dates — kept before today, `historySetupProblem` —,
+video length, links, people; never jobs, no salesperson notice). (3) **Filling a past month in:** on a
+history month a post is marked Posted **without a recorded client approval** (`smmPlan.canPublish(item,
+campaign)`, the same check in `setItemStatus`) but **only with its upload date** — `postedAt` is the day it
+was filled in, so without a date the calendar would put an August post on today; the post dialog shows
+"Past month — no approval step" in place of the approval panel and saves the date just typed before marking
+it posted. (4) **An earlier month added after a later one joins the client's run**
+(`smmSetup.neighbourMonthsOf` — one read for the months either side — and `linkInFront`): it points
+forward (`renewal.nextCampaignId`, `won`), the month after points back (`renewalOf`) and the run is
+renumbered from there (Month 1 → 2 → 3), within the same one-week gap as the backward link; the later
+month's page then shows "← August 2026" and Month 2. A history month's unfilled rows are never offered as
+"Move them here" (`canCarry`). (5) The calendar: a not-running month opens where most of its posts are (see
+above); a history month's note says it shows the posts filled in since; the client's kept months read is
+dropped when a month is added in this session (`useSmmClientMonths.forgetClientMonths`) or when a month on
+screen points to one the read does not hold — an August added in front stayed off September's calendar for
+five minutes. (6) The post dialog writes whatever is still unsaved when it closes (it was dropped with its
+900 ms autosave timer — the last thing typed in each post). (7) `assignSmmMonth`: a tech member assigning
+(the Team Lead) puts their creator, the tech admin, in the client chat — the lead used to fill both places.
+**Renewals kept true, renewal money, the Money tab, the post-status popup (2026-10-05, owner, session
+dts-os-ba).** (1) **"Renewed" follows the renewal sale.** When the renewal sale is withdrawn — deleted by the
+salesperson, rejected or taken back by the sales admin (`cancelOrderForSale`, which passes `saleWithdrawn` to
+`setCampaignRemovedForOrders` / `deleteCampaignsForOrders`) — the month before is un-renewed
+(`smm.unlinkRenewal`, rules `utils/smmRenewalLink.renewalUnlinkPatch`: renewal back to `none`, a month filed
+`renewed` back to `active` — history → `completed` —, inside a transaction and only while it still points at
+that month) and the tech admins / team leaders get `smm_renewal_cancelled`. Re-approving the sale (or
+restoring the order) renews it again (`relinkRenewal`, never over a link to another month). The tech side
+removing the renewal month's order from the queue, purging it or deleting the month does NOT un-renew — the
+sale stands, the client did renew, and "no decision" would invite a second renewal sale; the month page then
+says "its next month was taken off the board" without the dead Next month link. Links broken before the fix
+are repaired on open (`healRenewalLinksOnOpen`: the board for every viewer — before `closeEndedMonthsOnOpen`
+—, the month page when its next month is gone, the Money tab) only where the sale was withdrawn
+(`renewalSaleWithdrawn`: the next month's order `cancelled`, or no order and no such sale on the lead —
+`leadIdOfOrderId`); one to three reads per dangling link, once a session. (2) **Salesperson's
+card** `SmmRenewalsCard` ("My Social Media", sales Dashboard + top of their Social Media, owner's "Money
+first" mockup): ‹ month ›; "₹X from your renewals" + "₹Y more waiting — renew N clients"; a bar "3 of 7
+renewed"; Running now · ✔ Renewed · ◷ Waiting (+n from earlier) · ✖ Not renewing (the calendar's
+`MarkIcon`); "Renew these now" rows with "+₹" at their `commissionRate` and Renew; Renewed / Not renewing
+chips. Still rings the renewal bells (`ring={false}` on Social Media). (3) **Money tab**
+(`components/smm/money/SmmMoneyView`, fourth view beside Cards / Insights / Calendar, `canSeeSmmMoney`: main,
+tech and sales admin only): running clients, ₹ a month, renewal rate; ✔ kept / ◷ still to win / ✖ gone with ₹
+on one bar; one row per salesperson; "Waiting for a decision" with Remind / Open. One on-demand read per
+month (`fetchMonthsEndingBetween`, `cycle.endDate` range) because filed months are not live. Numbers:
+`utils/smmRenewalMoney` — a month counts in the calendar month its last day falls in; outcome renewed (next
+month linked / won / status renewed), lost (lost / lapsed), else waiting; value = next month's amount, else
+its own, else its package's list price; history, removed and deleted months left out; running clients counted
+once each from the month covering today. (4) **Post-status check at 11 AM and 5 PM**
+(`SmmStatusCheckPopup`, AppLayout for tech roles; rules `utils/smmStatusCheck`): anyone holding a seat on a
+month running today gets every post not live yet — theirs first, late next — with a status select
+(`setItemStatus`; Scheduled / Posted disabled until the client approved); "All updated" answers the slot
+(localStorage `dts_smm_status_check_<uid>`), "Later" brings it back in 30 min, first opened after 17:00 it
+asks once; it waits while any other popup or full-screen overlay is open (the check-in prompt, the AI studio). One scoped read when a slot comes due (`fetchMyCampaigns`),
+live (`watchMyCampaigns`) only while open.
 
 ## 24. BUSINESS RULES (IMPLEMENTED; verified in code)
+
+- **SMM renewals (owner, 2026-10-05):** "renewed" follows the renewal sale — a renewal sale deleted,
+  rejected or taken back puts the month before back to "no decision" (and back on the board), and the sale
+  coming back renews it again; the tech side tidying the renewal month or its order away leaves it renewed. The salesperson sees their
+  running clients, the month's renewals (renewed / waiting / not renewing) and the money: their 5% or 10% of
+  each renewal sale (paid once verified and collected). Social Media → Money (company renewals in rupees,
+  per salesperson) is for the main admin, tech admin and sales admin only. Everybody holding a seat on a
+  running month is asked at 11 AM and 5 PM to update the status of every post not live yet.
 
 - **SMM client calendar (owner, 2026-10-05):** one calendar per client across all their months, paged by
   calendar month like a phone calendar (‹ › and Today always there), plain enough for anybody — three marks
@@ -196,6 +267,11 @@ not touch `platforms`).
   (never on the day Posted was pressed); a post whose day has passed without going up is "not posted".
 - **SMM accounts (owner, 2026-10-05):** the tech side sets which accounts a month covers in setup; a post
   already live keeps the accounts it went on; at least one account is required.
+- **SMM past months (owner, 2026-10-05):** the Social Media Team Lead may add a month that had no sale (but
+  never record a sale); a past (history) month keeps who did its work by name — never a job card — and they
+  can see it and fill it in; on a past month a post is marked posted without the client-approval step, but
+  only with the day it went up; a running month keeps the approval rule; an earlier month added later joins
+  the client's run (Month 1 → 2 …).
 
 - **SMM deletion and lead (2026-10-01, team leader added 2026-10-03):** the main admin, the tech
   admin, the tech team leader and the Social Media Team Lead delete a month; a deleted sold month never
@@ -211,8 +287,8 @@ not touch `platforms`).
   for a client who already has months (that is a renewal). The tech side may rename a month and change
   how many videos/posters it owes; a worked row is never removed. A deleted month can be undone for 5 s.
   The one exception — **a month that had no sale (owner, 2026-10-03):** a client served before sales
-  were recorded in the app is added by the tech admin / team leader / main admin with the salesperson's
-  name: amount 0, counted in nobody's revenue or commission, shown in the salesperson's login with its
+  were recorded in the app is added by the tech admin / team leader / main admin (and, since 2026-10-05,
+  the Social Media Team Lead) with the salesperson's name: amount 0, counted in nobody's revenue or commission, shown in the salesperson's login with its
   dates. It cannot start in the future, overlap any month of the client, cover a recorded sale's dates,
   or come after a recorded sale. Its next month is the salesperson's Renew — a sale. A month's deadline
   is its last day, on the order and every job, including a renewal's; a later edit or approval of the
@@ -223,7 +299,8 @@ not touch `platforms`).
 - **SMM renewal popup (2026-10-03):** from 3 days before a month's renewal date through the day itself,
   the salesperson who sold it gets the countdown + work-report popup once a day (per month, per device)
   until there is a decision (a renewal linked, won or lost — a pitch is not one). Once the date has
-  passed it stops; the dashboard card (5 days, and ended months) and the board carry it from there.
+  passed it stops; the dashboard card (every month ending this calendar month, and earlier ones still
+  undecided — since 2026-10-05) and the board carry it from there.
 - **SMM status words (owner, 2026-10-04):** every client card says one status — **Off track** when any
   post is past its date (or the month ended with posts not live), **At risk** when it is behind the
   month's calendar with nothing late, **On track** otherwise, **Completed** when every promised post is
@@ -237,6 +314,13 @@ not touch `platforms`).
 ## 25. CURRENT IMPLEMENTATION STATUS
 
 **PARTIALLY IMPLEMENTED 🟡:**
+- SMM renewal money (2026-10-05): the card and the Money tab count a renewal's money from the month
+  documents (next month's `amount`), not from collected payments, so "₹ from your renewals" is the
+  commission the renewal is worth, not what payroll has paid (that follows `useSalesEarnings`: verified and
+  collected, with the target gate). History months are left out of renewals. A renewed month whose next
+  month is a filed month the viewer does not hold is valued at its own price. The post-status popup is
+  in-app only — at 11 AM a closed app gets nothing until it is opened (no scheduler / push at a time); "done"
+  is remembered per device, and nobody can see who answered it.
 - SMM month jobs (2026-10-04): opened from the month page only. A member cannot undo a month job they
   handed in by mistake (My Work's Undo was on its Completed list) — the admin sends it back for edits.
   Only a `tech_member` gets the panel (the studio link is My Work's route); a team leader on a month's
@@ -264,8 +348,27 @@ not touch `platforms`).
   them (one read of every finished month, as the Finished tab already does). No print / export of the
   calendar. Where a post is held up (with the client, being made) is said in words on the day, not shown
   as a mark — by the owner's choice of three marks.
+- SMM past months (2026-10-05): a past month is filled in one post at a time (open it, give the day it went
+  up, Posted) — there is no bulk entry. A filled-in post's `postedAt` is the day it was filled in (the
+  calendar uses its upload date). The people on a history month get no notification (they find it in
+  Social Media → Finished). Months more than a week apart are not linked (a client who came back after a
+  gap), and a run is renumbered only from the added month forward.
 
 ## 27. POTENTIAL RISKS (need verification)
+
+- Un-renewing (2026-10-05) writes the PREVIOUS month from whoever removed the renewal — a salesperson
+  deleting their sale, a sales admin rejecting it — so a rule limiting `smm_campaigns` writes to the team
+  would leave the link (the board / month page repair it later for a viewer allowed to write). The Money
+  tab's `cycle.endDate` range query relies on the automatic single-field index. Checked by unit tests and
+  service tests on the in-memory Firestore — not against live Firebase.
+
+- Back-filling an earlier month (2026-10-05) writes the LATER months of the client's run from the browser
+  (`renewalOf`, `monthNumber`, best effort — a failed link leaves the two months unlinked, as before).
+  Fine under the catch-all rule. A month a person was named on by Edit setup on a history month is
+  immediately visible to them (`watchers`). Checked by service tests on the in-memory Firestore
+  (`smmHistoryOct05`), UI tests and a browser harness on the real pages (the Team Lead's lookup, a history
+  month with its people, a post filled in, Edit setup, August added in front of September and paged to on
+  the calendar; 1440 / 390 / 360 px, no console errors) — not against live Firebase.
 
 - The client calendar reads a client's months with `where clientPhoneId ==` and filters what the viewer
   may see in the browser, so a member's browser receives that client's other months before they are

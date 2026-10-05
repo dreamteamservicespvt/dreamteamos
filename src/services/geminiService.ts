@@ -89,7 +89,12 @@ import {
   getCharacterPack, packSpeakers, packNameSpellings, isHumanPack, isKidsPack, packAdKind, packCastGender,
   withCustomCharacter, type CharacterPack,
 } from "./characterPacks";
-import { castNamesFromFrames, castSheetBlock, castSheetFor, withCastSheet } from "@/utils/castSheet";
+import {
+  castNamesFromFrames, castPeopleFor, castSheetBlock, castSheetFor, castWardrobeLine, kidsWardrobeLine, themeTextOf, withCastSheet,
+  type CastSheetMember,
+} from "@/utils/castSheet";
+import { checkStyledCast, parseStylistReply, type StyledOutfit } from "@/utils/castWardrobe";
+import { CAST_WARDROBE_SYSTEM_PROMPT, castWardrobeRequest, type CastWardrobeInput } from "./prompts/castWardrobe";
 import { inventedAddressIssue, missingAddressIssue, spokenAddressOf } from "@/utils/spokenAddress";
 import { addressRuleBlock } from "./prompts/address";
 import {
@@ -559,8 +564,24 @@ const buildRatioDirective = (formData: AdFormData): string => {
  * The ordered outfit for a human-model special category ("Normal Ad (Female)" and friends), or
  * undefined for every other pack. The pack decides the gender; the form decides the clothes.
  */
-const packWardrobe = (pack: CharacterPack | null, formData: AdFormData): string | undefined => {
+const packWardrobe = (pack: CharacterPack | null, formData: AdFormData, cast: CastSheetMember[] = []): string | undefined => {
   if (!pack || !isHumanPack(pack) || !formData.attireType) return undefined;
+  /*
+    The Kids are dressed for the ad by the cast sheet (utils/castSheet, 2026-10-05), so their WARDROBE
+    line repeats the sheet's outfits word for word — a fixed "smart dress" line beside a sheet saying
+    "school uniform" would hand the image model two answers. A refine has no sheet of its own; the
+    frames it edits carry it, so the line points there. A Custom order keeps the team's words.
+  */
+  if (isKidsPack(pack) && formData.attireType !== 'custom') {
+    return kidsWardrobeLine(cast) || "the children's outfits exactly as the CAST SHEET in the frame gives them";
+  }
+  /*
+    Every other invented cast too (2026-10-05): the wardrobe stylist dresses them for the business, the
+    video and the logo, and the sheet's grown-ups take the brand palette's colours — so the line says what
+    the sheet says. Only a run has a sheet; a refine keeps the ordered directive, because a kit made before
+    the cast sheet (2026-10-01) has none in its frames to point to.
+  */
+  if (formData.attireType !== 'custom' && castWardrobeLine(cast)) return castWardrobeLine(cast);
   // The male & female duo is dressed per person from one choice — see wardrobeDirective.
   return wardrobeDirective(formData.attireType, formData.customAttire, packCastGender(pack), isKidsPack(pack)) || undefined;
 };
@@ -744,6 +765,43 @@ const buildLanguageDirective = (formData: AdFormData): string => {
 
 // Pixel-perfect refine: change ONLY what the user asked, keep everything else identical.
 const REFINE_EDIT_DIRECTIVE = `You are a precise prompt EDITOR (not a re-generator). Apply ONLY the user's requested change to the given content and keep EVERYTHING else exactly the same, word-for-word. Do NOT rewrite, restructure, reorder, shorten, expand, or "improve" any part the user did not ask about. Make the smallest possible edit that fully satisfies the request, and preserve all existing separators, structure, and formatting.\n\n`;
+
+/**
+ * What the invented cast wears in this ad — the wardrobe stylist (prompts/castWardrobe, owner 2026-10-05:
+ * "the girl and the boy always get the same outfit; relate them to the video, the business and the logo").
+ *
+ * One fast call that SEES the logo (the extraction is told not to describe it, so nothing else knows its
+ * colours), with the business, the video and each person's ordered style in front of it; its answer is
+ * used only when utils/castWardrobe `checkStyledCast` passes it — inside the ordered style, nothing
+ * anybody never wears, two people never alike. A rejected answer is sent back once with exactly what was
+ * wrong; after that, or on any failure, it returns null and the cast sheet dresses them in code. Never
+ * throws. Temperature 0, so the same client is mostly dressed the same way on a regenerate.
+ */
+export const styleCastWardrobe = async (
+  input: Omit<CastWardrobeInput, 'hasLogo' | 'problems'>,
+  logo?: File | null,
+): Promise<StyledOutfit[] | null> => {
+  if (input.people.length === 0 || input.attireType === 'custom') return null;
+  try {
+    const logoPart = logo ? { inlineData: { mimeType: logo.type, data: await fileToBase64(logo) } } : null;
+    let problems: string[] = [];
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const text = castWardrobeRequest({ ...input, hasLogo: !!logoPart, problems });
+      const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
+        model,
+        contents: [{ role: 'user', parts: [...(logoPart ? [logoPart] : []), { text }] }],
+        config: { systemInstruction: CAST_WARDROBE_SYSTEM_PROMPT, responseMimeType: 'application/json', temperature: 0 },
+      }), { effort: 'fast' });
+      const checked = checkStyledCast(input.people, input.attireType, parseStylistReply(response.text));
+      if (checked.outfits) return checked.outfits;
+      problems = checked.problems;
+      console.warn(`The wardrobe stylist's answer could not be used (attempt ${attempt + 1}):`, problems.join(' / '));
+    }
+  } catch (err) {
+    console.warn('The wardrobe stylist failed; the cast sheet dresses the cast instead.', err);
+  }
+  return null;
+};
 
 /**
  * Decides the ad's core message before a line is written — see prompts/coreMessage.
@@ -2403,6 +2461,32 @@ export const generateAdAssets = async (
   const packSpeakerList = pack ? packSpeakers(pack) : [];
   let dialogueClips: DialogueClip[] = [];
 
+  /*
+    What the invented cast wears (styleCastWardrobe, 2026-10-05) — asked NOW, with the business and the
+    core message known, so it is answered while the script is being written and costs the run no wait.
+    It sees the logo unless "No logo" is ticked. Nobody to dress (a cartoon, a deity, the owner's face)
+    or a Custom order → no call.
+  */
+  const castPeople = castPeopleFor(pack);
+  const festivalTheme = formData.adType === 'festival' && formData.festivalName?.trim() ? getFestivalTheme(formData.festivalName) : null;
+  const castWardrobePromise: Promise<StyledOutfit[] | null> = castPeople.length && formData.attireType !== 'custom'
+    ? styleCastWardrobe({
+        people: castPeople,
+        attireType: formData.attireType,
+        businessName: coreMessage?.businessName || extractBusinessNameFromInfo(businessInfo) || '',
+        whatTheyDo: coreMessage?.whatTheyDo,
+        corePromise: coreMessage?.corePromise,
+        audience: coreMessage?.audience,
+        adType: formData.adType,
+        festivalName: formData.festivalName,
+        festivalLook: festivalTheme ? `${festivalTheme.sareeColor}; mood: ${festivalTheme.mood}` : '',
+        brandPalette: brandPaletteOf(businessInfo) || '',
+        brief: formData.textInstructions || '',
+        direction: [formData.frameInstructions?.trim(), voiceBrief?.requirements?.length ? `The client asked (voice note): ${voiceBrief.requirements.join('; ')}` : '']
+          .filter(Boolean).join('\n'),
+      }, !formData.noLogo ? files.logo : null)
+    : Promise.resolve(null);
+
   // A business-provided script pasted in the `clip-1[0-8sec]: …` format is authoritative: its
   // clips are used verbatim (never re-segmented or re-worded), and its clip count — not the
   // Video Duration dropdown — decides how many main-frame and Veo prompts get generated, so the
@@ -3324,16 +3408,6 @@ Segment 2: <text>`;
   const frameBrand = getBrandMark(frameNoLogo, frameNameBoard);
   /** A Real Owner Face ad is built from the owner's own photo, uploaded in its own slot. */
   const ownerFace = !!pack?.usesClientFace && !!files.ownerImage;
-  /**
-   * The people this ad invents — a Normal Ad presenter, a human duo, the Kids — written down once and
-   * stamped onto every frame, so every clip shows the SAME people (utils/castSheet). Seeded by the
-   * business, so a regenerated kit casts them again and the next client gets different faces.
-   */
-  const castMembers = castSheetFor(pack, {
-    attireType: formData.attireType, customAttire: formData.customAttire,
-    seed: coreMessage?.businessName || extractBusinessNameFromInfo(businessInfo) || formData.textInstructions || '',
-  });
-  const castBlock = castSheetBlock(castMembers);
   /** The team's FRAME / BACKGROUND INSTRUCTIONS box — the highest-priority direction for every frame. */
   const frameInstructionsBlock = formData.frameInstructions?.trim()
     ? `
@@ -3354,6 +3428,39 @@ Segment 2: <text>`;
       : await planScenes(parsedSegments);
   const sceneLines = sceneContext ? sceneContext.clips.map((_, i) => sceneLineFor(sceneContext, i)) : [];
   if (sceneContext) emitPartial({ sceneContext });
+
+  /**
+   * The people this ad invents — a Normal Ad presenter, a human duo, the Kids — written down once and
+   * stamped onto every frame, so every clip shows the SAME people (utils/castSheet). Seeded by the
+   * business, so a regenerated kit casts them again and the next client gets different faces.
+   *
+   * Written after the scene plan (2026-10-05) because the Kids are now DRESSED FOR THE AD — the video's
+   * motive, what the business does, a festival, the brand colours — instead of in one fixed outfit per
+   * attire choice. With the client's own photos there is no scene plan, and the business decides alone.
+   *
+   * The wardrobe stylist's checked answer, asked while the script was written, dresses everyone ahead of
+   * those code outfits (`styled`). It has almost always answered by now; it is given 20 more seconds at
+   * most, so a stuck call can never hold the frames back — the code outfits are used instead.
+   */
+  let stylistTimer: ReturnType<typeof setTimeout> | undefined;
+  const styled = await Promise.race([
+    castWardrobePromise,
+    new Promise<null>(resolve => { stylistTimer = setTimeout(() => resolve(null), 20_000); }),
+  ]);
+  clearTimeout(stylistTimer);
+  const castMembers = castSheetFor(pack, {
+    attireType: formData.attireType, customAttire: formData.customAttire,
+    seed: coreMessage?.businessName || extractBusinessNameFromInfo(businessInfo) || formData.textInstructions || '',
+    styled,
+    theme: {
+      text: [sceneContext?.motive, sceneContext?.setting, coreMessage?.whatTheyDo, coreMessage?.businessName]
+        .filter(Boolean).join('\n'),
+      background: themeTextOf(businessInfo, formData.textInstructions || ''),
+      festival: formData.adType === 'festival' ? formData.festivalName || '' : '',
+      brandColours: brandPaletteOf(businessInfo) || '',
+    },
+  });
+  const castBlock = castSheetBlock(castMembers);
 
   /*
     The B-roll and overlay-image prompts need only the final script and the scene plan, so they are
@@ -3425,7 +3532,7 @@ Segment 2: <text>`;
         festivalName: formData.festivalName,
         hasLogo: !frameNoLogo,
         businessContext: serializedBusinessInfo,
-        wardrobe: packWardrobe(pack, formData),
+        wardrobe: packWardrobe(pack, formData, castMembers),
         motionPlan,
         nameBoard: frameNoLogo ? frameNameBoard : '',
         sceneBackgrounds: sceneLines,
@@ -4323,6 +4430,23 @@ export interface OverlayDesignContext {
   coreMessage?: CoreMessageBrief | null;
 }
 
+/**
+ * The brand palette the extraction wrote, wherever it put it — the extractor names its keys freely
+ * ("Brand Color Palette", "brandColorPalette", nested or not). Read by the overlay designer and, since
+ * 2026-10-05, for the colours the Kids are dressed in (utils/castSheet).
+ */
+const brandPaletteOf = (node: any, depth = 0): string | undefined => {
+  if (!node || typeof node !== 'object' || depth > 3) return undefined;
+  for (const [key, value] of Object.entries(node)) {
+    if (/brand.?colou?r|colou?r.?palette/i.test(key) && typeof value === 'string' && value.trim() && !/not provided/i.test(value)) {
+      return value.trim().slice(0, 120);
+    }
+    const nested = brandPaletteOf(value, depth + 1);
+    if (nested) return nested;
+  }
+  return undefined;
+};
+
 /** The theme block the overlay designer reads, and the look used when it returns none. */
 const overlayTheme = (context: OverlayDesignContext, businessInfo: any): { block: string; fallback: string } => {
   const festival = context.adType === 'festival' && context.festivalName?.trim() ? getFestivalTheme(context.festivalName) : null;
@@ -4336,19 +4460,7 @@ FESTIVAL MOOD: ${festival.mood}`,
       fallback: `premium lettering in ${festival.headerColors.split(/[—,]/)[0].trim()} with a soft festive glow`,
     };
   }
-  // The extractor names its keys freely ("Brand Color Palette", "brandColorPalette", nested or not).
-  const findColours = (node: any, depth = 0): string | undefined => {
-    if (!node || typeof node !== 'object' || depth > 3) return undefined;
-    for (const [key, value] of Object.entries(node)) {
-      if (/brand.?colou?r|colou?r.?palette/i.test(key) && typeof value === 'string' && value.trim() && !/not provided/i.test(value)) {
-        return value.trim().slice(0, 120);
-      }
-      const nested = findColours(value, depth + 1);
-      if (nested) return nested;
-    }
-    return undefined;
-  };
-  const brandColours = findColours(businessInfo);
+  const brandColours = brandPaletteOf(businessInfo);
   return {
     block: [
       'AD TYPE: promotional',

@@ -23,13 +23,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
-  AlertTriangle, Archive, BarChart3, CalendarDays, CheckCircle2, LayoutGrid, Loader2, Megaphone, Plus, RefreshCcw, Search,
+  AlertTriangle, Archive, BarChart3, CalendarDays, CheckCircle2, IndianRupee, LayoutGrid, Loader2, Megaphone, Plus, RefreshCcw, Search,
   TrendingDown, UserPlus, Users,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useSmmCampaigns } from "@/hooks/useSmmCampaigns";
-import { closeEndedMonthsOnOpen, fetchFinishedCampaigns, notifyRenewalsDueOnOpen } from "@/services/smm";
-import { isSmmOverseer, isoDay } from "@/utils/smmPlan";
+import { closeEndedMonthsOnOpen, fetchFinishedCampaigns, healRenewalLinksOnOpen, notifyRenewalsDueOnOpen } from "@/services/smm";
+import { canSeeSmmMoney, isSmmOverseer, isoDay } from "@/utils/smmPlan";
 import { canRenewSmm, canSetUpSmm, needsSetup, renewalDue } from "@/utils/smmPackage";
 import { byGlanceUrgency, monthGlance, type SmmGlance } from "@/utils/smmGlance";
 import { overdueItemsFor } from "@/utils/smmReminders";
@@ -37,6 +37,8 @@ import SmmCampaignCard from "@/components/smm/SmmCampaignCard";
 import SmmCalendarBoard from "@/components/smm/SmmCalendarBoard";
 import SmmAddSaleDialog from "@/components/smm/SmmAddSaleDialog";
 import SmmTeamLeadPanel from "@/components/smm/SmmTeamLeadPanel";
+import SmmRenewalsCard from "@/components/smm/SmmRenewalsCard";
+import SmmMoneyView from "@/components/smm/money/SmmMoneyView";
 import SmmDashboard, { type SmmBoardFilter } from "@/components/smm/SmmDashboard";
 import { SmmSetupDialog } from "@/components/smm/SmmSetupForm";
 import { useSmmRenewal } from "@/components/smm/useSmmRenewal";
@@ -57,8 +59,8 @@ const onTeam = (c: SmmCampaign, uid: string) =>
   [c.team?.creator?.uid, c.team?.publisher?.uid, c.team?.marketer?.uid, ...(c.team?.assistants || []).map((a) => a.uid)]
     .includes(uid);
 
-type View = "cards" | "insights" | "calendar";
-const VIEWS: View[] = ["cards", "insights", "calendar"];
+type View = "cards" | "insights" | "calendar" | "money";
+const VIEWS: View[] = ["cards", "insights", "calendar", "money"];
 /** Which view this browser last used — a convenience, so it may be missing or unreadable. */
 const VIEW_KEY = "dts_smm_view";
 function readView(): View {
@@ -78,13 +80,16 @@ export default function SocialMedia() {
   const overseer = isSmmOverseer(user);
   const canSetUp = canSetUpSmm(user);
   const isSeller = user?.role === "sales_member";
+  // The Money view is the admins' only (2026-10-05); anybody else asking for it gets the cards.
+  const canMoney = canSeeSmmMoney(user);
   // A link may name the view, or a client for the calendar (`?view=calendar&client=`); else the last one used.
   const [params] = useSearchParams();
-  const [view, setView] = useState<View>(() => {
+  const [picked, setView] = useState<View>(() => {
     const asked = params.get("view") as View | null;
     if (asked && VIEWS.includes(asked)) return asked;
     return params.get("client") ? "calendar" : readView();
   });
+  const view: View = picked === "money" && !canMoney ? "cards" : picked;
   const [filter, setFilter] = useState<SmmBoardFilter>("all");
   const [search, setSearch] = useState("");
   const [memberFilter, setMemberFilter] = useState("");
@@ -102,9 +107,18 @@ export default function SocialMedia() {
   */
   const swept = useRef(false);
   useEffect(() => {
-    if (!overseer || loading || swept.current || campaigns.length === 0) return;
+    if (loading || swept.current || campaigns.length === 0) return;
     swept.current = true;
-    closeEndedMonthsOnOpen(campaigns, today).catch(() => undefined);
+    /*
+      First, any month still marked renewed by a month that no longer exists (a renewal sale deleted
+      before 2026-10-05) is put back to "no decision" — for every viewer, since a salesperson's list
+      holds their filed months too. Then the overseer's filing, which re-checks each month inside its
+      transaction, so a month repaired a moment ago is never filed as renewed.
+    */
+    healRenewalLinksOnOpen(campaigns)
+      .catch(() => 0)
+      .then(() => (overseer ? closeEndedMonthsOnOpen(campaigns, today) : 0))
+      .catch(() => undefined);
   }, [overseer, loading, campaigns, today]);
 
   // The salesperson's renewal bells — once per month per day, however often they open the board.
@@ -244,6 +258,9 @@ export default function SocialMedia() {
       {/* Who runs the whole side — appointed here by the tech admin (SmmTeamLeadPanel). */}
       {user && overseer && <SmmTeamLeadPanel user={user} />}
 
+      {/* The salesperson's renewals and their money, first thing (2026-10-05). The page rings the bells. */}
+      {user && isSeller && <SmmRenewalsCard user={user} ring={false} />}
+
       {view === "cards" && !loading && (
         /* The statuses as counts — each one filters the cards below. */
         <div data-test="smm-status-filters" role="tablist" aria-label="Show clients"
@@ -297,24 +314,35 @@ export default function SocialMedia() {
             </select>
           )}
         </div>
-        <div role="tablist" aria-label="View" className="ml-auto inline-flex rounded-xl border border-border bg-muted/60 p-1">
+        {/* On a phone: a full-width row of equal tabs, words only — four (the admins' Money) did not fit
+            360px with their icons (2026-10-05). From 640px: as before, icon and word. */}
+        <div role="tablist" aria-label="View"
+          className="ml-auto grid w-full auto-cols-fr grid-flow-col rounded-xl border border-border bg-muted/60 p-1 sm:inline-flex sm:w-auto">
           {([
             { key: "cards" as const, label: "Cards", Icon: LayoutGrid },
             { key: "insights" as const, label: "Insights", Icon: BarChart3 },
             { key: "calendar" as const, label: "Calendar", Icon: CalendarDays },
+            ...(canMoney ? [{ key: "money" as const, label: "Money", Icon: IndianRupee }] : []),
           ]).map(({ key, label, Icon }) => (
             <button key={key} type="button" role="tab" aria-selected={view === key} data-test={`smm-view-${key}`}
               onClick={() => pickView(key)}
-              className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium transition-all ${
+              className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-lg px-2 text-xs font-medium transition-all sm:px-3 ${
                 view === key ? "bg-card text-foreground shadow-sm ring-1 ring-border" : "text-muted-foreground hover:text-foreground"
               }`}>
-              <Icon size={14} /> {label}
+              <Icon size={14} className="hidden shrink-0 sm:block" /> {label}
             </button>
           ))}
         </div>
       </div>
 
-      {view === "calendar" ? (
+      {view === "money" ? (
+        loading || !user ? (
+          <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" size={26} /></div>
+        ) : (
+          /* The company's renewals and their rupees — tech admin, sales admin, main admin (2026-10-05). */
+          <SmmMoneyView campaigns={campaigns} scope={scope} today={today} user={user} />
+        )
+      ) : view === "calendar" ? (
         loading ? (
           <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" size={26} /></div>
         ) : (

@@ -142,18 +142,16 @@ function round1(n: number): number {
 export type DiscountApproval = "pending" | "approved" | "rejected";
 
 /**
- * Whether this sale may be handed to the tech team yet.
- *
- * A sale whose discount is within the member's own authority goes straight through, exactly as
- * before. One that is over it waits — the tech team must never start building against a price
- * nobody has agreed, because the work is the expensive part and it cannot be un-made.
+ * Whether a sale's discount still waits for the sales admin. Since 2026-10-05 this no longer holds
+ * the sale back from the tech team (owner: every sale reaches the tech side at once) — it only says
+ * that the approval is outstanding, for the screens that show it.
  */
-export function releasedToTech(sale: {
+export function discountAwaitingApproval(sale: {
   discountNeedsApproval?: boolean;
   discountApproval?: DiscountApproval | null;
+  verificationStatus?: string;
 }): boolean {
-  if (!sale.discountNeedsApproval) return true;
-  return sale.discountApproval === "approved";
+  return !!sale.discountNeedsApproval && sale.discountApproval !== "approved" && sale.verificationStatus !== "rejected";
 }
 
 /** "18% off — ₹900 (10% review + referral, 8% agreed)", for a card that has to justify a price. */

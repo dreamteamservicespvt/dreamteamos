@@ -199,7 +199,7 @@ export default function SalesMemberDashboard() {
       {/* Daily check-in / check-out — drives monthly attendance */}
       {user && <CheckinCard user={{ uid: user.uid, name: user.name }} leads={leads} />}
 
-      {/* Social media months of theirs about to end — renewing is the salesperson's job. */}
+      {/* Their social media clients and the money in renewing them — renewing is the salesperson's job. */}
       {user && <SmmRenewalsCard user={user} />}
 
       {/* Total earnings this cycle — salary + incentives, the same figure as My Salary. Tap to

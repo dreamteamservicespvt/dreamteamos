@@ -19,13 +19,12 @@
  * about them one at a time.
  */
 import { promiseDueMs, deadlineState, formatRemaining } from "@/utils/promiseSla";
-import { releasedToTech } from "@/utils/saleDiscount";
 import { progressSummary, isProgressComplete } from "@/utils/orderProgress";
 import type { Order, SaleDetail } from "@/types";
 
 export type SaleStage =
-  /** Over the member's discount authority — no order exists until the sales admin agrees the price. */
-  | "withheld"
+  // ("withheld" — over the discount limit, no order until the sales admin agreed — went on 2026-10-05:
+  // every sale has its order at once now.)
   /** In the tech queue, nobody on it yet. */
   | "queued"
   /** Somebody is making it. */
@@ -58,7 +57,6 @@ export interface SaleStatusView {
 }
 
 const TONES: Record<SaleStage, string> = {
-  withheld: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
   queued: "bg-muted text-muted-foreground",
   in_production: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
   delivered: "bg-success/15 text-success",
@@ -79,15 +77,15 @@ const DUE_SOON_TONE = "bg-warning/20 text-warning";
  */
 export function saleStatusView(
   /**
-   * The sale line. Optional because My Clients is built from ORDERS and has no sale item to hand —
-   * and it does not need one: the sale is only consulted to tell a withheld price from a queue that
-   * has not caught up, which is a question that only arises when there is no order.
+   * The sale line. Optional because My Clients is built from ORDERS and has no sale item to hand.
+   * Unused since 2026-10-05 (it told a price held for approval from a queue that had not caught up,
+   * and no sale is held any more); kept so every caller's call stays the same.
    */
   item: SaleDetail | null | undefined,
   order: Order | null | undefined,
   now: number = Date.now(),
 ): SaleStatusView {
-  const stage = saleStage(item, order);
+  const stage = saleStage(order);
   const finished = stage === "delivered" || stage === "verified" || stage === "cancelled";
 
   const dueMs = order?.promise ? promiseDueMs(order.promise) : 0;
@@ -112,24 +110,22 @@ export function saleStatusView(
   };
 }
 
-function saleStage(item: SaleDetail | null | undefined, order: Order | null | undefined): SaleStage {
-  // No order and an unapproved discount is the one case that is genuinely NOT in the queue. Every
-  // other missing order is a sale the queue simply has not caught up with, which is "queued".
-  if (!order) return !item || releasedToTech(item) ? "queued" : "withheld";
+function saleStage(order: Order | null | undefined): SaleStage {
+  // A missing order is a sale the queue simply has not caught up with, which is "queued".
+  if (!order) return "queued";
 
   switch (order.status) {
     case "verified": return "verified";
     case "completed": return "delivered";
     case "assigned": return "in_production";
     case "cancelled":
-    case "deleted": return item && !releasedToTech(item) ? "withheld" : "cancelled";
+    case "deleted": return "cancelled";
     default: return "queued";
   }
 }
 
 function stageLabel(stage: SaleStage, order: Order | null | undefined, delayed: boolean): string {
   switch (stage) {
-    case "withheld": return "Held — sales admin to approve the price";
     // "Late" rather than "delayed" on a job nobody has started: the useful fact is that it has not
     // been picked up, not that a clock ran out on nobody.
     case "queued": return delayed ? "Not picked up — overdue" : "Waiting for the tech team";

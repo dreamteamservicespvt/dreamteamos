@@ -79,8 +79,32 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
   const kindLabel = SMM_CONTENT_KINDS.find((k) => k.key === item.kind)?.singular || item.kind;
   const waiting = item.approval?.state === "waiting" || item.approval?.state === "changes";
   const waitDays = approvalWaitDays(item.approval);
-  const approved = canPublish(item);
+  /** A month recorded after it ended: past work written down, posted with no approval step (canPublish). */
+  const history = !!campaign.history;
+  const approved = canPublish(item, campaign);
   const liveLinks = postLinks({ ...item, platforms, postUrls });
+
+  /**
+   * Move the post to a stage. On a history month Posted needs the day it went up — the service refuses
+   * it without one — and the date just typed may still be waiting on the autosave, so it is written
+   * first rather than making somebody wait for "Saved" before they may press Posted.
+   */
+  const pickStage = (next: SmmItemStatus) => {
+    if (history && next === "posted") {
+      if (!uploadDate) {
+        toast({ title: "Give it the day it went up first", description: "Set the upload date above — the calendar shows the post on that day.", variant: "destructive" });
+        return;
+      }
+      run(next, async () => {
+        if (uploadDate !== (item.uploadDate || "") || uploadTime !== (item.uploadTime || "")) {
+          await updateItem(campaign.id, item.id, { uploadDate, uploadTime: uploadTime || null });
+        }
+        await setItemStatus(campaign.id, item.id, next, user);
+      });
+      return;
+    }
+    run(next, () => setItemStatus(campaign.id, item.id, next, user));
+  };
 
   /**
    * Save the fields once they stop changing.
@@ -90,23 +114,36 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
    * every time anybody so much as opens a post.
    */
   const skipFirst = useRef(true);
+  /**
+   * What was typed and not saved yet — written the moment the dialog closes (2026-10-05).
+   *
+   * Closing cleared the timer below and dropped it: a title or date typed in the last second before ✕
+   * was simply gone, with "Saves as you type" still on screen. Filling in a past month's posts one after
+   * another (open, type, close, next) lost the last thing typed in nearly every one.
+   */
+  const unsaved = useRef<Partial<SmmContentItem> | null>(null);
+  const where = useRef({ campaignId: campaign.id, itemId: item.id });
+  where.current = { campaignId: campaign.id, itemId: item.id };
   useEffect(() => {
     if (skipFirst.current) { skipFirst.current = false; return; }
+    const patch: Partial<SmmContentItem> = {
+      title: title.trim(),
+      uploadDate: uploadDate || null,
+      uploadTime: uploadTime || null,
+      platforms,
+      notes: notes.trim() || null,
+      // Blank boxes are dropped rather than stored as empty strings, so `postLinks` never has
+      // to decide whether "" counts as a link.
+      postUrls: Object.fromEntries(
+        Object.entries(postUrls).map(([k, v]) => [k, (v || "").trim()]).filter(([, v]) => v),
+      ),
+    };
+    unsaved.current = patch;
     const handle = setTimeout(async () => {
       setSaving(true);
       try {
-        await updateItem(campaign.id, item.id, {
-          title: title.trim(),
-          uploadDate: uploadDate || null,
-          uploadTime: uploadTime || null,
-          platforms,
-          notes: notes.trim() || null,
-          // Blank boxes are dropped rather than stored as empty strings, so `postLinks` never has
-          // to decide whether "" counts as a link.
-          postUrls: Object.fromEntries(
-            Object.entries(postUrls).map(([k, v]) => [k, (v || "").trim()]).filter(([, v]) => v),
-          ),
-        });
+        await updateItem(campaign.id, item.id, patch);
+        if (unsaved.current === patch) unsaved.current = null;
         setSavedAt(Date.now());
       } catch {
         toast({ title: "Not saved", description: "Check your connection — your typing is still here.", variant: "destructive" });
@@ -116,6 +153,15 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
     }, AUTOSAVE_MS);
     return () => clearTimeout(handle);
   }, [title, uploadDate, uploadTime, platforms, notes, postUrls]); // eslint-disable-line react-hooks/exhaustive-deps
+  // On close, whatever is still unsaved goes now — no state to set, the dialog is gone.
+  useEffect(() => () => {
+    const patch = unsaved.current;
+    if (!patch) return;
+    unsaved.current = null;
+    updateItem(where.current.campaignId, where.current.itemId, patch).catch(() => {
+      toast({ title: "Not saved", description: "The last change to that post did not save — open it and check.", variant: "destructive" });
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const run = async (key: string, fn: () => Promise<void>, ok?: string) => {
     setBusy(key);
@@ -283,6 +329,17 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
           where it has got to, on every post, including ones nobody has made yet. The header still
           states where the approval stands, so folding it hides the controls and never the answer.
         */}
+        {/*
+          A history month has no approval step (canPublish, owner 2026-10-05): the work went up before the
+          month was recorded here, with the client's yes given at the time. Saying so in place of the
+          panel keeps the dialog from asking for something nobody can record any more.
+        */}
+        {history ? (
+          <p data-test="smm-history-approval" className="mt-4 rounded-lg border border-info/40 bg-info/10 p-3 text-[11px] text-foreground">
+            <b>Past month — no approval step.</b> This month was recorded after it ended, so a post is marked
+            Posted directly. Give it the day it went up first; the calendar shows it on that day.
+          </p>
+        ) : (
         <div className="mt-4 rounded-lg border border-border bg-background">
           <button
             type="button"
@@ -367,6 +424,7 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
           </div>
           )}
         </div>
+        )}
 
         {/* ── Stage ──────────────────────────────────────────────────────────────────────── */}
         <div className="mt-4">
@@ -376,7 +434,7 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
             approved={approved}
             busy={busy}
             disabled={!!busy}
-            onPick={(next: SmmItemStatus) => run(next, () => setItemStatus(campaign.id, item.id, next, user))}
+            onPick={pickStage}
           />
           {!approved && (
             <p className="mt-1.5 text-[11px] text-muted-foreground">

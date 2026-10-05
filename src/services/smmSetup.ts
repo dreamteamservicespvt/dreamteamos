@@ -30,10 +30,9 @@ import { adminAssignNumber } from "@/services/numberLock";
 import { fetchOrder, orderDocId, restoreOrders, upsertOrderForSale } from "@/services/orders";
 import {
   buildNoSaleCampaign, buildSoldCampaign, campaignInputFromSale, campaignRef, fetchCampaign, monthPromise,
-  saveMonthSetup, setMonthCommitments, setMonthPlatforms,
+  saveMonthSetup, setCampaignTeam, setMonthCommitments, setMonthPlatforms,
 } from "@/services/smm";
 import { assignSmmMonth, fetchMonthJobs, type SmmAssignResult } from "@/services/smmAssign";
-import { releasedToTech } from "@/utils/saleDiscount";
 import { dayToDate, isoDay } from "@/utils/smmPlan";
 import {
   cleanPlatforms, cycleRangeLabel, cyclesOverlap, hasTeam, isNoSaleMonth, jobsByMember, linksForAccounts, monthCycle,
@@ -48,7 +47,8 @@ import type { SmmCampaign, SmmContentKind, SmmCycle, SmmPlatform, SmmTeam } from
 /** Where one recorded sale's month stands — decides what the dialog offers for it. */
 export type SmmSaleState =
   | "rejected"     // the sales admin rejected the sale: nothing to set up
-  | "held"         // over the salesperson's discount limit, waiting on the sales admin
+  // ("held" — over the discount limit, waiting on the sales admin — went on 2026-10-05: such a sale
+  // reaches the tech side at once now, and one recorded before that with no order is "no_order".)
   | "needs_setup"  // order and month exist, nobody on it yet
   | "live"         // running, with a team
   | "finished"     // closed: renewed, lapsed or completed
@@ -79,7 +79,6 @@ export function canSetUpSale(state: SmmSaleState): boolean {
 
 function stateOf(item: SaleDetail, order: Order | null, campaign: SmmCampaign | null, today: string): SmmSaleState {
   if (item.verificationStatus === "rejected") return "rejected";
-  if (!releasedToTech(item)) return "held";
   if (!order) return "no_order";
   if (order.deleted || order.status === "deleted") return "removed";
   if (!campaign) return "removed";
@@ -378,6 +377,70 @@ export async function applyMonthSetup(
   return { campaignId, history: false, assign };
 }
 
+/* ── A history month's people (2026-10-05) ───────────────────────────────────────────────────── */
+
+/**
+ * The people who did a history month's work, as they are saved on it.
+ *
+ * ── Names, never jobs (owner, 2026-10-05) ────────────────────────────────────────────────────────
+ * A history month used to drop its team altogether ("nobody is given a job for it"), which left the
+ * team no way to see the old month or to fill in what they made and posted for the client. The owner's
+ * call: the people go on the month by name — their seats on every row and `watchers`, so it is in
+ * their Social Media and they may edit its work — but NOBODY gets a job card. A job would put old work
+ * into My Work and the work counts, with a deadline long past; this is a record, not work to do.
+ */
+export function historyTeam(team: SmmTeam | null | undefined): SmmTeam {
+  return {
+    creator: team?.creator ?? null,
+    publisher: team?.publisher ?? null,
+    marketer: team?.marketer ?? null,
+    assistants: team?.assistants || [],
+  };
+}
+
+/** Why a history month's edited setup cannot be saved, or "" — its dates must stay in the past. */
+export function historySetupProblem(setup: MonthSetupInput, today: string): string {
+  const problem = setupProblem(setup, today);
+  if (problem) return problem;
+  if (monthCycle(setup.startDate, setup.endDate).endDate >= today) {
+    return "A history month stays in the past — end it before today.";
+  }
+  return "";
+}
+
+/**
+ * "Edit setup" on a history month (2026-10-05): its name, counts, accounts, dates, video length, page
+ * links and the people who did it — and nothing else. `applyMonthSetup` would give its team jobs and a
+ * deadline and tell the salesperson the month was set up; a month recorded after it ended gets none of
+ * that (see `historyTeam`).
+ */
+export async function applyHistorySetup(campaignId: string, setup: MonthSetupInput, actor: SetupActor): Promise<void> {
+  const problem = historySetupProblem(setup, isoDay(new Date()));
+  if (problem) throw new Error(problem);
+  if (setup.businessName?.trim()) await renameMonth(campaignId, setup.businessName);
+  if (setup.commitments) await setMonthCommitments(campaignId, setup.commitments);
+  if (setup.platforms) await setMonthPlatforms(campaignId, setup.platforms);
+  const before = await fetchCampaign(campaignId);
+  if (!before) throw new Error("This month no longer exists.");
+  const cycle = monthCycle(setup.startDate, setup.endDate);
+  await saveMonthSetup(campaignId, {
+    cycle,
+    clipsPerVideo: normaliseClipsPerVideo(setup.clipsPerVideo),
+    pageLinks: cleanLinks(setup.pageLinks, setup.platforms ? before.platforms : null),
+    setupByName: actor.name,
+    setupByUid: actor.uid,
+  });
+  await setCampaignTeam(campaignId, historyTeam(setup.team));
+  await logTechActivity({
+    actor,
+    action: "set_up_smm_month",
+    details: {
+      campaignId, businessName: before.businessName, startDate: cycle.startDate, endDate: cycle.endDate, history: true,
+      team: jobsByMember(historyTeam(setup.team)).map((m) => ({ uid: m.uid, name: m.name, tracks: m.tracks })),
+    },
+  });
+}
+
 /** Whole, non-negative counts, capped at a month's worth of daily posting. */
 export function cleanCommitments(c: Partial<Record<SmmContentKind, number>> | null | undefined): Record<SmmContentKind, number> {
   const n = (v: unknown) => Math.max(0, Math.min(60, Math.floor(Number(v) || 0)));
@@ -407,7 +470,8 @@ const cleanLinks = (links: MonthSetupInput["pageLinks"], platforms?: SmmPlatform
  *     still live keeps its plan and only takes the new setup.
  *   • Dates entirely in the past make it HISTORY: recorded with its package, salesperson and dates,
  *     filed as finished, no jobs for anybody and no deadline to miss. Its order leaves the queue as
- *     delivered, so the sale cannot quietly rebuild a live one later.
+ *     delivered, so the sale cannot quietly rebuild a live one later. The people who did its work are
+ *     saved by name (`historyTeam`, 2026-10-05), and set up in front of a later month it joins its run.
  */
 export async function setupSaleMonth(params: {
   leadId: string;
@@ -424,7 +488,6 @@ export async function setupSaleMonth(params: {
   const item = items[itemIndex];
   if (!item || item.category !== "social_media_management") throw new Error("That is not a social media sale.");
   if (item.verificationStatus === "rejected") throw new Error("The sales admin rejected this sale, so it has no month.");
-  if (!releasedToTech(item)) throw new Error("This sale is waiting for the sales admin to approve its discount. Set it up once they have.");
 
   const today = isoDay(new Date());
   const cycle = monthCycle(setup.startDate, setup.endDate);
@@ -455,6 +518,9 @@ export async function setupSaleMonth(params: {
   const existing = await fetchCampaign(orderId);
   const replace = !existing || existing.status === "removed" || existing.status === "deleted";
   let renamed = false;
+  /** The client's month this one runs straight into, when it is set up in front of it. */
+  let nextMonth: SmmCampaign | null = null;
+  let monthNumber = existing?.monthNumber || 1;
   if (replace) {
     const input = campaignInputFromSale({
       order: {
@@ -471,7 +537,8 @@ export async function setupSaleMonth(params: {
       item,
       soldByName,
     });
-    const previous = await previousMonthOf(order.clientPhoneId, cycle.startDate, orderId);
+    const { previous, next } = await neighbourMonthsOf(order.clientPhoneId, cycle, orderId);
+    nextMonth = next;
     // The name typed at setup wins over the sale's, and is kept from then on.
     const typedName = setup.businessName?.trim().replace(/\s+/g, " ") || "";
     if (typedName && typedName !== input.businessName) {
@@ -488,7 +555,11 @@ export async function setupSaleMonth(params: {
       clipsPerVideo: setup.clipsPerVideo,
       pageLinks: cleanLinks(setup.pageLinks, setup.platforms ? input.platforms : null),
       renewalOf: previous,
+      // A history month keeps the names of who did its work — no jobs (see `historyTeam`). A running
+      // month's team is given out by `applyMonthSetup` below, jobs and all.
+      ...(history ? { team: historyTeam(setup.team) } : {}),
     });
+    monthNumber = campaign.monthNumber || 1;
     await setDoc(campaignRef(orderId), {
       ...JSON.parse(JSON.stringify({
         ...campaign,
@@ -528,7 +599,9 @@ export async function setupSaleMonth(params: {
         setupByUid: actor.uid,
         updatedAt: serverTimestamp(),
       });
+      if (setup.team && hasTeam(setup.team)) await setCampaignTeam(orderId, historyTeam(setup.team));
     }
+    await linkInFront(orderId, monthNumber, nextMonth, actor);
     if (order.status === "unassigned" || order.status === "assigned") {
       await updateDoc(doc(db, "orders", orderId), {
         status: "verified",
@@ -539,7 +612,10 @@ export async function setupSaleMonth(params: {
     await logTechActivity({
       actor,
       action: "set_up_smm_month",
-      details: { campaignId: orderId, businessName: order.businessName, startDate: cycle.startDate, endDate: cycle.endDate, history: true },
+      details: {
+        campaignId: orderId, businessName: order.businessName, startDate: cycle.startDate, endDate: cycle.endDate, history: true,
+        team: jobsByMember(historyTeam(setup.team)).map((m) => ({ uid: m.uid, name: m.name, tracks: m.tracks })),
+      },
     });
     return { campaignId: orderId, history: true, assign: null };
   }
@@ -547,32 +623,84 @@ export async function setupSaleMonth(params: {
   return applyMonthSetup(orderId, setup, actor, { existingAssignments: params.existingAssignments });
 }
 
+/** Two days a week apart or less — the gap one month can leave before the next and still continue it. */
+const continues = (a: string | undefined, b: string | undefined): boolean =>
+  Math.abs((dayToDate(a)?.getTime() ?? 0) - (dayToDate(b)?.getTime() ?? 0)) <= 7 * 86_400_000;
+
 /**
- * The client's month just before this one, when this one continues it — so a run of old sales set
- * up one after another reads as Month 1 → Month 2 rather than unrelated months.
+ * The client's months either side of this one, when this one continues the month before it or runs
+ * straight into the month after it — so a run of old months set up in ANY order reads as Month 1 →
+ * Month 2 → Month 3 rather than unrelated months.
  *
- * Continuous means it ended within a week of this one's start. A month further back is a client who
- * came back after a gap, and is a first month again.
+ * Continuous means a week or less between one's end and the other's start. A month further away is a
+ * client who came back after a gap, and starts a run of its own.
+ *
+ * ── Why the month AFTER (2026-10-05) ───────────────────────────────────────────────────────────
+ * Months used to be added only forward: the previous month was found, and the new one became the next.
+ * The owner's team now lists an old client's EARLIER months after the current one is already on the
+ * board ("listing the previous months' work that we made for the client"). Linked only backward, an
+ * August month added after September stayed a separate "Month 1", September kept no "← August" link
+ * and stayed "Month 1" too — the earlier work was on the record but not in the client's run. One read.
  */
-async function previousMonthOf(clientPhoneId: string, startDate: string, ownId: string): Promise<SmmCampaign | null> {
-  if (!clientPhoneId) return null;
+async function neighbourMonthsOf(
+  clientPhoneId: string,
+  cycle: SmmCycle,
+  ownId: string,
+): Promise<{ previous: SmmCampaign | null; next: SmmCampaign | null }> {
+  if (!clientPhoneId) return { previous: null, next: null };
   try {
     const snap = await getDocs(query(collection(db, "smm_campaigns"), where("clientPhoneId", "==", clientPhoneId)));
-    const start = dayToDate(startDate)?.getTime() ?? 0;
-    const candidates = snap.docs
+    const months = snap.docs
       .map((d) => ({ ...(d.data() as SmmCampaign), id: d.id }))
-      .filter((c) => c.id !== ownId && c.status !== "deleted" && c.status !== "removed")
-      .filter((c) => c.cycle?.startDate < startDate)
-      .filter((c) => !c.renewal?.nextCampaignId || c.renewal.nextCampaignId === ownId)
-      .filter((c) => {
-        const end = dayToDate(c.cycle?.endDate)?.getTime() ?? 0;
-        return Math.abs(start - end) <= 7 * 86_400_000;
-      })
-      .sort((a, b) => b.cycle.startDate.localeCompare(a.cycle.startDate));
-    return candidates[0] || null;
+      .filter((c) => c.id !== ownId && c.status !== "deleted" && c.status !== "removed" && !!c.cycle);
+    const ids = new Set(months.map((c) => c.id));
+    const previous = months
+      .filter((c) => c.cycle.startDate < cycle.startDate)
+      // Already followed by another month — unless that link points at a month that is gone.
+      .filter((c) => !c.renewal?.nextCampaignId || c.renewal.nextCampaignId === ownId || !ids.has(c.renewal.nextCampaignId))
+      .filter((c) => continues(c.cycle.endDate, cycle.startDate))
+      .sort((a, b) => b.cycle.startDate.localeCompare(a.cycle.startDate))[0] || null;
+    const next = months
+      .filter((c) => c.cycle.startDate > cycle.startDate && c.id !== previous?.id)
+      // Already continuing another month — the same exception for a link to a month that is gone.
+      .filter((c) => !c.renewalOf || c.renewalOf === ownId || !ids.has(c.renewalOf))
+      .filter((c) => continues(cycle.endDate, c.cycle.startDate))
+      .sort((a, b) => a.cycle.startDate.localeCompare(b.cycle.startDate))[0] || null;
+    return { previous, next };
   } catch (err) {
-    console.warn("[smmSetup] previous month lookup failed:", err);
-    return null;
+    console.warn("[smmSetup] neighbouring months lookup failed:", err);
+    return { previous: null, next: null };
+  }
+}
+
+/**
+ * A month added IN FRONT of the client's next month: this one now points forward to it, it points back
+ * to this one, and it and every month after it are numbered on from here (Month 2, 3 …). Best effort —
+ * the month itself is already saved, and a link that fails leaves two months unlinked, as before.
+ */
+async function linkInFront(campaignId: string, monthNumber: number, next: SmmCampaign | null, actor: SetupActor): Promise<void> {
+  if (!next) return;
+  try {
+    await updateDoc(campaignRef(campaignId), {
+      renewal: { state: "won", nextCampaignId: next.id, at: Timestamp.now(), byName: actor.name, note: null },
+      updatedAt: serverTimestamp(),
+    });
+    await updateDoc(campaignRef(next.id), { renewalOf: campaignId, updatedAt: serverTimestamp() });
+    // Down the run by its forward links; `seen` stops a loop a bad link could make.
+    const seen = new Set<string>();
+    let month: SmmCampaign | null = next;
+    let n = monthNumber + 1;
+    while (month && !seen.has(month.id) && seen.size < 120) {
+      seen.add(month.id);
+      if ((month.monthNumber || 1) !== n) {
+        await updateDoc(campaignRef(month.id), { monthNumber: n, updatedAt: serverTimestamp() });
+      }
+      const after = month.renewal?.nextCampaignId;
+      month = after ? await fetchCampaign(after).catch(() => null) : null;
+      n += 1;
+    }
+  } catch (err) {
+    console.warn("[smmSetup] linking to the next month failed:", err);
   }
 }
 
@@ -630,9 +758,7 @@ export async function noSaleMonthClash(phone: string, cycle: SmmCycle): Promise<
     if (s.state === "rejected") continue;
     const saleCycle = s.campaign?.cycle || monthCycle(s.soldDay);
     if (cyclesOverlap(saleCycle, cycle)) {
-      return s.state === "held"
-        ? `${s.sellerName}'s sale for these dates (${cycleRangeLabel(saleCycle)}) is waiting for the sales admin to approve its discount — the month comes from that sale.`
-        : `${s.sellerName} recorded a sale for these dates (${cycleRangeLabel(saleCycle)}), already counted as their sale. Use "Set up this sale" on it instead.`;
+      return `${s.sellerName} recorded a sale for these dates (${cycleRangeLabel(saleCycle)}), already counted as their sale. Use "Set up this sale" on it instead.`;
     }
     if (saleCycle.startDate < cycle.startDate) {
       return `${s.businessName || "This client"} has been a recorded sale since ${monthLabel(saleCycle.startDate)} (${s.sellerName}), so a later month is a renewal — ${s.sellerName} records it with Renew, and it counts as their sale.`;
@@ -672,9 +798,10 @@ export function noSaleSetupProblem(input: Pick<NoSaleMonthInput, "phone" | "sell
  * what puts it on their Social Media page with its dates. When it ends, their Renew records the next
  * month as a real sale, linked to this one as month 2.
  *
- * A month whose dates are already over is recorded as history (no jobs, filed as finished); one the
- * client is in the middle of is set up and given out straight away. One that has not started is refused
- * — new business is a sale.
+ * A month whose dates are already over is recorded as history (filed as finished; the people who did
+ * it are saved by name, with no jobs — `historyTeam`), and joins the client's run on either side; one
+ * the client is in the middle of is set up and given out straight away. One that has not started is
+ * refused — new business is a sale.
  */
 export async function addNoSaleMonth(params: NoSaleMonthInput): Promise<MonthSetupResult> {
   const { seller, packageKey, platforms, setup, actor } = params;
@@ -691,7 +818,7 @@ export async function addNoSaleMonth(params: NoSaleMonthInput): Promise<MonthSet
   const name = setup.businessName.trim().replace(/\s+/g, " ");
   const phoneId = phoneLockId(phone);
   const ref = doc(collection(db, "smm_campaigns"));
-  const previous = await previousMonthOf(phoneId, cycle.startDate, ref.id);
+  const { previous, next } = await neighbourMonthsOf(phoneId, cycle, ref.id);
   const campaign = buildNoSaleCampaign(ref.id, {
     clientPhone: phone,
     clientPhoneId: phoneId,
@@ -710,6 +837,9 @@ export async function addNoSaleMonth(params: NoSaleMonthInput): Promise<MonthSet
     clipsPerVideo: setup.clipsPerVideo,
     pageLinks: cleanLinks(setup.pageLinks),
     renewalOf: previous,
+    // A history month keeps the names of who did its work, with no jobs (`historyTeam`); a running
+    // month's team is given out by `applyMonthSetup` below.
+    ...(history ? { team: historyTeam(setup.team) } : {}),
   }, actor);
 
   await setDoc(ref, {
@@ -733,6 +863,9 @@ export async function addNoSaleMonth(params: NoSaleMonthInput): Promise<MonthSet
 
   if (!history) return applyMonthSetup(ref.id, setup, actor, { existingAssignments: params.existingAssignments });
 
+  // An earlier month added in front of one already on the board joins the client's run.
+  await linkInFront(ref.id, campaign.monthNumber || 1, next, actor);
+
   await sendNotification({
     userId: seller.uid,
     type: "smm_month_setup",
@@ -747,6 +880,7 @@ export async function addNoSaleMonth(params: NoSaleMonthInput): Promise<MonthSet
     details: {
       campaignId: ref.id, businessName: name, startDate: cycle.startDate, endDate: cycle.endDate,
       history: true, noSale: true, sellerName: seller.name,
+      team: jobsByMember(historyTeam(setup.team)).map((m) => ({ uid: m.uid, name: m.name, tracks: m.tracks })),
     },
   });
   return { campaignId: ref.id, history: true, assign: null };

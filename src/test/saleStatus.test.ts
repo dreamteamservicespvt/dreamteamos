@@ -30,11 +30,10 @@ const order = (patch: Partial<Order> = {}): Order =>
   }) as unknown as Order;
 
 describe("what the chip says", () => {
-  it("holds a sale the member discounted past their authority", () => {
-    // No order exists at all for these — see services/orders.upsertOrderForSale.
-    const v = saleStatusView(sale(true), null, NOW);
-    expect(v.stage).toBe("withheld");
-    expect(v.label).toMatch(/sales admin/i);
+  it("never holds a sale the member discounted past their authority (2026-10-05)", () => {
+    // Its order is made at once now — see services/orders.upsertOrderForSale.
+    expect(saleStatusView(sale(true), null, NOW).stage).toBe("queued");
+    expect(saleStatusView(sale(true), order({ status: "assigned", assignedToName: "Kiran" }), NOW).stage).toBe("in_production");
   });
 
   /**
@@ -66,9 +65,9 @@ describe("what the chip says", () => {
     expect(saleStatusView(sale(), order({ status: "cancelled" }), NOW).stage).toBe("cancelled");
   });
 
-  /** A deleted order on an over-discounted sale is the withhold, not a cancellation. */
-  it("reads a cancelled order on an unapproved price as still withheld", () => {
-    expect(saleStatusView(sale(true), order({ status: "cancelled" }), NOW).stage).toBe("withheld");
+  /** A cancelled order on an over-discounted sale is a cancellation — the sales admin rejected it. */
+  it("reads a cancelled order on an unapproved price as cancelled", () => {
+    expect(saleStatusView(sale(true), order({ status: "cancelled" }), NOW).stage).toBe("cancelled");
   });
 });
 

@@ -78,8 +78,8 @@ hiring link), and hand-maintained social-media plans (SMM campaigns).
 1. **Lead → sale.** Sales admin distributes phone numbers; sales members call them, log the call
    status, and record a sale with the client's brief (`SaleForm`).
 2. **Sale → order.** Saving a sale creates an **Order** straight away (tech sees it before
-   approval, flagged `saleVerified:false`). Discounts over 10% hold the order back until the sales
-   admin approves. Sales admin verifies or rejects sales in **Sales Approvals**.
+   approval, flagged `saleVerified:false`) — since 2026-10-05 also with a discount over 10%, which only
+   the approval waits for. Sales admin verifies or rejects sales in **Sales Approvals**.
 3. **Order → work assignment.** Tech admin or team leader assigns the order (or creates a direct
    job) to a tech member. The member gets a 4-digit access code and a notification.
 4. **Production.** The member opens the job in **My Work** → the **AI Ads Platform** (Video Ad or
@@ -359,7 +359,7 @@ popups).
 listeners) → page.
 
 **Sale → tech:** Sales member `MyLeads` → `SaleForm` save → `leads.saleItems[]` update →
-`upsertOrderForSale` → (if discount within authority or approved) `orders` create
+`upsertOrderForSale` → (any discount, since 2026-10-05) `orders` create
 (`unassigned`, `saleVerified:false`) + `notifyTechSideOfNewOrder` + `ensureSaleOrderChat`
 (team-only room) + (SMM) `ensureCampaignForOrder`. Sales admin `SalesApprovals` → verify →
 `saleItems[i].verificationStatus = verified` → `upsertOrderForSale(saleVerified:true)` →

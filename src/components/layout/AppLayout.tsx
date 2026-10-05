@@ -26,6 +26,7 @@ const MandatoryAgreementGate = lazy(() => import("@/components/agreement/Mandato
 const UpdatePopup = lazy(() => import("@/components/layout/UpdatePopup"));
 const BirthdayGreeting = lazy(() => import("@/components/BirthdayGreeting"));
 const SmmRenewalPopup = lazy(() => import("@/components/smm/SmmRenewalPopup"));
+const SmmStatusCheckPopup = lazy(() => import("@/components/smm/SmmStatusCheckPopup"));
 import { registerBackButton } from "@/services/capacitor-plugins";
 import { isNative } from "@/utils/platform";
 import { EXTERNAL_CREATOR_ROUTES } from "@/utils/roleHelpers";
@@ -154,6 +155,9 @@ export default function AppLayout({ allowedRoles }: AppLayoutProps) {
         {/* The last three days before a social-media month's renewal date: a countdown and the
             month's work report for the salesperson who sold it, once a day. */}
         {user.role === "sales_member" && <SmmRenewalPopup />}
+        {/* 11 AM and 5 PM: everybody on a social-media month's team updates their posts (2026-10-05).
+            It decides for itself who holds a seat — see utils/smmStatusCheck. */}
+        {user.role.startsWith("tech_") && !user.externalCreator && <SmmStatusCheckPopup />}
         </Suspense>
       </div>
     </div>

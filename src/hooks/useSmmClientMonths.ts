@@ -7,7 +7,9 @@
  * rest of the client's months are history: read with one query when the calendar opens
  * (`fetchClientMonths`) and kept for a few minutes, so flipping between List and Calendar does not read
  * them again. A member's board already holds every month they can see, so it asks for no read at all
- * (`fetchHistory: false`).
+ * (`fetchHistory: false`). The kept read is dropped when a month is added for the client in this session
+ * (`forgetClientMonths`), or when a month on screen points to one the read does not hold (2026-10-05 —
+ * an earlier month listed in front of the current one stayed off its calendar for five minutes).
  *
  * Keyed on primitives (the client's key, the viewer's uid and role), never on objects — see the note in
  * useSmmCampaigns about re-subscribing on every snapshot.
@@ -19,10 +21,19 @@ import type { SmmCampaign } from "@/types/smm";
 
 /** How long a client's history read is reused within the session. */
 const HISTORY_TTL_MS = 5 * 60_000;
-const cache = new Map<string, { at: number; months: SmmCampaign[] }>();
+/** `links`: the month links (see below) the read was made for — so it is not repeated for the same ones. */
+const cache = new Map<string, { at: number; months: SmmCampaign[]; links: string }>();
 
 /** Test hook — the cache outlives a component, so a test starts it clean. */
 export function __clearClientMonthsCache() { cache.clear(); }
+
+/**
+ * Forget a client's months read earlier in the session — called when a month is added for them (Add SMM
+ * sale), so their calendar shows it at once instead of after the few minutes the read is kept for.
+ */
+export function forgetClientMonths(phoneId: string | null | undefined) {
+  if (phoneId) cache.delete(phoneId);
+}
 
 export function useSmmClientMonths({ clientKey, live, viewer, fetchHistory, keepId }: {
   /** `clientKeyOf` the client — their number, or `month:<id>` for a month with none. */
@@ -37,21 +48,33 @@ export function useSmmClientMonths({ clientKey, live, viewer, fetchHistory, keep
 }) {
   const phoneId = clientKey && !clientKey.startsWith("month:") ? clientKey : "";
   const wantsRead = fetchHistory && !!phoneId;
-  const [fetched, setFetched] = useState<SmmCampaign[] | null>(() => (wantsRead ? fresh(phoneId) : null));
-  const [loading, setLoading] = useState(wantsRead && !fresh(phoneId));
+  /*
+    The months this client's live months point to — the month before (`renewalOf`) and after
+    (`renewal.nextCampaignId`) — that are not live themselves, as one string. A kept read that holds none
+    of one was made before that month existed: an earlier month listed in front of this one (2026-10-05)
+    or a renewal, perhaps added by somebody else. Then the read is made again, once for these links.
+  */
+  const liveIds = live.filter((c) => clientKey && clientKeyOf(c) === clientKey).map((c) => c.id);
+  const links = [...new Set(
+    live.filter((c) => clientKey && clientKeyOf(c) === clientKey)
+      .flatMap((c) => [c.renewalOf, c.renewal?.nextCampaignId])
+      .filter((id): id is string => !!id && !liveIds.includes(id)),
+  )].sort().join(",");
+  const [fetched, setFetched] = useState<SmmCampaign[] | null>(() => (wantsRead ? fresh(phoneId, links) : null));
+  const [loading, setLoading] = useState(wantsRead && !fresh(phoneId, links));
   const [error, setError] = useState(false);
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!wantsRead) { setFetched(null); setLoading(false); setError(false); return; }
-    const hit = fresh(phoneId);
+    const hit = fresh(phoneId, links);
     if (hit) { setFetched(hit); setLoading(false); setError(false); return; }
     let cancelled = false;
     setLoading(true);
     setError(false);
     fetchClientMonths(phoneId)
       .then((months) => {
-        cache.set(phoneId, { at: Date.now(), months });
+        cache.set(phoneId, { at: Date.now(), months, links });
         if (!cancelled) { setFetched(months); setLoading(false); }
       })
       .catch((err) => {
@@ -59,7 +82,7 @@ export function useSmmClientMonths({ clientKey, live, viewer, fetchHistory, keep
         if (!cancelled) { setFetched(null); setError(true); setLoading(false); }
       });
     return () => { cancelled = true; };
-  }, [phoneId, wantsRead, attempt]);
+  }, [phoneId, wantsRead, attempt, links]);
 
   const uid = viewer?.uid;
   const role = viewer?.role;
@@ -79,7 +102,13 @@ export function useSmmClientMonths({ clientKey, live, viewer, fetchHistory, keep
   return { months, loading, error, retry };
 }
 
-function fresh(phoneId: string): SmmCampaign[] | null {
+/**
+ * A kept read still good for these links: not too old, and holding every month they point to — or made
+ * for exactly these links already (a link to a month the read cannot return must not re-read every time).
+ */
+function fresh(phoneId: string, links: string): SmmCampaign[] | null {
   const hit = phoneId ? cache.get(phoneId) : undefined;
-  return hit && Date.now() - hit.at < HISTORY_TTL_MS ? hit.months : null;
+  if (!hit || Date.now() - hit.at >= HISTORY_TTL_MS) return null;
+  const covered = links.split(",").filter(Boolean).every((id) => hit.months.some((c) => c.id === id));
+  return covered || hit.links === links ? hit.months : null;
 }

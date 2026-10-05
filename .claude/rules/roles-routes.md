@@ -42,7 +42,7 @@ tech admin). Filters like `u.createdBy === teamAdminUid` recur across pages.
 | `accounts_admin` (Accounts Admin) | Finance bookkeeping | main_admin | `/accounts/dashboard` | Accounts dashboard; revenue summary; daily expenses CRUD; salary management (edit `users.salary`, `salary_receipts`) | No `/smm`, no chat, no profile page (`getProfileRoute` → "") |
 | `tech_team_leader` (Tech Team Leader) | Supervises a tech team under a tech admin | tech_admin | `/team-leader/work-assign` | Orders queue (remove/restore, **not purge**); Work Assign; unassign/reassign; verify / send back; work reports; attendance and leave; HR centre (send agreements, **cannot delete** documents); activity history; Tools; **AI Accounts** (same as the tech admin); own profile/HR docs; SMM overseer; extend promises | No pricing UI on their Work Assign page; no payroll route; no dashboard |
 | `tech_member` (Tech Member) | Produces ads | tech_admin (or hiring link) | `/tech/dashboard` | Daily check-in/out (mandatory prompt); My Work (open job with access code, AI platform, submit, undo completion); Recent Ads; analytics; salary dashboard; SMM months they are on (worked from Social Media — their month job opens from the month's page, not My Work); bulk video slots assigned to them; extend promise on own job; team chat and meetings; profile, KYC, documents; **My AI Accounts** (own Flow accounts and credits; a video job asks for its Flow credits before it is marked complete) | Cannot assign work, including to themselves |
-| `sales_member` (Sales Executive) | Calls leads and sells | sales_admin (or hiring link) | `/sales/dashboard` | My Leads (claim numbers, call statuses, record/edit/delete sales, freeze sold numbers 1–7 days, dispute proof); client chats for own orders; My Clients (feedback, upsell); review tasks; performance; salary and settlements (request payout); leaderboard (**month view only**); scripts, training; activity history; SMM months they sold | Discounts over 10% need sales admin approval; sale edits locked once work is assigned (send update notes instead) |
+| `sales_member` (Sales Executive) | Calls leads and sells | sales_admin (or hiring link) | `/sales/dashboard` | My Leads (claim numbers, call statuses, record/edit/delete sales, freeze sold numbers 1–7 days, dispute proof); client chats for own orders; My Clients (feedback, upsell); review tasks; performance; salary and settlements (request payout); leaderboard (**month view only**); scripts, training; activity history; SMM months they sold, and their renewals and renewal money ("My Social Media" card) | Discounts over 10% need sales admin approval (the sale still reaches the tech side at once, since 2026-10-05); sale edits locked once work is assigned (send update notes instead) |
 
 **Flags (additive, not roles):**
 - `externalCreator: true` on a `tech_member`: navigation is only **Create Ad** + **My Profile**.
@@ -50,8 +50,9 @@ tech admin). Filters like `u.createdBy === teamAdminUid` recur across pages.
   payroll and reports. Their `ai_generations` are visible to the tech admin (`AdsHistoryModal`).
   Set by tech admin in My Team.
 - `smmLeader: true` — shown as **Social Media Team Lead** (2026-10-01): sees every SMM campaign, may
-  set up, assign and **delete** months (`utils/smmPlan.isSmmOverseer`, `canDeleteSmmCampaign`), and is
-  notified when a month is sold (`smm_new_month`). Keeps their normal role. Appointed by the tech admin
+  set up, assign and **delete** months (`utils/smmPlan.isSmmOverseer`, `canDeleteSmmCampaign`), since
+  2026-10-05 **add a month that had no sale** (`canAddNoSaleMonth` — but never record a sale,
+  `canRecordSmmSaleForSeller`), and is notified when a month is sold (`smm_new_month`). Keeps their normal role. Appointed by the tech admin
   or main admin in the Team Lead panel at the top of `/smm` (`SmmTeamLeadPanel`, `canAppointSmmLead`)
   or the megaphone toggle in My Team; both go through `services/smm.setSmmTeamLead` (notifies them).
 
@@ -118,9 +119,11 @@ legacy users without the field active.
 | Edit order progress counters (non-derived) | ✅ | ✅ | ✅ | track holder | | | |
 | See all SMM months | ✅ | ✅ | ✅ | smmLeader | ✅ | | |
 | Add SMM sale for a salesperson (`canRecordSmmSaleForSeller`) | ✅ | ✅ | ✅ | | | | |
-| Add an SMM month that had no sale — not counted (`canAddNoSaleMonth`) | ✅ | ✅ | ✅ | | | sees it, renews it | |
+| Add an SMM month that had no sale — not counted (`canAddNoSaleMonth`) | ✅ | ✅ | ✅ | smmLeader (2026-10-05) | | sees it, renews it | |
 | Set up / assign / edit an SMM month (`canSetUpSmm`) | ✅ | ✅ | ✅ | smmLeader | | | |
 | Renew an SMM month — as a sale (`canRenewSmm`) | | | | | | ✅ own month | |
+| Social Media → Money: company renewals in ₹ (`canSeeSmmMoney`, 2026-10-05) | ✅ | ✅ | | | ✅ | own card only | |
+| 11 AM / 5 PM "update your posts" popup (`SmmStatusCheckPopup`, 2026-10-05) | | if on a month's team | if on a month's team | if on a month's team | | | |
 | Delete an SMM month | ✅ | ✅ | ✅ (2026-10-03) | smmLeader | | | |
 | Appoint / remove the Social Media Team Lead | ✅ | ✅ | | | | | |
 | Edit an SMM month | overseer | overseer | overseer | if watcher | overseer | if seller/watcher | |

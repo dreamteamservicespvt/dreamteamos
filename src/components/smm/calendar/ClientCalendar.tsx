@@ -351,7 +351,8 @@ export default function ClientCalendar({
 
         {page.months.filter((m) => m.history).map((m) => (
           <p key={m.id} className="rounded-lg bg-info/10 px-3 py-1.5 text-xs text-foreground">
-            {m.name} was added after it ended — its posts were not tracked in the app.
+            {/* Since 2026-10-05 a past month's work can be filled in (posted, with the day it went up). */}
+            {m.name} was added after it ended — it shows the posts filled in since, each on the day it went up.
           </p>
         ))}
         {loading && (

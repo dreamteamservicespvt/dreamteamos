@@ -45,6 +45,8 @@ vi.mock("@/services/smm", () => ({
   fetchAssignableMembers: async () => [{ uid: "arjun", name: "Arjun" }, { uid: "divya", name: "Divya" }],
   remindSellerToRenew,
   closeEndedMonthsOnOpen: vi.fn(async () => 0),
+  healRenewalLinksOnOpen: vi.fn(async () => 0),
+  fetchMonthsEndingBetween: vi.fn(async () => []),
   fetchFinishedCampaigns: vi.fn(async () => []),
   fetchClientMonths,
   notifyRenewalsDueOnOpen: vi.fn(async () => undefined),
@@ -262,13 +264,41 @@ describe("Add SMM sale", () => {
     expect(setupSaleMonth).not.toHaveBeenCalled();
   });
 
-  it("does not offer a month with no sale to the Social Media Team Lead", async () => {
+  it("offers the Social Media Team Lead a month with no sale — and says who records a new sale (2026-10-05)", async () => {
+    // The owner's screenshot: the lead found a fresh number and got "No social media sale…" and nothing to press.
     findSmmSalesForPhone.mockResolvedValue([]);
     render(<MemoryRouter><SmmAddSaleDialog user={{ uid: "ravi", name: "Ravi", role: "tech_member", smmLeader: true } as never} onClose={vi.fn()} onCreated={vi.fn()} /></MemoryRouter>);
     fireEvent.change(screen.getByTestId("smm-add-sale-phone"), { target: { value: "98765 43210" } });
     fireEvent.click(screen.getByTestId("smm-add-sale-find"));
     await screen.findByTestId("smm-add-sale-none");
-    expect(screen.queryByTestId("smm-add-sale-no-sale")).toBeNull();
+    expect(screen.getByTestId("smm-add-sale-no-sale")).toBeTruthy();
+    expect(screen.queryByTestId("smm-add-sale-new")).toBeNull();
+    expect(screen.getByTestId("smm-add-sale-new-who").textContent).toMatch(/tech admin, the tech team leader or the main\s+admin/);
+  });
+
+  it("asks who DID a past month's work — saved by name, no job cards — and passes them on", async () => {
+    findSmmSalesForPhone.mockResolvedValue([]);
+    addNoSaleMonth.mockResolvedValue({ campaignId: "c_old", history: true, assign: null });
+    const onCreated = open();
+    fireEvent.click(await screen.findByTestId("smm-add-sale-no-sale"));
+    await waitFor(() => expect((screen.getByTestId("smm-no-sale-seller") as HTMLSelectElement).options.length).toBeGreaterThan(1));
+    fireEvent.change(screen.getByTestId("smm-no-sale-seller"), { target: { value: "anil" } });
+    fireEvent.change(screen.getByTestId("smm-setup-name"), { target: { value: "AIRAVATH" } });
+    const day = (n: number) => isoDay(new Date(Date.now() + n * 86_400_000));
+    fireEvent.change(screen.getByTestId("smm-setup-start"), { target: { value: day(-45) } });
+
+    expect(screen.getByTestId("smm-setup-history").textContent).toMatch(/Nobody gets a job card/);
+    expect(screen.getByTestId("smm-setup-team").textContent).toMatch(/Who did the work/);
+    expect(screen.getByTestId("smm-setup-team-help").textContent).toMatch(/No job cards/);
+    await waitFor(() => expect((screen.getByTestId("smm-setup-seat-creator") as HTMLSelectElement).options.length).toBeGreaterThan(1));
+    fireEvent.change(screen.getByTestId("smm-setup-all"), { target: { value: "divya" } });
+    fireEvent.click(screen.getByTestId("smm-no-sale-save"));
+
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith("c_old"));
+    const args = addNoSaleMonth.mock.calls[0][0];
+    expect(args.setup).toMatchObject({ businessName: "AIRAVATH", startDate: day(-45) });
+    expect(args.setup.team.creator.uid).toBe("divya");
+    expect(args.setup.team.publisher.uid).toBe("divya");
   });
 });
 

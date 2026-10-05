@@ -156,10 +156,10 @@ describe("Add Sale — social media month", () => {
     expect(final()).toBe("₹18,000");
   });
 
-  it("warns that a heavy bargain is held for the sales admin", () => {
+  it("says a heavy bargain goes to the tech team now and still needs the sales admin", () => {
     openSmmForm("Pro Package");
     fireEvent.change(screen.getByTestId("smm-price-input"), { target: { value: "15000" } });
-    expect(screen.getByText(/Held until your admin approves/)).toBeTruthy();
+    expect(screen.getByTestId("sale-discount-approval-banner").textContent).toMatch(/Sent to the tech team right away — your admin must approve/);
   });
 
   it("does not show the generic discount box as well — one discount, one place", () => {

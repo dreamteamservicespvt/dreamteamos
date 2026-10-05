@@ -13,7 +13,7 @@
  * The words and the colours come from `utils/saleStatus` rather than from here, so My Leads and My
  * Clients cannot describe the same sale two different ways. This is the rendering only.
  */
-import { Lock, Clock, AlertTriangle, ListChecks, Hourglass } from "lucide-react";
+import { Lock, Clock, AlertTriangle, ListChecks } from "lucide-react";
 import { saleStatusView } from "@/utils/saleStatus";
 import type { Order, SaleDetail } from "@/types";
 
@@ -42,7 +42,6 @@ export default function SaleStatusChip({ item, order, now, showProgress = true }
         title={v.countdown ? `${v.label} · ${v.countdown}` : v.label}
       >
         {v.delayed ? <AlertTriangle size={9} />
-          : v.stage === "withheld" ? <Hourglass size={9} />
           : v.stage === "queued" ? <Clock size={9} />
           : <Lock size={9} />}
         {v.label}

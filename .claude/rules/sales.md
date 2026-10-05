@@ -57,8 +57,11 @@ verifies (10% loyalty discount) → member uploads a feedback video.
 
 - **Numbers:** a claim reserves for 24h; takeover is allowed after that and freezes the old lead;
   a sale-freeze lasts 1–7 days; lock writes are transactions capped at 2 attempts.
-- **Discount authority:** a member may give up to **10%** alone. Beyond that, no order exists
-  until the sales admin approves (verifying the sale approves the discount). An earned discount
+- **Discount authority:** a member may give up to **10%** alone. Beyond that the sales admin approves
+  the discount (verifying the sale approves it). **Since 2026-10-05 (owner) the sale reaches the tech side
+  at once anyway** — its order is made at sale time with `saleVerified:false` ("Pending approval" on the
+  Orders queue); a rejected sale is cancelled as before. Sales held under the old rule get their order when a
+  sales admin opens Sales Approvals (`orders.releaseHeldSales`). An earned discount
   (Google review and/or referral) is worth **10%** and does not stack to 20%.
 - **Editing a sale** is locked once work is assigned; the seller sends update notes instead.
   Deleting the sale leaves assigned work in place with a `saleDeleted` banner.

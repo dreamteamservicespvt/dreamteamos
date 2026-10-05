@@ -164,14 +164,11 @@ export default function SaleForm({
   lead: Lead;
   updateLead: (id: string, data: Record<string, any>) => Promise<void>;
   /**
-   * Closed, and what happened.
-   *
-   * `heldForApproval` means the discount is past the member's own authority, so no order exists
-   * yet — see `upsertOrderForSale`. A caller that shows sales via their orders has nothing at all
-   * to display for such a sale, and must be told rather than left looking unchanged. A new sale
-   * also reports where it went (`leadId`, `itemIndex`, `item`), so a caller can carry on from it.
+   * Closed, and what happened. A new sale reports where it went (`leadId`, `itemIndex`, `item`), so
+   * a caller can carry on from it. (`heldForApproval` went on 2026-10-05: an over-discounted sale now
+   * reaches the tech side at once, so there is no held sale for a caller to explain.)
    */
-  onDone: (result?: { heldForApproval: boolean; leadId?: string; itemIndex?: number; item?: SaleDetail }) => void;
+  onDone: (result?: { leadId?: string; itemIndex?: number; item?: SaleDetail }) => void;
   /** Present when editing an existing sale rather than adding a new one. */
   editItem?: { index: number; item: SaleDetail };
   /**
@@ -1111,25 +1108,22 @@ export default function SaleForm({
     }
     setSaving(false);
     /*
-      What happened, in the terms the member needs.
-
-      An over-discounted sale is NOT with the tech team, and saying it is would have the member
-      promise the client a start date that is not going to happen.
+      What happened, in the terms the member needs. Every sale is with the tech team now
+      (2026-10-05); an over-discounted one also says its discount still needs the sales admin.
     */
-    const held = discount.needsApproval;
     const frozenNote = froze
       ? ` Client frozen for ${freezeDays} day${freezeDays > 1 ? "s" : ""}.`
       : "";
     toast({
-      title: held ? "Sale saved — waiting on your admin" : "Sale Added",
-      description: held
-        ? `${formatCurrency(finalAmount)} recorded. ${discount.totalPercent}% off needs your sales admin's approval before it goes to the tech team.${frozenNote}`
+      title: "Sale Added",
+      description: discount.needsApproval
+        ? `Sale of ${formatCurrency(finalAmount)} added & sent to the tech team. ${discount.totalPercent}% off still needs your sales admin's approval.${frozenNote}`
         : `Sale of ${formatCurrency(finalAmount)} added & sent to the tech team.${frozenNote}`,
     });
     // Staying open for the next service on the same client, rather than closing and making them
     // find the button again.
     if (opts.keepOpen) { resetForNextService(); return; }
-    onDone({ heldForApproval: held, leadId: lead.id, itemIndex: updatedItems.length - 1, item: newItem });
+    onDone({ leadId: lead.id, itemIndex: updatedItems.length - 1, item: newItem });
   };
 
   /**
@@ -1179,10 +1173,10 @@ export default function SaleForm({
           <Pencil size={12} /> Editing sale — every change is logged and sent to the tech team
         </div>
       ) : discount.needsApproval ? (
-        /* The promise this banner makes has to be true. Over the member's own limit the sale does
-           NOT go to the tech team, and telling them it does is how a client gets a start date. */
-        <div className="flex items-center gap-1.5 rounded-md border border-warning/40 bg-warning/10 p-2 text-xs text-warning">
-          <Lock size={12} /> Held until your admin approves the {discount.totalPercent}% discount
+        /* Over the member's own limit the sale still goes to the tech team at once (2026-10-05); the
+           discount alone waits for the sales admin, and the member should know it can be rejected. */
+        <div data-test="sale-discount-approval-banner" className="flex items-center gap-1.5 rounded-md border border-warning/40 bg-warning/10 p-2 text-xs text-warning">
+          <ExternalLink size={12} /> Sent to the tech team right away — your admin must approve the {discount.totalPercent}% discount
         </div>
       ) : (
         <div className="bg-warning/10 border border-warning/30 text-warning text-xs rounded-md p-2 flex items-center gap-1.5">
@@ -1688,10 +1682,9 @@ export default function SaleForm({
           {/*
             The authority line, said before they save rather than after.
 
-            A member may give MEMBER_DISCOUNT_LIMIT_PERCENT on their own; past that the sale is
-            recorded but held back from the tech team until the sales admin confirms the price.
-            Discovering that from a job that never arrived is how a client gets promised a delivery
-            date nobody is working towards.
+            A member may give MEMBER_DISCOUNT_LIMIT_PERCENT on their own; past that the sales admin has
+            to approve the discount. Since 2026-10-05 the sale goes to the tech team either way; what
+            waits is the approval — and a rejected sale is pulled back from the tech team.
           */}
           {manualDiscountAmount > 0 && (
             <p className={`text-[10.5px] leading-relaxed ${discount.needsApproval ? "text-warning" : "text-muted-foreground"}`}>
@@ -1699,8 +1692,8 @@ export default function SaleForm({
                 <>
                   <AlertTriangle size={10} className="mr-1 inline align-[-1px]" />
                   {discount.totalPercent}% off is past the {MEMBER_DISCOUNT_LIMIT_PERCENT}% you can give on your
-                  own. The sale is saved, but the tech team will not start it until your sales admin
-                  approves the price.
+                  own. The sale goes to the tech team now, and your sales admin must approve the
+                  discount — if they reject the sale, the work is stopped.
                 </>
               ) : (
                 <>{discount.totalPercent}% off — within the {MEMBER_DISCOUNT_LIMIT_PERCENT}% you can give on your own, so this goes straight to the tech team.</>

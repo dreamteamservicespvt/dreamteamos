@@ -215,27 +215,28 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ## 32. CURRENT PROJECT STATE (as of 2026-10-05)
 
-- Everything up to 2026-10-04 is committed (`main` @ `5021b3a`, clean at the start of 2026-10-05): the
-  2026-10-03 SMM work, the Drive step, the 2026-10-04 context split (core + `.claude/rules/` + history, every
-  line moved verbatim), the SMM client cards and Insights.
-- 2026-10-05 SMM client calendar (redrawn twice that day: now a normal calendar — ‹ month › + Today, sized by
-  its own width — three marks, every post on its upload date; also on the Report tab) and "Accounts it covers"
-  in setup (§31, `.claude/rules/smm.md`): complete in the working tree,
-  **not yet committed** (check `git status` — parallel sessions work in this tree).
-- 2026-10-05 Veo 3 prompt rebuild and its **dynamic pass** (§31, `.claude/rules/ai-ads.md` §17.2 step 6; every
-  clip moves, never a walk-back): complete in the working tree, **not yet committed** — `prompts/motion.ts`,
-  `prompts.ts`, `prompts/{characterAd,scenePlan,refine}.ts`, `geminiService.ts`, `utils/{scenePlan,veoRefine}.ts`,
-  `types/aiPlatform.ts`, `generation/{mission.ts,AIGuideSheet.tsx}` and ten tests.
+- Committed and pushed to `main` @ `c56b7cd` (2026-10-05 16:00): everything up to 2026-10-04 (the SMM work,
+  the Drive step, the context split, the client cards and Insights) and, from 2026-10-05, the SMM client
+  calendar (a normal calendar — ‹ month › + Today, three marks, every post on its upload date; also on the Report
+  tab), "Accounts it covers" in setup, and the Veo 3 prompt rebuild with its **dynamic pass** (§31,
+  `ai-ads.md` §17.2 step 6; every clip moves, never a walk-back).
+- 2026-10-05, complete in the working tree, **not yet committed** (check `git status` — parallel sessions work
+  in this tree): the wardrobe stylist (§31, `ai-ads.md` §17.2 step 5); the Kids dressed for the ad
+  (`dressKids`, the stylist's fallback); and an old client's earlier SMM months (the Team Lead adds them; a
+  history month keeps its people, no jobs, and is filled in without the approval step; they join the client's
+  run — §31, `smm.md`); and (session dts-os-ba) a deleted renewal sale un-renews its month, over-10% discounts
+  no longer hold a sale back from the tech side, the salesperson's renewal money card, Social Media → Money for
+  the admins, and the 11 AM / 5 PM post-status popup (§31, `smm.md`, `sales.md`).
 - `main` = the merge of this machine's `346c7f0` into origin/main `1a090f9` (PR #1: the six AdGen
   fixes and AI Accounts; PR #2: the SMM delete / team lead / extra-work change), resolved to
   origin/main's implementation (§31, 2026-10-02) and pushed.
-- `npm run build` ✅ (main chunk ≈457 KB, vendor-firebase ≈665 KB, geminiService chunk ≈803 KB; AI
+- `npm run build` ✅ (main chunk ≈457 KB, vendor-firebase ≈665 KB, geminiService chunk ≈828 KB; AI
   Accounts adds lazy `AiAccounts` ≈14 KB and `MyAiAccounts` ≈9 KB pages).
-- `npx vitest run` ✅ 197 files, 3073 tests, all pass (2026-10-05, after the calendar, the Veo prompt
-  rebuild and its dynamic pass). Under heavy parallel load a few UI tests can time out; they pass when re-run alone.
+- `npx vitest run` ✅ 205 files, 3153 tests, all pass (2026-10-05, after the wardrobe stylist, the Kids'
+  outfits, the SMM earlier months, and the renewal / discount / Money / status-popup work). Under heavy parallel load a few UI tests can time out; they pass when re-run alone.
 - `npx tsc -p tsconfig.check.json --noEmit` → 1 known error (VideoCallManager).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
-- Most recent work: the Veo dynamic pass (every clip a moving commercial shot, never a walk-back, 2026-10-05) after the Veo 3 video-prompt rebuild (short motion-first prompts, the same day) and the SMM client calendar and "Accounts it covers" in setup (2026-10-05); before them one clear card per SMM client (2026-10-04), after the Overview dashboard (now Insights); before them the SMM month that had no sale (not counted; renewed as a sale) and the month
+- Most recent work: SMM renewals kept true + renewal money (card, Money tab) + the post-status popup, and sales over 10% off reaching the tech side at once (2026-10-05); the SMM earlier months and the Kids dressed for the ad, beside the wardrobe stylist (2026-10-05), after the Veo dynamic pass (every clip a moving commercial shot, never a walk-back, 2026-10-05) after the Veo 3 video-prompt rebuild (short motion-first prompts, the same day) and the SMM client calendar and "Accounts it covers" in setup (2026-10-05); before them one clear card per SMM client (2026-10-04), after the Overview dashboard (now Insights); before them the SMM month that had no sale (not counted; renewed as a sale) and the month
   deadline fixes, the renewal countdown popup; before them SMM — every month is a sale, Add SMM sale,
   setup with clips per video, renewal by the salesperson, team-leader delete, the visual board
   (2026-10-03); before it the six AdGen fixes (frame-bounded video, duo heights, background plates, cast
@@ -247,7 +248,8 @@ errors:** done means every listed item is fully resolved with no build, console 
   Grok passwords); move secrets out of source; authenticate `/api/send-notification`; generate a few
   clips in Flow (Frames to Video) from the dynamic-pass prompts — a single presenter, a human duo, Motu &
   Patlu (watch Patlu's height), a client photo — and compare each with the old prompt on the same frame: no
-  Veo video has been made from them yet.
+  Veo video has been made from them yet; make the frames of a duo ad with a logo and check that the styled
+  outfits stay identical in every clip.
 
 ---
 
@@ -274,7 +276,7 @@ users with the same `createdBy`. Guard is `AppLayout allowedRoles` in `App.tsx`;
 `utils/roleHelpers.ts`.
 
 **Permissions.** Enforced in the UI plus a few server checks. Firestore rules are coarse and were
-unpublished as of 2026-08 [NOT CONFIRMED now]. Key rules: >10% discount needs sales admin; only
+unpublished as of 2026-08 [NOT CONFIRMED now]. Key rules: >10% discount needs sales admin approval (the sale still reaches tech at once); only
 tech admin purges orders; members never assign; one promise extension; feedback before upsell;
 SMM posting needs client approval.
 
@@ -303,7 +305,8 @@ dolly, arc; **never backward** — no walk-back, no pull-out), inside what its f
 five-part Veo prompt that never describes the frame; most clips walk; every pair (Motu & Patlu included)
 walks only together, side by side, filmed sideways at one distance; deities never walk; a client photo
 gets only a push-in or a still camera; frames are caught mid-movement; never a goodbye wave. Client photos are background
-plates, invented people get a cast sheet, and the last clip says the verified address (§17.2). "Input Final Script" on row 4 rewrites 5 · 6 · 7 from a pasted script (`FinalScriptPanel`). Poster mode → `generatePosterConcepts`. Cinematic Ads (tech admin) is a separate
+plates, invented people get a cast sheet — dressed by a wardrobe stylist that sees the logo, inside the ordered
+attire, never two alike — and the last clip says the verified address (§17.2). "Input Final Script" on row 4 rewrites 5 · 6 · 7 from a pasted script (`FinalScriptPanel`). Poster mode → `generatePosterConcepts`. Cinematic Ads (tech admin) is a separate
 7-step, project-persisted pipeline. All prompts are in `services/prompts.ts` +
 `services/prompts/*`. **`aiadsdts/` is dead; never edit it.**
 

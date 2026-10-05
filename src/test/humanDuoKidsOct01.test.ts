@@ -207,19 +207,22 @@ describe("the Kids category — two real children", () => {
   });
 
   it("casts children of 9 and 10, child-sized, in a child's outfit", () => {
+    // Since 2026-10-05 the Kids are dressed for the ad (kidsWardrobeOct05.test): ethnic wear stays ethnic.
     const sheet = castSheetFor(pack("kids_duo_mixed"), { attireType: "traditional", seed: "Happy Kids Store" });
-    expect(sheet[0].description).toMatch(/^a real Indian girl of about 9, child-sized, with .+pattu langa/);
-    expect(sheet[1].description).toMatch(/^a real Indian boy of about 10, child-sized, with .+kurta with a white pyjama/);
+    expect(sheet[0].description).toMatch(/^a real Indian girl of about 9, child-sized, with .+(pattu langa|lehenga|anarkali)/);
+    expect(sheet[1].description).toMatch(/^a real Indian boy of about 10, child-sized, with .+kurta/);
     expect(castSheetBlock(sheet)).toContain("THE SAME TWO CHILDREN IN EVERY CLIP");
+    // Two boys are dressed alike in kind but never identically.
     const smart = castSheetFor(pack("kids_duo_boys"), { attireType: "shirt_pant", seed: "x" });
-    expect(smart.every((m) => /half-sleeve shirt/.test(m.description))).toBe(true);
+    expect(smart[0].outfit).not.toBe(smart[1].outfit);
+    expect(smart.every((m) => !/suit|blazer|saree/i.test(m.description))).toBe(true);
   });
 
   it("offers a child's attire, in a child's words, on every form", () => {
     expect(attireOptionsFor("kids_duo_boys", ModelGender.MALE)).toEqual(KIDS_ATTIRE);
     expect(attireOptionsFor("kids_duo_mixed", ModelGender.FEMALE)).toEqual([AttireType.TRADITIONAL, AttireType.SHIRT_PANT, AttireType.CUSTOM]);
     expect(attireOptionLabel(AttireType.TRADITIONAL, "kids_duo_girls")).toBe("Traditional (Ethnic wear)");
-    expect(attireOptionLabel(AttireType.SHIRT_PANT, "kids_duo_boys")).toBe("Smart casual");
+    expect(attireOptionLabel(AttireType.SHIRT_PANT, "kids_duo_boys")).toBe("Matches the ad");
     expect(attireOptionLabel(AttireType.TRADITIONAL, "human_duo_female")).toBe("Traditional (Designer Saree)");
     expect(attireLabel(AttireType.TRADITIONAL, "", "kids_duo_mixed")).toBe("Traditional (Ethnic wear)");
     expect(attireLabel(AttireType.CUSTOM, "school uniforms", "kids_duo_mixed")).toBe("school uniforms");

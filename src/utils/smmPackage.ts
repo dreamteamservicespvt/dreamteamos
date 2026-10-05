@@ -763,11 +763,19 @@ export function cyclesOverlap(a: SmmCycle, b: SmmCycle): boolean {
 }
 
 /**
- * Add a no-sale month: the tech admin, team leader or main admin — the people who also record a sale
- * for a salesperson. Deciding that a client's month counts in nobody's figures is theirs; the Social
- * Media Team Lead runs months but does not make that call.
+ * Add a no-sale month: the tech admin, team leader or main admin — and, since 2026-10-05, the Social
+ * Media Team Lead.
+ *
+ * ── Why the Team Lead now may ──────────────────────────────────────────────────────────────────
+ * The lead is the one listing an old client's earlier months and the work done in them, and "Add SMM
+ * sale" is on their board; with this kept to the three admins, a lead who looked a number up got "No
+ * social media sale has been recorded" and nothing to press (owner, 2026-10-05). A no-sale month has
+ * no money in it — amount 0, nobody's revenue or commission — and its clash rules (noSaleMonthClash)
+ * still stop it from standing in for a recorded sale or a renewal. Recording a NEW sale, which does
+ * carry money and commission, stays with the admins (`canRecordSmmSaleForSeller`).
  */
 export function canAddNoSaleMonth(user: Viewer): boolean {
+  if (user?.smmLeader) return true;
   return canRecordSmmSaleForSeller(user);
 }
 

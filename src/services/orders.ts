@@ -22,7 +22,7 @@ import {
 } from "@/services/smm";
 import { normalizePhone, phoneLockId } from "@/utils/phone";
 import { isAdCategory, productionCategory, categoryLabel as serviceCategoryLabel } from "@/utils/serviceCatalog";
-import { releasedToTech } from "@/utils/saleDiscount";
+import { discountAwaitingApproval } from "@/utils/saleDiscount";
 import { promiseDueMs, deadlineState, canExtendPromise, extendPromise } from "@/utils/promiseSla";
 import { initialProgress, isProgressComplete, isTrackComplete, TRACK_FIELDS } from "@/utils/orderProgress";
 import { penaltyAmount, totalPenalties } from "@/utils/penalty";
@@ -133,48 +133,15 @@ export async function upsertOrderForSale(params: {
   const announce = params.announce !== false
     && !(item.category === "social_media_management" && item.smm?.renewalOf);
 
-  /**
-   * A price nobody has agreed does not reach the people who build against it.
-   *
-   * A sales member may take 10% off on their own; past that the sales admin has to confirm it
-   * first. Until they do there is no order at all — not a hidden one, not a badged one — because
-   * the tech team's own screens are built to show them work they can start, and work that starts
-   * cannot be un-started. The sale itself is recorded and visible on both sales screens throughout;
-   * only the handover waits. Approving it (which happens as part of verifying the sale) calls this
-   * again and the order appears then.
-   */
-  if (!releasedToTech(item)) {
-    /*
-      An order that already exists and has now become over-discounted — the member edited a sale
-      after it went out — is cancelled rather than left standing at a price that is no longer the
-      agreed one. Re-approval brings it back through the normal reactivate path below.
-    */
-    await cancelOrderForSale({ leadId: lead.id, item, itemIndex }).catch(() => {});
-
-    /*
-      The chat still opens, even though the order does not.
-
-      Withholding the ORDER is about not handing the tech team work at a price nobody has agreed.
-      It was never meant to take away the place the client's brief goes — and this is exactly when
-      the client is most talkative, because the price is still being settled. The room is team-only
-      until somebody is assigned (`clientReady`), so opening it exposes nothing to the customer and
-      puts nothing in the tech queue; it just means the photos and the tagline have somewhere to
-      land instead of being re-typed later. When the admin approves the price, the order appears
-      and attaches to this same room.
-    */
-    await ensureSaleOrderChat({
-      orderId: orderDocId(lead.id, item, itemIndex),
-      category: item.category,
-      businessName: item.requirement?.businessName?.trim() || lead.realName || lead.displayName || "",
-      clientName: lead.realName || lead.displayName || "",
-      clientPhone: normalizePhone(lead.phone),
-      soldByUid: lead.assignedTo,
-      soldByName,
-      salesAdminUid: salesAdminId,
-    }).catch(() => { /* the sale is recorded either way */ });
-    return;
-  }
-
+  /*
+    ── A discount over the member's 10% no longer holds the order back (2026-10-05, owner) ──────
+    Until today a sale with more than 10% off had NO order until the sales admin approved the price,
+    so the client waited on an approval queue before anybody could start. The owner's rule now: every
+    sale reaches the tech side the moment it is recorded, discount or not. The approval itself is
+    unchanged — the sale stays pending in Sales Approvals with its "over the limit" badge, commission
+    still counts only verified sales, and a sale the sales admin rejects is pulled from the queue as
+    any rejected sale is (`cancelOrderForSale`, which flags work already out with a member).
+  */
   try {
     const id = orderDocId(lead.id, item, itemIndex);
     const ref = doc(db, "orders", id);
@@ -351,6 +318,40 @@ export async function upsertOrderForSale(params: {
 }
 
 /**
+ * Hand the tech side the sales an older rule held back (2026-10-05).
+ *
+ * Until today a sale with more than the member's 10% off got no order until the sales admin approved
+ * it. The rule changed (see `upsertOrderForSale`), but the sales recorded under the old one still have
+ * no order and would only get one when somebody approves them — which is exactly the wait the owner
+ * removed. So when a sales admin opens Sales Approvals, each pending sale whose discount still awaits
+ * approval and has no order yet gets one now, as at sale time (`saleVerified: false`, the tech side's
+ * "Pending approval" chip). One read per such sale; a sale that already has an order is left alone.
+ * Never throws. Returns how many orders it made.
+ */
+export async function releaseHeldSales(
+  leads: Lead[],
+  soldByNameOf: (uid: string) => string,
+): Promise<number> {
+  let released = 0;
+  for (const lead of leads) {
+    const items = lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
+    for (let i = 0; i < items.length; i += 1) {
+      const item = items[i];
+      if (item.verificationStatus !== "pending" || !discountAwaitingApproval(item)) continue;
+      try {
+        const snap = await getDoc(doc(db, "orders", orderDocId(lead.id, item, i)));
+        if (snap.exists()) continue;
+        await upsertOrderForSale({ lead, item, itemIndex: i, soldByName: soldByNameOf(lead.assignedTo), saleVerified: false });
+        released += 1;
+      } catch (err) {
+        console.warn("[orders] releaseHeldSales:", err);
+      }
+    }
+  }
+  return released;
+}
+
+/**
  * Append a sales member's update note to an assigned order and tell the people doing the work.
  *
  * Once an order is assigned, work has started — the sale can no longer be edited or deleted freely,
@@ -411,9 +412,10 @@ export async function cancelOrderForSale(params: {
     if (order.deleted || order.status === "deleted" || order.status === "cancelled") return;
 
     // Nothing has started yet: the order can simply go.
+    // `saleWithdrawn`: a renewal month going with its sale un-renews the month before it (2026-10-05).
     if (order.status === "unassigned") {
       await deleteDoc(ref);
-      await deleteCampaignsForOrders([id]);
+      await deleteCampaignsForOrders([id], { saleWithdrawn: true });
       return;
     }
 
@@ -426,8 +428,8 @@ export async function cancelOrderForSale(params: {
     });
 
     // A cancelled order is a dead job, so its month comes off everybody's board too. Reversible:
-    // re-approving the sale runs `upsertOrderForSale`, which revives both.
-    await setCampaignRemovedForOrders([id], true);
+    // re-approving the sale runs `upsertOrderForSale`, which revives both (and re-links a renewal).
+    await setCampaignRemovedForOrders([id], true, { saleWithdrawn: true });
 
     if (order.workAssignmentId && deletedByName) {
       try {

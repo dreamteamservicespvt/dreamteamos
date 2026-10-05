@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   EARNED_DISCOUNT_PERCENT, MEMBER_DISCOUNT_LIMIT_PERCENT, discountBreakdown, discountExplanation,
-  earnedDiscountPercent, earnedReasons, releasedToTech,
+  earnedDiscountPercent, earnedReasons, discountAwaitingApproval,
 } from "@/utils/saleDiscount";
 
 /**
@@ -103,25 +103,20 @@ describe("who is allowed to give it", () => {
   });
 });
 
-describe("whether the tech team may start", () => {
-  it("releases a sale nobody had to approve", () => {
-    expect(releasedToTech({})).toBe(true);
-    expect(releasedToTech({ discountNeedsApproval: false })).toBe(true);
+describe("whether the discount still waits for the sales admin (it no longer holds the sale back, 2026-10-05)", () => {
+  it("is false for a sale nobody has to approve", () => {
+    expect(discountAwaitingApproval({})).toBe(false);
+    expect(discountAwaitingApproval({ discountNeedsApproval: false })).toBe(false);
   });
 
-  it("holds one that is waiting on the sales admin", () => {
-    // The work is the expensive part and it cannot be un-made, so it does not start against a
-    // price nobody has agreed.
-    expect(releasedToTech({ discountNeedsApproval: true })).toBe(false);
-    expect(releasedToTech({ discountNeedsApproval: true, discountApproval: "pending" })).toBe(false);
+  it("is true while the sales admin has not approved it", () => {
+    expect(discountAwaitingApproval({ discountNeedsApproval: true })).toBe(true);
+    expect(discountAwaitingApproval({ discountNeedsApproval: true, discountApproval: "pending" })).toBe(true);
   });
 
-  it("keeps holding one the sales admin turned down", () => {
-    expect(releasedToTech({ discountNeedsApproval: true, discountApproval: "rejected" })).toBe(false);
-  });
-
-  it("releases it the moment the sales admin agrees the price", () => {
-    expect(releasedToTech({ discountNeedsApproval: true, discountApproval: "approved" })).toBe(true);
+  it("is false once approved, or once the sale was rejected", () => {
+    expect(discountAwaitingApproval({ discountNeedsApproval: true, discountApproval: "approved" })).toBe(false);
+    expect(discountAwaitingApproval({ discountNeedsApproval: true, verificationStatus: "rejected" })).toBe(false);
   });
 });
 

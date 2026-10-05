@@ -19,6 +19,9 @@ type Call = { sys: string; user: string; json: boolean; images: number };
 const calls: Call[] = [];
 /** How the fake answers the script writer and the clip-level repair, per test. */
 let script: { writer?: string; edit?: (user: string) => string; dialogue?: string } = { writer: "" };
+/** What the fake extraction reads off the business, per test (Sharma Electronics unless a test says otherwise). */
+const SHARMA = { businessName: "Sharma Electronics", businessType: "electronics store", services: ["TVs", "washing machines"] };
+let extracted: Record<string, unknown> = SHARMA;
 
 const FRAME_REPLY = (n: number) => Array.from({ length: n }, (_, i) =>
   `A photoreal frame for clip ${i + 1}: the cast stands inside the business beside the real counter, shelves of stock behind, soft daylight.`).join("\n###CLIP###\n");
@@ -35,7 +38,7 @@ vi.mock("@google/genai", () => ({
         calls.push({ sys, user, json, images });
         const clips = Number((user.match(/Generate (\d+)(?: unique)? Main Frame image prompts/) || [])[1] || 0);
         if (/extract the following business information/i.test(sys)) {
-          return { text: JSON.stringify({ businessName: "Sharma Electronics", businessType: "electronics store", services: ["TVs", "washing machines"] }) };
+          return { text: JSON.stringify(extracted) };
         }
         if (/location scout/i.test(sys)) {
           return { text: JSON.stringify([{ index: 0, zone: "billing counter", shows: "glass counter and TVs", lighting: "tube light", usable: true }]) };
@@ -63,7 +66,7 @@ beforeAll(async () => {
   for (const level of ["log", "warn", "info", "error"] as const) vi.spyOn(console, level).mockImplementation(() => {});
   gemini = await import("@/services/geminiService");
 });
-beforeEach(() => { calls.length = 0; script = { writer: "" }; });
+beforeEach(() => { calls.length = 0; script = { writer: "" }; extracted = SHARMA; });
 
 const noFiles = (): any => ({ logo: null, visitingCard: [], storeImage: [], productImages: [], flyersPosters: [], voiceRecording: [], textInstructionsFile: [] });
 const form = (over: Record<string, unknown> = {}): any => ({
@@ -229,6 +232,39 @@ describe("a human duo is one fixed pair of people (problem 1)", () => {
     expect(out.mainFramePrompts[1]).toContain("COMPOSITION FOR MOTION: Walk, stop and explain (");
     expect(out.veoPrompts[1]).toContain("both take a few unhurried steps side by side across the floor and stop together");
     expect(out.veoPrompts[1]).toContain("Slow lateral dolly two-shot at eye level, the camera gliding sideways past them at one distance");
+  });
+});
+
+/**
+ * 2026-10-05 — the Kids are dressed for the ad (utils/castSheet `dressKids`), not in one fixed outfit per
+ * attire choice: a school's children wear its uniform on the cast sheet, in the frame writer's WARDROBE
+ * line (which once said "a neat knee-length smart dress" whatever the sheet said) and by name in the video.
+ */
+describe("the Kids are dressed for the ad", () => {
+  it("puts a school's children in its uniform — the cast sheet, the WARDROBE line and the video agree", async () => {
+    script = {
+      dialogue: [
+        "0-8|girl: Have you seen our new school library today?",
+        "0-8|boy: Yes, every class here has smart boards too.",
+        "8-16|girl: Admissions are open now for the new year.",
+        "8-16|boy: Come and visit our school with your parents.",
+      ].join("\n"),
+    };
+    extracted = { businessName: "Sri Chaitanya School", businessType: "school", services: ["classes 1 to 10"] };
+    const out = await run(form({
+      characterPack: "kids_duo_mixed", attireType: "shirt_pant",
+      textInstructions: "Sri Chaitanya School, Kakinada — admissions open for classes 1 to 10.",
+    }));
+    const frameCall = calls.find((c) => /Generate \d+ Main Frame image prompts/.test(c.user))!;
+    const sheet = out.mainFramePrompts[0].slice(out.mainFramePrompts[0].indexOf("CAST SHEET"));
+    expect(sheet).toContain("CAST SHEET — THE SAME TWO CHILDREN IN EVERY CLIP");
+    const left = (sheet.match(/• LEFT — ([^:]+):/) || [])[1];
+    const right = (sheet.match(/• RIGHT — ([^:]+):/) || [])[1];
+    expect(left).toMatch(/^the girl in the .+ school uniform$/);
+    expect(right).toMatch(/^the boy in the .+ school uniform$/);
+    expect(frameCall.sys).toMatch(/WARDROBE \(as ordered[^\n]*\): the girl on the left wears a neat school uniform/);
+    expect(frameCall.sys).not.toContain("smart dress");
+    for (const prompt of out.veoPrompts) expect(prompt).toContain(`— ${left} on the left and ${right} on the right`);
   });
 });
 

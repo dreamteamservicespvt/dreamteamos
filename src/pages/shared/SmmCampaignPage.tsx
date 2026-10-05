@@ -23,8 +23,8 @@ import {
 import { useAuthStore } from "@/store/authStore";
 import { useSmmCampaign } from "@/hooks/useSmmCampaigns";
 import {
-  deleteCampaign, fetchAssignableMembers, fetchCampaign, moveUnpostedToMonth, remindSellerToRenew, setRenewal,
-  undoDeleteCampaign,
+  deleteCampaign, fetchAssignableMembers, fetchCampaign, healRenewalLinksOnOpen, moveUnpostedToMonth, remindSellerToRenew,
+  setRenewal, undoDeleteCampaign,
 } from "@/services/smm";
 import { renameMonth } from "@/services/smmSetup";
 import { useConfirm } from "@/hooks/useConfirm";
@@ -40,6 +40,7 @@ import {
   isNoSaleMonth, monthLabel, needsSetup, renewalDue, sellerLabelOf, videoLengthLabel,
 } from "@/utils/smmPackage";
 import { monthGlance } from "@/utils/smmGlance";
+import { isGoneMonth } from "@/utils/smmRenewalLink";
 import { orderChatLink } from "@/services/orderChat";
 import SmmContentTable from "@/components/smm/SmmContentTable";
 import SmmAdsPanel from "@/components/smm/SmmAdsPanel";
@@ -172,6 +173,28 @@ export default function SmmCampaignPage() {
     return () => { cancelled = true; };
   }, [renewalOf]);
 
+  /*
+    "Renewed — the next month is set" only while that next month is there (2026-10-05). The next month
+    is read once. Gone because its renewal sale was withdrawn (deleted before the fix): the link is
+    repaired and the live month reads as not renewed. Gone because the tech side took it off the board
+    while the sale stands: the month stays renewed and only loses its dead Next month link.
+  */
+  const linkedNextId = campaign?.renewal?.nextCampaignId || "";
+  const [nextGone, setNextGone] = useState(false);
+  useEffect(() => {
+    setNextGone(false);
+    if (!campaign || !linkedNextId) return;
+    let cancelled = false;
+    fetchCampaign(linkedNextId)
+      .then((next) => {
+        if (cancelled || !isGoneMonth(next)) return;
+        setNextGone(true);
+        healRenewalLinksOnOpen([campaign]).catch(() => undefined);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [campaign?.id, linkedNextId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // The dialog reads the live item rather than a copy, so a change made in it is visible the
   // instant it is saved instead of on the next open.
   const item = useMemo(
@@ -206,8 +229,9 @@ export default function SmmCampaignPage() {
   const ended = cyclePhase(campaign.cycle, today) === "ended";
   const nextId = campaign.renewal?.nextCampaignId || "";
   const leftover = unpostedOf(previous);
-  // Offered once the month before has ended — its pieces are its own until then.
-  const canCarry = canSetUp && !!previous && leftover.length > 0
+  // Offered once the month before has ended — its pieces are its own until then. Never from a history
+  // month: its rows nobody filled in are a record left blank, not work still owed (2026-10-05).
+  const canCarry = canSetUp && !!previous && !previous.history && leftover.length > 0
     && (previous.status !== "active" || cyclePhase(previous.cycle, today) === "ended");
   const pageLinks = SMM_PLATFORMS.filter((p) => campaign.pageLinks?.[p.key]?.trim());
 
@@ -370,10 +394,11 @@ export default function SmmCampaignPage() {
                 <MessageSquare size={13} /> Their chat
               </a>
             )}
-            {canSetUp && campaign.status === "active" && !campaign.history && (
+            {/* A history month is edited too (2026-10-05) — its record and who did it, never jobs. */}
+            {canSetUp && (campaign.status === "active" || campaign.history) && (
               <button data-test="smm-page-setup" onClick={() => setSettingUp(true)}
                 className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-primary/50 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/10">
-                <Settings2 size={13} /> {campaign.setupAt || !setupDue ? "Edit setup" : "Set up & assign"}
+                <Settings2 size={13} /> {campaign.history || campaign.setupAt || !setupDue ? "Edit setup" : "Set up & assign"}
               </button>
             )}
             {canDelete && (
@@ -407,7 +432,10 @@ export default function SmmCampaignPage() {
           </div>
           <MonthGlance glance={glance} layout="wide" />
           {campaign.history && (
-            <p className="mt-3 text-xs text-muted-foreground">Recorded after the month ended — its delivery was not tracked here.</p>
+            <p data-test="smm-page-history-note" className="mt-3 text-xs text-muted-foreground">
+              Recorded after the month ended — its delivery was not tracked here.
+              {canEdit && " Fill in what was made: open each post on the Content tab, give it the day it went up, and mark it Posted — no client approval is needed for a past month."}
+            </p>
           )}
         </div>
 
@@ -461,18 +489,21 @@ export default function SmmCampaignPage() {
               <ArrowLeft size={12} /> {previous ? monthLabel(previous.cycle.startDate) : "Previous month"}
             </Link>
           )}
-          <span className="min-w-0 flex-1 text-muted-foreground">
+          {/* Keeps room for its sentence; the buttons wrap under it on a phone. */}
+          <span className="min-w-[12rem] flex-1 text-muted-foreground">
             {nextId
-              ? <>Renewed{campaign.renewal?.byName ? ` by ${campaign.renewal.byName}` : ""} — the next month is set.</>
+              ? <>Renewed{campaign.renewal?.byName ? ` by ${campaign.renewal.byName}` : ""} — {nextGone ? "its next month was taken off the board." : "the next month is set."}</>
               : campaign.renewal?.state === "lost"
                 ? "Not renewing."
                 : renewDue
                   ? (ended
                     ? <>The month has ended without a renewal decision.</>
-                    : <>Renewal due — {campaign.soldByName} renews it by recording the sale.</>)
+                    : canRenew
+                      ? <>Renewal due — renew it by recording the sale.</>
+                      : <>Renewal due — {campaign.soldByName} renews it by recording the sale.</>)
                   : <>Month {monthNo} of this client.</>}
           </span>
-          {nextId && (
+          {nextId && !nextGone && (
             <Link to={`/smm/${nextId}`} data-test="smm-page-next"
               className="inline-flex h-8 items-center gap-1 rounded-lg bg-success/15 px-2.5 font-medium text-success hover:bg-success/25">
               Next month <ArrowRight size={12} />

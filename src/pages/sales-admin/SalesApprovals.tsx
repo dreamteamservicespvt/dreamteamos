@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { updateDoc, doc, serverTimestamp, Timestamp } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { fetchTeamMembers, subscribeTeamLeads } from "@/services/teamLeads";
 import { sendNotification } from "@/services/notifications";
 import { logActivity } from "@/services/activityLog";
-import { upsertOrderForSale, cancelOrderForSale } from "@/services/orders";
+import { upsertOrderForSale, cancelOrderForSale, releaseHeldSales } from "@/services/orders";
 import { useAuthStore } from "@/store/authStore";
 import { formatCurrency, formatDuration } from "@/utils/formatters";
 import { discountEditLabel, discountSummary } from "@/utils/bulkDiscount";
@@ -87,6 +87,18 @@ export default function SalesApprovals() {
     }).catch(() => setLoading(false));
     return () => { cancelled = true; unsubLeads?.(); };
   }, [currentUser?.uid]);
+
+  /*
+    Sales recorded before 2026-10-05 with a discount over the member's limit had no order (the old
+    rule held them until approval). Now every sale reaches the tech side at once, so those get their
+    order the first time this page has the team's leads — once per visit.
+  */
+  const released = useRef(false);
+  useEffect(() => {
+    if (loading || released.current || leads.length === 0 || members.length === 0) return;
+    released.current = true;
+    releaseHeldSales(leads, (uid) => members.find((m) => m.uid === uid)?.name || "Salesperson").catch(() => 0);
+  }, [loading, leads, members]);
 
   // Clear selections when tab changes
   useEffect(() => { setSelectedKeys(new Set()); }, [tab]);

@@ -720,9 +720,6 @@ function SaleModal({ title, category, lead, error, updateLead, onClose }: {
   updateLead: (id: string, data: Record<string, unknown>) => Promise<void>;
   onClose: () => void;
 }) {
-  /** Set once the sale saved but its price is waiting on the sales admin — see the render. */
-  const [held, setHeld] = useState(false);
-
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
@@ -752,36 +749,13 @@ function SaleModal({ title, category, lead, error, updateLead, onClose }: {
             <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" /> Opening this client's lead…
             </div>
-          ) : held ? (
-            /*
-              A sale whose price still needs the sales admin has no order yet, by design — the tech
-              team is never shown work at a price nobody has agreed. This page lists a client's
-              sales FROM their orders, so such a sale would leave the modal, change nothing on the
-              page, and read exactly like a sale that had failed to save. It has not: it is on the
-              lead and in the admin's queue. Saying so is the whole of the fix.
-            */
-            <div className="py-6 text-center" data-test="sale-held-notice">
-              <p className="text-sm font-semibold text-foreground">Sale recorded — waiting on your admin</p>
-              <p className="mx-auto mt-1.5 max-w-sm text-xs leading-relaxed text-muted-foreground">
-                The discount is above what you can give on your own, so your sales admin has to agree
-                the price first. It is already in their approvals queue. It appears in this client's
-                sales, and its chat opens, as soon as they approve it.
-              </p>
-              <button onClick={onClose}
-                className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90">
-                Done
-              </button>
-            </div>
           ) : (
             <SaleForm
               lead={lead}
               updateLead={updateLead}
-              onDone={(result) => {
-                // Held sales stay on screen to explain themselves; everything else closes, and the
-                // live orders listener puts the sale on the client's row a moment later.
-                if (result?.heldForApproval) setHeld(true);
-                else onClose();
-              }}
+              // Every sale has its order at once (2026-10-05 — an over-discounted one too), so the
+              // modal closes and the live orders listener puts the sale on the client's row.
+              onDone={onClose}
               initialCategory={category}
             />
           )}

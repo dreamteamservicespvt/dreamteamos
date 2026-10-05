@@ -24,7 +24,7 @@ import {
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import {
-  blankItem, buildInitialItems, cycleFromStart, dayToDate, derivedProgressCounts, extraWorkTitle, extraWorkTypeInfo,
+  blankItem, buildInitialItems, canPublish, cycleFromStart, dayToDate, derivedProgressCounts, extraWorkTitle, extraWorkTypeInfo,
   isoDay, isPosted, newItemId, normaliseDuration, smmWatchers, targetsFromCommitments,
 } from "@/utils/smmPlan";
 import {
@@ -32,6 +32,7 @@ import {
   normaliseClipsPerVideo, renewalStartDate, saleDay, videosLine,
 } from "@/utils/smmPackage";
 import { dueItemsFor, dueLabel, dueNotificationKey, renewalsDueFor } from "@/utils/smmReminders";
+import { isGoneMonth, leadIdOfOrderId, renewalLinksToCheck, renewalRelinkPatch, renewalUnlinkPatch } from "@/utils/smmRenewalLink";
 import { commitmentsForPackage, platformsForPackage } from "@/utils/smmPricing";
 import { POSTABLE_STATUSES } from "@/types/smm";
 import type {
@@ -261,6 +262,10 @@ export async function ensureCampaignForOrder(input: CreateCampaignInput): Promis
         salesAdminId: input.salesAdminId ?? null,
         updatedAt: serverTimestamp(),
       });
+      // A renewal month coming back with its sale renews the month before it again (2026-10-05).
+      if (existing.status === "removed" && existing.renewalOf) {
+        await relinkRenewal({ id: input.orderId, renewalOf: existing.renewalOf, soldByName: input.soldByName });
+      }
       return;
     }
 
@@ -356,6 +361,124 @@ async function linkRenewal(prev: SmmCampaign, next: SmmCampaign, soldByName: str
   }
 }
 
+/**
+ * The sale that renewed `prev` was withdrawn — deleted by the salesperson, rejected or taken back by the
+ * sales admin — and its month `goneId` went with it, so `prev` is no longer renewed (2026-10-05, owner:
+ * a deleted renewal sale left the tech side reading "Renewed by Govardhan — the next month is set").
+ * Called from `cancelOrderForSale` (through `setCampaignRemovedForOrders` / `deleteCampaignsForOrders`
+ * with `saleWithdrawn`) and by the repair below — never for the tech side removing an order or deleting a
+ * month while the sale stands: the client did renew, and un-renewing would invite a second renewal sale.
+ * Rules in `utils/smmRenewalLink`. Inside a transaction, and only when `prev` still points at that
+ * month, so a renewal recorded again since is never undone.
+ *
+ * The tech side was told "Social media month renewed" when the link was made, so they are told when it
+ * is undone — except when an old link is only being repaired (`notify: false`). Never throws.
+ */
+export async function unlinkRenewal(prevId: string, goneId: string, opts: { notify?: boolean } = {}): Promise<boolean> {
+  if (!prevId || !goneId) return false;
+  try {
+    const after = await mutateCampaign(prevId, (c) => {
+      const patch = renewalUnlinkPatch(c, goneId);
+      return patch ? { ...patch, renewal: { ...patch.renewal, at: Timestamp.now() } } : null;
+    });
+    if (!after) return false;
+    if (opts.notify !== false) {
+      const business = after.businessName || after.clientName || "A client";
+      for (const uid of await techSideUids()) {
+        await sendNotification({
+          userId: uid,
+          type: "smm_renewal_cancelled",
+          title: "Social media renewal cancelled",
+          message: `${business}'s next month was removed (its renewal sale was deleted or cancelled), so ${monthLabel(after.cycle.startDate)} is no longer renewed. ${after.soldByName || "The salesperson"} can renew it again.`,
+          link: `/smm/${after.id}`,
+          dedupeKey: `smm_unrenewed_${goneId}_${uid}`,
+        }).catch(() => undefined);
+      }
+    }
+    return true;
+  } catch (err) {
+    console.warn("[smm] could not unlink the renewal:", err);
+    return false;
+  }
+}
+
+/**
+ * The month that renewed another has come back with its sale (re-approved, or its order restored), so
+ * the month before is renewed again — quietly: the team still has its jobs, and the tech side was told
+ * about this renewal the first time. A no-op when the link was never undone. Never throws.
+ */
+export async function relinkRenewal(month: Pick<SmmCampaign, "id" | "renewalOf" | "soldByName">): Promise<void> {
+  if (!month.renewalOf) return;
+  const today = isoDay(new Date());
+  try {
+    await mutateCampaign(month.renewalOf, (c) => {
+      const patch = renewalRelinkPatch(c, month, today);
+      return patch ? { ...patch, renewal: { ...patch.renewal, at: Timestamp.now() } } : null;
+    });
+  } catch (err) {
+    console.warn("[smm] could not relink the renewal:", err);
+  }
+}
+
+/** Links already checked this session — each dangling link costs one read, once. */
+const checkedRenewalLinks = new Set<string>();
+
+/** Tests only: forget the links checked so far, as a new session would. */
+export function __resetRenewalLinkChecksForTests(): void {
+  checkedRenewalLinks.clear();
+}
+
+/**
+ * Was the sale behind a gone renewal month withdrawn — rather than the month or its order tidied off
+ * the board by the tech side while the sale stands? Read from what `cancelOrderForSale` leaves behind:
+ * an order it cancelled (the sale was deleted, rejected or taken back after work went out), or no order
+ * at all and no such sale on the lead (deleted before anybody was on it). An order the tech side removed
+ * is a `deleted` tombstone and a purged one's sale is still on the lead — both mean the client renewed.
+ * A month with nothing sold behind it (no order, no lead) has nothing standing. Throws on a failed read.
+ */
+async function renewalSaleWithdrawn(nextId: string, next: SmmCampaign | null): Promise<boolean> {
+  const orderId = next ? next.orderId : nextId;
+  if (!orderId) return true;
+  const orderSnap = await getDoc(doc(db, "orders", orderId));
+  if (orderSnap.exists()) return (orderSnap.data() as Order).status === "cancelled";
+  const leadId = next?.leadId || leadIdOfOrderId(orderId);
+  if (!leadId) return true;
+  const leadSnap = await getDoc(doc(db, "leads", leadId));
+  if (!leadSnap.exists()) return true;
+  const lead = leadSnap.data() as { saleItems?: SaleDetail[]; saleDetails?: SaleDetail | null };
+  const items = lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
+  const { orderDocId } = await import("@/services/orders");
+  return !items.some((it, i) => orderDocId(leadId, it, i) === orderId && it.verificationStatus !== "rejected");
+}
+
+/**
+ * Repair months still marked renewed although their renewal sale was withdrawn — links broken before
+ * 2026-10-05, when deleting a renewal sale did not undo them. Runs when a list or a month page opens (no
+ * scheduler on this stack). Only a link to a month `list` does not hold alive is checked: the next month
+ * (one read) and, when it is gone, what is left of its sale (`renewalSaleWithdrawn`, one or two reads) —
+ * once per link per session. A next month taken off the board while its sale stands keeps the month
+ * renewed. Returns how many it repaired. Never throws.
+ */
+export async function healRenewalLinksOnOpen(list: SmmCampaign[]): Promise<number> {
+  const alive = new Set(list.filter((c) => !isGoneMonth(c)).map((c) => c.id));
+  let healed = 0;
+  for (const { monthId, nextId } of renewalLinksToCheck(list, alive)) {
+    const key = `${monthId}>${nextId}`;
+    if (checkedRenewalLinks.has(key)) continue;
+    checkedRenewalLinks.add(key);
+    try {
+      const next = await fetchCampaign(nextId);
+      if (!isGoneMonth(next)) continue;
+      if (!(await renewalSaleWithdrawn(nextId, next))) continue;
+      if (await unlinkRenewal(monthId, nextId, { notify: false })) healed += 1;
+    } catch {
+      // A failed read proves nothing about the link — leave it, and try again next session.
+      checkedRenewalLinks.delete(key);
+    }
+  }
+  return healed;
+}
+
 /** Who set the last month up, read off its order when the month itself predates `setupByUid`. */
 async function fetchOrderTechAdmin(orderId: string | null | undefined): Promise<string | null> {
   if (!orderId) return null;
@@ -431,6 +554,17 @@ export function watchMyCampaigns(uid: string, cb: (list: SmmCampaign[]) => void)
     (snap) => cb(snap.docs.map(fromSnap)),
     (err) => { console.error("[smm] watchMyCampaigns:", err); cb([]); },
   );
+}
+
+/**
+ * The months one person is on, read once — for the twice-a-day status check (2026-10-05), which only
+ * needs to know whether there is anything to ask about before it opens (and listens live only while
+ * open). The same scoped query as `watchMyCampaigns`.
+ */
+export async function fetchMyCampaigns(uid: string): Promise<SmmCampaign[]> {
+  if (!uid) return [];
+  const snap = await getDocs(query(collection(db, SMM_CAMPAIGNS), where("watchers", "array-contains", uid)));
+  return snap.docs.map((d) => fromSnap(d as CampaignSnap));
 }
 
 /**
@@ -565,8 +699,16 @@ export async function setItemStatus(
     if (!item) return null;
     if (item.status === status) return null;
 
-    if (POSTABLE_STATUSES.includes(status) && item.approval?.state !== "approved") {
+    if (POSTABLE_STATUSES.includes(status) && !canPublish(item, c)) {
       throw new Error("The client has not approved this yet. Record their approval first.");
+    }
+    /*
+      A history month's post is past work being written down (canPublish). Its upload date is the only
+      record of WHEN it went up — `postedAt` below is today, the day somebody filled it in — so without
+      one the calendar would put a post from August on today's page.
+    */
+    if (status === "posted" && c.history && !item.uploadDate) {
+      throw new Error("Give it the day it went up first — the calendar shows it on that day.");
     }
 
     const items = withItem(c, itemId, (it) => ({
@@ -1144,6 +1286,22 @@ export async function fetchFinishedCampaigns(): Promise<SmmCampaign[]> {
 }
 
 /**
+ * Every month whose last day falls between `from` and `to` (`yyyy-MM-dd`, inclusive) — read once when
+ * an admin opens a calendar month on the Money tab (2026-10-05). The overseers' live listener holds only
+ * the running months; a month already filed as renewed or lapsed is not in it, and the renewals of a
+ * month are exactly those. One range on one field (a single-field index), on demand. Removed and deleted
+ * months are gone. Throws, so the tab can say it could not load instead of showing a short count.
+ */
+export async function fetchMonthsEndingBetween(from: string, to: string): Promise<SmmCampaign[]> {
+  const snap = await getDocs(query(
+    collection(db, SMM_CAMPAIGNS),
+    where("cycle.endDate", ">=", from),
+    where("cycle.endDate", "<=", to),
+  ));
+  return snap.docs.map((d) => fromSnap(d as CampaignSnap)).filter((c) => !isGoneMonth(c));
+}
+
+/**
  * Every month of one client (2026-10-05) — read once when somebody opens the client's calendar.
  *
  * One equality query on the number every month of theirs carries (a single-field index, no composite
@@ -1275,6 +1433,8 @@ export async function notifyRenewalsDueOnOpen(
  * `ensureCampaignForOrder` never revives (unlike `removed`, which follows its order back).
  */
 export async function deleteCampaign(campaign: Pick<SmmCampaign, "id" | "orderId">, actor: SmmActor): Promise<void> {
+  // A deleted renewal month leaves the month before it renewed (2026-10-05): its sale stands, so the
+  // client did renew. Only the sale being withdrawn un-renews it (`unlinkRenewal`).
   if (!campaign.orderId) {
     await deleteDoc(campaignRef(campaign.id));
     return;
@@ -1380,6 +1540,12 @@ async function notifySmmLeadsOfNewMonth(campaignId: string, businessName: string
 export async function setCampaignRemovedForOrders(
   orderIds: string[],
   removed: boolean,
+  /**
+   * The orders' sales were withdrawn — deleted, rejected or taken back (`cancelOrderForSale`), not the
+   * tech side tidying the queue. Only then does a renewal month taken away un-renew the month before
+   * it (2026-10-05).
+   */
+  opts: { saleWithdrawn?: boolean } = {},
 ): Promise<void> {
   await Promise.all(orderIds.map(async (orderId) => {
     try {
@@ -1393,6 +1559,11 @@ export async function setCampaignRemovedForOrders(
         status: removed ? "removed" : "active",
         updatedAt: serverTimestamp(),
       });
+      // A renewal whose sale was withdrawn un-renews the month before; put back, it renews it again.
+      if (current.renewalOf) {
+        if (removed && opts.saleWithdrawn) await unlinkRenewal(current.renewalOf, orderId);
+        else if (!removed) await relinkRenewal({ id: orderId, renewalOf: current.renewalOf, soldByName: current.soldByName });
+      }
     } catch (err) {
       console.error("[smm] setCampaignRemovedForOrders:", err);
     }
@@ -1406,10 +1577,23 @@ export async function setCampaignRemovedForOrders(
  * client chat goes, and the month's plan goes with them. Anything less would leave a campaign
  * pointing at an order id that resolves to nothing.
  */
-export async function deleteCampaignsForOrders(orderIds: string[]): Promise<void> {
+export async function deleteCampaignsForOrders(
+  orderIds: string[],
+  /** As `setCampaignRemovedForOrders`: the sales were withdrawn, so a renewal month un-renews (2026-10-05). */
+  opts: { saleWithdrawn?: boolean } = {},
+): Promise<void> {
   await Promise.all(orderIds.map(async (orderId) => {
     try {
+      if (!opts.saleWithdrawn) {
+        await deleteDoc(campaignRef(orderId));
+        return;
+      }
+      // Read first: once erased, nothing says which month this one had renewed.
+      const snap = await getDoc(campaignRef(orderId));
+      if (!snap.exists()) return;
+      const renewalOf = (snap.data() as SmmCampaign).renewalOf;
       await deleteDoc(campaignRef(orderId));
+      if (renewalOf) await unlinkRenewal(renewalOf, orderId);
     } catch (err) {
       console.error("[smm] deleteCampaignsForOrders:", err);
     }

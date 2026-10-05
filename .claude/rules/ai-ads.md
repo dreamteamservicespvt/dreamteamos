@@ -10,7 +10,7 @@ paths:
   - "src/pages/tech-member/CreateAd.tsx"
   - "src/pages/shared/Tools.tsx"
   - "docs/video-category-*"
-  - "src/utils/{adPipeline,adRequirement,assignmentFormSpec,businessFacts,businessPlace,castSheet,cinematicAds,clipPlacement,collectReadiness,customScript,dialogueFormat,festivals,fileHelpers,finalScript,frameBrand,generationEta,generationHistory,locationAssignment,overlayImage,posterConcepts,posterOccasions,posterSpec,promptAttachments,scenePlan,scriptQa,speakingPosition,spokenAddress,spokenNumbers,veoRefine,voiceBrief,voiceOverFormat,voiceOverRefine,wordTiming}.ts"
+  - "src/utils/{adPipeline,adRequirement,assignmentFormSpec,businessFacts,businessPlace,castSheet,castWardrobe,cinematicAds,clipPlacement,collectReadiness,customScript,dialogueFormat,festivals,fileHelpers,finalScript,frameBrand,generationEta,generationHistory,locationAssignment,overlayImage,posterConcepts,posterOccasions,posterSpec,promptAttachments,scenePlan,scriptQa,speakingPosition,spokenAddress,spokenNumbers,veoRefine,voiceBrief,voiceOverFormat,voiceOverRefine,wordTiming}.ts"
 ---
 
 # AI ad generation (AI Ads Platform video + poster, Cinematic Ads, Gemini pipeline) — DTS-OS module context
@@ -25,7 +25,8 @@ paths:
 `services/prompts.ts`, `services/prompts/*`, `services/characterPacks.ts` +
 `characterCatalogue.ts` (35 special-category entries incl. three human duos), `services/posterStyles.ts`,
 `services/adLanguages.ts`, `components/ai-platform/adgen.css` (the studio's design system, §11),
-`utils/businessFacts.ts` (verified contact numbers and address), `utils/scriptQa.ts` +
+`utils/businessFacts.ts` (verified contact numbers and address), `utils/castSheet.ts` +
+`utils/castWardrobe.ts` + `services/prompts/castWardrobe.ts` (the invented cast and its wardrobe stylist), `utils/scriptQa.ts` +
 `services/prompts/scriptQa.ts` (the voice-over quality gate), `utils/finalScript.ts` (a pasted final
 script), `utils/assignmentFormSpec.ts` (what a job decides on the form).
 Collection `ai_generations`. See §17.
@@ -70,7 +71,20 @@ screenshot → leads/spend/cost-per-result/reach).
   that are never spoken, now ENFORCED by `validateDialogueClips` `forbiddenNames` against each
   character's `labelSpellings`), **Kids** (`kids_duo_girls` / `kids_duo_boys` / `kids_duo_mixed`,
   family `kids`, 2026-10-01: photoreal children with child voices, kid attire options and labels,
-  family-safe negatives), deities, cartoon duos/solos, custom);
+  family-safe negatives; **dressed for the ad since 2026-10-05** — the owner: "the girl and boy always get the
+  same type of dress". Their code outfit (`utils/castSheet.dressKids`, used when the stylist below gives
+  none) follows the theme the video's motive / setting, the core message's "what they do" or the business
+  name mentions FIRST, else the typed BUSINESS CONTENT, else the extracted details (`kidsThemeOf`,
+  `themeTextOf` — never an address or contact line, never the palette): a school → its uniform in its
+  colours, sports → jersey or track kit, birthday / cake / toys → party wear, a festival, temple, jeweller,
+  silk house or sweets → silk pattu langa / lehenga / anarkali and kurta / dhoti WHATEVER the attire, kids'
+  wear → trendy, a clinic → soft cotton, tech → hoodie, villas / travel → outing wear, food → cheerful
+  casual, else everyday — two or three garments each, picked by the business (same client, same clothes).
+  Colours are the palette's wearable colours (`brandColoursIn`; white / black / grey / cream / beige only as
+  trims), else the seeded pair; a uniform or kit is one set of colours, otherwise each child their own; two
+  children of one kind never wear the same garment (in one uniform their hair tells them apart in the
+  video). The Kids' "Smart casual" reads **"Matches the ad"** (`KIDS_ATTIRE_LABELS`); Custom is verbatim;
+  "an orange", never "a orange" (`an()`)), deities, cartoon duos/solos, custom);
 - `customCharacter` — the Custom Character's description (required for that pack; written into
   the pack by `characterPacks.withCustomCharacter`, one resolver `packFor` in geminiService);
 - `locationMode` (`real_provided` uses the client's store photos, `ai_generated`);
@@ -157,7 +171,22 @@ cached; small images and anything the browser cannot redraw go as they are).
    in code: motion composition, `withSceneBackground`, `frameBrand.nameBoardInPlaceOfLogo` when there
    is no logo file, `withOwnerImageDirective` for Real Owner Face, the photo attach line, a **cast sheet** for invented
    people (`utils/castSheet`: Normal Ad, human duos, Kids — one fixed face and outfit per person,
-   seeded by the business name; the Veo prompt names each speaker by how they look) and a pack's
+   faces seeded by the business name; the Veo prompt names each speaker by how they look, "the woman in the
+   deep teal saree"). **The outfits come from the wardrobe stylist (2026-10-05)**: `styleCastWardrobe` — one
+   `fast` call at temperature 0 that SEES the logo (unless "No logo"), started right after the core message
+   so it answers while the script is written, awaited before `castSheetFor` (20 s cap) — given each person's
+   ORDERED style (`utils/castWardrobe.styleRuleFor`: Traditional → a saree / Indian ethnic wear, Professional →
+   formal suit or blazer, In-shirt & Pant → shirt and trousers, a child's ethnic wear or "Matches the ad"),
+   the business and core message, the brand palette, the festival's look, BUSINESS CONTENT, the FRAME
+   instructions and the voice note's requests (`prompts/castWardrobe.ts`). It chooses garment, weave,
+   colours (from the logo) and accents; `checkStyledCast` accepts it only whole: inside the ordered style, a
+   plain colour and garment the outfit names, no writing / logo / profession's uniform / bridal / revealing
+   clothes, no saree / suit / heels / make-up on a child, the two never one name and two adults never one
+   main colour. A rejected answer goes back once with its problems; then the sheet's own outfits are used
+   (`castSheetFor` without `styled`: the Kids via `dressKids` — theme + brand colours, see the Kids entry —
+   and grown-ups in the ordered attire in the brand palette's first two wearable colours, else the seeded
+   pair). Custom is never styled. The frame writer's WARDROBE line repeats the sheet word for word
+   (`castWardrobeLine`; a refine keeps the ordered `wardrobeDirective`). Also stamped: a pack's
    **scale anchor** (`withScaleAnchor`: e.g. Motu and Patlu's height against a real counter). VIDEO
    BOTTOM LABEL (`buildVideoBottomLabel`, code-assembled from `prompts/lowerThird.ts`, fed the festival
    theme and the video's motive / core message) and the poster prompt (`writeVideoPosterPrompt`,
@@ -350,7 +379,7 @@ count 1–6 (default 3), text language (English default) → `generatePosterConc
   `gemini-3.1-flash-lite-preview`), rotated on overload or 5xx. A 404 "not available to new users"
   retires a model **for that key only**; any other 404 retires it for all keys.
 - **Thinking budget per call (2026-09-29):** `callWithFallback(apiCall, { effort })` — `fast` 0 tokens
-  (extraction, voice note, poster, splits, location scout, B-roll, overlays), `standard` 768 (core
+  (extraction, voice note, poster, splits, location scout, B-roll, overlays, wardrobe stylist), `standard` 768 (core
   message, repairs, scene plan, frames, Veo director, poster concepts), `deep` 1536 (script writer,
   review, quality judge). Applied only on `gemini-2.5-flash` (the lite models do not think by
   default; 2.0 rejects the setting); a call with no effort keeps the model default. Measured: thinking
@@ -398,6 +427,14 @@ Gemini calls use the shared fallback.
 
 ## 24. BUSINESS RULES (IMPLEMENTED; verified in code)
 
+- **AI ads — what the invented cast wears (2026-10-05, the owner's answers):** the ordered attire is the
+  STYLE and is never overruled (Traditional stays ethnic, Professional formal, In-shirt & Pant a shirt and
+  trousers, Custom the team's own words); inside it every invented person — both duos, the Kids, the Normal Ad
+  presenter — is dressed for THIS business, THIS video and THIS logo (colours from the logo), and two people
+  never wear the same outfit (adults never one main colour). Nobody wears writing or a logo on clothes, a
+  profession's uniform, bridal, costume or revealing clothes; children never a saree, a suit, heels or
+  make-up. For the Kids, "Matches the ad" (the old Smart casual) lets the ad choose — a school's uniform, a
+  sports kit, party wear — and a festival, temple, jeweller or silk house dresses them in silk.
 - **AI ads — video motion (2026-10-05, the dynamic pass; the owner's brief and approval, replacing that
   morning's bounded-walk rule and the motion part of the 2026-10-01 rule below):** no clip is a talking
   portrait — every clip is a physical action that travels or turns and one camera move that follows it,
@@ -455,6 +492,16 @@ Gemini calls use the shared fallback.
   Malayalam scripts rely on the prompt rule and the digit validator.
 - Motion staging comes from the scene plan's choices or a keyword reading of each line; when the
   client's own photos are used the scene plan is skipped, so only the keyword reading applies.
+- The wardrobe stylist (2026-10-05) is checked by word lists (`checkStyledCast`): an odd but harmless
+  outfit can be refused (the sheet's code outfits are used), and a clash phrased in words the lists do not
+  know can pass. It is asked before the scene plan exists, so "the video" it dresses for is the ad type, the
+  festival, the core message and the team's brief — not the scene plan's motive. Temperature 0 keeps a
+  regenerate mostly, not exactly, in the same outfits. The extraction still does not read the logo's colours,
+  so without the stylist the grown-ups follow only a palette written in text.
+- The Kids' code outfit (`dressKids`, 2026-10-05) reads the theme from word lists (`KIDS_THEME_WORDS`): a
+  business described in words the lists do not know is dressed in everyday wear, and only colour WORDS in the
+  palette count (a hex code names nothing). It sees the scene plan's motive, so a client-photo ad (no scene
+  plan) is dressed by its business alone. No image run has shown the new outfits yet.
 - The director's action is checked by word lists (`actionUsable`, 2026-10-05): an unusual but harmless
   phrasing can be refused (the clip falls back to the plan's generic action), and a risky one phrased in
   words the lists do not know can pass. In a live run (2026-10-05, the dynamic pass) all eight actions for the
@@ -527,3 +574,9 @@ Gemini calls use the shared fallback.
   rules checked by unit tests and the full-pipeline test on a faked Gemini — **no image or Veo run** has
   confirmed that Veo keeps Motu & Patlu's height, leaves a client photo unchanged, or how the children look
   (the 2026-10-05 motion policy: see the first bullet of this list).
+- The wardrobe stylist (2026-10-05) adds one `fast` Gemini call per run with an invented cast (two when its
+  first answer is refused), with the logo image attached — more quota on the free tier (~20 requests / day /
+  model / key). It ran live on five briefs and one full duo run (24 s, in parallel with the script), but **no
+  frame image or Veo clip** has been made from a styled cast sheet yet: watch that the image model keeps the
+  longer outfit line identical in every clip, and that a brand colour close to the premises' walls does not
+  make the cast disappear into the background.

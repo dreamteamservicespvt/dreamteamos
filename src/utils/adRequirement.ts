@@ -51,11 +51,16 @@ export const DEFAULT_REQUIREMENT = {
  */
 export const KIDS_ATTIRE_LABELS: Partial<Record<AttireType, string>> = {
   [AttireType.TRADITIONAL]: "Traditional (Ethnic wear)",
-  [AttireType.SHIRT_PANT]: "Smart casual",
+  /*
+    "Smart casual" until 2026-10-05, when the owner found the children always in the same dress. It
+    now lets the ad decide — a school's uniform, a sports shop's jersey, a birthday's party wear, a
+    festival's silk — in the brand's colours (utils/castSheet `dressKids`), so it says that.
+  */
+  [AttireType.SHIRT_PANT]: "Matches the ad",
   [AttireType.CUSTOM]: "Custom",
 };
 
-/** The attire options for two children: ethnic wear, smart casual or the team's own words. */
+/** The attire options for two children: ethnic wear, dressed for the ad, or the team's own words. */
 export const KIDS_ATTIRE: AttireType[] = [AttireType.TRADITIONAL, AttireType.SHIRT_PANT, AttireType.CUSTOM];
 
 /** The label of one attire option, in the words that fit the special category (a child's, for Kids). */

@@ -3,8 +3,9 @@
  *
  * Four things, in the order they are decided: when the month runs (the end follows the start to the
  * same date next month unless somebody types otherwise), how long each video is, where the client's
- * pages are, and who does the work. A month whose dates are already over is recorded as history, so
- * the team section is replaced by a sentence saying so rather than asking for people nobody needs.
+ * pages are, and who does the work. A month whose dates are already over is recorded as history: the
+ * team section then asks who DID the work — saved by name, no job cards (2026-10-05; it used to be
+ * hidden, which left an old month's team no way to see it or fill in its work).
  *
  * The form is controlled; `SmmSetupDialog` below wraps it for a month that already exists, and the
  * "Add SMM sale" dialog uses it as its last step.
@@ -12,10 +13,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { AtSign, CalendarRange, Check, Clapperboard, ListChecks, Loader2, PencilLine, Users, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { applyMonthSetup, setupProblem } from "@/services/smmSetup";
+import { applyHistorySetup, applyMonthSetup, historySetupProblem, setupProblem } from "@/services/smmSetup";
 import { fetchAssignableMembers } from "@/services/smm";
 import { ClipsPerVideoPicker } from "@/components/sales/SmmSaleFields";
-import { isoDay } from "@/utils/smmPlan";
+import { isoDay, teamMembers } from "@/utils/smmPlan";
 import {
   DEFAULT_SMM_CLIPS_PER_VIDEO, SMM_SEATS, addMonthsIso, cleanPlatforms, clipsPerVideoOf, cycleRangeLabel, isNoSaleMonth,
   monthCycle, sellerLineOf, type SmmSeat,
@@ -275,8 +276,9 @@ export default function SmmSetupForm({ value, onChange, members, platforms: give
         </p>
         {history && (
           <p data-test="smm-setup-history" className="mt-2 rounded-md border border-info/40 bg-info/10 p-2 text-xs text-foreground">
-            These dates are already over, so this month is recorded as <b>history</b>: its package, salesperson
-            and dates are kept for the record, nobody is given a job for it and nothing on it can be late.
+            These dates are already over, so this month is recorded as <b>history</b>: its package, salesperson,
+            dates and the people below are kept for the record. Nobody gets a job card for it and nothing on it
+            can be late — afterwards, fill in what was made and posted on the month's Content tab.
           </p>
         )}
       </section>
@@ -334,54 +336,60 @@ export default function SmmSetupForm({ value, onChange, members, platforms: give
       )}
 
       {/* ── Who ──────────────────────────────────────────────────────────────────────────── */}
-      {!history && (
-        <section>
-          <h4 className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-            <Users size={13} className="text-primary" /> Who does the work
-          </h4>
-          <p className="mb-1.5 text-[11px] text-muted-foreground">
-            Each person gets one job in My Work for this month, listing what they hold, at the video length above.
-          </p>
-          <label className="text-[11px] font-medium text-muted-foreground">
-            Give everything to one person
-            <select value="" data-test="smm-setup-all" onChange={(e) => e.target.value && giveAll(e.target.value)} className={inputCls}>
-              <option value="">Choose a member…</option>
-              {members.map((m) => <option key={m.uid} value={m.uid}>{m.name}</option>)}
-            </select>
-          </label>
-          <div className="mt-2 grid gap-2 sm:grid-cols-3">
-            {SMM_SEATS.map(({ seat, label }) => (
-              <label key={seat} className="text-[11px] font-medium text-muted-foreground">
-                {label}
-                <select value={value.team[seat]?.uid || ""} data-test={`smm-setup-seat-${seat}`}
-                  onChange={(e) => setSeat(seat, e.target.value)} className={inputCls}>
-                  <option value="">Nobody</option>
-                  {seatOptions(seat).map((m) => <option key={m.uid} value={m.uid}>{m.name}</option>)}
-                </select>
-              </label>
-            ))}
-          </div>
-          {members.length > 0 && (
-            <div className="mt-2">
-              <span className="text-[11px] font-medium text-muted-foreground">Assisting (juniors on a big month)</span>
-              <div className="mt-1 flex flex-wrap gap-1.5">
-                {members.map((m) => {
-                  const on = value.team.assistants.some((a) => a.uid === m.uid);
-                  return (
-                    <button key={m.uid} type="button" data-test={`smm-setup-assistant-${m.uid}`} aria-pressed={on}
-                      onClick={() => toggleAssistant(m.uid)}
-                      className={`h-7 rounded-md border px-2 text-[11px] font-medium transition-colors ${
-                        on ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent"
-                      }`}>
-                      {m.name}
-                    </button>
-                  );
-                })}
-              </div>
+      {/*
+        A history month asks too (owner, 2026-10-05): the people who DID its work, saved on the month by
+        name so it is in their Social Media and they can fill in its work — never a job card
+        (services/smmSetup.historyTeam). Optional there; a running month needs somebody.
+      */}
+      <section data-test="smm-setup-team">
+        <h4 className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+          <Users size={13} className="text-primary" /> {history ? "Who did the work" : "Who does the work"}
+          {history && <span className="font-normal text-muted-foreground">(optional)</span>}
+        </h4>
+        <p data-test="smm-setup-team-help" className="mb-1.5 text-[11px] text-muted-foreground">
+          {history
+            ? "Saved on the month so they see it in Social Media and can fill in what they made and posted. No job cards — it is a record."
+            : "Each person gets one job in My Work for this month, listing what they hold, at the video length above."}
+        </p>
+        <label className="text-[11px] font-medium text-muted-foreground">
+          Give everything to one person
+          <select value="" data-test="smm-setup-all" onChange={(e) => e.target.value && giveAll(e.target.value)} className={inputCls}>
+            <option value="">Choose a member…</option>
+            {members.map((m) => <option key={m.uid} value={m.uid}>{m.name}</option>)}
+          </select>
+        </label>
+        <div className="mt-2 grid gap-2 sm:grid-cols-3">
+          {SMM_SEATS.map(({ seat, label }) => (
+            <label key={seat} className="text-[11px] font-medium text-muted-foreground">
+              {label}
+              <select value={value.team[seat]?.uid || ""} data-test={`smm-setup-seat-${seat}`}
+                onChange={(e) => setSeat(seat, e.target.value)} className={inputCls}>
+                <option value="">Nobody</option>
+                {seatOptions(seat).map((m) => <option key={m.uid} value={m.uid}>{m.name}</option>)}
+              </select>
+            </label>
+          ))}
+        </div>
+        {members.length > 0 && (
+          <div className="mt-2">
+            <span className="text-[11px] font-medium text-muted-foreground">Assisting (juniors on a big month)</span>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {members.map((m) => {
+                const on = value.team.assistants.some((a) => a.uid === m.uid);
+                return (
+                  <button key={m.uid} type="button" data-test={`smm-setup-assistant-${m.uid}`} aria-pressed={on}
+                    onClick={() => toggleAssistant(m.uid)}
+                    className={`h-7 rounded-md border px-2 text-[11px] font-medium transition-colors ${
+                      on ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent"
+                    }`}>
+                    {m.name}
+                  </button>
+                );
+              })}
             </div>
-          )}
-        </section>
-      )}
+          </div>
+        )}
+      </section>
     </div>
   );
 }
@@ -410,21 +418,35 @@ export function SmmSetupDialog({ campaign, user, onClose, onSaved }: {
   const [saving, setSaving] = useState(false);
   useEffect(() => { fetchAssignableMembers().then(setMembers); }, []);
   const today = isoDay(new Date());
-  // A month already under way cannot be moved wholly into the past from here — a finished month is
-  // recorded from "Add SMM sale", where it becomes history.
+  /*
+    A history month (2026-10-05) is edited as the record it is — its dates stay in the past and its
+    people are saved by name with no jobs (`applyHistorySetup`). A month already under way cannot be
+    moved wholly into the past from here — a finished month is recorded from "Add SMM sale", where it
+    becomes history.
+  */
+  const history = !!campaign.history;
   const problem = useMemo(
-    () => setupProblem(setupInputOf(value), today)
-      || (value.endDate < today && campaign.status === "active" ? "The month can't end before today." : ""),
-    [value, today, campaign.status],
+    () => (history
+      ? historySetupProblem(setupInputOf(value), today)
+      : setupProblem(setupInputOf(value), today)
+        || (value.endDate < today && campaign.status === "active" ? "The month can't end before today." : "")),
+    [value, today, campaign.status, history],
   );
 
   const save = async () => {
     if (problem) { toast({ title: problem, variant: "destructive" }); return; }
     setSaving(true);
+    const actor = { uid: user.uid, name: user.name, role: user.role, createdBy: user.createdBy };
     try {
-      const result = await applyMonthSetup(campaign.id, setupInputOf(value), {
-        uid: user.uid, name: user.name, role: user.role, createdBy: user.createdBy,
-      });
+      if (history) {
+        await applyHistorySetup(campaign.id, setupInputOf(value), actor);
+        const people = teamMembers(value.team).map((m) => m.name).join(", ");
+        toast({ title: "History month saved", description: people ? `${people} on it — no job cards.` : cycleRangeLabel(monthCycle(value.startDate, value.endDate)) });
+        onSaved?.();
+        onClose();
+        return;
+      }
+      const result = await applyMonthSetup(campaign.id, setupInputOf(value), actor);
       toast({ title: "Month set up", description: assignSummary(result.assign) || cycleRangeLabel(monthCycle(value.startDate, value.endDate)) });
       onSaved?.();
       onClose();

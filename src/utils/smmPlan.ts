@@ -164,8 +164,16 @@ export function isWaitingOnClient(item: SmmContentItem): boolean {
  * The rule the business runs on — *nothing is posted without approval* — expressed once, here, so
  * the service that writes the status and the UI that offers the button cannot hold different
  * opinions about it.
+ *
+ * ── The one exception: a history month (owner, 2026-10-05) ───────────────────────────────────────
+ * A month recorded after it ended (`history`) is the team writing down work it already did, posted
+ * long ago with the client's yes given at the time and never recorded here. Asking for "They
+ * approved" on every one of those posts was three presses per post to fill in a past month, and
+ * proved nothing. So in a history month a post may be marked posted directly; a running month keeps
+ * the rule. Pass the month whenever it is known — without it the rule applies.
  */
-export function canPublish(item: SmmContentItem): boolean {
+export function canPublish(item: SmmContentItem, campaign?: Pick<SmmCampaign, "history"> | null): boolean {
+  if (campaign?.history) return true;
   return item.approval?.state === "approved";
 }
 
@@ -580,6 +588,14 @@ export function isSmmOverseer(user: { role?: string; smmLeader?: boolean } | nul
   if (!user) return false;
   if (user.smmLeader) return true;
   return ["main_admin", "tech_admin", "sales_admin", "tech_team_leader"].includes(user.role || "");
+}
+
+/**
+ * Who sees Social Media → Money, the company's renewals and their rupees (2026-10-05, owner: "only for
+ * the tech admin and the sales admin") — and the main admin, who sees everything.
+ */
+export function canSeeSmmMoney(user: { role?: string } | null | undefined): boolean {
+  return ["main_admin", "tech_admin", "sales_admin"].includes(user?.role || "");
 }
 
 /**

@@ -122,7 +122,11 @@ export const wardrobeDirective = (
   attireType?: string | null,
   customAttire?: string | null,
   gender?: string | null,
-  /** Two children (the Kids entries): dressed as children — never a saree, a suit or jewellery. */
+  /**
+   * Two children (the Kids entries): dressed as children — never a saree, a suit or jewellery. Since
+   * 2026-10-05 an ad run dresses the Kids from the cast sheet instead (utils/castSheet `dressKids`: the
+   * ad's theme and brand colours; geminiService `packWardrobe`), so only a Custom order reads this.
+   */
   kids = false,
 ): string => {
   // A woman and a man (or a girl and a boy): one attire choice, each dressed for themselves.

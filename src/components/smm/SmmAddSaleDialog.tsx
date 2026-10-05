@@ -16,7 +16,9 @@
  *   • A client the company was serving BEFORE sales were recorded in the app gets "Add a month that
  *     had no sale" (2026-10-03): the salesperson who looks after them, then the month set up by hand.
  *     It shows in the salesperson's login with its dates and counts in nobody's revenue or commission;
- *     their Renew makes the next month a sale (services/smmSetup.addNoSaleMonth).
+ *     their Renew makes the next month a sale (services/smmSetup.addNoSaleMonth). Since 2026-10-05 the
+ *     Social Media Team Lead may add one too, a past month keeps the names of who did its work (no job
+ *     cards), and an earlier month added after a later one joins the client's run.
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -34,8 +36,9 @@ import {
   notifySellerOfEnteredSale, setupProblem, setupSaleMonth, updateLeadDoc, type SmmSaleRecord, type SmmSaleState,
 } from "@/services/smmSetup";
 import { formatCurrency } from "@/utils/formatters";
-import { formatPhoneDisplay, normalizePhone } from "@/utils/phone";
-import { isoDay } from "@/utils/smmPlan";
+import { formatPhoneDisplay, normalizePhone, phoneLockId } from "@/utils/phone";
+import { forgetClientMonths } from "@/hooks/useSmmClientMonths";
+import { isoDay, teamMembers } from "@/utils/smmPlan";
 import {
   NO_SALE_NOTE, canAddNoSaleMonth, canRecordSmmSaleForSeller, dayLabel, normaliseClipsPerVideo,
 } from "@/utils/smmPackage";
@@ -45,14 +48,13 @@ import { SMM_PLATFORMS } from "@/types/smm";
 import type { AppUser, Lead, SaleDetail } from "@/types";
 import type { SmmContentKind, SmmPlatform } from "@/types/smm";
 
-type Step = "number" | "seller" | "sale" | "setup" | "held" | "nosale";
+type Step = "number" | "seller" | "sale" | "setup" | "nosale";
 
 /** The packages a no-sale month can be described by — the same catalogue the sale form sells from. */
 const SMM_PACKAGE_NAMES: string[] = (PACKAGES.social_media_management || []).map((p) => p.label);
 
 const STATE_LABEL: Record<SmmSaleState, { label: string; cls: string }> = {
   rejected: { label: "Rejected by the sales admin", cls: "bg-destructive/15 text-destructive" },
-  held: { label: "Waiting for discount approval", cls: "bg-warning/15 text-warning" },
   needs_setup: { label: "Needs setup", cls: "bg-warning/15 text-warning" },
   live: { label: "Running", cls: "bg-success/15 text-success" },
   finished: { label: "Finished", cls: "bg-muted text-muted-foreground" },
@@ -184,11 +186,11 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
     }
   };
 
-  const onSaleDone = async (result?: { heldForApproval: boolean; leadId?: string; itemIndex?: number; item?: SaleDetail }) => {
+  const onSaleDone = async (result?: { leadId?: string; itemIndex?: number; item?: SaleDetail }) => {
     if (!result?.item || result.leadId === undefined || result.itemIndex === undefined || !seller) return;
     const business = result.item.requirement?.businessName?.trim() || businessName.trim();
     await notifySellerOfEnteredSale({ sellerUid: seller.uid, actorName: user.name, businessName: business, item: result.item, leadId: result.leadId });
-    if (result.heldForApproval) { setStep("held"); return; }
+    // Straight on to the month, even with a discount over the limit (2026-10-05): its order exists now.
     const chosenSale = chosenOf({ leadId: result.leadId, itemIndex: result.itemIndex, sellerName: seller.name, businessName: business, item: result.item });
     setChosen(chosenSale);
     setSetup({
@@ -236,10 +238,13 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
         setup: setupInputOf(setup),
         actor,
       });
+      // The client's calendar shows the new month at once, not after its kept read runs out.
+      forgetClientMonths(phoneLockId(normalized));
+      const people = teamMembers(setup.team).map((m) => m.name).join(", ");
       toast({
         title: result.history ? "Earlier month recorded" : "Month added",
         description: result.history
-          ? `On ${seller.name}'s Social Media page with its dates — not counted in revenue or commission.`
+          ? `On ${seller.name}'s Social Media page with its dates${people ? `, with ${people} (no job cards)` : ""} — not counted in revenue or commission. Fill in its work on the Content tab.`
           : `${assignSummary(result.assign) || "The month is on the board."} Not counted in revenue or commission.`,
       });
       onCreated(result.campaignId);
@@ -254,6 +259,7 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
     setSaving(true);
     try {
       const result = await setupSaleMonth({ leadId: chosen.leadId, itemIndex: chosen.itemIndex, setup: setupInputOf(setup), actor });
+      forgetClientMonths(phoneLockId(normalized));
       toast({
         title: result.history ? "Recorded as history" : "Month set up",
         description: result.history
@@ -284,7 +290,6 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
               {step === "seller" && "Who made this sale? It is recorded in their name and counts as their sale."}
               {step === "sale" && seller && `On ${seller.name}'s lead for ${formatPhoneDisplay(normalized)}.`}
               {step === "setup" && chosen && `${chosen.businessName || formatPhoneDisplay(normalized)} · sold by ${chosen.sellerName}`}
-              {step === "held" && "Waiting on the sales admin."}
               {step === "nosale" && `${formatPhoneDisplay(normalized)} · a client from before sales were recorded in the app`}
             </p>
           </div>
@@ -353,9 +358,6 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
                             <ExternalLink size={13} /> Open month
                           </Link>
                         )}
-                        {r.state === "held" && (
-                          <span className="text-xs text-muted-foreground">Set it up once the sales admin has approved the discount.</span>
-                        )}
                       </div>
                     </div>
                   );
@@ -386,6 +388,17 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
                 className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-lg border border-primary/50 bg-primary/10 text-sm font-medium text-primary hover:bg-primary/20">
                 <Plus size={14} /> Record a new sale for a salesperson
               </button>
+            )}
+            {/*
+              The Social Media Team Lead (2026-10-05) may add a month that had no sale but not record a sale
+              — that carries money and commission. Said here, so a fresh number never leaves them looking at
+              "No social media sale has been recorded" with nothing to press (the owner's screenshot).
+            */}
+            {records && allowNewSale && !canRecord && (
+              <p data-test="smm-add-sale-new-who" className="rounded-lg border border-border bg-muted/40 p-2.5 text-xs text-muted-foreground">
+                A <b className="text-foreground">new sale</b> for this number is recorded by the tech admin, the tech team leader or the main
+                admin, in the salesperson's name — or by the salesperson themself.
+              </p>
             )}
 
             {records && canNoSale && (
@@ -499,17 +512,6 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
             <button onClick={() => setStep("seller")} className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium text-foreground hover:bg-accent">
               <ArrowLeft size={13} /> Back
             </button>
-          </div>
-        )}
-
-        {step === "held" && (
-          <div className="space-y-3">
-            <p data-test="smm-add-sale-held" className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-foreground">
-              The sale is recorded for {seller?.name || "the salesperson"}, but its discount is more than a salesperson
-              may give, so it waits for the sales admin. Once they approve it, the month appears under
-              <b> Needs setup</b> on the board.
-            </p>
-            <button onClick={onClose} className="h-10 w-full rounded-lg bg-primary text-sm font-medium text-primary-foreground">Done</button>
           </div>
         )}
 

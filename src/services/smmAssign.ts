@@ -196,7 +196,12 @@ export async function assignSmmMonth(params: {
   */
   const wanted = jobsByMember(team).sort((a, b) =>
     Number(a.uid === team.creator?.uid) - Number(b.uid === team.creator?.uid));
-  const techAdminUid = assigner.role === "tech_team_leader" ? (assigner.createdBy || null) : assigner.uid;
+  // Whose tech side the job belongs to: the assigner when they run it (tech admin, main admin), else the
+  // admin who created them — a team leader, or the Social Media Team Lead, a tech member (2026-10-05:
+  // their months put the lead in the client chat twice and left the tech admin out).
+  const techAdminUid = assigner.role === "tech_team_leader" || assigner.role === "tech_member"
+    ? (assigner.createdBy || null)
+    : assigner.uid;
 
   for (const w of wanted) {
     const job = newestJobOf(w.uid);

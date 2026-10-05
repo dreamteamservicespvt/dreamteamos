@@ -212,6 +212,19 @@ describe("where it opens", () => {
     expect(openingMonth(buildClientRun([M3], "2026-09-20")!, "2026-09-20")).toBe("2026-10"); // still to start
   });
 
+  it("opens a month that is not running where most of its posts are — a history month on its filled-in work (2026-10-05)", () => {
+    const hist = month({
+      id: "h1", history: true, status: "completed", cycle: { month: "2026-08", startDate: "2026-08-24", endDate: "2026-09-24" },
+      items: [item("h-a", { status: "posted", uploadDate: "2026-08-28" }), item("h-b"), item("h-c", { status: "posted", uploadDate: "2026-08-30" })],
+    });
+    expect(openingMonth(buildClientRun([hist], TODAY)!, TODAY)).toBe("2026-08"); // its middle (8 Sep) is on September
+    // Nothing filled in yet: the middle, as before.
+    expect(openingMonth(buildClientRun([{ ...hist, items: [item("h-d")] }], TODAY)!, TODAY)).toBe("2026-09");
+    // A post dated outside its month does not pull the page — it is flagged where it sits.
+    const stray = { ...hist, items: [item("h-e", { status: "posted", uploadDate: "2026-07-01" })] };
+    expect(openingMonth(buildClientRun([stray], TODAY)!, TODAY)).toBe("2026-09");
+  });
+
   it("picks today when it is part of the page, else the first day with posts, else the month's first day", () => {
     expect(openingDay(RUN, calendarPage(RUN, "2026-10"), TODAY)).toBe(TODAY);
     expect(openingDay(RUN, calendarPage(RUN, "2026-08"), TODAY)).toBe("2026-08-10");
