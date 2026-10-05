@@ -9,7 +9,7 @@ import {
   characterCastBlock,
 } from "@/services/prompts/characterAd";
 import { getCharacterPack } from "@/services/characterPacks";
-import { assembleVeoPrompt, cameraLabel, planClipMotion, spokenLinesIn } from "@/services/prompts/motion";
+import { assembleVeoPrompt, cameraShot, planClipMotion, spokenLinesIn } from "@/services/prompts/motion";
 import {
   MIN_WORDS_PER_DUO_CLIP, MAX_WORDS_PER_DUO_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE, countSpokenWords,
 } from "@/utils/dialogueFormat";
@@ -159,7 +159,7 @@ describe("main-frame prompt", () => {
   it("stages both characters, visible and separated, every frame", () => {
     const p = frame();
     expect(p).toContain("BOTH characters visible in every frame");
-    expect(p).toContain("the classic");
+    expect(p).toContain("caught mid-step side by side as each clip's 🎬 note says");
   });
 
   it("emits one prompt per clip with the expected separator", () => {
@@ -471,31 +471,35 @@ describe("voice-over prompt — promotional grounding", () => {
 });
 
 /**
- * The special-category Veo prompt is now two parts: a director call that receives the character's
- * own video direction, and a prompt assembled in code around its answer. These pin both — and the
- * things the old prompt got right that must survive: the original voices, the listener reacting,
- * the dialogue passed through untouched, the frame locked.
+ * The special-category Veo prompt is two parts: a director call that receives the character's own
+ * video direction and writes each clip's ACTION, and a short prompt assembled in code around it
+ * (2026-10-05). These pin both — and the things the old prompt got right that must survive: the
+ * original voices, the listener reacting, the dialogue passed through untouched, the frame kept.
  */
 describe("veo prompt", () => {
   const p = CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT(pack, 4);
   const subject = packVeoSubject(pack);
-  const plan = planClipMotion(4, "commercial");
+  const plan = planClipMotion(4, "commercial", "cartoon", { twoHander: true });
   const assembled = assembleVeoPrompt({
     aspectRatio: "9:16",
     plan: plan[1],
     identityLock: subject.identityLock,
     language: "Telugu",
     speech: subject.speech([{ name: "Motu", text: "మోటు లైన్" }, { name: "Patlu", text: "పట్లు లైన్" }]),
-    performanceNotes: subject.performanceNotes,
+    cast: subject.cast, castPlural: subject.castPlural, twoHander: subject.twoHander, scaleAnchor: subject.scaleAnchor,
+    sides: subject.sides, pairNames: subject.pairNames,
   });
 
-  // The whole point of the change: the old prompt ordered a static camera.
-  it("never orders a frozen performance, and keeps the camera inside the frame", () => {
+  // The old prompt ordered a static camera; the next ordered nobody to move; the next never let a drawn pair walk.
+  it("never orders a frozen performance — the pair walks together, filmed from the side at one distance", () => {
     expect(p).not.toContain("Camera holds steady");
     expect(assembled).not.toContain("Camera holds steady");
-    expect(assembled).toContain("No frozen pose");
-    expect(assembled).toContain("No camera move that shows anything beyond the attached frame");
-    expect(assembled).toContain(`CAMERA — ${cameraLabel(plan[1])}`);
+    expect(assembled).toContain("one continuous 8-second shot that starts from the attached frame");
+    expect(assembled).toContain(`${cameraShot(plan[1], subject.cast, true, { a: "Motu", b: "Patlu" })}: `);
+    expect(assembled).toMatch(/two-shot at eye level, the camera (?:travelling|gliding) sideways (?:with|past) them at one distance/);
+    expect(assembled).toContain("both walk a few steps side by side to the product or counter beside them; Motu points to it and talks while Patlu looks and reacts");
+    expect(assembled).toContain("The framing drifts a little toward whoever is speaking, never closer.");
+    expect(assembled).toContain("Their own signature mannerisms from the show throughout");
   });
 
   // The camera belongs to the motion plan now: the catalogue's held-frame camera kept the videos static.
@@ -507,20 +511,20 @@ describe("veo prompt", () => {
 
   it("attributes each line to the right character, in its half of the clip", () => {
     // And where each stands — the frame locks Motu LEFT and Patlu RIGHT, so the video can tell who talks.
-    expect(assembled).toContain("0–4s — Motu (on the LEFT of the frame), the original Motu voice from the show");
-    expect(assembled).toContain("4–8s — Patlu (on the RIGHT of the frame), the original Patlu voice from the show");
+    expect(assembled).toContain("0–4s — Motu (on the LEFT of the frame), with the original Motu voice from the show");
+    expect(assembled).toContain("4–8s — Patlu (on the RIGHT of the frame), with the original Patlu voice from the show");
   });
 
   it("demands the original voices and keeps the listener alive", () => {
-    expect(assembled).toContain("never a narrator, a new voice actor or a different accent");
+    expect(assembled).toContain("no narrator or new voices");
     expect(assembled).toContain("the other listens with the mouth closed and reacts");
-    expect(assembled).toContain("No extra people speaking, no new voices");
+    expect(assembled).toContain("no two voices at once");
   });
 
-  it("animates the attached frame and locks it against drift", () => {
-    expect(assembled).toContain("Keep both characters exactly as drawn, the logo and the location exactly as they are in it");
-    expect(assembled).toContain("No change to the face, hair, outfit, logo or location from the attached frame");
-    expect(p).toContain("Never describe the face, hair, skin, outfit or jewellery");
+  it("starts from the attached frame and keeps its place, their sides and their heights while they move", () => {
+    expect(assembled).toContain("Keep both characters exactly as drawn, with the same designs, colours, builds and heights — Motu on the left and Patlu on the right — and the same place, logo, colours and light as the attached frame; they move within that place, and nothing new is added to it.");
+    expect(assembled).toContain(`Heights never change: ${pack.scaleAnchor!}`);
+    expect(p).toContain("Never describe a face, hair, clothes, the room or the light");
   });
 
   it("passes the dialogue through untouched", () => {
@@ -528,8 +532,7 @@ describe("veo prompt", () => {
   });
 
   it("carries the negatives that stop the usual failures", () => {
-    expect(assembled).toContain("no watermark");
-    expect(assembled).toContain("No background music");
+    expect(assembled).toContain("Negative prompt: No text or subtitles on screen, no background music or echo, no cuts, no camera shake, no frozen or static pose, no change of location or background, no unnatural movement, no extra people, no goodbye wave");
     expect(assembled).toContain("one continuous 8-second shot");
   });
 

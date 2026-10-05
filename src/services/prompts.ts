@@ -1128,6 +1128,19 @@ export const getAdTypeMode = (adType: string, festivalName = '') => {
   }
 };
 
+/**
+ * The hero frame's pose (clip 1 of a model ad) — caught as she is about to move, never stiffly clasped.
+ *
+ * It was "the formal front-clasp corporate pose": both hands at the lower waist, right over left, no
+ * gestures. That still is the first frame of clip 1's video, and Veo continues the pose a frame starts
+ * from — the owner's hospital clip kept its hands clasped for most of its eight seconds (2026-10-05). The
+ * face, the centred framing and the look are unchanged; only the stance opens (prompts/motion, history 6).
+ */
+export const HERO_FRAME_POSE = "a natural, open welcoming pose caught as if about to step forward — the weight on one foot, one hand opening in a small welcoming gesture at waist height and the other relaxed at the side (no crossed arms, no pockets, no stiffly clasped hands)";
+
+/** The same, opening a bullet line. */
+const HERO_FRAME_POSE_LINE = HERO_FRAME_POSE.charAt(0).toUpperCase() + HERO_FRAME_POSE.slice(1);
+
 export const MAIN_FRAME_SYSTEM_PROMPT = (attireType: string, adType: string, festivalName: string, aspectRatio: string = '1:1', businessContext: string = '', gender: string = 'female', customAttire: string = '', noLogo: boolean = false, logoName: string = '') => {
   const isFestival = adType === AdType.FESTIVAL && festivalName;
   const festivalTheme = isFestival ? getFestivalTheme(festivalName) : null;
@@ -1216,8 +1229,8 @@ ${attireBullets}
 
 Pose:
 - Standing in the exact middle of the [BUSINESS TYPE] reception, facing the camera directly
-- Both hands positioned at the lower waist level, right hand lightly resting over the left hand, fingers naturally relaxed and partially overlapping — formal front-clasp corporate pose (no crossed arms, no pockets, no hand gestures)
-- Calm, confident, welcoming standing posture
+- ${HERO_FRAME_POSE_LINE}
+- Calm, confident and welcoming — alive, never a stiff, posed stance
 
 Background:
 - A real, premium reception interior of THIS exact [BUSINESS TYPE] — instantly recognisable as this specific business from its real equipment, products, displays, furniture, and service cues
@@ -1431,20 +1444,19 @@ EXPRESSION — STAR QUALITY (MANDATORY):
 
 ${isProfessional ? `POSE & FRAMING (HERO FIRST FRAME — MANDATORY):
 - The girl stands in the EXACT CENTER of the 9:16 frame with balanced left-right spacing, occupying roughly 70% of the frame height — a medium full / three-quarter standing shot, never a tight head-and-shoulders crop.
-- HANDS (STRICT RULE): Both hands positioned at the lower waist level, right hand lightly resting over the left hand, fingers naturally relaxed and partially overlapping, no crossed arms, no pockets, no hand gestures, formal front-clasp corporate pose.
+- HANDS AND STANCE (STRICT RULE): ${HERO_FRAME_POSE}.
 - Standing tall and professional, shoulders square to camera, chin level, calm confident welcoming posture, looking directly into the lens.
 - Camera at chest / eye level with the business reception clearly visible behind her.` : `POSE ANCHOR FOR THE HERO MAIN FRAME (MANDATORY):
 - The hero or anchor image must be EXACTLY centered with
   balanced left-right spacing
-- Hands gently folded at the waist or lower abdomen, one
-  hand resting over the other, fingers relaxed
+- ${HERO_FRAME_POSE_LINE}
 - Camera at chest level, mid-shot framing only, with a calm,
   premium, welcoming posture`}` : `POSE & FRAMING (PREMIUM COMMERCIAL PHOTOGRAPHY — NATURAL VARIATION ALLOWED):
 • Close mid-shot only (head to upper waist / upper torso) — never full-body, never wide enough to weaken the model's presence
-• For professional suit outputs, Clip 1 must use the same hero pose as the traditional and festival anchor frames: EXACTLY centered with balanced left-right spacing and hands gently folded at the waist, one hand resting over the other
-• From Clip 2 onward, hand position, body angle, and pose energy must change according to that clip's exact voice-over script, business proof point, and location instead of repeating the folded-hands hero pose
+• For professional suit outputs, Clip 1 must use the same hero pose as the traditional and festival anchor frames: EXACTLY centered with balanced left-right spacing, in ${HERO_FRAME_POSE}
+• From Clip 2 onward, hand position, body angle, and pose energy must change according to that clip's exact voice-over script, business proof point, and location instead of repeating the hero pose
 • Camera should remain premium and intentional — mostly chest-level or eye-level, with modest angle changes only when they improve realism and storytelling
-• Hands and posture must feel graceful and believable — allow variation based on the location and shot purpose instead of forcing the same folded-hands pose every time
+• Hands and posture must feel graceful and believable — allow variation based on the location and shot purpose instead of forcing the same pose every time
 • Body language must feel poised, elegant, and premium — never stiff, never mannequin-like, never awkward
 • The model must occupy roughly 70% of the total frame height in EVERY clip while still leaving enough space to clearly show the business environment
 • The framing must feel close-up and dominant in EVERY clip — the model is the hero and must visually command the frame
@@ -1795,8 +1807,8 @@ export const MULTI_FRAME_SYSTEM_PROMPT = (
         ? 'Medium full / three-quarter standing shot, straight-on at eye level, subject perfectly centered in frame with balanced left-right spacing and roughly 70% frame presence, with the business reception clearly visible behind her — classic brand ambassador establishing shot'
         : 'Close mid-shot, straight-on at chest or eye level, subject perfectly centered in frame with balanced left-right spacing and roughly 70% frame presence — classic brand ambassador establishing shot',
       pose: adType !== AdType.FESTIVAL
-        ? 'Both hands at the lower waist, right hand lightly resting over the left hand, fingers relaxed and partially overlapping — no crossed arms, no pockets, no hand gestures, formal front-clasp corporate pose; the girl standing tall and centered'
-        : 'Hands gently folded at waist, one hand resting over the other, confident welcoming posture — brand ambassador stance',
+        ? `${HERO_FRAME_POSE_LINE}; the girl standing tall and centered`
+        : `${HERO_FRAME_POSE_LINE} — brand ambassador stance`,
       purpose: 'Introduce the brand ambassador and the business atmosphere. The viewer sees the model AND instantly recognizes the business type from the environment.',
       logoPlacement: getShotLogoPlacementForBusiness('hero', detectedBusinessType, businessContext),
     },
@@ -1922,16 +1934,17 @@ Each chosen spot must match the exact service claim, business proof point, or em
 
 ${motionPlan?.length ? `===== FRAMES BUILT FOR MOTION (EACH FRAME IS THE FIRST MOMENT OF ITS CLIP) =====
 
-Each frame below becomes an 8-second video that animates THAT frame and nothing beyond it: the ambassador STANDS AND TELLS, SHOWS A PRODUCT or PRESENTS THE SPACE, always in place — nobody walks, and the camera only eases closer, breathes or moves its focus. Each clip's 🎬 note says which, and with which camera angle, lens and move. So the variety of the ad comes from YOUR frames — every clip is a different real part of the business (the entrance seen from inside, the counter, the display, the work area) — and the video can only use what the frame shows: anything it would have to invent (a room beyond the edge, a product out of reach) is where tables vanish and people walk into walls. Compose every frame for its own clip:
+Each frame below becomes an 8-second video that starts from THAT frame and shows only what it shows — and every clip MOVES like a shot from a real commercial: the ambassador ${motionPlan.some((m) => m.walks) ? 'WALKS through the place — toward the camera, along the counter or display, or to the product — ' : ''}PRESENTS what the line is about${motionPlan.some((m) => !m.walks) ? ' or TURNS to present the place' : ''}, filmed with ONE camera move — a push-in${motionPlan.some((m) => m.camera.key === 'side_track') ? ', a side-tracking shot that travels with her walk' : ''}, a sideways glide or a short arc. Each clip's 🎬 note says which, and with which camera angle, lens and move. The variety of the ad comes from YOUR frames — every clip is a different real part of the business (the entrance seen from inside, the counter, the display, the work area) — and the video can only use what the frame shows: anything it would have to invent (a room beyond the edge, a product out of view, floor that is not there) is where tables vanish and people walk into walls. Compose every frame for its own clip:
 
-• READY FOR ITS CLIP: follow each clip's 🎬 note exactly — relaxed and natural, facing the camera, with clear space around the arms for gestures and nothing touching the body.
-• THE THING TO SHOW WITHIN REACH: the product, counter or equipment the clip talks about sits within arm's reach and fully in view, so she can turn to it, point to it or touch it.
+• READY FOR ITS CLIP: follow each clip's 🎬 note exactly — caught MID-MOVEMENT, never a stiff, posed stance: mid-step with one foot forward, the body angled the way she is going, a hand mid-gesture, the face toward the camera; clear space around the arms and nothing touching the body. (Veo continues the pose a frame starts from — a posed frame makes a static video.)
+${motionPlan.some((m) => m.walks) ? `• A WALK NEEDS ITS FLOOR: a walking clip shows the clear, open floor she walks on — in front of her toward the camera, or along the counter or display beside her — fully in view, with nothing in the way.
+` : ''}• THE THING TO SHOW IN VIEW: the product, counter or equipment the clip talks about sits a few steps away or within reach and fully in view, so she can walk to it, point to it or lift it.
 • EVERYTHING WHOLE AND IN VIEW: tables, counters, shelves and products are fully inside the frame and clear of her body — nothing cut off at her elbow, nothing she is leaning into.
-• THREE-QUARTER BODY (head to knees) — with the face large, clear and evenly lit.
+• THREE-QUARTER BODY (head to knees) — with the face large, clear and evenly lit${motionPlan.some((m) => m.walks) ? ' (a walking clip: as its 🎬 note says)' : ''}.
 • A HEIGHT REFERENCE: a fixed real thing behind her — the counter edge, a door frame, a shelf line — that her height can be read against in every clip. Keep her feet and the floor visible wherever the framing allows.
-• DEPTH: real objects at two or three distances — the subject in the middle ground, the premises behind — so a slow push-in or a focus pull has depth to work with.
+• DEPTH: real objects at two or three distances — something near the camera, the subject in the middle ground, the premises behind — so a push-in, a sideways glide or an arc has depth and parallax to work with.
 • SHARP, EVEN LIGHT on the subject and the logo, so motion never drops them into shadow.
-• Clip 1 keeps its hero framing and pose.
+• Clip 1 keeps its hero framing, in ${HERO_FRAME_POSE}.
 • INSIDE THE BUSINESS, ALWAYS: every frame is set indoors, inside the premises, facing INTO them — never the street, the footpath, the car park, the outside of the building, a doorway, or a shot looking in from outside.
 
 ` : ''}===== FRAME-BY-FRAME GENERATION RULES =====
@@ -1983,7 +1996,7 @@ ${Array.from({ length: segmentCount }, (_, i) => {
    ${adType !== AdType.FESTIVAL ? `Generate a COMPLETE standalone first-frame image prompt EXACTLY in the base format above (the headers: Create an ultra-realistic promotional portrait…, Main Character, Pose, Background, Visual Style, Composition, Important).
    Keep it clean and concise — about 200–300 words, simple bullet lines, no extra sections, no negative list.${plan ? `
    In the Composition section, write in plain words how the frame is composed for its slow camera move: ${plan.camera.framing}.` : ''}
-   Describe the ${p.personYoung} (with ${p.isMale ? 'minimal masculine accessories only — ' + p.jewellery : 'elegant jewellery — ' + (attireType === 'traditional' ? 'necklace/chain, earrings, bangles, finger ring, and a small bindi on the forehead' : 'finger ring, necklace/chain, earrings, watch, and NO bindi on the forehead')}), the formal front-clasp pose, ${heroBackdrop}, and ${brand.ref} fully visible on ${realLocation ? 'a real surface in that photograph' : 'the reception wall'}.
+   Describe the ${p.personYoung} (with ${p.isMale ? 'minimal masculine accessories only — ' + p.jewellery : 'elegant jewellery — ' + (attireType === 'traditional' ? 'necklace/chain, earrings, bangles, finger ring, and a small bindi on the forehead' : 'finger ring, necklace/chain, earrings, watch, and NO bindi on the forehead')}), the open hero pose (${HERO_FRAME_POSE}), ${heroBackdrop}, and ${brand.ref} fully visible on ${realLocation ? 'a real surface in that photograph' : 'the reception wall'}.
    ${realLocation ? `The pose and mood must directly match Clip ${clipNum}'s voice-over line — the place is the photograph, reproduced exactly as it is` : `The reception, visible business cues, pose, and mood must directly match Clip ${clipNum}'s voice-over line`}, and ${brand.ref} must feel physically installed on ${logoSurface} — pixel-perfect and unchanged, mounted in the upper background, fully readable and fully visible in one piece, with nothing blocking, cropping, or altering it.
    ${brand.isNameBoard ? brand.ref.charAt(0).toUpperCase() + brand.ref.slice(1) : 'The attached logo'} must be the ONLY text in the image — do NOT invent any other logo, signage, banners, taglines, mission lines, service lists, dates, or academic years, and do NOT add empty/blank boards, frames, certificates, brochures, posters, standees, or blank screens (empty placeholders look like cardboard) — keep walls and surfaces clean. Keep it perfectly sharp and in focus (not blurred by depth of field) so all its text is clearly readable.
    Frame the ${p.personYoung} as a three-quarter shot (head to thighs/knees), centered and clearly filling about 70% of the frame height (not a small full head-to-feet shot), looking directly at the camera. Keep the ${p.personYoung}'s ~70% size the priority and ${brand.ref} small-to-medium and secondary — dynamically sized to the free wall space and never enlarged at the cost of the ${p.personYoung}'s size.` : `Generate a COMPLETE, detailed image generation prompt following ALL the rules/sections from the base prompt above.
@@ -2031,7 +2044,7 @@ ${Array.from({ length: segmentCount }, (_, i) => {
   • 💡 How lighting naturally differs at this new spot (e.g., near window = warm, interior = ambient) while still preserving the realism formula
   • 👁️ Mandatory direct eye contact to the camera while holding this new pose
   • 🪧 ${brand.isNameBoard ? 'The business name board' : 'The attached logo'} placed on this clip's believable physical surface — ${logoSurface} — small-to-medium, sharp and clearly readable, fully visible, physically installed, and completely unmodified${brand.isNameBoard && brand.name ? ` (it must read exactly "${brand.name}")` : ''}${plan ? `
-  • 🎬 COMPOSED FOR ITS ANIMATION (write it into the prompt in plain words — this still is animated in place): ${compositionFor(plan)}` : ''}
+  • 🎬 COMPOSED FOR ITS ANIMATION (write it into the prompt in plain words — this still is the first moment of its video): ${compositionFor(plan)}` : ''}
 
    WHY THIS MATTERS: Any model description — even saying "beautiful ${p.person}" or "silk saree" — will cause the AI image generator to create a COMPLETELY DIFFERENT person. The model's identity is LOCKED from Clip 1. You ONLY control the scene around ${p.object}.
    
@@ -2071,7 +2084,7 @@ The model is LOCKED from Clip 1 — you can ONLY control the SCENE around her (l
 ${segmentCount === 2 ? `===== TWO-CLIP CONTINUATION FRAME (CLIP 2) — EXTRA CARE (MANDATORY) =====
 
 In a 2-clip ad, Clip 2 is the ONLY continuation frame, so it must be flawless. While the model identity and attire stay LOCKED to the attached Frame-1 image, Clip 2 must NOT feel like a lazy copy of Clip 1:
-• BODY LANGUAGE: give the ${p.person} a clearly NEW, natural, confident pose and hand position that visibly matches Clip 2's exact voice-over line and the new location — e.g. presenting a real product/counter, gesturing toward equipment, or an open welcoming stance. Never repeat Clip 1's folded-hands hero pose, never a stiff, awkward, floating, or mannequin posture, and keep both hands and arms anatomically natural.
+• BODY LANGUAGE: give the ${p.person} a clearly NEW, natural, confident pose and hand position that visibly matches Clip 2's exact voice-over line and the new location — e.g. presenting a real product/counter, gesturing toward equipment, or an open welcoming stance. Never repeat Clip 1's hero pose, never a stiff, awkward, floating, or mannequin posture, and keep both hands and arms anatomically natural.
 • BACKGROUND: move the ${p.person} to a genuinely DIFFERENT, real, in-use zone of the SAME business that proves Clip 2's message (not the same reception wall as Clip 1). Fill it with that zone's real, specific equipment/products/fixtures so it instantly reads as this exact business, with believable depth, correct scale, and lighting consistent with Clip 1's grade.
 • The ${p.person} must stay the hero at ~70% frame height with direct eye contact, and ${brand.isNameBoard ? 'the name board' : 'the attached logo'} must remain correctly installed, sharp, and unmodified in this new zone.
 
@@ -2144,7 +2157,7 @@ Clip 1 – Main Frame Prompt (${shotDesigns[0].name})
 Create an ultra-realistic promotional portrait for "[BUSINESS NAME]" using ${brand.isNameBoard ? `a realistic wall name board reading "${brand.name || '[BUSINESS NAME]'}" as branding` : 'the attached official logo as branding reference'}.
 Generate a premium [BUSINESS TYPE] reception environment and place a confident young Indian ${p.personYoung} standing in front of the reception area.
 Main Character: Indian ${p.personYoung}, age ${p.ageYears}, a new different natural-looking ${p.personYoung}, ${p.isMale ? (isCustomAttire ? customAttire.trim() : attireType === 'shirt_pant' ? 'crisp formal full-sleeve shirt neatly tucked into tailored formal trousers (not a suit, not any female attire)' : "premium tailored men's business suit (not any female attire)") : (isCustomAttire ? customAttire.trim() : attireType === 'traditional' ? 'elegant DESIGNER silk/fancy saree (not a suit) with tasteful zari/border work (never plain) in a rich attractive non-dull colour and a modest elbow/short-sleeve blouse (never sleeveless)' : 'premium tailored formal suit (not saree)')} in a brand-derived colour, natural black hair, ${p.isMale ? 'a wristwatch and an optional slim ring only (no necklace, earrings, bangles, or bindi)' : (attireType === 'traditional' ? 'traditional jewellery (necklace/chain, earrings, bangles, ring, bindi)' : 'simple jewellery (finger ring, thin necklace/chain, earrings, wristwatch) and NO bindi on the forehead')}, friendly welcoming smile.
-Pose: standing centered, both hands at the lower waist with the right hand lightly resting over the left — formal front-clasp corporate pose, looking at the camera.
+Pose: standing centered in ${HERO_FRAME_POSE}, looking at the camera.
 Background: the real [BUSINESS TYPE] reception built from the business details, with ${brand.ref} as a small-to-medium wall sign behind ${p.object} — fully visible, sharp and clearly readable (in focus, not blurred), but secondary, never large enough to shrink the ${p.personYoung}. ${brand.isNameBoard ? 'The name board' : 'The attached logo'} is the ONLY text anywhere — no other signage, banners, taglines, mission lines, service lists, dates, academic years, or any invented text. No empty/blank boards, picture frames, certificates, brochures, posters, or blank screens — keep walls and surfaces clean.
 Visual Style: ultra realistic, cinematic indoor lighting, natural skin texture, premium colour grading.
 Composition: 9:16 vertical, three-quarter shot from head to thighs/knees, girl centered and clearly filling about 70% of the frame height (not a small full head-to-feet shot).` : `**CLIP 1 FORMAT (FULL — 500-800 words):**
@@ -2697,12 +2710,15 @@ export const VEO_SEGMENT_SYSTEM_PROMPT = (segmentCount: number, gender: string =
   });
 };
 
-/** The voice and the things a model-ad clip must never change, for assembleVeoPrompt. */
+/**
+ * The voice and the things a model-ad clip must never change, for assembleVeoPrompt. The lock names
+ * WHAT stays as the frame has it — never what it looks like: the attached frame is the description.
+ */
 export const modelVeoSubject = (gender: string = 'female') => {
   const p = getModelProfile(gender);
   return p.isMale
-    ? { voice: 'a warm, confident male voice', identityLock: 'his face (100% face match), his hair, his outfit, the logo and the location', cast: 'He', castPlural: false }
-    : { voice: 'a very sweet, warm, confident female voice', identityLock: 'her face (100% face match), her hair, her outfit, the logo and the location', cast: 'She', castPlural: false };
+    ? { voice: 'a warm, confident male voice', identityLock: 'his exact face, hair, outfit and height', cast: 'He', castPlural: false }
+    : { voice: 'a very sweet, warm, confident female voice', identityLock: 'her exact face, hair, outfit and height', cast: 'She', castPlural: false };
 };
 
 export const POSTER_SYSTEM_PROMPT = (

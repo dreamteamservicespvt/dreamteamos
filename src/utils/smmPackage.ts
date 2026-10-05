@@ -15,9 +15,9 @@ import {
 } from "@/utils/smmPlan";
 import { SMM_RENEWAL_NOTICE_DAYS } from "@/utils/smmReminders";
 import {
-  SMM_ITEM_STATUSES,
+  SMM_ITEM_STATUSES, SMM_PLATFORMS,
   type SmmAssignee, type SmmCampaign, type SmmContentItem, type SmmContentKind, type SmmCycle, type SmmItemStatus,
-  type SmmRenewalPrefill, type SmmTeam,
+  type SmmPlatform, type SmmRenewalPrefill, type SmmTeam,
 } from "@/types/smm";
 import type { Lead, OrderTrack, SaleDetail, WorkAssignment } from "@/types";
 
@@ -260,6 +260,65 @@ export function kindSegments(items: SmmContentItem[], kind: SmmContentKind, toda
 }
 
 /* ── What needs whom ────────────────────────────────────────────────────────────────────────── */
+
+/* ── The accounts a month covers (2026-10-05) ───────────────────────────────────────────────── */
+
+/**
+ * A list of accounts made safe: known accounts only, each once, in the order the app always lists them
+ * (Instagram, Facebook, YouTube, LinkedIn, X) so two equal choices compare equal.
+ */
+export function cleanPlatforms(list: readonly unknown[] | null | undefined): SmmPlatform[] {
+  const wanted = new Set(list || []);
+  return SMM_PLATFORMS.map((p) => p.key).filter((k) => wanted.has(k));
+}
+
+const samePlatforms = (a: readonly SmmPlatform[] | null | undefined, b: readonly SmmPlatform[] | null | undefined) =>
+  cleanPlatforms(a).join() === cleanPlatforms(b).join();
+
+/**
+ * The month's pieces once its accounts change in setup (2026-10-05).
+ *
+ * ── Why the pieces follow, and which ones ─────────────────────────────────────────────────────
+ * Every piece carries the accounts it goes on, copied from the month when it was planned. The accounts
+ * were only ever chosen on the sale, so a client who added YouTube a week in had no way onto the plan.
+ * Setup now changes them, and the plan has to agree with it, or the next post still goes on the old
+ * accounts and nobody notices until the client asks where their YouTube posts are:
+ *   • a piece already POSTED keeps the accounts it went on — that is history, and its links are there;
+ *   • a piece still on the month's old accounts (nobody chose differently for it) takes the new ones;
+ *   • a piece somebody gave its own accounts keeps that choice, minus any account the month dropped —
+ *     and if that leaves it on none, it goes on the month's accounts.
+ * Returns the same array when nothing changes, so a setup saved without touching accounts writes nothing.
+ */
+export function itemsForAccounts(
+  items: SmmContentItem[],
+  before: readonly SmmPlatform[] | null | undefined,
+  after: readonly SmmPlatform[],
+): SmmContentItem[] {
+  const next = cleanPlatforms(after);
+  if (samePlatforms(before, next)) return items;
+  let changed = false;
+  const out = items.map((item) => {
+    if (isPosted(item)) return item;
+    const own = cleanPlatforms(item.platforms);
+    const kept = own.filter((p) => next.includes(p));
+    const platforms = samePlatforms(own, before) || kept.length === 0 ? next : kept;
+    if (samePlatforms(own, platforms)) return item;
+    changed = true;
+    return { ...item, platforms };
+  });
+  return changed ? out : items;
+}
+
+/** The client's page links for the accounts the month covers — a box the form no longer shows is not kept. */
+export function linksForAccounts(
+  links: Partial<Record<SmmPlatform, string>> | null | undefined,
+  platforms: readonly SmmPlatform[],
+): Partial<Record<SmmPlatform, string>> | null {
+  if (!links) return null;
+  const out: Partial<Record<SmmPlatform, string>> = {};
+  for (const p of cleanPlatforms(platforms)) if (links[p]?.trim()) out[p] = links[p]!.trim();
+  return Object.keys(out).length ? out : null;
+}
 
 /** Somebody holds at least one of the three jobs. Assistants alone are not a team. */
 export function hasTeam(team: SmmTeam | null | undefined): boolean {

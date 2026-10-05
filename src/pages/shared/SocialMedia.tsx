@@ -19,11 +19,11 @@
  * The tech side starts from "Add SMM sale"; a salesperson renews from the card. Every month is
  * somebody's sale (2026-10-03), so the salesperson sees it and is paid for it.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
-  AlertTriangle, Archive, BarChart3, CheckCircle2, LayoutGrid, Loader2, Megaphone, Plus, RefreshCcw, Search,
+  AlertTriangle, Archive, BarChart3, CalendarDays, CheckCircle2, LayoutGrid, Loader2, Megaphone, Plus, RefreshCcw, Search,
   TrendingDown, UserPlus, Users,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
@@ -34,6 +34,7 @@ import { canRenewSmm, canSetUpSmm, needsSetup, renewalDue } from "@/utils/smmPac
 import { byGlanceUrgency, monthGlance, type SmmGlance } from "@/utils/smmGlance";
 import { overdueItemsFor } from "@/utils/smmReminders";
 import SmmCampaignCard from "@/components/smm/SmmCampaignCard";
+import SmmCalendarBoard from "@/components/smm/SmmCalendarBoard";
 import SmmAddSaleDialog from "@/components/smm/SmmAddSaleDialog";
 import SmmTeamLeadPanel from "@/components/smm/SmmTeamLeadPanel";
 import SmmDashboard, { type SmmBoardFilter } from "@/components/smm/SmmDashboard";
@@ -56,12 +57,14 @@ const onTeam = (c: SmmCampaign, uid: string) =>
   [c.team?.creator?.uid, c.team?.publisher?.uid, c.team?.marketer?.uid, ...(c.team?.assistants || []).map((a) => a.uid)]
     .includes(uid);
 
-type View = "cards" | "insights";
+type View = "cards" | "insights" | "calendar";
+const VIEWS: View[] = ["cards", "insights", "calendar"];
 /** Which view this browser last used — a convenience, so it may be missing or unreadable. */
 const VIEW_KEY = "dts_smm_view";
 function readView(): View {
   try {
-    return localStorage.getItem(VIEW_KEY) === "insights" ? "insights" : "cards";
+    const v = localStorage.getItem(VIEW_KEY) as View | null;
+    return v && VIEWS.includes(v) ? v : "cards";
   } catch {
     return "cards";
   }
@@ -75,7 +78,13 @@ export default function SocialMedia() {
   const overseer = isSmmOverseer(user);
   const canSetUp = canSetUpSmm(user);
   const isSeller = user?.role === "sales_member";
-  const [view, setView] = useState<View>(readView);
+  // A link may name the view, or a client for the calendar (`?view=calendar&client=`); else the last one used.
+  const [params] = useSearchParams();
+  const [view, setView] = useState<View>(() => {
+    const asked = params.get("view") as View | null;
+    if (asked && VIEWS.includes(asked)) return asked;
+    return params.get("client") ? "calendar" : readView();
+  });
   const [filter, setFilter] = useState<SmmBoardFilter>("all");
   const [search, setSearch] = useState("");
   const [memberFilter, setMemberFilter] = useState("");
@@ -83,6 +92,7 @@ export default function SocialMedia() {
   const [adding, setAdding] = useState(false);
   const [settingUp, setSettingUp] = useState<SmmCampaign | null>(null);
   const [finished, setFinished] = useState<SmmCampaign[] | null>(null);
+  const [finishedLoading, setFinishedLoading] = useState(false);
   const { renew, renewingId } = useSmmRenewal(user);
 
   /*
@@ -105,11 +115,16 @@ export default function SocialMedia() {
     notifyRenewalsDueOnOpen(campaigns, user, today).catch(() => undefined);
   }, [isSeller, user, loading, campaigns, today]);
 
-  // Overseers read only the running months live; the finished ones are read when asked for.
+  // Overseers read only the running months live; the finished ones are read when asked for — the
+  // Finished tab, or the calendar's "Show clients whose months have all ended". Once per visit.
+  const loadFinished = useCallback(() => {
+    if (!overseer || finished || finishedLoading) return;
+    setFinishedLoading(true);
+    fetchFinishedCampaigns().then(setFinished).finally(() => setFinishedLoading(false));
+  }, [overseer, finished, finishedLoading]);
   useEffect(() => {
-    if (view !== "cards" || filter !== "done" || !overseer || finished) return;
-    fetchFinishedCampaigns().then(setFinished);
-  }, [view, filter, overseer, finished]);
+    if (view === "cards" && filter === "done") loadFinished();
+  }, [view, filter, loadFinished]);
 
   const pickView = (v: View) => {
     setView(v);
@@ -121,8 +136,16 @@ export default function SocialMedia() {
     pickView("cards");
   };
 
-  const scope = (c: SmmCampaign) =>
-    (!memberFilter || onTeam(c, memberFilter)) && (!sellerFilter || c.soldBy === sellerFilter);
+  const scope = useCallback((c: SmmCampaign) =>
+    (!memberFilter || onTeam(c, memberFilter)) && (!sellerFilter || c.soldBy === sellerFilter), [memberFilter, sellerFilter]);
+
+  // The calendar's clients: everything in memory — an overseer's running months plus the finished ones
+  // once read; a member's or salesperson's own months, which already include their finished ones.
+  const calendarPool = useMemo(() => (overseer ? [...campaigns, ...(finished || [])] : campaigns), [overseer, campaigns, finished]);
+  const uid = user?.uid;
+  const role = user?.role;
+  const smmLeader = (user as { smmLeader?: boolean } | null)?.smmLeader;
+  const viewer = useMemo(() => ({ uid: uid || "", role, smmLeader }), [uid, role, smmLeader]);
 
   const live = useMemo(() => campaigns.filter((c) => c.status === "active" && !c.history), [campaigns]);
   const doneList = useMemo(
@@ -278,6 +301,7 @@ export default function SocialMedia() {
           {([
             { key: "cards" as const, label: "Cards", Icon: LayoutGrid },
             { key: "insights" as const, label: "Insights", Icon: BarChart3 },
+            { key: "calendar" as const, label: "Calendar", Icon: CalendarDays },
           ]).map(({ key, label, Icon }) => (
             <button key={key} type="button" role="tab" aria-selected={view === key} data-test={`smm-view-${key}`}
               onClick={() => pickView(key)}
@@ -290,7 +314,22 @@ export default function SocialMedia() {
         </div>
       </div>
 
-      {view === "insights" ? (
+      {view === "calendar" ? (
+        loading ? (
+          <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" size={26} /></div>
+        ) : (
+          /* Pick a client, see every month we ran for them, day by day (2026-10-05). */
+          <SmmCalendarBoard
+            campaigns={calendarPool}
+            scope={scope}
+            viewer={viewer}
+            overseer={overseer}
+            today={today}
+            finishedState={overseer ? (finished ? "loaded" : finishedLoading ? "loading" : "not_loaded") : undefined}
+            onLoadFinished={overseer ? loadFinished : undefined}
+          />
+        )
+      ) : view === "insights" ? (
         loading ? (
           <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" size={26} /></div>
         ) : (

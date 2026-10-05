@@ -19,20 +19,23 @@ import { Send, Trophy, Clock, Users2, IndianRupee, Target, ArrowRight, RefreshCc
 import { formatCurrency } from "@/utils/formatters";
 import { adTotals, allAdReports, clientWaitSummary, daysLeftInCycle, extraWork, isoDay } from "@/utils/smmPlan";
 import { canRenewSmm, cycleTimeLabel, renewalDue } from "@/utils/smmPackage";
-import { adDaily, scheduleBetween, stageBreakdown } from "@/utils/smmDashboard";
+import { adDaily, stageBreakdown } from "@/utils/smmDashboard";
 import { monthlyReportMessage, renewalMessage } from "@/utils/smmMessages";
 import { setRenewal } from "@/services/smm";
 import { useToast } from "@/hooks/use-toast";
 import { useSmmRenewal } from "@/components/smm/useSmmRenewal";
 import { AdsDaily, MonthDelivery } from "@/components/smm/dashboard/MonthViews";
-import { PostingCalendar, StagePipeline } from "@/components/smm/dashboard/WorkViews";
-import type { SmmCampaign } from "@/types/smm";
+import { StagePipeline } from "@/components/smm/dashboard/WorkViews";
+import SmmCalendar from "@/components/smm/SmmCalendar";
+import type { SmmCampaign, SmmContentItem } from "@/types/smm";
 import type { AppUser } from "@/types";
 
-export default function SmmReportPanel({ campaign, user, onMessage }: {
+export default function SmmReportPanel({ campaign, user, onMessage, onOpen }: {
   campaign: SmmCampaign;
   user: Pick<AppUser, "uid" | "name" | "role">;
   onMessage: (text: string, kind: "monthly_report" | "renewal") => void;
+  /** Opens one of the month's posts from its calendar. */
+  onOpen?: (item: SmmContentItem) => void;
 }) {
   const { toast } = useToast();
   const today = isoDay(new Date());
@@ -41,10 +44,6 @@ export default function SmmReportPanel({ campaign, user, onMessage }: {
   const extras = extraWork(campaign.items);
   const daysLeft = daysLeftInCycle(campaign.cycle, today);
   const stages = useMemo(() => stageBreakdown([campaign], today), [campaign, today]);
-  const days = useMemo(
-    () => scheduleBetween([campaign], today, campaign.cycle.startDate, campaign.cycle.endDate),
-    [campaign, today],
-  );
   const daily = useMemo(() => adDaily(campaign, today), [campaign, today]);
   // Renewing is the month's own salesperson's, through a sale (2026-10-03).
   const isSeller = canRenewSmm(campaign, user);
@@ -79,8 +78,12 @@ export default function SmmReportPanel({ campaign, user, onMessage }: {
         <StagePipeline breakdown={stages} className="lg:col-span-5" />
       </div>
 
-      <PostingCalendar days={days} title="This month's calendar"
-        lead="Every dated piece on the day it is planned for, across the month's dates." />
+      {/*
+        The month's calendar (2026-10-05): the same plain calendar as the Content tab — a normal calendar
+        opened on this month, every earlier month one tap away. It replaced a bar chart of the days, which
+        the owner found unclear and which could not show an earlier month.
+      */}
+      <SmmCalendar campaign={campaign} onOpen={onOpen} />
 
       {/* ── The numbers ──────────────────────────────────────────────────────────────────── */}
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">

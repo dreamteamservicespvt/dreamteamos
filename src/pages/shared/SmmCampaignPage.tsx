@@ -541,7 +541,8 @@ export default function SmmCampaignPage() {
           onMessage={(text) => setMessage({ text, kind: "extra_work" })} />
       )}
       {tab === "report" && (
-        <SmmReportPanel campaign={campaign} user={user} onMessage={(text, kind) => setMessage({ text, kind })} />
+        <SmmReportPanel campaign={campaign} user={user} onMessage={(text, kind) => setMessage({ text, kind })}
+          onOpen={(i: SmmContentItem) => setOpenItem(i.id)} />
       )}
 
       {item && (

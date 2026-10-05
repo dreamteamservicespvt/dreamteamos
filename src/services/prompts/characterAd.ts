@@ -8,7 +8,7 @@ import { coreMessageBlock, type CoreMessageBrief } from "./coreMessage";
 import { everydaySpeechRules } from "./everydaySpeech";
 import { wishAudienceRule } from "./festivalWish";
 import {
-  HAND_GESTURES, PRESENCE, VEO_DIRECTION_SYSTEM_PROMPT, compositionFor, framingForMotion, withoutApproach,
+  VEO_DIRECTION_SYSTEM_PROMPT, compositionFor, framingForMotion, withoutApproach,
   withoutStillness, withoutTravel, type ClipMotionPlan, type Performer,
 } from "./motion";
 
@@ -1277,13 +1277,15 @@ ${characterCastBlock(pack, wardrobe, castSheet)}
 
 ${characterDirectionBlock(pack, "frame")}${motionPlan.length ? `
 
-Each clip's video animates THIS still and nothing beyond it, following its own 🎬 note — ${solo ? cast : "the characters"}
-STAND AND TELL, SHOW A PRODUCT or PRESENT THE SPACE, always in place, filmed with the camera the note names.
-Nobody walks in the video, so the variety of the ad comes from YOUR frames: each clip is a different real part of
-the business. The video can only animate what the frame shows, so each frame must already contain what its clip
-needs: for a product, the product within reach; clear space around the bodies; every object fully in view.
-Where the direction above describes walking somewhere, arriving or leading the way, the 🎬 note decides
-instead. Everything else in that direction still applies.` : ""}
+Each clip's video starts from THIS still and shows only what it shows, following its own 🎬 note — and every clip MOVES
+like a shot from a real commercial: ${solo ? cast : "the characters"} ${motionPlan.some((p) => p.walks) ? `WALK${solo ? "" : " together, side by side,"} through the place — ${solo ? "toward the camera, " : ""}along the counter or display, or to the product — ` : ""}PRESENT
+what the line is about or TURN to present the place, filmed with the camera the note names.
+The variety of the ad comes from YOUR frames: each clip is a different real part of the business. The video can only
+animate what the frame shows, so each frame must already contain what its clip needs, caught MID-MOVEMENT — mid-step, a
+hand mid-gesture, never a stiff, posed stance, because the video continues the pose it starts from: for a product, the
+product in view a few steps away or within reach; for a walk, clear open floor where they walk${solo ? "" : ", both at the same distance from the camera"};
+clear space around the bodies; every object fully in view. Where the direction above describes walking somewhere,
+arriving or leading the way, the 🎬 note decides instead. Everything else in that direction still applies.` : ""}
 
 ${locationBlock}
 
@@ -1325,8 +1327,8 @@ ${solo
 • POSITION LOCK: ${castSheet ? "the CAST SHEET's LEFT person" : pack.characters[0].name} ALWAYS stands on the LEFT of the frame and ${castSheet ? "its RIGHT person" : pack.characters[1].name} ALWAYS on the
   RIGHT, in every single clip. Write it into every prompt. The video tells who is speaking by where they
   stand, so the two must never swap sides.
-• Stage them mid-conversation, angled slightly towards each other but open to camera — the classic
-  two-hander. The one who is speaking is the more animated of the two.
+• Stage them as a two-hander, mid-conversation and mid-movement — caught mid-step side by side as each clip's 🎬 note says,
+  angled slightly towards each other but open to camera. The one who is speaking is the more animated of the two.
 • They must be the focus, but the business must be unmistakable behind them.
 • Both stand on the real floor, side by side, at the SAME distance from the camera — neither one nearer
   the lens — beside a real counter, shelf or door frame that their height can be read against.${pack.scaleAnchor ? `
@@ -1390,12 +1392,12 @@ export const CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT = (
     subject: cast,
     characterDirection: characterDirectionBlock(pack, "video"),
     performer: packPerformer(pack),
-    // A pair is filmed from a fixed distance — the director is told so (prompts/motion DUO_SAFE_MOVES).
+    // A pair walks only together and is filmed only from the side — the director is told so (prompts/motion PAIR_MOVES).
     twoHander: pack.characters.length > 1,
   });
 };
 
-/** How a pack's cast performs in place: a deity blesses, a cartoon moves its own way, a person naturally. */
+/** How a pack's cast performs: a deity blesses, a cartoon moves its own way, a person naturally (prompts/motion castKindOf). */
 export const packPerformer = (pack: CharacterPack | null | undefined): Performer => {
   if (!pack) return "person";
   if (pack.family === "god") return "deity";
@@ -1409,6 +1411,10 @@ export const packPerformer = (pack: CharacterPack | null | undefined): Performer
  * A cartoon is voiced in its own voice from the show; a deity or a person in the voice the catalogue
  * gives them. In a two-hander the first speaker has the first half of the clip and the second the
  * rest, and only the one speaking moves their mouth.
+ *
+ * `identityLock` is the short "who stays exactly as the frame has them" phrase the video prompt's keep
+ * sentence opens with (prompts/motion assembleVeoPrompt) — never a description of them: the attached
+ * frame is the description (2026-10-05).
  */
 export const packVeoSubject = (
   pack: CharacterPack,
@@ -1426,12 +1432,12 @@ export const packVeoSubject = (
   /** The name a speaker is given in this video prompt. */
   const spoken = (c: CharacterPack["characters"][number]) => castNames[pack.characters.indexOf(c)] || c.name;
   const identityLock = person
-    ? "the person's face (100% face match), their hair, their outfit, the logo and the location"
+    ? "their exact face, hair, outfit and height"
     : people
-      ? `both ${pack.family === "kids" ? "children's" : "people's"} faces (100% face match), their hair, their outfits, their ages, the logo and the location`
+      ? `both ${pack.family === "kids" ? "children's" : "people's"} exact faces, hair, outfits, ages and heights`
       : solo
-      ? "the character exactly as drawn, the logo and the location"
-      : "both characters exactly as drawn, the logo and the location";
+      ? "the character exactly as in the frame, with the same design, colours, proportions and height"
+      : "both characters exactly as drawn, with the same designs, colours, builds and heights";
   const voiceOf = (name: string, voice: string) => cartoon
     ? `the original ${name} voice from the show (${voice})`
     : voice;
@@ -1448,22 +1454,24 @@ export const packVeoSubject = (
       position: solo ? undefined : seat === 0 ? "on the LEFT of the frame" : seat === 1 ? "on the RIGHT of the frame" : undefined,
     };
   });
-  const performanceNotes = [
-    solo ? "" : "Only the speaking character's mouth moves; the other listens with the mouth closed and reacts in their own way.",
-    cartoon ? "Voices are strict: only the original voices from the show — never a narrator, a new voice actor or a different accent." : "",
-  ].filter(Boolean).join("\n");
-  /** Who the movement rules address — "Both characters", "Ganesha", "The business owner". */
+  /** Who the action addresses — "Both characters", "Ganesha", "The business owner". */
   const cast = solo
     ? person ? (castNames[0] ? castNames[0].replace(/^the /, "The ") : `The ${pack.characters[0].name.toLowerCase()}`) : pack.characters[0].name
     : people ? (pack.family === "kids" ? "Both children" : "Both people") : "Both characters";
-  const performer = packPerformer(pack);
-  /** A custom character is nobody's show — it moves its own way, not "the way the audience knows". */
-  const manner = pack.family === "custom" ? "in the character's own natural way" : PRESENCE[performer];
   return {
-    identityLock, speech, performanceNotes, cast, castPlural: !solo, twoHander: !solo,
-    performer, manner, handGestures: HAND_GESTURES[performer],
+    identityLock, speech, cast, castPlural: !solo, twoHander: !solo,
+    performer: packPerformer(pack),
     /** The cast's size against the room — the same words every frame of this ad carries. */
     scaleAnchor: pack.scaleAnchor,
+    /**
+     * Which side each one keeps while the pair moves — the frames' POSITION LOCK (characters[0] LEFT,
+     * characters[1] RIGHT), named as the video sees them: "Motu on the left and Patlu on the right".
+     */
+    sides: solo ? undefined : `${spoken(pack.characters[0])} on the left and ${spoken(pack.characters[1])} on the right`,
+    /** The pair's names, left then right — a one-line clip is led by its speaker (prompts/motion pairNamesOf). */
+    pairNames: solo ? undefined : [spoken(pack.characters[0]), spoken(pack.characters[1])] as [string, string],
+    /** Two children are filmed at their own eye level, not an adult's (prompts/motion cameraShot). */
+    eyeLevel: pack.family === "kids" ? "at the children's eye level" : undefined,
   };
 };
 

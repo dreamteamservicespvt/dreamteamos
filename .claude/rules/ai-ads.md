@@ -166,41 +166,108 @@ cached; small images and anything the browser cannot redraw go as they are).
    `stripUnverifiedNumbers` on every model-written poster, concept, overlay and refine. A poster that
    fails twice leaves one Missing row instead of failing the run. Frames the model skipped are written
    for exactly those clips (never a copy of the last frame), and the retry carries the images.
-6. Direct performance and camera per clip (`prompts/motion.ts`) → **Veo 3 prompts**. **Motion
-   policy (2026-10-01): the video animates its own frame and nothing beyond it.** Each Veo prompt
-   opens with THE ATTACHED FRAME — a summary of that clip's own main-frame prompt (`frameSummaryOf`) —
-   and a FRAME BOUNDARY rule: nothing the frame does not show may appear. A different place in the
-   shop (the entrance, a counter, a rack) comes from a different FRAME, never from the camera. Stagings
-   are all in place: `stand_present`, `show_product`, `present_space`, `welcome_invite` (always the
-   last clip; an invitation, **never a goodbye wave**); a saved plan's old `walk_and_talk` reads as
-   `present_space`. The plan (`planClipMotion`) takes the scene plan's per-clip `staging` / `camera` /
-   `angle` / `focus` choices, else reads each line (`stagingForLine`: product words → show, place
-   words → present the space, trust words → stand), and never repeats a neighbour's staging or move.
-   Camera moves are only those that stay inside the frame — `CAMERA_MOVES`: Slow Push In (a few
-   percent over 8 s), Rack Focus, Gentle Float, Static Locked; `SHOT_ANGLES`: eye level, slightly low,
-   slightly high; `LENS_COMBOS` / `SPEED_KEYWORDS` give Veo's terms. Walk-and-talk, pull back, dolly
-   out, crane, pedestal, orbit, arc, pan, tilt, truck and follow tracking are gone: they made the
-   model invent the rest of the room — people walked over tables and cupboards or out onto the road,
-   and shops grew. **Two-handers are filmed from a fixed distance** (`DUO_SAFE_MOVES`: static, rack
-   focus, gentle float; a drawn pair only static or rack focus, `CARTOON_PAIR_MOVES`; always eye
-   level); every lean or step toward the lens is stripped from a pair's direction (`withoutApproach`)
-   and a pack's scale anchor opens the scale lock (`scaleLock`) — what kept growing Motu and Patlu.
-   They keep fixed LEFT/RIGHT positions, a strict WHO SPEAKS block and, on a rack-focus clip, SPEAKER
-   FOCUS (the focus moves to whoever talks; the camera does not). Every Veo prompt
-   carries the `COLOUR_LOCK` near the top (the frame's exact grade, contrast and exposure; never pale,
-   washed, hazy or brightened) with matching negatives, and scene life that changes the light is
-   refused (`LIGHT_CHANGE`). **An English ad is spoken in Indian English with an Andhra Pradesh accent**
-   (`speechAccentFor`): named in the opening line, in a `VOICE AND ACCENT — INDIAN ENGLISH ONLY` block
-   above SPEECH, on every spoken line and in the negatives (never British, American or any foreign
-   accent) — the prompt used to say only "speaking English", so Veo used its default foreign voice.
-   Other languages are spoken natively and get no block. Locked always: the people (height/build/outfit relative to the room — a
-   single presenter's camera may push in slightly), the WORLD (no object vanishes or moves, nobody
-   steps onto or climbs furniture) and the PLACE (nobody leaves the shop or goes through a door).
-   `resolveDirection` discards director text that walks, climbs, reveals what the frame does not show,
-   leaves, freezes, cuts, crash-zooms or uses slow motion / hyperlapse during speech; the director's
-   JSON also returns `frame`. The frames are composed for the plan first (`framingForMotion`,
-   `withMotionComposition`), then the Veo prompts use the SAME plan (`writeVeoPrompts` receives all
-   lines + `sceneContext` + each clip's `framePrompt`; `regenerateVeoForClips` too).
+6. Direct each clip's action and camera (`prompts/motion.ts`) → **Veo 3 prompts**. **Motion policy
+   (2026-10-05, the dynamic pass — the owner's brief after the morning's prompts still gave static Flow
+   clips): every clip is a real commercial shot — a physical action that travels or turns and ONE camera
+   move that follows it, never a talking portrait — inside what its frame shows; the camera NEVER moves
+   backward** (the owner: "no walk-back, never do it" — no walk-back tracking shot, no pull-out or dolly out).
+   The prompt directs MOTION and never describes the frame (the attached frame is the first frame and the
+   only picture of the place). History in `motion.ts`: on 2026-10-01 nobody walked (a 1,568-word prompt whose
+   "No street / road / door" lines named the forbidden places 15–18 times); the morning of 2026-10-05 gave one
+   bounded walk ("two or three steps, then stops") on one middle clip — Veo obeyed and the owner's clips were
+   still static: clip 1 and the last clip never walked, drawn pairs never walked, a focus pull / locked frame /
+   float was the move, the keep sentence asked for the place "exactly as in the attached frame for the whole
+   clip" and a pair "in the same positions", and the frames were posed with clasped hands.
+   **The prompt is five short parts** (`assembleVeoPrompt`): `<ratio> video, one continuous 8-second shot
+   that starts from the attached frame.` · `<camera + shot>: <action>.` + (a pair) "The framing drifts a little
+   toward whoever is speaking, never closer." (one speaker: "The framing favours <name>") + the life line
+   (`movementNote`: "Natural body movement throughout, with eye contact on the key words — clothes and hair move
+   with every step; anyone already in the background carries on naturally"; a cartoon: its own mannerisms; a
+   deity: slow, majestic blessings) · the voice (`With a very sweet, warm, confident female voice, she says in
+   Telugu:` + the line in quotes; a pair: `0–4s — <name> (on the LEFT of the frame), with <voice>, says in …:`
+   per line + "Only the one speaking moves their lips…"; a one-line pair clip: "Only <name> speaks; the other
+   keeps the mouth closed and reacts"; a catalogue voice loses its trailing role text, `withVoice`) · ONE keep
+   sentence that lets them move (`Keep <identityLock>, and the same place, logo, colours and light as the
+   attached frame; she moves within that place, and nothing new is added to it.` — `VEO_FRAME_LOCK` "as the
+   attached frame"; a client photo: "this real place exactly as the attached frame shows it — the same layout,
+   fixtures, products, signage, logo, colours and light"; a pair adds its sides, "— Motu on the left and Patlu
+   on the right —" (`packVeoSubject.sides`), and `Heights never change: <scaleAnchor>`) · `Negative prompt: No
+   text or subtitles on screen, no background music or echo, no cuts, no camera shake, no frozen or static
+   pose, no change of location or background, no unnatural movement, no extra people, no goodbye wave` (+ "no
+   narrator or new voices" for drawn characters, "no two voices at once" for a pair, "no foreign accent" for
+   English; a clip performed in place says "no frozen pose"). About 170–190 words for one presenter and
+   310–370 for a pair (two voices + the height anchor). It never re-describes the frame, never names a place
+   or object it must not show, and never lists forbidden camera moves. `identityLock` is a short phrase ("her
+   exact face, hair, outfit and height"; `modelVeoSubject`, `packVeoSubject`).
+   **Actions** (`STAGINGS`, each with a single, a pair and a deity template, a frame `start` / `pairStart`
+   and `walks`): `walk_toward` (Walk toward the camera — a slow walk across the open floor, talking,
+   gesturing at what they pass), `walk_across` (Walk along the display — along the counter, display or
+   shelves, body angled to the camera), `approach_show` (Approach and show — a few steps to the product,
+   then lift / present it), `walk_stop_present` (Walk, stop and explain — the promise, hand on the chest),
+   `turn_present` (Turn and present — in place, always on a moving camera), `walk_invite` (Walk in and
+   invite — the last clip; an invitation, **never a goodbye wave**). Role actions (`ROLE_ACTION`): the
+   festival wish (turn to the camera with a namaste; a pair after a few steps together) and the one-clip ad
+   (a walk that ends inviting). A deity performs each of its actions in place under a blessing name
+   (`deityName`: Bless the place / Bless what it offers / Bless and welcome), so no 🎬 note asks it to walk.
+   A plan saved before this pass is read with today's keys (`stagingKeyOf`: stand_present → walk_stop_present,
+   show_product → approach_show, present_space → walk_across, walk_and_talk → walk_toward, welcome_invite →
+   walk_invite; the retired cameras are dropped).
+   **Camera** (`CAMERA_MOVES`; the sentence is written in code by `cameraShot` — the director never writes
+   the camera): `push_in` (Push In — "as she comes closer, ending in a medium shot / medium close-up", or "to a
+   close-up of the product, the focus settling on her face"), `side_track` (Side Tracking Shot — travels
+   sideways WITH a walk, the background sliding past with parallax; only on a walk), `lateral_dolly` (Lateral
+   Dolly — glides sideways past them), `arc` (Arc Shot — curves a short way round one presenter, front to
+   three-quarter), `static_locked` (Still Camera — ONLY in a client's photo and ONLY while the cast walks).
+   Retired: the walk-back `tracking`, `rack_focus`, the `handheld` float. Never: walk-back, pull-out / dolly
+   out, crane, pedestal, orbit, pan, tilt, reveal, POV, over-the-shoulder, follow-from-behind. `SHOT_ANGLES`:
+   eye level, slightly low, slightly high for one presenter; a pair always eye level, two children "at the
+   children's eye level" (`packVeoSubject.eyeLevel`).
+   **Who may do what** (`castKindOf`; the tables `CAMERAS` / `PHOTO_CAMERAS` — an action a cast may not do has
+   no camera there): one presenter or one cartoon — every action; push-in, side track, lateral dolly, arc. A
+   human pair, Kids and every drawn pair (Motu & Patlu since this pass) — walk only TOGETHER, side by side,
+   along or across the floor, NEVER toward the camera (no `walk_toward`), filmed only sideways at one distance
+   (`PAIR_MOVES`: side track, lateral dolly) so neither one grows. A deity never walks (push-in, arc, lateral
+   dolly). A client's photo (a plate) is never shown beyond its edges: a presenter gets a push-in, or a still
+   camera while walking; a pair only walks across it on a still camera.
+   **Choice** (`planClipMotion`, deterministic): clip 1 opens on the move (`walk_toward`; a pair `walk_across`;
+   a deity `turn_present`); the last clip `walk_invite`; a festival's clip 1 the greeting; in between the scene
+   plan's choice where this cast may take it, else the line (`stagingForLine`: product → approach & show; place
+   → walk along; trust → walk, stop, explain; a deity → turn & present), else a rotation that never repeats the
+   neighbour; then at least half the clips of a cast that may walk do walk (a clip turned in place walks
+   instead). Each clip's camera is the first of its preference list (the scene plan's first where it fits)
+   that differs from the neighbour's — with a backward pass (`open[i]`) so a pair's one-move turn in place never
+   forces a repeat. The frame side (`generateAdAssets` → `motionPlan`) and the video side (`writeVeoPrompts`)
+   build the SAME plan from the same SPOKEN words — never the speakers' names (a cast-sheet name like "the woman
+   in the teal saree" once read as a product) — the same scene-plan choices and the same plate clips (`plates`:
+   from `clipPhotoPlan` on the frame side, from each frame's `BACKGROUND PLATE` stamp on the video side;
+   `regenerateVeoForClips` too).
+   **Frames are composed for the move, caught mid-movement** (`withMotionComposition`, `compositionFor`): a
+   walking clip's still is caught MID-STEP (one foot forward, arms in a natural swing, clear floor in the
+   direction of the walk; a pair both mid-step side by side at one distance; a deity mid-blessing in place), and
+   every note ends "never a stiff, posed stance" — Veo continues the pose a frame starts from. The model frame
+   prompt says so ("READY FOR ITS CLIP … caught MID-MOVEMENT", "A WALK NEEDS ITS FLOOR", "THE THING TO SHOW IN
+   VIEW"), a pack's frame prompt too ("every clip MOVES"), and the clip-1 hero frame is no longer "the formal
+   front-clasp corporate pose": `prompts.HERO_FRAME_POSE` ("a natural, open welcoming pose caught as if about to
+   step forward — the weight on one foot, one hand opening in a small welcoming gesture at waist height …") is
+   every hero-pose rule (`MAIN_FRAME_SYSTEM_PROMPT`, `MULTI_FRAME_SYSTEM_PROMPT`, the attire directives in
+   `geminiService`). A client's photo keeps its own framing; the cast is placed into it mid-step.
+   **Director** (one `standard` Gemini call per run, `VEO_DIRECTION_SYSTEM_PROMPT`; per clip the PLANNED ACTION
+   with where it walks (`walkHint`), the fixed CAMERA and the gesture intent): returns `[{ clip, action }]` —
+   the walk path, what they pass and gesture at, specific to the frame (an object named only when the frame
+   prompt puts it in view); a pair's two halves, led by whoever speaks (`pairNamesOf`). `resolveDirection` keeps
+   it only if `actionUsable`: ≤60 words (a pair 80); no leaving, door / entrance / outside, a tour of the WHOLE
+   place or seven+ steps, climbing, a frozen person, running, walking or stepping backward, a cut or slow
+   motion, a named camera move or pull-back, a wave, a light change; a walking clip must walk (a pair: "both /
+   together / side by side") and an in-place clip must not; a pair never leans in, rises, jumps, stretches or
+   walks toward the camera (`PAIR_TOWARD`). The word lists match a PERSON, not things in the frame (a
+   mannequin, a temple statue, a saree's full length, "runs her hand along the silk" are allowed). Quoted
+   words are removed, and "the model" becomes she / he. Otherwise the plan's own action (`stagingPath`). The
+   catalogue's planted-feet lines ("his feet stay exactly where they are", "holds her ground", "never chased")
+   are filtered out of what the director reads (`withoutStillness`; a face's "crow's feet stay exactly as the
+   reference shows" is kept). **An English ad is spoken in Indian English with an Andhra Pradesh accent**
+   (`speechAccentFor`: on every spoken line and "no foreign accent" in the negative). Members use Flow's
+   **Frames to Video** with each finished frame as the START frame — never Ingredients to Video, which builds a
+   new scene around the picture (`generation/mission.ts`, `AIGuideSheet`).
 7. Finalize (returns `sceneContext` and `voiceBrief` too).
 
 **Spoken-word rules, in code (`utils/spokenNumbers.ts`):** every final script line — generated,
@@ -252,8 +319,13 @@ Regenerating… / Updated / Failed-Retry state. Frames, label and poster are unt
 **Editing / refine:** per-section refine (`refineSection`, "change only what was asked"),
 `refineVoiceOver` (plan → clip edits → validation; `RefineRevisionBanner` offers undo),
 `refineVeoPrompts` (plan → JSON edit → check: `VEO_REFINE_PLAN_SYSTEM_PROMPT` understands the request
-and compares it with each prompt; `utils/veoRefine` refuses an edit that changes the spoken line or
-loses a section; one retry; the UI alert says what was understood). Copy buttons strip code fences.
+and compares it with each prompt — it knows both the 2026-10-05 five-part prompt and the older headed one a
+saved kit may hold, and the dynamic-pass rules: one move, never backward, a pair only sideways, walks on the
+frame's own floor; `utils/veoRefine` refuses an edit that changes the spoken line, loses a section or drops the
+keep sentence (`VEO_FRAME_LOCK` "as the attached frame", or an earlier prompt's `LEGACY_VEO_FRAME_LOCK`
+"exactly as in the attached frame"); `spokenLinesIn` reads both the new
+`… says in Telugu:` and the old `… lip-synced:` lines; one retry; the UI alert says what was understood). Copy
+buttons strip code fences.
 
 **Save / storage:** `persistGeneration` writes `ai_generations`. **Generate** creates a new doc (a
 version); **Save** and a 1-second debounced **auto-save** update the same doc; the assignment gets
@@ -326,6 +398,20 @@ Gemini calls use the shared fallback.
 
 ## 24. BUSINESS RULES (IMPLEMENTED; verified in code)
 
+- **AI ads — video motion (2026-10-05, the dynamic pass; the owner's brief and approval, replacing that
+  morning's bounded-walk rule and the motion part of the 2026-10-01 rule below):** no clip is a talking
+  portrait — every clip is a physical action that travels or turns and one camera move that follows it,
+  inside what its frame shows, in a short prompt (camera + action + life, voice, keep sentence, one-line
+  negative) that never describes the frame. **The camera never moves backward** — no walk-back tracking shot,
+  no pull-out (the owner: "no walk-back, never do it") — and never cranes, orbits, pans, tilts or reveals. One
+  presenter walks in most clips (toward the camera on a push-in, along the display on a side track, to the
+  product, a few steps before the promise, the last steps in to invite) and may be filmed with a push-in, side
+  track, lateral dolly or short arc; a human pair, two children and Motu & Patlu-style drawn pairs walk only
+  together, side by side, along or across the floor — never toward the camera — filmed only sideways at one
+  distance, the framing following whoever speaks; deities never walk (push-in, arc, glide); in the client's own
+  photo the camera only pushes in or holds while the cast walks. Frames are composed caught mid-movement, and
+  the clip-1 hero frame is an open pose about to step forward (no more front-clasp). Members use Flow's Frames to
+  Video with the frame as the start frame, never Ingredients to Video.
 - **AI ads — English (2026-09-25):** an English ad is Indian English throughout — written for Indian
   customers and voiced with an Andhra Pradesh accent in every Veo prompt; never a foreign accent.
 - **AI ads (2026-09-25, integrity):** no contact number or address reaches a deliverable unless the
@@ -338,8 +424,10 @@ Gemini calls use the shared fallback.
 - **AI ads (2026-09-25):** a run is refused while the client's brief is still loading and when
   nothing describes the business (no BUSINESS CONTENT and no card / store / product / flyer / voice
   file) — a model with nothing to read invents a business, which is what made first runs come back
-  about the wrong one. A two-hander never walks toward the camera (that is when the video model
-  re-proportions the pair) and every duo video prompt opens with the scale lock. B-roll and overlay
+  about the wrong one. A two-hander never comes nearer the camera (that is when the video model
+  re-proportions the pair): since the 2026-10-05 dynamic pass every pair walks only together, side by side,
+  along or across the floor, filmed sideways at one distance, and every duo video prompt carries the pair's
+  sides and scale anchor. B-roll and overlay
   images are part of every video run, not a button pressed afterwards.
 - **AI ads (2026-09-22):** a custom script is used word for word (only emoji/decoration stripped;
   numbers become words); a two-speaker category needs `[Speaker]:` lines; a two-speaker clip is
@@ -349,12 +437,13 @@ Gemini calls use the shared fallback.
   never digits; the word for "and" is written `mariyu` in Latin letters and explained nowhere; a human
   cast never says its own role label out loud (Girl / Boy / Friend / Host — checked, not just asked);
   no frame or video ever ends on a goodbye
-  wave; (a walk was allowed here until 2026-10-01 — nobody walks now, see below); no frame asks for a logo file that
-  was not attached (the name board is used instead).
-- **AI ads (2026-10-01):** every video animates its own frame and nothing beyond it — performed in
-  place (no walking), the camera only pushes in slightly, racks focus, floats or holds; nobody climbs
-  on furniture or leaves the place, and the shop is never extended. A pair is filmed from a fixed
-  frame with its height anchored to a real counter. A client's store/office photo is the clip's
+  wave; (walking was removed on 2026-10-01, came back bounded on the morning of 2026-10-05 and became the
+  norm in that day's dynamic pass — see the first rule);
+  no frame asks for a logo file that was not attached (the name board is used instead).
+- **AI ads (2026-10-01):** every video animates its own frame and nothing beyond it — nobody climbs
+  on furniture or leaves the place, and the shop is never extended (the "in place, no walking, the camera
+  only pushes in slightly" part was replaced on 2026-10-05, first rule). A pair is filmed from one camera
+  distance with its height anchored to a real counter. A client's store/office photo is the clip's
   background, unchanged apart from an 8K enhancement. Invented people keep one face and outfit in
   every clip. When the client's address is known the last clip says it (landmark + town), and no clip
   ever invents one.
@@ -366,6 +455,13 @@ Gemini calls use the shared fallback.
   Malayalam scripts rely on the prompt rule and the digit validator.
 - Motion staging comes from the scene plan's choices or a keyword reading of each line; when the
   client's own photos are used the scene plan is skipped, so only the keyword reading applies.
+- The director's action is checked by word lists (`actionUsable`, 2026-10-05): an unusual but harmless
+  phrasing can be refused (the clip falls back to the plan's generic action), and a risky one phrased in
+  words the lists do not know can pass. In a live run (2026-10-05, the dynamic pass) all eight actions for the
+  owner's three hospital frames passed. A one-line pair clip is led by its speaker (`pairNamesOf`); the other
+  only reacts.
+- A pair in the client's own photos has no camera move at all (only a still camera while they walk across
+  it): with no move toward them allowed and nothing beyond the photo shown, the walk is its only movement.
 - The script quality gate's thresholds (pass ≥ 8, each ≥ 7, facts ≥ 9) are set from the rubric, not
   measured against live Gemini scores; a final script with a different clip count than the kit is
   refused rather than re-framed (it has to go through Configuration → custom script and a new run).
@@ -390,9 +486,26 @@ Gemini calls use the shared fallback.
   address and whose script is not English adds one `fast` call that writes the address in the
   script's language (`nativeAddressPromise`: runs alongside the core-message call and is awaited before
   the script is written, so it rarely adds time).
-- The motion policy (in-place staging; push-in, rack focus, float or locked; speaker focus) and the in-code prompt rules were
-  unit-tested only — **no live Gemini, image or Veo run** has confirmed how the generated frames and
-  videos behave (e.g. whether Veo keeps to the attached frame).
+- **The 2026-10-05 dynamic pass has not been seen on a real Veo video.** It is unit-tested (the anti-static
+  rule over every cast × 1–8 clips × ad type × photo mix, the five-part prompt, the director checks,
+  frame/video plan agreement through the faked-Gemini pipeline) and the director ran live on the owner's three
+  hospital frames (all eight actions specific and accepted) — but no clip has been generated in Flow from the
+  new prompts. Walking is now the norm after two failed attempts (history 2 and 4 in `motion.ts`: presenters
+  walked out onto the road, into furniture, shops grew). What should hold it this time — walks only on the
+  frame's own floor, never toward a door or away from the camera, frames composed mid-step with that floor in
+  view, no move backward or beyond the frame, a client's photo never tracked — is the reason, not proof. Watch
+  in Flow: a walk-toward clip whose camera pushes in can end too close; an arc or a sideways move shows a
+  little of the room beside the frame (Veo extends it); **Motu & Patlu now walk** — if Patlu's height drifts,
+  take `walk_*` out of `CAMERAS.pair` for drawn pairs (one table entry; keep `turn_present` + lateral dolly)
+  rather than growing the negative. The clip-1 hero pose changed from the front-clasp to `HERO_FRAME_POSE`;
+  if hands come out badly in hero frames, that one constant is the place to change it.
+- Veo's text limit: third-party summaries put Veo 3 at about 1,024 input tokens [NOT CONFIRMED — Google's
+  table did not load]. The dynamic-pass prompts are ~170–190 words for one presenter and ~310–370 for a pair;
+  a Telugu line costs more tokens per word than English.
+- Flow's Frames to Video also takes an END frame (Google, Veo 3.1 with audio since 2025-10): a second frame
+  per moving clip would pin the walk's end, the place and the heights. Not built — a suggestion to the owner.
+- Which Flow mode the team actually used before 2026-10-05 is [NOT CONFIRMED]; the checklist and AI Guide
+  now say Frames to Video.
 - `AIPlatformApp` reloads saved generations in `useEffect(..., [user])`; a new `user` object on
   every profile snapshot re-reads `ai_generations` (read-quota; a test mock with an unstable user
   made it loop).
@@ -406,10 +519,11 @@ Gemini calls use the shared fallback.
   passing second draft), and B-roll/overlays run concurrently — both use the small free-tier quota
   (~20 requests/day/key/model) faster. The thinking budgets were chosen from one live comparison
   (quality gate 9.8 → 8.9–9.0 on the same brief), not a broad study.
-- The fixed-distance duo camera, the colour lock and the Indian-English accent are prompt rules checked
-  by unit tests only — no live Veo run has confirmed the heights hold, the colour stays or the accent
-  is Indian. Cinematic Ads has its own `dialect` field and was not changed.
-- The 2026-10-01 frame-bounded motion, scale anchor, background plates, cast sheet, Kids packs and
-  spoken address are prompt rules checked by unit tests and one full-pipeline test on a faked Gemini —
-  **no live Gemini, image or Veo run** has confirmed that Veo stops walking people over furniture or
-  onto roads, keeps Motu & Patlu's height, leaves a client photo unchanged, or how the children look.
+- The fixed-distance duo camera, the frame's colours (now one clause of the keep sentence) and the
+  Indian-English accent are prompt rules checked by unit tests only — no live Veo run has confirmed the
+  heights hold, the colour stays or the accent is Indian. Cinematic Ads has its own `dialect` field and its
+  own clip prompts, and was not changed by the 2026-10-05 motion work.
+- The 2026-10-01 scale anchor, background plates, cast sheet, Kids packs and spoken address are prompt
+  rules checked by unit tests and the full-pipeline test on a faked Gemini — **no image or Veo run** has
+  confirmed that Veo keeps Motu & Patlu's height, leaves a client photo unchanged, or how the children look
+  (the 2026-10-05 motion policy: see the first bullet of this list).

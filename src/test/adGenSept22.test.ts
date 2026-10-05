@@ -213,7 +213,11 @@ describe("refining a Veo prompt", () => {
     expect(VEO_REFINE_PLAN_SYSTEM_PROMPT).toContain('"understood"');
     expect(VEO_REFINE_SYSTEM_PROMPT).toContain("Never change, translate or re-punctuate anything inside the quotation marks");
     expect(VEO_REFINE_SYSTEM_PROMPT).toContain("never make the camera static unless the member explicitly asks");
+    expect(VEO_REFINE_SYSTEM_PROMPT).toContain("never move the camera backward");
     expect(VEO_REFINE_SYSTEM_PROMPT).not.toContain("WALKS in every clip");
+    // The owner's rule (2026-10-05): the camera never moves backward — a refine never brings a walk-back in.
+    expect(VEO_REFINE_PLAN_SYSTEM_PROMPT).toContain("The camera never moves backward: never a walk-back, a pull-back or a dolly out");
+    expect(VEO_REFINE_PLAN_SYSTEM_PROMPT).not.toMatch(/two or three relaxed steps|gentle float|rack focus/);
   });
 
   it("reads the edit as JSON keyed by clip", () => {
@@ -222,17 +226,39 @@ describe("refining a Veo prompt", () => {
     expect(parseClipPromptEdits("garbage", [0]).size).toBe(0);
   });
 
-  it("accepts an edit that keeps the dialogue and every section", () => {
-    const edited = original.replace(/SCENE LIFE: [^\n]*/, "SCENE LIFE: steam rising from the tea glasses on the counter.");
+  it("accepts an edit that keeps the dialogue and every part", () => {
+    const edited = original.replace(/: she [^.]*\./, ": she lifts the product toward the camera with a smile.");
+    expect(edited).not.toBe(original);
     expect(veoEditProblems(original, edited)).toEqual([]);
     expect(sameVeoPrompt(original, `${original}  `)).toBe(true);
-    expect(promptHeadings(original)).toEqual(expect.arrayContaining(["ACTION", "CAMERA", "SPEECH", "SCENE LIFE", "NEGATIVE PROMPT", "WORLD LOCK"]));
+    // A short prompt (2026-10-05) has one heading; its keep sentence is checked by its words.
+    expect(promptHeadings(original)).toEqual(["NEGATIVE PROMPT"]);
   });
 
-  it("refuses an edit that changes the spoken line or drops a section", () => {
+  it("refuses an edit that changes the spoken line, drops the negative or drops the keep sentence", () => {
     const reworded = original.replace("మా షాప్ కి రండి.", "మా షాప్ కి రండి ఇప్పుడే.");
     expect(veoEditProblems(original, reworded)[0]).toMatch(/spoken line/);
-    const dropped = original.replace(/\nNegative prompt:[\s\S]*$/, "");
+    const dropped = original.replace(/\n\nNegative prompt:[\s\S]*$/, "");
     expect(veoEditProblems(original, dropped).join(" ")).toMatch(/NEGATIVE PROMPT/);
+    const unkept = original.replace(/\n\nKeep [^\n]*/, "");
+    expect(unkept).not.toBe(original);
+    expect(veoEditProblems(original, unkept).join(" ")).toMatch(/"as the attached frame" went missing/);
+  });
+
+  // A kit saved before 2026-10-05 keeps its long prompt, and the refine still guards every section of it.
+  it("still guards an older saved prompt's sections and dialogue", () => {
+    const old = [
+      "9:16 vertical video, one continuous 8-second shot, animated from the attached frame.",
+      "WORLD LOCK — THE PLACE AND EVERYTHING IN IT STAY EXACTLY AS THE FRAME SHOWS:\nEvery object stays.",
+      "ACTION — STAND AND TELL, IN PLACE:\nShe stands where the frame has her.",
+      "CAMERA — Eye level · 50mm · Slow Push In: a slow push-in.",
+      "SPEECH:\na very sweet, warm, confident female voice, speaking Telugu, perfectly lip-synced:\n\"పాత లైన్.\"",
+      "SCENE LIFE: a fan turns.",
+      "Negative prompt:\nNo text on screen",
+    ].join("\n\n");
+    expect(promptHeadings(old)).toEqual(expect.arrayContaining(["ACTION", "CAMERA", "SPEECH", "SCENE LIFE", "NEGATIVE PROMPT", "WORLD LOCK"]));
+    expect(veoEditProblems(old, old.replace("a fan turns", "steam rises from the tea glasses"))).toEqual([]);
+    expect(veoEditProblems(old, old.replace("\n\nSCENE LIFE: a fan turns.", "")).join(" ")).toMatch(/SCENE LIFE/);
+    expect(veoEditProblems(old, old.replace("పాత లైన్.", "కొత్త లైన్."))[0]).toMatch(/spoken line/);
   });
 });

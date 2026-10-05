@@ -9,6 +9,223 @@
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
 
+- **2026-10-05 (latest): the Veo dynamic pass — every clip a moving commercial shot, and the camera never
+  moves backward** (`.claude/rules/ai-ads.md` §17.2 step 6 / §24 / §25 / §27; CLAUDE.md §32 / §33).
+  - **The problem (owner's report, three Flow clips made from that morning's prompts):** still static. A
+    woman in a maternity consultation room, a man and a woman at a hospital reception, and Motu & Patlu at
+    the same reception all stood on one spot and talked. Measured from 9 frames per clip: the woman kept her
+    hands clasped while the camera slowly pushed in; both pairs stood on an almost locked two-shot (the
+    duo's sign board even redrew itself). Veo had done exactly what the prompts said.
+  - **Audit (root causes, all in code):** the planner kept most clips standing (clip 1 and the last never
+    walked, one walk per ad, drawn pairs and deities never walked); the one walk was "two or three steps,
+    then stops"; three of the five moves did not move the camera (focus pull, locked, float), a pair never
+    got a dolly in and a drawn pair only got locked / focus pull; the keep sentence asked for the place
+    "exactly as in the attached frame for the whole clip" and a pair "side by side in the same positions"
+    (contradicting the pair's own walk); the director was told "no steps" and any walking it wrote for other
+    clips was thrown away; frames were posed (hands at rest, the hero frame's "formal front-clasp corporate
+    pose"); catalogue lines like "his feet stay exactly where they are" reached the director; nothing asked
+    for life around the cast. Running the real code for a 4-clip ad gave 1 walk for one woman, 1 for the
+    man & woman, 0 for Motu & Patlu ("the camera fixed" in all four).
+  - **Approved plan (shown in chat), with the owner's change:** "no walk-back, never do it" — read as "the
+    camera never moves backward", so no pull-out either. The owner's keyword list became the planner's
+    vocabulary, not prompt text; left out, with reasons given: pull-out, crane, orbit/360, pan, tilt,
+    reveal, POV, over-the-shoulder, follow-from-behind, establishing shots, entering the store / opening
+    doors (they invent rooms the frame does not have, hide the speaker's mouth, or lead outside).
+  - **What changed:** `prompts/motion.ts` — six actions (`walk_toward`, `walk_across`, `approach_show`,
+    `walk_stop_present`, `turn_present`, `walk_invite`) and five moves (`push_in`, `side_track`,
+    `lateral_dolly`, `arc`, `static_locked` only for a walk in a client's photo); per-cast tables (`CAMERAS`,
+    `PHOTO_CAMERAS`, `PAIR_MOVES`) — pairs incl. Motu & Patlu walk together side by side, sideways only;
+    deities in place under blessing names; the planner opens on the move, walks at least half the clips and
+    picks cameras with a backward pass so neighbours never repeat; new camera sentences, keep sentence
+    (`VEO_FRAME_LOCK` "as the attached frame" + `LEGACY_VEO_FRAME_LOCK`), life line, speaker framing,
+    one-line pair clips (`pairNamesOf`), negative additions; the director prompt and checks (`walkHint`,
+    `RUNS`, `BACKWARD`, `PAIR_TOWARD`, relaxed tour limits), `stagingKeyOf` for saved plans, `withoutStillness`
+    additions. `prompts.ts` — `HERO_FRAME_POSE` replaces the front-clasp in every hero-pose rule (also the
+    attire directives in `geminiService`), "FRAMES BUILT FOR MOTION" asks for mid-movement stills.
+    `prompts/characterAd.ts` — the pack frame text ("every clip MOVES"), the two-hander caught mid-step,
+    `packVeoSubject` sides / pairNames / eyeLevel (kids at their own eye level). `prompts/scenePlan.ts` STEP 5
+    per cast; `utils/scenePlan.ts` reads old keys; `prompts/refine.ts` and `utils/veoRefine.ts` know the new
+    rules and both keep sentences; `types/aiPlatform.ts` comment.
+  - **Tests:** `motionAndVeo` rewritten (64: the anti-static rule over every cast × 1–8 clips × ad type ×
+    photo mix, never backward, pairs sideways, photos, director checks, saved kits); `adPipelineEndToEnd`
+    (the frame and the video plan the same move through the faked-Gemini run), `characterAdPrompts`,
+    `humanDuoKidsOct01`, `adGenSept22`, `spokenNumbers`, `prompts` updated (`soloCharacterAd` pins the
+    "two-hander" staging, which was kept). Live Gemini:
+    `regenerateVeoForClips` on prompts describing the owner's three frames — eight director actions, all
+    specific and accepted (7 requests). `npx vitest run` 197 files / 3073 tests ✅, tsc = the known
+    VideoCallManager error, build ✅.
+  - **Not verified:** no Flow clip from the new prompts yet (the owner's A/B); no browser run — no UI changed,
+    the prompts appear in the same Veo cards.
+- **2026-10-05: the Veo 3 video-prompt engine rebuilt — short, motion-first prompts with bounded
+  walking** (`.claude/rules/ai-ads.md` §17.2 step 6 / §24 / §25 / §27; CLAUDE.md §32 / §33).
+  - **The problem (owner's brief):** videos were static (people stood still, no walking, almost no camera
+    movement), duo videos did not follow the speaker, and Veo still invented new places and drifted
+    identities. Wanted: short, simple prompts — camera + action + voice + gestures + frame/identity lock +
+    negative — that direct motion and never re-describe the attached frame. The owner reviewed the audit and
+    plan (shown in chat) and approved it with the recommended answers: a client's store/office photo walks
+    only toward a still camera; Motu & Patlu and other drawn pairs never walk (the focus follows the
+    speaker); human pairs and Kids walk only together; the Flow mode is written into the checklist.
+  - **Audit (root causes):** the static videos WERE the 2026-10-01 spec, enforced in five layers (in-place
+    stagings, a push-in of "a few percent", the director told "IN PLACE, ALWAYS", `resolveDirection` throwing
+    away any walking or tracking text, and "No walking / no pan, tilt, tracking" negatives). Measured with
+    the real assembler: 1,568 words for one presenter and 2,297 for Motu & Patlu, the spoken line after word
+    1,000, the street / road / door named 15–18 times inside "No …" lines (Flow has one prompt box, so the
+    negative is read as prompt), and the frame re-described from its PROMPT, not the generated image (two
+    sources of truth). Google's Veo 3.1 guide: for frame-based video describe the motion, not the image. Also
+    found: the video side planned from lines that carried the cast-sheet names, and "the woman in the teal
+    saree" read as a product, so a duo clip's video could be planned differently from its frame.
+  - **What changed:**
+    - `prompts/motion.ts` (rewritten around the same exports): `walk_and_talk` is back, bounded (two or three
+      steps on the open floor the frame shows); a `tracking` move (moves back with a walk at the same
+      distance); `push_in` is now a visible slow dolly in; `castKindOf` decides who may walk and which moves
+      (single / deity / pair / drawn pair) and `plates` keeps a client photo untracked; an ad with a middle clip
+      that may walk always gets one walk (`TRUST_WALK` when only the promise clip can). `assembleVeoPrompt` is
+      five short parts (opening, `cameraShot` + action, voice, the keep sentence `VEO_FRAME_LOCK`, a one-line
+      negative). The director writes only `{ clip, action }`; `actionUsable` checks it (word lists that match a
+      person, not things in the frame — a live run had refused a mannequin) and the plan's action is the
+      fallback. Removed: `frameSummaryOf`, `COLOUR_LOCK`, `identityRules`, `worldRules`, `performanceRules`,
+      `scaleLock`, the WHO SPEAKS / SPEAKER FOCUS blocks, the beats and scene life, `PRESENCE` /
+      `HAND_GESTURES`, `LENS_COMBOS` / `SPEED_KEYWORDS`. `spokenLinesIn` reads the new and the old line form.
+    - `geminiService`: the frame side and the video side plan from the same SPOKEN words and plate clips;
+      the director is told the planned action and the fixed camera; a single presenter is "she / he".
+    - `characterAd.packVeoSubject` / `prompts.modelVeoSubject`: short identity locks, no manner / gesture
+      blocks; frame system prompts say what each clip does (and "A WALK NEEDS ITS FLOOR").
+    - `prompts/scenePlan` STEP 5 offers each cast only what it may do; `prompts/refine` and `utils/veoRefine`
+      know both prompt forms, and an edit may not drop the keep sentence.
+    - `generation/mission.ts` and `AIGuideSheet`: use Flow's Frames to Video with the frame as the START
+      frame, never Ingredients to Video.
+  - **Tests:** `motionAndVeo` rewritten (60), plus `adPipelineEndToEnd` (a 3-clip run: the frame composed
+    for a walk is the clip that walks; a store photo is never tracked; a duo plans the same move on both
+    sides), `characterAdPrompts`, `humanDuoKidsOct01`, `adGenSept22` (refine on new and old prompts),
+    `spokenNumbers` (scene-plan options per cast), `prompts`, `standardPathUnchanged`, `missionWorkspace`.
+    Live Gemini (2026-10-05): one full 4-clip Telugu model ad (128 s; every frame composed for its move) and
+    three director runs through `regenerateVeoForClips` (model ad, Motu & Patlu, a human duo) — the actions
+    came back specific and passed the checks. Browser (real `MissionWorkspace`, `AIGuideSheet` and Veo
+    `GeneratedCard` in the studio's dark theme, 1440 and 390 px): no overflow, no console errors, the copy
+    button copies the prompt exactly. Build ✅, vitest ✅, tsc = the known VideoCallManager error.
+  - **Not verified:** no Veo video has been generated from the new prompts — the owner should A/B a few clips
+    in Flow (same frame, old vs new prompt).
+- **2026-10-05: the client calendar becomes a normal calendar; every post on its upload date**
+  (`.claude/rules/smm.md` §9.9 / §24 / §25 / §27; `roles-routes.md` §10).
+  - **The problem (owner, with two screenshots of Dhana lakshmi's month):**
+    - "No option to change the month": version 2 paged by the client's months, and this client has one.
+    - "Not clear": a day showed only "✔ 9", never a post's name.
+    - "Not responsive": from 1280px the day's posts sat beside the grid in a column as long as the list,
+      leaving the calendar in empty space, and each card's buttons wrapped onto two or three rows. The
+      layout switched on the screen width, not the room it had.
+    - The same day, via session dts-os-a1, the owner said all nine posts sat on one date. `postedAt` is
+      stamped when Posted is pressed, and the team marked the nine together on 5 Oct.
+  - **Confirmed (AskUserQuestion with mockups):** normal calendar months, not client months.
+  - **What changed:**
+    - `utils/smmCalendar`: version 2's one-client-month model (`buildMonthCalendar`, `openingMonthId`,
+      `isMonthDay`, the 14-day reach) is replaced. New: `buildClientRun`, `calendarPage`,
+      `openingMonth` / `openingDay`, `clientMonthOn`, `outsideItsMonth`, `monthOf` / `monthTitle` /
+      `monthShort` / `shiftMonth` / `monthBounds`.
+    - An entry's `day` is now its `uploadDate`, falling back to the stamp only when there is no upload
+      date. `wentLiveDay` is renamed `markedDay`.
+    - Sentences: "Posted on 15 Aug" (+ the upload time); "Marked posted on 5 Oct — no upload date was
+      given"; "Posted — no date was given".
+    - `ClientCalendar` is rewritten: ‹ Sep · October 2026 ▾ · Nov ›, Today, a month list, the client's
+      months as links, and start/end written on the day. It measures itself (`chartKit.useWidth`):
+      post names from 600px, three per day from 960px, marks only below. The body font is used for the
+      title when narrow. The day's posts sit under the grid.
+    - `CalendarDayPanel`: cards side by side, Open beside the name, and "Its date is outside Month 1".
+    - `marks`: fixed sizes, plus `xs`.
+    - `SmmCalendarBoard`: the client list moves beside the calendar only from 1280px.
+  - **Owner's data:** Dhana lakshmi's nine upload dates are each a month early (August, before the 6 Sep
+    start). The calendar now shows them on August's page, flagged; the dates are to be corrected in the
+    Content list. `smmDashboard.postedDay` (Insights) is unchanged.
+  - **Files:** `src/utils/smmCalendar.ts`, `src/components/smm/calendar/{ClientCalendar,CalendarDayPanel,marks}.tsx`,
+    `src/components/smm/{SmmCalendar,SmmCalendarBoard,SmmReportPanel}.tsx` (comments and breakpoints),
+    `src/test/smmCalendar.test.ts` (19), `src/test/smmCalendarUi.test.tsx` (8).
+  - **Tested:**
+    - Unit and UI tests on the in-memory Firestore.
+    - Browser harness (real `SmmCampaignPage` / `SocialMedia` on memoryFirestore, 240px sidebar shell):
+      the owner's month at 1920; widths 1920 / 1280 / 1024 / 800; phones 412 / 390 / 360 (every month's
+      name fits); dark and light; Report tab; board at 1440 / 390; the month list; keyboard across a
+      month's edge; swipe; tap-to-reveal. No horizontal overflow and no console errors.
+
+- **2026-10-05 (later): the client calendar redrawn so anybody can read it** (`.claude/rules/smm.md` §9.9 /
+  §24 / §25; `roles-routes.md` §10; `architecture.md` §22).
+  - **The problem.** The owner asked whether earlier months can be checked, and said the calendar was
+    confusing — it had to be clear "even to an uneducated person".
+    - The first calendar paged by calendar month, so one client month (5 Sep → 5 Oct) was split over two
+      pages.
+    - It used six stage colours, hatching and small icons.
+    - Its prev/next were small chevrons and a strip.
+    - The Report tab's "This month's calendar" was a stacked bar chart, with no way to an earlier month.
+  - **Confirmed (with mockups):** one client month per page, and three marks only.
+  - **The new page:**
+    - **Which month:** "Month 2 · 5 Sep – 5 Oct 2026 · Running now", big "‹ Month 1 / Aug 2026" and
+      "Month 3 ›" buttons, and a button per month.
+    - **How it went:** three big counts — ✔ Posted, ✖ Not posted, ◷ Coming up — each a solid circle, a
+      number and a word.
+    - **The calendar:** each day shows only those marks with a number, today ringed, and the days around
+      the month faded.
+    - **The picked day:** its posts in sentences ("Posted on 12 Aug (it was planned for 10 Aug)", "Not
+      posted — it was due on 25 Aug", "Waiting for the client's approval"), with "See on Instagram" and
+      Open.
+  - **Where:** the same calendar is now on Content → Calendar, the Report tab (replacing the bar chart)
+    and Social Media → Calendar.
+  - **Files:** `utils/smmCalendar.ts` rewritten around one month (`buildMonthCalendar`,
+    `openingMonthId`, `openingDay`, `dayMarks`, `markOf`, `entryNote`, `waitingNote`, `phaseLabel`,
+    `rangeLabel`, `weekGrid`); `calendar/ClientCalendar` and `CalendarDayPanel` rewritten; new
+    `calendar/marks`; `SmmCalendar` takes `focusId`; `SmmReportPanel` (+ `onOpen`) and
+    `SmmCampaignPage`.
+  - **Fixed in the browser check:**
+    - A right-swipe on the calendar was taken by the browser as Back and left the page; the grid is now
+      `touch-pan-y`.
+    - The phone's "Month 2 ›" button was cut to "Mo…"; the buttons now sit under the name on a phone.
+    - Day marks grow on wider screens.
+  - **Tested:**
+    - `smmCalendar.test.ts` (15) and `smmCalendarUi.test.tsx` (6), both rewritten.
+    - A browser harness at 1440 / 390 px, dark and light: the month page (Content and Report), the board,
+      the step buttons, the month buttons, a swipe, the day panel and the links. No console errors, no
+      sideways scroll.
+    - `npm run build` ✅; `npx vitest run` ✅ 197 files, 3057 tests; tsc → only the VideoCallManager
+      error; eslint clean on the changed files.
+  - **Not covered:** live Firebase.
+
+- **2026-10-05: the SMM client calendar, and "Accounts it covers" in setup** (`.claude/rules/smm.md`
+  §9.9 / §24 / §25 / §27; `roles-routes.md` §10; `architecture.md` §22; `data-model.md` §13).
+  - **Client calendar.** The owner asked for a world-class monthly calendar of each client's social
+    media for checking the history. The month page's calendar showed only that month's thirty days.
+    Confirmed answers: one calendar per client across all their months; on the month page AND as a new
+    Calendar view on `/smm`; posts only; a person sees only the months they can already open.
+    - **Rules:** `utils/smmCalendar.ts` (pure, tested) — grid, spans, entries (a posted piece on the day
+      it went live, late vs missed), words ("Went live 2 days after its planned day"), month summary,
+      strip, clients.
+    - **Data:** `services/smm.fetchClientMonths` (one on-demand `where clientPhoneId ==`) and
+      `hooks/useSmmClientMonths` (live month merged over the read, 5-minute cache, visibility filter;
+      no read at all for a member's or salesperson's board).
+    - **UI:** `components/smm/calendar/ClientCalendar` + `CalendarDayPanel` + `kindIcons` — toolbar,
+      history strip, chips (dots on a phone), hatched non-running days, a "Month N" start marker, a
+      day panel with links, keyboard, swipe, reduced-motion-safe transitions.
+    - **Wiring:** `SmmCalendar` (now the month-page wrapper; the kind filter spans every month);
+      `SmmCalendarBoard` (client list / phone sheet, `?client=`); `SocialMedia` (third view, `?view=`,
+      the finished-clients read shared with the Finished tab via `loadFinished`).
+  - **Accounts it covers** (owner, mid-task: Edit setup had no way to choose the accounts).
+    - **Rules:** `smmPackage.cleanPlatforms` / `itemsForAccounts` / `linksForAccounts`.
+    - **Write:** `smm.setMonthPlatforms` (transaction; posted pieces keep their accounts).
+    - **Setup:** `MonthSetupInput.platforms` through `applyMonthSetup` / `setupSaleMonth` /
+      `setupProblem`.
+    - **Form:** `SmmSetupForm` (`SmmSetupValue.platforms`, shared `AccountPicker`); `SmmAddSaleDialog`
+      (setting up a recorded sale asks too; the no-sale step's chips are the same control).
+  - Tested:
+    - New tests: `smmCalendar.test.ts` (17), `smmCalendarUi.test.tsx` (7, the real calendar on the
+      in-memory Firestore), `smmAccountsOct05.test.tsx` (9, the real setup dialog and services); +2
+      in `smmAddSaleUi.test.tsx` (Calendar view) and its setup-step test extended to the accounts.
+    - Totals: `npm run build` ✅; `npx vitest run` ✅ 197 files, 3060 tests;
+      `npx tsc -p tsconfig.check.json --noEmit` → only the known VideoCallManager error; eslint clean on the
+      new and changed files.
+    - Browser harness on fake data (in the scratchpad): overseer and member, 1440 / 1280 / 390 px,
+      dark and light — history paging, strip, chips → panel, keyboard focus across months, a swipe,
+      the phone client sheet, the finished clients, Edit setup → Instagram + YouTube saved with the
+      unposted pieces moved and the posted ones kept. No console errors, no sideways scroll.
+  - Fixed on the way: chip titles clamp to two lines; a full-width month band (heavy orange lines) was
+      replaced by a start marker; the phone client header wraps instead of squeezing the name.
+  - Not covered: live Firebase.
+
 - **2026-10-04: CLAUDE.md split into a short core, module files that load by path, and this
   history** (CLAUDE.md Context map, §29.21, §30, §32–§34). The owner approved the recommended split
   ("take the world's best solution"). CLAUDE.md had grown to ~2,450 lines / ~208 KB, roughly 50k tokens

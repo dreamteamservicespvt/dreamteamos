@@ -1,15 +1,18 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
+import { VEO_FRAME_LOCK } from "@/services/prompts/motion";
 
 /**
  * The whole ad pipeline (services/geminiService generateAdAssets) against a fake Gemini that answers
  * each call by what it is — extraction, script, repair, frames, video director — so the 2026-10-01
- * fixes are checked where they actually live: in the run, not only in the prompt builders.
+ * and 2026-10-05 fixes are checked where they actually live: in the run, not only in the prompt builders.
  *
  *   • the last clip says the VERIFIED address, and no clip invents one when there is none;
- *   • a client's store photo is attached to the frame writer and stamped as a background plate;
+ *   • a client's store photo is attached to the frame writer and stamped as a background plate, and its
+ *     video never shows more than the photo (a push-in, or a still camera while she walks);
  *   • a human duo's frames carry one cast sheet and its video names each speaker by how they look;
- *   • Motu and Patlu carry the same scale anchor in the frame and the video;
- *   • every video prompt is bounded by its frame — nobody walks.
+ *   • Motu and Patlu walk together and carry the same scale anchor in the frame and the video, filmed from
+ *     the side at one distance;
+ *   • every video prompt directs motion only, and every clip moves the way its frame was composed for.
  */
 
 type Call = { sys: string; user: string; json: boolean; images: number };
@@ -135,20 +138,41 @@ describe("a client's store photo is the background plate (problem 6)", () => {
       expect(prompt).toContain("upscale it to 8K");
       expect(prompt).not.toMatch(/open stretch of floor|ATTACH NOTHING/);
     }
+    // The video never shows more of a client's photo than was photographed: the camera pushes in, or holds
+    // still while she walks — never a side track, a glide or an arc — from a frame composed with her mid-step.
+    expect(out.mainFramePrompts[1]).toContain("COMPOSITION FOR MOTION: Walk along the display (");
+    expect(out.mainFramePrompts[1]).toContain("the subject placed into it caught mid-step on open, clear floor, with room to walk");
+    expect(out.veoPrompts[0]).toContain("Smooth, steady push-in as she comes closer, ending in a medium shot: she walks slowly toward the camera");
+    expect(out.veoPrompts[1]).toContain("Steady medium-wide shot from a still camera as she walks along: she walks slowly along the counter, display or shelves beside her");
+    for (const prompt of out.veoPrompts) {
+      expect(prompt).toContain(`this real place exactly ${VEO_FRAME_LOCK} shows it — the same layout, fixtures, products, signage, logo, colours and light`);
+      expect(prompt).not.toMatch(/tracking|lateral dolly|arc shot/i);
+      expect(prompt).toMatch(/push-in|still camera/i);
+    }
   });
 });
 
-describe("every video prompt animates its frame and nothing beyond it (problem 5)", () => {
-  it("bounds each clip to its frame, describes the frame, and never walks", async () => {
-    script = { writer: `clip-1[0-8sec]: ${CLIP1}\nclip-2[8-16sec]: ${CLIP2_PLAIN}` };
-    const out = await run(form());
-    expect(out.veoPrompts).toHaveLength(2);
-    for (const prompt of out.veoPrompts) {
-      expect(prompt).toContain("FRAME BOUNDARY — THIS VIDEO SHOWS ONLY WHAT THE ATTACHED FRAME SHOWS");
-      expect(prompt).toContain("THE ATTACHED FRAME — WHAT THIS VIDEO ANIMATES, AND ALL IT MAY SHOW:");
-      expect(prompt).toContain("beside the real counter, shelves of stock behind");
-      expect(prompt).not.toMatch(/Walk and talk|walks a few|Follow Tracking|Pull Back|Orbit|Crane/);
-    }
+describe("every video prompt starts from its frame and moves inside it (problem 5)", () => {
+  it("directs the motion only — never describes the frame — and moves every clip the way its frame was composed", async () => {
+    script = { writer: `clip-1[0-8sec]: ${CLIP1}\nclip-2[8-16sec]: ${CLIP2_PLAIN}\nclip-3[16-24sec]: ${CLIP2_PLAIN.replace("Every", "Each")}` };
+    const out = await run(form({ duration: 24 }));
+    expect(out.veoPrompts).toHaveLength(3);
+    out.veoPrompts.forEach((prompt) => {
+      expect(prompt).toContain("one continuous 8-second shot that starts from the attached frame");
+      expect(prompt).toContain(VEO_FRAME_LOCK);
+      // The frame prompt said "beside the real counter, shelves of stock behind" — the video never repeats it.
+      expect(prompt).not.toContain("shelves of stock behind");
+      expect(prompt).not.toMatch(/Pull Back|Orbit|Crane|walk-?back|street|road|FRAME BOUNDARY/i);
+      expect(prompt.split(/\s+/).length).toBeLessThanOrEqual(210);
+    });
+    // The same plan on both sides: each frame is composed for the action its video performs.
+    expect(out.mainFramePrompts[0]).toContain("COMPOSITION FOR MOTION: this pose opens the clip (Walk toward the camera,");
+    expect(out.veoPrompts[0]).toContain("she walks slowly toward the camera across the open floor");
+    expect(out.mainFramePrompts[1]).toContain("COMPOSITION FOR MOTION: Walk along the display (");
+    expect(out.veoPrompts[1]).toContain("Smooth side-tracking shot from a three-quarter front angle, the camera travelling sideways alongside her");
+    expect(out.veoPrompts[1]).toContain("she walks slowly along the counter, display or shelves beside her");
+    expect(out.mainFramePrompts[2]).toContain("COMPOSITION FOR MOTION: Walk in and invite (");
+    expect(out.veoPrompts[2]).toContain("she walks the last few steps toward the camera and invites the viewer in");
   });
 });
 
@@ -175,15 +199,41 @@ describe("a human duo is one fixed pair of people (problem 1)", () => {
     const left = (sheets[0].match(/• LEFT — ([^:]+):/) || [])[1];
     expect(left).toMatch(/^the woman in the .+ saree$/);
     for (const prompt of out.veoPrompts) {
-      expect(prompt).toContain(`ONLY ${left} (on the LEFT of the frame) speaks this line`);
-      expect(prompt).not.toMatch(/ONLY (?:Friend|Host)\b/);
-      expect(prompt).toContain("SCALE ANCHOR — EXACTLY AS IN THE ATTACHED FRAME");
+      expect(prompt).toContain(`0–4s — ${left} (on the LEFT of the frame), with `);
+      expect(prompt).not.toMatch(/\b(?:Friend|Host)\b/);
+      expect(prompt).toContain(`— ${left} on the left and `);
+      expect(prompt).toContain("Heights never change: Two adult women of normal height for the room");
     }
+  });
+
+  /**
+   * The video side once read the line WITH the speaker's name — "the woman in the teal saree: …" — and
+   * took "saree" for a product, planning a product shot for a clip whose frame was composed for
+   * something else. Both sides now plan from the spoken words alone.
+   */
+  it("plans the same move for the frame and the video, whatever the speakers are called", async () => {
+    script = {
+      dialogue: [
+        "0-8|friend: Have you seen how many washing machines are here?",
+        "0-8|host: Sharma Electronics keeps every brand under one roof.",
+        "8-16|friend: Can we really trust them with such big machines?",
+        "8-16|host: Yes, they have served this town for twenty years.",
+        "16-24|friend: Do they really deliver all of this home?",
+        "16-24|host: Yes, free home delivery comes with every purchase.",
+      ].join("\n"),
+    };
+    const out = await run(form({ characterPack: "human_duo_female", duration: 24 }));
+    expect(out.veoPrompts).toHaveLength(3);
+    // Planned from the spoken words alone: the promise ("trust", "twenty years") is walked up to and said. Read
+    // with the names, "the woman in the … saree" would have made it a product shot instead.
+    expect(out.mainFramePrompts[1]).toContain("COMPOSITION FOR MOTION: Walk, stop and explain (");
+    expect(out.veoPrompts[1]).toContain("both take a few unhurried steps side by side across the floor and stop together");
+    expect(out.veoPrompts[1]).toContain("Slow lateral dolly two-shot at eye level, the camera gliding sideways past them at one distance");
   });
 });
 
 describe("Motu and Patlu keep their heights (problem 3)", () => {
-  it("carries the same scale anchor in every frame and every video, on a locked or focus-only camera", async () => {
+  it("carries the same scale anchor in every frame and every video — walking together, filmed from the side", async () => {
     script = {
       dialogue: [
         "0-8|motu: Patlu, why is this shop always so very full?",
@@ -197,11 +247,14 @@ describe("Motu and Patlu keep their heights (problem 3)", () => {
       expect(prompt).toContain("SCALE ANCHOR: Motu and Patlu at their real heights from the show");
     }
     for (const prompt of out.veoPrompts) {
-      expect(prompt).toContain("SCALE ANCHOR — EXACTLY AS IN THE ATTACHED FRAME, FOR ALL 8 SECONDS: Motu and Patlu at their real heights");
-      expect(prompt).toMatch(/CAMERA — Eye level · \d+mm · (?:Static Locked|Rack Focus)/);
-      // What they DO in the clip — the rules around it name these moves only to forbid them.
-      const action = prompt.slice(prompt.indexOf("ACTION —"), prompt.indexOf("CAMERA —"));
-      expect(action).not.toMatch(/steps? forward|half step|rocks forward|leans? (?:in|forward)/);
+      expect(prompt).toContain("Heights never change: Motu and Patlu at their real heights");
+      expect(prompt).toContain("— Motu on the left and Patlu on the right —");
+      // Filmed only from the side, at one distance — never a move toward either of them.
+      expect(prompt).toMatch(/(?:Smooth side-tracking|Slow lateral dolly) two-shot at eye level, the camera (?:travelling|gliding) sideways (?:with|past) them at one distance/);
+      // What they DO: they walk together, side by side — and nobody comes nearer the lens.
+      const action = prompt.split("\n\n")[1];
+      expect(action).toContain("side by side");
+      expect(action).not.toMatch(/steps? forward|half step|rocks forward|leans? (?:in|forward)|\bwalks? (?:\w+ ){0,3}toward the camera/);
     }
   });
 });

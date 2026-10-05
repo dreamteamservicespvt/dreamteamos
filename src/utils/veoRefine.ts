@@ -14,7 +14,7 @@
  * JSON keyed by clip. These helpers read that JSON and decide whether an edit may replace the prompt.
  * Pure, so each guarantee is unit-tested.
  */
-import { spokenLinesIn } from "@/services/prompts/motion";
+import { LEGACY_VEO_FRAME_LOCK, VEO_FRAME_LOCK, spokenLinesIn } from "@/services/prompts/motion";
 
 const stripFences = (raw: string) => raw.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
 
@@ -55,13 +55,20 @@ export function promptHeadings(prompt: string): string[] {
  *
  * The recorded dialogue is the one thing an edit can never touch: the video must say exactly what the
  * voice-over says. A lost section is the other — an edit that drops the negatives or the world lock
- * brings back the walking and vanishing furniture those sections exist to prevent.
+ * brings back the walking and vanishing furniture those sections exist to prevent. A short prompt
+ * (2026-10-05) has one heading, so its keep sentence is checked by its words — "as the attached frame"
+ * today, "exactly as in the attached frame" in a kit saved earlier that day.
  */
 export function veoEditProblems(original: string, candidate: string): string[] {
   const problems: string[] = [];
   if (!candidate.trim()) return ["The edited prompt was empty."];
   if (JSON.stringify(spokenLinesIn(candidate)) !== JSON.stringify(spokenLinesIn(original))) {
-    problems.push("The spoken line inside the quotation marks under SPEECH was changed. Put it back exactly as it was — character for character.");
+    problems.push("The spoken line inside the quotation marks was changed. Put it back exactly as it was — character for character.");
+  }
+  for (const lock of [VEO_FRAME_LOCK, LEGACY_VEO_FRAME_LOCK]) {
+    if (original.includes(lock) && !candidate.includes(lock)) {
+      problems.push(`The sentence that keeps the people and the place "${lock}" went missing. Put it back exactly as it was.`);
+    }
   }
   const kept = new Set(promptHeadings(candidate));
   const lost = promptHeadings(original).filter((h) => !kept.has(h));

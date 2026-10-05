@@ -184,9 +184,10 @@ export interface SceneContext {
   avoid: string[];
   /**
    * One background per clip, in clip order — each different, each proving that clip's line — and how
-   * that clip is filmed: its staging (stand and tell, walk and talk, show the product…), camera move,
-   * shot angle and, in a two-hander, whether the camera follows the speaker. The how-to-film fields are
-   * validated against prompts/motion and fall back to the code plan when absent.
+   * that clip is filmed: its staging (walk toward the camera, walk along the display, approach and show…),
+   * camera move and shot angle. The how-to-film fields are validated against prompts/motion (a key saved
+   * before the 2026-10-05 dynamic pass is read as today's equivalent, `stagingKeyOf`) and fall back to the
+   * code plan when absent. `focus` is no longer chosen — a pair's framing always follows the speaker.
    */
   clips: {
     clip: number; background: string; elements: string[];

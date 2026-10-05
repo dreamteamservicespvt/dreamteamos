@@ -158,11 +158,15 @@ describe("a human duo's video names each speaker by how they look", () => {
     const p = assembleVeoPrompt({
       aspectRatio: "9:16", plan: planClipMotion(3, "commercial", packPerformer(pack("human_duo_female")), { twoHander: true })[1],
       identityLock: s.identityLock, language: "Telugu", speech, cast: s.cast, castPlural: s.castPlural,
-      twoHander: s.twoHander, manner: s.manner, handGestures: s.handGestures, scaleAnchor: s.scaleAnchor,
+      twoHander: s.twoHander, scaleAnchor: s.scaleAnchor, sides: s.sides, pairNames: s.pairNames,
     });
-    expect(p).toContain(`ONLY ${names[0]} (on the LEFT of the frame) speaks this line, in their own voice.`);
-    expect(p).not.toMatch(/ONLY (?:Friend|Host)\b/);
-    expect(p).toContain("SCALE ANCHOR — EXACTLY AS IN THE ATTACHED FRAME");
+    expect(p).toContain(`0–4s — ${names[0]} (on the LEFT of the frame), with `);
+    expect(p).toContain(`4–8s — ${names[1]} (on the RIGHT of the frame), with `);
+    expect(p).toContain("Only the one speaking moves their lips; the other listens with the mouth closed and reacts.");
+    expect(p).not.toMatch(/\b(?:Friend|Host)\b/);
+    // Each keeps her side while they walk, and their heights never change.
+    expect(p).toContain(`— ${names[0]} on the left and ${names[1]} on the right —`);
+    expect(p).toContain(`Heights never change: Two adult women of normal height for the room`);
     // Without a cast sheet (an old kit), the labels are still a working fallback.
     expect(packVeoSubject(pack("human_duo_female")).speech([{ name: "Friend", text: "a" }, { name: "Host", text: "b" }])[1].speaker).toBe("Host");
   });
@@ -243,7 +247,7 @@ describe("the Kids category — two real children", () => {
     expect(frame).toContain("TWO REAL CHILDREN");
     expect(frame).toContain("never give either child a cartoon or drawn look");
     const s = packVeoSubject(k);
-    expect(s.identityLock).toContain("both children's faces (100% face match)");
+    expect(s.identityLock).toBe("both children's exact faces, hair, outfits, ages and heights");
     expect(s.cast).toBe("Both children");
     expect(s.twoHander).toBe(true);
   });

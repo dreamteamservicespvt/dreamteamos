@@ -10,15 +10,15 @@
  * "Add SMM sale" dialog uses it as its last step.
  */
 import { useEffect, useMemo, useState } from "react";
-import { CalendarRange, Clapperboard, Link2, ListChecks, Loader2, PencilLine, Users, X } from "lucide-react";
+import { AtSign, CalendarRange, Check, Clapperboard, ListChecks, Loader2, PencilLine, Users, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { applyMonthSetup, setupProblem } from "@/services/smmSetup";
 import { fetchAssignableMembers } from "@/services/smm";
 import { ClipsPerVideoPicker } from "@/components/sales/SmmSaleFields";
 import { isoDay } from "@/utils/smmPlan";
 import {
-  DEFAULT_SMM_CLIPS_PER_VIDEO, SMM_SEATS, addMonthsIso, clipsPerVideoOf, cycleRangeLabel, isNoSaleMonth, monthCycle,
-  sellerLineOf, type SmmSeat,
+  DEFAULT_SMM_CLIPS_PER_VIDEO, SMM_SEATS, addMonthsIso, cleanPlatforms, clipsPerVideoOf, cycleRangeLabel, isNoSaleMonth,
+  monthCycle, sellerLineOf, type SmmSeat,
 } from "@/utils/smmPackage";
 import { daysBetween } from "@/utils/smmPlan";
 import {
@@ -38,6 +38,12 @@ export interface SmmSetupValue {
   endTouched: boolean;
   clipsPerVideo: number;
   pageLinks: Partial<Record<SmmPlatform, string>>;
+  /**
+   * The accounts the month covers, when this form chooses them — Set up / Edit setup and setting up a
+   * recorded sale (2026-10-05). Absent: the caller owns them (the no-sale step ticks them beside its
+   * package) and passes them as the form's `platforms`.
+   */
+  platforms?: SmmPlatform[];
   team: SmmTeam;
 }
 
@@ -77,6 +83,7 @@ export function setupValueOf(
     endTouched: !startDate && !!campaign?.cycle && campaign.cycle.endDate !== addMonthsIso(campaign.cycle.startDate, 1),
     clipsPerVideo: campaign ? clipsPerVideoOf(campaign) : DEFAULT_SMM_CLIPS_PER_VIDEO,
     pageLinks: { ...(campaign?.pageLinks || {}) },
+    ...(campaign ? { platforms: cleanPlatforms(campaign.platforms) } : {}),
     team: campaign?.team ? { ...EMPTY_TEAM, ...campaign.team, assistants: campaign.team.assistants || [] } : { ...EMPTY_TEAM },
   };
 }
@@ -90,18 +97,50 @@ export function setupInputOf(v: SmmSetupValue) {
     endDate: v.endDate,
     clipsPerVideo: v.clipsPerVideo,
     pageLinks: v.pageLinks,
+    ...(v.platforms ? { platforms: v.platforms } : {}),
     team: v.team,
   };
 }
 
+/**
+ * The accounts as tick-chips (2026-10-05) — one control wherever accounts are chosen: setup's "Accounts
+ * it covers", and the no-sale step's "Accounts it covered".
+ */
+export function AccountPicker({ value, onChange, testPrefix }: {
+  value: SmmPlatform[];
+  onChange: (next: SmmPlatform[]) => void;
+  /** `${testPrefix}-${account}` on each chip. */
+  testPrefix: string;
+}) {
+  return (
+    <div role="group" aria-label="Accounts" className="mt-1 flex flex-wrap gap-1.5">
+      {SMM_PLATFORMS.map((p) => {
+        const on = value.includes(p.key);
+        return (
+          <button key={p.key} type="button" aria-pressed={on} data-test={`${testPrefix}-${p.key}`}
+            onClick={() => onChange(on ? value.filter((x) => x !== p.key) : cleanPlatforms([...value, p.key]))}
+            className={`inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-xs font-medium transition-colors ${
+              on ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent"
+            }`}>
+            {on && <Check size={12} aria-hidden />} {p.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 const inputCls = "mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-primary";
 
-export default function SmmSetupForm({ value, onChange, members, platforms, soldCommitments }: {
+export default function SmmSetupForm({ value, onChange, members, platforms: givenPlatforms = [], soldCommitments }: {
   value: SmmSetupValue;
   onChange: (next: SmmSetupValue) => void;
   members: { uid: string; name: string }[];
-  /** The accounts the month covers — one page-link box each. */
-  platforms: SmmPlatform[];
+  /**
+   * The accounts the month covers, when the caller chooses them (the no-sale step) — one page-link box
+   * each. When the value carries `platforms`, the form asks for them itself and this is not used.
+   */
+  platforms?: SmmPlatform[];
   /** What the sale promised, shown beside the counts so a change from it is visible. */
   soldCommitments?: Record<SmmContentKind, number> | null;
 }) {
@@ -116,6 +155,9 @@ export default function SmmSetupForm({ value, onChange, members, platforms, sold
   const history = cycle.endDate < today;
   const days = daysBetween(cycle.startDate, cycle.endDate) + 1;
   const set = (patch: Partial<SmmSetupValue>) => onChange({ ...value, ...patch });
+  /** The form chooses the accounts itself (Set up / Edit setup, setting up a sale) — see `SmmSetupValue`. */
+  const choosesAccounts = !!value.platforms;
+  const platforms = value.platforms ?? givenPlatforms;
 
   const setStart = (start: string) => set({
     startDate: start,
@@ -252,12 +294,28 @@ export default function SmmSetupForm({ value, onChange, members, platforms, sold
         </section>
       )}
 
-      {/* ── Where ────────────────────────────────────────────────────────────────────────── */}
-      {platforms.length > 0 && (
-        <section>
+      {/* ── Where: the accounts, then the client's page on each ──────────────────────────── */}
+      {(choosesAccounts || platforms.length > 0) && (
+        <section data-test="smm-setup-accounts">
           <h4 className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-            <Link2 size={13} className="text-primary" /> The client's pages <span className="font-normal text-muted-foreground">(optional)</span>
+            <AtSign size={13} className="text-primary" /> {choosesAccounts ? "Accounts it covers" : "The client's pages"}
+            {!choosesAccounts && <span className="font-normal text-muted-foreground">(optional)</span>}
           </h4>
+          {choosesAccounts && (
+            <>
+              <AccountPicker value={platforms} onChange={(next) => set({ platforms: next })} testPrefix="smm-setup-platform" />
+              <p className={`mt-1 text-[11px] ${platforms.length === 0 ? "font-medium text-destructive" : "text-muted-foreground"}`}>
+                {platforms.length === 0
+                  ? "Tick at least one account the month covers."
+                  : "Every post goes on these accounts unless it was given its own. Posts already live stay where they went."}
+              </p>
+              {platforms.length > 0 && (
+                <p className="mt-2.5 text-[11px] font-medium text-muted-foreground">
+                  The client's page on each <span className="font-normal">(optional)</span>
+                </p>
+              )}
+            </>
+          )}
           <div className="mt-1.5 grid gap-2 sm:grid-cols-2">
             {SMM_PLATFORMS.filter((p) => platforms.includes(p.key)).map((p) => (
               <label key={p.key} className="text-[11px] font-medium text-muted-foreground">
@@ -393,8 +451,8 @@ export function SmmSetupDialog({ campaign, user, onClose, onSaved }: {
             <X size={18} />
           </button>
         </div>
-        <SmmSetupForm value={value} onChange={setValue} members={members}
-          platforms={campaign.platforms || []} />
+        {/* The value carries the month's accounts, so the form asks for them ("Accounts it covers"). */}
+        <SmmSetupForm value={value} onChange={setValue} members={members} />
         <div className="mt-4 flex gap-2">
           <button onClick={onClose} disabled={saving}
             className="flex-1 rounded-lg border border-border px-3 py-2.5 text-sm font-medium text-foreground hover:bg-accent disabled:opacity-50">

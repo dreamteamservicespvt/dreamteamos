@@ -123,13 +123,79 @@ post — …" line); **clients, worst first** (bullets: posted, due-by-today tic
 listed); **team load** (overseers only: each person's pieces by stage); **ads** (leads, spend, cost per
 lead, 14-day sparklines ending yesterday until today is reported, leads by client). Money shows only to
 overseers and the seller (`showMoney`). The month's **Report tab** uses the same parts
-(`dashboard/MonthViews`: promise tracker with per-kind bullets, stage pipeline, the month's own
-calendar via `scheduleBetween`, leads a day via `adDaily`). Stage colours are one validated scale for
+(`dashboard/MonthViews`: promise tracker with per-kind bullets, stage pipeline, leads a day via
+`adDaily`; its calendar is the plain client calendar since 2026-10-05 — it was a bar chart of the days
+via `scheduleBetween`, which Insights still uses). Stage colours are one validated scale for
 the whole section — `--viz-*` in `index.css`, Tailwind `viz-*` (§11); `SmmVisuals.TONE_BG/TONE_RGB/TONE_CHIP`
 use it, so the cards, timeline, popup and dashboard agree; late is red **and** a diamond (deuteranopes
 cannot tell red from green). `SmmBoardStats` was removed (`smmPackage.boardStats` stays, tested).
 
+**The client calendar (2026-10-05, redrawn twice that day) — a client's whole run as a NORMAL CALENDAR.**
+The owner asked for "a monthly calendar for each client's social media, for checking the history". Version 1
+paged by calendar month with six stage colours ("confusing"); version 2 paged by the CLIENT's months
+("Month 2 · 5 Sep – 5 Oct"), so a client with one month had nothing to switch to ("no option to change the
+month"), and its day list beside the grid left the calendar in empty space. **Version 3 (owner's choice, with
+mockups): one calendar month per page, like a phone calendar, with the three marks.** Top to bottom
+(`calendar/ClientCalendar`): **which month** — "‹ Sep · October 2026 ▾ · Nov ›" and **Today**, always shown;
+the title opens a list of every month (newest first, each with the client months in it and its marks); the
+arrows stop at the first and last calendar months holding anything of the client's, greyed and saying "No
+earlier month for this client"; under it the client's months on this page — "Month 2 · 5 Sep – 5 Oct 2026 ·
+Running now" — the page's own month plain, the others links to their pages; **how it went** — three counts
+for the posts on this page's days, each a solid circle + number + word: ✔ green **Posted**, ✖ red **Not
+posted** (its day has passed), ◷ grey **Coming up** (`calendar/marks.MarkIcon`; shape AND colour AND word —
+the counts are the legend); **when** — Monday first, days of the months around it faded and inert, days in
+no client month dimmed, today ringed, "Month 2 starts" / "Month 2 ends" written on the day ("Start" / "End"
+when narrow). **Sized by its own width** (`chartKit.useWidth`), not the screen: from 600px a day lists its
+posts by name, mark first (two, or three from 960px, then "+n more"); narrower, only its marks with a
+number; the title uses the body face when narrow (Syne cut "October 2026" at 360px). The picked day's posts
+are always **under** the calendar, cards side by side (`CalendarDayPanel.POST_GRID`, `PostRow`: "Posted on
+15 Aug, 6:00 AM", "Not posted — it was due on 25 Aug", "To be posted today, 9:00 AM", what it waits for,
+Instagram / Facebook links, **Open** beside the name for the page's own month, the month's name when the
+page shows two, and "Its date is outside Month 1 (6 Sep – 6 Oct 2026)" when it is); a day tapped while its
+posts are below the fold scrolls them up. Posts with no date are listed under the calendar on the pages of
+their month. **Every post sits on its upload date** (`uploadDate`, the Content list's column — owner, same
+day, via session dts-os-a1): `postedAt` is stamped when Posted is pressed, and the team marked a month's
+nine posts posted together, which piled them all onto 5 Oct; only a posted piece with no upload date falls
+back to that stamp ("Marked posted on 5 Oct — no upload date was given"). A post dated outside its month
+shows on that date's page (the arrows reach it) and is counted there. A history month's blank plan is left
+out ("added after it ended"). Swipe left/right (the grid is `touch-pan-y`, or the browser takes a
+right-swipe as Back) and Page Up/Down change month; arrows move a day, over a month's edge too. Opens on
+today's page while the month it is about runs, else on the page holding that month's middle
+(`openingMonth`). Three places: the month page's Content → **Calendar** (`SmmCalendar`, about that month;
+the kind filter applies), its **Report** tab (the same calendar replaced the stacked bar chart of the
+days), and **Social Media → Calendar** (`SmmCalendarBoard`, third view beside Cards / Insights, kept in
+`dts_smm_view`; about the client's month running now; client list A–Z with search beside it from 1280px
+— at 1024px it left the calendar ~440px — a bottom sheet below that; `?client=` in the URL; the member /
+salesperson filters narrow the clients).
+**Visibility (owner): only months the viewer can already open** — `smmCalendar.canSeeSmmMonth`: an
+overseer all, otherwise `watchers` or `soldBy`.
+**Reads:** the month on screen is live; the client's other months come from one on-demand query
+(`smm.fetchClientMonths`, `where clientPhoneId ==`) kept 5 minutes per session (`useSmmClientMonths`);
+an overseer's board asks it per client picked, and clients with only finished months join the list on
+"Show clients whose months have all ended" (the existing `fetchFinishedCampaigns`); a member's or
+salesperson's board reads nothing more (their listener already has every month they can see). Rules in
+`utils/smmCalendar.ts` (calendar months, the client's run `buildClientRun`, one page `calendarPage`, which
+month and day it opens on, marks, sentences, clients); UI in
+`components/smm/calendar/` (`ClientCalendar`, `CalendarDayPanel`, `marks`, `kindIcons`).
+**Accounts it covers, in setup (2026-10-05, owner).** Set up / Edit setup (and setting up a recorded sale
+in Add SMM sale) now asks which accounts the month covers (`AccountPicker`, shared with the no-sale
+step), with a page box per ticked account; none ticked is refused. Saved by `applyMonthSetup` →
+`smm.setMonthPlatforms` (transaction): the month's `platforms`, and its pieces by
+`smmPackage.itemsForAccounts` — **posted pieces keep where they went**, pieces still on the month's old
+accounts take the new ones, a piece given its own accounts keeps them minus a dropped one (none left →
+the month's). Page links are kept only for covered accounts (`linksForAccounts`). The sale keeps the
+accounts it was sold with, and a later sale edit never copies them back (`ensureCampaignForOrder` does
+not touch `platforms`).
+
 ## 24. BUSINESS RULES (IMPLEMENTED; verified in code)
+
+- **SMM client calendar (owner, 2026-10-05):** one calendar per client across all their months, paged by
+  calendar month like a phone calendar (‹ › and Today always there), plain enough for anybody — three marks
+  only (✔ posted, ✖ not posted, ◷ coming up), each with its word; the counts are the posts on the days on
+  screen; a person sees only the months they can already open; **every post sits on its upload date**
+  (never on the day Posted was pressed); a post whose day has passed without going up is "not posted".
+- **SMM accounts (owner, 2026-10-05):** the tech side sets which accounts a month covers in setup; a post
+  already live keeps the accounts it went on; at least one account is required.
 
 - **SMM deletion and lead (2026-10-01, team leader added 2026-10-03):** the main admin, the tech
   admin, the tech team leader and the Social Media Team Lead delete a month; a deleted sold month never
@@ -188,7 +254,27 @@ cannot tell red from green). `SmmBoardStats` was removed (`smmPackage.boardStats
   own maker/publisher, else the month's content and posting seats; a marketer-only member shows "No posts
   of their own".
 
+- SMM client calendar (2026-10-05): it is only as true as the plan's upload dates — a posted piece shows
+  "Posted on <its upload date>" even when it really went up later (the app records only when Posted was
+  pressed, not when it went live); a date typed wrong shows on the wrong page, flagged "Its date is outside
+  Month 1" when it falls outside its month (the owner's Dhana lakshmi month: nine dates a month early, to be
+  corrected in the Content list). Months are
+  joined by the client's number, so a client recorded under two numbers shows as two clients, and a very
+  old month with no number is a client of its own. Overseers see finished-only clients after asking for
+  them (one read of every finished month, as the Finished tab already does). No print / export of the
+  calendar. Where a post is held up (with the client, being made) is said in words on the day, not shown
+  as a mark — by the owner's choice of three marks.
+
 ## 27. POTENTIAL RISKS (need verification)
+
+- The client calendar reads a client's months with `where clientPhoneId ==` and filters what the viewer
+  may see in the browser, so a member's browser receives that client's other months before they are
+  hidden (the month page could already be opened by id; Firestore rules are the catch-all). A rule that
+  limits `smm_campaigns` reads to `watchers` would make that query fail for members — the calendar then
+  says it could not load the other months and shows the one on screen. Checked by unit/UI tests on the
+  in-memory Firestore and a browser harness (version 3: 1920 / 1280 / 1024 / 800 px with the 240px sidebar,
+  412 / 390 / 360 px phones, dark and light, month page, Report tab and board, keyboard, swipe and the
+  month list) — not against live Firebase.
 
 - SMM (2026-10-03) writes across roles from the browser: the tech side writes a sale onto a
   salesperson's lead ("Add SMM sale"), and a salesperson's renewal sale creates the tech team's jobs

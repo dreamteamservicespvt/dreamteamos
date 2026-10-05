@@ -5,7 +5,7 @@
  * and how it lands in each frame prompt are unit-tested on their own.
  */
 import type { SceneContext } from "@/types/aiPlatform";
-import { CAMERA_MOVES, SHOT_ANGLES, STAGINGS, type MotionChoice } from "@/services/prompts/motion";
+import { CAMERA_MOVES, SHOT_ANGLES, stagingKeyOf, type MotionChoice } from "@/services/prompts/motion";
 
 const text = (v: unknown, max = 400): string =>
   typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "";
@@ -79,7 +79,8 @@ export function parseScenePlan(raw: string, clipCount: number): SceneContext | n
     const background = text(row?.background);
     if (n >= 1 && n <= clipCount && background && !byClip.has(n)) {
       const elements = Array.isArray(row?.elements) ? row.elements.map((e: unknown) => text(e, 80)).filter(Boolean).slice(0, 6) : [];
-      const staging = keyOf(row?.staging, STAGINGS);
+      // An action key — today's, or one the planner wrote before the 2026-10-05 dynamic pass.
+      const staging = stagingKeyOf(row?.staging) ?? undefined;
       const camera = keyOf(row?.camera, CAMERA_MOVES);
       const angle = keyOf(row?.angle, SHOT_ANGLES);
       const focus = row?.focus === "speaker" || row?.focus === "both" ? row.focus : undefined;

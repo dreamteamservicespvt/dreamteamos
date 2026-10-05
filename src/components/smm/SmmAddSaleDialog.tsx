@@ -26,7 +26,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import SaleForm from "@/components/sales/SaleForm";
 import SmmSetupForm, {
-  assignSummary, countsLine, setupInputOf, setupValueOf, type SmmSetupValue,
+  AccountPicker, assignSummary, countsLine, setupInputOf, setupValueOf, type SmmSetupValue,
 } from "@/components/smm/SmmSetupForm";
 import { fetchAssignableMembers, remindSellerToRenew } from "@/services/smm";
 import {
@@ -160,7 +160,12 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
       keepCurrent ? undefined : r.businessName,
       keepCurrent ? undefined : chosenSale.soldCommitments,
     );
-    setSetup({ ...value, clipsPerVideo: normaliseClipsPerVideo(r.item.smm?.clipsPerVideo || value.clipsPerVideo) });
+    setSetup({
+      ...value,
+      clipsPerVideo: normaliseClipsPerVideo(r.item.smm?.clipsPerVideo || value.clipsPerVideo),
+      // The accounts are asked in the form — the month's own, else the ones the sale was made for.
+      platforms: value.platforms?.length ? value.platforms : [...chosenSale.platforms],
+    });
     setStep("setup");
   };
 
@@ -189,6 +194,7 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
     setSetup({
       ...setupValueOf(null, today, business, chosenSale.soldCommitments),
       clipsPerVideo: normaliseClipsPerVideo(result.item.smm?.clipsPerVideo || 4),
+      platforms: [...chosenSale.platforms],
     });
     setStep("setup");
   };
@@ -208,8 +214,6 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
     setNoSalePlatforms(platformsForPackage(pkg));
     setSetup((s) => (s ? { ...s, commitments: commitmentsForPackage(pkg) } : s));
   };
-  const toggleNoSalePlatform = (p: SmmPlatform) =>
-    setNoSalePlatforms((list) => (list.includes(p) ? list.filter((x) => x !== p) : [...list, p]));
 
   const problem = useMemo(() => {
     if (!setup) return "";
@@ -431,20 +435,7 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
               </label>
               <div className="min-w-0">
                 <span className="text-[11px] font-medium text-muted-foreground">Accounts it covered</span>
-                <div className="mt-1 flex flex-wrap gap-1.5">
-                  {SMM_PLATFORMS.map((p) => {
-                    const on = noSalePlatforms.includes(p.key);
-                    return (
-                      <button key={p.key} type="button" aria-pressed={on} data-test={`smm-no-sale-platform-${p.key}`}
-                        onClick={() => toggleNoSalePlatform(p.key)}
-                        className={`h-8 rounded-md border px-2.5 text-xs font-medium transition-colors ${
-                          on ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent"
-                        }`}>
-                        {p.label}
-                      </button>
-                    );
-                  })}
-                </div>
+                <AccountPicker value={noSalePlatforms} onChange={setNoSalePlatforms} testPrefix="smm-no-sale-platform" />
               </div>
             </div>
             <SmmSetupForm value={setup} onChange={setSetup} members={members} platforms={noSalePlatforms} />

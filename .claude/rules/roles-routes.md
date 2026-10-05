@@ -164,9 +164,9 @@ is lazy. Chunk loading shows `PageFallback` inside the shell (app pages) or `Rou
 | `*` | `NotFound.tsx` | 404 |
 
 ### Shared by six roles (all except `accounts_admin`)
-| `/smm` | `shared/SocialMedia.tsx` | One card per client month the viewer can see (`useSmmCampaigns`): status in words, a ring of every post, worst first, status counts that filter; Insights (charts) one switch away; Add SMM sale for the tech side |
+| `/smm` | `shared/SocialMedia.tsx` | One card per client month the viewer can see (`useSmmCampaigns`): status in words, a ring of every post, worst first, status counts that filter; Insights (charts) one switch away; **Calendar** (2026-10-05) — pick a client, see every month we ran for them day by day (`?view=calendar&client=<phone digits>` deep-links it; `?view=` also takes `cards` / `insights`); Add SMM sale for the tech side |
 |---|---|---|
-| `/smm/:campaignId` | `shared/SmmCampaignPage.tsx` | One month: content table, item dialog, ads, money, reports, messages; `?tab=report` (or `ads` / `money`) opens on that tab |
+| `/smm/:campaignId` | `shared/SmmCampaignPage.tsx` | One month: content table (List, or Calendar = the client's whole run as a normal calendar, ‹ month › + Today, opened on this month), item dialog, ads, money, reports (with the same calendar), messages; `?tab=report` (or `ads` / `money`) opens on that tab |
 
 ### main_admin — `/main-admin/*`
 `dashboard` (Dashboard) · `team` (TeamManagement: all users, create admins) · `revenue`

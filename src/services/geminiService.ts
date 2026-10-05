@@ -11,6 +11,7 @@ import {
   VOICEOVER_QUALITY_REVIEW_SYSTEM_PROMPT,
   VEO_SEGMENT_SYSTEM_PROMPT,
   modelVeoSubject,
+  HERO_FRAME_POSE,
   STOCK_IMAGE_SYSTEM_PROMPT,
   OVERLAY_TEXT_SYSTEM_PROMPT,
   EXTRACTION_SYSTEM_PROMPT,
@@ -74,8 +75,8 @@ import {
   isBetterDraft, parseScriptQa, qaDecision, qaInstructions, qaSummary, type ScriptQaReport, type ScriptQaSummary,
 } from "@/utils/scriptQa";
 import {
-  assembleVeoPrompt, cameraLabel, fillCast, parseVeoDirections, planClipMotion, spokenLinesIn, stagingPath,
-  withMotionComposition, withScaleAnchor, type ClipMotionPlan, type VeoSpeech,
+  assembleVeoPrompt, cameraShot, pairNamesOf, parseVeoDirections, planClipMotion, spokenLinesIn, stagingPath, walkHint,
+  withMotionComposition, withScaleAnchor, type ClipMotionPlan, type PairNames, type VeoSpeech,
 } from "./prompts/motion";
 import {
   VEO_REFINE_PLAN_SYSTEM_PROMPT, VEO_REFINE_SYSTEM_PROMPT, VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT, VOICEOVER_REFINE_PLAN_SYSTEM_PROMPT,
@@ -103,7 +104,7 @@ import {
 } from "@/utils/dialogueFormat";
 import {
   assignPhotosToClips, describeClipLocations, attachmentDirective, backgroundPlateRule, parseLocationIndex, splitAttachmentDirective, withBackgroundPlate,
-  type LocationPhoto,
+  BACKGROUND_PLATE_HEADING, type LocationPhoto,
 } from "@/utils/locationAssignment";
 import { MODEL_LOCATION_SUBJECT, clipLocationLabel, realLocationFormula } from "./prompts/realLocation";
 import { resolvePlaceName } from "@/utils/businessPlace";
@@ -3003,6 +3004,7 @@ Review it now and return the JSON verdict.` }] }],
     const systemInstruction = SCENE_PLAN_SYSTEM_PROMPT({
       clipCount: segmentCount, adType: formData.adType, festivalName: formData.festivalName, subject,
       twoHander: !!pack && pack.characters.length > 1, deity: packPerformer(pack) === 'deity',
+      cartoon: packPerformer(pack) === 'cartoon',
     });
     const userPrompt = scenePlanUserPrompt({
       businessContent: formData.textInstructions || '',
@@ -3373,12 +3375,18 @@ Segment 2: <text>`;
 
   /**
    * How every clip is staged and filmed — decided once, here, AFTER the scene plan (prompts/motion):
-   * stand and tell, walk and talk, show the product or present the space, each with its camera angle,
+   * talk to camera, walk and talk, show the product or present the place, each with its camera angle,
    * lens, move and speed, from the scene plan's choices or, failing those, from reading each line. The
-   * frames are composed for it first; the video prompts are then written to perform it.
+   * frames are composed for it first; the video prompts are then written to perform it — from the same
+   * spoken words, choices and client-photo clips (writeVeoPrompts), so both plans are identical.
    */
   const motionPlan = planClipMotion(segmentCount, formData.adType, packPerformer(pack),
-    motionOptionsFor(pack, parsedSegments, sceneContext));
+    motionOptionsFor(
+      pack,
+      pack ? dialogueClips.map(clip => clip.map(line => line.text).join(' ')) : parsedSegments,
+      sceneContext,
+      clipPhotoPlan.map(plan => plan.photoIndex !== null),
+    ));
 
   // --- Steps 3-6 run CONCURRENTLY: Main Frame, Header (local), Poster, Veo ---
   onProgress("Generating Main Frame, Poster & Video prompts...", 45);
@@ -3577,8 +3585,8 @@ ${realPremisesDirective}${maleCastingOverride}${commercialMainFramePriorityNote}
   HAIR COLOR LOCK RULE: The ${p.person} must have strictly natural rich black hair in Clip 1 and that exact black hair color must stay locked for the full campaign. Reject brown, auburn, burgundy, copper, highlighted, sun-browned, or lighting-shifted hair. If any prompt drifts away from natural rich black hair, rewrite it before output.
   REALISM RULE: The environment must look like the actual business premises using extracted business/store context. In festival mode, keep the real business location dominant and layer festival cues naturally on top. In commercial mode, every clip must rebuild the real premises as the dominant base layer, then use the strongest business-proof surface for that exact voice-over segment, then premium atmosphere from real materials, real light, and real fixtures.
   COMMERCIAL QUALITY RULE: For commercial ads, strictly follow the realism formula: Face Anchor + Light Source + Skin Truth + Scene Depth + Camera Physics. If any one is missing, the frame is not acceptable.
-  ${formData.attireType === 'traditional' ? `TRADITIONAL ATTIRE RULE: When ATTIRE = Traditional, keep the saree business-specific, commercial, premium, and realistic — never bridal, never wedding-stage, never festival-styled. Use polished real business zones, premium counters, refined décor, believable glass/reflection behavior, and strong category proof instead of decorative clutter. Every business should get a NEW, different girl in an elegant designer saree (brand-derived colour) with elegant traditional jewellery — a necklace/chain, earrings, bangles, a finger ring, and a small bindi. For Clip 1 the girl stands centered in front of the business's own reception with both hands at the lower waist, the right hand lightly resting over the left in a formal front-clasp corporate pose; frame her as a three-quarter shot from head to thighs/knees clearly filling about 70% of the frame, never a small full head-to-feet shot. The background must be 100% relatable to THIS exact business. The attached logo must be the ONLY text in the frame (kept small-to-medium, sharp, in focus and clearly readable, never large enough to shrink the girl); do NOT invent any other text, and do NOT add empty/blank boards, picture frames, certificates, brochures, posters, standees, or blank screens — keep walls and surfaces clean.` : ''}
-  ${(formData.attireType === 'professional' || formData.attireType === 'shirt_pant') ? `PROFESSIONAL ATTIRE RULE: When ATTIRE = Professional, build the frame in a bright contemporary corporate-facing or consultation-facing business zone with a business-specific premium suit palette. For this business, the preferred suit palette is ${professionalSuitPalette}. Do NOT reuse the same beige/pastel suit family across unrelated businesses unless the brand cues clearly justify it. Also do NOT force one identical suit tone into every clip: keep the same premium wardrobe family, but allow clip-to-clip shade shifts inside this approved business palette when the exact location, script beat, or brand materials support it. Keep semi-jewellery only, zero festival cues, and the strongest business-proof surfaces in frame. The suit ${p.person} must be strictly ${p.ageYearsWords} years old, distinctly Indian, ${p.isMale ? 'leading-man-level handsome' : 'actress-level beautiful'}, smiling warmly, and impossible to confuse with a generic employee portrait. Every business should get a NEW, different ${p.personYoung} — never reuse the same recurring face. ${p.Pronoun === 'He' ? 'His' : 'Her'} hair in Clip 1 must read as unmistakably natural rich black only, never soft brown or highlighted under warm light. For Clip 1, the girl stands in the exact center of the frame as a medium full / three-quarter standing shot occupying roughly 70% of the frame, directly in front of the business's own reception, with both hands at the lower waist and the right hand lightly resting over the left in a formal front-clasp corporate pose (no crossed arms, no pockets, no gestures). From Clip 2 onward, the hand position and pose must change according to that clip's exact voice-over script and location. The attached logo must be the ONLY text anywhere in the frame — do NOT invent any other wall text, signage, banners, posters, taglines, mission lines, service lists, certificate text, dates, or academic years. ${p.isMale ? 'The man must wear only minimal masculine accessories: a wristwatch and an optional slim ring — NO necklace, NO earrings, NO bangles, and NO bindi.' : 'The girl must wear simple jewellery: a finger ring, a thin necklace or chain, earrings, a wristwatch, and a small bindi on the forehead.'} Frame ${p.object} as a three-quarter shot from head to thighs/knees so ${p.pronoun} clearly fills about 70% of the frame, never a small full head-to-feet shot. Keep the attached logo small-to-medium and clearly secondary — dynamically sized to the free wall space and never large enough to shrink the girl or steal her 70% dominance. Keep the logo perfectly sharp and in focus (not blurred by depth of field) so every letter and all text on it is crisp and clearly readable. The background must be 100% relatable to THIS exact business — fill the reception with the real equipment, products, displays, and service cues of this specific business (from the provided business details) so a viewer instantly recognises what it does; never a generic or unrelated office. Keep walls and surfaces clean — do NOT add empty/blank boards, picture frames, certificates, brochures, posters, standees, or blank screens (empty placeholders look like cardboard); the only branding is the attached logo.` : ''}
+  ${formData.attireType === 'traditional' ? `TRADITIONAL ATTIRE RULE: When ATTIRE = Traditional, keep the saree business-specific, commercial, premium, and realistic — never bridal, never wedding-stage, never festival-styled. Use polished real business zones, premium counters, refined décor, believable glass/reflection behavior, and strong category proof instead of decorative clutter. Every business should get a NEW, different girl in an elegant designer saree (brand-derived colour) with elegant traditional jewellery — a necklace/chain, earrings, bangles, a finger ring, and a small bindi. For Clip 1 the girl stands centered in front of the business's own reception in ${HERO_FRAME_POSE}; frame her as a three-quarter shot from head to thighs/knees clearly filling about 70% of the frame, never a small full head-to-feet shot. The background must be 100% relatable to THIS exact business. The attached logo must be the ONLY text in the frame (kept small-to-medium, sharp, in focus and clearly readable, never large enough to shrink the girl); do NOT invent any other text, and do NOT add empty/blank boards, picture frames, certificates, brochures, posters, standees, or blank screens — keep walls and surfaces clean.` : ''}
+  ${(formData.attireType === 'professional' || formData.attireType === 'shirt_pant') ? `PROFESSIONAL ATTIRE RULE: When ATTIRE = Professional, build the frame in a bright contemporary corporate-facing or consultation-facing business zone with a business-specific premium suit palette. For this business, the preferred suit palette is ${professionalSuitPalette}. Do NOT reuse the same beige/pastel suit family across unrelated businesses unless the brand cues clearly justify it. Also do NOT force one identical suit tone into every clip: keep the same premium wardrobe family, but allow clip-to-clip shade shifts inside this approved business palette when the exact location, script beat, or brand materials support it. Keep semi-jewellery only, zero festival cues, and the strongest business-proof surfaces in frame. The suit ${p.person} must be strictly ${p.ageYearsWords} years old, distinctly Indian, ${p.isMale ? 'leading-man-level handsome' : 'actress-level beautiful'}, smiling warmly, and impossible to confuse with a generic employee portrait. Every business should get a NEW, different ${p.personYoung} — never reuse the same recurring face. ${p.Pronoun === 'He' ? 'His' : 'Her'} hair in Clip 1 must read as unmistakably natural rich black only, never soft brown or highlighted under warm light. For Clip 1, the girl stands in the exact center of the frame as a medium full / three-quarter standing shot occupying roughly 70% of the frame, directly in front of the business's own reception, in ${HERO_FRAME_POSE}. From Clip 2 onward, the hand position and pose must change according to that clip's exact voice-over script and location. The attached logo must be the ONLY text anywhere in the frame — do NOT invent any other wall text, signage, banners, posters, taglines, mission lines, service lists, certificate text, dates, or academic years. ${p.isMale ? 'The man must wear only minimal masculine accessories: a wristwatch and an optional slim ring — NO necklace, NO earrings, NO bangles, and NO bindi.' : 'The girl must wear simple jewellery: a finger ring, a thin necklace or chain, earrings, a wristwatch, and a small bindi on the forehead.'} Frame ${p.object} as a three-quarter shot from head to thighs/knees so ${p.pronoun} clearly fills about 70% of the frame, never a small full head-to-feet shot. Keep the attached logo small-to-medium and clearly secondary — dynamically sized to the free wall space and never large enough to shrink the girl or steal her 70% dominance. Keep the logo perfectly sharp and in focus (not blurred by depth of field) so every letter and all text on it is crisp and clearly readable. The background must be 100% relatable to THIS exact business — fill the reception with the real equipment, products, displays, and service cues of this specific business (from the provided business details) so a viewer instantly recognises what it does; never a generic or unrelated office. Keep walls and surfaces clean — do NOT add empty/blank boards, picture frames, certificates, brochures, posters, standees, or blank screens (empty placeholders look like cardboard); the only branding is the attached logo.` : ''}
   ${isCustomAttireMainFrame ? `CUSTOM ATTIRE RULE: Dress the ${p.person} in the EXACT custom attire specified in the MODEL SPEC / ATTIRE above — same outfit, same colours, same details in every clip. Do NOT substitute a suit, saree, or any default wardrobe. Keep ${p.isMale ? 'clean masculine grooming with only a wristwatch and an optional slim ring' : 'tasteful, minimal, premium styling'}, direct eye contact, ~70% frame height, and no invented background text.` : ''}
   MAIN FRAME FRAMING RULE: In EVERY clip, the subject must be centered, occupy roughly 70% of the frame, and maintain direct eye contact with the camera.
   LOGO RULE: Use only the attached logo exactly as provided, installed on the most believable physical surface for that clip's zone, kept small-to-medium, sharp and clearly readable, fully visible and never cropped, blocked, blurred, stretched, tilted, redesigned, or pasted like an overlay. Prioritize these surface types: ${realisticLogoPlacementGuidance}
@@ -3845,8 +3853,8 @@ ${sceneContext ? `
    */
   const veoPromise = mainFramePromise.then(async (frames): Promise<string[]> => {
     onProgress("Directing camera moves and performance for each clip...", 85);
-    const { count, clips, lines } = veoClipsFromScript(voiceOverScript, formData, frames);
-    const prompts = await writeVeoPrompts(formData, count, clips, lines, sceneContext);
+    const { count, clips, lines, plates } = veoClipsFromScript(voiceOverScript, formData, frames);
+    const prompts = await writeVeoPrompts(formData, count, clips, lines, sceneContext, plates);
     emitPartial({ veoPrompts: prompts });
     return prompts;
   });
@@ -3907,7 +3915,7 @@ const veoClipsFromScript = (
   formData: AdFormData,
   mainFramePrompts: string[] = [],
   indexes?: number[],
-): { count: number; clips: VeoClipInput[]; lines: string[] } => {
+): { count: number; clips: VeoClipInput[]; lines: string[]; plates: boolean[] } => {
   const pack = packFor(formData);
   const frameFor = (i: number) => splitAttachmentDirective(mainFramePrompts[i] || '').body.trim();
   let all: VeoClipInput[];
@@ -3945,26 +3953,37 @@ const veoClipsFromScript = (
   return {
     count: all.length,
     clips: indexes ? all.filter(c => indexes.includes(c.index)) : all,
-    // Every clip's line, so the motion plan is the same whichever clips are being regenerated.
-    lines: all.map(c => c.lineForDirector),
+    // Every clip's SPOKEN words, so the motion plan is the one the frames were composed for, whichever
+    // clips are being regenerated. Never the speakers' names: a cast-sheet name carries a garment ("the
+    // woman in the teal saree") that the line reader took for a product, so the video was once planned
+    // to show a product the frame was not composed for.
+    lines: all.map(c => c.speech.map(s => s.line).join(' ')),
+    // The clips shot in a client photograph, read off each frame's background-plate stamp — the same
+    // clips the frames were planned with (generateAdAssets: clipPhotoPlan).
+    plates: all.map(c => c.framePrompt.includes(BACKGROUND_PLATE_HEADING)),
   };
 };
 
-/** The motion plan's inputs for a run: each clip's line, the scene plan's choices, and the cast size. */
-const motionOptionsFor = (pack: CharacterPack | null, lines: string[], sceneContext?: SceneContext | null) => ({
+/**
+ * The motion plan's inputs for a run: each clip's spoken words, the scene plan's choices, the cast size
+ * and the clips shot in a client photograph. The frame side and the video side both build it here.
+ */
+const motionOptionsFor = (pack: CharacterPack | null, lines: string[], sceneContext?: SceneContext | null, plates: boolean[] = []) => ({
   lines,
   choices: motionChoicesOf(sceneContext),
   twoHander: !!pack && pack.characters.length > 1,
+  plates,
 });
 
 /**
  * Writes the finished Veo 3 prompt for each clip.
  *
- * One director call returns, per clip, the planned camera move made specific to that frame, three
- * beats timed to the line, and the life in the scene (prompts/motion VEO_DIRECTION_SYSTEM_PROMPT).
- * The prompt itself is assembled in code around that direction, so the exact spoken line, the
- * continuous shot, the identity lock and the negatives cannot drift. If the call fails or a clip's
- * direction is unusable, that clip is assembled from its motion plan — still a moving, directed shot.
+ * One director call returns, per clip, the planned ACTION made specific to that frame — the product she
+ * lifts, the counter she gestures at, the floor she walks on (prompts/motion VEO_DIRECTION_SYSTEM_PROMPT).
+ * The camera is the plan's, written in code (cameraShot), and the prompt is assembled in code around the
+ * action, so the exact spoken line, the one continuous shot, the keep-it-as-the-frame sentence and the
+ * negative cannot drift. If the call fails or a clip's action is unusable, that clip is assembled from
+ * its motion plan — still a moving, directed shot.
  */
 const writeVeoPrompts = async (
   formData: AdFormData,
@@ -3972,6 +3991,8 @@ const writeVeoPrompts = async (
   clips: VeoClipInput[],
   lines: string[] = [],
   sceneContext?: SceneContext | null,
+  /** The clips shot in a client photograph (veoClipsFromScript) — the frames were planned with them. */
+  plates: boolean[] = [],
 ): Promise<string[]> => {
   if (clips.length === 0) return [];
   const pack = packFor(formData);
@@ -3979,15 +4000,21 @@ const writeVeoPrompts = async (
   const language = formData.language || 'Telugu';
   /** The invented people as the frames name them — the same names veoClipsFromScript gave the lines. */
   const castNames = castNamesFromFrames(clips.map(c => c.framePrompt));
-  // The same plan the frames were composed for — same lines, same scene-plan choices.
+  // The same plan the frames were composed for — same spoken words, scene-plan choices and photo clips.
   const plan: ClipMotionPlan[] = planClipMotion(Math.max(clipCount, ...clips.map(c => c.index + 1)), formData.adType,
-    packPerformer(pack), motionOptionsFor(pack, lines, sceneContext));
+    packPerformer(pack), motionOptionsFor(pack, lines, sceneContext, plates));
   const packSubject = pack ? packVeoSubject(pack, castNames) : null;
   const modelSubject = modelVeoSubject(formData.gender || 'female');
-  /** Who performs, as the director reads the planned staging: "Motu and Patlu turn…", "The model leans…". */
+  /**
+   * Who performs, as the director reads the planned action: "Motu and Patlu turn…", "She turns…" — the
+   * way the finished prompt names them, so the director's action does too (a live run's "The model
+   * turns…" introduced a "model" the frame does not show, 2026-10-05).
+   */
   const director = pack
     ? { who: pack.characters.map((c, i) => castNames[i] || c.name).join(' and '), plural: pack.characters.length > 1 }
-    : { who: 'The model', plural: false };
+    : { who: modelSubject.cast, plural: false };
+  /** A pair's two speakers in speaking order — who the action and the framing follow; one line is led by its speaker. */
+  const namesOf = (c: VeoClipInput): PairNames | undefined => pairNamesOf(c.speech, packSubject?.pairNames);
 
   let directions: ReturnType<typeof parseVeoDirections> = clips.map(() => null);
   if (API_KEYS.length > 0) {
@@ -4001,11 +4028,10 @@ ${clips.map((c, k) => {
   const frame = c.framePrompt.length > FRAME_CONTEXT_LIMIT ? `${c.framePrompt.slice(0, FRAME_CONTEXT_LIMIT)}…` : c.framePrompt;
   return `CLIP ${k + 1} (clip ${c.index + 1} of the ad, ${c.index * CLIP_SECONDS}-${(c.index + 1) * CLIP_SECONDS}s)
 FRAME:
-${frame || '(no frame prompt available — direct from the line and the planned move)'}
+${frame || '(no frame prompt available — direct from the line and the planned action)'}
 LINE: ${c.lineForDirector}
-PLANNED STAGING: ${p.staging.name} (in place — stays in their spot, feet where the frame has them) — ${stagingPath(p, director.who, director.plural)}
-PLANNED CAMERA: ${cameraLabel(p)} — ${fillCast(p.camera.action, director.who, director.plural)}${p.focus === 'speaker' ? `
-SPEAKER FOCUS: only the focus moves to whoever is speaking — the camera itself does not move toward either of them` : ''}
+PLANNED ACTION: ${p.staging.name} — ${walkHint(p)}: ${stagingPath(p, director.who, director.plural, namesOf(c))}
+CAMERA (decided — never changed): ${cameraShot(p, director.who, director.plural, namesOf(c), packSubject?.eyeLevel)}
 GESTURE INTENT: ${p.gesture}`;
 }).join('\n\n')}
 
@@ -4026,18 +4052,16 @@ Return the JSON array for all ${clips.length} clips, numbered 1 to ${clips.lengt
     aspectRatio,
     plan: plan[c.index],
     direction: directions[k],
-    // The still this clip animates — read for the FRAME line when the director's own is unusable.
-    framePrompt: c.framePrompt,
     scaleAnchor: packSubject?.scaleAnchor,
+    sides: packSubject?.sides,
+    pairNames: packSubject?.pairNames,
+    eyeLevel: packSubject?.eyeLevel,
     identityLock: packSubject ? packSubject.identityLock : modelSubject.identityLock,
     language,
     speech: c.speech,
-    performanceNotes: packSubject?.performanceNotes,
     cast: packSubject ? packSubject.cast : modelSubject.cast,
     castPlural: packSubject ? packSubject.castPlural : modelSubject.castPlural,
     twoHander: packSubject?.twoHander ?? false,
-    manner: packSubject?.manner,
-    handGestures: packSubject?.handGestures,
   }));
 };
 
@@ -4054,8 +4078,8 @@ export const regenerateVeoForClips = async (
   /** The run's scene plan, so a regenerated clip keeps the staging and camera it was planned with. */
   sceneContext?: SceneContext | null,
 ): Promise<{ index: number; prompt: string }[]> => {
-  const { count, clips, lines } = veoClipsFromScript(voiceOverScript, formData, mainFramePrompts, indexes);
-  const prompts = await writeVeoPrompts(formData, count, clips, lines, sceneContext);
+  const { count, clips, lines, plates } = veoClipsFromScript(voiceOverScript, formData, mainFramePrompts, indexes);
+  const prompts = await writeVeoPrompts(formData, count, clips, lines, sceneContext, plates);
   return clips.map((c, k) => ({ index: c.index, prompt: prompts[k] }));
 };
 

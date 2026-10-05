@@ -87,8 +87,12 @@ export function buildMissionTasks(facts: RunFacts): MissionTask[] {
       id: "flow",
       kind: "link",
       title: "Open Flow and keep it ready",
-      detail: `Start a ${facts.aspectRatio} project for ${plural(n, "cinematic clip")}. The frames go in first, `
-        + "then each clip's video prompt.",
+      // The video prompts only direct MOTION — the frame is the picture (prompts/motion). Ingredients to
+      // Video treats an image as a reference and builds a NEW scene around it, so a clip made that way
+      // comes back in a place the frame never showed.
+      detail: `Start a ${facts.aspectRatio} project for ${plural(n, "cinematic clip")}. Use Frames to Video: each clip's `
+        + "finished frame goes in as its START frame, then that clip's video prompt. Never Ingredients to Video — "
+        + "it builds a new scene from the picture instead of animating it.",
       href: FLOW_URL,
       linkLabel: "Open Flow",
     },

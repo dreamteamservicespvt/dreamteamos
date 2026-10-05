@@ -20,6 +20,7 @@ const findSmmSalesForPhone = vi.fn();
 const setupSaleMonth = vi.fn();
 const addNoSaleMonth = vi.fn();
 const remindSellerToRenew = vi.fn(async () => undefined);
+const fetchClientMonths = vi.fn(async (_phoneId: string) => [] as unknown[]);
 
 let AUTH: { user: Record<string, unknown> } = { user: { uid: "kiran", name: "Kiran", role: "tech_admin" } };
 
@@ -45,6 +46,7 @@ vi.mock("@/services/smm", () => ({
   remindSellerToRenew,
   closeEndedMonthsOnOpen: vi.fn(async () => 0),
   fetchFinishedCampaigns: vi.fn(async () => []),
+  fetchClientMonths,
   notifyRenewalsDueOnOpen: vi.fn(async () => undefined),
   watchSmmTeamLeads: () => () => {},
   setSmmTeamLead: vi.fn(),
@@ -180,6 +182,12 @@ describe("Add SMM sale", () => {
     expect(screen.getByTestId("smm-setup-sold").textContent).toMatch(/will owe what you set here/);
     expect((screen.getByTestId("smm-setup-start") as HTMLInputElement).value).toBe("2026-09-20");
     expect((screen.getByTestId("smm-setup-end") as HTMLInputElement).value).toBe("2026-10-20"); // same date next month
+    // The accounts start from the sale and can be changed here (2026-10-05) — a page box per account.
+    expect(screen.getByTestId("smm-setup-platform-instagram").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("smm-setup-platform-youtube").getAttribute("aria-pressed")).toBe("false");
+    expect(screen.queryByTestId("smm-setup-link-youtube")).toBeNull();
+    fireEvent.click(screen.getByTestId("smm-setup-platform-youtube"));
+    expect(screen.getByTestId("smm-setup-link-youtube")).toBeTruthy();
     fireEvent.change(await screen.findByTestId("smm-setup-all"), { target: { value: "arjun" } });
     // Wait for the members list to load before choosing.
     await waitFor(() => expect((screen.getByTestId("smm-setup-seat-creator") as HTMLSelectElement).options.length).toBeGreaterThan(1));
@@ -191,7 +199,7 @@ describe("Add SMM sale", () => {
     expect(args).toMatchObject({ leadId: "l1", itemIndex: 0 });
     expect(args.setup).toMatchObject({
       businessName: "Sri Sai Silks Official", startDate: "2026-09-20", endDate: "2026-10-20", clipsPerVideo: 6,
-      commitments: { ai_ad: 6, poster: 4, real_video: 0 },
+      commitments: { ai_ad: 6, poster: 4, real_video: 0 }, platforms: ["instagram", "youtube"],
     });
     expect(args.setup.team.creator.uid).toBe("arjun");
     expect(args.setup.team.marketer.uid).toBe("arjun");
@@ -355,5 +363,28 @@ describe("the board", () => {
     fireEvent.click(screen.getByTestId("smm-view-insights"));
     expect(screen.getByTestId("smm-dashboard")).toBeTruthy();
     expect(screen.queryByTestId("smm-status-filters")).toBeNull();
+  });
+
+  it("opens a client's calendar from Calendar, and remembers the view", async () => {
+    fetchClientMonths.mockClear();
+    render(<MemoryRouter><SocialMedia /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId("smm-view-calendar"));
+    // Both months are one client's (same number): one entry, on the month they are in now.
+    expect(screen.getAllByTestId("smm-calboard-client")).toHaveLength(1);
+    expect(screen.getByTestId("smm-calboard-name").textContent).toBe("Needs Team Co");
+    expect(screen.getByTestId("smm-calendar")).toBeTruthy();
+    expect(screen.queryByTestId("smm-status-filters")).toBeNull();
+    // An overseer's board holds running months only, so the client's history is read — once.
+    await waitFor(() => expect(fetchClientMonths).toHaveBeenCalledWith("919876543210"));
+    expect(localStorage.getItem("dts_smm_view")).toBe("calendar");
+  });
+
+  it("reads nothing more for a salesperson, whose board already holds every month they can see", () => {
+    AUTH = { user: { uid: "anil", name: "Anil", role: "sales_member" } };
+    fetchClientMonths.mockClear();
+    render(<MemoryRouter initialEntries={["/smm?view=calendar"]}><SocialMedia /></MemoryRouter>);
+    expect(screen.getByTestId("smm-calendar")).toBeTruthy();
+    expect(screen.queryByTestId("smm-calboard-finished")).toBeNull();
+    expect(fetchClientMonths).not.toHaveBeenCalled();
   });
 });

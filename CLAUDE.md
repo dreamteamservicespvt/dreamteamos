@@ -213,32 +213,29 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ---
 
-## 32. CURRENT PROJECT STATE (as of 2026-10-03)
+## 32. CURRENT PROJECT STATE (as of 2026-10-05)
 
-- The 2026-10-03 SMM work is committed (`a15b746`, `e1b9503`), and the renewal countdown popup, the
-  month with no sale and the Drive step after a hand-in with it (`14985b1`); social-media months out of
-  My Work in `f972c8a`. The instant Drive card (2026-10-04, §31) is complete in the working tree, **not yet
-  committed** (check `git status` before committing — parallel sessions work in this tree).
-- 2026-10-04 context split, owner-approved (§31): CLAUDE.md went from ~2,450 lines / ~208 KB (roughly
-  50k tokens in every session) to this core (~360 lines, ~28 KB) plus 11 path-scoped module files in
-  `.claude/rules/` and `docs/DEVELOPMENT-HISTORY.md`. Every original line was moved verbatim and checked
-  by script. Together with the agent setup (`.claude/settings.json`, the session-start hook, `/dev`, the
-  merged §30), it is in the working tree, **not yet committed** — commit `CLAUDE.md`, `.claude/` and
-  `docs/DEVELOPMENT-HISTORY.md`, plus the deleted `claude-agent-prompt.md`.
-- 2026-10-04 SMM Overview dashboard, then the client cards (§31): complete in the working tree, **not yet
-  committed** — `src/utils/smmDashboard.ts`, `src/utils/smmGlance.ts`, `src/components/smm/SmmDashboard.tsx`,
-  `src/components/smm/SmmGlance.tsx`, `src/components/smm/dashboard/`, three new tests, and edits to
-  `SocialMedia.tsx`, `SmmCampaignPage.tsx`, `SmmCampaignCard.tsx`, `SmmReportPanel.tsx`, `SmmVisuals.tsx`,
-  `SmmChips.tsx`, `index.css`, `tailwind.config.ts`, `smmAddSaleUi.test.tsx`; `SmmBoardStats.tsx` deleted.
+- Everything up to 2026-10-04 is committed (`main` @ `5021b3a`, clean at the start of 2026-10-05): the
+  2026-10-03 SMM work, the Drive step, the 2026-10-04 context split (core + `.claude/rules/` + history, every
+  line moved verbatim), the SMM client cards and Insights.
+- 2026-10-05 SMM client calendar (redrawn twice that day: now a normal calendar — ‹ month › + Today, sized by
+  its own width — three marks, every post on its upload date; also on the Report tab) and "Accounts it covers"
+  in setup (§31, `.claude/rules/smm.md`): complete in the working tree,
+  **not yet committed** (check `git status` — parallel sessions work in this tree).
+- 2026-10-05 Veo 3 prompt rebuild and its **dynamic pass** (§31, `.claude/rules/ai-ads.md` §17.2 step 6; every
+  clip moves, never a walk-back): complete in the working tree, **not yet committed** — `prompts/motion.ts`,
+  `prompts.ts`, `prompts/{characterAd,scenePlan,refine}.ts`, `geminiService.ts`, `utils/{scenePlan,veoRefine}.ts`,
+  `types/aiPlatform.ts`, `generation/{mission.ts,AIGuideSheet.tsx}` and ten tests.
 - `main` = the merge of this machine's `346c7f0` into origin/main `1a090f9` (PR #1: the six AdGen
   fixes and AI Accounts; PR #2: the SMM delete / team lead / extra-work change), resolved to
   origin/main's implementation (§31, 2026-10-02) and pushed.
-- `npm run build` ✅ (main chunk ≈455 KB, vendor-firebase ≈665 KB, geminiService chunk ≈790 KB; AI
+- `npm run build` ✅ (main chunk ≈457 KB, vendor-firebase ≈665 KB, geminiService chunk ≈803 KB; AI
   Accounts adds lazy `AiAccounts` ≈14 KB and `MyAiAccounts` ≈9 KB pages).
-- `npx vitest run` ✅ 194 files, 3025 tests (2026-10-04, after the SMM client cards).
+- `npx vitest run` ✅ 197 files, 3073 tests, all pass (2026-10-05, after the calendar, the Veo prompt
+  rebuild and its dynamic pass). Under heavy parallel load a few UI tests can time out; they pass when re-run alone.
 - `npx tsc -p tsconfig.check.json --noEmit` → 1 known error (VideoCallManager).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
-- Most recent work: one clear card per SMM client (2026-10-04), after the Overview dashboard (now Insights); before them the SMM month that had no sale (not counted; renewed as a sale) and the month
+- Most recent work: the Veo dynamic pass (every clip a moving commercial shot, never a walk-back, 2026-10-05) after the Veo 3 video-prompt rebuild (short motion-first prompts, the same day) and the SMM client calendar and "Accounts it covers" in setup (2026-10-05); before them one clear card per SMM client (2026-10-04), after the Overview dashboard (now Insights); before them the SMM month that had no sale (not counted; renewed as a sale) and the month
   deadline fixes, the renewal countdown popup; before them SMM — every month is a sale, Add SMM sale,
   setup with clips per video, renewal by the salesperson, team-leader delete, the visual board
   (2026-10-03); before it the six AdGen fixes (frame-bounded video, duo heights, background plates, cast
@@ -247,8 +244,10 @@ errors:** done means every listed item is fully resolved with no build, console 
   speaker-label fix and the studio UI, before them the AdGen.ai batch (§31), Cinematic Ads, SMM, Poster Creation, load-time splitting.
 - Open follow-ups the owner must act on: replace the invalid and "reported as leaked" Gemini keys
   (§26.3); publish `docs/firestore-rules.md` in the console (it now also protects the Flow / ChatGPT /
-  Grok passwords); move secrets out of source; authenticate `/api/send-notification`; run one live
-  ad end to end (frames + Veo) to confirm the 2026-10-01 motion and plate rules on real output.
+  Grok passwords); move secrets out of source; authenticate `/api/send-notification`; generate a few
+  clips in Flow (Frames to Video) from the dynamic-pass prompts — a single presenter, a human duo, Motu &
+  Patlu (watch Patlu's height), a client photo — and compare each with the old prompt on the same frame: no
+  Veo video has been made from them yet.
 
 ---
 
@@ -298,9 +297,12 @@ the credit step (`useCreditGate`: the Flow credits the ad used) → `useComplete
 verified contact facts (`utils/businessFacts`) → core message → voice-over with repair, quality review
 and the scored quality gate (best of three drafts), or a custom script word for word → numbers
 as words / `mariyu` in Latin → scene plan → motion plan → frames / VIDEO BOTTOM LABEL / poster → Veo prompts
-from the same plan) → `ai_generations`. Motion (2026-10-01): every video animates its own frame and
-nothing beyond it — in-place staging; only push-in, rack focus, float or locked (a pair: a fixed frame
-and a scale anchor); world + place + colour locks; never a goodbye wave. Client photos are background
+from the same plan) → `ai_generations`. Motion (2026-10-05, dynamic pass): every clip is a real commercial
+shot — an action that travels or turns plus ONE camera move that follows it (push-in, side track, lateral
+dolly, arc; **never backward** — no walk-back, no pull-out), inside what its frame shows, in a short
+five-part Veo prompt that never describes the frame; most clips walk; every pair (Motu & Patlu included)
+walks only together, side by side, filmed sideways at one distance; deities never walk; a client photo
+gets only a push-in or a still camera; frames are caught mid-movement; never a goodbye wave. Client photos are background
 plates, invented people get a cast sheet, and the last clip says the verified address (§17.2). "Input Final Script" on row 4 rewrites 5 · 6 · 7 from a pasted script (`FinalScriptPanel`). Poster mode → `generatePosterConcepts`. Cinematic Ads (tech admin) is a separate
 7-step, project-persisted pipeline. All prompts are in `services/prompts.ts` +
 `services/prompts/*`. **`aiadsdts/` is dead; never edit it.**

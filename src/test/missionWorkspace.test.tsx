@@ -49,6 +49,10 @@ describe("the member's tasks", () => {
     expect(tasks[0]).toMatchObject({ kind: "tabs", tabs: 4, href: CHATGPT_URL, title: "Open 4 ChatGPT tabs" });
     expect(tasks[3]).toMatchObject({ kind: "link", href: FLOW_URL });
     expect(tasks[3].detail).toContain("9:16");
+    // The video prompts direct motion only — the frame is the picture — so each clip's frame is its
+    // START frame; Ingredients to Video would build a new scene around it.
+    expect(tasks[3].detail).toContain("Use Frames to Video: each clip's finished frame goes in as its START frame");
+    expect(tasks[3].detail).toContain("Never Ingredients to Video");
   });
 
   it("asks for the location photos only when the ad is shot on location", () => {

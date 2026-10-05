@@ -38,12 +38,12 @@ describe("standard Veo prompt carries no character-pack format", () => {
   const female = VEO_SEGMENT_SYSTEM_PROMPT(4, "female");
   const male = VEO_SEGMENT_SYSTEM_PROMPT(4, "male");
 
-  // The model ad is directed, not frozen: one presenter, a moving camera, gestures timed to the line.
+  // The model ad is directed, not frozen: one presenter, the planned action made specific to the frame.
   it("still directs a single presenter speaking to camera", () => {
     expect(female).toContain("the model (a woman)");
     expect(male).toContain("the model (a man)");
-    expect(female).toContain("One continuous shot");
-    expect(female).toContain("PLANNED CAMERA");
+    expect(female).toContain("PLANNED ACTION");
+    expect(female).toContain("CAMERA — the camera move, already decided");
   });
 
   it("has no cartoon staging or second speaker", () => {

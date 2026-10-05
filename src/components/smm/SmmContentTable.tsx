@@ -148,7 +148,8 @@ export default function SmmContentTable({ campaign, canEdit, onOpen }: {
       </div>
 
       {view === "calendar" ? (
-        <SmmCalendar campaign={filter === "all" ? campaign : { ...campaign, items: campaign.items.filter((i) => i.kind === filter) }} onOpen={onOpen} />
+        /* The client's whole run, opened on this month; the kind filter applies to every month. */
+        <SmmCalendar campaign={campaign} kind={filter} onOpen={onOpen} />
       ) : rows.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
           Nothing planned here yet.

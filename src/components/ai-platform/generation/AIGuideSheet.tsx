@@ -111,7 +111,7 @@ export const AIGuideSheet: React.FC<{
           <div className="px-6 mt-7">
             <h4 className={cn('text-sm font-bold', isDark ? 'text-slate-100' : 'text-slate-800')}>Paste map</h4>
             <p className={cn('mt-0.5 text-xs leading-relaxed', isDark ? 'text-slate-400' : 'text-slate-500')}>
-              Each clip's frame prompt goes into its own ChatGPT tab with what it needs attached. Its video prompt goes into Flow.
+              Each clip's frame prompt goes into its own ChatGPT tab with what it needs attached. Its video prompt goes into Flow's Frames to Video, with that finished frame as the start frame — never Ingredients to Video, which builds a new scene.
             </p>
             <ol className="mt-3 space-y-2" data-test="paste-map">
               {Array.from({ length: clips }, (_, i) => {

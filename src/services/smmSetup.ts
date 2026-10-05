@@ -30,14 +30,14 @@ import { adminAssignNumber } from "@/services/numberLock";
 import { fetchOrder, orderDocId, restoreOrders, upsertOrderForSale } from "@/services/orders";
 import {
   buildNoSaleCampaign, buildSoldCampaign, campaignInputFromSale, campaignRef, fetchCampaign, monthPromise,
-  saveMonthSetup, setMonthCommitments,
+  saveMonthSetup, setMonthCommitments, setMonthPlatforms,
 } from "@/services/smm";
 import { assignSmmMonth, fetchMonthJobs, type SmmAssignResult } from "@/services/smmAssign";
 import { releasedToTech } from "@/utils/saleDiscount";
 import { dayToDate, isoDay } from "@/utils/smmPlan";
 import {
-  cycleRangeLabel, cyclesOverlap, hasTeam, isNoSaleMonth, jobsByMember, monthCycle, monthLabel, needsSetup,
-  noSaleMonthProblem, normaliseClipsPerVideo, saleDay, smmSalesOnLeads,
+  cleanPlatforms, cycleRangeLabel, cyclesOverlap, hasTeam, isNoSaleMonth, jobsByMember, linksForAccounts, monthCycle,
+  monthLabel, needsSetup, noSaleMonthProblem, normaliseClipsPerVideo, saleDay, smmSalesOnLeads,
 } from "@/utils/smmPackage";
 import { normalizePhone, phoneLockId, phoneVariants } from "@/utils/phone";
 import type { AppUser, Lead, Order, SaleDetail, WorkAssignment } from "@/types";
@@ -243,6 +243,11 @@ export interface MonthSetupInput {
   endDate: string;
   clipsPerVideo: number;
   pageLinks?: Partial<Record<SmmPlatform, string>> | null;
+  /**
+   * The accounts the month covers (2026-10-05) — "Accounts it covers" in setup. Absent leaves them as
+   * they are: the no-sale step picks them beside its package and passes them on its own.
+   */
+  platforms?: SmmPlatform[];
   team: SmmTeam;
 }
 
@@ -311,6 +316,8 @@ export async function applyMonthSetup(
 ): Promise<MonthSetupResult> {
   if (setup.businessName?.trim()) await renameMonth(campaignId, setup.businessName);
   if (setup.commitments) await setMonthCommitments(campaignId, setup.commitments);
+  // After the counts, so rows added for a higher count move to the new accounts with the rest.
+  if (setup.platforms) await setMonthPlatforms(campaignId, setup.platforms);
   const before = await fetchCampaign(campaignId);
   if (!before) throw new Error("This month no longer exists.");
   const cycle = monthCycle(setup.startDate, setup.endDate);
@@ -319,7 +326,7 @@ export async function applyMonthSetup(
   const after = await saveMonthSetup(campaignId, {
     cycle,
     clipsPerVideo: normaliseClipsPerVideo(setup.clipsPerVideo),
-    pageLinks: cleanLinks(setup.pageLinks),
+    pageLinks: cleanLinks(setup.pageLinks, setup.platforms ? before.platforms : null),
     setupByName: actor.name,
     setupByUid: actor.uid,
   });
@@ -362,6 +369,7 @@ export async function applyMonthSetup(
       startDate: cycle.startDate,
       endDate: cycle.endDate,
       clipsPerVideo: normaliseClipsPerVideo(setup.clipsPerVideo),
+      ...(setup.platforms ? { platforms: cleanPlatforms(setup.platforms) } : {}),
       team: jobsByMember(setup.team).map((m) => ({ uid: m.uid, name: m.name, tracks: m.tracks })),
       ...(noSale ? { noSale: true, sellerName: before.soldByName } : {}),
     },
@@ -376,8 +384,13 @@ export function cleanCommitments(c: Partial<Record<SmmContentKind, number>> | nu
   return { poster: n(c?.poster), ai_ad: n(c?.ai_ad), real_video: n(c?.real_video) };
 }
 
-const cleanLinks = (links: MonthSetupInput["pageLinks"]) => {
+/**
+ * The page links worth keeping. Given the month's accounts, only theirs: a link for an account the month
+ * no longer covers has no box in the form, so nobody could see or correct it (2026-10-05).
+ */
+const cleanLinks = (links: MonthSetupInput["pageLinks"], platforms?: SmmPlatform[] | null) => {
   if (!links) return null;
+  if (platforms) return linksForAccounts(links, platforms);
   const out: Partial<Record<SmmPlatform, string>> = {};
   for (const [k, v] of Object.entries(links)) if (v?.trim()) out[k as SmmPlatform] = v.trim();
   return Object.keys(out).length ? out : null;
@@ -467,11 +480,13 @@ export async function setupSaleMonth(params: {
     }
     // So do the counts agreed at setup — the plan is built from them.
     if (setup.commitments) input.commitments = cleanCommitments(setup.commitments);
+    // And the accounts ticked at setup — every piece of the plan is put on them.
+    if (setup.platforms && cleanPlatforms(setup.platforms).length) input.platforms = cleanPlatforms(setup.platforms);
     const campaign = buildSoldCampaign(input, {
       startDate: cycle.startDate,
       endDate: cycle.endDate,
       clipsPerVideo: setup.clipsPerVideo,
-      pageLinks: cleanLinks(setup.pageLinks),
+      pageLinks: cleanLinks(setup.pageLinks, setup.platforms ? input.platforms : null),
       renewalOf: previous,
     });
     await setDoc(campaignRef(orderId), {
@@ -501,6 +516,7 @@ export async function setupSaleMonth(params: {
   if (history) {
     if (!replace && setup.businessName?.trim()) await renameMonth(orderId, setup.businessName);
     if (!replace && setup.commitments) await setMonthCommitments(orderId, setup.commitments);
+    if (!replace && setup.platforms) await setMonthPlatforms(orderId, setup.platforms);
     if (!replace) {
       await updateDoc(campaignRef(orderId), {
         cycle,
@@ -564,6 +580,7 @@ async function previousMonthOf(clientPhoneId: string, startDate: string, ownId: 
 export function setupProblem(setup: MonthSetupInput, today: string): string {
   const cycle = monthCycle(setup.startDate, setup.endDate);
   if (setup.businessName !== undefined && !setup.businessName.trim()) return "Give the month a name.";
+  if (setup.platforms && cleanPlatforms(setup.platforms).length === 0) return "Tick at least one account the month covers.";
   if (setup.commitments) {
     const c = cleanCommitments(setup.commitments);
     if (c.ai_ad + c.poster + c.real_video === 0) return "The month must owe at least one video or poster.";

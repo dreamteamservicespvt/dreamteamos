@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  HERO_FRAME_POSE,
   MAIN_FRAME_SYSTEM_PROMPT,
   MULTI_FRAME_SYSTEM_PROMPT,
   VOICEOVER_REPAIR_SYSTEM_PROMPT,
@@ -42,7 +43,8 @@ describe("professional main-frame prompts", () => {
     expect(prompt).toContain("Pose:");
     expect(prompt).toContain("Background:");
     expect(prompt).toContain("Composition:");
-    expect(prompt).toContain("formal front-clasp corporate pose");
+    expect(prompt).toContain(HERO_FRAME_POSE.slice(2));
+    expect(prompt).not.toContain("front-clasp");
     expect(prompt).toContain("fill about 70% of the frame height");
     expect(prompt).toContain("(not saree)");
     expect(prompt).toContain("avoid a repetitive plain blue corporate suit");
@@ -103,7 +105,8 @@ describe("professional main-frame prompts", () => {
     expect(prompt).toContain("Main Character:");
     expect(prompt).toContain("elegant premium DESIGNER silk / fancy saree");
     expect(prompt).toContain("Wearing elegant traditional semi-jewellery (MANDATORY)");
-    expect(prompt).toContain("formal front-clasp corporate pose");
+    expect(prompt).toContain(HERO_FRAME_POSE.slice(2));
+    expect(prompt).not.toContain("front-clasp");
     expect(prompt).toContain("fill about 70% of the frame height");
     expect(prompt).toContain("NO FRAMES / DISPLAYS / PLACEHOLDERS");
     expect(prompt).toContain("The logo is the ONLY text anywhere in the image");
@@ -152,7 +155,7 @@ describe("education environment routing", () => {
 });
 
 describe("multi-frame hero shot guidance", () => {
-  it("preserves the centered folded-hands hero shot for professional mode", () => {
+  it("keeps the centered hero shot, in an open pose about to step forward, for professional mode", () => {
     const prompt = MULTI_FRAME_SYSTEM_PROMPT(
       "professional",
       "commercial",
@@ -162,7 +165,8 @@ describe("multi-frame hero shot guidance", () => {
     );
 
     expect(prompt).toContain("subject perfectly centered");
-    expect(prompt).toContain("formal front-clasp corporate pose");
+    expect(prompt).toContain(HERO_FRAME_POSE.slice(2));
+    expect(prompt).not.toContain("front-clasp");
     // continuation clips must forbid invented background text
     expect(prompt).toContain("the attached logo is the ONLY text anywhere in the frame");
     expect(prompt).toContain("course / curriculum lists");
@@ -339,9 +343,9 @@ describe("model gender support (task 1)", () => {
   it("uses a male voice and identity lock in the Veo prompt", () => {
     expect(VEO_SEGMENT_SYSTEM_PROMPT(4, "male")).toContain("the model (a man)");
     expect(modelVeoSubject("male").voice).toBe("a warm, confident male voice");
-    expect(modelVeoSubject("male").identityLock).toContain("his face (100% face match)");
+    expect(modelVeoSubject("male").identityLock).toBe("his exact face, hair, outfit and height");
     expect(modelVeoSubject().voice).toContain("sweet");
-    expect(modelVeoSubject().identityLock).toContain("her face (100% face match)");
+    expect(modelVeoSubject().identityLock).toBe("her exact face, hair, outfit and height");
   });
 
   it("marks the voice-over script for a male voice artist", () => {

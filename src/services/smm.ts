@@ -28,8 +28,8 @@ import {
   isoDay, isPosted, newItemId, normaliseDuration, smmWatchers, targetsFromCommitments,
 } from "@/utils/smmPlan";
 import {
-  closingStatus, cycleRangeLabel, cyclePhase, hasTeam, monthCycle, monthLabel, normaliseClipsPerVideo,
-  renewalStartDate, saleDay, videosLine,
+  cleanPlatforms, closingStatus, cycleRangeLabel, cyclePhase, hasTeam, itemsForAccounts, monthCycle, monthLabel,
+  normaliseClipsPerVideo, renewalStartDate, saleDay, videosLine,
 } from "@/utils/smmPackage";
 import { dueItemsFor, dueLabel, dueNotificationKey, renewalsDueFor } from "@/utils/smmReminders";
 import { commitmentsForPackage, platformsForPackage } from "@/utils/smmPricing";
@@ -1054,6 +1054,24 @@ export async function setMonthCommitments(
 }
 
 /**
+ * Change the accounts the month covers (2026-10-05) — "Accounts it covers" in setup, for a client who
+ * added or dropped a page after the sale.
+ *
+ * The pieces still to post follow in the same transaction (`smmPackage.itemsForAccounts`: posted ones
+ * keep where they went, a piece given its own accounts keeps them). The sale keeps the accounts it was
+ * sold with — that is the salesperson's record, as with the month's name — and a later edit of the sale
+ * never copies them back (`ensureCampaignForOrder` does not touch `platforms`).
+ */
+export async function setMonthPlatforms(campaignId: string, platforms: SmmPlatform[]): Promise<void> {
+  const next = cleanPlatforms(platforms);
+  if (next.length === 0) throw new Error("Tick at least one account the month covers.");
+  await mutateCampaign(campaignId, (c) => {
+    if (cleanPlatforms(c.platforms).join() === next.join()) return null;
+    return { platforms: next, items: itemsForAccounts(c.items, c.platforms, next) };
+  });
+}
+
+/**
  * Record where the renewal conversation stands — pitched, or not renewing.
  *
  * "Renewed" is no longer typed here (2026-10-03): a renewal is a sale the salesperson records, and
@@ -1123,6 +1141,22 @@ export async function fetchFinishedCampaigns(): Promise<SmmCampaign[]> {
     console.error("[smm] fetchFinishedCampaigns:", err);
     return [];
   }
+}
+
+/**
+ * Every month of one client (2026-10-05) — read once when somebody opens the client's calendar.
+ *
+ * One equality query on the number every month of theirs carries (a single-field index, no composite
+ * needed), on demand rather than live: past months do not change, and the month being worked on is
+ * already live on the page that asks. Removed and deleted months are gone. Throws, so the calendar can
+ * say it could not load the history instead of quietly showing one month as if it were all of it.
+ */
+export async function fetchClientMonths(clientPhoneId: string): Promise<SmmCampaign[]> {
+  if (!clientPhoneId) return [];
+  const snap = await getDocs(query(collection(db, SMM_CAMPAIGNS), where("clientPhoneId", "==", clientPhoneId)));
+  return snap.docs.map((d) => fromSnap(d as CampaignSnap))
+    .filter((c) => c.status !== "removed" && c.status !== "deleted")
+    .sort((a, b) => (a.cycle?.startDate || "").localeCompare(b.cycle?.startDate || ""));
 }
 
 /**
