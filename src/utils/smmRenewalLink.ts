@@ -45,16 +45,18 @@ export function leadIdOfOrderId(orderId: string): string {
  * "No decision" rather than "lost": nobody said the client is not renewing — a sale was deleted.
  * A month already filed as renewed goes back to running, so it shows under Renewals as ended
  * without a decision until the salesperson renews it again or marks it lost. A history month (filled
- * in after the fact) has no renewal to chase and goes back to completed.
+ * in after the fact) filed because this month followed it comes back too (2026-10-05): with nothing
+ * after it, it is on hold (`smmPackage.isOnHold`) — it used to go back to completed, out of sight.
  */
 export function renewalUnlinkPatch(
   prev: Pick<SmmCampaign, "renewal" | "status" | "history">,
   goneId: string,
 ): { renewal: SmmRenewal; status?: SmmCampaign["status"] } | null {
   if (!goneId || prev.renewal?.nextCampaignId !== goneId) return null;
+  const filed = prev.status === "renewed" || (prev.history && prev.status === "completed");
   return {
     renewal: { state: "none", at: null, byName: null, note: null, nextCampaignId: null },
-    ...(prev.status === "renewed" ? { status: prev.history ? "completed" as const : "active" as const } : {}),
+    ...(filed ? { status: "active" as const } : {}),
   };
 }
 
@@ -81,7 +83,8 @@ export function renewalRelinkPatch(
       byName: next.soldByName || prev.renewal?.byName || null,
       nextCampaignId: next.id,
     },
-    ...(prev.status === "active" && !prev.history && prev.cycle && cyclePhase(prev.cycle, today) === "ended"
+    // A history month on hold is filed with it, like any month that ended (2026-10-05).
+    ...(prev.status === "active" && prev.cycle && cyclePhase(prev.cycle, today) === "ended"
       ? { status: "renewed" as const } : {}),
   };
 }

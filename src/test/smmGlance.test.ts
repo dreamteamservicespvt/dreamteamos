@@ -64,18 +64,51 @@ describe("monthGlance — the status in plain words", () => {
       .toMatchObject({ status: "not_started", reason: "Starts in 3 days", tone: "idle" });
     expect(monthGlance(month({ team: { creator: null, publisher: null, marketer: null, assistants: [] } }), TODAY))
       .toMatchObject({ status: "setup", label: "Needs setup", tone: "warn" });
+    // Ended and renewed (filed): what it delivered.
+    const ended = { month: "2026-09", startDate: "2026-09-01", endDate: "2026-10-01" };
     expect(monthGlance(month({
       commitments: { poster: 2, ai_ad: 0, real_video: 0 },
-      cycle: { month: "2026-09", startDate: "2026-09-01", endDate: "2026-10-01" },
+      cycle: ended,
       items: [item({ status: "posted", uploadDate: "2026-09-10" }), item({ status: "posted", uploadDate: "2026-09-20" })],
-      renewal: { state: "none" },
+      status: "renewed", renewal: { state: "won", nextCampaignId: "y" },
     }), TODAY)).toMatchObject({ status: "done" });
     expect(monthGlance(month({
       commitments: { poster: 2, ai_ad: 0, real_video: 0 },
-      cycle: { month: "2026-09", startDate: "2026-09-01", endDate: "2026-10-01" },
+      cycle: ended,
       items: [item({ status: "posted", uploadDate: "2026-09-10" }), item({ status: "posted", uploadDate: "2026-09-20", extra: true })],
+      status: "renewed", renewal: { state: "won", nextCampaignId: "y" },
     }), TODAY)).toMatchObject({ status: "off_track", reason: "Month ended with 1 post not live" });
-    expect(monthGlance(month({ history: true }), TODAY)).toMatchObject({ status: "history" });
+    // A filed history month (something followed it) is history.
+    expect(monthGlance(month({ history: true, status: "completed", cycle: ended }), TODAY)).toMatchObject({ status: "history" });
+  });
+
+  it("says On hold for a month that ended without a renewal — a history month too (owner, 2026-10-05)", () => {
+    const ended = { month: "2026-09", startDate: "2026-09-01", endDate: "2026-10-01" };
+    const allPosted = month({
+      commitments: { poster: 2, ai_ad: 0, real_video: 0 },
+      cycle: ended,
+      items: [item({ status: "posted", uploadDate: "2026-09-10" }), item({ status: "posted", uploadDate: "2026-09-20" })],
+    });
+    expect(monthGlance(allPosted, TODAY)).toMatchObject({
+      status: "on_hold", label: "On hold", tone: "idle", reason: "Ended 1 Oct — not renewed yet",
+    });
+    expect(monthGlance(month({ cycle: ended, items: [item({ status: "posted", uploadDate: "2026-09-10" })] }), TODAY).reason)
+      .toBe("Ended 1 Oct — not renewed yet · 5 posts not live");
+    // A history month's blank rows are a record left blank — not "posts not live".
+    expect(monthGlance(month({ history: true, cycle: ended }), TODAY))
+      .toMatchObject({ status: "on_hold", reason: "Ended 1 Oct — not renewed yet" });
+    // Decided — renewed, or not renewing — is no longer on hold.
+    expect(monthGlance({ ...allPosted, renewal: { state: "lost" } }, TODAY).status).toBe("done");
+    expect(monthGlance({ ...allPosted, renewal: { state: "won", nextCampaignId: "y" } }, TODAY).status).toBe("done");
+    // Still running: not on hold, however it is doing.
+    expect(monthGlance(month({}), TODAY).status).not.toBe("on_hold");
+    // Worst first: work that is late, then on hold, then completed.
+    const ranked = byGlanceUrgency([
+      { glance: monthGlance({ ...allPosted, renewal: { state: "lost" } }, TODAY) },
+      { glance: monthGlance(allPosted, TODAY) },
+      { glance: monthGlance(month({ items: [item({ status: "planned", uploadDate: "2026-09-30" })] }), TODAY) },
+    ]).map((x) => x.glance.status);
+    expect(ranked).toEqual(["off_track", "on_hold", "done"]);
   });
 
   it("counts each kind, the extras, the days left and the next post", () => {

@@ -17,7 +17,7 @@ import { Sparkline } from "@/components/smm/dashboard/chartKit";
 import { compactRupees, type SmmDashboardKpis, type SmmDeliverySummary } from "@/utils/smmDashboard";
 
 /** The card filters a tile opens (pages/shared/SocialMedia). */
-export type SmmBoardFilter = "all" | "off" | "risk" | "ok" | "setup" | "renewals" | "done";
+export type SmmBoardFilter = "all" | "off" | "risk" | "ok" | "hold" | "setup" | "renewals" | "done";
 
 export function DeliveryHero({ delivery, className = "" }: { delivery: SmmDeliverySummary; className?: string }) {
   const { committed, posted, expected, percent, expectedPercent, behindBy, monthsBehind } = delivery;

@@ -19,6 +19,9 @@
  *     their Renew makes the next month a sale (services/smmSetup.addNoSaleMonth). Since 2026-10-05 the
  *     Social Media Team Lead may add one too, a past month keeps the names of who did its work (no job
  *     cards), and an earlier month added after a later one joins the client's run.
+ *   • Every MONTH on the number is listed too (2026-10-05), with Open month — the sales list only knew
+ *     months with a sale behind it, so a number whose month had no sale looked empty, and "already has
+ *     a month on these dates" pointed at a month nobody could find. That refusal now links to the month.
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -30,9 +33,9 @@ import SaleForm from "@/components/sales/SaleForm";
 import SmmSetupForm, {
   AccountPicker, assignSummary, countsLine, setupInputOf, setupValueOf, type SmmSetupValue,
 } from "@/components/smm/SmmSetupForm";
-import { fetchAssignableMembers, remindSellerToRenew } from "@/services/smm";
+import { fetchAssignableMembers, fetchClientMonths, remindSellerToRenew } from "@/services/smm";
 import {
-  addNoSaleMonth, canSetUpSale, fetchSalesPeople, findSmmSalesForPhone, leadForSeller, noSaleSetupProblem,
+  SmmMonthClashError, addNoSaleMonth, canSetUpSale, fetchSalesPeople, findSmmSalesForPhone, leadForSeller, noSaleSetupProblem,
   notifySellerOfEnteredSale, setupProblem, setupSaleMonth, updateLeadDoc, type SmmSaleRecord, type SmmSaleState,
 } from "@/services/smmSetup";
 import { formatCurrency } from "@/utils/formatters";
@@ -40,13 +43,14 @@ import { formatPhoneDisplay, normalizePhone, phoneLockId } from "@/utils/phone";
 import { forgetClientMonths } from "@/hooks/useSmmClientMonths";
 import { isoDay, teamMembers } from "@/utils/smmPlan";
 import {
-  NO_SALE_NOTE, canAddNoSaleMonth, canRecordSmmSaleForSeller, dayLabel, normaliseClipsPerVideo,
+  NO_SALE_NOTE, canAddNoSaleMonth, canRecordSmmSaleForSeller, cyclePhase, cycleRangeLabel, dayLabel, isNoSaleMonth, isOnHold,
+  needsSetup, normaliseClipsPerVideo,
 } from "@/utils/smmPackage";
 import { platformsForPackage, commitmentsForPackage } from "@/utils/smmPricing";
 import { PACKAGES } from "@/utils/serviceCatalog";
 import { SMM_PLATFORMS } from "@/types/smm";
 import type { AppUser, Lead, SaleDetail } from "@/types";
-import type { SmmContentKind, SmmPlatform } from "@/types/smm";
+import type { SmmCampaign, SmmContentKind, SmmPlatform } from "@/types/smm";
 
 type Step = "number" | "seller" | "sale" | "setup" | "nosale";
 
@@ -63,6 +67,24 @@ const STATE_LABEL: Record<SmmSaleState, { label: string; cls: string }> = {
   deleted: { label: "Month deleted", cls: "bg-destructive/10 text-destructive" },
   no_order: { label: "Order deleted for good", cls: "bg-destructive/10 text-destructive" },
 };
+
+/**
+ * Where a month already on the number stands, in the board's words (2026-10-05) — for the months the
+ * sales list does not show: a month that had no sale, or a direct month from before every month was a sale.
+ */
+function monthStateOf(c: SmmCampaign, today: string): { label: string; cls: string } {
+  if (isOnHold(c, today)) return { label: "On hold", cls: "bg-muted text-foreground" };
+  if (c.status === "active") {
+    if (needsSetup(c, today)) return STATE_LABEL.needs_setup;
+    return cyclePhase(c.cycle, today) === "upcoming"
+      ? { label: "Not started", cls: "bg-muted text-muted-foreground" }
+      : STATE_LABEL.live;
+  }
+  if (c.history) return STATE_LABEL.history;
+  if (c.status === "renewed") return { label: "Renewed", cls: "bg-success/15 text-success" };
+  if (c.status === "lapsed") return { label: "Not renewed", cls: "bg-muted text-muted-foreground" };
+  return STATE_LABEL.finished;
+}
 
 const VERIFY_LABEL: Record<string, { label: string; cls: string }> = {
   verified: { label: "Verified", cls: "bg-success/15 text-success" },
@@ -108,6 +130,15 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
   const [phone, setPhone] = useState("");
   const [searching, setSearching] = useState(false);
   const [records, setRecords] = useState<SmmSaleRecord[] | null>(null);
+  /**
+   * Every month on the number, whatever is behind it (2026-10-05). The sales list above only knows months
+   * that hang off a sale, so a number whose only month had no sale read "No social media sale has been
+   * recorded" — and "Add a month that had no sale" then said "already has a month on these dates" about a
+   * month the owner could find nowhere.
+   */
+  const [months, setMonths] = useState<SmmCampaign[]>([]);
+  /** The month a no-sale month clashed with, to open instead of looking for it on the board. */
+  const [clash, setClash] = useState<{ message: string; monthId: string } | null>(null);
 
   const [sellers, setSellers] = useState<{ uid: string; name: string; createdBy?: string | null }[]>([]);
   const [sellerUid, setSellerUid] = useState("");
@@ -140,7 +171,10 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
     }
     setSearching(true);
     try {
-      setRecords(await findSmmSalesForPhone(normalized));
+      // The same query the "already has a month" check runs, so the two can never disagree.
+      const [sales, onNumber] = await Promise.all([findSmmSalesForPhone(normalized), fetchClientMonths(phoneLockId(normalized))]);
+      setMonths(onNumber);
+      setRecords(sales);
     } catch {
       toast({ title: "Could not look the number up", description: "Try again.", variant: "destructive" });
     } finally {
@@ -148,9 +182,22 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
     }
   };
 
+  /** The number's months the sales list does not show — no sale behind them (or a direct month). Newest first. */
+  const otherMonths = useMemo(() => {
+    const sold = new Set((records || []).map((r) => r.campaign?.id).filter(Boolean));
+    return months.filter((m) => !sold.has(m.id)).sort((a, b) => b.cycle.startDate.localeCompare(a.cycle.startDate));
+  }, [records, months]);
+
   /** A client with any month at all is renewed by their salesperson — only a fresh number gets a new sale here. */
-  const allowNewSale = !!records && records.every((r) => r.state === "rejected");
-  const existingMonth = records?.find((r) => r.campaign && (r.state === "live" || r.state === "needs_setup")) || null;
+  const allowNewSale = !!records && records.every((r) => r.state === "rejected") && otherMonths.length === 0;
+  const existingSale = records?.find((r) => r.campaign && (r.state === "live" || r.state === "needs_setup")) || null;
+  // The month whose salesperson is reminded to renew: a running or on-hold month, sold or not.
+  const existingMonth: { campaign: SmmCampaign; sellerName: string } | null = existingSale?.campaign
+    ? { campaign: existingSale.campaign, sellerName: existingSale.sellerName }
+    : (() => {
+      const m = otherMonths.find((c) => c.status === "active");
+      return m ? { campaign: m, sellerName: m.soldByName || "the salesperson" } : null;
+    })();
 
   const startSetup = (r: SmmSaleRecord) => {
     setChosen(chosenOf(r));
@@ -226,9 +273,15 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
     return setupProblem(setupInputOf(setup), today);
   }, [setup, today, step, normalized, seller, noSalePlatforms]);
 
+  // A clash is about the dates it was refused for; new dates are a new question.
+  const startDate = setup?.startDate;
+  const endDate = setup?.endDate;
+  useEffect(() => { setClash(null); }, [startDate, endDate, step]);
+
   const saveNoSale = async () => {
     if (!setup || !seller || problem) return;
     setSaving(true);
+    setClash(null);
     try {
       const result = await addNoSaleMonth({
         phone: normalized,
@@ -244,12 +297,16 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
       toast({
         title: result.history ? "Earlier month recorded" : "Month added",
         description: result.history
-          ? `On ${seller.name}'s Social Media page with its dates${people ? `, with ${people} (no job cards)` : ""} — not counted in revenue or commission. Fill in its work on the Content tab.`
+          ? `On ${seller.name}'s Social Media page with its dates${people ? `, with ${people} (no job cards)` : ""} — not counted in revenue or commission.${
+            result.onHold ? ` On hold on the board until ${seller.name} renews it.` : ""} Fill in its work on the Content tab.`
           : `${assignSummary(result.assign) || "The month is on the board."} Not counted in revenue or commission.`,
       });
       onCreated(result.campaignId);
     } catch (err) {
-      toast({ title: "Not added", description: err instanceof Error ? err.message : "Try again.", variant: "destructive" });
+      // The month it clashes with is linked right here — no hunting for it on the board (2026-10-05). The
+      // panel says it, so no toast as well: one would follow "Open that month" onto the month's page.
+      if (err instanceof SmmMonthClashError && err.monthId) setClash({ message: err.message, monthId: err.monthId });
+      else toast({ title: "Not added", description: err instanceof Error ? err.message : "Try again.", variant: "destructive" });
       setSaving(false);
     }
   };
@@ -308,7 +365,7 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
                 value={phone}
                 data-test="smm-add-sale-phone"
                 placeholder="Client's WhatsApp number"
-                onChange={(e) => { setPhone(e.target.value); setRecords(null); }}
+                onChange={(e) => { setPhone(e.target.value); setRecords(null); setMonths([]); }}
                 onKeyDown={(e) => e.key === "Enter" && search()}
                 className="h-10 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
               />
@@ -318,7 +375,7 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
               </button>
             </div>
 
-            {records && records.length === 0 && (
+            {records && records.length === 0 && otherMonths.length === 0 && (
               <p data-test="smm-add-sale-none" className="rounded-lg border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
                 No social media sale has been recorded for {formatPhoneDisplay(normalized)}.
               </p>
@@ -365,7 +422,17 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
               </div>
             )}
 
-            {records && records.length > 0 && !allowNewSale && (
+            {/* The months on the number with no sale behind them — each one opened from here (2026-10-05). */}
+            {records && otherMonths.length > 0 && (
+              <div className="space-y-2" data-test="smm-add-sale-months">
+                <p className="text-[11px] font-medium text-muted-foreground">
+                  {records.length > 0 ? "Other months on this number" : "Months already on this number"}
+                </p>
+                <MonthRows months={otherMonths} today={today} onOpen={onClose} />
+              </div>
+            )}
+
+            {records && (records.length > 0 || otherMonths.length > 0) && !allowNewSale && (
               <div data-test="smm-add-sale-renew-note" className="rounded-lg border border-info/40 bg-info/10 p-3 text-xs text-foreground">
                 This client already has social media months. A new month for them is a renewal — the
                 salesperson records it by pressing <b>Renew</b> on the month, so it counts as their sale.
@@ -427,6 +494,15 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
                 they renew it — that month is a sale, and counts as theirs.
               </span>
             </p>
+            {/* What is already on the number, so the dates are picked around it (2026-10-05). */}
+            {months.length > 0 && (
+              <div data-test="smm-no-sale-existing" className="space-y-1.5">
+                <p className="text-[11px] font-medium text-muted-foreground">
+                  Already on this number — a new month cannot overlap these dates:
+                </p>
+                <MonthRows months={[...months].sort((a, b) => b.cycle.startDate.localeCompare(a.cycle.startDate))} today={today} onOpen={onClose} compact />
+              </div>
+            )}
             <label className="block text-[11px] font-medium text-muted-foreground">
               Salesperson who looks after this client
               <select value={sellerUid} data-test="smm-no-sale-seller" onChange={(e) => setSellerUid(e.target.value)}
@@ -452,6 +528,16 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
               </div>
             </div>
             <SmmSetupForm value={setup} onChange={setSetup} members={members} platforms={noSalePlatforms} />
+            {clash && (
+              <div data-test="smm-no-sale-clash" role="alert"
+                className="flex flex-wrap items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-2.5 text-xs text-foreground">
+                <span className="min-w-[12rem] flex-1">{clash.message}</span>
+                <Link to={`/smm/${clash.monthId}`} onClick={onClose} data-test="smm-no-sale-clash-open"
+                  className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90">
+                  <ExternalLink size={13} /> Open that month
+                </Link>
+              </div>
+            )}
             <div className="flex gap-2">
               <button onClick={() => setStep("number")} disabled={saving}
                 className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-accent disabled:opacity-50">
@@ -534,6 +620,50 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * One row per month already on the number (2026-10-05): its name, dates, package and salesperson, where
+ * it stands in the board's words, and Open month — so a month the board files away (a finished or history
+ * month) is one tap away from the place that says it exists.
+ */
+function MonthRows({ months, today, onOpen, compact = false }: {
+  months: SmmCampaign[];
+  today: string;
+  /** Closes the dialog as the month's page opens. */
+  onOpen: () => void;
+  compact?: boolean;
+}) {
+  return (
+    <div className="space-y-2">
+      {months.map((m) => {
+        const st = monthStateOf(m, today);
+        return (
+          <div key={m.id} data-test="smm-add-sale-month" data-state={st.label}
+            className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-background ${compact ? "p-2.5" : "p-3"}`}>
+            {/* At least 12rem for the words — on a phone the chips and Open month go under them, not beside. */}
+            <div className="min-w-[12rem] flex-1">
+              <p className="truncate text-sm font-semibold text-foreground">{m.businessName || m.clientName || "—"}</p>
+              <p className="text-xs text-muted-foreground">
+                <b className="text-foreground">{cycleRangeLabel(m.cycle)}</b> · {m.packageLabel || "Custom month"}
+                {m.soldByName ? <> · salesperson <b className="text-foreground">{m.soldByName}</b></> : null}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {isNoSaleMonth(m) && (
+                <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">No sale</span>
+              )}
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${st.cls}`}>{st.label}</span>
+              <Link to={`/smm/${m.id}`} onClick={onOpen} data-test="smm-add-sale-month-open"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium text-foreground hover:bg-accent">
+                <ExternalLink size={13} /> Open month
+              </Link>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

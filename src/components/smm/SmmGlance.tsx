@@ -15,7 +15,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   AlertTriangle, Archive, CalendarClock, CalendarDays, CheckCircle2, CircleCheckBig, Hourglass, MinusCircle,
-  TrendingDown, UserPlus,
+  PauseCircle, TrendingDown, UserPlus,
 } from "lucide-react";
 import { shortDayLabel } from "@/utils/smmPackage";
 import {
@@ -47,6 +47,7 @@ const STATUS_ICON: Record<SmmGlanceStatus, LucideIcon> = {
   setup: UserPlus,
   history: Archive,
   nothing: MinusCircle,
+  on_hold: PauseCircle,
 };
 
 export function StatusPill({ glance, size = "md" }: { glance: SmmGlance; size?: "md" | "lg" }) {

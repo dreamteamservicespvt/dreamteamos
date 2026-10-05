@@ -162,7 +162,9 @@ describe("setting up a sale that is already on a salesperson's lead", () => {
     expect(result.history).toBe(true);
     const month = read(`smm_campaigns/${ORDER_ID}`)!;
     expect(month.history).toBe(true);
-    expect(month.status).toBe("completed");
+    // The client's only month: on hold on the board until it is renewed (owner, 2026-10-05).
+    expect(month.status).toBe("active");
+    expect(result.onHold).toBe(true);
     expect(read(`orders/${ORDER_ID}`)!.status).toBe("verified");
     expect(jobs()).toHaveLength(0);
   });

@@ -9,7 +9,48 @@
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
 
-- **2026-10-05 (latest): a deleted renewal un-renews its month; over-discounted sales reach the tech side
+- **2026-10-05 (latest, evening): SMM "On hold", and the month the board could not show** (`.claude/rules/smm.md`
+  §9.9 / §24 / §25 / §27, `data-model.md` smm_campaigns + app_settings, `docs/firestore-rules.md` note; CLAUDE.md §32).
+  - **The owner's report:** adding an old client's earlier month (AIRAVATH, +13213899564, 24 Aug → 24 Sep) with
+    "Add a month that had no sale" was refused — "AIRAVATH already has a month on these dates (25 Aug → 4 Oct 2026).
+    Open it from the board instead" — but the board showed no such month. Mid-task: **"if the social is not renewal
+    then keep it as hold"**; asked (AskUserQuestion): every ended month, history ones included (recommended), and
+    "Not renewing" still files it under Finished (recommended).
+  - **Root causes:** (1) `addNoSaleMonth` / `setupSaleMonth` saved every history month `completed` the moment it
+    was added — overseers' Cards read only `status == "active"` and Finished is read on demand, so the month was
+    nowhere in the default view; (2) Add SMM sale's lookup listed only SALES (`findSmmSalesForPhone`), so a number
+    whose month had no sale read "No social media sale has been recorded" (and even offered "Record a new sale"
+    against the rule that a client with months is renewed); (3) the clash check (`noSaleMonthClash`, every month
+    on `clientPhoneId`) returned only a sentence, no link; (4) a removed history month restored by its order came
+    back `active` + `history`, which neither Cards nor Finished showed. The live AIRAVATH document was not read (no
+    Firebase access); every state it can be in is now visible.
+  - **Fix:** `smmPackage.isOnHold` (active, ended, no renewal decision), `historyFiling`, `historyMonthsFollowed`;
+    `renewalDue` / `closingStatus` / `renewalRelinkPatch` take history months, `renewalUnlinkPatch` returns a history
+    month to `active`. `smmGlance` status `on_hold` ("Ended 4 Oct — not renewed yet · n posts not live", grey,
+    after On track; it replaces "Off track — Month ended with n posts not live" for undecided months); board tile
+    **On hold** (`SocialMedia` FILTERS `hold`, `Headline.SmmBoardFilter`), history months on hold in Cards, tiles
+    fit by width from 1024px; month page renewal line "On hold — the month ended on … and has not been renewed".
+    Setup paths save a history month `active` unless followed (next linked or any later month — `neighbourMonthsOf`
+    now returns the client's `months`), file earlier on-hold history months a new month follows
+    (`smm.fileFollowedHistoryMonths`, also in `closeEndedMonthsOnOpen`). One-time repair for months saved before:
+    `smm.holdUnrenewedHistoryOnOpen` (first overseer board open; record `app_settings/smm_history_hold`).
+    `SmmAddSaleDialog`: lists the number's months (`fetchClientMonths(phoneLockId)` — the clash check's query) with
+    state, "No sale", salesperson and **Open month**; no new sale when months exist; the months shown above the
+    no-sale form; a refusal shows **Open that month** (`noSaleMonthClashOf`, `SmmMonthClashError.monthId`).
+  - **Files:** `utils/smmPackage.ts`, `utils/smmGlance.ts`, `utils/smmRenewalLink.ts`, `services/smm.ts`,
+    `services/smmSetup.ts`, `components/smm/SmmAddSaleDialog.tsx`, `components/smm/SmmGlance.tsx`,
+    `components/smm/dashboard/Headline.tsx`, `pages/shared/SocialMedia.tsx`, `pages/shared/SmmCampaignPage.tsx`;
+    tests `smmOnHoldOct05.test.ts` (new, 15, real services on the in-memory Firestore), `smmAddSaleUi.test.tsx`
+    (+3: the number's months, the clash link, the On hold tile), `smmGlance.test.ts`, and the history-status
+    expectations in `smmHistoryOct05`, `smmNoSaleOct03`, `smmSetupOct03`, `smmRenewalOct05`.
+  - **Tested:** build ✅, vitest 206 files / 3172 tests ✅, typecheck (1 known error). Browser (throwaway harness in
+    the scratchpad, real SocialMedia + SmmCampaignPage on the in-memory Firestore, dark, 1440 and 390 px, two runs,
+    no console errors): an AIRAVATH history month seeded as `completed` came back on hold by the one-time repair;
+    On hold tile 2 (AIRAVATH, an ended sold month "· 8 posts not live"); Add SMM sale on +13213899564 listed the
+    month with Open month; 24 Aug → 24 Sep refused with the inline Open that month (no month written, no toast);
+    the month page said "On hold — the month ended on 4 Oct…"; the salesperson got Renew; no sideways scroll at
+    390 px. Not driven: live Firebase — the owner's real AIRAVATH document was not read.
+- **2026-10-05: a deleted renewal un-renews its month; over-discounted sales reach the tech side
   at once; the salesperson's renewal money card; the admins' Money tab; the 11 AM / 5 PM post-status
   popup** (session dts-os-ba; `.claude/rules/smm.md` §9.9 / §24 / §25 / §27, `sales.md` §24,
   `orders-work.md` §24, `architecture.md` §5 / §23, `roles-routes.md` §7 / §8, `backend-security.md` §18,

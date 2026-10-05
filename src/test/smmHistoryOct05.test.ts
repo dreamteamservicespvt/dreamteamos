@@ -97,7 +97,8 @@ describe("a history month keeps who did its work", () => {
     const result = await setup.addNoSaleMonth(month(-70));
     expect(result).toMatchObject({ history: true, assign: null });
     const c = read(`smm_campaigns/${result.campaignId}`)!;
-    expect(c).toMatchObject({ history: true, status: "completed", origin: "no_sale", amount: 0 });
+    // The client's only month: on hold on the board (`active`) until it is renewed — 2026-10-05.
+    expect(c).toMatchObject({ history: true, status: "active", origin: "no_sale", amount: 0 });
     expect(c.team.creator).toMatchObject({ uid: "arjun" });
     expect(c.team.marketer).toMatchObject({ uid: "divya" });
     // In their Social Media (`watchers`) and on every row, so they can fill in what they made and posted.
@@ -208,7 +209,7 @@ describe("Edit setup on a history month", () => {
 
     await setup.applyHistorySetup(campaignId, base, KIRAN);
     const after = read(`smm_campaigns/${campaignId}`)!;
-    expect(after).toMatchObject({ businessName: "Javani Spiritual Hub (old page)", history: true, status: "completed" });
+    expect(after).toMatchObject({ businessName: "Javani Spiritual Hub (old page)", history: true, status: "active" });
     expect(after.team.creator).toMatchObject({ uid: "divya" });
     expect(after.watchers).toEqual(expect.arrayContaining(["divya", "anil"]));
     expect(jobs()).toHaveLength(0);

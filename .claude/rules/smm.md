@@ -249,8 +249,46 @@ month running today gets every post not live yet — theirs first, late next —
 (localStorage `dts_smm_status_check_<uid>`), "Later" brings it back in 30 min, first opened after 17:00 it
 asks once; it waits while any other popup or full-screen overlay is open (the check-in prompt, the AI studio). One scoped read when a slot comes due (`fetchMyCampaigns`),
 live (`watchMyCampaigns`) only while open.
+**On hold, and the month the board could not show (2026-10-05, owner).** The owner's AIRAVATH: Add SMM sale →
+"Add a month that had no sale" refused 24 Aug → 24 Sep with "already has a month on these dates (25 Aug → 4 Oct
+2026). Open it from the board instead" — but no such month was on the board. Causes: a history month was filed
+`completed` the moment it was added (only under Finished, read on demand); the number lookup listed only SALES
+(`findSmmSalesForPhone`), so a number whose month had no sale read "No social media sale has been recorded"; the
+refusal gave no link. Then the owner: **"if the social is not renewal then keep it as hold"** (choices, via
+AskUserQuestion: every ended month; "Not renewing" still files it). (1) **On hold** = `active`, last day passed, no
+renewal decision (`smmPackage.isOnHold`; a pitch is no decision). The card says **On hold** ("Ended 4 Oct — not
+renewed yet · 3 posts not live"; a history month's blank rows are not counted), grey, ranked after On track
+(`smmGlance` status `on_hold`); the board has an **On hold** count/filter (`SocialMedia` FILTERS `hold`; the tiles
+fit as many to a row as 7.5rem allows from 1024px); the month page's renewal line says "On hold — the month ended on
+4 Oct and has not been renewed". It replaces "Off track — Month ended with n posts not live" for an undecided ended
+month. Renew → filed `renewed`; Not renewing → `lapsed` (Finished). (2) **A history month with nothing after it is
+`active` (on hold)**, on the board with Renew for its salesperson (`renewalDue` / `closingStatus` /
+`renewalRelinkPatch` now take history months; `renewalUnlinkPatch` puts a history month back on hold, not
+`completed`). Filed `completed` only when the client's run went on — a next month linked, or ANY later month of the
+client, after a gap too (`smmPackage.historyFiling`, `historyMonthsFollowed`): set at creation by `addNoSaleMonth` /
+`setupSaleMonth` (from the client-months read `neighbourMonthsOf` already makes, now returning `months`), earlier
+history months on hold that a newly added month follows are filed then (`smm.fileFollowedHistoryMonths`), and the
+board sweep (`closeEndedMonthsOnOpen`) files one once a later month of the client is in the overseer's live list. A
+month that ran in the app stays the salesperson's to decide. **Legacy:** history months saved `completed` before
+this with nothing after them are put back on hold ONCE for the company by the first overseer who opens the board
+(`smm.holdUnrenewedHistoryOnOpen`: one read of `app_settings/smm_history_hold`; while missing, the `completed`
+months and one `clientPhoneId` read per such client; writes the record only when all succeeded). (3) **Add SMM
+sale lists every month on the number** (`smm.fetchClientMonths(phoneLockId)` — the same query as the clash check)
+that no listed sale owns: name, dates, package, salesperson, "No sale", its state in board words (On hold / Running
+/ Needs setup / Not started / History / Renewed / Not renewed / Finished) and **Open month**; such a number gets no
+"Record a new sale" (it is a renewal; Remind reaches a no-sale month's salesperson too); the no-sale step lists
+them above the form ("a new month cannot overlap these dates"). (4) **The refusal links the month**:
+`smmSetup.noSaleMonthClashOf` → `SmmMonthClashError.monthId`; the step shows the message with **Open that month**
+under the form (cleared when the dates change); the text now says "Open it to fill in its work, or correct its
+dates with Edit setup."
 
 ## 24. BUSINESS RULES (IMPLEMENTED; verified in code)
+
+- **SMM On hold (owner, 2026-10-05):** a month whose last day has passed with no renewal decision is **On hold** and
+  stays on the board until its salesperson renews it (then it is filed as renewed) or marks the client as not
+  renewing (filed as not renewed). A past month added afterwards is on hold too when nothing follows it; it is filed
+  once the client has any later month. Add SMM sale shows every month already on the client's number with Open
+  month, and a month refused for overlapping dates links to the month it overlaps.
 
 - **SMM renewals (owner, 2026-10-05):** "renewed" follows the renewal sale — a renewal sale deleted,
   rejected or taken back puts the month before back to "no decision" (and back on the board), and the sale
@@ -314,6 +352,13 @@ live (`watchMyCampaigns`) only while open.
 ## 25. CURRENT IMPLEMENTATION STATUS
 
 **PARTIALLY IMPLEMENTED 🟡:**
+- SMM On hold (2026-10-05): "a later month follows it" is decided where the client's months are in hand — at
+  setup, and by the overseer's board sweep for later months that are live — so a history month whose only later
+  month is already filed (renewed / not renewed) stays on hold until somebody decides it. A month that ran in the
+  app is never filed for a later unlinked month (the salesperson decides). On hold months are counted in the
+  board's tiles and cards but not in Insights, the salesperson's renewals card or the Money tab, which still
+  leave history months out. A past month on hold rings the salesperson's daily "Social media month has ended"
+  bell like any ended month — as history months always did (`renewalsDueFor` never left them out).
 - SMM renewal money (2026-10-05): the card and the Money tab count a renewal's money from the month
   documents (next month's `amount`), not from collected payments, so "₹ from your renewals" is the
   commission the renewal is worth, not what payroll has paid (that follows `useSalesEarnings`: verified and
@@ -351,10 +396,19 @@ live (`watchMyCampaigns`) only while open.
 - SMM past months (2026-10-05): a past month is filled in one post at a time (open it, give the day it went
   up, Posted) — there is no bulk entry. A filled-in post's `postedAt` is the day it was filled in (the
   calendar uses its upload date). The people on a history month get no notification (they find it in
-  Social Media → Finished). Months more than a week apart are not linked (a client who came back after a
-  gap), and a run is renumbered only from the added month forward.
+  Social Media — on the board On hold while nothing follows it, else under Finished). Months more than a week
+  apart are not linked (a client who came back after a gap — the earlier one is still filed, not on hold), and a
+  run is renumbered only from the added month forward.
 
 ## 27. POTENTIAL RISKS (need verification)
+
+- On hold (2026-10-05) puts history months back into the overseers' live `status == "active"` listener (a few
+  reads more per board load, one per client's last month) and writes the one-time `app_settings/smm_history_hold`
+  record plus those months' status from the first overseer's browser (catch-all rule). Checked by unit tests,
+  service tests on the in-memory Firestore (`smmOnHoldOct05`), UI tests and a browser harness on the real pages —
+  not against live Firebase, so the owner's AIRAVATH document itself was not read: it is on the board after the
+  first overseer opens it if it was a history month (`completed`), already on it if it ran in the app, and under
+  Finished if it was renewed or marked not renewing; Add SMM sale shows it in every case.
 
 - Un-renewing (2026-10-05) writes the PREVIOUS month from whoever removed the renewal — a salesperson
   deleting their sale, a sales admin rejecting it — so a rule limiting `smm_campaigns` writes to the team

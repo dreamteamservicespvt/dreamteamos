@@ -46,6 +46,7 @@ vi.mock("@/services/smm", () => ({
   remindSellerToRenew,
   closeEndedMonthsOnOpen: vi.fn(async () => 0),
   healRenewalLinksOnOpen: vi.fn(async () => 0),
+  holdUnrenewedHistoryOnOpen: vi.fn(async () => 0),
   fetchMonthsEndingBetween: vi.fn(async () => []),
   fetchFinishedCampaigns: vi.fn(async () => []),
   fetchClientMonths,
@@ -300,6 +301,63 @@ describe("Add SMM sale", () => {
     expect(args.setup.team.creator.uid).toBe("divya");
     expect(args.setup.team.publisher.uid).toBe("divya");
   });
+
+  // The owner's AIRAVATH (2026-10-05): the number's only month had no sale, so the lookup said "No social
+  // media sale has been recorded", and adding a month said "already has a month on these dates" about a
+  // month nobody could find.
+  const airavath = {
+    id: "c_air", orderId: "", origin: "no_sale", clientPhoneId: "919876543210", businessName: "AIRAVATH", clientName: "AIRAVATH",
+    packageLabel: "Starter Package", soldBy: "anil", soldByName: "Govardhan", status: "active", history: true,
+    cycle: { month: "2026-08", startDate: "2026-08-25", endDate: "2026-10-04" }, renewal: { state: "none" }, items: [],
+  };
+
+  it("lists every month on the number — one with no sale too — with Open month, and offers no new sale", async () => {
+    findSmmSalesForPhone.mockResolvedValue([]);
+    fetchClientMonths.mockResolvedValueOnce([airavath]);
+    open();
+    const list = await screen.findByTestId("smm-add-sale-months");
+    expect(screen.queryByTestId("smm-add-sale-none")).toBeNull();
+    const row = within(list).getByTestId("smm-add-sale-month");
+    expect(row.textContent).toMatch(/AIRAVATH/);
+    expect(row.textContent).toMatch(/25 Aug → 4 Oct 2026/);
+    expect(row.textContent).toMatch(/salesperson Govardhan/);
+    expect(row.textContent).toMatch(/No sale/);
+    expect(row.getAttribute("data-state")).toBe("On hold");
+    expect(within(row).getByTestId("smm-add-sale-month-open").getAttribute("href")).toBe("/smm/c_air");
+    expect(fetchClientMonths).toHaveBeenCalledWith("919876543210");
+    // A client with a month is renewed by its salesperson — no new sale from here.
+    expect(screen.queryByTestId("smm-add-sale-new")).toBeNull();
+    expect(screen.getByTestId("smm-add-sale-renew-note")).toBeTruthy();
+    // An earlier month can still be added — with the month already there shown beside the dates.
+    fireEvent.click(screen.getByTestId("smm-add-sale-no-sale"));
+    expect(within(screen.getByTestId("smm-no-sale-existing")).getByTestId("smm-add-sale-month").textContent).toMatch(/AIRAVATH/);
+  });
+
+  it("links the month a no-sale month clashes with, right under the form", async () => {
+    const { SmmMonthClashError } = await import("@/services/smmSetup");
+    findSmmSalesForPhone.mockResolvedValue([]);
+    fetchClientMonths.mockResolvedValueOnce([airavath]);
+    addNoSaleMonth.mockRejectedValueOnce(new SmmMonthClashError(
+      "AIRAVATH already has a month on these dates (25 Aug → 4 Oct 2026). Open it to fill in its work, or correct its dates with Edit setup.",
+      "c_air",
+    ));
+    const onCreated = open();
+    fireEvent.click(await screen.findByTestId("smm-add-sale-no-sale"));
+    await waitFor(() => expect((screen.getByTestId("smm-no-sale-seller") as HTMLSelectElement).options.length).toBeGreaterThan(1));
+    fireEvent.change(screen.getByTestId("smm-no-sale-seller"), { target: { value: "anil" } });
+    fireEvent.change(screen.getByTestId("smm-setup-name"), { target: { value: "AIRAVATH" } });
+    const day = (n: number) => isoDay(new Date(Date.now() + n * 86_400_000));
+    fireEvent.change(screen.getByTestId("smm-setup-start"), { target: { value: day(-42) } });
+    fireEvent.click(screen.getByTestId("smm-no-sale-save"));
+
+    const clash = await screen.findByTestId("smm-no-sale-clash");
+    expect(clash.textContent).toMatch(/already has a month on these dates/);
+    expect(within(clash).getByTestId("smm-no-sale-clash-open").getAttribute("href")).toBe("/smm/c_air");
+    expect(onCreated).not.toHaveBeenCalled();
+    // New dates are a new question — the old answer goes.
+    fireEvent.change(screen.getByTestId("smm-setup-start"), { target: { value: day(-150) } });
+    expect(screen.queryByTestId("smm-no-sale-clash")).toBeNull();
+  });
 });
 
 describe("the board", () => {
@@ -385,6 +443,39 @@ describe("the board", () => {
     expect(screen.getAllByTestId("smm-campaign-card").map((c) => within(c).getByTestId("smm-card-business").textContent)).toEqual(["Late Co"]);
     fireEvent.click(screen.getByTestId("smm-tab-ok"));
     expect(screen.getAllByTestId("smm-campaign-card").map((c) => within(c).getByTestId("smm-card-business").textContent)).toEqual(["Fine Co"]);
+  });
+
+  it("keeps a month that ended without a renewal on the board, On hold — a past month added later too (2026-10-05)", () => {
+    const start = new Date(); start.setDate(start.getDate() - 45);
+    const older = new Date(); older.setDate(older.getDate() - 80);
+    BOARD = [
+      { ...base, id: "fine", orderId: "fine", businessName: "Fine Co", cycle: monthCycle(today), team: withTeam },
+      { ...base, id: "ended", orderId: "ended", businessName: "Ended Co", cycle: monthCycle(isoDay(start)), team: withTeam },
+      // The owner's AIRAVATH: recorded after it ended, nothing after it — on hold, not filed away.
+      { ...base, id: "air", orderId: "", origin: "no_sale", amount: 0, businessName: "AIRAVATH", history: true,
+        cycle: monthCycle(isoDay(older)), team: noTeam },
+    ];
+    render(<MemoryRouter><SocialMedia /></MemoryRouter>);
+    expect(screen.getAllByTestId("smm-campaign-card")).toHaveLength(3);
+    expect(screen.getByTestId("smm-count-hold").textContent).toBe("2");
+    fireEvent.click(screen.getByTestId("smm-tab-hold"));
+    const held = screen.getAllByTestId("smm-campaign-card");
+    expect(held.map((c) => within(c).getByTestId("smm-card-business").textContent).sort()).toEqual(["AIRAVATH", "Ended Co"]);
+    for (const card of held) {
+      expect(within(card).getByTestId("smm-status").textContent).toContain("On hold");
+      expect(within(card).getByTestId("smm-card-reason").textContent).toMatch(/not renewed yet/);
+    }
+    // Not counted as off track, nor as needing a team.
+    expect(screen.getByTestId("smm-count-off").textContent).toBe("0");
+    expect(screen.queryByTestId("smm-tab-setup")).toBeNull();
+    cleanup();
+
+    // Its salesperson renews it from the card — the past month too.
+    AUTH = { user: { uid: "anil", name: "Anil", role: "sales_member" } };
+    render(<MemoryRouter><SocialMedia /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId("smm-tab-hold"));
+    const air = screen.getAllByTestId("smm-campaign-card").find((c) => c.textContent?.includes("AIRAVATH"))!;
+    expect(within(air).getByTestId("smm-card-renew")).toBeTruthy();
   });
 
   it("keeps the charts one switch away, as Insights", () => {

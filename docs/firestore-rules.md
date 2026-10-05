@@ -170,6 +170,13 @@ service cloud.firestore {
     // before sales were recorded in the app): an auto id, no order, amount 0, `soldBy` = the
     // salesperson. Its team's jobs share one `order_chats/{campaignId}` room (no `orderId` on it;
     // `api/order-chat` already skips the orders mirror when a room has none).
+    //
+    // 2026-10-05 — still no rule change. A month that ended without a renewal decision is "on hold"
+    // and stays `active` — a `history` month too when nothing follows it (it used to be filed
+    // `completed`). The first overseer to open the board writes the one-time record
+    // `app_settings/smm_history_hold` and puts such months back to `active`; both go through the
+    // catch-all below (staff). Add SMM sale reads the number's months with
+    // `where('clientPhoneId','==',…)` (single-field index), as the "already has a month" check does.
 
     // ── AI Accounts: Flow accounts, their passwords, the credit ledger, paid logins ─────────────
     // (types/aiAccounts.) Passwords live in their own collections so a list never carries them, and

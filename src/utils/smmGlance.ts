@@ -6,8 +6,9 @@
  * answered in one look — is it fine, how much is done, what is left, what is next — not a picture
  * to decode. So every month is boiled down here to:
  *
- *   • one STATUS in everyday words — On track, At risk, Off track, Completed, Not started, Needs setup —
- *     with a one-line REASON ("3 posts are late", "2 posts behind schedule");
+ *   • one STATUS in everyday words — On track, At risk, Off track, Completed, Not started, Needs setup,
+ *     and (2026-10-05) On hold for a month that ended without a renewal — with a one-line REASON
+ *     ("3 posts are late", "2 posts behind schedule", "Ended 4 Oct — not renewed yet");
  *   • how many of the promised posts are live, and where the rest are, in five buckets anybody
  *     understands — Posted, In progress, Waiting for client, Not started, Late — which the card draws
  *     as one ring;
@@ -18,12 +19,12 @@
  */
 import { clientWaitSummary, daysBetween, fulfilment, isOverdue, isPosted } from "@/utils/smmPlan";
 import {
-  cycleElapsed, cyclePhase, cycleTimeLabel, daysToRenewal, needsSetup, paceOf, renewalDue, toneCounts,
+  cycleElapsed, cyclePhase, cycleTimeLabel, daysToRenewal, isOnHold, needsSetup, paceOf, renewalDue, shortDayLabel, toneCounts,
 } from "@/utils/smmPackage";
 import type { SmmCampaign, SmmContentKind } from "@/types/smm";
 
 export type SmmGlanceStatus =
-  | "setup" | "history" | "nothing" | "done" | "not_started" | "off_track" | "at_risk" | "on_track";
+  | "setup" | "history" | "nothing" | "done" | "not_started" | "off_track" | "at_risk" | "on_track" | "on_hold";
 
 /** The colour family of a status: green fine, amber watch it, red act now, grey nothing yet. */
 export type SmmGlanceTone = "good" | "warn" | "bad" | "idle";
@@ -53,8 +54,10 @@ export const SMM_STATUS_LABEL: Record<SmmGlanceStatus, string> = {
   off_track: "Off track",
   at_risk: "At risk",
   on_track: "On track",
+  on_hold: "On hold",
 };
 
+/** On hold is grey — paused, nothing for the team to make — not a warning colour (2026-10-05). */
 const STATUS_TONE: Record<SmmGlanceStatus, SmmGlanceTone> = {
   setup: "warn",
   history: "idle",
@@ -64,11 +67,15 @@ const STATUS_TONE: Record<SmmGlanceStatus, SmmGlanceTone> = {
   off_track: "bad",
   at_risk: "warn",
   on_track: "good",
+  on_hold: "idle",
 };
 
-/** Who needs somebody first, on the board: off track, then nobody on it, then at risk … done last. */
+/**
+ * Who needs somebody first, on the board: off track, then nobody on it, then at risk … done last. On
+ * hold sits after on track: the team has nothing left to make on it — the next move is the salesperson's.
+ */
 const STATUS_RANK: Record<SmmGlanceStatus, number> = {
-  off_track: 0, setup: 1, at_risk: 2, not_started: 3, on_track: 4, done: 5, nothing: 6, history: 7,
+  off_track: 0, setup: 1, at_risk: 2, not_started: 3, on_track: 4, on_hold: 5, done: 6, nothing: 7, history: 8,
 };
 
 export interface SmmGlanceNext {
@@ -174,7 +181,14 @@ export function monthGlance(c: SmmCampaign, today: string): SmmGlance {
 
   let status: SmmGlanceStatus;
   let reason: string;
-  if (c.history) {
+  if (isOnHold(c, today)) {
+    // Ended with no renewal decision (owner, 2026-10-05) — before history: an old client's last month is
+    // on hold too. A history month's blank rows are a record left blank, not posts that failed to go up.
+    status = "on_hold";
+    const notLive = total - posted;
+    reason = `Ended ${shortDayLabel(c.cycle.endDate)} — not renewed yet`
+      + (!c.history && notLive > 0 ? ` · ${plural(notLive, "post", "posts")} not live` : "");
+  } else if (c.history) {
     status = "history";
     reason = "Recorded after the month ended";
   } else if (needsSetup(c, today)) {

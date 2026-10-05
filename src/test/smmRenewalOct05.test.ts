@@ -51,8 +51,12 @@ describe("un-renewing when the renewal month goes away", () => {
 
   it("puts a month already filed as renewed back on the board", () => {
     expect(renewalUnlinkPatch({ ...renewed, status: "renewed" }, "m2")?.status).toBe("active");
-    // A history month has no renewal to chase: back to completed.
-    expect(renewalUnlinkPatch({ ...renewed, status: "renewed", history: true }, "m2")?.status).toBe("completed");
+    // A history month with nothing after it any more is on hold — back on the board too (2026-10-05),
+    // whether it was filed as renewed or as completed when the month after it was added.
+    expect(renewalUnlinkPatch({ ...renewed, status: "renewed", history: true }, "m2")?.status).toBe("active");
+    expect(renewalUnlinkPatch({ ...renewed, status: "completed", history: true }, "m2")?.status).toBe("active");
+    // A month that ran in the app and was never filed keeps its status.
+    expect(renewalUnlinkPatch({ ...renewed, status: "lapsed" }, "m2")?.status).toBeUndefined();
   });
 
   it("leaves a month renewed by a different month alone", () => {

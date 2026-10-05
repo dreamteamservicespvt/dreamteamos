@@ -332,11 +332,70 @@ export function needsSetup(c: SmmCampaign, today: string): boolean {
   return !hasTeam(c.team);
 }
 
-/** A month ending within the notice window — or already ended — with no renewal decision. */
+/**
+ * A month ending within the notice window — or already ended — with no renewal decision.
+ *
+ * A history month counts too since 2026-10-05: one still on the board (`active`) is on hold — the old
+ * client's last month, waiting for its salesperson's Renew — so it shows "Renewal overdue" and Renew like
+ * any month that ended undecided. A history month a later month followed is filed (`completed`) and never
+ * gets here.
+ */
 export function renewalDue(c: SmmCampaign, today: string, withinDays = SMM_RENEWAL_NOTICE_DAYS): boolean {
-  if (c.status !== "active" || c.history) return false;
-  if (c.renewal?.nextCampaignId || c.renewal?.state === "won" || c.renewal?.state === "lost") return false;
+  if (c.status !== "active") return false;
+  if (renewalDecided(c.renewal)) return false;
+  // A history month only ever as one on hold — it has no countdown of its own to warn about.
+  if (c.history && !isOnHold(c, today)) return false;
   return daysLeftInCycle(c.cycle, today) <= withinDays;
+}
+
+/** A renewal decision has been made: the next month is linked or won, or the client is not renewing. */
+const renewalDecided = (r: SmmCampaign["renewal"] | null | undefined): boolean =>
+  !!r?.nextCampaignId || r?.state === "won" || r?.state === "lost";
+
+/**
+ * On hold (owner, 2026-10-05: "if the social is not renewal then keep it as hold").
+ *
+ * A month whose last day has passed with nothing decided about the next one — not renewed, not marked
+ * not renewing. It stays on the board under its own "On hold" count, said in those words, until the
+ * salesperson renews it (filed as renewed) or says the client is not renewing (filed as not renewed —
+ * the owner's choice: "On hold" means only "no decision yet"). A month recorded after it ended (history)
+ * is on hold too when nothing follows it: an old client's last month is a renewal nobody has made yet.
+ * Before this, an ended month read "Off track — Month ended with 3 posts not live", and a history month
+ * was filed under Finished the moment it was added — so the board had no month for the client at all
+ * (the owner's AIRAVATH: "already has a month on these dates", but no month on the board).
+ */
+export function isOnHold(c: Pick<SmmCampaign, "status" | "cycle" | "renewal">, today: string): boolean {
+  if (c.status !== "active" || !c.cycle) return false;
+  if (cyclePhase(c.cycle, today) !== "ended") return false;
+  return !renewalDecided(c.renewal);
+}
+
+/**
+ * Where a month recorded after its dates (history) is filed (2026-10-05):
+ *   • followed — a next month is linked, or the client has any later month (one who came back after a
+ *     gap) → `completed`, under Finished, as every history month was before;
+ *   • the client is not renewing → `lapsed`;
+ *   • otherwise `active` — on hold on the board (`isOnHold`) until the salesperson renews it.
+ */
+export function historyFiling(
+  renewal: SmmCampaign["renewal"] | null | undefined,
+  followed: boolean,
+): "active" | "completed" | "lapsed" {
+  if (followed || renewal?.nextCampaignId || renewal?.state === "won") return "completed";
+  if (renewal?.state === "lost") return "lapsed";
+  return "active";
+}
+
+/**
+ * The history months on hold that a later month of the same client has followed — to be filed as
+ * `completed`: the client's run went on, so that month is no renewal still to be made. Only history
+ * months: a month that ran in the app is its salesperson's renewal to decide (Renew, or Not renewing).
+ * `months` may hold several clients' months; gone ones (removed, deleted) follow nothing.
+ */
+export function historyMonthsFollowed(months: SmmCampaign[], today: string): SmmCampaign[] {
+  const live = months.filter((m) => m.status !== "removed" && m.status !== "deleted" && !!m.cycle && !!m.clientPhoneId);
+  return live.filter((c) => c.history && isOnHold(c, today)
+    && live.some((m) => m.id !== c.id && m.clientPhoneId === c.clientPhoneId && m.cycle.startDate > c.cycle.startDate));
 }
 
 /**
@@ -356,11 +415,12 @@ export function needsAttention(c: SmmCampaign, today: string): boolean {
  *
  * Renewed once the salesperson's renewal has opened the next month, lapsed once they have said the
  * client is not renewing. Anything else stays active past its end on purpose: that is a renewal
- * nobody has decided, and it belongs in front of people rather than filed away. There is no
- * scheduler on this stack, so this runs when an overseer opens the board (services/smm).
+ * nobody has decided, and it belongs in front of people rather than filed away — on hold
+ * (`isOnHold`). There is no scheduler on this stack, so this runs when an overseer opens the board
+ * (services/smm). A history month on hold is filed the same way once it is decided (2026-10-05).
  */
 export function closingStatus(c: SmmCampaign, today: string): "renewed" | "lapsed" | null {
-  if (c.status !== "active" || c.history) return null;
+  if (c.status !== "active") return null;
   if (cyclePhase(c.cycle, today) !== "ended") return null;
   if (c.renewal?.nextCampaignId || c.renewal?.state === "won") return "renewed";
   if (c.renewal?.state === "lost") return "lapsed";

@@ -12,7 +12,8 @@
  * the page is the cards (SmmCampaignCard): each says in everyday words whether the month is On track,
  * At risk or Off track and why, shows every promised post in one ring, each kind's count, the days
  * left and the next post. Above them, the same statuses as a row of counts that filter the cards —
- * All, Off track, At risk, On track, Needs setup, Renewals due, Finished — worst first. The charts
+ * All, Off track, At risk, On track, On hold (ended without a renewal, 2026-10-05), Needs setup,
+ * Renewals due, Finished — worst first. The charts
  * (components/smm/SmmDashboard) are still one switch away, as Insights, for whoever wants them; the
  * choice is remembered per browser, and the member and salesperson filters scope both.
  *
@@ -23,14 +24,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
-  AlertTriangle, Archive, BarChart3, CalendarDays, CheckCircle2, IndianRupee, LayoutGrid, Loader2, Megaphone, Plus, RefreshCcw, Search,
-  TrendingDown, UserPlus, Users,
+  AlertTriangle, Archive, BarChart3, CalendarDays, CheckCircle2, IndianRupee, LayoutGrid, Loader2, Megaphone, PauseCircle, Plus, RefreshCcw,
+  Search, TrendingDown, UserPlus, Users,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useSmmCampaigns } from "@/hooks/useSmmCampaigns";
-import { closeEndedMonthsOnOpen, fetchFinishedCampaigns, healRenewalLinksOnOpen, notifyRenewalsDueOnOpen } from "@/services/smm";
+import {
+  closeEndedMonthsOnOpen, fetchFinishedCampaigns, healRenewalLinksOnOpen, holdUnrenewedHistoryOnOpen, notifyRenewalsDueOnOpen,
+} from "@/services/smm";
 import { canSeeSmmMoney, isSmmOverseer, isoDay } from "@/utils/smmPlan";
-import { canRenewSmm, canSetUpSmm, needsSetup, renewalDue } from "@/utils/smmPackage";
+import { canRenewSmm, canSetUpSmm, isOnHold, needsSetup, renewalDue } from "@/utils/smmPackage";
 import { byGlanceUrgency, monthGlance, type SmmGlance } from "@/utils/smmGlance";
 import { overdueItemsFor } from "@/utils/smmReminders";
 import SmmCampaignCard from "@/components/smm/SmmCampaignCard";
@@ -50,6 +53,8 @@ const FILTERS: { key: SmmBoardFilter; label: string; Icon: LucideIcon; icon: str
   { key: "off", label: "Off track", Icon: AlertTriangle, icon: "text-viz-late" },
   { key: "risk", label: "At risk", Icon: TrendingDown, icon: "text-viz-wait" },
   { key: "ok", label: "On track", Icon: CheckCircle2, icon: "text-viz-done" },
+  // Ended without a renewal (owner, 2026-10-05) — kept on the board until the salesperson decides.
+  { key: "hold", label: "On hold", Icon: PauseCircle, icon: "text-muted-foreground" },
   { key: "setup", label: "Needs setup", Icon: UserPlus, icon: "text-viz-wait" },
   { key: "renewals", label: "Renewals due", Icon: RefreshCcw, icon: "text-viz-ready" },
   { key: "done", label: "Finished", Icon: Archive, icon: "text-muted-foreground" },
@@ -121,6 +126,18 @@ export default function SocialMedia() {
       .catch(() => undefined);
   }, [overseer, loading, campaigns, today]);
 
+  /*
+    Once for the whole company (2026-10-05): the history months filed under Finished before "On hold"
+    existed, with nothing after them, come back on the board on hold — they arrive through the live
+    listener. A no-op read in every later session (services/smm.holdUnrenewedHistoryOnOpen).
+  */
+  const myUid = user?.uid;
+  const myName = user?.name;
+  useEffect(() => {
+    if (!overseer || !myUid) return;
+    holdUnrenewedHistoryOnOpen({ uid: myUid, name: myName || "" }).catch(() => 0);
+  }, [overseer, myUid, myName]);
+
   // The salesperson's renewal bells — once per month per day, however often they open the board.
   const rang = useRef(false);
   useEffect(() => {
@@ -161,10 +178,17 @@ export default function SocialMedia() {
   const smmLeader = (user as { smmLeader?: boolean } | null)?.smmLeader;
   const viewer = useMemo(() => ({ uid: uid || "", role, smmLeader }), [uid, role, smmLeader]);
 
-  const live = useMemo(() => campaigns.filter((c) => c.status === "active" && !c.history), [campaigns]);
+  /*
+    The board's months: everything still running, and every month on hold — ended with no renewal decision
+    (2026-10-05). A history month on hold is on the board too: it is the old client's last month, and the
+    salesperson's Renew is still to come. Before, a history month was filed under Finished the moment it
+    was added, and the board had nothing for the client at all.
+  */
+  const onBoard = useCallback((c: SmmCampaign) => c.status === "active" && (!c.history || isOnHold(c, today)), [today]);
+  const live = useMemo(() => campaigns.filter(onBoard), [campaigns, onBoard]);
   const doneList = useMemo(
-    () => (overseer ? (finished || []) : campaigns.filter((c) => c.status !== "active" || c.history)),
-    [overseer, finished, campaigns],
+    () => (overseer ? (finished || []) : campaigns.filter((c) => !onBoard(c))),
+    [overseer, finished, campaigns, onBoard],
   );
 
   // Every card's status, worked out once — the counts, the filters and the order all read it.
@@ -179,6 +203,7 @@ export default function SocialMedia() {
       case "off": return x.glance.status === "off_track";
       case "risk": return x.glance.status === "at_risk";
       case "ok": return x.glance.status === "on_track" || x.glance.status === "done";
+      case "hold": return x.glance.status === "on_hold";
       case "setup": return needsSetup(x.c, today);
       case "renewals": return renewalDue(x.c, today);
       default: return true;
@@ -229,6 +254,7 @@ export default function SocialMedia() {
     off: "No client is off track. Nothing is late.",
     risk: "No client is behind schedule.",
     ok: "No client is on track right now — see Off track and At risk.",
+    hold: "No month is on hold — every month that ended was renewed or closed.",
     setup: "Every month has a team on it.",
     renewals: "No renewals due in the next five days.",
     done: "No finished months yet.",
@@ -262,9 +288,11 @@ export default function SocialMedia() {
       {user && isSeller && <SmmRenewalsCard user={user} ring={false} />}
 
       {view === "cards" && !loading && (
-        /* The statuses as counts — each one filters the cards below. */
+        /* The statuses as counts — each one filters the cards below. Seven or eight of them (On hold, 2026-10-05,
+           and Needs setup when there is one): from 1024px as many to a row as fit at 7.5rem, so a tile's words
+           never run out of it beside the sidebar. */
         <div data-test="smm-status-filters" role="tablist" aria-label="Show clients"
-          className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-4 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-7">
+          className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-4 sm:overflow-visible sm:px-0 sm:pb-0 lg:[grid-template-columns:repeat(auto-fit,minmax(7.5rem,1fr))]">
           {FILTERS.filter((f) => f.key !== "setup" || (counts.setup ?? 0) > 0 || filter === "setup").map(({ key, label, Icon, icon }) => {
             const on = filter === key;
             const n = counts[key];

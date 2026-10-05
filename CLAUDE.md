@@ -215,28 +215,26 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ## 32. CURRENT PROJECT STATE (as of 2026-10-05)
 
-- Committed and pushed to `main` @ `c56b7cd` (2026-10-05 16:00): everything up to 2026-10-04 (the SMM work,
-  the Drive step, the context split, the client cards and Insights) and, from 2026-10-05, the SMM client
-  calendar (a normal calendar — ‹ month › + Today, three marks, every post on its upload date; also on the Report
-  tab), "Accounts it covers" in setup, and the Veo 3 prompt rebuild with its **dynamic pass** (§31,
-  `ai-ads.md` §17.2 step 6; every clip moves, never a walk-back).
-- 2026-10-05, complete in the working tree, **not yet committed** (check `git status` — parallel sessions work
-  in this tree): the wardrobe stylist (§31, `ai-ads.md` §17.2 step 5); the Kids dressed for the ad
-  (`dressKids`, the stylist's fallback); and an old client's earlier SMM months (the Team Lead adds them; a
-  history month keeps its people, no jobs, and is filled in without the approval step; they join the client's
-  run — §31, `smm.md`); and (session dts-os-ba) a deleted renewal sale un-renews its month, over-10% discounts
-  no longer hold a sale back from the tech side, the salesperson's renewal money card, Social Media → Money for
-  the admins, and the 11 AM / 5 PM post-status popup (§31, `smm.md`, `sales.md`).
+- Committed and pushed to `main` @ `715f332` (2026-10-05 18:07): everything up to 2026-10-04 (the SMM work,
+  the Drive step, the context split, the client cards and Insights) and all of 2026-10-05 before the item below —
+  the SMM client calendar, "Accounts it covers", the Veo 3 rebuild with its dynamic pass, the wardrobe stylist and
+  the Kids' outfits (`ai-ads.md` §17.2), an old client's earlier SMM months, renewals kept true, the renewal money
+  card, Social Media → Money, the 11 AM / 5 PM post-status popup, over-10% sales reaching the tech side (§31).
+- 2026-10-05 (evening), complete in the working tree, **not yet committed** (check `git status` — parallel
+  sessions work in this tree): SMM **On hold** — a month that ended without a renewal stays on the board, a past
+  month too, and Add SMM sale lists every month on the number and links the month a no-sale month clashes with
+  (the owner's AIRAVATH "already has a month" that was nowhere on the board; §31, `smm.md`).
 - `main` = the merge of this machine's `346c7f0` into origin/main `1a090f9` (PR #1: the six AdGen
   fixes and AI Accounts; PR #2: the SMM delete / team lead / extra-work change), resolved to
   origin/main's implementation (§31, 2026-10-02) and pushed.
 - `npm run build` ✅ (main chunk ≈457 KB, vendor-firebase ≈665 KB, geminiService chunk ≈828 KB; AI
   Accounts adds lazy `AiAccounts` ≈14 KB and `MyAiAccounts` ≈9 KB pages).
-- `npx vitest run` ✅ 205 files, 3153 tests, all pass (2026-10-05, after the wardrobe stylist, the Kids'
-  outfits, the SMM earlier months, and the renewal / discount / Money / status-popup work). Under heavy parallel load a few UI tests can time out; they pass when re-run alone.
+- `npx vitest run` ✅ 206 files, 3172 tests, all pass (2026-10-05, after SMM On hold). Under heavy parallel load a
+  few UI tests can time out; they pass when re-run alone.
 - `npx tsc -p tsconfig.check.json --noEmit` → 1 known error (VideoCallManager).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
-- Most recent work: SMM renewals kept true + renewal money (card, Money tab) + the post-status popup, and sales over 10% off reaching the tech side at once (2026-10-05); the SMM earlier months and the Kids dressed for the ad, beside the wardrobe stylist (2026-10-05), after the Veo dynamic pass (every clip a moving commercial shot, never a walk-back, 2026-10-05) after the Veo 3 video-prompt rebuild (short motion-first prompts, the same day) and the SMM client calendar and "Accounts it covers" in setup (2026-10-05); before them one clear card per SMM client (2026-10-04), after the Overview dashboard (now Insights); before them the SMM month that had no sale (not counted; renewed as a sale) and the month
+- Most recent work: SMM On hold (an ended month with no renewal stays on the board, past months too) and Add SMM
+  sale listing every month on the number (2026-10-05, evening); before it SMM renewals kept true + renewal money (card, Money tab) + the post-status popup, and sales over 10% off reaching the tech side at once (2026-10-05); the SMM earlier months and the Kids dressed for the ad, beside the wardrobe stylist (2026-10-05), after the Veo dynamic pass (every clip a moving commercial shot, never a walk-back, 2026-10-05) after the Veo 3 video-prompt rebuild (short motion-first prompts, the same day) and the SMM client calendar and "Accounts it covers" in setup (2026-10-05); before them one clear card per SMM client (2026-10-04), after the Overview dashboard (now Insights); before them the SMM month that had no sale (not counted; renewed as a sale) and the month
   deadline fixes, the renewal countdown popup; before them SMM — every month is a sale, Add SMM sale,
   setup with clips per video, renewal by the salesperson, team-leader delete, the visual board
   (2026-10-03); before it the six AdGen fixes (frame-bounded video, duo heights, background plates, cast

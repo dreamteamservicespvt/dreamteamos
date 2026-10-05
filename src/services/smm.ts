@@ -28,8 +28,8 @@ import {
   isoDay, isPosted, newItemId, normaliseDuration, smmWatchers, targetsFromCommitments,
 } from "@/utils/smmPlan";
 import {
-  cleanPlatforms, closingStatus, cycleRangeLabel, cyclePhase, hasTeam, itemsForAccounts, monthCycle, monthLabel,
-  normaliseClipsPerVideo, renewalStartDate, saleDay, videosLine,
+  cleanPlatforms, closingStatus, cycleRangeLabel, cyclePhase, hasTeam, historyFiling, historyMonthsFollowed, isOnHold,
+  itemsForAccounts, monthCycle, monthLabel, normaliseClipsPerVideo, renewalStartDate, saleDay, videosLine,
 } from "@/utils/smmPackage";
 import { dueItemsFor, dueLabel, dueNotificationKey, renewalsDueFor } from "@/utils/smmReminders";
 import { isGoneMonth, leadIdOfOrderId, renewalLinksToCheck, renewalRelinkPatch, renewalUnlinkPatch } from "@/utils/smmRenewalLink";
@@ -1250,8 +1250,10 @@ export async function setCampaignStatus(campaignId: string, status: SmmCampaign[
  *
  * There is no scheduler on this stack, so it runs when an overseer opens the board, exactly like the
  * order deadline sweep. A month past its end with NO decision is left running on purpose: it shows
- * under Renewals and Needs attention until the salesperson renews it or says the client is not
- * renewing, because a renewal nobody decided is the one that silently lapses. Never throws.
+ * On hold (and under Renewals) until the salesperson renews it or says the client is not renewing,
+ * because a renewal nobody decided is the one that silently lapses. A history month on hold that a later
+ * month of the same client on the board has followed is filed as completed (2026-10-05,
+ * `fileFollowedHistoryMonths`). Never throws.
  */
 export async function closeEndedMonthsOnOpen(campaigns: SmmCampaign[], today: string): Promise<number> {
   let closed = 0;
@@ -1265,7 +1267,99 @@ export async function closeEndedMonthsOnOpen(campaigns: SmmCampaign[], today: st
       console.warn("[smm] could not close", c.id, err);
     }
   }
-  return closed;
+  return closed + await fileFollowedHistoryMonths(campaigns, today);
+}
+
+/**
+ * File the history months on hold that a later month of the same client has followed (2026-10-05) —
+ * `smmPackage.historyMonthsFollowed` over `months` (any clients). The client's run went on, so such a
+ * month is no renewal still to make: `completed`, under Finished, as history months were before. Each is
+ * re-checked inside its transaction. Called by the board's sweep and by the setup paths once they have
+ * read the client's months. Never throws; returns how many it filed.
+ */
+export async function fileFollowedHistoryMonths(months: SmmCampaign[], today: string): Promise<number> {
+  let filed = 0;
+  for (const c of historyMonthsFollowed(months, today)) {
+    try {
+      const after = await mutateCampaign(c.id, (cur) => (cur.history && isOnHold(cur, today) ? { status: "completed" } : null));
+      if (after) filed += 1;
+    } catch (err) {
+      console.warn("[smm] could not file", c.id, err);
+    }
+  }
+  return filed;
+}
+
+/** The one-time record that history months filed before "On hold" existed were looked at (2026-10-05). */
+const HISTORY_HOLD_DOC = () => doc(db, "app_settings", "smm_history_hold");
+/** Asked once per session — the record is read once, then never again in this tab. */
+let historyHoldChecked = false;
+
+/** Tests only: forget that this session already looked, as a new session would. */
+export function __resetHistoryHoldCheckForTests(): void {
+  historyHoldChecked = false;
+}
+
+/**
+ * Put back on the board the history months filed before 2026-10-05 that nothing followed — once, for the
+ * whole company (owner, 2026-10-05: "if the social is not renewal then keep it as hold").
+ *
+ * Until then every month recorded after it ended was saved `completed` (Finished) the moment it was
+ * added, so an old client's last month — a renewal still to make — was nowhere on the board. Those
+ * months are now on hold (`active`; `smmPackage.historyFiling`). Run when an overseer opens the board,
+ * before the sweep: one read of `app_settings/smm_history_hold`; while it is missing, one read of the
+ * `completed` months (only history months are ever filed as completed) and one of each such client's
+ * months, so a month the client's later month followed — after a gap too — stays filed. The record is
+ * written only when every month was handled, so a failure is simply tried again the next time the board
+ * opens. Never throws.
+ */
+export async function holdUnrenewedHistoryOnOpen(by: { uid: string; name: string }): Promise<number> {
+  if (historyHoldChecked) return 0;
+  historyHoldChecked = true;
+  try {
+    if ((await getDoc(HISTORY_HOLD_DOC())).exists()) return 0;
+    const snap = await getDocs(query(collection(db, SMM_CAMPAIGNS), where("status", "==", "completed")));
+    const candidates = snap.docs.map((d) => fromSnap(d as CampaignSnap))
+      .filter((c) => c.history && !!c.cycle && historyFiling(c.renewal, false) === "active");
+    let moved = 0;
+    let failed = 0;
+    // One read per client. A month with no number (very old) has no other months to be followed by.
+    const byClient = new Map<string, SmmCampaign[]>();
+    for (const c of candidates) {
+      const key = c.clientPhoneId || `#${c.id}`;
+      byClient.set(key, [...(byClient.get(key) || []), c]);
+    }
+    for (const [phoneId, held] of byClient) {
+      let months: SmmCampaign[] = held;
+      try {
+        if (!phoneId.startsWith("#")) months = await fetchClientMonths(phoneId);
+      } catch {
+        failed += held.length;
+        continue;
+      }
+      for (const c of held) {
+        const followed = months.some((m) => m.id !== c.id && m.cycle?.startDate > c.cycle.startDate);
+        if (followed) continue;
+        try {
+          const after = await mutateCampaign(c.id, (cur) =>
+            (cur.status === "completed" && cur.history && historyFiling(cur.renewal, false) === "active" ? { status: "active" } : null));
+          if (after) moved += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+    }
+    if (failed === 0) {
+      await setDoc(HISTORY_HOLD_DOC(), { doneAt: serverTimestamp(), checked: candidates.length, moved, byUid: by.uid, byName: by.name });
+    } else {
+      historyHoldChecked = false;
+    }
+    return moved;
+  } catch (err) {
+    console.warn("[smm] history months not put on hold:", err);
+    historyHoldChecked = false;
+    return 0;
+  }
 }
 
 /**

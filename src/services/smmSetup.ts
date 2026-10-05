@@ -29,14 +29,14 @@ import { logTechActivity, type ActivityActor } from "@/services/activityLog";
 import { adminAssignNumber } from "@/services/numberLock";
 import { fetchOrder, orderDocId, restoreOrders, upsertOrderForSale } from "@/services/orders";
 import {
-  buildNoSaleCampaign, buildSoldCampaign, campaignInputFromSale, campaignRef, fetchCampaign, monthPromise,
-  saveMonthSetup, setCampaignTeam, setMonthCommitments, setMonthPlatforms,
+  buildNoSaleCampaign, buildSoldCampaign, campaignInputFromSale, campaignRef, fetchCampaign, fileFollowedHistoryMonths,
+  monthPromise, saveMonthSetup, setCampaignTeam, setMonthCommitments, setMonthPlatforms,
 } from "@/services/smm";
 import { assignSmmMonth, fetchMonthJobs, type SmmAssignResult } from "@/services/smmAssign";
 import { dayToDate, isoDay } from "@/utils/smmPlan";
 import {
-  cleanPlatforms, cycleRangeLabel, cyclesOverlap, hasTeam, isNoSaleMonth, jobsByMember, linksForAccounts, monthCycle,
-  monthLabel, needsSetup, noSaleMonthProblem, normaliseClipsPerVideo, saleDay, smmSalesOnLeads,
+  cleanPlatforms, cycleRangeLabel, cyclesOverlap, hasTeam, historyFiling, isNoSaleMonth, jobsByMember, linksForAccounts,
+  monthCycle, monthLabel, needsSetup, noSaleMonthProblem, normaliseClipsPerVideo, saleDay, smmSalesOnLeads,
 } from "@/utils/smmPackage";
 import { normalizePhone, phoneLockId, phoneVariants } from "@/utils/phone";
 import type { AppUser, Lead, Order, SaleDetail, WorkAssignment } from "@/types";
@@ -282,6 +282,8 @@ export interface MonthSetupResult {
   campaignId: string;
   history: boolean;
   assign: SmmAssignResult | null;
+  /** A history month left on the board on hold — nothing follows it yet (2026-10-05). */
+  onHold?: boolean;
 }
 
 /**
@@ -469,7 +471,8 @@ const cleanLinks = (links: MonthSetupInput["pageLinks"], platforms?: SmmPlatform
  *   • A month that was removed or deleted is replaced by a fresh plan on the dates given; a month
  *     still live keeps its plan and only takes the new setup.
  *   • Dates entirely in the past make it HISTORY: recorded with its package, salesperson and dates,
- *     filed as finished, no jobs for anybody and no deadline to miss. Its order leaves the queue as
+ *     on hold on the board while nothing follows it (2026-10-05) — else filed as finished —, no jobs
+ *     for anybody and no deadline to miss. Its order leaves the queue as
  *     delivered, so the sale cannot quietly rebuild a live one later. The people who did its work are
  *     saved by name (`historyTeam`, 2026-10-05), and set up in front of a later month it joins its run.
  */
@@ -520,6 +523,10 @@ export async function setupSaleMonth(params: {
   let renamed = false;
   /** The client's month this one runs straight into, when it is set up in front of it. */
   let nextMonth: SmmCampaign | null = null;
+  /** The client's other months, once read — on hold or filed, and the earlier ones this one follows. */
+  let clientMonths: SmmCampaign[] = [];
+  /** Where a history month is filed: on hold (`active`) unless the client's run went on after it. */
+  let historyStatus: SmmCampaign["status"] = "completed";
   let monthNumber = existing?.monthNumber || 1;
   if (replace) {
     const input = campaignInputFromSale({
@@ -537,8 +544,10 @@ export async function setupSaleMonth(params: {
       item,
       soldByName,
     });
-    const { previous, next } = await neighbourMonthsOf(order.clientPhoneId, cycle, orderId);
+    const { previous, next, months } = await neighbourMonthsOf(order.clientPhoneId, cycle, orderId);
     nextMonth = next;
+    clientMonths = months;
+    historyStatus = historyFiling(null, !!next || laterMonthIn(months, cycle));
     // The name typed at setup wins over the sale's, and is kept from then on.
     const typedName = setup.businessName?.trim().replace(/\s+/g, " ") || "";
     if (typedName && typedName !== input.businessName) {
@@ -564,9 +573,9 @@ export async function setupSaleMonth(params: {
       ...JSON.parse(JSON.stringify({
         ...campaign,
         // A live month is stamped by `applyMonthSetup` below, which also tells the salesperson; a
-        // history month goes no further, so it is stamped here.
+        // history month goes no further, so it is stamped here — on hold when nothing follows it.
         ...(history
-          ? { history: true, status: "completed", setupAt: Timestamp.now(), setupByName: actor.name, setupByUid: actor.uid }
+          ? { history: true, status: historyStatus, setupAt: Timestamp.now(), setupByName: actor.name, setupByUid: actor.uid }
           : {}),
         ...(renamed ? { businessNameEdited: true } : {}),
       }, (_k, v) => (v === undefined ? null : v))),
@@ -589,11 +598,16 @@ export async function setupSaleMonth(params: {
     if (!replace && setup.commitments) await setMonthCommitments(orderId, setup.commitments);
     if (!replace && setup.platforms) await setMonthPlatforms(orderId, setup.platforms);
     if (!replace) {
+      // A month already there becomes history: on hold, unless it was renewed, the client is not
+      // renewing, or the client has a later month (2026-10-05).
+      const around = await neighbourMonthsOf(order.clientPhoneId, cycle, orderId);
+      clientMonths = around.months;
+      historyStatus = historyFiling(existing?.renewal, laterMonthIn(around.months, cycle));
       await updateDoc(campaignRef(orderId), {
         cycle,
         clipsPerVideo: normaliseClipsPerVideo(setup.clipsPerVideo),
         history: true,
-        status: "completed",
+        status: historyStatus,
         setupAt: Timestamp.now(),
         setupByName: actor.name,
         setupByUid: actor.uid,
@@ -602,6 +616,9 @@ export async function setupSaleMonth(params: {
       if (setup.team && hasTeam(setup.team)) await setCampaignTeam(orderId, historyTeam(setup.team));
     }
     await linkInFront(orderId, monthNumber, nextMonth, actor);
+    await fileHistoryFollowedBy(clientMonths, {
+      ...(existing as SmmCampaign), id: orderId, clientPhoneId: order.clientPhoneId, cycle, history: true, status: historyStatus,
+    });
     if (order.status === "unassigned" || order.status === "assigned") {
       await updateDoc(doc(db, "orders", orderId), {
         status: "verified",
@@ -617,9 +634,15 @@ export async function setupSaleMonth(params: {
         team: jobsByMember(historyTeam(setup.team)).map((m) => ({ uid: m.uid, name: m.name, tracks: m.tracks })),
       },
     });
-    return { campaignId: orderId, history: true, assign: null };
+    return { campaignId: orderId, history: true, assign: null, onHold: historyStatus === "active" };
   }
 
+  // A running month follows the client's earlier months: any history month on hold before it is filed.
+  if (replace) {
+    await fileHistoryFollowedBy(clientMonths, {
+      ...(existing as SmmCampaign), id: orderId, clientPhoneId: order.clientPhoneId, cycle, history: false, status: "active",
+    });
+  }
   return applyMonthSetup(orderId, setup, actor, { existingAssignments: params.existingAssignments });
 }
 
@@ -646,8 +669,8 @@ async function neighbourMonthsOf(
   clientPhoneId: string,
   cycle: SmmCycle,
   ownId: string,
-): Promise<{ previous: SmmCampaign | null; next: SmmCampaign | null }> {
-  if (!clientPhoneId) return { previous: null, next: null };
+): Promise<{ previous: SmmCampaign | null; next: SmmCampaign | null; months: SmmCampaign[] }> {
+  if (!clientPhoneId) return { previous: null, next: null, months: [] };
   try {
     const snap = await getDocs(query(collection(db, "smm_campaigns"), where("clientPhoneId", "==", clientPhoneId)));
     const months = snap.docs
@@ -666,11 +689,27 @@ async function neighbourMonthsOf(
       .filter((c) => !c.renewalOf || c.renewalOf === ownId || !ids.has(c.renewalOf))
       .filter((c) => continues(cycle.endDate, c.cycle.startDate))
       .sort((a, b) => a.cycle.startDate.localeCompare(b.cycle.startDate))[0] || null;
-    return { previous, next };
+    // The client's other months too: whether any comes later (a history month then is not on hold) and
+    // which earlier history months on hold the new one follows (2026-10-05).
+    return { previous, next, months };
   } catch (err) {
     console.warn("[smmSetup] neighbouring months lookup failed:", err);
-    return { previous: null, next: null };
+    return { previous: null, next: null, months: [] };
   }
+}
+
+/** Any of the client's other months starts after these dates — the client's run went on after them. */
+const laterMonthIn = (months: SmmCampaign[], cycle: SmmCycle): boolean =>
+  months.some((m) => m.cycle.startDate > cycle.startDate);
+
+/**
+ * After a month is added or set up, file the client's earlier history months on hold that it follows
+ * (2026-10-05): the run went on, so they are no renewal still to make. `months` is the read the setup
+ * already made (`neighbourMonthsOf`); `added` is the month just written. Best effort, like the links.
+ */
+async function fileHistoryFollowedBy(months: SmmCampaign[], added: SmmCampaign): Promise<void> {
+  await fileFollowedHistoryMonths([...months.filter((m) => m.id !== added.id), added], isoDay(new Date()))
+    .catch(() => 0);
 }
 
 /**
@@ -739,6 +778,15 @@ export function monthTitle(cycle: SmmCycle): string {
  *     quietly take that from them.
  */
 export async function noSaleMonthClash(phone: string, cycle: SmmCycle): Promise<string> {
+  return (await noSaleMonthClashOf(phone, cycle)).message;
+}
+
+/**
+ * The same check, with the month it clashes with (2026-10-05). "Open it from the board instead" sent the
+ * owner looking for a month the board did not show — a history month was filed under Finished the moment
+ * it was added — so the dialog now links straight to it (`SmmMonthClashError.monthId`).
+ */
+export async function noSaleMonthClashOf(phone: string, cycle: SmmCycle): Promise<{ message: string; monthId: string | null }> {
   const phoneId = phoneLockId(phone);
   const [monthsSnap, sales] = await Promise.all([
     getDocs(query(collection(db, "smm_campaigns"), where("clientPhoneId", "==", phoneId))),
@@ -750,7 +798,10 @@ export async function noSaleMonthClash(phone: string, cycle: SmmCycle): Promise<
     // A sold month that was deleted or removed is checked below, through its sale.
     if (c.status === "deleted" || c.status === "removed" || !c.cycle) continue;
     if (cyclesOverlap(c.cycle, cycle)) {
-      return `${c.businessName || c.clientName || "This client"} already has a month on these dates (${cycleRangeLabel(c.cycle)}). Open it from the board instead.`;
+      return {
+        message: `${c.businessName || c.clientName || "This client"} already has a month on these dates (${cycleRangeLabel(c.cycle)}). Open it to fill in its work, or correct its dates with Edit setup.`,
+        monthId: c.id,
+      };
     }
   }
 
@@ -758,13 +809,27 @@ export async function noSaleMonthClash(phone: string, cycle: SmmCycle): Promise<
     if (s.state === "rejected") continue;
     const saleCycle = s.campaign?.cycle || monthCycle(s.soldDay);
     if (cyclesOverlap(saleCycle, cycle)) {
-      return `${s.sellerName} recorded a sale for these dates (${cycleRangeLabel(saleCycle)}), already counted as their sale. Use "Set up this sale" on it instead.`;
+      return {
+        message: `${s.sellerName} recorded a sale for these dates (${cycleRangeLabel(saleCycle)}), already counted as their sale. Use "Set up this sale" on it instead.`,
+        monthId: null,
+      };
     }
     if (saleCycle.startDate < cycle.startDate) {
-      return `${s.businessName || "This client"} has been a recorded sale since ${monthLabel(saleCycle.startDate)} (${s.sellerName}), so a later month is a renewal — ${s.sellerName} records it with Renew, and it counts as their sale.`;
+      return {
+        message: `${s.businessName || "This client"} has been a recorded sale since ${monthLabel(saleCycle.startDate)} (${s.sellerName}), so a later month is a renewal — ${s.sellerName} records it with Renew, and it counts as their sale.`,
+        monthId: null,
+      };
     }
   }
-  return "";
+  return { message: "", monthId: null };
+}
+
+/** A no-sale month refused because the number already has a month on those dates — and which one. */
+export class SmmMonthClashError extends Error {
+  constructor(message: string, readonly monthId: string | null) {
+    super(message);
+    this.name = "SmmMonthClashError";
+  }
 }
 
 export interface NoSaleMonthInput {
@@ -798,8 +863,9 @@ export function noSaleSetupProblem(input: Pick<NoSaleMonthInput, "phone" | "sell
  * what puts it on their Social Media page with its dates. When it ends, their Renew records the next
  * month as a real sale, linked to this one as month 2.
  *
- * A month whose dates are already over is recorded as history (filed as finished; the people who did
- * it are saved by name, with no jobs — `historyTeam`), and joins the client's run on either side; one
+ * A month whose dates are already over is recorded as history (on hold on the board while nothing
+ * follows it — 2026-10-05 —, else filed as finished; the people who did it are saved by name, with no
+ * jobs — `historyTeam`), and joins the client's run on either side; one
  * the client is in the middle of is set up and given out straight away. One that has not started is
  * refused — new business is a sale.
  */
@@ -811,14 +877,16 @@ export async function addNoSaleMonth(params: NoSaleMonthInput): Promise<MonthSet
   if (problem) throw new Error(problem);
 
   const cycle = monthCycle(setup.startDate, setup.endDate);
-  const clash = await noSaleMonthClash(phone, cycle);
-  if (clash) throw new Error(clash);
+  const clash = await noSaleMonthClashOf(phone, cycle);
+  if (clash.message) throw new SmmMonthClashError(clash.message, clash.monthId);
 
   const history = cycle.endDate < today;
   const name = setup.businessName.trim().replace(/\s+/g, " ");
   const phoneId = phoneLockId(phone);
   const ref = doc(collection(db, "smm_campaigns"));
-  const { previous, next } = await neighbourMonthsOf(phoneId, cycle, ref.id);
+  const { previous, next, months } = await neighbourMonthsOf(phoneId, cycle, ref.id);
+  // On hold on the board unless the client's run went on after it (owner, 2026-10-05).
+  const historyStatus = historyFiling(null, !!next || laterMonthIn(months, cycle));
   const campaign = buildNoSaleCampaign(ref.id, {
     clientPhone: phone,
     clientPhoneId: phoneId,
@@ -844,22 +912,26 @@ export async function addNoSaleMonth(params: NoSaleMonthInput): Promise<MonthSet
 
   await setDoc(ref, {
     ...JSON.parse(JSON.stringify(campaign, (_k, v) => (v === undefined ? null : v))),
-    // A running month is stamped by `applyMonthSetup` below; a history month goes no further.
+    // A running month is stamped by `applyMonthSetup` below; a history month goes no further — on hold
+    // when nothing follows it, so it is on the board until the salesperson renews it.
     ...(history
-      ? { history: true, status: "completed", setupAt: Timestamp.now(), setupByName: actor.name, setupByUid: actor.uid }
+      ? { history: true, status: historyStatus, setupAt: Timestamp.now(), setupByName: actor.name, setupByUid: actor.uid }
       : {}),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
 
   if (previous) {
-    // The client's month before it — added the same way, as history — now points forward.
+    // The client's month before it — added the same way, as history — now points forward, and leaves
+    // hold for Finished.
     await updateDoc(campaignRef(previous.id), {
       renewal: { ...(previous.renewal || { state: "none" }), state: "won", nextCampaignId: ref.id, at: Timestamp.now(), byName: actor.name },
       ...(previous.status === "active" && previous.cycle.endDate < today ? { status: "renewed" } : {}),
       updatedAt: serverTimestamp(),
     }).catch(() => undefined);
   }
+  // Any earlier history month on hold that this one follows after a gap is filed too.
+  await fileHistoryFollowedBy(months, { ...(campaign as SmmCampaign), status: history ? historyStatus : "active", history });
 
   if (!history) return applyMonthSetup(ref.id, setup, actor, { existingAssignments: params.existingAssignments });
 
@@ -870,7 +942,10 @@ export async function addNoSaleMonth(params: NoSaleMonthInput): Promise<MonthSet
     userId: seller.uid,
     type: "smm_month_setup",
     title: "An earlier social media month was recorded for you",
-    message: `${name} · ${cycleRangeLabel(cycle)} — run before sales were recorded in the app, so it is not counted in your sales or commission. It is on your Social Media page for the record.`,
+    message: `${name} · ${cycleRangeLabel(cycle)} — run before sales were recorded in the app, so it is not counted in your sales or commission. ${
+      historyStatus === "active"
+        ? "It is on your Social Media page, on hold until you renew it."
+        : "It is on your Social Media page for the record."}`,
     link: `/smm/${ref.id}`,
     dedupeKey: `smm_setup_${ref.id}_${seller.uid}`,
   }).catch(() => undefined);
@@ -883,5 +958,5 @@ export async function addNoSaleMonth(params: NoSaleMonthInput): Promise<MonthSet
       team: jobsByMember(historyTeam(setup.team)).map((m) => ({ uid: m.uid, name: m.name, tracks: m.tracks })),
     },
   });
-  return { campaignId: ref.id, history: true, assign: null };
+  return { campaignId: ref.id, history: true, assign: null, onHold: historyStatus === "active" };
 }

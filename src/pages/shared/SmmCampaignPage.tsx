@@ -37,7 +37,7 @@ import {
 } from "@/utils/smmPlan";
 import {
   NO_SALE_NOTE, SMM_SEATS, canRenewSmm, canSetUpSmm, clipsPerVideoOf, cycleRangeLabel, cyclePhase, hasTeam,
-  isNoSaleMonth, monthLabel, needsSetup, renewalDue, sellerLabelOf, videoLengthLabel,
+  isNoSaleMonth, monthLabel, needsSetup, renewalDue, sellerLabelOf, shortDayLabel, videoLengthLabel,
 } from "@/utils/smmPackage";
 import { monthGlance } from "@/utils/smmGlance";
 import { isGoneMonth } from "@/utils/smmRenewalLink";
@@ -497,7 +497,8 @@ export default function SmmCampaignPage() {
                 ? "Not renewing."
                 : renewDue
                   ? (ended
-                    ? <>The month has ended without a renewal decision.</>
+                    /* On hold (owner, 2026-10-05) — on the board until it is renewed or marked not renewing. */
+                    ? <>On hold — the month ended on {shortDayLabel(campaign.cycle.endDate)} and has not been renewed{canRenew ? "." : ` — ${campaign.soldByName} renews it by recording the sale.`}</>
                     : canRenew
                       ? <>Renewal due — renew it by recording the sale.</>
                       : <>Renewal due — {campaign.soldByName} renews it by recording the sale.</>)

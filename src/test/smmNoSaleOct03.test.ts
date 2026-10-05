@@ -7,7 +7,8 @@
  *     it is in the salesperson's login (watchers); everyone on it gets ONE job, all in ONE client
  *     chat with the salesperson in it, carrying the month's length and deadline; the salesperson is
  *     told it is not counted;
- *   • dates already over make history: no jobs, no room, filed as finished;
+ *   • dates already over make history: no jobs, no room — on hold on the board while nothing follows it
+ *     (2026-10-05; it was filed as finished);
  *   • refused: a month that has not started, no salesperson, dates on a month the client has, dates a
  *     recorded sale covers (even one whose month was deleted), and any month after a recorded sale;
  *   • back-to-back months are not an overlap, and the second is month 2;
@@ -183,11 +184,12 @@ describe("adding a month that had no sale", () => {
     expect(told[0].message).toMatch(/not counted in your sales or commission/);
   });
 
-  it("records a month whose dates are over as history — no jobs, no room, filed as finished", async () => {
+  it("records a month whose dates are over as history — no jobs, no room, on hold until it is renewed", async () => {
     const result = await setup.addNoSaleMonth(month(-70));
-    expect(result).toMatchObject({ history: true, assign: null });
+    expect(result).toMatchObject({ history: true, assign: null, onHold: true });
     const c = read(`smm_campaigns/${result.campaignId}`)!;
-    expect(c).toMatchObject({ origin: "no_sale", amount: 0, history: true, status: "completed", setupByUid: "kiran" });
+    // Nothing follows it, so it stays on the board on hold (owner, 2026-10-05) — it was filed as finished.
+    expect(c).toMatchObject({ origin: "no_sale", amount: 0, history: true, status: "active", setupByUid: "kiran" });
     expect(jobs()).toHaveLength(0);
     expect(mem.__all("order_chats")).toHaveLength(0);
     const told = notified("smm_month_setup");
