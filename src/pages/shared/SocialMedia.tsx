@@ -373,11 +373,12 @@ export default function SocialMedia() {
       </div>
 
       {view === "attendance" ? (
-        loading ? (
+        loading || !user ? (
           <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" size={26} /></div>
         ) : (
-          /* The Social Media team's days, view only (2026-10-08) — utils/smmAttendance, components/smm/SmmAttendanceView. */
-          <SmmAttendanceView campaigns={campaigns} today={today} />
+          /* TODAY's attendance of the Social Media team, for the lead's daily meeting (2026-10-08) — who to call, who
+             is not coming, who is in. utils/smmAttendance, components/smm/SmmAttendanceView. */
+          <SmmAttendanceView campaigns={campaigns} user={user} />
         )
       ) : view === "money" ? (
         loading || !user ? (

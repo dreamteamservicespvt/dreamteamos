@@ -62,7 +62,10 @@ code, generated password after completion) · `member_credentials/{uid}` (**read
 `other_income` · `training_modules` · `chatRooms` (+messages) · `calls` (+candidates) · `meetings`
 (+participants, signals) · `settings/salesConfig` (`activeFestival`) · `app_settings/ad_languages`,
 `app_settings/clients_backfill`, `app_settings/flow_accounts` (credit rates, monthly credits, validity, target),
-`app_settings/smm_history_hold` (2026-10-05: the one-time record that older history months were put back on hold).
+`app_settings/smm_history_hold` (2026-10-05: the one-time record that older history months were put back on hold),
+`app_settings/smm_team` (2026-10-08: the Social Media Team Lead's corrections to her team on the Attendance board —
+`added[]` / `removed[]` uids, `updatedAt`, `updatedByUid`, `updatedByName`; written with arrayUnion / arrayRemove by
+`services/smmTeam`; absent = no corrections).
 
 ### Key relationships
 ```

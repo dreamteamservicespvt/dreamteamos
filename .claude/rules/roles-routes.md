@@ -53,8 +53,9 @@ tech admin). Filters like `u.createdBy === teamAdminUid` recur across pages.
   set up, assign and **delete** months (`utils/smmPlan.isSmmOverseer`, `canDeleteSmmCampaign`), since
   2026-10-05 **add a month that had no sale** (`canAddNoSaleMonth` — but never record a sale,
   `canRecordSmmSaleForSeller`), is notified when a month is sold (`smm_new_month`), and since 2026-10-08 sees
-  **Social Media → Attendance** — the days of the people on the months running now, view only
-  (`utils/smmAttendance.canSeeSmmAttendance`; no new route). Keeps their normal role. Appointed by the tech admin
+  **Social Media → Attendance** — TODAY's attendance of the Social Media team for her daily meeting (who to
+  call, who is not coming, who is in), view only for the days, and may correct who is on the team with **Edit
+  team** (`utils/smmAttendance.canSeeSmmAttendance` / `canEditSmmTeam`; no new route). Keeps their normal role. Appointed by the tech admin
   or main admin in the Team Lead panel at the top of `/smm` (`SmmTeamLeadPanel`, `canAppointSmmLead`)
   or the megaphone toggle in My Team; both go through `services/smm.setSmmTeamLead` (notifies them).
 - **Invoice Builder switch** (2026-10-08) — not a per-user flag: ONE company-wide setting,
@@ -132,7 +133,7 @@ legacy users without the field active.
 | Set up / assign / edit an SMM month (`canSetUpSmm`) | ✅ | ✅ | ✅ | smmLeader | | | |
 | Renew an SMM month — as a sale (`canRenewSmm`) | | | | | | ✅ own month | |
 | Social Media → Money: company renewals in ₹ (`canSeeSmmMoney`, 2026-10-05) | ✅ | ✅ | | | ✅ | own card only | |
-| Social Media → Attendance: the running months' team, view only (`canSeeSmmAttendance`, 2026-10-08) | ✅ | ✅ | smmLeader | smmLeader | | | |
+| Social Media → Attendance: today's board of the Social Media team (days view only) + Edit team (`canSeeSmmAttendance` / `canEditSmmTeam`, 2026-10-08) | ✅ | ✅ | smmLeader | smmLeader | | | |
 | 11 AM / 5 PM "update your posts" popup (`SmmStatusCheckPopup`, 2026-10-05) | | if on a month's team | if on a month's team | if on a month's team | | | |
 | Delete an SMM month | ✅ | ✅ | ✅ (2026-10-03) | smmLeader | | | |
 | Appoint / remove the Social Media Team Lead | ✅ | ✅ | | | | | |

@@ -281,28 +281,45 @@ them above the form ("a new month cannot overlap these dates"). (4) **The refusa
 `smmSetup.noSaleMonthClashOf` → `SmmMonthClashError.monthId`; the step shows the message with **Open that month**
 under the form (cleared when the dates change); the text now says "Open it to fill in its work, or correct its
 dates with Edit setup."
-**Attendance — the Social Media Team Lead's view of their team's days (2026-10-08, owner: "Add attendance view for
-the social media team leader"; asked, the owner chose each part).** A fifth view, **Social Media → Attendance**
-(`SocialMedia` view `attendance`, kept in `dts_smm_view`; `components/smm/SmmAttendanceView`), for the lead
-(`smmLeader`) and the tech / main admin (`utils/smmAttendance.canSeeSmmAttendance`; anybody else asking for it
-gets the cards). **Who:** everybody holding a seat — creator, publisher, marketer, assistant — on a month
-**running today** (`smmTeamPeople`: active, not history, start ≤ today ≤ end — a month on hold, not started, past or
-deleted adds nobody), once each, A–Z, with their seats and clients under the name ("Creator · Publisher — 2
-clients"). Only **tech members who check in** (active, not external creators) are on the grid; anybody else on a
-seat (a tech team leader) is named under it — "Ravi (Tech Team Leader — does not check in)" — instead of reading
-Absent all month. **What:** the **pay-cycle grid** of Team Attendance (10th → 9th, ‹ › to earlier cycles, P / H / A /
-L / holiday from check-ins, manual marks and holidays — `techAttendance.resolveStatus`, the same range readers),
-drawn by the shared `components/attendance/AttendanceGrid` **view only** (no cell, switch or leave button; marks stay
-with the admins in Team Attendance, since a mark changes salary), with a search by person or client. The member /
-salesperson filters are hidden on this view. Reads: the seat holders' user records once by id
-(`hooks/useUsersByIds`, chunks of 30) and the cycle's marks / holidays / check-ins while the view is open. On a phone
-the admins' five view tabs sit three and two.
+**Attendance — TODAY, for the Social Media Team Lead's daily meeting (2026-10-08).** A fifth view, **Social Media →
+Attendance** (`SocialMedia` view `attendance`, kept in `dts_smm_view`; `components/smm/SmmAttendanceView`), for the lead
+(`smmLeader`) and the tech / main admin (`utils/smmAttendance.canSeeSmmAttendance`; anybody else asking for it gets the
+cards). First built that day as the pay-cycle grid of the people on the months running today; the owner, seeing it live:
+"only today — she holds a meeting every day, people don't join, she calls them and they say they are absent; she needs
+to know who is absent before the meeting; some members are not showing." Asked, the owner chose each part:
+**the board** — the day ("Thursday, 8 October 2026", "updates by itself as people check in"), four big numbers
+(Present · Not checked in · On leave · Absent), then the people in groups, **the call list first**: *Not checked in yet
+— call them* (with **Call** `tel:` and **WhatsApp** `wa.me` from the profile's `phone`, `utils/phone`), *Not coming
+today — no need to call* (approved leave, a leave request nobody decided yet, marked absent), *Present* ("In at 9:42
+AM · left 6:05 PM", half day), *No check-in record* (team leaders — they never check in; Call / WhatsApp too), *Day
+off*. Each status is an icon + colour + words; "Everyone who checks in has checked in or is on leave — nobody to chase"
+when the call list is empty; an amber banner on a Sunday or an announced holiday. **A day** (`todayStatusOf`): an
+admin's mark (`attendance/{uid}_{day}` — an approved leave is written as one), else today's check-in
+(`techAttendance.watchCheckinsOnDay`, with its times), else Sunday / a holiday, else a pending leave request covering
+today, else a team leader's "no check-in record", else **"Not checked in"** — the grid left today blank until the day
+was over (`resolveStatus`), so the lead could not tell "not here" from "fine". **Who** (`smmTeamFromMonths` +
+`applyTeamEdits`): everybody on a month **on the board** (status `active` — running, on hold, not started, waiting for
+setup), from its seats AND each post's own `makerUid` / `publisherUid` — the running-months-only, seats-only list
+dropped the people of the five months on hold and of posts given to somebody without a seat — then the lead's
+corrections: **Edit team** (`SmmTeamEditor`, the lead and the tech / main admin, `canEditSmmTeam`) adds an active tech
+member / team leader (`fetchAssignableMembers`) or takes a person off ("Taken off the list" → Put back), saved at once
+for everybody in **`app_settings/smm_team`** (`services/smmTeam`: `added` / `removed` uid lists, arrayUnion /
+arrayRemove; a month's person put back only leaves `removed`, a hand-added one taken off only leaves `added`). Left
+employees and outside creators are never listed. View only for the days: marks stay with the admins in Team
+Attendance (a mark changes the salary). Live: today's check-ins, marks, holiday, pending leave and the corrections are
+listeners; the board turns to the new day at midnight. Reads: the team's user records once by id
+(`hooks/useUsersByIds`), today's check-ins (one equality on `date`), today's marks and holiday, the pending leave
+requests, one settings document. The member / salesperson filters are hidden on this view; on a phone the admins'
+five view tabs sit three and two. Team Attendance keeps the pay-cycle grid, now drawn by the shared
+`components/attendance/AttendanceGrid`.
 
 ## 24. BUSINESS RULES (IMPLEMENTED; verified in code)
 
 - **SMM attendance (owner, 2026-10-08):** the Social Media Team Lead (and the tech / main admin) sees, in Social
-  Media, the attendance of the people working on the months running now — the same pay-cycle days as Team
-  Attendance — and cannot change it; marking days, leave and holidays stay with the admins.
+  Media, TODAY's attendance of the Social Media team before her daily meeting — who has not checked in (with Call and
+  WhatsApp), who is not coming (leave, a leave request, absent), who is present and since when — and cannot change a
+  day; marking days, leave and holidays stay with the admins. The team is everybody working on a Social Media month on
+  the board (its seats and its posts), which the lead may correct by adding or taking off people.
 
 - **SMM On hold (owner, 2026-10-05):** a month whose last day has passed with no renewal decision is **On hold** and
   stays on the board until its salesperson renews it (then it is filed as renewed) or marks the client as not
@@ -372,12 +389,14 @@ the admins' five view tabs sit three and two.
 ## 25. CURRENT IMPLEMENTATION STATUS
 
 **PARTIALLY IMPLEMENTED 🟡:**
-- SMM attendance (2026-10-08): the people are those on the months running TODAY, whichever cycle is on screen —
-  an earlier cycle shows today's team, not who was on a month then. Team leaders on a seat are named, not gridded
-  (they never check in). The cycle's check-ins are read company-wide and filtered in the browser, as Team
-  Attendance does (a `memberId in` + date-range query would need a composite index the repo does not have).
-  Checked by unit tests, the real view on the in-memory Firestore and a real-browser harness (the lead, the tech
-  admin and a team leader without the flag; 1440 / 390 / 360 px) — not against live Firebase.
+- SMM attendance (2026-10-08, the TODAY board): today only — earlier days stay in Team Attendance. "Not checked in"
+  is the same at 10 AM and at 10 PM (no office start time exists in the app, so nobody is called "late"). Team leaders
+  never check in, so their day is "no check-in record". A check-in is read from `daily_checkins` only (the team holds
+  tech roles). Call / WhatsApp use the profile's `phone`; a member without one gets "No phone number on their
+  profile". The team list follows the months automatically; the lead's corrections are one company-wide list
+  (`app_settings/smm_team`), not per lead. Checked by unit tests, the real board on the in-memory Firestore and a
+  real-browser harness (the lead, the tech admin and a team leader without the flag; 1440 / 390 / 360 px, dark and
+  light; a live check-in; Edit team; a holiday) — not against live Firebase or a real phone's dialler / WhatsApp.
 - SMM On hold (2026-10-05): "a later month follows it" is decided where the client's months are in hand — at
   setup, and by the overseer's board sweep for later months that are live — so a history month whose only later
   month is already filed (renewed / not renewed) stays on hold until somebody decides it. A month that ran in the

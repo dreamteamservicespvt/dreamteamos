@@ -9,7 +9,45 @@
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
 
-- **2026-10-08 (latest): Social Media → Attendance — the Social Media Team Lead's view of their team's days**
+- **2026-10-08 (latest, night): Social Media → Attendance becomes a TODAY board for the lead's daily meeting**
+  (`smm.md` §9.9 / §24 / §25, `people.md` §9.13, `roles-routes.md` §8, `data-model.md` `app_settings/smm_team`,
+  `docs/firestore-rules.md` note — no rule change).
+  - **The owner, with the pay-cycle grid live:** "don't show all months — only today; some members are not showing,
+    check that error; she holds a meeting every day, people don't join, she calls them and they say they are absent —
+    she needs to know who is absent before the meeting; plain enough for anyone." Asked (AskUserQuestion, with
+    mockups), the owner chose: grouped with the call list first; the team automatic + editable by the lead; Call +
+    WhatsApp buttons.
+  - **Why people were missing / blank (each confirmed in code):** today without a check-in was a blank cell
+    (`techAttendance.resolveStatus` marks Absent only after the day — Bhanu's empty 08 Oct); only RUNNING months were
+    read (five months on hold on the board that day, plus upcoming and set-up ones, dropped their people); only the
+    month's seats were read, never a post's own `makerUid` / `publisherUid`; team leaders were only named in small
+    print under the grid.
+  - **Done:** `components/smm/SmmAttendanceView.tsx` rewritten — the day, "updates by itself", four big numbers
+    (Present · Not checked in · On leave · Absent), then *Not checked in yet — call them* (Call `tel:` + WhatsApp
+    `wa.me`, `utils/phone`), *Not coming today — no need to call* (leave, a pending leave request, absent), *Present*
+    ("In at 9:42 AM · left 6:05 PM", half day), *No check-in record* (team leaders, Call / WhatsApp too), *Day off*;
+    a Sunday / holiday banner; "nobody to chase" when the call list is empty; midnight rollover. Rules in
+    `utils/smmAttendance` (`smmTeamFromMonths` — every `active` month, seats and posts; `applyTeamEdits`;
+    `todayStatusOf` — mark → check-in → day off → pending leave → team leader → not checked in; `todayCounts`;
+    `leaveAskedOn`; `canEditSmmTeam`). New: `services/smmTeam` (`app_settings/smm_team` added / removed,
+    arrayUnion / arrayRemove), `components/smm/SmmTeamEditor` (Edit team: add from `fetchAssignableMembers`, Take off,
+    Put back), `techAttendance.watchCheckinsOnDay` (today's check-ins with their times). The pay-cycle grid stays in
+    Team Attendance (`AttendanceGrid`); `SocialMedia.tsx` passes the user.
+  - **Tested:** `smmAttendanceOct08` rewritten (13: who is on the team — on hold, upcoming, a post's maker, off-board
+    months, left employees; the corrections; the day's order of authority; counts; the real board on
+    `memoryFirestore` — groups, Call / WhatsApp links, a check-in moving a person to Present live, Edit team writing
+    `app_settings/smm_team` and the board following, Sunday, empty); typecheck (1 known error), lint clean, full
+    vitest (219 files, 3364 tests), build. Real browser (throwaway harness, the real `SocialMedia` page on
+    `memoryFirestore`, 1440 / 390 / 360 px, dark and light, no console errors): the counts, the four groups in order
+    with the right words ("In at 9:05 AM · left 10:40 AM", "Asked for leave — not approved yet"), `tel:` / `wa.me`
+    links, the on-hold / upcoming / post people listed and the taken-off one not; a check-in seeded with the board
+    open moved the person to Present in 3 ms; Edit team add / take off / put back writing the right arrays at 390 and
+    1440 px, the dialog scrolling inside at 360 × 640; the tech admin with Edit team, a team leader without the flag
+    on Cards (stored view and `?view=`); a holiday banner. **Fixed from that check:** a team leader's status was cut
+    5px at 360 px (pills now wrap); white on the orange Call / emerald WhatsApp buttons was 2.8 / 3.8:1 (now sky-700 /
+    emerald-700); two light-theme labels under 4.5:1; the "saved" toast covered the dialog's title and 16px close
+    button on a phone (no success toast now; a full-width Done button).
+- **2026-10-08 (evening, replaced the same night — see above): Social Media → Attendance — the pay-cycle grid**
   (`smm.md` §9.9 / §24 / §25, `people.md` §9.13, `roles-routes.md` §8 table + the `smmLeader` flag).
   - **The owner's request:** "Add attendance view for the social media team leader." Asked (AskUserQuestion), the owner
     chose: the people in the seats of the Social Media months RUNNING NOW; VIEW ONLY; the PAY-CYCLE GRID Team

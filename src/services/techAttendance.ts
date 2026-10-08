@@ -293,6 +293,47 @@ export function watchHolidayRecordsInRange(
   );
 }
 
+/** One person's check-in on one day: when they came in and, once they have checked out, when they left. */
+export interface DayCheckin {
+  inAt: Date | null;
+  outAt: Date | null;
+}
+
+const tsDate = (t: unknown): Date | null => {
+  if (t instanceof Date) return t;
+  const d = (t as { toDate?: () => Date } | null)?.toDate?.();
+  return d instanceof Date ? d : null;
+};
+
+/**
+ * Live: every tech check-in on one day, by member, with its times.
+ *
+ * The Social Media Team Lead's TODAY board (2026-10-08) says "In at 9:42 AM", not only P — so it needs the
+ * records, not the keys `watchCheckedInDaysInRange` gives. One equality on `date`: the day's few documents.
+ * A check-in just made reads `checkedInAt` null until the server stamps it — "Checked in", no time, for a second.
+ */
+export function watchCheckinsOnDay(date: string, cb: (byMember: Map<string, DayCheckin>) => void): () => void {
+  return onSnapshot(
+    query(collection(db, "daily_checkins"), where("date", "==", date)),
+    (snap) => {
+      const map = new Map<string, DayCheckin>();
+      snap.docs.forEach((d) => {
+        const c = d.data() as { memberId?: string; checkedInAt?: unknown; checkedOutAt?: unknown };
+        if (!c.memberId) return;
+        const next = { inAt: tsDate(c.checkedInAt), outAt: tsDate(c.checkedOutAt) };
+        const prev = map.get(c.memberId);
+        // Two records for one day should not happen; if it does, the earliest arrival and the latest departure.
+        map.set(c.memberId, prev ? {
+          inAt: prev.inAt && next.inAt ? (prev.inAt < next.inAt ? prev.inAt : next.inAt) : prev.inAt || next.inAt,
+          outAt: prev.outAt && next.outAt ? (prev.outAt > next.outAt ? prev.outAt : next.outAt) : prev.outAt || next.outAt,
+        } : next);
+      });
+      cb(map);
+    },
+    () => cb(new Map()),
+  );
+}
+
 /** Live member/day check-in keys between two dates (inclusive). Returns unsubscribe. */
 export function watchCheckedInDaysInRange(
   startDate: string,

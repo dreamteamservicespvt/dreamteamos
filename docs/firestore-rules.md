@@ -184,6 +184,12 @@ service cloud.firestore {
     // `notifications` it rang (`order_new_*`, `smm_new_*`); editing a sale the tech team has started also writes
     // its `work_assignments` job and sends `sale_edited` notifications. A rule limiting any of these to their
     // owner would make sales fail to save, edit or delete — those paths would need a server function first.
+    //
+    // 2026-10-08 (later) — no rule change. Social Media → Attendance (the Social Media Team Lead's TODAY board)
+    // reads today's `daily_checkins`, `attendance`, `holidays` and pending `leave_requests` company-wide, and the
+    // lead's "Edit team" writes `app_settings/smm_team` ({added[], removed[]}, arrayUnion / arrayRemove) — the
+    // lead is a tech member, so both go through the staff catch-all below. A rule limiting attendance reads to the
+    // member themself, or `app_settings` writes to admins, would empty the board / stop Edit team.
 
     // ── AI Accounts: Flow accounts, their passwords, the credit ledger, paid logins ─────────────
     // (types/aiAccounts.) Passwords live in their own collections so a list never carries them, and

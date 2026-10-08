@@ -223,14 +223,15 @@ errors:** done means every listed item is fully resolved with no build, console 
   own, the quality gate never prefers a draft that lost a speaker and a run that cannot keep the cast stops, every
   step after the run uses the kit's own `spec`; `ai-ads.md`), the same class fixed in **Cinematic Ads** (the AI's
   format read by id or label, its cast details recorded, projects saved whole), and **Social Media → Attendance**
-  (the Social Media Team Lead's view-only pay-cycle grid of the people on the running months; `smm.md`, `people.md`).
+  — rebuilt that night as the lead's TODAY board for her daily meeting: who to call (Call / WhatsApp), who is not
+  coming, who is in; the team from every month on the board, editable (`app_settings/smm_team`; `smm.md`, `people.md`).
 - Before it on `main` (`abeab79`, 2026-10-08 17:10, the owner's commits): everything through 2026-10-05 (§31),
   **Sales → Tech on one permanent `saleId`** (`sales.md`, `orders-work.md`), **Real Owner Face** and **దసరా**
   (`ai-ads.md`), and the **Invoice Builder** with Invoices → Settings (`invoices.md` §9.22).
 - `npm run build` ✅ (main chunk ≈461 KB, vendor-firebase ≈665 KB, geminiService chunk ≈843 KB; lazy pages for
   AI Accounts, Invoices).
-- `npx vitest run` ✅ 219 files, 3357 tests, all pass, no unhandled errors (2026-10-08, after the cast-consistency
-  fix and Social Media → Attendance). Under heavy parallel load a few UI tests can time out; they pass re-run alone.
+- `npx vitest run` ✅ 219 files, 3364 tests, all pass, no unhandled errors (2026-10-08, after the cast-consistency
+  fix and the Social Media → Attendance TODAY board). Under heavy parallel load a few UI tests can time out; they pass re-run alone.
 - `npx tsc -p tsconfig.check.json --noEmit` → 1 known error (VideoCallManager).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
 - Most recent work (newest first; detail in §31): the ad's cast kept from the configuration to the video prompts

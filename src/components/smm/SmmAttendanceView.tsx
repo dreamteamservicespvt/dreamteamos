@@ -1,195 +1,324 @@
 /**
- * Social Media → Attendance — the Social Media Team Lead's view of their team's days (2026-10-08).
+ * Social Media → Attendance — the TODAY board the Social Media Team Lead reads before her daily meeting.
  *
- * The owner asked for an attendance view for the Social Media team leader and chose, when asked: the people
- * holding a seat on a Social Media month RUNNING NOW (utils/smmAttendance — the lead is a flag on a tech
- * member, so the months' seats are the only "Social Media team" there is); VIEW ONLY; the PAY-CYCLE GRID
- * the admins read on Team Attendance (10th → 9th); and here, a view beside Cards / Insights / Calendar /
- * Money. So this is that grid (components/attendance/AttendanceGrid), read-only, for those people — the
- * days are worked out exactly as everywhere else (techAttendance.resolveStatus: a manual mark, else a
- * Sunday or holiday, else checked in = present, a past day without = absent), and marking stays with the
- * admins on Team Attendance, because a mark changes the salary.
+ * The owner (2026-10-08, after the pay-cycle grid went live): "only today — she holds a meeting every day, people
+ * don't join, she calls them and they say they are absent; she needs to know who is absent BEFORE the meeting."
+ * Asked, the owner chose a board grouped with the call list first, the team filled in by itself and editable by
+ * the lead, and Call / WhatsApp beside everybody she may have to chase. So, top to bottom: the day; four big
+ * numbers (present, not checked in, on leave, absent); then the people — NOT CHECKED IN YET (call them), NOT
+ * COMING TODAY (leave, a leave request, marked absent — no need to call), PRESENT ("In at 9:42 AM"), and the team
+ * leaders, who never check in. Words, an icon and a colour on every status, so nobody has to know a code.
  *
- * Reads: the seat holders' user records once by id (useUsersByIds), and the cycle's marks, holidays and
- * check-ins while the view is open — the same range readers Team Attendance uses.
+ * Who: utils/smmAttendance — everybody on a month on the board (seats and posts), minus/plus the lead's corrections
+ * (`app_settings/smm_team`, services/smmTeam). What their day says: `todayStatusOf` — an admin's mark (an approved
+ * leave is one), else the check-in, else Sunday / a holiday, else a pending leave request, else "not checked in".
+ * View only: marks stay with the admins in Team Attendance (a mark changes the salary).
+ *
+ * Live: today's check-ins, marks, holidays, pending leave and the corrections are listeners, so a person who checks
+ * in moves to Present while she watches; at midnight the board turns to the new day. Reads: the team's user
+ * records once by id; today's check-ins (one equality on `date`); today's marks and holiday; pending leave
+ * requests (the few awaiting a decision); one settings document.
  */
 import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
-import { CalendarCheck, ChevronLeft, ChevronRight, Loader2, PartyPopper, Search, Users, X } from "lucide-react";
-import { cn } from "@/lib/utils";
-import AttendanceGrid from "@/components/attendance/AttendanceGrid";
 import {
-  ATTENDANCE_META, attendanceKey, daysBetween, resolveStatus, todayDate,
-  watchCheckedInDaysInRange, watchHolidayRecordsInRange, watchOverridesInRange,
-  type AttendanceStatus, type Holiday,
+  CalendarCheck, CheckCircle2, Clock, HelpCircle, Loader2, MessageCircle, PartyPopper, Phone, Plane,
+  UserCog, Users, XCircle, type LucideIcon,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import {
+  attendanceKey, isSunday, todayDate, watchCheckinsOnDay, watchHolidayRecordsInRange, watchOverridesInRange,
+  type AttendanceStatus, type DayCheckin, type Holiday,
 } from "@/services/techAttendance";
-import { currentPayMonth, payPeriodForMonth } from "@/utils/payrollEngine";
+import { watchPendingLeaveRequests } from "@/services/leave";
+import { watchSmmTeamEdits } from "@/services/smmTeam";
 import { useUsersByIds } from "@/hooks/useUsersByIds";
-import { seatLine, smmTeamPeople, type SmmTeamPerson } from "@/utils/smmAttendance";
+import {
+  NO_TEAM_EDITS, TODAY_GROUP_OF, TODAY_GROUP_ORDER, applyTeamEdits, callable, canEditSmmTeam, leaveAskedOn,
+  seatLine, smmTeamFromMonths, todayCounts, todayStatusOf,
+  type SmmTeamEdits, type SmmTeamPerson, type TodayGroup, type TodayKind, type TodayStatus,
+} from "@/utils/smmAttendance";
+import { getCallUrl, getWhatsAppUrl } from "@/utils/phone";
 import { getRoleLabel } from "@/utils/roleHelpers";
+import SmmTeamEditor from "@/components/smm/SmmTeamEditor";
 import type { SmmCampaign } from "@/types/smm";
 import type { AppUser } from "@/types";
 
-const STATUS_ORDER: AttendanceStatus[] = ["full", "half", "absent", "leave", "holiday"];
+/** Today's date, turning over at midnight (and checked again whenever the tab comes back) — the board is left open. */
+function useToday(): string {
+  const [day, setDay] = useState(todayDate);
+  useEffect(() => {
+    const check = () => setDay((d) => (d === todayDate() ? d : todayDate()));
+    const now = new Date();
+    const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
+    const timer = setTimeout(check, nextMidnight.getTime() - now.getTime());
+    const onVisible = () => { if (document.visibilityState === "visible") check(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [day]);
+  return day;
+}
 
-const shiftMonth = (month: string, delta: number): string => {
-  const [y, m] = month.split("-").map(Number);
-  return format(new Date(y, m - 1 + delta, 1), "yyyy-MM");
+/** Colour, icon and words for each kind of day — the same three on the numbers, the headings and the cards. */
+const KIND: Record<TodayKind, { icon: LucideIcon; tone: string; ring: string }> = {
+  present: { icon: CheckCircle2, tone: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300", ring: "ring-emerald-500/60" },
+  half: { icon: CheckCircle2, tone: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300", ring: "ring-amber-500/60" },
+  not_in: { icon: Clock, tone: "border-orange-500/40 bg-orange-500/10 text-orange-800 dark:text-orange-300", ring: "ring-orange-500/70" },
+  leave: { icon: Plane, tone: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300", ring: "ring-sky-500/60" },
+  leave_asked: { icon: Plane, tone: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300", ring: "ring-sky-500/60" },
+  absent: { icon: XCircle, tone: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300", ring: "ring-rose-500/60" },
+  holiday: { icon: PartyPopper, tone: "border-border bg-muted/50 text-slate-700 dark:text-slate-300", ring: "ring-border" },
+  no_checkin: { icon: HelpCircle, tone: "border-border bg-muted/50 text-slate-700 dark:text-slate-300", ring: "ring-border" },
 };
 
-/** A person on the grid: their seats and clients, and their user record. */
-type Row = SmmTeamPerson & { user: AppUser };
+const time = (d: Date) => format(d, "h:mm a");
 
-export default function SmmAttendanceView({ campaigns, today }: { campaigns: SmmCampaign[]; today: string }) {
-  const people = useMemo(() => smmTeamPeople(campaigns, today), [campaigns, today]);
-  const uids = useMemo(() => people.map((p) => p.uid), [people]);
-  const { users, loading } = useUsersByIds(uids);
+/** The status in words: "In at 9:42 AM · left 6:05 PM", "Not checked in", "On leave"… */
+function statusWords(s: TodayStatus, role?: string): string {
+  switch (s.kind) {
+    case "present":
+      if (!s.inAt) return s.marked ? "Present (marked by admin)" : "Checked in";
+      return `In at ${time(s.inAt)}${s.outAt ? ` · left ${time(s.outAt)}` : ""}`;
+    case "half": return `Half day${s.inAt ? ` · in at ${time(s.inAt)}` : ""}`;
+    case "not_in": return "Not checked in";
+    case "leave": return "On leave";
+    case "leave_asked": return "Asked for leave — not approved yet";
+    case "absent": return "Absent";
+    case "holiday": return "Day off";
+    case "no_checkin": return `${role ? getRoleLabel(role as AppUser["role"]) : "This role"} — doesn't check in`;
+  }
+}
 
-  /** A PAY month — the 10th → 9th cycle the salary and the leave quota are settled over (as Team Attendance). */
-  const [month, setMonth] = useState<string>(currentPayMonth());
-  const period = useMemo(() => payPeriodForMonth(month), [month]);
-  const [overrides, setOverrides] = useState<Map<string, AttendanceStatus>>(new Map());
+const GROUP_TEXT: Record<TodayGroup, { title: string; hint: string; kind: TodayKind }> = {
+  call: { title: "Not checked in yet — call them", hint: "No check-in today. Tap Call or WhatsApp to ask if they are coming.", kind: "not_in" },
+  away: { title: "Not coming today — no need to call", hint: "On leave, asked for leave, or marked absent.", kind: "absent" },
+  present: { title: "Present", hint: "Checked in today.", kind: "present" },
+  unknown: { title: "No check-in record", hint: "Team leaders don't check in, so the app cannot tell if they are here.", kind: "no_checkin" },
+  off: { title: "Day off", hint: "Today is a holiday.", kind: "holiday" },
+};
+
+interface Row extends SmmTeamPerson {
+  user: AppUser;
+  status: TodayStatus;
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return ((parts[0]?.[0] || "") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase() || "?";
+}
+
+function PersonCard({ row }: { row: Row }) {
+  const meta = KIND[row.status.kind];
+  const Icon = meta.icon;
+  const phone = (row.user.phone || "").trim();
+  const showContact = callable(row.status.kind);
+  const line = seatLine(row);
+  return (
+    <div data-test="smm-today-person" data-kind={row.status.kind}
+      className="min-w-0 rounded-xl border border-border bg-card p-3 shadow-sm">
+      <div className="flex min-w-0 items-center gap-3">
+        {row.user.avatar ? (
+          <img src={row.user.avatar} alt="" className={cn("h-11 w-11 shrink-0 rounded-full object-cover ring-2", meta.ring)} />
+        ) : (
+          <span aria-hidden className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-bold text-foreground ring-2", meta.ring)}>
+            {initials(row.name)}
+          </span>
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[15px] font-semibold text-foreground">{row.name}</p>
+          {line && <p className="truncate text-xs text-muted-foreground" title={row.clients.join(", ")}>{line}</p>}
+          {/* Wraps rather than cuts: "Tech Team Leader — doesn't check in" ran 5px past a 360px phone's card. */}
+          <span data-test="smm-today-status" className={cn("mt-1 inline-flex max-w-full items-start gap-1 rounded-2xl border px-2 py-0.5 text-xs font-semibold leading-snug", meta.tone)}>
+            <Icon className="mt-px h-3.5 w-3.5 shrink-0" /><span className="min-w-0">{statusWords(row.status, row.user.role)}</span>
+          </span>
+        </div>
+      </div>
+      {showContact && (
+        phone ? (
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {/* Dark enough for white text (≥ 5.5:1): white on the brand orange measured 2.8:1, on emerald-600 3.8:1. */}
+            <a href={getCallUrl(phone)} data-test="smm-today-call" aria-label={`Call ${row.name}`}
+              className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-sky-700 text-sm font-semibold text-white transition-colors hover:bg-sky-800">
+              <Phone className="h-4 w-4" /> Call
+            </a>
+            <a href={getWhatsAppUrl(phone)} target="_blank" rel="noopener noreferrer" data-test="smm-today-whatsapp" aria-label={`WhatsApp ${row.name}`}
+              className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-emerald-700 text-sm font-semibold text-white transition-colors hover:bg-emerald-800">
+              <MessageCircle className="h-4 w-4" /> WhatsApp
+            </a>
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-muted-foreground">No phone number on their profile.</p>
+        )
+      )}
+    </div>
+  );
+}
+
+function CountTile({ kind, label, n, testId }: { kind: TodayKind; label: string; n: number; testId: string }) {
+  const meta = KIND[kind];
+  const Icon = meta.icon;
+  return (
+    <div data-test={testId} className={cn("flex min-w-0 items-center gap-3 rounded-xl border p-3 sm:p-4", n > 0 ? meta.tone : "border-border bg-card text-muted-foreground")}>
+      <Icon className="h-6 w-6 shrink-0 sm:h-7 sm:w-7" />
+      <div className="min-w-0">
+        <p className="text-2xl font-bold leading-none sm:text-3xl">{n}</p>
+        <p className="mt-1 truncate text-xs font-semibold sm:text-sm">{label}</p>
+      </div>
+    </div>
+  );
+}
+
+export default function SmmAttendanceView({ campaigns, user }: {
+  campaigns: SmmCampaign[];
+  user: Pick<AppUser, "uid" | "name" | "role" | "smmLeader">;
+}) {
+  const today = useToday();
+  const [edits, setEdits] = useState<SmmTeamEdits>(NO_TEAM_EDITS);
+  const [checkins, setCheckins] = useState<Map<string, DayCheckin>>(new Map());
+  const [marks, setMarks] = useState<Map<string, AttendanceStatus>>(new Map());
   const [holidays, setHolidays] = useState<Map<string, Holiday>>(new Map());
-  const [checkedIn, setCheckedIn] = useState<Set<string>>(new Set());
-  const [search, setSearch] = useState("");
+  const [leaveAsked, setLeaveAsked] = useState<Set<string>>(new Set());
+  const [editing, setEditing] = useState(false);
 
+  useEffect(() => watchSmmTeamEdits(setEdits), []);
   useEffect(() => {
     const unsubs = [
-      watchOverridesInRange(period.start, period.end, setOverrides),
-      watchHolidayRecordsInRange(period.start, period.end, setHolidays),
-      watchCheckedInDaysInRange(period.start, period.end, setCheckedIn),
+      watchCheckinsOnDay(today, setCheckins),
+      watchOverridesInRange(today, today, setMarks),
+      watchHolidayRecordsInRange(today, today, setHolidays),
+      watchPendingLeaveRequests((requests) => setLeaveAsked(leaveAskedOn(requests, today))),
     ];
     return () => unsubs.forEach((u) => u());
-  }, [period.start, period.end]);
+  }, [today]);
 
-  /*
-    Who is on the grid: the tech members, still active, who check in every working day. Anybody else on a
-    month's seat — a tech team leader, an external creator — never checks in, so a grid of their days would
-    read Absent all month; they are named under the grid instead of being shown wrong.
-  */
-  const { rows, notListed } = useMemo(() => {
-    const onGrid: Row[] = [];
-    const off: { name: string; why: string }[] = [];
-    for (const p of people) {
+  const fromMonths = useMemo(() => smmTeamFromMonths(campaigns), [campaigns]);
+  // The user records of everybody who could be on the board — the months' people and the hand-added ones.
+  const uids = useMemo(() => [...new Set([...fromMonths.map((p) => p.uid), ...edits.added])], [fromMonths, edits.added]);
+  const { users, loading } = useUsersByIds(uids);
+  const team = useMemo(
+    () => applyTeamEdits(fromMonths, edits, (uid) => users.get(uid)?.name || ""),
+    [fromMonths, edits, users],
+  );
+
+  const holiday = holidays.get(today);
+  const dayOff = isSunday(today) || !!holiday;
+
+  const rows: Row[] = useMemo(() => {
+    const out: Row[] = [];
+    for (const p of team) {
       const u = users.get(p.uid);
-      if (!u) {
-        if (!loading) off.push({ name: p.name, why: "no account found" });
-        continue;
-      }
-      if (u.isActive === false) off.push({ name: u.name || p.name, why: "no longer active" });
-      else if (u.role !== "tech_member" || u.externalCreator) off.push({ name: u.name || p.name, why: `${u.externalCreator ? "External creator" : getRoleLabel(u.role)} — does not check in` });
-      else onGrid.push({ ...p, name: u.name || p.name, user: u });
+      // No account, a left employee or an outside creator is nobody she meets.
+      if (!u || u.isActive === false || u.externalCreator) continue;
+      const status = todayStatusOf({
+        checksIn: u.role === "tech_member",
+        mark: marks.get(attendanceKey(p.uid, today)),
+        checkin: checkins.get(p.uid),
+        dayOff,
+        leaveAsked: leaveAsked.has(p.uid),
+      });
+      out.push({ ...p, name: u.name || p.name, user: u, status });
     }
-    return { rows: onGrid, notListed: off };
-  }, [people, users, loading]);
+    return out.sort((a, b) => a.name.localeCompare(b.name));
+  }, [team, users, marks, checkins, leaveAsked, today, dayOff]);
 
-  const shown = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r) => r.name.toLowerCase().includes(q) || r.clients.some((c) => c.toLowerCase().includes(q)));
-  }, [rows, search]);
-
-  const todayStr = todayDate();
-  const days = useMemo(() => daysBetween(period.start, period.end), [period.start, period.end]);
-  const cycleHolidays = useMemo(() => [...holidays.values()].sort((a, b) => a.date.localeCompare(b.date)), [holidays]);
-  const statusFor = (row: Row, date: string): AttendanceStatus | null =>
-    resolveStatus({
-      override: overrides.get(attendanceKey(row.uid, date)),
-      checkedIn: checkedIn.has(attendanceKey(row.uid, date)),
-      dateStr: date,
-      hasFestivalHoliday: holidays.has(date),
-      todayStr,
-    });
+  const counts = todayCounts(rows.map((r) => r.status.kind));
+  const byGroup = (g: TodayGroup) => rows.filter((r) => TODAY_GROUP_OF[r.status.kind] === g);
+  const canEdit = canEditSmmTeam(user);
 
   return (
-    <section data-test="smm-attendance" className="space-y-4">
+    <section data-test="smm-attendance" className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
-            <CalendarCheck size={18} className="text-primary" /> Attendance — Social Media team
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
+            <CalendarCheck size={20} className="text-primary" /> Today's attendance — Social Media team
           </h2>
-          <p className="mt-0.5 text-xs text-muted-foreground sm:text-sm">
-            The tech members working on the Social Media months running today. View only — days are marked from their
-            check-ins, and the admins correct them in Team Attendance.
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+            <span data-test="smm-attendance-date" className="font-semibold text-foreground">{format(new Date(`${today}T00:00:00`), "EEEE, d MMMM yyyy")}</span>
+            <span className="inline-flex items-center gap-1.5 text-xs">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+              </span>
+              Updates by itself as people check in
+            </span>
           </p>
         </div>
-        <div className="flex items-center gap-1 rounded-lg border border-border bg-card px-1" data-test="smm-attendance-cycle">
-          <button type="button" aria-label="Previous cycle" onClick={() => setMonth((m) => shiftMonth(m, -1))}
-            className="rounded-md p-1.5 hover:bg-accent"><ChevronLeft className="h-4 w-4" /></button>
-          <span className="flex min-w-[104px] flex-col px-1 text-center leading-tight">
-            <span className="text-sm font-semibold text-foreground">{format(new Date(`${month}-01T00:00:00`), "MMM yyyy")}</span>
-            <span className="text-[10px] text-muted-foreground">
-              {format(new Date(`${period.start}T00:00:00`), "dd MMM")} – {format(new Date(`${period.end}T00:00:00`), "dd MMM")}
-            </span>
-          </span>
-          <button type="button" aria-label="Next cycle" onClick={() => setMonth((m) => shiftMonth(m, 1))} disabled={month >= currentPayMonth()}
-            className="rounded-md p-1.5 hover:bg-accent disabled:opacity-30"><ChevronRight className="h-4 w-4" /></button>
-        </div>
+        {canEdit && (
+          <Button type="button" variant="outline" size="sm" onClick={() => setEditing(true)} data-test="smm-team-edit" className="gap-1.5">
+            <UserCog className="h-4 w-4" /> Edit team
+          </Button>
+        )}
       </div>
 
-      {/* What each mark means, and the cycle's announced holidays. */}
-      <div className="flex flex-wrap items-center gap-2">
-        {STATUS_ORDER.map((s) => (
-          <span key={s} className={cn("rounded-full border px-2 py-0.5 text-[11px]", ATTENDANCE_META[s].tone)}>
-            {ATTENDANCE_META[s].short} · {ATTENDANCE_META[s].label}
-          </span>
-        ))}
-        {cycleHolidays.map((h) => (
-          <span key={h.date} className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-600">
-            <PartyPopper className="h-3 w-3" /> {h.label} · {format(new Date(h.date), "dd MMM")}
-          </span>
-        ))}
-      </div>
-
-      {rows.length > 1 && (
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input type="text" value={search} data-test="smm-attendance-search" onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search a person or a client…"
-            className="h-9 w-full rounded-xl border border-border/70 bg-background pl-9 pr-8 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20" />
-          {search && (
-            <button type="button" onClick={() => setSearch("")} aria-label="Clear search"
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground">
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
+      {dayOff && (
+        <div data-test="smm-attendance-dayoff" className="flex items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-800 dark:text-amber-200">
+          <PartyPopper className="h-5 w-5 shrink-0" />
+          {holiday ? `Today is a holiday — ${holiday.label}. Nobody needs to check in.` : "Today is Sunday — the office is closed. Nobody needs to check in."}
         </div>
       )}
 
-      {people.length === 0 ? (
-        <p data-test="smm-attendance-empty" className="rounded-2xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
-          No Social Media month is running today, so there is nobody to show. People appear here once a running month has a team.
-        </p>
-      ) : loading ? (
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4" data-test="smm-attendance-counts">
+        <CountTile kind="present" label="Present" n={counts.present} testId="smm-count-present" />
+        <CountTile kind="not_in" label="Not checked in" n={counts.notIn} testId="smm-count-notin" />
+        <CountTile kind="leave" label="On leave" n={counts.leave} testId="smm-count-leave" />
+        <CountTile kind="absent" label="Absent" n={counts.absent} testId="smm-count-absent" />
+      </div>
+
+      {loading && rows.length === 0 ? (
         <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" size={26} /></div>
       ) : rows.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-          <Users className="h-8 w-8 opacity-40" /> Nobody on the running months checks in — see the note below.
-        </div>
-      ) : shown.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-          <Search className="h-8 w-8 opacity-40" /> Nobody matches “{search.trim()}”.
+        <div data-test="smm-attendance-empty" className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
+          <Users className="h-8 w-8 opacity-40" />
+          Nobody is on the Social Media team yet. People appear here once they work on a Social Media month
+          {canEdit ? ", or when you add them with Edit team." : "."}
         </div>
       ) : (
-        <AttendanceGrid
-          members={shown}
-          days={days}
-          todayStr={todayStr}
-          isHoliday={(d) => holidays.has(d)}
-          statusFor={statusFor}
-          isOverride={(r, d) => overrides.has(attendanceKey(r.uid, d))}
-          renderBadge={(r) => (
-            <div className="mt-1 truncate text-[10px] text-muted-foreground" title={r.clients.join(", ")} data-test="smm-attendance-seats">
-              {seatLine(r)}
+        <>
+          {!dayOff && counts.notIn === 0 && (
+            <div data-test="smm-attendance-allin" className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm font-semibold text-emerald-800 dark:text-emerald-200">
+              <CheckCircle2 className="h-5 w-5 shrink-0" /> Everyone who checks in has checked in or is on leave — nobody to chase.
             </div>
           )}
-        />
+          {TODAY_GROUP_ORDER.map((g) => {
+            const people = byGroup(g);
+            if (people.length === 0) return null;
+            const text = GROUP_TEXT[g];
+            const HeadIcon = KIND[text.kind].icon;
+            return (
+              <section key={g} data-test={`smm-group-${g}`} className="space-y-2">
+                <div>
+                  <h3 className="flex items-center gap-2 text-base font-semibold text-foreground">
+                    <span className={cn("inline-flex h-7 w-7 items-center justify-center rounded-full border", KIND[text.kind].tone)}>
+                      <HeadIcon className="h-4 w-4" />
+                    </span>
+                    {text.title}
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-foreground">{people.length}</span>
+                  </h3>
+                  <p className="mt-0.5 pl-9 text-xs text-muted-foreground">{text.hint}</p>
+                </div>
+                <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+                  {people.map((r) => <PersonCard key={r.uid} row={r} />)}
+                </div>
+              </section>
+            );
+          })}
+        </>
       )}
 
-      {notListed.length > 0 && (
-        <p data-test="smm-attendance-not-listed" className="text-xs text-muted-foreground">
-          Also on the running months, not on the grid: {notListed.map((n) => `${n.name} (${n.why})`).join(", ")}.
-        </p>
+      <p className="text-xs text-muted-foreground">
+        View only — each person's day comes from their check-in, an approved leave or an admin's mark. To correct a day,
+        the tech admin uses Team Attendance.
+      </p>
+
+      {canEdit && (
+        <SmmTeamEditor open={editing} onOpenChange={setEditing} fromMonths={fromMonths} edits={edits}
+          team={team} nameOf={(uid) => users.get(uid)?.name || ""} actor={{ uid: user.uid, name: user.name }} />
       )}
     </section>
   );
