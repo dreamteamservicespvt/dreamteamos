@@ -216,17 +216,17 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ## 32. CURRENT PROJECT STATE (as of 2026-10-08)
 
-- 2026-10-08 (later), pushed to branch **`claude/cast-consistency-smm-attendance`** for review (not merged into
-  `main`; its pull request is opened from GitHub — no `gh` on this machine): **the ad's cast from the configuration
-  to the last video prompt** (a Male & Female Duo — or any pair — can no longer ship a one-voice script or
-  one-speaker Veo prompts: the dialogue reader keeps every turn its own, the quality gate never prefers a draft that
-  lost a speaker and a run that cannot keep the cast stops, every step after the run uses the kit's own `spec`;
-  `ai-ads.md`), the same class fixed in **Cinematic Ads** (the AI's format read by id or label, its cast details
-  recorded, projects saved whole), and **Social Media → Attendance** (the Social Media Team Lead's view-only
-  pay-cycle grid of the people on the running months; `smm.md`, `people.md`).
-- Committed and pushed to `main` @ `abeab79` (2026-10-08 17:10, the owner's commits): everything before it — through
-  2026-10-05 (§31), **Sales → Tech on one permanent `saleId`** (`sales.md`, `orders-work.md`), **Real Owner Face**
-  and **దసరా** (`ai-ads.md`), and the **Invoice Builder** with Invoices → Settings (`invoices.md` §9.22).
+- 2026-10-08 (later), **on `main` and live** (pushed first to branch `claude/cast-consistency-smm-attendance`, then
+  fast-forwarded into `main` at the owner's go-ahead — a branch is not on dreamteamos.vercel.app, which is built
+  from `main`): **the ad's cast from the configuration to the last video prompt** (a Male & Female Duo — or any
+  pair — can no longer ship a one-voice script or one-speaker Veo prompts: the dialogue reader keeps every turn its
+  own, the quality gate never prefers a draft that lost a speaker and a run that cannot keep the cast stops, every
+  step after the run uses the kit's own `spec`; `ai-ads.md`), the same class fixed in **Cinematic Ads** (the AI's
+  format read by id or label, its cast details recorded, projects saved whole), and **Social Media → Attendance**
+  (the Social Media Team Lead's view-only pay-cycle grid of the people on the running months; `smm.md`, `people.md`).
+- Before it on `main` (`abeab79`, 2026-10-08 17:10, the owner's commits): everything through 2026-10-05 (§31),
+  **Sales → Tech on one permanent `saleId`** (`sales.md`, `orders-work.md`), **Real Owner Face** and **దసరా**
+  (`ai-ads.md`), and the **Invoice Builder** with Invoices → Settings (`invoices.md` §9.22).
 - `npm run build` ✅ (main chunk ≈461 KB, vendor-firebase ≈665 KB, geminiService chunk ≈843 KB; lazy pages for
   AI Accounts, Invoices).
 - `npx vitest run` ✅ 219 files, 3357 tests, all pass, no unhandled errors (2026-10-08, after the cast-consistency
@@ -238,8 +238,7 @@ errors:** done means every listed item is fully resolved with no build, console 
   Settings; Sales → Tech on one `saleId`, Real Owner Face and దసరా (2026-10-08); SMM On hold, renewals and renewal
   money, the Veo 3 dynamic pass, the wardrobe stylist, the SMM client calendar (2026-10-05); earlier SMM, AdGen,
   AI Accounts and Cinematic Ads work.
-- Open follow-ups the owner must act on: open, review and merge the pull request for
-  `claude/cast-consistency-smm-attendance`; make one Male & Female Duo ad in Flow from the new prompts; decide the
+- Open follow-ups the owner must act on: make one Male & Female Duo ad in Flow from the new prompts; decide the
   two open Cinematic Ads questions (a format changed mid-project resets nothing; a clip's animation prompt has no
   line-by-line speaker — `ai-ads.md` §17.4); replace the invalid and "reported as leaked" Gemini keys (§26.3);
   publish `docs/firestore-rules.md` in the console (it also protects the Flow / ChatGPT / Grok passwords and the
