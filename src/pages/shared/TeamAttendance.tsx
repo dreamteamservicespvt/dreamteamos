@@ -15,10 +15,8 @@ import {
   clearAttendanceOverride,
   daysBetween,
   deleteHoliday,
-  isSunday,
   resolveStatus,
   setAttendanceOverride,
-  summarize,
   todayDate,
   watchCheckedInDaysInRange,
   watchHolidayRecordsInRange,
@@ -31,6 +29,7 @@ import { EMPLOYMENT_LABELS, employmentOf, setEmploymentType } from "@/services/e
 import { sendNotification } from "@/services/notifications";
 import { getWhatsAppUrl, normalizePhone } from "@/utils/phone";
 import LeaveApprovalsPanel from "@/components/payroll/LeaveApprovalsPanel";
+import AttendanceGrid from "@/components/attendance/AttendanceGrid";
 import { MessageCircle } from "lucide-react";
 
 const shiftMonth = (month: string, delta: number): string => {
@@ -307,155 +306,29 @@ export default function TeamAttendance() {
           <Search className="w-8 h-8 opacity-40" /> No members match “{search.trim()}”.
         </div>
       ) : (
-        <>
-        {/* Mobile: one card per member with a real month calendar (a 30-column table is unusable
-            on a phone). Same colour language and the same tap-to-override cells as desktop. */}
-        <div className="md:hidden space-y-3">
-          {filteredMembers.map((m) => {
-            const statuses = days.map((d) => statusFor(m, d));
-            const sum = summarize(statuses);
+        /* The grid itself is shared with Social Media → Attendance (components/attendance/AttendanceGrid). */
+        <AttendanceGrid
+          members={filteredMembers}
+          days={days}
+          todayStr={todayStr}
+          isHoliday={(d) => holidays.has(d)}
+          statusFor={statusFor}
+          isOverride={(m, d) => overrides.has(attendanceKey(m.uid, d))}
+          onCellClick={(member, date, current) => setEditing({ member, date, current })}
+          renderBadge={(m, layout) => {
             const emp = employmentOf(m.employmentType);
-            const firstDow = new Date(`${days[0]}T00:00:00`).getDay();
             return (
-              <div key={m.uid} className="rounded-xl border border-border bg-card p-3">
-                <div className="flex items-start justify-between gap-2 mb-2.5">
-                  <div className="min-w-0">
-                    <div className="font-medium text-foreground truncate">{m.name}</div>
-                    <button onClick={() => toggleEmployment(m)}
-                      title="Tap to switch Full-Time / Part-Time"
-                      className={cn("mt-1 text-[10px] px-2 py-0.5 rounded-full border transition-colors",
-                        emp === "full_time"
-                          ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
-                          : "bg-violet-500/10 text-violet-600 border-violet-500/30")}>
-                      {EMPLOYMENT_LABELS[emp]} ⇄
-                    </button>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="text-[11px] whitespace-nowrap">
-                      <span className="text-emerald-600 font-semibold">{sum.full}P</span>{" "}
-                      <span className="text-amber-600 font-semibold">{sum.half}H</span>{" "}
-                      <span className="text-rose-600 font-semibold">{sum.absent}A</span>{" "}
-                      <span className="text-sky-600 font-semibold">{sum.leave}L</span>
-                    </div>
-                    <div className="text-[9px] text-muted-foreground mt-0.5">Leaves left: {sum.leavesLeft}</div>
-                  </div>
-                </div>
-                <div className="grid grid-cols-7 gap-1">
-                  {["S", "M", "T", "W", "T", "F", "S"].map((w, i) => (
-                    <div key={i} className="text-center text-[9px] font-medium text-muted-foreground pb-0.5">{w}</div>
-                  ))}
-                  {Array.from({ length: firstDow }).map((_, i) => <div key={`blank-${i}`} />)}
-                  {days.map((d, i) => {
-                    const st = statuses[i];
-                    const isOverride = overrides.has(attendanceKey(m.uid, d));
-                    return (
-                      <button
-                        key={d}
-                        onClick={() => setEditing({ member: m, date: d, current: st })}
-                        title={`${format(new Date(d), "EEE dd MMM")}${st ? " · " + ATTENDANCE_META[st].label : ""}${isOverride ? " (manual)" : ""}`}
-                        className={cn(
-                          "aspect-square rounded-md flex flex-col items-center justify-center gap-0.5 border text-[11px] font-bold active:scale-95 transition-transform",
-                          st ? ATTENDANCE_META[st].tone : "bg-transparent text-muted-foreground/40 border-dashed border-border",
-                          isOverride && "ring-1 ring-primary/50",
-                          d === todayStr && "outline outline-1 outline-primary outline-offset-1",
-                        )}
-                      >
-                        <span className="text-[9px] font-medium leading-none opacity-70">{d.slice(-2)}</span>
-                        <span className="leading-none">{st ? ATTENDANCE_META[st].short : "·"}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+              <button onClick={() => toggleEmployment(m)}
+                title={layout === "card" ? "Tap to switch Full-Time / Part-Time" : "Click to switch Full-Time / Part-Time"}
+                className={cn("mt-1 text-[10px] px-2 py-0.5 rounded-full border transition-colors",
+                  emp === "full_time"
+                    ? cn("bg-emerald-500/10 text-emerald-600 border-emerald-500/30", layout === "table" && "hover:bg-emerald-500/20")
+                    : cn("bg-violet-500/10 text-violet-600 border-violet-500/30", layout === "table" && "hover:bg-violet-500/20"))}>
+                {EMPLOYMENT_LABELS[emp]} ⇄
+              </button>
             );
-          })}
-        </div>
-
-        {/* Desktop: the full month-grid table. */}
-        <div className="hidden md:block rounded-xl border border-border bg-card overflow-hidden">
-          {/* table-fixed + colgroup: the WHOLE month always fits the available width on desktop.
-              The wrapper is capped and scrolls in BOTH axes so the date header can stick to its
-              top — with the page as the scrollport the header scrolled away, which made marking
-              attendance for a member far down the list guesswork. */}
-          <div className="max-h-[70vh] overflow-auto">
-            <table className="w-full min-w-[860px] table-fixed text-sm border-collapse">
-              <colgroup>
-                <col style={{ width: 150 }} />
-                <col style={{ width: 86 }} />
-                {days.map((d) => <col key={d} />)}
-              </colgroup>
-              <thead>
-                <tr className="bg-muted/50">
-                  {/* z-30 on the corner cell so it stays above both the sticky row and column. */}
-                  <th className="sticky left-0 top-0 z-30 bg-muted text-left px-3 py-2 font-semibold text-foreground">Member</th>
-                  <th className="sticky top-0 z-20 bg-muted px-1 py-2 font-semibold text-foreground text-center">Summary</th>
-                  {days.map((d) => {
-                    const sun = isSunday(d);
-                    const fest = holidays.has(d);
-                    return (
-                      <th key={d} className={cn("sticky top-0 z-20 bg-muted px-0 py-1.5 font-medium text-center",
-                        d === todayStr ? "text-primary" : sun || fest ? "text-amber-500/80" : "text-muted-foreground")}>
-                        <div className="text-[9px] leading-tight">{format(new Date(d), "EEE")[0]}</div>
-                        <div className="text-[11px]">{d.slice(-2)}</div>
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredMembers.map((m) => {
-                  const statuses = days.map((d) => statusFor(m, d));
-                  const sum = summarize(statuses);
-                  const emp = employmentOf(m.employmentType);
-                  return (
-                    <tr key={m.uid} className="border-t border-border">
-                      <td className="sticky left-0 z-10 bg-card px-3 py-2 align-top">
-                        <div className="font-medium text-foreground truncate">{m.name}</div>
-                        <button onClick={() => toggleEmployment(m)}
-                          title="Click to switch Full-Time / Part-Time"
-                          className={cn("mt-1 text-[10px] px-2 py-0.5 rounded-full border transition-colors",
-                            emp === "full_time"
-                              ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/20"
-                              : "bg-violet-500/10 text-violet-600 border-violet-500/30 hover:bg-violet-500/20")}>
-                          {EMPLOYMENT_LABELS[emp]} ⇄
-                        </button>
-                      </td>
-                      <td className="px-1 py-2 text-center align-top">
-                        <div className="text-[10px] text-muted-foreground whitespace-nowrap">
-                          <span className="text-emerald-600 font-semibold">{sum.full}P</span>{" "}
-                          <span className="text-amber-600 font-semibold">{sum.half}H</span>{" "}
-                          <span className="text-rose-600 font-semibold">{sum.absent}A</span>{" "}
-                          <span className="text-sky-600 font-semibold">{sum.leave}L</span>
-                        </div>
-                        <div className="text-[9px] text-muted-foreground mt-0.5">Leaves left: {sum.leavesLeft}</div>
-                      </td>
-                      {days.map((d, i) => {
-                        const st = statuses[i];
-                        const isOverride = overrides.has(attendanceKey(m.uid, d));
-                        return (
-                          <td key={d} className="px-[1px] py-1 text-center">
-                            <button
-                              onClick={() => setEditing({ member: m, date: d, current: st })}
-                              className={cn(
-                                "w-full max-w-[30px] h-6 rounded text-[10px] font-bold border transition-all hover:scale-110 mx-auto block",
-                                st ? ATTENDANCE_META[st].tone : "bg-transparent text-muted-foreground/40 border-dashed border-border",
-                                isOverride && "ring-1 ring-primary/50",
-                              )}
-                              title={`${format(new Date(d), "EEE dd MMM")}${st ? " · " + ATTENDANCE_META[st].label : ""}${isOverride ? " (manual)" : ""}`}
-                            >
-                              {st ? ATTENDANCE_META[st].short : "·"}
-                            </button>
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        </>
+          }}
+        />
       )}
 
       {/* Cell override editor */}

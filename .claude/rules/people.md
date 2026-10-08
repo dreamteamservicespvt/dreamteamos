@@ -32,7 +32,10 @@ mandatory for tech members on working days — **not shown on Sundays or on an a
 `services/techAttendance.ts` (statuses `full|half|absent|leave|holiday`; overrides and holidays
 persisted, Full/Absent derived from check-ins). Sales: `services/salesCheckin.ts`,
 `components/sales/AttendanceCard.tsx`. Shared grid `pages/shared/TeamAttendance.tsx` (with the
-WhatsApp update step and `LeaveApprovalsPanel`). Leave: `services/leave.ts`,
+WhatsApp update step and `LeaveApprovalsPanel`); since 2026-10-08 the grid itself is
+`components/attendance/AttendanceGrid.tsx` (desktop table + phone month cards; editable with `onCellClick`,
+view-only without), also drawn by **Social Media → Attendance** (`components/smm/SmmAttendanceView`, the
+Social Media Team Lead's view-only grid of the tech members on the running SMM months — see `smm.md`). Leave: `services/leave.ts`,
 `components/payroll/LeavePanel.tsx`, `utils/leaveAllowance.ts`. Collections `daily_checkins`,
 `attendance` (`{memberId}_{date}`), `holidays` (`{date}`), `salesCheckins`, `leave_requests`.
 

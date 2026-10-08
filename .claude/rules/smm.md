@@ -281,8 +281,28 @@ them above the form ("a new month cannot overlap these dates"). (4) **The refusa
 `smmSetup.noSaleMonthClashOf` → `SmmMonthClashError.monthId`; the step shows the message with **Open that month**
 under the form (cleared when the dates change); the text now says "Open it to fill in its work, or correct its
 dates with Edit setup."
+**Attendance — the Social Media Team Lead's view of their team's days (2026-10-08, owner: "Add attendance view for
+the social media team leader"; asked, the owner chose each part).** A fifth view, **Social Media → Attendance**
+(`SocialMedia` view `attendance`, kept in `dts_smm_view`; `components/smm/SmmAttendanceView`), for the lead
+(`smmLeader`) and the tech / main admin (`utils/smmAttendance.canSeeSmmAttendance`; anybody else asking for it
+gets the cards). **Who:** everybody holding a seat — creator, publisher, marketer, assistant — on a month
+**running today** (`smmTeamPeople`: active, not history, start ≤ today ≤ end — a month on hold, not started, past or
+deleted adds nobody), once each, A–Z, with their seats and clients under the name ("Creator · Publisher — 2
+clients"). Only **tech members who check in** (active, not external creators) are on the grid; anybody else on a
+seat (a tech team leader) is named under it — "Ravi (Tech Team Leader — does not check in)" — instead of reading
+Absent all month. **What:** the **pay-cycle grid** of Team Attendance (10th → 9th, ‹ › to earlier cycles, P / H / A /
+L / holiday from check-ins, manual marks and holidays — `techAttendance.resolveStatus`, the same range readers),
+drawn by the shared `components/attendance/AttendanceGrid` **view only** (no cell, switch or leave button; marks stay
+with the admins in Team Attendance, since a mark changes salary), with a search by person or client. The member /
+salesperson filters are hidden on this view. Reads: the seat holders' user records once by id
+(`hooks/useUsersByIds`, chunks of 30) and the cycle's marks / holidays / check-ins while the view is open. On a phone
+the admins' five view tabs sit three and two.
 
 ## 24. BUSINESS RULES (IMPLEMENTED; verified in code)
+
+- **SMM attendance (owner, 2026-10-08):** the Social Media Team Lead (and the tech / main admin) sees, in Social
+  Media, the attendance of the people working on the months running now — the same pay-cycle days as Team
+  Attendance — and cannot change it; marking days, leave and holidays stay with the admins.
 
 - **SMM On hold (owner, 2026-10-05):** a month whose last day has passed with no renewal decision is **On hold** and
   stays on the board until its salesperson renews it (then it is filed as renewed) or marks the client as not
@@ -352,6 +372,12 @@ dates with Edit setup."
 ## 25. CURRENT IMPLEMENTATION STATUS
 
 **PARTIALLY IMPLEMENTED 🟡:**
+- SMM attendance (2026-10-08): the people are those on the months running TODAY, whichever cycle is on screen —
+  an earlier cycle shows today's team, not who was on a month then. Team leaders on a seat are named, not gridded
+  (they never check in). The cycle's check-ins are read company-wide and filtered in the browser, as Team
+  Attendance does (a `memberId in` + date-range query would need a composite index the repo does not have).
+  Checked by unit tests, the real view on the in-memory Firestore and a real-browser harness (the lead, the tech
+  admin and a team leader without the flag; 1440 / 390 / 360 px) — not against live Firebase.
 - SMM On hold (2026-10-05): "a later month follows it" is decided where the client's months are in hand — at
   setup, and by the overseer's board sweep for later months that are live — so a history month whose only later
   month is already filed (renewed / not renewed) stays on hold until somebody decides it. A month that ran in the

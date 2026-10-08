@@ -24,7 +24,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
-  AlertTriangle, Archive, BarChart3, CalendarDays, CheckCircle2, IndianRupee, LayoutGrid, Loader2, Megaphone, PauseCircle, Plus, RefreshCcw,
+  AlertTriangle, Archive, BarChart3, CalendarCheck, CalendarDays, CheckCircle2, IndianRupee, LayoutGrid, Loader2, Megaphone, PauseCircle, Plus, RefreshCcw,
   Search, TrendingDown, UserPlus, Users,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
@@ -42,6 +42,8 @@ import SmmAddSaleDialog from "@/components/smm/SmmAddSaleDialog";
 import SmmTeamLeadPanel from "@/components/smm/SmmTeamLeadPanel";
 import SmmRenewalsCard from "@/components/smm/SmmRenewalsCard";
 import SmmMoneyView from "@/components/smm/money/SmmMoneyView";
+import SmmAttendanceView from "@/components/smm/SmmAttendanceView";
+import { canSeeSmmAttendance } from "@/utils/smmAttendance";
 import SmmDashboard, { type SmmBoardFilter } from "@/components/smm/SmmDashboard";
 import { SmmSetupDialog } from "@/components/smm/SmmSetupForm";
 import { useSmmRenewal } from "@/components/smm/useSmmRenewal";
@@ -64,8 +66,8 @@ const onTeam = (c: SmmCampaign, uid: string) =>
   [c.team?.creator?.uid, c.team?.publisher?.uid, c.team?.marketer?.uid, ...(c.team?.assistants || []).map((a) => a.uid)]
     .includes(uid);
 
-type View = "cards" | "insights" | "calendar" | "money";
-const VIEWS: View[] = ["cards", "insights", "calendar", "money"];
+type View = "cards" | "insights" | "calendar" | "money" | "attendance";
+const VIEWS: View[] = ["cards", "insights", "calendar", "money", "attendance"];
 /** Which view this browser last used — a convenience, so it may be missing or unreadable. */
 const VIEW_KEY = "dts_smm_view";
 function readView(): View {
@@ -87,6 +89,8 @@ export default function SocialMedia() {
   const isSeller = user?.role === "sales_member";
   // The Money view is the admins' only (2026-10-05); anybody else asking for it gets the cards.
   const canMoney = canSeeSmmMoney(user);
+  // Attendance (2026-10-08): the Social Media Team Lead's view of their team's days — and the tech / main admin.
+  const canAttendance = canSeeSmmAttendance(user);
   // A link may name the view, or a client for the calendar (`?view=calendar&client=`); else the last one used.
   const [params] = useSearchParams();
   const [picked, setView] = useState<View>(() => {
@@ -94,7 +98,7 @@ export default function SocialMedia() {
     if (asked && VIEWS.includes(asked)) return asked;
     return params.get("client") ? "calendar" : readView();
   });
-  const view: View = picked === "money" && !canMoney ? "cards" : picked;
+  const view: View = (picked === "money" && !canMoney) || (picked === "attendance" && !canAttendance) ? "cards" : picked;
   const [filter, setFilter] = useState<SmmBoardFilter>("all");
   const [search, setSearch] = useState("");
   const [memberFilter, setMemberFilter] = useState("");
@@ -324,8 +328,9 @@ export default function SocialMedia() {
               className="h-10 w-full rounded-xl border border-border bg-card pl-9 pr-3 text-sm text-foreground outline-none focus:border-primary" />
           </div>
         )}
+        {/* The member / salesperson filters scope the months; Attendance lists the running months' people itself. */}
         <div className={`flex flex-wrap items-center gap-2 ${view === "cards" ? "" : "flex-1"}`}>
-          {members.length > 1 && (
+          {view !== "attendance" && members.length > 1 && (
             <select value={memberFilter} data-test="smm-filter-member" onChange={(e) => setMemberFilter(e.target.value)}
               aria-label="Filter by member"
               className="h-10 rounded-xl border border-border bg-card px-3 text-sm text-foreground outline-none focus:border-primary">
@@ -333,7 +338,7 @@ export default function SocialMedia() {
               {members.map((m) => <option key={m.uid} value={m.uid}>{m.name}</option>)}
             </select>
           )}
-          {!isSeller && sellers.length > 1 && (
+          {view !== "attendance" && !isSeller && sellers.length > 1 && (
             <select value={sellerFilter} data-test="smm-filter-seller" onChange={(e) => setSellerFilter(e.target.value)}
               aria-label="Filter by salesperson"
               className="h-10 rounded-xl border border-border bg-card px-3 text-sm text-foreground outline-none focus:border-primary">
@@ -343,14 +348,18 @@ export default function SocialMedia() {
           )}
         </div>
         {/* On a phone: a full-width row of equal tabs, words only — four (the admins' Money) did not fit
-            360px with their icons (2026-10-05). From 640px: as before, icon and word. */}
+            360px with their icons (2026-10-05); five (the admins' Money AND Attendance, 2026-10-08) do not fit
+            it even as words, so they sit three and two. From 640px: as before, icon and word. */}
         <div role="tablist" aria-label="View"
-          className="ml-auto grid w-full auto-cols-fr grid-flow-col rounded-xl border border-border bg-muted/60 p-1 sm:inline-flex sm:w-auto">
+          className={`ml-auto grid w-full rounded-xl border border-border bg-muted/60 p-1 sm:inline-flex sm:w-auto ${
+            canMoney && canAttendance ? "grid-cols-3 gap-y-1" : "auto-cols-fr grid-flow-col"
+          }`}>
           {([
             { key: "cards" as const, label: "Cards", Icon: LayoutGrid },
             { key: "insights" as const, label: "Insights", Icon: BarChart3 },
             { key: "calendar" as const, label: "Calendar", Icon: CalendarDays },
             ...(canMoney ? [{ key: "money" as const, label: "Money", Icon: IndianRupee }] : []),
+            ...(canAttendance ? [{ key: "attendance" as const, label: "Attendance", Icon: CalendarCheck }] : []),
           ]).map(({ key, label, Icon }) => (
             <button key={key} type="button" role="tab" aria-selected={view === key} data-test={`smm-view-${key}`}
               onClick={() => pickView(key)}
@@ -363,7 +372,14 @@ export default function SocialMedia() {
         </div>
       </div>
 
-      {view === "money" ? (
+      {view === "attendance" ? (
+        loading ? (
+          <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" size={26} /></div>
+        ) : (
+          /* The Social Media team's days, view only (2026-10-08) — utils/smmAttendance, components/smm/SmmAttendanceView. */
+          <SmmAttendanceView campaigns={campaigns} today={today} />
+        )
+      ) : view === "money" ? (
         loading || !user ? (
           <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" size={26} /></div>
         ) : (
