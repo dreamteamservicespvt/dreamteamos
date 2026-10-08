@@ -66,6 +66,11 @@ export interface SavedGeneration {
   /** Set when Save updated this generation in place rather than writing a copy. */
   updatedAt?: unknown;
   workAssignmentId?: string;
+  /**
+   * The configuration the kit was made with (utils/adSpec) — what every later step on it reads. The
+   * settings above are written from it too. Absent on generations saved before 2026-10-08.
+   */
+  spec?: import('@/utils/adSpec').AdSpec | null;
 }
 
 interface SavedItemsProps {

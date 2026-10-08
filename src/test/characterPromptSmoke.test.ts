@@ -3,10 +3,11 @@ import { CHARACTER_CATALOGUE } from "@/services/characterCatalogue";
 import {
   CHARACTER_MULTI_FRAME_SYSTEM_PROMPT,
   CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT,
-  CHARACTER_VOICEOVER_REFINE_SYSTEM_PROMPT,
   CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT,
   CHARACTER_VOICEOVER_SYSTEM_PROMPT,
 } from "@/services/prompts/characterAd";
+import { VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT } from "@/services/prompts/refine";
+import { packSpeakers } from "@/services/characterPacks";
 
 /**
  * Every prompt builder, against every catalogue entry.
@@ -39,7 +40,9 @@ const BUILDERS: [string, (p: typeof CHARACTER_CATALOGUE[number]) => string][] = 
   // as well as for the duo it was written against.
   ["voiceover-festival", (p) => CHARACTER_VOICEOVER_SYSTEM_PROMPT(p, 32, CLIPS, "festival", "Diwali", "Telugu", "Bodhan")],
   ["voiceover-festival-unnamed", (p) => CHARACTER_VOICEOVER_SYSTEM_PROMPT(p, 32, CLIPS, "festival", "", "Telugu", "")],
-  ["refine", (p) => CHARACTER_VOICEOVER_REFINE_SYSTEM_PROMPT(p, CLIPS, "Telugu")],
+  // The edit prompt a cast's script really gets on a refine (geminiService.refineVoiceOver); the old
+  // pack-only refine prompt was never called and was removed on 2026-10-08.
+  ["refine", (p) => VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT({ language: "Telugu", clipCount: CLIPS, adType: "commercial", speakers: packSpeakers(p) })],
   ["repair", (p) => CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT(p, 32, CLIPS, "Telugu", "Bodhan")],
   ["repair-festival", (p) => CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT(p, 32, CLIPS, "Telugu", "Bodhan", "festival", "Diwali")],
   ["veo", (p) => CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT(p, CLIPS, "9:16")],

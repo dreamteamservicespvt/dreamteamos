@@ -1,4 +1,4 @@
-import { packNameSpellings, type CharacterPack } from "@/services/characterPacks";
+import { packAdKind, packNameSpellings, type CharacterPack } from "@/services/characterPacks";
 import {
   MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE, wordBudgetFor,
 } from "@/utils/dialogueFormat";
@@ -890,76 +890,6 @@ Write the ${segmentCount} clips now, in the exact format above and nothing else.
 };
 
 /**
- * Refine pass — the member has asked for ONE change to a script that already exists.
- *
- * Deliberately not the generator prompt above. Handing a refine the full CHARACTER_VOICEOVER prompt
- * looked right — it is the prompt that knows the two-hander contract — but it ends with "Write the
- * N clips now", and a model given a script plus an instruction to write a script writes a new one.
- * The member's edit came back as a wholly rewritten ad, and when the rewrite drifted out of the
- * two-speaker shape the result read as an ordinary single-voice promotional script: the exact
- * failure the pack exists to avoid.
- *
- * So this states the contract as something to PRESERVE and the task as an edit. Everything the
- * generator says about hooks, beats and word budgets is deliberately absent — none of it is being
- * decided here, and repeating it is what invites a rewrite.
- */
-export const CHARACTER_VOICEOVER_REFINE_SYSTEM_PROMPT = (
-  pack: CharacterPack,
-  segmentCount: number,
-  language: string = "Telugu",
-): string => {
-  const lang = (language || "Telugu").trim() || "Telugu";
-  const [first] = pack.characters;
-  /**
-   * The second speaker, or the first again when there is only one.
-   *
-   * Twenty-three of the thirty-two catalogue entries have a single speaker — a deity, one
-   * cartoon, the client’s own face — and on those `pack.characters[1]` is undefined. Every
-   * prompt builder in this file reads `second.name`, so an unguarded destructure throws
-   * “Cannot read properties of undefined (reading ‘name’)” before a single prompt is built,
-   * which stops the member’s job dead with no way past it.
-   */
-  const second = pack.characters[1] ?? first;
-  /** True when this ad has one voice in it. Prose that describes a two-hander is branched on it. */
-  const solo = pack.characters.length === 1;
-  const spellings = packNameSpellings(pack, lang);
-
-  return `You are a precise script EDITOR working on an existing ${lang} cartoon ad script for
-${pack.label}. You are NOT writing a new script. You will be given a finished script and one
-requested change, and you return the SAME script with ONLY that change applied.
-
-===== WHAT YOU ARE LOOKING AT =====
-
-This is a TWO-CHARACTER script. ${first.name} and ${second.name} are talking to each other. It is
-not a voice-over, not a narration, and not a single presenter reading an advertisement.
-
-Every clip is an exchange of exactly two lines:
-  ${first.name} speaks first. ${second.name} answers him.
-
-===== THE SHAPE YOU MUST RETURN (NON-NEGOTIABLE) =====
-
-• EXACTLY ${segmentCount} clips — never add one, never drop one, never merge two.
-• EXACTLY 2 lines in every clip, ${first.name} first and ${second.name} second, each labelled.
-• NEVER collapse the two into one voice. NEVER remove a character. NEVER reorder them.
-• NEVER convert this into a narrator's voice-over or a single-presenter script.
-• Keep the same clip timings, the same ${lang}, and the same business facts.
-• Output format exactly: \`<start>-<end>|${first.key}: <line>\` then \`<start>-<end>|${second.key}: <line>\`${spellings.length > 0
-  ? `\n• A spoken character name is written EXACTLY as: ${spellings.map((s) => `${s.name} → ${s.spelling}`).join(", ")}`
-  : ""}
-
-===== HOW TO EDIT =====
-
-Make the SMALLEST change that fully satisfies the request. Every line the request does not touch
-comes back word for word as it was — same wording, same order, same punctuation. Do not "improve",
-re-polish, re-translate, shorten or restructure anything you were not asked about.
-
-If the requested change affects only one line, change only that line. If it affects the whole
-script (a tone, a fact, a name), apply it line by line and leave everything else intact.
-
-Return ONLY the edited clip lines. No preamble, no explanation, no headings.`;
-};
-
-/**
  * Repair pass — same contract, aimed at the specific faults found.
  *
  * `adType` and `festivalName` are appended rather than placed beside the writer's copies of them,
@@ -1002,15 +932,31 @@ export const CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT = (
   const repairBudget = wordBudgetFor(pack.characters.length);
   const spellings = packNameSpellings(pack, language);
   const place = (placeName || "").trim();
-  return `You repair ${language} cartoon two-character ad scripts. You will be given a script and a
+  /** A human entry's speaker names are roles ("Girl", "Host", "Presenter") — never spoken. See the writer. */
+  const roleLabels = pack.family === "human" || pack.family === "human_duo" || pack.family === "kids";
+  /*
+    The cast, stated as the writer states it (2026-10-08). This contract used to call every entry a
+    "cartoon two-character" script and ask for "EXACTLY 2 lines" a clip in Motu-and-Patlu terms whatever
+    the cast was: a deity or a Normal Ad presenter was told to give each clip two lines from the same
+    speaker, and a human pair was told to say "Girl" and "Boy" out loud once each — which the validator
+    forbids — so the repair pulled the script one way and the check the other.
+  */
+  const nameRule = roleLabels
+    ? `"${pack.characters.map((c) => c.name).join('" and "')}" ${solo ? "is a LABEL" : "are LABELS"} for the script and never spoken — no line says ${solo ? "it" : "either one"} or any invented personal name; a line that does is rewritten without it, keeping its meaning`
+    : solo
+      ? `"${first.name}" is spoken at most once in the whole script, in clip 1 — never again anywhere`
+      : `Across ALL ${segmentCount} clips together, "${first.name}" is spoken exactly once and "${second.name}" exactly once — both in clip 1 where they greet each other, and never again anywhere`;
+  return `You repair ${language} ${packAdKind(pack).script}s${solo ? ` spoken by ${first.name} alone` : ` — ${first.name} and ${second.name} talking to each other`}. You will be given a script and a
 list of validation problems. Fix ONLY those problems and return the corrected script.
 
 NON-NEGOTIABLE CONTRACT:
-• EXACTLY ${segmentCount} clips, each with EXACTLY 2 lines
-• ${first.name} speaks first in every clip, ${second.name} answers
+• EXACTLY ${segmentCount} clips, each with ${solo ? `EXACTLY 1 line — ${first.name}'s` : `EXACTLY ${pack.characters.length} lines — one for each character, each labelled with its own speaker`}
+• ${solo
+  ? `${first.name} carries every clip alone — never a second voice`
+  : `${first.name} speaks first in every clip, ${second.name} answers — never merge the two into one voice, never drop or swap a character, never move one character's words into the other's line`}
 • ${repairBudget.minClip}-${repairBudget.maxClip} spoken words per clip; ${solo ? `that single line carries the clip: ${repairBudget.minLine}-${repairBudget.maxLine} words` : `each line ${repairBudget.minLine}-${repairBudget.maxLine} words`}
 • Each line is one complete sentence ending in . ! or ?
-• Output format exactly: \`<start>-<end>|${first.key}: <line>\` then \`<start>-<end>|${second.key}: <line>\`
+• Output format exactly: ${solo ? `\`<start>-<end>|${first.key}: <line>\`` : `\`<start>-<end>|${first.key}: <line>\` then \`<start>-<end>|${second.key}: <line>\``}
 • Keep the original meaning and the business facts — change only what is broken
 • NEVER fix a word count by cutting a sentence in half. Shorten the THOUGHT instead: every line must still be one complete sentence that makes sense on its own
 ${isFestival
@@ -1021,7 +967,7 @@ ${isFestival
     : `. This ad is one clip long, so that wish also carries the short closing invitation and nothing else is sold`}`
   : `• Clip 1's first line must still be a hook that provokes — a surprise, an unanswered question, the customer's own problem, or disbelief. Never a greeting, a welcome, or an announcement`}
 • The final clip must still FINISH the ad with a clear instruction to act — it must feel ended, not interrupted
-• Across ALL ${segmentCount} clips together, "${first.name}" is spoken exactly once and "${second.name}" exactly once — both in clip 1 where they greet each other, and never again anywhere${place
+• ${nameRule}${place
   ? `\n• The town "${place}" is spoken exactly ONCE, in clip ${hookClip}, in ${second.name}'s line, next to the business's name — written in ${language}. If it is missing, put it back; if it appears in any other clip, remove it there. Never a street, district, state or pincode`
   : `\n• No town, village, street or address is spoken anywhere — none was provided, so none may be invented`}
 • Total duration is ${duration} seconds; never add or remove clips${spellings.length > 0

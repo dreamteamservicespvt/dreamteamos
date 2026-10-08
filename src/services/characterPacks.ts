@@ -351,9 +351,37 @@ export function characterPackGroups(): {
     .filter((g) => g.options.length > 0);
 }
 
-/** The speaker list a script must follow, in speaking order. */
-export function packSpeakers(pack: CharacterPack): { key: string; name: string }[] {
-  return pack.characters.map(({ key, name }) => ({ key, name }));
+/**
+ * The plain kind a label may use for one of a woman-and-man (or girl-and-boy) pair — "[Woman]:",
+ * "Man:". Only for the two mixed entries, where each kind names exactly one person; in two women or two
+ * men the kind names either, so the reader places that line by its position instead.
+ */
+const KIND_ALIASES: Record<string, string[]> = {
+  girl: ["woman", "lady", "female"],
+  boy: ["man", "gentleman", "male"],
+};
+
+/**
+ * The speaker list a script must follow, in speaking order — with every other label a script may put
+ * on each speaker's lines (utils/dialogueFormat Speaker.aliases): the role label's own spellings
+ * (`labelSpellings`, e.g. అమ్మాయి for the Girl), the character's name as the spoken script writes it
+ * (`nativeNames`, e.g. మోటూ), and — in the woman-and-man and girl-and-boy entries — the plain kind.
+ *
+ * Why: a script whose man's lines were labelled `Man:` or `అబ్బాయి:` was read as the woman's, and the ad
+ * became a one-person script and video (2026-10-08). The aliases are read, never written: the script is
+ * always written back with `name`.
+ */
+export function packSpeakers(pack: CharacterPack): { key: string; name: string; aliases: string[] }[] {
+  const mixed = packCastGender(pack) === "mixed";
+  return pack.characters.map(({ key, name, labelSpellings, nativeNames }) => ({
+    key,
+    name,
+    aliases: [
+      ...(labelSpellings ?? []),
+      ...Object.values(nativeNames ?? {}).flatMap((n) => [n.spelling, ...n.variants]),
+      ...(mixed ? KIND_ALIASES[key] ?? [] : []),
+    ].filter(Boolean),
+  }));
 }
 
 /**

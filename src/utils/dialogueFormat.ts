@@ -1,4 +1,4 @@
-import { CLIP_SECONDS, clipLabel } from "./voiceOverFormat";
+import { CLIP_SECONDS, clipLabel, parseLabeledClips } from "./voiceOverFormat";
 
 /**
  * Two-speaker clip scripting for character-pack ads.
@@ -110,6 +110,19 @@ export type DialogueClip = DialogueLine[];
 export interface Speaker {
   key: string;
   name: string;
+  /**
+   * Other labels a script may put on this speaker's lines — a role label's own spellings
+   * (`[అమ్మాయి]:` for the Girl), a character's name in the spoken script (`[మోటూ]:`), or the plain
+   * kind ("Woman", "Man") in a woman-and-man cast. Read by the parser only; never written.
+   *
+   * ── Why (2026-10-08) ─────────────────────────────────────────────────────────────────────────
+   * A Male & Female Duo script came back with the man's lines labelled `0-8|Man:` instead of
+   * `0-8|boy:`. The label was unknown, so the line was read as a continuation of the woman's — every
+   * clip became one long line in her voice, and the Veo prompts that read the script made it a
+   * one-person video while the frames showed the pair. A label that says who speaks is now matched
+   * against everything that can mean that speaker.
+   */
+  aliases?: string[];
 }
 
 // ── Formatting ────────────────────────────────────────────────────────────────────────────────
@@ -167,19 +180,41 @@ export function formatDialogueScript(
  */
 const LABEL = String.raw`(?:\[\s*([^\]\n]{1,40}?)\s*\]|\[?\s*([^:\-–\n\[\]]{1,40}?)\s*)`;
 /** `0-8|motu: text`, `0-8|[Chhota Bheem]: text` — the canonical line, carrying its own clip position. */
-const RANGED_SPEAKER = new RegExp(String.raw`^(\d+)\s*-\s*\d+\s*(?:sec|s)?\s*[|/]\s*${LABEL}\s*[:\-–]\s*(.+)$`, "iu");
-/** `clip-1[0-8sec]`, `Clip 1:`, `Segment 2`, or a bare `0-8:` on its own line. */
-const CLIP_HEADER = /^\s*(?:clip\s*-?\s*(\d+)|segment\s*(\d+))\s*(?:\[[^\]]*\])?\s*[:\-–]?\s*$/i;
-const BARE_RANGE_HEADER = /^\s*(\d+)\s*-\s*\d+\s*(?:sec|s)?\s*[:\-–]?\s*$/i;
+const RANGED_SPEAKER = new RegExp(String.raw`^(\d+)\s*-\s*(\d+)\s*(?:sec|s)?\s*[|/]\s*${LABEL}\s*[:\-–]\s*(.+)$`, "iu");
+/** `clip-1[0-8sec]`, `Clip 1 (0-8 sec):`, `Segment 2`, `Scene 3:`, or a bare `0-8:` on its own line. */
+const CLIP_HEADER = /^\s*(?:clip\s*-?\s*(\d+)|segment\s*(\d+)|scene\s*(\d+))\s*(?:\[[^\]]*\]|\([^)]*\))?\s*[:\-–]?\s*$/i;
+/** `0-8|text` — a canonical line whose speaker was left out: its clip is still explicit. */
+const RANGED_UNLABELLED = /^(\d+)\s*-\s*\d+\s*(?:sec|s)?\s*[|/]\s*(\S.*)$/i;
+const BARE_RANGE_HEADER = /^\s*[[(]?(\d+)\s*-\s*\d+\s*(?:sec|s)?[\])]?\s*[:\-–]?\s*$/i;
 /** `[Motu]: text`, `[Chhota Bheem]: text`, `Motu: text`, `Motu - text`. */
 const SPEAKER_LINE = new RegExp(String.raw`^${LABEL}\s*[:\-–]\s*(.+)$`, "u");
+/**
+ * A clip header with words after it on the SAME line — `clip-1[0-8sec]: …`, `Clip 2 (8-16 sec) - …`,
+ * `Scene 3: …`. The words are the clip's first turn; they used to be read as a speaker named "clip" and
+ * dropped, so a one-character script written as plain clip lines came back empty (2026-10-08).
+ */
+const CLIP_HEADER_WITH_TEXT = /^\s*(?:clip\s*-?\s*(\d+)|segment\s*(\d+)|scene\s*(\d+))\s*(?:\[[^\]]*\]|\([^)]*\))?\s*[:\-–]\s*(\S.*)$/i;
+/** `0-8: …` — a single voice's canonical line. Only an exact clip range counts, so "10-15 minutes: …" stays text. */
+const RANGE_WITH_TEXT = /^\s*[[(]?(\d{1,3})\s*-\s*(\d{1,3})\s*(?:sec|s)?[\])]?\s*[:\-–]\s*(\S.*)$/i;
+/** A time range repeated after a clip header — "Clip 1 – 0-8 sec: text" — belongs to the header. */
+const LEADING_RANGE = /^[[(]?\d{1,3}\s*[-–]\s*\d{1,3}\s*(?:sec(?:onds?)?|s)?[\])]?\s*[:\-–]?\s*/i;
+/**
+ * Where a second turn starts inside one physical line — a canonical `8-16|boy:` or a bracketed
+ * `[Boy]:` after other words. A model sometimes writes both lines of a clip on one line; read whole,
+ * the second speaker's words became the end of the first speaker's line (2026-10-08). Spoken words
+ * never contain either marker, so a cut there is always a new turn. A bracketed time range
+ * ("Clip 1 [0-8 sec]:") is a header, never a turn.
+ */
+const EMBEDDED_RANGED_TURN = /\s+(?=\d{1,3}\s*-\s*\d{1,3}\s*(?:sec|s)?\s*[|/])/g;
+const EMBEDDED_BRACKET_TURN = /\s+(?=\[(?!\s*\d{1,3}\s*[-–]\s*\d{1,3}\s*(?:sec(?:onds?)?|s)?\s*\])[^\]\n]{1,40}\]\s*[:\-–])/g;
 
 /**
- * A label as it is matched against the speaker list: brackets, emphasis marks and doubled spaces
- * dropped, case folded. `**[Chhota  Bheem]**` and `chhota bheem` are the same character.
+ * A label as it is matched against the speaker list: brackets, emphasis marks, a parenthetical and
+ * doubled spaces dropped, case folded. `**[Chhota  Bheem]**`, `chhota bheem` and `Girl (Priya)` /
+ * `girl` are the same character.
  */
 const labelKey = (raw: string): string =>
-  raw.replace(/[[\]*_`"']/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+  raw.replace(/\([^)]*\)/g, " ").replace(/[[\]*_`"']/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
 
 /**
  * Who a script may name, and which character each name belongs to.
@@ -203,6 +238,18 @@ function speakerIndex(vocabulary: SpeakerVocabulary): Map<string, string> {
       if (key) index.set(key, entry.key.toLowerCase());
     }
   }
+  // A speaker's other labels (Speaker.aliases) — never over a key or a name, and never one that two
+  // speakers share: an alias that could mean either of them means neither.
+  const claims = new Map<string, Set<string>>();
+  for (const entry of vocabulary) {
+    if (typeof entry === "string") continue;
+    for (const alias of entry.aliases ?? []) {
+      const key = labelKey(alias);
+      if (!key || index.has(key)) continue;
+      claims.set(key, (claims.get(key) ?? new Set()).add(entry.key.toLowerCase()));
+    }
+  }
+  for (const [alias, owners] of claims) if (owners.size === 1) index.set(alias, [...owners][0]);
   // "[Bheem]" for "Chhota Bheem", "[Max]" for "Grandpa Max" — only where nothing else claims it.
   for (const entry of vocabulary) {
     if (typeof entry === "string") continue;
@@ -213,22 +260,80 @@ function speakerIndex(vocabulary: SpeakerVocabulary): Map<string, string> {
   return index;
 }
 
+/** The cast in speaking order — only a `Speaker` list carries it; plain strings are just names to accept. */
+function speakingOrder(vocabulary: SpeakerVocabulary): string[] {
+  const keys: string[] = [];
+  for (const entry of vocabulary) {
+    if (typeof entry === "string") continue;
+    const key = entry.key.toLowerCase();
+    if (!keys.includes(key)) keys.push(key);
+  }
+  return keys;
+}
+
+/** One physical line cut at every turn that starts inside it (EMBEDDED_*_TURN). */
+function splitTurns(line: string): string[] {
+  const cuts = new Set<number>();
+  for (const pattern of [EMBEDDED_RANGED_TURN, EMBEDDED_BRACKET_TURN]) {
+    for (const m of line.matchAll(pattern)) {
+      const at = (m.index ?? 0) + m[0].length;
+      // A canonical marker counts only when a full `range|label:` follows — never a stray "9-5 / 7".
+      if (at > 0 && at < line.length && (pattern === EMBEDDED_BRACKET_TURN || RANGED_SPEAKER.test(line.slice(at)))) cuts.add(at);
+    }
+  }
+  if (cuts.size === 0) return [line];
+  const out: string[] = [];
+  let from = 0;
+  for (const at of [...cuts].sort((a, b) => a - b)) {
+    out.push(line.slice(from, at).trim());
+    from = at;
+  }
+  out.push(line.slice(from).trim());
+  return out.filter(Boolean);
+}
+
+/**
+ * A script read as dialogue — the clips, and what the reader had to work out for itself.
+ *
+ * `unknownLabels`: turns whose label named nobody in the cast (`[Man]:`, `0-8|Narrator:`). Each is still
+ * its OWN turn, given to the first speaker who has not spoken in that clip yet (a one-character cast: to
+ * that character), because the script's contract is one line each, in order. `unattributed`: words with
+ * no label at all at the start of a clip, in a cast of two — read as that clip's first speaker. A model's
+ * script may be read that way; a script a PERSON wrote must not be guessed at (see castScriptProblems).
+ */
+export interface DialogueReading {
+  clips: DialogueClip[];
+  unknownLabels: { clip: number; label: string }[];
+  unattributed: { clip: number; text: string }[];
+}
+
 /**
  * Reads a script into clips, tolerating every shape the model realistically emits — canonical
  * lines, display blocks, or plain `Motu:` / `Patlu:` pairs under a clip header.
  *
- * Unknown speaker names are ignored rather than guessed at: a line that doesn't name a known
- * character is treated as a continuation of the previous line, which is what wrapped output
- * actually is. Returns [] when nothing parseable is found so callers can fall back.
+ * ── A turn is never folded into another speaker's line (2026-10-08) ─────────────────────────────────
+ * A line that doesn't name a known character used to be read as a continuation of the line above —
+ * right for wrapped prose, wrong for a TURN. A Male & Female Duo script whose man's lines came back as
+ * `0-8|Man:` (or `[అబ్బాయి]:`, or on the same line as hers) was read as ONE line per clip in the woman's
+ * voice; it shipped like that, and the Veo prompts made a one-person video from it while the frames
+ * showed the pair. Now: a canonical `range|label:` line or a bracketed `[Label]:` is always a turn of
+ * its own, embedded turns are cut out of a line, and a label is matched against every alias of the cast
+ * (Speaker.aliases) before it is placed by its position. Only an UNBRACKETED unknown label ("Offer: …")
+ * is still prose and continues the line above.
+ *
+ * Returns no clips when nothing parseable is found, so callers can fall back.
  */
-export function parseDialogueClips(
+export function readDialogueScript(
   raw: string,
-  speakerAliases: SpeakerVocabulary,
+  vocabulary: SpeakerVocabulary,
   clipSeconds: number = CLIP_SECONDS,
-): DialogueClip[] {
-  if (!raw?.trim()) return [];
+): DialogueReading {
+  const reading: DialogueReading = { clips: [], unknownLabels: [], unattributed: [] };
+  if (!raw?.trim()) return reading;
 
-  const aliasToKey = speakerIndex(speakerAliases);
+  const aliasToKey = speakerIndex(vocabulary);
+  const cast = speakingOrder(vocabulary);
+  const solo = cast.length === 1;
 
   const byIndex = new Map<number, DialogueClip>();
   let current = -1;
@@ -244,57 +349,213 @@ export function parseDialogueClips(
   const resolveSpeaker = (token: string | undefined): string | null =>
     (token ? aliasToKey.get(labelKey(token)) : undefined) ?? null;
 
+  /**
+   * A new turn in clip `index`. A label nobody in the cast answers to goes to the first speaker who has
+   * not spoken in this clip yet — or, when every one of them has, keeps its own label so validation
+   * names a stranger instead of the line vanishing into someone else's.
+   */
+  const addTurn = (index: number, label: string | null, text: string) => {
+    const clip = ensure(index);
+    let speaker = label ? resolveSpeaker(label) : null;
+    if (!speaker) {
+      if (label) reading.unknownLabels.push({ clip: index + 1, label: label.trim() });
+      else if (!solo) reading.unattributed.push({ clip: index + 1, text: text.trim() });
+      speaker = (solo ? cast[0] : cast.find((k) => !clip.some((l) => l.speaker === k))) ?? (label ? labelKey(label) : "");
+    }
+    clip.push({ speaker, text: text.trim() });
+    current = index;
+  };
+
   for (const rawLine of raw.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line) continue;
-    if (/^full\s*script\s*:?/i.test(line)) break;
+    const whole = rawLine.trim();
+    if (!whole) continue;
+    if (/^full\s*script\s*:?/i.test(whole)) break;
 
-    // 1 · Canonical `0-8|motu: text` — position is explicit, so trust it.
-    const ranged = line.match(RANGED_SPEAKER);
-    if (ranged) {
-      const speaker = resolveSpeaker(ranged[2] ?? ranged[3]);
-      if (speaker) {
-        const index = Math.floor(Number(ranged[1]) / clipSeconds);
-        ensure(index).push({ speaker, text: ranged[4].trim() });
-        current = index;
+    for (const segment of splitTurns(whole)) {
+      // 1 · Canonical `0-8|motu: text` — its clip is explicit, and it is always a turn.
+      const ranged = segment.match(RANGED_SPEAKER);
+      if (ranged) {
+        const start = Number(ranged[1]);
+        const label = ranged[3] ?? ranged[4];
+        let index = Math.floor(start / clipSeconds);
+        /*
+          A range that is not one clip long is a typo for the clip being written. A live 2026-10-08 reply put
+          the man's clip-3 answer under "24-24|boy:", between clip 3's "16-24|girl:" and clip 4's lines; read
+          by its start it became a third line in clip 4 and clip 3 lost him. It stays in the clip the script
+          is on when that clip has no line from this speaker yet; otherwise its start decides, as before.
+        */
+        if (Number(ranged[2]) - start !== clipSeconds && current >= 0) {
+          const speaker = resolveSpeaker(label);
+          const clip = byIndex.get(current);
+          if (clip && (!speaker || !clip.some((l) => l.speaker === speaker))) index = current;
+        }
+        addTurn(index, label, ranged[5]);
         continue;
       }
-    }
 
-    // 2 · A header on its own line moves the cursor to that clip.
-    const header = line.match(CLIP_HEADER);
-    if (header) {
-      const n = Number(header[1] ?? header[2]);
-      if (Number.isFinite(n) && n > 0) { current = n - 1; ensure(current); continue; }
-    }
-    const bare = line.match(BARE_RANGE_HEADER);
-    if (bare) {
-      current = Math.floor(Number(bare[1]) / clipSeconds);
-      ensure(current);
-      continue;
-    }
-
-    // 3 · `[Motu]: text` under the current clip.
-    const spoken = line.match(SPEAKER_LINE);
-    if (spoken) {
-      const speaker = resolveSpeaker(spoken[1] ?? spoken[2]);
-      if (speaker) {
-        if (current < 0) current = 0;
-        ensure(current).push({ speaker, text: spoken[3].trim() });
+      // 2 · A header on its own line moves the cursor to that clip.
+      const header = segment.match(CLIP_HEADER);
+      if (header) {
+        const n = Number(header[1] ?? header[2] ?? header[3]);
+        if (Number.isFinite(n) && n > 0) { current = n - 1; ensure(current); continue; }
+      }
+      const bare = segment.match(BARE_RANGE_HEADER);
+      if (bare) {
+        current = Math.floor(Number(bare[1]) / clipSeconds);
+        ensure(current);
         continue;
       }
-    }
 
-    // 4 · Anything else continues the line above — wrapped output, not a new turn.
-    const clip = current >= 0 ? byIndex.get(current) : undefined;
-    const last = clip?.[clip.length - 1];
-    if (last) last.text = `${last.text} ${line}`.trim();
+      // A canonical line with its speaker left out is still one turn of its own.
+      const unlabelled = segment.match(RANGED_UNLABELLED);
+      if (unlabelled) {
+        addTurn(Math.floor(Number(unlabelled[1]) / clipSeconds), null, unlabelled[2]);
+        continue;
+      }
+
+      // …and a header with words after it moves the cursor, then those words are read below.
+      let line = segment;
+      const headed = segment.match(CLIP_HEADER_WITH_TEXT);
+      const ranged1 = headed ? null : segment.match(RANGE_WITH_TEXT);
+      if (headed) {
+        const n = Number(headed[1] ?? headed[2] ?? headed[3]);
+        if (Number.isFinite(n) && n > 0) {
+          current = n - 1;
+          ensure(current);
+          line = headed[4].replace(LEADING_RANGE, "").trim();
+          if (!line) continue;
+        }
+      } else if (ranged1 && Number(ranged1[2]) - Number(ranged1[1]) === clipSeconds && Number(ranged1[1]) % clipSeconds === 0) {
+        current = Number(ranged1[1]) / clipSeconds;
+        ensure(current);
+        line = ranged1[3].trim();
+      }
+
+      // 3 · `[Motu]: text` under the current clip — a bracketed label is a turn even when unknown.
+      const spoken = line.match(SPEAKER_LINE);
+      if (spoken) {
+        const label = spoken[1] ?? spoken[2];
+        if (resolveSpeaker(label) || spoken[1] !== undefined) {
+          addTurn(Math.max(current, 0), label, spoken[3]);
+          continue;
+        }
+      }
+
+      // 4 · Anything else continues the turn above — wrapped output — or, in a clip where nobody has
+      //     spoken yet, is that clip's first line (a one-character script needs no labels at all).
+      const clip = current >= 0 ? byIndex.get(current) : undefined;
+      const last = clip?.[clip.length - 1];
+      if (last) { last.text = `${last.text} ${line}`.trim(); continue; }
+      if (current >= 0 && cast.length > 0) addTurn(current, null, line);
+    }
   }
 
-  if (byIndex.size === 0) return [];
+  if (byIndex.size === 0) return reading;
 
   const highest = Math.max(...byIndex.keys());
-  return Array.from({ length: highest + 1 }, (_, i) => byIndex.get(i) ?? []);
+  reading.clips = Array.from({ length: highest + 1 }, (_, i) => byIndex.get(i) ?? []);
+  return reading;
+}
+
+/** The clips of a script read as dialogue — see readDialogueScript. [] when nothing parseable is found. */
+export function parseDialogueClips(
+  raw: string,
+  speakerAliases: SpeakerVocabulary,
+  clipSeconds: number = CLIP_SECONDS,
+): DialogueClip[] {
+  return readDialogueScript(raw, speakerAliases, clipSeconds).clips;
+}
+
+/**
+ * The problems that make a script NOT this cast's — the ones that may never ship (2026-10-08).
+ *
+ * Everything else validateDialogueClips reports (word counts, order, punctuation, a name said twice) is
+ * a matter of quality, and a script with such a fault can still be recorded. These are a matter of WHO:
+ * a clip with no line from one of the two people on screen is a one-person clip in a two-person ad, a
+ * line from a speaker the ad does not have cannot be voiced by anyone in the frame, and the wrong number
+ * of clips cannot be matched to the frames. The pipeline checks them before a script is used, the
+ * quality gate never prefers a draft that has them, and a run that cannot clear them stops instead of
+ * making a video for a different cast. Worded like validateDialogueClips, so the repairs read them alike.
+ */
+export function castIntegrityIssues(clips: DialogueClip[], expectedClipCount: number, speakers: Speaker[]): string[] {
+  const issues: string[] = [];
+  if (speakers.length === 0) return issues;
+  const known = new Set(speakers.map((s) => s.key));
+  if (expectedClipCount > 0 && clips.length !== expectedClipCount) {
+    issues.push(`Expected exactly ${expectedClipCount} clips but got ${clips.length}.`);
+  }
+  clips.forEach((clip, index) => {
+    const n = index + 1;
+    for (const speaker of speakers) {
+      const line = clip.find((l) => l.speaker === speaker.key);
+      if (!line) {
+        issues.push(speakers.length > 1
+          ? `Clip ${n} is missing ${speaker.name}'s line — both characters must speak in every clip.`
+          : `Clip ${n} has no line from ${speaker.name}.`);
+      } else if (!line.text.trim()) {
+        issues.push(`Clip ${n}: ${speaker.name}'s line is empty.`);
+      }
+    }
+    for (const line of clip) {
+      if (!known.has(line.speaker)) {
+        issues.push(`Clip ${n} has a line from "${line.speaker}", who is not in this ad — every line belongs to ${speakers.map((s) => s.name).join(" or ")}.`);
+      }
+    }
+  });
+  return issues;
+}
+
+/**
+ * The speaker labels of a script that is a DIALOGUE — two or more different labels inside one clip, in
+ * the display form (`[Girl]: …` / `[Boy]: …` under a clip header) or the canonical one (`0-8|girl:` /
+ * `0-8|boy:`) — or [] when it is not one.
+ *
+ * A one-presenter ad has nobody to give the second voice to: read as its single voice, a duo's script was
+ * spoken by one woman, labels and all (2026-10-08). A single label on its own is a member's label on a
+ * presenter's lines, and is left as it is.
+ */
+export function dialogueLabelsIn(script: string): string[] {
+  const labels = new Set<string>();
+  for (const clip of parseLabeledClips(script)) {
+    const inClip = new Set([...clip.matchAll(/(?:^|\n)\s*\[\s*([^\]\n]{1,40}?)\s*\]\s*:/g)].map((m) => m[1].trim()));
+    if (inClip.size > 1) inClip.forEach((l) => labels.add(l));
+  }
+  const byRange = new Map<string, Set<string>>();
+  for (const m of (script || "").matchAll(/^\s*(\d{1,3}\s*-\s*\d{1,3})\s*(?:sec|s)?\s*[|/]\s*\[?\s*([^:\]\n]{1,40}?)\s*\]?\s*[:\-–]/gim)) {
+    const range = m[1].replace(/\s+/g, "");
+    byRange.set(range, (byRange.get(range) ?? new Set()).add(m[2].trim()));
+  }
+  for (const inRange of byRange.values()) if (inRange.size > 1) inRange.forEach((l) => labels.add(l));
+  return [...labels];
+}
+
+/**
+ * Why a script a PERSON wrote cannot be read as this cast's — a member's custom script, a pasted final
+ * script. Nothing is guessed: a label that names nobody in the ad, or a line with no label in a
+ * two-person ad, is the writer's to fix, because guessing is how a line lands in the wrong mouth. A cast
+ * member who never speaks at all is refused too — the frames show both people in every clip, and a
+ * script that silences one of them is a one-person ad. A clip given to only one of the two is the
+ * writer's choice and is allowed (the video has the other one listen and react).
+ */
+export function castScriptProblems(reading: DialogueReading, speakers: Speaker[]): string[] {
+  const problems: string[] = [];
+  if (speakers.length === 0) return problems;
+  const names = speakers.map((s) => `[${s.name}]`).join(" and ");
+  const strangers = [...new Set(reading.unknownLabels.map((u) => u.label))];
+  if (strangers.length > 0) {
+    problems.push(`${strangers.map((n) => `[${n}]`).join(", ")} ${strangers.length === 1 ? "is not a speaker" : "are not speakers"} in this ad — use exactly ${names}.`);
+  }
+  const loose = [...new Set(reading.unattributed.map((u) => u.clip))];
+  if (loose.length > 0) {
+    problems.push(`Clip ${loose.join(", ")} ${loose.length === 1 ? "has a line" : "have lines"} with no speaker — start every line with ${names}: so each person says only their own words.`);
+  }
+  if (reading.clips.length > 0 && speakers.length > 1 && problems.length === 0) {
+    const silent = speakers.filter((s) => !reading.clips.some((clip) => clip.some((l) => l.speaker === s.key && l.text.trim())));
+    if (silent.length > 0) {
+      problems.push(`${silent.map((s) => s.name).join(" and ")} never ${silent.length === 1 ? "speaks" : "speak"} in this script — in this ad ${speakers.map((s) => s.name).join(" and ")} are both on screen and both speak. Give ${silent.length === 1 ? silent[0].name : "them"} ${silent.length === 1 ? "a line" : "lines"}.`);
+    }
+  }
+  return problems;
 }
 
 // ── Name spelling ─────────────────────────────────────────────────────────────────────────────
@@ -398,6 +659,12 @@ export interface CharacterNameTokens {
   /** Display name, for the message a repair pass reads. */
   name: string;
   tokens: string[];
+  /**
+   * The name MAY be said (at most `mentionsPerName` times) rather than must be — a character who carries
+   * the ad alone, whom the writer is told to name "at most once, in clip 1". Validated as "exactly once"
+   * before 2026-10-08, so a deity's or a solo cartoon's correct script was sent to repair to add a name.
+   */
+  optional?: boolean;
 }
 
 /**
@@ -489,7 +756,7 @@ export function validateDialogueClips(
         + `exactly ${mentionsPerName}. Remove the extra mention${mentions - mentionsPerName === 1 ? "" : "s"} `
         + `and use those words for the business instead.`,
       );
-    } else if (mentions < mentionsPerName) {
+    } else if (mentions < mentionsPerName && !character.optional) {
       issues.push(
         `${character.name}'s name is never spoken — every ad must name ${character.name} exactly `
         + `${mentionsPerName} time, most naturally in clip 1 where the two greet or address each other.`,

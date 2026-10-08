@@ -249,6 +249,41 @@ export function adFormatPreset(id: AdFormatId): AdFormatPreset {
   return AD_FORMAT_PRESETS.find((p) => p.id === id) || AD_FORMAT_PRESETS[0];
 }
 
+/**
+ * The format the AI named for "Let AI decide", read the way a person would read it — its id or its label,
+ * whatever the case, spaces or hyphens — or undefined when it named none of the formats (2026-10-08).
+ *
+ * Its answer used to be stored as it came. "two-person-conversation" or "Two-person conversation" is not
+ * an id, so `adFormatPreset` fell back to "Let AI decide" itself — narration, nobody speaking on camera —
+ * and an ad the AI had chosen to make as a two-person conversation was written as one voice-over.
+ */
+export function resolveAdFormatId(raw: unknown): AdFormatId | undefined {
+  if (typeof raw !== "string") return undefined;
+  const norm = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  const wanted = norm(raw);
+  if (!wanted) return undefined;
+  return AD_FORMAT_PRESETS.find((p) => p.id !== "ai_decides" && (norm(p.id) === wanted || norm(p.label) === wanted))?.id;
+}
+
+/**
+ * A selection with the cast details its format needs, filled in exactly as choosing that format by hand
+ * fills them — "Male and female", the owner speaking (male), three characters — and the ones it does
+ * not use dropped, so a stale pairing from an earlier choice cannot leak into the prompts.
+ *
+ * Applied to the AI's choice too (2026-10-08): an AI-chosen two-person conversation used to carry no
+ * pairing at all, so the story, the casting and the clips each guessed the two speakers' genders on
+ * their own. Now every step reads the same explicit pairing, and the picker shows it to change.
+ */
+export function withCastDefaults(selection: AdFormatSelection, preset: AdFormatPreset): AdFormatSelection {
+  return {
+    ...selection,
+    pairing: preset.supportsPairing ? selection.pairing || "male_female" : undefined,
+    speakerRole: preset.supportsSpeakerRole ? selection.speakerRole || "owner" : undefined,
+    speakerGender: preset.supportsSpeakerRole ? selection.speakerGender || "male" : undefined,
+    characterCount: preset.supportsCharacterCount ? selection.characterCount || 3 : undefined,
+  };
+}
+
 export type GenderPairing = "female_female" | "male_female" | "male_male";
 
 export const GENDER_PAIRINGS: { value: GenderPairing; label: string }[] = [

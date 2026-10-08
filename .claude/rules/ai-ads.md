@@ -10,7 +10,7 @@ paths:
   - "src/pages/tech-member/CreateAd.tsx"
   - "src/pages/shared/Tools.tsx"
   - "docs/video-category-*"
-  - "src/utils/{adPipeline,adRequirement,assignmentFormSpec,businessFacts,businessPlace,castSheet,castWardrobe,cinematicAds,clipPlacement,collectReadiness,customScript,dialogueFormat,festivalNames,festivals,fileHelpers,finalScript,frameBrand,generationEta,generationHistory,locationAssignment,overlayImage,posterConcepts,posterOccasions,posterSpec,promptAttachments,scenePlan,scriptQa,speakingPosition,spokenAddress,spokenNumbers,veoRefine,voiceBrief,voiceOverFormat,voiceOverRefine,wordTiming}.ts"
+  - "src/utils/{adPipeline,adRequirement,adSpec,assignmentFormSpec,businessFacts,businessPlace,castSheet,castWardrobe,cinematicAds,clipPlacement,collectReadiness,customScript,dialogueFormat,festivalNames,festivals,fileHelpers,finalScript,frameBrand,generationEta,generationHistory,locationAssignment,overlayImage,posterConcepts,posterOccasions,posterSpec,promptAttachments,scenePlan,scriptQa,speakingPosition,spokenAddress,spokenNumbers,veoRefine,voiceBrief,voiceOverFormat,voiceOverRefine,wordTiming}.ts"
 ---
 
 # AI ad generation (AI Ads Platform video + poster, Cinematic Ads, Gemini pipeline) — DTS-OS module context
@@ -148,6 +148,31 @@ cached; small images and anything the browser cannot redraw go as they are).
    `dialogueFormat.parseDialogueClips` must resolve a speaker LABEL — including a multi-word name
    like `[Chhota Bheem]` — back to the pack's single-word key; pass it `packSpeakers(pack)`, not
    bare aliases (2026-09-23).
+   **The cast is the configuration's, end to end (2026-10-08 — the owner: a Male & Female Duo's frames showed both
+   people while the voice-over and the Veo prompts were for ONE speaker, intermittently).** Four causes, all fixed at
+   the root: (1) the reader (`dialogueFormat.readDialogueScript`, `parseDialogueClips` is its wrapper) used to fold a
+   turn whose label it did not know (`0-8|Man:`, `[అబ్బాయి]:`, the man's line on the woman's line) INTO the previous
+   speaker's line — now a canonical `range|label:` line or a bracketed `[Label]:` is always a turn of its own, turns
+   inside one physical line are cut out, a label is matched against `Speaker.aliases` (`packSpeakers` adds the role
+   label's `labelSpellings`, the spoken `nativeNames`, and woman/lady/female · man/gentleman/male for the two mixed
+   entries), an unknown label goes to the first speaker not yet in that clip (`unknownLabels` / `unattributed` say so),
+   a range that is not one clip long stays in the clip being written (a live reply wrote `24-24|boy:` for clip 3),
+   and a header with words after it (`clip-1[0-8sec]: …`, `Scene 1:`, `[8-16sec]: …`) is read — a one-character script
+   in plain clip lines used to come back EMPTY. Only an UNBRACKETED unknown label ("Offer: …") still continues the line
+   above. (2) **`castIntegrityIssues`** names what may never ship — a clip without one of the cast's lines, an empty
+   line, a line from somebody the ad does not have, the wrong clip count; the quality gate never judges such a draft,
+   always prefers one without (`scriptQa.isBetterDraft` ranks `broken` FIRST — a collapsed duo draft used to win by
+   scoring higher), writes new drafts for it even when the judge passes or cannot run (`castFeedback` tells them what
+   went wrong), and **a run whose script still breaks the cast STOPS** with "came back without every speaker's own
+   lines … Press Generate" before any frame is made (it used to ship with a console warning). (3) **Everything after
+   the run reads the kit's own configuration** (`utils/adSpec`, see Save / storage and Editing / refine). (4) Custom
+   scripts: one strict reader for Configuration and Input Final Script (`castScriptProblems`: a label nobody in the ad
+   has, a line with no speaker in a two-person ad, or one of the two never speaking is refused with the format to use —
+   the Configuration check now runs BEFORE any Gemini call; one clip given to one of the two stays allowed), and a
+   dialogue pasted into a one-presenter ad is refused (`dialogueLabelsIn`). The writer, its repairs and the refine
+   share one name rule (`dialogueNameRules`: role labels never spoken, a named character once — a solo one "at most
+   once", `CharacterNameTokens.optional`), and the repair prompt states the real cast (it told human pairs to SAY
+   "Girl"/"Boy", called every entry a cartoon and asked solos for two lines); the unused pack refine prompt was removed.
    **Quality gate (every generated script, single voice or a cast; never a member's own):** a separate
    judge (`prompts/scriptQa.ts`) never rewrites — it checks every claim against the business facts and
    scores facts, language (educated, well-spoken, natural register), persuasion, clarity, relevance and
@@ -282,7 +307,11 @@ cached; small images and anything the browser cannot redraw go as they are).
    build the SAME plan from the same SPOKEN words — never the speakers' names (a cast-sheet name like "the woman
    in the teal saree" once read as a product) — the same scene-plan choices and the same plate clips (`plates`:
    from `clipPhotoPlan` on the frame side, from each frame's `BACKGROUND PLATE` stamp on the video side;
-   `regenerateVeoForClips` too).
+   `regenerateVeoForClips` too). **The video prompts voice the run's OWN structured dialogue** (2026-10-08,
+   `veoClipsFor`) — never its display text read back; a rebuild after the run (`regenerateVeoForClips`, the Input
+   Final Script rewrite) reads the stored script through `readKitScript`, which refuses — "This kit is a Male & Female
+   Duo ad (Girl and Boy), but its voice-over script does not read as that cast …" — instead of handing a cast's lines
+   to one presenter (`modelVeoSubject`), and a one-presenter kit holding a dialogue is refused the same way.
    **A real person — Real Owner Face (`usesClientFace`: `owner_face_male` / `owner_face_female`) — is the
    exception (2026-10-08, the owner: "for all the real person videos we need only this prompt based on gender"):**
    its Veo prompt is ONLY the owner's template, by the entry's gender (`assembleRealPersonVeoPrompt`):
@@ -377,6 +406,12 @@ reason when a label or the clip count is wrong, and becomes 4. Voice Over; 5 Veo
 existing frames), 6 B-roll and 7 overlays are rewritten from it in parallel, each with its own
 Regenerating… / Updated / Failed-Retry state. Frames, label and poster are untouched.
 
+**Every step on a finished kit uses the kit's configuration (2026-10-08):** `AIPlatformApp.kitForm()` =
+`formForKit(formData, outputs.spec)` for the voice-over refine and its Veo rewrite, the section refines, Input Final
+Script (its speakers, language and the Veo rewrite), the missing Veo clips, B-roll, overlays, label and poster, and
+the row title's language; the form stays for the NEXT run (the Configuration custom-script format reads the form).
+A job changed after its kit still shows the "made for … / the job now says …" banner; Generate makes the new kit.
+
 **Editing / refine:** per-section refine (`refineSection`, "change only what was asked"),
 `refineVoiceOver` (plan → clip edits → validation; `RefineRevisionBanner` offers undo),
 `refineVeoPrompts` (plan → JSON edit → check: `VEO_REFINE_PLAN_SYSTEM_PROMPT` understands the request
@@ -387,6 +422,29 @@ keep sentence (`VEO_FRAME_LOCK` "as the attached frame", or an earlier prompt's 
 "exactly as in the attached frame"); `spokenLinesIn` reads both the new
 `… says in Telugu:` and the old `… lip-synced:` lines; one retry; the UI alert says what was understood). Copy
 buttons strip code fences.
+
+**The kit's spec (2026-10-08, `utils/adSpec`):** `generateAdAssets` writes the configuration it ran with onto the kit
+(`GeneratedOutputs.spec`: ad type, festival, language, ratio, gender, attire, special category, custom character,
+background, logo, clip count), saved as `ai_generations.spec`; the settings stored beside a kit are the KIT's
+(`savedSettingsOf`) — every auto-save used to write the form's over them. A reopened kit gets `item.spec` or, saved
+before, its stored settings (`adSpecFromSaved`).
+
+**A run that does not finish saves nothing (2026-10-08, found by the browser check of the duo fix):** a new run lets
+go of the document the screen was showing (`generationDocIdRef` cleared at Start), so a run that fails — the cast
+guardrail, any error — or is stopped can no longer have its partial sections auto-saved over the previous kit (they
+were, a second after the error, into the document the job reopens). Its status card says "This run did not finish —
+nothing was saved, and your last saved kit is unchanged" with a "Not finished" chip (it said "successfully
+generated", Completed), and Save is off for it (`kitUnfinished`); restoring a saved kit clears it. **Stop says so the
+moment it is pressed** (`handleStopGeneration` sets the error: the call in flight cannot be cancelled, and until it
+returned — 5–20 s live — the card read "successfully generated" with Save on), and **Save is off while a run is
+going** (the run saves itself when it finishes; a Save in the middle wrote its half-made sections as a new kit and
+pointed the job at it). The card's sentence for an unfinished run wraps (one line, it ended mid-word on a 390px phone);
+the running step stays one line. Also fixed with it,
+all from `.ag-chip` / `.ag-row` winning over Tailwind (adgen.css loads later): the error message is a box that grows
+with its text (it was a 28px chip over the Start button), the header status chip is hidden on phones again
+(`!hidden sm:!inline-flex` — it pushed Home off a 390px screen), and an open row's body is full width
+(`!items-stretch`). And the single-voice script reader reads every clip-header shape (`parseVoiceOverSegments` →
+`parseLabeledClips` first): a reply in `clip-1[0-8sec]:` form had its headers SPOKEN.
 
 **Save / storage:** `persistGeneration` writes `ai_generations`. **Generate** creates a new doc (a
 version); **Save** and a 1-second debounced **auto-save** update the same doc; the assignment gets
@@ -449,6 +507,17 @@ by `updatedAt`) → steps with `PipelineStepper`:
 Persistence: `cinematic_projects` with debounced autosave; files go to Cloudinary (URLs only).
 Gemini calls use the shared fallback.
 
+**The cast it was set up with (2026-10-08, audited with the AI Ads duo fix):** the AI's format for "Let AI decide" is
+read by id or label (`types/cinematicAds.resolveAdFormatId`; an unreadable answer is no choice and the operator is
+told to pick one — it used to fall back to "Let AI decide" itself, narration with one voice, for an ad the AI chose
+as a conversation); the choice carries its cast details (`withCastDefaults`: who is talking / the speaker / how
+many), shown in the picker, which now follows the format in force (`effectiveAdFormatPreset`); the brief records the
+choice on the selection as it stands when the brief returns (a format picked meanwhile wins); and `saveProject`
+writes the project whole (`setDoc` without merge — a merge kept a cleared `pairing` in the stored map, and it came
+back on the next open). **Open (owner to decide):** a format changed after stories / cast / clips exist only
+changes later prompts (nothing is reset or warned); and a clip's animation prompt carries no line-by-line speaker
+attribution (`Clip.voScript` is one string).
+
 ### 17.5 Relationships
 - Ads link to **work assignments** (`savedGenerationId`) and so to orders and clients.
 - Cinematic projects are **not** linked to orders or assignments.
@@ -458,6 +527,15 @@ Gemini calls use the shared fallback.
   live links.
 
 ## 24. BUSINESS RULES (IMPLEMENTED; verified in code)
+
+- **AI ads — the cast is the configuration (owner, 2026-10-08):** an ad ordered with two people (a Male & Female
+  Duo, two women, two men, two children, a cartoon pair) gets a script in which BOTH speak in every clip, each
+  line in its own speaker's mouth, and video prompts that voice each one from their side of the frame while the
+  other listens; a single presenter's ad is never voiced as a dialogue. A generated script that cannot keep the
+  cast is written again, and a run that still cannot stops with a message instead of making an ad for a
+  different cast. Everything done to a kit afterwards (refines, a final script, missing video prompts) is done
+  for the cast the kit was made for, whatever the form says now. A member's own script must say who speaks each
+  line, and both people must speak somewhere in it.
 
 - **AI ads — a real person's face (owner, 2026-10-08):** a Real Owner Face ad shows the client exactly as their
   photograph does — face, skin, hair, beard and forehead — for a man and a woman: nothing is added to the face
@@ -528,6 +606,12 @@ Gemini calls use the shared fallback.
 ## 25. CURRENT IMPLEMENTATION STATUS
 
 **PARTIALLY IMPLEMENTED 🟡:**
+- Cast consistency (2026-10-08): a kit saved before 2026-10-08 has no `spec`; its stored settings stand in, and
+  those were written from the form at each save — a kit whose script is not that cast's is refused (not
+  rebuilt) and has to be generated again or given a final script. An unknown speaker label in a MODEL's script is
+  placed by its position (reported, not refused); a member's is refused. The Kids' 13–15-word budget in
+  `dialogueFormat` (`MIN/MAX_WORDS_PER_KIDS_CLIP`, `wordBudgetFor(…, { children })`) is unused — left over from the
+  implementation dropped on 2026-10-02; the Kids use the duo band (15–17).
 - Number spelling (`utils/spokenNumbers`) covers Telugu and English only; Hindi, Tamil, Kannada and
   Malayalam scripts rely on the prompt rule and the digit validator.
 - Motion staging comes from the scene plan's choices or a keyword reading of each line; when the
@@ -562,6 +646,15 @@ Gemini calls use the shared fallback.
 - In-app image or video generation; publishing to social platforms.
 
 ## 27. POTENTIAL RISKS (need verification)
+
+- **Cast consistency (2026-10-08)** is checked by unit tests (every catalogue entry × commercial / festival through
+  the full pipeline on a faked Gemini; the six shapes the duo script came back in, five runs each; the gate; the
+  stop; the kit spec; custom scripts), a real-browser run of the studio, and live Gemini: 8 duo scripts from
+  gemini-2.5-flash were all well-formed, 1 of 6 from gemini-3.1-flash-lite-preview (where the free tier rotates
+  under rate limits) had broken the cast (`24-24|boy:`, now read right), and a full live Telugu duo run (101 s, 17
+  calls, polished by the gate) shipped Girl + Boy in all 4 clips with two-speaker Veo prompts. Not yet seen: a Flow
+  video from these prompts. A run that stops on the cast costs the member a Generate; a broken FIRST draft adds up
+  to two drafts (quota).
 
 - **The Real Owner Face fix (2026-10-08) has not been seen on a generated image or video.** It is checked by unit
   tests and a full run on a faked Gemini (both genders: the template on every clip, no director call, the face

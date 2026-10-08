@@ -184,6 +184,74 @@ describe("the final voice-over script", () => {
   });
 });
 
+/**
+ * 2026-10-08 — found by the browser check of the duo fix: a run that failed (the cast guardrail stops one whose
+ * script lost a speaker) or was stopped left its partial sections on screen, and the auto-save — still pointed at
+ * the LAST kit's document — wrote them over it a second later: the job reopened on an empty kit.
+ */
+describe("a run that does not finish", () => {
+  it("never saves its partial sections over the last kit, and never says Completed", async () => {
+    vi.mocked(gemini.generateAdAssets).mockResolvedValueOnce(kit() as any);
+    render(<AIPlatformApp onClose={() => {}} />);
+    await run();
+    await waitFor(() => expect(firestore.addDoc).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(gemini.generateOverlayTexts).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 1300)); // the first kit's own auto-save settles
+    const writesBefore = vi.mocked(firestore.setDoc).mock.calls.length;
+
+    // The next run writes its first (empty) sections, then stops on the cast guardrail.
+    vi.mocked(gemini.generateAdAssets).mockImplementationOnce(async (_form: unknown, _files: unknown, _progress: unknown, options: any) => {
+      options?.onPartialResult?.({ ...kit(), mainFramePrompts: [], voiceOverScript: "", veoPrompts: [], headerPrompt: "" });
+      throw new Error("The two-person conversation script for this Male & Female Duo ad came back without every speaker's own lines.");
+    });
+    fireEvent.click(screen.getByText("Start Generation"));
+    await screen.findByTestId("run-error");
+    await new Promise((r) => setTimeout(r, 1500)); // past the auto-save's 1 s
+
+    expect(vi.mocked(firestore.setDoc).mock.calls.length).toBe(writesBefore);
+    expect(firestore.addDoc).toHaveBeenCalledTimes(1);
+    const statusCard = screen.getByTestId("run-status").textContent || "";
+    expect(statusCard).toContain("did not finish");
+    expect(statusCard).not.toContain("successfully generated");
+    const save = screen.queryByTestId("kit-save") as HTMLButtonElement | null;
+    if (save) expect(save.disabled).toBe(true);
+  });
+
+  /*
+    The re-check found the window after Stop: the call in flight cannot be cancelled, and until it returned (5–20 s
+    live) the card read "successfully generated", Completed, with Save on. And Save in the middle of a run wrote its
+    half-made sections as a new kit and pointed the job at it.
+  */
+  it("says so the moment Stop is pressed, and offers no Save while a run is going", async () => {
+    let finish: (value: unknown) => void = () => {};
+    vi.mocked(gemini.generateAdAssets).mockImplementationOnce(async (_form: unknown, _files: unknown, _progress: unknown, options: any) => {
+      options?.onPartialResult?.({ ...kit(), mainFramePrompts: [], veoPrompts: [], headerPrompt: "" });
+      return new Promise((resolve) => { finish = resolve; }) as any; // the call in flight, still out when Stop is pressed
+    });
+    render(<AIPlatformApp onClose={() => {}} />);
+    await run();
+
+    // Mid-run: the first sections are on screen, and Save is off — the run saves itself when it finishes.
+    const save = screen.getByTestId("kit-save") as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.click(save);
+
+    // Stopped at once — not when the call in flight comes back.
+    fireEvent.click(screen.getByText("Stop"));
+    const statusCard = screen.getByTestId("run-status").textContent || "";
+    expect(statusCard).toContain("Stopped — nothing was saved");
+    expect(statusCard).not.toContain("successfully generated");
+    expect((screen.getByTestId("kit-save") as HTMLButtonElement).disabled).toBe(true);
+
+    // The call returns afterwards: still stopped, and nothing was written.
+    finish(kit());
+    await new Promise((r) => setTimeout(r, 1300));
+    expect(screen.getByTestId("run-status").textContent).toContain("Stopped — nothing was saved");
+    expect(firestore.addDoc).not.toHaveBeenCalled();
+    expect(firestore.setDoc).not.toHaveBeenCalled();
+  });
+});
+
 describe("a finished run", () => {
   /**
    * The "completed, but some deliverables are missing" glitch: saving the run points the job at the

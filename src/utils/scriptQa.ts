@@ -119,13 +119,24 @@ export function qaInstructions(report: ScriptQaReport): string[] {
 }
 
 /**
- * Is `b` a better draft than `a`? A draft with no invented facts always beats one with any; otherwise
- * the higher overall score wins, and a tie goes to the draft with fewer mechanical problems.
+ * Is `b` a better draft than `a`? A draft that keeps the ad's cast always beats one that broke it;
+ * then a draft with no invented facts beats one with any; otherwise the higher overall score wins, and
+ * a tie goes to the draft with fewer mechanical problems.
+ *
+ * ── Why the cast comes first (2026-10-08) ─────────────────────────────────────────────────────────────
+ * `broken` counts the problems that make a script not this cast's (utils/dialogueFormat
+ * castIntegrityIssues) — a clip with no line from one of the two people on screen. The judge scores
+ * words, not who says them, and a Male & Female Duo draft that had lost the man's lines scored HIGHER than
+ * the correct one (one clear voice reads well), so it shipped: a one-person script and video for a
+ * two-person ad. No score can buy that back. Absent → 0, so a single-voice script ranks exactly as before.
  */
 export function isBetterDraft(
-  a: { report: ScriptQaReport | null; mechanicalIssues: number },
-  b: { report: ScriptQaReport | null; mechanicalIssues: number },
+  a: { report: ScriptQaReport | null; mechanicalIssues: number; broken?: number },
+  b: { report: ScriptQaReport | null; mechanicalIssues: number; broken?: number },
 ): boolean {
+  const aBroken = a.broken ?? 0;
+  const bBroken = b.broken ?? 0;
+  if (aBroken !== bBroken) return bBroken < aBroken;
   if (!b.report) return false;
   if (!a.report) return true;
   const aClean = a.report.unsupportedClaims.length === 0;

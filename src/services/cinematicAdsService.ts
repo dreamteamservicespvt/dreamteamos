@@ -18,6 +18,7 @@ import {
   MAX_STORYBOARD_PANELS,
   describeAdFormat,
   effectiveAdFormatPreset,
+  resolveAdFormatId,
   suggestedClipCount,
 } from "@/types/cinematicAds";
 import { clampPanelCount, imagePromptCountFor, splitScenesIntoBoards } from "@/utils/cinematicAds";
@@ -207,7 +208,11 @@ Extract real details. Brand colors must come from the logo or visiting card, not
     clientRequirement,
     ourNote,
   };
-  return { brief, chosenFormatId: raw.chosenFormatId, choiceReason: raw.choiceReason };
+  // Only a format that exists — read by its id or its label (resolveAdFormatId). Anything else is no
+  // choice at all, and the operator is asked to pick one, rather than "Let AI decide" quietly becoming
+  // narration for an ad the AI meant as a conversation (2026-10-08).
+  const chosenFormatId = needsFormatChoice ? resolveAdFormatId(raw.chosenFormatId) : undefined;
+  return { brief, chosenFormatId, choiceReason: chosenFormatId ? raw.choiceReason : undefined };
 }
 
 // ── Step 1: Stories + voice over ──

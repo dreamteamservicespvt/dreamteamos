@@ -44,7 +44,6 @@ import { speakableLine, withoutFixedWords } from "@/utils/spokenNumbers";
 import {
   CHARACTER_VOICEOVER_SYSTEM_PROMPT,
   CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT,
-  CHARACTER_VOICEOVER_REFINE_SYSTEM_PROMPT,
   CHARACTER_MULTI_FRAME_SYSTEM_PROMPT,
   CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT,
   LOCATION_INDEX_SYSTEM_PROMPT,
@@ -108,9 +107,11 @@ import { getPosterStyle, AUTO_POSTER_STYLE } from "./posterStyles";
 import { DEFAULT_POSTER_SIZE } from "@/utils/posterSpec";
 import { finalizePosterConcepts, normalizePosterConcept, parsePosterConcepts } from "@/utils/posterConcepts";
 import {
-  parseDialogueClips, validateDialogueClips, formatDialogueScript, applyNameSpellings,
+  parseDialogueClips, readDialogueScript, validateDialogueClips, formatDialogueScript, applyNameSpellings,
+  castIntegrityIssues, castScriptProblems, dialogueLabelsIn,
   type DialogueClip, wordBudgetFor, countSpokenWords, MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, TARGET_WORDS_PER_CLIP,
 } from "@/utils/dialogueFormat";
+import { adSpecOf } from "@/utils/adSpec";
 import {
   assignPhotosToClips, describeClipLocations, attachmentDirective, backgroundPlateRule, parseLocationIndex, splitAttachmentDirective, withBackgroundPlate,
   BACKGROUND_PLATE_HEADING, type LocationPhoto,
@@ -616,6 +617,78 @@ const packFor = (formData: AdFormData): CharacterPack | null =>
   withCustomCharacter(getCharacterPack(formData.characterPack), formData.customCharacter);
 
 /**
+ * Whose name a cast's script must say, and whose it must never say — ONE rule for every check of it:
+ * the writer, its repairs and a member's refine.
+ *
+ * A named character (Motu, Hanuman, Doraemon) is named exactly once. A human cast's "names" are role
+ * labels (Girl, Boy, Friend, Host, Presenter) and are never spoken. The refine used to check the
+ * opposite of the writer for a human cast — it counted "Girl's name is never spoken" as a fault and did
+ * not check for the label being said — so one ad was held to two rules (2026-10-08).
+ */
+const dialogueNameRules = (pack: CharacterPack, language: string) => {
+  const speakers = packSpeakers(pack);
+  const spellings = packNameSpellings(pack, language);
+  return {
+    // A character who carries the ad alone is named "at most once, in clip 1" — the writer's own words.
+    characterNames: isHumanPack(pack) ? [] : speakers.map(speaker => ({
+      name: speaker.name,
+      tokens: [speaker.name, ...spellings.filter(s => s.name === speaker.name).map(s => s.spelling)],
+      optional: speakers.length === 1,
+    })),
+    forbiddenNames: isHumanPack(pack)
+      ? speakers.map(speaker => ({
+          name: speaker.name,
+          tokens: [speaker.name, ...(pack.characters.find(c => c.key === speaker.key)?.labelSpellings ?? [])],
+        }))
+      : [],
+  };
+};
+
+/** "a Male & Female Duo ad (Girl and Boy)" — how an error names the kit's cast. */
+const castDescription = (pack: CharacterPack | null): string => pack
+  ? `a ${pack.label} ad (${pack.characters.map(c => c.name).join(' and ')})`
+  : 'an ad with one presenter';
+
+/**
+ * A stored script, read as the cast of the ad it belongs to — or a clear refusal.
+ *
+ * Every step that rebuilds something from a kit's script (the video prompts after a refine or a final
+ * script, the missing clips, a voice-over refine) reads it here. A two-person kit's script must read as
+ * that pair, line by line, with no label that names somebody else and nobody silent; a one-presenter
+ * kit's must not be a dialogue. When it is not, NOTHING is rebuilt — the old way read whatever came back
+ * as one presenter, so a duo kit with a pack-less form got single-voice video prompts while its frames
+ * showed two people (2026-10-08).
+ */
+const readKitScript = (script: string, formData: AdFormData): { dialogue: DialogueClip[] | null; segments: string[] } => {
+  const pack = packFor(formData);
+  if (pack) {
+    const speakers = packSpeakers(pack);
+    const reading = readDialogueScript(script, speakers);
+    const problems = reading.clips.some(clip => clip.length > 0)
+      ? castScriptProblems(reading, speakers)
+      : [`it has no ${speakers.map(s => `[${s.name}]:`).join(' / ')} lines at all`];
+    if (problems.length > 0) {
+      throw new Error(`This kit is ${castDescription(pack)}, but its voice-over script does not read as that cast: ${problems.join(' ')} `
+        + `Nothing was rewritten from it, so no video prompt speaks for the wrong people. Correct the script with Input Final Script, or press Generate for a new kit.`);
+    }
+    return { dialogue: reading.clips, segments: [] };
+  }
+  const voices = dialogueLabelsIn(script);
+  if (voices.length > 0) {
+    throw new Error(`This kit is ${castDescription(null)}, but its voice-over script is a dialogue between ${voices.map(v => `[${v}]`).join(' and ')}. `
+      + `One presenter cannot voice it, so nothing was rewritten from it. Press Generate for a new kit made for this cast.`);
+  }
+  const labelled = parseLabeledClips(script);
+  // The gentle cleaner: a member's "&" or "@" is spoken as written, not deleted on the way to Veo.
+  return {
+    dialogue: null,
+    segments: labelled.length > 0
+      ? labelled.map(verbatimScriptText)
+      : normalizeAndFormatVoiceOver(script, Math.max(1, Math.round(formData.duration / CLIP_SECONDS))).segments,
+  };
+};
+
+/**
  * Resolves the name-board text: the explicit "logoNameText" if the user typed one, else a
  * fallback to the business name extracted from the business info (task 3 — the name board must
  * still render even when the user did not type a custom name).
@@ -1093,8 +1166,14 @@ export const refineVoiceOver = async (params: {
   const nameOf = new Map(speakers.map(s => [s.key, s.name]));
   const unchanged = (notApplied: string, understood = ''): VoiceOverRefineResult => ({ script, changed: [], understood, notApplied });
 
-  // ── The script as clips ──
-  const dialogue: DialogueClip[] = pack ? parseDialogueClips(script, speakers) : [];
+  // ── The script as clips — and as THIS kit's cast, or nothing is edited (readKitScript) ──
+  let kitScript: ReturnType<typeof readKitScript>;
+  try {
+    kitScript = readKitScript(script, formData);
+  } catch (err) {
+    return unchanged(err instanceof Error ? err.message : String(err));
+  }
+  const dialogue: DialogueClip[] = kitScript.dialogue ?? [];
   const labelled = pack ? [] : parseLabeledClips(script).map(cleanScriptText);
   const lines: string[] = pack
     ? []
@@ -1214,12 +1293,9 @@ Return ONLY the JSON for clip${plan.clips.length === 1 ? '' : 's'} ${plan.clips.
 
   const budget = wordBudgetFor(speakers.length);
   const spellings = packNameSpellings(pack, language);
-  const characterNames = speakers.map(s => ({
-    name: s.name,
-    tokens: [s.name, ...spellings.filter(sp => sp.name === s.name).map(sp => sp.spelling)],
-  }));
   const check = (clips: DialogueClip[]) => validateDialogueClips(clips, count, speakers, {
-    characterNames,
+    // The writer's own name rules — a role label is never spoken, a named character is named once.
+    ...dialogueNameRules(pack, language),
     minWordsPerClip: budget.minClip,
     maxWordsPerClip: budget.maxClip,
     minWordsPerLine: budget.minLine,
@@ -1975,6 +2051,16 @@ const parseVoiceOverSegments = (script: string, segmentCount: number): string[] 
   const normalized = cleanScriptText(script || '');
   if (!normalized) return Array(segmentCount).fill('');
 
+  /*
+    Every clip header a writer realistically returns, read by the one reader the custom and final scripts use
+    (utils/voiceOverFormat.parseLabeledClips): `0-8:` as asked, and `clip-1[0-8sec]:`, `Clip 1 (0-8 sec) -`,
+    `[8-16sec]:`, `Scene 2:`, a bold label (2026-10-08). The two patterns below knew only `0-8:` and `Segment N:`, so
+    a reply in the display form fell through to the word splitter and its headers were SPOKEN — "clip one zero
+    eight sec …" in the voice-over (seen in the browser check of the duo fix).
+  */
+  const labelled = parseLabeledClips(normalized).map(clip => clip.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  if (labelled.length > 0) return labelled.slice(0, segmentCount);
+
   const lines = normalized.split('\n').map(l => l.trim()).filter(Boolean);
   const timestampHeader = /^(\d+\s*-\s*\d+)\s*:\s*(.*)$/i;
   const segmentHeader = /^segment\s*\d+\s*:\s*(.*)$/i;
@@ -2225,6 +2311,46 @@ export const generateAdAssets = async (
   
   if (API_KEYS.length === 0) {
     throw new Error("No API keys configured. Please set API_KEY_1, API_KEY_2, etc. in your environment.");
+  }
+
+  // ── Who this ad is for — resolved ONCE, here, and read by every step below ───────────────────
+  // A special category swaps in its own script / frame / video prompts. When none is selected this
+  // is null and every line below behaves exactly as it always has.
+  const pack = packFor(formData);
+  const packSpeakerList = pack ? packSpeakers(pack) : [];
+
+  /*
+    A member's own script, read as THIS cast before a single call is made (2026-10-08).
+
+    It is used word for word, so who says each line has to be on the page: a label that names nobody in
+    the ad, a line with no speaker in a two-person ad, or one of the two never speaking at all would
+    otherwise be guessed at — and a guess is how the man's lines became the woman's. The same reader and
+    the same rules as Input Final Script (utils/dialogueFormat castScriptProblems), and asked now rather
+    than after the extraction and the core message: the member fixes the script, not waits for a refusal.
+  */
+  const pastedReading = pack && customScript?.trim() ? readDialogueScript(customScript, packSpeakerList) : null;
+  const pastedDialogue = pastedReading && pastedReading.clips.some(clip => clip.length > 0) ? pastedReading.clips : [];
+  if (pack && customScript?.trim()) {
+    const problems = pastedReading ? castScriptProblems(pastedReading, packSpeakerList) : [];
+    if (problems.length > 0 || (pastedDialogue.length === 0 && packSpeakerList.length > 1)) {
+      const [a, b] = packSpeakerList;
+      const example = packSpeakerList.length > 1
+        ? `clip-1[0-8sec]:\n[${a.name}]: …\n[${b.name}]: …\nclip-2[8-16sec]:\n[${a.name}]: …\n[${b.name}]: …`
+        : `clip-1[0-8sec]:\n[${a.name}]: …\nclip-2[8-16sec]:\n[${a.name}]: …`;
+      throw new Error(
+        `${problems.length > 0 ? `${problems.join(' ')}\n\n` : ''}`
+        + `Your script is used word for word, so ${packSpeakerList.length > 1 ? 'a two-person ad needs to know who says each line' : `every line is ${a.name}'s`}. `
+        + `Write every clip like this and paste it again:\n\n${example}`,
+      );
+    }
+  }
+  if (!pack && customScript?.trim()) {
+    // A dialogue pasted into a one-presenter ad would be read by that one voice, labels and all.
+    const voices = dialogueLabelsIn(customScript);
+    if (voices.length > 0) {
+      throw new Error(`Your script is a conversation between ${voices.map(v => `[${v}]`).join(' and ')}, but this ad has one presenter, who would say every line — labels included. `
+        + `Choose the special category with those two people, or paste the script without the speaker labels.`);
+    }
   }
 
   /**
@@ -2482,11 +2608,7 @@ export const generateAdAssets = async (
   /** True when the client's data carries an address — then the last clip says it, else none is spoken. */
   const addressGiven = !!latinAddress;
 
-  // ── Special-category (cartoon duo) ad ───────────────────────────────────────────────────────
-  // A pack swaps in the two-character script/frame/video prompts. When no pack is selected this
-  // is null and every line below behaves exactly as it always has.
-  const pack = packFor(formData);
-  const packSpeakerList = pack ? packSpeakers(pack) : [];
+  // ── Special-category ad: the cast's script, as structured clips (who says what) ─────────────
   let dialogueClips: DialogueClip[] = [];
 
   /*
@@ -2519,15 +2641,21 @@ export const generateAdAssets = async (
   // clips are used verbatim (never re-segmented or re-worded), and its clip count — not the
   // Video Duration dropdown — decides how many main-frame and Veo prompts get generated, so the
   // attached script lands in the Generated Assets exactly as the business wrote it. A special-category
-  // script with its `[Speaker]:` lines is read the same way, so its clip count wins too.
+  // script with its `[Speaker]:` lines is read the same way (pastedDialogue, at the top), so its clip
+  // count wins too.
   const preSplitCustomClips = customScript?.trim() ? parseLabeledClips(customScript) : [];
-  const pastedDialogue = pack && customScript?.trim() ? parseDialogueClips(customScript, packSpeakerList) : [];
   const segmentCount = pastedDialogue.length > 0
     ? pastedDialogue.length
     : preSplitCustomClips.length > 0
       ? preSplitCustomClips.length
       : Math.round(formData.duration / 8);
   const effectiveDuration = segmentCount * CLIP_SECONDS;
+  /**
+   * The configuration this kit is made with — its cast, language, ratio and clip count — carried ON the
+   * kit, so every step that works on it after the run reads this and not the form (utils/adSpec).
+   */
+  const spec = adSpecOf(formData, segmentCount);
+  emitPartial({ spec });
 
   /** The address rule every writer and repairer of a GENERATED script is given (prompts/address). */
   const addressRule = customScript?.trim() ? '' : addressRuleBlock({
@@ -2615,21 +2743,12 @@ export const generateAdAssets = async (
     /**
      * Each character's name and every spelling of it, so "both names, each exactly once" is
      * enforced per character rather than merely requested. A single total would let a script say
-     * one name twice and the other never and still look compliant.
+     * one name twice and the other never and still look compliant. Human casts have role labels, not
+     * names — "Friend" and "Host" are how the script tells the two people apart, and requiring either to
+     * be said out loud made the two women call each other "Friend"; their labels are FORBIDDEN instead.
+     * One rule with the refine (dialogueNameRules).
      */
-    const spellings = packNameSpellings(pack, formData.language);
-    /**
-     * Human casts have role labels, not names — "Friend" and "Host" are how the script tells the two
-     * people apart, and requiring either to be said out loud made the two women call each other
-     * "Friend". Only a named character (Motu, Hanuman) has a name the audience must hear.
-     */
-    const characterNames = isHumanPack(pack) ? [] : packSpeakerList.map(speaker => ({
-      name: speaker.name,
-      tokens: [
-        speaker.name,
-        ...spellings.filter(s => s.name === speaker.name).map(s => s.spelling),
-      ],
-    }));
+    const { characterNames, forbiddenNames } = dialogueNameRules(pack, formData.language);
     /**
      * A member's own script is used word for word — see utils/customScript.
      *
@@ -2637,8 +2756,8 @@ export const generateAdAssets = async (
      * member chose them). A single-speaker category needs no speaker lines, so its clips — or its
      * unlabelled text, cut at sentence boundaries — become that character's lines unchanged. A
      * two-speaker category cannot guess who says which sentence, and guessing is how lines landed in
-     * the wrong character's mouth; it used to throw the script away and write a new one, so now it
-     * asks for the speaker lines instead.
+     * the wrong character's mouth: its script was read as this cast at the start of the run, and one
+     * that does not say who speaks never reaches here (castScriptProblems).
      */
     if (customScript?.trim()) {
       if (pastedDialogue.length > 0) {
@@ -2650,11 +2769,7 @@ export const generateAdAssets = async (
           : splitScriptVerbatim(customScript, segmentCount);
         return texts.map(text => [{ speaker: packSpeakerList[0].key, text }]);
       }
-      const [a, b] = packSpeakerList;
-      throw new Error(
-        `Your script is used word for word, so a two-person ad needs to know who says each line. `
-        + `Write every clip like this and paste it again:\n\nclip-1[0-8sec]:\n[${a.name}]: …\n[${b.name}]: …\nclip-2[8-16sec]:\n[${a.name}]: …\n[${b.name}]: …`,
-      );
+      throw new Error('A two-person script has to say who speaks each line — paste it with its [Speaker]: labels.');
     }
 
     const spokenPlace = await resolveSpokenPlace();
@@ -2710,18 +2825,9 @@ export const generateAdAssets = async (
     /*
      * A human cast has role labels, not names — Girl, Boy, Friend, Host. Scripts came back with the
      * two of them addressing each other by the label, in Telugu, which reads to a client like a
-     * template nobody finished. The pack text asked for it not to happen; this is what checks it, so
-     * the repair pass rewrites the line instead of it being delivered.
+     * template nobody finished. The pack text asked for it not to happen; `forbiddenNames` (above) is
+     * what checks it, so the repair pass rewrites the line instead of it being delivered.
      */
-    const forbiddenNames = isHumanPack(pack)
-      ? packSpeakerList.map(speaker => ({
-          name: speaker.name,
-          tokens: [
-            speaker.name,
-            ...(pack.characters.find(c => c.key === speaker.key)?.labelSpellings ?? []),
-          ],
-        }))
-      : [];
     const checkDialogue = (clips: DialogueClip[]) =>
       validateDialogueClips(clips, segmentCount, packSpeakerList, {
         characterNames,
@@ -3221,19 +3327,44 @@ A PREVIOUS DRAFT OF THIS SCRIPT FAILED THE QUALITY CHECK (${report.overall}/10).
 WHAT THE NEW SCRIPT MUST DO DIFFERENTLY: ${report.rewriteBrief || 'Deliver the core message more clearly, naturally and persuasively, using only the real facts.'}
 WHAT THE CHECK FOUND:
 ${qaInstructions(report).map(line => `- ${line}`).join('\n')}`;
+  /**
+   * What a new draft is told about one that did not give every character their lines — before anything
+   * about quality, because no wording makes a script with the wrong cast usable.
+   */
+  const castFeedback = (issues: string[]): string => issues.length === 0 ? '' : `
+
+THE PREVIOUS DRAFT DID NOT GIVE EVERY CHARACTER THEIR OWN LINES — get this right first:
+${issues.slice(0, 8).map(line => `- ${line}`).join('\n')}
+Every clip has exactly one line for EACH character, in the fixed order, each on its own line and labelled with its own speaker in the exact output format.`;
   /** Judge → polish or rewrite → judge again, keeping the best draft. */
   const withScriptQa = async <T,>(
     first: T,
     textOf: (draft: T) => string,
-    nextDraft: (draft: T, report: ScriptQaReport) => Promise<T>,
+    nextDraft: (draft: T, report: ScriptQaReport | null, castIssues: string[]) => Promise<T>,
     mechanicalIssues: (draft: T) => number,
     /** Called with every draft before it is judged — the scene plan starts from it. */
     onDraft?: (draft: T) => void,
+    /**
+     * The problems that make a draft NOT this ad's cast (castIntegrityIssues) — none for a single voice.
+     *
+     * ── Why the gate checks the cast (2026-10-08) ──────────────────────────────────────────────────
+     * The judge scores words, not who says them. A Male & Female Duo draft that had lost the man's lines
+     * scored higher than the correct draft and shipped — a one-person script, then one-person video
+     * prompts, under frames that showed the pair. A draft with any of these problems is not judged (no
+     * score can make it usable), always loses to one without them (isBetterDraft `broken`), and makes the
+     * gate write new drafts even when a judge would have passed it, or could not run.
+     */
+    castIssuesOf: (draft: T) => string[] = () => [],
   ): Promise<T> => {
     onProgress("Checking the script — facts, language and selling power...", 30);
     onDraft?.(first);
-    let best = { draft: first, report: await judgeScript(textOf(first)), mechanicalIssues: mechanicalIssues(first) };
+    const judge = async (draft: T) => {
+      const broken = castIssuesOf(draft).length;
+      return { draft, report: broken > 0 ? null : await judgeScript(textOf(draft)), mechanicalIssues: mechanicalIssues(draft), broken };
+    };
+    let best = await judge(first);
     let drafts = 1;
+    const firstCastIssues = castIssuesOf(first);
     /*
       Further drafts are written AT THE SAME TIME and judged together — not one after another.
 
@@ -3243,20 +3374,22 @@ ${qaInstructions(report).map(line => `- ${line}`).join('\n')}`;
       directed edit, so it is one candidate; a rewrite gets every remaining draft at once. Anything not
       back by the deadline is left out, and the best draft so far ships.
     */
-    if (best.report && qaDecision(best.report) !== 'pass') {
+    if (firstCastIssues.length > 0 || (best.report && qaDecision(best.report) !== 'pass')) {
       const firstReport = best.report;
-      const rewrite = qaDecision(firstReport) === 'rewrite';
-      onProgress(rewrite
-        ? `The script scored ${firstReport.overall}/10 — writing stronger drafts...`
-        : `The script scored ${firstReport.overall}/10 — polishing what the check found...`, 32);
+      const rewrite = firstCastIssues.length > 0 || (!!firstReport && qaDecision(firstReport) === 'rewrite');
+      onProgress(firstCastIssues.length > 0
+        ? 'The script lost one of the speakers — writing it again with every line in its own voice...'
+        : rewrite
+          ? `The script scored ${firstReport?.overall}/10 — writing stronger drafts...`
+          : `The script scored ${firstReport?.overall}/10 — polishing what the check found...`, 32);
       const attempts = rewrite ? MAX_SCRIPT_DRAFTS - 1 : 1;
       let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
       const deadline = new Promise<null>(resolve => { deadlineTimer = setTimeout(() => resolve(null), SCRIPT_GATE_DEADLINE_MS); });
       const candidates = await Promise.all(Array.from({ length: attempts }, () => Promise.race([
         (async () => {
-          const candidate = await nextDraft(first, firstReport);
+          const candidate = await nextDraft(first, firstReport, firstCastIssues);
           onDraft?.(candidate);
-          return { draft: candidate, report: await judgeScript(textOf(candidate)), mechanicalIssues: mechanicalIssues(candidate) };
+          return await judge(candidate);
         })().catch(err => {
           console.warn('Writing another script draft failed; keeping the best so far.', err);
           return null;
@@ -3289,17 +3422,36 @@ ${qaInstructions(report).map(line => `- ${line}`).join('\n')}`;
       clips.map(clip => clip.map(line => ({ ...line, text: speakableLine(line.text, formData.language) })));
     dialogueClips = speakableDialogue(await generateCharacterDialogue());
     if (!customScript?.trim()) {
+      /** Who is missing from a draft — the cast is checked on every draft, not only asked for. */
+      const castIssuesOf = (clips: DialogueClip[]) => castIntegrityIssues(clips, segmentCount, packSpeakerList);
       dialogueClips = await withScriptQa(
         dialogueClips,
         clips => formatDialogueScript(clips, packSpeakerList),
-        async (_draft, report) => speakableDialogue(await generateCharacterDialogue(
-          qaDecision(report) === 'rewrite'
-            ? rewriteFeedback(report)
-            : `\n\nA QUALITY CHECK OF AN EARLIER DRAFT (${report.overall}/10) FOUND THESE PROBLEMS — write the script so that none of them happens:\n${qaInstructions(report).map(line => `- ${line}`).join('\n')}`,
+        async (_draft, report, castIssues) => speakableDialogue(await generateCharacterDialogue(
+          castFeedback(castIssues) + (!report
+            ? ''
+            : qaDecision(report) === 'rewrite'
+              ? rewriteFeedback(report)
+              : `\n\nA QUALITY CHECK OF AN EARLIER DRAFT (${report.overall}/10) FOUND THESE PROBLEMS — write the script so that none of them happens:\n${qaInstructions(report).map(line => `- ${line}`).join('\n')}`),
         )),
         clips => clips.length === segmentCount ? 0 : 1,
-        clips => planScenesEarly(dialogueSegments(clips)),
+        // A draft that lost a speaker is never shipped, so no scene plan is started for it.
+        clips => { if (castIssuesOf(clips).length === 0) planScenesEarly(dialogueSegments(clips)); },
+        castIssuesOf,
       );
+      /*
+        THE GUARDRAIL (2026-10-08): a generated script that is still not this cast's — a clip with no line
+        from one of the two people on screen, a line from somebody the ad does not have, the wrong number of
+        clips — after its repairs and every draft the gate wrote, stops the run HERE. It used to ship with a
+        console warning, and every step after it believed it: the video prompts gave the whole clip to one
+        voice while the frames showed both people. A run that cannot clear it makes nothing rather than an
+        ad for a different cast; pressing Generate writes it again.
+      */
+      const castIssues = castIssuesOf(dialogueClips);
+      if (castIssues.length > 0) {
+        throw new Error(`The ${packAdKind(pack).script} for this ${pack.label} ad came back without every speaker's own lines, even after it was written again: `
+          + `${castIssues.slice(0, 3).join(' ')} No frame or video prompt was made from it, so nothing speaks for the wrong people. Press Generate to write it again.`);
+      }
     }
     voiceOverScript = formatDialogueScript(dialogueClips, packSpeakerList);
     // Downstream (main frame, Veo, stock images) consumes one string per clip — give it the whole
@@ -3383,7 +3535,8 @@ Segment 2: <text>`;
     let finalVoiceOver = await withScriptQa<Draft>(
       await writeDraft(),
       draft => draft.formatted,
-      (draft, report) => (qaDecision(report) === 'rewrite' ? writeDraft(rewriteFeedback(report)) : polishDraft(draft, report)),
+      // One presenter has no cast to lose, so the gate only ever asks again with the judge's report.
+      (draft, report) => (!report ? writeDraft() : qaDecision(report) === 'rewrite' ? writeDraft(rewriteFeedback(report)) : polishDraft(draft, report)),
       draft => validateVoiceOverSegments(draft.rawScript, draft.segments, segmentCount, formData.language, everyday,
         formData.adType === 'festival' ? 1 : undefined).concat(addressIssues(draft.segments, everyday?.names)).length,
       // The same lines the script will be planned from once it is final (see the speakableLine pass below).
@@ -4005,7 +4158,13 @@ ${sceneContext ? `
    */
   const veoPromise = mainFramePromise.then(async (frames): Promise<string[]> => {
     onProgress("Directing camera moves and performance for each clip...", 85);
-    const { count, clips, lines, plates } = veoClipsFromScript(voiceOverScript, formData, frames);
+    /*
+      A cast's video prompts are written from the run's OWN structured dialogue — who says each line, in
+      order — not from its display text read back (2026-10-08): the script that was checked for its cast
+      is exactly the one the video voices. One presenter's lines are read as before.
+    */
+    const script = pack ? { dialogue: dialogueClips, segments: [] } : readKitScript(voiceOverScript, formData);
+    const { count, clips, lines, plates } = veoClipsFor(formData, script, frames);
     const prompts = await writeVeoPrompts(formData, count, clips, lines, sceneContext, plates);
     emitPartial({ veoPrompts: prompts });
     return prompts;
@@ -4037,6 +4196,8 @@ ${sceneContext ? `
     sceneContext,
     voiceBrief,
     scriptQa,
+    // The configuration the kit was made with — what every later step on it reads (utils/adSpec).
+    spec,
   };
 };
 
@@ -4056,15 +4217,17 @@ interface VeoClipInput {
 const FRAME_CONTEXT_LIMIT = 2600;
 
 /**
- * The clips of a script, ready to direct.
+ * The clips of a script, ready to direct — from the script as STRUCTURED clips: a cast's dialogue (who
+ * says each line) or one presenter's lines. The run hands over its own dialogue; a rebuild after the run
+ * reads the stored script first (veoClipsFromScript → readKitScript). `indexes` limits it to the clips
+ * that need new prompts.
  *
- * Reads the script itself — a single-voice script by its clip labels, a character script as dialogue
- * — so a refined or pasted script is directed exactly as it now reads. `indexes` limits it to the
- * clips that need new prompts.
+ * A cast is never directed as one presenter: with a special category and no dialogue there is nothing
+ * to direct, and it says so rather than handing the clip to a single voice (2026-10-08).
  */
-const veoClipsFromScript = (
-  script: string,
+const veoClipsFor = (
   formData: AdFormData,
+  script: { dialogue: DialogueClip[] | null; segments: string[] },
   mainFramePrompts: string[] = [],
   indexes?: number[],
 ): { count: number; clips: VeoClipInput[]; lines: string[]; plates: boolean[] } => {
@@ -4073,12 +4236,13 @@ const veoClipsFromScript = (
   let all: VeoClipInput[];
 
   if (pack) {
+    if (!script.dialogue) throw new Error(`This kit is ${castDescription(pack)}, but no dialogue was given to direct.`);
     // Invented people are named by how the frames show them ("the woman in the teal saree"), read
     // back off the frames' cast sheet — never by a label the video model cannot see (utils/castSheet).
     const castNames = castNamesFromFrames(mainFramePrompts);
     const nameOf = new Map(packSpeakers(pack).map((s, i) => [s.key, castNames[i] || s.name]));
     const subject = packVeoSubject(pack, castNames);
-    all = parseDialogueClips(script, packSpeakers(pack)).map((clip, i) => {
+    all = script.dialogue.map((clip, i) => {
       const lines = clip.map(l => ({ name: nameOf.get(l.speaker) ?? l.speaker, text: l.text }));
       return {
         index: i,
@@ -4088,13 +4252,8 @@ const veoClipsFromScript = (
       };
     });
   } else {
-    const labelled = parseLabeledClips(script);
-    // The gentle cleaner: a member's "&" or "@" is spoken as written, not deleted on the way to Veo.
-    const segments = labelled.length > 0
-      ? labelled.map(verbatimScriptText)
-      : normalizeAndFormatVoiceOver(script, Math.max(1, Math.round(formData.duration / CLIP_SECONDS))).segments;
     const { voice } = modelVeoSubject(formData.gender || 'female');
-    all = segments.map((line, i) => ({
+    all = script.segments.map((line, i) => ({
       index: i,
       framePrompt: frameFor(i),
       speech: [{ voice, line }],
@@ -4115,6 +4274,18 @@ const veoClipsFromScript = (
     plates: all.map(c => c.framePrompt.includes(BACKGROUND_PLATE_HEADING)),
   };
 };
+
+/**
+ * The clips of a STORED script, ready to direct — read as the kit's own cast first (readKitScript), so a
+ * refined or pasted script is directed exactly as it now reads, and a script that is not that cast's is
+ * refused instead of being voiced by one presenter.
+ */
+const veoClipsFromScript = (
+  script: string,
+  formData: AdFormData,
+  mainFramePrompts: string[] = [],
+  indexes?: number[],
+) => veoClipsFor(formData, readKitScript(script, formData), mainFramePrompts, indexes);
 
 /**
  * The motion plan's inputs for a run: each clip's spoken words, the scene plan's choices, the cast size

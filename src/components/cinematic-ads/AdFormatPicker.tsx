@@ -5,6 +5,8 @@ import {
   GENDER_PAIRINGS,
   TO_CAMERA_SPEAKERS,
   adFormatPreset,
+  effectiveAdFormatPreset,
+  withCastDefaults,
   type AdFormatFamily,
   type AdFormatSelection,
   type Gender,
@@ -36,19 +38,23 @@ interface Props {
  * The consequences are printed on the card rather than hidden in the pipeline.
  */
 export default function AdFormatPicker({ value, onChange }: Props) {
-  const selectedPreset = adFormatPreset(value.formatId);
+  /*
+    The format actually in force — the AI's choice once it has made one. The cast details below used to
+    follow the raw "Let AI decide", so an AI-chosen two-person conversation never showed who was talking
+    and nobody could set it (2026-10-08).
+  */
+  const selectedPreset = effectiveAdFormatPreset(value);
 
   const select = (formatId: AdFormatSelection["formatId"]) => {
-    const preset = adFormatPreset(formatId);
     // Drop sub-options that the new format does not use, so a stale pairing from a
-    // previous choice cannot leak into the prompts.
-    onChange({
+    // previous choice cannot leak into the prompts (withCastDefaults).
+    onChange(withCastDefaults({
       formatId,
-      pairing: preset.supportsPairing ? value.pairing || "male_female" : undefined,
-      speakerRole: preset.supportsSpeakerRole ? value.speakerRole || "owner" : undefined,
-      speakerGender: preset.supportsSpeakerRole ? value.speakerGender || "male" : undefined,
-      characterCount: preset.supportsCharacterCount ? value.characterCount || 3 : undefined,
-    });
+      pairing: value.pairing,
+      speakerRole: value.speakerRole,
+      speakerGender: value.speakerGender,
+      characterCount: value.characterCount,
+    }, adFormatPreset(formatId)));
   };
 
   return (

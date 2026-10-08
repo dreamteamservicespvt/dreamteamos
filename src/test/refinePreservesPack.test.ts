@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   CHARACTER_VOICEOVER_SYSTEM_PROMPT, CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT,
-  CHARACTER_MULTI_FRAME_SYSTEM_PROMPT, CHARACTER_VOICEOVER_REFINE_SYSTEM_PROMPT,
+  CHARACTER_MULTI_FRAME_SYSTEM_PROMPT,
 } from "@/services/prompts/characterAd";
+import { VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT } from "@/services/prompts/refine";
 import { VOICEOVER_SYSTEM_PROMPT, VEO_SEGMENT_SYSTEM_PROMPT } from "@/services/prompts";
 import { getCharacterPack, packSpeakers, packSpeakerAliases, packNameSpellings } from "@/services/characterPacks";
 import { parseDialogueClips, formatDialogueScript, applyNameSpellings } from "@/utils/dialogueFormat";
@@ -31,18 +32,20 @@ describe("the prompt a refine is given", () => {
    * A refine gets a prompt that asks for an EDIT and nothing else.
    */
   describe("a pack voice-over refine gets an edit prompt, not the generator", () => {
-    const refine = CHARACTER_VOICEOVER_REFINE_SYSTEM_PROMPT(pack, 2, "Telugu");
+    // The prompt geminiService.refineVoiceOver really sends for a cast (2026-10-08: the older pack-only
+    // refine prompt this used to test was never called, and was removed).
+    const refine = VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT({ language: "Telugu", clipCount: 2, adType: "commercial", speakers });
 
     it("names both characters and the two-line contract", () => {
       expect(refine).toContain("Motu");
       expect(refine).toContain("Patlu");
-      expect(refine).toContain("EXACTLY 2 lines in every clip");
-      expect(refine).toContain("EXACTLY 2 clips");
+      expect(refine).toContain("exactly 2 lines, Motu then Patlu, in that order");
+      expect(refine).toContain(`{ "speaker": "motu", "text": "<Motu's line>" }, { "speaker": "patlu", "text": "<Patlu's line>" }`);
     });
 
     it("forbids the flattening that caused the bug", () => {
-      expect(refine).toContain("NEVER collapse the two into one voice");
-      expect(refine).toContain("NEVER convert this into a narrator's voice-over");
+      expect(refine).toContain("Never merge them into one voice, never drop or reorder a character");
+      expect(refine).toContain("never move a line, or part of one, to the other character");
     });
 
     it("never tells the model to write a script", () => {

@@ -60,7 +60,15 @@ export function toStoredProject(project: CinematicAdsProject): Record<string, un
 export async function saveProject(project: CinematicAdsProject): Promise<string> {
   const id = project.id || doc(collection(db, CINEMATIC_PROJECTS)).id;
   const payload = toStoredProject({ ...project, id, updatedAt: Date.now() });
-  await setDoc(doc(db, CINEMATIC_PROJECTS, id), payload, { merge: true });
+  /*
+    The whole project, replacing the stored one — not merged into it (2026-10-08). A merge keeps every key
+    of a nested map that the new payload leaves out, and `sanitize` leaves out what was cleared: a format
+    switched from "Two-person conversation — Both female" to one with no pairing saved as a format with no
+    pairing, and the stored "Both female" came back on the next open, telling the cast and the clips that
+    both speakers were women. This is the project's only writer, and the project in memory is the whole
+    document (loadProject reads every field), so nothing else is lost by writing it whole.
+  */
+  await setDoc(doc(db, CINEMATIC_PROJECTS, id), payload);
   return id;
 }
 

@@ -20,7 +20,9 @@
  * (spokenNumbers). Kept pure — the check that decides whether a pasted script is accepted is tested.
  */
 import { parseLabeledClips, clipLabel, CLIP_SECONDS } from "./voiceOverFormat";
-import { formatDialogueScript, parseDialogueClips, type DialogueClip, type Speaker } from "./dialogueFormat";
+import {
+  castScriptProblems, dialogueLabelsIn, formatDialogueScript, parseDialogueClips, readDialogueScript, type DialogueClip, type Speaker,
+} from "./dialogueFormat";
 import { verbatimScriptText } from "./customScript";
 import { speakableLine } from "./spokenNumbers";
 
@@ -92,28 +94,6 @@ export interface FinalScriptReading {
   notes: string[];
 }
 
-const label = /^\s*\[\s*([^\]\n]{1,40}?)\s*\]\s*:/;
-const norm = (v: string) => v.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
-
-/** Every `[Name]:` label in the text that is not one of this ad's speakers. */
-function unknownLabels(text: string, speakers: Speaker[]): string[] {
-  const known = new Set<string>();
-  for (const s of speakers) {
-    known.add(norm(s.key));
-    known.add(norm(s.name));
-    const parts = s.name.trim().split(/\s+/);
-    known.add(norm(parts[parts.length - 1] || ""));
-  }
-  const out: string[] = [];
-  for (const line of text.split(/\r?\n/)) {
-    const m = label.exec(line);
-    if (!m) continue;
-    const name = m[1].trim();
-    if (!known.has(norm(name)) && !out.includes(name)) out.push(name);
-  }
-  return out;
-}
-
 const canonical = (segments: string[]) =>
   segments.map((text, i) => `${i * CLIP_SECONDS}-${(i + 1) * CLIP_SECONDS}: ${text}`).join("\n");
 
@@ -143,11 +123,13 @@ export function readFinalScript(
 
   // ── an ad with characters: [Name]: lines under each clip ────────────────────────────────────
   if (speakers.length > 0) {
-    const strangers = unknownLabels(text, speakers);
-    if (strangers.length > 0) {
-      problems.push(`${strangers.map((n) => `[${n}]`).join(", ")} ${strangers.length === 1 ? "is not a speaker" : "are not speakers"} in this ad — its ${speakers.length === 1 ? "character is" : "characters are"} ${names}. Use exactly ${speakers.map((s) => `[${s.name}]`).join(" and ")}.`);
-    }
-    let clips: DialogueClip[] = parseDialogueClips(text, speakers);
+    /*
+      Read with the generator's own reader and held to the same rules as a custom script in Configuration
+      (utils/dialogueFormat castScriptProblems, 2026-10-08): a label that names nobody in this ad, a line
+      with no speaker in a two-person ad, or one of the two never speaking is refused, never guessed at.
+    */
+    const reading = readDialogueScript(text, speakers);
+    let clips: DialogueClip[] = reading.clips;
     // One character, written as plain clip lines: every clip is theirs.
     if (clips.length === 0 && speakers.length === 1) {
       clips = parseLabeledClips(text).map((line) => [{ speaker: speakers[0].key, text: line }]);
@@ -158,6 +140,7 @@ export function readFinalScript(
         : `No clips could be read. Start each clip with its line, e.g. clip-1[0-8sec]:, then [${speakers[0].name}]: and the words.`);
       return fail();
     }
+    problems.push(...castScriptProblems(reading, speakers));
     const empty = clips.map((c, i) => (c.every((l) => !l.text.trim()) ? i + 1 : 0)).filter(Boolean);
     if (empty.length > 0) problems.push(`Clip ${empty.join(", ")} ${empty.length === 1 ? "has" : "have"} no spoken line.`);
     if (expected > 0 && clips.length !== expected) {
@@ -175,6 +158,12 @@ export function readFinalScript(
   }
 
   // ── no characters: one line per clip ─────────────────────────────────────────────────────────
+  // A conversation has nobody to go to in a one-presenter ad: its one voice would say both parts.
+  const voices = dialogueLabelsIn(text);
+  if (voices.length > 0) {
+    problems.push(`This ad has one presenter, but this script is a conversation between ${voices.map((v) => `[${v}]`).join(" and ")} — one voice would say every line, labels included. Paste one line per clip without speaker labels, or generate the kit for those two people.`);
+    return fail();
+  }
   if (/^\s*\[[^\]\n]{1,40}\]\s*:/m.test(text)) {
     notes.push("This ad has no characters, so the [Name]: labels were read as part of the lines — remove them if they are not meant to be spoken.");
   }

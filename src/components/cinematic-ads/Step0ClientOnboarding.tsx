@@ -7,7 +7,9 @@ import {
   TARGET_PLATFORMS,
   DURATION_OPTIONS,
   LANGUAGES,
+  adFormatPreset,
   describeAdFormat,
+  withCastDefaults,
   type UploadedFile,
   type TargetPlatform,
   type ClientBrief,
@@ -125,14 +127,24 @@ export default function Step0ClientOnboarding() {
       });
       setBrief(result.brief);
 
-      // When the operator asked the AI to choose, record the choice on the selection so
-      // every later step follows THAT format's rules rather than the neutral default.
-      if (result.chosenFormatId) {
-        setAdFormat({
-          ...project.adFormat,
-          aiChosenFormatId: result.chosenFormatId,
-          aiChoiceReason: result.choiceReason,
-        });
+      /*
+        When the operator asked the AI to choose, record the choice on the selection so every later step
+        follows THAT format's rules rather than the neutral default — on the selection as it stands NOW
+        (2026-10-08): the one captured when Generate was pressed could be stale, and a format picked by
+        hand while the brief was being written was overwritten. A hand-picked format wins. The chosen
+        format's cast details (who is talking) are filled in, so no later step guesses them.
+      */
+      const current = useCinematicAdsStore.getState().project?.adFormat ?? project.adFormat;
+      if (current.formatId === "ai_decides") {
+        if (result.chosenFormatId) {
+          setAdFormat(withCastDefaults({
+            ...current,
+            aiChosenFormatId: result.chosenFormatId,
+            aiChoiceReason: result.choiceReason,
+          }, adFormatPreset(result.chosenFormatId)));
+        } else if (project.adFormat.formatId === "ai_decides") {
+          toast.warning("The AI did not choose a type of ad — pick one under Type of Ad before writing the stories.");
+        }
       }
       toast.success("Client brief ready");
     } catch (err: any) {

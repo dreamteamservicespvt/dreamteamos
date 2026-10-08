@@ -1,5 +1,6 @@
 import type { CoreMessageBrief } from '@/services/prompts/coreMessage';
 import type { ScriptQaSummary } from '@/utils/scriptQa';
+import type { AdSpec } from '@/utils/adSpec';
 
 export enum AdType {
   COMMERCIAL = 'commercial',
@@ -238,6 +239,13 @@ export interface GeneratedOutputs {
    * scriptQa). Absent for a member's own script — that is used word for word and never judged.
    */
   scriptQa?: ScriptQaSummary | null;
+  /**
+   * The configuration this kit was made with — its cast, language, ratio, ad type and clip count —
+   * written by the run itself (utils/adSpec). Every step that works on the kit afterwards reads THIS,
+   * not the form, so a refine or a rewritten video prompt is always for the kit's own cast. Absent on a
+   * poster, and on kits made before 2026-10-08 (their stored settings stand in — adSpecFromSaved).
+   */
+  spec?: AdSpec | null;
 }
 
 export interface GenerationStatus {

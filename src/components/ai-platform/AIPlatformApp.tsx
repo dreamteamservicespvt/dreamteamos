@@ -28,6 +28,7 @@ import { DOCUMENT_ROUTE_HINT } from './FileUpload';
 import { generateAdAssets, generatePosterConcepts, refinePosterConcept, DEFAULT_POSTER_CONCEPT_COUNT, generateStockImagePrompts, refineStockImagePrompt, generateOverlayTexts, refineOverlayImagePrompt, refineSection, refineVoiceOver, refineVeoPrompts, regenerateVeoForClips, SectionType, extractBusinessNameFromInfo, buildVideoBottomLabel, writeVideoPosterPrompt } from '@/services/geminiService';
 import FinalScriptInput, { type FinalScriptProgress, type FinalScriptSection } from './FinalScriptPanel';
 import { finalScriptTemplate } from '@/utils/finalScript';
+import { adSpecFromSaved, formForKit, savedSettingsOf } from '@/utils/adSpec';
 import { collection, addDoc, getDocs, getDoc, query, where, serverTimestamp, doc, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/services/firebase';
 import { useAuthStore } from '@/store/authStore';
@@ -137,6 +138,14 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   const [status, setStatus] = useState<GenerationStatus>({ step: '', isProcessing: false, error: null, progress: 0 });
   const [errorModalDismissed, setErrorModalDismissed] = useState(false);
   const [outputs, setOutputs] = useState<GeneratedOutputs | null>(null);
+  /**
+   * Whether the kit on screen is finished. A run that failed or was stopped (it sets `status.error`) leaves only
+   * the sections it had written — a partial kit, never saved and never called Completed (2026-10-08: the
+   * guardrail that stops a run whose script lost a speaker made that state an everyday one).
+   */
+  const runFailed = !status.isProcessing && !!status.error;
+  const kitUnfinished = runFailed && !!outputs;
+  const kitDone = !status.isProcessing && !!outputs && !status.error;
   /**
    * The run the waiting workspace describes. Updated only when Start is pressed and at each progress
    * checkpoint — a handful of times per run. The one-second countdown tick lives inside the
@@ -483,6 +492,15 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     }
   };
 
+  /**
+   * The configuration for every step that works on a FINISHED kit — a refine, a final script, the missing
+   * video prompts, the B-roll and overlays, the label and poster — is the KIT's own (utils/adSpec), never
+   * the form's (2026-10-08). The form is for the next run: read from it, a Male & Female Duo kit's script
+   * was handed to one presenter when the form no longer had the special category. `kit` is the run's own
+   * result when state does not hold it yet.
+   */
+  const kitForm = (kit?: GeneratedOutputs | null): AdFormData => formForKit(formData, (kit ?? outputs)?.spec);
+
   /** Everything a saved generation stores, for both the auto-save and the Save button. */
   const generationPayload = (o: GeneratedOutputs) => ({
     userId: user?.uid,
@@ -501,24 +519,18 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     posterConcepts: o.posterConcepts || null,
     // Saved with the script so a refine on a reopened generation holds to the same message.
     coreMessage: o.coreMessage || null,
-    adType: formData.adType,
-    festivalName: formData.festivalName,
-    characterPack: formData.characterPack || null,
-    customCharacter: formData.customCharacter || '',
+    /*
+      The settings the kit was MADE with (utils/adSpec, 2026-10-08) — never the form's, which may already
+      describe the next ad: every auto-save used to write the form over them, so a reopened Male & Female
+      Duo kit could come back calling itself an ordinary ad. The spec itself is saved too.
+    */
+    ...savedSettingsOf(formData, o.spec),
+    spec: o.spec ?? null,
     frameInstructions: formData.frameInstructions || '',
     sceneContext: o.sceneContext || null,
     voiceBrief: o.voiceBrief || null,
     scriptQa: o.scriptQa || null,
-    locationMode: formData.locationMode || null,
-    gender: formData.gender || ModelGender.FEMALE,
-    attireType: formData.attireType,
-    customAttire: formData.customAttire || '',
-    duration: formData.duration,
     creationMode: creationMode,
-    aspectRatio: formData.aspectRatio,
-    language: formData.language,
-    noLogo: formData.noLogo || false,
-    logoNameText: formData.logoNameText || '',
     posterSize: formData.posterSize || DEFAULT_POSTER_SIZE,
     posterStyle: formData.posterStyle || AUTO_POSTER_STYLE,
     posterOccasion: formData.posterOccasion || '',
@@ -578,7 +590,9 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   }, [outputs, user, status.isProcessing]);
 
   const handleSave = async () => {
-    if (!user || !outputs) return;
+    // A run that did not finish leaves only its partial sections on screen — never a kit to save — and a run still
+    // going saves itself when it finishes; a Save in the middle wrote its half-made sections as the job's kit (2026-10-08).
+    if (!user || !outputs || kitUnfinished || status.isProcessing) return;
     setIsSaving(true);
     try {
       await persistGeneration(outputs);
@@ -604,6 +618,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     setCustomFestivalName(savedFestivalName && !isKnownFestival ? savedFestivalName : '');
     generationDocIdRef.current = item.id || null;
     savedFingerprintRef.current = '';
+    // A saved kit is a finished one: whatever a run that failed or was stopped left in the status goes.
+    setStatus(prev => (prev.isProcessing ? prev : { step: 'Completed', isProcessing: false, error: null, progress: 100 }));
     setViewingSavedItem(item);
     setVoiceOverRevision(null);
     // A different kit: nothing on it was updated from a final script, and no section is being rewritten.
@@ -625,6 +641,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       sceneContext: item.sceneContext || null,
       voiceBrief: item.voiceBrief || null,
       scriptQa: item.scriptQa || null,
+      // What the kit was made for — its own record, or (saved before 2026-10-08) its stored settings.
+      spec: item.creationMode === 'poster' ? null : adSpecFromSaved(item),
     });
     setFormData(prev => ({
       ...prev,
@@ -691,7 +709,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
         case 'voiceOver': currentContent = outputs.voiceOverScript; break;
         case 'veo': currentContent = outputs.veoPrompts.join('\n###SEGMENT###\n'); break;
       }
-      const refinedContent = await refineSection(section, currentContent, additionalInstructions, formData, outputs.businessInfo);
+      const refinedContent = await refineSection(section, currentContent, additionalInstructions, kitForm(), outputs.businessInfo);
       /**
        * A refine that could not be applied hands back exactly what it was given (see
        * refineSection: a special-category reply that has lost its two-character format is
@@ -756,7 +774,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
         script: before,
         instruction,
         clip,
-        formData,
+        formData: kitForm(),
         businessInfo: outputs.businessInfo,
         coreMessage: outputs.coreMessage,
       });
@@ -773,7 +791,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
 
       if (creationMode === 'video' && previousVeo.length > 0) {
         try {
-          const fresh = await regenerateVeoForClips(result.script, formData, outputs.mainFramePrompts || [], result.changed, outputs.sceneContext);
+          const fresh = await regenerateVeoForClips(result.script, kitForm(), outputs.mainFramePrompts || [], result.changed, outputs.sceneContext);
           setOutputs(prev => {
             // The member may have undone or refined again while these were being written.
             if (!prev || prev.voiceOverScript !== result.script) return prev;
@@ -967,6 +985,15 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     setErrorModalDismissed(false);
     setStatus({ step: 'Initializing...', isProcessing: true, error: null, progress: 0 });
     setOutputs(null);
+    /*
+      A new run is a new kit: let go of the document the screen was showing (2026-10-08). A run that failed or was
+      stopped leaves its partial sections on screen, and the auto-save — still pointed at the LAST kit's document —
+      wrote them over it a second later: an empty voice-over, no frames, no video prompts, in the document the job
+      reopens. A run that finishes saves as a new document (persistGeneration(…, true)); one that does not, saves
+      nothing.
+    */
+    generationDocIdRef.current = null;
+    savedFingerprintRef.current = '';
     setActiveRun({ id: runStartedAt, profile: runProfile, checkpoints: [{ percent: 0, at: runStartedAt }], facts: currentRunFacts() });
     setLeftPanel(null);
     setMissionDone({});
@@ -1046,7 +1073,12 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   const handleStopGeneration = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
-      setStatus(prev => ({ ...prev, step: 'Stopping...', isProcessing: false }));
+      /*
+        Stopped means "did not finish" from the moment Stop is pressed (2026-10-08). The call in flight cannot be
+        cancelled and reaches the run's catch only when it returns — 5–20 s live — and until then, with no error set,
+        the screen read as a finished kit ("successfully generated", Completed) with Save on.
+      */
+      setStatus(prev => ({ ...prev, step: 'Stopping...', isProcessing: false, error: 'Generation stopped.' }));
     }
   };
 
@@ -1080,8 +1112,9 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     setIsGeneratingStock(true);
     setStockImageError(null);
     try {
-      const clipCount = from.veoPrompts?.length || from.mainFramePrompts?.length || Math.round(formData.duration / 8);
-      const stockPrompts = await generateStockImagePrompts(from.voiceOverScript, from.businessInfo, formData.adType, formData.festivalName, stockImageTheme, formData.aspectRatio, clipCount,
+      const kit = kitForm(from);
+      const clipCount = from.veoPrompts?.length || from.mainFramePrompts?.length || Math.round(kit.duration / 8);
+      const stockPrompts = await generateStockImagePrompts(from.voiceOverScript, from.businessInfo, kit.adType, kit.festivalName, stockImageTheme, kit.aspectRatio, clipCount,
         { sceneContext: from.sceneContext, coreMessage: from.coreMessage });
       // Only onto the script they were written for — a newer final script may have replaced it meanwhile.
       setOutputs(prev => prev && prev.voiceOverScript === from.voiceOverScript ? { ...prev, stockImagePrompts: stockPrompts } : prev);
@@ -1100,7 +1133,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     setRefiningStockIdx(idx);
     try {
       const current = outputs.stockImagePrompts[idx];
-      const refined = await refineStockImagePrompt(current.prompt, stockRefineText.trim(), formData.aspectRatio);
+      const refined = await refineStockImagePrompt(current.prompt, stockRefineText.trim(), kitForm().aspectRatio);
       setOutputs(prev => {
         if (!prev?.stockImagePrompts) return prev;
         const next = [...prev.stockImagePrompts];
@@ -1123,7 +1156,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     setIsGeneratingOverlay(true);
     setOverlayError(null);
     try {
-      const items = await generateOverlayTexts(from.voiceOverScript, from.businessInfo, formData.language, overlayDesignContext(from));
+      const items = await generateOverlayTexts(from.voiceOverScript, from.businessInfo, kitForm(from).language, overlayDesignContext(from));
       setOutputs(prev => prev && prev.voiceOverScript === from.voiceOverScript ? { ...prev, overlayTexts: items } : prev);
       return true;
     } catch (error: any) {
@@ -1151,7 +1184,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     try {
       if (section === 'veo') {
         // Every clip, from the frames already made — only the words changed, not the pictures.
-        const fresh = await regenerateVeoForClips(kit.voiceOverScript, formData, kit.mainFramePrompts || [], undefined, kit.sceneContext);
+        const fresh = await regenerateVeoForClips(kit.voiceOverScript, kitForm(kit), kit.mainFramePrompts || [], undefined, kit.sceneContext);
         setOutputs(prev => {
           if (!prev || prev.voiceOverScript !== kit.voiceOverScript) return prev;
           const veoPrompts = [...(prev.veoPrompts || [])];
@@ -1191,7 +1224,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   const handleRegenerateHeader = () => {
     if (!outputs) return;
     const headerPrompt = buildVideoBottomLabel({
-      formData, businessInfo: outputs.businessInfo, hasLogoFile: !!files.logo,
+      formData: kitForm(), businessInfo: outputs.businessInfo, hasLogoFile: !!files.logo,
       hasPremisesPhoto: files.storeImage.length > 0, sceneContext: outputs.sceneContext, coreMessage: outputs.coreMessage,
     });
     setOutputs(prev => (prev ? { ...prev, headerPrompt } : prev));
@@ -1208,7 +1241,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     if (!outputs) return;
     setSectionRegen(prev => ({ ...prev, poster: 'run' }));
     try {
-      const posterPrompt = await writeVideoPosterPrompt(formData, outputs.businessInfo);
+      const posterPrompt = await writeVideoPosterPrompt(kitForm(), outputs.businessInfo);
       setOutputs(prev => (prev ? { ...prev, posterPrompt } : prev));
       clearSectionRegen('poster');
     } catch (e: any) {
@@ -1224,7 +1257,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     const missing = frames.map((_, i) => i).filter(i => !have[i]?.trim());
     setSectionRegen(prev => ({ ...prev, veo: 'run' }));
     try {
-      const fresh = await regenerateVeoForClips(outputs.voiceOverScript, formData, frames, missing.length > 0 ? missing : undefined, outputs.sceneContext);
+      const fresh = await regenerateVeoForClips(outputs.voiceOverScript, kitForm(), frames, missing.length > 0 ? missing : undefined, outputs.sceneContext);
       setOutputs(prev => {
         if (!prev) return prev;
         const veoPrompts = [...(prev.veoPrompts || [])];
@@ -1239,8 +1272,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
 
   /** What the overlays' 3D look is themed to: the festival's own palette, or the business. */
   const overlayDesignContext = (source?: GeneratedOutputs) => ({
-    adType: formData.adType,
-    festivalName: formData.festivalName,
+    adType: kitForm(source).adType,
+    festivalName: kitForm(source).festivalName,
     sceneContext: (source ?? outputs)?.sceneContext,
     coreMessage: (source ?? outputs)?.coreMessage,
   });
@@ -1288,11 +1321,18 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
    * The shape a pasted final script must take for THIS job — the same shape the script is written
    * in wherever it is written, and the same one utils/dialogueFormat reads back.
    */
-  /** Who speaks in this ad, as a script labels them — the same list the generator reads (packFor). */
-  const scriptSpeakers = (() => {
-    const pack = withCustomCharacter(getCharacterPack(formData.characterPack), formData.customCharacter);
+  /** Who speaks in an ad, as a script labels them — the same list the generator reads (packFor). */
+  const speakersOf = (form: AdFormData) => {
+    const pack = withCustomCharacter(getCharacterPack(form.characterPack), form.customCharacter);
     return pack ? packSpeakers(pack) : [];
-  })();
+  };
+  /** The NEXT run's cast — what a custom script in Configuration is written for. */
+  const scriptSpeakers = speakersOf(formData);
+  /**
+   * The KIT's own cast — what a final script pasted into its Deliverables must be. It used to be the
+   * form's, so a duo kit under a form with no special category asked for one presenter's lines (2026-10-08).
+   */
+  const kitSpeakers = speakersOf(kitForm());
   const customScriptTemplate = finalScriptTemplate(scriptSpeakers, kitClipCount());
 
   /**
@@ -1424,12 +1464,14 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
         <div className="flex-1 min-w-[8px]" />
 
         {status.isProcessing ? (
-          <span className="ag-chip ag-badge--run hidden sm:inline-flex shrink-0 whitespace-nowrap">
+          // `!` because `.ag-chip` sets display itself and adgen.css loads after Tailwind — a plain `hidden` lost, and
+          // on a 390px phone the chip pushed the Home button off the screen (2026-10-08).
+          <span className="ag-chip ag-badge--run !hidden sm:!inline-flex shrink-0 whitespace-nowrap">
             <span className="ag-halo w-1.5 h-1.5 rounded-full bg-violet-300 inline-block" />
             Generating · {Math.round(status.progress)}%
           </span>
         ) : (
-          <span className="ag-chip ag-badge--ok hidden sm:inline-flex shrink-0 whitespace-nowrap">
+          <span className="ag-chip ag-badge--ok !hidden sm:!inline-flex shrink-0 whitespace-nowrap">
             {outputs ? <Check className="w-3 h-3" /> : <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 inline-block" />}
             {saveSuccess ? 'Saved' : 'Ready'}
           </span>
@@ -2346,8 +2388,10 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                 )}
               </div>
               {status.error && (
-                <div className="ag-chip ag-badge--bad w-full h-auto justify-start rounded-2xl px-4 py-3 text-left text-[13px] leading-relaxed">
-                  <AlertCircle className="w-4 h-4 shrink-0" /><span>{status.error}</span>
+                /* A message box, not a chip: `.ag-chip` fixes a 28px pill height that the long message ran out of,
+                   over the Start Generation button (2026-10-08). */
+                <div data-test="run-error" className="ag-badge--bad flex w-full items-start gap-2 rounded-2xl border px-4 py-3 text-left text-[13px] font-semibold leading-relaxed">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /><span className="min-w-0">{status.error}</span>
                 </div>
               )}
 
@@ -2366,16 +2410,17 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
             {/* RIGHT: OUTPUTS */}
             <div className="lg:col-span-8" ref={outputPanelRef}>
               {(status.isProcessing || status.step || outputs) && (
-                <div className={cn("ag-card mb-3", status.isProcessing || !outputs ? "px-4 py-3.5 sm:px-5 sm:py-4" : "px-3.5 py-2 sm:px-4")}>
+                <div data-test="run-status" className={cn("ag-card mb-3", !kitDone ? "px-4 py-3.5 sm:px-5 sm:py-4" : "px-3.5 py-2 sm:px-4")}>
                   <div className="flex items-center gap-3">
-                    <span className={cn("ag-ico ag-ico--sm", !status.isProcessing && outputs && "ag-btn--ok w-8 h-8 flex-[0_0_32px] rounded-[10px]")}>
+                    <span className={cn("ag-ico ag-ico--sm", kitDone && "ag-btn--ok w-8 h-8 flex-[0_0_32px] rounded-[10px]")}>
                       {status.isProcessing
                         ? <Loader2 className="w-[18px] h-[18px] animate-spin" />
-                        : outputs ? <Check className="w-4 h-4" strokeWidth={3} /> : <Wand2 className="w-[18px] h-[18px]" />}
+                        : kitDone ? <Check className="w-4 h-4" strokeWidth={3} />
+                        : runFailed ? <AlertCircle className="w-[18px] h-[18px] text-rose-300" /> : <Wand2 className="w-[18px] h-[18px]" />}
                     </span>
                     <div className="min-w-0 flex-1">
                       {/* Finished, the title and the sentence share one line — there is nothing to watch. */}
-                      {!status.isProcessing && outputs ? (
+                      {kitDone ? (
                         <p className="flex items-baseline gap-2 min-w-0">
                           <span className="ag-h2 text-[14px] text-white shrink-0">Generation Status</span>
                           <span className="ag-muted text-[12px] truncate">Your ad kit has been successfully generated.</span>
@@ -2383,11 +2428,19 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       ) : (
                         <>
                           <h2 className="ag-h2 text-[16px] sm:text-[17px] text-white leading-tight">Generation Status</h2>
-                          {/* One line, not two: while it runs, the stage IS the status. */}
-                          <p className={cn("text-[12px] mt-0.5 truncate flex items-center gap-1.5",
-                            status.isProcessing ? "text-violet-200" : "ag-muted")}>
+                          {/* One line, not two: while it runs, the stage IS the status. A run that did not finish says
+                              so — it used to read "successfully generated", Completed (2026-10-08) — and that sentence
+                              wraps: cut to one line it ended mid-word on a 390px phone ("…and your last sav"). */}
+                          <p className={cn("text-[12px] mt-0.5 flex items-center gap-1.5",
+                            status.isProcessing ? "text-violet-200 truncate" : runFailed ? "text-rose-200 leading-snug" : "ag-muted truncate")}>
                             {status.isProcessing && <Wand2 className="w-3 h-3 animate-pulse shrink-0" />}
-                            {status.isProcessing ? (status.step || 'Preparing your ad kit…') : status.step}
+                            {status.isProcessing
+                              ? (status.step || 'Preparing your ad kit…')
+                              : runFailed
+                                ? (status.error === 'Generation stopped.'
+                                  ? 'Stopped — nothing was saved, and your last saved kit is unchanged.'
+                                  : 'This run did not finish — nothing was saved, and your last saved kit is unchanged.')
+                                : status.step}
                           </p>
                         </>
                       )}
@@ -2397,10 +2450,13 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       {status.isProcessing && activeRun && !showMission && (
                         <RunCountdown run={activeRun} active isDark={isDark} variant="inline" />
                       )}
-                      {!status.isProcessing && outputs && (
+                      {kitDone && (
                         <span className="ag-chip ag-badge--ok h-6 px-2.5 text-[11px]"><Check className="w-3 h-3" />Completed</span>
                       )}
-                      <span className={cn("ag-num text-white leading-none", !status.isProcessing && outputs ? "text-[15px]" : "text-[20px]")}>
+                      {runFailed && (
+                        <span className="ag-chip ag-badge--bad h-6 px-2.5 text-[11px]"><AlertCircle className="w-3 h-3" />Not finished</span>
+                      )}
+                      <span className={cn("ag-num text-white leading-none", kitDone ? "text-[15px]" : "text-[20px]")}>
                         {Math.round(status.progress)}%
                       </span>
                     </div>
@@ -2546,7 +2602,9 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       <button type="button" onClick={() => setShowSavedItems(true)} className="ag-btn ag-btn--secondary ag-btn--sm">
                         <Clock className="w-4 h-4" /><span className="hidden sm:inline">View History</span>
                       </button>
-                      <button onClick={handleSave} disabled={isSaving || saveSuccess}
+                      <button onClick={handleSave} disabled={isSaving || saveSuccess || kitUnfinished || status.isProcessing} data-test="kit-save"
+                        title={kitUnfinished ? "This run did not finish — press Start Generation for a kit to save"
+                          : status.isProcessing ? "The kit saves itself when the run finishes" : undefined}
                         className={cn("ag-btn ag-btn--sm", saveSuccess ? "ag-btn--ok" : "ag-btn--secondary")}>
                         {saveSuccess ? <><Check className="w-4 h-4" /><span>Saved!</span></> : isSaving ? <><Loader2 className="w-4 h-4 animate-spin" /><span>Saving...</span></> : <><Save className="w-4 h-4" /><span>Save</span></>}
                       </button>
@@ -2643,14 +2701,14 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       // as `0-8: …` (see utils/voiceOverFormat) and relabelled only here, so both
                       // the whole-script copy and the per-clip copies read the same way.
                       return (
-                      <OutputSection title={`4. Voice Over Script (${formData.language || 'Telugu'})`} sectionKey="voiceOver"
+                      <OutputSection title={`4. Voice Over Script (${kitForm().language || 'Telugu'})`} sectionKey="voiceOver"
                         icon={Mic} state={rowState('voiceOver', true)}
                         footer={
                           /* A script finished elsewhere — the client's, or corrected in ChatGPT / Gemini — goes in here. */
                           <FinalScriptInput
-                            speakers={scriptSpeakers}
+                            speakers={kitSpeakers}
                             clipCount={kitClipCount()}
-                            language={formData.language}
+                            language={kitForm().language}
                             currentScript={outputs.voiceOverScript}
                             open={finalScriptOpen}
                             onToggle={() => setFinalScriptOpen(open => !open)}
@@ -3049,7 +3107,9 @@ const OutputSection: React.FC<{
   const [, ordinal, name] = numbered ?? [undefined, undefined, title];
   const open = !empty && !!collapsedOutputs[sectionKey];
   return (
-    <div className={cn("ag-row flex-col items-stretch !p-0", open && "ag-row--open")}>
+    // `!items-stretch` like `!p-0`: `.ag-row` centres its children and adgen.css loads after Tailwind, so the open
+    // section's body shrank to its content and sat in the middle (2026-10-08).
+    <div className={cn("ag-row flex-col !items-stretch !p-0", open && "ag-row--open")}>
       <div className="relative w-full flex flex-wrap items-center gap-x-3 gap-y-2 sm:gap-x-4 px-4 py-3 sm:px-5 min-h-[72px]">
         {ordinal && <span className="ag-row__num shrink-0">{ordinal}</span>}
         <span className="ag-tile shrink-0 w-10 h-10 flex-[0_0_40px]"><Icon className="w-[18px] h-[18px] text-violet-200" /></span>
